@@ -24,6 +24,7 @@ extends Node3D
 # The playable Player node remains the locomotion/camera shell for Phase 0.x.
 @onready var character_c: Node3D = $CharacterC
 @onready var interactive_object: Node3D = $InteractiveObject
+@onready var visual_fact_emitter: Node = $VisualFactEmitter
 
 var current_focus_target: Node3D
 var last_reported_move_position := Vector3.INF
@@ -398,23 +399,21 @@ func _on_backend_health_request_completed(_result: int, response_code: int, _hea
 	)
 
 func _emit_fixed_gaze_visual_fact(target_actor_id: String, target_object_id: String) -> void:
-	var bridge := _get_bridge()
-	if bridge == null or intent_mapper == null:
+	if visual_fact_emitter == null:
 		return
-	if not intent_mapper.has_method("emit_visual_fact_event"):
+	if not visual_fact_emitter.has_method("emit_visual_fact"):
 		return
 	if target_actor_id == "" and target_object_id == "":
 		return
 
 	var relation_type := "actor_looks_at_actor" if target_actor_id != "" else "actor_looks_at_object"
 	_bus_log("phase0_visual_fact:%s:%s" % [relation_type, target_actor_id if target_actor_id != "" else target_object_id])
-	bridge.send_envelope(intent_mapper.emit_visual_fact_event("fixed_gaze_on_target", relation_type, target_actor_id, target_object_id))
+	visual_fact_emitter.emit_visual_fact("fixed_gaze_on_target", relation_type, target_actor_id, target_object_id)
 
 func _emit_near_object_visual_fact(target_object_id: String) -> void:
-	var bridge := _get_bridge()
-	if bridge == null or intent_mapper == null:
+	if visual_fact_emitter == null:
 		return
-	if not intent_mapper.has_method("emit_visual_fact_event"):
+	if not visual_fact_emitter.has_method("emit_visual_fact"):
 		return
 	var target_node := _find_node_by_property("object_id", target_object_id)
 	if target_node == null:
@@ -423,7 +422,9 @@ func _emit_near_object_visual_fact(target_object_id: String) -> void:
 	if target_object_id == last_near_object_visual_fact_target and now_ms - last_near_object_visual_fact_ts < near_object_visual_fact_cooldown_ms:
 		return
 	_bus_log("phase0_visual_fact:actor_near_object:%s" % target_object_id)
-	bridge.send_envelope(intent_mapper.emit_visual_fact_event("spatial_relation", "actor_near_object", "", target_object_id))
+	var emitted: bool = visual_fact_emitter.emit_visual_fact("spatial_relation", "actor_near_object", "", target_object_id)
+	if not emitted:
+		return
 	last_near_object_visual_fact_target = target_object_id
 	last_near_object_visual_fact_ts = now_ms
 

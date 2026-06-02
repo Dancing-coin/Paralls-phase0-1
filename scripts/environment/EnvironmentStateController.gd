@@ -1,6 +1,7 @@
 extends Node3D
 
 @export var environment_id := "env_lamp"
+@export_node_path("Node") var visual_fact_emitter_path := NodePath("../VisualFactEmitter")
 
 var env_state := "stable"
 var last_emitted_visual_fact_state := ""
@@ -37,8 +38,8 @@ func _apply_visual_state() -> void:
 func _get_bus() -> Node:
     return get_node_or_null("/root/LocalPresentationBus")
 
-func _get_bridge() -> Node:
-    return get_node_or_null("/root/BackendBridge")
+func _get_visual_fact_emitter() -> Node:
+    return get_node_or_null(visual_fact_emitter_path)
 
 func _bus_log(message: String) -> void:
     var bus := _get_bus()
@@ -52,22 +53,17 @@ func _emit_environment_visual_fact(previous_state: String, next_state: String) -
         return
     if last_emitted_visual_fact_state == next_state:
         return
-    var bridge := _get_bridge()
-    if bridge == null or (bridge.has_method("is_backend_open") and not bridge.is_backend_open()):
+    var visual_fact_emitter := _get_visual_fact_emitter()
+    if visual_fact_emitter == null or not visual_fact_emitter.has_method("emit_visual_fact"):
         return
-    var envelope := {
-        "message_type": "visual_fact_event",
-        "payload": {
-            "actor_id": "char_c",
-            "room_id": "room_demo",
-            "scene_id": "scene_demo",
-            "zone_id": "zone_focus",
-            "producer_ts": Time.get_ticks_msec(),
-            "fact_type": "light_level_drop",
-            "relation_type": "environment_light_drop",
-            "target_environment_id": environment_id,
-        },
-    }
-    bridge.send_envelope(envelope)
+    var emitted: bool = visual_fact_emitter.emit_visual_fact(
+        "light_level_drop",
+        "environment_light_drop",
+        "",
+        "",
+        environment_id
+    )
+    if not emitted:
+        return
     last_emitted_visual_fact_state = next_state
     _bus_log("phase0_visual_fact:light_level_drop:%s" % environment_id)

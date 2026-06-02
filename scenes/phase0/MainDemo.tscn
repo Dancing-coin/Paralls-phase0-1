@@ -1,4 +1,4 @@
-[gd_scene load_steps=28 format=3]
+[gd_scene load_steps=29 format=3]
 
 [ext_resource type="Script" path="res://scripts/phase0/MainDemoController.gd" id="1_main"]
 [ext_resource type="PackedScene" path="res://addons/JehenoThirdPersonController/PlayerCharacter/player_character_scene.tscn" id="2_player"]
@@ -11,6 +11,7 @@
 [ext_resource type="PackedScene" path="res://scenes/phase0/GreyboxHumanoidVisual.tscn" id="9_visual"]
 [ext_resource type="Script" path="res://scripts/player/Phase0PlayerEmbodiment.gd" id="10_embodiment"]
 [ext_resource type="Script" path="res://scripts/player/CameraOcclusionFader.gd" id="11_occlusion"]
+[ext_resource type="Script" path="res://scripts/visual/VisualFactEmitter.gd" id="12_visual_fact_emitter"]
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_Field"]
 size = Vector2(80, 50)
@@ -374,6 +375,9 @@ accent_color = Color(0.07, 0.38, 0.88, 1)
 
 [node name="IntentMapper" type="Node" parent="."]
 script = ExtResource("3_mapper")
+
+[node name="VisualFactEmitter" type="Node" parent="."]
+script = ExtResource("12_visual_fact_emitter")
 
 [node name="CharacterA" parent="." instance=ExtResource("5_character")]
 transform = Transform3D(0.978148, 0, 0.207912, 0, 1, 0, -0.207912, 0, 0.978148, -7.2, 0, -2.9)
