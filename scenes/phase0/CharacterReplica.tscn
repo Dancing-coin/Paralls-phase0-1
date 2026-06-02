@@ -1,0 +1,37 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/character/CharacterReplica.gd" id="1_character"]
+[ext_resource type="Script" path="res://scripts/audio/SpatialVoiceController.gd" id="2_voice"]
+[ext_resource type="PackedScene" path="res://scenes/phase0/GreyboxHumanoidVisual.tscn" id="3_visual"]
+[ext_resource type="PackedScene" path="res://addons/JehenoThirdPersonController/PlayerCharacter/GodotPlush/godot_plush_skin.tscn" id="4_plush"]
+
+[node name="CharacterReplica" type="Node3D"]
+script = ExtResource("1_character")
+
+[node name="VisualRoot" type="Node3D" parent="."]
+
+[node name="AssetMount" type="Node3D" parent="VisualRoot"]
+
+[node name="RotationOffset" type="Node3D" parent="VisualRoot/AssetMount"]
+
+[node name="ScaleOffset" type="Node3D" parent="VisualRoot/AssetMount/RotationOffset"]
+
+[node name="ImportedModel" type="Node3D" parent="VisualRoot/AssetMount/RotationOffset/ScaleOffset"]
+
+[node name="GreyboxBodyRoot" type="Node3D" parent="VisualRoot"]
+
+[node name="GreyboxHumanoidVisual" parent="VisualRoot/GreyboxBodyRoot" instance=ExtResource("3_visual")]
+
+[node name="RoleAssetRoot" type="Node3D" parent="VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel"]
+
+[node name="GodotPlushSkin" parent="VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot" instance=ExtResource("4_plush")]
+visible = false
+
+[node name="SpatialVoiceController" type="AudioStreamPlayer3D" parent="."]
+script = ExtResource("2_voice")
+
+[node name="Nameplate" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8, 0)
+text = "Replica"
+font_size = 32
+billboard = 1

@@ -1,0 +1,13 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Local agent/runtime state
+.omx/
+.claude/
+.sixth/
+
+# Python cache
+__pycache__/
+*.pyc
+.pytest_cache/

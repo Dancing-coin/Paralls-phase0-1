@@ -1,0 +1,14 @@
+from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent
+
+
+class SessionRuntime:
+    def accept_player_input(self, event: MoveIntent | DialogueSubmit | InteractIntent | FocusTargetChange) -> dict[str, object]:
+        if event.intent_type == "dialogue_submit":
+            return {"accepted": True, "route": "character_service"}
+        if event.intent_type == "interact_intent":
+            return {"accepted": True, "route": "esm_service"}
+        if event.intent_type == "move_intent":
+            return {"accepted": True, "route": "local_motion"}
+        if event.intent_type == "focus_target_change":
+            return {"accepted": True, "route": "character_service"}
+        return {"accepted": False, "route": "unknown"}

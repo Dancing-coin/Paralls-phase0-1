@@ -1,0 +1,31 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/environment/EnvironmentStateController.gd" id="1_env"]
+
+[sub_resource type="SphereMesh" id="SphereMesh_1"]
+radius = 0.25
+height = 0.5
+
+[node name="EnvironmentStateNode" type="Node3D"]
+script = ExtResource("1_env")
+
+[node name="VisualRoot" type="Node3D" parent="."]
+
+[node name="AssetMount" type="Node3D" parent="VisualRoot"]
+
+[node name="RotationOffset" type="Node3D" parent="VisualRoot/AssetMount"]
+
+[node name="ScaleOffset" type="Node3D" parent="VisualRoot/AssetMount/RotationOffset"]
+
+[node name="ImportedModel" type="Node3D" parent="VisualRoot/AssetMount/RotationOffset/ScaleOffset"]
+
+[node name="GreyboxFixtureRoot" type="Node3D" parent="VisualRoot"]
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="VisualRoot/GreyboxFixtureRoot"]
+mesh = SubResource("SphereMesh_1")
+
+[node name="Label3D" type="Label3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, 0)
+text = "Env"
+font_size = 24
+billboard = 1

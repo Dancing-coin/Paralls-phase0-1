@@ -1,0 +1,37 @@
+from pydantic import BaseModel
+
+
+class WorldResultBase(BaseModel):
+    room_id: str
+    source_type: str
+    result_type: str
+    causation_id: str
+    producer_ts: int
+    target_object_id: str | None = None
+    target_environment_id: str | None = None
+
+
+class ObjectInteractionResult(WorldResultBase):
+    result_type: str = "object_interaction_result"
+    interaction_type: str
+    result_summary: str
+    state_changed: bool
+
+
+class EnvironmentStateResult(WorldResultBase):
+    result_type: str = "environment_state_result"
+    previous_state: str
+    current_state: str
+    change_summary: str
+
+
+class VisibleFeedbackResult(WorldResultBase):
+    result_type: str = "visible_feedback_result"
+    feedback_mode: str
+    feedback_payload: str
+
+
+class ConstraintStateResult(WorldResultBase):
+    result_type: str = "constraint_state_result"
+    constraint_type: str
+    constraint_summary: str
