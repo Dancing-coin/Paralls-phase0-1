@@ -169,47 +169,49 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         return messages
 
     if route["route"] == "esm_service" and isinstance(event, InteractIntent):
-        world_result = esm_service.resolve_interaction(event, is_in_range=True)
+        actor_position = runtime.get_actor_position(event.actor_id)
+        world_result = esm_service.resolve_interaction(event, actor_position=actor_position)
         event_trace.record(world_result.result_type)
         messages.append(_as_envelope("world_result", world_result.model_dump()))
 
-        environment_result = esm_service.emit_environment_shift(
-            room_id=event.room_id,
-            target_environment_id="env_lamp",
-            previous_state="stable",
-            current_state="alerted",
-        )
-        event_trace.record(environment_result.result_type)
-        messages.append(_as_envelope("world_result", environment_result.model_dump()))
+        if world_result.result_type == "object_interaction_result":
+            environment_result = esm_service.emit_environment_shift(
+                room_id=event.room_id,
+                target_environment_id="env_lamp",
+                previous_state="stable",
+                current_state="alerted",
+            )
+            event_trace.record(environment_result.result_type)
+            messages.append(_as_envelope("world_result", environment_result.model_dump()))
 
-        siming_output = siming_service.evaluate_world_event(
-            room_id=event.room_id,
-            actor_id="char_b",
-            object_id=event.target_object_id,
-            event_type=world_result.result_type,
-        )
-        event_trace.record(siming_output.output_type)
-        messages.append(_as_envelope("siming_output", siming_output.model_dump()))
+            siming_output = siming_service.evaluate_world_event(
+                room_id=event.room_id,
+                actor_id="char_b",
+                object_id=event.target_object_id,
+                event_type=world_result.result_type,
+            )
+            event_trace.record(siming_output.output_type)
+            messages.append(_as_envelope("siming_output", siming_output.model_dump()))
 
-        conversation_relation_service.apply_world_result(
-            actor_id=event.actor_id,
-            room_id=event.room_id,
-            scene_id=event.scene_id,
-            zone_id=event.zone_id,
-            target_object_id=event.target_object_id,
-            result_type=world_result.result_type,
-            producer_ts=event.producer_ts,
-        )
-        messages.extend(_ensure_runtime_snapshot_messages(event))
-        projection_delta = _project_runtime_delta(event.actor_id, event.producer_ts)
-        if projection_delta is not None:
-            messages.append(projection_delta)
-        candidate = conversation_relation_service.build_candidate_event(
-            actor_id=event.actor_id,
-            causation_id=f"world:{event.producer_ts}",
-            correlation_id=f"world:{event.producer_ts}",
-        )
-        messages.extend(_candidate_messages(candidate))
+            conversation_relation_service.apply_world_result(
+                actor_id=event.actor_id,
+                room_id=event.room_id,
+                scene_id=event.scene_id,
+                zone_id=event.zone_id,
+                target_object_id=event.target_object_id,
+                result_type=world_result.result_type,
+                producer_ts=event.producer_ts,
+            )
+            messages.extend(_ensure_runtime_snapshot_messages(event))
+            projection_delta = _project_runtime_delta(event.actor_id, event.producer_ts)
+            if projection_delta is not None:
+                messages.append(projection_delta)
+            candidate = conversation_relation_service.build_candidate_event(
+                actor_id=event.actor_id,
+                causation_id=f"world:{event.producer_ts}",
+                correlation_id=f"world:{event.producer_ts}",
+            )
+            messages.extend(_candidate_messages(candidate))
         return messages
 
     return messages

@@ -7,6 +7,7 @@ extends Node3D
 @export var autotest_interact_delay := 0.6
 @export var autotest_capture_delay := 0.8
 @export var autotest_final_position := Vector3(0.0, 0.5, 20.0)
+@export var autotest_interact_position := Vector3(0.0, 0.5, 0.6)
 @export var focus_autotest_settle_delay := 0.45
 @export var focus_autotest_vantage_offset := Vector3(1.2, 0.5, 2.7)
 @export var focus_max_distance := 28.0
@@ -119,10 +120,22 @@ func _run_autotest_inputs() -> void:
 	player_input_bridge.trigger_dialogue()
 	_orient_player_toward(interactive_object.global_position)
 	_force_focus_target(interactive_object)
+	_move_player_to_interact_position()
+	if intent_mapper != null and intent_mapper.has_method("emit_move_intent"):
+		var interact_bridge := _get_bridge()
+		if interact_bridge:
+			interact_bridge.send_envelope(intent_mapper.emit_move_intent("locomotion", autotest_interact_position))
 	await get_tree().create_timer(autotest_interact_delay).timeout
 	player_input_bridge.trigger_interaction()
-	await get_tree().create_timer(autotest_capture_delay).timeout
 	_move_player_to_demo_vantage()
+	if intent_mapper != null and intent_mapper.has_method("emit_move_intent"):
+		var bridge := _get_bridge()
+		if bridge:
+			bridge.send_envelope(intent_mapper.emit_move_intent("locomotion", autotest_final_position))
+	await get_tree().create_timer(autotest_interact_delay).timeout
+	_bus_log("phase0_autotest_failed_interaction_attempt")
+	player_input_bridge.trigger_interaction()
+	await get_tree().create_timer(autotest_capture_delay).timeout
 	_capture_autotest_screenshot()
 	focus_override_active = false
 	if player_input_bridge and player_input_bridge.has_method("set_character_c_sync_enabled"):
@@ -236,6 +249,10 @@ func _move_player_to_demo_vantage() -> void:
 		var spring_arm := camera_holder.find_child("SpringArm3D", true, false)
 		if spring_arm is SpringArm3D:
 			(spring_arm as SpringArm3D).spring_length = 7.2
+
+func _move_player_to_interact_position() -> void:
+	player.global_position = autotest_interact_position
+	_orient_player_toward(interactive_object.global_position)
 
 func _move_player_to_focus_vantage(target_position: Vector3) -> void:
 	player.global_position = Vector3(target_position.x, 0.5, target_position.z) + focus_autotest_vantage_offset

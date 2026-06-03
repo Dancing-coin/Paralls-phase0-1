@@ -48,6 +48,7 @@ def test_session_runtime_routes_move_event() -> None:
     result = runtime.accept_player_input(event)
     assert result["accepted"] is True
     assert result["route"] == "local_motion"
+    assert runtime.get_actor_position("char_c") == (1.0, 0.0, 2.0)
 
 
 def test_session_runtime_routes_focus_target_change_event() -> None:

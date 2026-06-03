@@ -182,6 +182,96 @@ def test_websocket_interact_intent_emits_ack_world_result_environment_shift_and_
     assert candidate_siming_output["message_type"] == "siming_output"
     assert candidate_siming_output["payload"]["target_object_id"] == "obj_letter"
 
+
+def test_websocket_interact_intent_emits_constraint_when_player_is_far() -> None:
+    reset_runtime_state()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "player_input",
+                "payload": {
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "actor_id": "char_c",
+                    "intent_type": "move_intent",
+                    "producer_ts": 455,
+                    "move_mode": "locomotion",
+                    "target_point": [0.0, 0.0, 20.0],
+                },
+            }
+        )
+        websocket.receive_json()
+
+        websocket.send_json(
+            {
+                "message_type": "player_input",
+                "payload": {
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "actor_id": "char_c",
+                    "intent_type": "interact_intent",
+                    "producer_ts": 456,
+                    "target_object_id": "obj_letter",
+                    "interaction_type": "inspect",
+                },
+            }
+        )
+
+        ack = websocket.receive_json()
+        world_result = websocket.receive_json()
+
+    assert ack["message_type"] == "ack"
+    assert ack["payload"]["route"] == "esm_service"
+    assert world_result["message_type"] == "world_result"
+    assert world_result["payload"]["result_type"] == "constraint_state_result"
+    assert world_result["payload"]["constraint_type"] == "distance"
+
+
+def test_websocket_interact_intent_emits_constraint_state_when_actor_is_far() -> None:
+    reset_runtime_state()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "player_input",
+                "payload": {
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "actor_id": "char_c",
+                    "intent_type": "move_intent",
+                    "producer_ts": 455,
+                    "move_mode": "locomotion",
+                    "target_point": [0.0, 0.0, 16.0],
+                },
+            }
+        )
+        move_ack = websocket.receive_json()
+        websocket.send_json(
+            {
+                "message_type": "player_input",
+                "payload": {
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "actor_id": "char_c",
+                    "intent_type": "interact_intent",
+                    "producer_ts": 456,
+                    "target_object_id": "obj_letter",
+                    "interaction_type": "inspect",
+                },
+            }
+        )
+        interact_ack = websocket.receive_json()
+        world_result = websocket.receive_json()
+
+    assert move_ack["message_type"] == "ack"
+    assert move_ack["payload"]["route"] == "local_motion"
+    assert interact_ack["message_type"] == "ack"
+    assert interact_ack["payload"]["route"] == "esm_service"
+    assert world_result["message_type"] == "world_result"
+    assert world_result["payload"]["result_type"] == "constraint_state_result"
+    assert world_result["payload"]["constraint_type"] == "distance"
+
 def test_websocket_focus_target_change_emits_runtime_alignment_messages() -> None:
     reset_runtime_state()
     client = TestClient(app)
