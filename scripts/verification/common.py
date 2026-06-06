@@ -141,10 +141,15 @@ def scan_direct_visual_fact_bypass(project_root: Path) -> str:
         normalized = str(path.relative_to(project_root)).replace("\\", "/")
         if "send_envelope(" not in text:
             continue
-        if normalized.endswith("scripts/visual/VisualFactEmitter.gd"):
-            suspicious.append(f"{normalized}:allowed-emitter-send")
+        if normalized.endswith("scripts/l1/facts/RawFactEmitter.gd"):
             continue
-        if "emit_visual_fact_event(" in text or '"message_type": "visual_fact_event"' in text:
+        if (
+            "emit_visual_fact_event(" in text
+            or '"message_type": "visual_fact_event"' in text
+            or '"message_type": "raw_fact_event"' in text
+            or '"event_type": "raw_fact_event"' in text
+            or '"fact_family": "visual_fact"' in text
+        ):
             suspicious.append(f"{normalized}:direct-visual-fact-send")
     player_intent_mapper = project_root / "scripts" / "player" / "PlayerIntentMapper.gd"
     if player_intent_mapper.exists():

@@ -324,13 +324,14 @@ def evaluate_phase1_slice_audit(
         )
     )
 
-    authority_ack_ok = '"route":"authority_visual_fact"' in main_log or '"route":"authority_visual_fact"' in focus_log
+    authority_ack_token = '"route":"authority_visual_fact","source_type":"raw_fact_event"'
+    authority_ack_ok = authority_ack_token in main_log or authority_ack_token in focus_log
     results.append(
         _result(
             "authority_ack_observed",
             "Authority lane acknowledges visual facts",
             "proved" if authority_ack_ok else "missing",
-            ["authority_visual_fact"] if authority_ack_ok else [],
+            ["authority_visual_fact via raw_fact_event"] if authority_ack_ok else [],
         )
     )
 

@@ -1,4 +1,11 @@
+from pathlib import Path
+import sys
+
 from app.verification_audit import evaluate_phase0_audit, evaluate_phase1_slice_audit
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "verification"))
+
+from common import scan_direct_visual_fact_bypass
 
 
 def _index_by_id(results: list[dict[str, object]]) -> dict[str, dict[str, object]]:
@@ -239,17 +246,16 @@ def test_phase1_slice_audit_requires_emitter_and_authority_lane_evidence() -> No
         [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_object
         [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
         [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
-        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"visual_fact_event"}
+        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
         [LocalPresentationBus] conversation_candidate_event:{"candidate_object_ids":["obj_letter"]}
         [LocalPresentationBus] character_runtime_state_delta:{"current_attention_source":"visual_fact"}
         [LocalPresentationBus] backend_message_type:siming_output
         """,
         focus_log="""
         [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_actor
-        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"visual_fact_event"}
+        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
         """,
         direct_send_scan="""
-        scripts/visual/VisualFactEmitter.gd:43: var err: int = bridge.send_envelope(envelope)
         scripts/player/PlayerIntentMapper.gd:76:func emit_visual_fact_event(...)
         """,
         scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
@@ -262,3 +268,276 @@ def test_phase1_slice_audit_requires_emitter_and_authority_lane_evidence() -> No
     assert results["no_direct_visual_fact_send_bypass"]["status"] == "proved"
     assert results["authority_ack_observed"]["status"] == "proved"
     assert results["environment_visual_fact_observed"]["status"] == "proved"
+
+
+def test_phase1_slice_audit_rejects_legacy_visual_fact_event_ack_contract() -> None:
+    report = evaluate_phase1_slice_audit(
+        main_log="""
+        [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_object
+        [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
+        [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
+        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"visual_fact_event"}
+        [LocalPresentationBus] conversation_candidate_event:{"candidate_object_ids":["obj_letter"]}
+        [LocalPresentationBus] character_runtime_state_delta:{"current_attention_source":"visual_fact"}
+        [LocalPresentationBus] backend_message_type:siming_output
+        """,
+        focus_log="""
+        [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_actor
+        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"visual_fact_event"}
+        """,
+        direct_send_scan="""
+        scripts/player/PlayerIntentMapper.gd:76:func emit_visual_fact_event(...)
+        """,
+        scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert report["overall_phase1_slice_passed"] is False
+    assert results["authority_ack_observed"]["status"] == "missing"
+    assert results["environment_visual_fact_observed"]["status"] == "proved"
+
+
+def test_scan_direct_visual_fact_bypass_allows_shared_raw_emitter_only(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    allowed_dir = project_root / "scripts" / "l1" / "facts"
+    rogue_dir = project_root / "scripts" / "rogue"
+    visual_dir = project_root / "scripts" / "visual"
+    player_dir = project_root / "scripts" / "player"
+
+    allowed_dir.mkdir(parents=True)
+    rogue_dir.mkdir(parents=True)
+    visual_dir.mkdir(parents=True)
+    player_dir.mkdir(parents=True)
+
+    (allowed_dir / "RawFactEmitter.gd").write_text(
+        """
+extends RefCounted
+
+func emit_raw_fact(payload: Dictionary) -> bool:
+    var envelope := {"message_type": "raw_fact_event", "payload": payload}
+    return bridge.send_envelope(envelope) == OK
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (visual_dir / "VisualFactEmitter.gd").write_text(
+        """
+extends Node
+
+func emit_visual_fact() -> bool:
+    return raw_fact_emitter.emit_raw_fact(_build_visual_fact_payload())
+
+func _build_visual_fact_payload() -> Dictionary:
+    return {"fact_family": "visual_fact", "event_type": "raw_fact_event"}
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (player_dir / "PlayerIntentMapper.gd").write_text(
+        """
+extends Node
+
+func emit_visual_fact_event(...) -> Dictionary:
+    return {}
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (rogue_dir / "RogueEmitter.gd").write_text(
+        """
+extends Node
+
+func bypass(payload: Dictionary) -> bool:
+    var envelope := {"message_type": "raw_fact_event", "payload": payload}
+    return bridge.send_envelope(envelope) == OK
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    scan = scan_direct_visual_fact_bypass(project_root)
+
+    assert "scripts/l1/facts/RawFactEmitter.gd" not in scan
+    assert "scripts/visual/VisualFactEmitter.gd" not in scan
+    assert "scripts/rogue/RogueEmitter.gd:direct-visual-fact-send" in scan
+
+
+def test_shared_raw_fact_transport_uses_raw_fact_event_visual_fact_shape() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    builder_source = (project_root / "scripts" / "l1" / "facts" / "FactEnvelopeBuilder.gd").read_text(
+        encoding="utf-8"
+    )
+    raw_emitter_source = (project_root / "scripts" / "l1" / "facts" / "RawFactEmitter.gd").read_text(
+        encoding="utf-8"
+    )
+    visual_emitter_source = (project_root / "scripts" / "visual" / "VisualFactEmitter.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"message_type": "raw_fact_event"' in builder_source
+    assert '"event_type": "raw_fact_event"' in builder_source
+    assert '"fact_family": fact_family' in builder_source
+    assert "build_raw_fact_envelope" in builder_source
+    assert "build_raw_fact_payload" in builder_source
+    assert "build_visual_fact_payload" not in builder_source
+    assert "func emit_raw_fact(" in raw_emitter_source
+    assert "build_raw_fact_envelope(payload)" in raw_emitter_source
+    assert '"message_type": "visual_fact_event"' not in visual_emitter_source
+    assert "_build_visual_fact_payload" in visual_emitter_source
+    assert '"visual_fact"' in visual_emitter_source
+
+
+def test_wrapped_raw_fact_transport_contract_passes_scan_and_phase1_audit(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    allowed_dir = project_root / "scripts" / "l1" / "facts"
+    visual_dir = project_root / "scripts" / "visual"
+    player_dir = project_root / "scripts" / "player"
+
+    allowed_dir.mkdir(parents=True)
+    visual_dir.mkdir(parents=True)
+    player_dir.mkdir(parents=True)
+
+    (allowed_dir / "FactEnvelopeBuilder.gd").write_text(
+        """
+extends RefCounted
+
+func build_raw_fact_envelope(payload: Dictionary) -> Dictionary:
+    return {"message_type": "raw_fact_event", "payload": payload.duplicate(true)}
+
+func build_raw_fact_payload(
+    fact_family: String,
+    fact_type: String,
+    relation_type: String,
+    room_id: String,
+    scene_id: String,
+    zone_id: String,
+    source_actor_id: String = "",
+    source_object_id: String = "",
+    source_environment_id: String = "",
+    target_actor_id: String = "",
+    target_object_id: String = "",
+    target_environment_id: String = "",
+    source_system: String = "godot.raw_fact_emitter",
+    source_layer: String = "L1",
+    world: Dictionary = {},
+    observability: Dictionary = {},
+    causation_id: String = "",
+    correlation_id: String = "",
+    producer_ts: int = -1
+) -> Dictionary:
+    return {
+        "event_type": "raw_fact_event",
+        "fact_family": fact_family,
+        "fact_type": fact_type,
+        "relation_type": relation_type,
+        "producer_ts": producer_ts,
+        "room_id": room_id,
+        "scene_id": scene_id,
+        "zone_id": zone_id,
+        "source": {
+            "layer": source_layer,
+            "system": source_system,
+            "actor_id": source_actor_id,
+            "object_id": source_object_id,
+            "environment_id": source_environment_id,
+        },
+        "targets": {
+            "actor_id": target_actor_id,
+            "object_id": target_object_id,
+            "environment_id": target_environment_id,
+        },
+        "world": {
+            "position": world.get("position", null),
+            "distance_m": world.get("distance_m", null),
+            "state_before": world.get("state_before", ""),
+            "state_after": world.get("state_after", ""),
+        },
+        "observability": {
+            "visual": observability.get("visual", false),
+            "auditory": observability.get("auditory", false),
+            "occluded": observability.get("occluded", false),
+        },
+        "causation_id": causation_id,
+        "correlation_id": correlation_id,
+    }
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (allowed_dir / "RawFactEmitter.gd").write_text(
+        """
+extends RefCounted
+
+func emit_raw_fact(payload: Dictionary, _log_prefix: String, _success_log: String = "", _dedupe_key: String = "") -> bool:
+    var envelope := {"message_type": "raw_fact_event", "payload": payload}
+    return bridge.send_envelope(envelope) == OK
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (visual_dir / "VisualFactEmitter.gd").write_text(
+        """
+extends Node
+
+func emit_visual_fact(fact_type: String, relation_type: String, target_actor_id: String = "", target_object_id: String = "", target_environment_id: String = "") -> bool:
+    return raw_fact_emitter.emit_raw_fact(
+        _build_visual_fact_payload(fact_type, relation_type, target_actor_id, target_object_id, target_environment_id),
+        "phase0_visual_fact_emitter",
+        "phase0_visual_fact_emitter:%s:%s" % [fact_type, relation_type]
+    )
+
+func _build_visual_fact_payload(fact_type: String, relation_type: String, target_actor_id: String, target_object_id: String, target_environment_id: String) -> Dictionary:
+    return builder.build_raw_fact_payload(
+        "visual_fact",
+        fact_type,
+        relation_type,
+        room_id,
+        scene_id,
+        zone_id,
+        actor_id,
+        "",
+        "",
+        target_actor_id,
+        target_object_id,
+        target_environment_id
+    )
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    (player_dir / "PlayerIntentMapper.gd").write_text(
+        """
+extends Node
+
+func emit_visual_fact_event(...) -> Dictionary:
+    return {}
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    scan = scan_direct_visual_fact_bypass(project_root)
+    report = evaluate_phase1_slice_audit(
+        main_log="""
+        [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_object
+        [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
+        [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
+        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
+        [LocalPresentationBus] conversation_candidate_event:{"candidate_object_ids":["obj_letter"]}
+        [LocalPresentationBus] character_runtime_state_delta:{"current_attention_source":"visual_fact"}
+        [LocalPresentationBus] backend_message_type:siming_output
+        """,
+        focus_log="""
+        [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_actor
+        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
+        """,
+        direct_send_scan=scan,
+        scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+    )
+    results = _index_by_id(report["results"])
+
+    assert scan == "scripts/player/PlayerIntentMapper.gd:visual-fact-envelope-builder"
+    assert report["overall_phase1_slice_passed"] is True
+    assert results["no_direct_visual_fact_send_bypass"]["status"] == "proved"
+    assert results["authority_ack_observed"]["status"] == "proved"
