@@ -16,6 +16,17 @@ class ConversationCandidateEvent(BaseModel):
     correlation_id: str
 
 
+class SpatialAccessRuntimeStateSnapshot(BaseModel):
+    actor_id: str
+    room_id: str
+    scene_id: str
+    current_zone_id: str
+    nearby_actor_refs: list[str] = Field(default_factory=list)
+    privacy_band: str | None = None
+    producer_ts: int
+    updated_at: int
+
+
 class CharacterRuntimeStateSnapshot(BaseModel):
     actor_id: str
     room_id: str

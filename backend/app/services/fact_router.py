@@ -1,5 +1,9 @@
 from app.models.raw_fact import RawFactEvent
 from app.models.visual_fact import VisualFactEvent
+from app.services.fact_handlers.spatial_access_fact_handler import (
+    SpatialAccessFactRouteHandler,
+    handle_spatial_access_fact_event,
+)
 from app.services.fact_handlers.visual_fact_handler import (
     Message,
     VisualFactHandler,
@@ -14,6 +18,7 @@ def route_raw_fact_event(
     source_type: str,
     context: VisualFactHandlerContext | None = None,
     visual_fact_handler: VisualFactHandler | None = None,
+    spatial_access_fact_handler: SpatialAccessFactRouteHandler | None = None,
 ) -> list[Message]:
     if event.fact_family == "visual_fact":
         if context is None:
@@ -24,6 +29,10 @@ def route_raw_fact_event(
             source_type,
             context,
         )
+
+    if event.fact_family == "spatial_access_fact":
+        handler = spatial_access_fact_handler or handle_spatial_access_fact_event
+        return handler(event, source_type)
 
     return [
         {
