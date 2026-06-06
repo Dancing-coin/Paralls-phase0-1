@@ -1,10 +1,9 @@
 extends Node3D
 
 @export var environment_id := "env_lamp"
-@export_node_path("Node") var visual_fact_emitter_path := NodePath("../VisualFactEmitter")
+@export_node_path("Node") var environment_visual_fact_emitter_path := NodePath("../VisualFactEmitter/EnvironmentVisualFactEmitter")
 
 var env_state := "stable"
-var last_emitted_visual_fact_state := ""
 
 @onready var mesh_instance: MeshInstance3D = $VisualRoot/GreyboxFixtureRoot/MeshInstance3D
 @onready var label_3d: Label3D = $Label3D
@@ -38,8 +37,8 @@ func _apply_visual_state() -> void:
 func _get_bus() -> Node:
     return get_node_or_null("/root/LocalPresentationBus")
 
-func _get_visual_fact_emitter() -> Node:
-    return get_node_or_null(visual_fact_emitter_path)
+func _get_environment_visual_fact_emitter() -> Node:
+    return get_node_or_null(environment_visual_fact_emitter_path)
 
 func _bus_log(message: String) -> void:
     var bus := _get_bus()
@@ -47,23 +46,9 @@ func _bus_log(message: String) -> void:
         bus.log_debug(message)
 
 func _emit_environment_visual_fact(previous_state: String, next_state: String) -> void:
-    if previous_state == next_state:
+    var environment_visual_fact_emitter := _get_environment_visual_fact_emitter()
+    if environment_visual_fact_emitter == null:
         return
-    if next_state != "alerted":
+    if not environment_visual_fact_emitter.has_method("emit_environment_state_transition"):
         return
-    if last_emitted_visual_fact_state == next_state:
-        return
-    var visual_fact_emitter := _get_visual_fact_emitter()
-    if visual_fact_emitter == null or not visual_fact_emitter.has_method("emit_visual_fact"):
-        return
-    var emitted: bool = visual_fact_emitter.emit_visual_fact(
-        "light_level_drop",
-        "environment_light_drop",
-        "",
-        "",
-        environment_id
-    )
-    if not emitted:
-        return
-    last_emitted_visual_fact_state = next_state
-    _bus_log("phase0_visual_fact:light_level_drop:%s" % environment_id)
+    environment_visual_fact_emitter.emit_environment_state_transition(environment_id, previous_state, next_state)
