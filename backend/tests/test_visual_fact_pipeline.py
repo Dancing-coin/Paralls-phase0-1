@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.main import _handle_envelope, app, reset_runtime_state
 from app.models.player_input import FocusTargetChange
+from app.models.raw_fact import RawFactEvent
 from app.models.runtime_state import CharacterRuntimeStateSnapshot
 from app.models.visual_fact import VisualFactEvent
 from app.services.character_runtime_state_service import CharacterRuntimeStateService
@@ -91,6 +92,88 @@ def test_websocket_environment_visual_fact_emits_runtime_delta_without_candidate
     assert siming_output["message_type"] == "siming_output"
     assert siming_output["payload"]["target_actor_id"] is None
     assert siming_output["payload"]["target_environment_id"] == "env_lamp"
+
+
+def test_handle_envelope_raw_visual_fact_matches_legacy_visual_fact_runtime_messages() -> None:
+    event = VisualFactEvent(
+        actor_id="char_c",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        producer_ts=152,
+        fact_type="light_level_drop",
+        relation_type="environment_light_drop",
+        target_environment_id="env_lamp",
+    )
+
+    reset_runtime_state()
+    legacy_messages = _handle_envelope(
+        Envelope(
+            message_type="visual_fact_event",
+            payload=event.to_legacy_payload(),
+        )
+    )
+
+    reset_runtime_state()
+    raw_messages = _handle_envelope(
+        Envelope(
+            message_type="raw_fact_event",
+            payload=event.model_dump(),
+        )
+    )
+
+    assert legacy_messages[0]["message_type"] == "ack"
+    assert raw_messages[0]["message_type"] == "ack"
+    assert legacy_messages[0]["payload"]["accepted"] is True
+    assert raw_messages[0]["payload"]["accepted"] is True
+    assert legacy_messages[0]["payload"]["route"] == "authority_visual_fact"
+    assert raw_messages[0]["payload"]["route"] == "authority_visual_fact"
+    assert legacy_messages[1:] == raw_messages[1:]
+
+
+def test_websocket_raw_visual_fact_event_emits_same_runtime_alignment_messages_as_legacy_path() -> None:
+    event = VisualFactEvent(
+        actor_id="char_c",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        producer_ts=153,
+        fact_type="fixed_gaze_on_target",
+        relation_type="actor_looks_at_object",
+        target_object_id="obj_letter",
+    )
+
+    reset_runtime_state()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "raw_fact_event",
+                "payload": event.model_dump(),
+            }
+        )
+        ack = websocket.receive_json()
+        runtime_snapshot = websocket.receive_json()
+        runtime_delta = websocket.receive_json()
+        candidate_event = websocket.receive_json()
+        candidate_runtime_delta = websocket.receive_json()
+        siming_output = websocket.receive_json()
+
+    assert ack["message_type"] == "ack"
+    assert ack["payload"]["accepted"] is True
+    assert ack["payload"]["route"] == "authority_visual_fact"
+    assert ack["payload"]["source_type"] == "raw_fact_event"
+    assert runtime_snapshot["message_type"] == "character_runtime_state_snapshot"
+    assert runtime_snapshot["payload"]["actor_id"] == "char_c"
+    assert runtime_delta["message_type"] == "character_runtime_state_delta"
+    assert runtime_delta["payload"]["current_attention_source"] == "visual_fact"
+    assert runtime_delta["payload"]["current_focus_target"] == "obj_letter"
+    assert candidate_event["message_type"] == "conversation_candidate_event"
+    assert candidate_event["payload"]["candidate_object_ids"] == ["obj_letter"]
+    assert candidate_runtime_delta["message_type"] == "character_runtime_state_delta"
+    assert candidate_runtime_delta["payload"]["conversation_candidate_refs"] == ["cand_obj_letter"]
+    assert siming_output["message_type"] == "siming_output"
+    assert siming_output["payload"]["target_object_id"] == "obj_letter"
 
 
 def test_relation_service_builds_candidate_for_visual_fact_actor_look() -> None:
@@ -318,6 +401,105 @@ def test_handle_envelope_visual_fact_mirror_after_focus_returns_ack_only() -> No
     )
 
     assert [message["message_type"] for message in visual_messages] == ["ack"]
+
+
+def test_handle_envelope_raw_visual_fact_mirror_after_focus_matches_legacy_ack_only() -> None:
+    reset_runtime_state()
+    focus_messages = _handle_envelope(
+        Envelope(
+            message_type="player_input",
+            payload=FocusTargetChange(
+                player_id="p1",
+                room_id="room_demo",
+                scene_id="scene_demo",
+                zone_id="zone_focus",
+                actor_id="char_c",
+                intent_type="focus_target_change",
+                producer_ts=302,
+                target_actor_id="char_a",
+            ).model_dump(),
+        )
+    )
+    assert any(message["message_type"] == "conversation_candidate_event" for message in focus_messages)
+
+    event = VisualFactEvent(
+        actor_id="char_c",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        producer_ts=302,
+        fact_type="fixed_gaze_on_target",
+        relation_type="actor_looks_at_actor",
+        target_actor_id="char_a",
+    )
+
+    legacy_messages = _handle_envelope(
+        Envelope(
+            message_type="visual_fact_event",
+            payload=event.to_legacy_payload(),
+        )
+    )
+    raw_messages = _handle_envelope(
+        Envelope(
+            message_type="raw_fact_event",
+            payload=event.model_dump(),
+        )
+    )
+
+    assert legacy_messages == [
+        {
+            "message_type": "ack",
+            "payload": {
+                "accepted": True,
+                "source_type": "visual_fact_event",
+                "route": "authority_visual_fact",
+            },
+        }
+    ]
+    assert raw_messages == [
+        {
+            "message_type": "ack",
+            "payload": {
+                "accepted": True,
+                "source_type": "raw_fact_event",
+                "route": "authority_visual_fact",
+            },
+        }
+    ]
+
+
+def test_handle_envelope_unsupported_raw_fact_family_returns_negative_ack_only() -> None:
+    messages = _handle_envelope(
+        Envelope(
+            message_type="raw_fact_event",
+            payload=RawFactEvent(
+                fact_family="unsupported_fact",
+                fact_type="anything",
+                relation_type="",
+                producer_ts=400,
+                room_id="room_demo",
+                scene_id="scene_demo",
+                zone_id="zone_focus",
+                source={
+                    "layer": "L1",
+                    "system": "godot.raw_fact_emitter",
+                    "actor_id": "char_c",
+                },
+                targets={},
+            ).model_dump(),
+        )
+    )
+
+    assert messages == [
+        {
+            "message_type": "ack",
+            "payload": {
+                "accepted": False,
+                "source_type": "raw_fact_event",
+                "route": "unknown_raw_fact_family",
+            },
+        }
+    ]
 
 
 def test_websocket_visual_fact_event_emits_runtime_alignment_messages() -> None:

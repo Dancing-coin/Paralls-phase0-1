@@ -4,12 +4,18 @@ from fastapi import FastAPI, WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent
+from app.models.raw_fact import RawFactEvent
 from app.models.visual_fact import VisualFactEvent
 from app.services.character_service import CharacterService
 from app.services.character_runtime_state_service import CharacterRuntimeStateService
 from app.services.conversation_relation_service import ConversationRelationService
 from app.services.esm_service import ESMService
 from app.services.event_trace_service import EventTraceService
+from app.services.fact_handlers.visual_fact_handler import (
+    VisualFactHandlerContext,
+    handle_visual_fact_event,
+)
+from app.services.fact_router import route_raw_fact_event
 from app.services.focus_state_service import FocusStateService
 from app.services.siming_service import SimingService
 from app.services.session_runtime import SessionRuntime
@@ -68,43 +74,18 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
 def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
     if envelope.message_type == "visual_fact_event":
-        event = VisualFactEvent(**envelope.payload)
-        conversation_relation_service.apply_visual_fact(event)
-        event_trace.record(event.fact_type)
-        event_trace.record(event.relation_type)
-        messages: list[dict[str, object]] = [
-            {
-                "message_type": "ack",
-                "payload": {
-                    "accepted": True,
-                    "source_type": envelope.message_type,
-                    "route": "authority_visual_fact",
-                },
-            }
-        ]
-        messages.extend(
-            _ensure_runtime_snapshot(
-                actor_id=event.actor_id,
-                room_id=event.room_id,
-                scene_id=event.scene_id,
-                zone_id=event.zone_id,
-                producer_ts=event.producer_ts,
-            )
+        return handle_visual_fact_event(
+            VisualFactEvent(**envelope.payload),
+            envelope.message_type,
+            _build_visual_fact_handler_context(),
         )
-        visual_delta = _project_runtime_delta(event.actor_id, event.producer_ts)
-        if visual_delta is not None:
-            messages.append(visual_delta)
-        visual_fact_siming_output = siming_service.evaluate_visual_fact(event)
-        if visual_fact_siming_output is not None:
-            event_trace.record(visual_fact_siming_output.output_type)
-            messages.append(_as_envelope("siming_output", visual_fact_siming_output.model_dump()))
-        candidate = conversation_relation_service.build_candidate_event(
-            actor_id=event.actor_id,
-            causation_id=f"visual_fact:{event.producer_ts}",
-            correlation_id=f"visual_fact:{event.producer_ts}",
+
+    if envelope.message_type == "raw_fact_event":
+        return route_raw_fact_event(
+            RawFactEvent(**envelope.payload),
+            source_type=envelope.message_type,
+            context=_build_visual_fact_handler_context(),
         )
-        messages.extend(_candidate_messages(candidate))
-        return messages
 
     if envelope.message_type != "player_input":
         return [
@@ -244,6 +225,28 @@ def _ensure_runtime_snapshot_messages(event: MoveIntent | DialogueSubmit | Inter
         scene_id=event.scene_id,
         zone_id=event.zone_id,
         producer_ts=event.producer_ts,
+    )
+
+
+def _ensure_runtime_snapshot_for_visual_fact(event: VisualFactEvent) -> list[dict[str, object]]:
+    return _ensure_runtime_snapshot(
+        actor_id=event.actor_id,
+        room_id=event.room_id,
+        scene_id=event.scene_id,
+        zone_id=event.zone_id,
+        producer_ts=event.producer_ts,
+    )
+
+
+def _build_visual_fact_handler_context() -> VisualFactHandlerContext:
+    return VisualFactHandlerContext(
+        conversation_relation_service=conversation_relation_service,
+        event_trace=event_trace,
+        siming_service=siming_service,
+        ensure_runtime_snapshot_for_event=_ensure_runtime_snapshot_for_visual_fact,
+        project_runtime_delta=_project_runtime_delta,
+        candidate_messages=_candidate_messages,
+        as_envelope=_as_envelope,
     )
 
 

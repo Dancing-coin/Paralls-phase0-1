@@ -1,5 +1,6 @@
 from app.models.raw_fact import RawFactEvent
 from app.models.visual_fact import VisualFactEvent
+from app.services.fact_router import route_raw_fact_event
 
 
 def test_raw_fact_event_accepts_visual_fact_nested_shape() -> None:
@@ -147,3 +148,38 @@ def test_visual_fact_event_mixed_shape_preserves_nested_values() -> None:
     assert event.model_dump()["targets"]["actor_id"] == "nested_target"
     assert event.to_legacy_payload()["actor_id"] == "nested_actor"
     assert event.to_legacy_payload()["target_actor_id"] == "nested_target"
+
+
+def test_raw_fact_router_rejects_unknown_fact_family() -> None:
+    event = RawFactEvent(
+        fact_family="unsupported_fact",
+        fact_type="anything",
+        relation_type="",
+        producer_ts=321,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={
+            "layer": "L1",
+            "system": "godot.raw_fact_emitter",
+            "actor_id": "char_c",
+        },
+        targets={},
+    )
+
+    messages = route_raw_fact_event(
+        event,
+        source_type="raw_fact_event",
+        visual_fact_handler=lambda *_args, **_kwargs: [],
+    )
+
+    assert messages == [
+        {
+            "message_type": "ack",
+            "payload": {
+                "accepted": False,
+                "source_type": "raw_fact_event",
+                "route": "unknown_raw_fact_family",
+            },
+        }
+    ]
