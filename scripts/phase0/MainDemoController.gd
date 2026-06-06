@@ -13,7 +13,7 @@ const FLOOR_CHECKPOINTS := [
 const FLOOR_GRID_X := [-9.0, -6.0, -3.0, 0.0, 3.0, 6.0, 9.0]
 const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
 
-@export var backend_url := "ws://127.0.0.1:8010/ws"
+@export var backend_url := "ws://127.0.0.1:8000/ws"
 @export var autotest_enabled := false
 @export var focus_autotest_enabled := false
 @export var autotest_dialogue_delay := 0.25
