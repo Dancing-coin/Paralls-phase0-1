@@ -1,6 +1,19 @@
 extends Node3D
 
-@export var backend_url := "ws://127.0.0.1:8000/ws"
+const LIGHTING_TUNER := preload("res://scripts/visual/ThroneRoomLightingTuner.gd")
+const THRONE_HALL_WALK_PREVIEW := preload("res://scenes/phase0/ThroneHallWalkPreview.tscn")
+const FLOOR_CHECKPOINTS := [
+	{"name": "entry_carpet", "position": Vector3(0.0, 0.5, 16.0)},
+	{"name": "center_carpet", "position": Vector3(0.0, 0.5, 4.0)},
+	{"name": "object_carpet", "position": Vector3(3.8, 0.5, -4.6)},
+	{"name": "left_aisle_tile", "position": Vector3(-7.0, 0.5, 6.0)},
+	{"name": "right_aisle_tile", "position": Vector3(7.0, 0.5, 6.0)},
+	{"name": "throne_approach", "position": Vector3(0.0, 0.5, -12.0)},
+]
+const FLOOR_GRID_X := [-9.0, -6.0, -3.0, 0.0, 3.0, 6.0, 9.0]
+const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
+
+@export var backend_url := "ws://127.0.0.1:8010/ws"
 @export var autotest_enabled := false
 @export var focus_autotest_enabled := false
 @export var autotest_dialogue_delay := 0.25
@@ -48,11 +61,100 @@ func _ready() -> void:
 	backend_health_request.name = "BackendHealthRequest"
 	add_child(backend_health_request)
 	backend_health_request.request_completed.connect(_on_backend_health_request_completed)
+	LIGHTING_TUNER.apply_blender_approx(get_node_or_null("ThroneRoomImported"))
+	_bootstrap_throne_room_collision()
 	_configure_open_field_camera()
 	_bus_log("phase0_main_ready")
 	autotest_enabled = OS.get_environment("PHASE0_AUTOTEST") == "1"
 	focus_autotest_enabled = OS.get_environment("PHASE0_FOCUS_AUTOTEST") == "1"
 	call_deferred("_connect_backend")
+
+func _bootstrap_throne_room_collision() -> void:
+	if get_node_or_null("ThroneRoomCollisionRoot") != null:
+		return
+	var imported_root := get_node_or_null("ThroneRoomImported")
+	if imported_root == null:
+		return
+	var mesh_lookup := {}
+	_build_imported_mesh_lookup(imported_root, mesh_lookup)
+	var preview_scene := THRONE_HALL_WALK_PREVIEW.instantiate()
+	if preview_scene == null:
+		return
+	var collision_root := Node3D.new()
+	collision_root.name = "ThroneRoomCollisionRoot"
+	add_child(collision_root)
+
+	for source_path in ["PreviewFloor", "WalkStepLower", "WalkStepUpper", "PreviewCollisionRoot"]:
+		var source_node := preview_scene.get_node_or_null(source_path)
+		if source_node == null:
+			continue
+		var duplicated := source_node.duplicate()
+		if duplicated is Node:
+			_ensure_preview_collision_shapes(duplicated as Node, mesh_lookup)
+			collision_root.add_child(duplicated)
+	preview_scene.queue_free()
+	_bus_log("throne_room_collision_bootstrap:static_bodies=%s collision_shapes=%s" % [
+		_count_static_bodies(collision_root),
+		_count_collision_shapes(collision_root),
+	])
+
+func _ensure_preview_collision_shapes(root: Node, mesh_lookup: Dictionary) -> void:
+	for child in root.get_children():
+		_ensure_preview_collision_shapes(child, mesh_lookup)
+	if not (root is StaticBody3D):
+		return
+	if root.get_child_count() > 0:
+		for child in root.get_children():
+			if child is CollisionShape3D:
+				return
+	var lower := String(root.name).to_lower()
+	var collision_shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	if String(root.name).begins_with("COL_"):
+		var source_name := String(root.name).trim_prefix("COL_")
+		var mesh_node: MeshInstance3D = mesh_lookup.get(source_name, null)
+		if mesh_node != null and mesh_node.mesh != null:
+			var trimesh := mesh_node.mesh.create_trimesh_shape()
+			if trimesh != null:
+				collision_shape.shape = trimesh
+				root.add_child(collision_shape)
+				return
+			var aabb := mesh_node.mesh.get_aabb()
+			var scale_vec := mesh_node.scale
+			var size := Vector3(
+				max(abs(aabb.size.x * scale_vec.x), 0.1),
+				max(abs(aabb.size.y * scale_vec.y), 0.1),
+				max(abs(aabb.size.z * scale_vec.z), 0.1)
+			)
+			box.size = size
+			collision_shape.position = aabb.position + aabb.size * 0.5
+			collision_shape.shape = box
+			root.add_child(collision_shape)
+			return
+	var size := Vector3(3.0, 0.5, 3.0)
+	if lower.contains("carpet"):
+		size = Vector3(2.4, 0.35, 2.4)
+	elif lower.contains("previewfloor"):
+		size = Vector3(220.0, 2.0, 220.0)
+	elif lower.contains("walksteplower"):
+		size = Vector3(16.0, 1.2, 18.0)
+	elif lower.contains("walkstepupper"):
+		size = Vector3(14.0, 1.2, 16.0)
+	elif lower.contains("floor3m"):
+		size = Vector3(3.2, 0.5, 3.2)
+	elif lower.contains("floortiles"):
+		size = Vector3(2.2, 0.45, 2.2)
+	else:
+		return
+	box.size = size
+	collision_shape.shape = box
+	root.add_child(collision_shape)
+
+func _build_imported_mesh_lookup(root: Node, mesh_lookup: Dictionary) -> void:
+	if root is MeshInstance3D:
+		mesh_lookup[root.name] = root
+	for child in root.get_children():
+		_build_imported_mesh_lookup(child, mesh_lookup)
 
 func _connect_backend() -> void:
 	var bridge := _get_bridge()
@@ -112,6 +214,9 @@ func _run_autotest_inputs() -> void:
 	_bus_log("phase0_autotest_begin")
 	focus_override_active = true
 	_set_debug_overlay_visible(false)
+	await _probe_floor_coverage()
+	await _probe_floor_grid()
+	await _run_locomotion_probe()
 	if player_input_bridge and player_input_bridge.has_method("set_character_c_sync_enabled"):
 		player_input_bridge.set_character_c_sync_enabled(false)
 	_orient_player_toward(character_a.global_position)
@@ -133,6 +238,8 @@ func _run_autotest_inputs() -> void:
 		if bridge:
 			bridge.send_envelope(intent_mapper.emit_move_intent("locomotion", autotest_final_position))
 	await get_tree().create_timer(autotest_interact_delay).timeout
+	_orient_player_toward(interactive_object.global_position)
+	_force_focus_target(interactive_object)
 	_bus_log("phase0_autotest_failed_interaction_attempt")
 	player_input_bridge.trigger_interaction()
 	await get_tree().create_timer(autotest_capture_delay).timeout
@@ -141,6 +248,137 @@ func _run_autotest_inputs() -> void:
 	if player_input_bridge and player_input_bridge.has_method("set_character_c_sync_enabled"):
 		player_input_bridge.set_character_c_sync_enabled(true)
 	get_tree().quit()
+
+func _probe_floor_coverage() -> void:
+	for checkpoint in FLOOR_CHECKPOINTS:
+		var probe := _sample_floor_point(checkpoint["position"])
+		_bus_log(
+			"floor_probe:%s grounded=%s y=%.3f normal_y=%.3f" % [
+				checkpoint["name"],
+				str(probe["grounded"]),
+				probe["y"],
+				probe["normal_y"],
+			]
+		)
+
+func _probe_floor_grid() -> void:
+	var hole_anomalies: Array[String] = []
+	var blocked_anomalies: Array[String] = []
+	var total := 0
+	for z in FLOOR_GRID_Z:
+		for x in FLOOR_GRID_X:
+			total += 1
+			var probe := _sample_floor_point(Vector3(x, 0.5, z))
+			var grounded := bool(probe["grounded"])
+			var y := float(probe["y"])
+			var normal_y := float(probe["normal_y"])
+			if not grounded or y < -0.05:
+				hole_anomalies.append("(x=%.1f,z=%.1f,grounded=%s,y=%.3f,ny=%.3f)" % [x, z, str(grounded), y, normal_y])
+			elif y > 0.35 or normal_y < 0.65:
+				blocked_anomalies.append("(x=%.1f,z=%.1f,grounded=%s,y=%.3f,ny=%.3f)" % [x, z, str(grounded), y, normal_y])
+	if hole_anomalies.is_empty() and blocked_anomalies.is_empty():
+		_bus_log("floor_grid_probe:points=%s holes=0 blocked=0" % total)
+	else:
+		_bus_log("floor_grid_probe:points=%s holes=%s blocked=%s" % [total, hole_anomalies.size(), blocked_anomalies.size()])
+		for anomaly in hole_anomalies:
+			_bus_log("floor_grid_hole:%s" % anomaly)
+		for anomaly in blocked_anomalies:
+			_bus_log("floor_grid_blocked:%s" % anomaly)
+
+func _sample_floor_point(position: Vector3) -> Dictionary:
+	var from := Vector3(position.x, 3.0, position.z)
+	var to := Vector3(position.x, -4.0, position.z)
+	var query := PhysicsRayQueryParameters3D.create(from, to)
+	query.collision_mask = 0xFFFFFFFF
+	query.exclude = [player]
+	var result := get_world_3d().direct_space_state.intersect_ray(query)
+	if result.is_empty():
+		return {"grounded": false, "y": position.y, "normal_y": 0.0}
+	var hit_position: Vector3 = result.get("position", position)
+	var hit_normal: Vector3 = result.get("normal", Vector3.UP)
+	return {
+		"grounded": true,
+		"y": hit_position.y,
+		"normal_y": hit_normal.y,
+	}
+
+func _run_locomotion_probe() -> void:
+	if player_input_bridge == null or not player_input_bridge.has_method("set_forced_player_motion"):
+		return
+	await _probe_gait_segment("amble", false, false, 0.35)
+	await _probe_gait_segment("walk", false, false, 0.35)
+	await _probe_gait_segment("brisk_walk", false, false, 0.35)
+	await _probe_gait_segment("run", true, false, 0.35)
+	await _probe_gait_segment("crouch_walk", false, true, 0.35)
+	await _probe_jump_variant("two_foot", false)
+	await _probe_jump_variant("single_leg", true)
+
+func _probe_gait_segment(gait_name: String, wants_run: bool, crouch_enabled: bool, duration: float) -> void:
+	if player_input_bridge.has_method("set_crouch_enabled"):
+		player_input_bridge.set_crouch_enabled(crouch_enabled)
+	if player_input_bridge.has_method("set_gait_mode_by_name") and gait_name != "run" and gait_name != "crouch_walk":
+		player_input_bridge.set_gait_mode_by_name(gait_name)
+	player_input_bridge.set_forced_player_motion(Vector3(0.0, 0.0, -1.0), wants_run)
+	await get_tree().create_timer(0.18).timeout
+	var start_position := player.global_position
+	await get_tree().create_timer(duration).timeout
+	var end_position := player.global_position
+	player_input_bridge.clear_forced_player_motion()
+	var distance := start_position.distance_to(end_position)
+	var delta_vector := end_position - start_position
+	var facing_dot := _get_character_visual_forward().dot(Vector3(0.0, 0.0, -1.0))
+	_bus_log(
+		"locomotion_probe:gait=%s crouch=%s run=%s distance=%.3f dx=%.3f dz=%.3f facing_dot=%.3f" % [
+			gait_name,
+			str(crouch_enabled),
+			str(wants_run),
+			distance,
+			delta_vector.x,
+			delta_vector.z,
+			facing_dot,
+		]
+	)
+	await get_tree().create_timer(0.08).timeout
+	if crouch_enabled and player_input_bridge.has_method("set_crouch_enabled"):
+		player_input_bridge.set_crouch_enabled(false)
+		await get_tree().create_timer(0.08).timeout
+
+func _probe_jump_variant(jump_type: String, wants_run: bool) -> void:
+	if player_input_bridge == null:
+		return
+	if player_input_bridge.has_method("set_crouch_enabled"):
+		player_input_bridge.set_crouch_enabled(false)
+	if player_input_bridge.has_method("set_gait_mode_by_name"):
+		player_input_bridge.set_gait_mode_by_name("walk")
+	Input.action_press(player.move_forward_action)
+	if wants_run:
+		Input.action_press(player.run_action)
+	await get_tree().create_timer(0.14).timeout
+	var start_position := player.global_position
+	var apex_height := start_position.y
+	Input.action_press(player.jump_action)
+	await get_tree().physics_frame
+	Input.action_release(player.jump_action)
+	var deadline := Time.get_ticks_msec() + 1400
+	while Time.get_ticks_msec() < deadline:
+		apex_height = max(apex_height, player.global_position.y)
+		if player.is_on_floor() and player.global_position.y <= start_position.y + 0.02 and Time.get_ticks_msec() > deadline - 1000:
+			break
+		await get_tree().physics_frame
+	Input.action_release(player.move_forward_action)
+	if wants_run:
+		Input.action_release(player.run_action)
+	var end_position := player.global_position
+	var horizontal_distance := Vector2(end_position.x - start_position.x, end_position.z - start_position.z).length()
+	_bus_log(
+		"jump_probe:type=%s run=%s apex=%.3f distance=%.3f" % [
+			jump_type,
+			str(wants_run),
+			apex_height - start_position.y,
+			horizontal_distance,
+		]
+	)
+	await get_tree().create_timer(0.12).timeout
 
 func _run_focus_autotest() -> void:
 	_bus_log("phase0_focus_autotest_begin")
@@ -478,3 +716,26 @@ func _find_node_by_property_recursive(node: Node, property_name: String, expecte
 		if result:
 			return result
 	return null
+
+func _count_static_bodies(node: Node) -> int:
+	var total := 0
+	if node is StaticBody3D:
+		total += 1
+	for child in node.get_children():
+		total += _count_static_bodies(child)
+	return total
+
+func _count_collision_shapes(node: Node) -> int:
+	var total := 0
+	if node is CollisionShape3D:
+		total += 1
+	for child in node.get_children():
+		total += _count_collision_shapes(child)
+	return total
+
+func _get_character_visual_forward() -> Vector3:
+	if character_c and character_c.has_method("get_visual_forward"):
+		var forward: Variant = character_c.get_visual_forward()
+		if forward is Vector3 and (forward as Vector3).length() > 0.001:
+			return (forward as Vector3).normalized()
+	return Vector3(0.0, 0.0, -1.0)

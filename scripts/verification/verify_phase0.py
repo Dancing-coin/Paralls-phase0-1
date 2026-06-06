@@ -74,7 +74,7 @@ def main() -> int:
                 "--scene",
                 "res://scenes/phase0/MainDemo.tscn",
                 "--quit-after",
-                "400",
+                "700",
                 "--verbose",
                 "--render-thread",
                 "safe",
@@ -98,7 +98,7 @@ def main() -> int:
                 "--scene",
                 "res://scenes/phase0/MainDemo.tscn",
                 "--quit-after",
-                "400",
+                "700",
                 "--verbose",
                 "--render-thread",
                 "safe",
@@ -121,6 +121,8 @@ def main() -> int:
             focus_screenshot_exists=focus_screenshot.exists() and focus_result.returncode == 0,
             interaction_source=read_text(project_root / "backend" / "app" / "main.py"),
             voice_controller_source=read_text(project_root / "scripts" / "audio" / "SpatialVoiceController.gd"),
+            player_bridge_source=read_text(project_root / "scripts" / "player" / "Phase0PlayerBridge.gd"),
+            character_replica_source=read_text(project_root / "scripts" / "character" / "CharacterReplica.gd"),
         )
         report["backend_health"] = health
         report["artifacts"] = {

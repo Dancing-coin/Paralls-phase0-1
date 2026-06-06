@@ -30,6 +30,7 @@ var walk_or_run : String = "WalkState" #keep in memory if play char was walking 
 @export var jump_time_to_peak : float = 0.35
 @export var jump_time_to_descent : float = 0.29
 @onready var jump_velocity : float = ((2.0 * jump_height) / jump_time_to_peak) * -1.0
+var base_jump_velocity : float
 var has_cut_jump : bool = false
 @export var jump_cut_multiplier : float = 0.5
 @export var jump_cooldown : float = 0.2
@@ -51,6 +52,9 @@ var coyote_jump_on : bool = false
 #gravity variables
 @onready var jump_gravity : float = ((-2.0 * jump_height) / (jump_time_to_peak * jump_time_to_peak)) * -1.0
 @onready var fall_gravity : float = ((-2.0 * jump_height) / (jump_time_to_descent * jump_time_to_descent)) * -1.0
+var base_jump_gravity : float
+var base_fall_gravity : float
+var current_jump_variant := "default"
 
 #keybinding variables
 var move_forward_action : StringName
@@ -75,6 +79,7 @@ var jump_action : StringName
 @onready var wave_audio = %WaveAudio
 @onready var collision_shape_3d = %CollisionShape3D
 @onready var floor_check : RayCast3D = %FloorRaycast
+@onready var external_motion_driver : Node = get_node_or_null("Phase0InputBridge")
 
 #particles variables
 @onready var movement_dust = %MovementDust
@@ -86,6 +91,9 @@ func _ready():
 	move_speed = walk_speed
 	move_accel = walk_accel
 	move_deccel = walk_deccel
+	base_jump_velocity = jump_velocity
+	base_jump_gravity = jump_gravity
+	base_fall_gravity = fall_gravity
 	
 	jump_cooldown_ref = jump_cooldown
 	nb_jumps_in_air_allowed_ref = nb_jumps_in_air_allowed
@@ -96,10 +104,15 @@ func _ready():
 func _process(delta: float):
 	modify_model_orientation(delta)
 	
-func _physics_process(_delta : float):
+func _physics_process(delta : float):
 	modify_physics_properties()
+	if external_motion_driver and external_motion_driver.has_method("before_player_shell_move"):
+		external_motion_driver.before_player_shell_move(delta)
 	
 	move_and_slide()
+	
+	if external_motion_driver and external_motion_driver.has_method("after_player_shell_move"):
+		external_motion_driver.after_player_shell_move(delta)
 	
 func modify_model_orientation(delta : float):
 	#manage the model rotation depending on the camera mode + char parameters
@@ -148,6 +161,49 @@ func connect_footstep_audio_effect() -> void:
 		foot_step_audio.volume_db = linear_to_db(intensity)
 		foot_step_audio.play()
 		)
+
+func set_jump_variant_profile(variant: String) -> void:
+	current_jump_variant = variant
+	match variant:
+		"single_leg":
+			jump_velocity = base_jump_velocity * 1.16
+			jump_gravity = base_jump_gravity * 1.05
+			fall_gravity = base_fall_gravity * 1.12
+		"two_foot":
+			jump_velocity = base_jump_velocity
+			jump_gravity = base_jump_gravity
+			fall_gravity = base_fall_gravity
+		_:
+			jump_velocity = base_jump_velocity
+			jump_gravity = base_jump_gravity
+			fall_gravity = base_fall_gravity
+
+func can_trigger_movement_jump() -> bool:
+	if external_motion_driver and external_motion_driver.has_method("can_trigger_movement_jump"):
+		return external_motion_driver.can_trigger_movement_jump()
+	return move_dir != Vector2.ZERO
+
+func force_jump_now(variant: String, takeoff_direction: Vector3 = Vector3.ZERO) -> bool:
+	set_jump_variant_profile(variant)
+	if !is_on_floor():
+		return false
+	jump_cooldown = jump_cooldown_ref
+	velocity.y = -jump_velocity
+	var planar_direction := Vector3(takeoff_direction.x, 0.0, takeoff_direction.z)
+	if planar_direction.length() > 0.001:
+		planar_direction = planar_direction.normalized()
+		var launch_speed := walk_speed * 0.9
+		if variant == "single_leg":
+			launch_speed = run_speed * 1.05
+		elif variant == "two_foot":
+			launch_speed = walk_speed * 1.15
+		velocity.x = planar_direction.x * launch_speed
+		velocity.z = planar_direction.z * launch_speed
+	if floor_snap_length != 0.0:
+		floor_snap_length = 0.0
+	squash_and_strech(1.12, 0.1)
+	particles_manager.display_particles(jump_particles, self)
+	return true
 	
 	
 	

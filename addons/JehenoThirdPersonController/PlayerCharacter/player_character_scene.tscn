@@ -175,6 +175,7 @@ collision_mask = 2
 unique_name_in_owner = true
 script = ExtResource("17_qmq2g")
 play_char = NodePath("..")
+visible = false
 
 [node name="HBoxContainer" type="HBoxContainer" parent="HUD" unique_id=571861952]
 offset_left = 8.0

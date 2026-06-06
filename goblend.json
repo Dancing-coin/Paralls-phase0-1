@@ -1,0 +1,39 @@
+{
+  "defaults": {
+    "paths": {
+      "same_hierarchy_target": "res://",
+      "scene_save_path": "res://goblend/scenes/",
+      "scene_use_same_hierarchy": false,
+      "material_save_path": "res://goblend/materials/",
+      "material_use_same_hierarchy": false,
+      "texture_save_path": "res://goblend/textures/",
+      "texture_use_same_hierarchy": false,
+      "animation_library_save_path": "res://goblend/animation_libraries/",
+      "animation_library_use_same_hierarchy": false,
+      "animation_save_path": "res://goblend/animations/",
+      "animation_use_same_hierarchy": false,
+      "shader_save_path": "res://goblend/shaders/",
+      "shader_use_same_hierarchy": false,
+      "mesh_save_path": "res://goblend/meshes/",
+      "mesh_use_same_hierarchy": false,
+      "collision_shapes_save_path": "res://goblend/collision_shapes/",
+      "reuse_collision_shapes": true,
+      "save_material_separately": true,
+      "save_animation_library_separately": true,
+      "save_animation_separately": true,
+      "save_shader_separately": true,
+      "save_mesh_separately": false
+    },
+    "collision_layers": [0],
+    "collision_masks": [0],
+    "render_layers": [0]
+  },
+  "godot_scenes": [],
+  "visuals": {
+    "render_layers": []
+  },
+  "collisions": {
+    "groups": [],
+    "layers": []
+  }
+}

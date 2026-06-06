@@ -1,0 +1,24 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/environment/throne_room_existing/Demo.gltf" id="1_demo"]
+[ext_resource type="Environment" path="res://scenes/phase0/BlenderRenderedApproxEnvironment.tres" id="2_env"]
+
+[node name="ThroneHallRenderedApprox" type="Node3D"]
+
+[node name="ThroneHallImported" parent="." instance=ExtResource("1_demo")]
+
+[node name="PreviewEnvironment" type="Node3D" parent="."]
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="PreviewEnvironment"]
+transform = Transform3D(0.866025, 0, -0.5, -0.286788, 0.819152, -0.496732, 0.409576, 0.573576, 0.709406, -70, 40, 13)
+light_energy = 0.22
+shadow_enabled = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="PreviewEnvironment"]
+environment = ExtResource("2_env")
+
+[node name="CompareCamera" type="Camera3D" parent="."]
+transform = Transform3D(0.725955, 0, 0.687744, 0.170221, 0.968888, -0.17972, -0.666349, 0.247494, 0.703365, -125, 24, 13)
+fov = 35.0
+near = 0.1
+far = 500.0

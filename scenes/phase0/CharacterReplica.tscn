@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/character/CharacterReplica.gd" id="1_character"]
 [ext_resource type="Script" path="res://scripts/audio/SpatialVoiceController.gd" id="2_voice"]
 [ext_resource type="PackedScene" path="res://scenes/phase0/GreyboxHumanoidVisual.tscn" id="3_visual"]
-[ext_resource type="PackedScene" path="res://addons/JehenoThirdPersonController/PlayerCharacter/GodotPlush/godot_plush_skin.tscn" id="4_plush"]
+[ext_resource type="PackedScene" path="res://scenes/phase0/KnightRoleSkin.tscn" id="4_plush"]
 
 [node name="CharacterReplica" type="Node3D"]
 script = ExtResource("1_character")

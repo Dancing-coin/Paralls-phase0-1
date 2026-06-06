@@ -1,0 +1,7 @@
+[gd_scene format=3 uid="uid://bucma13lmcx7r"]
+
+[ext_resource type="PackedScene" uid="uid://3r8cabhxlar7" path="res://scenes/phase0/ThroneHallWalkPreview.tscn" id="1_preview"]
+
+[node name="ThroneHallFinal" type="Node3D" unique_id=1785455180]
+
+[node name="ThroneHallWalkPreview" parent="." unique_id=437241970 instance=ExtResource("1_preview")]

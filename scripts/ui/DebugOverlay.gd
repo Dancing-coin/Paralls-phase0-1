@@ -2,6 +2,7 @@ extends CanvasLayer
 
 var lines: Array[String] = []
 var label: Label
+var locomotion_status := ""
 
 func _ready() -> void:
     label = Label.new()
@@ -14,6 +15,10 @@ func _ready() -> void:
     _refresh_label()
 
 func _on_debug_event_logged(message: String) -> void:
+    if message.begins_with("locomotion_state:"):
+        locomotion_status = message.trim_prefix("locomotion_state:")
+        _refresh_label()
+        return
     lines.append(message)
     if lines.size() > 14:
         lines = lines.slice(lines.size() - 14, lines.size())
@@ -21,7 +26,11 @@ func _on_debug_event_logged(message: String) -> void:
 
 func _refresh_label() -> void:
     if label:
-        label.text = "\n".join(lines)
+        var sections: Array[String] = []
+        if locomotion_status != "":
+            sections.append("Locomotion | %s" % locomotion_status)
+        sections.append_array(lines)
+        label.text = "\n".join(sections)
 
 func _get_bus() -> Node:
     return get_node_or_null("/root/LocalPresentationBus")

@@ -1,0 +1,9 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/characters/shared/crusader_knight.glb" id="1_knight"]
+[ext_resource type="Script" path="res://scripts/character/KnightRoleSkin.gd" id="2_skin"]
+
+[node name="GodotPlushSkin" type="Node3D"]
+script = ExtResource("2_skin")
+
+[node name="KnightScene" parent="." instance=ExtResource("1_knight")]

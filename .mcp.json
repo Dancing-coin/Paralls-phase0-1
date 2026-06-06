@@ -5,6 +5,19 @@
 	  "args": [
         "E:/User/Documents/tools/godot-mcp-pro-v1.14.1/server/build/index.js"
 	  ]
+	},
+	"blender-codex-mcp": {
+	  "command": "C:/Users/User/.codex/vendor_imports/hassledzebra-codex_blender_mcp/.venv/Scripts/python.exe",
+	  "args": [
+		"-m",
+        "blender_codex_mcp.server"
+	  ],
+	  "env": {
+		"BLENDER_MCP_MODE": "addon",
+		"BLENDER_ADDON_HOST": "127.0.0.1",
+		"BLENDER_ADDON_PORT": "9877",
+		"BLENDER_TIMEOUT_SECONDS": "60"
+	  }
 	}
   }
 }

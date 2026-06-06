@@ -152,7 +152,10 @@ func _add_scene_instance(params: Dictionary) -> Dictionary:
 	if packed == null:
 		return error_internal("Failed to load scene: %s" % scene_path)
 
-	var instance := packed.instantiate()
+	# Imported scenes such as glTF/GLB need editor instance state so the
+	# resulting external scene reference can be persisted back into the .tscn.
+	# Plain instantiate() can appear in the live editor tree but fail to save.
+	var instance := packed.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
 	if not instance_name.is_empty():
 		instance.name = instance_name
 

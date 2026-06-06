@@ -9,6 +9,7 @@ size = Vector3(0.7, 0.2, 0.5)
 script = ExtResource("1_object")
 
 [node name="VisualRoot" type="Node3D" parent="."]
+visible = false
 
 [node name="AssetMount" type="Node3D" parent="VisualRoot"]
 
@@ -28,3 +29,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
 text = "Letter"
 font_size = 24
 billboard = 1
+visible = false

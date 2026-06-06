@@ -45,7 +45,7 @@ func applies() -> void:
 			transitioned.emit(self, "JumpState")
 			
 func input_management() -> void:
-	if Input.is_action_pressed(play_char.jump_action) if play_char.auto_jump else Input.is_action_just_pressed(play_char.jump_action):
+	if (Input.is_action_pressed(play_char.jump_action) if play_char.auto_jump else Input.is_action_just_pressed(play_char.jump_action)) and play_char.can_trigger_movement_jump():
 		transitioned.emit(self, "JumpState")
 		
 	if play_char.continious_run:

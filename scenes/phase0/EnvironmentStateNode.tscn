@@ -10,6 +10,7 @@ height = 0.5
 script = ExtResource("1_env")
 
 [node name="VisualRoot" type="Node3D" parent="."]
+visible = false
 
 [node name="AssetMount" type="Node3D" parent="VisualRoot"]
 
@@ -29,3 +30,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.6, 0)
 text = "Env"
 font_size = 24
 billboard = 1
+visible = false

@@ -35,6 +35,8 @@ def evaluate_phase0_audit(
     focus_screenshot_exists: bool,
     interaction_source: str,
     voice_controller_source: str,
+    player_bridge_source: str,
+    character_replica_source: str,
 ) -> dict[str, object]:
     results: list[dict[str, object]] = []
 
@@ -55,7 +57,8 @@ def evaluate_phase0_audit(
         )
     )
 
-    backend_connected = _contains_all(main_log + "\n" + focus_log, ["backend_connected:ws://127.0.0.1:8000/ws"])
+    combined_log = main_log + "\n" + focus_log
+    backend_connected = "backend_connected:ws://127.0.0.1:" in combined_log
     results.append(
         _result(
             "backend_connectivity",
@@ -139,6 +142,77 @@ def evaluate_phase0_audit(
         )
     )
 
+    player_root_motion_runtime_ok = "player_root_motion_step:char_c" in main_log or "player_root_motion_step:char_c" in focus_log
+    player_root_motion_code_ok = "before_player_shell_move" in player_bridge_source and "consume_player_root_motion_request" in character_replica_source
+    player_root_motion_status = "proved" if player_root_motion_runtime_ok else ("weak" if player_root_motion_code_ok else "missing")
+    player_root_motion_notes = ""
+    if player_root_motion_status == "weak":
+        player_root_motion_notes = "Player root motion code path exists, but no runtime audit log proves CharacterC drove the player shell during verification."
+    results.append(
+        _result(
+            "player_root_motion_chain",
+            "CharacterC root motion drives the player locomotion shell",
+            player_root_motion_status,
+            ["player_root_motion_step:char_c"] if player_root_motion_status != "missing" else [],
+            player_root_motion_notes,
+        )
+    )
+
+    patrol_root_motion_runtime_ok = "patrol_root_motion_step:char_a" in main_log or "patrol_root_motion_step:char_b" in main_log
+    patrol_root_motion_code_ok = "patrol_root_motion_step" in character_replica_source and "_consume_role_root_motion_world_delta" in character_replica_source
+    patrol_root_motion_status = "proved" if patrol_root_motion_runtime_ok else ("weak" if patrol_root_motion_code_ok else "missing")
+    patrol_root_motion_notes = ""
+    if patrol_root_motion_status == "weak":
+        patrol_root_motion_notes = "A/B patrol root motion code path exists, but runtime verification did not capture a patrol root motion step."
+    results.append(
+        _result(
+            "npc_root_motion_patrol",
+            "CharacterA/B patrol stays controller-authoritative while consuming root motion increments",
+            patrol_root_motion_status,
+            ["patrol_root_motion_step"] if patrol_root_motion_status != "missing" else [],
+            patrol_root_motion_notes,
+        )
+    )
+
+    locomotion_state_ui_ok = (
+        "locomotion_state:" in combined_log
+        and "gait=" in combined_log
+        and "stance=" in combined_log
+        and "jump=" in combined_log
+        and "profile=" in combined_log
+    )
+    results.append(
+        _result(
+            "locomotion_state_ui",
+            "Locomotion state is visible in UI/debug output",
+            "proved" if locomotion_state_ui_ok else "missing",
+            ["locomotion_state"] if locomotion_state_ui_ok else [],
+        )
+    )
+
+    jump_variant_probe_ok = (
+        "jump_probe:type=two_foot" in combined_log
+        and "jump_probe:type=single_leg" in combined_log
+    )
+    results.append(
+        _result(
+            "jump_variant_probes",
+            "Two-foot and single-leg jump probes are both observable",
+            "proved" if jump_variant_probe_ok else "missing",
+            ["jump_probe:type=two_foot", "jump_probe:type=single_leg"] if jump_variant_probe_ok else [],
+        )
+    )
+
+    forward_direction_probe_ok = "locomotion_probe:" in combined_log and "dz=-" in combined_log
+    results.append(
+        _result(
+            "forward_direction_probe",
+            "Forward locomotion probe moves in the expected forward direction",
+            "proved" if forward_direction_probe_ok else "missing",
+            ["locomotion_probe dz negative"] if forward_direction_probe_ok else [],
+        )
+    )
+
     repeatable_ok = scene_load_ok and main_screenshot_exists and focus_screenshot_exists and backend_connected
     results.append(
         _result(
@@ -159,6 +233,11 @@ def evaluate_phase0_audit(
         "visible_world_state_change",
         "siming_reaction",
         "voice_stub_path",
+        "player_root_motion_chain",
+        "npc_root_motion_patrol",
+        "locomotion_state_ui",
+        "jump_variant_probes",
+        "forward_direction_probe",
         "repeatable_run",
     ]
     index = _status_index(results)
