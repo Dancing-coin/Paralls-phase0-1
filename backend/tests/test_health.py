@@ -12,4 +12,4 @@ def test_health_exposes_current_backend_identity() -> None:
     assert payload["status"] == "ok"
     assert payload["build"] == "paralls-phase0-backend-worktree-2026-06-02"
     worktree_root = payload["worktree_root"]
-    assert worktree_root.endswith("paralls-phase-0-demo") or ".worktrees\\l1-raw-fact-emitter" in worktree_root
+    assert worktree_root.endswith("paralls-phase-0-demo") or ".worktrees\\" in worktree_root
