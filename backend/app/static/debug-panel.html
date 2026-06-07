@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Paralls Debug Panel</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #171a21;
+      --border: #2a3140;
+      --text: #e9edf5;
+      --muted: #aab4c8;
+      --world: #5aa9ff;
+      --backend: #8ee38a;
+      --character: #f4c36d;
+      --siming: #ff8b8b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", sans-serif;
+      background: linear-gradient(180deg, #0b0d12 0%, #131722 100%);
+      color: var(--text);
+    }
+    .page {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 16px;
+      padding: 16px;
+      min-height: 100vh;
+    }
+    .panel {
+      border: 1px solid var(--border);
+      background: rgba(23, 26, 33, 0.94);
+      border-radius: 14px;
+      padding: 14px;
+      overflow: hidden;
+    }
+    h1, h2, h3 { margin: 0 0 10px; }
+    h1 { font-size: 20px; }
+    h2 { font-size: 16px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .stack { display: grid; gap: 12px; }
+    .event-list, .detail-box { max-height: 70vh; overflow: auto; }
+    .event {
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      background: rgba(255,255,255,0.02);
+    }
+    .event.active { outline: 2px solid #ffffff22; }
+    .event .meta { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+    .event.world { border-left: 4px solid var(--world); }
+    .event.backend { border-left: 4px solid var(--backend); }
+    .event.character { border-left: 4px solid var(--character); }
+    .event.siming { border-left: 4px solid var(--siming); }
+    .grid-two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .character-card {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px;
+      background: rgba(255,255,255,0.02);
+    }
+    .character-card h3 { font-size: 14px; margin-bottom: 8px; }
+    .character-row { margin-bottom: 8px; }
+    .label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 2px; }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-family: Consolas, monospace;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="stack">
+      <div class="panel">
+        <h1>运行时叙事面板</h1>
+        <div class="muted" id="connection-status">连接中...</div>
+      </div>
+      <div class="panel">
+        <h2>现在发生了什么</h2>
+        <div class="event-list" id="event-list"></div>
+      </div>
+    </div>
+    <div class="stack">
+      <div class="panel">
+        <h2>当前状态</h2>
+        <div class="grid-two">
+          <div>
+            <div class="character-row"><span class="label">最近世界状态</span><div id="world-state">暂无</div></div>
+            <div class="character-row"><span class="label">最近后端处理</span><div id="backend-state">暂无</div></div>
+            <div class="character-row"><span class="label">最近司命输出</span><div id="siming-state">暂无</div></div>
+          </div>
+          <div class="detail-box">
+            <span class="label">选中事件详情</span>
+            <pre id="detail-box">{}</pre>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>角色视角</h2>
+        <div class="grid-two" id="character-grid"></div>
+      </div>
+    </div>
+  </div>
+  <script src="/debug/static/debug-panel.js"></script>
+</body>
+</html>

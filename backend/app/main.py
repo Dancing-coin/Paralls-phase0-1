@@ -1,8 +1,21 @@
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
+from fastapi.responses import HTMLResponse, Response
 from starlette.websockets import WebSocketDisconnect
 
+from app.debug_narration import (
+    build_debug_event,
+    summarize_backend_route,
+    summarize_character_candidate,
+    summarize_character_input,
+    summarize_character_interpretation,
+    summarize_character_output,
+    summarize_raw_fact_event,
+    summarize_siming_output,
+    summarize_world_result,
+)
+from app.debug_stream import debug_stream
 from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent
 from app.models.raw_fact import RawFactEvent
 from app.models.visual_fact import VisualFactEvent
@@ -24,6 +37,7 @@ from app.ws_protocol import Envelope
 app = FastAPI(title="Paralls Phase0 Backend")
 BACKEND_BUILD = "paralls-phase0-backend-worktree-2026-06-02"
 WORKTREE_ROOT = str(Path(__file__).resolve().parents[2])
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 def reset_runtime_state() -> None:
@@ -44,6 +58,7 @@ def reset_runtime_state() -> None:
     focus_state = FocusStateService()
     conversation_relation_service = ConversationRelationService()
     character_runtime_state_service = CharacterRuntimeStateService()
+    debug_stream.clear()
 
 
 reset_runtime_state()
@@ -56,6 +71,19 @@ def health() -> dict[str, str]:
         "build": BACKEND_BUILD,
         "worktree_root": WORKTREE_ROOT,
     }
+
+
+@app.get("/debug/panel", response_class=HTMLResponse)
+def debug_panel() -> str:
+    return (STATIC_DIR / "debug-panel.html").read_text(encoding="utf-8")
+
+
+@app.get("/debug/static/debug-panel.js")
+def debug_panel_js() -> Response:
+    return Response(
+        content=(STATIC_DIR / "debug-panel.js").read_text(encoding="utf-8"),
+        media_type="application/javascript",
+    )
 
 
 @app.websocket("/ws")
@@ -72,20 +100,86 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         return
 
 
+@app.websocket("/debug/ws")
+async def debug_websocket_endpoint(websocket: WebSocket) -> None:
+    await websocket.accept()
+    for event in debug_stream.history():
+        await websocket.send_json(event)
+    queue = debug_stream.subscribe()
+    try:
+        while True:
+            event = await queue.get()
+            await websocket.send_json(event)
+    except WebSocketDisconnect:
+        return
+    finally:
+        debug_stream.unsubscribe(queue)
+
+
 def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
     if envelope.message_type == "visual_fact_event":
-        return handle_visual_fact_event(
-            VisualFactEvent(**envelope.payload),
+        event = VisualFactEvent(**envelope.payload)
+        _publish_debug_event(
+            build_debug_event(
+                producer_ts=event.producer_ts,
+                domain="world",
+                stage="l1_raw_fact_ingress",
+                actor_id=event.actor_id,
+                summary=summarize_raw_fact_event(event),
+                detail=event.to_legacy_payload(),
+            )
+        )
+        _publish_debug_event(
+            build_debug_event(
+                producer_ts=event.producer_ts,
+                domain="character",
+                stage="character_input_received",
+                actor_id=event.actor_id,
+                summary=summarize_character_input(event.actor_id, "收到一条视觉事实"),
+                detail=event.to_legacy_payload(),
+            )
+        )
+        messages = handle_visual_fact_event(
+            event,
             envelope.message_type,
             _build_visual_fact_handler_context(),
         )
+        _publish_route_event(event, messages)
+        _emit_debug_from_messages(messages)
+        return messages
 
     if envelope.message_type == "raw_fact_event":
-        return route_raw_fact_event(
-            RawFactEvent(**envelope.payload),
+        event = RawFactEvent(**envelope.payload)
+        _publish_debug_event(
+            build_debug_event(
+                producer_ts=event.producer_ts,
+                domain="world",
+                stage="l1_raw_fact_ingress",
+                actor_id=event.source.actor_id or None,
+                summary=summarize_raw_fact_event(event),
+                detail=event.model_dump(),
+            )
+        )
+        if event.source.actor_id != "":
+            label = "收到一条视觉事实" if event.fact_family == "visual_fact" else "收到一条空间接入事实" if event.fact_family == "spatial_access_fact" else "收到一条原始事实"
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=event.producer_ts,
+                    domain="character",
+                    stage="character_input_received",
+                    actor_id=event.source.actor_id,
+                    summary=summarize_character_input(event.source.actor_id, label),
+                    detail=event.model_dump(),
+                )
+            )
+        messages = route_raw_fact_event(
+            event,
             source_type=envelope.message_type,
             context=_build_visual_fact_handler_context(),
         )
+        _publish_route_event(event, messages)
+        _emit_debug_from_messages(messages)
+        return messages
 
     if envelope.message_type != "player_input":
         return [
@@ -111,16 +205,47 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             },
         }
     ]
+    _publish_debug_event(
+        build_debug_event(
+            producer_ts=event.producer_ts,
+            domain="backend",
+            stage="player_input_routed",
+            actor_id=getattr(event, "actor_id", None),
+            summary="后端接受了玩家输入，并路由到 %s。" % route["route"],
+            detail={"intent_type": event.intent_type, "route": route["route"]},
+        )
+    )
 
     event_trace.record(event.intent_type)
 
     if route["route"] == "character_service" and isinstance(event, DialogueSubmit):
+        _publish_debug_event(
+            build_debug_event(
+                producer_ts=event.producer_ts,
+                domain="character",
+                stage="character_input_received",
+                actor_id=event.target_actor_id,
+                summary=summarize_character_input(event.target_actor_id, "收到玩家对话输入"),
+                detail=event.model_dump(),
+            )
+        )
         response = character_service.handle_dialogue(event)
         event_trace.record(response.output_type)
         messages.append(_as_envelope("dialogue_response", response.model_dump()))
+        _emit_debug_from_messages(messages)
         return messages
 
     if route["route"] == "character_service" and isinstance(event, FocusTargetChange):
+        _publish_debug_event(
+            build_debug_event(
+                producer_ts=event.producer_ts,
+                domain="character",
+                stage="character_input_received",
+                actor_id=event.actor_id,
+                summary=summarize_character_input(event.actor_id, "收到焦点切换输入"),
+                detail=event.model_dump(),
+            )
+        )
         state = focus_state.update_focus(event)
         conversation_relation_service.apply_focus_state(
             actor_id=event.actor_id,
@@ -147,9 +272,30 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             correlation_id=f"focus:{event.producer_ts}",
         )
         messages.extend(_candidate_messages(candidate))
+        _publish_debug_event(
+            build_debug_event(
+                producer_ts=event.producer_ts,
+                domain="character",
+                stage="character_interpretation_updated",
+                actor_id=event.actor_id,
+                summary=summarize_character_interpretation(event.actor_id, {"current_focus_target": event.target_actor_id or event.target_object_id or "", "current_attention_source": "focus_state"}),
+                detail=state,
+            )
+        )
+        _emit_debug_from_messages(messages)
         return messages
 
     if route["route"] == "esm_service" and isinstance(event, InteractIntent):
+        _publish_debug_event(
+            build_debug_event(
+                producer_ts=event.producer_ts,
+                domain="world",
+                stage="world_interaction_requested",
+                actor_id=event.actor_id,
+                summary="玩家请求与 %s 交互。" % event.target_object_id,
+                detail=event.model_dump(),
+            )
+        )
         actor_position = runtime.get_actor_position(event.actor_id)
         world_result = esm_service.resolve_interaction(event, actor_position=actor_position)
         event_trace.record(world_result.result_type)
@@ -193,6 +339,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 correlation_id=f"world:{event.producer_ts}",
             )
             messages.extend(_candidate_messages(candidate))
+        _emit_debug_from_messages(messages)
         return messages
 
     return messages
@@ -216,6 +363,38 @@ def _as_envelope(message_type: str, payload: dict[str, object]) -> dict[str, obj
         "message_type": message_type,
         "payload": payload,
     }
+
+
+def _publish_debug_event(event: dict[str, object]) -> None:
+    debug_stream.publish(event)
+
+
+def _publish_route_event(event: RawFactEvent | VisualFactEvent, messages: list[dict[str, object]]) -> None:
+    if not messages:
+        return
+    first = messages[0]
+    if first.get("message_type") != "ack":
+        return
+    payload = first.get("payload", {})
+    if not isinstance(payload, dict):
+        return
+    route = str(payload.get("route", "unknown"))
+    producer_ts = int(getattr(event, "producer_ts", 0))
+    actor_id = None
+    if isinstance(event, RawFactEvent):
+        actor_id = event.source.actor_id or None
+    else:
+        actor_id = event.actor_id
+    _publish_debug_event(
+        build_debug_event(
+            producer_ts=producer_ts,
+            domain="backend",
+            stage="fact_routed",
+            actor_id=actor_id,
+            summary=summarize_backend_route(event, route),
+            detail={"route": route, "fact_family": getattr(event, "fact_family", "visual_fact"), "fact_type": event.fact_type},
+        )
+    )
 
 
 def _ensure_runtime_snapshot_messages(event: MoveIntent | DialogueSubmit | InteractIntent | FocusTargetChange) -> list[dict[str, object]]:
@@ -312,3 +491,82 @@ def _candidate_messages(candidate: object) -> list[dict[str, object]]:
     event_trace.record(siming_candidate_output.output_type)
     messages.append(_as_envelope("siming_output", siming_candidate_output.model_dump()))
     return messages
+
+
+def _emit_debug_from_messages(messages: list[dict[str, object]]) -> None:
+    for message in messages:
+        message_type = str(message.get("message_type", ""))
+        payload = message.get("payload", {})
+        if not isinstance(payload, dict):
+            continue
+        producer_ts = int(payload.get("producer_ts", 0) or 0)
+        if message_type == "character_runtime_state_delta":
+            actor_id = str(payload.get("actor_id", ""))
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=producer_ts,
+                    domain="character",
+                    stage="character_interpretation_updated",
+                    actor_id=actor_id,
+                    summary=summarize_character_interpretation(actor_id, payload),
+                    detail=payload,
+                )
+            )
+        elif message_type == "conversation_candidate_event":
+            actor_id = str(payload.get("actor_id", ""))
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=producer_ts,
+                    domain="character",
+                    stage="character_candidate_updated",
+                    actor_id=actor_id,
+                    summary=summarize_character_candidate(actor_id, payload),
+                    detail=payload,
+                )
+            )
+        elif message_type == "dialogue_response":
+            actor_id = str(payload.get("actor_id", ""))
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=producer_ts,
+                    domain="character",
+                    stage="character_output_emitted",
+                    actor_id=actor_id,
+                    summary=summarize_character_output(actor_id, message_type, payload),
+                    detail=payload,
+                )
+            )
+        elif message_type == "spatial_access_runtime_state_snapshot":
+            actor_id = str(payload.get("actor_id", ""))
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=producer_ts,
+                    domain="character",
+                    stage="character_interpretation_updated",
+                    actor_id=actor_id,
+                    summary=summarize_character_interpretation(actor_id, payload),
+                    detail=payload,
+                )
+            )
+        elif message_type == "world_result":
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=producer_ts,
+                    domain="world",
+                    stage="world_result_emitted",
+                    actor_id=str(payload.get("actor_id", "")) or None,
+                    summary=summarize_world_result(payload),
+                    detail=payload,
+                )
+            )
+        elif message_type == "siming_output":
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=producer_ts,
+                    domain="siming",
+                    stage="siming_output_emitted",
+                    actor_id=str(payload.get("target_actor_id", "")) or None,
+                    summary=summarize_siming_output(payload),
+                    detail=payload,
+                )
+            )
