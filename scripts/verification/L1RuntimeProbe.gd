@@ -5,6 +5,7 @@ const MAIN_DEMO_SCENE := preload("res://scenes/phase0/MainDemo.tscn")
 var _zone_entry_count := 0
 var _disconnect_count := 0
 var _environment_alert_count := 0
+var _privacy_local_count := 0
 
 
 func _ready() -> void:
@@ -28,6 +29,12 @@ func _run_probe() -> void:
 	var initial_zone_ok := await _wait_for_zone_entries(1, 10000)
 	if not initial_zone_ok:
 		push_error("l1_runtime_probe:initial_zone_entry_timeout")
+		get_tree().quit(1)
+		return
+
+	var initial_privacy_ok := await _wait_for_privacy_local(1, 10000)
+	if not initial_privacy_ok:
+		push_error("l1_runtime_probe:initial_privacy_local_timeout")
 		get_tree().quit(1)
 		return
 
@@ -57,6 +64,12 @@ func _run_probe() -> void:
 		get_tree().quit(1)
 		return
 
+	var privacy_reseed_ok := await _wait_for_privacy_local(2, 10000)
+	if not privacy_reseed_ok:
+		push_error("l1_runtime_probe:privacy_reseed_timeout")
+		get_tree().quit(1)
+		return
+
 	var environment_node := main_demo.get_node_or_null("EnvironmentStateNode")
 	if environment_node == null or not environment_node.has_method("apply_environment_shift"):
 		push_error("l1_runtime_probe:missing_environment_state_node")
@@ -80,12 +93,15 @@ func _run_probe() -> void:
 	print("l1_runtime_probe:disconnect_count=%s" % _disconnect_count)
 	print("l1_runtime_probe:zone_entry_count=%s" % _zone_entry_count)
 	print("l1_runtime_probe:environment_alert_count=%s" % _environment_alert_count)
+	print("l1_runtime_probe:privacy_local_count=%s" % _privacy_local_count)
 	get_tree().quit(0)
 
 
 func _on_debug_event_logged(message: String) -> void:
 	if message == "phase0_spatial_access_fact:actor_entered_zone:zone_focus":
 		_zone_entry_count += 1
+	if message == "phase0_spatial_access_fact:privacy_boundary_changed:local":
+		_privacy_local_count += 1
 	if message == "phase0_visual_fact:light_level_drop:env_lamp":
 		_environment_alert_count += 1
 
@@ -116,6 +132,15 @@ func _wait_for_environment_alerts(target_count: int, timeout_ms: int) -> bool:
 	var deadline := Time.get_ticks_msec() + timeout_ms
 	while Time.get_ticks_msec() < deadline:
 		if _environment_alert_count >= target_count:
+			return true
+		await get_tree().process_frame
+	return false
+
+
+func _wait_for_privacy_local(target_count: int, timeout_ms: int) -> bool:
+	var deadline := Time.get_ticks_msec() + timeout_ms
+	while Time.get_ticks_msec() < deadline:
+		if _privacy_local_count >= target_count:
 			return true
 		await get_tree().process_frame
 	return false

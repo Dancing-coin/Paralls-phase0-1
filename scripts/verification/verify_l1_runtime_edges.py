@@ -56,7 +56,9 @@ def main() -> int:
 
         disconnect_ok = "l1_runtime_probe:disconnect_count=1" in probe_text
         reseed_ok = "l1_runtime_probe:zone_entry_count=2" in probe_text
+        privacy_reseed_ok = "l1_runtime_probe:privacy_local_count=2" in probe_text
         environment_cycle_ok = "l1_runtime_probe:environment_alert_count=2" in probe_text
+        health_overlap_ok = "HTTPRequest is processing a request" not in probe_text
 
         report = {
             "results": [
@@ -75,15 +77,34 @@ def main() -> int:
                     "notes": "",
                 },
                 {
+                    "id": "privacy_reseed_observed",
+                    "title": "L1 privacy-band facts re-emit after reconnect in the same runtime session",
+                    "status": "proved" if privacy_reseed_ok else "missing",
+                    "evidence": ["l1_runtime_probe:privacy_local_count=2"] if privacy_reseed_ok else [],
+                    "notes": "",
+                },
+                {
                     "id": "environment_cycle_observed",
                     "title": "Environment light-drop fact re-emits across alerted/stable/alerted cycle",
                     "status": "proved" if environment_cycle_ok else "missing",
                     "evidence": ["l1_runtime_probe:environment_alert_count=2"] if environment_cycle_ok else [],
                     "notes": "",
                 },
+                {
+                    "id": "health_reconnect_clean",
+                    "title": "Reconnect does not spam HTTPRequest overlap errors",
+                    "status": "proved" if health_overlap_ok else "missing",
+                    "evidence": ["no HTTPRequest overlap error"] if health_overlap_ok else [],
+                    "notes": "",
+                },
             ],
             "overall_l1_runtime_edges_passed": (
-                probe_result.returncode == 0 and disconnect_ok and reseed_ok and environment_cycle_ok
+                probe_result.returncode == 0
+                and disconnect_ok
+                and reseed_ok
+                and privacy_reseed_ok
+                and environment_cycle_ok
+                and health_overlap_ok
             ),
             "backend_health": health,
             "artifacts": {

@@ -213,6 +213,7 @@ func _on_backend_disconnected(_code: int = 0) -> void:
 	pending_focus_sync = true
 	last_spatial_access_actor_target = ""
 	last_spatial_access_actor_ts = 0
+	current_privacy_band = "public"
 
 func _on_backend_ack_received(payload: Dictionary) -> void:
 	_bus_log("phase0_ack:%s" % JSON.stringify(payload))
@@ -725,6 +726,8 @@ func _request_backend_health() -> void:
 	var health_url := _build_health_url()
 	if health_url == "":
 		return
+	if backend_health_request.get_http_client_status() != HTTPClient.STATUS_DISCONNECTED:
+		backend_health_request.cancel_request()
 	var err := backend_health_request.request(health_url)
 	if err != OK and err != ERR_BUSY:
 		_bus_log("phase0_backend_health_request_failed:%s" % err)
