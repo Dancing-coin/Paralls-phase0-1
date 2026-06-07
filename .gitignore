@@ -6,6 +6,10 @@
 .omx/
 .claude/
 .sixth/
+.worktrees/
+.codex/tmp/
+goblend.log
+push-*.log
 
 # Python cache
 __pycache__/
