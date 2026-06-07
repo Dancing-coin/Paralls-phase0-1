@@ -27,6 +27,10 @@ const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
 @export var focus_forward_threshold := 0.2
 @export var near_object_visual_fact_distance := 18.0
 @export var near_object_visual_fact_cooldown_ms := 650
+@export var near_actor_spatial_access_distance := 18.0
+@export var near_actor_spatial_access_cooldown_ms := 650
+@export var privacy_private_distance := 4.0
+@export var privacy_local_distance := 10.0
 
 @onready var intent_mapper: Node = $IntentMapper
 @onready var player: CharacterBody3D = $Player
@@ -39,6 +43,7 @@ const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
 @onready var character_c: Node3D = $CharacterC
 @onready var interactive_object: Node3D = $InteractiveObject
 @onready var character_visual_fact_emitter: Node = $VisualFactEmitter/CharacterVisualFactEmitter
+@onready var spatial_access_fact_emitter: Node = $VisualFactEmitter/SpatialAccessFactEmitter
 
 var current_focus_target: Node3D
 var last_reported_move_position := Vector3.INF
@@ -49,6 +54,10 @@ var focus_response_seen := false
 var backend_health_request: HTTPRequest
 var last_near_object_visual_fact_target := ""
 var last_near_object_visual_fact_ts := 0
+var last_spatial_access_actor_target := ""
+var last_spatial_access_actor_ts := 0
+var current_privacy_band := "public"
+var spatial_zone_emitted := false
 
 func _ready() -> void:
 	var bus := _get_bus()
@@ -187,6 +196,7 @@ func submit_interaction() -> void:
 
 func _on_backend_connected(_payload: String) -> void:
 	_request_backend_health()
+	_emit_spatial_access_zone_entry()
 	if pending_focus_sync:
 		_emit_focus_target_change()
 		pending_focus_sync = false
@@ -209,6 +219,7 @@ func _process(_delta: float) -> void:
 		return
 	_update_focus_target()
 	_sample_near_object_visual_fact()
+	_sample_spatial_access_facts()
 
 func _run_autotest_inputs() -> void:
 	_bus_log("phase0_autotest_begin")
@@ -558,6 +569,81 @@ func _emit_move_intent_if_needed() -> void:
 	var bridge := _get_bridge()
 	if bridge:
 		bridge.send_envelope(intent_mapper.emit_move_intent("locomotion", control_position))
+
+func _emit_spatial_access_zone_entry() -> void:
+	if spatial_zone_emitted:
+		return
+	if spatial_access_fact_emitter == null:
+		return
+	if not spatial_access_fact_emitter.has_method("emit_actor_entered_zone"):
+		return
+	var bridge := _get_bridge()
+	if bridge == null or (bridge.has_method("is_backend_open") and not bridge.is_backend_open()):
+		return
+	var emitted: bool = spatial_access_fact_emitter.emit_actor_entered_zone("zone_focus")
+	if not emitted:
+		return
+	spatial_zone_emitted = true
+
+func _sample_spatial_access_facts() -> void:
+	var bridge := _get_bridge()
+	if bridge == null or (bridge.has_method("is_backend_open") and not bridge.is_backend_open()):
+		return
+	_emit_spatial_access_zone_entry()
+	_sample_actor_approach_fact()
+	_sample_privacy_boundary_fact()
+
+func _sample_actor_approach_fact() -> void:
+	if spatial_access_fact_emitter == null:
+		return
+	if not spatial_access_fact_emitter.has_method("emit_actor_approached_actor"):
+		return
+	var target_actor_id := _resolve_focused_actor_id()
+	if target_actor_id == "":
+		last_spatial_access_actor_target = ""
+		return
+	var target_node := _find_node_by_property("actor_id", target_actor_id)
+	if target_node == null:
+		return
+	var distance := _get_focus_origin().distance_to(target_node.global_position)
+	if distance > near_actor_spatial_access_distance:
+		last_spatial_access_actor_target = ""
+		return
+	var now_ms := Time.get_ticks_msec()
+	if target_actor_id == last_spatial_access_actor_target and now_ms - last_spatial_access_actor_ts < near_actor_spatial_access_cooldown_ms:
+		return
+	var emitted: bool = spatial_access_fact_emitter.emit_actor_approached_actor(target_actor_id, distance)
+	if not emitted:
+		return
+	last_spatial_access_actor_target = target_actor_id
+	last_spatial_access_actor_ts = now_ms
+
+func _sample_privacy_boundary_fact() -> void:
+	if spatial_access_fact_emitter == null:
+		return
+	if not spatial_access_fact_emitter.has_method("emit_privacy_boundary_changed"):
+		return
+	var next_band := _resolve_privacy_band()
+	if next_band == current_privacy_band:
+		return
+	var emitted: bool = spatial_access_fact_emitter.emit_privacy_boundary_changed(current_privacy_band, next_band, "zone_focus")
+	if not emitted:
+		return
+	current_privacy_band = next_band
+
+func _resolve_privacy_band() -> String:
+	var target_actor_id := _resolve_focused_actor_id()
+	if target_actor_id == "":
+		return "public"
+	var target_node := _find_node_by_property("actor_id", target_actor_id)
+	if target_node == null:
+		return "public"
+	var distance := _get_focus_origin().distance_to(target_node.global_position)
+	if distance <= privacy_private_distance:
+		return "private"
+	if distance <= privacy_local_distance:
+		return "local"
+	return "public"
 
 func _get_camera() -> Camera3D:
 	if player_input_bridge and player_input_bridge.has_method("get_camera"):
