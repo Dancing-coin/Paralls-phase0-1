@@ -9,6 +9,7 @@ from app.debug_narration import (
     summarize_backend_route,
     summarize_character_candidate,
     summarize_character_input,
+    summarize_character_input_from_fact,
     summarize_character_interpretation,
     summarize_character_output,
     summarize_raw_fact_event,
@@ -135,7 +136,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 domain="character",
                 stage="character_input_received",
                 actor_id=event.actor_id,
-                summary=summarize_character_input(event.actor_id, "收到一条视觉事实"),
+                summary=summarize_character_input_from_fact(event),
                 detail=event.to_legacy_payload(),
             )
         )
@@ -161,14 +162,13 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             )
         )
         if event.source.actor_id != "":
-            label = "收到一条视觉事实" if event.fact_family == "visual_fact" else "收到一条空间接入事实" if event.fact_family == "spatial_access_fact" else "收到一条原始事实"
             _publish_debug_event(
                 build_debug_event(
                     producer_ts=event.producer_ts,
                     domain="character",
                     stage="character_input_received",
                     actor_id=event.source.actor_id,
-                    summary=summarize_character_input(event.source.actor_id, label),
+                    summary=summarize_character_input_from_fact(event),
                     detail=event.model_dump(),
                 )
             )
