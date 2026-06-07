@@ -43,6 +43,7 @@ function buildCharacterState(filteredEvents) {
         interpretation: "暂无",
         candidate: "暂无",
         output: "暂无",
+        timeline: [],
       });
     }
     return state.get(actorId);
@@ -53,6 +54,11 @@ function buildCharacterState(filteredEvents) {
       continue;
     }
     const actorState = ensureCharacter(event.actor_id);
+    actorState.timeline.push({
+      sequence: event.sequence,
+      stage: event.stage,
+      summary: event.summary,
+    });
     if (event.stage === "character_input_received") {
       actorState.input = event.summary;
     } else if (event.stage === "character_interpretation_updated") {
@@ -72,6 +78,12 @@ function renderCharacters(filteredEvents) {
   const ids = [...characterState.keys()].sort();
   for (const actorId of ids) {
     const state = characterState.get(actorId);
+    const timelineItems = state.timeline.slice(-5).reverse().map((item) => `
+      <div class="timeline-item">
+        <div class="meta">#${item.sequence} · ${item.stage}</div>
+        <div>${item.summary}</div>
+      </div>
+    `).join("");
     const card = document.createElement("div");
     card.className = "character-card";
     card.innerHTML = `
@@ -80,6 +92,10 @@ function renderCharacters(filteredEvents) {
       <div class="character-row"><span class="label">当前理解</span><div>${state.interpretation}</div></div>
       <div class="character-row"><span class="label">候选反应</span><div>${state.candidate}</div></div>
       <div class="character-row"><span class="label">最终输出</span><div>${state.output}</div></div>
+      <div class="timeline">
+        <span class="label">最近动态</span>
+        ${timelineItems || '<div class="timeline-item"><div>暂无动态</div></div>'}
+      </div>
     `;
     characterGrid.appendChild(card);
   }

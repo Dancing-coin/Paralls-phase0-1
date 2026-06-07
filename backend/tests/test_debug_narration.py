@@ -1,6 +1,8 @@
 from app.debug_narration import (
     summarize_character_candidate,
     summarize_character_input_from_fact,
+    summarize_character_input_from_siming_output,
+    summarize_character_input_from_world_result,
     summarize_character_interpretation,
     summarize_character_output,
 )
@@ -90,3 +92,31 @@ def test_summarize_character_output_includes_dialogue_content() -> None:
     assert "CharacterA" in summary
     assert "CharacterC" in summary
     assert "我注意到那封信了" in summary
+
+
+def test_summarize_character_input_from_world_result_mentions_successful_object_interaction() -> None:
+    summary = summarize_character_input_from_world_result(
+        "char_c",
+        {
+            "result_type": "object_interaction_result",
+            "target_object_id": "obj_letter",
+        },
+    )
+
+    assert "CharacterC" in summary
+    assert "obj_letter" in summary
+    assert "交互成功" in summary
+
+
+def test_summarize_character_input_from_siming_output_mentions_target() -> None:
+    summary = summarize_character_input_from_siming_output(
+        {
+            "output_type": "attention_prompt",
+            "target_actor_id": "char_b",
+            "target_object_id": "obj_letter",
+        },
+    )
+
+    assert "CharacterB" in summary
+    assert "obj_letter" in summary
+    assert "司命提示" in summary

@@ -137,6 +137,35 @@ def summarize_character_input_from_fact(event: Any) -> str:
     return f"{actor_label} 收到了一条新事实。"
 
 
+def summarize_character_input_from_world_result(actor_id: str, payload: dict[str, Any]) -> str:
+    actor_label = label_actor(actor_id)
+    result_type = str(payload.get("result_type", "") or "")
+    if result_type == "object_interaction_result":
+        return f"{actor_label} 收到了一条世界结果：{label_object(str(payload.get('target_object_id', '') or ''))} 交互成功。"
+    if result_type == "constraint_state_result":
+        return f"{actor_label} 收到了一条世界结果：交互被拒绝，原因是 {payload.get('constraint_type', '约束不满足')}。"
+    if result_type == "environment_state_result":
+        return f"{actor_label} 收到了一条世界结果：{label_environment(str(payload.get('target_environment_id', '') or ''))} 变成了 {payload.get('current_state', 'unknown')}。"
+    return f"{actor_label} 收到了一条新的世界结果。"
+
+
+def summarize_character_input_from_siming_output(payload: dict[str, Any]) -> str:
+    actor_label = label_actor(str(payload.get("target_actor_id", "") or ""))
+    output_type = str(payload.get("output_type", "siming_output"))
+    if output_type == "attention_prompt":
+        object_id = str(payload.get("target_object_id", "") or "")
+        environment_id = str(payload.get("target_environment_id", "") or "")
+        actor_id = str(payload.get("target_actor_id", "") or "")
+        if object_id:
+            target = label_object(object_id)
+        elif environment_id:
+            target = label_environment(environment_id)
+        else:
+            target = label_actor(actor_id)
+        return f"{actor_label} 收到了一条司命提示：注意 {target}。"
+    return f"{actor_label} 收到了一条司命输出：{output_type}。"
+
+
 def summarize_character_interpretation(actor_id: str, payload: dict[str, Any]) -> str:
     actor_label = label_actor(actor_id)
     focus_target = str(payload.get("current_focus_target", "") or "")

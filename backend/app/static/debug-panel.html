@@ -98,6 +98,26 @@
     .character-card h3 { font-size: 14px; margin-bottom: 8px; }
     .character-row { margin-bottom: 8px; }
     .label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 2px; }
+    .timeline {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+      display: grid;
+      gap: 6px;
+    }
+    .timeline-item {
+      font-size: 12px;
+      line-height: 1.45;
+      color: var(--text);
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.03);
+    }
+    .timeline-item .meta {
+      color: var(--muted);
+      font-size: 10px;
+      margin-bottom: 4px;
+    }
     pre {
       margin: 0;
       white-space: pre-wrap;
@@ -155,6 +175,7 @@
       </div>
       <div class="panel">
         <h2>角色视角</h2>
+        <div class="muted">每个角色同时显示当前摘要和最近 5 条动态。</div>
         <div class="grid-two" id="character-grid"></div>
       </div>
     </div>

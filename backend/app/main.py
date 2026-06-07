@@ -10,6 +10,8 @@ from app.debug_narration import (
     summarize_character_candidate,
     summarize_character_input,
     summarize_character_input_from_fact,
+    summarize_character_input_from_siming_output,
+    summarize_character_input_from_world_result,
     summarize_character_interpretation,
     summarize_character_output,
     summarize_raw_fact_event,
@@ -300,6 +302,16 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         world_result = esm_service.resolve_interaction(event, actor_position=actor_position)
         event_trace.record(world_result.result_type)
         messages.append(_as_envelope("world_result", world_result.model_dump()))
+        _publish_debug_event(
+            build_debug_event(
+                producer_ts=world_result.producer_ts,
+                domain="character",
+                stage="character_input_received",
+                actor_id=event.actor_id,
+                summary=summarize_character_input_from_world_result(event.actor_id, world_result.model_dump()),
+                detail=world_result.model_dump(),
+            )
+        )
 
         if world_result.result_type == "object_interaction_result":
             environment_result = esm_service.emit_environment_shift(
@@ -560,12 +572,24 @@ def _emit_debug_from_messages(messages: list[dict[str, object]]) -> None:
                 )
             )
         elif message_type == "siming_output":
+            target_actor_id = str(payload.get("target_actor_id", "")) or None
+            if target_actor_id:
+                _publish_debug_event(
+                    build_debug_event(
+                        producer_ts=producer_ts,
+                        domain="character",
+                        stage="character_input_received",
+                        actor_id=target_actor_id,
+                        summary=summarize_character_input_from_siming_output(payload),
+                        detail=payload,
+                    )
+                )
             _publish_debug_event(
                 build_debug_event(
                     producer_ts=producer_ts,
                     domain="siming",
                     stage="siming_output_emitted",
-                    actor_id=str(payload.get("target_actor_id", "")) or None,
+                    actor_id=target_actor_id,
                     summary=summarize_siming_output(payload),
                     detail=payload,
                 )
