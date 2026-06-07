@@ -64,6 +64,7 @@ func _handle_state_transition() -> void:
             _bus_log("backend_closing")
         WebSocketPeer.STATE_CLOSED:
             _bus_log("backend_closed:%s" % ws.get_close_code())
+            _bus_emit("backend_disconnected", [ws.get_close_code()])
 
 func _dispatch_message(raw_text: String) -> void:
     _bus_log("backend_message_raw:%s" % raw_text)

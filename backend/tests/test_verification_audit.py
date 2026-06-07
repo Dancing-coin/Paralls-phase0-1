@@ -408,6 +408,19 @@ def test_environment_visual_fact_emitter_uses_environment_state_subject_key() ->
     assert '"environment_state/%s" % environment_id' in emitter_source
 
 
+def test_backend_bridge_exposes_backend_disconnected_signal_chain() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    bus_source = (project_root / "scripts" / "autoload" / "LocalPresentationBus.gd").read_text(
+        encoding="utf-8"
+    )
+    bridge_source = (project_root / "scripts" / "autoload" / "BackendBridge.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'signal backend_disconnected(code)' in bus_source
+    assert '_bus_emit("backend_disconnected", [ws.get_close_code()])' in bridge_source
+
+
 def test_wrapped_raw_fact_transport_contract_passes_scan_and_phase1_audit(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     allowed_dir = project_root / "scripts" / "l1" / "facts"

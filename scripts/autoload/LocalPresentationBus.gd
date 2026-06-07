@@ -9,6 +9,7 @@ signal character_runtime_state_delta_received(payload)
 signal conversation_candidate_received(payload)
 signal debug_event_logged(message)
 signal backend_connected(url)
+signal backend_disconnected(code)
 signal backend_ack_received(payload)
 signal backend_connection_failed(url, code)
 

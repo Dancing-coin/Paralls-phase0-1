@@ -208,7 +208,7 @@ func _on_backend_connected(_payload: String) -> void:
 	if autotest_enabled:
 		_run_autotest_inputs()
 
-func _on_backend_disconnected() -> void:
+func _on_backend_disconnected(_code: int = 0) -> void:
 	spatial_zone_emitted = false
 	pending_focus_sync = true
 	last_spatial_access_actor_target = ""
