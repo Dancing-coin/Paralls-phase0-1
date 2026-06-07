@@ -63,6 +63,8 @@ func _ready() -> void:
 	var bus := _get_bus()
 	if bus:
 		bus.backend_connected.connect(_on_backend_connected)
+		if bus.has_signal("backend_disconnected"):
+			bus.backend_disconnected.connect(_on_backend_disconnected)
 		bus.backend_ack_received.connect(_on_backend_ack_received)
 		if bus.has_signal("debug_event_logged"):
 			bus.debug_event_logged.connect(_on_debug_event_logged)
@@ -205,6 +207,12 @@ func _on_backend_connected(_payload: String) -> void:
 		return
 	if autotest_enabled:
 		_run_autotest_inputs()
+
+func _on_backend_disconnected() -> void:
+	spatial_zone_emitted = false
+	pending_focus_sync = true
+	last_spatial_access_actor_target = ""
+	last_spatial_access_actor_ts = 0
 
 func _on_backend_ack_received(payload: Dictionary) -> void:
 	_bus_log("phase0_ack:%s" % JSON.stringify(payload))
@@ -599,15 +607,24 @@ func _sample_actor_approach_fact() -> void:
 		return
 	if not spatial_access_fact_emitter.has_method("emit_actor_approached_actor"):
 		return
+	if not spatial_access_fact_emitter.has_method("emit_actor_left_actor_range"):
+		return
 	var target_actor_id := _resolve_focused_actor_id()
 	if target_actor_id == "":
+		if last_spatial_access_actor_target != "":
+			spatial_access_fact_emitter.emit_actor_left_actor_range("zone_focus")
 		last_spatial_access_actor_target = ""
 		return
 	var target_node := _find_node_by_property("actor_id", target_actor_id)
 	if target_node == null:
+		if last_spatial_access_actor_target != "":
+			spatial_access_fact_emitter.emit_actor_left_actor_range("zone_focus")
+		last_spatial_access_actor_target = ""
 		return
 	var distance := _get_focus_origin().distance_to(target_node.global_position)
 	if distance > near_actor_spatial_access_distance:
+		if last_spatial_access_actor_target != "":
+			spatial_access_fact_emitter.emit_actor_left_actor_range("zone_focus")
 		last_spatial_access_actor_target = ""
 		return
 	var now_ms := Time.get_ticks_msec()

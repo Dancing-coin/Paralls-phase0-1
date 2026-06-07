@@ -25,6 +25,26 @@ def test_visual_fact_event_shape() -> None:
     assert event.target_actor_id == "char_a"
 
 
+def test_visual_fact_event_model_dump_supports_environment_state_subject_key() -> None:
+    event = VisualFactEvent(
+        actor_id="char_c",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        producer_ts=900,
+        fact_type="light_level_drop",
+        relation_type="environment_light_drop",
+        target_environment_id="env_lamp",
+        effect_kind="set",
+        subject_key="environment_state/env_lamp",
+    )
+
+    payload = event.model_dump()
+
+    assert payload["effect_kind"] == "set"
+    assert payload["subject_key"] == "environment_state/env_lamp"
+
+
 def test_relation_service_projects_environment_visual_fact_to_runtime_state() -> None:
     service = ConversationRelationService()
     service.apply_visual_fact(

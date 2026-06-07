@@ -56,19 +56,43 @@ class SpatialAccessFactHandler:
         snapshot.producer_ts = event.producer_ts
         snapshot.updated_at = event.producer_ts
 
-        if event.fact_type == "actor_entered_zone":
-            snapshot.nearby_actor_refs = []
+        effect_kind = event.effect_kind
+        subject_key = event.subject_key
+
+        if subject_key == "":
+            effect_kind, subject_key = self._legacy_effect_semantics(event)
+
+        if effect_kind == "set" and subject_key == "current_zone_id":
+            snapshot.current_zone_id = event.zone_id
+            if event.fact_type == "actor_entered_zone":
+                snapshot.nearby_actor_refs = []
             return
 
-        if event.fact_type == "actor_approached_actor":
+        if effect_kind == "replace" and subject_key == "nearby_actor_refs":
             target_actor_id = event.targets.actor_id
             snapshot.nearby_actor_refs = [target_actor_id] if target_actor_id != "" else []
             return
 
-        if event.fact_type == "privacy_boundary_changed":
+        if effect_kind == "clear" and subject_key == "nearby_actor_refs":
+            snapshot.nearby_actor_refs = []
+            return
+
+        if effect_kind == "set" and subject_key == "privacy_band":
             next_privacy_band = event.world.state_after
             if next_privacy_band != "":
                 snapshot.privacy_band = next_privacy_band
+
+    @staticmethod
+    def _legacy_effect_semantics(event: RawFactEvent) -> tuple[str, str]:
+        if event.fact_type == "actor_entered_zone":
+            return ("set", "current_zone_id")
+        if event.fact_type == "actor_approached_actor":
+            return ("replace", "nearby_actor_refs")
+        if event.fact_type == "actor_left_actor_range":
+            return ("clear", "nearby_actor_refs")
+        if event.fact_type == "privacy_boundary_changed":
+            return ("set", "privacy_band")
+        return (event.effect_kind, event.subject_key)
 
 
 _default_spatial_access_fact_handler = SpatialAccessFactHandler()

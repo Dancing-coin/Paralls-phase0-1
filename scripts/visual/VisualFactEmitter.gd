@@ -16,14 +16,21 @@ func emit_visual_fact(
 	relation_type: String,
 	target_actor_id: String = "",
 	target_object_id: String = "",
-	target_environment_id: String = ""
+	target_environment_id: String = "",
+	effect_kind: String = "pulse",
+	subject_key: String = "",
+	ttl_ms: Variant = null
 ) -> bool:
 	var payload := _build_visual_fact_payload(
 		fact_type,
 		relation_type,
 		target_actor_id,
 		target_object_id,
-		target_environment_id
+		target_environment_id,
+		-1,
+		effect_kind,
+		subject_key,
+		ttl_ms
 	)
 	return _get_raw_fact_emitter().emit_raw_fact(
 		payload,
@@ -47,7 +54,10 @@ func _build_visual_fact_payload(
 	target_actor_id: String = "",
 	target_object_id: String = "",
 	target_environment_id: String = "",
-	producer_ts: int = -1
+	producer_ts: int = -1,
+	effect_kind: String = "pulse",
+	subject_key: String = "",
+	ttl_ms: Variant = null
 ) -> Dictionary:
 	return _fact_envelope_builder.build_raw_fact_payload(
 		"visual_fact",
@@ -66,6 +76,9 @@ func _build_visual_fact_payload(
 		"L1",
 		{},
 		{},
+		effect_kind,
+		subject_key,
+		ttl_ms,
 		"",
 		"",
 		producer_ts

@@ -25,6 +25,9 @@ func build_raw_fact_payload(
 	source_layer: String = "L1",
 	world: Dictionary = {},
 	observability: Dictionary = {},
+	effect_kind: String = "pulse",
+	subject_key: String = "",
+	ttl_ms: Variant = null,
 	causation_id: String = "",
 	correlation_id: String = "",
 	producer_ts: int = -1
@@ -62,6 +65,9 @@ func build_raw_fact_payload(
 			"auditory": observability.get("auditory", false),
 			"occluded": observability.get("occluded", false),
 		},
+		"effect_kind": effect_kind,
+		"subject_key": subject_key,
+		"ttl_ms": ttl_ms,
 		"causation_id": causation_id,
 		"correlation_id": correlation_id,
 	}

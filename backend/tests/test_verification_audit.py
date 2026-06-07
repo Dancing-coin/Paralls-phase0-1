@@ -388,6 +388,26 @@ def test_shared_raw_fact_transport_uses_raw_fact_event_visual_fact_shape() -> No
     assert '"visual_fact"' in visual_emitter_source
 
 
+def test_shared_raw_fact_transport_supports_effect_semantics_fields() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    builder_source = (project_root / "scripts" / "l1" / "facts" / "FactEnvelopeBuilder.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"effect_kind"' in builder_source
+    assert '"subject_key"' in builder_source
+    assert '"ttl_ms"' in builder_source
+
+
+def test_environment_visual_fact_emitter_uses_environment_state_subject_key() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    emitter_source = (
+        project_root / "scripts" / "l1" / "facts" / "emitters" / "EnvironmentVisualFactEmitter.gd"
+    ).read_text(encoding="utf-8")
+
+    assert '"environment_state/%s" % environment_id' in emitter_source
+
+
 def test_wrapped_raw_fact_transport_contract_passes_scan_and_phase1_audit(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     allowed_dir = project_root / "scripts" / "l1" / "facts"

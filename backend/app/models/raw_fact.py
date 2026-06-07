@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -41,5 +43,8 @@ class RawFactEvent(BaseModel):
     targets: RawFactTargets
     world: RawFactWorld = Field(default_factory=RawFactWorld)
     observability: RawFactObservability = Field(default_factory=RawFactObservability)
+    effect_kind: Literal["set", "clear", "replace", "pulse"] = "pulse"
+    subject_key: str = ""
+    ttl_ms: int | None = None
     causation_id: str = ""
     correlation_id: str = ""

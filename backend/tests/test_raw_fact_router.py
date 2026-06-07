@@ -50,6 +50,31 @@ def test_raw_fact_event_accepts_spatial_access_nested_shape() -> None:
     assert event.observability.auditory is True
 
 
+def test_raw_fact_event_accepts_effect_semantics_fields() -> None:
+    event = RawFactEvent(
+        fact_family="spatial_access_fact",
+        fact_type="actor_entered_zone",
+        relation_type="actor_entered_zone",
+        producer_ts=700,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={
+            "layer": "L1",
+            "system": "godot.raw_fact_emitter",
+            "actor_id": "char_c",
+        },
+        targets={},
+        effect_kind="set",
+        subject_key="current_zone_id",
+        ttl_ms=1500,
+    )
+
+    assert event.effect_kind == "set"
+    assert event.subject_key == "current_zone_id"
+    assert event.ttl_ms == 1500
+
+
 def test_visual_fact_event_model_dump_returns_canonical_nested_shape() -> None:
     event = VisualFactEvent(
         actor_id="char_c",
@@ -94,6 +119,9 @@ def test_visual_fact_event_model_dump_returns_canonical_nested_shape() -> None:
             "auditory": False,
             "occluded": False,
         },
+        "effect_kind": "pulse",
+        "subject_key": "",
+        "ttl_ms": None,
         "causation_id": "",
         "correlation_id": "",
     }
@@ -149,6 +177,27 @@ def test_visual_fact_event_mixed_shape_preserves_nested_values() -> None:
     assert event.model_dump()["targets"]["actor_id"] == "nested_target"
     assert event.to_legacy_payload()["actor_id"] == "nested_actor"
     assert event.to_legacy_payload()["target_actor_id"] == "nested_target"
+
+
+def test_visual_fact_event_model_dump_preserves_effect_semantics() -> None:
+    event = VisualFactEvent(
+        actor_id="char_c",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        producer_ts=701,
+        fact_type="light_level_drop",
+        relation_type="environment_light_drop",
+        target_environment_id="env_lamp",
+        effect_kind="set",
+        subject_key="environment_state/env_lamp",
+    )
+
+    payload = event.model_dump()
+
+    assert payload["effect_kind"] == "set"
+    assert payload["subject_key"] == "environment_state/env_lamp"
+    assert payload["ttl_ms"] is None
 
 
 def test_raw_fact_router_rejects_unknown_fact_family() -> None:
@@ -418,6 +467,86 @@ def test_spatial_access_fact_handler_ignores_incomplete_privacy_change_input() -
 
     assert snapshot is not None
     assert snapshot.privacy_band == "local"
+
+
+def test_spatial_access_fact_handler_clears_nearby_actor_refs_on_clear_effect() -> None:
+    handler = SpatialAccessFactHandler()
+
+    handler.handle_event(
+        RawFactEvent(
+            fact_family="spatial_access_fact",
+            fact_type="actor_approached_actor",
+            relation_type="actor_approached_actor",
+            producer_ts=800,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            source={
+                "layer": "L1",
+                "system": "godot.raw_fact_emitter",
+                "actor_id": "char_c",
+            },
+            targets={"actor_id": "char_a"},
+            effect_kind="replace",
+            subject_key="nearby_actor_refs",
+        ),
+        "raw_fact_event",
+    )
+    handler.handle_event(
+        RawFactEvent(
+            fact_family="spatial_access_fact",
+            fact_type="actor_left_actor_range",
+            relation_type="actor_left_actor_range",
+            producer_ts=801,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            source={
+                "layer": "L1",
+                "system": "godot.raw_fact_emitter",
+                "actor_id": "char_c",
+            },
+            targets={},
+            effect_kind="clear",
+            subject_key="nearby_actor_refs",
+        ),
+        "raw_fact_event",
+    )
+
+    snapshot = handler.get_snapshot("char_c")
+
+    assert snapshot is not None
+    assert snapshot.nearby_actor_refs == []
+
+
+def test_spatial_access_fact_handler_sets_zone_from_effect_subject() -> None:
+    handler = SpatialAccessFactHandler()
+
+    handler.handle_event(
+        RawFactEvent(
+            fact_family="spatial_access_fact",
+            fact_type="actor_entered_zone",
+            relation_type="actor_entered_zone",
+            producer_ts=802,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_private",
+            source={
+                "layer": "L1",
+                "system": "godot.raw_fact_emitter",
+                "actor_id": "char_c",
+            },
+            targets={},
+            effect_kind="set",
+            subject_key="current_zone_id",
+        ),
+        "raw_fact_event",
+    )
+
+    snapshot = handler.get_snapshot("char_c")
+
+    assert snapshot is not None
+    assert snapshot.current_zone_id == "zone_private"
 
 
 def test_raw_fact_router_dispatches_spatial_access_fact_without_breaking_visual_fact_support() -> None:

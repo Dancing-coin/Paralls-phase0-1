@@ -2,7 +2,7 @@ extends Node
 
 @export_node_path("Node") var visual_fact_emitter_path := NodePath("..")
 
-var _last_emitted_visual_fact_state_by_environment: Dictionary = {}
+var _last_emitted_state_by_environment: Dictionary = {}
 
 
 func emit_environment_state_transition(environment_id: String, previous_state: String, next_state: String) -> bool:
@@ -10,9 +10,10 @@ func emit_environment_state_transition(environment_id: String, previous_state: S
 		return false
 	if previous_state == next_state:
 		return false
+
+	_last_emitted_state_by_environment[environment_id] = next_state
+
 	if next_state != "alerted":
-		return false
-	if _last_emitted_visual_fact_state_by_environment.get(environment_id, "") == next_state:
 		return false
 
 	var visual_fact_emitter := _get_visual_fact_emitter()
@@ -24,12 +25,13 @@ func emit_environment_state_transition(environment_id: String, previous_state: S
 		"environment_light_drop",
 		"",
 		"",
-		environment_id
+		environment_id,
+		"set",
+		"environment_state/%s" % environment_id
 	)
 	if not emitted:
 		return false
 
-	_last_emitted_visual_fact_state_by_environment[environment_id] = next_state
 	_bus_log("phase0_visual_fact:light_level_drop:%s" % environment_id)
 	return true
 

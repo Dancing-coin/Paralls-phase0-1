@@ -50,6 +50,26 @@ def test_summarize_character_input_from_spatial_access_fact_mentions_distance() 
     assert "3.2" in summary
 
 
+def test_summarize_character_input_from_spatial_access_clear_fact_is_natural_language() -> None:
+    event = RawFactEvent(
+        fact_family="spatial_access_fact",
+        fact_type="actor_left_actor_range",
+        relation_type="actor_left_actor_range",
+        producer_ts=951,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L1", "system": "godot.raw_fact_emitter", "actor_id": "char_c"},
+        targets={},
+        effect_kind="clear",
+        subject_key="nearby_actor_refs",
+    )
+
+    summary = summarize_character_input_from_fact(event)
+
+    assert "离开" in summary or "退出" in summary or "不再接近" in summary
+
+
 def test_summarize_character_interpretation_humanizes_source_and_target() -> None:
     summary = summarize_character_interpretation(
         "char_b",

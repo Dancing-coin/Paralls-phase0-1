@@ -23,6 +23,8 @@ func emit_actor_entered_zone(next_zone_id: String = "") -> bool:
 		resolved_zone_id,
 		"",
 		{},
+		"set",
+		"current_zone_id",
 		"phase0_spatial_access_fact:actor_entered_zone:%s" % resolved_zone_id
 	)
 
@@ -41,7 +43,26 @@ func emit_actor_approached_actor(target_actor_id: String, distance_m: float = -1
 		zone_id,
 		target_actor_id,
 		world,
+		"replace",
+		"nearby_actor_refs",
 		"phase0_spatial_access_fact:actor_approached_actor:%s" % target_actor_id
+	)
+
+
+func emit_actor_left_actor_range(next_zone_id: String = "") -> bool:
+	var resolved_zone_id := next_zone_id if next_zone_id != "" else zone_id
+	if actor_id == "" or resolved_zone_id == "":
+		return false
+
+	return _emit_spatial_access_fact(
+		"actor_left_actor_range",
+		"actor_left_actor_range",
+		resolved_zone_id,
+		"",
+		{},
+		"clear",
+		"nearby_actor_refs",
+		"phase0_spatial_access_fact:actor_left_actor_range"
 	)
 
 
@@ -63,6 +84,8 @@ func emit_privacy_boundary_changed(previous_band: String, next_band: String, nex
 			"state_before": previous_band,
 			"state_after": next_band,
 		},
+		"set",
+		"privacy_band",
 		"phase0_spatial_access_fact:privacy_boundary_changed:%s" % next_band
 	)
 
@@ -79,6 +102,8 @@ func _emit_spatial_access_fact(
 	next_zone_id: String,
 	target_actor_id: String,
 	world: Dictionary,
+	effect_kind: String,
+	subject_key: String,
 	success_log: String
 ) -> bool:
 	var payload := _fact_envelope_builder.build_raw_fact_payload(
@@ -98,6 +123,9 @@ func _emit_spatial_access_fact(
 		"L1",
 		world,
 		{},
+		effect_kind,
+		subject_key,
+		null,
 		"",
 		""
 	)

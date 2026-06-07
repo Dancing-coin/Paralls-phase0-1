@@ -93,6 +93,8 @@ def summarize_raw_fact_event(event: Any) -> str:
             if event.world.distance_m is not None:
                 return f"{source_label} 正在接近 {target_label}，当前距离约 {event.world.distance_m:.1f} 米。"
             return f"{source_label} 正在接近 {target_label}。"
+        if event.fact_type == "actor_left_actor_range":
+            return f"{source_label} 不再接近当前关注的角色了。"
         if event.fact_type == "privacy_boundary_changed":
             return f"当前互动隐私带从 {event.world.state_before or 'unknown'} 变成了 {event.world.state_after or 'unknown'}。"
 
@@ -132,6 +134,8 @@ def summarize_character_input_from_fact(event: Any) -> str:
             if event.world.distance_m is not None:
                 return f"{actor_label} 收到了一条空间接入事实：自己正在接近 {target}，距离约 {event.world.distance_m:.1f} 米。"
             return f"{actor_label} 收到了一条空间接入事实：自己正在接近 {target}。"
+        if event.fact_type == "actor_left_actor_range":
+            return f"{actor_label} 收到了一条空间接入事实：自己已离开当前近距角色范围。"
         if event.fact_type == "privacy_boundary_changed":
             return f"{actor_label} 收到了一条空间接入事实：当前隐私带变成了 {event.world.state_after or 'unknown'}。"
     return f"{actor_label} 收到了一条新事实。"

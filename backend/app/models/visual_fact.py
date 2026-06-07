@@ -42,6 +42,9 @@ class VisualFactEvent(RawFactEvent):
             "targets": legacy_targets,
             "world": payload.get("world", {}),
             "observability": payload.get("observability", {}),
+            "effect_kind": payload.get("effect_kind", "pulse"),
+            "subject_key": payload.get("subject_key", ""),
+            "ttl_ms": payload.get("ttl_ms"),
             "causation_id": payload.get("causation_id", ""),
             "correlation_id": payload.get("correlation_id", ""),
         }
