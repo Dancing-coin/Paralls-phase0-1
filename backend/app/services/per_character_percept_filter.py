@@ -3,9 +3,18 @@ from app.models.character_perceived import CharacterPerceivedEvent
 
 
 def filter_candidate_for_actor(
-    candidate: CandidatePerceptEvent, *, actor_id: str
+    candidate: CandidatePerceptEvent,
+    *,
+    actor_id: str,
+    context: dict[str, object] | None = None,
 ) -> CharacterPerceivedEvent | None:
     if candidate.target_actor_id != "" and candidate.target_actor_id != actor_id:
+        return None
+
+    ctx = context or {}
+    is_facing_target = bool(ctx.get("is_facing_target", True))
+
+    if candidate.percept_channel == "visual" and not is_facing_target:
         return None
 
     return CharacterPerceivedEvent(

@@ -168,6 +168,8 @@ func _build_imported_mesh_lookup(root: Node, mesh_lookup: Dictionary) -> void:
 		_build_imported_mesh_lookup(child, mesh_lookup)
 
 func _connect_backend() -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
 	var bridge := _get_bridge()
 	if bridge == null:
 		_bus_log("phase0_backend_bridge_missing")

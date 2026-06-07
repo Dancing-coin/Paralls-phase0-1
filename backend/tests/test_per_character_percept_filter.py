@@ -67,3 +67,66 @@ def test_filter_candidate_for_non_matching_actor_returns_none() -> None:
     perceived = filter_candidate_for_actor(candidate, actor_id="char_b")
 
     assert perceived is None
+
+
+def test_filter_drops_visual_candidate_when_actor_is_not_facing_target() -> None:
+    candidate = CandidatePerceptEvent(
+        percept_channel="visual",
+        source_fact_family="visual_fact",
+        source_fact_type="fixed_gaze_on_target",
+        producer_ts=500,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source_actor_id="char_c",
+        target_actor_id="char_a",
+        audience_scope="candidate",
+        observability={"visual": True},
+        causation_id="vf:500",
+        correlation_id="vf:500",
+    )
+
+    perceived = filter_candidate_for_actor(
+        candidate,
+        actor_id="char_a",
+        context={
+            "is_facing_target": False,
+            "distance_m": 2.0,
+            "privacy_band": "local",
+            "current_zone_id": "zone_focus",
+        },
+    )
+
+    assert perceived is None
+
+
+def test_filter_keeps_visual_candidate_when_actor_is_facing_target() -> None:
+    candidate = CandidatePerceptEvent(
+        percept_channel="visual",
+        source_fact_family="visual_fact",
+        source_fact_type="fixed_gaze_on_target",
+        producer_ts=501,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source_actor_id="char_c",
+        target_actor_id="char_a",
+        audience_scope="candidate",
+        observability={"visual": True},
+        causation_id="vf:501",
+        correlation_id="vf:501",
+    )
+
+    perceived = filter_candidate_for_actor(
+        candidate,
+        actor_id="char_a",
+        context={
+            "is_facing_target": True,
+            "distance_m": 2.0,
+            "privacy_band": "local",
+            "current_zone_id": "zone_focus",
+        },
+    )
+
+    assert perceived is not None
+    assert perceived.actor_id == "char_a"

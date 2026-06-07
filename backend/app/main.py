@@ -24,6 +24,7 @@ from app.models.raw_fact import RawFactEvent
 from app.models.visual_fact import VisualFactEvent
 from app.services.candidate_percept_service import compile_candidate_percepts
 from app.services.character_service import CharacterService
+from app.services.character_perceived_input_service import CharacterPerceivedInputService
 from app.services.character_runtime_state_service import CharacterRuntimeStateService
 from app.services.conversation_relation_service import ConversationRelationService
 from app.services.esm_service import ESMService
@@ -48,6 +49,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 def reset_runtime_state() -> None:
     global runtime
     global character_service
+    global character_perceived_input_service
     global esm_service
     global siming_service
     global event_trace
@@ -57,6 +59,10 @@ def reset_runtime_state() -> None:
 
     runtime = SessionRuntime()
     character_service = CharacterService()
+    if "character_perceived_input_service" not in globals():
+        character_perceived_input_service = CharacterPerceivedInputService()
+    else:
+        character_perceived_input_service.clear()
     esm_service = ESMService()
     siming_service = SimingService()
     event_trace = EventTraceService()
@@ -156,9 +162,23 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
     if envelope.message_type == "raw_fact_event":
         event = RawFactEvent(**envelope.payload)
         compiled_candidates = compile_candidate_percepts(event)
+        filtered_perceived_events = []
         for candidate in compiled_candidates:
-            if event.source.actor_id:
-                _ = filter_candidate_for_actor(candidate, actor_id=event.source.actor_id)
+            candidate_actor_ids: list[str] = []
+            if candidate.target_actor_id != "":
+                candidate_actor_ids.append(candidate.target_actor_id)
+            elif event.source.actor_id:
+                candidate_actor_ids.append(event.source.actor_id)
+
+            for actor_id in candidate_actor_ids:
+                perceived = filter_candidate_for_actor(
+                    candidate,
+                    actor_id=actor_id,
+                    context={"is_facing_target": True},
+                )
+                if perceived is not None:
+                    filtered_perceived_events.append(perceived)
+                    _ = character_perceived_input_service.apply_character_perceived_event(perceived)
         _publish_debug_event(
             build_debug_event(
                 producer_ts=event.producer_ts,
