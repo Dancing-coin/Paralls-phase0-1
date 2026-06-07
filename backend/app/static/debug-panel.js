@@ -5,24 +5,69 @@ const characterGrid = document.getElementById("character-grid");
 const worldState = document.getElementById("world-state");
 const backendState = document.getElementById("backend-state");
 const simingState = document.getElementById("siming-state");
+const actorFilter = document.getElementById("actor-filter");
+const domainFilters = [...document.querySelectorAll("[data-domain-filter]")];
 
 const events = [];
-const characterState = new Map();
 let activeSequence = null;
+const actorIds = new Set();
 
-function ensureCharacter(actorId) {
-  if (!characterState.has(actorId)) {
-    characterState.set(actorId, {
-      input: "暂无",
-      interpretation: "暂无",
-      candidate: "暂无",
-      output: "暂无",
-    });
-  }
-  return characterState.get(actorId);
+function getSelectedDomains() {
+  return new Set(
+    domainFilters
+      .filter((input) => input.checked)
+      .map((input) => input.value),
+  );
 }
 
-function renderCharacters() {
+function getFilteredEvents() {
+  const selectedDomains = getSelectedDomains();
+  const selectedActor = actorFilter.value;
+  return events.filter((event) => {
+    if (!selectedDomains.has(event.domain)) {
+      return false;
+    }
+    if (!selectedActor) {
+      return true;
+    }
+    return event.actor_id === selectedActor;
+  });
+}
+
+function buildCharacterState(filteredEvents) {
+  const state = new Map();
+  function ensureCharacter(actorId) {
+    if (!state.has(actorId)) {
+      state.set(actorId, {
+        input: "暂无",
+        interpretation: "暂无",
+        candidate: "暂无",
+        output: "暂无",
+      });
+    }
+    return state.get(actorId);
+  }
+
+  for (const event of filteredEvents) {
+    if (event.domain !== "character" || !event.actor_id) {
+      continue;
+    }
+    const actorState = ensureCharacter(event.actor_id);
+    if (event.stage === "character_input_received") {
+      actorState.input = event.summary;
+    } else if (event.stage === "character_interpretation_updated") {
+      actorState.interpretation = event.summary;
+    } else if (event.stage === "character_candidate_updated") {
+      actorState.candidate = event.summary;
+    } else if (event.stage === "character_output_emitted") {
+      actorState.output = event.summary;
+    }
+  }
+  return state;
+}
+
+function renderCharacters(filteredEvents) {
+  const characterState = buildCharacterState(filteredEvents);
   characterGrid.innerHTML = "";
   const ids = [...characterState.keys()].sort();
   for (const actorId of ids) {
@@ -40,37 +85,26 @@ function renderCharacters() {
   }
 }
 
-function updateGlobalPanels(event) {
-  if (event.domain === "world") {
-    worldState.textContent = event.summary;
-  }
-  if (event.domain === "backend") {
-    backendState.textContent = event.summary;
-  }
-  if (event.domain === "siming") {
-    simingState.textContent = event.summary;
-  }
-}
-
-function updateCharacterPanels(event) {
-  if (event.domain !== "character" || !event.actor_id) {
-    return;
-  }
-  const state = ensureCharacter(event.actor_id);
-  if (event.stage === "character_input_received") {
-    state.input = event.summary;
-  } else if (event.stage === "character_interpretation_updated") {
-    state.interpretation = event.summary;
-  } else if (event.stage === "character_candidate_updated") {
-    state.candidate = event.summary;
-  } else if (event.stage === "character_output_emitted") {
-    state.output = event.summary;
+function updateGlobalPanels(filteredEvents) {
+  worldState.textContent = "暂无";
+  backendState.textContent = "暂无";
+  simingState.textContent = "暂无";
+  for (const event of [...filteredEvents].reverse()) {
+    if (event.domain === "world" && worldState.textContent === "暂无") {
+      worldState.textContent = event.summary;
+    }
+    if (event.domain === "backend" && backendState.textContent === "暂无") {
+      backendState.textContent = event.summary;
+    }
+    if (event.domain === "siming" && simingState.textContent === "暂无") {
+      simingState.textContent = event.summary;
+    }
   }
 }
 
-function renderEvents() {
+function renderEvents(filteredEvents) {
   eventList.innerHTML = "";
-  for (const event of [...events].reverse()) {
+  for (const event of [...filteredEvents].reverse()) {
     const node = document.createElement("div");
     node.className = `event ${event.domain}` + (event.sequence === activeSequence ? " active" : "");
     node.innerHTML = `
@@ -86,15 +120,42 @@ function renderEvents() {
   }
 }
 
+function refreshView() {
+  const filteredEvents = getFilteredEvents();
+  updateGlobalPanels(filteredEvents);
+  renderCharacters(filteredEvents);
+  renderEvents(filteredEvents);
+  const activeStillVisible = filteredEvents.some((event) => event.sequence === activeSequence);
+  if (!activeStillVisible) {
+    const latest = filteredEvents[filteredEvents.length - 1];
+    activeSequence = latest ? latest.sequence : null;
+    detailBox.textContent = latest ? JSON.stringify(latest.detail, null, 2) : "{}";
+  }
+}
+
+function syncActorFilterOptions() {
+  const current = actorFilter.value;
+  const sortedActors = [...actorIds].sort();
+  actorFilter.innerHTML = `<option value="">全部角色</option>`;
+  for (const actorId of sortedActors) {
+    const option = document.createElement("option");
+    option.value = actorId;
+    option.textContent = actorId;
+    actorFilter.appendChild(option);
+  }
+  actorFilter.value = sortedActors.includes(current) ? current : "";
+}
+
 function handleEvent(event) {
   events.push(event);
   if (events.length > 60) {
     events.shift();
   }
-  updateGlobalPanels(event);
-  updateCharacterPanels(event);
-  renderCharacters();
-  renderEvents();
+  if (event.actor_id) {
+    actorIds.add(event.actor_id);
+    syncActorFilterOptions();
+  }
+  refreshView();
   if (activeSequence === null) {
     activeSequence = event.sequence;
     detailBox.textContent = JSON.stringify(event.detail, null, 2);
@@ -115,6 +176,11 @@ function connect() {
     connectionStatus.textContent = "连接断开，3 秒后重连";
     setTimeout(connect, 3000);
   };
+}
+
+actorFilter.addEventListener("change", refreshView);
+for (const checkbox of domainFilters) {
+  checkbox.addEventListener("change", refreshView);
 }
 
 connect();

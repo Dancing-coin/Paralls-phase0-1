@@ -41,6 +41,37 @@
     h1 { font-size: 20px; }
     h2 { font-size: 16px; }
     .muted { color: var(--muted); font-size: 12px; }
+    .toolbar {
+      display: grid;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .filter-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+      align-items: center;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text);
+      padding: 6px 8px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.03);
+    }
+    .chip input { margin: 0; }
+    .select {
+      background: rgba(255,255,255,0.03);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 8px;
+      font-size: 12px;
+    }
     .stack { display: grid; gap: 12px; }
     .event-list, .detail-box { max-height: 70vh; overflow: auto; }
     .event {
@@ -82,6 +113,25 @@
       <div class="panel">
         <h1>运行时叙事面板</h1>
         <div class="muted" id="connection-status">连接中...</div>
+        <div class="toolbar">
+          <div>
+            <span class="label">按域筛选</span>
+            <div class="filter-row">
+              <label class="chip"><input type="checkbox" data-domain-filter value="world" checked>world</label>
+              <label class="chip"><input type="checkbox" data-domain-filter value="backend" checked>backend</label>
+              <label class="chip"><input type="checkbox" data-domain-filter value="character" checked>character</label>
+              <label class="chip"><input type="checkbox" data-domain-filter value="siming" checked>siming</label>
+            </div>
+          </div>
+          <div>
+            <span class="label">按角色筛选</span>
+            <div class="filter-row">
+              <select id="actor-filter" class="select">
+                <option value="">全部角色</option>
+              </select>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="panel">
         <h2>现在发生了什么</h2>

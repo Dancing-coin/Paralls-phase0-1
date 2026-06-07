@@ -11,6 +11,8 @@ def test_debug_panel_route_serves_html() -> None:
 
     assert response.status_code == 200
     assert "运行时叙事面板" in response.text
+    assert "按域筛选" in response.text
+    assert "按角色筛选" in response.text
 
 
 def test_debug_ws_replays_stream_history() -> None:
