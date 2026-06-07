@@ -216,6 +216,7 @@ func _on_debug_event_logged(message: String) -> void:
 
 func _process(_delta: float) -> void:
 	if focus_override_active:
+		_sample_spatial_access_facts()
 		return
 	_update_focus_target()
 	_sample_near_object_visual_fact()
