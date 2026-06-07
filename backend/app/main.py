@@ -22,6 +22,7 @@ from app.debug_stream import debug_stream
 from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent
 from app.models.raw_fact import RawFactEvent
 from app.models.visual_fact import VisualFactEvent
+from app.services.candidate_percept_service import compile_candidate_percepts
 from app.services.character_service import CharacterService
 from app.services.character_runtime_state_service import CharacterRuntimeStateService
 from app.services.conversation_relation_service import ConversationRelationService
@@ -33,6 +34,7 @@ from app.services.fact_handlers.visual_fact_handler import (
 )
 from app.services.fact_router import route_raw_fact_event
 from app.services.focus_state_service import FocusStateService
+from app.services.per_character_percept_filter import filter_candidate_for_actor
 from app.services.siming_service import SimingService
 from app.services.session_runtime import SessionRuntime
 from app.ws_protocol import Envelope
@@ -153,6 +155,10 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
 
     if envelope.message_type == "raw_fact_event":
         event = RawFactEvent(**envelope.payload)
+        compiled_candidates = compile_candidate_percepts(event)
+        for candidate in compiled_candidates:
+            if event.source.actor_id:
+                _ = filter_candidate_for_actor(candidate, actor_id=event.source.actor_id)
         _publish_debug_event(
             build_debug_event(
                 producer_ts=event.producer_ts,

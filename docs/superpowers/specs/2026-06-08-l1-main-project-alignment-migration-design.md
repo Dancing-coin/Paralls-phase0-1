@@ -1,14 +1,17 @@
-# L1 Main-Project Alignment Migration Design
+# System-L1 To Character-Perception Alignment Migration Design
 
 ## Goal
 
 Define how the current `paralls-phase-0-demo` repository should evolve from:
 
-- a working `L1` raw-fact skeleton
+- a working **system-level `L1` raw-fact skeleton**
 
 into:
 
-- a migration-grade `L1` layer that matches the main project’s architecture direction closely enough to serve as the real entrypoint to the perception chain
+- a migration-grade architecture slice that matches the main project’s direction closely enough to connect:
+  - **system-level `L1` raw fact production**
+  - to the **system-level `L2` percept compilation chain**
+  - and finally to the **character-agent `L1` perceived input layer**
 
 without pretending to implement the entire Phase 1 stack at once.
 
@@ -16,7 +19,7 @@ This is a migration spec, not a “finish all of Phase 1” spec.
 
 ## Why This Spec Exists
 
-The current repo already has a real `L1` base:
+The current repo already has a real **system-level `L1` base**:
 
 - shared raw fact contract
 - unified fact emitter path
@@ -30,7 +33,7 @@ That means the problem is no longer “how do we get facts out of Godot”.
 
 The real problem now is:
 
-> how to connect this working `L1` skeleton to the main project’s required perception chain without collapsing boundaries again.
+> how to connect this working system-level `L1` skeleton to the main project’s required perception chain without collapsing boundaries again.
 
 The main-project requirement is not just:
 
@@ -38,10 +41,10 @@ The main-project requirement is not just:
 
 It is:
 
-- `L1/ESM` produce raw / structured world facts
-- a perceptible compilation layer converts them into candidate percepts
-- a `Per-Character` filter produces role-private perceived events
-- character systems consume only the role-private version
+- **system-level `L1/ESM`** produce raw / structured world facts
+- a **system-level `L2` perceptible compilation layer** converts them into candidate percepts
+- a **system-level `L2` `Per-Character` filter** produces role-private perceived events
+- **character-agent `L1`** consumes only the role-private version
 
 The current repo is only at the first segment of that chain.
 
@@ -59,19 +62,20 @@ This spec is grounded in the main-project design language found in:
 
 From those documents, the non-negotiable architecture constraints are:
 
-1. `L1` is the local high-frequency execution and fact-production layer, not the cognition host.
+1. **System-level `L1`** is the local high-frequency execution and fact-production layer, not the cognition host.
 2. Raw pose / AU / local animation state must not become business-bus payloads.
 3. Cross-boundary output from Godot must be structured facts.
-4. Candidate percept compilation is a distinct layer between world facts and role-private perception.
+4. Candidate percept compilation is a distinct **system-level `L2`** layer between world facts and role-private perception.
 5. Characters do not consume the full raw world stream by default.
-6. `Per-Character` filtering is mandatory if the system is to produce role-private world versions.
+6. `Per-Character` filtering is a mandatory **system-level `L2`** step if the system is to produce role-private world versions.
 7. Backend authority and Godot local presentation remain separate concerns.
+8. Character-agent `L1-L4` is an internal mental/action stack and must not be conflated with system-level `L1-L6`.
 
 ## Current Repo Position
 
 The current repo already satisfies the following part of the main-project direction:
 
-- `L1` has a unified structured fact egress path
+- **system-level `L1`** has a unified structured fact egress path
 - facts route into backend authority, not only local presentation
 - facts can update low-level projected state
 - edge cases like reconnect, explicit clear, repeated environment cycles, and minimal TTL fallback are already addressed
@@ -84,7 +88,7 @@ But it still lacks the following major pieces:
 - a formal role-private perceived event layer
 - a clear shift of character-side consumption from global low-level facts toward role-private percepts
 
-So the migration target is not to replace current `L1`.
+So the migration target is not to replace the current **system-level `L1`**.
 
 It is to place the missing middle layers after it.
 
@@ -92,7 +96,7 @@ It is to place the missing middle layers after it.
 
 The target migration architecture is a four-layer chain:
 
-### 1. L1 Raw Fact Layer
+### 1. System L1 Raw Fact Layer
 
 This stays where it is conceptually:
 
@@ -112,7 +116,7 @@ It still must not do:
 - role-private filtering
 - cognition or meaning inference
 
-### 2. Perceptible Compilation Layer
+### 2. System L2 Perceptible Compilation Layer
 
 This is a new backend-side formal layer.
 
@@ -135,7 +139,7 @@ This layer does not answer:
 - whether a candidate should survive role-private filtering
 - what the event means to the character internally
 
-### 3. Per-Character Filter Layer
+### 3. System L2 Per-Character Filter Layer
 
 This is the first place where private world versions exist.
 
@@ -163,7 +167,7 @@ This layer still does not do:
 
 Those remain above it.
 
-### 4. Character Perceived Event Layer
+### 4. Character-Agent L1 Perceived Event Input Layer
 
 This is the proper downstream character-facing consumption surface.
 
@@ -181,11 +185,11 @@ They should not consume directly:
 
 This spec recommends a two-stage migration.
 
-### Stage A: Connect L1 To A Formal Candidate Percept Layer
+### Stage A: Connect System L1 To A Formal Candidate Percept Layer
 
 Objective:
 
-- keep the current `L1` fact-production skeleton
+- keep the current **system-level `L1`** fact-production skeleton
 - add a first formal candidate percept event object and compiler layer
 
 What changes in Stage A:
@@ -205,7 +209,7 @@ Stage A should treat the currently working facts as the first candidate-percept 
 - `visual_fact`
 - `spatial_access_fact`
 
-### Stage B: Connect Candidate Percepts To Per-Character Filtering
+### Stage B: Connect Candidate Percepts To Per-Character Filtering And Character-Agent L1
 
 Objective:
 
@@ -302,7 +306,7 @@ A role-private event object representing:
 
 It should be the first object that can safely enter character-facing systems by default.
 
-### Character Consumption Boundary
+### Character-Agent Consumption Boundary
 
 Any existing character-facing path that currently consumes shared candidate or raw fact state should be migrated to consume:
 
@@ -316,11 +320,11 @@ This spec intentionally freezes some things now, and intentionally does not free
 
 ### Freeze Now
 
-1. `L1` remains the raw fact production layer, not the candidate or private perception layer.
+1. **System-level `L1`** remains the raw fact production layer, not the candidate or private perception layer.
 2. `raw_fact_event` remains the primary structured fact egress surface.
-3. Candidate percept compilation becomes a formal backend layer.
-4. `Per-Character` filtering becomes mandatory for role-private world versions.
-5. Character systems should migrate toward consuming perceived events, not raw facts.
+3. Candidate percept compilation becomes a formal **system-level `L2`** backend layer.
+4. `Per-Character` filtering becomes a mandatory **system-level `L2`** step for role-private world versions.
+5. Character-agent `L1` should migrate toward consuming perceived events, not raw facts.
 
 ### Do Not Freeze Yet
 
@@ -338,35 +342,35 @@ The migration must not:
 
 - move candidate filtering back into Godot
 - turn `fact_router` into the new all-purpose cognition layer
-- let characters directly subscribe to the full raw fact stream indefinitely
+- let character-agent `L1` directly subscribe to the full raw fact stream indefinitely
 - explode the number of fact families before the middle layers exist
-- replace the current stable `L1` skeleton with a larger but less disciplined abstraction
+- replace the current stable system-level `L1` skeleton with a larger but less disciplined abstraction
 
 ## What Success Looks Like
 
 This migration spec is successful if, after implementation:
 
-1. The current `L1` raw fact path remains intact and stable.
-2. The backend has a real candidate percept compilation layer.
+1. The current system-level `L1` raw fact path remains intact and stable.
+2. The backend has a real system-level `L2` candidate percept compilation layer.
 3. The system can distinguish clearly between:
    - raw world facts
    - candidate percepts
    - role-private perceived events
 4. At least the current visual and spatial-access facts enter that chain cleanly.
-5. Characters have a defined migration path away from direct shared-fact consumption.
-6. The repo is materially closer to the main-project `L1` architecture rather than merely adding more demo-local fact families.
+5. Character-agent `L1` has a defined migration path away from direct shared-fact consumption.
+6. The repo is materially closer to the main-project architecture rather than merely adding more demo-local fact families.
 
 ## Final Summary
 
-This repository does not need a new `L1`.
+This repository does not need a new **system-level `L1`**.
 
-It needs to stop treating the current `L1` skeleton as the end of the perception pipeline.
+It needs to stop treating the current system-level `L1` skeleton as the end of the perception pipeline.
 
 The correct next move is:
 
-- keep `L1` as the structured raw fact layer
-- add candidate percept compilation behind it
-- add `Per-Character` filtering behind that
-- move character-facing consumption to the filtered layer
+- keep **system-level `L1`** as the structured raw fact layer
+- add **system-level `L2`** candidate percept compilation behind it
+- add **system-level `L2`** `Per-Character` filtering behind that
+- move **character-agent `L1`** consumption to the filtered layer
 
 That is the shortest migration path from the current demo architecture to the main-project design intent.

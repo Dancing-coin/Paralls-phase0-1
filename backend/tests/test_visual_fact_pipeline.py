@@ -151,6 +151,30 @@ def test_handle_envelope_raw_visual_fact_matches_legacy_visual_fact_runtime_mess
     assert legacy_messages[1:] == raw_messages[1:]
 
 
+def test_handle_envelope_raw_visual_fact_still_routes_after_candidate_compilation_integration() -> None:
+    event = VisualFactEvent(
+        actor_id="char_c",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        producer_ts=400,
+        fact_type="fixed_gaze_on_target",
+        relation_type="actor_looks_at_actor",
+        target_actor_id="char_a",
+    )
+
+    reset_runtime_state()
+    messages = _handle_envelope(
+        Envelope(
+            message_type="raw_fact_event",
+            payload=event.model_dump(),
+        )
+    )
+
+    assert messages[0]["message_type"] == "ack"
+    assert messages[0]["payload"]["route"] == "authority_visual_fact"
+
+
 def test_websocket_raw_visual_fact_event_emits_same_runtime_alignment_messages_as_legacy_path() -> None:
     event = VisualFactEvent(
         actor_id="char_c",
