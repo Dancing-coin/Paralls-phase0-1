@@ -549,6 +549,113 @@ def test_spatial_access_fact_handler_sets_zone_from_effect_subject() -> None:
     assert snapshot.current_zone_id == "zone_private"
 
 
+def test_spatial_access_fact_handler_prunes_expired_nearby_actor_refs_before_next_event() -> None:
+    handler = SpatialAccessFactHandler()
+
+    handler.handle_event(
+        RawFactEvent(
+            fact_family="spatial_access_fact",
+            fact_type="actor_approached_actor",
+            relation_type="actor_approached_actor",
+            producer_ts=1000,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            source={"layer": "L1", "system": "godot.raw_fact_emitter", "actor_id": "char_c"},
+            targets={"actor_id": "char_a"},
+            effect_kind="replace",
+            subject_key="nearby_actor_refs",
+            ttl_ms=1500,
+        ),
+        "raw_fact_event",
+    )
+
+    handler.handle_event(
+        RawFactEvent(
+            fact_family="spatial_access_fact",
+            fact_type="privacy_boundary_changed",
+            relation_type="privacy_boundary_changed",
+            producer_ts=2601,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            source={"layer": "L1", "system": "godot.raw_fact_emitter", "actor_id": "char_c"},
+            targets={},
+            world={"state_before": "local", "state_after": "private"},
+            effect_kind="set",
+            subject_key="privacy_band",
+        ),
+        "raw_fact_event",
+    )
+
+    snapshot = handler.get_snapshot("char_c")
+
+    assert snapshot is not None
+    assert snapshot.nearby_actor_refs == []
+    assert snapshot.privacy_band == "private"
+
+
+def test_spatial_access_fact_handler_resets_nearby_actor_ttl_on_fresh_replace() -> None:
+    handler = SpatialAccessFactHandler()
+
+    handler.handle_event(
+        RawFactEvent(
+            fact_family="spatial_access_fact",
+            fact_type="actor_approached_actor",
+            relation_type="actor_approached_actor",
+            producer_ts=1000,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            source={"layer": "L1", "system": "godot.raw_fact_emitter", "actor_id": "char_c"},
+            targets={"actor_id": "char_a"},
+            effect_kind="replace",
+            subject_key="nearby_actor_refs",
+            ttl_ms=1500,
+        ),
+        "raw_fact_event",
+    )
+    handler.handle_event(
+        RawFactEvent(
+            fact_family="spatial_access_fact",
+            fact_type="actor_approached_actor",
+            relation_type="actor_approached_actor",
+            producer_ts=2000,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            source={"layer": "L1", "system": "godot.raw_fact_emitter", "actor_id": "char_c"},
+            targets={"actor_id": "char_b"},
+            effect_kind="replace",
+            subject_key="nearby_actor_refs",
+            ttl_ms=1500,
+        ),
+        "raw_fact_event",
+    )
+    handler.handle_event(
+        RawFactEvent(
+            fact_family="spatial_access_fact",
+            fact_type="privacy_boundary_changed",
+            relation_type="privacy_boundary_changed",
+            producer_ts=3000,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            source={"layer": "L1", "system": "godot.raw_fact_emitter", "actor_id": "char_c"},
+            targets={},
+            world={"state_before": "public", "state_after": "local"},
+            effect_kind="set",
+            subject_key="privacy_band",
+        ),
+        "raw_fact_event",
+    )
+
+    snapshot = handler.get_snapshot("char_c")
+
+    assert snapshot is not None
+    assert snapshot.nearby_actor_refs == ["char_b"]
+
+
 def test_raw_fact_router_dispatches_spatial_access_fact_without_breaking_visual_fact_support() -> None:
     spatial_handler = SpatialAccessFactHandler()
     spatial_event = RawFactEvent(

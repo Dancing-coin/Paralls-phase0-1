@@ -421,6 +421,16 @@ def test_backend_bridge_exposes_backend_disconnected_signal_chain() -> None:
     assert '_bus_emit("backend_disconnected", [ws.get_close_code()])' in bridge_source
 
 
+def test_spatial_access_fact_emitter_sets_nearby_actor_ttl() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    emitter_source = (
+        project_root / "scripts" / "l1" / "facts" / "emitters" / "SpatialAccessFactEmitter.gd"
+    ).read_text(encoding="utf-8")
+
+    assert '"nearby_actor_refs"' in emitter_source
+    assert "1500" in emitter_source
+
+
 def test_wrapped_raw_fact_transport_contract_passes_scan_and_phase1_audit(tmp_path: Path) -> None:
     project_root = tmp_path / "project"
     allowed_dir = project_root / "scripts" / "l1" / "facts"
