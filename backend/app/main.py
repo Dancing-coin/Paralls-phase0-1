@@ -21,6 +21,7 @@ from app.debug_narration import (
     summarize_world_result,
 )
 from app.debug_stream import debug_stream
+from app.models.environment_request import EnvironmentRequest
 from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent
 from app.models.raw_fact import RawFactEvent
 from app.models.visual_fact import VisualFactEvent
@@ -228,6 +229,37 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             context=_build_visual_fact_handler_context(),
         )
         _publish_route_event(event, messages)
+        _emit_debug_from_messages(messages)
+        return messages
+
+    if envelope.message_type == "environment_request":
+        event = EnvironmentRequest(**envelope.payload)
+        messages: list[dict[str, object]] = [
+            {
+                "message_type": "ack",
+                "payload": {
+                    "accepted": True,
+                    "source_type": envelope.message_type,
+                    "route": "esm_service",
+                },
+            }
+        ]
+        _publish_debug_event(
+            build_debug_event(
+                producer_ts=event.producer_ts,
+                domain="world",
+                stage="world_interaction_requested",
+                actor_id=None,
+                summary="收到 environment_request，目标是 %s。" % ",".join(event.target_entity_refs.get("environment_ids", [])),
+                detail=event.model_dump(),
+            )
+        )
+        event_trace.record("environment_request")
+        resolution, environment_result = esm_service.resolve_environment_request(event)
+        event_trace.record(resolution.result_type)
+        event_trace.record(environment_result.result_type)
+        messages.append(_as_world_result_envelope(resolution.model_dump()))
+        messages.append(_as_world_result_envelope(environment_result.model_dump()))
         _emit_debug_from_messages(messages)
         return messages
 

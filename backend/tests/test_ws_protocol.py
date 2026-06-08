@@ -1,5 +1,6 @@
 from app.models.player_input import DialogueSubmit
 from app.models.ai_output import DialogueResponse
+from app.models.environment_request import EnvironmentRequest
 from app.models.runtime_state import CharacterRuntimeStateDelta, CharacterRuntimeStateSnapshot
 from app.models.world_result import ActionResolutionResult, BodyStateResult, ConstraintStateResult
 from app.models.siming_output import NarrativeNudge
@@ -36,6 +37,31 @@ def test_ai_output_dialogue_response_shape() -> None:
         tts_required=True,
     )
     assert event.tts_required is True
+
+
+def test_environment_request_shape() -> None:
+    event = EnvironmentRequest(
+        request_id="envreq:900",
+        candidate_ref="cand_light_drop",
+        decision_ref="decision_light_drop",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+        target_entity_refs={"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+        goal="reduce visibility near the letter",
+        requested_change_type="light_level_drop",
+        requested_strength="medium",
+        ttl=1500,
+        reason_tag="opportunity_window",
+        producer_ts=900,
+        causation_id="decision:900",
+        correlation_id="decision:900",
+    )
+
+    assert event.request_id == "envreq:900"
+    assert event.requested_change_type == "light_level_drop"
+    assert event.target_entity_refs["environment_ids"] == ["env_lamp"]
 
 
 def test_world_result_constraint_shape() -> None:
@@ -204,6 +230,57 @@ def test_websocket_dialogue_submit_emits_ack_and_dialogue_response() -> None:
     assert ack["payload"]["route"] == "character_service"
     assert response["message_type"] == "dialogue_response"
     assert response["payload"]["actor_id"] == "char_a"
+
+
+def test_websocket_environment_request_emits_ack_action_resolution_and_environment_state_result() -> None:
+    reset_runtime_state()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "environment_request",
+                "payload": {
+                    "request_id": "envreq:500",
+                    "candidate_ref": "cand_light_drop",
+                    "decision_ref": "decision_light_drop",
+                    "room_id": "room_demo",
+                    "scene_id": "scene_demo",
+                    "zone_id": "zone_focus",
+                    "source": {"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+                    "target_entity_refs": {"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+                    "goal": "reduce visibility near the letter",
+                    "requested_change_type": "light_level_drop",
+                    "requested_strength": "medium",
+                    "ttl": 1500,
+                    "reason_tag": "opportunity_window",
+                    "producer_ts": 500,
+                    "causation_id": "decision:500",
+                    "correlation_id": "decision:500",
+                },
+            }
+        )
+
+        ack = websocket.receive_json()
+        action_resolution = websocket.receive_json()
+        environment_result = websocket.receive_json()
+
+    assert ack["message_type"] == "ack"
+    assert ack["payload"]["accepted"] is True
+    assert ack["payload"]["route"] == "esm_service"
+    assert ack["payload"]["source_type"] == "environment_request"
+    assert action_resolution["message_type"] == "world_result"
+    assert action_resolution["event_type"] == "action_resolution_result"
+    assert action_resolution["payload"]["request_ref"] == "envreq:500"
+    assert action_resolution["payload"]["target_environment_id"] == "env_lamp"
+    assert action_resolution["payload"]["resolution_status"] == "accepted"
+    assert action_resolution["payload"]["applied_state_changes"] == ["environment_state_result"]
+    assert environment_result["message_type"] == "world_result"
+    assert environment_result["event_type"] == "environment_state_result"
+    assert environment_result["payload"]["request_ref"] == "envreq:500"
+    assert environment_result["payload"]["target_environment_id"] == "env_lamp"
+    assert environment_result["payload"]["current_state"] == "alerted"
+    assert environment_result["payload"]["causation_id"] == "decision:500"
+    assert environment_result["payload"]["correlation_id"] == "decision:500"
 
 
 def test_websocket_interact_intent_emits_ack_action_resolution_object_state_body_state_environment_shift_and_siming_output() -> None:

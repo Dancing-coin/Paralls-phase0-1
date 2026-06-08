@@ -1,3 +1,4 @@
+from app.models.environment_request import EnvironmentRequest
 from app.models.player_input import InteractIntent
 from app.services.esm_service import ESMService
 
@@ -29,6 +30,44 @@ def test_esm_service_builds_action_request_from_interact_intent() -> None:
     assert request.action_profile == "inspect"
     assert request.causation_id == "interact:9"
     assert request.correlation_id == "interact:9"
+
+
+def test_esm_service_builds_action_request_from_environment_request() -> None:
+    service = ESMService()
+    event = EnvironmentRequest(
+        request_id="envreq:1",
+        candidate_ref="cand_light_drop",
+        decision_ref="decision_light_drop",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+        target_entity_refs={"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+        goal="reduce visibility near the letter",
+        requested_change_type="light_level_drop",
+        requested_strength="medium",
+        ttl=1500,
+        reason_tag="opportunity_window",
+        producer_ts=30,
+        causation_id="decision:30",
+        correlation_id="decision:30",
+    )
+
+    request = service.build_environment_action_request(event)
+
+    assert request.request_id == "envreq:1"
+    assert request.request_type == "environment_request"
+    assert request.room_id == "room_demo"
+    assert request.scene_id == "scene_demo"
+    assert request.zone_id == "zone_focus"
+    assert request.source["layer"] == "L1"
+    assert request.source["system"] == "siming_orchestrator"
+    assert request.target_entity_refs["environment_ids"] == ["env_lamp"]
+    assert request.action_profile == "light_level_drop"
+    assert request.intent_strength == "medium"
+    assert request.constraints_hint["goal"] == "reduce visibility near the letter"
+    assert request.causation_id == "decision:30"
+    assert request.correlation_id == "decision:30"
 
 
 def test_esm_service_accepts_nearby_interaction() -> None:
@@ -195,6 +234,44 @@ def test_esm_service_environment_shift_result_is_replayable_and_updates_field_st
     assert field.humidity == "stable"
     assert field.smoke_density == "light"
     assert field.visibility_level == "reduced"
+
+
+def test_esm_service_accepts_environment_request_and_emits_resolution_and_environment_result() -> None:
+    service = ESMService()
+    event = EnvironmentRequest(
+        request_id="envreq:2",
+        candidate_ref="cand_light_drop",
+        decision_ref="decision_light_drop",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+        target_entity_refs={"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+        goal="reduce visibility near the letter",
+        requested_change_type="light_level_drop",
+        requested_strength="medium",
+        ttl=1500,
+        reason_tag="opportunity_window",
+        producer_ts=31,
+        causation_id="decision:31",
+        correlation_id="decision:31",
+    )
+
+    resolution, environment_result = service.resolve_environment_request(event)
+
+    assert resolution.result_type == "action_resolution_result"
+    assert resolution.request_ref == "envreq:2"
+    assert resolution.result_id == "action_resolution:envreq:2"
+    assert resolution.resolution_status == "accepted"
+    assert resolution.resolved_entities == ["env_lamp"]
+    assert resolution.applied_state_changes == ["environment_state_result"]
+    assert resolution.stable_state_summary == "environment_request accepted"
+    assert environment_result.result_type == "environment_state_result"
+    assert environment_result.target_environment_id == "env_lamp"
+    assert environment_result.current_state == "alerted"
+    assert environment_result.request_ref == "envreq:2"
+    assert environment_result.causation_id == "decision:31"
+    assert environment_result.correlation_id == "decision:31"
 
 
 def test_esm_service_object_state_result_is_replayable() -> None:

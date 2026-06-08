@@ -1,4 +1,5 @@
 from app.contracts.l1.action_request import ActionRequest
+from app.models.environment_request import EnvironmentRequest
 from app.models.player_input import InteractIntent
 from app.models.environment_field import EnvironmentFieldState
 from app.models.world_result import (
@@ -71,6 +72,47 @@ class ESMService:
             correlation_id=f"interact:{event.producer_ts}",
             target_object_id=event.target_object_id,
             payload={"interaction_type": event.interaction_type},
+        )
+
+    def build_environment_action_request(self, event: EnvironmentRequest) -> ActionRequest:
+        target_environment_ids = event.target_entity_refs.get("environment_ids", [])
+        target_environment_id = target_environment_ids[0] if target_environment_ids else ""
+        return ActionRequest(
+            request_id=event.request_id,
+            request_type="environment_request",
+            room_id=event.room_id,
+            scene_id=event.scene_id,
+            zone_id=event.zone_id,
+            actor_id="",
+            action_type="environment_request",
+            source={
+                "layer": "L1",
+                "system": "siming_orchestrator",
+                "actor_id": "",
+            },
+            target_entity_refs={
+                "actor_ids": list(event.target_entity_refs.get("actor_ids", [])),
+                "object_ids": list(event.target_entity_refs.get("object_ids", [])),
+                "environment_ids": list(target_environment_ids),
+            },
+            action_profile=event.requested_change_type,
+            intent_strength=event.requested_strength,
+            constraints_hint={
+                "goal": event.goal,
+                "reason_tag": event.reason_tag,
+                "decision_ref": event.decision_ref,
+                "candidate_ref": event.candidate_ref,
+                "ttl": event.ttl,
+            },
+            producer_ts=event.producer_ts,
+            causation_id=event.causation_id,
+            correlation_id=event.correlation_id,
+            target_environment_id=target_environment_id,
+            payload={
+                "goal": event.goal,
+                "requested_change_type": event.requested_change_type,
+                "requested_strength": event.requested_strength,
+            },
         )
 
     def resolve_interaction(
@@ -149,6 +191,9 @@ class ESMService:
         zone_id: str = "zone_focus",
         actor_id: str = "",
         producer_ts: int = 1,
+        request_ref: str | None = None,
+        causation_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> EnvironmentStateResult:
         field_state = self._update_environment_field(
             room_id=room_id,
@@ -159,7 +204,7 @@ class ESMService:
             producer_ts=producer_ts,
         )
         return EnvironmentStateResult(
-            request_ref=f"environment:{target_environment_id}:{producer_ts}",
+            request_ref=request_ref or f"environment:{target_environment_id}:{producer_ts}",
             result_id=f"environment_result:{target_environment_id}:{producer_ts}",
             room_id=room_id,
             scene_id=scene_id,
@@ -168,8 +213,8 @@ class ESMService:
             source_type="system",
             target_environment_id=target_environment_id,
             result_type="environment_state_result",
-            causation_id=f"env:{target_environment_id}:{current_state}",
-            correlation_id=f"env:{target_environment_id}:{current_state}",
+            causation_id=causation_id or f"env:{target_environment_id}:{current_state}",
+            correlation_id=correlation_id or f"env:{target_environment_id}:{current_state}",
             producer_ts=producer_ts,
             previous_state=previous_state,
             current_state=current_state,
@@ -184,6 +229,47 @@ class ESMService:
             visibility_level=field_state.visibility_level,
             settlement_status="applied",
         )
+
+    def resolve_environment_request(
+        self,
+        event: EnvironmentRequest,
+    ) -> tuple[ActionResolutionResult, EnvironmentStateResult]:
+        request = self.build_environment_action_request(event)
+        target_environment_ids = request.target_entity_refs.get("environment_ids", [])
+        target_environment_id = target_environment_ids[0] if target_environment_ids else "env_default"
+        resolution = ActionResolutionResult(
+            request_ref=request.request_id,
+            result_id=f"action_resolution:{request.request_id}",
+            room_id=event.room_id,
+            scene_id=event.scene_id,
+            zone_id=event.zone_id,
+            actor_id="",
+            source_type="system",
+            target_environment_id=target_environment_id,
+            result_type="action_resolution_result",
+            causation_id=event.causation_id,
+            correlation_id=event.correlation_id,
+            producer_ts=event.producer_ts + 1,
+            resolution_status="accepted",
+            resolved_entities=[target_environment_id],
+            applied_state_changes=["environment_state_result"],
+            stable_state_summary="environment_request accepted",
+            settlement_status="accepted",
+        )
+        environment_result = self.emit_environment_shift(
+            room_id=event.room_id,
+            scene_id=event.scene_id,
+            zone_id=event.zone_id,
+            actor_id="",
+            target_environment_id=target_environment_id,
+            previous_state="stable",
+            current_state="alerted",
+            producer_ts=resolution.producer_ts + 1,
+            request_ref=request.request_id,
+            causation_id=event.causation_id,
+            correlation_id=event.correlation_id,
+        )
+        return resolution, environment_result
 
     def emit_action_resolution_result(
         self,
