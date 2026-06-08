@@ -84,6 +84,9 @@ func _dispatch_message(raw_text: String) -> void:
             _bus_log("backend_ack")
         "dialogue_response":
             _bus_emit("dialogue_received", [payload])
+        "action_request":
+            _bus_log("action_request:%s" % JSON.stringify(payload))
+            _bus_emit("action_request_received", [payload])
         "focus_state":
             _bus_log("focus_state:%s" % JSON.stringify(payload))
             _bus_emit("focus_state_received", [payload])
@@ -96,6 +99,9 @@ func _dispatch_message(raw_text: String) -> void:
         "character_runtime_state_delta":
             _bus_log("character_runtime_state_delta:%s" % JSON.stringify(payload))
             _bus_emit("character_runtime_state_delta_received", [payload])
+        "state_machine_transition":
+            _bus_log("state_machine_transition:%s" % JSON.stringify(payload))
+            _bus_emit("state_machine_transition_received", [payload])
         "world_result":
             _bus_emit("world_result_received", [payload])
         "siming_output":

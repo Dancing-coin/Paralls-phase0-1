@@ -544,6 +544,23 @@ def test_backend_bridge_exposes_backend_disconnected_signal_chain() -> None:
     assert '_bus_emit("backend_disconnected", [ws.get_close_code()])' in bridge_source
 
 
+def test_backend_bridge_exposes_action_request_and_state_machine_transition_signal_chain() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    bus_source = (project_root / "scripts" / "autoload" / "LocalPresentationBus.gd").read_text(
+        encoding="utf-8"
+    )
+    bridge_source = (project_root / "scripts" / "autoload" / "BackendBridge.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'signal action_request_received(payload)' in bus_source
+    assert 'signal state_machine_transition_received(payload)' in bus_source
+    assert '_bus_log("action_request:%s" % JSON.stringify(payload))' in bridge_source
+    assert '_bus_emit("action_request_received", [payload])' in bridge_source
+    assert '_bus_log("state_machine_transition:%s" % JSON.stringify(payload))' in bridge_source
+    assert '_bus_emit("state_machine_transition_received", [payload])' in bridge_source
+
+
 def test_spatial_access_fact_emitter_sets_nearby_actor_ttl() -> None:
     project_root = Path(__file__).resolve().parents[2]
     emitter_source = (

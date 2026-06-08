@@ -1,7 +1,9 @@
 extends Node
 
 signal dialogue_received(payload)
+signal action_request_received(payload)
 signal world_result_received(payload)
+signal state_machine_transition_received(payload)
 signal siming_output_received(payload)
 signal focus_state_received(payload)
 signal character_runtime_state_snapshot_received(payload)
