@@ -75,6 +75,7 @@ def test_world_result_constraint_shape() -> None:
     event = ConstraintStateResult(
         room_id="room_demo",
         source_type="player",
+        entity_id="obj_letter",
         target_object_id="obj_letter",
         result_type="constraint_state_result",
         causation_id="evt2",
@@ -83,6 +84,7 @@ def test_world_result_constraint_shape() -> None:
         constraint_code="out_of_range",
         constraint_summary="too far",
     )
+    assert event.entity_id == "obj_letter"
     assert event.constraint_type == "distance_constraint"
     assert event.constraint_code == "out_of_range"
 
@@ -96,6 +98,7 @@ def test_world_result_action_resolution_shape() -> None:
         zone_id="zone_focus",
         actor_id="char_c",
         source_type="player",
+        entity_id="obj_letter",
         result_type="action_resolution_result",
         causation_id="interact:123",
         correlation_id="interact:123",
@@ -109,6 +112,7 @@ def test_world_result_action_resolution_shape() -> None:
 
     assert event.resolution_status == "accepted"
     assert event.request_ref == "interact:123:obj_letter"
+    assert event.entity_id == "obj_letter"
     assert event.resolved_entities == ["obj_letter"]
 
 
@@ -363,7 +367,9 @@ def test_websocket_environment_request_emits_ack_action_resolution_transition_an
     assert action_request["payload"]["target_entity_refs"]["environment_ids"] == ["env_lamp"]
     assert action_resolution["message_type"] == "world_result"
     assert action_resolution["event_type"] == "action_resolution_result"
+    assert action_resolution["entity_id"] == "env_lamp"
     assert action_resolution["payload"]["request_ref"] == "envreq:500"
+    assert action_resolution["payload"]["entity_id"] == "env_lamp"
     assert action_resolution["payload"]["target_environment_id"] == "env_lamp"
     assert action_resolution["payload"]["resolution_status"] == "accepted"
     assert action_resolution["payload"]["applied_state_changes"] == ["environment_state_result"]
@@ -446,7 +452,9 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
     assert action_resolution["durability"] == "replayable"
     assert action_resolution["causation_id"] == "interact:456"
     assert action_resolution["correlation_id"] == "interact:456"
+    assert action_resolution["entity_id"] == "obj_letter"
     assert action_resolution["payload"]["result_type"] == "action_resolution_result"
+    assert action_resolution["payload"]["entity_id"] == "obj_letter"
     assert action_resolution["payload"]["target_object_id"] == "obj_letter"
     assert action_resolution["payload"]["resolution_status"] == "accepted"
     assert action_resolution["payload"]["applied_state_changes"] == [
@@ -546,7 +554,9 @@ def test_websocket_interact_intent_emits_constraint_when_player_is_far() -> None
     assert world_result["source"]["system"] == "esm"
     assert world_result["priority"] == "p1"
     assert world_result["durability"] == "replayable"
+    assert world_result["entity_id"] == "obj_letter"
     assert world_result["payload"]["result_type"] == "constraint_state_result"
+    assert world_result["payload"]["entity_id"] == "obj_letter"
     assert world_result["payload"]["constraint_type"] == "distance_constraint"
     assert world_result["payload"]["constraint_code"] == "out_of_range"
 

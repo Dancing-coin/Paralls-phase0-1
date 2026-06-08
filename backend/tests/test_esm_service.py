@@ -159,6 +159,7 @@ def test_esm_service_success_result_exposes_stable_phase1_contract_fields() -> N
     assert result.zone_id == "zone_focus"
     assert result.request_ref == "interact:20:obj_letter"
     assert result.result_id == "action_resolution:interact:20:obj_letter"
+    assert result.entity_id == "obj_letter"
     assert result.causation_id == "interact:20"
     assert result.correlation_id == "interact:20"
     assert result.settlement_status == "accepted"
@@ -193,6 +194,7 @@ def test_esm_service_constraint_result_exposes_stable_phase1_contract_fields() -
     assert result.zone_id == "zone_focus"
     assert result.request_ref == "interact:21:obj_letter"
     assert result.result_id == "constraint:interact:21:obj_letter"
+    assert result.entity_id == "obj_letter"
     assert result.causation_id == "interact:21"
     assert result.correlation_id == "interact:21"
     assert result.constraint_type == "distance_constraint"
@@ -267,6 +269,7 @@ def test_esm_service_accepts_environment_request_and_emits_resolution_and_enviro
     assert resolution.result_type == "action_resolution_result"
     assert resolution.request_ref == "envreq:2"
     assert resolution.result_id == "action_resolution:envreq:2"
+    assert resolution.entity_id == "env_lamp"
     assert resolution.resolution_status == "accepted"
     assert resolution.resolved_entities == ["env_lamp"]
     assert resolution.applied_state_changes == ["environment_state_result"]
@@ -352,6 +355,7 @@ def test_esm_service_action_resolution_result_is_replayable() -> None:
     assert result.result_type == "action_resolution_result"
     assert result.request_ref == "interact:230:obj_letter"
     assert result.result_id == "action_resolution:interact:230:obj_letter"
+    assert result.entity_id == "obj_letter"
     assert result.target_object_id == "obj_letter"
     assert result.resolution_status == "accepted"
     assert result.resolved_entities == ["obj_letter"]

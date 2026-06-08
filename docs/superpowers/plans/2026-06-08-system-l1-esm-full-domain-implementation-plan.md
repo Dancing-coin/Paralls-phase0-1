@@ -190,12 +190,14 @@ python scripts/verification/verify_phase0.py
 python scripts/verification/verify_l1_runtime_edges.py
 ```
 
-## Current In-Progress Slice Registered To This Plan
+## Recently Closed Slices Registered To This Plan
 
-- Status: 进行中（已验证未提交）
-- Scope:
-  - align successful object visibility state naming to the main-project visibility state family
-  - harden Godot-side environment result consumption guard
-- Verified state:
-  - backend full suite passed on the latest run
-  - verification triad passed serially on the latest run
+- visibility-state-family alignment:
+  - successful object visibility path now uses `partially_visible -> visible`
+  - Godot-side environment result consumption is guarded to `environment_state_result`
+- replay/workbench identity alignment:
+  - `ActionResolutionResult`
+  - `ConstraintStateResult`
+  - `ObjectStateResult`
+  - `EnvironmentStateResult`
+  now all expose stable `entity_id` while keeping existing target-specific compatibility fields

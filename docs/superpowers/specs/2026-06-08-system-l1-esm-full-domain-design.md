@@ -7,7 +7,7 @@
 - Current repo truth:
   - this spec is no longer purely prospective
   - a substantial subset is already implemented and verified
-  - one additional visibility-state-family alignment slice is implemented and verified in the current worktree but not yet committed
+  - recent visibility-state-family and result-identity alignment slices are now committed
 
 ## Goal
 
@@ -91,6 +91,8 @@ That does not require a giant workbench, but it does require:
   - `EnvironmentStateResult`
   - `StateMachineTransitionEvent`
 - result-entity identity:
+  - `ActionResolutionResult.entity_id`
+  - `ConstraintStateResult.entity_id`
   - `StateMachineTransitionEvent.entity_id`
   - `ObjectStateResult.entity_id`
   - `EnvironmentStateResult.entity_id`
@@ -105,12 +107,6 @@ That does not require a giant workbench, but it does require:
 - coarse field propagation to adjacent zones
 - canonical `world_result` envelope fields with compatibility preservation
 - audit/replay-visible stable ids and proof coverage
-
-### Implemented And Verified But Not Yet Committed
-
-- success-side object visibility alignment to the main-project visibility state family:
-  - `partially_visible -> visible`
-- Godot-side `EnvironmentStateController` guard tightened to consume only `environment_state_result`
 
 ### Still Open
 
