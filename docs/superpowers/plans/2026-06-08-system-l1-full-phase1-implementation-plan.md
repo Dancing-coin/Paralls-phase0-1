@@ -29,8 +29,8 @@
 | `system-l1-esm` | 已做（部分/已验证） | 已从最小 helper 扩到多结果/状态机/环境场 slice |
 | `system-l1-visual-fact-system` | 已做（部分/已验证） | 五类 visual emitters 已显式落位 |
 | `system-l1-remaining-emitter` | 已做（已验证） | shell plan 与 runtime-wired follow-on plan 都已落地并通过验证 |
-| `system-l1-to-l2-interface` | 已做（最小/已验证） | 当前仍以最小桥接为主，未扩成多感官全域 |
-| `system-l1-debug-replay-verification` | 已做（部分/已验证） | verification triad 与 audit 明显增强，但不是最终形态 |
+| `system-l1-to-l2-interface` | 已做（已验证） | 类型分层、debug narration、guardrail tests 已落地 |
+| `system-l1-debug-replay-verification` | 已做（已验证） | verification triad 与 audit 已覆盖当前仓库内 L1 事实面 |
 
 ## Plan Structure
 

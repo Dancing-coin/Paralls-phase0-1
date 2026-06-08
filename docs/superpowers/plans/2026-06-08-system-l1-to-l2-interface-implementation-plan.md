@@ -13,13 +13,16 @@
 ## Status Snapshot
 
 - Date: `2026-06-09`
-- Plan status: partially executed
+- Plan status: executed and verified for the repository-local target
 - Current code truth:
   - `RawFactEvent`, `CandidatePerceptEvent`, and `CharacterPerceivedEvent` are distinct types
-  - debug narration and runtime messages already expose part of the L1 -> L2 -> per-character chain
+  - debug narration and runtime messages explicitly expose the L1 -> L2 -> per-character chain
   - guardrail tests already cover core authority/layer separation behavior
-- Remaining gap:
-  - this seam is only minimally explicit today, not exhaustively surfaced or frozen
+
+## Completion Register
+
+- Task 1 candidate/perceived debug summaries: completed and verified
+- Task 2 boundary guardrail tests: completed and verified
 
 ### Task 1: Make Candidate And Perceived Transitions Explicit In Debug Output
 
