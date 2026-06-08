@@ -7,6 +7,7 @@ It contains:
 - the architecture realignment design
 - the Stage 1 completed implementation record
 - the Stage 1 handoff summary
+- the current branch/worktree integration inventory
 - the enhanced-subsystem merge playbooks
 - the Stage 2 relocation and downlink v0 plan
 - the current `L1` gap assessment note
@@ -18,12 +19,14 @@ If you are new to this work, read in this order:
 1. [2026-06-08-architecture-realignment-and-downlink-prep-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/architecture-realignment/2026-06-08-architecture-realignment-and-downlink-prep-design.md>)
 2. [2026-06-08-stage1-handoff-summary.md](</d:/Users/User/Documents/paralls-phase-0-demo/architecture-realignment/2026-06-08-stage1-handoff-summary.md>)
 3. [l1-main-project-gap-assessment.md](</d:/Users/User/Documents/paralls-phase-0-demo/architecture-realignment/l1-main-project-gap-assessment.md>)
+4. [2026-06-08-branch-integration-map.md](</d:/Users/User/Documents/paralls-phase-0-demo/architecture-realignment/2026-06-08-branch-integration-map.md>)
 
 That sequence explains:
 
 - why the reorganization exists
 - what Stage 1 already accomplished
 - what part of the main-project `L1` gap is already closed
+- what branch/worktree surfaces are currently visible for later reintegration
 
 ## Execution Order
 
