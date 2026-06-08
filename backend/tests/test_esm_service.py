@@ -417,14 +417,37 @@ def test_esm_service_exposes_state_machine_and_material_templates() -> None:
 
     burning_machine = service.get_state_machine_template("burning")
     lock_machine = service.get_state_machine_template("lock")
+    visibility_machine = service.get_state_machine_template("visibility")
+    integrity_machine = service.get_state_machine_template("integrity")
+    moisture_machine = service.get_state_machine_template("moisture")
     wood_material = service.get_material_template("wood")
     fabric_material = service.get_material_template("fabric")
+    metal_material = service.get_material_template("metal")
+    glass_material = service.get_material_template("glass")
 
     assert burning_machine["machine_id"] == "burning"
-    assert "burning" in burning_machine["state_list"]
+    assert burning_machine["entity_type"] == "object"
+    assert "transition_list" in burning_machine
+    assert "entry_effects" in burning_machine
+    assert "exit_effects" in burning_machine
+    assert "stable_state_tags" in burning_machine
+    assert burning_machine["state_list"][0]["state_id"] == "idle"
+    assert burning_machine["state_list"][0]["is_stable"] is True
+    assert burning_machine["transition_list"][0]["from_state"] == "idle"
+    assert burning_machine["transition_list"][0]["to_state"] == "heated"
     assert lock_machine["machine_id"] == "lock"
-    assert "locked" in lock_machine["state_list"]
+    assert lock_machine["state_list"][0]["state_id"] == "locked"
+    assert visibility_machine["machine_id"] == "visibility"
+    assert visibility_machine["state_list"][0]["state_id"] == "hidden"
+    assert integrity_machine["machine_id"] == "integrity"
+    assert integrity_machine["transition_list"][0]["to_state"] == "disturbed"
+    assert moisture_machine["machine_id"] == "moisture"
+    assert moisture_machine["state_list"][0]["state_id"] == "dry"
     assert wood_material["material_id"] == "wood"
     assert wood_material["flammability"] == "medium"
     assert fabric_material["material_id"] == "fabric"
     assert fabric_material["smoke_factor"] == "high"
+    assert metal_material["material_id"] == "metal"
+    assert metal_material["burnable"] is False
+    assert glass_material["material_id"] == "glass"
+    assert glass_material["visibility_transparency"] == "high"
