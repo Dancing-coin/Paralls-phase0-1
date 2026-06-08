@@ -10,6 +10,18 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-09`
+- Plan status: partially executed
+- Current code truth:
+  - `ObjectVisualFactEmitter` exists and is wired
+  - `SpatialRelationVisualFactEmitter` exists and is wired
+  - `EvidenceProjectionEmitter` exists
+  - verification surface proves the visual-fact emitter family is present
+- Remaining gap:
+  - the repo has explicit emitter coverage, but not a deeper full-volume visual domain beyond the current verified slice
+
 ### Task 1: Add `ObjectVisualFactEmitter`
 
 **Files:**

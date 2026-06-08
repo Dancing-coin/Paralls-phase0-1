@@ -10,6 +10,19 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-09`
+- Plan status: partially executed
+- Current code truth:
+  - `focus_target_change` is explicit and verified
+  - `interact` intent emission is explicit and verified
+  - `action_request` is now a real runtime/websocket message
+  - movement/focus/interaction outputs are normalized enough for the current L1 slice
+- Remaining gap:
+  - this plan is complete for the repo's current minimum interaction normalization target
+  - it is not yet a full-volume interaction subsystem spec with broader fact families
+
 ### Task 1: Inventory And Normalize Current Interaction Outputs
 
 **Files:**

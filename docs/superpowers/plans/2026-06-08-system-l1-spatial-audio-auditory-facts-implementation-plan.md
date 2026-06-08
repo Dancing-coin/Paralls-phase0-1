@@ -10,6 +10,19 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-09`
+- Plan status: mostly executed
+- Current code truth:
+  - auditory raw-fact contract exists
+  - `AuditoryFactEmitter.gd` exists and is scene-wired
+  - backend routes auditory facts through the authority path
+  - verification proves the first auditory fact path
+- Remaining gap:
+  - this plan's first formal auditory path is effectively landed
+  - deeper auditory-domain completion moved into the dedicated auditory completion plan
+
 ### Task 1: Add The Auditory Raw Fact Contract
 
 **Files:**

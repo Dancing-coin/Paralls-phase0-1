@@ -20,7 +20,9 @@ func connect_to_backend(url: String) -> int:
         _bus_log("backend_connect_failed:%s:%s" % [url, err])
         _bus_emit("backend_connection_failed", [url, err])
 
-    last_ready_state = ws.get_ready_state()
+    # Force the next _process poll to emit the actual transition even when
+    # the socket reaches OPEN immediately after connect_to_url().
+    last_ready_state = WebSocketPeer.STATE_CLOSED
     return err
 
 func send_envelope(envelope: Dictionary) -> int:

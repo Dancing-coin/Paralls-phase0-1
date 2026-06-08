@@ -334,6 +334,56 @@ def evaluate_phase1_slice_audit(
         )
     )
 
+    role_state_ok = "phase0_role_state_fact_emitter:role_state_transition:" in main_log
+    results.append(
+        _result(
+            "role_state_fact_observed",
+            "Role-state raw fact goes through emitter",
+            "proved" if role_state_ok else "missing",
+            ["role_state_transition"] if role_state_ok else [],
+        )
+    )
+
+    physiology_ok = "phase0_physiology_fact_emitter:breathing_strain_changed:" in main_log
+    results.append(
+        _result(
+            "physiology_fact_observed",
+            "Physiology-state raw fact goes through emitter",
+            "proved" if physiology_ok else "missing",
+            ["breathing_strain_changed"] if physiology_ok else [],
+        )
+    )
+
+    tactile_ok = "phase0_tactile_fact_emitter:contact_started:" in main_log
+    results.append(
+        _result(
+            "tactile_fact_observed",
+            "Tactile raw fact goes through emitter",
+            "proved" if tactile_ok else "missing",
+            ["contact_started"] if tactile_ok else [],
+        )
+    )
+
+    thermal_ok = "phase0_thermal_fact_emitter:thermal_proximity_changed:" in main_log
+    results.append(
+        _result(
+            "thermal_fact_observed",
+            "Thermal raw fact goes through emitter",
+            "proved" if thermal_ok else "missing",
+            ["thermal_proximity_changed"] if thermal_ok else [],
+        )
+    )
+
+    olfactory_ok = "phase0_olfactory_fact_emitter:odor_state_changed:" in main_log
+    results.append(
+        _result(
+            "olfactory_fact_observed",
+            "Olfactory raw fact goes through emitter",
+            "proved" if olfactory_ok else "missing",
+            ["odor_state_changed"] if olfactory_ok else [],
+        )
+    )
+
     authority_ack_token = '"route":"authority_visual_fact","source_type":"raw_fact_event"'
     authority_ack_ok = authority_ack_token in main_log or authority_ack_token in focus_log
     results.append(

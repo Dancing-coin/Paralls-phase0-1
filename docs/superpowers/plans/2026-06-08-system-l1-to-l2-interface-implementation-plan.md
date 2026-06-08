@@ -10,6 +10,17 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-09`
+- Plan status: partially executed
+- Current code truth:
+  - `RawFactEvent`, `CandidatePerceptEvent`, and `CharacterPerceivedEvent` are distinct types
+  - debug narration and runtime messages already expose part of the L1 -> L2 -> per-character chain
+  - guardrail tests already cover core authority/layer separation behavior
+- Remaining gap:
+  - this seam is only minimally explicit today, not exhaustively surfaced or frozen
+
 ### Task 1: Make Candidate And Perceived Transitions Explicit In Debug Output
 
 **Files:**

@@ -1,9 +1,11 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/character/CharacterReplica.gd" id="1_character"]
 [ext_resource type="Script" path="res://scripts/audio/SpatialVoiceController.gd" id="2_voice"]
 [ext_resource type="PackedScene" path="res://scenes/phase0/GreyboxHumanoidVisual.tscn" id="3_visual"]
 [ext_resource type="PackedScene" path="res://scenes/phase0/KnightRoleSkin.tscn" id="4_plush"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/RoleStateFactEmitter.gd" id="5_role_state_fact_emitter"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/PhysiologyStateFactEmitter.gd" id="6_physiology_state_fact_emitter"]
 
 [node name="CharacterReplica" type="Node3D"]
 script = ExtResource("1_character")
@@ -35,3 +37,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8, 0)
 text = "Replica"
 font_size = 32
 billboard = 1
+
+[node name="RoleStateFactEmitter" type="Node" parent="."]
+script = ExtResource("5_role_state_fact_emitter")
+
+[node name="PhysiologyStateFactEmitter" type="Node" parent="."]
+script = ExtResource("6_physiology_state_fact_emitter")

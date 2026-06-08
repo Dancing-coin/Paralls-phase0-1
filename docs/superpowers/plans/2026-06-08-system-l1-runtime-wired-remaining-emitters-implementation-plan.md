@@ -10,6 +10,25 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-09`
+- Plan status: executed and verified for the repository-local target
+- Current code truth:
+  - `RoleStateFactEmitter` is runtime-wired from `CharacterReplica`
+  - `PhysiologyStateFactEmitter` is runtime-wired from jump / grounded runtime state
+  - `TactileFactEmitter` is triggered from successful object interaction results
+  - `ThermalFactEmitter` is triggered from `env_lamp -> alerted`
+  - `OlfactoryFactEmitter` is triggered from the same bounded environment-state proxy
+  - `phase1_slice`, `phase0`, and `l1_runtime_edges` verification passed after integration
+
+## Completion Register
+
+- Task 1 `RoleStateFactEmitter`: completed and verified
+- Task 2 `PhysiologyStateFactEmitter`: completed and verified
+- Task 3 `Tactile / Thermal / Olfactory` bounded runtime triggers: completed and verified
+- Task 4 full regression: completed and verified
+
 ### Task 1: Runtime-Wire `RoleStateFactEmitter`
 
 **Files:**
@@ -195,4 +214,3 @@ python scripts/verification/verify_l1_runtime_edges.py
 git add backend/tests/test_verification_audit.py scripts/verification/*.py backend/app/verification_audit.py
 git commit -m "test: prove runtime-wired remaining L1 emitters"
 ```
-

@@ -862,3 +862,46 @@ def test_raw_fact_router_dispatches_auditory_fact_without_breaking_visual_and_sp
     ]
     assert spatial_messages[0]["payload"]["route"] == "authority_spatial_access_fact"
     assert visual_messages[0]["payload"]["route"] == "authority_visual_fact"
+
+
+def test_raw_fact_router_accepts_runtime_wired_remaining_l1_fact_families() -> None:
+    families_to_routes = {
+        "role_state_fact": "authority_role_state_fact",
+        "physiology_state_fact": "authority_physiology_fact",
+        "tactile_fact": "authority_tactile_fact",
+        "thermal_fact": "authority_thermal_fact",
+        "olfactory_fact": "authority_olfactory_fact",
+    }
+
+    for fact_family, route in families_to_routes.items():
+        event = RawFactEvent(
+            fact_family=fact_family,
+            fact_type="probe_fact",
+            relation_type="probe_relation",
+            producer_ts=900,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            source={
+                "layer": "L1",
+                "system": "godot.raw_fact_emitter",
+                "actor_id": "char_c",
+            },
+            targets={},
+        )
+
+        messages = route_raw_fact_event(
+            event,
+            source_type="raw_fact_event",
+        )
+
+        assert messages == [
+            {
+                "message_type": "ack",
+                "payload": {
+                    "accepted": True,
+                    "source_type": "raw_fact_event",
+                    "route": route,
+                },
+            }
+        ]

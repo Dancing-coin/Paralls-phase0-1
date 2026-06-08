@@ -10,6 +10,19 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-09`
+- Plan status: partially executed
+- Current code truth:
+  - `speaker_active` path is real and verified
+  - `speech_mode_changed` is represented in the current auditory payload
+- Remaining gap:
+  - `auditory_reachability_changed` is not yet promoted to an explicit fact type
+  - `ambient_noise_changed` is not yet promoted to an explicit fact type
+  - auditory candidate-compilation policy is not yet frozen in code
+  - verification does not yet prove the full auditory-domain boundary this plan targets
+
 ### Task 1: Expand The Auditory Fact Taxonomy
 
 **Files:**
@@ -143,4 +156,3 @@ python scripts/verification/verify_phase1_slice.py
 python scripts/verification/verify_phase0.py
 python scripts/verification/verify_l1_runtime_edges.py
 ```
-

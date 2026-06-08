@@ -34,6 +34,8 @@ enum DriverMode {
 @export var attention_role_state := "alert"
 @export var focus_role_state := "observe"
 @export var interaction_role_state := "inspect"
+@export_node_path("Node") var role_state_fact_emitter_path := NodePath("RoleStateFactEmitter")
+@export_node_path("Node") var physiology_state_fact_emitter_path := NodePath("PhysiologyStateFactEmitter")
 @export var player_walk_speed_threshold := 0.08
 @export var player_run_speed_threshold := 6.4
 @export var use_root_motion_patrol := true
@@ -82,6 +84,8 @@ var runtime_engagement_pressure := ""
 var runtime_privacy_risk_hint := ""
 var last_root_motion_world_delta := Vector3.ZERO
 var last_locomotion_status_signature := ""
+var last_role_state_fact := ""
+var last_physiology_state_fact := ""
 
 func _ready() -> void:
 	home_position = global_position
@@ -163,8 +167,10 @@ func consume_player_root_motion_request(delta: float) -> Vector3:
 			_set_role_asset_motion_profile("jump", "jump_single_leg" if player_jump_type == "single_leg" else "jump_two_foot")
 		if player_jump_type != "none":
 			_trigger_role_state("jump", 0.24 if player_jump_type == "single_leg" else 0.32)
+			_emit_physiology_state_fact("elevated")
 		last_root_motion_world_delta = Vector3.ZERO
 		return Vector3.ZERO
+	_emit_physiology_state_fact("stable")
 
 	var move_direction: Vector3 = Vector3(player_control_move_direction.x, 0.0, player_control_move_direction.z)
 	if move_direction.length() <= 0.001:
@@ -305,10 +311,59 @@ func _on_character_runtime_state_delta_received(payload: Dictionary) -> void:
 func _get_bus() -> Node:
 	return get_node_or_null("/root/LocalPresentationBus")
 
+func _get_bridge() -> Node:
+	return get_node_or_null("/root/BackendBridge")
+
+func _is_backend_open() -> bool:
+	var bridge := _get_bridge()
+	if bridge == null:
+		return false
+	if bridge.has_method("is_backend_open"):
+		return bool(bridge.is_backend_open())
+	return false
+
 func _bus_log(message: String) -> void:
 	var bus := _get_bus()
 	if bus and bus.has_method("log_debug"):
 		bus.log_debug(message)
+
+func _get_role_state_fact_emitter() -> Node:
+	return get_node_or_null(role_state_fact_emitter_path)
+
+func _emit_role_state_fact(next_state: String) -> void:
+	if next_state.is_empty() or next_state == last_role_state_fact:
+		return
+	if not _is_backend_open():
+		return
+	var role_state_fact_emitter := _get_role_state_fact_emitter()
+	if role_state_fact_emitter == null:
+		return
+	if role_state_fact_emitter.get("actor_id") != actor_id:
+		role_state_fact_emitter.set("actor_id", actor_id)
+	if not role_state_fact_emitter.has_method("emit_role_state_transition"):
+		return
+	var emitted: Variant = role_state_fact_emitter.emit_role_state_transition(next_state)
+	if bool(emitted):
+		last_role_state_fact = next_state
+
+func _get_physiology_state_fact_emitter() -> Node:
+	return get_node_or_null(physiology_state_fact_emitter_path)
+
+func _emit_physiology_state_fact(strain_band: String) -> void:
+	if strain_band.is_empty() or strain_band == last_physiology_state_fact:
+		return
+	if not _is_backend_open():
+		return
+	var physiology_state_fact_emitter := _get_physiology_state_fact_emitter()
+	if physiology_state_fact_emitter == null:
+		return
+	if physiology_state_fact_emitter.get("actor_id") != actor_id:
+		physiology_state_fact_emitter.set("actor_id", actor_id)
+	if not physiology_state_fact_emitter.has_method("emit_breathing_strain_fact"):
+		return
+	var emitted: Variant = physiology_state_fact_emitter.emit_breathing_strain_fact(strain_band)
+	if bool(emitted):
+		last_physiology_state_fact = strain_band
 
 func set_focus_highlight(is_focused: bool) -> void:
 	var environment_attention := runtime_nearby_environment_refs.size() > 0 and runtime_attention_source == "visual_fact"
@@ -433,6 +488,7 @@ func _update_player_shell_locomotion() -> void:
 			_set_role_asset_motion_profile("jump", "jump_single_leg" if player_jump_type == "single_leg" else "jump_two_foot")
 		if player_jump_type != "none":
 			_trigger_role_state("jump", 0.24 if player_jump_type == "single_leg" else 0.32)
+			_emit_physiology_state_fact("elevated")
 	elif player_stance == "crouch" and player_control_move_direction.length() > 0.001:
 		locomotion_state = LocomotionState.WALK
 		if use_role_asset:
@@ -462,6 +518,8 @@ func _update_player_shell_locomotion() -> void:
 		locomotion_state = LocomotionState.IDLE
 		if use_role_asset:
 			_set_role_asset_motion_profile_if_free(idle_role_state, "default")
+	if player_shell_grounded:
+		_emit_physiology_state_fact("stable")
 
 func _update_rotation(delta: float) -> void:
 	if has_external_look_target:
@@ -683,7 +741,10 @@ func _update_action_override(delta: float) -> void:
 		action_override_state = ""
 
 func _trigger_role_state(state_name: String, duration: float) -> void:
-	if not use_role_asset or state_name.is_empty():
+	if state_name.is_empty():
+		return
+	_emit_role_state_fact(state_name)
+	if not use_role_asset:
 		return
 	action_override_state = state_name
 	action_override_timer = max(duration, 0.05)

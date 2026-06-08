@@ -80,11 +80,11 @@
 | `ESM` 区域环境场与传播规则 | 已做（部分/已验证） | P1 | 已有 `EnvironmentFieldState`、环境场更新、邻区传播的 coarse slice |
 | `ESM` 与事件总线正式契约 | 已做（部分/已验证） | P1 | `world_result` 已补 canonical envelope 字段；仍未到主项目 full contract 终态 |
 | `ESM` 调试回放与工作台能力 | 已做（最小/已验证） | P2 | 当前已有 audit / replay-friendly result identity，但不是完整工作台 |
-| 触觉事实上抛器 | 已做（shell） | P2 | emitter 已存在，但 runtime 触发尚未补完 |
-| 热感事实上抛器 | 已做（shell） | P2 | emitter 已存在，但 runtime 触发尚未补完 |
-| 嗅觉事实上抛器 | 已做（shell） | P2 | emitter 已存在，但 runtime 触发尚未补完 |
-| 生理状态事实上抛器 | 已做（shell） | P2 | emitter 已存在，但 runtime 触发尚未补完 |
-| 角色状态事实上抛器 | 已做（shell） | P2 | emitter 已存在，但 runtime 触发尚未补完 |
+| 触觉事实上抛器 | 已做（已验证） | P2 | 已从成功交互结果触发最小 tactile fact |
+| 热感事实上抛器 | 已做（已验证） | P2 | 已从 `env_lamp -> alerted` 结果触发最小 thermal fact |
+| 嗅觉事实上抛器 | 已做（已验证） | P2 | 已从同一 bounded 环境代理触发最小 olfactory fact |
+| 生理状态事实上抛器 | 已做（已验证） | P2 | 已从 jump / grounded runtime state 触发最小 physiology fact |
+| 角色状态事实上抛器 | 已做（已验证） | P2 | 已从 `CharacterReplica` role-state 变更触发最小 role-state fact |
 | 空间音频系统正式化（Steam Audio 侧） | 未做（完整版） | P2 | 当前是最小听觉事实上抛 slice，不是完整空间音频子系统 |
 | 八类事实上抛器最小字段集统一表 | 已做（隐式） | P2 | 已散落在 emitter / test / audit 中，但尚未沉淀成单一对照表 |
 | 多感官原始事实到候选感知编译的完整入口 | 未做（仅最小 slice） | P2 | 现在只有视觉 + spatial access 最小接入，听觉 policy 尚未冻结 |
@@ -98,16 +98,8 @@
 - `ESM` 已形成真实的 `action_request -> resolution/constraint -> world_result/state_machine_transition` 链
 - `EnvironmentFieldState` 已具备 `field_id`、`updated_at` 和 coarse field propagation
 
-### 进行中但尚未提交
-
-- 成功交互路径的 `visibility` 状态族对齐正在收尾：
-  - `partially_visible -> visible`
-  - Godot 侧环境状态消费者已加 `environment_state_result` 守卫
-  - 该 slice 已通过当前测试与串行验证，但仍在工作树中
-
 ### 已写待执行
 
-- 剩余五类事实上抛器的 runtime-wired completion
 - 听觉 fact taxonomy / candidate policy 补齐
 - `ESM` full-domain 的更深对齐与更完整 debug/workbench 面
 

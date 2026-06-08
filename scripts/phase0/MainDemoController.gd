@@ -44,6 +44,9 @@ const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
 @onready var interactive_object: Node3D = $InteractiveObject
 @onready var character_visual_fact_emitter: Node = $VisualFactEmitter/CharacterVisualFactEmitter
 @onready var spatial_access_fact_emitter: Node = $VisualFactEmitter/SpatialAccessFactEmitter
+@onready var tactile_fact_emitter: Node = $VisualFactEmitter/TactileFactEmitter
+@onready var thermal_fact_emitter: Node = $VisualFactEmitter/ThermalFactEmitter
+@onready var olfactory_fact_emitter: Node = $VisualFactEmitter/OlfactoryFactEmitter
 
 var current_focus_target: Node3D
 var last_reported_move_position := Vector3.INF
@@ -66,6 +69,8 @@ func _ready() -> void:
 		if bus.has_signal("backend_disconnected"):
 			bus.backend_disconnected.connect(_on_backend_disconnected)
 		bus.backend_ack_received.connect(_on_backend_ack_received)
+		if bus.has_signal("world_result_received"):
+			bus.world_result_received.connect(_on_world_result_received)
 		if bus.has_signal("debug_event_logged"):
 			bus.debug_event_logged.connect(_on_debug_event_logged)
 	backend_health_request = HTTPRequest.new()
@@ -212,6 +217,22 @@ func _on_backend_disconnected(_code: int = 0) -> void:
 
 func _on_backend_ack_received(payload: Dictionary) -> void:
 	_bus_log("phase0_ack:%s" % JSON.stringify(payload))
+
+func _on_world_result_received(payload: Dictionary) -> void:
+	var result_type := str(payload.get("result_type", ""))
+	var result_id := str(payload.get("result_id", ""))
+	if result_type == "object_state_result" and str(payload.get("target_object_id", "")) == "obj_letter":
+		if str(payload.get("current_state", "")) == "visible":
+			if tactile_fact_emitter and tactile_fact_emitter.has_method("emit_contact_fact"):
+				tactile_fact_emitter.emit_contact_fact("", "obj_letter", "light")
+	elif result_type == "environment_state_result" and str(payload.get("target_environment_id", "")) == "env_lamp":
+		if str(payload.get("current_state", "")) == "alerted":
+			if thermal_fact_emitter and thermal_fact_emitter.has_method("emit_thermal_proximity_fact"):
+				thermal_fact_emitter.emit_thermal_proximity_fact("env_lamp", "warm")
+			if olfactory_fact_emitter and olfactory_fact_emitter.has_method("emit_odor_state_fact"):
+				olfactory_fact_emitter.emit_odor_state_fact("env_lamp", "noticeable")
+	if result_id != "":
+		_bus_log("phase0_world_result_seen:%s:%s" % [result_type, result_id])
 
 func _on_debug_event_logged(message: String) -> void:
 	last_debug_message = message

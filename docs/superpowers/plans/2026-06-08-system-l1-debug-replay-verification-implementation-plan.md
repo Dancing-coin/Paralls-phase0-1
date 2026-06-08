@@ -10,6 +10,17 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-09`
+- Plan status: partially executed
+- Current code truth:
+  - `verify_phase0.py`, `verify_phase1_slice.py`, and `verify_l1_runtime_edges.py` are all active and green
+  - `verification_audit.py` has been extended repeatedly for new L1/ESM proof surfaces
+  - current verification covers object visual facts, auditory facts, role/physiology facts, tactile/thermal/olfactory facts, ESM action/state outputs, and runtime edge recovery
+- Remaining gap:
+  - verification still lags any future full-domain auditory completion and runtime-wired remaining-emitter work
+
 ### Task 1: Inventory Current Coverage And Add Missing L1-Domain Checks
 
 **Files:**

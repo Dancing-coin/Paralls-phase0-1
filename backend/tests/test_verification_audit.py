@@ -247,6 +247,11 @@ def test_phase1_slice_audit_requires_emitter_and_authority_lane_evidence() -> No
         [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
         [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
         [LocalPresentationBus] phase0_auditory_fact_emitter:speaker_active:char_a:normal
+        [LocalPresentationBus] phase0_role_state_fact_emitter:role_state_transition:speak
+        [LocalPresentationBus] phase0_physiology_fact_emitter:breathing_strain_changed:elevated
+        [LocalPresentationBus] phase0_tactile_fact_emitter:contact_started:light
+        [LocalPresentationBus] phase0_thermal_fact_emitter:thermal_proximity_changed:warm
+        [LocalPresentationBus] phase0_olfactory_fact_emitter:odor_state_changed:noticeable
         [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
         [LocalPresentationBus] conversation_candidate_event:{"candidate_object_ids":["obj_letter"]}
         [LocalPresentationBus] character_runtime_state_delta:{"current_attention_source":"visual_fact"}
@@ -268,6 +273,11 @@ def test_phase1_slice_audit_requires_emitter_and_authority_lane_evidence() -> No
     assert results["emitter_scene_wired"]["status"] == "proved"
     assert results["no_direct_visual_fact_send_bypass"]["status"] == "proved"
     assert results["auditory_fact_observed"]["status"] == "proved"
+    assert results["role_state_fact_observed"]["status"] == "proved"
+    assert results["physiology_fact_observed"]["status"] == "proved"
+    assert results["tactile_fact_observed"]["status"] == "proved"
+    assert results["thermal_fact_observed"]["status"] == "proved"
+    assert results["olfactory_fact_observed"]["status"] == "proved"
     assert results["authority_ack_observed"]["status"] == "proved"
     assert results["environment_visual_fact_observed"]["status"] == "proved"
 
@@ -279,6 +289,11 @@ def test_phase1_slice_audit_rejects_legacy_visual_fact_event_ack_contract() -> N
         [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
         [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
         [LocalPresentationBus] phase0_auditory_fact_emitter:speaker_active:char_a:normal
+        [LocalPresentationBus] phase0_role_state_fact_emitter:role_state_transition:speak
+        [LocalPresentationBus] phase0_physiology_fact_emitter:breathing_strain_changed:elevated
+        [LocalPresentationBus] phase0_tactile_fact_emitter:contact_started:light
+        [LocalPresentationBus] phase0_thermal_fact_emitter:thermal_proximity_changed:warm
+        [LocalPresentationBus] phase0_olfactory_fact_emitter:odor_state_changed:noticeable
         [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"visual_fact_event"}
         [LocalPresentationBus] conversation_candidate_event:{"candidate_object_ids":["obj_letter"]}
         [LocalPresentationBus] character_runtime_state_delta:{"current_attention_source":"visual_fact"}
@@ -326,6 +341,95 @@ def test_phase1_slice_audit_requires_auditory_fact_proof() -> None:
 
     assert report["overall_phase1_slice_passed"] is False
     assert results["auditory_fact_observed"]["status"] == "missing"
+
+
+def test_phase1_slice_audit_requires_role_state_fact_proof() -> None:
+    report = evaluate_phase1_slice_audit(
+        main_log="""
+        [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_object
+        [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
+        [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
+        [LocalPresentationBus] phase0_auditory_fact_emitter:speaker_active:char_a:normal
+        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
+        [LocalPresentationBus] conversation_candidate_event:{"candidate_object_ids":["obj_letter"]}
+        [LocalPresentationBus] character_runtime_state_delta:{"current_attention_source":"visual_fact"}
+        [LocalPresentationBus] backend_message_type:siming_output
+        """,
+        focus_log="""
+        [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_actor
+        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
+        """,
+        direct_send_scan="""
+        scripts/player/PlayerIntentMapper.gd:76:func emit_visual_fact_event(...)
+        """,
+        scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert report["overall_phase1_slice_passed"] is False
+    assert results["role_state_fact_observed"]["status"] == "missing"
+
+
+def test_phase1_slice_audit_requires_physiology_fact_proof() -> None:
+    report = evaluate_phase1_slice_audit(
+        main_log="""
+        [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_object
+        [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
+        [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
+        [LocalPresentationBus] phase0_auditory_fact_emitter:speaker_active:char_a:normal
+        [LocalPresentationBus] phase0_role_state_fact_emitter:role_state_transition:speak
+        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
+        [LocalPresentationBus] conversation_candidate_event:{"candidate_object_ids":["obj_letter"]}
+        [LocalPresentationBus] character_runtime_state_delta:{"current_attention_source":"visual_fact"}
+        [LocalPresentationBus] backend_message_type:siming_output
+        """,
+        focus_log="""
+        [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_actor
+        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
+        """,
+        direct_send_scan="""
+        scripts/player/PlayerIntentMapper.gd:76:func emit_visual_fact_event(...)
+        """,
+        scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert report["overall_phase1_slice_passed"] is False
+    assert results["physiology_fact_observed"]["status"] == "missing"
+
+
+def test_phase1_slice_audit_requires_remaining_sensory_fact_proofs() -> None:
+    report = evaluate_phase1_slice_audit(
+        main_log="""
+        [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_object
+        [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
+        [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
+        [LocalPresentationBus] phase0_auditory_fact_emitter:speaker_active:char_a:normal
+        [LocalPresentationBus] phase0_role_state_fact_emitter:role_state_transition:speak
+        [LocalPresentationBus] phase0_physiology_fact_emitter:breathing_strain_changed:elevated
+        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
+        [LocalPresentationBus] conversation_candidate_event:{"candidate_object_ids":["obj_letter"]}
+        [LocalPresentationBus] character_runtime_state_delta:{"current_attention_source":"visual_fact"}
+        [LocalPresentationBus] backend_message_type:siming_output
+        """,
+        focus_log="""
+        [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_actor
+        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
+        """,
+        direct_send_scan="""
+        scripts/player/PlayerIntentMapper.gd:76:func emit_visual_fact_event(...)
+        """,
+        scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert report["overall_phase1_slice_passed"] is False
+    assert results["tactile_fact_observed"]["status"] == "missing"
+    assert results["thermal_fact_observed"]["status"] == "missing"
+    assert results["olfactory_fact_observed"]["status"] == "missing"
 
 
 def test_scan_direct_visual_fact_bypass_allows_shared_raw_emitter_only(tmp_path: Path) -> None:
@@ -531,6 +635,55 @@ def test_system_l1_contains_role_state_fact_emitter() -> None:
     assert "emit_role_state_transition" in emitter_source
 
 
+def test_character_replica_runtime_wires_role_state_fact_emitter() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    character_source = (project_root / "scripts" / "character" / "CharacterReplica.gd").read_text(
+        encoding="utf-8"
+    )
+    scene_source = (project_root / "scenes" / "phase0" / "CharacterReplica.tscn").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'role_state_fact_emitter_path := NodePath("RoleStateFactEmitter")' in character_source
+    assert "_emit_role_state_fact(" in character_source
+    assert 'node name="RoleStateFactEmitter" type="Node" parent="."' in scene_source
+
+
+def test_character_replica_runtime_wires_physiology_state_fact_emitter() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    character_source = (project_root / "scripts" / "character" / "CharacterReplica.gd").read_text(
+        encoding="utf-8"
+    )
+    scene_source = (project_root / "scenes" / "phase0" / "CharacterReplica.tscn").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'physiology_state_fact_emitter_path := NodePath("PhysiologyStateFactEmitter")' in character_source
+    assert "_emit_physiology_state_fact(" in character_source
+    assert 'node name="PhysiologyStateFactEmitter" type="Node" parent="."' in scene_source
+
+
+def test_main_demo_runtime_wires_remaining_sensory_emitters() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    controller_source = (project_root / "scripts" / "phase0" / "MainDemoController.gd").read_text(
+        encoding="utf-8"
+    )
+    scene_source = (project_root / "scenes" / "phase0" / "MainDemo.tscn").read_text(
+        encoding="utf-8"
+    )
+
+    assert "tactile_fact_emitter" in controller_source
+    assert "thermal_fact_emitter" in controller_source
+    assert "olfactory_fact_emitter" in controller_source
+    assert "_on_world_result_received(payload: Dictionary)" in controller_source
+    assert 'var result_type := str(payload.get("result_type", ""))' in controller_source
+    assert 'str(payload.get("target_object_id", "")) == "obj_letter"' in controller_source
+    assert 'str(payload.get("target_environment_id", "")) == "env_lamp"' in controller_source
+    assert 'node name="TactileFactEmitter" type="Node" parent="VisualFactEmitter"' in scene_source
+    assert 'node name="ThermalFactEmitter" type="Node" parent="VisualFactEmitter"' in scene_source
+    assert 'node name="OlfactoryFactEmitter" type="Node" parent="VisualFactEmitter"' in scene_source
+
+
 def test_backend_bridge_exposes_backend_disconnected_signal_chain() -> None:
     project_root = Path(__file__).resolve().parents[2]
     bus_source = (project_root / "scripts" / "autoload" / "LocalPresentationBus.gd").read_text(
@@ -542,6 +695,7 @@ def test_backend_bridge_exposes_backend_disconnected_signal_chain() -> None:
 
     assert 'signal backend_disconnected(code)' in bus_source
     assert '_bus_emit("backend_disconnected", [ws.get_close_code()])' in bridge_source
+    assert "last_ready_state = WebSocketPeer.STATE_CLOSED" in bridge_source
 
 
 def test_backend_bridge_exposes_action_request_and_state_machine_transition_signal_chain() -> None:
@@ -726,6 +880,11 @@ func emit_visual_fact_event(...) -> Dictionary:
         [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
         [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
         [LocalPresentationBus] phase0_auditory_fact_emitter:speaker_active:char_a:normal
+        [LocalPresentationBus] phase0_role_state_fact_emitter:role_state_transition:speak
+        [LocalPresentationBus] phase0_physiology_fact_emitter:breathing_strain_changed:elevated
+        [LocalPresentationBus] phase0_tactile_fact_emitter:contact_started:light
+        [LocalPresentationBus] phase0_thermal_fact_emitter:thermal_proximity_changed:warm
+        [LocalPresentationBus] phase0_olfactory_fact_emitter:odor_state_changed:noticeable
         [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
         [LocalPresentationBus] conversation_candidate_event:{"candidate_object_ids":["obj_letter"]}
         [LocalPresentationBus] character_runtime_state_delta:{"current_attention_source":"visual_fact"}

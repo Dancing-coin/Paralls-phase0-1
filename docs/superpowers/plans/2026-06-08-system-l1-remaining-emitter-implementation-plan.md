@@ -10,6 +10,21 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-09`
+- Plan status: executed
+- Current code truth:
+  - `TactileFactEmitter.gd`
+  - `ThermalFactEmitter.gd`
+  - `OlfactoryFactEmitter.gd`
+  - `PhysiologyStateFactEmitter.gd`
+  - `RoleStateFactEmitter.gd`
+  all exist and expose minimal emission methods
+- Follow-on note:
+  - this plan only covered shell creation
+  - runtime truth for these families is tracked by the separate `runtime-wired-remaining-emitters` plan
+
 ### Task 1: Add The Five Missing Emitter Shells
 
 **Files:**
