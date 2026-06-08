@@ -16,6 +16,7 @@
 - Plan status: executed and verified for the repository-local target
 - Current code truth:
   - `RawFactEvent`, `CandidatePerceptEvent`, and `CharacterPerceivedEvent` are distinct types
+  - `BodyStateResult -> SelfBodyPerceivedEvent` self-body handoff now exists as a separate direct path
   - debug narration and runtime messages explicitly expose the L1 -> L2 -> per-character chain
   - guardrail tests already cover core authority/layer separation behavior
 

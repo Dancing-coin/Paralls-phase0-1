@@ -9,6 +9,7 @@ from app.debug_narration import (
     summarize_backend_route,
     summarize_character_input_from_candidate,
     summarize_character_input_from_character_perceived,
+    summarize_character_input_from_self_body_perceived,
     summarize_character_candidate,
     summarize_character_input,
     summarize_character_input_from_fact,
@@ -24,6 +25,7 @@ from app.debug_stream import debug_stream
 from app.models.environment_request import EnvironmentRequest
 from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent
 from app.models.raw_fact import RawFactEvent
+from app.models.self_body_perceived import SelfBodyPerceivedEvent
 from app.models.visual_fact import VisualFactEvent
 from app.services.candidate_percept_service import compile_candidate_percepts
 from app.services.character_service import CharacterService
@@ -458,6 +460,18 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             )
             event_trace.record(body_state_result.result_type)
             messages.append(_as_world_result_envelope(body_state_result.model_dump()))
+            self_body_perceived = SelfBodyPerceivedEvent(
+                actor_id=event.actor_id,
+                body_state_class=body_state_result.body_state_class,
+                producer_ts=body_state_result.producer_ts,
+                room_id=body_state_result.room_id,
+                scene_id=body_state_result.scene_id,
+                zone_id=body_state_result.zone_id,
+                perceived_summary="%s is %s" % (body_state_result.body_state_class, body_state_result.current_state),
+                source_body_result_id=body_state_result.result_id,
+            )
+            _ = character_perceived_input_service.apply_self_body_perceived_event(self_body_perceived)
+            messages.append(_as_envelope("self_body_perceived_event", self_body_perceived.model_dump()))
 
             environment_result = esm_service.emit_environment_shift(
                 room_id=event.room_id,
@@ -857,6 +871,18 @@ def _emit_debug_from_messages(messages: list[dict[str, object]]) -> None:
                     stage="siming_output_emitted",
                     actor_id=target_actor_id,
                     summary=summarize_siming_output(payload),
+                    detail=payload,
+                )
+            )
+        elif message_type == "self_body_perceived_event":
+            actor_id = str(payload.get("actor_id", "") or "")
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=producer_ts,
+                    domain="character",
+                    stage="self_body_perceived_applied",
+                    actor_id=actor_id,
+                    summary=summarize_character_input_from_self_body_perceived(payload),
                     detail=payload,
                 )
             )

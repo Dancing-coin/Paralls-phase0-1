@@ -68,8 +68,8 @@
 | `ttl_ms` 首条真实能力 | 已做（部分/已验证） | P1 | 目前只落在 `nearby_actor_refs` 上 |
 | 候选感知事件对象层 | 已做（最小/已验证） | P1 | `CandidatePerceptEvent` 已存在 |
 | `Per-Character` 过滤器边界 | 已做（最小/已验证） | P1 | `PerCharacterPerceptFilter` 已存在，但规则很薄 |
-| 角色私有感知事件对象 | 已做（最小/已验证） | P1 | `CharacterPerceivedEvent` 已存在 |
-| 角色私有感知事件真实消费路径 | 已做（最小/已验证） | P1 | 已有一条最小 consumer path，但还不是默认角色入口 |
+| 角色私有感知事件对象 | 已做（已验证） | P1 | `CharacterPerceivedEvent` 与 `SelfBodyPerceivedEvent` 已存在 |
+| 角色私有感知事件真实消费路径 | 已做（已验证） | P1 | 外部世界经 `CandidatePerceptEvent -> CharacterPerceivedEvent`，自身身体经 `BodyStateResult -> SelfBodyPerceivedEvent` |
 | `ObjectVisualFactEmitter` | 已做（部分/已验证） | P1 | 已有显式 emitter 与对象状态上抛；仍未到完整视觉域终态 |
 | `SpatialRelationVisualFactEmitter` | 已做（最小/已验证） | P1 | 已有显式 emitter 落位，但 runtime 深度仍有限 |
 | `EvidenceProjectionEmitter` | 已做（最小/已验证） | P1 | 已有显式 emitter 落位，但仍是 bounded slice |

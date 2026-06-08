@@ -25,6 +25,7 @@ def test_contract_entrypoints_exist() -> None:
     from app.contracts.l6.raw_fact import RawFactContract
     from app.contracts.l6.candidate_percept import CandidatePerceptContract
     from app.contracts.l6.character_perceived import CharacterPerceivedContract
+    from app.contracts.l6.self_body_perceived import SelfBodyPerceivedContract
 
     assert ActionRequest.__name__ == "ActionRequest"
     assert ExecutionAck.__name__ == "ExecutionAck"
@@ -34,6 +35,7 @@ def test_contract_entrypoints_exist() -> None:
     assert RawFactContract.__name__ == "RawFactContract"
     assert CandidatePerceptContract.__name__ == "CandidatePerceptContract"
     assert CharacterPerceivedContract.__name__ == "CharacterPerceivedContract"
+    assert SelfBodyPerceivedContract.__name__ == "SelfBodyPerceivedContract"
 
 
 def test_merge_ready_service_entrypoints_resolve_current_implementations() -> None:

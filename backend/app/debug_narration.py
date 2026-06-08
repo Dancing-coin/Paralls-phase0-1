@@ -157,6 +157,12 @@ def summarize_character_input_from_character_perceived(event: Any) -> str:
     return f"{actor_label} 收到了一条角色私有感知，通道是 {percept_channel}。"
 
 
+def summarize_character_input_from_self_body_perceived(event: Any) -> str:
+    actor_label = label_actor(getattr(event, "actor_id", "") or "")
+    body_state_class = str(getattr(event, "body_state_class", "") or "unknown")
+    return f"{actor_label} 收到了一条自身身体感知，身体状态通道是 {body_state_class}。"
+
+
 def summarize_character_input_from_world_result(actor_id: str, payload: dict[str, Any]) -> str:
     actor_label = label_actor(actor_id)
     result_type = str(payload.get("result_type", "") or "")

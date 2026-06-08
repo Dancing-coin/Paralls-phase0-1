@@ -2,6 +2,7 @@ from app.models.player_input import DialogueSubmit
 from app.models.ai_output import DialogueResponse
 from app.models.environment_request import EnvironmentRequest
 from app.models.runtime_state import CharacterRuntimeStateDelta, CharacterRuntimeStateSnapshot
+from app.models.self_body_perceived import SelfBodyPerceivedEvent
 from app.models.state_machine_transition import StateMachineTransitionEvent
 from app.models.world_result import (
     ActionResolutionResult,
@@ -138,6 +139,23 @@ def test_world_result_body_state_shape() -> None:
 
     assert event.body_state_class == "fatigue"
     assert event.current_state == "elevated"
+
+
+def test_self_body_perceived_event_shape() -> None:
+    event = SelfBodyPerceivedEvent(
+        actor_id="char_c",
+        body_state_class="interaction_strain",
+        producer_ts=201,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="interaction_strain is engaged",
+        source_body_result_id="body_result:char_c:201",
+    )
+
+    assert event.event_type == "self_body_perceived_event"
+    assert event.actor_id == "char_c"
+    assert event.body_state_class == "interaction_strain"
 
 
 def test_world_result_object_state_shape() -> None:
@@ -419,6 +437,7 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
         transition = websocket.receive_json()
         object_state_result = websocket.receive_json()
         body_state_result = websocket.receive_json()
+        self_body_perceived = websocket.receive_json()
         environment_result = websocket.receive_json()
         siming_output = websocket.receive_json()
         runtime_snapshot = websocket.receive_json()
@@ -487,6 +506,10 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
     assert body_state_result["payload"]["actor_id"] == "char_c"
     assert body_state_result["payload"]["body_state_class"] == "interaction_strain"
     assert body_state_result["payload"]["current_state"] == "engaged"
+    assert self_body_perceived["message_type"] == "self_body_perceived_event"
+    assert self_body_perceived["payload"]["actor_id"] == "char_c"
+    assert self_body_perceived["payload"]["body_state_class"] == "interaction_strain"
+    assert self_body_perceived["payload"]["source_body_result_id"] == "body_result:char_c:460"
     assert environment_result["message_type"] == "world_result"
     assert environment_result["event_type"] == "environment_state_result"
     assert environment_result["entity_id"] == "env_lamp"

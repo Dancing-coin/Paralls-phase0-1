@@ -3,6 +3,7 @@ from app.debug_narration import (
     summarize_character_input_from_fact,
     summarize_character_input_from_candidate,
     summarize_character_input_from_character_perceived,
+    summarize_character_input_from_self_body_perceived,
     summarize_character_input_from_siming_output,
     summarize_character_input_from_world_result,
     summarize_character_interpretation,
@@ -11,6 +12,7 @@ from app.debug_narration import (
 from app.models.candidate_percept import CandidatePerceptEvent
 from app.models.character_perceived import CharacterPerceivedEvent
 from app.models.raw_fact import RawFactEvent
+from app.models.self_body_perceived import SelfBodyPerceivedEvent
 from app.models.visual_fact import VisualFactEvent
 
 
@@ -202,3 +204,22 @@ def test_summarize_character_input_from_character_perceived_mentions_private_per
     assert "角色私有感知" in summary
     assert "CharacterA" in summary
     assert "visual" in summary
+
+
+def test_summarize_character_input_from_self_body_perceived_mentions_self_body_layer() -> None:
+    event = SelfBodyPerceivedEvent(
+        actor_id="char_c",
+        body_state_class="interaction_strain",
+        producer_ts=912,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="interaction_strain is engaged",
+        source_body_result_id="body_result:char_c:912",
+    )
+
+    summary = summarize_character_input_from_self_body_perceived(event)
+
+    assert "自身身体感知" in summary
+    assert "CharacterC" in summary
+    assert "interaction_strain" in summary

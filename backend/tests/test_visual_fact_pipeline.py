@@ -208,6 +208,32 @@ def test_raw_visual_fact_updates_character_perceived_input_path() -> None:
     assert perceived.percept_channel == "visual"
 
 
+def test_interact_world_result_updates_self_body_perceived_input_path() -> None:
+    reset_runtime_state()
+    _handle_envelope(
+        Envelope(
+            message_type="player_input",
+            payload={
+                "player_id": "p1",
+                "room_id": "room_demo",
+                "scene_id": "scene_demo",
+                "zone_id": "zone_focus",
+                "actor_id": "char_c",
+                "intent_type": "interact_intent",
+                "producer_ts": 456,
+                "target_object_id": "obj_letter",
+                "interaction_type": "inspect",
+            },
+        )
+    )
+
+    perceived = character_perceived_input_service.get_latest_self_body("char_c")
+
+    assert perceived is not None
+    assert perceived.actor_id == "char_c"
+    assert perceived.body_state_class == "interaction_strain"
+
+
 def test_websocket_raw_visual_fact_event_emits_same_runtime_alignment_messages_as_legacy_path() -> None:
     event = VisualFactEvent(
         actor_id="char_c",
