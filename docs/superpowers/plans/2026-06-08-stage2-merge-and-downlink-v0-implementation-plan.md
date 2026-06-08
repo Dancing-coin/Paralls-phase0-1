@@ -24,6 +24,7 @@ If those preconditions are not true, stop after reading this plan and do not sta
 Before executing this plan, run:
 
 - [2026-06-08-enhanced-subsystems-merge-checklist.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/2026-06-08-enhanced-subsystems-merge-checklist.md>)
+- `python scripts/verification/verify_stage2_start_gate.py`
 
 ## File Map
 
