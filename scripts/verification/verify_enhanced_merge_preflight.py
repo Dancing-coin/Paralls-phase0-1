@@ -51,7 +51,11 @@ def main() -> int:
     seam_tests_log = log_dir / "merge-preflight-seam-tests.log"
 
     git_status_result = run_command(["git", "status", "--short"], project_root, git_status_log)
-    git_log_result = run_command(["git", "log", "--oneline", "-5"], project_root, git_log_log)
+    git_log_result = run_command(
+        ["git", "log", "--oneline", "--grep", STAGE1_SEAM_COMMIT_SUBJECT],
+        project_root,
+        git_log_log,
+    )
     seam_tests_result = run_command(
         [
             python_exe,
@@ -97,7 +101,7 @@ def main() -> int:
                 "Stage 1 seam commit is visible in recent history",
                 "proved" if seam_commit_present else "missing",
                 [STAGE1_SEAM_COMMIT_SUBJECT] if seam_commit_present else [],
-                "" if seam_commit_present else "Expected Stage 1 seam commit subject was not found in the last five commits.",
+                "" if seam_commit_present else "Expected Stage 1 seam commit subject was not found in git log grep output.",
             ),
             _result(
                 "seam_tests_green",
