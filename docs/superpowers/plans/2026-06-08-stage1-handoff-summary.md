@@ -75,15 +75,21 @@ When enhanced branches merge back, their preferred landing seams are:
 
 They should avoid extending the legacy flat service bucket any further unless the change is a temporary compatibility wrapper.
 
+Use this merge procedure before starting Stage 2:
+
+- [2026-06-08-enhanced-subsystems-merge-checklist.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/2026-06-08-enhanced-subsystems-merge-checklist.md>)
+
 ## What To Do Next
 
 After enhanced `ESM`, `Siming`, and event-bus branches are merged:
 
 1. execute the Stage 2 relocation plan:
    - [2026-06-08-stage2-merge-and-downlink-v0-implementation-plan.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/2026-06-08-stage2-merge-and-downlink-v0-implementation-plan.md>)
-2. relocate merged implementations behind the Stage 1 seams
-3. convert legacy flat modules into compatibility wrappers
-4. start downlink v0:
+2. follow the merge checklist first:
+   - [2026-06-08-enhanced-subsystems-merge-checklist.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/2026-06-08-enhanced-subsystems-merge-checklist.md>)
+3. relocate merged implementations behind the Stage 1 seams
+4. convert legacy flat modules into compatibility wrappers
+5. start downlink v0:
    - `speak_to_actor`
    - `orient_to_target`
    - `inspect_object`

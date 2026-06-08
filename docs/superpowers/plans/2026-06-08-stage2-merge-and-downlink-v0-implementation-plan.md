@@ -21,6 +21,10 @@ Do **not** execute this plan until all of the following are true:
 
 If those preconditions are not true, stop after reading this plan and do not start editing.
 
+Before executing this plan, run:
+
+- [2026-06-08-enhanced-subsystems-merge-checklist.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/2026-06-08-enhanced-subsystems-merge-checklist.md>)
+
 ## File Map
 
 ### Backend relocation targets
@@ -703,4 +707,3 @@ Until then:
 - Stage 1 is the active completed preparation layer
 - Stage 2 remains queued
 - downlink v0 should not be started on top of incomplete merged implementations
-
