@@ -358,7 +358,11 @@ class ESMService:
     def get_environment_field(self, room_id: str, zone_id: str) -> EnvironmentFieldState:
         return self._environment_fields.get(
             (room_id, zone_id),
-            EnvironmentFieldState(room_id=room_id, zone_id=zone_id),
+            EnvironmentFieldState(
+                field_id=f"field:{room_id}:scene_demo:{zone_id}",
+                room_id=room_id,
+                zone_id=zone_id,
+            ),
         )
 
     def get_state_machine_template(self, machine_id: str) -> dict[str, object]:
@@ -380,6 +384,7 @@ class ESMService:
         propagated: dict[str, EnvironmentFieldState] = {}
         for zone_id in adjacent_zone_ids:
             field = EnvironmentFieldState(
+                field_id=f"field:{room_id}:{scene_id}:{zone_id}",
                 room_id=room_id,
                 scene_id=scene_id,
                 zone_id=zone_id,
@@ -390,6 +395,7 @@ class ESMService:
                 noise_level=self._propagate_noise_level(source.noise_level),
                 visibility_level=self._propagate_visibility_level(source.visibility_level),
                 producer_ts=producer_ts,
+                updated_at=producer_ts,
                 source_environment_id=source.source_environment_id,
             )
             self._environment_fields[(room_id, zone_id)] = field
@@ -419,6 +425,7 @@ class ESMService:
             visibility_level = "reduced"
 
         field_state = EnvironmentFieldState(
+            field_id=f"field:{room_id}:{scene_id}:{zone_id}",
             room_id=room_id,
             scene_id=scene_id,
             zone_id=zone_id,
@@ -429,6 +436,7 @@ class ESMService:
             noise_level=noise_level,
             visibility_level=visibility_level,
             producer_ts=producer_ts,
+            updated_at=producer_ts,
             source_environment_id=target_environment_id,
         )
         self._environment_fields[(room_id, zone_id)] = field_state

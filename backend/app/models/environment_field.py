@@ -2,6 +2,7 @@ from pydantic import BaseModel
 
 
 class EnvironmentFieldState(BaseModel):
+    field_id: str = ""
     room_id: str
     scene_id: str = "scene_demo"
     zone_id: str
@@ -12,4 +13,5 @@ class EnvironmentFieldState(BaseModel):
     noise_level: str = "quiet"
     visibility_level: str = "clear"
     producer_ts: int = 0
+    updated_at: int = 0
     source_environment_id: str = ""

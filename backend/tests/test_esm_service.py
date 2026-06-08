@@ -227,6 +227,7 @@ def test_esm_service_environment_shift_result_is_replayable_and_updates_field_st
     assert result.visibility_level == "reduced"
 
     field = service.get_environment_field("room_demo", "zone_focus")
+    assert field.field_id == "field:room_demo:scene_demo:zone_focus"
     assert field.scene_id == "scene_demo"
     assert field.light_level == "low"
     assert field.noise_level == "elevated"
@@ -234,6 +235,7 @@ def test_esm_service_environment_shift_result_is_replayable_and_updates_field_st
     assert field.humidity == "stable"
     assert field.smoke_density == "light"
     assert field.visibility_level == "reduced"
+    assert field.updated_at == result.producer_ts
 
 
 def test_esm_service_accepts_environment_request_and_emits_resolution_and_environment_result() -> None:
@@ -373,9 +375,11 @@ def test_esm_service_propagates_noise_and_smoke_to_adjacent_zone() -> None:
         producer_ts=301,
     )
 
+    assert propagated["zone_adjacent"].field_id == "field:room_demo:scene_demo:zone_adjacent"
     assert propagated["zone_adjacent"].noise_level == "moderate"
     assert propagated["zone_adjacent"].smoke_density == "trace"
     assert propagated["zone_adjacent"].visibility_level == "soft_reduced"
+    assert propagated["zone_adjacent"].updated_at == 301
 
 
 def test_esm_service_exposes_state_machine_and_material_templates() -> None:
