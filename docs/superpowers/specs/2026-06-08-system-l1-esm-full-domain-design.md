@@ -90,6 +90,9 @@ That does not require a giant workbench, but it does require:
   - `ObjectStateResult`
   - `EnvironmentStateResult`
   - `StateMachineTransitionEvent`
+- result-to-state-machine linkage:
+  - `ObjectStateResult.machine_id`
+  - `EnvironmentStateResult.machine_id`
 - result-entity identity:
   - `ActionResolutionResult.entity_id`
   - `ConstraintStateResult.entity_id`

@@ -385,6 +385,7 @@ def test_websocket_environment_request_emits_ack_action_resolution_transition_an
     assert environment_result["payload"]["request_ref"] == "envreq:500"
     assert environment_result["payload"]["entity_id"] == "env_lamp"
     assert environment_result["payload"]["target_environment_id"] == "env_lamp"
+    assert environment_result["payload"]["machine_id"] == "light_source"
     assert environment_result["payload"]["field_id"] == "field:room_demo:scene_demo:zone_focus"
     assert environment_result["payload"]["source_environment_id"] == "env_lamp"
     assert environment_result["payload"]["updated_at"] == 502
@@ -478,6 +479,7 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
     assert object_state_result["payload"]["result_type"] == "object_state_result"
     assert object_state_result["payload"]["entity_id"] == "obj_letter"
     assert object_state_result["payload"]["target_object_id"] == "obj_letter"
+    assert object_state_result["payload"]["machine_id"] == "visibility"
     assert object_state_result["payload"]["current_state"] == "visible"
     assert body_state_result["message_type"] == "world_result"
     assert body_state_result["event_type"] == "body_state_result"
@@ -491,6 +493,7 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
     assert environment_result["payload"]["result_type"] == "environment_state_result"
     assert environment_result["payload"]["entity_id"] == "env_lamp"
     assert environment_result["payload"]["target_environment_id"] == "env_lamp"
+    assert environment_result["payload"]["machine_id"] == "light_source"
     assert environment_result["payload"]["field_id"] == "field:room_demo:scene_demo:zone_focus"
     assert environment_result["payload"]["source_environment_id"] == "env_lamp"
     assert environment_result["payload"]["current_state"] == "alerted"

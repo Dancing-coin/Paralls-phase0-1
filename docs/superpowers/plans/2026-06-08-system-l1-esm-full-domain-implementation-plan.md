@@ -49,6 +49,7 @@
 - Landed:
   - audit proof for success / failure / environment-state paths
   - replay-friendly stable ids across result objects
+  - stable `machine_id` on replay-critical state-result families
   - stable `entity_id` on replay-critical result families
   - websocket protocol tests covering the full emitted chain
 

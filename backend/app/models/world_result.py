@@ -29,6 +29,7 @@ class ActionResolutionResult(WorldResultBase):
 
 class EnvironmentStateResult(WorldResultBase):
     result_type: str = "environment_state_result"
+    machine_id: str = ""
     previous_state: str
     current_state: str
     change_summary: str
@@ -47,6 +48,7 @@ class EnvironmentStateResult(WorldResultBase):
 
 class ObjectStateResult(WorldResultBase):
     result_type: str = "object_state_result"
+    machine_id: str = ""
     previous_state: str
     current_state: str
     change_summary: str
