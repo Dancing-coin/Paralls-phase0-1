@@ -13,15 +13,21 @@
 ## Status Snapshot
 
 - Date: `2026-06-09`
-- Plan status: partially executed
+- Plan status: executed and verified for the repository-local target
 - Current code truth:
-  - `speaker_active` path is real and verified
+  - `speaker_active` is real and verified
   - `speech_mode_changed` is represented in the current auditory payload
-- Remaining gap:
-  - `auditory_reachability_changed` is not yet promoted to an explicit fact type
-  - `ambient_noise_changed` is not yet promoted to an explicit fact type
-  - auditory candidate-compilation policy is not yet frozen in code
-  - verification does not yet prove the full auditory-domain boundary this plan targets
+  - `auditory_reachability_changed` is now an explicit auditory fact type
+  - `ambient_noise_changed` is now an explicit auditory fact type
+  - auditory candidate policy is explicitly frozen to `L1-only for now`
+  - `phase1_slice`, `phase0`, and `l1_runtime_edges` verification passed after integration
+
+## Completion Register
+
+- Task 1 auditory taxonomy expansion: completed and verified
+- Task 2 auditory candidate policy freeze: completed and verified
+- Task 3 auditory verification proof: completed and verified
+- Task 4 full regression: completed and verified
 
 ### Task 1: Expand The Auditory Fact Taxonomy
 

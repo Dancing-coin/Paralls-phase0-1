@@ -247,6 +247,8 @@ def test_phase1_slice_audit_requires_emitter_and_authority_lane_evidence() -> No
         [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
         [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
         [LocalPresentationBus] phase0_auditory_fact_emitter:speaker_active:char_a:normal
+        [LocalPresentationBus] phase0_auditory_fact_emitter:auditory_reachability_changed:char_a:clear
+        [LocalPresentationBus] phase0_auditory_fact_emitter:ambient_noise_changed:quiet
         [LocalPresentationBus] phase0_role_state_fact_emitter:role_state_transition:speak
         [LocalPresentationBus] phase0_physiology_fact_emitter:breathing_strain_changed:elevated
         [LocalPresentationBus] phase0_tactile_fact_emitter:contact_started:light
@@ -265,6 +267,7 @@ def test_phase1_slice_audit_requires_emitter_and_authority_lane_evidence() -> No
         scripts/player/PlayerIntentMapper.gd:76:func emit_visual_fact_event(...)
         """,
         scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "l1_only"',
     )
 
     results = _index_by_id(report["results"])
@@ -273,6 +276,7 @@ def test_phase1_slice_audit_requires_emitter_and_authority_lane_evidence() -> No
     assert results["emitter_scene_wired"]["status"] == "proved"
     assert results["no_direct_visual_fact_send_bypass"]["status"] == "proved"
     assert results["auditory_fact_observed"]["status"] == "proved"
+    assert results["auditory_candidate_policy_explicit"]["status"] == "proved"
     assert results["role_state_fact_observed"]["status"] == "proved"
     assert results["physiology_fact_observed"]["status"] == "proved"
     assert results["tactile_fact_observed"]["status"] == "proved"
@@ -289,6 +293,8 @@ def test_phase1_slice_audit_rejects_legacy_visual_fact_event_ack_contract() -> N
         [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
         [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
         [LocalPresentationBus] phase0_auditory_fact_emitter:speaker_active:char_a:normal
+        [LocalPresentationBus] phase0_auditory_fact_emitter:auditory_reachability_changed:char_a:clear
+        [LocalPresentationBus] phase0_auditory_fact_emitter:ambient_noise_changed:quiet
         [LocalPresentationBus] phase0_role_state_fact_emitter:role_state_transition:speak
         [LocalPresentationBus] phase0_physiology_fact_emitter:breathing_strain_changed:elevated
         [LocalPresentationBus] phase0_tactile_fact_emitter:contact_started:light
@@ -307,6 +313,7 @@ def test_phase1_slice_audit_rejects_legacy_visual_fact_event_ack_contract() -> N
         scripts/player/PlayerIntentMapper.gd:76:func emit_visual_fact_event(...)
         """,
         scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "l1_only"',
     )
 
     results = _index_by_id(report["results"])
@@ -335,12 +342,49 @@ def test_phase1_slice_audit_requires_auditory_fact_proof() -> None:
         scripts/player/PlayerIntentMapper.gd:76:func emit_visual_fact_event(...)
         """,
         scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "l1_only"',
     )
 
     results = _index_by_id(report["results"])
 
     assert report["overall_phase1_slice_passed"] is False
     assert results["auditory_fact_observed"]["status"] == "missing"
+
+
+def test_phase1_slice_audit_requires_explicit_auditory_candidate_policy() -> None:
+    report = evaluate_phase1_slice_audit(
+        main_log="""
+        [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_object
+        [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
+        [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
+        [LocalPresentationBus] phase0_auditory_fact_emitter:speaker_active:char_a:normal
+        [LocalPresentationBus] phase0_auditory_fact_emitter:auditory_reachability_changed:char_a:clear
+        [LocalPresentationBus] phase0_auditory_fact_emitter:ambient_noise_changed:quiet
+        [LocalPresentationBus] phase0_role_state_fact_emitter:role_state_transition:speak
+        [LocalPresentationBus] phase0_physiology_fact_emitter:breathing_strain_changed:elevated
+        [LocalPresentationBus] phase0_tactile_fact_emitter:contact_started:light
+        [LocalPresentationBus] phase0_thermal_fact_emitter:thermal_proximity_changed:warm
+        [LocalPresentationBus] phase0_olfactory_fact_emitter:odor_state_changed:noticeable
+        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
+        [LocalPresentationBus] conversation_candidate_event:{"candidate_object_ids":["obj_letter"]}
+        [LocalPresentationBus] character_runtime_state_delta:{"current_attention_source":"visual_fact"}
+        [LocalPresentationBus] backend_message_type:siming_output
+        """,
+        focus_log="""
+        [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_actor
+        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
+        """,
+        direct_send_scan="""
+        scripts/player/PlayerIntentMapper.gd:76:func emit_visual_fact_event(...)
+        """,
+        scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+        candidate_policy_source="",
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert report["overall_phase1_slice_passed"] is False
+    assert results["auditory_candidate_policy_explicit"]["status"] == "missing"
 
 
 def test_phase1_slice_audit_requires_role_state_fact_proof() -> None:
@@ -880,6 +924,8 @@ func emit_visual_fact_event(...) -> Dictionary:
         [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
         [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
         [LocalPresentationBus] phase0_auditory_fact_emitter:speaker_active:char_a:normal
+        [LocalPresentationBus] phase0_auditory_fact_emitter:auditory_reachability_changed:char_a:clear
+        [LocalPresentationBus] phase0_auditory_fact_emitter:ambient_noise_changed:quiet
         [LocalPresentationBus] phase0_role_state_fact_emitter:role_state_transition:speak
         [LocalPresentationBus] phase0_physiology_fact_emitter:breathing_strain_changed:elevated
         [LocalPresentationBus] phase0_tactile_fact_emitter:contact_started:light
@@ -896,6 +942,7 @@ func emit_visual_fact_event(...) -> Dictionary:
         """,
         direct_send_scan=scan,
         scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "l1_only"',
     )
     results = _index_by_id(report["results"])
 
@@ -903,3 +950,4 @@ func emit_visual_fact_event(...) -> Dictionary:
     assert report["overall_phase1_slice_passed"] is True
     assert results["no_direct_visual_fact_send_bypass"]["status"] == "proved"
     assert results["authority_ack_observed"]["status"] == "proved"
+    assert results["auditory_candidate_policy_explicit"]["status"] == "proved"

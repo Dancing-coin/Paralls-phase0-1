@@ -98,6 +98,7 @@ def main() -> int:
             focus_log=read_text(focus_log),
             direct_send_scan=scan_direct_visual_fact_bypass(project_root),
             scene_text=read_text(project_root / "scenes" / "phase0" / "MainDemo.tscn"),
+            candidate_policy_source=read_text(project_root / "backend" / "app" / "services" / "candidate_percept_service.py"),
         )
         report["backend_health"] = health
         report["artifacts"] = {

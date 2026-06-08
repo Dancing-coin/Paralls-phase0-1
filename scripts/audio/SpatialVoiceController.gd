@@ -34,6 +34,25 @@ func _emit_auditory_fact(payload: Dictionary) -> void:
         "quiet",
         int(payload.get("producer_ts", -1)),
     )
+    if auditory_fact_emitter.has_method("emit_auditory_reachability_changed"):
+        auditory_fact_emitter.emit_auditory_reachability_changed(
+            actor_id,
+            target_actor_id,
+            "clear",
+            loudness_band,
+            speech_mode,
+            "quiet",
+            int(payload.get("producer_ts", -1)),
+        )
+    if auditory_fact_emitter.has_method("emit_ambient_noise_changed"):
+        auditory_fact_emitter.emit_ambient_noise_changed(
+            actor_id,
+            "quiet",
+            loudness_band,
+            speech_mode,
+            "clear",
+            int(payload.get("producer_ts", -1)),
+        )
 
 func _get_auditory_fact_emitter() -> Node:
     return get_node_or_null(auditory_fact_emitter_path)

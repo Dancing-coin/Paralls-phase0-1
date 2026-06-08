@@ -73,7 +73,7 @@
 | `ObjectVisualFactEmitter` | 已做（部分/已验证） | P1 | 已有显式 emitter 与对象状态上抛；仍未到完整视觉域终态 |
 | `SpatialRelationVisualFactEmitter` | 已做（最小/已验证） | P1 | 已有显式 emitter 落位，但 runtime 深度仍有限 |
 | `EvidenceProjectionEmitter` | 已做（最小/已验证） | P1 | 已有显式 emitter 落位，但仍是 bounded slice |
-| 听觉事实上抛器 | 已做（部分/已验证） | P1 | `speaker_active` 路径、authority route、audit proof 已成立；taxonomy 尚未补齐 |
+| 听觉事实上抛器 | 已做（已验证） | P1 | `speaker_active`、`auditory_reachability_changed`、`ambient_noise_changed` 与显式 `L1-only` policy 已验证 |
 | 客户端交互系统的完整“事件上抛器”规范化 | 已做（部分/已验证） | P1 | `focus_target_change`、`interact`、`action_request` 已进入真实链路 |
 | `ESM` 动作结算与约束接口 | 已做（部分/已验证） | P1 | `ActionResolutionResult`、`ConstraintStateResult`、`BodyStateResult` 已真实接线 |
 | `ESM` 状态机与材料模板 | 已做（部分/已验证） | P1 | 已有 `state_machine_transition`、模板 skeleton、材料模板 skeleton |
@@ -94,13 +94,12 @@
 ### 已完成并已验证
 
 - 视觉事实系统的五个一级/派生 emitter 均已在仓库内显式落位
-- 听觉 `speaker_active` 最小 authority 路由、Godot emitter、audit proof 已成立
+- 听觉最小域已具备显式 taxonomy、authority route、Godot emitter 与 `L1-only` candidate policy proof
 - `ESM` 已形成真实的 `action_request -> resolution/constraint -> world_result/state_machine_transition` 链
 - `EnvironmentFieldState` 已具备 `field_id`、`updated_at` 和 coarse field propagation
 
 ### 已写待执行
 
-- 听觉 fact taxonomy / candidate policy 补齐
 - `ESM` full-domain 的更深对齐与更完整 debug/workbench 面
 
 ## 该怎么排顺序

@@ -107,6 +107,40 @@ def test_raw_fact_event_accepts_auditory_fact_shape() -> None:
     assert event.acoustics.ambient_noise == "quiet"
 
 
+def test_raw_fact_event_accepts_expanded_auditory_fact_taxonomy() -> None:
+    fact_types = [
+        ("auditory_reachability_changed", "auditory_reachability_changed"),
+        ("ambient_noise_changed", "auditory_context_shift"),
+    ]
+
+    for fact_type, relation_type in fact_types:
+        event = RawFactEvent(
+            fact_family="auditory_fact",
+            fact_type=fact_type,
+            relation_type=relation_type,
+            producer_ts=711,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            source={
+                "layer": "L1",
+                "system": "godot.raw_fact_emitter",
+                "actor_id": "char_a",
+            },
+            targets={"actor_id": "char_c"},
+            observability={"auditory": True},
+            acoustics={
+                "loudness_band": "medium",
+                "speech_mode": "normal",
+                "reachability": "clear",
+                "ambient_noise": "quiet",
+            },
+        )
+
+        assert event.fact_family == "auditory_fact"
+        assert event.fact_type == fact_type
+
+
 def test_visual_fact_event_model_dump_returns_canonical_nested_shape() -> None:
     event = VisualFactEvent(
         actor_id="char_c",
@@ -862,6 +896,53 @@ def test_raw_fact_router_dispatches_auditory_fact_without_breaking_visual_and_sp
     ]
     assert spatial_messages[0]["payload"]["route"] == "authority_spatial_access_fact"
     assert visual_messages[0]["payload"]["route"] == "authority_visual_fact"
+
+
+def test_raw_fact_router_dispatches_expanded_auditory_fact_types() -> None:
+    fact_types = [
+        ("auditory_reachability_changed", "auditory_reachability_changed"),
+        ("ambient_noise_changed", "auditory_context_shift"),
+    ]
+
+    for fact_type, relation_type in fact_types:
+        event = RawFactEvent(
+            fact_family="auditory_fact",
+            fact_type=fact_type,
+            relation_type=relation_type,
+            producer_ts=715,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            source={
+                "layer": "L1",
+                "system": "godot.raw_fact_emitter",
+                "actor_id": "char_a",
+            },
+            targets={"actor_id": "char_c"},
+            observability={"auditory": True},
+            acoustics={
+                "loudness_band": "medium",
+                "speech_mode": "normal",
+                "reachability": "clear",
+                "ambient_noise": "quiet",
+            },
+        )
+
+        messages = route_raw_fact_event(
+            event,
+            source_type="raw_fact_event",
+        )
+
+        assert messages == [
+            {
+                "message_type": "ack",
+                "payload": {
+                    "accepted": True,
+                    "source_type": "raw_fact_event",
+                    "route": "authority_auditory_fact",
+                },
+            }
+        ]
 
 
 def test_raw_fact_router_accepts_runtime_wired_remaining_l1_fact_families() -> None:

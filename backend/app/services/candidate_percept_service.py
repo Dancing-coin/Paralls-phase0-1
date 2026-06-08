@@ -1,8 +1,13 @@
 from app.models.candidate_percept import CandidatePerceptEvent
 from app.models.raw_fact import RawFactEvent
 
+AUDITORY_CANDIDATE_POLICY = "l1_only"
+
 
 def compile_candidate_percepts(event: RawFactEvent) -> list[CandidatePerceptEvent]:
+    if event.fact_family == "auditory_fact":
+        return []
+
     if event.fact_family == "visual_fact":
         return [
             CandidatePerceptEvent(

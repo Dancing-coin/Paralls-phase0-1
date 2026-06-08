@@ -72,3 +72,50 @@ def test_compile_spatial_access_fact_to_candidate_percept() -> None:
     assert compiled[0].percept_channel == "spatial"
     assert compiled[0].source_fact_family == "spatial_access_fact"
     assert compiled[0].target_actor_id == "char_b"
+
+
+def test_compile_auditory_facts_explicitly_keeps_them_l1_only_for_now() -> None:
+    auditory_events = [
+        RawFactEvent(
+            fact_family="auditory_fact",
+            fact_type="speaker_active",
+            relation_type="speech_mode_changed",
+            producer_ts=300,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            source={"layer": "L1", "system": "godot.raw_fact_emitter", "actor_id": "char_a"},
+            targets={"actor_id": "char_c"},
+            observability={"auditory": True},
+            acoustics={"speech_mode": "normal", "reachability": "clear", "ambient_noise": "quiet"},
+        ),
+        RawFactEvent(
+            fact_family="auditory_fact",
+            fact_type="auditory_reachability_changed",
+            relation_type="auditory_reachability_changed",
+            producer_ts=301,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            source={"layer": "L1", "system": "godot.raw_fact_emitter", "actor_id": "char_a"},
+            targets={"actor_id": "char_c"},
+            observability={"auditory": True},
+            acoustics={"speech_mode": "normal", "reachability": "clear", "ambient_noise": "quiet"},
+        ),
+        RawFactEvent(
+            fact_family="auditory_fact",
+            fact_type="ambient_noise_changed",
+            relation_type="auditory_context_shift",
+            producer_ts=302,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            source={"layer": "L1", "system": "godot.raw_fact_emitter", "actor_id": "char_a"},
+            targets={},
+            observability={"auditory": True},
+            acoustics={"speech_mode": "normal", "reachability": "clear", "ambient_noise": "quiet"},
+        ),
+    ]
+
+    for event in auditory_events:
+        assert compile_candidate_percepts(event) == []

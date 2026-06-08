@@ -25,7 +25,7 @@
 | Child plan | Status | Notes |
 | --- | --- | --- |
 | `system-l1-client-interaction` | 已做（部分/已验证） | `focus_target_change`、`interact`、`action_request` 等真实链路已落地 |
-| `system-l1-spatial-audio-auditory-facts` | 已做（部分/已验证） | `speaker_active` 最小路径已落地，taxonomy/policy 未完成 |
+| `system-l1-spatial-audio-auditory-facts` | 已做（已验证） | first auditory path、expanded taxonomy、explicit `L1-only` policy 已验证 |
 | `system-l1-esm` | 已做（部分/已验证） | 已从最小 helper 扩到多结果/状态机/环境场 slice |
 | `system-l1-visual-fact-system` | 已做（部分/已验证） | 五类 visual emitters 已显式落位 |
 | `system-l1-remaining-emitter` | 已做（已验证） | shell plan 与 runtime-wired follow-on plan 都已落地并通过验证 |

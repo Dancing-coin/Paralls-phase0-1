@@ -255,6 +255,7 @@ def evaluate_phase1_slice_audit(
     focus_log: str,
     direct_send_scan: str,
     scene_text: str,
+    candidate_policy_source: str = "",
 ) -> dict[str, object]:
     results: list[dict[str, object]] = []
 
@@ -324,13 +325,30 @@ def evaluate_phase1_slice_audit(
         )
     )
 
-    auditory_ok = "phase0_auditory_fact_emitter:speaker_active:" in main_log
+    auditory_ok = _contains_all(
+        main_log,
+        [
+            "phase0_auditory_fact_emitter:speaker_active:",
+            "phase0_auditory_fact_emitter:auditory_reachability_changed:",
+            "phase0_auditory_fact_emitter:ambient_noise_changed:",
+        ],
+    )
     results.append(
         _result(
             "auditory_fact_observed",
             "Auditory raw fact goes through emitter",
             "proved" if auditory_ok else "missing",
-            ["speaker_active"] if auditory_ok else [],
+            ["speaker_active", "auditory_reachability_changed", "ambient_noise_changed"] if auditory_ok else [],
+        )
+    )
+
+    auditory_policy_ok = 'AUDITORY_CANDIDATE_POLICY = "l1_only"' in candidate_policy_source
+    results.append(
+        _result(
+            "auditory_candidate_policy_explicit",
+            "Auditory candidate policy is explicitly frozen to L1-only for now",
+            "proved" if auditory_policy_ok else "missing",
+            ["AUDITORY_CANDIDATE_POLICY=l1_only"] if auditory_policy_ok else [],
         )
     )
 
