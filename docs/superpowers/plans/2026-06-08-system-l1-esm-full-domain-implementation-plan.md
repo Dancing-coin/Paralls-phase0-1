@@ -10,6 +10,53 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-09`
+- Plan status: partially executed
+- Current execution rule: continue using TDD and run the three verification scripts serially only
+
+## Task Status Register
+
+### Task 1: Freeze The Settlement Matrix
+
+- Status: 已做（大部分/已验证）
+- Landed:
+  - explicit interaction success
+  - explicit interaction rejection
+  - explicit environment-state shift
+  - explicit `ActionRequest` runtime message
+  - explicit `StateMachineTransitionEvent` runtime message
+
+### Task 2: Deepen Environment Field Semantics
+
+- Status: 已做（大部分/已验证）
+- Landed:
+  - `light_level`
+  - `noise_level`
+  - `smoke_density`
+  - `visibility_level`
+  - `field_id`
+  - `updated_at`
+  - adjacent-zone propagation
+
+### Task 3: Strengthen Replay / Debug Proof For ESM
+
+- Status: 已做（部分/已验证）
+- Landed:
+  - audit proof for success / failure / environment-state paths
+  - replay-friendly stable ids across result objects
+  - websocket protocol tests covering the full emitted chain
+
+### Task 4: Run Full Regression
+
+- Status: 已执行过并通过，后续每个对齐 slice 仍需重跑
+- Latest verified discipline:
+  - `python -m pytest -v`
+  - `python scripts/verification/verify_phase1_slice.py`
+  - `python scripts/verification/verify_phase0.py`
+  - `python scripts/verification/verify_l1_runtime_edges.py`
+
 ### Task 1: Freeze The Settlement Matrix
 
 **Files:**
@@ -142,3 +189,12 @@ python scripts/verification/verify_phase0.py
 python scripts/verification/verify_l1_runtime_edges.py
 ```
 
+## Current In-Progress Slice Registered To This Plan
+
+- Status: 进行中（已验证未提交）
+- Scope:
+  - align successful object visibility state naming to the main-project visibility state family
+  - harden Godot-side environment result consumption guard
+- Verified state:
+  - backend full suite passed on the latest run
+  - verification triad passed serially on the latest run

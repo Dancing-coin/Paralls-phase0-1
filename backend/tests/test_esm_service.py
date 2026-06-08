@@ -287,8 +287,8 @@ def test_esm_service_emits_state_machine_transition_for_object_state() -> None:
         zone_id="zone_focus",
         entity_id="obj_letter",
         machine_id="visibility",
-        from_state="idle",
-        to_state="inspected",
+        from_state="partially_visible",
+        to_state="visible",
         trigger_type="interact.inspect",
         transition_reason="player inspect interaction accepted",
         producer_ts=240,
@@ -300,8 +300,8 @@ def test_esm_service_emits_state_machine_transition_for_object_state() -> None:
     assert transition.event_id == "transition:visibility:obj_letter:240"
     assert transition.entity_id == "obj_letter"
     assert transition.machine_id == "visibility"
-    assert transition.from_state == "idle"
-    assert transition.to_state == "inspected"
+    assert transition.from_state == "partially_visible"
+    assert transition.to_state == "visible"
     assert transition.trigger_type == "interact.inspect"
     assert transition.transition_reason == "player inspect interaction accepted"
 
@@ -315,8 +315,8 @@ def test_esm_service_object_state_result_is_replayable() -> None:
         zone_id="zone_focus",
         actor_id="char_c",
         target_object_id="obj_letter",
-        previous_state="idle",
-        current_state="inspected",
+        previous_state="partially_visible",
+        current_state="visible",
         producer_ts=220,
     )
 
@@ -324,9 +324,9 @@ def test_esm_service_object_state_result_is_replayable() -> None:
     assert result.request_ref == "object:obj_letter:220"
     assert result.result_id == "object_result:obj_letter:220"
     assert result.target_object_id == "obj_letter"
-    assert result.previous_state == "idle"
-    assert result.current_state == "inspected"
-    assert result.change_summary == "obj_letter changed from idle to inspected"
+    assert result.previous_state == "partially_visible"
+    assert result.current_state == "visible"
+    assert result.change_summary == "obj_letter changed from partially_visible to visible"
 
 
 def test_esm_service_action_resolution_result_is_replayable() -> None:

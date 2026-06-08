@@ -21,7 +21,7 @@ def test_phase0_audit_marks_missing_failed_interaction_and_weak_voice() -> None:
         [LocalPresentationBus] phase0_dialogue_target:char_a
         [LocalPresentationBus] dialogue_applied:char_a
         [LocalPresentationBus] phase0_interact_target:obj_letter
-        [LocalPresentationBus] object_state:obj_letter:inspected
+        [LocalPresentationBus] object_state:obj_letter:visible
         [LocalPresentationBus] environment_state:alerted
         [LocalPresentationBus] attention_applied:char_b
         [LocalPresentationBus] phase0_screenshot_saved:D:\\demo-main.png:0
@@ -60,7 +60,7 @@ def test_phase0_audit_proves_root_motion_player_and_patrol_evidence() -> None:
         [LocalPresentationBus] phase0_dialogue_target:char_a
         [LocalPresentationBus] dialogue_applied:char_a
         [LocalPresentationBus] phase0_interact_target:obj_letter
-        [LocalPresentationBus] object_state:obj_letter:inspected
+        [LocalPresentationBus] object_state:obj_letter:visible
         [LocalPresentationBus] constraint_state_result:distance
         [LocalPresentationBus] environment_state:alerted
         [LocalPresentationBus] attention_applied:char_b
@@ -113,7 +113,7 @@ def test_phase0_audit_requires_locomotion_state_ui_evidence() -> None:
         [LocalPresentationBus] phase0_dialogue_target:char_a
         [LocalPresentationBus] dialogue_applied:char_a
         [LocalPresentationBus] phase0_interact_target:obj_letter
-        [LocalPresentationBus] object_state:obj_letter:inspected
+        [LocalPresentationBus] object_state:obj_letter:visible
         [LocalPresentationBus] constraint_state_result:distance
         [LocalPresentationBus] environment_state:alerted
         [LocalPresentationBus] attention_applied:char_b
@@ -159,7 +159,7 @@ def test_phase0_audit_requires_jump_variant_probe_evidence() -> None:
         [LocalPresentationBus] phase0_dialogue_target:char_a
         [LocalPresentationBus] dialogue_applied:char_a
         [LocalPresentationBus] phase0_interact_target:obj_letter
-        [LocalPresentationBus] object_state:obj_letter:inspected
+        [LocalPresentationBus] object_state:obj_letter:visible
         [LocalPresentationBus] constraint_state_result:distance
         [LocalPresentationBus] environment_state:alerted
         [LocalPresentationBus] attention_applied:char_b
@@ -204,7 +204,7 @@ def test_phase0_audit_requires_forward_direction_probe_evidence() -> None:
         [LocalPresentationBus] phase0_dialogue_target:char_a
         [LocalPresentationBus] dialogue_applied:char_a
         [LocalPresentationBus] phase0_interact_target:obj_letter
-        [LocalPresentationBus] object_state:obj_letter:inspected
+        [LocalPresentationBus] object_state:obj_letter:visible
         [LocalPresentationBus] constraint_state_result:distance
         [LocalPresentationBus] environment_state:alerted
         [LocalPresentationBus] attention_applied:char_b
@@ -559,6 +559,25 @@ def test_backend_bridge_exposes_action_request_and_state_machine_transition_sign
     assert '_bus_emit("action_request_received", [payload])' in bridge_source
     assert '_bus_log("state_machine_transition:%s" % JSON.stringify(payload))' in bridge_source
     assert '_bus_emit("state_machine_transition_received", [payload])' in bridge_source
+
+
+def test_interactive_object_uses_visibility_state_family_defaults() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    object_source = (project_root / "scripts" / "object" / "InteractiveObject.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'var current_state := "partially_visible"' in object_source
+    assert 'current_state in ["hidden", "partially_visible"]' in object_source
+
+
+def test_environment_state_controller_only_consumes_environment_state_results() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    controller_source = (project_root / "scripts" / "environment" / "EnvironmentStateController.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'payload.get("result_type", "") == "environment_state_result"' in controller_source
 
 
 def test_spatial_access_fact_emitter_sets_nearby_actor_ttl() -> None:

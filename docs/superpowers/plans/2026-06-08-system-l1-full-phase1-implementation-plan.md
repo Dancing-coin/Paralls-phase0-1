@@ -10,6 +10,28 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-09`
+- Plan status: partially executed
+- Verification baseline:
+  - backend full suite: green on the latest verified run
+  - `verify_phase1_slice.py`: green on the latest verified run
+  - `verify_phase0.py`: green on the latest verified run
+  - `verify_l1_runtime_edges.py`: green on the latest verified run
+
+## Child Plan Execution Register
+
+| Child plan | Status | Notes |
+| --- | --- | --- |
+| `system-l1-client-interaction` | 已做（部分/已验证） | `focus_target_change`、`interact`、`action_request` 等真实链路已落地 |
+| `system-l1-spatial-audio-auditory-facts` | 已做（部分/已验证） | `speaker_active` 最小路径已落地，taxonomy/policy 未完成 |
+| `system-l1-esm` | 已做（部分/已验证） | 已从最小 helper 扩到多结果/状态机/环境场 slice |
+| `system-l1-visual-fact-system` | 已做（部分/已验证） | 五类 visual emitters 已显式落位 |
+| `system-l1-remaining-emitter` | 已写待执行 | 五类 emitter 已存在，但 plan 目标的 runtime wiring 尚未完成 |
+| `system-l1-to-l2-interface` | 已做（最小/已验证） | 当前仍以最小桥接为主，未扩成多感官全域 |
+| `system-l1-debug-replay-verification` | 已做（部分/已验证） | verification triad 与 audit 明显增强，但不是最终形态 |
+
 ## Plan Structure
 
 This scope is too broad for one execution plan. It is intentionally decomposed into child plans:
@@ -156,6 +178,20 @@ Produce a final matrix:
 - blocked
 
 for each child plan.
+
+Current register:
+
+- executed partially:
+  - `visual-fact-system`
+  - `esm`
+  - `l1-to-l2-interface`
+  - `spatial-audio-auditory-facts`
+  - `client-interaction`
+  - `debug-replay-verification`
+- not yet executed to target depth:
+  - `remaining-emitter`
+- blocked:
+  - none at the document level right now
 
 - [ ] **Step 9: Confirm the repository still satisfies existing runtime baselines**
 

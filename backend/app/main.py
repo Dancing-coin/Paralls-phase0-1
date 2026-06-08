@@ -422,8 +422,8 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 zone_id=event.zone_id,
                 entity_id=event.target_object_id,
                 machine_id="visibility",
-                from_state="idle",
-                to_state="inspected",
+                from_state="partially_visible",
+                to_state="visible",
                 trigger_type="interact.inspect",
                 transition_reason="player inspect interaction accepted",
                 producer_ts=world_result.producer_ts + 1,
@@ -439,8 +439,8 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 zone_id=event.zone_id,
                 actor_id=event.actor_id,
                 target_object_id=event.target_object_id,
-                previous_state="idle",
-                current_state="inspected",
+                previous_state="partially_visible",
+                current_state="visible",
                 producer_ts=world_result.producer_ts + 2,
             )
             event_trace.record(object_state_result.result_type)

@@ -1,5 +1,14 @@
 # System L1 ESM Full-Domain Design
 
+## Status
+
+- Date: `2026-06-09`
+- Status: active alignment spec
+- Current repo truth:
+  - this spec is no longer purely prospective
+  - a substantial subset is already implemented and verified
+  - one additional visibility-state-family alignment slice is implemented and verified in the current worktree but not yet committed
+
 ## Goal
 
 Define what it means for `ESM` to be complete enough as a full `System L1` subdomain in this repository.
@@ -63,10 +72,51 @@ That does not require a giant workbench, but it does require:
 - stable result fields
 - explicit verification coverage
 
+## Current Alignment Register
+
+### Already Implemented And Verified
+
+- supported settlement classes:
+  - interaction success
+  - interaction rejection by constraint
+  - environment-state shift
+- supported constraint classes:
+  - explicit `distance_constraint`
+  - explicit `out_of_range` code
+- supported result families:
+  - `ActionResolutionResult`
+  - `ConstraintStateResult`
+  - `BodyStateResult`
+  - `ObjectStateResult`
+  - `EnvironmentStateResult`
+  - `StateMachineTransitionEvent`
+- supported environment fields:
+  - `light_level`
+  - `noise_level`
+  - `smoke_density`
+  - `visibility_level`
+- field-state identity and freshness:
+  - `field_id`
+  - `updated_at`
+- coarse field propagation to adjacent zones
+- canonical `world_result` envelope fields with compatibility preservation
+- audit/replay-visible stable ids and proof coverage
+
+### Implemented And Verified But Not Yet Committed
+
+- success-side object visibility alignment to the main-project visibility state family:
+  - `partially_visible -> visible`
+- Godot-side `EnvironmentStateController` guard tightened to consume only `environment_state_result`
+
+### Still Open
+
+- broader settlement matrix beyond the current demo slice
+- deeper alignment for template richness and workbench-facing debug surfaces
+- a clearer positive/negative statement of what this repo intentionally does not implement inside `ESM`
+
 ## Non-Goals
 
 - full persistent simulation
 - full material system
 - final production workbench
 - full cross-system orchestration
-

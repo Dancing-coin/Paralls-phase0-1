@@ -1,5 +1,14 @@
 # System L1 Full Completion Continuation Design
 
+## Status
+
+- Date: `2026-06-09`
+- Status: active continuation control spec
+- Implementation state:
+  - follow-on spec set A/B/C/D has been written
+  - part of `C. Repository-Local ESM Full-Domain Design` has already landed in code and verification
+  - current remaining distance is mostly domain depth and truth-sync, not architecture identity
+
 ## Goal
 
 Define the continuation target after the currently finished ordered `System L1 Phase 1` plan tree.
@@ -270,6 +279,30 @@ Must answer:
 - which checklists are normative vs informational
 - what must be updated when a new `L1` fact family lands
 
+## Follow-On Spec Status Register
+
+| Follow-on spec area | Spec status | Plan status | Implementation status |
+| --- | --- | --- | --- |
+| Runtime-Wired Remaining Emitters | 已写 | 已写 | 部分实现：五类 emitter 已落位，但 runtime wiring 仍待补齐 |
+| Auditory Domain Completion | 已写 | 已写 | 部分实现：`speaker_active` 路径已落地并已验证，taxonomy/policy 未完成 |
+| Repository-Local ESM Full-Domain | 已写 | 已写 | 部分实现：已超过最小 slice，仍在继续对齐 |
+| Verification Truth Sync | 已写 | 已写 | 部分实现：audit/checklist 已多次扩展，但仍需持续同步 |
+
+## Current Completion Register
+
+### Already Closed By Implementation
+
+- shell-complete `System L1` has already moved to runtime-visible `System L1`
+- `ESM` is no longer only a tiny interaction helper
+- repository truth now requires explicit status sync instead of oral summaries
+
+### Still Open Under This Continuation Spec
+
+- remaining emitter families need runtime depth, not only file presence
+- auditory domain still needs full taxonomy and explicit `L1-only` vs candidate policy
+- `ESM` still needs deeper main-project alignment on state families and replay/debug semantics
+- repository status docs must continue tracking verified vs uncommitted slices explicitly
+
 ## Non-Goals
 
 This continuation spec must not be read as permission to:
@@ -304,4 +337,3 @@ to
 - `full-volume System L1`
 
 without reopening solved boundary questions or faking maturity where only shells exist.
-

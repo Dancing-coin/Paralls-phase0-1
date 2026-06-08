@@ -2,6 +2,16 @@
 
 这份文档把主项目 `Phase 1` 对 `System L1` 的实现要求，和当前 `paralls-phase-0-demo` 仓库里的实际实现做成一张可执行清单。
 
+## Status
+
+- Date: `2026-06-09`
+- Scope: `d:\Users\User\Documents\paralls-phase-0-demo`
+- Status rule:
+  - `已做（已验证）`: 已落地且已通过当前回归面
+  - `已做（部分/已验证）`: 已有真实实现，但仍未到 full-volume 终态
+  - `已写待执行`: spec/plan 已写，但主体实现还没落地
+  - `进行中（已验证未提交）`: 代码已改且已验证，但当前工作树尚未提交
+
 目的不是重讲架构，而是直接回答：
 
 - `System L1` 在 `Phase 1` 里到底要做哪些东西
@@ -35,47 +45,71 @@
 当前只完成了：
 
 - `System L1` 主干
-- 少量事实上抛器
+- 八类事实上抛器的显式仓库内落位
 - 少量 `System L2` 感知入口桥接
+- 一条可验证的 `ESM` authority/runtime 链
 
-还没有完成：
+但还没有完成 full-volume 终态：
 
-- 八类事实上抛器
-- 视觉事实系统全簇
-- `ESM` 全簇的 `Phase 1` 实现
+- 八类事实上抛器的全量 runtime 深度
+- 听觉域 fact taxonomy 与 upward policy 的完整冻结
+- `ESM` 调试回放 / 工作台面的更完整对齐
+- 多感官到候选感知编译的明确全域策略
 
 ## 清单表
 
 | Phase 1 L1 全域项 | 当前状态 | 优先级 | 说明 |
 | --- | --- | --- | --- |
-| 统一 raw fact contract | 已做 | P0 | 已有 shared contract、`effect_kind`、`subject_key`、`ttl_ms` |
-| 统一跨边界事实上抛出口 | 已做 | P0 | `FactEnvelopeBuilder.gd` + `RawFactEmitter.gd` 已成立 |
-| 视觉事实上抛器最小链路 | 已做（部分） | P0 | `CharacterVisualFactEmitter`、`EnvironmentVisualFactEmitter` 已有 |
-| 社交距离 / 空间行为上抛器最小链路 | 已做（部分） | P0 | `SpatialAccessFactEmitter` 已有 |
-| reconnect / zone reseed / privacy reseed / environment cycle runtime proof | 已做 | P0 | `verify_l1_runtime_edges.py` 已验证 |
-| `ttl_ms` 首条真实能力 | 已做（部分） | P1 | 目前只落在 `nearby_actor_refs` 上 |
-| 候选感知事件对象层 | 已做（最小） | P1 | `CandidatePerceptEvent` 已存在 |
-| `Per-Character` 过滤器边界 | 已做（最小） | P1 | `PerCharacterPerceptFilter` 已存在，但规则很薄 |
-| 角色私有感知事件对象 | 已做（最小） | P1 | `CharacterPerceivedEvent` 已存在 |
-| 角色私有感知事件真实消费路径 | 已做（最小） | P1 | 已有一条最小 consumer path，但还不是默认角色入口 |
-| `ObjectVisualFactEmitter` | 未做 | P1 | 视觉事实系统四个一级源域之一 |
-| `SpatialRelationVisualFactEmitter` | 未做 | P1 | 视觉事实系统四个一级源域之一 |
-| `EvidenceProjectionEmitter` | 未做 | P1 | 视觉派生层，主项目明确存在 |
-| 听觉事实上抛器 | 未做 | P1 | 主项目 `L1` 八类之一，会话/偷听闭环关键依赖 |
-| 客户端交互系统的完整“事件上抛器”规范化 | 半做 | P1 | 当前有事实出口，但还没按主项目子系统化梳理全量交互事实 |
-| `ESM` 动作结算与约束接口 | 未做（Phase 1 完整版） | P1 | 当前 repo 只有最小交互级结算 slice |
-| `ESM` 状态机与材料模板 | 未做（完整版） | P1 | 当前只有最小状态变化路径 |
-| `ESM` 区域环境场与传播规则 | 未做 | P1 | 主项目明确属于 `L1/ESM` 边界能力 |
-| `ESM` 与事件总线正式契约 | 半做 | P1 | 现在能跑，但不是主项目文档簇要求的完整契约实现 |
-| `ESM` 调试回放与工作台能力 | 未做（完整版） | P2 | 当前有 verification harness，但不是完整 ESM 工作台 |
-| 触觉事实上抛器 | 未做 | P2 | `L1` 八类之一 |
-| 热感事实上抛器 | 未做 | P2 | `L1` 八类之一 |
-| 嗅觉事实上抛器 | 未做 | P2 | `L1` 八类之一 |
-| 生理状态事实上抛器 | 未做 | P2 | `L1` 八类之一 |
-| 角色状态事实上抛器 | 未做 | P2 | `L1` 八类之一 |
-| 空间音频系统正式化（Steam Audio 侧） | 未做（完整版） | P2 | 主项目把它视为 `L1` 子系统，不只是未来扩展 |
-| 八类事实上抛器最小字段集统一表 | 未做（显式） | P2 | 现在散在实现里，没有一份仓库内可执行对照表 |
-| 多感官原始事实到候选感知编译的完整入口 | 未做 | P2 | 现在只有视觉 + spatial access 最小接入 |
+| 统一 raw fact contract | 已做（已验证） | P0 | 已有 shared contract、`effect_kind`、`subject_key`、`ttl_ms` |
+| 统一跨边界事实上抛出口 | 已做（已验证） | P0 | `FactEnvelopeBuilder.gd` + `RawFactEmitter.gd` 已成立 |
+| 视觉事实上抛器最小链路 | 已做（部分/已验证） | P0 | `CharacterVisualFactEmitter`、`EnvironmentVisualFactEmitter` 已有且可验证 |
+| 社交距离 / 空间行为上抛器最小链路 | 已做（部分/已验证） | P0 | `SpatialAccessFactEmitter` 已有且可验证 |
+| reconnect / zone reseed / privacy reseed / environment cycle runtime proof | 已做（已验证） | P0 | `verify_l1_runtime_edges.py` 已验证 |
+| `ttl_ms` 首条真实能力 | 已做（部分/已验证） | P1 | 目前只落在 `nearby_actor_refs` 上 |
+| 候选感知事件对象层 | 已做（最小/已验证） | P1 | `CandidatePerceptEvent` 已存在 |
+| `Per-Character` 过滤器边界 | 已做（最小/已验证） | P1 | `PerCharacterPerceptFilter` 已存在，但规则很薄 |
+| 角色私有感知事件对象 | 已做（最小/已验证） | P1 | `CharacterPerceivedEvent` 已存在 |
+| 角色私有感知事件真实消费路径 | 已做（最小/已验证） | P1 | 已有一条最小 consumer path，但还不是默认角色入口 |
+| `ObjectVisualFactEmitter` | 已做（部分/已验证） | P1 | 已有显式 emitter 与对象状态上抛；仍未到完整视觉域终态 |
+| `SpatialRelationVisualFactEmitter` | 已做（最小/已验证） | P1 | 已有显式 emitter 落位，但 runtime 深度仍有限 |
+| `EvidenceProjectionEmitter` | 已做（最小/已验证） | P1 | 已有显式 emitter 落位，但仍是 bounded slice |
+| 听觉事实上抛器 | 已做（部分/已验证） | P1 | `speaker_active` 路径、authority route、audit proof 已成立；taxonomy 尚未补齐 |
+| 客户端交互系统的完整“事件上抛器”规范化 | 已做（部分/已验证） | P1 | `focus_target_change`、`interact`、`action_request` 已进入真实链路 |
+| `ESM` 动作结算与约束接口 | 已做（部分/已验证） | P1 | `ActionResolutionResult`、`ConstraintStateResult`、`BodyStateResult` 已真实接线 |
+| `ESM` 状态机与材料模板 | 已做（部分/已验证） | P1 | 已有 `state_machine_transition`、模板 skeleton、材料模板 skeleton |
+| `ESM` 区域环境场与传播规则 | 已做（部分/已验证） | P1 | 已有 `EnvironmentFieldState`、环境场更新、邻区传播的 coarse slice |
+| `ESM` 与事件总线正式契约 | 已做（部分/已验证） | P1 | `world_result` 已补 canonical envelope 字段；仍未到主项目 full contract 终态 |
+| `ESM` 调试回放与工作台能力 | 已做（最小/已验证） | P2 | 当前已有 audit / replay-friendly result identity，但不是完整工作台 |
+| 触觉事实上抛器 | 已做（shell） | P2 | emitter 已存在，但 runtime 触发尚未补完 |
+| 热感事实上抛器 | 已做（shell） | P2 | emitter 已存在，但 runtime 触发尚未补完 |
+| 嗅觉事实上抛器 | 已做（shell） | P2 | emitter 已存在，但 runtime 触发尚未补完 |
+| 生理状态事实上抛器 | 已做（shell） | P2 | emitter 已存在，但 runtime 触发尚未补完 |
+| 角色状态事实上抛器 | 已做（shell） | P2 | emitter 已存在，但 runtime 触发尚未补完 |
+| 空间音频系统正式化（Steam Audio 侧） | 未做（完整版） | P2 | 当前是最小听觉事实上抛 slice，不是完整空间音频子系统 |
+| 八类事实上抛器最小字段集统一表 | 已做（隐式） | P2 | 已散落在 emitter / test / audit 中，但尚未沉淀成单一对照表 |
+| 多感官原始事实到候选感知编译的完整入口 | 未做（仅最小 slice） | P2 | 现在只有视觉 + spatial access 最小接入，听觉 policy 尚未冻结 |
+
+## 已登记的当前实现状态
+
+### 已完成并已验证
+
+- 视觉事实系统的五个一级/派生 emitter 均已在仓库内显式落位
+- 听觉 `speaker_active` 最小 authority 路由、Godot emitter、audit proof 已成立
+- `ESM` 已形成真实的 `action_request -> resolution/constraint -> world_result/state_machine_transition` 链
+- `EnvironmentFieldState` 已具备 `field_id`、`updated_at` 和 coarse field propagation
+
+### 进行中但尚未提交
+
+- 成功交互路径的 `visibility` 状态族对齐正在收尾：
+  - `partially_visible -> visible`
+  - Godot 侧环境状态消费者已加 `environment_state_result` 守卫
+  - 该 slice 已通过当前测试与串行验证，但仍在工作树中
+
+### 已写待执行
+
+- 剩余五类事实上抛器的 runtime-wired completion
+- 听觉 fact taxonomy / candidate policy 补齐
+- `ESM` full-domain 的更深对齐与更完整 debug/workbench 面
 
 ## 该怎么排顺序
 

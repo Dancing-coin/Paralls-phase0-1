@@ -2,7 +2,7 @@ extends Node3D
 
 @export var object_id := "obj_letter"
 @export_node_path("Node") var object_visual_fact_emitter_path := NodePath("../VisualFactEmitter/ObjectVisualFactEmitter")
-var current_state := "idle"
+var current_state := "partially_visible"
 var focused := false
 
 @onready var mesh_instance: MeshInstance3D = $VisualRoot/GreyboxPropRoot/MeshInstance3D
@@ -33,7 +33,7 @@ func _apply_visual_state() -> void:
         if focused:
             material.albedo_color = Color(1.0, 0.85, 0.25)
         else:
-            material.albedo_color = Color(0.85, 0.75, 0.45) if current_state == "idle" else Color(0.45, 0.85, 0.45)
+            material.albedo_color = Color(0.85, 0.75, 0.45) if current_state in ["hidden", "partially_visible"] else Color(0.45, 0.85, 0.45)
         mesh_instance.material_override = material
 
 func _get_bus() -> Node:

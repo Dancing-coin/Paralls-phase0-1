@@ -22,7 +22,7 @@ func apply_environment_shift(next_state: String) -> void:
     _emit_environment_visual_fact(previous_state, env_state)
 
 func _on_world_result_received(payload: Dictionary) -> void:
-    if payload.has("target_environment_id") and payload.has("current_state"):
+    if payload.get("result_type", "") == "environment_state_result" and payload.has("target_environment_id") and payload.has("current_state"):
         apply_environment_shift(str(payload["current_state"]))
 
 func _apply_visual_state() -> void:

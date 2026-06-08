@@ -138,8 +138,8 @@ def test_state_machine_transition_shape() -> None:
         zone_id="zone_focus",
         entity_id="obj_letter",
         machine_id="visibility",
-        from_state="idle",
-        to_state="inspected",
+        from_state="partially_visible",
+        to_state="visible",
         trigger_type="interact.inspect",
         transition_reason="player inspect interaction accepted",
         producer_ts=300,
@@ -150,7 +150,7 @@ def test_state_machine_transition_shape() -> None:
     assert event.event_type == "state_machine_transition"
     assert event.entity_id == "obj_letter"
     assert event.machine_id == "visibility"
-    assert event.to_state == "inspected"
+    assert event.to_state == "visible"
 
 
 def test_siming_output_narrative_nudge_shape() -> None:
@@ -398,14 +398,14 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
     assert transition["event_type"] == "state_machine_transition"
     assert transition["entity_id"] == "obj_letter"
     assert transition["machine_id"] == "visibility"
-    assert transition["from_state"] == "idle"
-    assert transition["to_state"] == "inspected"
+    assert transition["from_state"] == "partially_visible"
+    assert transition["to_state"] == "visible"
     assert transition["trigger_type"] == "interact.inspect"
     assert object_state_result["message_type"] == "world_result"
     assert object_state_result["event_type"] == "object_state_result"
     assert object_state_result["payload"]["result_type"] == "object_state_result"
     assert object_state_result["payload"]["target_object_id"] == "obj_letter"
-    assert object_state_result["payload"]["current_state"] == "inspected"
+    assert object_state_result["payload"]["current_state"] == "visible"
     assert body_state_result["message_type"] == "world_result"
     assert body_state_result["event_type"] == "body_state_result"
     assert body_state_result["payload"]["result_type"] == "body_state_result"
