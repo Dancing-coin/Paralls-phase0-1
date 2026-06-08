@@ -349,19 +349,47 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         actor_position = runtime.get_actor_position(event.actor_id)
         world_result = esm_service.resolve_interaction(event, actor_position=actor_position)
         event_trace.record(world_result.result_type)
-        messages.append(_as_envelope("world_result", world_result.model_dump()))
-        _publish_debug_event(
-            build_debug_event(
-                producer_ts=world_result.producer_ts,
-                domain="character",
-                stage="character_input_received",
-                actor_id=event.actor_id,
-                summary=summarize_character_input_from_world_result(event.actor_id, world_result.model_dump()),
-                detail=world_result.model_dump(),
-            )
-        )
 
         if world_result.result_type == "object_interaction_result":
+            action_resolution = esm_service.emit_action_resolution_result(event, world_result)
+            event_trace.record(action_resolution.result_type)
+            messages.append(_as_envelope("world_result", action_resolution.model_dump()))
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=action_resolution.producer_ts,
+                    domain="character",
+                    stage="character_input_received",
+                    actor_id=event.actor_id,
+                    summary=summarize_character_input_from_world_result(event.actor_id, action_resolution.model_dump()),
+                    detail=action_resolution.model_dump(),
+                )
+            )
+
+            messages.append(_as_envelope("world_result", world_result.model_dump()))
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=world_result.producer_ts,
+                    domain="character",
+                    stage="character_input_received",
+                    actor_id=event.actor_id,
+                    summary=summarize_character_input_from_world_result(event.actor_id, world_result.model_dump()),
+                    detail=world_result.model_dump(),
+                )
+            )
+
+            object_state_result = esm_service.emit_object_state_result(
+                room_id=event.room_id,
+                scene_id=event.scene_id,
+                zone_id=event.zone_id,
+                actor_id=event.actor_id,
+                target_object_id=event.target_object_id,
+                previous_state="idle",
+                current_state="inspected",
+                producer_ts=world_result.producer_ts + 1,
+            )
+            event_trace.record(object_state_result.result_type)
+            messages.append(_as_envelope("world_result", object_state_result.model_dump()))
+
             environment_result = esm_service.emit_environment_shift(
                 room_id=event.room_id,
                 scene_id=event.scene_id,
@@ -370,7 +398,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 target_environment_id="env_lamp",
                 previous_state="stable",
                 current_state="alerted",
-                producer_ts=world_result.producer_ts + 1,
+                producer_ts=world_result.producer_ts + 2,
             )
             event_trace.record(environment_result.result_type)
             messages.append(_as_envelope("world_result", environment_result.model_dump()))
@@ -403,6 +431,18 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 correlation_id=f"world:{event.producer_ts}",
             )
             messages.extend(_candidate_messages(candidate))
+        else:
+            messages.append(_as_envelope("world_result", world_result.model_dump()))
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=world_result.producer_ts,
+                    domain="character",
+                    stage="character_input_received",
+                    actor_id=event.actor_id,
+                    summary=summarize_character_input_from_world_result(event.actor_id, world_result.model_dump()),
+                    detail=world_result.model_dump(),
+                )
+            )
         _emit_debug_from_messages(messages)
         return messages
 

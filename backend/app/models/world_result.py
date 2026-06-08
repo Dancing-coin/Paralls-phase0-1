@@ -18,14 +18,20 @@ class WorldResultBase(BaseModel):
     settlement_status: str = ""
 
 
-class ObjectInteractionResult(WorldResultBase):
+class ActionResolutionResult(WorldResultBase):
+    result_type: str = "action_resolution_result"
+    resolution_status: str = ""
+    resolved_entities: list[str] = []
+    applied_state_changes: list[str] = []
+    stable_state_summary: str = ""
+
+
+class ObjectInteractionResult(ActionResolutionResult):
     result_type: str = "object_interaction_result"
     interaction_type: str
     result_summary: str
     state_changed: bool
-    resolved_entities: list[str] = []
-    applied_state_changes: list[str] = []
-    stable_state_summary: str = ""
+    resolution_status: str = "accepted"
 
 
 class EnvironmentStateResult(WorldResultBase):
@@ -43,10 +49,25 @@ class EnvironmentStateResult(WorldResultBase):
     visibility_level: str = "clear"
 
 
+class ObjectStateResult(WorldResultBase):
+    result_type: str = "object_state_result"
+    previous_state: str
+    current_state: str
+    change_summary: str
+
+
 class VisibleFeedbackResult(WorldResultBase):
     result_type: str = "visible_feedback_result"
     feedback_mode: str
     feedback_payload: str
+
+
+class BodyStateResult(WorldResultBase):
+    result_type: str = "body_state_result"
+    body_state_class: str
+    previous_state: str
+    current_state: str
+    change_summary: str
 
 
 class ConstraintStateResult(WorldResultBase):

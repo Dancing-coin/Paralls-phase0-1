@@ -1,7 +1,13 @@
 from app.contracts.l1.action_request import ActionRequest
 from app.models.player_input import InteractIntent
 from app.models.environment_field import EnvironmentFieldState
-from app.models.world_result import ConstraintStateResult, EnvironmentStateResult, ObjectInteractionResult
+from app.models.world_result import (
+    ActionResolutionResult,
+    ConstraintStateResult,
+    EnvironmentStateResult,
+    ObjectInteractionResult,
+    ObjectStateResult,
+)
 
 
 class ESMService:
@@ -177,6 +183,60 @@ class ESMService:
             settlement_status="applied",
         )
 
+    def emit_action_resolution_result(
+        self,
+        event: InteractIntent,
+        interaction_result: ObjectInteractionResult,
+    ) -> ActionResolutionResult:
+        return ActionResolutionResult(
+            request_ref=interaction_result.request_ref,
+            result_id=f"action_resolution:{interaction_result.request_ref}",
+            room_id=event.room_id,
+            scene_id=event.scene_id,
+            zone_id=event.zone_id,
+            actor_id=event.actor_id,
+            source_type="system",
+            target_object_id=event.target_object_id,
+            causation_id=interaction_result.causation_id,
+            correlation_id=interaction_result.correlation_id,
+            producer_ts=interaction_result.producer_ts,
+            settlement_status=interaction_result.settlement_status,
+            resolution_status=interaction_result.resolution_status,
+            resolved_entities=list(interaction_result.resolved_entities),
+            applied_state_changes=list(interaction_result.applied_state_changes),
+            stable_state_summary=interaction_result.stable_state_summary,
+        )
+
+    def emit_object_state_result(
+        self,
+        *,
+        room_id: str,
+        scene_id: str,
+        zone_id: str,
+        actor_id: str,
+        target_object_id: str,
+        previous_state: str,
+        current_state: str,
+        producer_ts: int,
+    ) -> ObjectStateResult:
+        return ObjectStateResult(
+            request_ref=f"object:{target_object_id}:{producer_ts}",
+            result_id=f"object_result:{target_object_id}:{producer_ts}",
+            room_id=room_id,
+            scene_id=scene_id,
+            zone_id=zone_id,
+            actor_id=actor_id,
+            source_type="system",
+            target_object_id=target_object_id,
+            causation_id=f"object:{target_object_id}:{producer_ts}",
+            correlation_id=f"object:{target_object_id}:{producer_ts}",
+            producer_ts=producer_ts,
+            previous_state=previous_state,
+            current_state=current_state,
+            change_summary=f"{target_object_id} changed from {previous_state} to {current_state}",
+            settlement_status="applied",
+        )
+
     def get_environment_field(self, room_id: str, zone_id: str) -> EnvironmentFieldState:
         return self._environment_fields.get(
             (room_id, zone_id),
@@ -188,6 +248,35 @@ class ESMService:
 
     def get_material_template(self, material_id: str) -> dict[str, object]:
         return self.MATERIAL_TEMPLATES[material_id]
+
+    def propagate_environment_field_to_adjacent_zones(
+        self,
+        *,
+        room_id: str,
+        scene_id: str,
+        source_zone_id: str,
+        adjacent_zone_ids: list[str],
+        producer_ts: int,
+    ) -> dict[str, EnvironmentFieldState]:
+        source = self.get_environment_field(room_id, source_zone_id)
+        propagated: dict[str, EnvironmentFieldState] = {}
+        for zone_id in adjacent_zone_ids:
+            field = EnvironmentFieldState(
+                room_id=room_id,
+                scene_id=scene_id,
+                zone_id=zone_id,
+                temperature=source.temperature,
+                humidity=source.humidity,
+                smoke_density=self._propagate_smoke_density(source.smoke_density),
+                light_level=source.light_level,
+                noise_level=self._propagate_noise_level(source.noise_level),
+                visibility_level=self._propagate_visibility_level(source.visibility_level),
+                producer_ts=producer_ts,
+                source_environment_id=source.source_environment_id,
+            )
+            self._environment_fields[(room_id, zone_id)] = field
+            propagated[zone_id] = field
+        return propagated
 
     def _update_environment_field(
         self,
@@ -226,3 +315,18 @@ class ESMService:
         )
         self._environment_fields[(room_id, zone_id)] = field_state
         return field_state
+
+    def _propagate_noise_level(self, level: str) -> str:
+        if level == "elevated":
+            return "moderate"
+        return level
+
+    def _propagate_smoke_density(self, density: str) -> str:
+        if density == "light":
+            return "trace"
+        return density
+
+    def _propagate_visibility_level(self, level: str) -> str:
+        if level == "reduced":
+            return "soft_reduced"
+        return level

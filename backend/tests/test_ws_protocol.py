@@ -1,7 +1,7 @@
 from app.models.player_input import DialogueSubmit
 from app.models.ai_output import DialogueResponse
 from app.models.runtime_state import CharacterRuntimeStateDelta, CharacterRuntimeStateSnapshot
-from app.models.world_result import ConstraintStateResult
+from app.models.world_result import ActionResolutionResult, BodyStateResult, ConstraintStateResult
 from app.models.siming_output import NarrativeNudge
 from fastapi.testclient import TestClient
 from app.main import app, reset_runtime_state
@@ -50,6 +50,55 @@ def test_world_result_constraint_shape() -> None:
         constraint_summary="too far",
     )
     assert event.constraint_type == "distance"
+
+
+def test_world_result_action_resolution_shape() -> None:
+    event = ActionResolutionResult(
+        request_ref="interact:123:obj_letter",
+        result_id="resolution:interact:123:obj_letter",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        actor_id="char_c",
+        source_type="player",
+        result_type="action_resolution_result",
+        causation_id="interact:123",
+        correlation_id="interact:123",
+        producer_ts=124,
+        settlement_status="accepted",
+        resolution_status="accepted",
+        resolved_entities=["obj_letter"],
+        applied_state_changes=["object_interaction_result"],
+        stable_state_summary="object_interaction accepted",
+    )
+
+    assert event.resolution_status == "accepted"
+    assert event.request_ref == "interact:123:obj_letter"
+    assert event.resolved_entities == ["obj_letter"]
+
+
+def test_world_result_body_state_shape() -> None:
+    event = BodyStateResult(
+        request_ref="body:char_c:200",
+        result_id="body_result:char_c:200",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        actor_id="char_c",
+        source_type="system",
+        result_type="body_state_result",
+        causation_id="body:char_c:200",
+        correlation_id="body:char_c:200",
+        producer_ts=200,
+        settlement_status="applied",
+        body_state_class="fatigue",
+        previous_state="stable",
+        current_state="elevated",
+        change_summary="fatigue elevated",
+    )
+
+    assert event.body_state_class == "fatigue"
+    assert event.current_state == "elevated"
 
 
 def test_siming_output_narrative_nudge_shape() -> None:
@@ -157,7 +206,7 @@ def test_websocket_dialogue_submit_emits_ack_and_dialogue_response() -> None:
     assert response["payload"]["actor_id"] == "char_a"
 
 
-def test_websocket_interact_intent_emits_ack_world_result_environment_shift_and_siming_output() -> None:
+def test_websocket_interact_intent_emits_ack_action_resolution_world_result_environment_shift_and_siming_output() -> None:
     reset_runtime_state()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
@@ -177,7 +226,9 @@ def test_websocket_interact_intent_emits_ack_world_result_environment_shift_and_
         )
 
         ack = websocket.receive_json()
+        action_resolution = websocket.receive_json()
         world_result = websocket.receive_json()
+        object_state_result = websocket.receive_json()
         environment_result = websocket.receive_json()
         siming_output = websocket.receive_json()
         runtime_snapshot = websocket.receive_json()
@@ -188,8 +239,18 @@ def test_websocket_interact_intent_emits_ack_world_result_environment_shift_and_
 
     assert ack["message_type"] == "ack"
     assert ack["payload"]["route"] == "esm_service"
+    assert action_resolution["message_type"] == "world_result"
+    assert action_resolution["payload"]["result_type"] == "action_resolution_result"
+    assert action_resolution["payload"]["target_object_id"] == "obj_letter"
+    assert action_resolution["payload"]["resolution_status"] == "accepted"
+    assert action_resolution["payload"]["applied_state_changes"] == ["object_interaction_result"]
     assert world_result["message_type"] == "world_result"
+    assert world_result["payload"]["result_type"] == "object_interaction_result"
     assert world_result["payload"]["target_object_id"] == "obj_letter"
+    assert object_state_result["message_type"] == "world_result"
+    assert object_state_result["payload"]["result_type"] == "object_state_result"
+    assert object_state_result["payload"]["target_object_id"] == "obj_letter"
+    assert object_state_result["payload"]["current_state"] == "inspected"
     assert environment_result["message_type"] == "world_result"
     assert environment_result["payload"]["result_type"] == "environment_state_result"
     assert environment_result["payload"]["target_environment_id"] == "env_lamp"
