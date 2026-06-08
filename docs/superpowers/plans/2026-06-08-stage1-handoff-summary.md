@@ -78,6 +78,13 @@ They should avoid extending the legacy flat service bucket any further unless th
 Use this merge procedure before starting Stage 2:
 
 - [2026-06-08-enhanced-subsystems-merge-checklist.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/2026-06-08-enhanced-subsystems-merge-checklist.md>)
+- [2026-06-08-enhanced-subsystems-conflict-preflight.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/2026-06-08-enhanced-subsystems-conflict-preflight.md>)
+
+Fast command before the first merge:
+
+```bash
+python scripts/verification/verify_enhanced_merge_preflight.py
+```
 
 ## What To Do Next
 

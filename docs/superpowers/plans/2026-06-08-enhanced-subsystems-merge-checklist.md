@@ -27,6 +27,7 @@ cd ..
 python scripts/verification/verify_phase0.py
 python scripts/verification/verify_phase1_slice.py
 python scripts/verification/verify_l1_runtime_edges.py
+python scripts/verification/verify_enhanced_merge_preflight.py
 ```
 
 ## Merge Order
@@ -170,6 +171,18 @@ python scripts/verification/verify_l1_runtime_edges.py
 Expected:
 
 - all pass before Stage 2 starts
+
+## Fast Preflight Command
+
+For a compressed merge gate, run:
+
+```bash
+python scripts/verification/verify_enhanced_merge_preflight.py
+```
+
+Then read:
+
+- `.omx/verification/enhanced-merge-preflight-report.md`
 
 ## Decision Gate Before Stage 2
 
