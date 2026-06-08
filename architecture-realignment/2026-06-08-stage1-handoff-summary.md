@@ -77,8 +77,8 @@ They should avoid extending the legacy flat service bucket any further unless th
 
 Use this merge procedure before starting Stage 2:
 
-- [2026-06-08-enhanced-subsystems-merge-checklist.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/2026-06-08-enhanced-subsystems-merge-checklist.md>)
-- [2026-06-08-enhanced-subsystems-conflict-preflight.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/2026-06-08-enhanced-subsystems-conflict-preflight.md>)
+- [2026-06-08-enhanced-subsystems-merge-checklist.md](</d:/Users/User/Documents/paralls-phase-0-demo/architecture-realignment/2026-06-08-enhanced-subsystems-merge-checklist.md>)
+- [2026-06-08-enhanced-subsystems-conflict-preflight.md](</d:/Users/User/Documents/paralls-phase-0-demo/architecture-realignment/2026-06-08-enhanced-subsystems-conflict-preflight.md>)
 
 Fast command before the first merge:
 
@@ -91,9 +91,9 @@ python scripts/verification/verify_enhanced_merge_preflight.py
 After enhanced `ESM`, `Siming`, and event-bus branches are merged:
 
 1. execute the Stage 2 relocation plan:
-   - [2026-06-08-stage2-merge-and-downlink-v0-implementation-plan.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/2026-06-08-stage2-merge-and-downlink-v0-implementation-plan.md>)
+   - [2026-06-08-stage2-merge-and-downlink-v0-implementation-plan.md](</d:/Users/User/Documents/paralls-phase-0-demo/architecture-realignment/2026-06-08-stage2-merge-and-downlink-v0-implementation-plan.md>)
 2. follow the merge checklist first:
-   - [2026-06-08-enhanced-subsystems-merge-checklist.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/2026-06-08-enhanced-subsystems-merge-checklist.md>)
+   - [2026-06-08-enhanced-subsystems-merge-checklist.md](</d:/Users/User/Documents/paralls-phase-0-demo/architecture-realignment/2026-06-08-enhanced-subsystems-merge-checklist.md>)
 3. relocate merged implementations behind the Stage 1 seams
 4. convert legacy flat modules into compatibility wrappers
 5. start downlink v0:

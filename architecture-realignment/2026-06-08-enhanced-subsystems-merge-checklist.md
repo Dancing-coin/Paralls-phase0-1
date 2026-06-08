@@ -199,7 +199,7 @@ Do not begin Stage 2 physical relocation until all of the following are true:
 Once the merge gate is green:
 
 1. execute:
-   - [2026-06-08-stage2-merge-and-downlink-v0-implementation-plan.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/2026-06-08-stage2-merge-and-downlink-v0-implementation-plan.md>)
+   - [2026-06-08-stage2-merge-and-downlink-v0-implementation-plan.md](</d:/Users/User/Documents/paralls-phase-0-demo/architecture-realignment/2026-06-08-stage2-merge-and-downlink-v0-implementation-plan.md>)
 2. relocate merged implementations into:
    - `backend/app/l1/*`
    - `backend/app/l2/*`

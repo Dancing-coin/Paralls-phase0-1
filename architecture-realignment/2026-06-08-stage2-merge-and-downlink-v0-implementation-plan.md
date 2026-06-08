@@ -23,7 +23,7 @@ If those preconditions are not true, stop after reading this plan and do not sta
 
 Before executing this plan, run:
 
-- [2026-06-08-enhanced-subsystems-merge-checklist.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/2026-06-08-enhanced-subsystems-merge-checklist.md>)
+- [2026-06-08-enhanced-subsystems-merge-checklist.md](</d:/Users/User/Documents/paralls-phase-0-demo/architecture-realignment/2026-06-08-enhanced-subsystems-merge-checklist.md>)
 - `python scripts/verification/verify_stage2_start_gate.py`
 
 ## File Map
@@ -642,8 +642,8 @@ git commit -m "feat: add Godot presentation command receiver"
 ### Task 9: Final Verification
 
 **Files:**
-- Modify: `docs/superpowers/specs/2026-06-08-architecture-realignment-and-downlink-prep-design.md`
-- Modify: `docs/superpowers/plans/2026-06-08-stage2-merge-and-downlink-v0-implementation-plan.md`
+- Modify: `architecture-realignment/2026-06-08-architecture-realignment-and-downlink-prep-design.md`
+- Modify: `architecture-realignment/2026-06-08-stage2-merge-and-downlink-v0-implementation-plan.md`
 
 - [ ] **Step 1: Run the full backend test suite**
 
@@ -695,7 +695,7 @@ Add a final section to the spec summarizing:
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/superpowers/specs/2026-06-08-architecture-realignment-and-downlink-prep-design.md docs/superpowers/plans/2026-06-08-stage2-merge-and-downlink-v0-implementation-plan.md
+git add architecture-realignment/2026-06-08-architecture-realignment-and-downlink-prep-design.md architecture-realignment/2026-06-08-stage2-merge-and-downlink-v0-implementation-plan.md
 git commit -m "docs: record stage2 merge and downlink v0 closeout"
 ```
 

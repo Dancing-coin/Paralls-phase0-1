@@ -10,7 +10,7 @@ This is a short preflight sheet to use immediately before merging the enhanced:
 
 It complements the fuller checklist here:
 
-- [2026-06-08-enhanced-subsystems-merge-checklist.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/2026-06-08-enhanced-subsystems-merge-checklist.md>)
+- [2026-06-08-enhanced-subsystems-merge-checklist.md](</d:/Users/User/Documents/paralls-phase-0-demo/architecture-realignment/2026-06-08-enhanced-subsystems-merge-checklist.md>)
 
 Use this page when you want the minimum set of files and commands likely to matter during conflict resolution.
 

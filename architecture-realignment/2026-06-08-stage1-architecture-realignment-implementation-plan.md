@@ -893,8 +893,8 @@ git commit -m "test: add no-regression guardrails for architecture seams"
 ### Task 6: Record Stage 1 Closeout And Freeze The Merge Handoff
 
 **Files:**
-- Modify: `docs/superpowers/specs/2026-06-08-architecture-realignment-and-downlink-prep-design.md`
-- Modify: `docs/superpowers/plans/2026-06-08-stage1-architecture-realignment-implementation-plan.md`
+- Modify: `architecture-realignment/2026-06-08-architecture-realignment-and-downlink-prep-design.md`
+- Modify: `architecture-realignment/2026-06-08-stage1-architecture-realignment-implementation-plan.md`
 
 - [ ] **Step 1: Confirm the repository now exposes the planned merge seams**
 
@@ -910,7 +910,7 @@ Expected:
 
 - [ ] **Step 2: Add a short closeout note to the spec if needed**
 
-If implementation exposed any constraint worth preserving, append a small section to `docs/superpowers/specs/2026-06-08-architecture-realignment-and-downlink-prep-design.md` like:
+If implementation exposed any constraint worth preserving, append a small section to `architecture-realignment/2026-06-08-architecture-realignment-and-downlink-prep-design.md` like:
 
 ```markdown
 ## Stage 1 Closeout Notes
@@ -922,7 +922,7 @@ If implementation exposed any constraint worth preserving, append a small sectio
 - [ ] **Step 3: Commit the closeout**
 
 ```bash
-git add docs/superpowers/specs/2026-06-08-architecture-realignment-and-downlink-prep-design.md docs/superpowers/plans/2026-06-08-stage1-architecture-realignment-implementation-plan.md
+git add architecture-realignment/2026-06-08-architecture-realignment-and-downlink-prep-design.md architecture-realignment/2026-06-08-stage1-architecture-realignment-implementation-plan.md
 git commit -m "docs: record stage1 architecture realignment handoff"
 ```
 

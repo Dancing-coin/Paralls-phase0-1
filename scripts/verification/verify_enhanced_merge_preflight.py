@@ -9,9 +9,7 @@ from common import repo_root, resolve_python_exe, run_command, verification_dir,
 
 
 STAGE1_SEAM_COMMIT_SUBJECT = "Prepare stable architecture seams before enhanced subsystem merges"
-ALLOWED_UNTRACKED = {
-    "docs/l1-main-project-gap-assessment.md",
-}
+ALLOWED_UNTRACKED: set[str] = set()
 
 
 def _result(
