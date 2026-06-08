@@ -226,10 +226,13 @@ def test_esm_service_environment_shift_result_is_replayable_and_updates_field_st
     assert result.settlement_status == "applied"
     assert result.affected_zone_ids == ["zone_focus"]
     assert result.field_delta_summary == ["light_level", "noise_level", "smoke_density", "visibility_level"]
+    assert result.field_id == "field:room_demo:scene_demo:zone_focus"
+    assert result.source_environment_id == "env_lamp"
     assert result.light_level == "low"
     assert result.noise_level == "elevated"
     assert result.smoke_density == "light"
     assert result.visibility_level == "reduced"
+    assert result.updated_at == result.producer_ts
 
     field = service.get_environment_field("room_demo", "zone_focus")
     assert field.field_id == "field:room_demo:scene_demo:zone_focus"
@@ -277,6 +280,8 @@ def test_esm_service_accepts_environment_request_and_emits_resolution_and_enviro
     assert environment_result.result_type == "environment_state_result"
     assert environment_result.entity_id == "env_lamp"
     assert environment_result.target_environment_id == "env_lamp"
+    assert environment_result.field_id == "field:room_demo:scene_demo:zone_focus"
+    assert environment_result.source_environment_id == "env_lamp"
     assert environment_result.current_state == "alerted"
     assert environment_result.request_ref == "envreq:2"
     assert environment_result.causation_id == "decision:31"

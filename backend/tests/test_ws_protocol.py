@@ -385,6 +385,9 @@ def test_websocket_environment_request_emits_ack_action_resolution_transition_an
     assert environment_result["payload"]["request_ref"] == "envreq:500"
     assert environment_result["payload"]["entity_id"] == "env_lamp"
     assert environment_result["payload"]["target_environment_id"] == "env_lamp"
+    assert environment_result["payload"]["field_id"] == "field:room_demo:scene_demo:zone_focus"
+    assert environment_result["payload"]["source_environment_id"] == "env_lamp"
+    assert environment_result["payload"]["updated_at"] == 502
     assert environment_result["payload"]["current_state"] == "alerted"
     assert environment_result["payload"]["causation_id"] == "decision:500"
     assert environment_result["payload"]["correlation_id"] == "decision:500"
@@ -488,6 +491,8 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
     assert environment_result["payload"]["result_type"] == "environment_state_result"
     assert environment_result["payload"]["entity_id"] == "env_lamp"
     assert environment_result["payload"]["target_environment_id"] == "env_lamp"
+    assert environment_result["payload"]["field_id"] == "field:room_demo:scene_demo:zone_focus"
+    assert environment_result["payload"]["source_environment_id"] == "env_lamp"
     assert environment_result["payload"]["current_state"] == "alerted"
     assert siming_output["message_type"] == "siming_output"
     assert siming_output["payload"]["target_actor_id"] == "char_b"

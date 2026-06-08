@@ -32,6 +32,8 @@ class EnvironmentStateResult(WorldResultBase):
     previous_state: str
     current_state: str
     change_summary: str
+    field_id: str = ""
+    source_environment_id: str = ""
     affected_zone_ids: list[str] = []
     field_delta_summary: list[str] = []
     temperature: str = "ambient"
@@ -40,6 +42,7 @@ class EnvironmentStateResult(WorldResultBase):
     light_level: str = "normal"
     noise_level: str = "quiet"
     visibility_level: str = "clear"
+    updated_at: int = 0
 
 
 class ObjectStateResult(WorldResultBase):

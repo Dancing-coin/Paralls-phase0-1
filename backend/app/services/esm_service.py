@@ -487,6 +487,8 @@ class ESMService:
             previous_state=previous_state,
             current_state=current_state,
             change_summary=f"{target_environment_id} changed from {previous_state} to {current_state}",
+            field_id=field_state.field_id,
+            source_environment_id=field_state.source_environment_id,
             affected_zone_ids=[zone_id],
             field_delta_summary=["light_level", "noise_level", "smoke_density", "visibility_level"],
             temperature=field_state.temperature,
@@ -495,6 +497,7 @@ class ESMService:
             light_level=field_state.light_level,
             noise_level=field_state.noise_level,
             visibility_level=field_state.visibility_level,
+            updated_at=field_state.updated_at,
             settlement_status="applied",
         )
 

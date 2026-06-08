@@ -38,6 +38,9 @@
   - `visibility_level`
   - `field_id`
   - `updated_at`
+  - `EnvironmentStateResult.field_id`
+  - `EnvironmentStateResult.source_environment_id`
+  - `EnvironmentStateResult.updated_at`
   - adjacent-zone propagation
 
 ### Task 3: Strengthen Replay / Debug Proof For ESM

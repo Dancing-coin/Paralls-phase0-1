@@ -104,6 +104,10 @@ That does not require a giant workbench, but it does require:
 - field-state identity and freshness:
   - `field_id`
   - `updated_at`
+- environment-state replay identity on result objects:
+  - `EnvironmentStateResult.field_id`
+  - `EnvironmentStateResult.source_environment_id`
+  - `EnvironmentStateResult.updated_at`
 - coarse field propagation to adjacent zones
 - canonical `world_result` envelope fields with compatibility preservation
 - audit/replay-visible stable ids and proof coverage
