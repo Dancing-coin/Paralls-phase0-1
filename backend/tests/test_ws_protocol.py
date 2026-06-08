@@ -263,6 +263,7 @@ def test_websocket_environment_request_emits_ack_action_resolution_and_environme
         )
 
         ack = websocket.receive_json()
+        action_request = websocket.receive_json()
         action_resolution = websocket.receive_json()
         environment_result = websocket.receive_json()
 
@@ -270,6 +271,13 @@ def test_websocket_environment_request_emits_ack_action_resolution_and_environme
     assert ack["payload"]["accepted"] is True
     assert ack["payload"]["route"] == "esm_service"
     assert ack["payload"]["source_type"] == "environment_request"
+    assert action_request["message_type"] == "action_request"
+    assert action_request["event_type"] == "action_request"
+    assert action_request["payload"]["request_id"] == "envreq:500"
+    assert action_request["payload"]["request_type"] == "environment_request"
+    assert action_request["payload"]["source"]["layer"] == "L3"
+    assert action_request["payload"]["source"]["system"] == "siming.orchestrator"
+    assert action_request["payload"]["target_entity_refs"]["environment_ids"] == ["env_lamp"]
     assert action_resolution["message_type"] == "world_result"
     assert action_resolution["event_type"] == "action_resolution_result"
     assert action_resolution["payload"]["request_ref"] == "envreq:500"
@@ -305,6 +313,7 @@ def test_websocket_interact_intent_emits_ack_action_resolution_object_state_body
         )
 
         ack = websocket.receive_json()
+        action_request = websocket.receive_json()
         action_resolution = websocket.receive_json()
         object_state_result = websocket.receive_json()
         body_state_result = websocket.receive_json()
@@ -318,6 +327,13 @@ def test_websocket_interact_intent_emits_ack_action_resolution_object_state_body
 
     assert ack["message_type"] == "ack"
     assert ack["payload"]["route"] == "esm_service"
+    assert action_request["message_type"] == "action_request"
+    assert action_request["event_type"] == "action_request"
+    assert action_request["payload"]["request_id"] == "interact:456:obj_letter"
+    assert action_request["payload"]["request_type"] == "interact"
+    assert action_request["payload"]["source"]["layer"] == "L1"
+    assert action_request["payload"]["source"]["system"] == "player_input_bridge"
+    assert action_request["payload"]["target_entity_refs"]["object_ids"] == ["obj_letter"]
     assert action_resolution["message_type"] == "world_result"
     assert action_resolution["event_id"] == "action_resolution:interact:456:obj_letter"
     assert action_resolution["event_type"] == "action_resolution_result"
@@ -412,10 +428,16 @@ def test_websocket_interact_intent_emits_constraint_when_player_is_far() -> None
         )
 
         ack = websocket.receive_json()
+        action_request = websocket.receive_json()
         world_result = websocket.receive_json()
 
     assert ack["message_type"] == "ack"
     assert ack["payload"]["route"] == "esm_service"
+    assert action_request["message_type"] == "action_request"
+    assert action_request["event_type"] == "action_request"
+    assert action_request["payload"]["request_id"] == "interact:456:obj_letter"
+    assert action_request["payload"]["request_type"] == "interact"
+    assert action_request["payload"]["source"]["system"] == "player_input_bridge"
     assert world_result["message_type"] == "world_result"
     assert world_result["event_type"] == "constraint_state_result"
     assert world_result["source"]["system"] == "esm"
@@ -460,12 +482,18 @@ def test_websocket_interact_intent_emits_constraint_state_when_actor_is_far() ->
             }
         )
         interact_ack = websocket.receive_json()
+        action_request = websocket.receive_json()
         world_result = websocket.receive_json()
 
     assert move_ack["message_type"] == "ack"
     assert move_ack["payload"]["route"] == "local_motion"
     assert interact_ack["message_type"] == "ack"
     assert interact_ack["payload"]["route"] == "esm_service"
+    assert action_request["message_type"] == "action_request"
+    assert action_request["event_type"] == "action_request"
+    assert action_request["payload"]["request_id"] == "interact:456:obj_letter"
+    assert action_request["payload"]["request_type"] == "interact"
+    assert action_request["payload"]["source"]["system"] == "player_input_bridge"
     assert world_result["message_type"] == "world_result"
     assert world_result["payload"]["result_type"] == "constraint_state_result"
     assert world_result["payload"]["constraint_type"] == "distance_constraint"

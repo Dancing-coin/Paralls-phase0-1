@@ -234,6 +234,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
 
     if envelope.message_type == "environment_request":
         event = EnvironmentRequest(**envelope.payload)
+        action_request = esm_service.build_environment_action_request(event)
         messages: list[dict[str, object]] = [
             {
                 "message_type": "ack",
@@ -255,6 +256,8 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             )
         )
         event_trace.record("environment_request")
+        event_trace.record("action_request")
+        messages.append(_as_action_request_envelope(action_request.model_dump()))
         resolution, environment_result = esm_service.resolve_environment_request(event)
         event_trace.record(resolution.result_type)
         event_trace.record(environment_result.result_type)
@@ -368,6 +371,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         return messages
 
     if route["route"] == "esm_service" and isinstance(event, InteractIntent):
+        action_request = esm_service.build_action_request(event)
         _publish_debug_event(
             build_debug_event(
                 producer_ts=event.producer_ts,
@@ -378,6 +382,8 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 detail=event.model_dump(),
             )
         )
+        event_trace.record("action_request")
+        messages.append(_as_action_request_envelope(action_request.model_dump()))
         actor_position = runtime.get_actor_position(event.actor_id)
         world_result = esm_service.resolve_interaction(event, actor_position=actor_position)
         event_trace.record(world_result.result_type)
@@ -496,6 +502,39 @@ def _parse_player_input(payload: dict) -> MoveIntent | DialogueSubmit | Interact
 def _as_envelope(message_type: str, payload: dict[str, object]) -> dict[str, object]:
     return {
         "message_type": message_type,
+        "payload": payload,
+    }
+
+
+def _as_action_request_envelope(payload: dict[str, object]) -> dict[str, object]:
+    source = payload.get("source", {})
+    if not isinstance(source, dict):
+        source = {}
+    return {
+        "message_type": "action_request",
+        "event_id": str(payload.get("request_id", "") or ""),
+        "event_type": "action_request",
+        "producer_ts": int(payload.get("producer_ts", 0) or 0),
+        "room_id": str(payload.get("room_id", "") or ""),
+        "scene_id": str(payload.get("scene_id", "") or ""),
+        "zone_id": str(payload.get("zone_id", "") or ""),
+        "source": {
+            "layer": str(source.get("layer", "") or ""),
+            "system": str(source.get("system", "") or ""),
+            "actor_id": str(source.get("actor_id", "") or ""),
+            "object_id": str(source.get("object_id", "") or ""),
+        },
+        "routing": {
+            "audience_mode": "authority_broadcast",
+            "routing_mode": "authoritative_event_bus",
+            "dialog_group_id": None,
+            "target_ids": [],
+        },
+        "priority": "p1",
+        "ttl": payload.get("constraints_hint", {}).get("ttl") if isinstance(payload.get("constraints_hint"), dict) else None,
+        "durability": "replayable",
+        "causation_id": str(payload.get("causation_id", "") or ""),
+        "correlation_id": str(payload.get("correlation_id", "") or ""),
         "payload": payload,
     }
 
