@@ -6,7 +6,6 @@ from app.models.world_result import (
     BodyStateResult,
     ConstraintStateResult,
     EnvironmentStateResult,
-    ObjectInteractionResult,
     ObjectStateResult,
 )
 
@@ -80,7 +79,7 @@ class ESMService:
         *,
         is_in_range: bool | None = None,
         actor_position: tuple[float, float, float] | None = None,
-    ) -> ObjectInteractionResult | ConstraintStateResult:
+    ) -> ActionResolutionResult | ConstraintStateResult:
         request = self.build_action_request(event)
         next_is_in_range = is_in_range if is_in_range is not None else self._is_in_range(event.target_object_id, actor_position)
         if not next_is_in_range:
@@ -104,25 +103,27 @@ class ESMService:
                 settlement_status="rejected",
             )
 
-        return ObjectInteractionResult(
+        return ActionResolutionResult(
             request_ref=request.request_id,
-            result_id=f"resolution:{request.request_id}",
+            result_id=f"action_resolution:{request.request_id}",
             room_id=event.room_id,
             scene_id=event.scene_id,
             zone_id=event.zone_id,
             actor_id=event.actor_id,
             source_type="player",
             target_object_id=event.target_object_id,
-            result_type="object_interaction_result",
+            result_type="action_resolution_result",
             causation_id=f"interact:{event.producer_ts}",
             correlation_id=f"interact:{event.producer_ts}",
             producer_ts=event.producer_ts + 1,
-            interaction_type=event.interaction_type,
-            result_summary="object interaction accepted",
-            state_changed=True,
+            resolution_status="accepted",
             resolved_entities=[event.target_object_id],
-            applied_state_changes=["object_interaction_result"],
-            stable_state_summary="object_interaction accepted",
+            applied_state_changes=[
+                "object_state_result",
+                "body_state_result",
+                "environment_state_result",
+            ],
+            stable_state_summary="interaction accepted",
             settlement_status="accepted",
         )
 
@@ -187,11 +188,11 @@ class ESMService:
     def emit_action_resolution_result(
         self,
         event: InteractIntent,
-        interaction_result: ObjectInteractionResult,
+        interaction_result: ActionResolutionResult,
     ) -> ActionResolutionResult:
         return ActionResolutionResult(
             request_ref=interaction_result.request_ref,
-            result_id=f"action_resolution:{interaction_result.request_ref}",
+            result_id=interaction_result.result_id,
             room_id=event.room_id,
             scene_id=event.scene_id,
             zone_id=event.zone_id,

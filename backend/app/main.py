@@ -350,21 +350,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         world_result = esm_service.resolve_interaction(event, actor_position=actor_position)
         event_trace.record(world_result.result_type)
 
-        if world_result.result_type == "object_interaction_result":
-            action_resolution = esm_service.emit_action_resolution_result(event, world_result)
-            event_trace.record(action_resolution.result_type)
-            messages.append(_as_world_result_envelope(action_resolution.model_dump()))
-            _publish_debug_event(
-                build_debug_event(
-                    producer_ts=action_resolution.producer_ts,
-                    domain="character",
-                    stage="character_input_received",
-                    actor_id=event.actor_id,
-                    summary=summarize_character_input_from_world_result(event.actor_id, action_resolution.model_dump()),
-                    detail=action_resolution.model_dump(),
-                )
-            )
-
+        if world_result.result_type == "action_resolution_result":
             messages.append(_as_world_result_envelope(world_result.model_dump()))
             _publish_debug_event(
                 build_debug_event(

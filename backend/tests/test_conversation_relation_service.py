@@ -31,7 +31,7 @@ def test_relation_service_builds_candidate_for_char_c_near_object() -> None:
         scene_id="scene_demo",
         zone_id="zone_focus",
         target_object_id="obj_letter",
-        result_type="object_interaction_result",
+        result_type="action_resolution_result",
         producer_ts=101,
     )
 

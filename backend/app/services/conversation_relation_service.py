@@ -37,7 +37,7 @@ class ConversationRelationService:
         result_type: str,
         producer_ts: int,
     ) -> None:
-        if result_type != "object_interaction_result":
+        if result_type != "action_resolution_result":
             return
 
         state = self._get_or_create_relation_state(actor_id, room_id, scene_id, zone_id)

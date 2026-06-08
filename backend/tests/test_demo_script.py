@@ -5,9 +5,9 @@ def test_event_trace_records_observable_steps() -> None:
     trace = EventTraceService()
     trace.record("player_connected")
     trace.record("dialogue_response")
-    trace.record("object_interaction_result")
+    trace.record("action_resolution_result")
     assert trace.summary() == [
         "player_connected",
         "dialogue_response",
-        "object_interaction_result",
+        "action_resolution_result",
     ]

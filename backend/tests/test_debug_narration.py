@@ -118,18 +118,18 @@ def test_summarize_character_output_includes_dialogue_content() -> None:
     assert "我注意到那封信了" in summary
 
 
-def test_summarize_character_input_from_world_result_mentions_successful_object_interaction() -> None:
+def test_summarize_character_input_from_world_result_mentions_action_resolution_success() -> None:
     summary = summarize_character_input_from_world_result(
         "char_c",
         {
-            "result_type": "object_interaction_result",
+            "result_type": "action_resolution_result",
             "target_object_id": "obj_letter",
         },
     )
 
     assert "CharacterC" in summary
     assert "obj_letter" in summary
-    assert "交互成功" in summary
+    assert "交互结算已确认" in summary
 
 
 def test_summarize_character_input_from_world_result_mentions_body_state_change() -> None:

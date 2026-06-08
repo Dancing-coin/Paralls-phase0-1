@@ -21,7 +21,7 @@ def test_phase0_audit_marks_missing_failed_interaction_and_weak_voice() -> None:
         [LocalPresentationBus] phase0_dialogue_target:char_a
         [LocalPresentationBus] dialogue_applied:char_a
         [LocalPresentationBus] phase0_interact_target:obj_letter
-        [LocalPresentationBus] object_state:obj_letter:object interaction accepted
+        [LocalPresentationBus] object_state:obj_letter:inspected
         [LocalPresentationBus] environment_state:alerted
         [LocalPresentationBus] attention_applied:char_b
         [LocalPresentationBus] phase0_screenshot_saved:D:\\demo-main.png:0
@@ -60,7 +60,7 @@ def test_phase0_audit_proves_root_motion_player_and_patrol_evidence() -> None:
         [LocalPresentationBus] phase0_dialogue_target:char_a
         [LocalPresentationBus] dialogue_applied:char_a
         [LocalPresentationBus] phase0_interact_target:obj_letter
-        [LocalPresentationBus] object_state:obj_letter:object interaction accepted
+        [LocalPresentationBus] object_state:obj_letter:inspected
         [LocalPresentationBus] constraint_state_result:distance
         [LocalPresentationBus] environment_state:alerted
         [LocalPresentationBus] attention_applied:char_b
@@ -113,7 +113,7 @@ def test_phase0_audit_requires_locomotion_state_ui_evidence() -> None:
         [LocalPresentationBus] phase0_dialogue_target:char_a
         [LocalPresentationBus] dialogue_applied:char_a
         [LocalPresentationBus] phase0_interact_target:obj_letter
-        [LocalPresentationBus] object_state:obj_letter:object interaction accepted
+        [LocalPresentationBus] object_state:obj_letter:inspected
         [LocalPresentationBus] constraint_state_result:distance
         [LocalPresentationBus] environment_state:alerted
         [LocalPresentationBus] attention_applied:char_b
@@ -159,7 +159,7 @@ def test_phase0_audit_requires_jump_variant_probe_evidence() -> None:
         [LocalPresentationBus] phase0_dialogue_target:char_a
         [LocalPresentationBus] dialogue_applied:char_a
         [LocalPresentationBus] phase0_interact_target:obj_letter
-        [LocalPresentationBus] object_state:obj_letter:object interaction accepted
+        [LocalPresentationBus] object_state:obj_letter:inspected
         [LocalPresentationBus] constraint_state_result:distance
         [LocalPresentationBus] environment_state:alerted
         [LocalPresentationBus] attention_applied:char_b
@@ -204,7 +204,7 @@ def test_phase0_audit_requires_forward_direction_probe_evidence() -> None:
         [LocalPresentationBus] phase0_dialogue_target:char_a
         [LocalPresentationBus] dialogue_applied:char_a
         [LocalPresentationBus] phase0_interact_target:obj_letter
-        [LocalPresentationBus] object_state:obj_letter:object interaction accepted
+        [LocalPresentationBus] object_state:obj_letter:inspected
         [LocalPresentationBus] constraint_state_result:distance
         [LocalPresentationBus] environment_state:alerted
         [LocalPresentationBus] attention_applied:char_b

@@ -26,14 +26,6 @@ class ActionResolutionResult(WorldResultBase):
     stable_state_summary: str = ""
 
 
-class ObjectInteractionResult(ActionResolutionResult):
-    result_type: str = "object_interaction_result"
-    interaction_type: str
-    result_summary: str
-    state_changed: bool
-    resolution_status: str = "accepted"
-
-
 class EnvironmentStateResult(WorldResultBase):
     result_type: str = "environment_state_result"
     previous_state: str

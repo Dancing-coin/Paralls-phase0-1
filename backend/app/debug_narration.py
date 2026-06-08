@@ -162,8 +162,6 @@ def summarize_character_input_from_world_result(actor_id: str, payload: dict[str
     result_type = str(payload.get("result_type", "") or "")
     if result_type == "action_resolution_result":
         return f"{actor_label} 收到了一条世界结果：{label_object(str(payload.get('target_object_id', '') or ''))} 交互结算已确认。"
-    if result_type == "object_interaction_result":
-        return f"{actor_label} 收到了一条世界结果：{label_object(str(payload.get('target_object_id', '') or ''))} 交互成功。"
     if result_type == "body_state_result":
         return f"{actor_label} 收到了一条世界结果：身体状态 {payload.get('body_state_class', 'unknown')} 现在是 {payload.get('current_state', 'unknown')}。"
     if result_type == "constraint_state_result":
@@ -247,8 +245,6 @@ def summarize_world_result(payload: dict[str, Any]) -> str:
     result_type = str(payload.get("result_type", "world_result"))
     if result_type == "action_resolution_result":
         return f"系统完成了 {label_object(str(payload.get('target_object_id', '')))} 的动作结算。"
-    if result_type == "object_interaction_result":
-        return f"系统确认 {label_object(str(payload.get('target_object_id', '')))} 交互成功。"
     if result_type == "object_state_result":
         return f"对象状态发生变化：{label_object(str(payload.get('target_object_id', '')))} 现在是 {payload.get('current_state', 'unknown')}。"
     if result_type == "body_state_result":

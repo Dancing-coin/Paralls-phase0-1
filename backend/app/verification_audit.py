@@ -78,9 +78,9 @@ def evaluate_phase0_audit(
         )
     )
 
-    success_interaction_ok = _contains_all(
-        main_log,
-        ["phase0_interact_target:obj_letter", "object_state:obj_letter:object interaction accepted"],
+    success_interaction_ok = "phase0_interact_target:obj_letter" in main_log and (
+        "object_state:obj_letter:object interaction accepted" in main_log
+        or "object_state:obj_letter:inspected" in main_log
     )
     results.append(
         _result(

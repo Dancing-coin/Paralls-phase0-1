@@ -43,7 +43,7 @@ def test_esm_service_accepts_nearby_interaction() -> None:
         interaction_type="inspect",
     )
     result = service.resolve_interaction(event, is_in_range=True)
-    assert result.result_type == "object_interaction_result"
+    assert result.result_type == "action_resolution_result"
 
 
 def test_esm_service_rejects_out_of_range_interaction() -> None:
@@ -76,7 +76,7 @@ def test_esm_service_computes_range_from_actor_position() -> None:
     near = service.resolve_interaction(event, actor_position=(0.0, 1.0, -0.5))
     far = service.resolve_interaction(event, actor_position=(0.0, 1.0, 20.0))
 
-    assert near.result_type == "object_interaction_result"
+    assert near.result_type == "action_resolution_result"
     assert far.result_type == "constraint_state_result"
 
 
@@ -112,18 +112,22 @@ def test_esm_service_success_result_exposes_stable_phase1_contract_fields() -> N
 
     result = service.resolve_interaction(event, is_in_range=True)
 
-    assert result.result_type == "object_interaction_result"
+    assert result.result_type == "action_resolution_result"
     assert result.actor_id == "char_c"
     assert result.scene_id == "scene_demo"
     assert result.zone_id == "zone_focus"
     assert result.request_ref == "interact:20:obj_letter"
-    assert result.result_id == "resolution:interact:20:obj_letter"
+    assert result.result_id == "action_resolution:interact:20:obj_letter"
     assert result.causation_id == "interact:20"
     assert result.correlation_id == "interact:20"
     assert result.settlement_status == "accepted"
     assert result.resolved_entities == ["obj_letter"]
-    assert result.applied_state_changes == ["object_interaction_result"]
-    assert result.stable_state_summary == "object_interaction accepted"
+    assert result.applied_state_changes == [
+        "object_state_result",
+        "body_state_result",
+        "environment_state_result",
+    ]
+    assert result.stable_state_summary == "interaction accepted"
 
 
 def test_esm_service_constraint_result_exposes_stable_phase1_contract_fields() -> None:
@@ -239,8 +243,12 @@ def test_esm_service_action_resolution_result_is_replayable() -> None:
     assert result.target_object_id == "obj_letter"
     assert result.resolution_status == "accepted"
     assert result.resolved_entities == ["obj_letter"]
-    assert result.applied_state_changes == ["object_interaction_result"]
-    assert result.stable_state_summary == "object_interaction accepted"
+    assert result.applied_state_changes == [
+        "object_state_result",
+        "body_state_result",
+        "environment_state_result",
+    ]
+    assert result.stable_state_summary == "interaction accepted"
 
 
 def test_esm_service_body_state_result_is_replayable() -> None:

@@ -55,7 +55,7 @@ def test_world_result_constraint_shape() -> None:
 def test_world_result_action_resolution_shape() -> None:
     event = ActionResolutionResult(
         request_ref="interact:123:obj_letter",
-        result_id="resolution:interact:123:obj_letter",
+        result_id="action_resolution:interact:123:obj_letter",
         room_id="room_demo",
         scene_id="scene_demo",
         zone_id="zone_focus",
@@ -68,8 +68,8 @@ def test_world_result_action_resolution_shape() -> None:
         settlement_status="accepted",
         resolution_status="accepted",
         resolved_entities=["obj_letter"],
-        applied_state_changes=["object_interaction_result"],
-        stable_state_summary="object_interaction accepted",
+        applied_state_changes=["object_state_result", "body_state_result", "environment_state_result"],
+        stable_state_summary="interaction accepted",
     )
 
     assert event.resolution_status == "accepted"
@@ -206,7 +206,7 @@ def test_websocket_dialogue_submit_emits_ack_and_dialogue_response() -> None:
     assert response["payload"]["actor_id"] == "char_a"
 
 
-def test_websocket_interact_intent_emits_ack_action_resolution_world_result_body_state_environment_shift_and_siming_output() -> None:
+def test_websocket_interact_intent_emits_ack_action_resolution_object_state_body_state_environment_shift_and_siming_output() -> None:
     reset_runtime_state()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
@@ -227,7 +227,6 @@ def test_websocket_interact_intent_emits_ack_action_resolution_world_result_body
 
         ack = websocket.receive_json()
         action_resolution = websocket.receive_json()
-        world_result = websocket.receive_json()
         object_state_result = websocket.receive_json()
         body_state_result = websocket.receive_json()
         environment_result = websocket.receive_json()
@@ -263,11 +262,11 @@ def test_websocket_interact_intent_emits_ack_action_resolution_world_result_body
     assert action_resolution["payload"]["result_type"] == "action_resolution_result"
     assert action_resolution["payload"]["target_object_id"] == "obj_letter"
     assert action_resolution["payload"]["resolution_status"] == "accepted"
-    assert action_resolution["payload"]["applied_state_changes"] == ["object_interaction_result"]
-    assert world_result["message_type"] == "world_result"
-    assert world_result["event_type"] == "object_interaction_result"
-    assert world_result["payload"]["result_type"] == "object_interaction_result"
-    assert world_result["payload"]["target_object_id"] == "obj_letter"
+    assert action_resolution["payload"]["applied_state_changes"] == [
+        "object_state_result",
+        "body_state_result",
+        "environment_state_result",
+    ]
     assert object_state_result["message_type"] == "world_result"
     assert object_state_result["event_type"] == "object_state_result"
     assert object_state_result["payload"]["result_type"] == "object_state_result"
