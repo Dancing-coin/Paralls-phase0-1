@@ -353,7 +353,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         if world_result.result_type == "object_interaction_result":
             action_resolution = esm_service.emit_action_resolution_result(event, world_result)
             event_trace.record(action_resolution.result_type)
-            messages.append(_as_envelope("world_result", action_resolution.model_dump()))
+            messages.append(_as_world_result_envelope(action_resolution.model_dump()))
             _publish_debug_event(
                 build_debug_event(
                     producer_ts=action_resolution.producer_ts,
@@ -365,7 +365,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 )
             )
 
-            messages.append(_as_envelope("world_result", world_result.model_dump()))
+            messages.append(_as_world_result_envelope(world_result.model_dump()))
             _publish_debug_event(
                 build_debug_event(
                     producer_ts=world_result.producer_ts,
@@ -388,7 +388,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 producer_ts=world_result.producer_ts + 1,
             )
             event_trace.record(object_state_result.result_type)
-            messages.append(_as_envelope("world_result", object_state_result.model_dump()))
+            messages.append(_as_world_result_envelope(object_state_result.model_dump()))
 
             body_state_result = esm_service.emit_body_state_result(
                 room_id=event.room_id,
@@ -401,7 +401,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 producer_ts=world_result.producer_ts + 2,
             )
             event_trace.record(body_state_result.result_type)
-            messages.append(_as_envelope("world_result", body_state_result.model_dump()))
+            messages.append(_as_world_result_envelope(body_state_result.model_dump()))
 
             environment_result = esm_service.emit_environment_shift(
                 room_id=event.room_id,
@@ -414,7 +414,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 producer_ts=world_result.producer_ts + 3,
             )
             event_trace.record(environment_result.result_type)
-            messages.append(_as_envelope("world_result", environment_result.model_dump()))
+            messages.append(_as_world_result_envelope(environment_result.model_dump()))
 
             siming_output = siming_service.evaluate_world_event(
                 room_id=event.room_id,
@@ -445,7 +445,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             )
             messages.extend(_candidate_messages(candidate))
         else:
-            messages.append(_as_envelope("world_result", world_result.model_dump()))
+            messages.append(_as_world_result_envelope(world_result.model_dump()))
             _publish_debug_event(
                 build_debug_event(
                     producer_ts=world_result.producer_ts,
@@ -478,6 +478,39 @@ def _parse_player_input(payload: dict) -> MoveIntent | DialogueSubmit | Interact
 def _as_envelope(message_type: str, payload: dict[str, object]) -> dict[str, object]:
     return {
         "message_type": message_type,
+        "payload": payload,
+    }
+
+
+def _as_world_result_envelope(payload: dict[str, object]) -> dict[str, object]:
+    target_object_id = str(payload.get("target_object_id", "") or "")
+    target_environment_id = str(payload.get("target_environment_id", "") or "")
+    object_id = target_object_id or target_environment_id or None
+    return {
+        "message_type": "world_result",
+        "event_id": str(payload.get("result_id", "") or ""),
+        "event_type": str(payload.get("result_type", "world_result") or "world_result"),
+        "producer_ts": int(payload.get("producer_ts", 0) or 0),
+        "room_id": str(payload.get("room_id", "") or ""),
+        "scene_id": str(payload.get("scene_id", "") or ""),
+        "zone_id": str(payload.get("zone_id", "") or ""),
+        "source": {
+            "layer": "L1",
+            "system": "esm",
+            "actor_id": str(payload.get("actor_id", "") or ""),
+            "object_id": object_id,
+        },
+        "routing": {
+            "audience_mode": "authority_broadcast",
+            "routing_mode": "authoritative_event_bus",
+            "dialog_group_id": None,
+            "target_ids": [],
+        },
+        "priority": "p1",
+        "ttl": None,
+        "durability": "replayable",
+        "causation_id": str(payload.get("causation_id", "") or ""),
+        "correlation_id": str(payload.get("correlation_id", "") or ""),
         "payload": payload,
     }
 
