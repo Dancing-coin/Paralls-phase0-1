@@ -98,7 +98,8 @@ def test_esm_service_rejects_out_of_range_interaction() -> None:
     )
     result = service.resolve_interaction(event, is_in_range=False)
     assert result.result_type == "constraint_state_result"
-    assert result.constraint_type == "distance"
+    assert result.constraint_type == "distance_constraint"
+    assert result.constraint_code == "out_of_range"
 
 
 def test_esm_service_computes_range_from_actor_position() -> None:
@@ -132,7 +133,8 @@ def test_esm_service_rejects_far_actor_position() -> None:
     )
     result = service.resolve_interaction(event, actor_position=(0.0, 0.0, 16.0))
     assert result.result_type == "constraint_state_result"
-    assert result.constraint_type == "distance"
+    assert result.constraint_type == "distance_constraint"
+    assert result.constraint_code == "out_of_range"
 
 
 def test_esm_service_success_result_exposes_stable_phase1_contract_fields() -> None:
@@ -193,8 +195,8 @@ def test_esm_service_constraint_result_exposes_stable_phase1_contract_fields() -
     assert result.result_id == "constraint:interact:21:obj_letter"
     assert result.causation_id == "interact:21"
     assert result.correlation_id == "interact:21"
-    assert result.constraint_type == "distance"
-    assert result.constraint_code == "distance_constraint"
+    assert result.constraint_type == "distance_constraint"
+    assert result.constraint_code == "out_of_range"
     assert result.blocking_entity_refs == ["obj_letter"]
     assert result.settlement_status == "rejected"
 

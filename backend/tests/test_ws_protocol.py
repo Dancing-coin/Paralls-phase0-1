@@ -72,10 +72,12 @@ def test_world_result_constraint_shape() -> None:
         result_type="constraint_state_result",
         causation_id="evt2",
         producer_ts=789,
-        constraint_type="distance",
+        constraint_type="distance_constraint",
+        constraint_code="out_of_range",
         constraint_summary="too far",
     )
-    assert event.constraint_type == "distance"
+    assert event.constraint_type == "distance_constraint"
+    assert event.constraint_code == "out_of_range"
 
 
 def test_world_result_action_resolution_shape() -> None:
@@ -420,7 +422,8 @@ def test_websocket_interact_intent_emits_constraint_when_player_is_far() -> None
     assert world_result["priority"] == "p1"
     assert world_result["durability"] == "replayable"
     assert world_result["payload"]["result_type"] == "constraint_state_result"
-    assert world_result["payload"]["constraint_type"] == "distance"
+    assert world_result["payload"]["constraint_type"] == "distance_constraint"
+    assert world_result["payload"]["constraint_code"] == "out_of_range"
 
 
 def test_websocket_interact_intent_emits_constraint_state_when_actor_is_far() -> None:
@@ -465,7 +468,8 @@ def test_websocket_interact_intent_emits_constraint_state_when_actor_is_far() ->
     assert interact_ack["payload"]["route"] == "esm_service"
     assert world_result["message_type"] == "world_result"
     assert world_result["payload"]["result_type"] == "constraint_state_result"
-    assert world_result["payload"]["constraint_type"] == "distance"
+    assert world_result["payload"]["constraint_type"] == "distance_constraint"
+    assert world_result["payload"]["constraint_code"] == "out_of_range"
 
 def test_websocket_focus_target_change_emits_runtime_alignment_messages() -> None:
     reset_runtime_state()
