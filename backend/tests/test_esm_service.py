@@ -278,6 +278,34 @@ def test_esm_service_accepts_environment_request_and_emits_resolution_and_enviro
     assert environment_result.correlation_id == "decision:31"
 
 
+def test_esm_service_emits_state_machine_transition_for_object_state() -> None:
+    service = ESMService()
+
+    transition = service.emit_state_machine_transition(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        entity_id="obj_letter",
+        machine_id="visibility",
+        from_state="idle",
+        to_state="inspected",
+        trigger_type="interact.inspect",
+        transition_reason="player inspect interaction accepted",
+        producer_ts=240,
+        causation_id="interact:240",
+        correlation_id="interact:240",
+    )
+
+    assert transition.event_type == "state_machine_transition"
+    assert transition.event_id == "transition:visibility:obj_letter:240"
+    assert transition.entity_id == "obj_letter"
+    assert transition.machine_id == "visibility"
+    assert transition.from_state == "idle"
+    assert transition.to_state == "inspected"
+    assert transition.trigger_type == "interact.inspect"
+    assert transition.transition_reason == "player inspect interaction accepted"
+
+
 def test_esm_service_object_state_result_is_replayable() -> None:
     service = ESMService()
 

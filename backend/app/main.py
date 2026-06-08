@@ -260,8 +260,24 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         messages.append(_as_action_request_envelope(action_request.model_dump()))
         resolution, environment_result = esm_service.resolve_environment_request(event)
         event_trace.record(resolution.result_type)
+        transition = esm_service.emit_state_machine_transition(
+            room_id=event.room_id,
+            scene_id=event.scene_id,
+            zone_id=event.zone_id,
+            entity_id="env_lamp",
+            machine_id="light_source",
+            from_state="stable",
+            to_state="alerted",
+            trigger_type="environment_request.light_level_drop",
+            transition_reason="environment request accepted",
+            producer_ts=environment_result.producer_ts,
+            causation_id=event.causation_id,
+            correlation_id=event.correlation_id,
+        )
+        event_trace.record(transition.event_type)
         event_trace.record(environment_result.result_type)
         messages.append(_as_world_result_envelope(resolution.model_dump()))
+        messages.append(_as_state_machine_transition_envelope(transition.model_dump()))
         messages.append(_as_world_result_envelope(environment_result.model_dump()))
         _emit_debug_from_messages(messages)
         return messages
@@ -400,6 +416,22 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                     detail=world_result.model_dump(),
                 )
             )
+            transition = esm_service.emit_state_machine_transition(
+                room_id=event.room_id,
+                scene_id=event.scene_id,
+                zone_id=event.zone_id,
+                entity_id=event.target_object_id,
+                machine_id="visibility",
+                from_state="idle",
+                to_state="inspected",
+                trigger_type="interact.inspect",
+                transition_reason="player inspect interaction accepted",
+                producer_ts=world_result.producer_ts + 1,
+                causation_id=world_result.causation_id,
+                correlation_id=world_result.correlation_id,
+            )
+            event_trace.record(transition.event_type)
+            messages.append(_as_state_machine_transition_envelope(transition.model_dump()))
 
             object_state_result = esm_service.emit_object_state_result(
                 room_id=event.room_id,
@@ -409,7 +441,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 target_object_id=event.target_object_id,
                 previous_state="idle",
                 current_state="inspected",
-                producer_ts=world_result.producer_ts + 1,
+                producer_ts=world_result.producer_ts + 2,
             )
             event_trace.record(object_state_result.result_type)
             messages.append(_as_world_result_envelope(object_state_result.model_dump()))
@@ -422,7 +454,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 body_state_class="interaction_strain",
                 previous_state="steady",
                 current_state="engaged",
-                producer_ts=world_result.producer_ts + 2,
+                producer_ts=world_result.producer_ts + 3,
             )
             event_trace.record(body_state_result.result_type)
             messages.append(_as_world_result_envelope(body_state_result.model_dump()))
@@ -435,7 +467,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 target_environment_id="env_lamp",
                 previous_state="stable",
                 current_state="alerted",
-                producer_ts=world_result.producer_ts + 3,
+                producer_ts=world_result.producer_ts + 4,
             )
             event_trace.record(environment_result.result_type)
             messages.append(_as_world_result_envelope(environment_result.model_dump()))
@@ -533,6 +565,27 @@ def _as_action_request_envelope(payload: dict[str, object]) -> dict[str, object]
         "priority": "p1",
         "ttl": payload.get("constraints_hint", {}).get("ttl") if isinstance(payload.get("constraints_hint"), dict) else None,
         "durability": "replayable",
+        "causation_id": str(payload.get("causation_id", "") or ""),
+        "correlation_id": str(payload.get("correlation_id", "") or ""),
+        "payload": payload,
+    }
+
+
+def _as_state_machine_transition_envelope(payload: dict[str, object]) -> dict[str, object]:
+    return {
+        "message_type": "state_machine_transition",
+        "event_id": str(payload.get("event_id", "") or ""),
+        "event_type": str(payload.get("event_type", "state_machine_transition") or "state_machine_transition"),
+        "room_id": str(payload.get("room_id", "") or ""),
+        "scene_id": str(payload.get("scene_id", "") or ""),
+        "zone_id": str(payload.get("zone_id", "") or ""),
+        "entity_id": str(payload.get("entity_id", "") or ""),
+        "machine_id": str(payload.get("machine_id", "") or ""),
+        "from_state": str(payload.get("from_state", "") or ""),
+        "to_state": str(payload.get("to_state", "") or ""),
+        "trigger_type": str(payload.get("trigger_type", "") or ""),
+        "transition_reason": str(payload.get("transition_reason", "") or ""),
+        "producer_ts": int(payload.get("producer_ts", 0) or 0),
         "causation_id": str(payload.get("causation_id", "") or ""),
         "correlation_id": str(payload.get("correlation_id", "") or ""),
         "payload": payload,
@@ -763,6 +816,22 @@ def _emit_debug_from_messages(messages: list[dict[str, object]]) -> None:
                     stage="world_result_emitted",
                     actor_id=str(payload.get("actor_id", "")) or None,
                     summary=summarize_world_result(payload),
+                    detail=payload,
+                )
+            )
+        elif message_type == "state_machine_transition":
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=producer_ts,
+                    domain="world",
+                    stage="world_result_emitted",
+                    actor_id=None,
+                    summary="状态机转移：%s %s -> %s。"
+                    % (
+                        str(payload.get("entity_id", "") or "entity"),
+                        str(payload.get("from_state", "") or "unknown"),
+                        str(payload.get("to_state", "") or "unknown"),
+                    ),
                     detail=payload,
                 )
             )

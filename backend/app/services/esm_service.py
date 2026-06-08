@@ -2,6 +2,7 @@ from app.contracts.l1.action_request import ActionRequest
 from app.models.environment_request import EnvironmentRequest
 from app.models.player_input import InteractIntent
 from app.models.environment_field import EnvironmentFieldState
+from app.models.state_machine_transition import StateMachineTransitionEvent
 from app.models.world_result import (
     ActionResolutionResult,
     BodyStateResult,
@@ -294,6 +295,38 @@ class ESMService:
             resolved_entities=list(interaction_result.resolved_entities),
             applied_state_changes=list(interaction_result.applied_state_changes),
             stable_state_summary=interaction_result.stable_state_summary,
+        )
+
+    def emit_state_machine_transition(
+        self,
+        *,
+        room_id: str,
+        scene_id: str,
+        zone_id: str,
+        entity_id: str,
+        machine_id: str,
+        from_state: str,
+        to_state: str,
+        trigger_type: str,
+        transition_reason: str,
+        producer_ts: int,
+        causation_id: str,
+        correlation_id: str,
+    ) -> StateMachineTransitionEvent:
+        return StateMachineTransitionEvent(
+            event_id=f"transition:{machine_id}:{entity_id}:{producer_ts}",
+            room_id=room_id,
+            scene_id=scene_id,
+            zone_id=zone_id,
+            entity_id=entity_id,
+            machine_id=machine_id,
+            from_state=from_state,
+            to_state=to_state,
+            trigger_type=trigger_type,
+            transition_reason=transition_reason,
+            producer_ts=producer_ts,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
         )
 
     def emit_object_state_result(

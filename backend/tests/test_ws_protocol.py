@@ -2,6 +2,7 @@ from app.models.player_input import DialogueSubmit
 from app.models.ai_output import DialogueResponse
 from app.models.environment_request import EnvironmentRequest
 from app.models.runtime_state import CharacterRuntimeStateDelta, CharacterRuntimeStateSnapshot
+from app.models.state_machine_transition import StateMachineTransitionEvent
 from app.models.world_result import ActionResolutionResult, BodyStateResult, ConstraintStateResult
 from app.models.siming_output import NarrativeNudge
 from fastapi.testclient import TestClient
@@ -129,6 +130,29 @@ def test_world_result_body_state_shape() -> None:
     assert event.current_state == "elevated"
 
 
+def test_state_machine_transition_shape() -> None:
+    event = StateMachineTransitionEvent(
+        event_id="transition:visibility:obj_letter:300",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        entity_id="obj_letter",
+        machine_id="visibility",
+        from_state="idle",
+        to_state="inspected",
+        trigger_type="interact.inspect",
+        transition_reason="player inspect interaction accepted",
+        producer_ts=300,
+        causation_id="interact:300",
+        correlation_id="interact:300",
+    )
+
+    assert event.event_type == "state_machine_transition"
+    assert event.entity_id == "obj_letter"
+    assert event.machine_id == "visibility"
+    assert event.to_state == "inspected"
+
+
 def test_siming_output_narrative_nudge_shape() -> None:
     event = NarrativeNudge(
         room_id="room_demo",
@@ -234,7 +258,7 @@ def test_websocket_dialogue_submit_emits_ack_and_dialogue_response() -> None:
     assert response["payload"]["actor_id"] == "char_a"
 
 
-def test_websocket_environment_request_emits_ack_action_resolution_and_environment_state_result() -> None:
+def test_websocket_environment_request_emits_ack_action_resolution_transition_and_environment_state_result() -> None:
     reset_runtime_state()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
@@ -265,6 +289,7 @@ def test_websocket_environment_request_emits_ack_action_resolution_and_environme
         ack = websocket.receive_json()
         action_request = websocket.receive_json()
         action_resolution = websocket.receive_json()
+        transition = websocket.receive_json()
         environment_result = websocket.receive_json()
 
     assert ack["message_type"] == "ack"
@@ -284,6 +309,12 @@ def test_websocket_environment_request_emits_ack_action_resolution_and_environme
     assert action_resolution["payload"]["target_environment_id"] == "env_lamp"
     assert action_resolution["payload"]["resolution_status"] == "accepted"
     assert action_resolution["payload"]["applied_state_changes"] == ["environment_state_result"]
+    assert transition["message_type"] == "state_machine_transition"
+    assert transition["event_type"] == "state_machine_transition"
+    assert transition["entity_id"] == "env_lamp"
+    assert transition["machine_id"] == "light_source"
+    assert transition["from_state"] == "stable"
+    assert transition["to_state"] == "alerted"
     assert environment_result["message_type"] == "world_result"
     assert environment_result["event_type"] == "environment_state_result"
     assert environment_result["payload"]["request_ref"] == "envreq:500"
@@ -293,7 +324,7 @@ def test_websocket_environment_request_emits_ack_action_resolution_and_environme
     assert environment_result["payload"]["correlation_id"] == "decision:500"
 
 
-def test_websocket_interact_intent_emits_ack_action_resolution_object_state_body_state_environment_shift_and_siming_output() -> None:
+def test_websocket_interact_intent_emits_ack_action_resolution_transition_object_state_body_state_environment_shift_and_siming_output() -> None:
     reset_runtime_state()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
@@ -315,6 +346,7 @@ def test_websocket_interact_intent_emits_ack_action_resolution_object_state_body
         ack = websocket.receive_json()
         action_request = websocket.receive_json()
         action_resolution = websocket.receive_json()
+        transition = websocket.receive_json()
         object_state_result = websocket.receive_json()
         body_state_result = websocket.receive_json()
         environment_result = websocket.receive_json()
@@ -362,6 +394,13 @@ def test_websocket_interact_intent_emits_ack_action_resolution_object_state_body
         "body_state_result",
         "environment_state_result",
     ]
+    assert transition["message_type"] == "state_machine_transition"
+    assert transition["event_type"] == "state_machine_transition"
+    assert transition["entity_id"] == "obj_letter"
+    assert transition["machine_id"] == "visibility"
+    assert transition["from_state"] == "idle"
+    assert transition["to_state"] == "inspected"
+    assert transition["trigger_type"] == "interact.inspect"
     assert object_state_result["message_type"] == "world_result"
     assert object_state_result["event_type"] == "object_state_result"
     assert object_state_result["payload"]["result_type"] == "object_state_result"
