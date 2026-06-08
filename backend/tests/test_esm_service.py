@@ -60,8 +60,8 @@ def test_esm_service_builds_action_request_from_environment_request() -> None:
     assert request.room_id == "room_demo"
     assert request.scene_id == "scene_demo"
     assert request.zone_id == "zone_focus"
-    assert request.source["layer"] == "L1"
-    assert request.source["system"] == "siming_orchestrator"
+    assert request.source["layer"] == "L3"
+    assert request.source["system"] == "siming.orchestrator"
     assert request.target_entity_refs["environment_ids"] == ["env_lamp"]
     assert request.action_profile == "light_level_drop"
     assert request.intent_strength == "medium"

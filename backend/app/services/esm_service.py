@@ -86,9 +86,10 @@ class ESMService:
             actor_id="",
             action_type="environment_request",
             source={
-                "layer": "L1",
-                "system": "siming_orchestrator",
-                "actor_id": "",
+                "layer": str(event.source.get("layer", "L3") or "L3"),
+                "system": str(event.source.get("system", "siming.orchestrator") or "siming.orchestrator"),
+                "actor_id": str(event.source.get("actor_id", "") or ""),
+                "object_id": str(event.source.get("object_id", "") or ""),
             },
             target_entity_refs={
                 "actor_ids": list(event.target_entity_refs.get("actor_ids", [])),
