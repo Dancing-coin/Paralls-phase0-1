@@ -3,6 +3,7 @@ from app.models.player_input import InteractIntent
 from app.models.environment_field import EnvironmentFieldState
 from app.models.world_result import (
     ActionResolutionResult,
+    BodyStateResult,
     ConstraintStateResult,
     EnvironmentStateResult,
     ObjectInteractionResult,
@@ -234,6 +235,36 @@ class ESMService:
             previous_state=previous_state,
             current_state=current_state,
             change_summary=f"{target_object_id} changed from {previous_state} to {current_state}",
+            settlement_status="applied",
+        )
+
+    def emit_body_state_result(
+        self,
+        *,
+        room_id: str,
+        scene_id: str,
+        zone_id: str,
+        actor_id: str,
+        body_state_class: str,
+        previous_state: str,
+        current_state: str,
+        producer_ts: int,
+    ) -> BodyStateResult:
+        return BodyStateResult(
+            request_ref=f"body:{actor_id}:{producer_ts}",
+            result_id=f"body_result:{actor_id}:{producer_ts}",
+            room_id=room_id,
+            scene_id=scene_id,
+            zone_id=zone_id,
+            actor_id=actor_id,
+            source_type="system",
+            causation_id=f"body:{actor_id}:{producer_ts}",
+            correlation_id=f"body:{actor_id}:{producer_ts}",
+            producer_ts=producer_ts,
+            body_state_class=body_state_class,
+            previous_state=previous_state,
+            current_state=current_state,
+            change_summary=f"{body_state_class} changed from {previous_state} to {current_state}",
             settlement_status="applied",
         )
 

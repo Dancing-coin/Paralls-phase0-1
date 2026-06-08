@@ -132,6 +132,21 @@ def test_summarize_character_input_from_world_result_mentions_successful_object_
     assert "交互成功" in summary
 
 
+def test_summarize_character_input_from_world_result_mentions_body_state_change() -> None:
+    summary = summarize_character_input_from_world_result(
+        "char_c",
+        {
+            "result_type": "body_state_result",
+            "body_state_class": "interaction_strain",
+            "current_state": "engaged",
+        },
+    )
+
+    assert "CharacterC" in summary
+    assert "interaction_strain" in summary
+    assert "engaged" in summary
+
+
 def test_summarize_character_input_from_siming_output_mentions_target() -> None:
     summary = summarize_character_input_from_siming_output(
         {

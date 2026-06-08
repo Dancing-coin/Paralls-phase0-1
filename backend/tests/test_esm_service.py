@@ -243,6 +243,30 @@ def test_esm_service_action_resolution_result_is_replayable() -> None:
     assert result.stable_state_summary == "object_interaction accepted"
 
 
+def test_esm_service_body_state_result_is_replayable() -> None:
+    service = ESMService()
+
+    result = service.emit_body_state_result(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        actor_id="char_c",
+        body_state_class="interaction_strain",
+        previous_state="steady",
+        current_state="engaged",
+        producer_ts=231,
+    )
+
+    assert result.result_type == "body_state_result"
+    assert result.request_ref == "body:char_c:231"
+    assert result.result_id == "body_result:char_c:231"
+    assert result.actor_id == "char_c"
+    assert result.body_state_class == "interaction_strain"
+    assert result.previous_state == "steady"
+    assert result.current_state == "engaged"
+    assert result.change_summary == "interaction_strain changed from steady to engaged"
+
+
 def test_esm_service_propagates_noise_and_smoke_to_adjacent_zone() -> None:
     service = ESMService()
 

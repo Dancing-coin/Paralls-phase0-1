@@ -206,7 +206,7 @@ def test_websocket_dialogue_submit_emits_ack_and_dialogue_response() -> None:
     assert response["payload"]["actor_id"] == "char_a"
 
 
-def test_websocket_interact_intent_emits_ack_action_resolution_world_result_environment_shift_and_siming_output() -> None:
+def test_websocket_interact_intent_emits_ack_action_resolution_world_result_body_state_environment_shift_and_siming_output() -> None:
     reset_runtime_state()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
@@ -229,6 +229,7 @@ def test_websocket_interact_intent_emits_ack_action_resolution_world_result_envi
         action_resolution = websocket.receive_json()
         world_result = websocket.receive_json()
         object_state_result = websocket.receive_json()
+        body_state_result = websocket.receive_json()
         environment_result = websocket.receive_json()
         siming_output = websocket.receive_json()
         runtime_snapshot = websocket.receive_json()
@@ -251,6 +252,11 @@ def test_websocket_interact_intent_emits_ack_action_resolution_world_result_envi
     assert object_state_result["payload"]["result_type"] == "object_state_result"
     assert object_state_result["payload"]["target_object_id"] == "obj_letter"
     assert object_state_result["payload"]["current_state"] == "inspected"
+    assert body_state_result["message_type"] == "world_result"
+    assert body_state_result["payload"]["result_type"] == "body_state_result"
+    assert body_state_result["payload"]["actor_id"] == "char_c"
+    assert body_state_result["payload"]["body_state_class"] == "interaction_strain"
+    assert body_state_result["payload"]["current_state"] == "engaged"
     assert environment_result["message_type"] == "world_result"
     assert environment_result["payload"]["result_type"] == "environment_state_result"
     assert environment_result["payload"]["target_environment_id"] == "env_lamp"

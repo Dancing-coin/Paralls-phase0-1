@@ -390,6 +390,19 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             event_trace.record(object_state_result.result_type)
             messages.append(_as_envelope("world_result", object_state_result.model_dump()))
 
+            body_state_result = esm_service.emit_body_state_result(
+                room_id=event.room_id,
+                scene_id=event.scene_id,
+                zone_id=event.zone_id,
+                actor_id=event.actor_id,
+                body_state_class="interaction_strain",
+                previous_state="steady",
+                current_state="engaged",
+                producer_ts=world_result.producer_ts + 2,
+            )
+            event_trace.record(body_state_result.result_type)
+            messages.append(_as_envelope("world_result", body_state_result.model_dump()))
+
             environment_result = esm_service.emit_environment_shift(
                 room_id=event.room_id,
                 scene_id=event.scene_id,
@@ -398,7 +411,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 target_environment_id="env_lamp",
                 previous_state="stable",
                 current_state="alerted",
-                producer_ts=world_result.producer_ts + 2,
+                producer_ts=world_result.producer_ts + 3,
             )
             event_trace.record(environment_result.result_type)
             messages.append(_as_envelope("world_result", environment_result.model_dump()))
