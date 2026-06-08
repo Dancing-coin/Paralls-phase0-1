@@ -1,0 +1,1 @@
+"""Branch-merge adapter namespace."""

@@ -5,6 +5,8 @@ from app.models.world_result import ConstraintStateResult
 from app.models.siming_output import NarrativeNudge
 from fastapi.testclient import TestClient
 from app.main import app, reset_runtime_state
+from app.l6.authority_bus.router import handle_envelope_entry
+from app.ws_protocol import Envelope
 
 
 def test_player_input_dialogue_submit_shape() -> None:
@@ -101,6 +103,29 @@ def test_character_runtime_state_delta_shape() -> None:
     )
     assert "current_focus_target" in event.changed_fields
     assert event.current_focus_target == "obj_letter"
+
+
+def test_authority_bus_router_entrypoint_matches_legacy_behavior() -> None:
+    reset_runtime_state()
+    envelope = Envelope(
+        message_type="player_input",
+        payload={
+            "player_id": "p1",
+            "room_id": "room_demo",
+            "scene_id": "scene_demo",
+            "zone_id": "zone_focus",
+            "actor_id": "char_c",
+            "intent_type": "move_intent",
+            "producer_ts": 1,
+            "move_mode": "locomotion",
+            "target_point": [0.0, 0.5, 1.0],
+        },
+    )
+
+    messages = handle_envelope_entry(envelope)
+
+    assert messages[0]["message_type"] == "ack"
+    assert messages[0]["payload"]["accepted"] is True
 
 
 def test_websocket_dialogue_submit_emits_ack_and_dialogue_response() -> None:
