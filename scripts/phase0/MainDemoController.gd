@@ -182,21 +182,14 @@ func submit_dialogue(content: String = "phase0 manual test") -> void:
 	if target_actor_id == "":
 		_bus_log("phase0_dialogue_no_focus_target")
 		return
-	var bridge := _get_bridge()
-	if bridge:
-		_bus_log("phase0_dialogue_target:%s" % target_actor_id)
-		bridge.send_envelope(intent_mapper.emit_dialogue_submit(target_actor_id, content))
+	_emit_dialogue_request(target_actor_id, content)
 
 func submit_interaction() -> void:
 	var target_object_id := _resolve_focused_object_id()
 	if target_object_id == "":
 		_bus_log("phase0_interact_no_focus_target")
 		return
-	var bridge := _get_bridge()
-	if bridge:
-		_bus_log("phase0_interact_target:%s" % target_object_id)
-		_emit_near_object_visual_fact(target_object_id)
-		bridge.send_envelope(intent_mapper.emit_interact_intent(target_object_id, "inspect"))
+	_emit_interaction_request(target_object_id, "inspect")
 
 func _on_backend_connected(_payload: String) -> void:
 	_request_backend_health()
@@ -249,17 +242,11 @@ func _run_autotest_inputs() -> void:
 	_orient_player_toward(interactive_object.global_position)
 	_force_focus_target(interactive_object)
 	_move_player_to_interact_position()
-	if intent_mapper != null and intent_mapper.has_method("emit_move_intent"):
-		var interact_bridge := _get_bridge()
-		if interact_bridge:
-			interact_bridge.send_envelope(intent_mapper.emit_move_intent("locomotion", autotest_interact_position))
+	_emit_move_intent_request(autotest_interact_position, "locomotion")
 	await get_tree().create_timer(autotest_interact_delay).timeout
 	player_input_bridge.trigger_interaction()
 	_move_player_to_demo_vantage()
-	if intent_mapper != null and intent_mapper.has_method("emit_move_intent"):
-		var bridge := _get_bridge()
-		if bridge:
-			bridge.send_envelope(intent_mapper.emit_move_intent("locomotion", autotest_final_position))
+	_emit_move_intent_request(autotest_final_position, "locomotion")
 	await get_tree().create_timer(autotest_interact_delay).timeout
 	_orient_player_toward(interactive_object.global_position)
 	_force_focus_target(interactive_object)
@@ -562,6 +549,41 @@ func _emit_focus_target_change() -> void:
 	bridge.send_envelope(intent_mapper.emit_focus_target_change(target_actor_id, target_object_id))
 	_emit_fixed_gaze_visual_fact(target_actor_id, target_object_id)
 
+func _emit_dialogue_request(target_actor_id: String, content: String) -> void:
+	var bridge := _get_bridge()
+	if bridge == null or intent_mapper == null:
+		return
+	if not intent_mapper.has_method("emit_dialogue_submit"):
+		return
+	_bus_log("phase0_dialogue_target:%s" % target_actor_id)
+	bridge.send_envelope(intent_mapper.emit_dialogue_submit(target_actor_id, content))
+
+func _emit_interaction_request(target_object_id: String, interaction_type: String) -> void:
+	var bridge := _get_bridge()
+	if bridge == null or intent_mapper == null:
+		return
+	if not intent_mapper.has_method("emit_interact_intent"):
+		return
+	_bus_log("phase0_interact_target:%s" % target_object_id)
+	_emit_near_object_visual_fact(target_object_id)
+	bridge.send_envelope(intent_mapper.emit_interact_intent(target_object_id, interaction_type))
+
+func _emit_move_intent_request(target_point: Vector3, move_mode: String) -> void:
+	var bridge := _get_bridge()
+	if bridge == null or intent_mapper == null:
+		return
+	if not intent_mapper.has_method("emit_move_intent"):
+		return
+	_bus_log(
+		"phase0_move_target:%s:[%.3f,%.3f,%.3f]" % [
+			move_mode,
+			target_point.x,
+			target_point.y,
+			target_point.z,
+		]
+	)
+	bridge.send_envelope(intent_mapper.emit_move_intent(move_mode, target_point))
+
 func _emit_move_intent_if_needed() -> void:
 	if autotest_enabled:
 		return
@@ -578,9 +600,7 @@ func _emit_move_intent_if_needed() -> void:
 		return
 
 	last_reported_move_position = control_position
-	var bridge := _get_bridge()
-	if bridge:
-		bridge.send_envelope(intent_mapper.emit_move_intent("locomotion", control_position))
+	_emit_move_intent_request(control_position, "locomotion")
 
 func _emit_spatial_access_zone_entry() -> void:
 	if spatial_zone_emitted:

@@ -1,5 +1,6 @@
 from app.models.raw_fact import RawFactEvent
 from app.models.visual_fact import VisualFactEvent
+from app.services.fact_handlers.auditory_fact_handler import handle_auditory_fact_event
 from app.services.fact_handlers.spatial_access_fact_handler import (
     SpatialAccessFactRouteHandler,
     handle_spatial_access_fact_event,
@@ -33,6 +34,9 @@ def route_raw_fact_event(
     if event.fact_family == "spatial_access_fact":
         handler = spatial_access_fact_handler or handle_spatial_access_fact_event
         return handler(event, source_type)
+
+    if event.fact_family == "auditory_fact":
+        return handle_auditory_fact_event(event, source_type)
 
     return [
         {

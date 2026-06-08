@@ -75,6 +75,38 @@ def test_raw_fact_event_accepts_effect_semantics_fields() -> None:
     assert event.ttl_ms == 1500
 
 
+def test_raw_fact_event_accepts_auditory_fact_shape() -> None:
+    event = RawFactEvent(
+        fact_family="auditory_fact",
+        fact_type="speaker_active",
+        relation_type="speech_mode_changed",
+        producer_ts=710,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={
+            "layer": "L1",
+            "system": "godot.raw_fact_emitter",
+            "actor_id": "char_a",
+        },
+        targets={"actor_id": "char_c"},
+        observability={"auditory": True},
+        acoustics={
+            "loudness_band": "medium",
+            "speech_mode": "normal",
+            "reachability": "clear",
+            "ambient_noise": "quiet",
+        },
+    )
+
+    assert event.fact_family == "auditory_fact"
+    assert event.observability.auditory is True
+    assert event.acoustics.loudness_band == "medium"
+    assert event.acoustics.speech_mode == "normal"
+    assert event.acoustics.reachability == "clear"
+    assert event.acoustics.ambient_noise == "quiet"
+
+
 def test_visual_fact_event_model_dump_returns_canonical_nested_shape() -> None:
     event = VisualFactEvent(
         actor_id="char_c",
@@ -118,6 +150,12 @@ def test_visual_fact_event_model_dump_returns_canonical_nested_shape() -> None:
             "visual": False,
             "auditory": False,
             "occluded": False,
+        },
+        "acoustics": {
+            "loudness_band": "",
+            "speech_mode": "",
+            "reachability": "",
+            "ambient_noise": "",
         },
         "effect_kind": "pulse",
         "subject_key": "",
@@ -730,3 +768,97 @@ def test_raw_fact_router_dispatches_spatial_access_fact_without_breaking_visual_
             },
         }
     ]
+
+
+def test_raw_fact_router_dispatches_auditory_fact_without_breaking_visual_and_spatial_support() -> None:
+    spatial_handler = SpatialAccessFactHandler()
+    auditory_event = RawFactEvent(
+        fact_family="auditory_fact",
+        fact_type="speaker_active",
+        relation_type="speech_mode_changed",
+        producer_ts=711,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={
+            "layer": "L1",
+            "system": "godot.raw_fact_emitter",
+            "actor_id": "char_a",
+        },
+        targets={"actor_id": "char_c"},
+        observability={"auditory": True},
+        acoustics={
+            "loudness_band": "medium",
+            "speech_mode": "normal",
+            "reachability": "clear",
+            "ambient_noise": "quiet",
+        },
+    )
+    spatial_event = RawFactEvent(
+        fact_family="spatial_access_fact",
+        fact_type="actor_entered_zone",
+        relation_type="actor_entered_zone",
+        producer_ts=712,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_threshold",
+        source={
+            "layer": "L1",
+            "system": "godot.raw_fact_emitter",
+            "actor_id": "char_c",
+        },
+        targets={},
+    )
+    visual_event = RawFactEvent(
+        fact_family="visual_fact",
+        fact_type="fixed_gaze_on_target",
+        relation_type="actor_looks_at_actor",
+        producer_ts=713,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={
+            "layer": "L1",
+            "system": "godot.raw_fact_emitter",
+            "actor_id": "char_c",
+        },
+        targets={"actor_id": "char_a"},
+    )
+
+    auditory_messages = route_raw_fact_event(
+        auditory_event,
+        source_type="raw_fact_event",
+    )
+    spatial_messages = route_raw_fact_event(
+        spatial_event,
+        source_type="raw_fact_event",
+        spatial_access_fact_handler=spatial_handler.handle_event,
+    )
+    visual_messages = route_raw_fact_event(
+        visual_event,
+        source_type="raw_fact_event",
+        context=object(),
+        visual_fact_handler=lambda *_args, **_kwargs: [
+            {
+                "message_type": "ack",
+                "payload": {
+                    "accepted": True,
+                    "source_type": "raw_fact_event",
+                    "route": "authority_visual_fact",
+                },
+            }
+        ],
+    )
+
+    assert auditory_messages == [
+        {
+            "message_type": "ack",
+            "payload": {
+                "accepted": True,
+                "source_type": "raw_fact_event",
+                "route": "authority_auditory_fact",
+            },
+        }
+    ]
+    assert spatial_messages[0]["payload"]["route"] == "authority_spatial_access_fact"
+    assert visual_messages[0]["payload"]["route"] == "authority_visual_fact"

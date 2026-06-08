@@ -3,12 +3,17 @@ from pydantic import BaseModel
 
 class WorldResultBase(BaseModel):
     room_id: str
+    scene_id: str = "scene_demo"
+    zone_id: str = "zone_focus"
+    actor_id: str = ""
     source_type: str
     result_type: str
     causation_id: str
+    correlation_id: str = ""
     producer_ts: int
     target_object_id: str | None = None
     target_environment_id: str | None = None
+    settlement_status: str = ""
 
 
 class ObjectInteractionResult(WorldResultBase):
@@ -23,6 +28,8 @@ class EnvironmentStateResult(WorldResultBase):
     previous_state: str
     current_state: str
     change_summary: str
+    light_level: str = "normal"
+    noise_level: str = "quiet"
 
 
 class VisibleFeedbackResult(WorldResultBase):

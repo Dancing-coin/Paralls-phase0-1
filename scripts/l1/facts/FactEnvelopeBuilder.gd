@@ -30,7 +30,8 @@ func build_raw_fact_payload(
 	ttl_ms: Variant = null,
 	causation_id: String = "",
 	correlation_id: String = "",
-	producer_ts: int = -1
+	producer_ts: int = -1,
+	acoustics: Dictionary = {}
 ) -> Dictionary:
 	var resolved_producer_ts := producer_ts if producer_ts >= 0 else Time.get_ticks_msec()
 	return {
@@ -64,6 +65,12 @@ func build_raw_fact_payload(
 			"visual": observability.get("visual", false),
 			"auditory": observability.get("auditory", false),
 			"occluded": observability.get("occluded", false),
+		},
+		"acoustics": {
+			"loudness_band": acoustics.get("loudness_band", ""),
+			"speech_mode": acoustics.get("speech_mode", ""),
+			"reachability": acoustics.get("reachability", ""),
+			"ambient_noise": acoustics.get("ambient_noise", ""),
 		},
 		"effect_kind": effect_kind,
 		"subject_key": subject_key,

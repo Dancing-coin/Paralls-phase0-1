@@ -324,6 +324,16 @@ def evaluate_phase1_slice_audit(
         )
     )
 
+    auditory_ok = "phase0_auditory_fact_emitter:speaker_active:" in main_log
+    results.append(
+        _result(
+            "auditory_fact_observed",
+            "Auditory raw fact goes through emitter",
+            "proved" if auditory_ok else "missing",
+            ["speaker_active"] if auditory_ok else [],
+        )
+    )
+
     authority_ack_token = '"route":"authority_visual_fact","source_type":"raw_fact_event"'
     authority_ack_ok = authority_ack_token in main_log or authority_ack_token in focus_log
     results.append(

@@ -141,6 +141,22 @@ def summarize_character_input_from_fact(event: Any) -> str:
     return f"{actor_label} 收到了一条新事实。"
 
 
+def summarize_character_input_from_candidate(event: Any) -> str:
+    source_label = label_actor(getattr(event, "source_actor_id", "") or "")
+    target_label = _pick_target_label(
+        actor_id=getattr(event, "target_actor_id", "") or "",
+        object_id=getattr(event, "target_object_id", "") or "",
+        environment_id=getattr(event, "target_environment_id", "") or "",
+    )
+    return f"{source_label} 的事实已进入候选感知层，当前候选目标是 {target_label}。"
+
+
+def summarize_character_input_from_character_perceived(event: Any) -> str:
+    actor_label = label_actor(getattr(event, "actor_id", "") or "")
+    percept_channel = str(getattr(event, "percept_channel", "") or "unknown")
+    return f"{actor_label} 收到了一条角色私有感知，通道是 {percept_channel}。"
+
+
 def summarize_character_input_from_world_result(actor_id: str, payload: dict[str, Any]) -> str:
     actor_label = label_actor(actor_id)
     result_type = str(payload.get("result_type", "") or "")

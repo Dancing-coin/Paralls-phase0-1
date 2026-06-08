@@ -1,11 +1,15 @@
 from app.debug_narration import (
     summarize_character_candidate,
     summarize_character_input_from_fact,
+    summarize_character_input_from_candidate,
+    summarize_character_input_from_character_perceived,
     summarize_character_input_from_siming_output,
     summarize_character_input_from_world_result,
     summarize_character_interpretation,
     summarize_character_output,
 )
+from app.models.candidate_percept import CandidatePerceptEvent
+from app.models.character_perceived import CharacterPerceivedEvent
 from app.models.raw_fact import RawFactEvent
 from app.models.visual_fact import VisualFactEvent
 
@@ -140,3 +144,46 @@ def test_summarize_character_input_from_siming_output_mentions_target() -> None:
     assert "CharacterB" in summary
     assert "obj_letter" in summary
     assert "司命提示" in summary
+
+
+def test_summarize_character_input_from_candidate_mentions_l2_candidate_layer() -> None:
+    event = CandidatePerceptEvent(
+        percept_channel="visual",
+        source_fact_family="visual_fact",
+        source_fact_type="fixed_gaze_on_target",
+        producer_ts=910,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source_actor_id="char_c",
+        target_actor_id="char_a",
+        audience_scope="candidate",
+        observability={"visual": True},
+        causation_id="visual_fact:910",
+        correlation_id="visual_fact:910",
+    )
+
+    summary = summarize_character_input_from_candidate(event)
+
+    assert "候选感知" in summary
+    assert "CharacterC" in summary
+    assert "CharacterA" in summary
+
+
+def test_summarize_character_input_from_character_perceived_mentions_private_perception_layer() -> None:
+    event = CharacterPerceivedEvent(
+        actor_id="char_a",
+        percept_channel="visual",
+        producer_ts=911,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="char_c is looking at char_a",
+        source_candidate_event_id="visual_fact:911:char_a",
+    )
+
+    summary = summarize_character_input_from_character_perceived(event)
+
+    assert "角色私有感知" in summary
+    assert "CharacterA" in summary
+    assert "visual" in summary

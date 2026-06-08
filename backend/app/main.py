@@ -7,6 +7,8 @@ from starlette.websockets import WebSocketDisconnect
 from app.debug_narration import (
     build_debug_event,
     summarize_backend_route,
+    summarize_character_input_from_candidate,
+    summarize_character_input_from_character_perceived,
     summarize_character_candidate,
     summarize_character_input,
     summarize_character_input_from_fact,
@@ -161,24 +163,6 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
 
     if envelope.message_type == "raw_fact_event":
         event = RawFactEvent(**envelope.payload)
-        compiled_candidates = compile_candidate_percepts(event)
-        filtered_perceived_events = []
-        for candidate in compiled_candidates:
-            candidate_actor_ids: list[str] = []
-            if candidate.target_actor_id != "":
-                candidate_actor_ids.append(candidate.target_actor_id)
-            elif event.source.actor_id:
-                candidate_actor_ids.append(event.source.actor_id)
-
-            for actor_id in candidate_actor_ids:
-                perceived = filter_candidate_for_actor(
-                    candidate,
-                    actor_id=actor_id,
-                    context={"is_facing_target": True},
-                )
-                if perceived is not None:
-                    filtered_perceived_events.append(perceived)
-                    _ = character_perceived_input_service.apply_character_perceived_event(perceived)
         _publish_debug_event(
             build_debug_event(
                 producer_ts=event.producer_ts,
@@ -196,10 +180,48 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                     domain="character",
                     stage="character_input_received",
                     actor_id=event.source.actor_id,
-                    summary=summarize_character_input_from_fact(event),
-                    detail=event.model_dump(),
+                summary=summarize_character_input_from_fact(event),
+                detail=event.model_dump(),
+            )
+        )
+        compiled_candidates = compile_candidate_percepts(event)
+        filtered_perceived_events = []
+        for candidate in compiled_candidates:
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=candidate.producer_ts,
+                    domain="backend",
+                    stage="candidate_percept_compiled",
+                    actor_id=candidate.source_actor_id or None,
+                    summary=summarize_character_input_from_candidate(candidate),
+                    detail=candidate.model_dump(),
                 )
             )
+            candidate_actor_ids: list[str] = []
+            if candidate.target_actor_id != "":
+                candidate_actor_ids.append(candidate.target_actor_id)
+            elif event.source.actor_id:
+                candidate_actor_ids.append(event.source.actor_id)
+
+            for actor_id in candidate_actor_ids:
+                perceived = filter_candidate_for_actor(
+                    candidate,
+                    actor_id=actor_id,
+                    context={"is_facing_target": True},
+                )
+                if perceived is not None:
+                    filtered_perceived_events.append(perceived)
+                    _ = character_perceived_input_service.apply_character_perceived_event(perceived)
+                    _publish_debug_event(
+                        build_debug_event(
+                            producer_ts=perceived.producer_ts,
+                            domain="character",
+                            stage="character_perceived_applied",
+                            actor_id=perceived.actor_id,
+                            summary=summarize_character_input_from_character_perceived(perceived),
+                            detail=perceived.model_dump(),
+                        )
+                    )
         messages = route_raw_fact_event(
             event,
             source_type=envelope.message_type,
@@ -342,9 +364,13 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         if world_result.result_type == "object_interaction_result":
             environment_result = esm_service.emit_environment_shift(
                 room_id=event.room_id,
+                scene_id=event.scene_id,
+                zone_id=event.zone_id,
+                actor_id=event.actor_id,
                 target_environment_id="env_lamp",
                 previous_state="stable",
                 current_state="alerted",
+                producer_ts=world_result.producer_ts + 1,
             )
             event_trace.record(environment_result.result_type)
             messages.append(_as_envelope("world_result", environment_result.model_dump()))

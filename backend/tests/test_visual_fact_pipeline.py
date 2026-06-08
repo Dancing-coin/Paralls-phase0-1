@@ -6,6 +6,7 @@ from app.main import (
     character_perceived_input_service,
     reset_runtime_state,
 )
+from app.debug_stream import debug_stream
 from app.models.player_input import FocusTargetChange
 from app.models.raw_fact import RawFactEvent
 from app.models.runtime_state import CharacterRuntimeStateSnapshot
@@ -618,3 +619,36 @@ def test_websocket_visual_fact_event_emits_runtime_alignment_messages() -> None:
     assert candidate_runtime_delta["payload"]["conversation_candidate_refs"] == ["cand_obj_letter"]
     assert siming_output["message_type"] == "siming_output"
     assert siming_output["payload"]["target_object_id"] == "obj_letter"
+
+
+def test_raw_fact_event_debug_trace_exposes_l1_to_l2_transition_order_without_replacing_authority_ack() -> None:
+    event = VisualFactEvent(
+        actor_id="char_c",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        producer_ts=999,
+        fact_type="fixed_gaze_on_target",
+        relation_type="actor_looks_at_actor",
+        target_actor_id="char_a",
+    )
+
+    reset_runtime_state()
+    debug_stream.clear()
+    messages = _handle_envelope(
+        Envelope(
+            message_type="raw_fact_event",
+            payload=event.model_dump(),
+        )
+    )
+
+    assert messages[0]["message_type"] == "ack"
+    assert messages[0]["payload"]["route"] == "authority_visual_fact"
+
+    stages = [entry["stage"] for entry in debug_stream.history()]
+
+    assert "l1_raw_fact_ingress" in stages
+    assert "candidate_percept_compiled" in stages
+    assert "character_perceived_applied" in stages
+    assert stages.index("l1_raw_fact_ingress") < stages.index("candidate_percept_compiled")
+    assert stages.index("candidate_percept_compiled") < stages.index("character_perceived_applied")
