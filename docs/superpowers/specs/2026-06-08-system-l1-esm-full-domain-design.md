@@ -90,6 +90,10 @@ That does not require a giant workbench, but it does require:
   - `ObjectStateResult`
   - `EnvironmentStateResult`
   - `StateMachineTransitionEvent`
+- result-entity identity:
+  - `StateMachineTransitionEvent.entity_id`
+  - `ObjectStateResult.entity_id`
+  - `EnvironmentStateResult.entity_id`
 - supported environment fields:
   - `light_level`
   - `noise_level`

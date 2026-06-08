@@ -46,6 +46,7 @@
 - Landed:
   - audit proof for success / failure / environment-state paths
   - replay-friendly stable ids across result objects
+  - stable `entity_id` on replay-critical result families
   - websocket protocol tests covering the full emitted chain
 
 ### Task 4: Run Full Regression

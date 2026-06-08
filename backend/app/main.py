@@ -595,7 +595,8 @@ def _as_state_machine_transition_envelope(payload: dict[str, object]) -> dict[st
 def _as_world_result_envelope(payload: dict[str, object]) -> dict[str, object]:
     target_object_id = str(payload.get("target_object_id", "") or "")
     target_environment_id = str(payload.get("target_environment_id", "") or "")
-    object_id = target_object_id or target_environment_id or None
+    entity_id = str(payload.get("entity_id", "") or "")
+    object_id = entity_id or target_object_id or target_environment_id or None
     return {
         "message_type": "world_result",
         "event_id": str(payload.get("result_id", "") or ""),
@@ -604,6 +605,7 @@ def _as_world_result_envelope(payload: dict[str, object]) -> dict[str, object]:
         "room_id": str(payload.get("room_id", "") or ""),
         "scene_id": str(payload.get("scene_id", "") or ""),
         "zone_id": str(payload.get("zone_id", "") or ""),
+        "entity_id": entity_id,
         "source": {
             "layer": "L1",
             "system": "esm",

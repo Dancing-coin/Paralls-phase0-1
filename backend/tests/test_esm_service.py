@@ -215,6 +215,7 @@ def test_esm_service_environment_shift_result_is_replayable_and_updates_field_st
     )
 
     assert result.result_type == "environment_state_result"
+    assert result.entity_id == "env_lamp"
     assert result.actor_id == "char_c"
     assert result.scene_id == "scene_demo"
     assert result.zone_id == "zone_focus"
@@ -271,6 +272,7 @@ def test_esm_service_accepts_environment_request_and_emits_resolution_and_enviro
     assert resolution.applied_state_changes == ["environment_state_result"]
     assert resolution.stable_state_summary == "environment_request accepted"
     assert environment_result.result_type == "environment_state_result"
+    assert environment_result.entity_id == "env_lamp"
     assert environment_result.target_environment_id == "env_lamp"
     assert environment_result.current_state == "alerted"
     assert environment_result.request_ref == "envreq:2"
@@ -323,6 +325,7 @@ def test_esm_service_object_state_result_is_replayable() -> None:
     assert result.result_type == "object_state_result"
     assert result.request_ref == "object:obj_letter:220"
     assert result.result_id == "object_result:obj_letter:220"
+    assert result.entity_id == "obj_letter"
     assert result.target_object_id == "obj_letter"
     assert result.previous_state == "partially_visible"
     assert result.current_state == "visible"

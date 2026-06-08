@@ -3,7 +3,13 @@ from app.models.ai_output import DialogueResponse
 from app.models.environment_request import EnvironmentRequest
 from app.models.runtime_state import CharacterRuntimeStateDelta, CharacterRuntimeStateSnapshot
 from app.models.state_machine_transition import StateMachineTransitionEvent
-from app.models.world_result import ActionResolutionResult, BodyStateResult, ConstraintStateResult
+from app.models.world_result import (
+    ActionResolutionResult,
+    BodyStateResult,
+    ConstraintStateResult,
+    EnvironmentStateResult,
+    ObjectStateResult,
+)
 from app.models.siming_output import NarrativeNudge
 from fastapi.testclient import TestClient
 from app.main import app, reset_runtime_state
@@ -128,6 +134,58 @@ def test_world_result_body_state_shape() -> None:
 
     assert event.body_state_class == "fatigue"
     assert event.current_state == "elevated"
+
+
+def test_world_result_object_state_shape() -> None:
+    event = ObjectStateResult(
+        request_ref="object:obj_letter:300",
+        result_id="object_result:obj_letter:300",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        actor_id="char_c",
+        source_type="system",
+        entity_id="obj_letter",
+        target_object_id="obj_letter",
+        result_type="object_state_result",
+        causation_id="object:obj_letter:300",
+        correlation_id="object:obj_letter:300",
+        producer_ts=300,
+        settlement_status="applied",
+        previous_state="partially_visible",
+        current_state="visible",
+        change_summary="obj_letter changed from partially_visible to visible",
+    )
+
+    assert event.entity_id == "obj_letter"
+    assert event.target_object_id == "obj_letter"
+
+
+def test_world_result_environment_state_shape() -> None:
+    event = EnvironmentStateResult(
+        request_ref="environment:env_lamp:301",
+        result_id="environment_result:env_lamp:301",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        actor_id="char_c",
+        source_type="system",
+        entity_id="env_lamp",
+        target_environment_id="env_lamp",
+        result_type="environment_state_result",
+        causation_id="env:env_lamp:alerted",
+        correlation_id="env:env_lamp:alerted",
+        producer_ts=301,
+        settlement_status="applied",
+        previous_state="stable",
+        current_state="alerted",
+        change_summary="env_lamp changed from stable to alerted",
+        affected_zone_ids=["zone_focus"],
+        field_delta_summary=["light_level", "noise_level", "smoke_density", "visibility_level"],
+    )
+
+    assert event.entity_id == "env_lamp"
+    assert event.target_environment_id == "env_lamp"
 
 
 def test_state_machine_transition_shape() -> None:
@@ -317,7 +375,9 @@ def test_websocket_environment_request_emits_ack_action_resolution_transition_an
     assert transition["to_state"] == "alerted"
     assert environment_result["message_type"] == "world_result"
     assert environment_result["event_type"] == "environment_state_result"
+    assert environment_result["entity_id"] == "env_lamp"
     assert environment_result["payload"]["request_ref"] == "envreq:500"
+    assert environment_result["payload"]["entity_id"] == "env_lamp"
     assert environment_result["payload"]["target_environment_id"] == "env_lamp"
     assert environment_result["payload"]["current_state"] == "alerted"
     assert environment_result["payload"]["causation_id"] == "decision:500"
@@ -403,7 +463,9 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
     assert transition["trigger_type"] == "interact.inspect"
     assert object_state_result["message_type"] == "world_result"
     assert object_state_result["event_type"] == "object_state_result"
+    assert object_state_result["entity_id"] == "obj_letter"
     assert object_state_result["payload"]["result_type"] == "object_state_result"
+    assert object_state_result["payload"]["entity_id"] == "obj_letter"
     assert object_state_result["payload"]["target_object_id"] == "obj_letter"
     assert object_state_result["payload"]["current_state"] == "visible"
     assert body_state_result["message_type"] == "world_result"
@@ -414,7 +476,9 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
     assert body_state_result["payload"]["current_state"] == "engaged"
     assert environment_result["message_type"] == "world_result"
     assert environment_result["event_type"] == "environment_state_result"
+    assert environment_result["entity_id"] == "env_lamp"
     assert environment_result["payload"]["result_type"] == "environment_state_result"
+    assert environment_result["payload"]["entity_id"] == "env_lamp"
     assert environment_result["payload"]["target_environment_id"] == "env_lamp"
     assert environment_result["payload"]["current_state"] == "alerted"
     assert siming_output["message_type"] == "siming_output"

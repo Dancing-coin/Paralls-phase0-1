@@ -9,6 +9,7 @@ class WorldResultBase(BaseModel):
     zone_id: str = "zone_focus"
     actor_id: str = ""
     source_type: str
+    entity_id: str = ""
     result_type: str
     causation_id: str
     correlation_id: str = ""
