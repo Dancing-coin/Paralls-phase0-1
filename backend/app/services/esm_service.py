@@ -1,3 +1,4 @@
+from app.contracts.l1.action_request import ActionRequest
 from app.models.player_input import InteractIntent
 from app.models.environment_field import EnvironmentFieldState
 from app.models.world_result import ConstraintStateResult, EnvironmentStateResult, ObjectInteractionResult
@@ -8,9 +9,63 @@ class ESMService:
     OBJECT_POSITIONS: dict[str, tuple[float, float, float]] = {
         "obj_letter": (0.0, 0.95, -2.0),
     }
+    STATE_MACHINE_TEMPLATES: dict[str, dict[str, object]] = {
+        "burning": {
+            "machine_id": "burning",
+            "entity_type": "object",
+            "state_list": ["idle", "heated", "burning", "charred", "extinguished"],
+        },
+        "lock": {
+            "machine_id": "lock",
+            "entity_type": "object",
+            "state_list": ["locked", "unlocked", "jammed", "broken"],
+        },
+    }
+    MATERIAL_TEMPLATES: dict[str, dict[str, object]] = {
+        "wood": {
+            "material_id": "wood",
+            "flammability": "medium",
+            "break_resistance": "medium",
+        },
+        "fabric": {
+            "material_id": "fabric",
+            "flammability": "high",
+            "smoke_factor": "high",
+        },
+    }
 
     def __init__(self) -> None:
         self._environment_fields: dict[tuple[str, str], EnvironmentFieldState] = {}
+
+    def build_action_request(self, event: InteractIntent, *, source_system: str = "player_input_bridge") -> ActionRequest:
+        request_id = f"interact:{event.producer_ts}:{event.target_object_id}"
+        return ActionRequest(
+            request_id=request_id,
+            request_type="interact",
+            room_id=event.room_id,
+            scene_id=event.scene_id,
+            zone_id=event.zone_id,
+            actor_id=event.actor_id,
+            action_type=event.intent_type,
+            source={
+                "layer": "L1",
+                "system": source_system,
+                "actor_id": event.actor_id,
+            },
+            target_entity_refs={
+                "actor_ids": [],
+                "object_ids": [event.target_object_id],
+                "environment_ids": [],
+            },
+            action_profile=event.interaction_type,
+            intent_strength="normal",
+            constraints_hint={},
+            producer_ts=event.producer_ts,
+            causation_id=f"interact:{event.producer_ts}",
+            correlation_id=f"interact:{event.producer_ts}",
+            target_object_id=event.target_object_id,
+            payload={"interaction_type": event.interaction_type},
+        )
 
     def resolve_interaction(
         self,
@@ -19,9 +74,12 @@ class ESMService:
         is_in_range: bool | None = None,
         actor_position: tuple[float, float, float] | None = None,
     ) -> ObjectInteractionResult | ConstraintStateResult:
+        request = self.build_action_request(event)
         next_is_in_range = is_in_range if is_in_range is not None else self._is_in_range(event.target_object_id, actor_position)
         if not next_is_in_range:
             return ConstraintStateResult(
+                request_ref=request.request_id,
+                result_id=f"constraint:{request.request_id}",
                 room_id=event.room_id,
                 scene_id=event.scene_id,
                 zone_id=event.zone_id,
@@ -33,11 +91,15 @@ class ESMService:
                 correlation_id=f"interact:{event.producer_ts}",
                 producer_ts=event.producer_ts + 1,
                 constraint_type="distance",
+                constraint_code="distance_constraint",
                 constraint_summary="target is too far away",
+                blocking_entity_refs=[event.target_object_id],
                 settlement_status="rejected",
             )
 
         return ObjectInteractionResult(
+            request_ref=request.request_id,
+            result_id=f"resolution:{request.request_id}",
             room_id=event.room_id,
             scene_id=event.scene_id,
             zone_id=event.zone_id,
@@ -51,6 +113,9 @@ class ESMService:
             interaction_type=event.interaction_type,
             result_summary="object interaction accepted",
             state_changed=True,
+            resolved_entities=[event.target_object_id],
+            applied_state_changes=["object_interaction_result"],
+            stable_state_summary="object_interaction accepted",
             settlement_status="accepted",
         )
 
@@ -79,12 +144,15 @@ class ESMService:
     ) -> EnvironmentStateResult:
         field_state = self._update_environment_field(
             room_id=room_id,
+            scene_id=scene_id,
             zone_id=zone_id,
             target_environment_id=target_environment_id,
             current_state=current_state,
             producer_ts=producer_ts,
         )
         return EnvironmentStateResult(
+            request_ref=f"environment:{target_environment_id}:{producer_ts}",
+            result_id=f"environment_result:{target_environment_id}:{producer_ts}",
             room_id=room_id,
             scene_id=scene_id,
             zone_id=zone_id,
@@ -98,8 +166,14 @@ class ESMService:
             previous_state=previous_state,
             current_state=current_state,
             change_summary=f"{target_environment_id} changed from {previous_state} to {current_state}",
+            affected_zone_ids=[zone_id],
+            field_delta_summary=["light_level", "noise_level", "smoke_density", "visibility_level"],
+            temperature=field_state.temperature,
+            humidity=field_state.humidity,
+            smoke_density=field_state.smoke_density,
             light_level=field_state.light_level,
             noise_level=field_state.noise_level,
+            visibility_level=field_state.visibility_level,
             settlement_status="applied",
         )
 
@@ -109,26 +183,44 @@ class ESMService:
             EnvironmentFieldState(room_id=room_id, zone_id=zone_id),
         )
 
+    def get_state_machine_template(self, machine_id: str) -> dict[str, object]:
+        return self.STATE_MACHINE_TEMPLATES[machine_id]
+
+    def get_material_template(self, material_id: str) -> dict[str, object]:
+        return self.MATERIAL_TEMPLATES[material_id]
+
     def _update_environment_field(
         self,
         *,
         room_id: str,
+        scene_id: str,
         zone_id: str,
         target_environment_id: str,
         current_state: str,
         producer_ts: int,
     ) -> EnvironmentFieldState:
+        temperature = "ambient"
+        humidity = "stable"
+        smoke_density = "clear"
         light_level = "normal"
         noise_level = "quiet"
+        visibility_level = "clear"
         if current_state == "alerted":
             light_level = "low"
             noise_level = "elevated"
+            smoke_density = "light"
+            visibility_level = "reduced"
 
         field_state = EnvironmentFieldState(
             room_id=room_id,
+            scene_id=scene_id,
             zone_id=zone_id,
+            temperature=temperature,
+            humidity=humidity,
+            smoke_density=smoke_density,
             light_level=light_level,
             noise_level=noise_level,
+            visibility_level=visibility_level,
             producer_ts=producer_ts,
             source_environment_id=target_environment_id,
         )

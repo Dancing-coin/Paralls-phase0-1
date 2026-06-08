@@ -2,6 +2,35 @@ from app.models.player_input import InteractIntent
 from app.services.esm_service import ESMService
 
 
+def test_esm_service_builds_action_request_from_interact_intent() -> None:
+    service = ESMService()
+    event = InteractIntent(
+        player_id="p1",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        actor_id="char_c",
+        intent_type="interact_intent",
+        producer_ts=9,
+        target_object_id="obj_letter",
+        interaction_type="inspect",
+    )
+
+    request = service.build_action_request(event, source_system="player_input_bridge")
+
+    assert request.request_type == "interact"
+    assert request.room_id == "room_demo"
+    assert request.scene_id == "scene_demo"
+    assert request.zone_id == "zone_focus"
+    assert request.source["layer"] == "L1"
+    assert request.source["system"] == "player_input_bridge"
+    assert request.source["actor_id"] == "char_c"
+    assert request.target_entity_refs["object_ids"] == ["obj_letter"]
+    assert request.action_profile == "inspect"
+    assert request.causation_id == "interact:9"
+    assert request.correlation_id == "interact:9"
+
+
 def test_esm_service_accepts_nearby_interaction() -> None:
     service = ESMService()
     event = InteractIntent(
@@ -87,9 +116,14 @@ def test_esm_service_success_result_exposes_stable_phase1_contract_fields() -> N
     assert result.actor_id == "char_c"
     assert result.scene_id == "scene_demo"
     assert result.zone_id == "zone_focus"
+    assert result.request_ref == "interact:20:obj_letter"
+    assert result.result_id == "resolution:interact:20:obj_letter"
     assert result.causation_id == "interact:20"
     assert result.correlation_id == "interact:20"
     assert result.settlement_status == "accepted"
+    assert result.resolved_entities == ["obj_letter"]
+    assert result.applied_state_changes == ["object_interaction_result"]
+    assert result.stable_state_summary == "object_interaction accepted"
 
 
 def test_esm_service_constraint_result_exposes_stable_phase1_contract_fields() -> None:
@@ -112,9 +146,13 @@ def test_esm_service_constraint_result_exposes_stable_phase1_contract_fields() -
     assert result.actor_id == "char_c"
     assert result.scene_id == "scene_demo"
     assert result.zone_id == "zone_focus"
+    assert result.request_ref == "interact:21:obj_letter"
+    assert result.result_id == "constraint:interact:21:obj_letter"
     assert result.causation_id == "interact:21"
     assert result.correlation_id == "interact:21"
     assert result.constraint_type == "distance"
+    assert result.constraint_code == "distance_constraint"
+    assert result.blocking_entity_refs == ["obj_letter"]
     assert result.settlement_status == "rejected"
 
 
@@ -138,9 +176,36 @@ def test_esm_service_environment_shift_result_is_replayable_and_updates_field_st
     assert result.causation_id == "env:env_lamp:alerted"
     assert result.correlation_id == "env:env_lamp:alerted"
     assert result.settlement_status == "applied"
+    assert result.affected_zone_ids == ["zone_focus"]
+    assert result.field_delta_summary == ["light_level", "noise_level", "smoke_density", "visibility_level"]
     assert result.light_level == "low"
     assert result.noise_level == "elevated"
+    assert result.smoke_density == "light"
+    assert result.visibility_level == "reduced"
 
     field = service.get_environment_field("room_demo", "zone_focus")
+    assert field.scene_id == "scene_demo"
     assert field.light_level == "low"
     assert field.noise_level == "elevated"
+    assert field.temperature == "ambient"
+    assert field.humidity == "stable"
+    assert field.smoke_density == "light"
+    assert field.visibility_level == "reduced"
+
+
+def test_esm_service_exposes_state_machine_and_material_templates() -> None:
+    service = ESMService()
+
+    burning_machine = service.get_state_machine_template("burning")
+    lock_machine = service.get_state_machine_template("lock")
+    wood_material = service.get_material_template("wood")
+    fabric_material = service.get_material_template("fabric")
+
+    assert burning_machine["machine_id"] == "burning"
+    assert "burning" in burning_machine["state_list"]
+    assert lock_machine["machine_id"] == "lock"
+    assert "locked" in lock_machine["state_list"]
+    assert wood_material["material_id"] == "wood"
+    assert wood_material["flammability"] == "medium"
+    assert fabric_material["material_id"] == "fabric"
+    assert fabric_material["smoke_factor"] == "high"

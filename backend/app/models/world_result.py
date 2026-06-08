@@ -2,6 +2,8 @@ from pydantic import BaseModel
 
 
 class WorldResultBase(BaseModel):
+    request_ref: str = ""
+    result_id: str = ""
     room_id: str
     scene_id: str = "scene_demo"
     zone_id: str = "zone_focus"
@@ -21,6 +23,9 @@ class ObjectInteractionResult(WorldResultBase):
     interaction_type: str
     result_summary: str
     state_changed: bool
+    resolved_entities: list[str] = []
+    applied_state_changes: list[str] = []
+    stable_state_summary: str = ""
 
 
 class EnvironmentStateResult(WorldResultBase):
@@ -28,8 +33,14 @@ class EnvironmentStateResult(WorldResultBase):
     previous_state: str
     current_state: str
     change_summary: str
+    affected_zone_ids: list[str] = []
+    field_delta_summary: list[str] = []
+    temperature: str = "ambient"
+    humidity: str = "stable"
+    smoke_density: str = "clear"
     light_level: str = "normal"
     noise_level: str = "quiet"
+    visibility_level: str = "clear"
 
 
 class VisibleFeedbackResult(WorldResultBase):
@@ -41,4 +52,6 @@ class VisibleFeedbackResult(WorldResultBase):
 class ConstraintStateResult(WorldResultBase):
     result_type: str = "constraint_state_result"
     constraint_type: str
+    constraint_code: str = ""
     constraint_summary: str
+    blocking_entity_refs: list[str] = []
