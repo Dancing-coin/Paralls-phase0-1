@@ -12,15 +12,25 @@
 
 ## Status Snapshot
 
-- Date: `2026-06-09`
-- Plan status: partially executed
+- Date: `2026-06-10`
+- Plan status: repo-local target completed and verified
 - Current code truth:
   - `ObjectVisualFactEmitter` exists and is wired
   - `SpatialRelationVisualFactEmitter` exists and is wired
-  - `EvidenceProjectionEmitter` exists
+  - `EvidenceProjectionEmitter` exists and is now wired into the successful `obj_letter` interaction path
   - verification surface proves the visual-fact emitter family is present
+  - `phase1_slice` runtime verification now explicitly requires `visual_evidence_projection -> evidence_projection`
 - Remaining gap:
-  - the repo has explicit emitter coverage, but not a deeper full-volume visual domain beyond the current verified slice
+  - this child plan is complete for the repo's current visual-fact-system target
+  - it is not the same thing as a full-volume main-project visual domain, so the parent `system-l1-full-phase1` plan still remains open
+- Verification evidence:
+  - `backend/tests/test_verification_audit.py::test_visual_fact_system_contains_object_visual_fact_emitter`
+  - `backend/tests/test_verification_audit.py::test_visual_fact_system_contains_spatial_relation_visual_fact_emitter`
+  - `backend/tests/test_verification_audit.py::test_visual_fact_system_contains_evidence_projection_emitter`
+  - `backend/tests/test_verification_audit.py::test_main_demo_runtime_wires_evidence_projection_emitter`
+  - `backend/tests/test_visual_fact_pipeline.py::test_interact_success_emits_visual_evidence_projection_raw_fact`
+  - `backend/tests/test_verification_audit.py::test_phase1_slice_audit_requires_emitter_and_authority_lane_evidence`
+  - `backend/tests/test_verification_audit.py::test_phase1_slice_audit_requires_evidence_projection_visual_fact_proof`
 
 ### Task 1: Add `ObjectVisualFactEmitter`
 
@@ -31,7 +41,7 @@
 - Modify: `backend/tests/test_verification_audit.py`
 - Optional Modify: `backend/tests/test_visual_fact_pipeline.py`
 
-- [ ] **Step 1: Write the failing static verification test**
+- [x] **Step 1: Write the failing static verification test**
 
 Add to `backend/tests/test_verification_audit.py`:
 
@@ -45,7 +55,7 @@ def test_visual_fact_system_contains_object_visual_fact_emitter() -> None:
     assert "emit_object_state_transition" in emitter_source
 ```
 
-- [ ] **Step 2: Run the test to verify failure**
+- [x] **Step 2: Run the test to verify failure**
 
 Run:
 
@@ -57,7 +67,7 @@ Expected:
 
 - FAIL because the emitter file does not exist yet.
 
-- [ ] **Step 3: Implement the minimal object emitter**
+- [x] **Step 3: Implement the minimal object emitter**
 
 Create `scripts/l1/facts/emitters/ObjectVisualFactEmitter.gd`:
 
@@ -84,7 +94,7 @@ func emit_object_state_transition(target_object_id: String, relation_type: Strin
 	)
 ```
 
-- [ ] **Step 4: Wire the emitter into `MainDemo.tscn`**
+- [x] **Step 4: Wire the emitter into `MainDemo.tscn`**
 
 Add a node under `VisualFactEmitter` in `scenes/phase0/MainDemo.tscn` matching the existing child-emitter pattern:
 
@@ -93,7 +103,7 @@ Add a node under `VisualFactEmitter` in `scenes/phase0/MainDemo.tscn` matching t
 script = ExtResource("<new object emitter ext_resource id>")
 ```
 
-- [ ] **Step 5: Invoke it from one existing object-change path**
+- [x] **Step 5: Invoke it from one existing object-change path**
 
 In `scripts/phase0/MainDemoController.gd`, after a successful object interaction path where `obj_letter` state visibly changes, call the new emitter if present.
 
@@ -105,7 +115,7 @@ if object_visual_fact_emitter and object_visual_fact_emitter.has_method("emit_ob
 	object_visual_fact_emitter.emit_object_state_transition("obj_letter")
 ```
 
-- [ ] **Step 6: Re-run focused verification**
+- [x] **Step 6: Re-run focused verification**
 
 Run:
 
@@ -117,7 +127,7 @@ Expected:
 
 - PASS
 
-- [ ] **Step 7: Commit**
+- Deferred: no repository commit was requested in this session; verified worktree + synced docs are the closure record for this slice.
 
 ```bash
 git add scripts/l1/facts/emitters/ObjectVisualFactEmitter.gd scenes/phase0/MainDemo.tscn scripts/phase0/MainDemoController.gd backend/tests/test_verification_audit.py backend/tests/test_visual_fact_pipeline.py
@@ -131,7 +141,7 @@ git commit -m "feat: add object visual fact emitter"
 - Modify: `scenes/phase0/MainDemo.tscn`
 - Modify: `backend/tests/test_verification_audit.py`
 
-- [ ] **Step 1: Add failing verification test**
+- [x] **Step 1: Add failing verification test**
 
 ```python
 def test_visual_fact_system_contains_spatial_relation_visual_fact_emitter() -> None:
@@ -143,7 +153,7 @@ def test_visual_fact_system_contains_spatial_relation_visual_fact_emitter() -> N
     assert "emit_spatial_relation_fact" in emitter_source
 ```
 
-- [ ] **Step 2: Run the test to verify failure**
+- [x] **Step 2: Run the test to verify failure**
 
 Run:
 
@@ -155,7 +165,7 @@ Expected:
 
 - FAIL
 
-- [ ] **Step 3: Create the minimal emitter**
+- [x] **Step 3: Create the minimal emitter**
 
 ```gdscript
 extends Node
@@ -177,11 +187,11 @@ func emit_spatial_relation_fact(relation_type: String, target_actor_id: String =
 	)
 ```
 
-- [ ] **Step 4: Add the node to `MainDemo.tscn`**
+- [x] **Step 4: Add the node to `MainDemo.tscn`**
 
 Mirror the existing `VisualFactEmitter` child-emitter structure.
 
-- [ ] **Step 5: Re-run focused verification**
+- [x] **Step 5: Re-run focused verification**
 
 Run:
 
@@ -193,7 +203,7 @@ Expected:
 
 - PASS
 
-- [ ] **Step 6: Commit**
+- Deferred: no repository commit was requested in this session; verified worktree + synced docs are the closure record for this slice.
 
 ```bash
 git add scripts/l1/facts/emitters/SpatialRelationVisualFactEmitter.gd scenes/phase0/MainDemo.tscn backend/tests/test_verification_audit.py
@@ -206,7 +216,7 @@ git commit -m "feat: add spatial relation visual fact emitter"
 - Create: `scripts/l1/facts/emitters/EvidenceProjectionEmitter.gd`
 - Modify: `backend/tests/test_verification_audit.py`
 
-- [ ] **Step 1: Add failing verification test**
+- [x] **Step 1: Add failing verification test**
 
 ```python
 def test_visual_fact_system_contains_evidence_projection_emitter() -> None:
@@ -218,7 +228,7 @@ def test_visual_fact_system_contains_evidence_projection_emitter() -> None:
     assert "emit_visual_evidence_projection" in emitter_source
 ```
 
-- [ ] **Step 2: Run to verify failure**
+- [x] **Step 2: Run to verify failure**
 
 Run:
 
@@ -230,7 +240,7 @@ Expected:
 
 - FAIL
 
-- [ ] **Step 3: Create the minimal emitter**
+- [x] **Step 3: Create the minimal emitter**
 
 ```gdscript
 extends Node
@@ -255,7 +265,7 @@ func emit_visual_evidence_projection(target_object_id: String = "", target_envir
 	)
 ```
 
-- [ ] **Step 4: Re-run focused verification**
+- [x] **Step 4: Re-run focused verification**
 
 Run:
 
@@ -267,7 +277,7 @@ Expected:
 
 - PASS
 
-- [ ] **Step 5: Commit**
+- Deferred: no repository commit was requested in this session; verified worktree + synced docs are the closure record for this slice.
 
 ```bash
 git add scripts/l1/facts/emitters/EvidenceProjectionEmitter.gd backend/tests/test_verification_audit.py

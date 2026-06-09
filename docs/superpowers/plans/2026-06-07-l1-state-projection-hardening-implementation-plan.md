@@ -10,6 +10,23 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-10`
+- Plan status: executed and verified for the repository-local target
+- Current code truth:
+  - shared raw-fact effect semantics (`effect_kind` / `subject_key` / `ttl_ms`) exist
+  - spatial state reseed and expiry handling exist
+  - repeated environment cycles remain observable
+  - reconnect/runtime-edge verification is green
+  - the backend bridge first-poll regression found during close-out was repaired and locked with a regression test
+- Verification evidence:
+  - `backend/tests/test_raw_fact_router.py::test_raw_fact_event_accepts_effect_semantics_fields`
+  - `backend/tests/test_raw_fact_router.py::test_visual_fact_event_model_dump_preserves_effect_semantics`
+  - `backend/tests/test_verification_audit.py::test_shared_raw_fact_transport_supports_effect_semantics_fields`
+  - `backend/tests/test_verification_audit.py::test_backend_bridge_polls_before_closed_state_early_return`
+  - `python scripts/verification/verify_l1_runtime_edges.py` -> `overall_l1_runtime_edges_passed=True`
+
 ## File Map
 
 ### Shared Godot L1

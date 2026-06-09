@@ -12,8 +12,8 @@
 
 ## Status Snapshot
 
-- Date: `2026-06-09`
-- Plan status: executed
+- Date: `2026-06-10`
+- Plan status: executed and verified for the repository-local target
 - Current code truth:
   - `TactileFactEmitter.gd`
   - `ThermalFactEmitter.gd`
@@ -24,6 +24,12 @@
 - Follow-on note:
   - this plan only covered shell creation
   - runtime truth for these families is tracked by the separate `runtime-wired-remaining-emitters` plan
+- Verification evidence:
+  - `backend/tests/test_verification_audit.py::test_system_l1_contains_tactile_fact_emitter`
+  - `backend/tests/test_verification_audit.py::test_system_l1_contains_thermal_fact_emitter`
+  - `backend/tests/test_verification_audit.py::test_system_l1_contains_olfactory_fact_emitter`
+  - `backend/tests/test_verification_audit.py::test_system_l1_contains_physiology_state_fact_emitter`
+  - `backend/tests/test_verification_audit.py::test_system_l1_contains_role_state_fact_emitter`
 
 ### Task 1: Add The Five Missing Emitter Shells
 

@@ -10,6 +10,17 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-10`
+- Plan status: superseded
+- Superseded by:
+  - `docs/superpowers/plans/2026-06-08-system-l1-esm-full-domain-implementation-plan.md`
+- Reason:
+  - this earlier plan defined the first Phase-1-shaped `ESM` slice
+  - the repository later expanded that scope into the explicit repo-local full-domain closure plan
+  - current status, evidence, and verification truth are maintained only in the newer full-domain plan
+
 ### Task 1: Formalize Action/Constraint Contracts
 
 **Files:**

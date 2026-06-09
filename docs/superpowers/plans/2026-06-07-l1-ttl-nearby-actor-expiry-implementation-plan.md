@@ -10,6 +10,20 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-10`
+- Plan status: executed and verified for the repository-local target
+- Current code truth:
+  - `ttl_ms` is part of the shared raw-fact contract
+  - `SpatialAccessFactEmitter` emits TTL-backed proximity evidence
+  - backend spatial-access handling prunes expired `nearby_actor_refs`
+  - fresh `replace` events reset the expiry deadline
+- Verification evidence:
+  - `backend/tests/test_raw_fact_router.py::test_spatial_access_fact_handler_prunes_expired_nearby_actor_refs_before_next_event`
+  - `backend/tests/test_raw_fact_router.py::test_spatial_access_fact_handler_resets_nearby_actor_ttl_on_fresh_replace`
+  - `backend/tests/test_verification_audit.py::test_spatial_access_fact_emitter_sets_nearby_actor_ttl`
+
 ## File Map
 
 ### Godot

@@ -10,6 +10,28 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-10`
+- Plan status: executed and verified for the repository-local target
+- Current code truth:
+  - authority-side runtime state exists in the backend
+  - conversation relation compilation exists
+  - character runtime state ownership exists
+  - Siming judgment and output paths exist
+  - backend health identity exposure exists
+  - websocket move/focus/interaction paths emit the expected authority/runtime messages
+- Verification evidence:
+  - `backend/tests/test_conversation_relation_service.py::test_relation_service_exposes_unified_relation_snapshot`
+  - `backend/tests/test_character_runtime_state_service.py::test_state_service_builds_initial_snapshot_for_actor`
+  - `backend/tests/test_character_runtime_state_service.py::test_state_service_applies_runtime_projection_delta`
+  - `backend/tests/test_siming_service.py::test_siming_emits_attention_prompt_for_char_c_candidate_actor`
+  - `backend/tests/test_health.py::test_health_exposes_current_backend_identity`
+  - `backend/tests/test_ws_protocol.py::test_websocket_move_intent_emits_ack_and_runtime_snapshot`
+  - `backend/tests/test_ws_protocol.py::test_websocket_focus_target_change_emits_runtime_alignment_messages`
+  - `backend/tests/test_session_runtime.py::test_session_runtime_routes_move_event`
+  - `backend/tests/test_session_runtime.py::test_session_runtime_routes_focus_target_change_event`
+
 ## File Structure
 
 ### Approved design and reference inputs

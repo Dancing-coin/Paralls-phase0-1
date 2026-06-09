@@ -14,6 +14,9 @@ from app.models.world_result import (
 
 class ESMService:
     INTERACTION_RANGE = 3.0
+    WORKBENCH_HISTORY_LIMIT = 2
+    SUPPORTED_ENVIRONMENT_CHANGE_TYPES = {"light_level_drop", "light_level_restore", "thermal_level_rise", "smoke_density_rise", "noise_level_rise"}
+    UNSUPPORTED_ENVIRONMENT_CHANGE_TYPES = {"thermal_spike"}
     OBJECT_POSITIONS: dict[str, tuple[float, float, float]] = {
         "obj_letter": (0.0, 0.95, -2.0),
     }
@@ -275,6 +278,146 @@ class ESMService:
             "exit_effects": [],
             "stable_state_tags": ["dry", "soaked"],
         },
+        "light_source": {
+            "machine_id": "light_source",
+            "entity_type": "environment",
+            "state_list": [
+                {
+                    "state_id": "stable",
+                    "display_name": "Stable",
+                    "is_terminal": False,
+                    "is_stable": True,
+                    "material_requirements": [],
+                },
+                {
+                    "state_id": "alerted",
+                    "display_name": "Alerted",
+                    "is_terminal": False,
+                    "is_stable": False,
+                    "material_requirements": [],
+                },
+            ],
+            "transition_list": [
+                {
+                    "from_state": "stable",
+                    "to_state": "alerted",
+                    "trigger_type": "environment_request.light_level_drop",
+                    "constraint_checks": [],
+                    "effect_profile": "visibility_reduction",
+                    "cooldown_ms": 0,
+                },
+                {
+                    "from_state": "alerted",
+                    "to_state": "stable",
+                    "trigger_type": "environment_request.light_level_restore",
+                    "constraint_checks": [],
+                    "effect_profile": "visibility_restore",
+                    "cooldown_ms": 0,
+                }
+            ],
+            "entry_effects": ["light_level_delta", "visibility_change"],
+            "exit_effects": [],
+            "stable_state_tags": ["stable"],
+        },
+        "heat_source": {
+            "machine_id": "heat_source",
+            "entity_type": "environment",
+            "state_list": [
+                {
+                    "state_id": "stable",
+                    "display_name": "Stable",
+                    "is_terminal": False,
+                    "is_stable": True,
+                    "material_requirements": [],
+                },
+                {
+                    "state_id": "heated",
+                    "display_name": "Heated",
+                    "is_terminal": False,
+                    "is_stable": False,
+                    "material_requirements": [],
+                },
+            ],
+            "transition_list": [
+                {
+                    "from_state": "stable",
+                    "to_state": "heated",
+                    "trigger_type": "environment_request.thermal_level_rise",
+                    "constraint_checks": [],
+                    "effect_profile": "thermal_rise",
+                    "cooldown_ms": 0,
+                }
+            ],
+            "entry_effects": ["thermal_level_delta"],
+            "exit_effects": [],
+            "stable_state_tags": ["stable"],
+        },
+        "smoke_source": {
+            "machine_id": "smoke_source",
+            "entity_type": "environment",
+            "state_list": [
+                {
+                    "state_id": "stable",
+                    "display_name": "Stable",
+                    "is_terminal": False,
+                    "is_stable": True,
+                    "material_requirements": [],
+                },
+                {
+                    "state_id": "smoke_rising",
+                    "display_name": "Smoke Rising",
+                    "is_terminal": False,
+                    "is_stable": False,
+                    "material_requirements": [],
+                },
+            ],
+            "transition_list": [
+                {
+                    "from_state": "stable",
+                    "to_state": "smoke_rising",
+                    "trigger_type": "environment_request.smoke_density_rise",
+                    "constraint_checks": [],
+                    "effect_profile": "smoke_density_rise",
+                    "cooldown_ms": 0,
+                }
+            ],
+            "entry_effects": ["smoke_density_delta", "visibility_change"],
+            "exit_effects": [],
+            "stable_state_tags": ["stable"],
+        },
+        "noise_source": {
+            "machine_id": "noise_source",
+            "entity_type": "environment",
+            "state_list": [
+                {
+                    "state_id": "stable",
+                    "display_name": "Stable",
+                    "is_terminal": False,
+                    "is_stable": True,
+                    "material_requirements": [],
+                },
+                {
+                    "state_id": "noisy",
+                    "display_name": "Noisy",
+                    "is_terminal": False,
+                    "is_stable": False,
+                    "material_requirements": [],
+                },
+            ],
+            "transition_list": [
+                {
+                    "from_state": "stable",
+                    "to_state": "noisy",
+                    "trigger_type": "environment_request.noise_level_rise",
+                    "constraint_checks": [],
+                    "effect_profile": "noise_rise",
+                    "cooldown_ms": 0,
+                }
+            ],
+            "entry_effects": ["noise_level_delta"],
+            "exit_effects": [],
+            "stable_state_tags": ["stable"],
+        },
     }
     MATERIAL_TEMPLATES: dict[str, dict[str, object]] = {
         "wood": {
@@ -307,6 +450,14 @@ class ESMService:
 
     def __init__(self) -> None:
         self._environment_fields: dict[tuple[str, str], EnvironmentFieldState] = {}
+        self._latest_environment_result: EnvironmentStateResult | None = None
+        self._latest_state_machine_transition: StateMachineTransitionEvent | None = None
+        self._latest_environment_request: ActionRequest | None = None
+        self._latest_environment_resolution: ActionResolutionResult | ConstraintStateResult | None = None
+        self._recent_environment_requests: list[ActionRequest] = []
+        self._recent_environment_resolutions: list[ActionResolutionResult | ConstraintStateResult] = []
+        self._recent_environment_results: list[EnvironmentStateResult] = []
+        self._recent_state_machine_transitions: list[StateMachineTransitionEvent] = []
 
     def build_action_request(self, event: InteractIntent, *, source_system: str = "player_input_bridge") -> ActionRequest:
         request_id = f"interact:{event.producer_ts}:{event.target_object_id}"
@@ -454,6 +605,7 @@ class ESMService:
         previous_state: str,
         current_state: str,
         *,
+        machine_id: str = "light_source",
         scene_id: str = "scene_demo",
         zone_id: str = "zone_focus",
         actor_id: str = "",
@@ -470,7 +622,7 @@ class ESMService:
             current_state=current_state,
             producer_ts=producer_ts,
         )
-        return EnvironmentStateResult(
+        result = EnvironmentStateResult(
             request_ref=request_ref or f"environment:{target_environment_id}:{producer_ts}",
             result_id=f"environment_result:{target_environment_id}:{producer_ts}",
             room_id=room_id,
@@ -481,7 +633,7 @@ class ESMService:
             entity_id=target_environment_id,
             target_environment_id=target_environment_id,
             result_type="environment_state_result",
-            machine_id="light_source",
+            machine_id=machine_id,
             causation_id=causation_id or f"env:{target_environment_id}:{current_state}",
             correlation_id=correlation_id or f"env:{target_environment_id}:{current_state}",
             producer_ts=producer_ts,
@@ -491,24 +643,71 @@ class ESMService:
             field_id=field_state.field_id,
             source_environment_id=field_state.source_environment_id,
             affected_zone_ids=[zone_id],
-            field_delta_summary=["light_level", "noise_level", "smoke_density", "visibility_level"],
+            field_delta_summary=["light_level", "noise_level", "thermal_level", "smoke_density", "visibility_level"],
             temperature=field_state.temperature,
             humidity=field_state.humidity,
             smoke_density=field_state.smoke_density,
             light_level=field_state.light_level,
             noise_level=field_state.noise_level,
+            thermal_level=field_state.thermal_level,
             visibility_level=field_state.visibility_level,
             updated_at=field_state.updated_at,
             settlement_status="applied",
         )
+        self._latest_environment_result = result
+        self._push_history(self._recent_environment_results, result)
+        return result
 
     def resolve_environment_request(
         self,
         event: EnvironmentRequest,
-    ) -> tuple[ActionResolutionResult, EnvironmentStateResult]:
+    ) -> tuple[ActionResolutionResult | ConstraintStateResult, EnvironmentStateResult | None]:
         request = self.build_environment_action_request(event)
+        self._latest_environment_request = request
+        self._push_history(self._recent_environment_requests, request)
         target_environment_ids = request.target_entity_refs.get("environment_ids", [])
         target_environment_id = target_environment_ids[0] if target_environment_ids else "env_default"
+        if event.requested_change_type not in self.SUPPORTED_ENVIRONMENT_CHANGE_TYPES:
+            resolution = ConstraintStateResult(
+                    request_ref=request.request_id,
+                    result_id=f"constraint:{request.request_id}",
+                    room_id=event.room_id,
+                    scene_id=event.scene_id,
+                    zone_id=event.zone_id,
+                    actor_id="",
+                    source_type="system",
+                    entity_id=target_environment_id,
+                    target_environment_id=target_environment_id,
+                    result_type="constraint_state_result",
+                    causation_id=event.causation_id,
+                    correlation_id=event.correlation_id,
+                    producer_ts=event.producer_ts + 1,
+                    constraint_type="unsupported_environment_request",
+                    constraint_code="unsupported_change_type",
+                    constraint_summary=f"unsupported environment change type: {event.requested_change_type}",
+                    blocking_entity_refs=[target_environment_id],
+                    settlement_status="rejected",
+            )
+            self._latest_environment_resolution = resolution
+            self._push_history(self._recent_environment_resolutions, resolution)
+            return resolution, None
+        resolved_state = "alerted"
+        machine_id = "light_source"
+        previous_state = "stable"
+        if event.requested_change_type == "light_level_restore":
+            resolved_state = "stable"
+            machine_id = "light_source"
+            previous_state = "alerted"
+        elif event.requested_change_type == "thermal_level_rise":
+            resolved_state = "heated"
+            machine_id = "heat_source"
+        elif event.requested_change_type == "smoke_density_rise":
+            resolved_state = "smoke_rising"
+            machine_id = "smoke_source"
+        elif event.requested_change_type == "noise_level_rise":
+            resolved_state = "noisy"
+            machine_id = "noise_source"
+
         resolution = ActionResolutionResult(
             request_ref=request.request_id,
             result_id=f"action_resolution:{request.request_id}",
@@ -529,14 +728,17 @@ class ESMService:
             stable_state_summary="environment_request accepted",
             settlement_status="accepted",
         )
+        self._latest_environment_resolution = resolution
+        self._push_history(self._recent_environment_resolutions, resolution)
         environment_result = self.emit_environment_shift(
             room_id=event.room_id,
             scene_id=event.scene_id,
             zone_id=event.zone_id,
             actor_id="",
             target_environment_id=target_environment_id,
-            previous_state="stable",
-            current_state="alerted",
+            previous_state=previous_state,
+            current_state=resolved_state,
+            machine_id=machine_id,
             producer_ts=resolution.producer_ts + 1,
             request_ref=request.request_id,
             causation_id=event.causation_id,
@@ -585,7 +787,7 @@ class ESMService:
         causation_id: str,
         correlation_id: str,
     ) -> StateMachineTransitionEvent:
-        return StateMachineTransitionEvent(
+        transition = StateMachineTransitionEvent(
             event_id=f"transition:{machine_id}:{entity_id}:{producer_ts}",
             room_id=room_id,
             scene_id=scene_id,
@@ -600,6 +802,9 @@ class ESMService:
             causation_id=causation_id,
             correlation_id=correlation_id,
         )
+        self._latest_state_machine_transition = transition
+        self._push_history(self._recent_state_machine_transitions, transition)
+        return transition
 
     def emit_object_state_result(
         self,
@@ -612,9 +817,12 @@ class ESMService:
         previous_state: str,
         current_state: str,
         producer_ts: int,
+        request_ref: str | None = None,
+        causation_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> ObjectStateResult:
         return ObjectStateResult(
-            request_ref=f"object:{target_object_id}:{producer_ts}",
+            request_ref=request_ref or f"object:{target_object_id}:{producer_ts}",
             result_id=f"object_result:{target_object_id}:{producer_ts}",
             room_id=room_id,
             scene_id=scene_id,
@@ -624,8 +832,8 @@ class ESMService:
             entity_id=target_object_id,
             target_object_id=target_object_id,
             machine_id="visibility",
-            causation_id=f"object:{target_object_id}:{producer_ts}",
-            correlation_id=f"object:{target_object_id}:{producer_ts}",
+            causation_id=causation_id or f"object:{target_object_id}:{producer_ts}",
+            correlation_id=correlation_id or f"object:{target_object_id}:{producer_ts}",
             producer_ts=producer_ts,
             previous_state=previous_state,
             current_state=current_state,
@@ -644,17 +852,20 @@ class ESMService:
         previous_state: str,
         current_state: str,
         producer_ts: int,
+        request_ref: str | None = None,
+        causation_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> BodyStateResult:
         return BodyStateResult(
-            request_ref=f"body:{actor_id}:{producer_ts}",
+            request_ref=request_ref or f"body:{actor_id}:{producer_ts}",
             result_id=f"body_result:{actor_id}:{producer_ts}",
             room_id=room_id,
             scene_id=scene_id,
             zone_id=zone_id,
             actor_id=actor_id,
             source_type="system",
-            causation_id=f"body:{actor_id}:{producer_ts}",
-            correlation_id=f"body:{actor_id}:{producer_ts}",
+            causation_id=causation_id or f"body:{actor_id}:{producer_ts}",
+            correlation_id=correlation_id or f"body:{actor_id}:{producer_ts}",
             producer_ts=producer_ts,
             body_state_class=body_state_class,
             previous_state=previous_state,
@@ -679,6 +890,82 @@ class ESMService:
     def get_material_template(self, material_id: str) -> dict[str, object]:
         return self.MATERIAL_TEMPLATES[material_id]
 
+    def get_repo_local_capabilities(self) -> dict[str, object]:
+        return {
+            "supported_settlement_classes": [
+                "interaction_success",
+                "interaction_rejection_by_constraint",
+                "environment_state_shift",
+            ],
+            "supported_constraint_classes": [
+                "distance_constraint",
+                "unsupported_environment_request",
+            ],
+            "supported_environment_change_types": sorted(self.SUPPORTED_ENVIRONMENT_CHANGE_TYPES),
+            "unsupported_environment_change_types": sorted(self.UNSUPPORTED_ENVIRONMENT_CHANGE_TYPES),
+            "supported_environment_fields": [
+                "light_level",
+                "noise_level",
+                "thermal_level",
+                "smoke_density",
+                "visibility_level",
+            ],
+            "environment_machine_ids": ["heat_source", "light_source", "noise_source", "smoke_source"],
+            "environment_field_semantics": {
+                "light_level": "real_but_coarse",
+                "noise_level": "real_but_coarse",
+                "thermal_level": "real_but_coarse",
+                "smoke_density": "real_but_coarse",
+                "visibility_level": "real_but_coarse",
+            },
+            "environment_request_policy": {
+                "supported_change_type_behavior": "accept_and_emit_environment_state_result",
+                "unsupported_change_type_behavior": "reject_constraint_state_result",
+            },
+            "environment_request_variant_policy": {
+                "supported_families": [
+                    "visibility_change",
+                    "thermal_change",
+                    "smoke_change",
+                ],
+                "unsupported_families": [
+                    "humidity_change",
+                    "integrity_change",
+                    "material_change",
+                ],
+                "current_supported_change_types": sorted(self.SUPPORTED_ENVIRONMENT_CHANGE_TYPES),
+            },
+        }
+
+    def get_repo_local_workbench_snapshot(
+        self,
+        *,
+        room_id: str,
+        scene_id: str,
+        zone_id: str,
+    ) -> dict[str, object]:
+        field_state = self.get_environment_field(room_id, zone_id)
+        capabilities = self.get_repo_local_capabilities()
+        return {
+            "room_id": room_id,
+            "scene_id": scene_id,
+            "zone_id": zone_id,
+            "state_machine_template_ids": sorted(self.STATE_MACHINE_TEMPLATES.keys()),
+            "material_template_ids": sorted(self.MATERIAL_TEMPLATES.keys()),
+            "environment_machine_ids": capabilities["environment_machine_ids"],
+            "supported_environment_change_types": capabilities["supported_environment_change_types"],
+            "unsupported_environment_change_types": capabilities["unsupported_environment_change_types"],
+            "current_environment_field": field_state.model_dump(),
+            "latest_environment_request": self._latest_environment_request.model_dump() if self._latest_environment_request is not None else None,
+            "latest_environment_resolution": self._latest_environment_resolution.model_dump() if self._latest_environment_resolution is not None else None,
+            "latest_environment_result": self._latest_environment_result.model_dump() if self._latest_environment_result is not None else None,
+            "latest_state_machine_transition": self._latest_state_machine_transition.model_dump() if self._latest_state_machine_transition is not None else None,
+            "recent_environment_requests": [entry.model_dump() for entry in self._recent_environment_requests],
+            "recent_environment_resolutions": [entry.model_dump() for entry in self._recent_environment_resolutions],
+            "recent_environment_results": [entry.model_dump() for entry in self._recent_environment_results],
+            "recent_state_machine_transitions": [entry.model_dump() for entry in self._recent_state_machine_transitions],
+        }
+
     def propagate_environment_field_to_adjacent_zones(
         self,
         *,
@@ -697,6 +984,7 @@ class ESMService:
                 scene_id=scene_id,
                 zone_id=zone_id,
                 temperature=source.temperature,
+                thermal_level=self._propagate_thermal_level(source.thermal_level),
                 humidity=source.humidity,
                 smoke_density=self._propagate_smoke_density(source.smoke_density),
                 light_level=source.light_level,
@@ -721,6 +1009,7 @@ class ESMService:
         producer_ts: int,
     ) -> EnvironmentFieldState:
         temperature = "ambient"
+        thermal_level = "neutral"
         humidity = "stable"
         smoke_density = "clear"
         light_level = "normal"
@@ -729,8 +1018,16 @@ class ESMService:
         if current_state == "alerted":
             light_level = "low"
             noise_level = "elevated"
+            thermal_level = "warm"
             smoke_density = "light"
             visibility_level = "reduced"
+        elif current_state == "heated":
+            thermal_level = "hot"
+        elif current_state == "smoke_rising":
+            smoke_density = "dense"
+            visibility_level = "reduced"
+        elif current_state == "noisy":
+            noise_level = "loud"
 
         field_state = EnvironmentFieldState(
             field_id=f"field:{room_id}:{scene_id}:{zone_id}",
@@ -738,6 +1035,7 @@ class ESMService:
             scene_id=scene_id,
             zone_id=zone_id,
             temperature=temperature,
+            thermal_level=thermal_level,
             humidity=humidity,
             smoke_density=smoke_density,
             light_level=light_level,
@@ -760,7 +1058,17 @@ class ESMService:
             return "trace"
         return density
 
+    def _propagate_thermal_level(self, level: str) -> str:
+        if level == "warm":
+            return "mild_warm"
+        return level
+
     def _propagate_visibility_level(self, level: str) -> str:
         if level == "reduced":
             return "soft_reduced"
         return level
+
+    def _push_history(self, entries: list[object], entry: object) -> None:
+        entries.append(entry)
+        if len(entries) > self.WORKBENCH_HISTORY_LIMIT:
+            del entries[0 : len(entries) - self.WORKBENCH_HISTORY_LIMIT]

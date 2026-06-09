@@ -38,6 +38,7 @@ class EnvironmentStateResult(WorldResultBase):
     affected_zone_ids: list[str] = []
     field_delta_summary: list[str] = []
     temperature: str = "ambient"
+    thermal_level: str = "neutral"
     humidity: str = "stable"
     smoke_density: str = "clear"
     light_level: str = "normal"

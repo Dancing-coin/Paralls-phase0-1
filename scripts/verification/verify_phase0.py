@@ -120,6 +120,7 @@ def main() -> int:
             main_screenshot_exists=main_screenshot.exists() and main_result.returncode == 0,
             focus_screenshot_exists=focus_screenshot.exists() and focus_result.returncode == 0,
             interaction_source=read_text(project_root / "backend" / "app" / "main.py"),
+            esm_service_source=read_text(project_root / "backend" / "app" / "services" / "esm_service.py"),
             voice_controller_source=read_text(project_root / "scripts" / "audio" / "SpatialVoiceController.gd"),
             player_bridge_source=read_text(project_root / "scripts" / "player" / "Phase0PlayerBridge.gd"),
             character_replica_source=read_text(project_root / "scripts" / "character" / "CharacterReplica.gd"),

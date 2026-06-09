@@ -34,6 +34,7 @@ def evaluate_phase0_audit(
     main_screenshot_exists: bool,
     focus_screenshot_exists: bool,
     interaction_source: str,
+    esm_service_source: str,
     voice_controller_source: str,
     player_bridge_source: str,
     character_replica_source: str,
@@ -113,6 +114,36 @@ def evaluate_phase0_audit(
             "Object or environment visible state change is observable",
             "proved" if world_change_ok else "missing",
             ["environment_state:alerted"] if world_change_ok else [],
+        )
+    )
+
+    esm_request_lineage_ok = _contains_all(
+        interaction_source,
+        [
+            "request_ref=world_result.request_ref",
+            "causation_id=world_result.causation_id",
+            "correlation_id=world_result.correlation_id",
+        ],
+    )
+    results.append(
+        _result(
+            "esm_request_lineage",
+            "ESM follow-on success results preserve the originating request lineage",
+            "proved" if esm_request_lineage_ok else "missing",
+            ["request_ref", "causation_id", "correlation_id"] if esm_request_lineage_ok else [],
+        )
+    )
+
+    esm_thermal_field_ok = (
+        "thermal_level=field_state.thermal_level" in esm_service_source
+        and '"thermal_level"' in esm_service_source
+    )
+    results.append(
+        _result(
+            "esm_thermal_field",
+            "ESM environment-state evidence includes the coarse thermal field contract",
+            "proved" if esm_thermal_field_ok else "missing",
+            ["thermal_level field contract"] if esm_thermal_field_ok else [],
         )
     )
 
@@ -231,6 +262,8 @@ def evaluate_phase0_audit(
         "successful_interaction",
         "failed_interaction",
         "visible_world_state_change",
+        "esm_request_lineage",
+        "esm_thermal_field",
         "siming_reaction",
         "voice_stub_path",
         "player_root_motion_chain",
@@ -322,6 +355,16 @@ def evaluate_phase1_slice_audit(
             "Environment visual fact goes through emitter",
             "proved" if environment_ok else "missing",
             ["environment_light_drop"] if environment_ok else [],
+        )
+    )
+
+    evidence_projection_ok = "phase0_visual_fact_emitter:visual_evidence_projection:evidence_projection" in main_log
+    results.append(
+        _result(
+            "evidence_projection_visual_fact_observed",
+            "Evidence-projection visual fact goes through emitter",
+            "proved" if evidence_projection_ok else "missing",
+            ["visual_evidence_projection"] if evidence_projection_ok else [],
         )
     )
 

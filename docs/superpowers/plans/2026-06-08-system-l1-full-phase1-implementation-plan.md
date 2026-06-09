@@ -12,10 +12,10 @@
 
 ## Status Snapshot
 
-- Date: `2026-06-09`
-- Plan status: partially executed
+- Date: `2026-06-10`
+- Plan status: repo-local target completed and verified
 - Verification baseline:
-  - backend full suite: green on the latest verified run
+  - backend full suite: green on the latest verified run (`187 passed`)
   - `verify_phase1_slice.py`: green on the latest verified run
   - `verify_phase0.py`: green on the latest verified run
   - `verify_l1_runtime_edges.py`: green on the latest verified run
@@ -24,10 +24,10 @@
 
 | Child plan | Status | Notes |
 | --- | --- | --- |
-| `system-l1-client-interaction` | 已做（部分/已验证） | `focus_target_change`、`interact`、`action_request` 等真实链路已落地 |
+| `system-l1-client-interaction` | 已做（已验证） | 仓库内最小 interaction normalization target 已闭合；`focus_target_change`、`interact`、`action_request`、`move_intent` 都有真实链路与 proof |
 | `system-l1-spatial-audio-auditory-facts` | 已做（已验证） | first auditory path、expanded taxonomy、explicit `L1-only` policy 已验证 |
-| `system-l1-esm` | 已做（部分/已验证） | 已从最小 helper 扩到多结果/状态机/环境场 slice |
-| `system-l1-visual-fact-system` | 已做（部分/已验证） | 五类 visual emitters 已显式落位 |
+| `system-l1-esm-full-domain` | 已做（已验证） | 仓库内 `ESM` full-domain target 已闭合；settlement matrix、field semantics、capability/workbench surface、request-lineage 与 audit proof 都已落地 |
+| `system-l1-visual-fact-system` | 已做（已验证） | 仓库内 visual-fact-system target 已闭合；五类 visual emitters 已显式落位，`EvidenceProjectionEmitter` 已进入真实 runtime 证明面 |
 | `system-l1-remaining-emitter` | 已做（已验证） | shell plan 与 runtime-wired follow-on plan 都已落地并通过验证 |
 | `system-l1-to-l2-interface` | 已做（已验证） | 类型分层、debug narration、guardrail tests、`SelfBodyPerceivedEvent` 直通路径已落地 |
 | `system-l1-debug-replay-verification` | 已做（已验证） | verification triad 与 audit 已覆盖当前仓库内 L1 事实面 |
@@ -38,7 +38,7 @@ This scope is too broad for one execution plan. It is intentionally decomposed i
 
 1. `docs/superpowers/plans/2026-06-08-system-l1-client-interaction-implementation-plan.md`
 2. `docs/superpowers/plans/2026-06-08-system-l1-spatial-audio-auditory-facts-implementation-plan.md`
-3. `docs/superpowers/plans/2026-06-08-system-l1-esm-implementation-plan.md`
+3. `docs/superpowers/plans/2026-06-08-system-l1-esm-full-domain-implementation-plan.md`
 4. `docs/superpowers/plans/2026-06-08-system-l1-visual-fact-system-implementation-plan.md`
 5. `docs/superpowers/plans/2026-06-08-system-l1-remaining-emitter-implementation-plan.md`
 6. `docs/superpowers/plans/2026-06-08-system-l1-to-l2-interface-implementation-plan.md`
@@ -73,7 +73,7 @@ This parent plan is the sequencing and control document.
 
 ### Phase A: Preserve and extend the proven base
 
-- [ ] **Step 1: Re-run the current foundation verification before any new child plan executes**
+- [x] **Step 1: Re-run the current foundation verification before any new child plan executes**
 
 Run:
 
@@ -88,12 +88,12 @@ Expected:
 
 - all tests and verification reports pass before further implementation begins
 
-- [ ] **Step 2: Execute child plans in this order**
+- [x] **Step 2: Execute child plans in this order**
 
 Recommended execution order:
 
 1. `visual-fact-system`
-2. `esm`
+2. `esm-full-domain`
 3. `l1-to-l2-interface`
 4. `spatial-audio-auditory-facts`
 5. `client-interaction`
@@ -110,7 +110,7 @@ Reason:
 
 ### Phase B: Cross-plan verification gate
 
-- [ ] **Step 3: After each child plan, re-run the plan’s focused tests plus the full backend suite**
+- [x] **Step 3: After each child plan, re-run the plan’s focused tests plus the full backend suite**
 
 Baseline backend command:
 
@@ -118,7 +118,7 @@ Baseline backend command:
 python -m pytest -v
 ```
 
-- [ ] **Step 4: After every two child plans, re-run the Godot verification trio**
+- [x] **Step 4: After every two child plans, re-run the Godot verification trio**
 
 Run:
 
@@ -134,7 +134,7 @@ Expected:
 
 ## Integration Requirements Across Child Plans
 
-- [ ] **Step 5: Preserve the shared `raw_fact_event` surface**
+- [x] **Step 5: Preserve the shared `raw_fact_event` surface**
 
 All child plans must keep using:
 
@@ -144,7 +144,7 @@ All child plans must keep using:
 
 No new ad hoc Godot -> backend fact send surface may be introduced.
 
-- [ ] **Step 6: Keep `System L1` distinct from `System L2`**
+- [x] **Step 6: Keep `System L1` distinct from `System L2`**
 
 Child plans may add:
 
@@ -158,7 +158,7 @@ They may not:
 - emit role-private perceived events from Godot
 - bypass `System L2` with direct character-private conclusions
 
-- [ ] **Step 7: Keep `System L1` distinct from `Character Agent L1-L4`**
+- [x] **Step 7: Keep `System L1` distinct from `Character Agent L1-L4`**
 
 Child plans may expose better low-level facts.
 
@@ -169,7 +169,7 @@ They may not:
 
 ## Final Completion Criteria For This Parent Plan
 
-- [ ] **Step 8: Confirm every child plan has either been executed or explicitly deferred with rationale**
+- [x] **Step 8: Confirm every child plan has either been executed or explicitly deferred with rationale**
 
 Produce a final matrix:
 
@@ -181,19 +181,18 @@ for each child plan.
 
 Current register:
 
-- executed partially:
+- executed:
+  - `client-interaction`
+  - `esm-full-domain`
   - `visual-fact-system`
-  - `esm`
   - `l1-to-l2-interface`
   - `spatial-audio-auditory-facts`
-  - `client-interaction`
-  - `debug-replay-verification`
-- executed:
   - `remaining-emitter`
+  - `debug-replay-verification`
 - blocked:
   - none at the document level right now
 
-- [ ] **Step 9: Confirm the repository still satisfies existing runtime baselines**
+- [x] **Step 9: Confirm the repository still satisfies existing runtime baselines**
 
 Required proof:
 
@@ -202,7 +201,14 @@ Required proof:
 - `verify_phase1_slice.py` green
 - `verify_l1_runtime_edges.py` green
 
-- [ ] **Step 10: Commit this parent plan only if sequencing notes changed during execution**
+Latest verified outputs:
+
+- `python -m pytest -v` -> `187 passed`
+- `python scripts/verification/verify_phase1_slice.py` -> `overall_phase1_slice_passed=True`
+- `python scripts/verification/verify_phase0.py` -> `overall_strict_phase0_passed=True`
+- `python scripts/verification/verify_l1_runtime_edges.py` -> `overall_l1_runtime_edges_passed=True`
+
+- Deferred: no repository commit was requested in this session; verified worktree + synced docs are the closure record for this parent plan.
 
 ```bash
 git add docs/superpowers/plans/2026-06-08-system-l1-full-phase1-implementation-plan.md

@@ -262,25 +262,37 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         messages.append(_as_action_request_envelope(action_request.model_dump()))
         resolution, environment_result = esm_service.resolve_environment_request(event)
         event_trace.record(resolution.result_type)
-        transition = esm_service.emit_state_machine_transition(
-            room_id=event.room_id,
-            scene_id=event.scene_id,
-            zone_id=event.zone_id,
-            entity_id="env_lamp",
-            machine_id="light_source",
-            from_state="stable",
-            to_state="alerted",
-            trigger_type="environment_request.light_level_drop",
-            transition_reason="environment request accepted",
-            producer_ts=environment_result.producer_ts,
-            causation_id=event.causation_id,
-            correlation_id=event.correlation_id,
-        )
-        event_trace.record(transition.event_type)
-        event_trace.record(environment_result.result_type)
         messages.append(_as_world_result_envelope(resolution.model_dump()))
-        messages.append(_as_state_machine_transition_envelope(transition.model_dump()))
-        messages.append(_as_world_result_envelope(environment_result.model_dump()))
+        if environment_result is not None:
+            transition_trigger_type = "environment_request.light_level_drop"
+            transition_from_state = "stable"
+            if event.requested_change_type == "thermal_level_rise":
+                transition_trigger_type = "environment_request.thermal_level_rise"
+            elif event.requested_change_type == "smoke_density_rise":
+                transition_trigger_type = "environment_request.smoke_density_rise"
+            elif event.requested_change_type == "noise_level_rise":
+                transition_trigger_type = "environment_request.noise_level_rise"
+            elif event.requested_change_type == "light_level_restore":
+                transition_trigger_type = "environment_request.light_level_restore"
+                transition_from_state = "alerted"
+            transition = esm_service.emit_state_machine_transition(
+                room_id=event.room_id,
+                scene_id=event.scene_id,
+                zone_id=event.zone_id,
+                entity_id="env_lamp",
+                machine_id=environment_result.machine_id,
+                from_state=transition_from_state,
+                to_state=environment_result.current_state,
+                trigger_type=transition_trigger_type,
+                transition_reason="environment request accepted",
+                producer_ts=environment_result.producer_ts,
+                causation_id=event.causation_id,
+                correlation_id=event.correlation_id,
+            )
+            event_trace.record(transition.event_type)
+            event_trace.record(environment_result.result_type)
+            messages.append(_as_state_machine_transition_envelope(transition.model_dump()))
+            messages.append(_as_world_result_envelope(environment_result.model_dump()))
         _emit_debug_from_messages(messages)
         return messages
 
@@ -335,6 +347,21 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         response = character_service.handle_dialogue(event)
         event_trace.record(response.output_type)
         messages.append(_as_envelope("dialogue_response", response.model_dump()))
+        _emit_debug_from_messages(messages)
+        return messages
+
+    if route["route"] == "local_motion" and isinstance(event, MoveIntent):
+        _publish_debug_event(
+            build_debug_event(
+                producer_ts=event.producer_ts,
+                domain="character",
+                stage="character_input_received",
+                actor_id=event.actor_id,
+                summary=summarize_character_input(event.actor_id, "收到移动输入"),
+                detail=event.model_dump(),
+            )
+        )
+        messages.extend(_ensure_runtime_snapshot_messages(event))
         _emit_debug_from_messages(messages)
         return messages
 
@@ -444,6 +471,9 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 previous_state="partially_visible",
                 current_state="visible",
                 producer_ts=world_result.producer_ts + 2,
+                request_ref=world_result.request_ref,
+                causation_id=world_result.causation_id,
+                correlation_id=world_result.correlation_id,
             )
             event_trace.record(object_state_result.result_type)
             messages.append(_as_world_result_envelope(object_state_result.model_dump()))
@@ -457,6 +487,9 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 previous_state="steady",
                 current_state="engaged",
                 producer_ts=world_result.producer_ts + 3,
+                request_ref=world_result.request_ref,
+                causation_id=world_result.causation_id,
+                correlation_id=world_result.correlation_id,
             )
             event_trace.record(body_state_result.result_type)
             messages.append(_as_world_result_envelope(body_state_result.model_dump()))
@@ -482,6 +515,9 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 previous_state="stable",
                 current_state="alerted",
                 producer_ts=world_result.producer_ts + 4,
+                request_ref=world_result.request_ref,
+                causation_id=world_result.causation_id,
+                correlation_id=world_result.correlation_id,
             )
             event_trace.record(environment_result.result_type)
             messages.append(_as_world_result_envelope(environment_result.model_dump()))

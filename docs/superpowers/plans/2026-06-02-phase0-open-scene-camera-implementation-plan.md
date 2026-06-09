@@ -10,6 +10,21 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-10`
+- Plan status: executed and verified for the repository-local target
+- Current code truth:
+  - `MainDemo.tscn` uses an open-field layout with `80 x 50` walkable footprint
+  - scene tuning in `MainDemoController.gd` matches the open-field camera/focus requirements
+  - `CameraOcclusionFader.gd` no longer depends on the old room-wall naming conventions
+  - `docs/sample-scene-setup.md` describes the open-field layout
+- Verification evidence:
+  - `backend/tests/test_verification_audit.py::test_phase0_open_scene_camera_artifacts_match_open_field_layout`
+  - current worktree scene contains `size = Vector2(80, 50)` and `size = Vector3(80, 0.2, 50)`
+  - current worktree controller contains `@export var focus_max_distance := 28.0`
+  - current worktree controller contains `spring_length = 6.6`
+
 ## File Structure
 
 ### Modify
@@ -500,4 +515,3 @@ No coverage gaps found.
 
 - `Boundary` / `BoundaryBody` naming is used consistently across scene, fade logic, and verification.
 - `autotest_final_position`, `_configure_open_field_camera()`, and `_get_focus_origin()` names are consistent with the current controller file.
-

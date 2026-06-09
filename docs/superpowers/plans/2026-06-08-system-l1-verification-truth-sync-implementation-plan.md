@@ -10,6 +10,20 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-10`
+- Plan status: executed and verified for the repository-local target
+- Current code truth:
+  - `docs/phase1-l1-full-scope-checklist.md` now reflects the closed `System L1` child-plan set
+  - `backend/tests/test_verification_audit.py` now contains positive and negative proof fixtures across visual / auditory / remaining-sensory / runtime-edge surfaces
+  - the verification triad is green on the current worktree
+- Verification evidence:
+  - `python -m pytest -v` -> `187 passed`
+  - `python scripts/verification/verify_phase1_slice.py` -> `overall_phase1_slice_passed=True`
+  - `python scripts/verification/verify_phase0.py` -> `overall_strict_phase0_passed=True`
+  - `python scripts/verification/verify_l1_runtime_edges.py` -> `overall_l1_runtime_edges_passed=True`
+
 ### Task 1: Make The Repository Checklist Match Current L1 Truth
 
 **Files:**
@@ -113,4 +127,3 @@ python scripts/verification/verify_l1_runtime_edges.py
 git add scripts/verification/*.py backend/app/verification_audit.py
 git commit -m "test: keep the System L1 verification truth surface aligned"
 ```
-

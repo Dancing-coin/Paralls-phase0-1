@@ -203,11 +203,13 @@ def test_world_result_environment_state_shape() -> None:
         current_state="alerted",
         change_summary="env_lamp changed from stable to alerted",
         affected_zone_ids=["zone_focus"],
-        field_delta_summary=["light_level", "noise_level", "smoke_density", "visibility_level"],
+        field_delta_summary=["light_level", "noise_level", "thermal_level", "smoke_density", "visibility_level"],
+        thermal_level="warm",
     )
 
     assert event.entity_id == "env_lamp"
     assert event.target_environment_id == "env_lamp"
+    assert event.thermal_level == "warm"
 
 
 def test_state_machine_transition_shape() -> None:
@@ -309,6 +311,40 @@ def test_authority_bus_router_entrypoint_matches_legacy_behavior() -> None:
     assert messages[0]["payload"]["accepted"] is True
 
 
+def test_websocket_move_intent_emits_ack_and_runtime_snapshot() -> None:
+    reset_runtime_state()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "player_input",
+                "payload": {
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "scene_id": "scene_demo",
+                    "zone_id": "zone_focus",
+                    "actor_id": "char_c",
+                    "intent_type": "move_intent",
+                    "producer_ts": 333,
+                    "move_mode": "locomotion",
+                    "target_point": [1.0, 0.5, 2.0],
+                },
+            }
+        )
+
+        ack = websocket.receive_json()
+        runtime_snapshot = websocket.receive_json()
+
+    assert ack["message_type"] == "ack"
+    assert ack["payload"]["accepted"] is True
+    assert ack["payload"]["route"] == "local_motion"
+    assert runtime_snapshot["message_type"] == "character_runtime_state_snapshot"
+    assert runtime_snapshot["payload"]["actor_id"] == "char_c"
+    assert runtime_snapshot["payload"]["room_id"] == "room_demo"
+    assert runtime_snapshot["payload"]["scene_id"] == "scene_demo"
+    assert runtime_snapshot["payload"]["zone_id"] == "zone_focus"
+
+
 def test_websocket_dialogue_submit_emits_ack_and_dialogue_response() -> None:
     reset_runtime_state()
     client = TestClient(app)
@@ -406,10 +442,333 @@ def test_websocket_environment_request_emits_ack_action_resolution_transition_an
     assert environment_result["payload"]["machine_id"] == "light_source"
     assert environment_result["payload"]["field_id"] == "field:room_demo:scene_demo:zone_focus"
     assert environment_result["payload"]["source_environment_id"] == "env_lamp"
+    assert environment_result["payload"]["field_delta_summary"] == [
+        "light_level",
+        "noise_level",
+        "thermal_level",
+        "smoke_density",
+        "visibility_level",
+    ]
+    assert environment_result["payload"]["thermal_level"] == "warm"
     assert environment_result["payload"]["updated_at"] == 502
     assert environment_result["payload"]["current_state"] == "alerted"
     assert environment_result["payload"]["causation_id"] == "decision:500"
     assert environment_result["payload"]["correlation_id"] == "decision:500"
+
+
+def test_websocket_environment_request_accepts_light_level_restore_variant() -> None:
+    reset_runtime_state()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "environment_request",
+                "payload": {
+                    "request_id": "envreq:500a-drop",
+                    "candidate_ref": "cand_light_drop",
+                    "decision_ref": "decision_light_drop",
+                    "room_id": "room_demo",
+                    "scene_id": "scene_demo",
+                    "zone_id": "zone_focus",
+                    "source": {"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+                    "target_entity_refs": {"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+                    "goal": "reduce visibility near the letter",
+                    "requested_change_type": "light_level_drop",
+                    "requested_strength": "medium",
+                    "ttl": 1500,
+                    "reason_tag": "window",
+                    "producer_ts": 500,
+                    "causation_id": "decision:500a-drop",
+                    "correlation_id": "decision:500a-drop",
+                },
+            }
+        )
+        for _ in range(5):
+            websocket.receive_json()
+
+        websocket.send_json(
+            {
+                "message_type": "environment_request",
+                "payload": {
+                    "request_id": "envreq:500a-restore",
+                    "candidate_ref": "cand_light_restore",
+                    "decision_ref": "decision_light_restore",
+                    "room_id": "room_demo",
+                    "scene_id": "scene_demo",
+                    "zone_id": "zone_focus",
+                    "source": {"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+                    "target_entity_refs": {"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+                    "goal": "restore visibility near the letter",
+                    "requested_change_type": "light_level_restore",
+                    "requested_strength": "medium",
+                    "ttl": 1500,
+                    "reason_tag": "window",
+                    "producer_ts": 501,
+                    "causation_id": "decision:500a-restore",
+                    "correlation_id": "decision:500a-restore",
+                },
+            }
+        )
+
+        ack = websocket.receive_json()
+        action_request = websocket.receive_json()
+        action_resolution = websocket.receive_json()
+        transition = websocket.receive_json()
+        environment_result = websocket.receive_json()
+
+    assert ack["message_type"] == "ack"
+    assert ack["payload"]["accepted"] is True
+    assert ack["payload"]["route"] == "esm_service"
+    assert action_request["message_type"] == "action_request"
+    assert action_request["payload"]["request_id"] == "envreq:500a-restore"
+    assert action_resolution["message_type"] == "world_result"
+    assert action_resolution["event_type"] == "action_resolution_result"
+    assert action_resolution["payload"]["request_ref"] == "envreq:500a-restore"
+    assert transition["message_type"] == "state_machine_transition"
+    assert transition["machine_id"] == "light_source"
+    assert transition["from_state"] == "alerted"
+    assert transition["to_state"] == "stable"
+    assert transition["trigger_type"] == "environment_request.light_level_restore"
+    assert environment_result["message_type"] == "world_result"
+    assert environment_result["event_type"] == "environment_state_result"
+    assert environment_result["payload"]["request_ref"] == "envreq:500a-restore"
+    assert environment_result["payload"]["machine_id"] == "light_source"
+    assert environment_result["payload"]["previous_state"] == "alerted"
+    assert environment_result["payload"]["current_state"] == "stable"
+    assert environment_result["payload"]["light_level"] == "normal"
+    assert environment_result["payload"]["noise_level"] == "quiet"
+    assert environment_result["payload"]["thermal_level"] == "neutral"
+    assert environment_result["payload"]["smoke_density"] == "clear"
+    assert environment_result["payload"]["visibility_level"] == "clear"
+
+
+def test_websocket_environment_request_accepts_thermal_level_rise_variant() -> None:
+    reset_runtime_state()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "environment_request",
+                "payload": {
+                    "request_id": "envreq:500b",
+                    "candidate_ref": "cand_heat_rise",
+                    "decision_ref": "decision_heat_rise",
+                    "room_id": "room_demo",
+                    "scene_id": "scene_demo",
+                    "zone_id": "zone_focus",
+                    "source": {"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+                    "target_entity_refs": {"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+                    "goal": "raise thermal pressure near the letter",
+                    "requested_change_type": "thermal_level_rise",
+                    "requested_strength": "medium",
+                    "ttl": 1500,
+                    "reason_tag": "pressure_window",
+                    "producer_ts": 500,
+                    "causation_id": "decision:500b",
+                    "correlation_id": "decision:500b",
+                },
+            }
+        )
+
+        ack = websocket.receive_json()
+        action_request = websocket.receive_json()
+        action_resolution = websocket.receive_json()
+        transition = websocket.receive_json()
+        environment_result = websocket.receive_json()
+
+    assert ack["message_type"] == "ack"
+    assert ack["payload"]["accepted"] is True
+    assert ack["payload"]["route"] == "esm_service"
+    assert action_request["message_type"] == "action_request"
+    assert action_request["payload"]["request_id"] == "envreq:500b"
+    assert action_request["payload"]["request_type"] == "environment_request"
+    assert action_resolution["message_type"] == "world_result"
+    assert action_resolution["event_type"] == "action_resolution_result"
+    assert action_resolution["payload"]["request_ref"] == "envreq:500b"
+    assert action_resolution["payload"]["resolution_status"] == "accepted"
+    assert transition["message_type"] == "state_machine_transition"
+    assert transition["machine_id"] == "heat_source"
+    assert transition["from_state"] == "stable"
+    assert transition["to_state"] == "heated"
+    assert transition["trigger_type"] == "environment_request.thermal_level_rise"
+    assert environment_result["message_type"] == "world_result"
+    assert environment_result["event_type"] == "environment_state_result"
+    assert environment_result["payload"]["request_ref"] == "envreq:500b"
+    assert environment_result["payload"]["machine_id"] == "heat_source"
+    assert environment_result["payload"]["current_state"] == "heated"
+    assert environment_result["payload"]["thermal_level"] == "hot"
+    assert environment_result["payload"]["light_level"] == "normal"
+    assert environment_result["payload"]["noise_level"] == "quiet"
+    assert environment_result["payload"]["visibility_level"] == "clear"
+
+
+def test_websocket_environment_request_accepts_smoke_density_rise_variant() -> None:
+    reset_runtime_state()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "environment_request",
+                "payload": {
+                    "request_id": "envreq:500c",
+                    "candidate_ref": "cand_smoke_rise",
+                    "decision_ref": "decision_smoke_rise",
+                    "room_id": "room_demo",
+                    "scene_id": "scene_demo",
+                    "zone_id": "zone_focus",
+                    "source": {"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+                    "target_entity_refs": {"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+                    "goal": "raise smoke density near the letter",
+                    "requested_change_type": "smoke_density_rise",
+                    "requested_strength": "medium",
+                    "ttl": 1500,
+                    "reason_tag": "cover_window",
+                    "producer_ts": 500,
+                    "causation_id": "decision:500c",
+                    "correlation_id": "decision:500c",
+                },
+            }
+        )
+
+        ack = websocket.receive_json()
+        action_request = websocket.receive_json()
+        action_resolution = websocket.receive_json()
+        transition = websocket.receive_json()
+        environment_result = websocket.receive_json()
+
+    assert ack["message_type"] == "ack"
+    assert ack["payload"]["accepted"] is True
+    assert ack["payload"]["route"] == "esm_service"
+    assert action_request["message_type"] == "action_request"
+    assert action_request["payload"]["request_id"] == "envreq:500c"
+    assert action_request["payload"]["request_type"] == "environment_request"
+    assert action_resolution["message_type"] == "world_result"
+    assert action_resolution["event_type"] == "action_resolution_result"
+    assert action_resolution["payload"]["request_ref"] == "envreq:500c"
+    assert action_resolution["payload"]["resolution_status"] == "accepted"
+    assert transition["message_type"] == "state_machine_transition"
+    assert transition["machine_id"] == "smoke_source"
+    assert transition["from_state"] == "stable"
+    assert transition["to_state"] == "smoke_rising"
+    assert transition["trigger_type"] == "environment_request.smoke_density_rise"
+    assert environment_result["message_type"] == "world_result"
+    assert environment_result["event_type"] == "environment_state_result"
+    assert environment_result["payload"]["request_ref"] == "envreq:500c"
+    assert environment_result["payload"]["machine_id"] == "smoke_source"
+    assert environment_result["payload"]["current_state"] == "smoke_rising"
+    assert environment_result["payload"]["smoke_density"] == "dense"
+    assert environment_result["payload"]["visibility_level"] == "reduced"
+    assert environment_result["payload"]["light_level"] == "normal"
+    assert environment_result["payload"]["noise_level"] == "quiet"
+    assert environment_result["payload"]["thermal_level"] == "neutral"
+
+
+def test_websocket_environment_request_accepts_noise_level_rise_variant() -> None:
+    reset_runtime_state()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "environment_request",
+                "payload": {
+                    "request_id": "envreq:500d",
+                    "candidate_ref": "cand_noise_rise",
+                    "decision_ref": "decision_noise_rise",
+                    "room_id": "room_demo",
+                    "scene_id": "scene_demo",
+                    "zone_id": "zone_focus",
+                    "source": {"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+                    "target_entity_refs": {"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+                    "goal": "raise noise level near the letter",
+                    "requested_change_type": "noise_level_rise",
+                    "requested_strength": "medium",
+                    "ttl": 1500,
+                    "reason_tag": "mask_window",
+                    "producer_ts": 500,
+                    "causation_id": "decision:500d",
+                    "correlation_id": "decision:500d",
+                },
+            }
+        )
+
+        ack = websocket.receive_json()
+        action_request = websocket.receive_json()
+        action_resolution = websocket.receive_json()
+        transition = websocket.receive_json()
+        environment_result = websocket.receive_json()
+
+    assert ack["message_type"] == "ack"
+    assert ack["payload"]["accepted"] is True
+    assert ack["payload"]["route"] == "esm_service"
+    assert action_request["message_type"] == "action_request"
+    assert action_request["payload"]["request_id"] == "envreq:500d"
+    assert action_request["payload"]["request_type"] == "environment_request"
+    assert action_resolution["message_type"] == "world_result"
+    assert action_resolution["event_type"] == "action_resolution_result"
+    assert action_resolution["payload"]["request_ref"] == "envreq:500d"
+    assert action_resolution["payload"]["resolution_status"] == "accepted"
+    assert transition["message_type"] == "state_machine_transition"
+    assert transition["machine_id"] == "noise_source"
+    assert transition["from_state"] == "stable"
+    assert transition["to_state"] == "noisy"
+    assert transition["trigger_type"] == "environment_request.noise_level_rise"
+    assert environment_result["message_type"] == "world_result"
+    assert environment_result["event_type"] == "environment_state_result"
+    assert environment_result["payload"]["request_ref"] == "envreq:500d"
+    assert environment_result["payload"]["machine_id"] == "noise_source"
+    assert environment_result["payload"]["current_state"] == "noisy"
+    assert environment_result["payload"]["noise_level"] == "loud"
+    assert environment_result["payload"]["light_level"] == "normal"
+    assert environment_result["payload"]["thermal_level"] == "neutral"
+    assert environment_result["payload"]["smoke_density"] == "clear"
+    assert environment_result["payload"]["visibility_level"] == "clear"
+
+
+def test_websocket_environment_request_rejects_unsupported_change_type_with_constraint_result() -> None:
+    reset_runtime_state()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "environment_request",
+                "payload": {
+                    "request_id": "envreq:501",
+                    "candidate_ref": "cand_heat_rise",
+                    "decision_ref": "decision_heat_rise",
+                    "room_id": "room_demo",
+                    "scene_id": "scene_demo",
+                    "zone_id": "zone_focus",
+                    "source": {"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+                    "target_entity_refs": {"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+                    "goal": "raise thermal pressure near the letter",
+                    "requested_change_type": "thermal_spike",
+                    "requested_strength": "medium",
+                    "ttl": 1500,
+                    "reason_tag": "pressure_test",
+                    "producer_ts": 501,
+                    "causation_id": "decision:501",
+                    "correlation_id": "decision:501",
+                },
+            }
+        )
+
+        ack = websocket.receive_json()
+        action_request = websocket.receive_json()
+        constraint_result = websocket.receive_json()
+
+    assert ack["message_type"] == "ack"
+    assert ack["payload"]["accepted"] is True
+    assert ack["payload"]["route"] == "esm_service"
+    assert action_request["message_type"] == "action_request"
+    assert action_request["payload"]["request_id"] == "envreq:501"
+    assert action_request["payload"]["request_type"] == "environment_request"
+    assert constraint_result["message_type"] == "world_result"
+    assert constraint_result["event_type"] == "constraint_state_result"
+    assert constraint_result["entity_id"] == "env_lamp"
+    assert constraint_result["payload"]["request_ref"] == "envreq:501"
+    assert constraint_result["payload"]["constraint_type"] == "unsupported_environment_request"
+    assert constraint_result["payload"]["constraint_code"] == "unsupported_change_type"
+    assert constraint_result["payload"]["settlement_status"] == "rejected"
 
 
 def test_websocket_interact_intent_emits_ack_action_resolution_transition_object_state_body_state_environment_shift_and_siming_output() -> None:
@@ -497,12 +856,18 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
     assert object_state_result["entity_id"] == "obj_letter"
     assert object_state_result["payload"]["result_type"] == "object_state_result"
     assert object_state_result["payload"]["entity_id"] == "obj_letter"
+    assert object_state_result["payload"]["request_ref"] == "interact:456:obj_letter"
+    assert object_state_result["payload"]["causation_id"] == "interact:456"
+    assert object_state_result["payload"]["correlation_id"] == "interact:456"
     assert object_state_result["payload"]["target_object_id"] == "obj_letter"
     assert object_state_result["payload"]["machine_id"] == "visibility"
     assert object_state_result["payload"]["current_state"] == "visible"
     assert body_state_result["message_type"] == "world_result"
     assert body_state_result["event_type"] == "body_state_result"
     assert body_state_result["payload"]["result_type"] == "body_state_result"
+    assert body_state_result["payload"]["request_ref"] == "interact:456:obj_letter"
+    assert body_state_result["payload"]["causation_id"] == "interact:456"
+    assert body_state_result["payload"]["correlation_id"] == "interact:456"
     assert body_state_result["payload"]["actor_id"] == "char_c"
     assert body_state_result["payload"]["body_state_class"] == "interaction_strain"
     assert body_state_result["payload"]["current_state"] == "engaged"
@@ -515,10 +880,21 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
     assert environment_result["entity_id"] == "env_lamp"
     assert environment_result["payload"]["result_type"] == "environment_state_result"
     assert environment_result["payload"]["entity_id"] == "env_lamp"
+    assert environment_result["payload"]["request_ref"] == "interact:456:obj_letter"
+    assert environment_result["payload"]["causation_id"] == "interact:456"
+    assert environment_result["payload"]["correlation_id"] == "interact:456"
     assert environment_result["payload"]["target_environment_id"] == "env_lamp"
     assert environment_result["payload"]["machine_id"] == "light_source"
     assert environment_result["payload"]["field_id"] == "field:room_demo:scene_demo:zone_focus"
     assert environment_result["payload"]["source_environment_id"] == "env_lamp"
+    assert environment_result["payload"]["field_delta_summary"] == [
+        "light_level",
+        "noise_level",
+        "thermal_level",
+        "smoke_density",
+        "visibility_level",
+    ]
+    assert environment_result["payload"]["thermal_level"] == "warm"
     assert environment_result["payload"]["current_state"] == "alerted"
     assert siming_output["message_type"] == "siming_output"
     assert siming_output["payload"]["target_actor_id"] == "char_b"
@@ -552,7 +928,8 @@ def test_websocket_interact_intent_emits_constraint_when_player_is_far() -> None
                 },
             }
         )
-        websocket.receive_json()
+        move_ack = websocket.receive_json()
+        move_runtime_snapshot = websocket.receive_json()
 
         websocket.send_json(
             {
@@ -573,6 +950,10 @@ def test_websocket_interact_intent_emits_constraint_when_player_is_far() -> None
         action_request = websocket.receive_json()
         world_result = websocket.receive_json()
 
+    assert move_ack["message_type"] == "ack"
+    assert move_ack["payload"]["route"] == "local_motion"
+    assert move_runtime_snapshot["message_type"] == "character_runtime_state_snapshot"
+    assert move_runtime_snapshot["payload"]["actor_id"] == "char_c"
     assert ack["message_type"] == "ack"
     assert ack["payload"]["route"] == "esm_service"
     assert action_request["message_type"] == "action_request"
@@ -611,6 +992,7 @@ def test_websocket_interact_intent_emits_constraint_state_when_actor_is_far() ->
             }
         )
         move_ack = websocket.receive_json()
+        move_runtime_snapshot = websocket.receive_json()
         websocket.send_json(
             {
                 "message_type": "player_input",
@@ -631,6 +1013,8 @@ def test_websocket_interact_intent_emits_constraint_state_when_actor_is_far() ->
 
     assert move_ack["message_type"] == "ack"
     assert move_ack["payload"]["route"] == "local_motion"
+    assert move_runtime_snapshot["message_type"] == "character_runtime_state_snapshot"
+    assert move_runtime_snapshot["payload"]["actor_id"] == "char_c"
     assert interact_ack["message_type"] == "ack"
     assert interact_ack["payload"]["route"] == "esm_service"
     assert action_request["message_type"] == "action_request"

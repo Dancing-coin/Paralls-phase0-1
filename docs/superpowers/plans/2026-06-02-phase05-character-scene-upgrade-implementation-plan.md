@@ -10,6 +10,24 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-10`
+- Plan status: executed and verified for the repository-local target
+- Current code truth:
+  - `CharacterC` exists as the first player-driven in-world role shell on the shared role substrate
+  - explicit driver-spec and execution notes exist
+  - scene-zone notes exist
+  - `mixabridge` and `homebuilder` pipeline notes exist
+  - the sample scene description reflects the upgraded role split
+- Verification evidence:
+  - `backend/tests/test_verification_audit.py::test_phase05_character_scene_upgrade_artifacts_exist_and_match_role_split`
+  - current worktree contains `scripts/character/CharacterDriverSpec.gd`
+  - current worktree contains `docs/character-execution-notes.md`
+  - current worktree contains `docs/phase05-scene-zones.md`
+  - current worktree contains `docs/mixabridge-character-pipeline.md`
+  - current worktree contains `docs/homebuilder-scene-pipeline.md`
+
 ## File Structure
 
 ### Copy from main project into local reference docs
@@ -734,4 +752,3 @@ No spec gaps found.
 
 - `driver_mode`, `set_move_target`, `set_look_target`, and `perform_action` are used consistently across shell and verification tasks.
 - A/B/C split is described consistently as AI / AI / player-driven.
-

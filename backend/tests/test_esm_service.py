@@ -226,11 +226,18 @@ def test_esm_service_environment_shift_result_is_replayable_and_updates_field_st
     assert result.correlation_id == "env:env_lamp:alerted"
     assert result.settlement_status == "applied"
     assert result.affected_zone_ids == ["zone_focus"]
-    assert result.field_delta_summary == ["light_level", "noise_level", "smoke_density", "visibility_level"]
+    assert result.field_delta_summary == [
+        "light_level",
+        "noise_level",
+        "thermal_level",
+        "smoke_density",
+        "visibility_level",
+    ]
     assert result.field_id == "field:room_demo:scene_demo:zone_focus"
     assert result.source_environment_id == "env_lamp"
     assert result.light_level == "low"
     assert result.noise_level == "elevated"
+    assert result.thermal_level == "warm"
     assert result.smoke_density == "light"
     assert result.visibility_level == "reduced"
     assert result.updated_at == result.producer_ts
@@ -240,6 +247,7 @@ def test_esm_service_environment_shift_result_is_replayable_and_updates_field_st
     assert field.scene_id == "scene_demo"
     assert field.light_level == "low"
     assert field.noise_level == "elevated"
+    assert field.thermal_level == "warm"
     assert field.temperature == "ambient"
     assert field.humidity == "stable"
     assert field.smoke_density == "light"
@@ -290,6 +298,217 @@ def test_esm_service_accepts_environment_request_and_emits_resolution_and_enviro
     assert environment_result.correlation_id == "decision:31"
 
 
+def test_esm_service_accepts_light_restore_environment_request_and_emits_restored_environment_result() -> None:
+    service = ESMService()
+    drop_event = EnvironmentRequest(
+        request_id="envreq:2a-drop",
+        candidate_ref="cand_light_drop",
+        decision_ref="decision_light_drop",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+        target_entity_refs={"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+        goal="reduce visibility near the letter",
+        requested_change_type="light_level_drop",
+        requested_strength="medium",
+        ttl=1500,
+        reason_tag="window",
+        producer_ts=31,
+        causation_id="decision:31a-drop",
+        correlation_id="decision:31a-drop",
+    )
+    service.resolve_environment_request(drop_event)
+    restore_event = EnvironmentRequest(
+        request_id="envreq:2a-restore",
+        candidate_ref="cand_light_restore",
+        decision_ref="decision_light_restore",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+        target_entity_refs={"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+        goal="restore visibility near the letter",
+        requested_change_type="light_level_restore",
+        requested_strength="medium",
+        ttl=1500,
+        reason_tag="window",
+        producer_ts=32,
+        causation_id="decision:32a-restore",
+        correlation_id="decision:32a-restore",
+    )
+
+    resolution, environment_result = service.resolve_environment_request(restore_event)
+
+    assert resolution.result_type == "action_resolution_result"
+    assert resolution.request_ref == "envreq:2a-restore"
+    assert resolution.entity_id == "env_lamp"
+    assert resolution.resolution_status == "accepted"
+    assert environment_result is not None
+    assert environment_result.result_type == "environment_state_result"
+    assert environment_result.machine_id == "light_source"
+    assert environment_result.previous_state == "alerted"
+    assert environment_result.current_state == "stable"
+    assert environment_result.light_level == "normal"
+    assert environment_result.noise_level == "quiet"
+    assert environment_result.thermal_level == "neutral"
+    assert environment_result.smoke_density == "clear"
+    assert environment_result.visibility_level == "clear"
+
+
+def test_esm_service_accepts_thermal_environment_request_and_emits_heated_environment_result() -> None:
+    service = ESMService()
+    event = EnvironmentRequest(
+        request_id="envreq:2b",
+        candidate_ref="cand_heat_rise",
+        decision_ref="decision_heat_rise",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+        target_entity_refs={"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+        goal="raise thermal pressure near the letter",
+        requested_change_type="thermal_level_rise",
+        requested_strength="medium",
+        ttl=1500,
+        reason_tag="pressure_window",
+        producer_ts=31,
+        causation_id="decision:31b",
+        correlation_id="decision:31b",
+    )
+
+    resolution, environment_result = service.resolve_environment_request(event)
+
+    assert resolution.result_type == "action_resolution_result"
+    assert resolution.request_ref == "envreq:2b"
+    assert resolution.entity_id == "env_lamp"
+    assert resolution.resolution_status == "accepted"
+    assert resolution.applied_state_changes == ["environment_state_result"]
+    assert resolution.stable_state_summary == "environment_request accepted"
+    assert environment_result is not None
+    assert environment_result.result_type == "environment_state_result"
+    assert environment_result.machine_id == "heat_source"
+    assert environment_result.request_ref == "envreq:2b"
+    assert environment_result.current_state == "heated"
+    assert environment_result.thermal_level == "hot"
+    assert environment_result.light_level == "normal"
+    assert environment_result.noise_level == "quiet"
+    assert environment_result.visibility_level == "clear"
+
+
+def test_esm_service_accepts_smoke_environment_request_and_emits_smoke_environment_result() -> None:
+    service = ESMService()
+    event = EnvironmentRequest(
+        request_id="envreq:2c",
+        candidate_ref="cand_smoke_rise",
+        decision_ref="decision_smoke_rise",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+        target_entity_refs={"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+        goal="raise smoke density near the letter",
+        requested_change_type="smoke_density_rise",
+        requested_strength="medium",
+        ttl=1500,
+        reason_tag="cover_window",
+        producer_ts=31,
+        causation_id="decision:31c",
+        correlation_id="decision:31c",
+    )
+
+    resolution, environment_result = service.resolve_environment_request(event)
+
+    assert resolution.result_type == "action_resolution_result"
+    assert resolution.request_ref == "envreq:2c"
+    assert resolution.entity_id == "env_lamp"
+    assert resolution.resolution_status == "accepted"
+    assert resolution.applied_state_changes == ["environment_state_result"]
+    assert environment_result is not None
+    assert environment_result.result_type == "environment_state_result"
+    assert environment_result.machine_id == "smoke_source"
+    assert environment_result.request_ref == "envreq:2c"
+    assert environment_result.current_state == "smoke_rising"
+    assert environment_result.smoke_density == "dense"
+    assert environment_result.visibility_level == "reduced"
+    assert environment_result.light_level == "normal"
+    assert environment_result.noise_level == "quiet"
+    assert environment_result.thermal_level == "neutral"
+
+
+def test_esm_service_accepts_noise_environment_request_and_emits_noise_environment_result() -> None:
+    service = ESMService()
+    event = EnvironmentRequest(
+        request_id="envreq:2d",
+        candidate_ref="cand_noise_rise",
+        decision_ref="decision_noise_rise",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+        target_entity_refs={"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+        goal="raise noise level near the letter",
+        requested_change_type="noise_level_rise",
+        requested_strength="medium",
+        ttl=1500,
+        reason_tag="mask_window",
+        producer_ts=31,
+        causation_id="decision:31d",
+        correlation_id="decision:31d",
+    )
+
+    resolution, environment_result = service.resolve_environment_request(event)
+
+    assert resolution.result_type == "action_resolution_result"
+    assert resolution.request_ref == "envreq:2d"
+    assert resolution.entity_id == "env_lamp"
+    assert resolution.resolution_status == "accepted"
+    assert resolution.applied_state_changes == ["environment_state_result"]
+    assert environment_result is not None
+    assert environment_result.result_type == "environment_state_result"
+    assert environment_result.machine_id == "noise_source"
+    assert environment_result.request_ref == "envreq:2d"
+    assert environment_result.current_state == "noisy"
+    assert environment_result.noise_level == "loud"
+    assert environment_result.light_level == "normal"
+    assert environment_result.thermal_level == "neutral"
+    assert environment_result.smoke_density == "clear"
+    assert environment_result.visibility_level == "clear"
+
+
+def test_esm_service_rejects_unsupported_environment_request_change_type() -> None:
+    service = ESMService()
+    event = EnvironmentRequest(
+        request_id="envreq:3",
+        candidate_ref="cand_heat_rise",
+        decision_ref="decision_heat_rise",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+        target_entity_refs={"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+        goal="raise thermal pressure near the letter",
+        requested_change_type="thermal_spike",
+        requested_strength="medium",
+        ttl=1500,
+        reason_tag="pressure_test",
+        producer_ts=32,
+        causation_id="decision:32",
+        correlation_id="decision:32",
+    )
+
+    resolution, environment_result = service.resolve_environment_request(event)
+
+    assert resolution.result_type == "constraint_state_result"
+    assert resolution.request_ref == "envreq:3"
+    assert resolution.entity_id == "env_lamp"
+    assert resolution.constraint_type == "unsupported_environment_request"
+    assert resolution.constraint_code == "unsupported_change_type"
+    assert resolution.settlement_status == "rejected"
+    assert resolution.blocking_entity_refs == ["env_lamp"]
+    assert environment_result is None
+
+
 def test_esm_service_emits_state_machine_transition_for_object_state() -> None:
     service = ESMService()
 
@@ -330,14 +549,19 @@ def test_esm_service_object_state_result_is_replayable() -> None:
         previous_state="partially_visible",
         current_state="visible",
         producer_ts=220,
+        request_ref="interact:220:obj_letter",
+        causation_id="interact:220",
+        correlation_id="interact:220",
     )
 
     assert result.result_type == "object_state_result"
-    assert result.request_ref == "object:obj_letter:220"
+    assert result.request_ref == "interact:220:obj_letter"
     assert result.result_id == "object_result:obj_letter:220"
     assert result.entity_id == "obj_letter"
     assert result.target_object_id == "obj_letter"
     assert result.machine_id == "visibility"
+    assert result.causation_id == "interact:220"
+    assert result.correlation_id == "interact:220"
     assert result.previous_state == "partially_visible"
     assert result.current_state == "visible"
     assert result.change_summary == "obj_letter changed from partially_visible to visible"
@@ -387,13 +611,18 @@ def test_esm_service_body_state_result_is_replayable() -> None:
         previous_state="steady",
         current_state="engaged",
         producer_ts=231,
+        request_ref="interact:231:obj_letter",
+        causation_id="interact:231",
+        correlation_id="interact:231",
     )
 
     assert result.result_type == "body_state_result"
-    assert result.request_ref == "body:char_c:231"
+    assert result.request_ref == "interact:231:obj_letter"
     assert result.result_id == "body_result:char_c:231"
     assert result.actor_id == "char_c"
     assert result.body_state_class == "interaction_strain"
+    assert result.causation_id == "interact:231"
+    assert result.correlation_id == "interact:231"
     assert result.previous_state == "steady"
     assert result.current_state == "engaged"
     assert result.change_summary == "interaction_strain changed from steady to engaged"
@@ -422,6 +651,7 @@ def test_esm_service_propagates_noise_and_smoke_to_adjacent_zone() -> None:
 
     assert propagated["zone_adjacent"].field_id == "field:room_demo:scene_demo:zone_adjacent"
     assert propagated["zone_adjacent"].noise_level == "moderate"
+    assert propagated["zone_adjacent"].thermal_level == "mild_warm"
     assert propagated["zone_adjacent"].smoke_density == "trace"
     assert propagated["zone_adjacent"].visibility_level == "soft_reduced"
     assert propagated["zone_adjacent"].updated_at == 301
@@ -431,6 +661,8 @@ def test_esm_service_exposes_state_machine_and_material_templates() -> None:
     service = ESMService()
 
     burning_machine = service.get_state_machine_template("burning")
+    light_source_machine = service.get_state_machine_template("light_source")
+    heat_source_machine = service.get_state_machine_template("heat_source")
     lock_machine = service.get_state_machine_template("lock")
     visibility_machine = service.get_state_machine_template("visibility")
     integrity_machine = service.get_state_machine_template("integrity")
@@ -450,6 +682,16 @@ def test_esm_service_exposes_state_machine_and_material_templates() -> None:
     assert burning_machine["state_list"][0]["is_stable"] is True
     assert burning_machine["transition_list"][0]["from_state"] == "idle"
     assert burning_machine["transition_list"][0]["to_state"] == "heated"
+    assert light_source_machine["machine_id"] == "light_source"
+    assert light_source_machine["entity_type"] == "environment"
+    assert light_source_machine["state_list"][0]["state_id"] == "stable"
+    assert light_source_machine["transition_list"][0]["to_state"] == "alerted"
+    assert light_source_machine["transition_list"][1]["from_state"] == "alerted"
+    assert light_source_machine["transition_list"][1]["to_state"] == "stable"
+    assert heat_source_machine["machine_id"] == "heat_source"
+    assert heat_source_machine["entity_type"] == "environment"
+    assert heat_source_machine["state_list"][0]["state_id"] == "stable"
+    assert heat_source_machine["transition_list"][0]["to_state"] == "heated"
     assert lock_machine["machine_id"] == "lock"
     assert lock_machine["state_list"][0]["state_id"] == "locked"
     assert visibility_machine["machine_id"] == "visibility"
@@ -466,3 +708,373 @@ def test_esm_service_exposes_state_machine_and_material_templates() -> None:
     assert metal_material["burnable"] is False
     assert glass_material["material_id"] == "glass"
     assert glass_material["visibility_transparency"] == "high"
+
+
+def test_esm_service_exposes_repo_local_capability_manifest() -> None:
+    service = ESMService()
+
+    capabilities = service.get_repo_local_capabilities()
+
+    assert capabilities["supported_settlement_classes"] == [
+        "interaction_success",
+        "interaction_rejection_by_constraint",
+        "environment_state_shift",
+    ]
+    assert capabilities["supported_constraint_classes"] == [
+        "distance_constraint",
+        "unsupported_environment_request",
+    ]
+    assert capabilities["supported_environment_change_types"] == [
+        "light_level_drop",
+        "light_level_restore",
+        "noise_level_rise",
+        "smoke_density_rise",
+        "thermal_level_rise",
+    ]
+    assert capabilities["unsupported_environment_change_types"] == ["thermal_spike"]
+    assert capabilities["supported_environment_fields"] == [
+        "light_level",
+        "noise_level",
+        "thermal_level",
+        "smoke_density",
+        "visibility_level",
+    ]
+    assert capabilities["environment_field_semantics"]["thermal_level"] == "real_but_coarse"
+    assert capabilities["environment_request_policy"]["unsupported_change_type_behavior"] == "reject_constraint_state_result"
+    assert capabilities["environment_request_variant_policy"]["supported_families"] == [
+        "visibility_change",
+        "thermal_change",
+        "smoke_change",
+    ]
+    assert capabilities["environment_request_variant_policy"]["unsupported_families"] == [
+        "humidity_change",
+        "integrity_change",
+        "material_change",
+    ]
+    assert capabilities["environment_request_variant_policy"]["current_supported_change_types"] == [
+        "light_level_drop",
+        "light_level_restore",
+        "noise_level_rise",
+        "smoke_density_rise",
+        "thermal_level_rise",
+    ]
+
+
+def test_esm_service_exposes_environment_machine_catalog_for_debug_surfaces() -> None:
+    service = ESMService()
+
+    capabilities = service.get_repo_local_capabilities()
+
+    assert capabilities["environment_machine_ids"] == ["heat_source", "light_source", "noise_source", "smoke_source"]
+
+
+def test_esm_service_exposes_repo_local_workbench_snapshot() -> None:
+    service = ESMService()
+    event = EnvironmentRequest(
+        request_id="envreq:workbench",
+        candidate_ref="cand_heat_rise",
+        decision_ref="decision_heat_rise",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+        target_entity_refs={"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+        goal="raise thermal pressure near the letter",
+        requested_change_type="thermal_level_rise",
+        requested_strength="medium",
+        ttl=1500,
+        reason_tag="pressure_window",
+        producer_ts=41,
+        causation_id="decision:41",
+        correlation_id="decision:41",
+    )
+    resolution, environment_result = service.resolve_environment_request(event)
+    transition = service.emit_state_machine_transition(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        entity_id="env_lamp",
+        machine_id="heat_source",
+        from_state="stable",
+        to_state="heated",
+        trigger_type="environment_request.thermal_level_rise",
+        transition_reason="environment request accepted",
+        producer_ts=43,
+        causation_id="decision:41",
+        correlation_id="decision:41",
+    )
+
+    snapshot = service.get_repo_local_workbench_snapshot(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+    )
+
+    assert snapshot["room_id"] == "room_demo"
+    assert snapshot["scene_id"] == "scene_demo"
+    assert snapshot["zone_id"] == "zone_focus"
+    assert snapshot["state_machine_template_ids"] == [
+        "burning",
+        "heat_source",
+        "integrity",
+        "light_source",
+        "lock",
+        "moisture",
+        "noise_source",
+        "smoke_source",
+        "visibility",
+    ]
+    assert snapshot["material_template_ids"] == ["fabric", "glass", "metal", "wood"]
+    assert snapshot["environment_machine_ids"] == ["heat_source", "light_source", "noise_source", "smoke_source"]
+    assert snapshot["supported_environment_change_types"] == [
+        "light_level_drop",
+        "light_level_restore",
+        "noise_level_rise",
+        "smoke_density_rise",
+        "thermal_level_rise",
+    ]
+    assert snapshot["unsupported_environment_change_types"] == ["thermal_spike"]
+    assert snapshot["current_environment_field"]["field_id"] == "field:room_demo:scene_demo:zone_focus"
+    assert snapshot["current_environment_field"]["source_environment_id"] == "env_lamp"
+    assert snapshot["current_environment_field"]["thermal_level"] == "hot"
+    assert snapshot["latest_environment_result"]["result_id"] == environment_result.result_id
+    assert snapshot["latest_environment_result"]["machine_id"] == "heat_source"
+    assert snapshot["latest_environment_result"]["current_state"] == "heated"
+    assert snapshot["latest_state_machine_transition"]["event_id"] == transition.event_id
+    assert snapshot["latest_state_machine_transition"]["machine_id"] == "heat_source"
+    assert snapshot["latest_state_machine_transition"]["to_state"] == "heated"
+    assert snapshot["latest_environment_request"]["request_id"] == "envreq:workbench"
+    assert snapshot["latest_environment_resolution"]["result_id"] == resolution.result_id
+
+
+def test_esm_service_workbench_snapshot_keeps_latest_request_and_resolution_even_when_last_request_is_rejected() -> None:
+    service = ESMService()
+    accepted_event = EnvironmentRequest(
+        request_id="envreq:accepted",
+        candidate_ref="cand_heat_rise",
+        decision_ref="decision_heat_rise",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+        target_entity_refs={"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+        goal="raise thermal pressure near the letter",
+        requested_change_type="thermal_level_rise",
+        requested_strength="medium",
+        ttl=1500,
+        reason_tag="pressure_window",
+        producer_ts=51,
+        causation_id="decision:51",
+        correlation_id="decision:51",
+    )
+    accepted_resolution, accepted_environment_result = service.resolve_environment_request(accepted_event)
+    accepted_transition = service.emit_state_machine_transition(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        entity_id="env_lamp",
+        machine_id="heat_source",
+        from_state="stable",
+        to_state="heated",
+        trigger_type="environment_request.thermal_level_rise",
+        transition_reason="environment request accepted",
+        producer_ts=53,
+        causation_id="decision:51",
+        correlation_id="decision:51",
+    )
+    rejected_event = EnvironmentRequest(
+        request_id="envreq:rejected",
+        candidate_ref="cand_bad",
+        decision_ref="decision_bad",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+        target_entity_refs={"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+        goal="force unsupported environment mutation",
+        requested_change_type="thermal_spike",
+        requested_strength="medium",
+        ttl=1500,
+        reason_tag="pressure_window",
+        producer_ts=54,
+        causation_id="decision:54",
+        correlation_id="decision:54",
+    )
+    rejected_resolution, rejected_environment_result = service.resolve_environment_request(rejected_event)
+
+    snapshot = service.get_repo_local_workbench_snapshot(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+    )
+
+    assert accepted_resolution.result_type == "action_resolution_result"
+    assert accepted_environment_result is not None
+    assert rejected_resolution.result_type == "constraint_state_result"
+    assert rejected_environment_result is None
+    assert snapshot["latest_environment_request"]["request_id"] == "envreq:rejected"
+    assert snapshot["latest_environment_request"]["action_profile"] == "thermal_spike"
+    assert snapshot["latest_environment_resolution"]["result_type"] == "constraint_state_result"
+    assert snapshot["latest_environment_resolution"]["constraint_type"] == "unsupported_environment_request"
+    assert snapshot["latest_environment_result"]["result_id"] == accepted_environment_result.result_id
+    assert snapshot["latest_state_machine_transition"]["event_id"] == accepted_transition.event_id
+
+
+def test_esm_service_workbench_snapshot_exposes_recent_history_window() -> None:
+    service = ESMService()
+    first_event = EnvironmentRequest(
+        request_id="envreq:h1",
+        candidate_ref="cand_light_drop",
+        decision_ref="decision_light_drop",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+        target_entity_refs={"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+        goal="reduce visibility near the letter",
+        requested_change_type="light_level_drop",
+        requested_strength="medium",
+        ttl=1500,
+        reason_tag="window",
+        producer_ts=61,
+        causation_id="decision:61",
+        correlation_id="decision:61",
+    )
+    second_event = EnvironmentRequest(
+        request_id="envreq:h2",
+        candidate_ref="cand_heat_rise",
+        decision_ref="decision_heat_rise",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+        target_entity_refs={"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+        goal="raise thermal pressure near the letter",
+        requested_change_type="thermal_level_rise",
+        requested_strength="medium",
+        ttl=1500,
+        reason_tag="window",
+        producer_ts=62,
+        causation_id="decision:62",
+        correlation_id="decision:62",
+    )
+    third_event = EnvironmentRequest(
+        request_id="envreq:h3",
+        candidate_ref="cand_smoke_rise",
+        decision_ref="decision_smoke_rise",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+        target_entity_refs={"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+        goal="raise smoke density near the letter",
+        requested_change_type="smoke_density_rise",
+        requested_strength="medium",
+        ttl=1500,
+        reason_tag="window",
+        producer_ts=63,
+        causation_id="decision:63",
+        correlation_id="decision:63",
+    )
+    fourth_event = EnvironmentRequest(
+        request_id="envreq:h4",
+        candidate_ref="cand_noise_rise",
+        decision_ref="decision_noise_rise",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L3", "system": "siming.orchestrator", "actor_id": ""},
+        target_entity_refs={"actor_ids": [], "object_ids": [], "environment_ids": ["env_lamp"]},
+        goal="raise noise level near the letter",
+        requested_change_type="noise_level_rise",
+        requested_strength="medium",
+        ttl=1500,
+        reason_tag="window",
+        producer_ts=64,
+        causation_id="decision:64",
+        correlation_id="decision:64",
+    )
+
+    first_resolution, first_result = service.resolve_environment_request(first_event)
+    first_transition = service.emit_state_machine_transition(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        entity_id="env_lamp",
+        machine_id="light_source",
+        from_state="stable",
+        to_state="alerted",
+        trigger_type="environment_request.light_level_drop",
+        transition_reason="environment request accepted",
+        producer_ts=64,
+        causation_id="decision:61",
+        correlation_id="decision:61",
+    )
+    second_resolution, second_result = service.resolve_environment_request(second_event)
+    second_transition = service.emit_state_machine_transition(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        entity_id="env_lamp",
+        machine_id="heat_source",
+        from_state="stable",
+        to_state="heated",
+        trigger_type="environment_request.thermal_level_rise",
+        transition_reason="environment request accepted",
+        producer_ts=65,
+        causation_id="decision:62",
+        correlation_id="decision:62",
+    )
+    third_resolution, third_result = service.resolve_environment_request(third_event)
+    third_transition = service.emit_state_machine_transition(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        entity_id="env_lamp",
+        machine_id="smoke_source",
+        from_state="stable",
+        to_state="smoke_rising",
+        trigger_type="environment_request.smoke_density_rise",
+        transition_reason="environment request accepted",
+        producer_ts=66,
+        causation_id="decision:63",
+        correlation_id="decision:63",
+    )
+    fourth_resolution, fourth_result = service.resolve_environment_request(fourth_event)
+    fourth_transition = service.emit_state_machine_transition(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        entity_id="env_lamp",
+        machine_id="noise_source",
+        from_state="stable",
+        to_state="noisy",
+        trigger_type="environment_request.noise_level_rise",
+        transition_reason="environment request accepted",
+        producer_ts=67,
+        causation_id="decision:64",
+        correlation_id="decision:64",
+    )
+
+    snapshot = service.get_repo_local_workbench_snapshot(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+    )
+
+    assert first_resolution.result_type == "action_resolution_result"
+    assert first_result is not None
+    assert second_resolution.result_type == "action_resolution_result"
+    assert second_result is not None
+    assert third_resolution.result_type == "action_resolution_result"
+    assert third_result is not None
+    assert fourth_resolution.result_type == "action_resolution_result"
+    assert fourth_result is not None
+    assert snapshot["recent_environment_requests"][0]["request_id"] == "envreq:h3"
+    assert snapshot["recent_environment_requests"][1]["request_id"] == "envreq:h4"
+    assert snapshot["recent_environment_resolutions"][0]["result_id"] == third_resolution.result_id
+    assert snapshot["recent_environment_resolutions"][1]["result_id"] == fourth_resolution.result_id
+    assert snapshot["recent_environment_results"][0]["result_id"] == third_result.result_id
+    assert snapshot["recent_environment_results"][1]["result_id"] == fourth_result.result_id
+    assert snapshot["recent_state_machine_transitions"][0]["event_id"] == third_transition.event_id
+    assert snapshot["recent_state_machine_transitions"][1]["event_id"] == fourth_transition.event_id

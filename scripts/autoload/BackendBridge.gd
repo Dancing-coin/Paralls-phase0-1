@@ -38,10 +38,10 @@ func send_envelope(envelope: Dictionary) -> int:
     return err
 
 func _process(_delta: float) -> void:
+    ws.poll()
     if ws.get_ready_state() == WebSocketPeer.STATE_CLOSED and last_ready_state == WebSocketPeer.STATE_CLOSED:
         return
 
-    ws.poll()
     _handle_state_transition()
 
     while ws.get_available_packet_count() > 0:

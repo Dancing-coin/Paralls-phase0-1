@@ -10,6 +10,22 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-10`
+- Plan status: executed and verified for the repository-local target
+- Current code truth:
+  - actor-context-aware visual filtering exists
+  - filtered `CharacterPerceivedEvent` objects feed a real character-facing storage path
+  - self-body perceived events also feed the same private-input service family
+- Verification evidence:
+  - `backend/tests/test_per_character_percept_filter.py::test_filter_drops_visual_candidate_when_actor_is_not_facing_target`
+  - `backend/tests/test_per_character_percept_filter.py::test_filter_keeps_visual_candidate_when_actor_is_facing_target`
+  - `backend/tests/test_character_perceived_input_service.py::test_character_perceived_input_service_stores_latest_event_per_actor`
+  - `backend/tests/test_character_perceived_input_service.py::test_character_perceived_input_service_stores_latest_self_body_event_per_actor`
+  - `backend/tests/test_visual_fact_pipeline.py::test_raw_visual_fact_updates_character_perceived_input_path`
+  - `backend/tests/test_visual_fact_pipeline.py::test_interact_world_result_updates_self_body_perceived_input_path`
+
 ## File Map
 
 ### New or expanded backend models

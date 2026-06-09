@@ -10,6 +10,23 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-10`
+- Plan status: executed and verified for the repository-local target
+- Current code truth:
+  - `CandidatePerceptEvent` and `CharacterPerceivedEvent` models exist
+  - candidate compilation for the repo-local fact families exists
+  - per-character filtering exists
+  - role-private perceived-event storage and self-body perceived-event storage both exist
+- Verification evidence:
+  - `backend/tests/test_candidate_percept_service.py::test_candidate_percept_event_shape`
+  - `backend/tests/test_candidate_percept_service.py::test_compile_visual_fact_to_candidate_percept`
+  - `backend/tests/test_candidate_percept_service.py::test_compile_spatial_access_fact_to_candidate_percept`
+  - `backend/tests/test_per_character_percept_filter.py::test_character_perceived_event_shape`
+  - `backend/tests/test_per_character_percept_filter.py::test_filter_candidate_for_matching_actor_returns_character_perceived_event`
+  - `backend/tests/test_visual_fact_pipeline.py::test_raw_visual_fact_updates_character_perceived_input_path`
+
 ## File Map
 
 ### New backend perception-chain models

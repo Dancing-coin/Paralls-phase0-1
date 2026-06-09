@@ -10,6 +10,22 @@
 
 ---
 
+## Status Snapshot
+
+- Date: `2026-06-10`
+- Plan status: executed and verified for the repository-local target
+- Current code truth:
+  - locomotion state UI exists
+  - player root motion and NPC patrol root motion both emit observable audit tokens
+  - jump-variant probes and forward-direction probes exist in the Phase 0 verification path
+  - gait/crouch/jump state is exposed through the player bridge and `CharacterReplica`
+- Verification evidence:
+  - `backend/tests/test_verification_audit.py::test_phase0_audit_proves_root_motion_player_and_patrol_evidence`
+  - `backend/tests/test_verification_audit.py::test_phase0_audit_requires_locomotion_state_ui_evidence`
+  - `backend/tests/test_verification_audit.py::test_phase0_audit_requires_jump_variant_probe_evidence`
+  - `backend/tests/test_verification_audit.py::test_phase0_audit_requires_forward_direction_probe_evidence`
+  - `python scripts/verification/verify_phase0.py` -> `overall_strict_phase0_passed=True`
+
 ## File Structure
 
 ### Primary runtime files

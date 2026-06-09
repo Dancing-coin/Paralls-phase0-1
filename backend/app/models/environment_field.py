@@ -7,6 +7,7 @@ class EnvironmentFieldState(BaseModel):
     scene_id: str = "scene_demo"
     zone_id: str
     temperature: str = "ambient"
+    thermal_level: str = "neutral"
     humidity: str = "stable"
     smoke_density: str = "clear"
     light_level: str = "normal"

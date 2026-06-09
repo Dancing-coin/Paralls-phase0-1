@@ -35,6 +35,7 @@ def test_phase0_audit_marks_missing_failed_interaction_and_weak_voice() -> None:
         main_screenshot_exists=True,
         focus_screenshot_exists=True,
         interaction_source="world_result = esm_service.resolve_interaction(event, is_in_range=True)",
+        esm_service_source="",
         voice_controller_source="func play_stub_voice(_payload: Dictionary) -> void:\n    unit_size = 3.0",
         player_bridge_source="func before_player_shell_move(delta: float) -> void:\n    pass",
         character_replica_source="func consume_player_root_motion_request(delta: float) -> Vector3:\n    return Vector3.ZERO",
@@ -80,6 +81,7 @@ def test_phase0_audit_proves_root_motion_player_and_patrol_evidence() -> None:
         main_screenshot_exists=True,
         focus_screenshot_exists=True,
         interaction_source="world_result = esm_service.resolve_interaction(event, is_in_range=False)",
+        esm_service_source="thermal_level=field_state.thermal_level\nfield_delta_summary=[\"light_level\", \"noise_level\", \"thermal_level\", \"smoke_density\", \"visibility_level\"]",
         voice_controller_source="""
         func play_stub_voice(_payload: Dictionary) -> void:
             _bus_log("voice_stub_played")
@@ -102,6 +104,69 @@ def test_phase0_audit_proves_root_motion_player_and_patrol_evidence() -> None:
     assert results["npc_root_motion_patrol"]["status"] == "proved"
     assert results["locomotion_state_ui"]["status"] == "proved"
     assert results["jump_variant_probes"]["status"] == "proved"
+
+
+def test_phase0_audit_requires_explicit_esm_request_lineage_and_thermal_field_evidence() -> None:
+    report = evaluate_phase0_audit(
+        pytest_passed=True,
+        scene_load_ok=True,
+        main_log="""
+        [LocalPresentationBus] backend_connected:ws://127.0.0.1:8000/ws
+        [LocalPresentationBus] phase0_dialogue_target:char_a
+        [LocalPresentationBus] dialogue_applied:char_a
+        [LocalPresentationBus] phase0_interact_target:obj_letter
+        [LocalPresentationBus] object_state:obj_letter:visible
+        [LocalPresentationBus] constraint_state_result:distance
+        [LocalPresentationBus] environment_state:alerted
+        [LocalPresentationBus] attention_applied:char_b
+        [LocalPresentationBus] player_root_motion_step:char_c
+        [LocalPresentationBus] patrol_root_motion_step:char_a
+        [LocalPresentationBus] locomotion_state:stance=stand gait=walk jump=none clip=walk_guard profile=walk rm=active
+        [LocalPresentationBus] jump_probe:type=two_foot run=False apex=1.100 distance=0.820
+        [LocalPresentationBus] jump_probe:type=single_leg run=True apex=1.240 distance=1.180
+        [LocalPresentationBus] voice_stub_played
+        [LocalPresentationBus] phase0_screenshot_saved:D:\\demo-main.png:0
+        """,
+        focus_log="""
+        [LocalPresentationBus] phase0_focus_autotest_begin
+        [LocalPresentationBus] focus_state_applied:char_a
+        [LocalPresentationBus] focus_attention:char_a
+        [LocalPresentationBus] phase0_screenshot_saved:D:\\demo-focus.png:0
+        """,
+        main_screenshot_exists=True,
+        focus_screenshot_exists=True,
+        interaction_source="""
+        messages.append(_as_world_result_envelope(object_state_result.model_dump()))
+        messages.append(_as_world_result_envelope(body_state_result.model_dump()))
+        messages.append(_as_world_result_envelope(environment_result.model_dump()))
+        request_ref=world_result.request_ref
+        causation_id=world_result.causation_id
+        correlation_id=world_result.correlation_id
+        """,
+        esm_service_source="""
+        thermal_level=field_state.thermal_level
+        field_delta_summary=["light_level", "noise_level", "thermal_level", "smoke_density", "visibility_level"]
+        """,
+        voice_controller_source="""
+        func play_stub_voice(_payload: Dictionary) -> void:
+            _bus_log("voice_stub_played")
+        """,
+        player_bridge_source="""
+        func before_player_shell_move(delta: float) -> void:
+            _apply_player_root_motion_drive(delta)
+        """,
+        character_replica_source="""
+        func consume_player_root_motion_request(delta: float) -> Vector3:
+            return _consume_role_root_motion_world_delta()
+        func _move_toward_target(target: Vector3, delta: float, clear_on_arrival: bool) -> void:
+            _bus_log("patrol_root_motion_step:%s" % actor_id)
+        """,
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert results["esm_request_lineage"]["status"] == "proved"
+    assert results["esm_thermal_field"]["status"] == "proved"
 
 
 def test_phase0_audit_requires_locomotion_state_ui_evidence() -> None:
@@ -129,6 +194,7 @@ def test_phase0_audit_requires_locomotion_state_ui_evidence() -> None:
         main_screenshot_exists=True,
         focus_screenshot_exists=True,
         interaction_source="world_result = esm_service.resolve_interaction(event, is_in_range=False)",
+        esm_service_source="",
         voice_controller_source="""
         func play_stub_voice(_payload: Dictionary) -> void:
             _bus_log("voice_stub_played")
@@ -176,6 +242,7 @@ def test_phase0_audit_requires_jump_variant_probe_evidence() -> None:
         main_screenshot_exists=True,
         focus_screenshot_exists=True,
         interaction_source="world_result = esm_service.resolve_interaction(event, is_in_range=False)",
+        esm_service_source="",
         voice_controller_source="""
         func play_stub_voice(_payload: Dictionary) -> void:
             _bus_log("voice_stub_played")
@@ -221,6 +288,7 @@ def test_phase0_audit_requires_forward_direction_probe_evidence() -> None:
         main_screenshot_exists=True,
         focus_screenshot_exists=True,
         interaction_source="world_result = esm_service.resolve_interaction(event, is_in_range=False)",
+        esm_service_source="",
         voice_controller_source="""
         func play_stub_voice(_payload: Dictionary) -> void:
             _bus_log("voice_stub_played")
@@ -246,6 +314,7 @@ def test_phase1_slice_audit_requires_emitter_and_authority_lane_evidence() -> No
         [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_object
         [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
         [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
+        [LocalPresentationBus] phase0_visual_fact_emitter:visual_evidence_projection:evidence_projection
         [LocalPresentationBus] phase0_auditory_fact_emitter:speaker_active:char_a:normal
         [LocalPresentationBus] phase0_auditory_fact_emitter:auditory_reachability_changed:char_a:clear
         [LocalPresentationBus] phase0_auditory_fact_emitter:ambient_noise_changed:quiet
@@ -284,6 +353,7 @@ def test_phase1_slice_audit_requires_emitter_and_authority_lane_evidence() -> No
     assert results["olfactory_fact_observed"]["status"] == "proved"
     assert results["authority_ack_observed"]["status"] == "proved"
     assert results["environment_visual_fact_observed"]["status"] == "proved"
+    assert results["evidence_projection_visual_fact_observed"]["status"] == "proved"
 
 
 def test_phase1_slice_audit_rejects_legacy_visual_fact_event_ack_contract() -> None:
@@ -292,6 +362,7 @@ def test_phase1_slice_audit_rejects_legacy_visual_fact_event_ack_contract() -> N
         [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_object
         [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
         [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
+        [LocalPresentationBus] phase0_visual_fact_emitter:visual_evidence_projection:evidence_projection
         [LocalPresentationBus] phase0_auditory_fact_emitter:speaker_active:char_a:normal
         [LocalPresentationBus] phase0_auditory_fact_emitter:auditory_reachability_changed:char_a:clear
         [LocalPresentationBus] phase0_auditory_fact_emitter:ambient_noise_changed:quiet
@@ -321,6 +392,7 @@ def test_phase1_slice_audit_rejects_legacy_visual_fact_event_ack_contract() -> N
     assert report["overall_phase1_slice_passed"] is False
     assert results["authority_ack_observed"]["status"] == "missing"
     assert results["environment_visual_fact_observed"]["status"] == "proved"
+    assert results["evidence_projection_visual_fact_observed"]["status"] == "proved"
 
 
 def test_phase1_slice_audit_requires_auditory_fact_proof() -> None:
@@ -329,6 +401,7 @@ def test_phase1_slice_audit_requires_auditory_fact_proof() -> None:
         [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_object
         [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
         [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
+        [LocalPresentationBus] phase0_visual_fact_emitter:visual_evidence_projection:evidence_projection
         [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
         [LocalPresentationBus] conversation_candidate_event:{"candidate_object_ids":["obj_letter"]}
         [LocalPresentationBus] character_runtime_state_delta:{"current_attention_source":"visual_fact"}
@@ -351,12 +424,49 @@ def test_phase1_slice_audit_requires_auditory_fact_proof() -> None:
     assert results["auditory_fact_observed"]["status"] == "missing"
 
 
+def test_phase1_slice_audit_requires_evidence_projection_visual_fact_proof() -> None:
+    report = evaluate_phase1_slice_audit(
+        main_log="""
+        [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_object
+        [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
+        [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
+        [LocalPresentationBus] phase0_auditory_fact_emitter:speaker_active:char_a:normal
+        [LocalPresentationBus] phase0_auditory_fact_emitter:auditory_reachability_changed:char_a:clear
+        [LocalPresentationBus] phase0_auditory_fact_emitter:ambient_noise_changed:quiet
+        [LocalPresentationBus] phase0_role_state_fact_emitter:role_state_transition:speak
+        [LocalPresentationBus] phase0_physiology_fact_emitter:breathing_strain_changed:elevated
+        [LocalPresentationBus] phase0_tactile_fact_emitter:contact_started:light
+        [LocalPresentationBus] phase0_thermal_fact_emitter:thermal_proximity_changed:warm
+        [LocalPresentationBus] phase0_olfactory_fact_emitter:odor_state_changed:noticeable
+        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
+        [LocalPresentationBus] conversation_candidate_event:{"candidate_object_ids":["obj_letter"]}
+        [LocalPresentationBus] character_runtime_state_delta:{"current_attention_source":"visual_fact"}
+        [LocalPresentationBus] backend_message_type:siming_output
+        """,
+        focus_log="""
+        [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_actor
+        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
+        """,
+        direct_send_scan="""
+        scripts/player/PlayerIntentMapper.gd:76:func emit_visual_fact_event(...)
+        """,
+        scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "l1_only"',
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert report["overall_phase1_slice_passed"] is False
+    assert results["evidence_projection_visual_fact_observed"]["status"] == "missing"
+
+
 def test_phase1_slice_audit_requires_explicit_auditory_candidate_policy() -> None:
     report = evaluate_phase1_slice_audit(
         main_log="""
         [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_object
         [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
         [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
+        [LocalPresentationBus] phase0_visual_fact_emitter:visual_evidence_projection:evidence_projection
         [LocalPresentationBus] phase0_auditory_fact_emitter:speaker_active:char_a:normal
         [LocalPresentationBus] phase0_auditory_fact_emitter:auditory_reachability_changed:char_a:clear
         [LocalPresentationBus] phase0_auditory_fact_emitter:ambient_noise_changed:quiet
@@ -613,6 +723,20 @@ def test_visual_fact_system_contains_evidence_projection_emitter() -> None:
     assert "emit_visual_evidence_projection" in emitter_source
 
 
+def test_main_demo_runtime_wires_evidence_projection_emitter() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    controller_source = (project_root / "scripts" / "phase0" / "MainDemoController.gd").read_text(
+        encoding="utf-8"
+    )
+    scene_source = (project_root / "scenes" / "phase0" / "MainDemo.tscn").read_text(
+        encoding="utf-8"
+    )
+
+    assert "evidence_projection_emitter" in controller_source
+    assert "emit_visual_evidence_projection" in controller_source
+    assert 'node name="EvidenceProjectionEmitter" type="Node" parent="VisualFactEmitter"' in scene_source
+
+
 def test_system_l1_contains_auditory_fact_emitter() -> None:
     project_root = Path(__file__).resolve().parents[2]
     emitter_source = (
@@ -627,11 +751,17 @@ def test_client_interaction_outputs_are_normalized_in_main_demo_controller() -> 
     controller_source = (
         project_root / "scripts" / "phase0" / "MainDemoController.gd"
     ).read_text(encoding="utf-8")
+    backend_main_source = (
+        project_root / "backend" / "app" / "main.py"
+    ).read_text(encoding="utf-8")
 
     assert "func _emit_dialogue_request(" in controller_source
     assert "func _emit_interaction_request(" in controller_source
     assert "func _emit_move_intent_request(" in controller_source
     assert "phase0_move_target:" in controller_source
+    assert 'route["route"] == "local_motion"' in backend_main_source
+    assert "MoveIntent" in backend_main_source
+    assert "_ensure_runtime_snapshot_messages(event)" in backend_main_source
 
 
 def test_system_l1_contains_tactile_fact_emitter() -> None:
@@ -759,6 +889,20 @@ def test_backend_bridge_exposes_action_request_and_state_machine_transition_sign
     assert '_bus_emit("state_machine_transition_received", [payload])' in bridge_source
 
 
+def test_backend_bridge_polls_before_closed_state_early_return() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    bridge_source = (project_root / "scripts" / "autoload" / "BackendBridge.gd").read_text(
+        encoding="utf-8"
+    )
+
+    first_poll_index = bridge_source.index("ws.poll()")
+    early_return_index = bridge_source.index(
+        "if ws.get_ready_state() == WebSocketPeer.STATE_CLOSED and last_ready_state == WebSocketPeer.STATE_CLOSED:"
+    )
+
+    assert first_poll_index < early_return_index
+
+
 def test_interactive_object_uses_visibility_state_family_defaults() -> None:
     project_root = Path(__file__).resolve().parents[2]
     object_source = (project_root / "scripts" / "object" / "InteractiveObject.gd").read_text(
@@ -786,6 +930,67 @@ def test_spatial_access_fact_emitter_sets_nearby_actor_ttl() -> None:
 
     assert '"nearby_actor_refs"' in emitter_source
     assert "1500" in emitter_source
+
+
+def test_phase05_character_scene_upgrade_artifacts_exist_and_match_role_split() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    driver_spec_source = (project_root / "scripts" / "character" / "CharacterDriverSpec.gd").read_text(
+        encoding="utf-8"
+    )
+    execution_notes = (project_root / "docs" / "character-execution-notes.md").read_text(
+        encoding="utf-8"
+    )
+    scene_zones = (project_root / "docs" / "phase05-scene-zones.md").read_text(encoding="utf-8")
+    mixabridge_notes = (project_root / "docs" / "mixabridge-character-pipeline.md").read_text(
+        encoding="utf-8"
+    )
+    homebuilder_notes = (project_root / "docs" / "homebuilder-scene-pipeline.md").read_text(
+        encoding="utf-8"
+    )
+    sample_scene_notes = (project_root / "docs" / "sample-scene-setup.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "class_name CharacterDriverSpec" in driver_spec_source
+    assert "enum DriverMode" in driver_spec_source
+    assert "AI" in driver_spec_source
+    assert "PLAYER" in driver_spec_source
+    assert "driver_mode" in driver_spec_source
+    assert "explicit driver mode: `ai` / `player`" in execution_notes
+    assert "same shell usable by `A`, `B`, and `C`" in execution_notes
+    assert "CharacterC" in scene_zones
+    assert "player-driven in-world intervener" in scene_zones
+    assert "Use `mixabridge` for:" in mixabridge_notes
+    assert "shared skeleton and animation preparation path" in mixabridge_notes
+    assert "turn the open greybox field into a semi-open relationship space" in homebuilder_notes
+    assert "`CharacterC` is the first player-driven in-world role shell" in sample_scene_notes
+
+
+def test_phase0_open_scene_camera_artifacts_match_open_field_layout() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    scene_source = (project_root / "scenes" / "phase0" / "MainDemo.tscn").read_text(encoding="utf-8")
+    controller_source = (project_root / "scripts" / "phase0" / "MainDemoController.gd").read_text(
+        encoding="utf-8"
+    )
+    occlusion_source = (project_root / "scripts" / "player" / "CameraOcclusionFader.gd").read_text(
+        encoding="utf-8"
+    )
+    sample_scene_notes = (project_root / "docs" / "sample-scene-setup.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "size = Vector2(80, 50)" in scene_source
+    assert "size = Vector3(80, 0.2, 50)" in scene_source
+    assert "Boundary" in scene_source
+    assert "@export var focus_max_distance := 28.0" in controller_source
+    assert "spring_length = 6.6" in controller_source
+    assert "floor_grid_probe" in controller_source
+    assert "_is_fallback_occluder" in occlusion_source
+    assert "_is_room_occluder" not in occlusion_source
+    assert "WallBody" not in occlusion_source
+    assert "Partition" not in occlusion_source
+    assert "one open field instead of a multi-room greybox" in sample_scene_notes
+    assert "Field footprint: about `80 x 50`" in sample_scene_notes
 
 
 def test_wrapped_raw_fact_transport_contract_passes_scan_and_phase1_audit(tmp_path: Path) -> None:
@@ -923,6 +1128,7 @@ func emit_visual_fact_event(...) -> Dictionary:
         [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_object
         [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
         [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
+        [LocalPresentationBus] phase0_visual_fact_emitter:visual_evidence_projection:evidence_projection
         [LocalPresentationBus] phase0_auditory_fact_emitter:speaker_active:char_a:normal
         [LocalPresentationBus] phase0_auditory_fact_emitter:auditory_reachability_changed:char_a:clear
         [LocalPresentationBus] phase0_auditory_fact_emitter:ambient_noise_changed:quiet

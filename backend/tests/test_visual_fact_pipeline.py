@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 from app.main import (
@@ -645,6 +647,19 @@ def test_websocket_visual_fact_event_emits_runtime_alignment_messages() -> None:
     assert candidate_runtime_delta["payload"]["conversation_candidate_refs"] == ["cand_obj_letter"]
     assert siming_output["message_type"] == "siming_output"
     assert siming_output["payload"]["target_object_id"] == "obj_letter"
+
+
+def test_interact_success_emits_visual_evidence_projection_raw_fact() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    controller_source = (project_root / "scripts" / "phase0" / "MainDemoController.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert "evidence_projection_emitter" in controller_source
+    assert 'result_type == "object_state_result"' in controller_source
+    assert 'str(payload.get("target_object_id", "")) == "obj_letter"' in controller_source
+    assert 'str(payload.get("current_state", "")) == "visible"' in controller_source
+    assert 'emit_visual_evidence_projection("obj_letter")' in controller_source
 
 
 def test_raw_fact_event_debug_trace_exposes_l1_to_l2_transition_order_without_replacing_authority_ack() -> None:

@@ -43,6 +43,7 @@ const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
 @onready var character_c: Node3D = $CharacterC
 @onready var interactive_object: Node3D = $InteractiveObject
 @onready var character_visual_fact_emitter: Node = $VisualFactEmitter/CharacterVisualFactEmitter
+@onready var evidence_projection_emitter: Node = $VisualFactEmitter/EvidenceProjectionEmitter
 @onready var spatial_access_fact_emitter: Node = $VisualFactEmitter/SpatialAccessFactEmitter
 @onready var tactile_fact_emitter: Node = $VisualFactEmitter/TactileFactEmitter
 @onready var thermal_fact_emitter: Node = $VisualFactEmitter/ThermalFactEmitter
@@ -223,6 +224,8 @@ func _on_world_result_received(payload: Dictionary) -> void:
 	var result_id := str(payload.get("result_id", ""))
 	if result_type == "object_state_result" and str(payload.get("target_object_id", "")) == "obj_letter":
 		if str(payload.get("current_state", "")) == "visible":
+			if evidence_projection_emitter and evidence_projection_emitter.has_method("emit_visual_evidence_projection"):
+				evidence_projection_emitter.emit_visual_evidence_projection("obj_letter")
 			if tactile_fact_emitter and tactile_fact_emitter.has_method("emit_contact_fact"):
 				tactile_fact_emitter.emit_contact_fact("", "obj_letter", "light")
 	elif result_type == "environment_state_result" and str(payload.get("target_environment_id", "")) == "env_lamp":
