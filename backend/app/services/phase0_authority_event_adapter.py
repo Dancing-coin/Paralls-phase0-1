@@ -1,6 +1,7 @@
 from app.models.authority_event import AuthorityEvent, AuthorityEventRouting, AuthorityEventSource
 from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent
 from app.models.runtime_state import ConversationCandidateEvent
+from app.models.state_machine_transition import StateMachineTransitionEvent
 from app.models.visual_fact import VisualFactEvent
 from app.models.world_result import (
     ActionResolutionResult,
@@ -82,5 +83,23 @@ class Phase0AuthorityEventAdapter:
             durability="replayable",
             causation_id=event.causation_id,
             correlation_id=event.correlation_id,
+            payload=event.model_dump(exclude_none=True),
+        )
+
+    def state_machine_transition_event(self, event: StateMachineTransitionEvent) -> AuthorityEvent:
+        return AuthorityEvent(
+            event_id=event.event_id,
+            event_type="state_machine_transition_event",
+            producer_ts=event.producer_ts,
+            room_id=event.room_id,
+            scene_id=event.scene_id,
+            zone_id=event.zone_id,
+            source=AuthorityEventSource(layer="L1", system="esm", actor_id=None),
+            routing=AuthorityEventRouting(audience_mode="room", routing_mode="event_type", target_ids=["presentation"]),
+            priority="p2",
+            ttl=5000,
+            durability="replayable",
+            causation_id=event.causation_id,
+            correlation_id=event.correlation_id or event.causation_id,
             payload=event.model_dump(exclude_none=True),
         )

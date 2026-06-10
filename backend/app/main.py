@@ -311,7 +311,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         messages.append(_as_action_request_envelope(action_request.model_dump()))
         resolution, environment_result = esm_service.resolve_environment_request(event)
         event_trace.record(resolution.result_type)
-        messages.append(_as_world_result_envelope(resolution.model_dump()))
+        messages.extend(_publish_world_result_authority_event(resolution, source_event=event))
         if environment_result is not None:
             transition_trigger_type = "environment_request.light_level_drop"
             transition_from_state = "stable"
@@ -340,10 +340,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             )
             event_trace.record(transition.event_type)
             event_trace.record(environment_result.result_type)
-            messages.append(_as_state_machine_transition_envelope(transition.model_dump()))
-            messages.append(_as_world_result_envelope(environment_result.model_dump()))
-        messages.extend(_publish_world_result_authority_event(resolution, source_event=event))
-        if environment_result is not None:
+            messages.extend(_publish_state_machine_transition_authority_event(transition))
             messages.extend(_publish_world_result_authority_event(environment_result, source_event=event))
         return _finalize_outbound_messages(messages)
 
@@ -482,7 +479,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         event_trace.record(world_result.result_type)
 
         if world_result.result_type == "action_resolution_result":
-            messages.append(_as_world_result_envelope(world_result.model_dump()))
+            messages.extend(_publish_world_result_authority_event(world_result, source_event=event))
             _publish_debug_event(
                 build_debug_event(
                     producer_ts=world_result.producer_ts,
@@ -508,7 +505,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 correlation_id=world_result.correlation_id,
             )
             event_trace.record(transition.event_type)
-            messages.append(_as_state_machine_transition_envelope(transition.model_dump()))
+            messages.extend(_publish_state_machine_transition_authority_event(transition))
 
             object_state_result = esm_service.emit_object_state_result(
                 room_id=event.room_id,
@@ -524,7 +521,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 correlation_id=world_result.correlation_id,
             )
             event_trace.record(object_state_result.result_type)
-            messages.append(_as_world_result_envelope(object_state_result.model_dump()))
+            messages.extend(_publish_world_result_authority_event(object_state_result, source_event=event))
 
             body_state_result = esm_service.emit_body_state_result(
                 room_id=event.room_id,
@@ -540,7 +537,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 correlation_id=world_result.correlation_id,
             )
             event_trace.record(body_state_result.result_type)
-            messages.append(_as_world_result_envelope(body_state_result.model_dump()))
+            messages.extend(_publish_world_result_authority_event(body_state_result, source_event=event))
             self_body_perceived = SelfBodyPerceivedEvent(
                 actor_id=event.actor_id,
                 body_state_class=body_state_result.body_state_class,
@@ -568,8 +565,6 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 correlation_id=world_result.correlation_id,
             )
             event_trace.record(environment_result.result_type)
-            messages.append(_as_world_result_envelope(environment_result.model_dump()))
-
             messages.extend(_publish_world_result_authority_event(environment_result, source_event=event))
 
             conversation_relation_service.apply_world_result(
@@ -592,7 +587,6 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             )
             messages.extend(_candidate_messages(candidate))
         else:
-            messages.append(_as_world_result_envelope(world_result.model_dump()))
             messages.extend(_publish_world_result_authority_event(world_result, source_event=event))
             _publish_debug_event(
                 build_debug_event(
@@ -744,6 +738,7 @@ def _publish_world_result_authority_event(
     source_event: object,
 ) -> list[dict[str, object]]:
     authority_event = authority_event_adapter.world_result_event(result, source_event=source_event)
+    frontend_authority_event_projector.handle_event(authority_event)
     authority_event_bus.publish(authority_event)
     event_trace.record(authority_event.event_type)
     return _drain_frontend_authority_events()
@@ -751,6 +746,15 @@ def _publish_world_result_authority_event(
 
 def _publish_candidate_authority_event(event: ConversationCandidateEvent) -> list[dict[str, object]]:
     authority_event = authority_event_adapter.conversation_candidate_event(event)
+    frontend_authority_event_projector.handle_event(authority_event)
+    authority_event_bus.publish(authority_event)
+    event_trace.record(authority_event.event_type)
+    return _drain_frontend_authority_events()
+
+
+def _publish_state_machine_transition_authority_event(event: object) -> list[dict[str, object]]:
+    authority_event = authority_event_adapter.state_machine_transition_event(event)
+    frontend_authority_event_projector.handle_event(authority_event)
     authority_event_bus.publish(authority_event)
     event_trace.record(authority_event.event_type)
     return _drain_frontend_authority_events()
@@ -880,14 +884,12 @@ def _candidate_messages(candidate: object) -> list[dict[str, object]]:
         return []
 
     event_trace.record("conversation_candidate_event")
-    messages = [_as_envelope("conversation_candidate_event", candidate.model_dump())]
-
     conversation_relation_service.apply_candidate_summary(candidate)
     runtime_delta = _project_runtime_delta(candidate.actor_id, candidate.producer_ts)
+    messages = _publish_candidate_authority_event(candidate)
     if runtime_delta is not None:
-        messages.append(runtime_delta)
-
-    messages.extend(_publish_candidate_authority_event(candidate))
+        insert_index = 1 if messages and messages[0].get("message_type") == "conversation_candidate_event" else len(messages)
+        messages.insert(insert_index, runtime_delta)
     return messages
 
 

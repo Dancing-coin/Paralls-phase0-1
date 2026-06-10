@@ -62,6 +62,10 @@ var last_spatial_access_actor_target := ""
 var last_spatial_access_actor_ts := 0
 var current_privacy_band := "public"
 var spatial_zone_emitted := false
+var pending_backend_reconnect := false
+var pending_dialogue_request: Dictionary = {}
+var pending_interaction_request: Dictionary = {}
+var pending_move_request: Dictionary = {}
 
 func _ready() -> void:
 	var bus := _get_bus()
@@ -198,11 +202,13 @@ func submit_interaction() -> void:
 	_emit_interaction_request(target_object_id, "inspect")
 
 func _on_backend_connected(_payload: String) -> void:
+	pending_backend_reconnect = false
 	_request_backend_health()
 	_emit_spatial_access_zone_entry()
 	if pending_focus_sync:
 		_emit_focus_target_change()
 		pending_focus_sync = false
+	_flush_pending_backend_requests()
 	if focus_autotest_enabled:
 		_run_focus_autotest()
 		return
@@ -215,6 +221,7 @@ func _on_backend_disconnected(_code: int = 0) -> void:
 	last_spatial_access_actor_target = ""
 	last_spatial_access_actor_ts = 0
 	current_privacy_band = "public"
+	_request_backend_reconnect()
 
 func _on_backend_ack_received(payload: Dictionary) -> void:
 	_bus_log("phase0_ack:%s" % JSON.stringify(payload))
@@ -558,6 +565,55 @@ func _bus_log(message: String) -> void:
 	if bus and bus.has_method("log_debug"):
 		bus.log_debug(message)
 
+func _request_backend_reconnect() -> void:
+	var bridge := _get_bridge()
+	if bridge == null:
+		return
+	if bridge.has_method("is_backend_open") and bridge.is_backend_open():
+		pending_backend_reconnect = false
+		return
+	if pending_backend_reconnect:
+		return
+	pending_backend_reconnect = true
+	call_deferred("_perform_backend_reconnect")
+
+func _perform_backend_reconnect() -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var bridge := _get_bridge()
+	if bridge == null:
+		pending_backend_reconnect = false
+		return
+	if bridge.has_method("is_backend_open") and bridge.is_backend_open():
+		pending_backend_reconnect = false
+		return
+	var err: int = bridge.connect_to_backend(backend_url)
+	_bus_log("phase0_backend_reconnect_err:%s" % err)
+	if err != OK:
+		pending_backend_reconnect = false
+
+func _flush_pending_backend_requests() -> void:
+	if not pending_dialogue_request.is_empty():
+		var dialogue_request := pending_dialogue_request.duplicate(true)
+		pending_dialogue_request = {}
+		_emit_dialogue_request(
+			str(dialogue_request.get("target_actor_id", "")),
+			str(dialogue_request.get("content", "")),
+		)
+	if not pending_move_request.is_empty():
+		var move_request := pending_move_request.duplicate(true)
+		pending_move_request = {}
+		var target_point_value: Variant = move_request.get("target_point", Vector3.ZERO)
+		if target_point_value is Vector3:
+			_emit_move_intent_request(target_point_value, str(move_request.get("move_mode", "locomotion")))
+	if not pending_interaction_request.is_empty():
+		var interaction_request := pending_interaction_request.duplicate(true)
+		pending_interaction_request = {}
+		_emit_interaction_request(
+			str(interaction_request.get("target_object_id", "")),
+			str(interaction_request.get("interaction_type", "inspect")),
+		)
+
 func _emit_focus_target_change() -> void:
 	var bridge := _get_bridge()
 	if bridge == null or intent_mapper == null:
@@ -580,6 +636,10 @@ func _emit_dialogue_request(target_actor_id: String, content: String) -> void:
 	if not intent_mapper.has_method("emit_dialogue_submit"):
 		return
 	_bus_log("phase0_dialogue_target:%s" % target_actor_id)
+	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
+		pending_dialogue_request = {"target_actor_id": target_actor_id, "content": content}
+		_request_backend_reconnect()
+		return
 	bridge.send_envelope(intent_mapper.emit_dialogue_submit(target_actor_id, content))
 
 func _emit_interaction_request(target_object_id: String, interaction_type: String) -> void:
@@ -590,6 +650,10 @@ func _emit_interaction_request(target_object_id: String, interaction_type: Strin
 		return
 	_bus_log("phase0_interact_target:%s" % target_object_id)
 	_emit_near_object_visual_fact(target_object_id)
+	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
+		pending_interaction_request = {"target_object_id": target_object_id, "interaction_type": interaction_type}
+		_request_backend_reconnect()
+		return
 	bridge.send_envelope(intent_mapper.emit_interact_intent(target_object_id, interaction_type))
 
 func _emit_move_intent_request(target_point: Vector3, move_mode: String) -> void:
@@ -606,6 +670,10 @@ func _emit_move_intent_request(target_point: Vector3, move_mode: String) -> void
 			target_point.z,
 		]
 	)
+	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
+		pending_move_request = {"target_point": target_point, "move_mode": move_mode}
+		_request_backend_reconnect()
+		return
 	bridge.send_envelope(intent_mapper.emit_move_intent(move_mode, target_point))
 
 func _emit_move_intent_if_needed() -> void:

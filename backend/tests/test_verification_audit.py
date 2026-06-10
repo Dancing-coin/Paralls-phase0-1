@@ -872,6 +872,26 @@ def test_backend_bridge_exposes_backend_disconnected_signal_chain() -> None:
     assert "last_ready_state = WebSocketPeer.STATE_CLOSED" in bridge_source
 
 
+def test_main_demo_controller_reconnects_and_replays_pending_phase0_requests() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    controller_source = (project_root / "scripts" / "phase0" / "MainDemoController.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert "var pending_backend_reconnect := false" in controller_source
+    assert 'var pending_dialogue_request: Dictionary = {}' in controller_source
+    assert 'var pending_interaction_request: Dictionary = {}' in controller_source
+    assert 'var pending_move_request: Dictionary = {}' in controller_source
+    assert "func _request_backend_reconnect() -> void:" in controller_source
+    assert "func _flush_pending_backend_requests() -> void:" in controller_source
+    assert "pending_backend_reconnect = true" in controller_source
+    assert "_request_backend_reconnect()" in controller_source
+    assert "_flush_pending_backend_requests()" in controller_source
+    assert 'pending_dialogue_request = {"target_actor_id": target_actor_id, "content": content}' in controller_source
+    assert 'pending_interaction_request = {"target_object_id": target_object_id, "interaction_type": interaction_type}' in controller_source
+    assert 'pending_move_request = {"target_point": target_point, "move_mode": move_mode}' in controller_source
+
+
 def test_backend_bridge_exposes_action_request_and_state_machine_transition_signal_chain() -> None:
     project_root = Path(__file__).resolve().parents[2]
     bus_source = (project_root / "scripts" / "autoload" / "LocalPresentationBus.gd").read_text(
