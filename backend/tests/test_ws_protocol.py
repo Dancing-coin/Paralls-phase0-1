@@ -374,6 +374,57 @@ def test_websocket_dialogue_submit_emits_ack_and_dialogue_response() -> None:
     assert response["payload"]["actor_id"] == "char_a"
 
 
+def test_websocket_invalid_player_input_returns_negative_ack_without_dropping_connection() -> None:
+    reset_runtime_state()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "player_input",
+                "payload": {
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "actor_id": "char_c",
+                    "intent_type": "bogus",
+                    "producer_ts": 124,
+                },
+            }
+        )
+
+        error_ack = websocket.receive_json()
+
+        websocket.send_json(
+            {
+                "message_type": "player_input",
+                "payload": {
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "scene_id": "scene_demo",
+                    "zone_id": "zone_focus",
+                    "actor_id": "char_c",
+                    "intent_type": "move_intent",
+                    "producer_ts": 125,
+                    "move_mode": "locomotion",
+                    "target_point": [1.0, 0.5, 2.0],
+                },
+            }
+        )
+
+        move_ack = websocket.receive_json()
+        runtime_snapshot = websocket.receive_json()
+
+    assert error_ack["message_type"] == "ack"
+    assert error_ack["payload"]["accepted"] is False
+    assert error_ack["payload"]["route"] == "invalid_payload"
+    assert error_ack["payload"]["source_type"] == "player_input"
+    assert error_ack["payload"]["error_type"] == "ValueError"
+    assert "unsupported intent_type" in error_ack["payload"]["error_message"]
+    assert move_ack["message_type"] == "ack"
+    assert move_ack["payload"]["accepted"] is True
+    assert move_ack["payload"]["route"] == "local_motion"
+    assert runtime_snapshot["message_type"] == "character_runtime_state_snapshot"
+
+
 def test_websocket_environment_request_emits_ack_action_resolution_transition_and_environment_state_result() -> None:
     reset_runtime_state()
     client = TestClient(app)

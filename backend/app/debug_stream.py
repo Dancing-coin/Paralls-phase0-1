@@ -38,6 +38,12 @@ class DebugStream:
         self._subscribers.add(queue)
         return queue
 
+    def snapshot_and_subscribe(self) -> tuple[list[dict[str, Any]], asyncio.Queue[dict[str, Any]]]:
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=100)
+        history = list(self._events)
+        self._subscribers.add(queue)
+        return history, queue
+
     def unsubscribe(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
         self._subscribers.discard(queue)
 

@@ -1,7 +1,9 @@
+import asyncio
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse, Response
+from pydantic import ValidationError
 from starlette.websockets import WebSocketDisconnect
 
 from app.debug_narration import (
@@ -137,9 +139,15 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
     try:
         while True:
-            raw = await websocket.receive_json()
-            envelope = Envelope(**raw)
-            outbound = _handle_envelope(envelope)
+            try:
+                raw = await websocket.receive_json()
+                envelope = Envelope(**raw)
+                outbound = _handle_envelope(envelope)
+            except (ValidationError, ValueError, TypeError) as exc:
+                source_type = "unknown"
+                if isinstance(raw, dict):
+                    source_type = str(raw.get("message_type", "unknown"))
+                outbound = [_as_error_ack(source_type=source_type, route="invalid_payload", error=exc)]
             for message in outbound:
                 await websocket.send_json(message)
     except WebSocketDisconnect:
@@ -149,12 +157,25 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 @app.websocket("/debug/ws")
 async def debug_websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
-    for event in debug_stream.history():
+    history, queue = debug_stream.snapshot_and_subscribe()
+    for event in history:
         await websocket.send_json(event)
-    queue = debug_stream.subscribe()
     try:
         while True:
-            event = await queue.get()
+            event_task = asyncio.create_task(queue.get())
+            disconnect_task = asyncio.create_task(websocket.receive_text())
+            done, pending = await asyncio.wait(
+                {event_task, disconnect_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+
+            if disconnect_task in done:
+                disconnect_task.result()
+                continue
+
+            event = event_task.result()
             await websocket.send_json(event)
     except WebSocketDisconnect:
         return
@@ -605,6 +626,19 @@ def _as_envelope(message_type: str, payload: dict[str, object]) -> dict[str, obj
     return {
         "message_type": message_type,
         "payload": payload,
+    }
+
+
+def _as_error_ack(*, source_type: str, route: str, error: Exception) -> dict[str, object]:
+    return {
+        "message_type": "ack",
+        "payload": {
+            "accepted": False,
+            "source_type": source_type,
+            "route": route,
+            "error_type": type(error).__name__,
+            "error_message": str(error),
+        },
     }
 
 
