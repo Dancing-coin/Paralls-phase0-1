@@ -520,6 +520,34 @@ def evaluate_phase1_slice_audit(
         )
     )
 
+    combined_log = main_log + "\n" + focus_log
+    siming_event_bus_return_path_ok = (
+        _trace_has(trace_events, event_type="siming_authority_event_observed")
+        and _trace_has(trace_events, event_type="siming_visual_observability_requested")
+        and _trace_has(trace_events, event_type="siming_visual_observability_applied")
+    ) or _contains_all(
+        combined_log,
+        [
+            "backend_message_type:authority_event",
+            "siming_visual_observability_request:",
+            "siming_visual_observability_applied:",
+        ],
+    )
+    results.append(
+        _result(
+            "siming_event_bus_return_path",
+            "Siming authority event family returns through WebSocket and Godot local presentation bus",
+            "proved" if siming_event_bus_return_path_ok else "missing",
+            _trace_evidence(
+                trace_events,
+                "siming_event_bus_return_path",
+                ["authority_event", "siming.visual_observability_request", "siming_visual_observability_applied"],
+            )
+            if siming_event_bus_return_path_ok
+            else [],
+        )
+    )
+
     overall_phase1_slice_passed = all(str(entry["status"]) == "proved" for entry in results)
     return {
         "results": results,

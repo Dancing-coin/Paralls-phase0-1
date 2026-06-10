@@ -44,6 +44,10 @@ from app.services.fact_router import route_raw_fact_event
 from app.services.focus_state_service import FocusStateService
 from app.services.per_character_percept_filter import filter_candidate_for_actor
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
+from app.services.frontend_authority_event_projection import (
+    FRONTEND_AUTHORITY_EVENT_TYPES,
+    FrontendAuthorityEventProjector,
+)
 from app.services.phase0_authority_event_adapter import Phase0AuthorityEventAdapter
 from app.services.siming_audit_writer import SimingAuditWriter
 from app.services.siming_event_consumer import SimingEventConsumer
@@ -74,6 +78,7 @@ def reset_runtime_state() -> None:
     global phase0_authority_event_adapter
     global siming_audit_writer
     global siming_event_pipeline
+    global frontend_authority_event_projector
 
     runtime = SessionRuntime()
     character_service = CharacterService()
@@ -99,6 +104,9 @@ def reset_runtime_state() -> None:
     )
     for event_type in SimingEventConsumer.ALLOWED_EVENT_TYPES:
         authority_event_bus.subscribe(event_type, siming_event_pipeline.handle_event)
+    frontend_authority_event_projector = FrontendAuthorityEventProjector()
+    for event_type in FRONTEND_AUTHORITY_EVENT_TYPES:
+        authority_event_bus.subscribe(event_type, frontend_authority_event_projector.handle_event)
     debug_stream.clear()
 
 
@@ -173,6 +181,8 @@ async def debug_websocket_endpoint(websocket: WebSocket) -> None:
 
 
 def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
+    frontend_authority_event_projector.clear()
+
     if envelope.message_type == "visual_fact_event":
         event = VisualFactEvent(**envelope.payload)
         _publish_authority_event(phase0_authority_event_adapter.visual_fact_event(event))
@@ -203,7 +213,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         )
         _publish_route_event(event, messages)
         _emit_debug_from_messages(messages)
-        return messages
+        return _with_frontend_authority_events(messages)
 
     if envelope.message_type == "raw_fact_event":
         event = RawFactEvent(**envelope.payload)
@@ -277,7 +287,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         )
         _publish_route_event(event, messages)
         _emit_debug_from_messages(messages)
-        return messages
+        return _with_frontend_authority_events(messages)
 
     if envelope.message_type == "environment_request":
         event = EnvironmentRequest(**envelope.payload)
@@ -339,19 +349,21 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             messages.append(_as_state_machine_transition_envelope(transition.model_dump()))
             messages.append(_as_world_result_envelope(environment_result.model_dump()))
         _emit_debug_from_messages(messages)
-        return messages
+        return _with_frontend_authority_events(messages)
 
     if envelope.message_type != "player_input":
-        return [
-            {
-                "message_type": "ack",
-                "payload": {
-                    "accepted": False,
-                    "source_type": envelope.message_type,
-                    "route": "unknown",
-                },
-            }
-        ]
+        return _with_frontend_authority_events(
+            [
+                {
+                    "message_type": "ack",
+                    "payload": {
+                        "accepted": False,
+                        "source_type": envelope.message_type,
+                        "route": "unknown",
+                    },
+                }
+            ]
+        )
 
     event = _parse_player_input(envelope.payload)
     route = runtime.accept_player_input(event)
@@ -393,7 +405,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         event_trace.record(response.output_type)
         messages.append(_as_envelope("dialogue_response", response.model_dump()))
         _emit_debug_from_messages(messages)
-        return messages
+        return _with_frontend_authority_events(messages)
 
     if route["route"] == "local_motion" and isinstance(event, MoveIntent):
         _publish_debug_event(
@@ -408,7 +420,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         )
         messages.extend(_ensure_runtime_snapshot_messages(event))
         _emit_debug_from_messages(messages)
-        return messages
+        return _with_frontend_authority_events(messages)
 
     if route["route"] == "character_service" and isinstance(event, FocusTargetChange):
         _publish_debug_event(
@@ -458,7 +470,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             )
         )
         _emit_debug_from_messages(messages)
-        return messages
+        return _with_frontend_authority_events(messages)
 
     if route["route"] == "esm_service" and isinstance(event, InteractIntent):
         action_request = esm_service.build_action_request(event)
@@ -612,9 +624,9 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 )
             )
         _emit_debug_from_messages(messages)
-        return messages
+        return _with_frontend_authority_events(messages)
 
-    return messages
+    return _with_frontend_authority_events(messages)
 
 
 def _parse_player_input(payload: dict) -> MoveIntent | DialogueSubmit | InteractIntent | FocusTargetChange:
@@ -732,6 +744,11 @@ def _publish_debug_event(event: dict[str, object]) -> None:
 
 def _publish_authority_event(event: AuthorityEvent) -> None:
     authority_event_bus.publish(event)
+
+
+def _with_frontend_authority_events(messages: list[dict[str, object]]) -> list[dict[str, object]]:
+    messages.extend(frontend_authority_event_projector.drain())
+    return messages
 
 
 def _publish_route_event(event: RawFactEvent | VisualFactEvent, messages: list[dict[str, object]]) -> None:

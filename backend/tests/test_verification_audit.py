@@ -327,6 +327,9 @@ def test_phase1_slice_audit_requires_emitter_and_authority_lane_evidence() -> No
         [LocalPresentationBus] conversation_candidate_event:{"candidate_object_ids":["obj_letter"]}
         [LocalPresentationBus] character_runtime_state_delta:{"current_attention_source":"visual_fact"}
         [LocalPresentationBus] backend_message_type:siming_output
+        [LocalPresentationBus] backend_message_type:authority_event
+        [LocalPresentationBus] siming_visual_observability_request:{"event_type":"siming.visual_observability_request"}
+        [LocalPresentationBus] siming_visual_observability_applied:visual_fact:300:char_c:light_level_drop:increase observability for established light change
         """,
         focus_log="""
         [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_actor
@@ -421,12 +424,48 @@ def test_phase1_slice_audit_can_use_structured_trace_events() -> None:
             {"event_type": "runtime_projection_observed", "result_id": "runtime_projection_observed", "raw": "visual_fact"},
             {"event_type": "conversation_candidate_observed", "result_id": "candidate_and_siming_observed"},
             {"event_type": "siming_attention_applied", "result_id": "candidate_and_siming_observed"},
+            {"event_type": "siming_authority_event_observed", "result_id": "siming_event_bus_return_path"},
+            {"event_type": "siming_visual_observability_requested", "result_id": "siming_event_bus_return_path"},
+            {"event_type": "siming_visual_observability_applied", "result_id": "siming_event_bus_return_path"},
         ],
     )
 
     results = _index_by_id(report["results"])
     assert report["overall_phase1_slice_passed"] is True
     assert results["authority_ack_observed"]["evidence"] == ["trace:authority_ack_observed"]
+
+
+def test_phase1_slice_audit_requires_siming_event_bus_return_path_when_trace_available() -> None:
+    report = evaluate_phase1_slice_audit(
+        main_log="",
+        focus_log="",
+        direct_send_scan="",
+        scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "l1_only"',
+        trace_events=[
+            {"event_type": "visual_fact_emitted", "result_id": "visual_fact_pipeline", "raw": "actor_looks_at_object"},
+            {"event_type": "visual_fact_emitted", "result_id": "visual_fact_pipeline", "raw": "actor_looks_at_actor"},
+            {"event_type": "visual_fact_emitted", "result_id": "visual_fact_pipeline", "raw": "actor_near_object"},
+            {"event_type": "visual_fact_emitted", "result_id": "visual_fact_pipeline", "raw": "environment_light_drop"},
+            {"event_type": "visual_fact_emitted", "result_id": "evidence_projection_visual_fact_observed", "raw": "evidence_projection"},
+            {"event_type": "auditory_fact_observed", "result_id": "auditory_fact_observed"},
+            {"event_type": "role_state_fact_observed", "result_id": "role_state_fact_observed"},
+            {"event_type": "physiology_fact_observed", "result_id": "physiology_fact_observed"},
+            {"event_type": "tactile_fact_observed", "result_id": "tactile_fact_observed"},
+            {"event_type": "thermal_fact_observed", "result_id": "thermal_fact_observed"},
+            {"event_type": "olfactory_fact_observed", "result_id": "olfactory_fact_observed"},
+            {"event_type": "authority_visual_fact_ack", "result_id": "authority_ack_observed"},
+            {"event_type": "runtime_projection_observed", "result_id": "runtime_projection_observed", "raw": "visual_fact"},
+            {"event_type": "conversation_candidate_observed", "result_id": "candidate_and_siming_observed"},
+            {"event_type": "siming_attention_applied", "result_id": "candidate_and_siming_observed"},
+            {"event_type": "siming_authority_event_observed", "result_id": "siming_event_bus_return_path"},
+            {"event_type": "siming_visual_observability_requested", "result_id": "siming_event_bus_return_path"},
+            {"event_type": "siming_visual_observability_applied", "result_id": "siming_event_bus_return_path"},
+        ],
+    )
+
+    results = _index_by_id(report["results"])
+    assert results["siming_event_bus_return_path"]["status"] == "proved"
 
 
 def test_phase1_slice_audit_rejects_legacy_visual_fact_event_ack_contract() -> None:
@@ -448,6 +487,9 @@ def test_phase1_slice_audit_rejects_legacy_visual_fact_event_ack_contract() -> N
         [LocalPresentationBus] conversation_candidate_event:{"candidate_object_ids":["obj_letter"]}
         [LocalPresentationBus] character_runtime_state_delta:{"current_attention_source":"visual_fact"}
         [LocalPresentationBus] backend_message_type:siming_output
+        [LocalPresentationBus] backend_message_type:authority_event
+        [LocalPresentationBus] siming_visual_observability_request:{"event_type":"siming.visual_observability_request"}
+        [LocalPresentationBus] siming_visual_observability_applied:visual_fact:300:char_c:light_level_drop:increase observability for established light change
         """,
         focus_log="""
         [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_actor
@@ -479,6 +521,9 @@ def test_phase1_slice_audit_requires_auditory_fact_proof() -> None:
         [LocalPresentationBus] conversation_candidate_event:{"candidate_object_ids":["obj_letter"]}
         [LocalPresentationBus] character_runtime_state_delta:{"current_attention_source":"visual_fact"}
         [LocalPresentationBus] backend_message_type:siming_output
+        [LocalPresentationBus] backend_message_type:authority_event
+        [LocalPresentationBus] siming_visual_observability_request:{"event_type":"siming.visual_observability_request"}
+        [LocalPresentationBus] siming_visual_observability_applied:visual_fact:300:char_c:light_level_drop:increase observability for established light change
         """,
         focus_log="""
         [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_actor
@@ -1214,6 +1259,9 @@ func emit_visual_fact_event(...) -> Dictionary:
         [LocalPresentationBus] conversation_candidate_event:{"candidate_object_ids":["obj_letter"]}
         [LocalPresentationBus] character_runtime_state_delta:{"current_attention_source":"visual_fact"}
         [LocalPresentationBus] backend_message_type:siming_output
+        [LocalPresentationBus] backend_message_type:authority_event
+        [LocalPresentationBus] siming_visual_observability_request:{"event_type":"siming.visual_observability_request"}
+        [LocalPresentationBus] siming_visual_observability_applied:visual_fact:300:char_c:light_level_drop:increase observability for established light change
         """,
         focus_log="""
         [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_actor

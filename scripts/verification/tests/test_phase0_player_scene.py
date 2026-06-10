@@ -56,3 +56,14 @@ def test_autotest_orientation_does_not_recompute_forced_focus() -> None:
 
     assert "func _orient_player_toward(target_position: Vector3) -> void:" in controller
     assert "if not focus_override_active:\n\t\t_update_focus_target()" in controller
+
+
+def test_main_demo_wires_siming_visual_observability_presenter() -> None:
+    root = repo_root()
+    scene_text = (root / "scenes" / "phase0" / "MainDemo.tscn").read_text(encoding="utf-8")
+    script_text = (root / "scripts" / "phase0" / "SimingVisualObservabilityPresenter.gd").read_text(encoding="utf-8")
+
+    assert "SimingVisualObservabilityPresenter" in scene_text
+    assert "siming_visual_observability_requested.connect" in script_text
+    assert "siming_visual_observability_applied" in script_text
+    assert "siming_visual_observability_rejected" in script_text

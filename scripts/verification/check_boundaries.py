@@ -76,6 +76,8 @@ def evaluate_boundaries(project_root: Path) -> dict[str, object]:
     object_controller = project_root / "scripts" / "object" / "InteractiveObject.gd"
     environment_controller = project_root / "scripts" / "environment" / "EnvironmentStateController.gd"
     backend_bridge = project_root / "scripts" / "autoload" / "BackendBridge.gd"
+    local_bus = project_root / "scripts" / "autoload" / "LocalPresentationBus.gd"
+    presenter = project_root / "scripts" / "phase0" / "SimingVisualObservabilityPresenter.gd"
     siming_service = project_root / "backend" / "app" / "services" / "siming_service.py"
     verify_phase0 = project_root / "scripts" / "verification" / "verify_phase0.py"
     verify_phase1_slice = project_root / "scripts" / "verification" / "verify_phase1_slice.py"
@@ -220,6 +222,25 @@ def evaluate_boundaries(project_root: Path) -> dict[str, object]:
                 "backend/app/services/authority_event_bus.py",
                 "backend/app/services/siming_event_pipeline.py",
                 "backend/app/services/siming_event_producer.py",
+            ],
+        ),
+        _result(
+            "siming_projected_event_reaches_godot_bus",
+            "Projected Siming authority events reach Godot local presentation without direct truth ownership",
+            presenter.exists()
+            and _contains(
+                backend_bridge,
+                ['"authority_event"', "siming.visual_observability_request", "siming_visual_observability_requested"],
+            )
+            and _contains(local_bus, ["signal authority_event_received", "signal siming_visual_observability_requested"])
+            and _contains(
+                presenter,
+                ["siming_visual_observability_requested.connect", "siming_visual_observability_applied"],
+            ),
+            [
+                "scripts/autoload/BackendBridge.gd",
+                "scripts/autoload/LocalPresentationBus.gd",
+                "scripts/phase0/SimingVisualObservabilityPresenter.gd",
             ],
         ),
         _result(
