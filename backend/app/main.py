@@ -25,12 +25,15 @@ from app.debug_stream import debug_stream
 from app.models.environment_request import EnvironmentRequest
 from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent
 from app.models.raw_fact import RawFactEvent
+from app.models.runtime_state import ConversationCandidateEvent
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
 from app.models.visual_fact import VisualFactEvent
+from app.models.world_result import WorldResultBase
 from app.services.candidate_percept_service import compile_candidate_percepts
 from app.services.character_service import CharacterService
 from app.services.character_perceived_input_service import CharacterPerceivedInputService
 from app.services.character_runtime_state_service import CharacterRuntimeStateService
+from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.conversation_relation_service import ConversationRelationService
 from app.services.esm_service import ESMService
 from app.services.event_trace_service import EventTraceService
@@ -40,9 +43,18 @@ from app.services.fact_handlers.visual_fact_handler import (
 )
 from app.services.fact_router import route_raw_fact_event
 from app.services.focus_state_service import FocusStateService
+from app.services.frontend_authority_event_projection import (
+    FRONTEND_AUTHORITY_EVENT_TYPES,
+    FrontendAuthorityEventProjector,
+)
 from app.services.per_character_percept_filter import filter_candidate_for_actor
-from app.services.siming_service import SimingService
+from app.services.phase0_authority_event_adapter import Phase0AuthorityEventAdapter
 from app.services.session_runtime import SessionRuntime
+from app.services.siming_audit_writer import SimingAuditWriter
+from app.services.siming_event_consumer import SimingEventConsumer
+from app.services.siming_event_pipeline import SimingEventPipeline
+from app.services.siming_event_producer import SimingEventProducer
+from app.services.siming_runtime import SimingRuntime
 from app.ws_protocol import Envelope
 
 app = FastAPI(title="Paralls Phase0 Backend")
@@ -56,11 +68,15 @@ def reset_runtime_state() -> None:
     global character_service
     global character_perceived_input_service
     global esm_service
-    global siming_service
     global event_trace
     global focus_state
     global conversation_relation_service
     global character_runtime_state_service
+    global authority_event_adapter
+    global authority_event_bus
+    global siming_audit_writer
+    global siming_event_pipeline
+    global frontend_authority_event_projector
 
     runtime = SessionRuntime()
     character_service = CharacterService()
@@ -69,11 +85,25 @@ def reset_runtime_state() -> None:
     else:
         character_perceived_input_service.clear()
     esm_service = ESMService()
-    siming_service = SimingService()
     event_trace = EventTraceService()
     focus_state = FocusStateService()
     conversation_relation_service = ConversationRelationService()
     character_runtime_state_service = CharacterRuntimeStateService()
+    authority_event_adapter = Phase0AuthorityEventAdapter()
+    authority_event_bus = InMemoryAuthorityEventBus()
+    siming_audit_writer = SimingAuditWriter()
+    siming_event_pipeline = SimingEventPipeline(
+        bus=authority_event_bus,
+        consumer=SimingEventConsumer(),
+        runtime=SimingRuntime(),
+        producer=SimingEventProducer(authority_event_bus),
+        audit_writer=siming_audit_writer,
+    )
+    for event_type in SimingEventConsumer.ALLOWED_EVENT_TYPES:
+        authority_event_bus.subscribe(event_type, siming_event_pipeline.handle_event)
+    frontend_authority_event_projector = FrontendAuthorityEventProjector()
+    for event_type in FRONTEND_AUTHORITY_EVENT_TYPES:
+        authority_event_bus.subscribe(event_type, frontend_authority_event_projector.handle_event)
     debug_stream.clear()
 
 
@@ -161,8 +191,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             _build_visual_fact_handler_context(),
         )
         _publish_route_event(event, messages)
-        _emit_debug_from_messages(messages)
-        return messages
+        return _finalize_outbound_messages(messages)
 
     if envelope.message_type == "raw_fact_event":
         event = RawFactEvent(**envelope.payload)
@@ -231,8 +260,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             context=_build_visual_fact_handler_context(),
         )
         _publish_route_event(event, messages)
-        _emit_debug_from_messages(messages)
-        return messages
+        return _finalize_outbound_messages(messages)
 
     if envelope.message_type == "environment_request":
         event = EnvironmentRequest(**envelope.payload)
@@ -293,8 +321,10 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             event_trace.record(environment_result.result_type)
             messages.append(_as_state_machine_transition_envelope(transition.model_dump()))
             messages.append(_as_world_result_envelope(environment_result.model_dump()))
-        _emit_debug_from_messages(messages)
-        return messages
+        messages.extend(_publish_world_result_authority_event(resolution, source_event=event))
+        if environment_result is not None:
+            messages.extend(_publish_world_result_authority_event(environment_result, source_event=event))
+        return _finalize_outbound_messages(messages)
 
     if envelope.message_type != "player_input":
         return [
@@ -347,8 +377,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         response = character_service.handle_dialogue(event)
         event_trace.record(response.output_type)
         messages.append(_as_envelope("dialogue_response", response.model_dump()))
-        _emit_debug_from_messages(messages)
-        return messages
+        return _finalize_outbound_messages(messages)
 
     if route["route"] == "local_motion" and isinstance(event, MoveIntent):
         _publish_debug_event(
@@ -362,8 +391,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             )
         )
         messages.extend(_ensure_runtime_snapshot_messages(event))
-        _emit_debug_from_messages(messages)
-        return messages
+        return _finalize_outbound_messages(messages)
 
     if route["route"] == "character_service" and isinstance(event, FocusTargetChange):
         _publish_debug_event(
@@ -412,8 +440,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 detail=state,
             )
         )
-        _emit_debug_from_messages(messages)
-        return messages
+        return _finalize_outbound_messages(messages)
 
     if route["route"] == "esm_service" and isinstance(event, InteractIntent):
         action_request = esm_service.build_action_request(event)
@@ -522,14 +549,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             event_trace.record(environment_result.result_type)
             messages.append(_as_world_result_envelope(environment_result.model_dump()))
 
-            siming_output = siming_service.evaluate_world_event(
-                room_id=event.room_id,
-                actor_id="char_b",
-                object_id=event.target_object_id,
-                event_type=world_result.result_type,
-            )
-            event_trace.record(siming_output.output_type)
-            messages.append(_as_envelope("siming_output", siming_output.model_dump()))
+            messages.extend(_publish_world_result_authority_event(environment_result, source_event=event))
 
             conversation_relation_service.apply_world_result(
                 actor_id=event.actor_id,
@@ -552,6 +572,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             messages.extend(_candidate_messages(candidate))
         else:
             messages.append(_as_world_result_envelope(world_result.model_dump()))
+            messages.extend(_publish_world_result_authority_event(world_result, source_event=event))
             _publish_debug_event(
                 build_debug_event(
                     producer_ts=world_result.producer_ts,
@@ -562,8 +583,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                     detail=world_result.model_dump(),
                 )
             )
-        _emit_debug_from_messages(messages)
-        return messages
+        return _finalize_outbound_messages(messages)
 
     return messages
 
@@ -677,6 +697,41 @@ def _as_world_result_envelope(payload: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _publish_visual_fact_authority_event(event: VisualFactEvent) -> list[dict[str, object]]:
+    authority_event = authority_event_adapter.visual_fact_event(event)
+    authority_event_bus.publish(authority_event)
+    event_trace.record(authority_event.event_type)
+    return _drain_frontend_authority_events()
+
+
+def _publish_world_result_authority_event(
+    result: WorldResultBase,
+    *,
+    source_event: object,
+) -> list[dict[str, object]]:
+    authority_event = authority_event_adapter.world_result_event(result, source_event=source_event)
+    authority_event_bus.publish(authority_event)
+    event_trace.record(authority_event.event_type)
+    return _drain_frontend_authority_events()
+
+
+def _publish_candidate_authority_event(event: ConversationCandidateEvent) -> list[dict[str, object]]:
+    authority_event = authority_event_adapter.conversation_candidate_event(event)
+    authority_event_bus.publish(authority_event)
+    event_trace.record(authority_event.event_type)
+    return _drain_frontend_authority_events()
+
+
+def _drain_frontend_authority_events() -> list[dict[str, object]]:
+    return frontend_authority_event_projector.drain()
+
+
+def _finalize_outbound_messages(messages: list[dict[str, object]]) -> list[dict[str, object]]:
+    messages.extend(_drain_frontend_authority_events())
+    _emit_debug_from_messages(messages)
+    return messages
+
+
 def _publish_debug_event(event: dict[str, object]) -> None:
     debug_stream.publish(event)
 
@@ -733,11 +788,10 @@ def _build_visual_fact_handler_context() -> VisualFactHandlerContext:
     return VisualFactHandlerContext(
         conversation_relation_service=conversation_relation_service,
         event_trace=event_trace,
-        siming_service=siming_service,
         ensure_runtime_snapshot_for_event=_ensure_runtime_snapshot_for_visual_fact,
         project_runtime_delta=_project_runtime_delta,
         candidate_messages=_candidate_messages,
-        as_envelope=_as_envelope,
+        publish_visual_fact=_publish_visual_fact_authority_event,
     )
 
 
@@ -799,9 +853,7 @@ def _candidate_messages(candidate: object) -> list[dict[str, object]]:
     if runtime_delta is not None:
         messages.append(runtime_delta)
 
-    siming_candidate_output = siming_service.evaluate_candidate_relationship(candidate)
-    event_trace.record(siming_candidate_output.output_type)
-    messages.append(_as_envelope("siming_output", siming_candidate_output.model_dump()))
+    messages.extend(_publish_candidate_authority_event(candidate))
     return messages
 
 

@@ -41,14 +41,14 @@ def test_contract_entrypoints_exist() -> None:
 def test_merge_ready_service_entrypoints_resolve_current_implementations() -> None:
     from app.l1.esm.service import ESMServiceEntry
     from app.l2.character_agent.service import CharacterServiceEntry
-    from app.l2.siming.service import SimingServiceEntry
+    from app.l2.siming.service import SimingRuntimeEntry
     from app.l6.authority_bus.router import handle_envelope_entry
     from app.l6.perception_chain.candidate_compiler import compile_candidate_percepts_entry
     from app.l6.perception_chain.per_character_filter import filter_candidate_for_actor_entry
 
     assert ESMServiceEntry.__name__ == "ESMService"
     assert CharacterServiceEntry.__name__ == "CharacterService"
-    assert SimingServiceEntry.__name__ == "SimingService"
+    assert SimingRuntimeEntry.__name__ == "SimingRuntime"
     assert callable(handle_envelope_entry)
     assert callable(compile_candidate_percepts_entry)
     assert callable(filter_candidate_for_actor_entry)
