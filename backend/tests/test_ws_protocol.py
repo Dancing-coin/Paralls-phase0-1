@@ -485,6 +485,7 @@ def test_websocket_environment_request_accepts_light_level_restore_variant() -> 
         )
         for _ in range(5):
             websocket.receive_json()
+        drop_siming_output = websocket.receive_json()
 
         websocket.send_json(
             {
@@ -516,6 +517,10 @@ def test_websocket_environment_request_accepts_light_level_restore_variant() -> 
         transition = websocket.receive_json()
         environment_result = websocket.receive_json()
 
+    assert drop_siming_output["message_type"] == "siming_output"
+    assert drop_siming_output["payload"]["authority_event_type"] == "siming.fact_reveal"
+    assert drop_siming_output["payload"]["authority_event_id"].startswith("siming:dispatch_intent:")
+    assert drop_siming_output["payload"]["target_environment_id"] == "env_lamp"
     assert ack["message_type"] == "ack"
     assert ack["payload"]["accepted"] is True
     assert ack["payload"]["route"] == "esm_service"

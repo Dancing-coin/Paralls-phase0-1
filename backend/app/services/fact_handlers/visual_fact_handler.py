@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from app.models.visual_fact import VisualFactEvent
 from app.services.conversation_relation_service import ConversationRelationService
 from app.services.event_trace_service import EventTraceService
-from app.services.siming_service import SimingService
 
 Message = dict[str, object]
 VisualFactHandler = Callable[[VisualFactEvent, str, "VisualFactHandlerContext"], list[Message]]
@@ -14,11 +13,10 @@ VisualFactHandler = Callable[[VisualFactEvent, str, "VisualFactHandlerContext"],
 class VisualFactHandlerContext:
     conversation_relation_service: ConversationRelationService
     event_trace: EventTraceService
-    siming_service: SimingService
     ensure_runtime_snapshot_for_event: Callable[[VisualFactEvent], list[Message]]
     project_runtime_delta: Callable[[str, int], Message | None]
     candidate_messages: Callable[[object], list[Message]]
-    as_envelope: Callable[[str, dict[str, object]], Message]
+    publish_visual_fact: Callable[[VisualFactEvent], list[Message]]
 
 
 def handle_visual_fact_event(
@@ -45,10 +43,7 @@ def handle_visual_fact_event(
     if visual_delta is not None:
         messages.append(visual_delta)
 
-    visual_fact_siming_output = context.siming_service.evaluate_visual_fact(event)
-    if visual_fact_siming_output is not None:
-        context.event_trace.record(visual_fact_siming_output.output_type)
-        messages.append(context.as_envelope("siming_output", visual_fact_siming_output.model_dump()))
+    messages.extend(context.publish_visual_fact(event))
 
     candidate = context.conversation_relation_service.build_candidate_event(
         actor_id=event.actor_id,
