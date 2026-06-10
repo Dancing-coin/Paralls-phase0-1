@@ -4,6 +4,7 @@ const LIGHTING_TUNER := preload("res://scripts/visual/ThroneRoomLightingTuner.gd
 const THRONE_HALL_WALK_PREVIEW := preload("res://scenes/phase0/ThroneHallWalkPreview.tscn")
 const ACTOR_PERCEPTION_SAMPLER := preload("res://scripts/character/ActorPerceptionSampler.gd")
 const ACTOR_PERCEPTION_TARGET_RESOLVER := preload("res://scripts/character/ActorPerceptionTargetResolver.gd")
+const SIMING_VISUAL_OBSERVABILITY_PRESENTER := preload("res://scripts/phase0/SimingVisualObservabilityPresenter.gd")
 const FLOOR_CHECKPOINTS := [
 	{"name": "entry_carpet", "position": Vector3(0.0, 0.5, 16.0)},
 	{"name": "center_carpet", "position": Vector3(0.0, 0.5, 4.0)},
@@ -105,6 +106,7 @@ func _ready() -> void:
 			bus.world_result_received.connect(_on_world_result_received)
 		if bus.has_signal("debug_event_logged"):
 			bus.debug_event_logged.connect(_on_debug_event_logged)
+	_ensure_siming_visual_observability_presenter()
 	backend_health_request = HTTPRequest.new()
 	backend_health_request.name = "BackendHealthRequest"
 	add_child(backend_health_request)
@@ -119,6 +121,13 @@ func _ready() -> void:
 		call_deferred("_finish_scene_load_probe")
 		return
 	call_deferred("_connect_backend")
+
+func _ensure_siming_visual_observability_presenter() -> void:
+	if get_node_or_null("SimingVisualObservabilityPresenter") != null:
+		return
+	var presenter: Node = SIMING_VISUAL_OBSERVABILITY_PRESENTER.new()
+	presenter.name = "SimingVisualObservabilityPresenter"
+	add_child(presenter)
 
 func _bootstrap_throne_room_collision() -> void:
 	if get_node_or_null("ThroneRoomCollisionRoot") != null:

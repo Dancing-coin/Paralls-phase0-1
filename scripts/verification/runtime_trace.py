@@ -22,6 +22,17 @@ MARKERS: tuple[tuple[str, str, str], ...] = (
     ("character_runtime_state_delta", "runtime_projection_observed", "runtime_projection_observed"),
     ("conversation_candidate_event", "conversation_candidate_observed", "candidate_and_siming_observed"),
     ("backend_message_type:siming_output", "siming_output_observed", "candidate_and_siming_observed"),
+    ("backend_message_type:authority_event", "siming_authority_event_observed", "siming_event_bus_return_path"),
+    (
+        "siming_visual_observability_request:",
+        "siming_visual_observability_requested",
+        "siming_event_bus_return_path",
+    ),
+    (
+        "siming_visual_observability_applied:",
+        "siming_visual_observability_applied",
+        "siming_event_bus_return_path",
+    ),
 )
 
 PROJECTED_PAYLOAD_FIELDS = (

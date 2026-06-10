@@ -20,6 +20,7 @@ def test_evaluate_boundaries_proves_core_runtime_ownership_rules() -> None:
     assert statuses["godot_world_changes_consume_backend_results"] == "proved"
     assert statuses["siming_service_emits_high_level_outputs_only"] == "proved"
     assert statuses["siming_event_bus_port_exists"] == "proved"
+    assert statuses["siming_projected_event_reaches_godot_bus"] == "proved"
     assert statuses["runtime_trace_schema_is_enriched"] == "proved"
 
 

@@ -5,8 +5,10 @@ from app.models.runtime_state import ConversationCandidateEvent
 from app.models.state_machine_transition import StateMachineTransitionEvent
 from app.models.world_result import ActionResolutionResult
 from app.services.frontend_authority_event_projection import (
+    FRONTEND_AUTHORITY_EVENT_TYPES,
     FrontendAuthorityEventProjector,
     project_authority_event_as_siming_output,
+    project_authority_event_for_frontend,
 )
 from app.services.phase0_authority_event_adapter import Phase0AuthorityEventAdapter
 
@@ -181,3 +183,77 @@ def test_frontend_siming_output_projection_remains_frontend_compatibility_only()
     assert envelope["message_type"] == "siming_output"
     assert envelope["payload"]["authority_event_id"] == "siming:fact_reveal:500:cause:1"
     assert envelope["payload"]["authority_event_type"] == "siming.fact_reveal"
+
+
+def test_projector_whitelists_siming_visual_observability_authority_event() -> None:
+    event = AuthorityEvent.model_validate(
+        {
+            "event_id": "evt_siming_visual_observability_request",
+            "event_type": "siming.visual_observability_request",
+            "producer_ts": 500,
+            "room_id": "room_demo",
+            "scene_id": "scene_demo",
+            "zone_id": "zone_focus",
+            "source": {"layer": "L2", "system": "siming.dispatcher", "actor_id": None},
+            "routing": {
+                "audience_mode": "targeted",
+                "routing_mode": "event_type",
+                "target_ids": ["char_c"],
+            },
+            "priority": "p1",
+            "ttl": 5000,
+            "durability": "replayable",
+            "causation_id": "visual_fact:100",
+            "correlation_id": "visual_fact:100",
+            "payload": {
+                "established_fact_id": "visual_fact:300:char_c:light_level_drop",
+                "presentation_hint": "increase observability for established light change",
+            },
+        }
+    )
+
+    envelope = project_authority_event_for_frontend(event)
+
+    assert envelope is not None
+    assert envelope["message_type"] == "authority_event"
+    assert envelope["payload"]["event_type"] == "siming.visual_observability_request"
+    assert envelope["payload"]["event_id"] == "evt_siming_visual_observability_request"
+    assert envelope["payload"]["payload"]["established_fact_id"] == "visual_fact:300:char_c:light_level_drop"
+
+
+def test_projector_buffers_legacy_siming_output_and_authority_event_return_path() -> None:
+    event = AuthorityEvent.model_validate(
+        {
+            "event_id": "evt_siming_visual_observability_request",
+            "event_type": "siming.visual_observability_request",
+            "producer_ts": 500,
+            "room_id": "room_demo",
+            "scene_id": "scene_demo",
+            "zone_id": "zone_focus",
+            "source": {"layer": "L2", "system": "siming.dispatcher", "actor_id": None},
+            "routing": {
+                "audience_mode": "targeted",
+                "routing_mode": "event_type",
+                "target_ids": ["char_c"],
+            },
+            "priority": "p1",
+            "ttl": 5000,
+            "durability": "replayable",
+            "causation_id": "visual_fact:100",
+            "correlation_id": "visual_fact:100",
+            "payload": {
+                "established_fact_id": "visual_fact:300:char_c:light_level_drop",
+                "presentation_hint": "increase observability for established light change",
+            },
+        }
+    )
+    projector = FrontendAuthorityEventProjector()
+
+    projector.handle_event(event)
+
+    drained = projector.drain()
+    assert [message["message_type"] for message in drained] == ["siming_output", "authority_event"]
+    assert drained[0]["payload"]["authority_event_type"] == "siming.visual_observability_request"
+    assert drained[1]["payload"]["event_type"] == "siming.visual_observability_request"
+    assert projector.drain() == []
+    assert "siming.visual_observability_request" in FRONTEND_AUTHORITY_EVENT_TYPES

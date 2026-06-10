@@ -175,6 +175,9 @@ class FrontendAuthorityEventProjector:
         envelope = project_authority_event_as_siming_output(event)
         if envelope is not None:
             self._pending.append(envelope)
+            authority_event = project_authority_event_for_frontend(event)
+            if authority_event is not None:
+                self._pending.append(authority_event)
 
     def drain(self) -> list[dict[str, object]]:
         pending = self._pending

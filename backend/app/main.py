@@ -1901,8 +1901,17 @@ def _finalize_outbound_messages(messages: list[dict[str, object]]) -> list[dict[
     messages.extend(_drain_frontend_authority_events())
     messages = _insert_character_agent_execution_after_siming(messages)
     messages.extend(_observatory_messages_from_outbound(messages))
+    messages = _move_authority_events_to_tail(messages)
     _emit_debug_from_messages(messages)
     return messages
+
+
+def _move_authority_events_to_tail(messages: list[dict[str, object]]) -> list[dict[str, object]]:
+    authority_events = [message for message in messages if message.get("message_type") == "authority_event"]
+    if not authority_events:
+        return messages
+    non_authority_events = [message for message in messages if message.get("message_type") != "authority_event"]
+    return non_authority_events + authority_events
 
 
 def _insert_character_agent_execution_after_siming(messages: list[dict[str, object]]) -> list[dict[str, object]]:

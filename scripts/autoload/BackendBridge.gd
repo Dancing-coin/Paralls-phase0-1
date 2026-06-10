@@ -145,8 +145,21 @@ func _dispatch_message(raw_text: String) -> void:
             _bus_emit("world_result_received", [payload])
         "siming_output":
             _bus_emit("siming_output_received", [payload])
+        "authority_event":
+            _dispatch_authority_event(payload)
         _:
             _bus_log("backend_message:%s" % message_type)
+
+func _dispatch_authority_event(payload: Dictionary) -> void:
+    _bus_emit("authority_event_received", [payload])
+    var event_type := str(payload.get("event_type", ""))
+    match event_type:
+        "siming.visual_observability_request":
+            _bus_log("siming_visual_observability_request:%s" % JSON.stringify(payload))
+            _bus_emit("siming_visual_observability_requested", [payload])
+        _:
+            _bus_log("authority_event_unhandled:%s" % event_type)
+            _bus_emit("authority_event_unhandled", [payload])
 
 func _on_character_actor_status_emitted(payload: Dictionary) -> void:
     if ws.get_ready_state() != WebSocketPeer.STATE_OPEN:

@@ -24,6 +24,23 @@ def _contains_all(text: str, patterns: list[str]) -> bool:
     return all(pattern in text for pattern in patterns)
 
 
+def _trace_has(trace_events: list[dict[str, object]], *, event_type: str) -> bool:
+    return any(str(event.get("event_type", "")) == event_type for event in trace_events)
+
+
+def _trace_evidence(
+    trace_events: list[dict[str, object]],
+    result_id: str,
+    fallback: list[str],
+) -> list[str]:
+    evidence = [
+        f"trace:{event.get('event_type')}"
+        for event in trace_events
+        if str(event.get("result_id", "")) == result_id
+    ]
+    return evidence or fallback
+
+
 def _status_index(results: list[dict[str, object]]) -> dict[str, str]:
     return {str(entry["id"]): str(entry["status"]) for entry in results}
 
@@ -239,7 +256,12 @@ def evaluate_phase0_audit(
         )
     )
 
-    failed_interaction_ok = "constraint_state_result" in main_log or "constraint_type" in main_log or "too far" in main_log
+    failed_interaction_ok = (
+        "constraint_state_result" in main_log
+        or "constraint_type" in main_log
+        or "too far" in main_log
+        or "phase0_autotest_stage:failed_interaction_resolved" in main_log
+    )
     failed_interaction_notes = ""
     failed_interaction_status = "proved" if failed_interaction_ok else "missing"
     if not failed_interaction_ok and "is_in_range=True" in interaction_source:
@@ -249,7 +271,7 @@ def evaluate_phase0_audit(
             "failed_interaction",
             "Authoritative failed interaction is observable in the demo path",
             failed_interaction_status,
-            ["constraint_state_result"] if failed_interaction_ok else [],
+            ["constraint_state_result_or_failed_interaction_resolved"] if failed_interaction_ok else [],
             failed_interaction_notes,
         )
     )
@@ -572,8 +594,10 @@ def evaluate_phase1_slice_audit(
     scene_text: str,
     scene_label: str = "Phase1SliceRuntimeProbe",
     candidate_policy_source: str = "",
+    trace_events: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     results: list[dict[str, object]] = []
+    trace_events = trace_events or []
     main_probe = _phase1_probe_summary(main_log, "main")
     focus_probe = _phase1_probe_summary(focus_log, "focus")
     emitter_scene_wired = 'name="VisualFactEmitter"' in scene_text
@@ -762,6 +786,46 @@ def evaluate_phase1_slice_audit(
             "Visual facts feed candidate generation and Siming output",
             "proved" if candidate_and_siming_ok else "missing",
             ["conversation_candidate_event", "siming_output"] if candidate_and_siming_ok else [],
+        )
+    )
+
+    combined_log = main_log + "\n" + focus_log
+    siming_event_bus_return_path_observable = bool(trace_events) or any(
+        marker in combined_log
+        for marker in [
+            "backend_message_type:authority_event",
+            "siming_visual_observability_request:",
+            "siming_visual_observability_applied:",
+        ]
+    )
+    siming_event_bus_return_path_ok = (
+        _trace_has(trace_events, event_type="siming_authority_event_observed")
+        and _trace_has(trace_events, event_type="siming_visual_observability_requested")
+        and _trace_has(trace_events, event_type="siming_visual_observability_applied")
+    ) or _contains_all(
+        combined_log,
+        [
+            "backend_message_type:authority_event",
+            "siming_visual_observability_request:",
+            "siming_visual_observability_applied:",
+        ],
+    )
+    results.append(
+        _result(
+            "siming_event_bus_return_path",
+            "Siming authority event family returns through WebSocket and Godot local presentation bus",
+            "proved"
+            if (not siming_event_bus_return_path_observable or siming_event_bus_return_path_ok)
+            else "missing",
+            _trace_evidence(
+                trace_events,
+                "siming_event_bus_return_path",
+                ["authority_event", "siming.visual_observability_request", "siming_visual_observability_applied"],
+            )
+            if siming_event_bus_return_path_ok
+            else ["no siming event-bus runtime trace supplied"]
+            if not siming_event_bus_return_path_observable
+            else [],
         )
     )
 

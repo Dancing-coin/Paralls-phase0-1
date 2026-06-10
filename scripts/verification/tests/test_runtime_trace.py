@@ -121,3 +121,22 @@ def test_extract_runtime_trace_projects_character_agent_execution_contract_field
     assert execution_event["has_focus_state"] is True
     assert execution_event["has_action_state"] is True
     assert execution_event["has_speech_state"] is True
+
+
+def test_runtime_trace_detects_siming_event_bus_return_path() -> None:
+    events = extract_runtime_trace(
+        {
+            "main": "\n".join(
+                [
+                    "[LocalPresentationBus] backend_message_type:authority_event",
+                    '[LocalPresentationBus] siming_visual_observability_request:{"event_type":"siming.visual_observability_request"}',
+                    "[LocalPresentationBus] siming_visual_observability_applied:visual_fact:300:char_c:light_level_drop:increase observability for established light change",
+                ]
+            )
+        }
+    )
+
+    event_types = [event["event_type"] for event in events]
+    assert "siming_authority_event_observed" in event_types
+    assert "siming_visual_observability_requested" in event_types
+    assert "siming_visual_observability_applied" in event_types

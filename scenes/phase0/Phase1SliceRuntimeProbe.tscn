@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://scripts/verification/Phase1SliceRuntimeProbe.gd" id="1_probe"]
 [ext_resource type="Script" path="res://scripts/visual/VisualFactEmitter.gd" id="2_visual_fact_emitter"]
@@ -11,6 +11,7 @@
 [ext_resource type="Script" path="res://scripts/l1/facts/emitters/TactileFactEmitter.gd" id="9_tactile_fact_emitter"]
 [ext_resource type="Script" path="res://scripts/l1/facts/emitters/ThermalFactEmitter.gd" id="10_thermal_fact_emitter"]
 [ext_resource type="Script" path="res://scripts/l1/facts/emitters/OlfactoryFactEmitter.gd" id="11_olfactory_fact_emitter"]
+[ext_resource type="Script" path="res://scripts/phase0/SimingVisualObservabilityPresenter.gd" id="12_siming_visual_observability_presenter"]
 
 [node name="Phase1SliceRuntimeProbe" type="Node"]
 script = ExtResource("1_probe")
@@ -44,3 +45,6 @@ script = ExtResource("10_thermal_fact_emitter")
 
 [node name="OlfactoryFactEmitter" type="Node" parent="VisualFactEmitter"]
 script = ExtResource("11_olfactory_fact_emitter")
+
+[node name="SimingVisualObservabilityPresenter" type="Node" parent="."]
+script = ExtResource("12_siming_visual_observability_presenter")
