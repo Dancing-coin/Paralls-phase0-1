@@ -20,6 +20,12 @@ from common import (
     write_json,
     write_markdown,
 )
+from runtime_trace import extract_runtime_trace, write_runtime_trace
+
+
+SCENE_LOAD_QUIT_AFTER_FRAMES = 200
+MAIN_AUTOTEST_QUIT_AFTER_FRAMES = 1600
+FOCUS_AUTOTEST_QUIT_AFTER_FRAMES = 700
 
 
 def main() -> int:
@@ -49,7 +55,7 @@ def main() -> int:
                 "--scene",
                 "res://scenes/phase0/MainDemo.tscn",
                 "--quit-after",
-                "200",
+                str(SCENE_LOAD_QUIT_AFTER_FRAMES),
                 "--verbose",
                 "--render-thread",
                 "safe",
@@ -74,7 +80,7 @@ def main() -> int:
                 "--scene",
                 "res://scenes/phase0/MainDemo.tscn",
                 "--quit-after",
-                "700",
+                str(MAIN_AUTOTEST_QUIT_AFTER_FRAMES),
                 "--verbose",
                 "--render-thread",
                 "safe",
@@ -98,7 +104,7 @@ def main() -> int:
                 "--scene",
                 "res://scenes/phase0/MainDemo.tscn",
                 "--quit-after",
-                "700",
+                str(FOCUS_AUTOTEST_QUIT_AFTER_FRAMES),
                 "--verbose",
                 "--render-thread",
                 "safe",
@@ -112,11 +118,18 @@ def main() -> int:
             },
         )
 
+        main_log_text = read_text(main_log)
+        focus_log_text = read_text(focus_log)
+        runtime_trace = log_dir / "phase0-runtime-trace.ndjson"
+        trace_logs = {"main": main_log_text, "focus": focus_log_text}
+        trace_events = extract_runtime_trace(trace_logs)
+        write_runtime_trace(runtime_trace, trace_logs)
+
         report = evaluate_phase0_audit(
             pytest_passed=pytest_result.returncode == 0,
             scene_load_ok=scene_load_ok,
-            main_log=read_text(main_log),
-            focus_log=read_text(focus_log),
+            main_log=main_log_text,
+            focus_log=focus_log_text,
             main_screenshot_exists=main_screenshot.exists() and main_result.returncode == 0,
             focus_screenshot_exists=focus_screenshot.exists() and focus_result.returncode == 0,
             interaction_source=read_text(project_root / "backend" / "app" / "main.py"),
@@ -124,6 +137,7 @@ def main() -> int:
             voice_controller_source=read_text(project_root / "scripts" / "audio" / "SpatialVoiceController.gd"),
             player_bridge_source=read_text(project_root / "scripts" / "player" / "Phase0PlayerBridge.gd"),
             character_replica_source=read_text(project_root / "scripts" / "character" / "CharacterReplica.gd"),
+            trace_events=trace_events,
         )
         report["backend_health"] = health
         report["artifacts"] = {
@@ -133,6 +147,7 @@ def main() -> int:
             "focus_log": str(focus_log),
             "main_screenshot": str(main_screenshot),
             "focus_screenshot": str(focus_screenshot),
+            "runtime_trace": str(runtime_trace),
         }
 
         json_path = log_dir / "phase0-report.json"

@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "source": "https://github.com/ai-boost/awesome-harness-engineering",
+  "source_commit_scope": "main branch clone inspected at f397d61 during harness optimization",
+  "principle": "Organize harness references by the problem being solved, not by vendor or model.",
+  "categories": [
+    {
+      "id": "agent-loop",
+      "name": "Agent Loop",
+      "current_artifacts": [
+        "AGENTS.md",
+        "docs/harness.md",
+        "scripts/verification/harness.py"
+      ]
+    },
+    {
+      "id": "planning-task-decomposition",
+      "name": "Planning & Task Decomposition",
+      "current_artifacts": [
+        "docs/superpowers/plans/",
+        ".harness/templates/PLAN.md"
+      ]
+    },
+    {
+      "id": "context-delivery-compaction",
+      "name": "Context Delivery & Compaction",
+      "current_artifacts": [
+        "docs/INDEX.md",
+        ".harness/session-handoff.md"
+      ]
+    },
+    {
+      "id": "tool-design",
+      "name": "Tool Design",
+      "current_artifacts": [
+        "scripts/verification/common.py",
+        ".harness/templates/HARNESS_CHECKLIST.md"
+      ]
+    },
+    {
+      "id": "skills-mcp",
+      "name": "Skills & MCP",
+      "current_artifacts": [
+        "AGENTS.md",
+        "docs/harness-architecture.md"
+      ]
+    },
+    {
+      "id": "permissions-authorization",
+      "name": "Permissions & Authorization",
+      "current_artifacts": [
+        "AGENTS.md",
+        ".harness/templates/AGENTS.md"
+      ]
+    },
+    {
+      "id": "memory-state",
+      "name": "Memory & State",
+      "current_artifacts": [
+        ".harness/features.json",
+        ".harness/session-handoff.md",
+        ".harness/verification/baseline.json"
+      ]
+    },
+    {
+      "id": "task-runners-orchestration",
+      "name": "Task Runners & Orchestration",
+      "current_artifacts": [
+        "scripts/verification/harness.py",
+        ".harness/profiles/"
+      ]
+    },
+    {
+      "id": "verification-ci",
+      "name": "Verification & CI Integration",
+      "current_artifacts": [
+        ".github/workflows/harness.yml",
+        ".harness/ci/local-ci-gate.ps1"
+      ]
+    },
+    {
+      "id": "observability-tracing",
+      "name": "Observability & Tracing",
+      "current_artifacts": [
+        "scripts/verification/runtime_trace.py",
+        ".harness/verification/*-runtime-trace.ndjson"
+      ]
+    },
+    {
+      "id": "debugging-developer-experience",
+      "name": "Debugging & Developer Experience",
+      "current_artifacts": [
+        ".harness/verification/harness-run-diff.json",
+        "docs/harness-reliability.md"
+      ]
+    },
+    {
+      "id": "human-in-the-loop",
+      "name": "Human-in-the-Loop",
+      "current_artifacts": [
+        ".harness/session-handoff.md",
+        ".harness/evaluator-rubric.md"
+      ]
+    },
+    {
+      "id": "security-sandbox-permissions",
+      "name": "Security, Sandbox & Permissions",
+      "current_artifacts": [
+        "AGENTS.md",
+        ".harness/clean-state-checklist.md"
+      ]
+    },
+    {
+      "id": "evals-verification",
+      "name": "Evals & Verification",
+      "current_artifacts": [
+        "scripts/verification/tests/",
+        ".harness/rules/"
+      ]
+    }
+  ]
+}

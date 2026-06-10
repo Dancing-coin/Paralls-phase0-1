@@ -1,11 +1,10 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/character/CharacterReplica.gd" id="1_character"]
 [ext_resource type="Script" path="res://scripts/audio/SpatialVoiceController.gd" id="2_voice"]
 [ext_resource type="PackedScene" path="res://scenes/phase0/GreyboxHumanoidVisual.tscn" id="3_visual"]
-[ext_resource type="PackedScene" path="res://scenes/phase0/KnightRoleSkin.tscn" id="4_plush"]
-[ext_resource type="Script" path="res://scripts/l1/facts/emitters/RoleStateFactEmitter.gd" id="5_role_state_fact_emitter"]
-[ext_resource type="Script" path="res://scripts/l1/facts/emitters/PhysiologyStateFactEmitter.gd" id="6_physiology_state_fact_emitter"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/RoleStateFactEmitter.gd" id="4_role_state_fact_emitter"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/PhysiologyStateFactEmitter.gd" id="5_physiology_state_fact_emitter"]
 
 [node name="CharacterReplica" type="Node3D"]
 script = ExtResource("1_character")
@@ -20,14 +19,11 @@ script = ExtResource("1_character")
 
 [node name="ImportedModel" type="Node3D" parent="VisualRoot/AssetMount/RotationOffset/ScaleOffset"]
 
+[node name="RoleAssetRoot" type="Node3D" parent="VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel"]
+
 [node name="GreyboxBodyRoot" type="Node3D" parent="VisualRoot"]
 
 [node name="GreyboxHumanoidVisual" parent="VisualRoot/GreyboxBodyRoot" instance=ExtResource("3_visual")]
-
-[node name="RoleAssetRoot" type="Node3D" parent="VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel"]
-
-[node name="GodotPlushSkin" parent="VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot" instance=ExtResource("4_plush")]
-visible = false
 
 [node name="SpatialVoiceController" type="AudioStreamPlayer3D" parent="."]
 script = ExtResource("2_voice")
@@ -39,7 +35,7 @@ font_size = 32
 billboard = 1
 
 [node name="RoleStateFactEmitter" type="Node" parent="."]
-script = ExtResource("5_role_state_fact_emitter")
+script = ExtResource("4_role_state_fact_emitter")
 
 [node name="PhysiologyStateFactEmitter" type="Node" parent="."]
-script = ExtResource("6_physiology_state_fact_emitter")
+script = ExtResource("5_physiology_state_fact_emitter")

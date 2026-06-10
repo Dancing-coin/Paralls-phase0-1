@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "name": "backend-contract",
+  "order": 35,
+  "script": "scripts/verification/check_backend_contract.py",
+  "requires_godot": false,
+  "description": "Backend cross-boundary protocol contract checks"
+}

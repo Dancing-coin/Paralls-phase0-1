@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "name": "drift-rules",
+  "profile": "drift",
+  "description": "Mechanical invariants enforced by scripts/verification/check_drift.py",
+  "rules": [
+    {
+      "id": "temporary_browser_artifacts_absent",
+      "title": "Temporary browser artifacts are absent",
+      "evidence": [
+        ".harness/verification/drift-report.json:results.temporary_browser_artifacts_absent"
+      ]
+    },
+    {
+      "id": "harness_artifacts_are_gitignored",
+      "title": "Generated verification artifacts are gitignored",
+      "evidence": [
+        ".harness/verification/drift-report.json:results.harness_artifacts_are_gitignored"
+      ]
+    },
+    {
+      "id": "harness_registry_is_versionable",
+      "title": "Harness profile and rule registries remain versionable",
+      "evidence": [
+        ".harness/verification/drift-report.json:results.harness_registry_is_versionable"
+      ]
+    },
+    {
+      "id": "verification_scripts_have_tests",
+      "title": "Harness verification helpers have focused tests",
+      "evidence": [
+        ".harness/verification/drift-report.json:results.verification_scripts_have_tests"
+      ]
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
@@ -22,6 +23,7 @@ from app.debug_narration import (
     summarize_world_result,
 )
 from app.debug_stream import debug_stream
+from app.models.authority_event import AuthorityEvent
 from app.models.environment_request import EnvironmentRequest
 from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent
 from app.models.raw_fact import RawFactEvent
@@ -41,6 +43,13 @@ from app.services.fact_handlers.visual_fact_handler import (
 from app.services.fact_router import route_raw_fact_event
 from app.services.focus_state_service import FocusStateService
 from app.services.per_character_percept_filter import filter_candidate_for_actor
+from app.services.authority_event_bus import InMemoryAuthorityEventBus
+from app.services.phase0_authority_event_adapter import Phase0AuthorityEventAdapter
+from app.services.siming_audit_writer import SimingAuditWriter
+from app.services.siming_event_consumer import SimingEventConsumer
+from app.services.siming_event_pipeline import SimingEventPipeline
+from app.services.siming_event_producer import SimingEventProducer
+from app.services.siming_runtime import SimingRuntime
 from app.services.siming_service import SimingService
 from app.services.session_runtime import SessionRuntime
 from app.ws_protocol import Envelope
@@ -61,6 +70,10 @@ def reset_runtime_state() -> None:
     global focus_state
     global conversation_relation_service
     global character_runtime_state_service
+    global authority_event_bus
+    global phase0_authority_event_adapter
+    global siming_audit_writer
+    global siming_event_pipeline
 
     runtime = SessionRuntime()
     character_service = CharacterService()
@@ -74,6 +87,18 @@ def reset_runtime_state() -> None:
     focus_state = FocusStateService()
     conversation_relation_service = ConversationRelationService()
     character_runtime_state_service = CharacterRuntimeStateService()
+    authority_event_bus = InMemoryAuthorityEventBus()
+    phase0_authority_event_adapter = Phase0AuthorityEventAdapter()
+    siming_audit_writer = SimingAuditWriter()
+    siming_event_pipeline = SimingEventPipeline(
+        bus=authority_event_bus,
+        consumer=SimingEventConsumer(),
+        runtime=SimingRuntime(),
+        producer=SimingEventProducer(authority_event_bus),
+        audit_writer=siming_audit_writer,
+    )
+    for event_type in SimingEventConsumer.ALLOWED_EVENT_TYPES:
+        authority_event_bus.subscribe(event_type, siming_event_pipeline.handle_event)
     debug_stream.clear()
 
 
@@ -124,7 +149,22 @@ async def debug_websocket_endpoint(websocket: WebSocket) -> None:
     queue = debug_stream.subscribe()
     try:
         while True:
-            event = await queue.get()
+            event_task = asyncio.create_task(queue.get())
+            disconnect_task = asyncio.create_task(websocket.receive_text())
+            done, pending = await asyncio.wait(
+                {event_task, disconnect_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+
+            if disconnect_task in done:
+                disconnect_task.result()
+                continue
+
+            event = event_task.result()
             await websocket.send_json(event)
     except WebSocketDisconnect:
         return
@@ -135,6 +175,7 @@ async def debug_websocket_endpoint(websocket: WebSocket) -> None:
 def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
     if envelope.message_type == "visual_fact_event":
         event = VisualFactEvent(**envelope.payload)
+        _publish_authority_event(phase0_authority_event_adapter.visual_fact_event(event))
         _publish_debug_event(
             build_debug_event(
                 producer_ts=event.producer_ts,
@@ -166,6 +207,10 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
 
     if envelope.message_type == "raw_fact_event":
         event = RawFactEvent(**envelope.payload)
+        if event.fact_family == "visual_fact":
+            _publish_authority_event(
+                phase0_authority_event_adapter.visual_fact_event(VisualFactEvent(**event.model_dump()))
+            )
         _publish_debug_event(
             build_debug_event(
                 producer_ts=event.producer_ts,
@@ -432,6 +477,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         actor_position = runtime.get_actor_position(event.actor_id)
         world_result = esm_service.resolve_interaction(event, actor_position=actor_position)
         event_trace.record(world_result.result_type)
+        _publish_authority_event(phase0_authority_event_adapter.world_result_event(world_result, source_event=event))
 
         if world_result.result_type == "action_resolution_result":
             messages.append(_as_world_result_envelope(world_result.model_dump()))
@@ -476,6 +522,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 correlation_id=world_result.correlation_id,
             )
             event_trace.record(object_state_result.result_type)
+            _publish_authority_event(phase0_authority_event_adapter.world_result_event(object_state_result, source_event=event))
             messages.append(_as_world_result_envelope(object_state_result.model_dump()))
 
             body_state_result = esm_service.emit_body_state_result(
@@ -492,6 +539,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 correlation_id=world_result.correlation_id,
             )
             event_trace.record(body_state_result.result_type)
+            _publish_authority_event(phase0_authority_event_adapter.world_result_event(body_state_result, source_event=event))
             messages.append(_as_world_result_envelope(body_state_result.model_dump()))
             self_body_perceived = SelfBodyPerceivedEvent(
                 actor_id=event.actor_id,
@@ -520,6 +568,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 correlation_id=world_result.correlation_id,
             )
             event_trace.record(environment_result.result_type)
+            _publish_authority_event(phase0_authority_event_adapter.world_result_event(environment_result, source_event=event))
             messages.append(_as_world_result_envelope(environment_result.model_dump()))
 
             siming_output = siming_service.evaluate_world_event(
@@ -679,6 +728,10 @@ def _as_world_result_envelope(payload: dict[str, object]) -> dict[str, object]:
 
 def _publish_debug_event(event: dict[str, object]) -> None:
     debug_stream.publish(event)
+
+
+def _publish_authority_event(event: AuthorityEvent) -> None:
+    authority_event_bus.publish(event)
 
 
 def _publish_route_event(event: RawFactEvent | VisualFactEvent, messages: list[dict[str, object]]) -> None:

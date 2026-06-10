@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "name": "harness-lifecycle-rules",
+  "profile": "harness-lifecycle",
+  "description": "Mechanical invariants enforced by scripts/verification/check_harness_lifecycle.py",
+  "rules": [
+    {
+      "id": "lifecycle_feature_ledger_exists",
+      "title": "Harness feature ledger exists with pass/evidence entries",
+      "evidence": [
+        ".harness/verification/harness-lifecycle-report.json:results.lifecycle_feature_ledger_exists"
+      ]
+    },
+    {
+      "id": "lifecycle_local_ci_gate_exists",
+      "title": "Local CI gate exists and runs focused tests, compile, and full harness",
+      "evidence": [
+        ".harness/verification/harness-lifecycle-report.json:results.lifecycle_local_ci_gate_exists"
+      ]
+    },
+    {
+      "id": "lifecycle_templates_exist",
+      "title": "Future profile and rule templates exist",
+      "evidence": [
+        ".harness/verification/harness-lifecycle-report.json:results.lifecycle_templates_exist"
+      ]
+    },
+    {
+      "id": "lifecycle_retention_policy_exists",
+      "title": "Retention policy defines baseline, diff, and run archive handling",
+      "evidence": [
+        ".harness/verification/harness-lifecycle-report.json:results.lifecycle_retention_policy_exists"
+      ]
+    },
+    {
+      "id": "lifecycle_quality_docs_exist",
+      "title": "Quality, handoff, architecture, and reliability docs exist",
+      "evidence": [
+        ".harness/verification/harness-lifecycle-report.json:results.lifecycle_quality_docs_exist"
+      ]
+    }
+  ]
+}

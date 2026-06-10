@@ -723,7 +723,7 @@ Run:
 
 ```powershell
 $env:PHASE0_AUTOTEST='1'
-$env:PHASE0_AUTOTEST_SCREENSHOT='D:\Users\User\Documents\paralls-phase-0-demo\.omx\logs\phase05-upgrade-autotest.png'
+$env:PHASE0_AUTOTEST_SCREENSHOT='D:\Users\User\Documents\paralls-phase-0-demo\.harness\logs\phase05-upgrade-autotest.png'
 & 'E:\下载\Godot_v4.6.3-stable_win64.exe\Godot_v4.6.3-stable_win64_console.exe' --path 'D:\Users\User\Documents\paralls-phase-0-demo' --scene 'res://scenes/phase0/MainDemo.tscn' --quit-after 400 --verbose --render-thread safe
 ```
 

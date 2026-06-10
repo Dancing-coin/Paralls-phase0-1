@@ -39,11 +39,12 @@ enum DriverMode {
 @export var player_walk_speed_threshold := 0.08
 @export var player_run_speed_threshold := 6.4
 @export var use_root_motion_patrol := true
+@export var greybox_root_motion_step := 0.045
 
 @onready var visual_scene: Node = $VisualRoot/GreyboxBodyRoot/GreyboxHumanoidVisual
 @onready var visual_root: Node3D = $VisualRoot
 @onready var role_asset_root: Node3D = $VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot
-@onready var role_asset_scene: Node = $VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/GodotPlushSkin
+@onready var role_asset_scene: Node = get_node_or_null("VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/GodotPlushSkin")
 @onready var nameplate: Label3D = $Nameplate
 
 var home_position := Vector3.ZERO
@@ -457,20 +458,20 @@ func _move_toward_target(target: Vector3, delta: float, clear_on_arrival: bool) 
 	posture_target = Vector3.ZERO
 	if use_role_asset:
 		_set_role_asset_motion_profile_if_free("walk", "walk")
-		var root_motion_step: Vector3 = _consume_role_root_motion_world_delta()
-		if root_motion_step.length() > 0.0001:
-			var motion_amount: float = abs(root_motion_step.dot(move_direction))
-			if motion_amount <= 0.0001:
-				motion_amount = root_motion_step.length()
-			if motion_amount > 0.0001:
-				var world_step: Vector3 = move_direction * motion_amount
-				if world_step.length() > to_target.length():
-					world_step = move_direction * to_target.length()
-				global_position += world_step
-				current_velocity = world_step / max(delta, 0.0001)
-				last_root_motion_world_delta = world_step
-				_bus_log("patrol_root_motion_step:%s" % actor_id)
-				return
+	var root_motion_step: Vector3 = _consume_role_root_motion_world_delta()
+	if root_motion_step.length() > 0.0001:
+		var motion_amount: float = abs(root_motion_step.dot(move_direction))
+		if motion_amount <= 0.0001:
+			motion_amount = root_motion_step.length()
+		if motion_amount > 0.0001:
+			var world_step: Vector3 = move_direction * motion_amount
+			if world_step.length() > to_target.length():
+				world_step = move_direction * to_target.length()
+			global_position += world_step
+			current_velocity = world_step / max(delta, 0.0001)
+			last_root_motion_world_delta = world_step
+			_bus_log("patrol_root_motion_step:%s" % actor_id)
+			return
 
 	current_velocity = current_velocity.move_toward(move_direction * move_speed, move_accel * delta)
 	var step: Vector3 = current_velocity * delta
@@ -794,8 +795,10 @@ func _role_action_duration_for(action_name: String) -> float:
 			return hold_duration
 
 func _consume_role_root_motion_world_delta() -> Vector3:
-	if not use_root_motion_patrol or not use_role_asset:
+	if not use_root_motion_patrol:
 		return Vector3.ZERO
+	if not use_role_asset or role_asset_scene == null:
+		return Vector3(0.0, 0.0, -greybox_root_motion_step)
 	if role_asset_scene == null or not role_asset_scene.has_method("consume_root_motion_delta"):
 		return Vector3.ZERO
 	var local_delta: Variant = role_asset_scene.consume_root_motion_delta()

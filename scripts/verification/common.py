@@ -18,7 +18,7 @@ def repo_root() -> Path:
 
 
 def verification_dir(project_root: Path) -> Path:
-    path = project_root / ".omx" / "verification"
+    path = project_root / ".harness" / "verification"
     path.mkdir(parents=True, exist_ok=True)
     return path
 

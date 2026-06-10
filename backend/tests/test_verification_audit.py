@@ -356,6 +356,79 @@ def test_phase1_slice_audit_requires_emitter_and_authority_lane_evidence() -> No
     assert results["evidence_projection_visual_fact_observed"]["status"] == "proved"
 
 
+def test_phase0_audit_can_use_structured_trace_events() -> None:
+    report = evaluate_phase0_audit(
+        pytest_passed=True,
+        scene_load_ok=True,
+        main_log="",
+        focus_log="",
+        main_screenshot_exists=True,
+        focus_screenshot_exists=True,
+        interaction_source="",
+        esm_service_source="",
+        voice_controller_source="",
+        player_bridge_source="",
+        character_replica_source="",
+        trace_events=[
+            {"event_type": "backend_connected", "result_id": "backend_connectivity"},
+            {"event_type": "dialogue_target_selected", "result_id": "dialogue_loop"},
+            {"event_type": "dialogue_applied", "result_id": "dialogue_loop"},
+            {"event_type": "object_state_changed", "result_id": "successful_interaction"},
+            {"event_type": "constraint_result_observed", "result_id": "failed_interaction"},
+            {"event_type": "environment_state_changed", "result_id": "visible_world_state_change"},
+            {"event_type": "esm_request_lineage_observed", "result_id": "esm_request_lineage"},
+            {"event_type": "esm_thermal_field_observed", "result_id": "esm_thermal_field"},
+            {"event_type": "siming_attention_applied", "result_id": "siming_reaction"},
+            {"event_type": "voice_stub_played", "result_id": "voice_stub_path"},
+            {"event_type": "player_root_motion_observed", "result_id": "player_root_motion_chain"},
+            {"event_type": "npc_root_motion_observed", "result_id": "npc_root_motion_patrol"},
+            {"event_type": "locomotion_state_observed", "result_id": "locomotion_state_ui"},
+            {"event_type": "jump_variant_observed", "result_id": "jump_variant_probes"},
+            {"event_type": "forward_direction_observed", "result_id": "forward_direction_probe"},
+        ],
+    )
+
+    results = _index_by_id(report["results"])
+    assert report["overall_strict_phase0_passed"] is True
+    assert results["dialogue_loop"]["evidence"] == ["trace:dialogue_loop"]
+    assert results["failed_interaction"]["status"] == "proved"
+
+
+def test_phase1_slice_audit_can_use_structured_trace_events() -> None:
+    report = evaluate_phase1_slice_audit(
+        main_log="",
+        focus_log="",
+        direct_send_scan="",
+        scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "l1_only"',
+        trace_events=[
+            {"event_type": "visual_fact_emitted", "result_id": "visual_fact_pipeline", "raw": "actor_looks_at_object"},
+            {"event_type": "visual_fact_emitted", "result_id": "visual_fact_pipeline", "raw": "actor_looks_at_actor"},
+            {"event_type": "visual_fact_emitted", "result_id": "visual_fact_pipeline", "raw": "actor_near_object"},
+            {"event_type": "visual_fact_emitted", "result_id": "visual_fact_pipeline", "raw": "environment_light_drop"},
+            {
+                "event_type": "visual_fact_emitted",
+                "result_id": "evidence_projection_visual_fact_observed",
+                "raw": "evidence_projection",
+            },
+            {"event_type": "auditory_fact_observed", "result_id": "auditory_fact_observed"},
+            {"event_type": "role_state_fact_observed", "result_id": "role_state_fact_observed"},
+            {"event_type": "physiology_fact_observed", "result_id": "physiology_fact_observed"},
+            {"event_type": "tactile_fact_observed", "result_id": "tactile_fact_observed"},
+            {"event_type": "thermal_fact_observed", "result_id": "thermal_fact_observed"},
+            {"event_type": "olfactory_fact_observed", "result_id": "olfactory_fact_observed"},
+            {"event_type": "authority_visual_fact_ack", "result_id": "authority_ack_observed"},
+            {"event_type": "runtime_projection_observed", "result_id": "runtime_projection_observed", "raw": "visual_fact"},
+            {"event_type": "conversation_candidate_observed", "result_id": "candidate_and_siming_observed"},
+            {"event_type": "siming_attention_applied", "result_id": "candidate_and_siming_observed"},
+        ],
+    )
+
+    results = _index_by_id(report["results"])
+    assert report["overall_phase1_slice_passed"] is True
+    assert results["authority_ack_observed"]["evidence"] == ["trace:authority_ack_observed"]
+
+
 def test_phase1_slice_audit_rejects_legacy_visual_fact_event_ack_contract() -> None:
     report = evaluate_phase1_slice_audit(
         main_log="""

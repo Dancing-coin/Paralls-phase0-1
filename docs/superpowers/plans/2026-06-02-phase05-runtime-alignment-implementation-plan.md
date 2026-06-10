@@ -88,7 +88,7 @@
 
 ### Verification artifacts
 
-- Write screenshots under: `.omx/logs/`
+- Write screenshots under: `.harness/logs/`
 - Keep spec reference intact under: `docs/superpowers/specs/`
 
 ### Git note
@@ -999,7 +999,7 @@ Run:
 
 ```powershell
 $env:PHASE0_AUTOTEST='1'
-$env:PHASE0_AUTOTEST_SCREENSHOT='D:\Users\User\Documents\paralls-phase-0-demo\.omx\logs\phase05-player-c-runtime-alignment.png'
+$env:PHASE0_AUTOTEST_SCREENSHOT='D:\Users\User\Documents\paralls-phase-0-demo\.harness\logs\phase05-player-c-runtime-alignment.png'
 & 'E:\下载\Godot_v4.6.3-stable_win64.exe\Godot_v4.6.3-stable_win64_console.exe' --path 'D:\Users\User\Documents\paralls-phase-0-demo' --scene 'res://scenes/phase0/MainDemo.tscn' --quit-after 400 --verbose --render-thread safe
 ```
 
@@ -1017,7 +1017,7 @@ Run:
 
 ```powershell
 $env:PHASE0_FOCUS_AUTOTEST='1'
-$env:PHASE0_AUTOTEST_SCREENSHOT='D:\Users\User\Documents\paralls-phase-0-demo\.omx\logs\phase05-focus-response-runtime-alignment.png'
+$env:PHASE0_AUTOTEST_SCREENSHOT='D:\Users\User\Documents\paralls-phase-0-demo\.harness\logs\phase05-focus-response-runtime-alignment.png'
 & 'E:\下载\Godot_v4.6.3-stable_win64.exe\Godot_v4.6.3-stable_win64_console.exe' --path 'D:\Users\User\Documents\paralls-phase-0-demo' --scene 'res://scenes/phase0/MainDemo.tscn' --quit-after 400 --verbose --render-thread safe
 ```
 
@@ -1033,8 +1033,8 @@ Expected:
 Open:
 
 ```text
-.omx/logs/phase05-player-c-runtime-alignment.png
-.omx/logs/phase05-focus-response-runtime-alignment.png
+.harness/logs/phase05-player-c-runtime-alignment.png
+.harness/logs/phase05-focus-response-runtime-alignment.png
 ```
 
 Expected:

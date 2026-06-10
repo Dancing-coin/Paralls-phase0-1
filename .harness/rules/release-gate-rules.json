@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "name": "release-gate-rules",
+  "profile": "release-gate",
+  "description": "Mechanical invariants enforced by scripts/verification/check_release_gate.py",
+  "rules": [
+    {
+      "id": "release_gate_metadata_exists",
+      "title": "Release gate metadata points at the full harness profile",
+      "evidence": [
+        ".harness/verification/release-gate-report.json:results.release_gate_metadata_exists"
+      ]
+    },
+    {
+      "id": "ci_harness_workflow_exists",
+      "title": "CI harness workflow exists",
+      "evidence": [
+        ".harness/verification/release-gate-report.json:results.ci_harness_workflow_exists"
+      ]
+    },
+    {
+      "id": "ci_runs_full_harness_profile",
+      "title": "CI workflow invokes the full harness profile",
+      "evidence": [
+        ".harness/verification/release-gate-report.json:results.ci_runs_full_harness_profile"
+      ]
+    },
+    {
+      "id": "local_ci_gate_exists",
+      "title": "Local CI-equivalent gate exists",
+      "evidence": [
+        ".harness/verification/release-gate-report.json:results.local_ci_gate_exists"
+      ]
+    },
+    {
+      "id": "local_ci_gate_matches_release_profile",
+      "title": "Local CI-equivalent gate invokes the same full harness profile",
+      "evidence": [
+        ".harness/verification/release-gate-report.json:results.local_ci_gate_matches_release_profile"
+      ]
+    }
+  ]
+}

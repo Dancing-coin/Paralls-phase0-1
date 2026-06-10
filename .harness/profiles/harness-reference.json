@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "name": "harness-reference",
+  "order": 40,
+  "script": "scripts/verification/check_harness_reference.py",
+  "requires_godot": false,
+  "description": "External harness reference taxonomy and template coverage checks"
+}

@@ -1,7 +1,7 @@
 extends Node3D
 
 const LIGHTING_TUNER := preload("res://scripts/visual/ThroneRoomLightingTuner.gd")
-const THRONE_HALL_WALK_PREVIEW := preload("res://scenes/phase0/ThroneHallWalkPreview.tscn")
+const THRONE_HALL_WALK_PREVIEW_PATH := "res://scenes/phase0/ThroneHallWalkPreview.tscn"
 const FLOOR_CHECKPOINTS := [
 	{"name": "entry_carpet", "position": Vector3(0.0, 0.5, 16.0)},
 	{"name": "center_carpet", "position": Vector3(0.0, 0.5, 4.0)},
@@ -94,7 +94,10 @@ func _bootstrap_throne_room_collision() -> void:
 		return
 	var mesh_lookup := {}
 	_build_imported_mesh_lookup(imported_root, mesh_lookup)
-	var preview_scene := THRONE_HALL_WALK_PREVIEW.instantiate()
+	var preview_resource := load(THRONE_HALL_WALK_PREVIEW_PATH)
+	if not (preview_resource is PackedScene):
+		return
+	var preview_scene := (preview_resource as PackedScene).instantiate()
 	if preview_scene == null:
 		return
 	var collision_root := Node3D.new()
@@ -510,7 +513,8 @@ func _orient_player_toward(target_position: Vector3) -> void:
 		player.rotation.y = yaw
 		if camera_holder:
 			camera_holder.rotation.y = yaw
-	_update_focus_target()
+	if not focus_override_active:
+		_update_focus_target()
 
 func _move_player_to_demo_vantage() -> void:
 	player.global_position = autotest_final_position

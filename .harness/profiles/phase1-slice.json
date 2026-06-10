@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "name": "phase1-slice",
+  "order": 60,
+  "script": "scripts/verification/verify_phase1_slice.py",
+  "requires_godot": true,
+  "description": "Phase1-shaped visual fact, authority, runtime projection, and Siming validation"
+}

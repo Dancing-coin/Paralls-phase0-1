@@ -12,10 +12,10 @@ extends Node
 @export var crouch_toggle_action := "phase0_toggle_crouch"
 @export var character_c_sync_enabled := true
 @export var hide_player_visual_shell := true
-@export var player_root_motion_enabled := true
+@export var player_root_motion_enabled := false
 
 @onready var embodiment: Node = $"../Phase0Embodiment"
-@onready var player: PlayerCharacter = get_parent() as PlayerCharacter
+@onready var player: CharacterBody3D = get_parent() as CharacterBody3D
 
 var forced_move_direction := Vector3.ZERO
 var forced_run_state := false
@@ -114,6 +114,12 @@ func set_forced_player_motion(world_direction: Vector3, wants_run: bool = false)
 func clear_forced_player_motion() -> void:
 	forced_move_direction = Vector3.ZERO
 	forced_run_state = false
+
+func get_forced_move_direction() -> Vector3:
+	return forced_move_direction
+
+func is_forced_run_requested() -> bool:
+	return forced_run_state
 
 func trigger_forced_jump(jump_type: String) -> void:
 	forced_jump_request = jump_type
@@ -248,15 +254,18 @@ func _resolve_player_move_direction() -> Vector3:
 		return Vector3.ZERO
 
 	var input_vector := Input.get_vector(
-		player.move_left_action,
-		player.move_right_action,
-		player.move_forward_action,
-		player.move_backward_action
+		str(player.get("move_left_action")),
+		str(player.get("move_right_action")),
+		str(player.get("move_forward_action")),
+		str(player.get("move_backward_action"))
 	)
 	var move_direction := Vector3(input_vector.x, 0.0, input_vector.y)
 	if move_direction.length() <= 0.001:
 		return Vector3.ZERO
-	return move_direction.rotated(Vector3.UP, -player.cam_holder.global_rotation.y).normalized()
+	var camera_holder := player.find_child("CameraHolder", true, false)
+	if camera_holder is Node3D:
+		return move_direction.rotated(Vector3.UP, -(camera_holder as Node3D).global_rotation.y).normalized()
+	return move_direction.normalized()
 
 func _cycle_gait_mode() -> void:
 	if locomotion_stance_mode == STANCE_CROUCH:
@@ -277,11 +286,18 @@ func set_gait_mode_by_name(gait_name: String) -> void:
 func set_crouch_enabled(enabled: bool) -> void:
 	locomotion_stance_mode = STANCE_CROUCH if enabled else STANCE_STAND
 
+func get_current_gait_name() -> String:
+	var move_direction := _resolve_player_move_direction()
+	return _resolve_gait_name(move_direction, _should_run(move_direction))
+
+func get_current_stance_name() -> String:
+	return _resolve_stance_name()
+
 func _should_run(move_direction: Vector3) -> bool:
 	return (
 		locomotion_stance_mode == STANCE_STAND
 		and move_direction.length() > 0.001
-		and (forced_run_state or (player != null and Input.is_action_pressed(player.run_action)))
+		and (forced_run_state or (player != null and Input.is_action_pressed(str(player.get("run_action")))))
 	)
 
 func _resolve_stance_name() -> String:
@@ -300,7 +316,7 @@ func _resolve_jump_type(move_direction: Vector3, wants_run: bool) -> String:
 	if player == null:
 		return "none"
 	if player.is_on_floor():
-		if Input.is_action_just_pressed(player.jump_action) and move_direction.length() > 0.001:
+		if Input.is_action_just_pressed(str(player.get("jump_action"))) and move_direction.length() > 0.001:
 			current_jump_type = "single_leg" if wants_run else "two_foot"
 		elif current_jump_type != "none" and abs(player.velocity.y) > 0.001:
 			return current_jump_type

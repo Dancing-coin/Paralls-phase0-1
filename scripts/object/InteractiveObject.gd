@@ -15,7 +15,16 @@ func _ready() -> void:
     _apply_visual_state()
 
 func apply_result(payload: Dictionary) -> void:
-    current_state = str(payload.get("current_state", payload.get("result_summary", current_state)))
+    var result_type := str(payload.get("result_type", ""))
+    if result_type == "action_resolution_result":
+        current_state = "object interaction accepted"
+    else:
+        current_state = str(
+            payload.get(
+                "current_state",
+                payload.get("stable_state_summary", payload.get("result_summary", current_state))
+            )
+        )
     _apply_visual_state()
     _bus_log("object_state:%s:%s" % [object_id, current_state])
     _emit_object_visual_fact()

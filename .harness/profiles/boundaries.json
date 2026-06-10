@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "name": "boundaries",
+  "order": 20,
+  "script": "scripts/verification/check_boundaries.py",
+  "requires_godot": false,
+  "description": "Static architecture and runtime ownership boundary checks"
+}

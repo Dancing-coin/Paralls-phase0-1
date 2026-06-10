@@ -4,6 +4,7 @@
 
 # Local agent/runtime state
 .omx/
+.harness/verification/
 .claude/
 .sixth/
 .worktrees/
@@ -15,3 +16,4 @@ push-*.log
 __pycache__/
 *.pyc
 .pytest_cache/
+.idea

@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "name": "change-lifecycle",
+  "order": 39,
+  "script": "scripts/verification/check_change_lifecycle.py",
+  "requires_godot": false,
+  "description": "OpenSpec, Superpowers, Harness, Goal, and native subagent workflow checks"
+}

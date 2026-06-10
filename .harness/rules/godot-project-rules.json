@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "name": "godot-project-rules",
+  "profile": "godot-project",
+  "description": "Mechanical invariants enforced by scripts/verification/check_godot_project.py",
+  "rules": [
+    {
+      "id": "project_main_scene_exists",
+      "title": "Godot project declares a main scene and the scene exists",
+      "evidence": [
+        ".harness/verification/godot-project-report.json:results.project_main_scene_exists"
+      ]
+    },
+    {
+      "id": "autoload_scripts_exist",
+      "title": "Godot autoload entries point at existing scripts",
+      "evidence": [
+        ".harness/verification/godot-project-report.json:results.autoload_scripts_exist"
+      ]
+    },
+    {
+      "id": "scene_resource_paths_exist",
+      "title": "Godot scenes and scripts reference existing res:// resources",
+      "evidence": [
+        ".harness/verification/godot-project-report.json:results.scene_resource_paths_exist"
+      ]
+    }
+  ]
+}

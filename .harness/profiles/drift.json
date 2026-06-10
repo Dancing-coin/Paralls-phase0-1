@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "name": "drift",
+  "order": 30,
+  "script": "scripts/verification/check_drift.py",
+  "requires_godot": false,
+  "description": "Cleanup and local artifact drift checks"
+}

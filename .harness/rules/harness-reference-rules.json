@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "name": "harness-reference-rules",
+  "profile": "harness-reference",
+  "description": "Mechanical invariants enforced by scripts/verification/check_harness_reference.py",
+  "rules": [
+    {
+      "id": "reference_taxonomy_exists",
+      "title": "External harness taxonomy exists with source metadata",
+      "evidence": [
+        ".harness/verification/harness-reference-report.json:results.reference_taxonomy_exists"
+      ]
+    },
+    {
+      "id": "reference_categories_have_current_artifacts",
+      "title": "All external taxonomy categories map to current project artifacts",
+      "evidence": [
+        ".harness/verification/harness-reference-report.json:results.reference_categories_have_current_artifacts"
+      ]
+    },
+    {
+      "id": "awesome_templates_adapted",
+      "title": "Awesome Harness templates are adapted for Paralls",
+      "evidence": [
+        ".harness/verification/harness-reference-report.json:results.awesome_templates_adapted"
+      ]
+    },
+    {
+      "id": "reference_docs_updated",
+      "title": "Harness docs describe the adapted external reference coverage",
+      "evidence": [
+        ".harness/verification/harness-reference-report.json:results.reference_docs_updated"
+      ]
+    }
+  ]
+}

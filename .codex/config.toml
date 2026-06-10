@@ -1,0 +1,4 @@
+sandbox_mode = "danger-full-access"
+[mcp_servers.godot-mcp-pro]
+command = "node"
+args = ["E:/User/Documents/tools/godot-mcp-pro-v1.14.1/server/build/index.js"]
