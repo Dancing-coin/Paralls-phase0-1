@@ -82,6 +82,7 @@ Latest run manifest, baseline, and diff artifacts are written under `.harness/ve
 
 ## Reference Material
 
+- `docs/phase1/`
 - `docs/reference/phase1-event-bus/`
 - `docs/reference/phase1-character-agent/`
 - `docs/reference/phase1-siming/`
