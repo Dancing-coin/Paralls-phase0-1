@@ -116,10 +116,16 @@ func set_forced_player_motion(world_direction: Vector3, wants_run: bool = false)
 	if forced_move_direction.length() > 1.0:
 		forced_move_direction = forced_move_direction.normalized()
 	forced_run_state = wants_run
+	if player and player.has_method("set_forced_control"):
+		var local_x := forced_move_direction.dot(player.global_basis.x)
+		var local_y := forced_move_direction.dot(-player.global_basis.z)
+		player.set_forced_control(Vector2(local_x, local_y), wants_run)
 
 func clear_forced_player_motion() -> void:
 	forced_move_direction = Vector3.ZERO
 	forced_run_state = false
+	if player and player.has_method("clear_forced_control"):
+		player.clear_forced_control()
 
 func trigger_forced_jump(jump_type: String) -> void:
 	forced_jump_request = jump_type

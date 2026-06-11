@@ -500,8 +500,8 @@ func _apply_knight_scene_pose(phase_value: float, profile: Dictionary) -> void:
 	var crouch_active: bool = current_motion_profile == "crouch_walk" or current_motion_profile == "crouch_idle"
 	var stance_drop: float = -0.18 if crouch_active else 0.0
 	var stride_abs: float = abs(phase_value)
-	var strafe_shift := clamp(move_x, -1.0, 1.0) * 0.018
-	var backpedal_pitch := max(-move_y, 0.0) * 0.08
+	var strafe_shift: float = clamp(move_x, -1.0, 1.0) * 0.018
+	var backpedal_pitch: float = max(-move_y, 0.0) * 0.08
 	knight_scene.position = base_knight_scene_position + Vector3(strafe_shift, stance_drop + stride_abs * float(profile.get("hips_bob", 0.0)) * 0.7, 0.0)
 	var crouch_pitch: float = 0.16 if crouch_active else 0.0
 	knight_scene.rotation = base_knight_scene_rotation + Vector3(crouch_pitch + backpedal_pitch, 0.0, -strafe_shift * 2.2)

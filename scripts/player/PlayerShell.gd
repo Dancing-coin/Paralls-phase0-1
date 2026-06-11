@@ -47,6 +47,8 @@ var motion_state: Dictionary = {}
 var look_pitch := 0.0
 var queued_jump_variant := ""
 var queued_jump_move_local := Vector2.ZERO
+var forced_move_local := Vector2.ZERO
+var forced_run_state := false
 
 func _ready() -> void:
 	_recalculate_jump_profile()
@@ -124,12 +126,20 @@ func can_trigger_movement_jump() -> bool:
 func get_camera() -> Camera3D:
 	return camera
 
+func set_forced_control(move_local: Vector2, wants_run: bool) -> void:
+	forced_move_local = move_local.limit_length(1.0)
+	forced_run_state = wants_run
+
+func clear_forced_control() -> void:
+	forced_move_local = Vector2.ZERO
+	forced_run_state = false
+
 func queue_forced_jump(variant: String) -> void:
 	queued_jump_variant = variant
 
 func _build_human_intent_frame() -> Dictionary:
 	var move_local := queued_jump_move_local if queued_jump_move_local.length() > 0.001 else _current_move_local_input()
-	var gait := "run" if Input.is_action_pressed(run_action) and move_local.length() > 0.001 else "walk"
+	var gait := "run" if (forced_run_state or Input.is_action_pressed(run_action)) and move_local.length() > 0.001 else "walk"
 	var action := "locomotion" if move_local.length() > 0.001 else "idle"
 	if queued_jump_variant != "":
 		action = "jump_%s" % queued_jump_variant
@@ -159,6 +169,8 @@ func _publish_motion_state(next_motion_state: Dictionary) -> void:
 	}
 
 func _current_move_local_input() -> Vector2:
+	if forced_move_local.length() > 0.001:
+		return forced_move_local
 	return Input.get_vector(move_left_action, move_right_action, move_forward_action, move_backward_action)
 
 func _recalculate_jump_profile() -> void:

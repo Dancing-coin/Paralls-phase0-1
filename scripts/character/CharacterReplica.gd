@@ -525,7 +525,7 @@ func _update_player_shell_locomotion() -> void:
 	var move_x := float(player_presentation_input.get("move_x", 0.0))
 	var move_y := float(player_presentation_input.get("move_y", 0.0))
 	var planar_speed := float(player_presentation_input.get("speed", player_shell_velocity.length()))
-	var has_move_input := abs(move_x) > 0.001 or abs(move_y) > 0.001
+	var has_move_input: bool = abs(move_x) > 0.001 or abs(move_y) > 0.001
 	if not player_shell_grounded:
 		locomotion_state = LocomotionState.ATTEND
 		if use_role_asset and player_jump_type != "none":
