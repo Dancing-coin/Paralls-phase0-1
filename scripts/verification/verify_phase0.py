@@ -20,6 +20,7 @@ from common import (
     write_json,
     write_markdown,
 )
+from runtime_trace import write_runtime_trace
 
 
 def main() -> int:
@@ -112,11 +113,17 @@ def main() -> int:
             },
         )
 
+        main_log_text = read_text(main_log)
+        focus_log_text = read_text(focus_log)
+        runtime_trace = log_dir / "phase0-runtime-trace.ndjson"
+        trace_logs = {"main": main_log_text, "focus": focus_log_text}
+        write_runtime_trace(runtime_trace, trace_logs)
+
         report = evaluate_phase0_audit(
             pytest_passed=pytest_result.returncode == 0,
             scene_load_ok=scene_load_ok,
-            main_log=read_text(main_log),
-            focus_log=read_text(focus_log),
+            main_log=main_log_text,
+            focus_log=focus_log_text,
             main_screenshot_exists=main_screenshot.exists() and main_result.returncode == 0,
             focus_screenshot_exists=focus_screenshot.exists() and focus_result.returncode == 0,
             interaction_source=read_text(project_root / "backend" / "app" / "main.py"),
@@ -133,6 +140,7 @@ def main() -> int:
             "focus_log": str(focus_log),
             "main_screenshot": str(main_screenshot),
             "focus_screenshot": str(focus_screenshot),
+            "runtime_trace": str(runtime_trace),
         }
 
         json_path = log_dir / "phase0-report.json"

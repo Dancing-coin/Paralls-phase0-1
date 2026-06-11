@@ -41,7 +41,7 @@
     },
     {
       "id": "harness_artifacts_are_project_local",
-      "title": "Harness artifacts use .harness instead of OMX runtime paths",
+      "title": "Harness artifacts use .harness without retired state references",
       "evidence": [
         ".harness/verification/boundary-report.json:results.harness_artifacts_are_project_local"
       ]

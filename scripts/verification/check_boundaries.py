@@ -40,6 +40,41 @@ def _scan_direct_visual_fact_bypass(project_root: Path) -> list[str]:
     return suspicious
 
 
+def _scan_retired_state_references(project_root: Path) -> list[str]:
+    forbidden_marker = "." + "o" + "mx"
+    search_roots = [
+        project_root / "AGENTS.md",
+        project_root / "PHASE0_README.md",
+        project_root / ".gitignore",
+        project_root / ".codex",
+        project_root / ".github",
+        project_root / ".harness",
+        project_root / "docs",
+        project_root / "openspec",
+        project_root / "scripts",
+    ]
+    references: list[str] = []
+    for root in search_roots:
+        if not root.exists():
+            continue
+        paths = [root] if root.is_file() else list(root.rglob("*"))
+        for path in paths:
+            if not path.is_file():
+                continue
+            relative_parts = path.relative_to(project_root).parts
+            if "__pycache__" in relative_parts:
+                continue
+            if len(relative_parts) >= 2 and relative_parts[0] == ".harness" and relative_parts[1] == "verification":
+                continue
+            if path.name == "check_boundaries.py":
+                continue
+            if path.suffix.lower() not in {".gd", ".md", ".py", ".toml", ".json", ".yaml", ".yml", ".ps1", ""}:
+                continue
+            if forbidden_marker in read_text(path):
+                references.append(str(path.relative_to(project_root)).replace("\\", "/"))
+    return references
+
+
 def evaluate_boundaries(project_root: Path) -> dict[str, object]:
     docs_index = project_root / "docs" / "INDEX.md"
     harness_doc = project_root / "docs" / "harness.md"
@@ -62,6 +97,7 @@ def evaluate_boundaries(project_root: Path) -> dict[str, object]:
     siming_producer = project_root / "backend" / "app" / "services" / "siming_event_producer.py"
 
     bypasses = _scan_direct_visual_fact_bypass(project_root)
+    retired_state_references = _scan_retired_state_references(project_root)
     results = [
         _result(
             "docs_index_exists",
@@ -111,18 +147,18 @@ def evaluate_boundaries(project_root: Path) -> dict[str, object]:
         ),
         _result(
             "harness_artifacts_are_project_local",
-            "Harness artifacts use the project-local .harness directory",
+            "Harness artifacts use the project-local .harness directory without retired state references",
             _contains(common, ['".harness"', '"verification"'])
-            and _contains(project_root / "AGENTS.md", ["Goal complements the `.omx/` runtime state"]),
-            ["scripts/verification/common.py", "AGENTS.md"],
+            and not retired_state_references,
+            ["scripts/verification/common.py", "AGENTS.md", "PHASE0_README.md"],
+            "\n".join(retired_state_references),
         ),
         _result(
             "runtime_trace_artifacts_wired",
-            "Runtime trace helper is available and covered for structured NDJSON artifacts",
-            runtime_trace.exists()
-            and (project_root / "scripts" / "verification" / "tests" / "test_runtime_trace.py").exists()
-            and _contains(runtime_trace, ["write_runtime_trace", "extract_runtime_trace"]),
-            ["scripts/verification/runtime_trace.py", "scripts/verification/tests/test_runtime_trace.py"],
+            "Runtime verification profiles write structured NDJSON trace artifacts",
+            _contains(verify_phase0, ["write_runtime_trace", "phase0-runtime-trace.ndjson"])
+            and _contains(verify_phase1_slice, ["write_runtime_trace", "phase1-slice-runtime-trace.ndjson"]),
+            ["scripts/verification/verify_phase0.py", "scripts/verification/verify_phase1_slice.py"],
         ),
         _result(
             "backend_parses_player_input_models",

@@ -36,7 +36,7 @@ The harness may inspect docs, manifests, Python source, Godot scene text, logs, 
 
 ## Change Lifecycle
 
-`docs/ai-engineering-workflow.md` defines the project workflow for AI-assisted changes: OpenSpec/design artifacts define intent, Superpowers skills enforce execution discipline, Harness profiles accept or reject results, and Goal tracks long-running task continuity. OMX remains the repository orchestration/runtime-state surface under `AGENTS.md`; `.harness` records durable acceptance evidence.
+`docs/ai-engineering-workflow.md` defines the project workflow for AI-assisted changes: OpenSpec/design artifacts define intent, Superpowers skills enforce execution discipline, Harness profiles accept or reject results, and Goal tracks long-running task continuity. `.harness` records durable acceptance evidence.
 
 ## External Reference Coverage
 

@@ -16,6 +16,7 @@ This is the agent-readable map for the runnable Paralls Phase 0 validation demo.
 - `docs/superpowers/plans/2026-06-03-harness-engineering-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-10-ai-engineering-workflow-integration-design.md`
 - `docs/superpowers/plans/2026-06-10-ai-engineering-workflow-integration-implementation-plan.md`
+- `docs/superpowers/plans/2026-06-10-siming-event-bus-final-merge-retrospective.md`
 - `docs/superpowers/specs/2026-06-02-phase05-runtime-alignment-design.md`
 - `docs/superpowers/plans/2026-06-02-phase05-runtime-alignment-implementation-plan.md`
 

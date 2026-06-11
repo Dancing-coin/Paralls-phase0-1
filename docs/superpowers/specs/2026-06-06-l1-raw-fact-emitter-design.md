@@ -505,7 +505,7 @@ This design does not attempt to solve:
 Godot MCP Pro was not available in the current Codex session environment:
 
 - no Godot MCP tools were exposed through tool discovery
-- the local Codex MCP config showed only OMX servers
+- the local Codex MCP config did not expose Godot MCP servers
 - no local Godot MCP Pro package or command was found in the checked standard locations
 
 So this design was grounded through repository inspection and upstream source documents, not through live Godot MCP editor/runtime inspection.

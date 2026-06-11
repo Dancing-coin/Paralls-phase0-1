@@ -43,7 +43,7 @@ approved idea
 
 Use Codex native subagents for independent, bounded work lanes when parallelism improves throughput. The lead agent owns integration, conflict resolution, and final verification. Do not use child agents as a substitute for a written spec, plan, or harness evidence.
 
-Goal is the long-running objective ledger for explicit tasks, while OMX remains the repository orchestration and runtime-state surface described by `AGENTS.md`. New work should keep durable acceptance evidence in `.harness` and use Goal only for active task continuity; do not use either surface as a substitute for specs, plans, tests, or harness reports.
+Goal is the long-running objective ledger for explicit tasks. New work should keep durable acceptance evidence in `.harness` and use Goal only for active task continuity; do not use either surface as a substitute for specs, plans, tests, or harness reports.
 
 ## Required Gates
 

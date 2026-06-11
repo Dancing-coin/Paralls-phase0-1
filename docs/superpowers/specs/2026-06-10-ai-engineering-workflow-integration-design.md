@@ -20,7 +20,7 @@ The harness profile verifies that this workflow is discoverable from project ent
 - This is a development-process and verification-layer change only.
 - It must not change Godot runtime behavior, backend authority behavior, or Siming logic.
 - Goal is execution state, not a source of truth.
-- Goal records active task continuity while OMX remains the repository orchestration/runtime-state surface.
+- Goal records active task continuity while `.harness` records durable acceptance evidence.
 
 ## Acceptance
 

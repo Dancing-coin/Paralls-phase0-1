@@ -21,6 +21,7 @@ from common import (
     write_json,
     write_markdown,
 )
+from runtime_trace import write_runtime_trace
 
 
 def main() -> int:
@@ -93,9 +94,15 @@ def main() -> int:
             },
         )
 
+        main_log_text = read_text(main_log)
+        focus_log_text = read_text(focus_log)
+        runtime_trace = log_dir / "phase1-slice-runtime-trace.ndjson"
+        trace_logs = {"main": main_log_text, "focus": focus_log_text}
+        write_runtime_trace(runtime_trace, trace_logs)
+
         report = evaluate_phase1_slice_audit(
-            main_log=read_text(main_log),
-            focus_log=read_text(focus_log),
+            main_log=main_log_text,
+            focus_log=focus_log_text,
             direct_send_scan=scan_direct_visual_fact_bypass(project_root),
             scene_text=read_text(project_root / "scenes" / "phase0" / "MainDemo.tscn"),
             candidate_policy_source=read_text(project_root / "backend" / "app" / "services" / "candidate_percept_service.py"),
@@ -107,6 +114,7 @@ def main() -> int:
             "focus_log": str(focus_log),
             "main_screenshot": str(main_screenshot),
             "focus_screenshot": str(focus_screenshot),
+            "runtime_trace": str(runtime_trace),
         }
 
         json_path = log_dir / "phase1-slice-report.json"

@@ -11,7 +11,7 @@ REQUIRED_RULE_IDS = {
     "workflow_doc_exists",
     "change_lifecycle_profile_registered",
     "openspec_superpowers_harness_goal_chain_documented",
-    "goal_replaces_omx_runtime_state",
+    "goal_owns_project_workflow_state",
     "workflow_templates_gate_execution",
     "agents_entry_map_routes_goal_superpowers_native_subagents",
 }
@@ -109,19 +109,18 @@ def evaluate_change_lifecycle(project_root: Path) -> dict[str, object]:
             ["docs/ai-engineering-workflow.md"],
         ),
         _result(
-            "goal_replaces_omx_runtime_state",
-            "Goal and OMX have separate workflow-state responsibilities",
+            "goal_owns_project_workflow_state",
+            "Goal owns active project workflow continuity",
             all(
                 marker in workflow_text
                 for marker in [
                     "Goal is the long-running objective ledger",
-                    "OMX remains the repository orchestration and runtime-state surface",
+                    "durable acceptance evidence in `.harness`",
                     "create_goal",
                     "update_goal",
                 ]
             )
-            and ".omx/" in agents_text
-            and "Goal complements the `.omx/` runtime state" in agents_text,
+            and ".harness/verification/" in agents_text,
             ["docs/ai-engineering-workflow.md", "AGENTS.md"],
         ),
         _result(
@@ -139,7 +138,7 @@ def evaluate_change_lifecycle(project_root: Path) -> dict[str, object]:
         _result(
             "agents_entry_map_routes_goal_superpowers_native_subagents",
             "AGENTS.md routes large work through Goal, Superpowers, Harness, and native subagents",
-            _contains(agents_md, ["docs/ai-engineering-workflow.md", "Goal", "Superpowers", "native subagents", ".omx/"]),
+            _contains(agents_md, ["docs/ai-engineering-workflow.md", "Goal", "Superpowers", "native subagents", ".harness/verification/"]),
             ["AGENTS.md"],
         ),
     ]

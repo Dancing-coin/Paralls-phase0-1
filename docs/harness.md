@@ -98,7 +98,7 @@ Current mechanical invariants include:
 - docs index and harness guide exist
 - visual facts use the approved emitter path
 - WebSocket messages keep an explicit envelope model
-- harness artifacts use `.harness`, not OMX runtime paths
+- harness artifacts use `.harness/verification`
 - runtime profiles write structured NDJSON traces
 - runtime trace projects stable message and payload fields
 - backend parses `player_input` payloads into explicit models
@@ -213,7 +213,7 @@ Current mechanical invariants include:
 - `docs/ai-engineering-workflow.md` exists with matching design and implementation plan artifacts
 - `.harness/profiles/change-lifecycle.json` and `.harness/rules/change-lifecycle-rules.json` are registered
 - OpenSpec/design, Superpowers, Harness, and Goal handoff rules are documented
-- Goal records active task continuity while OMX remains the repository orchestration/runtime-state surface
+- Goal records active task continuity while `.harness` records durable acceptance evidence
 - templates require the relevant workflow gates before execution and handoff
 - `AGENTS.md` routes large work through Goal, Superpowers, Harness, and native subagents
 

@@ -26,10 +26,10 @@
       ]
     },
     {
-      "id": "goal_replaces_omx_runtime_state",
-      "title": "Goal and OMX have separate workflow-state responsibilities",
+      "id": "goal_owns_project_workflow_state",
+      "title": "Goal owns active project workflow continuity",
       "evidence": [
-        ".harness/verification/change-lifecycle-report.json:results.goal_replaces_omx_runtime_state"
+        ".harness/verification/change-lifecycle-report.json:results.goal_owns_project_workflow_state"
       ]
     },
     {

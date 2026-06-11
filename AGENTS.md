@@ -42,7 +42,7 @@ For repository-local AI engineering workflow, use:
 - `docs/ai-engineering-workflow.md`
 - `docs/harness.md`
 
-These files describe the project harness, OpenSpec assets, Goal handoff, Superpowers discipline, and native subagents. Goal complements the `.omx/` runtime state rather than replacing it.
+These files describe the project harness, OpenSpec assets, Goal handoff, Superpowers discipline, and native subagents. Project-local workflow state is retired; durable evidence belongs under `.harness/verification/`.
 
 For broad verification, run `python scripts/verification/harness.py --profile all`.
 

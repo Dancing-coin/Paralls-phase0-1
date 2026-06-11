@@ -16,6 +16,6 @@ Verification entrypoints:
 - `python scripts/verification/verify_phase1_slice.py`
 
 Verification artifacts:
-- Reports are written to `.omx/verification/`
+- Reports are written to `.harness/verification/`
 - `verify_phase0.py` produces both JSON and Markdown audit reports and returns non-zero when strict `Phase 0` goals are not fully proven
 - `verify_phase1_slice.py` audits the current `Phase1-shaped` runtime slice around visual facts, authority routing, runtime projection, and Siming consumption
