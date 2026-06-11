@@ -98,6 +98,8 @@ func _ready() -> void:
 	if bus:
 		bus.dialogue_received.connect(_on_dialogue_received)
 		bus.siming_output_received.connect(_on_siming_output_received)
+		if bus.has_signal("character_agent_output_received"):
+			bus.character_agent_output_received.connect(_on_character_agent_output_received)
 		if bus.has_signal("focus_state_received"):
 			bus.focus_state_received.connect(_on_focus_state_received)
 		if bus.has_signal("character_runtime_state_delta_received"):
@@ -286,6 +288,34 @@ func _on_dialogue_received(payload: Dictionary) -> void:
 func _on_siming_output_received(payload: Dictionary) -> void:
 	if payload.get("target_actor_id", "") == actor_id:
 		apply_attention(payload)
+
+func _on_character_agent_output_received(payload: Dictionary) -> void:
+	if str(payload.get("actor_id", "")) != actor_id:
+		return
+
+	match str(payload.get("output_type", "")):
+		"attention_shift", "observe_target":
+			apply_attention(payload)
+		"brief_dialogue_response":
+			apply_dialogue(
+				{
+					"actor_id": actor_id,
+					"content": str(payload.get("dialogue_text", "") or ""),
+					"target_actor_id": str(payload.get("target_actor_id", "") or ""),
+				}
+			)
+		"reposition_step":
+			var move_target: Variant = payload.get("move_target", null)
+			if move_target is Array and move_target.size() == 3:
+				set_move_target(Vector3(float(move_target[0]), float(move_target[1]), float(move_target[2])))
+		"role_state_hint":
+			var role_state := str(payload.get("role_state_hint", "") or "")
+			if not role_state.is_empty():
+				_trigger_role_state(role_state, hold_duration)
+		"physiology_hint":
+			var physiology_hint := str(payload.get("physiology_hint", "") or "")
+			if not physiology_hint.is_empty():
+				_emit_physiology_state_fact(physiology_hint)
 
 func _on_focus_state_received(payload: Dictionary) -> void:
 	if not reacts_to_player_focus:

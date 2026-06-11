@@ -34,6 +34,7 @@ from app.models.world_result import WorldResultBase
 from app.services.candidate_percept_service import compile_candidate_percepts
 from app.services.character_service import CharacterService
 from app.services.character_perceived_input_service import CharacterPerceivedInputService
+from app.services.character_agent_runtime import CharacterAgentRuntime
 from app.services.character_runtime_state_service import CharacterRuntimeStateService
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.conversation_relation_service import ConversationRelationService
@@ -69,6 +70,7 @@ def reset_runtime_state() -> None:
     global runtime
     global character_service
     global character_perceived_input_service
+    global character_agent_runtime
     global esm_service
     global event_trace
     global focus_state
@@ -86,6 +88,7 @@ def reset_runtime_state() -> None:
         character_perceived_input_service = CharacterPerceivedInputService()
     else:
         character_perceived_input_service.clear()
+    character_agent_runtime = CharacterAgentRuntime()
     esm_service = ESMService()
     event_trace = EventTraceService()
     focus_state = FocusStateService()
@@ -238,7 +241,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             )
         )
         compiled_candidates = compile_candidate_percepts(event)
-        filtered_perceived_events = []
+        character_agent_messages: list[dict[str, object]] = []
         for candidate in compiled_candidates:
             _publish_debug_event(
                 build_debug_event(
@@ -263,7 +266,11 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                     context={"is_facing_target": True},
                 )
                 if perceived is not None:
-                    filtered_perceived_events.append(perceived)
+                    if _should_suppress_character_agent_candidate_from_focus_mirror(
+                        candidate=candidate,
+                        actor_id=actor_id,
+                    ):
+                        continue
                     _ = character_perceived_input_service.apply_character_perceived_event(perceived)
                     _publish_debug_event(
                         build_debug_event(
@@ -275,11 +282,17 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                             detail=perceived.model_dump(),
                         )
                     )
+                    character_agent_messages.extend(
+                        _as_character_agent_output_envelopes(
+                            character_agent_runtime.ingest_character_perceived_event(perceived)
+                        )
+                    )
         messages = route_raw_fact_event(
             event,
             source_type=envelope.message_type,
             context=_build_visual_fact_handler_context(),
         )
+        messages.extend(character_agent_messages)
         _publish_route_event(event, messages)
         return _finalize_outbound_messages(messages)
 
@@ -550,6 +563,11 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             )
             _ = character_perceived_input_service.apply_self_body_perceived_event(self_body_perceived)
             messages.append(_as_envelope("self_body_perceived_event", self_body_perceived.model_dump()))
+            messages.extend(
+                _as_character_agent_output_envelopes(
+                    character_agent_runtime.ingest_self_body_perceived_event(self_body_perceived)
+                )
+            )
 
             environment_result = esm_service.emit_environment_shift(
                 room_id=event.room_id,
@@ -621,6 +639,50 @@ def _as_envelope(message_type: str, payload: dict[str, object]) -> dict[str, obj
         "message_type": message_type,
         "payload": payload,
     }
+
+
+def _as_character_agent_output_envelopes(commands: list[object]) -> list[dict[str, object]]:
+    return [
+        {
+            "message_type": "character_agent_output",
+            "payload": command.model_dump(exclude_none=True),
+        }
+        for command in commands
+    ]
+
+
+def _should_suppress_character_agent_candidate_from_focus_mirror(
+    *,
+    candidate: object,
+    actor_id: str,
+) -> bool:
+    if getattr(candidate, "source_fact_family", "") != "visual_fact":
+        return False
+    if getattr(candidate, "source_fact_type", "") != "fixed_gaze_on_target":
+        return False
+
+    focus = focus_state.get_focus(getattr(candidate, "source_actor_id", "") or "")
+    if not isinstance(focus, dict):
+        return False
+
+    target_actor_id = str(getattr(candidate, "target_actor_id", "") or "")
+    target_object_id = str(getattr(candidate, "target_object_id", "") or "")
+    if target_actor_id != "" and target_actor_id != actor_id:
+        return False
+    if target_object_id != "":
+        focus_target = str(focus.get("target_object_id", "") or "")
+        if focus_target != target_object_id:
+            return False
+    elif target_actor_id != "":
+        focus_target = str(focus.get("target_actor_id", "") or "")
+        if focus_target != target_actor_id:
+            return False
+    else:
+        return False
+
+    focus_ts = int(str(focus.get("producer_ts", "0") or "0"))
+    producer_ts = int(getattr(candidate, "producer_ts", 0) or 0)
+    return abs(focus_ts - producer_ts) <= 160
 
 
 def _as_error_ack(*, source_type: str, route: str, error: Exception) -> dict[str, object]:
@@ -766,8 +828,22 @@ def _drain_frontend_authority_events() -> list[dict[str, object]]:
 
 def _finalize_outbound_messages(messages: list[dict[str, object]]) -> list[dict[str, object]]:
     messages.extend(_drain_frontend_authority_events())
+    messages = _insert_character_agent_outputs_after_siming(messages)
     _emit_debug_from_messages(messages)
     return messages
+
+
+def _insert_character_agent_outputs_after_siming(messages: list[dict[str, object]]) -> list[dict[str, object]]:
+    ordered: list[dict[str, object]] = []
+    for message in messages:
+        ordered.append(message)
+        if message.get("message_type") != "siming_output":
+            continue
+        payload = message.get("payload", {})
+        if not isinstance(payload, dict):
+            continue
+        ordered.extend(_as_character_agent_output_envelopes(character_agent_runtime.ingest_siming_output(payload)))
+    return ordered
 
 
 def _publish_debug_event(event: dict[str, object]) -> None:

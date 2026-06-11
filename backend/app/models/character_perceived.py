@@ -11,3 +11,5 @@ class CharacterPerceivedEvent(BaseModel):
     zone_id: str
     perceived_summary: str
     source_candidate_event_id: str
+    clarity_score: float = 1.0
+    certainty_score: float = 1.0

@@ -99,6 +99,7 @@ def test_websocket_environment_visual_fact_emits_runtime_delta_without_candidate
         runtime_snapshot = websocket.receive_json()
         runtime_delta = websocket.receive_json()
         direct_siming_output = websocket.receive_json()
+        direct_character_agent_output = websocket.receive_json()
         candidate_event = websocket.receive_json()
         candidate_runtime_delta = websocket.receive_json()
         siming_output = websocket.receive_json()
@@ -112,6 +113,8 @@ def test_websocket_environment_visual_fact_emits_runtime_delta_without_candidate
     assert runtime_delta["payload"]["nearby_environment_refs"] == ["env_lamp"]
     assert direct_siming_output["message_type"] == "siming_output"
     assert direct_siming_output["payload"]["target_environment_id"] == "env_lamp"
+    assert direct_character_agent_output["message_type"] == "character_agent_output"
+    assert direct_character_agent_output["payload"]["actor_id"] == "char_b"
     assert candidate_event["message_type"] == "conversation_candidate_event"
     assert candidate_event["payload"]["candidate_object_ids"] == []
     assert candidate_event["payload"]["candidate_environment_ids"] == ["env_lamp"]
@@ -208,6 +211,34 @@ def test_raw_visual_fact_updates_character_perceived_input_path() -> None:
     assert perceived is not None
     assert perceived.actor_id == "char_a"
     assert perceived.percept_channel == "visual"
+    assert perceived.clarity_score == 1.0
+    assert perceived.certainty_score == 1.0
+
+
+def test_raw_visual_fact_for_char_a_emits_character_agent_output() -> None:
+    event = VisualFactEvent(
+        actor_id="char_c",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        producer_ts=602,
+        fact_type="fixed_gaze_on_target",
+        relation_type="actor_looks_at_actor",
+        target_actor_id="char_a",
+    )
+
+    reset_runtime_state()
+    messages = _handle_envelope(
+        Envelope(
+            message_type="raw_fact_event",
+            payload=event.model_dump(),
+        )
+    )
+
+    output_messages = [message for message in messages if message["message_type"] == "character_agent_output"]
+
+    assert output_messages
+    assert output_messages[0]["payload"]["actor_id"] == "char_a"
 
 
 def test_interact_world_result_updates_self_body_perceived_input_path() -> None:

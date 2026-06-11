@@ -101,6 +101,9 @@ func _dispatch_message(raw_text: String) -> void:
         "character_runtime_state_delta":
             _bus_log("character_runtime_state_delta:%s" % JSON.stringify(payload))
             _bus_emit("character_runtime_state_delta_received", [payload])
+        "character_agent_output":
+            _bus_log("character_agent_output:%s" % JSON.stringify(payload))
+            _bus_emit("character_agent_output_received", [payload])
         "state_machine_transition":
             _bus_log("state_machine_transition:%s" % JSON.stringify(payload))
             _bus_emit("state_machine_transition_received", [payload])

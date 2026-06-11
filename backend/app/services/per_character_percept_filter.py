@@ -13,9 +13,13 @@ def filter_candidate_for_actor(
 
     ctx = context or {}
     is_facing_target = bool(ctx.get("is_facing_target", True))
+    distance_m = float(ctx.get("distance_m", 0.0) or 0.0)
 
     if candidate.percept_channel == "visual" and not is_facing_target:
         return None
+
+    clarity_score = 1.0
+    certainty_score = 1.0 if distance_m <= 3.0 else 0.6
 
     return CharacterPerceivedEvent(
         actor_id=actor_id,
@@ -26,4 +30,6 @@ def filter_candidate_for_actor(
         zone_id=candidate.zone_id,
         perceived_summary=f"{candidate.source_fact_family}/{candidate.source_fact_type}",
         source_candidate_event_id=f"{candidate.source_fact_family}:{candidate.producer_ts}:{actor_id}",
+        clarity_score=clarity_score,
+        certainty_score=certainty_score,
     )
