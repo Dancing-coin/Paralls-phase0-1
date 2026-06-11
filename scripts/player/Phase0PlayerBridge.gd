@@ -15,7 +15,7 @@ extends Node
 @export var player_root_motion_enabled := true
 
 @onready var embodiment: Node = $"../Phase0Embodiment"
-@onready var player: PlayerCharacter = get_parent() as PlayerCharacter
+@onready var player: CharacterBody3D = get_parent() as CharacterBody3D
 
 var forced_move_direction := Vector3.ZERO
 var forced_run_state := false
@@ -23,13 +23,15 @@ var forced_jump_request := ""
 var locomotion_gait_mode := 1
 var locomotion_stance_mode := 0
 var current_jump_type := "none"
+var current_intent_frame: Dictionary = {}
+var desired_facing_yaw := 0.0
 
 const STANCE_STAND := 0
 const STANCE_CROUCH := 1
 const GAIT_CYCLE := ["amble", "walk", "brisk_walk"]
 
-# CharacterC is the visible in-world player role shell.
-# The hidden Player node remains the collision, camera, and jump authority shell.
+# The player-controlled role shell now lives under the same CharacterBase root.
+# Phase0InputBridge still maps local controls into the visible knight child.
 
 func _ready() -> void:
 	if hide_player_visual_shell:
@@ -105,6 +107,10 @@ func set_character_c_sync_enabled(enabled: bool) -> void:
 	if not enabled:
 		_clear_character_c_sync()
 
+func set_human_intent_frame(frame: Dictionary) -> void:
+	current_intent_frame = frame.duplicate(true)
+	desired_facing_yaw = float(current_intent_frame.get("desired_facing_yaw", player.global_rotation.y))
+
 func set_forced_player_motion(world_direction: Vector3, wants_run: bool = false) -> void:
 	forced_move_direction = Vector3(world_direction.x, 0.0, world_direction.z)
 	if forced_move_direction.length() > 1.0:
@@ -179,10 +185,7 @@ func _apply_player_root_motion_drive(delta: float) -> void:
 	player.velocity.z = requested_step.z / max(delta, 0.0001)
 
 func _clear_character_c_sync() -> void:
-	var main_demo := _get_main_demo()
-	if main_demo == null:
-		return
-	var character_c := main_demo.get_node_or_null("CharacterC")
+	var character_c := _get_character_c()
 	if character_c and character_c.has_method("clear_player_shell_frame"):
 		character_c.clear_player_shell_frame()
 
@@ -213,6 +216,8 @@ func get_camera() -> Camera3D:
 func _resolve_player_look_target() -> Vector3:
 	if forced_move_direction.length() > 0.001:
 		return player.global_position + forced_move_direction.normalized()
+	if not current_intent_frame.is_empty():
+		return player.global_position + Vector3.FORWARD.rotated(Vector3.UP, desired_facing_yaw)
 	var visual_root := player.find_child("VisualRoot", true, false)
 	if visual_root is Node3D:
 		return player.global_position - (visual_root as Node3D).global_basis.z
@@ -225,6 +230,8 @@ func _resolve_player_look_target() -> Vector3:
 	return player.global_position - player.global_basis.z
 
 func _resolve_player_forward() -> Vector3:
+	if not current_intent_frame.is_empty():
+		return Vector3.FORWARD.rotated(Vector3.UP, desired_facing_yaw).normalized()
 	var visual_root := player.find_child("VisualRoot", true, false)
 	if visual_root is Node3D:
 		return -((visual_root as Node3D).global_basis.z).normalized()
@@ -247,16 +254,15 @@ func _resolve_player_move_direction() -> Vector3:
 	if player == null:
 		return Vector3.ZERO
 
-	var input_vector := Input.get_vector(
-		player.move_left_action,
-		player.move_right_action,
-		player.move_forward_action,
-		player.move_backward_action
-	)
-	var move_direction := Vector3(input_vector.x, 0.0, input_vector.y)
-	if move_direction.length() <= 0.001:
+	var move_local_value: Variant = current_intent_frame.get("move_local", Vector2.ZERO)
+	var move_local: Vector2 = move_local_value if move_local_value is Vector2 else Vector2.ZERO
+	if move_local.length() <= 0.001:
 		return Vector3.ZERO
-	return move_direction.rotated(Vector3.UP, -player.cam_holder.global_rotation.y).normalized()
+	var facing_yaw := desired_facing_yaw if not current_intent_frame.is_empty() else player.global_rotation.y
+	var forward := Vector3.FORWARD.rotated(Vector3.UP, facing_yaw)
+	var right := Vector3.RIGHT.rotated(Vector3.UP, facing_yaw)
+	var move_direction := (right * move_local.x) + (forward * move_local.y)
+	return move_direction.normalized()
 
 func _cycle_gait_mode() -> void:
 	if locomotion_stance_mode == STANCE_CROUCH:
@@ -278,10 +284,15 @@ func set_crouch_enabled(enabled: bool) -> void:
 	locomotion_stance_mode = STANCE_CROUCH if enabled else STANCE_STAND
 
 func _should_run(move_direction: Vector3) -> bool:
+	var gait_name := str(current_intent_frame.get("gait", ""))
 	return (
 		locomotion_stance_mode == STANCE_STAND
 		and move_direction.length() > 0.001
-		and (forced_run_state or (player != null and Input.is_action_pressed(player.run_action)))
+		and (
+			forced_run_state
+			or gait_name == "run"
+			or (player != null and Input.is_action_pressed(_get_player_action("run_action", &"phase0_run")))
+		)
 	)
 
 func _resolve_stance_name() -> String:
@@ -300,7 +311,7 @@ func _resolve_jump_type(move_direction: Vector3, wants_run: bool) -> String:
 	if player == null:
 		return "none"
 	if player.is_on_floor():
-		if Input.is_action_just_pressed(player.jump_action) and move_direction.length() > 0.001:
+		if Input.is_action_just_pressed(_get_player_action("jump_action", &"phase0_jump")) and move_direction.length() > 0.001:
 			current_jump_type = "single_leg" if wants_run else "two_foot"
 		elif current_jump_type != "none" and abs(player.velocity.y) > 0.001:
 			return current_jump_type
@@ -315,10 +326,9 @@ func can_trigger_movement_jump() -> bool:
 	return _resolve_player_move_direction().length() > 0.001
 
 func _get_character_c() -> Node:
-	var main_demo := _get_main_demo()
-	if main_demo == null:
+	if player == null:
 		return null
-	return main_demo.get_node_or_null("CharacterC")
+	return player.get_node_or_null("CharacterReplica")
 
 func _trigger_character_c_action(action_name: String) -> void:
 	var character_c := _get_character_c()
@@ -330,3 +340,13 @@ func _find_camera() -> Camera3D:
 	if found is Camera3D:
 		return found as Camera3D
 	return null
+
+func _get_player_action(property_name: StringName, fallback: StringName) -> StringName:
+	if player == null:
+		return fallback
+	var value: Variant = player.get(property_name)
+	if value is StringName:
+		return value as StringName
+	if value is String:
+		return StringName(value)
+	return fallback
