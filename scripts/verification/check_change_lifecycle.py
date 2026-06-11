@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from check_change_state import evaluate_change_state
 from common import read_text, repo_root, verification_dir, write_json, write_markdown
 from registry import load_profile_registry, load_rule_registry, rule_evidence_map
 
@@ -14,6 +15,7 @@ REQUIRED_RULE_IDS = {
     "goal_owns_project_workflow_state",
     "workflow_templates_gate_execution",
     "agents_entry_map_routes_goal_superpowers_native_subagents",
+    "archived_changes_have_state_closure",
 }
 
 
@@ -51,6 +53,7 @@ def evaluate_change_lifecycle(project_root: Path) -> dict[str, object]:
     rule_manifest = project_root / ".harness" / "rules" / "change-lifecycle-rules.json"
     design_spec = project_root / "docs" / "superpowers" / "specs" / "2026-06-10-ai-engineering-workflow-integration-design.md"
     implementation_plan = project_root / "docs" / "superpowers" / "plans" / "2026-06-10-ai-engineering-workflow-integration-implementation-plan.md"
+    change_state_report = evaluate_change_state(project_root)
 
     profile_registry = load_profile_registry(project_root)
     rule_registry = load_rule_registry(project_root)
@@ -140,6 +143,22 @@ def evaluate_change_lifecycle(project_root: Path) -> dict[str, object]:
             "AGENTS.md routes large work through Goal, Superpowers, Harness, and native subagents",
             _contains(agents_md, ["docs/ai-engineering-workflow.md", "Goal", "Superpowers", "native subagents", ".harness/verification/"]),
             ["AGENTS.md"],
+        ),
+        _result(
+            "archived_changes_have_state_closure",
+            "Archived OpenSpec changes retain required files, closed tasks, delta specs, and workflow evidence",
+            bool(change_state_report.get("overall_change_state_passed")),
+            [
+                "openspec/changes/archive/",
+                "docs/superpowers/specs/",
+                "docs/superpowers/plans/",
+                ".harness/verification/",
+            ],
+            "\n".join(
+                str(entry.get("notes", ""))
+                for entry in change_state_report.get("results", [])
+                if entry.get("status") != "proved" and entry.get("notes")
+            ),
         ),
     ]
     return {

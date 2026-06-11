@@ -45,6 +45,13 @@
       "evidence": [
         ".harness/verification/change-lifecycle-report.json:results.agents_entry_map_routes_goal_superpowers_native_subagents"
       ]
+    },
+    {
+      "id": "archived_changes_have_state_closure",
+      "title": "Archived OpenSpec changes retain required files, closed tasks, delta specs, and workflow evidence",
+      "evidence": [
+        ".harness/verification/change-lifecycle-report.json:results.archived_changes_have_state_closure"
+      ]
     }
   ]
 }

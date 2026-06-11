@@ -65,6 +65,7 @@ def test_change_lifecycle_profile_proves_ai_engineering_workflow() -> None:
     assert statuses["goal_owns_project_workflow_state"] == "proved"
     assert statuses["workflow_templates_gate_execution"] == "proved"
     assert statuses["agents_entry_map_routes_goal_superpowers_native_subagents"] == "proved"
+    assert statuses["archived_changes_have_state_closure"] == "proved"
 
 
 def test_harness_reference_profile_proves_awesome_harness_coverage() -> None:

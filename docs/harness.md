@@ -216,6 +216,7 @@ Current mechanical invariants include:
 - Goal records active task continuity while `.harness` records durable acceptance evidence
 - templates require the relevant workflow gates before execution and handoff
 - `AGENTS.md` routes large work through Goal, Superpowers, Harness, and native subagents
+- archived OpenSpec changes keep required lifecycle files, completed tasks, delta specs, and a Superpowers/Harness evidence link
 
 Output:
 
