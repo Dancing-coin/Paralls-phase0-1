@@ -7,10 +7,23 @@ extends CharacterBody3D
 @export var move_backward_action := "phase0_move_backward"
 @export var move_left_action := "phase0_move_left"
 @export var move_right_action := "phase0_move_right"
+@export var mouse_sensitivity := 0.004
 
 @onready var main_demo: Node = get_parent()
 
 var current_intent_frame: Dictionary = {}
+var desired_facing_yaw := 0.0
+var look_pitch := 0.0
+
+func _ready() -> void:
+    desired_facing_yaw = rotation.y
+
+func _unhandled_input(event: InputEvent) -> void:
+    if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
+        var motion := event as InputEventMouseMotion
+        rotation.y -= motion.relative.x * mouse_sensitivity
+        desired_facing_yaw = rotation.y
+        look_pitch -= motion.relative.y * mouse_sensitivity
 
 func _physics_process(_delta: float) -> void:
     current_intent_frame = _build_human_intent_frame()
@@ -44,4 +57,6 @@ func _build_human_intent_frame() -> Dictionary:
     return {
         "controller_source": "human",
         "move_local": move_local,
+        "desired_facing_yaw": desired_facing_yaw,
+        "look_local": [0.0, look_pitch],
     }
