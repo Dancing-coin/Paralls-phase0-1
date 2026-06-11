@@ -15,7 +15,6 @@ push-*.log
 __pycache__/
 *.pyc
 .pytest_cache/
-.omx
 .idea
 
 docs/architecture
