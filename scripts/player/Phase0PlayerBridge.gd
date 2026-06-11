@@ -127,7 +127,7 @@ func trigger_forced_jump(jump_type: String) -> void:
 func before_player_shell_move(delta: float) -> void:
 	if not player_root_motion_enabled or not character_c_sync_enabled:
 		return
-	_apply_player_root_motion_drive(delta)
+	_sync_character_c_control_frame(delta)
 
 func after_player_shell_move(_delta: float) -> void:
 	if not player_root_motion_enabled:
@@ -150,7 +150,7 @@ func _sync_character_c_from_player() -> void:
 	if character_c.has_method("apply_player_shell_frame"):
 		character_c.apply_player_shell_frame(player.global_position, planar_velocity, look_target, player.is_on_floor())
 
-func _apply_player_root_motion_drive(delta: float) -> void:
+func _sync_character_c_control_frame(delta: float) -> void:
 	var character_c := _get_character_c()
 	if character_c == null or not character_c.has_method("begin_player_control_frame"):
 		return
@@ -159,10 +159,10 @@ func _apply_player_root_motion_drive(delta: float) -> void:
 	var wants_run := _should_run(move_direction)
 	var look_target := _resolve_player_look_target()
 	var jump_type := _resolve_jump_type(move_direction, wants_run)
-	if forced_jump_request != "" and player and player.has_method("force_jump_now"):
-		if player.force_jump_now(forced_jump_request, move_direction):
-			current_jump_type = forced_jump_request
-			jump_type = forced_jump_request
+	if forced_jump_request != "" and player and player.has_method("queue_forced_jump"):
+		player.queue_forced_jump(forced_jump_request)
+		current_jump_type = forced_jump_request
+		jump_type = forced_jump_request
 		forced_jump_request = ""
 	if player and player.has_method("set_jump_variant_profile"):
 		player.set_jump_variant_profile(jump_type if jump_type != "none" else "default")
@@ -171,18 +171,8 @@ func _apply_player_root_motion_drive(delta: float) -> void:
 	var stance_name := _resolve_stance_name()
 	var gait_name := _resolve_gait_name(move_direction, wants_run)
 	character_c.begin_player_control_frame(player.global_position, move_direction, look_target, player.is_on_floor(), wants_run, gait_name, stance_name, jump_type)
-
-	if not player.is_on_floor():
-		return
-
-	var requested_step := Vector3.ZERO
 	if character_c.has_method("consume_player_root_motion_request"):
-		var step: Variant = character_c.consume_player_root_motion_request(delta)
-		if step is Vector3:
-			requested_step = step as Vector3
-
-	player.velocity.x = requested_step.x / max(delta, 0.0001)
-	player.velocity.z = requested_step.z / max(delta, 0.0001)
+		character_c.consume_player_root_motion_request(delta)
 
 func _clear_character_c_sync() -> void:
 	var character_c := _get_character_c()

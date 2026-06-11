@@ -45,6 +45,8 @@ var current_jump_variant: String = "default"
 var current_intent_frame: Dictionary = {}
 var motion_state: Dictionary = {}
 var look_pitch := 0.0
+var queued_jump_variant := ""
+var queued_jump_move_local := Vector2.ZERO
 
 func _ready() -> void:
 	_recalculate_jump_profile()
@@ -78,49 +80,15 @@ func _physics_process(delta: float) -> void:
 	if external_motion_driver and external_motion_driver.has_method("set_human_intent_frame"):
 		external_motion_driver.set_human_intent_frame(current_intent_frame)
 
-	_apply_gravity(delta)
 	if external_motion_driver and external_motion_driver.has_method("before_player_shell_move"):
 		external_motion_driver.before_player_shell_move(delta)
+	if character_motor and character_motor.has_method("apply_intent_frame"):
+		_publish_motion_state(character_motor.apply_intent_frame(self, current_intent_frame, delta))
 	else:
-		_apply_direct_input_motion(delta)
-
-	move_and_slide()
-	_publish_motion_state()
+		_publish_motion_state({})
 
 	if external_motion_driver and external_motion_driver.has_method("after_player_shell_move"):
 		external_motion_driver.after_player_shell_move(delta)
-
-func _apply_gravity(delta: float) -> void:
-	if is_on_floor():
-		if velocity.y < 0.0:
-			velocity.y = 0.0
-		return
-	if velocity.y >= 0.0:
-		velocity.y -= jump_gravity * delta
-	else:
-		velocity.y -= fall_gravity * delta
-
-func _apply_direct_input_motion(delta: float) -> void:
-	var move_local: Vector2 = current_intent_frame.get("move_local", Vector2.ZERO)
-	if move_local.length() > 0.001:
-		var forward := -global_basis.z
-		var right := global_basis.x
-		var move_direction := ((right * move_local.x) + (forward * move_local.y)).normalized()
-		var speed: float = walk_speed
-		if str(current_intent_frame.get("gait", "walk")) == "run":
-			speed = run_speed
-		velocity.x = move_toward(velocity.x, move_direction.x * speed, acceleration * delta)
-		velocity.z = move_toward(velocity.z, move_direction.z * speed, acceleration * delta)
-	else:
-		velocity.x = move_toward(velocity.x, 0.0, deceleration * delta)
-		velocity.z = move_toward(velocity.z, 0.0, deceleration * delta)
-
-	if is_on_floor() and Input.is_action_just_pressed(jump_action):
-		var jump_variant: String = "two_foot"
-		if str(current_intent_frame.get("gait", "walk")) == "run" and move_local.length() > 0.001:
-			jump_variant = "single_leg"
-		var jump_forward := ((global_basis.x * move_local.x) + (-global_basis.z * move_local.y)).normalized()
-		force_jump_now(jump_variant, jump_forward)
 
 func set_jump_variant_profile(variant: String) -> void:
 	current_jump_variant = variant
@@ -139,51 +107,59 @@ func set_jump_variant_profile(variant: String) -> void:
 			fall_gravity = base_fall_gravity
 
 func force_jump_now(variant: String, takeoff_direction: Vector3 = Vector3.ZERO) -> bool:
-	set_jump_variant_profile(variant)
 	if not is_on_floor():
 		return false
-	velocity.y = jump_velocity
 	var planar_direction := Vector3(takeoff_direction.x, 0.0, takeoff_direction.z)
 	if planar_direction.length() > 0.001:
 		planar_direction = planar_direction.normalized()
-		var launch_speed := walk_speed * 1.15
-		if variant == "single_leg":
-			launch_speed = run_speed * 1.05
-		velocity.x = planar_direction.x * launch_speed
-		velocity.z = planar_direction.z * launch_speed
+		queued_jump_move_local = Vector2(planar_direction.dot(global_basis.x), planar_direction.dot(-global_basis.z))
+	queued_jump_variant = variant
 	return true
 
 func can_trigger_movement_jump() -> bool:
 	if external_motion_driver and external_motion_driver.has_method("can_trigger_movement_jump"):
 		return external_motion_driver.can_trigger_movement_jump()
-	var input_vector := Input.get_vector(move_left_action, move_right_action, move_forward_action, move_backward_action)
-	return input_vector.length() > 0.001
+	return _current_move_local_input().length() > 0.001
 
 func get_camera() -> Camera3D:
 	return camera
 
+func queue_forced_jump(variant: String) -> void:
+	queued_jump_variant = variant
+
 func _build_human_intent_frame() -> Dictionary:
-	var move_local := Input.get_vector(move_left_action, move_right_action, move_forward_action, move_backward_action)
+	var move_local := queued_jump_move_local if queued_jump_move_local.length() > 0.001 else _current_move_local_input()
 	var gait := "run" if Input.is_action_pressed(run_action) and move_local.length() > 0.001 else "walk"
+	var action := "locomotion" if move_local.length() > 0.001 else "idle"
+	if queued_jump_variant != "":
+		action = "jump_%s" % queued_jump_variant
+	elif is_on_floor() and Input.is_action_just_pressed(jump_action):
+		action = "jump_single_leg" if gait == "run" and move_local.length() > 0.001 else "jump_two_foot"
+	queued_jump_variant = ""
+	queued_jump_move_local = Vector2.ZERO
 	return {
 		"controller_source": "human",
 		"move_local": move_local,
 		"desired_facing_yaw": rotation.y,
 		"look_pitch": look_pitch,
 		"gait": gait,
-		"action": "locomotion" if move_local.length() > 0.001 else "idle",
+		"action": action,
 	}
 
-func _publish_motion_state() -> void:
-	# CharacterMotionState placeholder until the motor owns the full payload.
+func _publish_motion_state(next_motion_state: Dictionary) -> void:
+	if not next_motion_state.is_empty():
+		motion_state = next_motion_state
+		return
 	motion_state = {
-		"controller_source": current_intent_frame.get("controller_source", "human"),
-		"move_local": current_intent_frame.get("move_local", Vector2.ZERO),
-		"desired_facing_yaw": current_intent_frame.get("desired_facing_yaw", rotation.y),
-		"look_pitch": current_intent_frame.get("look_pitch", look_pitch),
+		"position": global_position,
 		"velocity_world": velocity,
+		"move_local_actual": current_intent_frame.get("move_local", Vector2.ZERO),
+		"gait_actual": current_intent_frame.get("gait", "walk"),
 		"grounded": is_on_floor(),
 	}
+
+func _current_move_local_input() -> Vector2:
+	return Input.get_vector(move_left_action, move_right_action, move_forward_action, move_backward_action)
 
 func _recalculate_jump_profile() -> void:
 	base_jump_velocity = (2.0 * jump_height) / jump_time_to_peak
