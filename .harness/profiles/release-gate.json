@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "name": "release-gate",
+  "order": 37,
+  "script": "scripts/verification/check_release_gate.py",
+  "requires_godot": false,
+  "description": "CI and release gate entrypoint checks"
+}

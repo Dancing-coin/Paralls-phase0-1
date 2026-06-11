@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "name": "<profile-name>",
+  "order": 100,
+  "script": "scripts/verification/check_<profile_name>.py",
+  "requires_godot": false,
+  "description": "<what this profile proves>",
+  "template_variables": [
+    "name",
+    "order",
+    "script",
+    "requires_godot",
+    "description"
+  ]
+}

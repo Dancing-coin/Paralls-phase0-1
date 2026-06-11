@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "max_archived_runs": 25,
+  "preserve_latest_baseline": true,
+  "diff_against": "previous_baseline",
+  "generated_evidence_root": ".harness/verification/",
+  "archive_root": ".harness/verification/runs/",
+  "latest_artifacts": [
+    "harness-run-report.json",
+    "harness-run-report.md",
+    "harness-run-manifest.json",
+    "harness-run-diff.json",
+    "baseline.json"
+  ],
+  "archive_artifacts": [
+    "harness-run-report.json",
+    "harness-run-report.md",
+    "run-manifest.json",
+    "harness-run-diff.json"
+  ]
+}

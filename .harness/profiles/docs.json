@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "name": "docs",
+  "order": 10,
+  "script": "scripts/verification/check_docs.py",
+  "requires_godot": false,
+  "description": "Documentation freshness and index checks"
+}

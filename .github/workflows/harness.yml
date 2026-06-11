@@ -1,0 +1,19 @@
+name: Harness
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  harness:
+    runs-on: windows-latest
+    env:
+      GODOT_EXE: D:\godot\Godot_v4.6.3-stable_win64.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Run full harness
+        run: python scripts/verification/harness.py --profile all

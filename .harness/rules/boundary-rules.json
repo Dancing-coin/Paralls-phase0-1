@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "name": "boundary-rules",
+  "profile": "boundaries",
+  "description": "Mechanical invariants enforced by scripts/verification/check_boundaries.py",
+  "rules": [
+    {
+      "id": "docs_index_exists",
+      "title": "Repository docs index exists",
+      "evidence": [
+        ".harness/verification/boundary-report.json:results.docs_index_exists"
+      ]
+    },
+    {
+      "id": "harness_doc_exists",
+      "title": "Harness guide exists",
+      "evidence": [
+        ".harness/verification/boundary-report.json:results.harness_doc_exists"
+      ]
+    },
+    {
+      "id": "visual_fact_emitter_exists",
+      "title": "Visual facts use the approved emitter path",
+      "evidence": [
+        ".harness/verification/boundary-report.json:results.visual_fact_emitter_exists"
+      ]
+    },
+    {
+      "id": "direct_visual_fact_send_bypass_absent",
+      "title": "No direct visual_fact send bypass outside the emitter remains",
+      "evidence": [
+        ".harness/verification/boundary-report.json:results.direct_visual_fact_send_bypass_absent"
+      ]
+    },
+    {
+      "id": "websocket_envelope_model_exists",
+      "title": "WebSocket messages keep an explicit envelope model",
+      "evidence": [
+        ".harness/verification/boundary-report.json:results.websocket_envelope_model_exists"
+      ]
+    },
+    {
+      "id": "harness_artifacts_are_project_local",
+      "title": "Harness artifacts use .harness instead of OMX runtime paths",
+      "evidence": [
+        ".harness/verification/boundary-report.json:results.harness_artifacts_are_project_local"
+      ]
+    },
+    {
+      "id": "runtime_trace_schema_is_enriched",
+      "title": "Runtime trace projects stable message and payload fields",
+      "evidence": [
+        ".harness/verification/boundary-report.json:results.runtime_trace_schema_is_enriched"
+      ]
+    }
+  ]
+}

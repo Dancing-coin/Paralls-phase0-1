@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "name": "docs-rules",
+  "profile": "docs",
+  "description": "Mechanical invariants enforced by scripts/verification/check_docs.py",
+  "rules": [
+    {
+      "id": "docs_index_paths_exist",
+      "title": "docs/INDEX.md local references exist",
+      "evidence": [
+        ".harness/verification/docs-report.json:results.docs_index_paths_exist"
+      ]
+    },
+    {
+      "id": "superpowers_specs_have_plans",
+      "title": "Every design spec has a matching implementation plan",
+      "evidence": [
+        ".harness/verification/docs-report.json:results.superpowers_specs_have_plans"
+      ]
+    },
+    {
+      "id": "harness_profiles_documented",
+      "title": "Every registered harness profile is documented",
+      "evidence": [
+        ".harness/verification/docs-report.json:results.harness_profiles_documented"
+      ]
+    },
+    {
+      "id": "harness_registry_documented",
+      "title": "Harness registry and run archive paths are documented",
+      "evidence": [
+        ".harness/verification/docs-report.json:results.harness_registry_documented"
+      ]
+    },
+    {
+      "id": "agents_md_is_short_entry_map",
+      "title": "AGENTS.md stays a short entry map",
+      "evidence": [
+        ".harness/verification/docs-report.json:results.agents_md_is_short_entry_map"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "name": "phase0",
+  "order": 50,
+  "script": "scripts/verification/verify_phase0.py",
+  "requires_godot": true,
+  "description": "Strict Phase 0 backend and Godot runtime validation"
+}

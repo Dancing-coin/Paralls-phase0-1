@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "name": "godot-project",
+  "order": 36,
+  "script": "scripts/verification/check_godot_project.py",
+  "requires_godot": false,
+  "description": "Godot project static scene, autoload, and resource integrity checks"
+}

@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "project": "Paralls Harness Engineering",
+  "description": "Project-owned harness feature ledger adapted from learn-harness-engineering Project 06 patterns.",
+  "features": [
+    {
+      "id": "profile-registry",
+      "name": "Versioned Profile Registry",
+      "status": "pass",
+      "evidence": ".harness/profiles/*.json with schema_version=1 and scripts/verification/registry.py"
+    },
+    {
+      "id": "rule-evidence-registry",
+      "name": "Rule To Evidence Registry",
+      "status": "pass",
+      "evidence": ".harness/rules/*.json maps profile rule ids to report evidence paths"
+    },
+    {
+      "id": "run-evidence-retention",
+      "name": "Run Evidence Retention",
+      "status": "pass",
+      "evidence": ".harness/verification/runs/<run-id>/ plus baseline and diff artifacts"
+    },
+    {
+      "id": "formal-static-profiles",
+      "name": "Formal Static Profiles",
+      "status": "pass",
+      "evidence": "backend-contract, godot-project, release-gate, harness-lifecycle, and harness-reference profiles"
+    },
+    {
+      "id": "runtime-profiles",
+      "name": "Runtime Profiles",
+      "status": "pass",
+      "evidence": "phase0 and phase1-slice profiles validate Godot and backend runtime loops"
+    },
+    {
+      "id": "local-ci-gate",
+      "name": "Local CI Equivalent",
+      "status": "pass",
+      "evidence": ".harness/ci/local-ci-gate.ps1 runs focused tests, compile, and full harness"
+    },
+    {
+      "id": "future-profile-templates",
+      "name": "Future Profile Templates",
+      "status": "pass",
+      "evidence": ".harness/templates/profile-template.json and rule-template.json"
+    },
+    {
+      "id": "external-reference-taxonomy",
+      "name": "External Harness Reference Taxonomy",
+      "status": "pass",
+      "evidence": ".harness/references/awesome-harness-engineering.json plus harness-reference profile"
+    },
+    {
+      "id": "ai-engineering-change-lifecycle",
+      "name": "AI Engineering Change Lifecycle",
+      "status": "pass",
+      "evidence": "docs/ai-engineering-workflow.md plus change-lifecycle profile"
+    },
+    {
+      "id": "clean-state-lifecycle",
+      "name": "Clean State Lifecycle",
+      "status": "pass",
+      "evidence": ".harness/clean-state-checklist.md, session-handoff.md, quality-document.md, evaluator-rubric.md"
+    }
+  ]
+}

@@ -4,6 +4,7 @@
 
 # Local agent/runtime state
 .omx/
+.harness/verification/
 .claude/
 .sixth/
 .worktrees/

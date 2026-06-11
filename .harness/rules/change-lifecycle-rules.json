@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "name": "change-lifecycle-rules",
+  "profile": "change-lifecycle",
+  "description": "Mechanical invariants enforced by scripts/verification/check_change_lifecycle.py",
+  "rules": [
+    {
+      "id": "workflow_doc_exists",
+      "title": "AI engineering workflow doc and matching design/plan artifacts exist",
+      "evidence": [
+        ".harness/verification/change-lifecycle-report.json:results.workflow_doc_exists"
+      ]
+    },
+    {
+      "id": "change_lifecycle_profile_registered",
+      "title": "change-lifecycle profile and rule manifest are registered",
+      "evidence": [
+        ".harness/verification/change-lifecycle-report.json:results.change_lifecycle_profile_registered"
+      ]
+    },
+    {
+      "id": "openspec_superpowers_harness_goal_chain_documented",
+      "title": "OpenSpec, Superpowers, Harness, and Goal handoff chain is documented",
+      "evidence": [
+        ".harness/verification/change-lifecycle-report.json:results.openspec_superpowers_harness_goal_chain_documented"
+      ]
+    },
+    {
+      "id": "goal_replaces_omx_runtime_state",
+      "title": "Goal and OMX have separate workflow-state responsibilities",
+      "evidence": [
+        ".harness/verification/change-lifecycle-report.json:results.goal_replaces_omx_runtime_state"
+      ]
+    },
+    {
+      "id": "workflow_templates_gate_execution",
+      "title": "Harness templates require the OpenSpec/Superpowers/Harness/Goal execution gates",
+      "evidence": [
+        ".harness/verification/change-lifecycle-report.json:results.workflow_templates_gate_execution"
+      ]
+    },
+    {
+      "id": "agents_entry_map_routes_goal_superpowers_native_subagents",
+      "title": "AGENTS.md routes large work through Goal, Superpowers, Harness, and native subagents",
+      "evidence": [
+        ".harness/verification/change-lifecycle-report.json:results.agents_entry_map_routes_goal_superpowers_native_subagents"
+      ]
+    }
+  ]
+}

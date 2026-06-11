@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "name": "backend-contract-rules",
+  "profile": "backend-contract",
+  "description": "Mechanical invariants enforced by scripts/verification/check_backend_contract.py",
+  "rules": [
+    {
+      "id": "backend_protocol_models_exist",
+      "title": "Backend protocol model files and explicit websocket envelope exist",
+      "evidence": [
+        ".harness/verification/backend-contract-report.json:results.backend_protocol_models_exist"
+      ]
+    },
+    {
+      "id": "cross_boundary_models_are_pydantic",
+      "title": "Cross-boundary contracts use Pydantic BaseModel types",
+      "evidence": [
+        ".harness/verification/backend-contract-report.json:results.cross_boundary_models_are_pydantic"
+      ]
+    },
+    {
+      "id": "backend_tests_cover_protocol_contracts",
+      "title": "Backend tests cover protocol shapes and websocket boundary behavior",
+      "evidence": [
+        ".harness/verification/backend-contract-report.json:results.backend_tests_cover_protocol_contracts"
+      ]
+    }
+  ]
+}

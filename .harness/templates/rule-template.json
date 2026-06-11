@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "name": "<profile-name>-rules",
+  "profile": "<profile-name>",
+  "description": "Mechanical invariants enforced by scripts/verification/check_<profile_name>.py",
+  "rules": [
+    {
+      "id": "<stable_check_id>",
+      "title": "<human readable invariant>",
+      "evidence": [
+        ".harness/verification/<profile-name>-report.json:results.<stable_check_id>"
+      ]
+    }
+  ]
+}
