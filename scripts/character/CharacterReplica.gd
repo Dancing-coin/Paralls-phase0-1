@@ -26,7 +26,7 @@ enum DriverMode {
 @export var attention_recoil_amount := 0.18
 @export var posture_recover_speed := 5.0
 @export var driver_mode := DriverMode.AI
-@export var use_role_asset := false
+@export var use_role_asset := true
 @export var player_shell_visual_offset := Vector3(0.0, 0.0, 0.0)
 @export var reacts_to_player_focus := false
 @export var idle_role_state := "idle"
@@ -40,10 +40,9 @@ enum DriverMode {
 @export var player_run_speed_threshold := 6.4
 @export var use_root_motion_patrol := true
 
-@onready var visual_scene: Node = $VisualRoot/GreyboxBodyRoot/GreyboxHumanoidVisual
 @onready var visual_root: Node3D = $VisualRoot
 @onready var role_asset_root: Node3D = $VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot
-@onready var role_asset_scene: Node = $VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/GodotPlushSkin
+@onready var role_asset_scene: Node = $VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/KnightRoleSkin
 @onready var nameplate: Label3D = $Nameplate
 
 var home_position := Vector3.ZERO
@@ -66,6 +65,8 @@ var action_override_timer := 0.0
 var player_shell_velocity := Vector3.ZERO
 var player_shell_grounded := true
 var player_shell_active := false
+var player_motion_state: Dictionary = {}
+var player_presentation_input: Dictionary = {}
 var player_control_move_direction := Vector3.ZERO
 var player_control_wants_run := false
 var player_stance := "stand"
@@ -219,10 +220,16 @@ func consume_player_root_motion_request(delta: float) -> Vector3:
 func apply_player_shell_pose(world_position: Vector3, planar_velocity: Vector3, look_target: Vector3, is_grounded: bool) -> void:
 	driver_mode = DriverMode.PLAYER
 	player_shell_active = true
-	player_shell_velocity = Vector3(planar_velocity.x, 0.0, planar_velocity.z)
-	player_shell_grounded = is_grounded
+	player_motion_state = _resolve_player_motion_state(planar_velocity, is_grounded)
+	var velocity_world_value: Variant = player_motion_state.get("velocity_world", planar_velocity)
+	var velocity_world: Vector3 = velocity_world_value if velocity_world_value is Vector3 else planar_velocity
+	player_shell_velocity = Vector3(velocity_world.x, 0.0, velocity_world.z)
+	player_shell_grounded = bool(player_motion_state.get("grounded", is_grounded))
+	player_gait = str(player_motion_state.get("gait_actual", player_gait))
 	global_position = Vector3(world_position.x, world_position.y, world_position.z) + player_shell_visual_offset
 	set_look_target(look_target)
+	player_presentation_input = _build_player_presentation_input()
+	_push_player_presentation_input()
 	_update_player_shell_locomotion()
 
 func apply_player_shell_frame(world_position: Vector3, planar_velocity: Vector3, look_target: Vector3, is_grounded: bool) -> void:
@@ -233,6 +240,8 @@ func clear_player_shell_frame() -> void:
 	driver_mode = DriverMode.AI
 	player_shell_velocity = Vector3.ZERO
 	player_shell_grounded = true
+	player_motion_state = {}
+	player_presentation_input = {}
 	player_control_move_direction = Vector3.ZERO
 	player_control_wants_run = false
 	player_stance = "stand"
@@ -293,10 +302,18 @@ func _on_character_agent_output_received(payload: Dictionary) -> void:
 	if str(payload.get("actor_id", "")) != actor_id:
 		return
 
-	match str(payload.get("output_type", "")):
-		"attention_shift", "observe_target":
+	match str(payload.get("command_type", "")):
+		"look_at", "observe":
 			apply_attention(payload)
-		"brief_dialogue_response":
+		"go_to", "approach":
+			var target_position := _command_target_position(payload)
+			set_move_target(target_position)
+			set_look_target(target_position)
+		"interact":
+			var interact_target := _command_target_position(payload)
+			set_look_target(interact_target)
+			perform_action("interact")
+		"speak":
 			apply_dialogue(
 				{
 					"actor_id": actor_id,
@@ -304,18 +321,16 @@ func _on_character_agent_output_received(payload: Dictionary) -> void:
 					"target_actor_id": str(payload.get("target_actor_id", "") or ""),
 				}
 			)
-		"reposition_step":
-			var move_target: Variant = payload.get("move_target", null)
-			if move_target is Array and move_target.size() == 3:
-				set_move_target(Vector3(float(move_target[0]), float(move_target[1]), float(move_target[2])))
-		"role_state_hint":
-			var role_state := str(payload.get("role_state_hint", "") or "")
-			if not role_state.is_empty():
-				_trigger_role_state(role_state, hold_duration)
-		"physiology_hint":
-			var physiology_hint := str(payload.get("physiology_hint", "") or "")
-			if not physiology_hint.is_empty():
-				_emit_physiology_state_fact(physiology_hint)
+		_:
+			return
+
+	var role_state := str(payload.get("role_state_hint", "") or "")
+	if not role_state.is_empty():
+		_trigger_role_state(role_state, hold_duration)
+
+	var physiology_hint := str(payload.get("physiology_hint", "") or "")
+	if not physiology_hint.is_empty():
+		_emit_physiology_state_fact(physiology_hint)
 
 func _on_focus_state_received(payload: Dictionary) -> void:
 	if not reacts_to_player_focus:
@@ -398,11 +413,7 @@ func _emit_physiology_state_fact(strain_band: String) -> void:
 func set_focus_highlight(is_focused: bool) -> void:
 	var environment_attention := runtime_nearby_environment_refs.size() > 0 and runtime_attention_source == "visual_fact"
 	var highlighted := is_focused or focus_attention_visual_timer > 0.0 or runtime_attention_source == "focus_state" or runtime_attention_source == "visual_fact" or environment_attention
-	if use_role_asset:
-		_set_role_asset_focus(highlighted)
-	else:
-		if visual_scene and visual_scene.has_method("set_focus_highlight"):
-			visual_scene.set_focus_highlight(highlighted)
+	_set_role_asset_focus(highlighted)
 	_update_nameplate()
 
 func _apply_idle_sway() -> void:
@@ -511,7 +522,10 @@ func _move_toward_target(target: Vector3, delta: float, clear_on_arrival: bool) 
 	last_root_motion_world_delta = step
 
 func _update_player_shell_locomotion() -> void:
-	var planar_speed := player_shell_velocity.length()
+	var move_x := float(player_presentation_input.get("move_x", 0.0))
+	var move_y := float(player_presentation_input.get("move_y", 0.0))
+	var planar_speed := float(player_presentation_input.get("speed", player_shell_velocity.length()))
+	var has_move_input := abs(move_x) > 0.001 or abs(move_y) > 0.001
 	if not player_shell_grounded:
 		locomotion_state = LocomotionState.ATTEND
 		if use_role_asset and player_jump_type != "none":
@@ -519,7 +533,7 @@ func _update_player_shell_locomotion() -> void:
 		if player_jump_type != "none":
 			_trigger_role_state("jump", 0.24 if player_jump_type == "single_leg" else 0.32)
 			_emit_physiology_state_fact("elevated")
-	elif player_stance == "crouch" and player_control_move_direction.length() > 0.001:
+	elif player_stance == "crouch" and has_move_input:
 		locomotion_state = LocomotionState.WALK
 		if use_role_asset:
 			_set_role_asset_motion_profile_if_free("walk", "crouch_walk")
@@ -528,7 +542,7 @@ func _update_player_shell_locomotion() -> void:
 		locomotion_state = LocomotionState.IDLE
 		if use_role_asset:
 			_set_role_asset_motion_profile_if_free(idle_role_state, "crouch_idle")
-	elif player_control_move_direction.length() > 0.001:
+	elif has_move_input:
 		locomotion_state = LocomotionState.WALK
 		posture_target = Vector3.ZERO
 		if use_role_asset:
@@ -550,6 +564,36 @@ func _update_player_shell_locomotion() -> void:
 			_set_role_asset_motion_profile_if_free(idle_role_state, "default")
 	if player_shell_grounded:
 		_emit_physiology_state_fact("stable")
+
+func _resolve_player_motion_state(planar_velocity: Vector3, is_grounded: bool) -> Dictionary:
+	var parent_node := get_parent()
+	if parent_node != null:
+		var motion_state_value: Variant = parent_node.get("motion_state")
+		if motion_state_value is Dictionary and not (motion_state_value as Dictionary).is_empty():
+			return (motion_state_value as Dictionary).duplicate(true)
+	return {
+		"position": global_position,
+		"velocity_world": planar_velocity,
+		"move_local_actual": Vector2.ZERO,
+		"gait_actual": "run" if planar_velocity.length() > player_run_speed_threshold else "walk",
+		"grounded": is_grounded,
+	}
+
+func _build_player_presentation_input() -> Dictionary:
+	var move_local_value: Variant = player_motion_state.get("move_local_actual", Vector2.ZERO)
+	var move_local: Vector2 = move_local_value if move_local_value is Vector2 else Vector2.ZERO
+	var velocity_world_value: Variant = player_motion_state.get("velocity_world", player_shell_velocity)
+	var velocity_world: Vector3 = velocity_world_value if velocity_world_value is Vector3 else player_shell_velocity
+	return {
+		"move_x": move_local.x,
+		"move_y": move_local.y,
+		"speed": velocity_world.length(),
+		"gait": str(player_motion_state.get("gait_actual", player_gait)),
+	}
+
+func _push_player_presentation_input() -> void:
+	if role_asset_scene and role_asset_scene.has_method("apply_presentation_input"):
+		role_asset_scene.apply_presentation_input(player_presentation_input)
 
 func _update_rotation(delta: float) -> void:
 	if has_external_look_target:
@@ -682,6 +726,16 @@ func _resolve_attention_target(payload: Dictionary) -> Vector3:
 
 	return _resolve_player_position()
 
+func _command_target_position(payload: Dictionary) -> Vector3:
+	var target_position_raw: Variant = payload.get("target_position", null)
+	if target_position_raw is Array and target_position_raw.size() == 3:
+		return Vector3(
+			float(target_position_raw[0]),
+			float(target_position_raw[1]),
+			float(target_position_raw[2])
+		)
+	return _resolve_attention_target(payload)
+
 func _find_node_by_property(property_name: String, expected: String) -> Node3D:
 	var scene := get_tree().current_scene
 	if scene == null:
@@ -711,16 +765,7 @@ func _normalize_patrol_points() -> void:
 	patrol_points = normalized
 
 func _apply_visual_config() -> void:
-	if use_role_asset:
-		_apply_role_asset_config()
-		return
-	if visual_scene and visual_scene.has_method("configure_visuals"):
-		var accent := Color(0.25, 0.55, 0.95, 1.0)
-		if actor_id == "char_a":
-			accent = Color(0.95, 0.76, 0.32, 1.0)
-		elif actor_id == "char_b":
-			accent = Color(0.56, 0.47, 0.86, 1.0)
-		visual_scene.configure_visuals(actor_id, Color(0.82, 0.84, 0.92, 1.0), Color(0.95, 0.84, 0.72, 1.0), accent, Color(0.95, 0.85, 0.35, 1.0))
+	_apply_role_asset_config()
 
 func _set_dialogue_pose() -> void:
 	posture_target = Vector3(0.0, 0.0, -dialogue_lean_amount)
@@ -730,12 +775,9 @@ func _set_attention_pose() -> void:
 
 func _apply_asset_mode() -> void:
 	if role_asset_root:
-		role_asset_root.visible = use_role_asset
+		role_asset_root.visible = true
 	if role_asset_scene is Node3D:
-		(role_asset_scene as Node3D).visible = use_role_asset
-	var greybox_root := visual_scene.get_parent() if visual_scene else null
-	if greybox_root is Node3D:
-		(greybox_root as Node3D).visible = not use_role_asset
+		(role_asset_scene as Node3D).visible = true
 
 func _apply_role_asset_config() -> void:
 	if role_asset_scene and role_asset_scene.has_method("configure_role"):
@@ -757,7 +799,7 @@ func _set_role_asset_focus(is_focused: bool) -> void:
 	if role_asset_scene and role_asset_scene.has_method("set_focus_highlight"):
 		role_asset_scene.set_focus_highlight(is_focused)
 		return
-	var plush_mesh := role_asset_scene.get_node_or_null("GodotPlushModel/Rig/Skeleton3D/GodotPlushMesh") if role_asset_scene else null
+	var plush_mesh := role_asset_scene.get_node_or_null("KnightScene/KnightArmature/Skeleton3D/head") if role_asset_scene else null
 	if plush_mesh is MeshInstance3D:
 		var mat := StandardMaterial3D.new()
 		mat.albedo_color = Color(0.95, 0.85, 0.35, 1.0) if is_focused else Color(1.0, 1.0, 1.0, 1.0)

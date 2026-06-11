@@ -2,6 +2,10 @@ extends Node3D
 
 class_name KnightRoleSkin
 
+# AnimationTree integration note:
+# `AnimationNodeStateMachinePlayback` and `animation_state_playback.travel(...)`
+# are intentionally deferred until a separate Godot-runtime-verified change.
+
 const CLIP_MAP := {
 	"idle": "idle_guard",
 	"walk": "walk_guard",
@@ -201,7 +205,6 @@ const VARIANT_CONFIG := {
 @onready var knight_scene: Node3D = $KnightScene
 @onready var animation_player: AnimationPlayer = $KnightScene/AnimationPlayer
 @onready var skeleton: Skeleton3D = $KnightScene/KnightArmature/Skeleton3D
-
 var hips_bone := -1
 var spine_lower_bone := -1
 var spine_upper_bone := -1
@@ -230,7 +233,10 @@ var root_motion_initialized := false
 var current_root_motion_track_index := -1
 var current_motion_profile := "default"
 var current_distance_scale := 1.0
-
+var move_x := 0.0
+var move_y := 0.0
+var speed := 0.0
+var presentation_gait := "walk"
 func _ready() -> void:
 	_configure_animation_loops()
 	_cache_pose_refinement_bones()
@@ -296,6 +302,12 @@ func set_focus_highlight(is_focused: bool) -> void:
 		var mesh := _find_mesh(mesh_name)
 		if mesh:
 			mesh.material_overlay = focus_overlay if is_focused else null
+
+func apply_presentation_input(next_input: Dictionary) -> void:
+	move_x = float(next_input.get("move_x", 0.0))
+	move_y = float(next_input.get("move_y", 0.0))
+	speed = float(next_input.get("speed", 0.0))
+	presentation_gait = str(next_input.get("gait", "walk"))
 
 func _configure_animation_loops() -> void:
 	if animation_player == null:
@@ -488,9 +500,11 @@ func _apply_knight_scene_pose(phase_value: float, profile: Dictionary) -> void:
 	var crouch_active: bool = current_motion_profile == "crouch_walk" or current_motion_profile == "crouch_idle"
 	var stance_drop: float = -0.18 if crouch_active else 0.0
 	var stride_abs: float = abs(phase_value)
-	knight_scene.position = base_knight_scene_position + Vector3(0.0, stance_drop + stride_abs * float(profile.get("hips_bob", 0.0)) * 0.7, 0.0)
+	var strafe_shift := clamp(move_x, -1.0, 1.0) * 0.018
+	var backpedal_pitch := max(-move_y, 0.0) * 0.08
+	knight_scene.position = base_knight_scene_position + Vector3(strafe_shift, stance_drop + stride_abs * float(profile.get("hips_bob", 0.0)) * 0.7, 0.0)
 	var crouch_pitch: float = 0.16 if crouch_active else 0.0
-	knight_scene.rotation = base_knight_scene_rotation + Vector3(crouch_pitch, 0.0, 0.0)
+	knight_scene.rotation = base_knight_scene_rotation + Vector3(crouch_pitch + backpedal_pitch, 0.0, -strafe_shift * 2.2)
 
 func _apply_hips_pose(phase_value: float, profile: Dictionary) -> void:
 	if hips_bone < 0 or not base_bone_rotations.has(hips_bone):
