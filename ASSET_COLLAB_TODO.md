@@ -9,7 +9,6 @@
 关联文档：
 
 - `docs/assets-policy.md`
-- `docs/jeheno-third-person-controller-asset-audit.md`
 - `docs/asset-injection-guide.md`
 - `docs/blender-godot-asset-export-convention.md`
 
@@ -40,20 +39,13 @@
   - `goblend.log`
   - `push-*.log`
 
-## C. Jeheno 资产拆分计划
+## C. 已移除的第三方控制器资产
 
-- [ ] 盘清 `addons/JehenoThirdPersonController` 当前最小运行时依赖集合。
+- [x] 第三方控制器目录已从运行时项目中移除。
 
-- [ ] 确认这些内容是否仍需留在主仓库：
-  - `PlayerCharacter/`
-  - 运行时必需的 `.tscn` / `.gd` / `.import`
-  - 当前 Godot 打开项目必须存在的资源
+- [x] 当前玩家壳改为项目自有 `scenes/phase0/PlayerShell.tscn` 和 `scripts/player/PlayerShell.gd`。
 
-- [ ] 准备迁出到资产源仓的优先级：
-  - P1: `addons/JehenoThirdPersonController/ThroneRoom.blend`
-  - P2: `addons/JehenoThirdPersonController/interior.exr`
-  - P2: `addons/JehenoThirdPersonController/textures/`
-  - P3: `addons/JehenoThirdPersonController/Arts/` 中与当前 demo 无关的样例资源
+- [ ] 后续资产治理只围绕当前 `assets/` 运行时资产和外部源资产仓展开。
 
 ## D. 资产源仓落地
 
@@ -107,7 +99,7 @@
   - 导出人
   - 是否为当前 `Phase 0` 运行必需
 
-- [ ] 先为 `JehenoThirdPersonController` 写第一版实际清单。
+- [ ] 先为当前 `assets/` 运行时资产写第一版实际清单。
 
 ## G. 协作者操作说明
 
