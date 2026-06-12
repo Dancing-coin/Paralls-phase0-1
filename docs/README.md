@@ -64,7 +64,6 @@
 - [sample-scene-setup.md](/d:/Users/User/Documents/paralls-phase-0-demo/docs/sample-scene-setup.md)
 - [phase05-scene-zones.md](/d:/Users/User/Documents/paralls-phase-0-demo/docs/phase05-scene-zones.md)
 - [character-execution-notes.md](/d:/Users/User/Documents/paralls-phase-0-demo/docs/character-execution-notes.md)
-- [mixabridge-character-pipeline.md](/d:/Users/User/Documents/paralls-phase-0-demo/docs/mixabridge-character-pipeline.md)
 - [homebuilder-scene-pipeline.md](/d:/Users/User/Documents/paralls-phase-0-demo/docs/homebuilder-scene-pipeline.md)
 - [asset-injection-guide.md](/d:/Users/User/Documents/paralls-phase-0-demo/docs/asset-injection-guide.md)
 - [assets-policy.md](/d:/Users/User/Documents/paralls-phase-0-demo/docs/assets-policy.md)

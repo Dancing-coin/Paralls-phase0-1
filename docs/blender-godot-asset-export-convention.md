@@ -298,7 +298,7 @@ Blender MCP 适合：
 
 1. 在 Blender 整理角色模型
 2. 导出到 `assets/characters/...`
-3. 走 `mixabridge` / 角色挂载流程
+3. 按当前项目角色挂载约定挂到 `CharacterReplica` / `KnightRoleSkin`
 4. 继续保留外层 `CharacterReplica`
 
 ### Goblend 试验流
