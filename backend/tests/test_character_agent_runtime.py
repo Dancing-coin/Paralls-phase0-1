@@ -22,12 +22,12 @@ def test_character_agent_runtime_turns_perceived_event_into_output() -> None:
 
     assert commands
     assert commands[0].actor_id == "char_a"
-    assert commands[0].output_type in {
-        "attention_shift",
-        "brief_dialogue_response",
-        "reposition_step",
-        "role_state_hint",
-        "physiology_hint",
+    assert commands[0].command_type in {
+        "look_at",
+        "approach",
+        "observe",
+        "interact",
+        "speak",
     }
 
 

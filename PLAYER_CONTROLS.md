@@ -108,5 +108,6 @@
 这份操作指南来自当前项目中的实际输入配置：
 
 - `project.godot`
+- `scenes/phase0/PlayerShell.tscn`
+- `scripts/player/PlayerShell.gd`
 - `scripts/player/Phase0PlayerBridge.gd`
-- `addons/JehenoThirdPersonController/README.md`

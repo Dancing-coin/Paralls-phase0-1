@@ -33,14 +33,13 @@ const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
 @export var privacy_local_distance := 10.0
 
 @onready var intent_mapper: Node = $IntentMapper
-@onready var player: CharacterBody3D = $Player
-@onready var player_input_bridge: Node = $Player/Phase0InputBridge
+@onready var player: CharacterBody3D = $PlayerCharacter
+@onready var player_input_bridge: Node = $PlayerCharacter/Phase0InputBridge
 # A and B remain the current AI-driven scene actors.
 @onready var character_a: Node3D = $CharacterA
 @onready var character_b: Node3D = $CharacterB
-# CharacterC is the first player-driven in-world role shell.
-# The playable Player node remains the locomotion/camera shell for Phase 0.x.
-@onready var character_c: Node3D = $CharacterC
+# The player-driven role shell now lives under the single PlayerCharacter base.
+@onready var character_c: Node3D = $PlayerCharacter/CharacterReplica
 @onready var interactive_object: Node3D = $InteractiveObject
 @onready var character_visual_fact_emitter: Node = $VisualFactEmitter/CharacterVisualFactEmitter
 @onready var evidence_projection_emitter: Node = $VisualFactEmitter/EvidenceProjectionEmitter
@@ -271,8 +270,8 @@ func _run_autotest_inputs() -> void:
 	await get_tree().create_timer(autotest_dialogue_delay).timeout
 	player_input_bridge.trigger_dialogue()
 	_orient_player_toward(interactive_object.global_position)
-	_force_focus_target(interactive_object)
 	_move_player_to_interact_position()
+	_force_focus_target(interactive_object)
 	_emit_move_intent_request(autotest_interact_position, "locomotion")
 	await get_tree().create_timer(autotest_interact_delay).timeout
 	player_input_bridge.trigger_interaction()
@@ -391,24 +390,27 @@ func _probe_jump_variant(jump_type: String, wants_run: bool) -> void:
 		player_input_bridge.set_crouch_enabled(false)
 	if player_input_bridge.has_method("set_gait_mode_by_name"):
 		player_input_bridge.set_gait_mode_by_name("walk")
-	Input.action_press(player.move_forward_action)
+	var move_forward_action := StringName(player.get("move_forward_action"))
+	var run_action := StringName(player.get("run_action"))
+	var jump_action := StringName(player.get("jump_action"))
+	Input.action_press(move_forward_action)
 	if wants_run:
-		Input.action_press(player.run_action)
+		Input.action_press(run_action)
 	await get_tree().create_timer(0.14).timeout
 	var start_position := player.global_position
 	var apex_height := start_position.y
-	Input.action_press(player.jump_action)
+	Input.action_press(jump_action)
 	await get_tree().physics_frame
-	Input.action_release(player.jump_action)
+	Input.action_release(jump_action)
 	var deadline := Time.get_ticks_msec() + 1400
 	while Time.get_ticks_msec() < deadline:
 		apex_height = max(apex_height, player.global_position.y)
 		if player.is_on_floor() and player.global_position.y <= start_position.y + 0.02 and Time.get_ticks_msec() > deadline - 1000:
 			break
 		await get_tree().physics_frame
-	Input.action_release(player.move_forward_action)
+	Input.action_release(move_forward_action)
 	if wants_run:
-		Input.action_release(player.run_action)
+		Input.action_release(run_action)
 	var end_position := player.global_position
 	var horizontal_distance := Vector2(end_position.x - start_position.x, end_position.z - start_position.z).length()
 	_bus_log(

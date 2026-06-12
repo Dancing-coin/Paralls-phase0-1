@@ -575,6 +575,7 @@ def test_websocket_environment_request_accepts_light_level_restore_variant() -> 
     assert drop_siming_output["payload"]["target_environment_id"] == "env_lamp"
     assert drop_character_agent_output["message_type"] == "character_agent_output"
     assert drop_character_agent_output["payload"]["actor_id"] == "char_b"
+    assert drop_character_agent_output["payload"]["command_type"] in {"observe", "approach", "speak", "interact"}
     assert ack["message_type"] == "ack"
     assert ack["payload"]["accepted"] is True
     assert ack["payload"]["route"] == "esm_service"
@@ -960,6 +961,7 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
     assert siming_output["payload"]["target_actor_id"] == "char_b"
     assert character_agent_output["message_type"] == "character_agent_output"
     assert character_agent_output["payload"]["actor_id"] == "char_b"
+    assert character_agent_output["payload"]["command_type"] in {"observe", "approach", "speak", "interact"}
     assert runtime_snapshot["message_type"] == "character_runtime_state_snapshot"
     assert runtime_snapshot["payload"]["actor_id"] == "char_c"
     assert projection_delta["message_type"] == "character_runtime_state_delta"
@@ -1178,3 +1180,4 @@ def test_websocket_raw_visual_fact_event_emits_character_agent_output_for_char_a
 
     assert outputs
     assert outputs[0]["payload"]["actor_id"] == "char_a"
+    assert outputs[0]["payload"]["command_type"] in {"observe", "approach", "speak", "interact"}

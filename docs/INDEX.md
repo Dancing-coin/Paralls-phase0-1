@@ -12,6 +12,12 @@ This is the agent-readable map for the runnable Paralls Phase 0 validation demo.
 
 ## Active Design And Plans
 
+- `docs/superpowers/specs/2026-06-12-character-actor-unification-design.md`
+- `docs/superpowers/specs/2026-06-12-character-actor-runtime-boundary-design.md`
+- `docs/superpowers/specs/2026-06-12-character-actor-control-and-locomotion-design.md`
+- `docs/superpowers/plans/2026-06-12-character-actor-unification-implementation-plan.md`
+- `docs/superpowers/plans/2026-06-12-character-actor-runtime-boundary-implementation-plan.md`
+- `docs/superpowers/plans/2026-06-12-character-actor-control-and-locomotion-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-11-character-agent-minimal-runtime-slice-design.md`
 - `docs/superpowers/plans/2026-06-11-character-agent-minimal-runtime-slice-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-03-harness-engineering-design.md`

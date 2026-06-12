@@ -25,6 +25,7 @@ from app.debug_narration import (
 )
 from app.debug_stream import debug_stream
 from app.models.environment_request import EnvironmentRequest
+from app.models.character_agent_runtime import CharacterGoalCommand
 from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent
 from app.models.raw_fact import RawFactEvent
 from app.models.runtime_state import ConversationCandidateEvent
@@ -641,7 +642,7 @@ def _as_envelope(message_type: str, payload: dict[str, object]) -> dict[str, obj
     }
 
 
-def _as_character_agent_output_envelopes(commands: list[object]) -> list[dict[str, object]]:
+def _as_character_agent_output_envelopes(commands: list[CharacterGoalCommand]) -> list[dict[str, object]]:
     return [
         {
             "message_type": "character_agent_output",

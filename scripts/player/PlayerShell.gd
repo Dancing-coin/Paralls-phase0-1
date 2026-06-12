@@ -1,5 +1,7 @@
 extends CharacterBody3D
 
+const CharacterActorSchemaRef = preload("res://scripts/character/CharacterActorSchema.gd")
+
 @export_group("Input actions")
 @export var move_forward_action: StringName = &"phase0_move_forward"
 @export var move_backward_action: StringName = &"phase0_move_backward"
@@ -158,15 +160,17 @@ func _build_human_intent_frame() -> Dictionary:
 
 func _publish_motion_state(next_motion_state: Dictionary) -> void:
 	if not next_motion_state.is_empty():
-		motion_state = next_motion_state
+		motion_state = CharacterActorSchemaRef.normalize_motion_state(next_motion_state)
 		return
-	motion_state = {
+	motion_state = CharacterActorSchemaRef.normalize_motion_state(
+		{
 		"position": global_position,
 		"velocity_world": velocity,
 		"move_local_actual": current_intent_frame.get("move_local", Vector2.ZERO),
 		"gait_actual": current_intent_frame.get("gait", "walk"),
 		"grounded": is_on_floor(),
-	}
+		}
+	)
 
 func _current_move_local_input() -> Vector2:
 	if forced_move_local.length() > 0.001:

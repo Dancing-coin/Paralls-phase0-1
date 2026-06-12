@@ -75,7 +75,6 @@
 ## 6. 运行与验证
 
 - [demo-script.md](/d:/Users/User/Documents/paralls-phase-0-demo/docs/demo-script.md)
-- [jeheno-third-person-controller-asset-audit.md](/d:/Users/User/Documents/paralls-phase-0-demo/docs/jeheno-third-person-controller-asset-audit.md)
 - [scene-character-import-runtime-checklist.md](/d:/Users/User/Documents/paralls-phase-0-demo/docs/scene-character-import-runtime-checklist.md)
 
 ---

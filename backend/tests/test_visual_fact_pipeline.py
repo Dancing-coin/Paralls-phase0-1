@@ -115,6 +115,7 @@ def test_websocket_environment_visual_fact_emits_runtime_delta_without_candidate
     assert direct_siming_output["payload"]["target_environment_id"] == "env_lamp"
     assert direct_character_agent_output["message_type"] == "character_agent_output"
     assert direct_character_agent_output["payload"]["actor_id"] == "char_b"
+    assert direct_character_agent_output["payload"]["command_type"] in {"observe", "approach", "speak", "interact"}
     assert candidate_event["message_type"] == "conversation_candidate_event"
     assert candidate_event["payload"]["candidate_object_ids"] == []
     assert candidate_event["payload"]["candidate_environment_ids"] == ["env_lamp"]
@@ -239,6 +240,7 @@ def test_raw_visual_fact_for_char_a_emits_character_agent_output() -> None:
 
     assert output_messages
     assert output_messages[0]["payload"]["actor_id"] == "char_a"
+    assert output_messages[0]["payload"]["command_type"] in {"observe", "approach", "speak", "interact"}
 
 
 def test_interact_world_result_updates_self_body_perceived_input_path() -> None:

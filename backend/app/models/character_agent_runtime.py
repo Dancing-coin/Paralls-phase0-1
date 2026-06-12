@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -44,16 +46,30 @@ class CharacterIntentDecision(BaseModel):
     rationale: str
 
 
-class CharacterPresentationCommand(BaseModel):
+class CharacterGoalCommand(BaseModel):
     actor_id: str
-    output_type: str
-    producer_ts: int
+    command_type: Literal["look_at", "go_to", "approach", "observe", "interact", "speak"]
+    ttl_ms: int
     causation_id: str
     correlation_id: str
+    producer_ts: int | None = None
     target_actor_id: str | None = None
     target_object_id: str | None = None
     target_environment_id: str | None = None
+    target_position: list[float] | None = None
     dialogue_text: str | None = None
-    move_target: list[float] | None = None
     role_state_hint: str | None = None
     physiology_hint: str | None = None
+
+
+class CharacterIntentFrame(BaseModel):
+    actor_id: str
+    controller_source: Literal["human", "agent", "scripted"]
+    ttl_ms: int
+    causation_id: str
+    correlation_id: str
+    move_local: list[float] | None = None
+    look_local: list[float] | None = None
+    gait: str | None = None
+    stance: str | None = None
+    action: str | None = None

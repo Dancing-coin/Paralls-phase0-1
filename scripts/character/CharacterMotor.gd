@@ -2,6 +2,7 @@ extends Node
 
 class_name CharacterMotor
 
+const CharacterActorSchemaRef = preload("res://scripts/character/CharacterActorSchema.gd")
 
 func apply_intent_frame(body: CharacterBody3D, frame: Dictionary, delta: float) -> Dictionary:
 	var move_local_value: Variant = frame.get("move_local", Vector2.ZERO)
@@ -26,13 +27,15 @@ func apply_intent_frame(body: CharacterBody3D, frame: Dictionary, delta: float) 
 	body.velocity.z = move_toward(body.velocity.z, target_planar_velocity.z, planar_lerp * delta)
 	_apply_vertical_motion(body, action_name, gait_name, move_local, delta)
 	body.move_and_slide()
-	return {
+	return CharacterActorSchemaRef.normalize_motion_state(
+		{
 		"position": body.global_position,
 		"velocity_world": body.velocity,
 		"move_local_actual": move_local,
 		"gait_actual": gait_name,
 		"grounded": body.is_on_floor(),
-	}
+		}
+	)
 
 
 func _apply_vertical_motion(

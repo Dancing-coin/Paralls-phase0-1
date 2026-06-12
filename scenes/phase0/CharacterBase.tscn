@@ -42,7 +42,6 @@ actor_id = "char_c"
 patrol_enabled = false
 dialogue_lean_amount = 0.12
 attention_recoil_amount = 0.16
-use_role_asset = true
 player_shell_visual_offset = Vector3(0, -0.32, 0)
 idle_role_state = "guard"
 

@@ -1,7 +1,8 @@
 from app.models.character_agent_runtime import (
     CharacterIntentDecision,
     CharacterInterpretation,
-    CharacterPresentationCommand,
+    CharacterGoalCommand,
+    CharacterIntentFrame,
     CharacterPrivateWorldSnapshot,
 )
 
@@ -24,20 +25,39 @@ def test_character_private_world_snapshot_defaults() -> None:
     assert snapshot.certainty_score == 1.0
 
 
-def test_character_presentation_command_shape() -> None:
-    command = CharacterPresentationCommand(
+def test_character_goal_command_shape() -> None:
+    command = CharacterGoalCommand(
         actor_id="char_b",
-        output_type="attention_shift",
-        producer_ts=120,
+        command_type="observe",
+        ttl_ms=1200,
         causation_id="character_agent:120",
         correlation_id="character_agent:120",
+        producer_ts=120,
         target_actor_id="char_c",
     )
 
     payload = command.model_dump(exclude_none=True)
 
-    assert payload["output_type"] == "attention_shift"
+    assert payload["command_type"] == "observe"
     assert payload["target_actor_id"] == "char_c"
+
+
+def test_character_intent_frame_shape() -> None:
+    frame = CharacterIntentFrame(
+        actor_id="char_c",
+        controller_source="agent",
+        ttl_ms=300,
+        causation_id="intent:300",
+        correlation_id="intent:300",
+        move_local=[0.0, 1.0],
+        gait="walk",
+        action="observe",
+    )
+
+    payload = frame.model_dump(exclude_none=True)
+
+    assert payload["controller_source"] == "agent"
+    assert payload["gait"] == "walk"
 
 
 def test_character_interpretation_and_intent_decision_shape() -> None:

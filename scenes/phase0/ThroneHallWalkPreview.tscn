@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://3r8cabhxlar7"]
 
 [ext_resource type="PackedScene" uid="uid://cg578n30ae5hd" path="res://assets/environment/throne_room_existing/Demo.gltf" id="1_demo"]
-[ext_resource type="PackedScene" uid="uid://bgkmxyw21pc1m" path="res://addons/JehenoThirdPersonController/PlayerCharacter/player_character_scene.tscn" id="2_player"]
+[ext_resource type="PackedScene" path="res://scenes/phase0/PlayerShell.tscn" id="2_player"]
 [ext_resource type="Script" uid="uid://d1n4ueiadnfpl" path="res://scripts/preview/ThroneHallWalkPreview.gd" id="3_preview"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_preview"]

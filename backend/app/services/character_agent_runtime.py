@@ -1,4 +1,4 @@
-from app.models.character_agent_runtime import CharacterPresentationCommand
+from app.models.character_agent_runtime import CharacterGoalCommand
 from app.models.character_perceived import CharacterPerceivedEvent
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
 from app.services.character_agent_l1 import CharacterAgentL1Service
@@ -16,7 +16,7 @@ class CharacterAgentRuntime:
         self._l3 = CharacterAgentL3Service()
         self._l4 = CharacterAgentL4Adapter()
 
-    def ingest_character_perceived_event(self, event: CharacterPerceivedEvent) -> list[CharacterPresentationCommand]:
+    def ingest_character_perceived_event(self, event: CharacterPerceivedEvent) -> list[CharacterGoalCommand]:
         if event.actor_id not in self.SUPPORTED_ACTORS:
             return []
         snapshot = self._l1.apply_character_perceived_event(event)
@@ -24,7 +24,7 @@ class CharacterAgentRuntime:
         decision = self._l3.select_intent(interpretation)
         return self._l4.build_commands(snapshot, interpretation, decision)
 
-    def ingest_self_body_perceived_event(self, event: SelfBodyPerceivedEvent) -> list[CharacterPresentationCommand]:
+    def ingest_self_body_perceived_event(self, event: SelfBodyPerceivedEvent) -> list[CharacterGoalCommand]:
         if event.actor_id not in self.SUPPORTED_ACTORS:
             return []
         snapshot = self._l1.apply_self_body_perceived_event(event)
@@ -32,7 +32,7 @@ class CharacterAgentRuntime:
         decision = self._l3.select_intent(interpretation)
         return self._l4.build_commands(snapshot, interpretation, decision)
 
-    def ingest_siming_output(self, payload: dict[str, object]) -> list[CharacterPresentationCommand]:
+    def ingest_siming_output(self, payload: dict[str, object]) -> list[CharacterGoalCommand]:
         actor_id = str(payload.get("target_actor_id", "") or "")
         if actor_id not in self.SUPPORTED_ACTORS:
             return []

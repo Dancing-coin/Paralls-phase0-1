@@ -1,8 +1,7 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/character/CharacterReplica.gd" id="1_character"]
 [ext_resource type="Script" path="res://scripts/audio/SpatialVoiceController.gd" id="2_voice"]
-[ext_resource type="PackedScene" path="res://scenes/phase0/GreyboxHumanoidVisual.tscn" id="3_visual"]
 [ext_resource type="PackedScene" path="res://scenes/phase0/KnightRoleSkin.tscn" id="4_plush"]
 [ext_resource type="Script" path="res://scripts/l1/facts/emitters/RoleStateFactEmitter.gd" id="5_role_state_fact_emitter"]
 [ext_resource type="Script" path="res://scripts/l1/facts/emitters/PhysiologyStateFactEmitter.gd" id="6_physiology_state_fact_emitter"]
@@ -20,13 +19,9 @@ script = ExtResource("1_character")
 
 [node name="ImportedModel" type="Node3D" parent="VisualRoot/AssetMount/RotationOffset/ScaleOffset"]
 
-[node name="GreyboxBodyRoot" type="Node3D" parent="VisualRoot"]
-
-[node name="GreyboxHumanoidVisual" parent="VisualRoot/GreyboxBodyRoot" instance=ExtResource("3_visual")]
-
 [node name="RoleAssetRoot" type="Node3D" parent="VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel"]
 
-[node name="GodotPlushSkin" parent="VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot" instance=ExtResource("4_plush")]
+[node name="KnightRoleSkin" parent="VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot" instance=ExtResource("4_plush")]
 visible = false
 
 [node name="SpatialVoiceController" type="AudioStreamPlayer3D" parent="."]

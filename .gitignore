@@ -6,6 +6,8 @@
 .harness/verification/
 .claude/
 .sixth/
+.omx/
+.superpowers/
 .worktrees/
 .codex/tmp/
 goblend.log

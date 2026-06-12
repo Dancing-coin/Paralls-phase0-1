@@ -1,5 +1,7 @@
 extends Node3D
 
+const CharacterActorSchemaRef = preload("res://scripts/character/CharacterActorSchema.gd")
+
 enum LocomotionState {
 	IDLE,
 	WALK,
@@ -26,7 +28,6 @@ enum DriverMode {
 @export var attention_recoil_amount := 0.18
 @export var posture_recover_speed := 5.0
 @export var driver_mode := DriverMode.AI
-@export var use_role_asset := true
 @export var player_shell_visual_offset := Vector3(0.0, 0.0, 0.0)
 @export var reacts_to_player_focus := false
 @export var idle_role_state := "idle"
@@ -166,7 +167,7 @@ func consume_player_root_motion_request(delta: float) -> Vector3:
 		return Vector3.ZERO
 	if not player_shell_grounded:
 		locomotion_state = LocomotionState.ATTEND
-		if use_role_asset and player_jump_type != "none":
+		if player_jump_type != "none":
 			_set_role_asset_motion_profile("jump", "jump_single_leg" if player_jump_type == "single_leg" else "jump_two_foot")
 		if player_jump_type != "none":
 			_trigger_role_state("jump", 0.24 if player_jump_type == "single_leg" else 0.32)
@@ -180,11 +181,10 @@ func consume_player_root_motion_request(delta: float) -> Vector3:
 		_flush_role_root_motion()
 		locomotion_state = LocomotionState.IDLE
 		last_root_motion_world_delta = Vector3.ZERO
-		if use_role_asset:
-			if player_stance == "crouch":
-				_set_role_asset_motion_profile_if_free(idle_role_state, "crouch_idle")
-			else:
-				_set_role_asset_motion_profile_if_free(idle_role_state, "default")
+		if player_stance == "crouch":
+			_set_role_asset_motion_profile_if_free(idle_role_state, "crouch_idle")
+		else:
+			_set_role_asset_motion_profile_if_free(idle_role_state, "default")
 		return Vector3.ZERO
 
 	move_direction = move_direction.normalized()
@@ -193,11 +193,10 @@ func consume_player_root_motion_request(delta: float) -> Vector3:
 	locomotion_state = LocomotionState.WALK
 	if player_stance != "crouch":
 		posture_target = Vector3.ZERO
-	if use_role_asset:
-		if player_stance == "crouch":
-			_set_role_asset_motion_profile_if_free("walk", "crouch_walk")
-		else:
-			_apply_player_locomotion_profile()
+	if player_stance == "crouch":
+		_set_role_asset_motion_profile_if_free("walk", "crouch_walk")
+	else:
+		_apply_player_locomotion_profile()
 
 	var root_motion_step: Vector3 = _consume_role_root_motion_world_delta()
 	if root_motion_step.length() <= 0.0001:
@@ -220,7 +219,7 @@ func consume_player_root_motion_request(delta: float) -> Vector3:
 func apply_player_shell_pose(world_position: Vector3, planar_velocity: Vector3, look_target: Vector3, is_grounded: bool) -> void:
 	driver_mode = DriverMode.PLAYER
 	player_shell_active = true
-	player_motion_state = _resolve_player_motion_state(planar_velocity, is_grounded)
+	player_motion_state = _normalize_motion_state(_resolve_player_motion_state(planar_velocity, is_grounded))
 	var velocity_world_value: Variant = player_motion_state.get("velocity_world", planar_velocity)
 	var velocity_world: Vector3 = velocity_world_value if velocity_world_value is Vector3 else planar_velocity
 	player_shell_velocity = Vector3(velocity_world.x, 0.0, velocity_world.z)
@@ -228,7 +227,7 @@ func apply_player_shell_pose(world_position: Vector3, planar_velocity: Vector3, 
 	player_gait = str(player_motion_state.get("gait_actual", player_gait))
 	global_position = Vector3(world_position.x, world_position.y, world_position.z) + player_shell_visual_offset
 	set_look_target(look_target)
-	player_presentation_input = _build_player_presentation_input()
+	player_presentation_input = _normalize_presentation_input(_build_player_presentation_input())
 	_push_player_presentation_input()
 	_update_player_shell_locomotion()
 
@@ -256,8 +255,7 @@ func clear_player_shell_frame() -> void:
 	clear_look_target()
 	if locomotion_state == LocomotionState.WALK or locomotion_state == LocomotionState.ATTEND:
 		locomotion_state = LocomotionState.IDLE
-		if use_role_asset:
-			_set_role_asset_state(idle_role_state)
+		_set_role_asset_state(idle_role_state)
 
 func is_player_shell_active() -> bool:
 	return player_shell_active
@@ -266,7 +264,7 @@ func get_role_anchor_position() -> Vector3:
 	return global_position
 
 func get_visual_forward() -> Vector3:
-	if use_role_asset and role_asset_scene is Node3D:
+	if role_asset_scene is Node3D:
 		return -((role_asset_scene as Node3D).global_basis.z).normalized()
 	return -(global_basis.z).normalized()
 
@@ -441,8 +439,7 @@ func _update_hold(delta: float) -> void:
 			focus_attention_timer = max(focus_attention_timer - delta, 0.0)
 		else:
 			locomotion_state = LocomotionState.IDLE
-			if use_role_asset:
-				_set_role_asset_state_if_free(idle_role_state)
+			_set_role_asset_state_if_free(idle_role_state)
 
 func _update_movement(delta: float) -> void:
 	if driver_mode == DriverMode.PLAYER and player_shell_active:
@@ -487,8 +484,7 @@ func _move_toward_target(target: Vector3, delta: float, clear_on_arrival: bool) 
 		_flush_role_root_motion()
 		locomotion_state = LocomotionState.IDLE
 		current_velocity = current_velocity.move_toward(Vector3.ZERO, move_decel * delta)
-		if use_role_asset:
-			_set_role_asset_state_if_free(idle_role_state)
+		_set_role_asset_state_if_free(idle_role_state)
 		return
 
 	var move_direction: Vector3 = to_target.normalized()
@@ -496,22 +492,21 @@ func _move_toward_target(target: Vector3, delta: float, clear_on_arrival: bool) 
 	has_look_target = true
 	locomotion_state = LocomotionState.WALK
 	posture_target = Vector3.ZERO
-	if use_role_asset:
-		_set_role_asset_motion_profile_if_free("walk", "walk")
-		var root_motion_step: Vector3 = _consume_role_root_motion_world_delta()
-		if root_motion_step.length() > 0.0001:
-			var motion_amount: float = abs(root_motion_step.dot(move_direction))
-			if motion_amount <= 0.0001:
-				motion_amount = root_motion_step.length()
-			if motion_amount > 0.0001:
-				var world_step: Vector3 = move_direction * motion_amount
-				if world_step.length() > to_target.length():
-					world_step = move_direction * to_target.length()
-				global_position += world_step
-				current_velocity = world_step / max(delta, 0.0001)
-				last_root_motion_world_delta = world_step
-				_bus_log("patrol_root_motion_step:%s" % actor_id)
-				return
+	_set_role_asset_motion_profile_if_free("walk", "walk")
+	var root_motion_step: Vector3 = _consume_role_root_motion_world_delta()
+	if root_motion_step.length() > 0.0001:
+		var motion_amount: float = abs(root_motion_step.dot(move_direction))
+		if motion_amount <= 0.0001:
+			motion_amount = root_motion_step.length()
+		if motion_amount > 0.0001:
+			var world_step: Vector3 = move_direction * motion_amount
+			if world_step.length() > to_target.length():
+				world_step = move_direction * to_target.length()
+			global_position += world_step
+			current_velocity = world_step / max(delta, 0.0001)
+			last_root_motion_world_delta = world_step
+			_bus_log("patrol_root_motion_step:%s" % actor_id)
+			return
 
 	current_velocity = current_velocity.move_toward(move_direction * move_speed, move_accel * delta)
 	var step: Vector3 = current_velocity * delta
@@ -528,40 +523,34 @@ func _update_player_shell_locomotion() -> void:
 	var has_move_input: bool = abs(move_x) > 0.001 or abs(move_y) > 0.001
 	if not player_shell_grounded:
 		locomotion_state = LocomotionState.ATTEND
-		if use_role_asset and player_jump_type != "none":
+		if player_jump_type != "none":
 			_set_role_asset_motion_profile("jump", "jump_single_leg" if player_jump_type == "single_leg" else "jump_two_foot")
 		if player_jump_type != "none":
 			_trigger_role_state("jump", 0.24 if player_jump_type == "single_leg" else 0.32)
 			_emit_physiology_state_fact("elevated")
 	elif player_stance == "crouch" and has_move_input:
 		locomotion_state = LocomotionState.WALK
-		if use_role_asset:
-			_set_role_asset_motion_profile_if_free("walk", "crouch_walk")
+		_set_role_asset_motion_profile_if_free("walk", "crouch_walk")
 	elif player_stance == "crouch":
 		_flush_role_root_motion()
 		locomotion_state = LocomotionState.IDLE
-		if use_role_asset:
-			_set_role_asset_motion_profile_if_free(idle_role_state, "crouch_idle")
+		_set_role_asset_motion_profile_if_free(idle_role_state, "crouch_idle")
 	elif has_move_input:
 		locomotion_state = LocomotionState.WALK
 		posture_target = Vector3.ZERO
-		if use_role_asset:
-			_apply_player_locomotion_profile()
+		_apply_player_locomotion_profile()
 	elif planar_speed > player_run_speed_threshold:
 		locomotion_state = LocomotionState.WALK
 		posture_target = Vector3.ZERO
-		if use_role_asset:
-			_set_role_asset_motion_profile_if_free("run", "run")
+		_set_role_asset_motion_profile_if_free("run", "run")
 	elif planar_speed > player_walk_speed_threshold:
 		locomotion_state = LocomotionState.WALK
 		posture_target = Vector3.ZERO
-		if use_role_asset:
-			_set_role_asset_motion_profile_if_free("walk", "walk")
+		_set_role_asset_motion_profile_if_free("walk", "walk")
 	else:
 		_flush_role_root_motion()
 		locomotion_state = LocomotionState.IDLE
-		if use_role_asset:
-			_set_role_asset_motion_profile_if_free(idle_role_state, "default")
+		_set_role_asset_motion_profile_if_free(idle_role_state, "default")
 	if player_shell_grounded:
 		_emit_physiology_state_fact("stable")
 
@@ -570,7 +559,7 @@ func _resolve_player_motion_state(planar_velocity: Vector3, is_grounded: bool) -
 	if parent_node != null:
 		var motion_state_value: Variant = parent_node.get("motion_state")
 		if motion_state_value is Dictionary and not (motion_state_value as Dictionary).is_empty():
-			return (motion_state_value as Dictionary).duplicate(true)
+			return _normalize_motion_state((motion_state_value as Dictionary).duplicate(true))
 	return {
 		"position": global_position,
 		"velocity_world": planar_velocity,
@@ -594,6 +583,12 @@ func _build_player_presentation_input() -> Dictionary:
 func _push_player_presentation_input() -> void:
 	if role_asset_scene and role_asset_scene.has_method("apply_presentation_input"):
 		role_asset_scene.apply_presentation_input(player_presentation_input)
+
+func _normalize_motion_state(candidate: Dictionary) -> Dictionary:
+	return CharacterActorSchemaRef.normalize_motion_state(candidate)
+
+func _normalize_presentation_input(candidate: Dictionary) -> Dictionary:
+	return CharacterActorSchemaRef.normalize_presentation_input(candidate)
 
 func _update_rotation(delta: float) -> void:
 	if has_external_look_target:
@@ -816,8 +811,6 @@ func _trigger_role_state(state_name: String, duration: float) -> void:
 	if state_name.is_empty():
 		return
 	_emit_role_state_fact(state_name)
-	if not use_role_asset:
-		return
 	action_override_state = state_name
 	action_override_timer = max(duration, 0.05)
 	_set_role_asset_motion_profile(state_name, "default")
@@ -866,7 +859,7 @@ func _role_action_duration_for(action_name: String) -> float:
 			return hold_duration
 
 func _consume_role_root_motion_world_delta() -> Vector3:
-	if not use_root_motion_patrol or not use_role_asset:
+	if not use_root_motion_patrol:
 		return Vector3.ZERO
 	if role_asset_scene == null or not role_asset_scene.has_method("consume_root_motion_delta"):
 		return Vector3.ZERO
@@ -922,8 +915,6 @@ func _emit_locomotion_status_if_changed() -> void:
 	)
 
 func _apply_player_locomotion_profile() -> void:
-	if not use_role_asset:
-		return
 	match player_gait:
 		"amble":
 			_set_role_asset_motion_profile_if_free("walk", "amble")

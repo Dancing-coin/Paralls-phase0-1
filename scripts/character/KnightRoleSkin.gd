@@ -2,6 +2,8 @@ extends Node3D
 
 class_name KnightRoleSkin
 
+const CharacterActorSchemaRef = preload("res://scripts/character/CharacterActorSchema.gd")
+
 # AnimationTree integration note:
 # `AnimationNodeStateMachinePlayback` and `animation_state_playback.travel(...)`
 # are intentionally deferred until a separate Godot-runtime-verified change.
@@ -304,10 +306,14 @@ func set_focus_highlight(is_focused: bool) -> void:
 			mesh.material_overlay = focus_overlay if is_focused else null
 
 func apply_presentation_input(next_input: Dictionary) -> void:
-	move_x = float(next_input.get("move_x", 0.0))
-	move_y = float(next_input.get("move_y", 0.0))
-	speed = float(next_input.get("speed", 0.0))
-	presentation_gait = str(next_input.get("gait", "walk"))
+	var normalized := _normalize_presentation_input(next_input)
+	move_x = float(normalized.get("move_x", 0.0))
+	move_y = float(normalized.get("move_y", 0.0))
+	speed = float(normalized.get("speed", 0.0))
+	presentation_gait = str(normalized.get("gait", "walk"))
+
+func _normalize_presentation_input(candidate: Dictionary) -> Dictionary:
+	return CharacterActorSchemaRef.normalize_presentation_input(candidate)
 
 func _configure_animation_loops() -> void:
 	if animation_player == null:
