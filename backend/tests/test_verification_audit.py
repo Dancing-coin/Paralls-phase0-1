@@ -979,6 +979,9 @@ def test_phase05_character_scene_upgrade_artifacts_exist_and_match_role_split() 
         encoding="utf-8"
     )
     scene_zones = (project_root / "docs" / "phase05-scene-zones.md").read_text(encoding="utf-8")
+    mixabridge_notes = (project_root / "docs" / "mixabridge-character-pipeline.md").read_text(
+        encoding="utf-8"
+    )
     character_asset_notes = (project_root / "assets" / "characters" / "README.md").read_text(
         encoding="utf-8"
     )
@@ -998,7 +1001,10 @@ def test_phase05_character_scene_upgrade_artifacts_exist_and_match_role_split() 
     assert "same shell usable by `A`, `B`, and `C`" in execution_notes
     assert "CharacterC" in scene_zones
     assert "player-driven in-world intervener" in scene_zones
-    assert "shared project-owned skeleton and animation preparation path" in character_asset_notes
+    assert "Use `mixabridge` for:" in mixabridge_notes
+    assert "optional offline asset-preparation path" in mixabridge_notes
+    assert "not part of the current Phase 0 runtime dependency chain" in mixabridge_notes
+    assert "shared skeleton and animation preparation path" in character_asset_notes
     assert "`A/B/C` should not diverge into separate asset conventions" in character_asset_notes
     assert "turn the open greybox field into a semi-open relationship space" in homebuilder_notes
     assert "`CharacterC` is the first player-driven in-world role shell" in sample_scene_notes

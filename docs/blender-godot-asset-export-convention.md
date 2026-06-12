@@ -298,8 +298,9 @@ Blender MCP 适合：
 
 1. 在 Blender 整理角色模型
 2. 导出到 `assets/characters/...`
-3. 按当前项目角色挂载约定挂到 `CharacterReplica` / `KnightRoleSkin`
-4. 继续保留外层 `CharacterReplica`
+3. 如需骨骼映射、retarget 或动画库整理，可先走可选的 `mixabridge` 离线预处理
+4. 按当前项目角色挂载约定挂到 `CharacterReplica` / `KnightRoleSkin`
+5. 继续保留外层 `CharacterReplica`
 
 ### Goblend 试验流
 

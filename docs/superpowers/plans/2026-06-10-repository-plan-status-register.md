@@ -38,7 +38,7 @@ It exists to answer three questions without rereading every historical plan:
 | `2026-06-07-l1-state-projection-hardening-implementation-plan.md` | `completed_verified` | shared effect semantics, reseed behavior, and runtime-edge recovery are explicitly verified. |
 | `2026-06-05-player-root-motion-locomotion-implementation-plan.md` | `completed_verified` | locomotion/root-motion audit proof, jump probes, and forward-direction probes are explicitly verified. |
 | `2026-06-02-phase05-runtime-alignment-implementation-plan.md` | `completed_verified` | backend runtime state, relation compilation, Siming, health identity, and websocket runtime messages are explicitly verified. |
-| `2026-06-02-phase05-character-scene-upgrade-implementation-plan.md` | `completed_verified` | `CharacterC`, driver-spec/docs, homebuilder notes, and scene-zone docs are explicitly verified; the older mixabridge note has since been retired from the repo. |
+| `2026-06-02-phase05-character-scene-upgrade-implementation-plan.md` | `completed_verified` | `CharacterC`, driver-spec/docs, homebuilder notes, and scene-zone docs are explicitly verified; the mixabridge note remains as an offline asset-tool reference rather than a runtime dependency. |
 | `2026-06-02-phase0-open-scene-camera-implementation-plan.md` | `completed_verified` | open-field scene, camera tuning, and sample-scene docs are explicitly verified. |
 | `2026-06-06-l1-raw-fact-emitter-implementation.md` | `completed_verified` | document already self-registers as implemented for the minimal slice and is covered by current raw-fact tests. |
 
