@@ -358,6 +358,18 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             messages.extend(_publish_world_result_authority_event(environment_result, source_event=event))
         return _finalize_outbound_messages(messages)
 
+    if envelope.message_type == "character_actor_status":
+        return [
+            {
+                "message_type": "ack",
+                "payload": {
+                    "accepted": True,
+                    "source_type": envelope.message_type,
+                    "route": "character_actor_runtime_status",
+                },
+            }
+        ]
+
     if envelope.message_type != "player_input":
         return [
             {

@@ -1,6 +1,8 @@
 extends Node3D
 
 const CharacterActorSchemaRef = preload("res://scripts/character/CharacterActorSchema.gd")
+const CharacterLocomotionExecutionModeRef = preload("res://scripts/character/CharacterLocomotionExecutionMode.gd")
+const CharacterPresentationInputRef = preload("res://scripts/character/CharacterPresentationInput.gd")
 
 enum LocomotionState {
 	IDLE,
@@ -40,6 +42,19 @@ enum DriverMode {
 @export var player_walk_speed_threshold := 0.08
 @export var player_run_speed_threshold := 6.4
 @export var use_root_motion_patrol := true
+@export var embodied_interaction_distance := 3.0
+
+const CHARACTER_ACTOR_STATUS_ACCEPTED := "accepted_by_actor_adapter"
+const CHARACTER_ACTOR_STATUS_RECOVERING_APPROACH := "recovering_approach"
+const CHARACTER_ACTOR_STATUS_RECOVERING_TURN := "recovering_turn"
+const CHARACTER_ACTOR_STATUS_TARGET_NOT_VISIBLE := "embodied_target_not_visible"
+const CHARACTER_ACTOR_STATUS_OUT_OF_RANGE := "embodied_out_of_range"
+const CHARACTER_ACTOR_STATUS_SUBMITTED_TO_AUTHORITY := "submitted_to_authority"
+const CHARACTER_ACTOR_STATUS_FAILED := "failed"
+const CHARACTER_ACTOR_FAILURE_TARGET_NOT_VISIBLE := "target_not_visible"
+const CHARACTER_ACTOR_FAILURE_TARGET_OUT_OF_RANGE := "target_out_of_range"
+const CHARACTER_ACTOR_FAILURE_TARGET_UNREACHABLE := "target_unreachable"
+const CHARACTER_ACTOR_FAILURE_TARGET_NOT_PERCEIVED := "target_not_perceived"
 
 @onready var visual_root: Node3D = $VisualRoot
 @onready var role_asset_root: Node3D = $VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot
@@ -88,6 +103,10 @@ var last_root_motion_world_delta := Vector3.ZERO
 var last_locomotion_status_signature := ""
 var last_role_state_fact := ""
 var last_physiology_state_fact := ""
+var active_command_type := ""
+var active_command_priority := 0
+var combat_feedback_timer := 0.0
+var combat_feedback_text := ""
 
 func _ready() -> void:
 	home_position = global_position
@@ -112,6 +131,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	sway_time += delta * sway_speed
 	_update_action_override(delta)
+	_update_combat_feedback(delta)
 	_apply_idle_sway()
 	_update_posture(delta)
 	_update_hold(delta)
@@ -140,6 +160,11 @@ func clear_look_target() -> void:
 
 func perform_action(action_name: String) -> void:
 	requested_action = action_name
+	match action_name:
+		"sword_swing":
+			_show_combat_feedback("SWING")
+		"shield_block":
+			_show_combat_feedback("BLOCK")
 	var next_state := _map_requested_action_to_role_state(action_name)
 	if next_state.is_empty():
 		return
@@ -300,25 +325,27 @@ func _on_character_agent_output_received(payload: Dictionary) -> void:
 	if str(payload.get("actor_id", "")) != actor_id:
 		return
 
-	match str(payload.get("command_type", "")):
+	var next_command_type := str(payload.get("command_type", "") or "")
+	if not _can_interrupt_current_action(next_command_type):
+		_emit_character_actor_status(CHARACTER_ACTOR_STATUS_FAILED, payload, "interrupted_by_higher_priority")
+		return
+	active_command_type = next_command_type
+	active_command_priority = _command_priority(next_command_type)
+	_emit_character_actor_status(CHARACTER_ACTOR_STATUS_ACCEPTED, payload)
+
+	match next_command_type:
 		"look_at", "observe":
+			_emit_character_actor_status(CHARACTER_ACTOR_STATUS_RECOVERING_TURN, payload)
 			apply_attention(payload)
 		"go_to", "approach":
 			var target_position := _command_target_position(payload)
 			set_move_target(target_position)
 			set_look_target(target_position)
+			_emit_character_actor_status(CHARACTER_ACTOR_STATUS_RECOVERING_APPROACH, payload)
 		"interact":
-			var interact_target := _command_target_position(payload)
-			set_look_target(interact_target)
-			perform_action("interact")
+			_handle_interact_goal_command(payload)
 		"speak":
-			apply_dialogue(
-				{
-					"actor_id": actor_id,
-					"content": str(payload.get("dialogue_text", "") or ""),
-					"target_actor_id": str(payload.get("target_actor_id", "") or ""),
-				}
-			)
+			_apply_embodied_speak(payload)
 		_:
 			return
 
@@ -329,6 +356,122 @@ func _on_character_agent_output_received(payload: Dictionary) -> void:
 	var physiology_hint := str(payload.get("physiology_hint", "") or "")
 	if not physiology_hint.is_empty():
 		_emit_physiology_state_fact(physiology_hint)
+	if next_command_type == "interact":
+		return
+	if next_command_type == "speak":
+		return
+	_clear_completed_command()
+
+func _handle_interact_goal_command(payload: Dictionary) -> void:
+	# Agent target_id is a request, not authority.
+	var target_node := _command_target_node(payload)
+	var failure_reason := _resolve_embodied_target_failure_reason(payload, target_node)
+	if failure_reason == CHARACTER_ACTOR_FAILURE_TARGET_OUT_OF_RANGE and target_node != null:
+		set_move_target(target_node.global_position)
+		set_look_target(target_node.global_position)
+		_emit_character_actor_status(CHARACTER_ACTOR_STATUS_RECOVERING_APPROACH, payload, failure_reason)
+		return
+	if failure_reason == CHARACTER_ACTOR_FAILURE_TARGET_NOT_VISIBLE and target_node != null:
+		set_look_target(target_node.global_position)
+		_emit_character_actor_status(CHARACTER_ACTOR_STATUS_TARGET_NOT_VISIBLE, payload, failure_reason)
+		_emit_character_actor_status(CHARACTER_ACTOR_STATUS_RECOVERING_TURN, payload, failure_reason)
+		return
+	if not failure_reason.is_empty():
+		_emit_character_actor_status(CHARACTER_ACTOR_STATUS_FAILED, payload, failure_reason)
+		return
+	var interact_target := _command_target_position(payload)
+	set_look_target(interact_target)
+	perform_action("interact")
+	_emit_character_actor_status(CHARACTER_ACTOR_STATUS_SUBMITTED_TO_AUTHORITY, payload)
+	_clear_completed_command()
+
+func _apply_embodied_speak(payload: Dictionary) -> void:
+	# CharacterAgent / DialogueService owns text; CharacterActor only embodies it.
+	_emit_character_actor_status(CHARACTER_ACTOR_STATUS_RECOVERING_TURN, payload)
+	apply_dialogue(
+		{
+			"actor_id": actor_id,
+			"content": str(payload.get("dialogue_text", "") or ""),
+			"target_actor_id": str(payload.get("target_actor_id", "") or ""),
+		}
+	)
+	_clear_completed_command()
+
+func _command_priority(command_type: String) -> int:
+	match command_type:
+		"interact":
+			return 5
+		"speak":
+			return 4
+		"observe", "look_at":
+			return 3
+		"approach", "go_to":
+			return 2
+		"idle":
+			return 1
+		_:
+			return 0
+
+func _can_interrupt_current_action(next_command_type: String) -> bool:
+	if active_command_type.is_empty():
+		return true
+	return _command_priority(next_command_type) >= active_command_priority
+
+func _clear_completed_command() -> void:
+	active_command_type = ""
+	active_command_priority = 0
+
+func _emit_character_actor_status(status: String, command_payload: Dictionary, failure_reason: String = "") -> void:
+	var payload := {
+		"actor_id": actor_id,
+		"command_status": status,
+		"command_type": str(command_payload.get("command_type", "") or ""),
+		"target_actor_id": str(command_payload.get("target_actor_id", "") or ""),
+		"target_object_id": str(command_payload.get("target_object_id", "") or ""),
+		"target_environment_id": str(command_payload.get("target_environment_id", "") or ""),
+		"failure_reason": failure_reason,
+		"causation_id": str(command_payload.get("causation_id", "") or ""),
+		"correlation_id": str(command_payload.get("correlation_id", "") or ""),
+	}
+	var bus := _get_bus()
+	if bus and bus.has_signal("character_actor_status_emitted"):
+		bus.emit_signal("character_actor_status_emitted", payload)
+	_bus_log("character_actor_status:%s:%s:%s" % [actor_id, status, failure_reason])
+
+func _resolve_embodied_target_failure_reason(payload: Dictionary, target_node: Node3D) -> String:
+	if target_node == null:
+		return CHARACTER_ACTOR_FAILURE_TARGET_NOT_PERCEIVED
+	if global_position.distance_to(target_node.global_position) > embodied_interaction_distance:
+		return CHARACTER_ACTOR_FAILURE_TARGET_OUT_OF_RANGE
+	if not _has_line_of_sight_to_target(target_node):
+		return CHARACTER_ACTOR_FAILURE_TARGET_NOT_VISIBLE
+	if not _is_target_reachable(target_node):
+		return CHARACTER_ACTOR_FAILURE_TARGET_UNREACHABLE
+	return ""
+
+func _has_line_of_sight_to_target(target_node: Node3D) -> bool:
+	if target_node == null or not target_node.is_inside_tree():
+		return false
+	if not is_inside_tree() or get_world_3d() == null:
+		return false
+	var from_position := global_position + Vector3.UP * 1.4
+	var to_position := target_node.global_position + Vector3.UP * 0.8
+	var query := PhysicsRayQueryParameters3D.create(from_position, to_position)
+	query.exclude = [self]
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return true
+	var collider: Variant = hit.get("collider", null)
+	if collider == target_node:
+		return true
+	if collider is Node:
+		return target_node.is_ancestor_of(collider as Node)
+	return false
+
+func _is_target_reachable(target_node: Node3D) -> bool:
+	if target_node == null or not target_node.is_inside_tree():
+		return false
+	return global_position.distance_to(target_node.global_position) <= embodied_interaction_distance
 
 func _on_focus_state_received(payload: Dictionary) -> void:
 	if not reacts_to_player_focus:
@@ -573,12 +716,28 @@ func _build_player_presentation_input() -> Dictionary:
 	var move_local: Vector2 = move_local_value if move_local_value is Vector2 else Vector2.ZERO
 	var velocity_world_value: Variant = player_motion_state.get("velocity_world", player_shell_velocity)
 	var velocity_world: Vector3 = velocity_world_value if velocity_world_value is Vector3 else player_shell_velocity
-	return {
-		"move_x": move_local.x,
-		"move_y": move_local.y,
-		"speed": velocity_world.length(),
-		"gait": str(player_motion_state.get("gait_actual", player_gait)),
-	}
+	var presentation_contract := CharacterPresentationInputRef.normalize(
+		{
+			"motion_state": player_motion_state.duplicate(true),
+			"focus_state": {
+				"target_id": runtime_focus_target,
+			},
+			"action_state": {
+				"requested_action": requested_action,
+				"override_state": action_override_state,
+			},
+			"equipment_state": {},
+			"physiology_hint": last_physiology_state_fact,
+			"speech_state": {
+				"active_command_type": active_command_type,
+			},
+		}
+	)
+	presentation_contract["move_x"] = move_local.x
+	presentation_contract["move_y"] = move_local.y
+	presentation_contract["speed"] = velocity_world.length()
+	presentation_contract["gait"] = str(player_motion_state.get("gait_actual", player_gait))
+	return presentation_contract
 
 func _push_player_presentation_input() -> void:
 	if role_asset_scene and role_asset_scene.has_method("apply_presentation_input"):
@@ -588,7 +747,12 @@ func _normalize_motion_state(candidate: Dictionary) -> Dictionary:
 	return CharacterActorSchemaRef.normalize_motion_state(candidate)
 
 func _normalize_presentation_input(candidate: Dictionary) -> Dictionary:
-	return CharacterActorSchemaRef.normalize_presentation_input(candidate)
+	var normalized := CharacterPresentationInputRef.normalize(candidate)
+	normalized["move_x"] = float(candidate.get("move_x", 0.0))
+	normalized["move_y"] = float(candidate.get("move_y", 0.0))
+	normalized["speed"] = float(candidate.get("speed", 0.0))
+	normalized["gait"] = str(candidate.get("gait", "walk"))
+	return normalized
 
 func _update_rotation(delta: float) -> void:
 	if has_external_look_target:
@@ -667,6 +831,10 @@ func _read_runtime_string_array(value: Variant) -> Array[String]:
 func _update_nameplate() -> void:
 	if nameplate == null:
 		return
+	if combat_feedback_timer > 0.0:
+		nameplate.text = "%s %s" % [actor_id.to_upper(), combat_feedback_text]
+		nameplate.modulate = Color(1.0, 0.35, 0.25, 1.0) if combat_feedback_text == "SWING" else Color(0.3, 0.8, 1.0, 1.0)
+		return
 	var source_visual_fact := runtime_attention_source == "visual_fact"
 	var environment_attention := source_visual_fact and runtime_nearby_environment_refs.size() > 0
 	var attention_active := focus_attention_visual_timer > 0.0 or runtime_conversation_candidate_refs.size() > 0 or source_visual_fact
@@ -684,6 +852,19 @@ func _update_nameplate() -> void:
 		return
 	nameplate.text = "%s !" % actor_id.to_upper()
 	nameplate.modulate = Color(1.0, 0.92, 0.45, 1.0)
+
+func _show_combat_feedback(text: String) -> void:
+	combat_feedback_text = text
+	combat_feedback_timer = 0.6
+	_update_nameplate()
+
+func _update_combat_feedback(delta: float) -> void:
+	if combat_feedback_timer <= 0.0:
+		return
+	combat_feedback_timer = max(combat_feedback_timer - delta, 0.0)
+	if combat_feedback_timer <= 0.0:
+		combat_feedback_text = ""
+		_update_nameplate()
 
 func _resolve_player_position() -> Vector3:
 	var scene := get_tree().current_scene
@@ -730,6 +911,18 @@ func _command_target_position(payload: Dictionary) -> Vector3:
 			float(target_position_raw[2])
 		)
 	return _resolve_attention_target(payload)
+
+func _command_target_node(payload: Dictionary) -> Node3D:
+	var object_id := str(payload.get("target_object_id", "") or "")
+	if not object_id.is_empty():
+		return _find_node_by_property("object_id", object_id)
+	var actor_target := str(payload.get("target_actor_id", "") or "")
+	if not actor_target.is_empty():
+		return _find_node_by_property("actor_id", actor_target)
+	var environment_id := str(payload.get("target_environment_id", "") or "")
+	if not environment_id.is_empty():
+		return _find_node_by_property("environment_id", environment_id)
+	return null
 
 func _find_node_by_property(property_name: String, expected: String) -> Node3D:
 	var scene := get_tree().current_scene
@@ -840,6 +1033,10 @@ func _map_requested_action_to_role_state(action_name: String) -> String:
 			return attention_role_state
 		"jump":
 			return "jump"
+		"sword_swing":
+			return "sword_swing"
+		"shield_block":
+			return "shield_block"
 		_:
 			return action_name
 
@@ -855,6 +1052,10 @@ func _role_action_duration_for(action_name: String) -> float:
 			return 0.8
 		"jump":
 			return 0.32
+		"sword_swing":
+			return 0.48
+		"shield_block":
+			return 0.58
 		_:
 			return hold_duration
 
@@ -880,6 +1081,7 @@ func _flush_role_root_motion() -> void:
 
 func get_locomotion_status() -> Dictionary:
 	return {
+		"execution_mode": CharacterLocomotionExecutionModeRef.PHYSICS,
 		"stance": player_stance,
 		"gait": player_gait,
 		"jump_type": player_jump_type,

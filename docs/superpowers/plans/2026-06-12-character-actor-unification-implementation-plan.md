@@ -171,6 +171,25 @@ python scripts/verification/harness.py --profile phase0
 
 Expected: the scene still runs, and the actor motor/control invariants are statically or runtime-verified.
 
+Implemented evidence to preserve during follow-up work:
+
+```text
+- `PlayerShell.gd` normalizes raw `Input.get_vector(...)` output into project-local locomotion semantics:
+  - `W` => `move_local.y = +1`
+  - `S` => `move_local.y = -1`
+- `Phase0PlayerBridge.gd` resolves facing and movement with the same forward convention as `CharacterMotor`:
+  - forward = `-Vector3.FORWARD.rotated(Vector3.UP, yaw)`
+- Focused regression coverage lives in:
+  - `backend/tests/test_player_forward_direction_static.py`
+- Focused verification that already passed:
+  - `python -m pytest -q backend\tests\test_player_forward_direction_static.py backend\tests\test_character_control_rules_static.py backend\tests\test_player_control_static_contract.py`
+  - Godot `validate_script` for `PlayerShell.gd` and `Phase0PlayerBridge.gd`
+- Runtime proof captured through Godot MCP:
+  - player start position `z = 16`
+  - after simulated `phase0_move_forward`, player position moved to `z = -1.04874348640442`
+  - `CharacterReplica` matched the same forward displacement
+```
+
 - [ ] **Step 5: Commit**
 
 ```bash

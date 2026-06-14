@@ -1,7 +1,8 @@
-[gd_scene format=3 uid="uid://d2d43sn1hg4h8"]
+[gd_scene load_steps=3 format=3 uid="uid://d2d43sn1hg4h8"]
 
 [ext_resource type="PackedScene" uid="uid://bjv48pi0q2ifq" path="res://assets/characters/shared/crusader_knight.glb" id="1_knight"]
 [ext_resource type="Script" uid="uid://dlmmp6gqf6dm3" path="res://scripts/character/KnightRoleSkin.gd" id="2_skin"]
+[ext_resource type="Script" path="res://scripts/character/KnightCombatModifier.gd" id="3_combat_modifier"]
 
 [sub_resource type="AnimationNodeAnimation" id="AnimationNodeAnimation_k7lab"]
 animation = &"alert_recoil"
@@ -343,6 +344,11 @@ transitions = ["idle_guard", "walk_guard", SubResource("AnimationNodeStateMachin
 script = ExtResource("2_skin")
 
 [node name="KnightScene" parent="." unique_id=1857276749 instance=ExtResource("1_knight")]
+
+[node name="KnightCombatModifier" type="SkeletonModifier3D" parent="KnightScene/KnightArmature/Skeleton3D"]
+script = ExtResource("3_combat_modifier")
+sword_in_hand_path = NodePath("../Bip001 R Hand/sword_in_hand")
+shield_in_hand_path = NodePath("../Bip001 L Hand/shield_in_hand")
 
 [node name="AnimationTree" type="AnimationTree" parent="." unique_id=927718334]
 tree_root = SubResource("AnimationNodeStateMachine_vwnjw")

@@ -2,6 +2,23 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+CHARACTER_ACTOR_AUTONOMY_MODES = (
+    "human_controlled",
+    "agent_controlled",
+    "idle_autonomous",
+    "away_conservative_takeover",
+    "scripted_test",
+)
+
+SHARED_CHARACTER_COMMANDS = (
+    "look_at",
+    "go_to",
+    "approach",
+    "observe",
+    "interact",
+    "speak",
+)
+
 
 class CharacterPrivateWorldSnapshot(BaseModel):
     actor_id: str

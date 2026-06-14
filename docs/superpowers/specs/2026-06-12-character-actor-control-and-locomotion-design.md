@@ -77,6 +77,21 @@ The control-side input semantics are:
 
 These inputs do not directly drive animation clips. They drive local movement intent which the motor resolves and presentation consumes indirectly.
 
+Normalization rule:
+
+```text
+project-local `move_local` uses positive Y for forward intent
+```
+
+That means the player input layer must normalize raw Godot action-vector output before handing it to the shared actor path:
+
+```text
+W -> move_local.y = +1
+S -> move_local.y = -1
+```
+
+This rule exists because Godot `Input.get_vector(left, right, up, down)` returns negative Y for the `up` action, while the shared Character Actor locomotion contract uses positive Y as forward intent.
+
 ## Movement Vector
 
 Movement uses actor-local forward/right axes:
@@ -88,6 +103,14 @@ move_world = forward * move_local.y + right * move_local.x
 ```
 
 This movement rule applies equally to human- and agent-originated local execution after intent has been normalized.
+
+Bridge-facing and look-target resolution must use the same forward sign as the motor path:
+
+```text
+forward_from_yaw(yaw) = -Vector3.FORWARD.rotated(Vector3.UP, yaw)
+```
+
+The bridge layer must not resolve look/facing using `+Vector3.FORWARD` while the motor resolves locomotion using `-basis.z`, because that reintroduces a player-only body convention mismatch.
 
 ## Camera Rig Rules
 
@@ -217,6 +240,11 @@ Minimum matching requirements:
 - `S` uses backpedal animation matched to backward speed
 - diagonals use diagonal blend instead of pure forward fallback once assets exist
 - stop/deceleration aligns with stop/idle transition
+
+Minimum control-side verification requirements for this contract:
+
+- static regression coverage locks the input normalization rule and bridge forward-axis rule
+- runtime verification proves simulated forward input moves the player shell and visible `CharacterReplica` along world `-Z` when yaw is zero
 
 ## Presentation Inputs
 

@@ -93,6 +93,26 @@ Required migration posture:
 - keep Godot as the local embodiment and presentation host, not the world-truth authority and not the character brain
 - keep future Phase 1 compatibility without requiring full Phase 1 implementation in this repo
 
+## Shared Input And Facing Invariant
+
+The shared actor substrate must also preserve one locomotion and facing convention across the player shell, actor bridge, and motor.
+
+Required invariant:
+
+```text
+project-local forward intent = `move_local.y > 0`
+world forward execution = `-actor.global_basis.z`
+bridge-facing helper = `-Vector3.FORWARD.rotated(Vector3.UP, yaw)`
+```
+
+This means:
+
+- `W` normalizes to positive local forward intent
+- `S` normalizes to negative local backward intent
+- player-facing look targets and locomotion resolution must use the same forward-axis convention as the motor path
+
+The repository briefly regressed into a split convention where raw Godot input and bridge-facing resolution disagreed about forward sign. Character Actor unification explicitly rejects that drift because it reintroduces separate body semantics for player control versus actor execution.
+
 ## Non-Goals
 
 This umbrella design does not require:
@@ -111,9 +131,13 @@ The umbrella design is accepted when implementation can prove all of the followi
 2. `CharacterAgent`, `CharacterActor`, and `ESM` have clear, non-overlapping responsibility boundaries.
 3. The actor-facing cross-boundary command contract is frozen as `CharacterGoalCommand`, while `CharacterIntentFrame` is frozen as Godot-local execution input; they are not treated as the same layer.
 4. Human and agent paths enter the same actor command surface and unified execution chain instead of maintaining separate low-level body paths.
-5. World-changing actions remain backend/`ESM` authoritative even when movement, search, facing, or presentation execute locally in Godot.
-6. `KnightRoleSkin` is the required Phase 0.5 role presentation asset, and `GreyboxHumanoidVisual` is removed from the Character Actor migration path.
-7. The runtime-boundary child spec and the control-and-locomotion child spec together support continued Phase 0 verification without forcing full Phase 1 runtime completion.
+5. Shared actor execution preserves one forward-direction convention end-to-end:
+   - `W` resolves to `move_local.y = +1`
+   - local forward resolves to `-basis.z`
+   - bridge-facing and motor-facing rules do not disagree about forward sign
+6. World-changing actions remain backend/`ESM` authoritative even when movement, search, facing, or presentation execute locally in Godot.
+7. `KnightRoleSkin` is the required Phase 0.5 role presentation asset, and `GreyboxHumanoidVisual` is removed from the Character Actor migration path.
+8. The runtime-boundary child spec and the control-and-locomotion child spec together support continued Phase 0 verification without forcing full Phase 1 runtime completion.
 
 ## Relationship To Existing Specs
 

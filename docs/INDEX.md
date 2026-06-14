@@ -12,6 +12,8 @@ This is the agent-readable map for the runnable Paralls Phase 0 validation demo.
 
 ## Active Design And Plans
 
+- `docs/superpowers/specs/2026-06-15-character-actor-architecture-optimization-design.md`
+- `docs/superpowers/plans/2026-06-15-character-actor-architecture-optimization-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-12-character-actor-unification-design.md`
 - `docs/superpowers/specs/2026-06-12-character-actor-runtime-boundary-design.md`
 - `docs/superpowers/specs/2026-06-12-character-actor-control-and-locomotion-design.md`
@@ -31,6 +33,7 @@ This is the agent-readable map for the runnable Paralls Phase 0 validation demo.
 ## Runtime Areas
 
 - `backend/`: FastAPI authority backend, Pydantic models, services, and pytest coverage.
+- `docs/character/`: character architecture, control chain, asset integration, and future action asset interface docs.
 - `scripts/autoload/`: Godot backend bridge and local presentation bus.
 - `scripts/phase0/`: Phase 0 demo orchestration.
 - `scripts/player/`: player intent and embodiment path.
@@ -94,5 +97,14 @@ Latest run manifest, baseline, and diff artifacts are written under `.harness/ve
 - `docs/reference/phase1-event-bus/`
 - `docs/reference/phase1-character-agent/`
 - `docs/reference/phase1-siming/`
+
+## Character Docs
+
+- `docs/character/character-actor-architecture.md`
+- `docs/character/character-control-chain.md`
+- `docs/character/character-asset-integration.md`
+- `docs/character/character-action-asset-interface.md`
+- `docs/character/character-actor-migration-status.md`
+- `docs/character/character-debug-and-verification.md`
 
 Reference docs are supporting context. Current task truth still follows `AGENTS.md` and active specs/plans.

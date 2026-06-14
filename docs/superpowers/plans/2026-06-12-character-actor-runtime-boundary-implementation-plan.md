@@ -355,3 +355,202 @@ Expected: PASS.
 git add scenes/phase0/CharacterReplica.tscn scripts/character/CharacterReplica.gd backend/tests/test_character_actor_boundary_audit.py
 git commit -m "Remove greybox and verify Character Actor runtime boundaries"
 ```
+
+### Task 6: Enforce Focus, Reacquisition, And Embodied Eligibility Feedback
+
+**Files:**
+- Modify: `scripts/character/CharacterReplica.gd`
+- Modify: `scripts/autoload/LocalPresentationBus.gd`
+- Modify: `scripts/autoload/BackendBridge.gd`
+- Modify: `backend/app/main.py` only if structured status envelopes must cross the websocket boundary
+- Create: `backend/tests/test_character_actor_reacquisition_runtime.py`
+
+- [x] **Step 1: Write the failing focus/reacquisition tests**
+
+Add tests that lock the actor-side fairness rules:
+
+```python
+assert "FocusState" in runtime_boundary_spec_text
+assert "target_id is a request, not authority" in runtime_boundary_spec_text
+assert failure_reason in {"target_not_visible", "target_out_of_range", "target_unreachable", "target_not_perceived"}
+```
+
+- [x] **Step 2: Run the tests to verify failure**
+
+Run:
+
+```powershell
+python -m pytest -q backend\tests\test_character_actor_reacquisition_runtime.py
+```
+
+Expected before implementation: fail because reacquisition feedback and focus fairness are not yet fully locked.
+
+- [x] **Step 3: Enforce local embodied gates before final interaction**
+
+The Godot actor path must treat agent `target_id` as a request only and require current embodied eligibility before final local execution:
+
+```text
+goal target
+-> local focus / perception / reachability gate
+-> recover by turn / approach / search if possible
+-> only then submit final authority-facing interaction
+```
+
+- [x] **Step 4: Emit structured lifecycle status for reacquisition and embodied failure**
+
+At minimum, preserve explicit statuses/reasons for:
+
+```text
+accepted_by_actor_adapter
+recovering_approach
+recovering_turn
+embodied_target_not_visible
+embodied_out_of_range
+submitted_to_authority
+failed
+```
+
+- [x] **Step 5: Re-run the tests**
+
+Run:
+
+```powershell
+python -m pytest -q backend\tests\test_character_actor_reacquisition_runtime.py
+```
+
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add scripts/character/CharacterReplica.gd scripts/autoload/LocalPresentationBus.gd scripts/autoload/BackendBridge.gd backend/app/main.py backend/tests/test_character_actor_reacquisition_runtime.py
+git commit -m "Enforce Character Actor focus fairness and reacquisition feedback"
+```
+
+Evidence:
+
+- RED: `python -m pytest -q backend\tests\test_character_actor_reacquisition_runtime.py` failed because `CharacterReplica.gd` did not yet expose target-request fairness/status feedback.
+- GREEN: `python -m pytest -q backend\tests\test_character_actor_reacquisition_runtime.py` passed (`2 passed`).
+- Risk hardening: `python -m pytest -q backend\tests\test_character_actor_reacquisition_runtime.py backend\tests\test_pytest_config_static.py` passed (`4 passed`) after replacing unconditional embodied gate placeholders with Godot direct-space raycast / tree-membership checks and pinning pytest-asyncio loop scope.
+- Static project check: `python scripts\verification\harness.py --profile godot-project` passed (`overall_godot_project_passed=True`).
+
+### Task 7: Freeze Autonomy Modes, Shared Command Permissions, And Speak Embodiment
+
+**Files:**
+- Modify: `backend/app/models/character_agent_runtime.py`
+- Modify: `backend/app/services/character_agent_runtime.py`
+- Modify: `scripts/character/CharacterReplica.gd`
+- Create: `backend/tests/test_character_actor_autonomy_modes.py`
+
+- [x] **Step 1: Write the failing autonomy-mode tests**
+
+Add tests that lock:
+
+- the reserved autonomy modes
+- the shared command surface
+- the conservative restrictions
+- `speak` as embodied action rather than local text generation
+
+```python
+assert mode in {"human_controlled", "agent_controlled", "idle_autonomous", "away_conservative_takeover", "scripted_test"}
+assert command in {"look_at", "go_to", "approach", "observe", "interact", "speak"}
+```
+
+- [x] **Step 2: Run the tests to verify failure**
+
+Run:
+
+```powershell
+python -m pytest -q backend\tests\test_character_actor_autonomy_modes.py
+```
+
+Expected before implementation: fail because permissions and embodied `speak` semantics are not yet frozen.
+
+- [x] **Step 3: Encode the autonomy-mode and permission contract**
+
+Implementation must preserve:
+
+```text
+human_controlled
+agent_controlled
+idle_autonomous
+away_conservative_takeover
+scripted_test
+```
+
+and keep away-conservative behavior limited to low-risk continuity commands.
+
+- [x] **Step 4: Keep `speak` embodied but not generative**
+
+Preserve:
+
+```text
+CharacterAgent / dialogue service owns text
+CharacterActor owns facing, focus, playback, and local role/auditory fact emission
+```
+
+- [x] **Step 5: Re-run the tests**
+
+Run:
+
+```powershell
+python -m pytest -q backend\tests\test_character_actor_autonomy_modes.py
+```
+
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add backend/app/models/character_agent_runtime.py backend/app/services/character_agent_runtime.py scripts/character/CharacterReplica.gd backend/tests/test_character_actor_autonomy_modes.py
+git commit -m "Freeze Character Actor autonomy modes and embodied speak rules"
+```
+
+Evidence:
+
+- RED: `python -m pytest -q backend\tests\test_character_actor_autonomy_modes.py` failed because autonomy mode constants, runtime permission checks, and embodied speak helper were missing.
+- GREEN: `python -m pytest -q backend\tests\test_character_actor_autonomy_modes.py` passed (`3 passed`).
+
+### Task 8: Final Runtime-Boundary Verification
+
+**Files:**
+- Modify: `scripts/verification/verify_phase0.py` only if verified evidence shows a real gap
+- Modify: `docs/demo-script.md` only if the verified actor-facing runtime behavior changes observably
+
+- [x] **Step 1: Run the focused runtime-boundary suite**
+
+Run:
+
+```powershell
+python -m pytest -q backend\tests\test_character_actor_contract_models.py backend\tests\test_character_agent_goal_command_runtime.py backend\tests\test_character_actor_bridge_static.py backend\tests\test_character_actor_boundary_audit.py backend\tests\test_character_actor_reacquisition_runtime.py backend\tests\test_character_actor_autonomy_modes.py backend\tests\test_ws_protocol.py backend\tests\test_visual_fact_pipeline.py
+```
+
+Expected: PASS.
+
+- [x] **Step 2: Run project verification**
+
+Run:
+
+```powershell
+python scripts/verification/harness.py --profile godot-project
+python scripts/verification/harness.py --profile phase0
+```
+
+Expected:
+
+- Godot project integrity passes
+- Phase 0 loop remains green
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add scripts/verification/verify_phase0.py docs/demo-script.md
+git commit -m "Verify the Character Actor runtime boundary end to end"
+```
+
+Evidence:
+
+- Focused suite: `python -m pytest -q backend\tests\test_character_actor_contract_models.py backend\tests\test_character_agent_goal_command_runtime.py backend\tests\test_character_actor_bridge_static.py backend\tests\test_character_actor_boundary_audit.py backend\tests\test_character_actor_reacquisition_runtime.py backend\tests\test_character_actor_autonomy_modes.py backend\tests\test_ws_protocol.py backend\tests\test_visual_fact_pipeline.py` passed (`62 passed`).
+- Hardened focused suite plus pytest config guard passed (`64 passed`) with `backend\tests\test_pytest_config_static.py` included.
+- `python scripts\verification\harness.py --profile godot-project` passed (`overall_godot_project_passed=True`).
+- `python scripts\verification\harness.py --profile phase0` passed (`overall_strict_phase0_passed=True`).

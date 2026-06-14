@@ -13,9 +13,10 @@ func apply_intent_frame(body: CharacterBody3D, frame: Dictionary, delta: float) 
 	var right := body.global_basis.x
 	var target_planar_velocity := Vector3.ZERO
 	if move_local.length() > 0.001:
+		var speed_property := "run_speed" if gait_name == "run" else "walk_speed"
 		var target_speed := _get_body_float(
 			body,
-			"run_speed" if gait_name == "run" else "walk_speed",
+			speed_property,
 			4.0
 		)
 		target_planar_velocity = ((right * move_local.x) + (forward * move_local.y)).normalized() * target_speed
@@ -31,6 +32,7 @@ func apply_intent_frame(body: CharacterBody3D, frame: Dictionary, delta: float) 
 		{
 		"position": body.global_position,
 		"velocity_world": body.velocity,
+		"facing_yaw": body.rotation.y,
 		"move_local_actual": move_local,
 		"gait_actual": gait_name,
 		"grounded": body.is_on_floor(),
@@ -64,9 +66,10 @@ func _apply_vertical_motion(
 				body.velocity.z = launch_direction.z * launch_speed
 		return
 
+	var gravity_property := "jump_gravity" if body.velocity.y >= 0.0 else "fall_gravity"
 	var gravity := _get_body_float(
 		body,
-		"jump_gravity" if body.velocity.y >= 0.0 else "fall_gravity",
+		gravity_property,
 		0.0
 	)
 	body.velocity.y -= gravity * delta

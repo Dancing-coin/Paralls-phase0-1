@@ -1,8 +1,8 @@
 extends Node3D
 
-class_name KnightRoleSkin
-
 const CharacterActorSchemaRef = preload("res://scripts/character/CharacterActorSchema.gd")
+
+@export var locomotion_amplitude_scale := 0.75
 
 # AnimationTree integration note:
 # `AnimationNodeStateMachinePlayback` and `animation_state_playback.travel(...)`
@@ -20,6 +20,8 @@ const CLIP_MAP := {
 	"inspect": "inspect_relic",
 	"alert": "alert_recoil",
 	"ambient": "ambient_patrol",
+	"sword_swing": "idle_guard",
+	"shield_block": "idle_guard",
 }
 
 const LOOPING_CLIPS := {
@@ -95,6 +97,11 @@ const REFINEMENT_PROFILE := {
 		"arm_swing": 0.18,
 		"arm_roll": 0.05,
 		"elbow_bend": 0.10,
+		"head_nod": 0.05,
+		"head_yaw": 0.03,
+		"neck_roll": 0.02,
+		"hand_swing": 0.08,
+		"hand_roll": 0.10,
 	},
 	"walk": {
 		"hips_pitch": 0.26,
@@ -105,15 +112,20 @@ const REFINEMENT_PROFILE := {
 		"spine_yaw": 0.15,
 		"spine_roll": 0.08,
 		"spine_pitch": 0.08,
-		"thigh_lift": 0.52,
-		"thigh_back": 0.32,
+		"thigh_lift": 0.72,
+		"thigh_back": 0.38,
 		"thigh_splay": 0.12,
-		"shin_bend": 1.08,
-		"toe_lift": 0.46,
-		"toe_drop": 0.16,
-		"arm_swing": 0.42,
-		"arm_roll": 0.12,
-		"elbow_bend": 0.22,
+		"shin_bend": 1.34,
+		"toe_lift": 0.62,
+		"toe_drop": 0.22,
+		"arm_swing": 0.56,
+		"arm_roll": 0.18,
+		"elbow_bend": 0.28,
+		"head_nod": 0.08,
+		"head_yaw": 0.04,
+		"neck_roll": 0.03,
+		"hand_swing": 0.16,
+		"hand_roll": 0.18,
 	},
 	"brisk_walk": {
 		"hips_pitch": 0.32,
@@ -124,15 +136,20 @@ const REFINEMENT_PROFILE := {
 		"spine_yaw": 0.18,
 		"spine_roll": 0.1,
 		"spine_pitch": 0.1,
-		"thigh_lift": 0.64,
-		"thigh_back": 0.4,
+		"thigh_lift": 0.86,
+		"thigh_back": 0.48,
 		"thigh_splay": 0.14,
-		"shin_bend": 1.26,
-		"toe_lift": 0.54,
-		"toe_drop": 0.18,
-		"arm_swing": 0.5,
-		"arm_roll": 0.14,
-		"elbow_bend": 0.26,
+		"shin_bend": 1.48,
+		"toe_lift": 0.7,
+		"toe_drop": 0.24,
+		"arm_swing": 0.66,
+		"arm_roll": 0.2,
+		"elbow_bend": 0.32,
+		"head_nod": 0.1,
+		"head_yaw": 0.05,
+		"neck_roll": 0.04,
+		"hand_swing": 0.2,
+		"hand_roll": 0.22,
 	},
 	"run": {
 		"hips_pitch": 0.28,
@@ -152,6 +169,11 @@ const REFINEMENT_PROFILE := {
 		"arm_swing": 0.62,
 		"arm_roll": 0.18,
 		"elbow_bend": 0.3,
+		"head_nod": 0.07,
+		"head_yaw": 0.04,
+		"neck_roll": 0.03,
+		"hand_swing": 0.18,
+		"hand_roll": 0.2,
 	},
 	"crouch_walk": {
 		"hips_pitch": 0.12,
@@ -171,6 +193,11 @@ const REFINEMENT_PROFILE := {
 		"arm_swing": 0.16,
 		"arm_roll": 0.05,
 		"elbow_bend": 0.1,
+		"head_nod": 0.03,
+		"head_yaw": 0.02,
+		"neck_roll": 0.02,
+		"hand_swing": 0.06,
+		"hand_roll": 0.08,
 	},
 }
 
@@ -207,7 +234,10 @@ const VARIANT_CONFIG := {
 @onready var knight_scene: Node3D = $KnightScene
 @onready var animation_player: AnimationPlayer = $KnightScene/AnimationPlayer
 @onready var skeleton: Skeleton3D = $KnightScene/KnightArmature/Skeleton3D
+@onready var combat_modifier: SkeletonModifier3D = $KnightScene/KnightArmature/Skeleton3D/KnightCombatModifier
 var hips_bone := -1
+var neck_bone := -1
+var head_bone := -1
 var spine_lower_bone := -1
 var spine_upper_bone := -1
 var left_thigh_bone := -1
@@ -218,6 +248,8 @@ var left_upper_arm_bone := -1
 var right_upper_arm_bone := -1
 var left_forearm_bone := -1
 var right_forearm_bone := -1
+var left_hand_bone := -1
+var right_hand_bone := -1
 var left_foot_bone := -1
 var right_foot_bone := -1
 var base_bone_rotations: Dictionary = {}
@@ -235,6 +267,8 @@ var root_motion_initialized := false
 var current_root_motion_track_index := -1
 var current_motion_profile := "default"
 var current_distance_scale := 1.0
+var sword_swing_timer := 0.0
+var shield_block_timer := 0.0
 var move_x := 0.0
 var move_y := 0.0
 var speed := 0.0
@@ -244,12 +278,15 @@ func _ready() -> void:
 	_cache_pose_refinement_bones()
 	base_knight_scene_position = knight_scene.position
 	base_knight_scene_rotation = knight_scene.rotation
+	_configure_combat_modifier()
 	configure_role(role_actor_id)
 	set_motion_profile("guard", "default")
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	_capture_root_motion()
 	_apply_locomotion_pose_refinement()
+	_update_action_pose_overlays(delta)
+	_sync_combat_modifier()
 
 func configure_role(actor_name: String) -> void:
 	role_actor_id = actor_name
@@ -268,6 +305,7 @@ func configure_role(actor_name: String) -> void:
 func set_state(state_name: String) -> void:
 	if animation_player == null:
 		return
+	_trigger_action_pose_overlay(state_name)
 	var clip_name := str(CLIP_MAP.get(state_name, state_name))
 	if not animation_player.has_animation(clip_name):
 		clip_name = "idle_guard"
@@ -435,23 +473,44 @@ func _apply_motion_profile(profile_name: String) -> void:
 func _cache_pose_refinement_bones() -> void:
 	if skeleton == null:
 		return
-	hips_bone = _find_first_bone(["DEF-hips", "hips", "mixamorig_Hips"])
-	spine_lower_bone = _find_first_bone(["DEF-spine", "spine", "mixamorig_Spine"])
-	spine_upper_bone = _find_first_bone(["DEF-spine.001", "DEF-spine.002", "spine.001", "spine.002", "mixamorig_Spine1", "mixamorig_Spine2"])
-	left_thigh_bone = _find_first_bone(["DEF-thigh.L", "thigh.L", "mixamorig_LeftUpLeg"])
-	right_thigh_bone = _find_first_bone(["DEF-thigh.R", "thigh.R", "mixamorig_RightUpLeg"])
-	left_shin_bone = _find_first_bone(["DEF-shin.L", "shin.L", "mixamorig_LeftLeg"])
-	right_shin_bone = _find_first_bone(["DEF-shin.R", "shin.R", "mixamorig_RightLeg"])
-	left_upper_arm_bone = _find_first_bone(["DEF-upper_arm.L", "upper_arm.L", "mixamorig_LeftArm"])
-	right_upper_arm_bone = _find_first_bone(["DEF-upper_arm.R", "upper_arm.R", "mixamorig_RightArm"])
-	left_forearm_bone = _find_first_bone(["DEF-forearm.L", "forearm.L", "mixamorig_LeftForeArm"])
-	right_forearm_bone = _find_first_bone(["DEF-forearm.R", "forearm.R", "mixamorig_RightForeArm"])
-	left_foot_bone = _find_first_bone(["DEF-foot.L", "foot.L", "mixamorig_LeftFoot"])
-	right_foot_bone = _find_first_bone(["DEF-foot.R", "foot.R", "mixamorig_RightFoot"])
-	for bone_idx in [hips_bone, spine_lower_bone, spine_upper_bone, left_thigh_bone, right_thigh_bone, left_shin_bone, right_shin_bone, left_upper_arm_bone, right_upper_arm_bone, left_forearm_bone, right_forearm_bone, left_foot_bone, right_foot_bone]:
+	hips_bone = _find_first_bone(["DEF-hips", "hips", "mixamorig_Hips", "Bip001 Pelvis"])
+	neck_bone = _find_first_bone(["DEF-neck", "neck", "mixamorig_Neck", "Bip001 Neck"])
+	head_bone = _find_first_bone(["DEF-head", "head", "mixamorig_Head", "Bip001 Head"])
+	spine_lower_bone = _find_first_bone(["DEF-spine", "spine", "mixamorig_Spine", "Bip001 Spine"])
+	spine_upper_bone = _find_first_bone(["DEF-spine.001", "DEF-spine.002", "spine.001", "spine.002", "mixamorig_Spine1", "mixamorig_Spine2", "Bip001 Spine1", "Bip001 Spine2"])
+	left_thigh_bone = _find_first_bone(["DEF-thigh.L", "thigh.L", "mixamorig_LeftUpLeg", "Bip001 L Thigh"])
+	right_thigh_bone = _find_first_bone(["DEF-thigh.R", "thigh.R", "mixamorig_RightUpLeg", "Bip001 R Thigh"])
+	left_shin_bone = _find_first_bone(["DEF-shin.L", "shin.L", "mixamorig_LeftLeg", "Bip001 L Calf"])
+	right_shin_bone = _find_first_bone(["DEF-shin.R", "shin.R", "mixamorig_RightLeg", "Bip001 R Calf"])
+	left_upper_arm_bone = _find_first_bone(["DEF-upper_arm.L", "upper_arm.L", "mixamorig_LeftArm", "Bip001 L UpperArm"])
+	right_upper_arm_bone = _find_first_bone(["DEF-upper_arm.R", "upper_arm.R", "mixamorig_RightArm", "Bip001 R UpperArm"])
+	left_forearm_bone = _find_first_bone(["DEF-forearm.L", "forearm.L", "mixamorig_LeftForeArm", "Bip001 L Forearm"])
+	right_forearm_bone = _find_first_bone(["DEF-forearm.R", "forearm.R", "mixamorig_RightForeArm", "Bip001 R Forearm"])
+	left_hand_bone = _find_first_bone(["DEF-hand.L", "hand.L", "mixamorig_LeftHand", "Bip001 L Hand"])
+	right_hand_bone = _find_first_bone(["DEF-hand.R", "hand.R", "mixamorig_RightHand", "Bip001 R Hand"])
+	left_foot_bone = _find_first_bone(["DEF-foot.L", "foot.L", "mixamorig_LeftFoot", "Bip001 L Foot"])
+	right_foot_bone = _find_first_bone(["DEF-foot.R", "foot.R", "mixamorig_RightFoot", "Bip001 R Foot"])
+	for bone_idx in [hips_bone, neck_bone, head_bone, spine_lower_bone, spine_upper_bone, left_thigh_bone, right_thigh_bone, left_shin_bone, right_shin_bone, left_upper_arm_bone, right_upper_arm_bone, left_forearm_bone, right_forearm_bone, left_hand_bone, right_hand_bone, left_foot_bone, right_foot_bone]:
 		if bone_idx >= 0:
 			base_bone_rotations[bone_idx] = skeleton.get_bone_pose_rotation(bone_idx)
 			base_bone_positions[bone_idx] = skeleton.get_bone_pose_position(bone_idx)
+	_configure_combat_modifier()
+
+func _configure_combat_modifier() -> void:
+	if combat_modifier == null or not combat_modifier.has_method("configure_bones"):
+		return
+	combat_modifier.call(
+		"configure_bones",
+		{
+			"right_upper_arm_bone": right_upper_arm_bone,
+			"right_forearm_bone": right_forearm_bone,
+			"right_hand_bone": right_hand_bone,
+			"left_upper_arm_bone": left_upper_arm_bone,
+			"left_forearm_bone": left_forearm_bone,
+			"left_hand_bone": left_hand_bone,
+			"spine_upper_bone": spine_upper_bone,
+		}
+	)
 
 func _find_first_bone(candidates: Array[String]) -> int:
 	if skeleton == null:
@@ -477,12 +536,17 @@ func _apply_locomotion_pose_refinement() -> void:
 	_apply_knight_scene_pose(left_phase, refinement)
 	_apply_hips_pose(left_phase, refinement)
 	_apply_spine_pose(left_phase, refinement)
+	_apply_head_pose(left_phase, refinement)
 	_apply_leg_pose(left_thigh_bone, left_shin_bone, left_foot_bone, left_phase, refinement)
 	_apply_leg_pose(right_thigh_bone, right_shin_bone, right_foot_bone, right_phase, refinement)
 	_apply_arm_pose(left_upper_arm_bone, left_forearm_bone, right_phase, refinement)
 	_apply_arm_pose(right_upper_arm_bone, right_forearm_bone, left_phase, refinement)
+	_apply_hand_pose(left_hand_bone, right_phase, refinement)
+	_apply_hand_pose(right_hand_bone, left_phase, refinement)
 
 func _current_gait_refinement_strength() -> float:
+	if sword_swing_timer > 0.0 or shield_block_timer > 0.0:
+		return 0.0
 	match current_motion_profile:
 		"amble":
 			return 0.18
@@ -506,53 +570,63 @@ func _apply_knight_scene_pose(phase_value: float, profile: Dictionary) -> void:
 	var crouch_active: bool = current_motion_profile == "crouch_walk" or current_motion_profile == "crouch_idle"
 	var stance_drop: float = -0.18 if crouch_active else 0.0
 	var stride_abs: float = abs(phase_value)
-	var strafe_shift: float = clamp(move_x, -1.0, 1.0) * 0.018
-	var backpedal_pitch: float = max(-move_y, 0.0) * 0.08
-	knight_scene.position = base_knight_scene_position + Vector3(strafe_shift, stance_drop + stride_abs * float(profile.get("hips_bob", 0.0)) * 0.7, 0.0)
+	var strafe_shift: float = clamp(move_x, -1.0, 1.0) * _scaled_refinement_value(0.028)
+	var backpedal_pitch: float = max(-move_y, 0.0) * _scaled_refinement_value(0.12)
+	knight_scene.position = base_knight_scene_position + Vector3(strafe_shift, stance_drop + stride_abs * _scaled_refinement_value(float(profile.get("hips_bob", 0.0)) * 0.9), 0.0)
 	var crouch_pitch: float = 0.16 if crouch_active else 0.0
-	knight_scene.rotation = base_knight_scene_rotation + Vector3(crouch_pitch + backpedal_pitch, 0.0, -strafe_shift * 2.2)
+	knight_scene.rotation = base_knight_scene_rotation + Vector3(crouch_pitch + backpedal_pitch, 0.0, -strafe_shift * 2.6)
 
 func _apply_hips_pose(phase_value: float, profile: Dictionary) -> void:
 	if hips_bone < 0 or not base_bone_rotations.has(hips_bone):
 		return
 	var hips_base: Quaternion = base_bone_rotations[hips_bone]
 	var hips_base_position: Vector3 = base_bone_positions.get(hips_bone, Vector3.ZERO)
-	var hips_pitch: float = phase_value * float(profile.get("hips_pitch", 0.0))
-	var hips_roll: float = phase_value * float(profile.get("hips_roll", 0.0))
-	var hips_yaw: float = phase_value * float(profile.get("hips_yaw", 0.0))
+	var hips_pitch: float = phase_value * _scaled_refinement_value(float(profile.get("hips_pitch", 0.0)))
+	var hips_roll: float = phase_value * _scaled_refinement_value(float(profile.get("hips_roll", 0.0)))
+	var hips_yaw: float = phase_value * _scaled_refinement_value(float(profile.get("hips_yaw", 0.0)))
 	var hips_rot := Quaternion(Vector3.RIGHT, hips_pitch) * Quaternion(Vector3.BACK, hips_roll) * Quaternion(Vector3.UP, hips_yaw)
 	skeleton.set_bone_pose_rotation(hips_bone, hips_base * hips_rot)
 	var stride_abs: float = abs(phase_value)
-	var hips_bob: float = stride_abs * float(profile.get("hips_bob", 0.0))
-	var hips_shift: float = phase_value * float(profile.get("hips_shift", 0.0))
+	var hips_bob: float = stride_abs * _scaled_refinement_value(float(profile.get("hips_bob", 0.0)))
+	var hips_shift: float = phase_value * _scaled_refinement_value(float(profile.get("hips_shift", 0.0)))
 	skeleton.set_bone_pose_position(hips_bone, hips_base_position + Vector3(hips_shift, hips_bob, 0.0))
 
 func _apply_spine_pose(phase_value: float, profile: Dictionary) -> void:
 	if spine_lower_bone >= 0 and base_bone_rotations.has(spine_lower_bone):
 		var lower_base: Quaternion = base_bone_rotations[spine_lower_bone]
-		var lower_rot := Quaternion(Vector3.UP, -phase_value * float(profile.get("spine_yaw", 0.0))) * Quaternion(Vector3.BACK, -phase_value * float(profile.get("spine_roll", 0.0)))
+		var lower_rot := Quaternion(Vector3.UP, -phase_value * _scaled_refinement_value(float(profile.get("spine_yaw", 0.0)))) * Quaternion(Vector3.BACK, -phase_value * _scaled_refinement_value(float(profile.get("spine_roll", 0.0))))
 		skeleton.set_bone_pose_rotation(spine_lower_bone, lower_base * lower_rot)
 	if spine_upper_bone >= 0 and base_bone_rotations.has(spine_upper_bone):
 		var upper_base: Quaternion = base_bone_rotations[spine_upper_bone]
-		var upper_rot := Quaternion(Vector3.UP, -phase_value * float(profile.get("spine_yaw", 0.0)) * 1.25) * Quaternion(Vector3.RIGHT, -abs(phase_value) * float(profile.get("spine_pitch", 0.0)))
+		var upper_rot := Quaternion(Vector3.UP, -phase_value * _scaled_refinement_value(float(profile.get("spine_yaw", 0.0)) * 1.25)) * Quaternion(Vector3.RIGHT, -abs(phase_value) * _scaled_refinement_value(float(profile.get("spine_pitch", 0.0))))
 		skeleton.set_bone_pose_rotation(spine_upper_bone, upper_base * upper_rot)
+
+func _apply_head_pose(phase_value: float, profile: Dictionary) -> void:
+	if neck_bone >= 0 and base_bone_rotations.has(neck_bone):
+		var neck_base: Quaternion = base_bone_rotations[neck_bone]
+		var neck_rot := Quaternion(Vector3.BACK, -phase_value * _scaled_refinement_value(float(profile.get("neck_roll", 0.0))))
+		skeleton.set_bone_pose_rotation(neck_bone, neck_base * neck_rot)
+	if head_bone >= 0 and base_bone_rotations.has(head_bone):
+		var head_base: Quaternion = base_bone_rotations[head_bone]
+		var head_rot := Quaternion(Vector3.RIGHT, -abs(phase_value) * _scaled_refinement_value(float(profile.get("head_nod", 0.0)))) * Quaternion(Vector3.UP, -phase_value * _scaled_refinement_value(float(profile.get("head_yaw", 0.0))))
+		skeleton.set_bone_pose_rotation(head_bone, head_base * head_rot)
 
 func _apply_leg_pose(thigh_bone: int, shin_bone: int, foot_bone: int, phase_value: float, profile: Dictionary) -> void:
 	if thigh_bone >= 0 and base_bone_rotations.has(thigh_bone):
 		var thigh_base: Quaternion = base_bone_rotations[thigh_bone]
-		var thigh_lift: float = max(phase_value, 0.0) * float(profile.get("thigh_lift", 0.0))
-		var thigh_back: float = min(phase_value, 0.0) * float(profile.get("thigh_back", 0.0))
-		var thigh_rot := Quaternion(Vector3.RIGHT, -(thigh_lift + thigh_back)) * Quaternion(Vector3.FORWARD, phase_value * float(profile.get("thigh_splay", 0.0)))
+		var thigh_lift: float = max(phase_value, 0.0) * _scaled_refinement_value(float(profile.get("thigh_lift", 0.0)))
+		var thigh_back: float = min(phase_value, 0.0) * _scaled_refinement_value(float(profile.get("thigh_back", 0.0)))
+		var thigh_rot := Quaternion(Vector3.RIGHT, -(thigh_lift + thigh_back)) * Quaternion(Vector3.FORWARD, phase_value * _scaled_refinement_value(float(profile.get("thigh_splay", 0.0))))
 		skeleton.set_bone_pose_rotation(thigh_bone, thigh_base * thigh_rot)
 	if shin_bone >= 0 and base_bone_rotations.has(shin_bone):
 		var shin_base: Quaternion = base_bone_rotations[shin_bone]
-		var shin_bend: float = max(phase_value, 0.0) * float(profile.get("shin_bend", 0.0))
+		var shin_bend: float = max(phase_value, 0.0) * _scaled_refinement_value(float(profile.get("shin_bend", 0.0)))
 		var shin_rot := Quaternion(Vector3.RIGHT, shin_bend)
 		skeleton.set_bone_pose_rotation(shin_bone, shin_base * shin_rot)
 	if foot_bone >= 0 and base_bone_rotations.has(foot_bone):
 		var foot_base: Quaternion = base_bone_rotations[foot_bone]
-		var toe_lift: float = max(phase_value, 0.0) * float(profile.get("toe_lift", 0.0))
-		var toe_drop: float = max(-phase_value, 0.0) * float(profile.get("toe_drop", 0.0))
+		var toe_lift: float = max(phase_value, 0.0) * _scaled_refinement_value(float(profile.get("toe_lift", 0.0)))
+		var toe_drop: float = max(-phase_value, 0.0) * _scaled_refinement_value(float(profile.get("toe_drop", 0.0)))
 		var foot_rot := Quaternion(Vector3.RIGHT, -toe_lift + toe_drop)
 		skeleton.set_bone_pose_rotation(foot_bone, foot_base * foot_rot)
 
@@ -560,13 +634,85 @@ func _apply_arm_pose(arm_bone: int, forearm_bone: int, phase_value: float, profi
 	if arm_bone < 0 or not base_bone_rotations.has(arm_bone):
 		return
 	var arm_base: Quaternion = base_bone_rotations[arm_bone]
-	var arm_rot := Quaternion(Vector3.RIGHT, phase_value * float(profile.get("arm_swing", 0.0))) * Quaternion(Vector3.BACK, phase_value * float(profile.get("arm_roll", 0.0)))
+	var arm_rot := Quaternion(Vector3.RIGHT, phase_value * _scaled_refinement_value(float(profile.get("arm_swing", 0.0)))) * Quaternion(Vector3.BACK, phase_value * _scaled_refinement_value(float(profile.get("arm_roll", 0.0))))
 	skeleton.set_bone_pose_rotation(arm_bone, arm_base * arm_rot)
 	if forearm_bone >= 0 and base_bone_rotations.has(forearm_bone):
 		var forearm_base: Quaternion = base_bone_rotations[forearm_bone]
-		var elbow_bend: float = max(-phase_value, 0.0) * float(profile.get("elbow_bend", 0.0))
+		var elbow_bend: float = max(-phase_value, 0.0) * _scaled_refinement_value(float(profile.get("elbow_bend", 0.0)))
 		var forearm_rot := Quaternion(Vector3.RIGHT, elbow_bend)
 		skeleton.set_bone_pose_rotation(forearm_bone, forearm_base * forearm_rot)
+
+func _apply_hand_pose(hand_bone: int, phase_value: float, profile: Dictionary) -> void:
+	if hand_bone < 0 or not base_bone_rotations.has(hand_bone):
+		return
+	var hand_base: Quaternion = base_bone_rotations[hand_bone]
+	var hand_rot := Quaternion(Vector3.RIGHT, phase_value * _scaled_refinement_value(float(profile.get("hand_swing", 0.0)))) * Quaternion(Vector3.BACK, phase_value * _scaled_refinement_value(float(profile.get("hand_roll", 0.0))))
+	skeleton.set_bone_pose_rotation(hand_bone, hand_base * hand_rot)
+
+func _scaled_refinement_value(value: float) -> float:
+	return value * locomotion_amplitude_scale
+
+func _trigger_action_pose_overlay(state_name: String) -> void:
+	match state_name:
+		"sword_swing":
+			sword_swing_timer = 0.78
+			shield_block_timer = 0.0
+			_bus_log("role_action_overlay:sword_swing")
+		"shield_block":
+			shield_block_timer = 0.92
+			sword_swing_timer = 0.0
+			_bus_log("role_action_overlay:shield_block")
+
+func _update_action_pose_overlays(delta: float) -> void:
+	sword_swing_timer = max(sword_swing_timer - delta, 0.0)
+	shield_block_timer = max(shield_block_timer - delta, 0.0)
+
+func _sync_combat_modifier() -> void:
+	if combat_modifier == null:
+		return
+	if combat_modifier.has_method("set_modifier_input"):
+		combat_modifier.call("set_modifier_input", _build_combat_modifier_input())
+		return
+	if not combat_modifier.has_method("set_sword_overlay"):
+		return
+	var modifier_input := _build_combat_modifier_input()
+	combat_modifier.call(
+		"set_sword_overlay",
+		float(modifier_input.get("sword_overlay_progress", 0.0)),
+		2.2,
+		1.68,
+		0.88,
+		0.5
+	)
+	combat_modifier.call(
+		"set_shield_overlay",
+		float(modifier_input.get("shield_overlay_progress", 0.0)),
+		-1.72,
+		-1.92,
+		-0.72,
+		0.36
+	)
+
+func _build_combat_modifier_input() -> Dictionary:
+	var sword_progress := 1.0 - (sword_swing_timer / 0.78) if sword_swing_timer > 0.0 else 0.0
+	var shield_progress := 1.0 - (shield_block_timer / 0.92) if shield_block_timer > 0.0 else 0.0
+	return {
+		"sword_overlay_progress": sword_progress,
+		"shield_overlay_progress": shield_progress,
+		"sword_upper_strength": 2.2,
+		"sword_forearm_strength": 1.68,
+		"sword_hand_strength": 0.88,
+		"sword_spine_strength": 0.5,
+		"shield_upper_strength": -1.72,
+		"shield_forearm_strength": -1.92,
+		"shield_hand_strength": -0.72,
+		"shield_spine_strength": 0.36,
+	}
+
+func _bus_log(message: String) -> void:
+	var bus: Node = get_node_or_null("/root/LocalPresentationBus")
+	if bus and bus.has_method("log_debug"):
+		bus.log_debug(message)
 
 func _restore_pose_refinement_bones() -> void:
 	if skeleton == null:

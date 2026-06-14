@@ -4,6 +4,11 @@ var ws := WebSocketPeer.new()
 var last_ready_state := WebSocketPeer.STATE_CLOSED
 var last_requested_url := ""
 
+func _ready() -> void:
+    var bus := _get_bus()
+    if bus and bus.has_signal("character_actor_status_emitted"):
+        bus.character_actor_status_emitted.connect(_on_character_actor_status_emitted)
+
 func is_backend_open() -> bool:
     return ws.get_ready_state() == WebSocketPeer.STATE_OPEN
 
@@ -113,6 +118,16 @@ func _dispatch_message(raw_text: String) -> void:
             _bus_emit("siming_output_received", [payload])
         _:
             _bus_log("backend_message:%s" % message_type)
+
+func _on_character_actor_status_emitted(payload: Dictionary) -> void:
+    if ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
+        return
+    send_envelope(
+        {
+            "message_type": "character_actor_status",
+            "payload": payload,
+        }
+    )
 
 func _get_bus() -> Node:
     return get_node_or_null("/root/LocalPresentationBus")

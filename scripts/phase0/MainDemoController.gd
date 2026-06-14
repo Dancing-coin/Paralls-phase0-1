@@ -38,8 +38,6 @@ const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
 # A and B remain the current AI-driven scene actors.
 @onready var character_a: Node3D = $CharacterA
 @onready var character_b: Node3D = $CharacterB
-# The player-driven role shell now lives under the single PlayerCharacter base.
-@onready var character_c: Node3D = $PlayerCharacter/CharacterReplica
 @onready var interactive_object: Node3D = $InteractiveObject
 @onready var character_visual_fact_emitter: Node = $VisualFactEmitter/CharacterVisualFactEmitter
 @onready var evidence_projection_emitter: Node = $VisualFactEmitter/EvidenceProjectionEmitter
@@ -263,6 +261,7 @@ func _run_autotest_inputs() -> void:
 	await _probe_floor_coverage()
 	await _probe_floor_grid()
 	await _run_locomotion_probe()
+	await _run_npc_patrol_root_motion_probe()
 	if player_input_bridge and player_input_bridge.has_method("set_character_c_sync_enabled"):
 		player_input_bridge.set_character_c_sync_enabled(false)
 	_orient_player_toward(character_a.global_position)
@@ -352,6 +351,17 @@ func _run_locomotion_probe() -> void:
 	await _probe_gait_segment("crouch_walk", false, true, 0.35)
 	await _probe_jump_variant("two_foot", false)
 	await _probe_jump_variant("single_leg", true)
+
+func _run_npc_patrol_root_motion_probe() -> void:
+	for actor in [character_a, character_b]:
+		if actor == null:
+			continue
+		actor.set("patrol_enabled", true)
+	await get_tree().create_timer(1.0).timeout
+	for actor in [character_a, character_b]:
+		if actor == null:
+			continue
+		actor.set("patrol_enabled", false)
 
 func _probe_gait_segment(gait_name: String, wants_run: bool, crouch_enabled: bool, duration: float) -> void:
 	if player_input_bridge.has_method("set_crouch_enabled"):
@@ -951,8 +961,8 @@ func _count_collision_shapes(node: Node) -> int:
 	return total
 
 func _get_character_visual_forward() -> Vector3:
-	if character_c and character_c.has_method("get_visual_forward"):
-		var forward: Variant = character_c.get_visual_forward()
+	if player_input_bridge and player_input_bridge.has_method("get_control_forward"):
+		var forward: Variant = player_input_bridge.get_control_forward()
 		if forward is Vector3 and (forward as Vector3).length() > 0.001:
 			return (forward as Vector3).normalized()
 	return Vector3(0.0, 0.0, -1.0)

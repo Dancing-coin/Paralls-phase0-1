@@ -111,6 +111,15 @@ var intent_frame := {
 }
 ```
 
+Normalization requirement:
+
+```text
+W must become `move_local.y = +1`
+S must become `move_local.y = -1`
+```
+
+If the implementation uses `Input.get_vector(move_left, move_right, move_forward, move_backward)`, the raw Y component must be flipped before publishing the shared intent frame.
+
 - [ ] **Step 4: Keep mouse/body coupling locked**
 
 Do not reintroduce a free orbit or hybrid controller. Preserve:
@@ -120,12 +129,26 @@ mouse X -> actor/body yaw + camera yaw
 mouse Y -> camera pitch only
 ```
 
+And preserve the shared forward-axis helper rule in the bridge/control path:
+
+```text
+forward_from_yaw(yaw) = -Vector3.FORWARD.rotated(Vector3.UP, yaw)
+```
+
 - [ ] **Step 5: Re-run the static tests**
 
 Run:
 
 ```powershell
 python -m pytest -q backend\tests\test_player_control_static_contract.py
+```
+
+Expected: PASS.
+
+Focused regression coverage for this normalization/facing contract should also include:
+
+```powershell
+python -m pytest -q backend\tests\test_player_forward_direction_static.py
 ```
 
 Expected: PASS.
@@ -191,6 +214,13 @@ python -m pytest -q backend\tests\test_character_motor_ownership_audit.py
 ```
 
 Expected: PASS.
+
+Runtime evidence to preserve after the control migration:
+
+```text
+- simulated `phase0_move_forward` moves `/root/MainDemo/PlayerCharacter` along world `-Z`
+- `/root/MainDemo/PlayerCharacter/CharacterReplica` matches the same forward displacement
+```
 
 - [ ] **Step 5: Commit**
 
@@ -372,3 +402,145 @@ Expected:
 git add scripts/verification/verify_phase0.py docs/demo-script.md
 git commit -m "Verify the Character Actor control and locomotion substrate"
 ```
+
+### Task 7: Publish Richer Motion-State Fields And Shared Action-Lock Rules
+
+**Files:**
+- Modify: `scripts/player/PlayerShell.gd`
+- Modify: `scripts/player/Phase0PlayerBridge.gd`
+- Modify: `scripts/character/CharacterMotor.gd`
+- Modify: `scripts/character/CharacterReplica.gd`
+- Create: `backend/tests/test_character_motion_state_contract_static.py`
+- Create: `backend/tests/test_character_action_lock_rules.py`
+
+- [x] **Step 1: Write the failing motion-state/action-lock tests**
+
+Add tests that lock:
+
+- `CharacterMotionState` publication of facing/camera-related fields where the design requires them
+- explicit shared action-lock and interrupt priority rules
+
+```python
+assert "facing_yaw" in control_spec_text
+assert "camera_pitch" in control_spec_text
+assert "interact > speak > observe/look_at > approach/go_to > idle" in control_spec_text
+```
+
+- [x] **Step 2: Run the tests to verify failure**
+
+Run:
+
+```powershell
+python -m pytest -q backend\tests\test_character_motion_state_contract_static.py backend\tests\test_character_action_lock_rules.py
+```
+
+Expected before implementation: fail because the richer motion-state contract and explicit lock rules are not yet frozen in code/tests.
+
+- [x] **Step 3: Publish the richer motion-state shape**
+
+Preserve the Phase 0.5 motion-state contract in the player/motor path:
+
+```text
+position
+velocity_world
+facing_yaw
+camera_pitch? 
+move_local_actual
+gait_actual
+grounded
+```
+
+- [x] **Step 4: Encode shared action-lock and interrupt priority behavior**
+
+At minimum, preserve:
+
+```text
+interact > speak > observe/look_at > approach/go_to > idle
+```
+
+and keep the rule shared across command sources rather than controller-specific hacks.
+
+- [x] **Step 5: Re-run the tests**
+
+Run:
+
+```powershell
+python -m pytest -q backend\tests\test_character_motion_state_contract_static.py backend\tests\test_character_action_lock_rules.py
+```
+
+Expected: PASS.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add scripts/player/PlayerShell.gd scripts/player/Phase0PlayerBridge.gd scripts/character/CharacterMotor.gd scripts/character/CharacterReplica.gd backend/tests/test_character_motion_state_contract_static.py backend/tests/test_character_action_lock_rules.py
+git commit -m "Freeze Character Actor motion-state fields and action-lock rules"
+```
+
+Evidence:
+
+- RED: `python -m pytest -q backend\tests\test_character_motion_state_contract_static.py backend\tests\test_character_action_lock_rules.py` failed because `facing_yaw` / `camera_pitch` fields and shared interrupt helpers were not yet published.
+- GREEN: `python -m pytest -q backend\tests\test_character_motion_state_contract_static.py backend\tests\test_character_action_lock_rules.py` passed (`4 passed`).
+
+### Task 8: Verify Runtime Direction Set And Transitional Animation Coverage
+
+**Files:**
+- Modify: `scripts/character/KnightRoleSkin.gd`
+- Modify: `scripts/verification/verify_phase0.py` only if the runtime probe must be extended
+- Create: `backend/tests/test_character_locomotion_direction_runtime.py`
+
+- [x] **Step 1: Write the failing direction-set verification**
+
+Add coverage that preserves the intended Phase 0.5 direction set:
+
+```text
+forward
+backpedal
+strafe left/right
+diagonal support
+```
+
+Use either static or runtime checks to prove the presentation path exposes the required `move_x` / `move_y` semantics.
+
+- [x] **Step 2: Run the verification to verify failure**
+
+Run:
+
+```powershell
+python -m pytest -q backend\tests\test_character_locomotion_direction_runtime.py
+```
+
+Expected before implementation: fail until the runtime probe or presentation path covers the full intended direction set.
+
+- [x] **Step 3: Preserve the transitional compromise explicitly**
+
+If full strafe/backpedal/diagonal assets are still incomplete, keep that as an explicit transitional compromise:
+
+```text
+physics/motor contract remains final
+animation coverage may temporarily be partial
+the repository must not silently regress to a forward-only control model
+```
+
+- [x] **Step 4: Re-run the verification**
+
+Run:
+
+```powershell
+python -m pytest -q backend\tests\test_character_locomotion_direction_runtime.py
+python scripts/verification/harness.py --profile phase0
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add scripts/character/KnightRoleSkin.gd scripts/verification/verify_phase0.py backend/tests/test_character_locomotion_direction_runtime.py
+git commit -m "Verify Character Actor locomotion direction coverage"
+```
+
+Evidence:
+
+- `python -m pytest -q backend\tests\test_character_locomotion_direction_runtime.py` passed (`2 passed`).
+- `python scripts\verification\harness.py --profile phase0` passed (`overall_strict_phase0_passed=True`), preserving the no-regression transitional compromise.
