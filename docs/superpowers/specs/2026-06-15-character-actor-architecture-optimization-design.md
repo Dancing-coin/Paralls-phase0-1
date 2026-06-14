@@ -638,3 +638,59 @@ This spec is accepted when implementation can prove:
 8. Asset binding and action/equipment integration have explicit contracts.
 9. Documentation exists for architecture, control chain, and asset integration.
 10. Phase 0 demo verification remains green while the architecture is optimized.
+
+## Completion Status
+
+Status as of `2026-06-15`: first near-term optimization pass completed and verified.
+
+The repository now proves:
+
+- the six-layer architecture is documented in the active truth spec and character docs
+- product identity and runtime control mode are separated in both docs and code vocabulary
+- shared runtime terminology is frozen in code for:
+  - `human_controlled`
+  - `agent_controlled`
+  - `program_controlled`
+  - `physics`
+  - `root_motion`
+  - `hybrid`
+- `PlayerShell` owns raw input capture and forwards shell events to the controller adapter seam
+- `Phase0PlayerBridge` no longer runs a parallel raw-input polling loop for the same concerns
+- `CharacterReplica` remains the shared actor runtime shell rather than being bypassed by scene code
+- `KnightRoleSkin` and `KnightCombatModifier` now expose a clearer composition -> modifier handoff
+- model / equipment / action asset entry contracts are frozen in code as explicit schema helpers
+- strict `Phase 0` verification remains green after the convergence pass
+
+Verified acceptance evidence for this pass includes:
+
+- `python -m pytest -v`
+- `python scripts/verification/harness.py --profile docs`
+- `python scripts/verification/harness.py --profile godot-project`
+- `python scripts/verification/harness.py --profile phase0`
+
+This satisfies the current near-term demo-safe convergence target of the implementation plan.
+
+## Remaining Transitional Areas
+
+The architecture is cleaner, but this pass intentionally stops short of a full Phase1 rollout.
+
+The main transitional areas that remain are:
+
+- `Phase0PlayerBridge.gd` still contains some demo/helper and autotest-oriented responsibilities in addition to pure control adaptation
+- `CharacterReplica.gd` still carries presentation-adjacent feedback and debug-support behavior that should eventually be split more cleanly from actor-runtime state ownership
+- `CharacterPresentationInput` is frozen as a contract, but the runtime still assembles it through near-term dictionary bridging rather than a fuller typed pipeline
+- the new asset binding / equipment / action descriptor files are contract-level entry points only and are not yet used as a full runtime asset lookup system
+- near-term locomotion remains `physics`-first with coordinated root-motion consumption rather than a full mid-term `LocomotionExecutionMode` execution stack
+
+These are acceptable for the current repository goal because they preserve demo stability while preventing further architectural drift.
+
+## Next Steps
+
+Recommended next work after this optimization pass:
+
+1. Continue slimming `Phase0PlayerBridge` into a narrower controller adapter by moving demo orchestration helpers out of the bridge.
+2. Continue slimming `CharacterReplica` so actor-runtime state, presentation feedback, and debug affordances are more explicitly separated.
+3. Introduce explicit controller-port style adapters for human / agent / program control when the next runtime slice needs them.
+4. Move `CharacterPresentationInput` and modifier input handling toward stronger typed consumption once runtime consumers are ready.
+5. Start using the frozen asset contract files for actual model / skeleton / equipment / action lookup only when the repository is ready for that integration step.
+6. Preserve the hard rule that locomotion truth remains motor-owned even when future root-motion or hybrid execution modes become more complete.
