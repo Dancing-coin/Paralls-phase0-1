@@ -77,13 +77,18 @@ def test_character_replica_maps_combat_actions_to_role_states() -> None:
     replica_source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(
         encoding="utf-8"
     )
+    feedback_source = (ROOT / "scripts" / "character" / "CharacterRuntimeFeedback.gd").read_text(
+        encoding="utf-8"
+    )
 
     assert '"sword_swing"' in replica_source
     assert '"shield_block"' in replica_source
     assert 'return "sword_swing"' in replica_source
     assert 'return "shield_block"' in replica_source
-    assert "combat_feedback_timer" in replica_source
-    assert "_show_combat_feedback(" in replica_source
+    assert "runtime_feedback.show_combat_feedback" in replica_source
+    assert "combat_feedback_timer" not in replica_source
+    assert "func show_combat_feedback(text: String) -> void:" in feedback_source
+    assert "combat_feedback_timer" in feedback_source
     assert '"SWING"' in replica_source
     assert '"BLOCK"' in replica_source
 

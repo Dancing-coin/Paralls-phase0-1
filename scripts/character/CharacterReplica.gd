@@ -59,7 +59,7 @@ const CHARACTER_ACTOR_FAILURE_TARGET_NOT_PERCEIVED := "target_not_perceived"
 @onready var visual_root: Node3D = $VisualRoot
 @onready var role_asset_root: Node3D = $VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot
 @onready var role_asset_scene: Node = $VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/KnightRoleSkin
-@onready var nameplate: Label3D = $Nameplate
+@onready var runtime_feedback: Node = $CharacterRuntimeFeedback
 
 var home_position := Vector3.ZERO
 var locomotion_state: int = LocomotionState.IDLE
@@ -105,8 +105,6 @@ var last_role_state_fact := ""
 var last_physiology_state_fact := ""
 var active_command_type := ""
 var active_command_priority := 0
-var combat_feedback_timer := 0.0
-var combat_feedback_text := ""
 
 func _ready() -> void:
 	home_position = global_position
@@ -114,7 +112,7 @@ func _ready() -> void:
 	_apply_asset_mode()
 	_normalize_patrol_points()
 	_apply_visual_config()
-	_update_nameplate()
+	_tick_runtime_feedback(0.0)
 	var bus := _get_bus()
 	if bus:
 		bus.dialogue_received.connect(_on_dialogue_received)
@@ -131,9 +129,9 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	sway_time += delta * sway_speed
 	_update_action_override(delta)
-	_update_combat_feedback(delta)
 	_apply_idle_sway()
 	_update_posture(delta)
+	_tick_runtime_feedback(delta)
 	_update_hold(delta)
 	_update_rotation(delta)
 	_update_movement(delta)
@@ -162,9 +160,13 @@ func perform_action(action_name: String) -> void:
 	requested_action = action_name
 	match action_name:
 		"sword_swing":
-			_show_combat_feedback("SWING")
+			if runtime_feedback and runtime_feedback.has_method("show_combat_feedback"):
+				runtime_feedback.show_combat_feedback("SWING")
+			_tick_runtime_feedback(0.0)
 		"shield_block":
-			_show_combat_feedback("BLOCK")
+			if runtime_feedback and runtime_feedback.has_method("show_combat_feedback"):
+				runtime_feedback.show_combat_feedback("BLOCK")
+			_tick_runtime_feedback(0.0)
 	var next_state := _map_requested_action_to_role_state(action_name)
 	if next_state.is_empty():
 		return
@@ -555,7 +557,7 @@ func set_focus_highlight(is_focused: bool) -> void:
 	var environment_attention := runtime_nearby_environment_refs.size() > 0 and runtime_attention_source == "visual_fact"
 	var highlighted := is_focused or focus_attention_visual_timer > 0.0 or runtime_attention_source == "focus_state" or runtime_attention_source == "visual_fact" or environment_attention
 	_set_role_asset_focus(highlighted)
-	_update_nameplate()
+	_tick_runtime_feedback(0.0)
 
 func _apply_idle_sway() -> void:
 	if visual_root:
@@ -828,43 +830,13 @@ func _read_runtime_string_array(value: Variant) -> Array[String]:
 			result.append(str(entry))
 	return result
 
-func _update_nameplate() -> void:
-	if nameplate == null:
-		return
-	if combat_feedback_timer > 0.0:
-		nameplate.text = "%s %s" % [actor_id.to_upper(), combat_feedback_text]
-		nameplate.modulate = Color(1.0, 0.35, 0.25, 1.0) if combat_feedback_text == "SWING" else Color(0.3, 0.8, 1.0, 1.0)
+func _tick_runtime_feedback(delta: float) -> void:
+	if runtime_feedback == null or not runtime_feedback.has_method("tick"):
 		return
 	var source_visual_fact := runtime_attention_source == "visual_fact"
 	var environment_attention := source_visual_fact and runtime_nearby_environment_refs.size() > 0
 	var attention_active := focus_attention_visual_timer > 0.0 or runtime_conversation_candidate_refs.size() > 0 or source_visual_fact
-	if not attention_active:
-		nameplate.text = actor_id.to_upper()
-		nameplate.modulate = Color(1.0, 1.0, 1.0, 1.0)
-		return
-	if environment_attention and focus_attention_visual_timer <= 0.0:
-		nameplate.text = "%s ?" % actor_id.to_upper()
-		nameplate.modulate = Color(1.0, 0.62, 0.28, 1.0)
-		return
-	if source_visual_fact and focus_attention_visual_timer <= 0.0:
-		nameplate.text = "%s ~" % actor_id.to_upper()
-		nameplate.modulate = Color(0.55, 0.92, 1.0, 1.0)
-		return
-	nameplate.text = "%s !" % actor_id.to_upper()
-	nameplate.modulate = Color(1.0, 0.92, 0.45, 1.0)
-
-func _show_combat_feedback(text: String) -> void:
-	combat_feedback_text = text
-	combat_feedback_timer = 0.6
-	_update_nameplate()
-
-func _update_combat_feedback(delta: float) -> void:
-	if combat_feedback_timer <= 0.0:
-		return
-	combat_feedback_timer = max(combat_feedback_timer - delta, 0.0)
-	if combat_feedback_timer <= 0.0:
-		combat_feedback_text = ""
-		_update_nameplate()
+	runtime_feedback.tick(delta, actor_id, attention_active, environment_attention, source_visual_fact, focus_attention_visual_timer > 0.0)
 
 func _resolve_player_position() -> Vector3:
 	var scene := get_tree().current_scene
