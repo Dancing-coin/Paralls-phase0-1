@@ -1,8 +1,9 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/player/PlayerShell.gd" id="1_shell"]
 [ext_resource type="Script" path="res://scripts/character/CharacterMotor.gd" id="2_motor"]
 [ext_resource type="Script" path="res://scripts/player/Phase0PlayerBridge.gd" id="3_bridge"]
+[ext_resource type="Script" path="res://scripts/player/Phase0PlayerCommandRelay.gd" id="4_command_relay"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 height = 1.7
@@ -38,3 +39,6 @@ script = ExtResource("2_motor")
 
 [node name="Phase0InputBridge" type="Node" parent="."]
 script = ExtResource("3_bridge")
+
+[node name="Phase0PlayerCommandRelay" type="Node" parent="."]
+script = ExtResource("4_command_relay")

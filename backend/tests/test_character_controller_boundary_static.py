@@ -14,7 +14,8 @@ def test_player_shell_owns_raw_input_forwarding_for_character_actor_bridge() -> 
     assert "func _input(event: InputEvent) -> void:" in player_shell_source
     assert "func _unhandled_input(event: InputEvent) -> void:" in player_shell_source
     assert 'has_method("handle_shell_action_event")' in player_shell_source
-    assert "external_motion_driver.handle_shell_action_event(event)" in player_shell_source
+    assert '["Phase0InputBridge", "Phase0PlayerCommandRelay"]' in player_shell_source
+    assert "target.handle_shell_action_event(event)" in player_shell_source
 
 
 def test_phase0_player_bridge_is_an_adapter_not_a_parallel_input_reader() -> None:
@@ -22,7 +23,13 @@ def test_phase0_player_bridge_is_an_adapter_not_a_parallel_input_reader() -> Non
         encoding="utf-8"
     )
 
-    assert "func handle_shell_action_event(event: InputEvent) -> void:" in bridge_source
+    assert "func handle_shell_action_event(event: InputEvent) -> void:" not in bridge_source
+    assert "func trigger_dialogue() -> void:" in bridge_source
+    assert "func trigger_interaction() -> void:" in bridge_source
+    assert "func cycle_gait_mode() -> void:" in bridge_source
+    assert "func toggle_crouch_mode() -> void:" in bridge_source
+    assert "func trigger_role_action(action_tag: String) -> void:" in bridge_source
+    assert "func trigger_combat_action(action_tag: String) -> void:" in bridge_source
     assert "func _trigger_combat_action(action_name: String) -> void:" in bridge_source
     assert "func _trigger_character_c_action(action_name: String) -> void:" in bridge_source
 

@@ -26,18 +26,21 @@ def test_player_bridge_dispatches_mouse_combat_actions_to_character_c() -> None:
     bridge_source = (ROOT / "scripts" / "player" / "Phase0PlayerBridge.gd").read_text(
         encoding="utf-8"
     )
+    relay_source = (ROOT / "scripts" / "player" / "Phase0PlayerCommandRelay.gd").read_text(
+        encoding="utf-8"
+    )
 
-    assert "func handle_shell_action_event(event: InputEvent) -> void:" in bridge_source
-    assert "sword_swing_pressed" in bridge_source
-    assert "shield_block_pressed" in bridge_source
-    assert "event.is_action_pressed(sword_swing_action)" in bridge_source
-    assert "event.is_action_pressed(shield_block_action)" in bridge_source
-    assert "event is InputEventMouseButton" in bridge_source
+    assert "func handle_shell_action_event(event: InputEvent) -> void:" in relay_source
+    assert "sword_swing_pressed" in relay_source
+    assert "shield_block_pressed" in relay_source
+    assert "event.is_action_pressed(sword_swing_action)" in relay_source
+    assert "event.is_action_pressed(shield_block_action)" in relay_source
+    assert "func trigger_combat_action(action_tag: String) -> void:" in bridge_source
     assert "MOUSE_BUTTON_LEFT" in bridge_source
     assert "MOUSE_BUTTON_RIGHT" in bridge_source
     assert "func handle_mouse_combat_event(event: InputEventMouseButton) -> void:" in bridge_source
-    assert "sword_swing_action" in bridge_source
-    assert "shield_block_action" in bridge_source
+    assert "sword_swing_action" in relay_source
+    assert "shield_block_action" in relay_source
     assert '_trigger_combat_action("sword_swing")' in bridge_source
     assert '_trigger_combat_action("shield_block")' in bridge_source
     assert "_trigger_character_c_action(action_name)" in bridge_source

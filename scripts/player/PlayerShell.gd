@@ -103,8 +103,10 @@ func _forward_combat_mouse_event(event: InputEvent) -> void:
 		external_motion_driver.handle_mouse_combat_event(event as InputEventMouseButton)
 
 func _forward_shell_action_event(event: InputEvent) -> void:
-	if external_motion_driver and external_motion_driver.has_method("handle_shell_action_event"):
-		external_motion_driver.handle_shell_action_event(event)
+	for child_name in ["Phase0InputBridge", "Phase0PlayerCommandRelay"]:
+		var target := get_node_or_null(child_name)
+		if target and target.has_method("handle_shell_action_event"):
+			target.handle_shell_action_event(event)
 
 func _poll_mouse_button_debug_state() -> void:
 	var left_pressed := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)

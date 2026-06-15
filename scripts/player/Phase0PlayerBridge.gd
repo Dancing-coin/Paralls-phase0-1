@@ -2,18 +2,6 @@ extends Node
 
 const CharacterControlModeRef = preload("res://scripts/character/CharacterControlMode.gd")
 
-@export var dialogue_action := "phase0_submit_dialogue"
-@export var interact_action := "phase0_interact"
-@export var guard_pose_action := "phase0_knight_guard_pose"
-@export var observe_pose_action := "phase0_knight_observe_pose"
-@export var speak_pose_action := "phase0_knight_speak_pose"
-@export var inspect_pose_action := "phase0_knight_inspect_pose"
-@export var alert_pose_action := "phase0_knight_alert_pose"
-@export var ambient_pose_action := "phase0_knight_ambient_pose"
-@export var sword_swing_action := "phase0_sword_swing"
-@export var shield_block_action := "phase0_shield_block"
-@export var gait_cycle_action := "phase0_cycle_walk_mode"
-@export var crouch_toggle_action := "phase0_toggle_crouch"
 @export var character_c_sync_enabled := true
 @export var hide_player_visual_shell := true
 @export var player_root_motion_enabled := true
@@ -54,59 +42,27 @@ func _physics_process(_delta: float) -> void:
 		return
 	_sync_character_c_from_player()
 
-func handle_shell_action_event(event: InputEvent) -> void:
+func cycle_gait_mode() -> void:
+	_cycle_gait_mode()
+
+func toggle_crouch_mode() -> void:
+	_toggle_crouch_mode()
+
+func trigger_dialogue() -> void:
 	var main_demo := _get_main_demo()
-
-	if event.is_action_pressed(gait_cycle_action):
-		_cycle_gait_mode()
-
-	if event.is_action_pressed(crouch_toggle_action):
-		_toggle_crouch_mode()
-
-	if main_demo != null and event.is_action_pressed(dialogue_action) and main_demo.has_method("submit_dialogue"):
-		if embodiment and embodiment.has_method("trigger_dialogue_feedback"):
-			embodiment.trigger_dialogue_feedback()
-		_trigger_character_c_action("speak")
+	if main_demo != null and main_demo.has_method("submit_dialogue"):
 		main_demo.submit_dialogue()
 
-	if main_demo != null and event.is_action_pressed(interact_action) and main_demo.has_method("submit_interaction"):
-		if embodiment and embodiment.has_method("trigger_interact_feedback"):
-			embodiment.trigger_interact_feedback()
-		_trigger_character_c_action("inspect")
+func trigger_interaction() -> void:
+	var main_demo := _get_main_demo()
+	if main_demo != null and main_demo.has_method("submit_interaction"):
 		main_demo.submit_interaction()
 
-	if event.is_action_pressed(guard_pose_action):
-		_trigger_character_c_action("guard")
-	if event.is_action_pressed(observe_pose_action):
-		_trigger_character_c_action("observe")
-	if event.is_action_pressed(speak_pose_action):
-		_trigger_character_c_action("speak")
-	if event.is_action_pressed(inspect_pose_action):
-		_trigger_character_c_action("inspect")
-	if event.is_action_pressed(alert_pose_action):
-		_trigger_character_c_action("alert")
-	if event.is_action_pressed(ambient_pose_action):
-		_trigger_character_c_action("ambient")
+func trigger_role_action(action_tag: String) -> void:
+	_trigger_character_c_action(action_tag)
 
-	_handle_combat_input_event(event)
-
-func _handle_combat_input_event(event: InputEvent) -> void:
-	if event is InputEventMouseButton:
-		handle_mouse_combat_event(event as InputEventMouseButton)
-
-	if event.is_action_pressed(sword_swing_action):
-		if not sword_swing_pressed:
-			_trigger_combat_action("sword_swing")
-		sword_swing_pressed = true
-	elif event.is_action_released(sword_swing_action):
-		sword_swing_pressed = false
-
-	if event.is_action_pressed(shield_block_action):
-		if not shield_block_pressed:
-			_trigger_combat_action("shield_block")
-		shield_block_pressed = true
-	elif event.is_action_released(shield_block_action):
-		shield_block_pressed = false
+func trigger_combat_action(action_tag: String) -> void:
+	_trigger_combat_action(action_tag)
 
 func handle_mouse_combat_event(event: InputEventMouseButton) -> void:
 	_bus_log("combat_mouse_event:button=%s pressed=%s device=%s" % [event.button_index, str(event.pressed), event.device])
