@@ -79,7 +79,8 @@ Static documentation freshness checks. Use this before and after edits that touc
 Current mechanical invariants include:
 
 - all local paths referenced by `docs/INDEX.md` exist
-- every `docs/superpowers/specs/*-design.md` has a matching implementation plan
+- every approved `docs/superpowers/specs/*-design.md` has a matching implementation plan
+- specs marked `Status: awaiting-user-review` are allowed to pause at the Superpowers brainstorming review gate before planning
 - every harness profile is documented in this guide
 
 Output:

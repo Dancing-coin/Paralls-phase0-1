@@ -4,6 +4,7 @@ This repository uses a four-layer workflow for non-trivial AI-assisted changes:
 
 1. **OpenSpec controls what changes.**
    A change starts from a written design/spec under `docs/superpowers/specs/` or an explicitly approved equivalent design. The spec records scope, acceptance criteria, and constraints before implementation.
+   A Superpowers brainstorming spec may pause at `Status: awaiting-user-review`; that state is a review gate, not approval to plan or implement.
 2. **Superpowers controls how changes are executed.**
    Agents use the relevant Superpowers skill for the task shape: brainstorming for new behavior, writing-plans for multi-step work, test-driven-development for code changes, systematic-debugging for failures, and verification-before-completion before claiming completion.
 3. **Harness controls whether the result is accepted.**
@@ -35,7 +36,8 @@ Use this flow for any change that touches runtime behavior, verification policy,
 
 ```text
 approved idea
-  -> OpenSpec/design artifact
+  -> design spec draft
+  -> user review and approval
   -> implementation plan
   -> Goal for execution continuity
   -> Superpowers discipline during edits
@@ -54,7 +56,8 @@ Goal is the long-running objective ledger for explicit tasks. New work should ke
 ## Required Gates
 
 - New behavior: write or reference a spec before code.
-- Multi-step change: write or reference an implementation plan.
+- Brainstorming handoff: a spec marked `Status: awaiting-user-review` may exist without an implementation plan until the user approves it.
+- Multi-step change: write or reference an implementation plan after spec approval.
 - Code change: use test-driven-development unless the change is generated or documentation-only.
 - Failure investigation: use systematic-debugging before edits.
 - Completion claim: use verification-before-completion and report fresh evidence.

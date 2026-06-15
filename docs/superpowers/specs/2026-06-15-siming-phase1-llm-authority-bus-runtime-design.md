@@ -1,5 +1,7 @@
 # Siming Phase 1 LLM Authority Bus Runtime Design
 
+Status: approved
+
 ## Problem
 
 `Phase 1` needs Siming to become a real runtime participant rather than a static catalyst stub, while still following the documented backend authority event bus design.

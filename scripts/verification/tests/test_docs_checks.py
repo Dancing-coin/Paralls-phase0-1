@@ -33,6 +33,32 @@ def test_specs_without_plans_accepts_supported_plan_coverages() -> None:
     assert "docs/superpowers/specs/2026-06-08-system-l1-full-completion-continuation-design.md" not in missing
 
 
+def test_specs_without_plans_allows_only_explicit_user_review_gate(tmp_path: Path) -> None:
+    specs_dir = tmp_path / "docs" / "superpowers" / "specs"
+    plans_dir = tmp_path / "docs" / "superpowers" / "plans"
+    specs_dir.mkdir(parents=True)
+    plans_dir.mkdir(parents=True)
+
+    (specs_dir / "2026-06-15-approved-design.md").write_text(
+        "# Approved\n\nStatus: approved\n",
+        encoding="utf-8",
+    )
+    (specs_dir / "2026-06-15-review-gated-design.md").write_text(
+        "# Review Gated\n\nStatus: awaiting-user-review\n",
+        encoding="utf-8",
+    )
+    (specs_dir / "2026-06-15-loose-draft-design.md").write_text(
+        "# Loose Draft\n\n- Status: draft design for review\n",
+        encoding="utf-8",
+    )
+
+    missing = _specs_without_plans(tmp_path)
+
+    assert "docs/superpowers/specs/2026-06-15-approved-design.md" in missing
+    assert "docs/superpowers/specs/2026-06-15-review-gated-design.md" not in missing
+    assert "docs/superpowers/specs/2026-06-15-loose-draft-design.md" in missing
+
+
 def test_undocumented_profiles_are_loaded_from_project_registry(tmp_path: Path) -> None:
     profile_dir = tmp_path / ".harness" / "profiles"
     profile_dir.mkdir(parents=True)
