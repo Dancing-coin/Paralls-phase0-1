@@ -70,6 +70,8 @@ Status:
 - binder-ready modifier stack
 - motor-owned root-motion or hybrid execution mode
 
+`ControllerPort` is intentionally not implemented in the near-term cleanup. It remains a mid-term target after the Phase 0 bridge and runtime shell are slimmer.
+
 ## Debugging Note
 
 Current debug additions exist to prove actor/control/presentation boundaries under active migration.

@@ -151,3 +151,7 @@ The modifier exists because:
 
 - writing combat pose directly in the base presentation layer can be overwritten by animation playback
 - post-animation correction is the correct place for reliable final combat embodiment
+
+## Mid-Term ControllerPort Boundary
+
+`ControllerPort` is a Phase1-facing mid-term boundary. The near-term cleanup keeps `PlayerShell` and `Phase0PlayerBridge` as the demo-safe implementation seam and does not create adapter classes yet.
