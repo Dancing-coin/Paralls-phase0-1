@@ -8,6 +8,15 @@ Current active optimization truth:
 
 - `docs/superpowers/specs/2026-06-15-character-actor-architecture-optimization-design.md`
 
+Current active final-convergence planning truth:
+
+- `docs/character/character-actor-final-convergence-gap-report.md`
+- `docs/superpowers/plans/2026-06-15-character-actor-final-convergence-implementation-plan.md`
+
+Current downstream dependent plan:
+
+- `docs/superpowers/plans/2026-06-15-full-character-agent-runtime-with-llm-implementation-plan.md`
+
 Historical/narrower references still preserved:
 
 - `2026-06-12-character-actor-unification-design.md`
@@ -88,6 +97,21 @@ Near-term cleanup closeout:
 - motor-owned root-motion or hybrid execution mode
 
 `ControllerPort` is intentionally not implemented in the near-term cleanup. It remains a mid-term target after the Phase 0 bridge and runtime shell are slimmer.
+
+## Final-Convergence Planning Status
+
+Near-term cleanup is not the final actor-substrate convergence stage.
+
+Current planning posture is now:
+
+1. near-term cleanup: completed and recorded
+2. final actor-convergence planning: now explicitly defined
+3. full character-agent convergence: depends on actor final convergence
+
+This means:
+
+- actor-side stage 1 and actor-side stage 2 are distinct
+- the full character-agent runtime must not claim final-state `L4` convergence until the actor-side final convergence plan is sufficiently landed
 
 ## Debugging Note
 
