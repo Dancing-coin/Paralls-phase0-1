@@ -56,6 +56,12 @@ This design also borrows architectural discipline from Hermes Agent:
 
 Hermes ideas are adapted to role-runtime needs. This repo will not copy chat-assistant-specific surfaces such as user-profile markdown memory or generic tool-agent workflow semantics.
 
+This design is also explicitly coupled to the active shared actor-substrate design and its implementation planning:
+
+- `docs/superpowers/specs/2026-06-15-character-actor-architecture-optimization-design.md`
+- `docs/superpowers/plans/2026-06-15-character-actor-architecture-optimization-implementation-plan.md`
+- `docs/superpowers/plans/2026-06-15-character-actor-near-term-cleanup-implementation-plan.md`
+
 ## Goal
 
 Build the first full character-agent runtime for the current Phase 0 demo.
@@ -215,6 +221,23 @@ and not:
 - treating current migration seams as the future truth
 
 If an implementation step temporarily lands through a transitional shell, that step must still move the repository closer to the final-state architecture and must not freeze the transition as the new long-term truth.
+
+### Dependency On Shared Actor-Substrate Convergence
+
+The final-state full character-agent runtime depends on the final-state convergence of the shared local actor substrate.
+
+That dependency is architectural, not optional.
+
+`CharacterAgent L4` cannot fully converge to its final-state execution boundary while the shared `CharacterActor` stack is still only documented and implemented as a transitional near-term cleanup target.
+
+So the final-state delivery must be planned in two linked stages:
+
+1. shared actor-substrate convergence plan
+2. full character-agent convergence plan
+
+The second stage depends on the first.
+
+This means the character-agent implementation plan must not pretend that final `L4` convergence can be completed independently of the actor-substrate convergence work.
 
 ## Runtime Shape
 
@@ -905,6 +928,17 @@ So implementation planning must distinguish:
 
 The plan must not present transitional actor-shell layering as the final architecture.
 
+### Planning dependency rule
+
+The final implementation planning for this spec must explicitly link to the active CharacterActor spec and plans.
+
+It must also split work into:
+
+- a stage that finishes or formalizes the shared actor-substrate final-state convergence plan
+- a stage that lands the full character-agent runtime onto that converged substrate
+
+If the actor-substrate side does not yet have a final-state convergence plan, this spec's implementation planning must create or extend that plan first instead of silently assuming it already exists.
+
 ## Acceptance Criteria
 
 The first full runtime is accepted when all are true:
@@ -928,6 +962,7 @@ The first full runtime is accepted when all are true:
 14. Model runs are stored with enough metadata for audit and future routing work.
 15. Existing Phase 0 authority boundaries remain intact.
 16. The delivered architecture converges toward the final shared actor/runtime end state rather than freezing the current transitional shell split as permanent truth.
+17. The implementation plan explicitly links and stays aligned with the shared CharacterActor spec and plan state rather than treating actor-substrate convergence as out-of-band work.
 
 ## Verification
 
