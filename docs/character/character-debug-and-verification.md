@@ -11,9 +11,14 @@ Useful focused tests include:
 - `backend/tests/test_character_actor_modes_static.py`
 - `backend/tests/test_character_controller_boundary_static.py`
 - `backend/tests/test_character_runtime_boundary_static.py`
+- `backend/tests/test_character_runtime_feedback_static.py`
+- `backend/tests/test_character_near_term_presentation_contract_static.py`
 - `backend/tests/test_character_presentation_modifier_static.py`
 - `backend/tests/test_character_asset_contract_static.py`
+- `backend/tests/test_character_asset_lookup_readiness_static.py`
+- `backend/tests/test_character_locomotion_motor_ownership_guard_static.py`
 - `backend/tests/test_player_combat_action_static.py`
+- `backend/tests/test_phase0_player_command_relay_static.py`
 - `backend/tests/test_main_demo_debug_noise_static.py`
 - `backend/tests/test_knight_locomotion_pose_refinement_static.py`
 - `backend/tests/test_player_control_static_contract.py`
@@ -67,11 +72,13 @@ For a locomotion issue:
 For a “input triggered but visible result is weak” issue:
 
 1. confirm shell event reached `PlayerShell`
-2. confirm `Phase0PlayerBridge` translated it into actor-facing action or sync state
-3. confirm `CharacterReplica` accepted or emitted runtime action state
-4. confirm `KnightRoleSkin` built presentation or modifier input
-5. confirm `KnightCombatModifier` applied post-animation correction
-6. only then inspect mesh/bone/artifact specifics
+2. confirm `Phase0PlayerCommandRelay` routed shell commands to bridge callable adapter methods
+3. confirm `Phase0PlayerBridge` translated callable adapter input into actor-facing action or sync state
+4. confirm `CharacterReplica` accepted or emitted runtime action state
+5. confirm `CharacterRuntimeFeedback` owns nameplate/combat feedback when the issue is visible feedback
+6. confirm `KnightRoleSkin` built presentation or modifier input
+7. confirm `KnightCombatModifier` applied post-animation correction
+8. only then inspect mesh/bone/artifact specifics
 
 ## Important Current Lessons
 
