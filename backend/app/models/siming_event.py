@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.authority_event import AuthorityEvent
 
@@ -39,6 +39,8 @@ InterventionBand = Literal[
     "none",
 ]
 
+CandidateSource = Literal["rule", "llm", "fallback"]
+
 AuditStatus = Literal[
     "recorded",
     "no_action",
@@ -50,7 +52,86 @@ AuditStatus = Literal[
     "expired_ttl",
     "late_input",
     "late_result_correction",
+    "degraded",
+    "llm_timeout",
+    "llm_invalid_output",
+    "policy_rejected",
+    "feasibility_rejected",
+    "unknown_effect",
+    "ack_timeout",
 ]
+
+
+class FairnessStateSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    snapshot_id: str
+    room_id: str
+    scene_id: str
+    zone_id: str
+    causation_id: str
+    correlation_id: str
+    known_fact_ids: list[str] = Field(default_factory=list)
+    eligible_actor_ids: list[str] = Field(default_factory=list)
+    blocked_actor_ids: list[str] = Field(default_factory=list)
+    recent_intervention_ids: list[str] = Field(default_factory=list)
+
+
+class InterventionCandidate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    candidate_id: str
+    room_id: str
+    scene_id: str
+    zone_id: str
+    causation_id: str
+    correlation_id: str
+    proposed_band: InterventionBand
+    target_actor_id: str | None = None
+    target_object_id: str | None = None
+    target_environment_id: str | None = None
+    established_fact_ids: list[str] = Field(default_factory=list)
+    explanation: str = ""
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    reason_tags: list[str] = Field(default_factory=list)
+    source: CandidateSource = "rule"
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_forbidden_candidate_fields(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        forbidden = {
+            "authority_event",
+            "event_type",
+            "intervention_decision",
+            "selected_path",
+            "physical_success",
+            "role_belief_truth",
+            "esm_state_mutation",
+            "character_low_level_command",
+        }
+        present = sorted(forbidden.intersection(value.keys()))
+        if present:
+            raise ValueError(f"forbidden Siming candidate field(s): {', '.join(present)}")
+        return value
+
+
+class InterventionDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision_id: str
+    candidate_id: str
+    room_id: str
+    scene_id: str
+    zone_id: str
+    causation_id: str
+    correlation_id: str
+    selected_path: SelectedPath
+    intervention_band: InterventionBand
+    accepted: bool
+    policy_reasons: list[str] = Field(default_factory=list)
+    feasibility_reasons: list[str] = Field(default_factory=list)
 
 
 class SimingInput(BaseModel):
