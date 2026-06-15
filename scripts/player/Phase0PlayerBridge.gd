@@ -6,7 +6,6 @@ const CharacterControlModeRef = preload("res://scripts/character/CharacterContro
 @export var hide_player_visual_shell := true
 @export var player_root_motion_enabled := true
 
-@onready var embodiment: Node = $"../Phase0Embodiment"
 @onready var player: CharacterBody3D = get_parent() as CharacterBody3D
 
 var forced_move_direction := Vector3.ZERO
@@ -80,22 +79,6 @@ func handle_mouse_combat_event(event: InputEventMouseButton) -> void:
 			shield_block_pressed = true
 		else:
 			shield_block_pressed = false
-
-func trigger_dialogue() -> void:
-	var main_demo := _get_main_demo()
-	if embodiment and embodiment.has_method("trigger_dialogue_feedback"):
-		embodiment.trigger_dialogue_feedback()
-	_trigger_character_c_action("speak")
-	if main_demo and main_demo.has_method("submit_dialogue"):
-		main_demo.submit_dialogue()
-
-func trigger_interaction() -> void:
-	var main_demo := _get_main_demo()
-	if embodiment and embodiment.has_method("trigger_interact_feedback"):
-		embodiment.trigger_interact_feedback()
-	_trigger_character_c_action("inspect")
-	if main_demo and main_demo.has_method("submit_interaction"):
-		main_demo.submit_interaction()
 
 func _trigger_combat_action(action_name: String) -> void:
 	_bus_log("player_combat_action:%s" % action_name)
