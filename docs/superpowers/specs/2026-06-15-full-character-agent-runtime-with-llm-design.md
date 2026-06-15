@@ -196,6 +196,26 @@ This means:
 - the runtime objects, model gateway, storage schema, and agent loop are designed for later reuse
 - generalization happens through stable runtime seams, not by deferring proof
 
+### Final-State Requirement
+
+This design is not defining a transitional truth as the target architecture.
+
+The repository may temporarily reuse transitional files and compatibility shells during implementation, but the architectural target of this change is the final-state role runtime, not the transitional state itself.
+
+That means:
+
+- the design target is one unified final `CharacterAgent` architecture
+- the design target is one unified final shared local actor substrate
+- the design target is one clean final `L1 -> L2 -> L3 -> L4 -> CharacterActor -> System L1/ESM` execution chain
+
+and not:
+
+- preserving `CharacterBase` vs `CharacterReplica` split as the intended end state
+- preserving compatibility wrappers as permanent architecture
+- treating current migration seams as the future truth
+
+If an implementation step temporarily lands through a transitional shell, that step must still move the repository closer to the final-state architecture and must not freeze the transition as the new long-term truth.
+
 ## Runtime Shape
 
 The full runtime is one unified per-actor loop:
@@ -870,6 +890,21 @@ Migration posture:
 - move traffic gradually to the new loop
 - only clean up structure after the new behavior is proven
 
+### Final-state integration goal
+
+Current repo files may be used as bridge surfaces during implementation, but the final-state target is explicit:
+
+- all dramatic roles map onto one shared final local actor substrate
+- agent-originated execution and player-originated execution enter the same final actor execution chain
+- character-agent execution does not permanently depend on a transitional split between player outer shell and replica inner shell
+
+So implementation planning must distinguish:
+
+- temporary bridge surfaces used to keep the demo runnable
+- final-state runtime boundaries that must remain after convergence
+
+The plan must not present transitional actor-shell layering as the final architecture.
+
 ## Acceptance Criteria
 
 The first full runtime is accepted when all are true:
@@ -892,6 +927,7 @@ The first full runtime is accepted when all are true:
 13. Session timeline and memory store are both queryable.
 14. Model runs are stored with enough metadata for audit and future routing work.
 15. Existing Phase 0 authority boundaries remain intact.
+16. The delivered architecture converges toward the final shared actor/runtime end state rather than freezing the current transitional shell split as permanent truth.
 
 ## Verification
 
