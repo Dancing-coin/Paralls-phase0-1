@@ -14,6 +14,7 @@ This is the agent-readable map for the runnable Paralls Phase 0 validation demo.
 
 - `docs/superpowers/specs/2026-06-15-character-actor-architecture-optimization-design.md`
 - `docs/superpowers/plans/2026-06-15-character-actor-architecture-optimization-implementation-plan.md`
+- `docs/superpowers/plans/2026-06-15-character-actor-near-term-cleanup-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-12-character-actor-unification-design.md`
 - `docs/superpowers/specs/2026-06-12-character-actor-runtime-boundary-design.md`
 - `docs/superpowers/specs/2026-06-12-character-actor-control-and-locomotion-design.md`
