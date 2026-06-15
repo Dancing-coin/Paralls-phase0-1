@@ -127,6 +127,40 @@ That still does not mean the character-agent `L4` is done.
 
 The resulting action requests still route to `System L1 / ESM` for world-truth settlement.
 
+### `CharacterAgent L4` must enter the current shared `CharacterActor` substrate
+
+The repository already has an active shared actor-control substrate documented by the current `CharacterActor` architecture truth.
+
+That substrate includes the current actor-shell / motor / presentation chain rather than separate player-only or NPC-only body species.
+
+So the first full character-agent runtime must not create a parallel local embodiment path.
+
+`CharacterAgent L4` must enter the existing shared actor substrate first.
+
+In practice, that means:
+
+- agent execution output is staged as actor-facing execution plans
+- those plans are adapted into the current shared actor execution contracts
+- the current shared local actor stack remains the owner of embodied local execution and presentation
+
+The first implementation target is therefore:
+
+- `CharacterIntentFrame`-compatible control adaptation
+- `CharacterPresentationInput`-compatible presentation adaptation
+- future-compatible `AgentControllerAdapter` / `ControllerPort` style seams
+
+and not:
+
+- direct scene-node imperative control from the agent runtime
+- a second agent-only body runtime path
+- bypassing the current `CharacterActor` substrate because the command originated from an agent
+
+This rule preserves the repository-wide actor unification work:
+
+- one shared actor substrate
+- one local embodiment truth
+- multiple control sources entering the same body/runtime stack
+
 ### Character agents do not read world truth directly
 
 The character-agent business interface may only consume:
@@ -259,6 +293,7 @@ Responsibilities:
 - generate presentation plans
 - generate action requests
 - generate dialogue acts and utterance requests
+- adapt those outputs into the current shared `CharacterActor` substrate rather than directly controlling scene nodes
 
 ### 7. Settlement / Writeback
 
@@ -544,6 +579,31 @@ It is a five-channel execution coordinator:
 4. `Social-Spatial Channel`
 5. `Physiology Channel`
 
+### `L4` local embodiment boundary
+
+`L4` is only complete when it enters the current shared `CharacterActor` execution substrate.
+
+For this repository, the first full implementation must treat the following as the local embodiment host path:
+
+- shared actor runtime shell
+- shared motor / locomotion truth layer
+- shared presentation composition layer
+- shared post-animation embodiment modification layer
+
+So `L4` must output plans that can be consumed by the current actor-side contracts instead of writing one-off imperative commands directly into:
+
+- `CharacterReplica` internals
+- `PlayerShell` internals
+- arbitrary Godot nodes
+
+The adapter target for the first implementation is:
+
+- actor-facing control frames
+- actor-facing presentation inputs
+- shared control-mode aware actor execution packets
+
+This keeps agent-originated execution and player-originated execution on one shared local actor substrate.
+
 ### Speech Channel
 
 Produces:
@@ -789,6 +849,18 @@ Current files remain useful anchors:
 - `scripts/character/CharacterReplica.gd`
 - `scripts/phase0/MainDemoController.gd`
 
+Current actor-substrate truth must also be treated as an explicit integration constraint:
+
+- `docs/superpowers/specs/2026-06-15-character-actor-architecture-optimization-design.md`
+- `docs/character/character-actor-architecture.md`
+- `docs/character/character-control-chain.md`
+- `scripts/character/CharacterReplica.gd`
+- `scripts/character/CharacterActorSchema.gd`
+- `scripts/character/CharacterMotor.gd`
+- `scripts/player/PlayerShell.gd`
+
+The new runtime must integrate with these surfaces instead of inventing a second local execution stack for agent-driven roles.
+
 The new runtime does not replace those all at once.
 
 Migration posture:
@@ -814,11 +886,12 @@ The first full runtime is accepted when all are true:
 7. `L3` uses large-model reasoning plus locally auditable triple-filter outputs.
 8. Dialogue text generation uses the model but remains policy-constrained.
 9. `L4` is split into five channels, even if some downstream mappings remain simplified in Phase 0 presentation.
-10. Character-originated action requests route through `System L1 / ESM`.
-11. No character agent directly rewrites world truth.
-12. Session timeline and memory store are both queryable.
-13. Model runs are stored with enough metadata for audit and future routing work.
-14. Existing Phase 0 authority boundaries remain intact.
+10. `L4` enters the current shared `CharacterActor` substrate instead of creating a second agent-only embodiment path.
+11. Character-originated action requests route through `System L1 / ESM`.
+12. No character agent directly rewrites world truth.
+13. Session timeline and memory store are both queryable.
+14. Model runs are stored with enough metadata for audit and future routing work.
+15. Existing Phase 0 authority boundaries remain intact.
 
 ## Verification
 
