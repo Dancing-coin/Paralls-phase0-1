@@ -148,6 +148,21 @@ Near-term default:
 
 Future root-motion support must remain motor-owned rather than presentation-owned.
 
+## Root-Motion Ownership Guard
+
+CharacterMotor remains the only normal owner of baseline displacement.
+
+`KnightRoleSkin` may expose sampled root-motion deltas, and `CharacterReplica` may coordinate those deltas with actor runtime state, but presentation nodes must not directly move the world body.
+
+Future root-motion and hybrid work must be motor-owned. A complete mid-term `root_motion` or `hybrid` execution mode must preserve this path:
+
+```text
+presentation root-motion sample
+-> CharacterReplica coordination
+-> CharacterMotor-owned displacement
+-> CharacterMotionState
+```
+
 ## Shared Actor Principle
 
 The key architectural principle is:

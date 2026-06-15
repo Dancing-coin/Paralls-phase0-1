@@ -46,6 +46,7 @@ Historical/narrower references still preserved:
 - asset lookup remains contract-only in this near-term cleanup; do not add `CharacterAssetLibrary.gd` until multiple role skins require real lookup and fallback behavior
 - `CharacterPresentationInput` is frozen as a contract, but the current payload is still assembled as a near-term dictionary bridge rather than a typed resource pipeline
 - `CharacterLocomotionExecutionMode` is frozen as vocabulary, but near-term runtime remains `physics`-first with selective root-motion consumption routed through actor/motor coordination
+- CharacterReplica direct root-motion displacement remains transitional; future root-motion and hybrid work must be motor-owned, and presentation must not become the owner of world displacement
 - some debug instrumentation remains embedded in runtime scripts
 
 ## Intended Near-Term Cleanup
