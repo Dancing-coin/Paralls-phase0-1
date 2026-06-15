@@ -1,6 +1,7 @@
 extends Node3D
 
 const CharacterActorSchemaRef = preload("res://scripts/character/CharacterActorSchema.gd")
+const CharacterPresentationInputRef = preload("res://scripts/character/CharacterPresentationInput.gd")
 
 @export var locomotion_amplitude_scale := 0.75
 
@@ -273,6 +274,7 @@ var move_x := 0.0
 var move_y := 0.0
 var speed := 0.0
 var presentation_gait := "walk"
+var current_presentation_contract: Dictionary = {}
 func _ready() -> void:
 	_configure_animation_loops()
 	_cache_pose_refinement_bones()
@@ -344,11 +346,16 @@ func set_focus_highlight(is_focused: bool) -> void:
 			mesh.material_overlay = focus_overlay if is_focused else null
 
 func apply_presentation_input(next_input: Dictionary) -> void:
+	current_presentation_contract = CharacterPresentationInputRef.normalize(next_input)
 	var normalized := _normalize_presentation_input(next_input)
-	move_x = float(normalized.get("move_x", 0.0))
-	move_y = float(normalized.get("move_y", 0.0))
-	speed = float(normalized.get("speed", 0.0))
-	presentation_gait = str(normalized.get("gait", "walk"))
+	var motion_state: Dictionary = current_presentation_contract.get("motion_state", {})
+	var move_local_actual: Variant = motion_state.get("move_local_actual", Vector2.ZERO)
+	var _action_state: Dictionary = current_presentation_contract.get("action_state", {})
+	var _equipment_state: Dictionary = current_presentation_contract.get("equipment_state", {})
+	move_x = float(normalized.get("move_x", move_local_actual.x if move_local_actual is Vector2 else 0.0))
+	move_y = float(normalized.get("move_y", move_local_actual.y if move_local_actual is Vector2 else 0.0))
+	speed = float(normalized.get("speed", motion_state.get("speed_actual", 0.0)))
+	presentation_gait = str(normalized.get("gait", motion_state.get("gait_actual", "walk")))
 
 func _normalize_presentation_input(candidate: Dictionary) -> Dictionary:
 	return CharacterActorSchemaRef.normalize_presentation_input(candidate)
