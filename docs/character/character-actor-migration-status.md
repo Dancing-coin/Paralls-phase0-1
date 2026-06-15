@@ -43,6 +43,7 @@ Historical/narrower references still preserved:
 - `Phase0PlayerBridge.gd` still carries some demo orchestration helpers and debug-oriented utility methods in addition to pure adaptation
 - `CharacterReplica.gd` still carries some presentation-adjacent feedback helpers
 - the new asset contract files are schema-only and are not yet consumed by runtime asset resolution
+- asset lookup remains contract-only in this near-term cleanup; do not add `CharacterAssetLibrary.gd` until multiple role skins require real lookup and fallback behavior
 - `CharacterPresentationInput` is frozen as a contract, but the current payload is still assembled as a near-term dictionary bridge rather than a typed resource pipeline
 - `CharacterLocomotionExecutionMode` is frozen as vocabulary, but near-term runtime remains `physics`-first with selective root-motion consumption routed through actor/motor coordination
 - some debug instrumentation remains embedded in runtime scripts

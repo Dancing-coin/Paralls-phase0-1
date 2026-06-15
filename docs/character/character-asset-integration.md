@@ -134,6 +134,23 @@ Near-term, the repository may keep binding logic partly in code while the profil
 - updated equipment slot mapping
 - updated docs
 
+## Near-Term Asset Lookup Readiness Gate
+
+The frozen contract files are the only near-term asset-library surface:
+
+- `CharacterAssetBindingProfile`
+- `CharacterEquipmentBindingProfile`
+- `CharacterActionAssetDescriptor`
+
+Near-term cleanup may reference these contracts in docs, tests, and integration checklists, but it must not add a full runtime `CharacterAssetLibrary` or generalized model lookup path yet.
+
+The repository is ready to start actual runtime lookup only after:
+
+1. at least two role skins need different skeleton or equipment bindings
+2. the Phase 0 demo remains green with the current hardcoded knight path
+3. a new lookup path can prove fallback behavior for missing model, skeleton, equipment, and action entries
+4. the lookup result still feeds the shared `CharacterActor` substrate rather than creating a model-specific runtime species
+
 ## Long-Term Direction
 
 Future model swaps should move toward:
