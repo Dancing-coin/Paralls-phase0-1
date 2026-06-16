@@ -117,6 +117,7 @@ def test_interact_success_siming_outputs_are_projected_from_authority_bus() -> N
 
 def test_llm_assisted_siming_output_preserves_authority_causation_chain() -> None:
     bus = InMemoryAuthorityEventBus()
+    audit_writer = SimingAuditWriter()
     candidate = InterventionCandidate(
         candidate_id="cand:llm:1",
         room_id="room_demo",
@@ -128,6 +129,7 @@ def test_llm_assisted_siming_output_preserves_authority_causation_chain() -> Non
         target_actor_id="char_b",
         target_environment_id="env_lamp",
         established_fact_ids=["visual_fact:300:char_c:light_level_drop"],
+        explanation="LLM provenance marker",
         source="llm",
     )
     pipeline = SimingEventPipeline(
@@ -135,17 +137,26 @@ def test_llm_assisted_siming_output_preserves_authority_causation_chain() -> Non
         consumer=SimingEventConsumer(),
         runtime=SimingRuntime(llm_provider=FakeSimingLlmCandidateProvider([candidate])),
         producer=SimingEventProducer(bus),
-        audit_writer=SimingAuditWriter(),
+        audit_writer=audit_writer,
     )
     bus.subscribe("visual_fact_event", pipeline.handle_event)
 
     source_event = make_visual_fact_event()
     bus.publish(source_event)
 
+    llm_candidate = bus.list_events(event_type="siming.intervention_candidate")[0]
+    llm_decision = bus.list_events(event_type="siming.intervention_decision")[0]
     projected = bus.list_events(event_type="siming.visual_observability_request")[0]
+
+    assert llm_candidate.payload["candidate_id"] == "cand:llm:1"
+    assert llm_candidate.payload["source"] == "llm"
+    assert llm_decision.payload["candidate_id"] == "cand:llm:1"
     assert projected.event_id.startswith("siming:")
     assert projected.causation_id == source_event.event_id
     assert projected.correlation_id == source_event.correlation_id
+    assert projected.payload["presentation_hint"] == "LLM provenance marker"
+    records = audit_writer.find_by_correlation(room_id="room_demo", correlation_id="visual_fact:300")
+    assert any(record.status == "recorded" for record in records)
 
 
 def test_runtime_mainline_does_not_call_legacy_siming_service() -> None:
