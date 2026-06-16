@@ -6,6 +6,7 @@ from fastapi.responses import HTMLResponse, Response
 from pydantic import ValidationError
 from starlette.websockets import WebSocketDisconnect
 
+from app.config import settings
 from app.debug_narration import (
     build_debug_event,
     summarize_backend_route,
@@ -58,6 +59,7 @@ from app.services.siming_audit_writer import SimingAuditWriter
 from app.services.siming_event_consumer import SimingEventConsumer
 from app.services.siming_event_pipeline import SimingEventPipeline
 from app.services.siming_event_producer import SimingEventProducer
+from app.services.siming_llm_provider import build_siming_llm_provider
 from app.services.siming_runtime import SimingRuntime
 from app.ws_protocol import Envelope
 
@@ -101,7 +103,7 @@ def reset_runtime_state() -> None:
     siming_event_pipeline = SimingEventPipeline(
         bus=authority_event_bus,
         consumer=SimingEventConsumer(),
-        runtime=SimingRuntime(),
+        runtime=SimingRuntime(llm_provider=build_siming_llm_provider(settings)),
         producer=SimingEventProducer(authority_event_bus),
         audit_writer=siming_audit_writer,
     )
