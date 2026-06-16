@@ -15,6 +15,11 @@ class SimingEventProducer:
         event_type = self._event_type_for(output)
         if event_type == "siming.visual_observability_request" and not output.payload.get("established_fact_id"):
             raise ValueError("visual observability requests require established_fact_id")
+        forbidden_event_type = output.payload.get("event_type")
+        if forbidden_event_type == "siming.dispatch_requested":
+            raise ValueError("forbidden Siming event family: siming.dispatch_requested")
+        if "physical_success" in output.payload:
+            raise ValueError("Siming outputs must not claim physical_success")
 
         return AuthorityEvent(
             event_id=f"siming:{output.output_type}:{output.producer_ts}:{output.causation_id}",
