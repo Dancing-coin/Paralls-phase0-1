@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from app.models.authority_event import AuthorityEvent
 from app.models.siming_event import FairnessStateSnapshot, InterventionCandidate, SimingAuditRecord
-from app.config import Settings
+from app.config import Settings, SimingLlmRouteSettings
 
 
 class SimingLlmProviderError(RuntimeError):
@@ -73,11 +73,32 @@ class SimingLlmProviderRouter:
 
 
 class HttpSimingLlmCandidateProvider:
-    def __init__(self, *, api_key: str, endpoint: str, model: str, timeout_seconds: float) -> None:
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        endpoint: str,
+        model: str,
+        timeout_seconds: float,
+        route_id: str = "openai_responses",
+    ) -> None:
+        self._route_id = route_id
         self._api_key = api_key
         self._endpoint = endpoint
         self._model = model
         self._timeout_seconds = timeout_seconds
+
+    @property
+    def route_id(self) -> str:
+        return self._route_id
+
+    @property
+    def model(self) -> str:
+        return self._model
+
+    @property
+    def timeout_seconds(self) -> float:
+        return self._timeout_seconds
 
     def generate_candidates(
         self,
@@ -248,20 +269,43 @@ class FakeSimingLlmCandidateProvider:
 
 def build_siming_llm_provider(settings: Settings) -> SimingLlmCandidateProvider:
     providers: list[SimingLlmCandidateProvider] = []
-    for provider_name in settings.siming_llm_provider_order:
-        if provider_name == "disabled":
-            providers.append(DisabledSimingLlmCandidateProvider())
-        elif provider_name == "openai_responses":
-            providers.append(_build_openai_responses_provider(settings))
+    if settings.siming_llm_routes:
+        for route in settings.siming_llm_routes:
+            providers.append(_build_route_provider(settings, route))
+
+    if not settings.siming_llm_routes or "siming_llm_provider_order" in settings.model_fields_set:
+        for provider_name in settings.siming_llm_provider_order:
+            if provider_name == "disabled":
+                providers.append(DisabledSimingLlmCandidateProvider())
+            elif provider_name == "openai_responses":
+                providers.append(_build_openai_responses_provider(settings))
     return SimingLlmProviderRouter(providers or [DisabledSimingLlmCandidateProvider()])
 
 
-def _build_openai_responses_provider(settings: Settings) -> SimingLlmCandidateProvider:
-    if settings.siming_llm_mode != "http" or not settings.siming_llm_api_key:
+def _build_route_provider(settings: Settings, route: SimingLlmRouteSettings) -> SimingLlmCandidateProvider:
+    if not route.enabled or route.provider == "disabled":
+        return DisabledSimingLlmCandidateProvider()
+    if route.provider == "openai_responses":
+        return _build_openai_responses_provider(settings, route=route)
+    return DisabledSimingLlmCandidateProvider()
+
+
+def _build_openai_responses_provider(
+    settings: Settings,
+    *,
+    route: SimingLlmRouteSettings | None = None,
+) -> SimingLlmCandidateProvider:
+    api_key = route.api_key if route is not None and route.api_key is not None else settings.siming_llm_api_key
+    if settings.siming_llm_mode != "http" or not api_key:
         return DisabledSimingLlmCandidateProvider()
     return HttpSimingLlmCandidateProvider(
-        api_key=settings.siming_llm_api_key,
-        endpoint=settings.siming_llm_endpoint,
-        model=settings.siming_llm_model,
-        timeout_seconds=settings.siming_llm_timeout_seconds,
+        api_key=api_key,
+        endpoint=route.endpoint if route is not None and route.endpoint is not None else settings.siming_llm_endpoint,
+        model=route.model if route is not None and route.model is not None else settings.siming_llm_model,
+        timeout_seconds=(
+            route.timeout_seconds
+            if route is not None and route.timeout_seconds is not None
+            else settings.siming_llm_timeout_seconds
+        ),
+        route_id=route.route_id if route is not None else "openai_responses",
     )

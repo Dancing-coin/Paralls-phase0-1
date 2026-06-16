@@ -119,6 +119,8 @@ class LlmCandidateProvider:
 
 The provider receives structured context only. It does not receive raw Godot state, raw pose streams, private chain-of-thought, or unrestricted world state.
 
+Provider and model choice is handled by a runtime-internal route router. Each route declares its provider type, model, endpoint, credential source, timeout, and enabled state; `SimingRuntime.tick()` still sees only the `LlmCandidateProvider` port and receives canonical candidates. The router may try multiple configured routes, and explicitly configured legacy provider order can be appended as migration fallback, but it remains an internal collaborator and must not publish authority events, bypass policy/feasibility, or create a second bus.
+
 Allowed output:
 
 - `InterventionCandidate`
@@ -289,5 +291,5 @@ Phase 1 Siming with LLM assistance is acceptable only when:
 
 - The first implementation should use a fake LLM provider and fixture-driven golden traces before connecting a real provider.
 - Real provider configuration should be injected through settings and kept outside domain models.
-- Provider choice, API key storage, retry policy, and model selection should be implementation-plan topics, not part of the domain boundary.
+- Provider choice, API key storage, retry policy, and model selection should be implementation-plan topics, not part of the domain boundary. Model selection should be route-based so one Siming runtime can connect different provider/model routes without changing the authority-bus contract.
 - The legacy `SimingService` should remain out of the mainline authority-bus path unless explicitly retired by a later cleanup plan.

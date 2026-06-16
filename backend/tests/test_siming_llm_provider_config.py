@@ -4,7 +4,7 @@ import json as json_module
 import httpx
 import pytest
 
-from app.config import Settings
+from app.config import Settings, SimingLlmRouteSettings
 from app.models.siming_event import InterventionCandidate
 from app.models.authority_event import AuthorityEvent
 from app.models.siming_event import FairnessStateSnapshot
@@ -32,6 +32,18 @@ def test_settings_repr_and_dump_hide_siming_llm_api_key() -> None:
     assert "secret-key" not in repr(settings)
     assert "secret-key" not in str(settings.model_dump())
     assert "siming_llm_api_key" not in settings.model_dump()
+
+
+def test_settings_repr_and_dump_hide_route_level_siming_llm_api_key() -> None:
+    settings = Settings(
+        siming_llm_mode="http",
+        siming_llm_routes=[
+            SimingLlmRouteSettings(route_id="fast", provider="openai_responses", api_key="route-secret")
+        ],
+    )
+
+    assert "route-secret" not in repr(settings)
+    assert "route-secret" not in str(settings.model_dump())
 
 
 def test_provider_factory_returns_disabled_without_api_key() -> None:
@@ -67,6 +79,104 @@ def test_provider_factory_orders_router_from_settings() -> None:
     assert isinstance(provider, SimingLlmProviderRouter)
     assert isinstance(provider.providers[0], DisabledSimingLlmCandidateProvider)
     assert isinstance(provider.providers[1], HttpSimingLlmCandidateProvider)
+
+
+def test_provider_factory_builds_distinct_openai_response_routes() -> None:
+    provider = build_siming_llm_provider(
+        Settings(
+            siming_llm_mode="http",
+            siming_llm_api_key="test-key",
+            siming_llm_routes=[
+                SimingLlmRouteSettings(
+                    route_id="fast",
+                    provider="openai_responses",
+                    model="gpt-fast",
+                    endpoint="https://example.invalid/v1/responses",
+                    timeout_seconds=1.0,
+                ),
+                SimingLlmRouteSettings(
+                    route_id="deep",
+                    provider="openai_responses",
+                    model="gpt-deep",
+                    endpoint="https://example.invalid/v1/responses",
+                    timeout_seconds=8.0,
+                ),
+            ],
+        )
+    )
+
+    assert isinstance(provider, SimingLlmProviderRouter)
+    first, second = provider.providers
+    assert isinstance(first, HttpSimingLlmCandidateProvider)
+    assert isinstance(second, HttpSimingLlmCandidateProvider)
+    assert first.route_id == "fast"
+    assert second.route_id == "deep"
+    assert first.model == "gpt-fast"
+    assert second.model == "gpt-deep"
+    assert first.timeout_seconds == 1.0
+    assert second.timeout_seconds == 8.0
+
+
+def test_provider_factory_uses_legacy_order_as_route_fallback() -> None:
+    provider = build_siming_llm_provider(
+        Settings(
+            siming_llm_mode="http",
+            siming_llm_api_key="test-key",
+            siming_llm_routes=[
+                SimingLlmRouteSettings(route_id="placeholder", provider="openai_responses", enabled=False)
+            ],
+            siming_llm_provider_order=["openai_responses"],
+            siming_llm_model="legacy-model",
+        )
+    )
+
+    assert isinstance(provider, SimingLlmProviderRouter)
+    first, second = provider.providers
+    assert isinstance(first, DisabledSimingLlmCandidateProvider)
+    assert isinstance(second, HttpSimingLlmCandidateProvider)
+    assert second.route_id == "openai_responses"
+    assert second.model == "legacy-model"
+
+
+def test_route_level_openai_response_config_is_used_for_http_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    router = build_siming_llm_provider(
+        Settings(
+            siming_llm_mode="http",
+            siming_llm_api_key="global-key",
+            siming_llm_endpoint="https://global.invalid/v1/responses",
+            siming_llm_model="global-model",
+            siming_llm_timeout_seconds=9.0,
+            siming_llm_routes=[
+                SimingLlmRouteSettings(
+                    route_id="fast",
+                    provider="openai_responses",
+                    api_key="route-key",
+                    model="gpt-fast",
+                    endpoint="https://route.invalid/v1/responses",
+                    timeout_seconds=1.0,
+                )
+            ],
+        )
+    )
+    assert isinstance(router, SimingLlmProviderRouter)
+    provider = router.providers[0]
+    assert isinstance(provider, HttpSimingLlmCandidateProvider)
+    captured: dict[str, object] = {}
+
+    def fake_post(url: str, *, headers: dict[str, str], json: dict[str, object], timeout: float) -> FakeResponse:
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["json"] = json
+        captured["timeout"] = timeout
+        return FakeResponse({"output_text": '{"candidates":[]}'})
+
+    monkeypatch.setattr("app.services.siming_llm_provider.httpx.post", fake_post)
+
+    assert provider.generate_candidates(snapshot=make_snapshot(), recent_events=[make_event()], recent_audit=[]) == []
+    assert captured["url"] == "https://route.invalid/v1/responses"
+    assert captured["headers"] == {"Authorization": "Bearer route-key"}
+    assert captured["json"]["model"] == "gpt-fast"
+    assert captured["timeout"] == 1.0
 
 
 class FakeResponse:

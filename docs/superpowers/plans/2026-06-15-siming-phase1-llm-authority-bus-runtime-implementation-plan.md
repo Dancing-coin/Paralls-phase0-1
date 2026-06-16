@@ -58,6 +58,7 @@
 - Do not add an OpenAI SDK dependency in this plan. Use `httpx` for the optional provider adapter because it is already present as a dev dependency and can be promoted only if a later dependency review approves it.
 - Default runtime behavior must be deterministic with LLM disabled.
 - All real provider configuration must be optional and injectable from `Settings`; missing API key means disabled provider.
+- Model/provider selection must be a route router, not a single global provider choice. Each route can declare provider type, model, endpoint, credential source, timeout, and enabled state while preserving `SimingRuntime.tick() -> SimingEventProducer -> AuthorityEventBus` as the only authority path. During migration, route entries run first and an explicitly configured legacy `siming_llm_provider_order` can be appended as fallback; the default legacy order is not appended to route-only configs.
 
 ---
 
@@ -1167,7 +1168,7 @@ Evidence:
 - GREEN: `598a31a` plus review test-only fix `7ffc854`; `cd backend; python -m pytest -q tests/test_siming_event_producer.py tests/test_siming_authority_bus_provenance.py`.
 - Harness: final 2026-06-16 focused suite passed with producer/provenance tests included; final phase1-slice profile passed through the producer-owned authority path.
 
-### Task 7: Add Optional Real Provider Configuration Without Side Channels
+### Task 7: Add Optional Real Provider Route Configuration Without Side Channels
 
 **Files:**
 - Modify: `backend/app/config.py`
@@ -1351,6 +1352,7 @@ Evidence:
 - RED: `cd backend; python -m pytest -q tests/test_siming_llm_provider_config.py`; expected pre-implementation failure was missing Siming LLM settings and provider factory.
 - GREEN: `68bfa4f` plus review hardening `ee1d6c7`; `cd backend; python -m pytest -q tests/test_siming_llm_provider_config.py tests/test_architecture_entrypoints.py tests/test_siming_event_pipeline.py`.
 - Harness: final 2026-06-16 focused suite included provider config and runtime tests; final backend suite passed with `327 passed`.
+- Route-router correction: User requirement clarified that model choice must be a router able to connect different model/provider routes. RED was `cd backend; python -m pytest -q tests/test_siming_llm_provider_config.py::test_provider_factory_builds_distinct_openai_response_routes`, failing with missing `SimingLlmRouteSettings`. GREEN added `siming_llm_routes`, route-level provider/model/endpoint/api-key/timeout/enabled settings, and tests proving two OpenAI Responses routes stay distinct and route-level request config is used. Review then found mixed `siming_llm_routes` plus `siming_llm_provider_order` precedence was implicit; RED `test_provider_factory_uses_legacy_order_as_route_fallback` proved the gap, and GREEN made explicitly configured legacy order append after routes while keeping route-only configs exact. Verification passed with `tests/test_siming_llm_provider_config.py` (`20 passed`), focused provider/runtime/boundary tests (`32 passed`), focused Siming/authority suite (`65 passed`), and `python scripts/verification/harness.py --profile boundaries` with `siming_llm_stays_inside_runtime=proved`.
 
 ### Task 8: Add Static Boundary Audits For LLM Side-Channel Prevention
 
@@ -1797,14 +1799,14 @@ Evidence:
 
 - RED: `cd backend; python -m pytest -q` initially failed only at `tests/test_health.py::test_health_exposes_current_backend_identity` because the test still accepted the historical `paralls-phase-0-demo` path or `.worktrees\`, while this workspace correctly reported `D:\Paralls-phase0-1`.
 - GREEN: `8f7c317` fixed the stale health identity assertion; `cd backend; python -m pytest -q tests/test_health.py` passed with `1 passed`; `cd backend; python -m pytest -q` passed with `327 passed`.
-- Review fixes: final code review found two Important issues. `56103bc` fixed the OpenAI Responses structured-output contract, aligned phase1-slice audit with the executed probe scene, and required accepted acks in the probe.
-- Harness: final 2026-06-16 focused suite passed with `58 passed`; final harness profiles passed with `overall_docs_passed=True`, `overall_backend_contract_passed=True`, `overall_boundaries_passed=True`, and `overall_phase1_slice_passed=True`; final backend suite passed with `328 passed`.
+- Review fixes: final code review found two Important issues. `56103bc` fixed the OpenAI Responses structured-output contract, aligned phase1-slice audit with the executed probe scene, and required accepted acks in the probe. Follow-up route-router review identified the global provider-order design as insufficient for different models/providers; the route-router correction added structured per-route settings. Final route-router review found one Important mixed-config precedence gap; the fallback rule was clarified and tested.
+- Harness: final 2026-06-16 focused suite passed with `58 passed`; final harness profiles passed with `overall_docs_passed=True`, `overall_backend_contract_passed=True`, `overall_boundaries_passed=True`, and `overall_phase1_slice_passed=True`; final backend suite passed with `328 passed`. Route-router follow-up verification passed `tests/test_siming_llm_provider_config.py` (`20 passed`), focused provider/runtime/boundary tests (`32 passed`), focused Siming/authority suite (`65 passed`), harness profiles `docs`, `backend-contract`, `boundaries`, and `phase1-slice`, and full backend tests with `335 passed, 1 warning`.
 
 ---
 
 ## Self-Review
 
-- Spec coverage: The plan covers the provider port, structured context, forbidden LLM outputs, policy rejection, feasibility mapping, audit fallback, SimingEventProducer-only bus publication, optional real provider configuration, public envelope guardrails, and phase1-slice verification.
+- Spec coverage: The plan covers the provider port, structured context, route-based provider/model selection, forbidden LLM outputs, policy rejection, feasibility mapping, audit fallback, SimingEventProducer-only bus publication, optional real provider configuration, public envelope guardrails, and phase1-slice verification.
 - Intentional deferral: Full narrative projection, multi-step dramatic chain search, persistent world simulation, new private Siming bus, and direct Godot/ESM mutation are excluded because the spec marks them non-goals.
 - Plan hygiene scan: No task contains unresolved placeholder markers or undefined execution steps. Later tasks reference types introduced in earlier tasks.
 - Type consistency: The plan consistently uses `FairnessStateSnapshot`, `InterventionCandidate`, `InterventionDecision`, `SimingLlmCandidateProvider`, `SimingInterventionPolicy`, and `SimingExecutionFeasibility`.
