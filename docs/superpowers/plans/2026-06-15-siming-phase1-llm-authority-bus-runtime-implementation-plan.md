@@ -1739,7 +1739,7 @@ Evidence:
 
 - RED: `python scripts/verification/harness.py --profile phase1-slice`; the initial runtime path failed in a clean workspace because `MainDemo.tscn` depended on ignored generated `.godot/imported` texture cache files.
 - GREEN: `392082b`; `python scripts/verification/harness.py --profile phase1-slice` passed with `overall_phase1_slice_passed=True`, `authority_ack_observed=proved`, `runtime_projection_observed=proved`, and `candidate_and_siming_observed=proved`.
-- Harness: final 2026-06-16 `docs`, `backend-contract`, `boundaries`, and `phase1-slice` profiles all passed. Task 10 quality re-review by subagent `019ecea9-25ed-7671-ae4b-2013b310d2c1` returned no Critical or Important issues and `Ready to merge? Yes`; one minor future hardening suggestion remains to require `payload.accepted == true` when counting probe ack routes.
+- Harness: final 2026-06-16 `docs`, `backend-contract`, `boundaries`, and `phase1-slice` profiles all passed. Task 10 quality re-review by subagent `019ecea9-25ed-7671-ae4b-2013b310d2c1` returned no Critical or Important issues and `Ready to merge? Yes`; the later final-review ack hardening was applied in `56103bc`.
 
 ### Task 11: Final Full Verification And Plan Closure
 
@@ -1797,7 +1797,8 @@ Evidence:
 
 - RED: `cd backend; python -m pytest -q` initially failed only at `tests/test_health.py::test_health_exposes_current_backend_identity` because the test still accepted the historical `paralls-phase-0-demo` path or `.worktrees\`, while this workspace correctly reported `D:\Paralls-phase0-1`.
 - GREEN: `8f7c317` fixed the stale health identity assertion; `cd backend; python -m pytest -q tests/test_health.py` passed with `1 passed`; `cd backend; python -m pytest -q` passed with `327 passed`.
-- Harness: final 2026-06-16 focused suite passed with `58 passed`; final harness profiles passed with `overall_docs_passed=True`, `overall_backend_contract_passed=True`, `overall_boundaries_passed=True`, and `overall_phase1_slice_passed=True`.
+- Review fixes: final code review found two Important issues. `56103bc` fixed the OpenAI Responses structured-output contract, aligned phase1-slice audit with the executed probe scene, and required accepted acks in the probe.
+- Harness: final 2026-06-16 focused suite passed with `58 passed`; final harness profiles passed with `overall_docs_passed=True`, `overall_backend_contract_passed=True`, `overall_boundaries_passed=True`, and `overall_phase1_slice_passed=True`; final backend suite passed with `328 passed`.
 
 ---
 
