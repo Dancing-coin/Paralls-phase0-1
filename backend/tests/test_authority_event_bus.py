@@ -31,6 +31,11 @@ def test_authority_event_rejects_forbidden_public_envelope_fields() -> None:
         make_authority_event(world_ts=100)
 
 
+def test_authority_event_rejects_sim_tick_ts_public_envelope_field() -> None:
+    with pytest.raises(ValidationError, match="forbidden authority envelope"):
+        make_authority_event(sim_tick_ts=301)
+
+
 def test_in_memory_bus_publishes_deep_copies_to_subscribers_and_store() -> None:
     bus = InMemoryAuthorityEventBus()
     seen: list[AuthorityEvent] = []

@@ -113,3 +113,69 @@ def test_pipeline_publishes_llm_assisted_output_only_through_siming_event_produc
     assert projected.payload["established_fact_id"] == "visual_fact:300:char_c:light_level_drop"
     assert projected.payload["target_environment_id"] == "env_lamp"
     assert projected.payload["target_actor_id"] == "char_b"
+
+
+def test_pipeline_records_llm_timeout_audit() -> None:
+    bus = InMemoryAuthorityEventBus()
+    audit_writer = SimingAuditWriter()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=SimingRuntime(llm_provider=FakeSimingLlmCandidateProvider([], timeout=True)),
+        producer=SimingEventProducer(bus),
+        audit_writer=audit_writer,
+    )
+    bus.subscribe("visual_fact_event", pipeline.handle_event)
+
+    bus.publish(make_visual_fact_event())
+
+    records = audit_writer.find_by_correlation(room_id="room_demo", correlation_id="visual_fact:300")
+    assert any(record.status == "llm_timeout" for record in records)
+
+
+def test_pipeline_records_policy_rejection_audit() -> None:
+    bus = InMemoryAuthorityEventBus()
+    audit_writer = SimingAuditWriter()
+    candidate = InterventionCandidate(
+        candidate_id="cand:unsafe",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        causation_id="visual_fact:300:char_c:light_level_drop",
+        correlation_id="visual_fact:300",
+        proposed_band="fact_reveal",
+        target_actor_id="char_b",
+        established_fact_ids=["visual_fact:unknown"],
+        source="llm",
+    )
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=SimingRuntime(llm_provider=FakeSimingLlmCandidateProvider([candidate])),
+        producer=SimingEventProducer(bus),
+        audit_writer=audit_writer,
+    )
+    bus.subscribe("visual_fact_event", pipeline.handle_event)
+
+    bus.publish(make_visual_fact_event())
+
+    records = audit_writer.find_by_correlation(room_id="room_demo", correlation_id="visual_fact:300")
+    assert any(record.status == "policy_rejected" for record in records)
+
+
+def test_pipeline_preserves_no_action_audit_when_no_candidate_or_rule_applies() -> None:
+    bus = InMemoryAuthorityEventBus()
+    audit_writer = SimingAuditWriter()
+    pipeline = make_pipeline(bus, audit_writer)
+    bus.subscribe("world_fact_event", pipeline.handle_event)
+
+    bus.publish(
+        make_visual_fact_event(
+            event_id="world:1",
+            event_type="world_fact_event",
+            payload={"fact_type": "unrelated"},
+        )
+    )
+
+    records = audit_writer.find_by_correlation(room_id="room_demo", correlation_id="visual_fact:300")
+    assert any(record.status == "no_action" for record in records)

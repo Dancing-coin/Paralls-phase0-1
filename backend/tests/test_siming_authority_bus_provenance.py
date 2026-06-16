@@ -1,11 +1,45 @@
 from pathlib import Path
 
 import app.main as main
+from app.models.authority_event import AuthorityEvent
+from app.models.siming_event import InterventionCandidate
+from app.services.authority_event_bus import InMemoryAuthorityEventBus
+from app.services.siming_audit_writer import SimingAuditWriter
+from app.services.siming_event_consumer import SimingEventConsumer
+from app.services.siming_event_pipeline import SimingEventPipeline
+from app.services.siming_event_producer import SimingEventProducer
+from app.services.siming_llm_provider import FakeSimingLlmCandidateProvider
+from app.services.siming_runtime import SimingRuntime
 from app.ws_protocol import Envelope
 
 
 def _messages_of_type(messages: list[dict[str, object]], message_type: str) -> list[dict[str, object]]:
     return [message for message in messages if message.get("message_type") == message_type]
+
+
+def make_visual_fact_event(**overrides: object) -> AuthorityEvent:
+    payload = {
+        "event_id": "visual_fact:300:char_c:light_level_drop",
+        "event_type": "visual_fact_event",
+        "producer_ts": 300,
+        "room_id": "room_demo",
+        "scene_id": "scene_demo",
+        "zone_id": "zone_focus",
+        "source": {"layer": "L1", "system": "visual_fact", "actor_id": "char_c"},
+        "routing": {"audience_mode": "room", "routing_mode": "event_type", "target_ids": ["siming"]},
+        "priority": "p2",
+        "ttl": 5000,
+        "durability": "replayable",
+        "causation_id": "visual_fact:300",
+        "correlation_id": "visual_fact:300",
+        "payload": {
+            "fact_type": "light_level_drop",
+            "established_fact_id": "visual_fact:300:char_c:light_level_drop",
+            "target_environment_id": "env_lamp",
+        },
+    }
+    payload.update(overrides)
+    return AuthorityEvent.model_validate(payload)
 
 
 def test_visual_fact_siming_output_is_projected_from_authority_event() -> None:
@@ -79,6 +113,39 @@ def test_interact_success_siming_outputs_are_projected_from_authority_bus() -> N
         assert payload["authority_event_type"] == authority_event.event_type  # type: ignore[index]
         assert payload["causation_id"] == authority_event.causation_id  # type: ignore[index]
         assert payload["correlation_id"] == authority_event.correlation_id  # type: ignore[index]
+
+
+def test_llm_assisted_siming_output_preserves_authority_causation_chain() -> None:
+    bus = InMemoryAuthorityEventBus()
+    candidate = InterventionCandidate(
+        candidate_id="cand:llm:1",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        causation_id="visual_fact:300:char_c:light_level_drop",
+        correlation_id="visual_fact:300",
+        proposed_band="fact_reveal",
+        target_actor_id="char_b",
+        target_environment_id="env_lamp",
+        established_fact_ids=["visual_fact:300:char_c:light_level_drop"],
+        source="llm",
+    )
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=SimingRuntime(llm_provider=FakeSimingLlmCandidateProvider([candidate])),
+        producer=SimingEventProducer(bus),
+        audit_writer=SimingAuditWriter(),
+    )
+    bus.subscribe("visual_fact_event", pipeline.handle_event)
+
+    source_event = make_visual_fact_event()
+    bus.publish(source_event)
+
+    projected = bus.list_events(event_type="siming.visual_observability_request")[0]
+    assert projected.event_id.startswith("siming:")
+    assert projected.causation_id == source_event.event_id
+    assert projected.correlation_id == source_event.correlation_id
 
 
 def test_runtime_mainline_does_not_call_legacy_siming_service() -> None:
