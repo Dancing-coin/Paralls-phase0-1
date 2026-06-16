@@ -67,7 +67,7 @@
 - Modify: `backend/app/models/siming_event.py`
 - Create: `backend/tests/test_siming_llm_models.py`
 
-- [ ] **Step 1: Write the failing canonical model tests**
+- [x] **Step 1: Write the failing canonical model tests**
 
 Create `backend/tests/test_siming_llm_models.py`:
 
@@ -161,7 +161,7 @@ def test_intervention_decision_records_policy_and_feasibility_without_being_prov
     assert decision.selected_path == "visual_fact_path"
 ```
 
-- [ ] **Step 2: Run the model tests to verify failure**
+- [x] **Step 2: Run the model tests to verify failure**
 
 Run:
 
@@ -172,7 +172,7 @@ python -m pytest -q tests/test_siming_llm_models.py
 
 Expected before implementation: FAIL because `FairnessStateSnapshot`, `InterventionCandidate`, and `InterventionDecision` do not exist.
 
-- [ ] **Step 3: Add the canonical models**
+- [x] **Step 3: Add the canonical models**
 
 In `backend/app/models/siming_event.py`, add:
 
@@ -267,7 +267,7 @@ Also extend `AuditStatus` with:
 "ack_timeout",
 ```
 
-- [ ] **Step 4: Run the model tests to verify pass**
+- [x] **Step 4: Run the model tests to verify pass**
 
 Run:
 
@@ -278,7 +278,7 @@ python -m pytest -q tests/test_siming_llm_models.py
 
 Expected: PASS.
 
-- [ ] **Step 5: Run existing Siming model users**
+- [x] **Step 5: Run existing Siming model users**
 
 Run:
 
@@ -289,12 +289,18 @@ python -m pytest -q tests/test_siming_event_pipeline.py tests/test_authority_eve
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add backend/app/models/siming_event.py backend/tests/test_siming_llm_models.py
 git commit -m "Freeze Siming LLM candidate domain models"
 ```
+
+Evidence:
+
+- RED: `cd backend; python -m pytest -q tests/test_siming_llm_models.py`; expected pre-implementation failure was missing `FairnessStateSnapshot`, `InterventionCandidate`, and `InterventionDecision`.
+- GREEN: `a21e17f`; `cd backend; python -m pytest -q tests/test_siming_llm_models.py` and `cd backend; python -m pytest -q tests/test_siming_event_pipeline.py tests/test_authority_event_bus.py`.
+- Harness: final 2026-06-16 `python scripts/verification/harness.py --profile phase1-slice` passed with `overall_phase1_slice_passed=True`; final backend suite passed with `327 passed`.
 
 ### Task 2: Add Disabled And Fake LLM Candidate Providers
 
@@ -302,7 +308,7 @@ git commit -m "Freeze Siming LLM candidate domain models"
 - Create: `backend/app/services/siming_llm_provider.py`
 - Create: `backend/tests/test_siming_llm_provider.py`
 
-- [ ] **Step 1: Write the failing provider tests**
+- [x] **Step 1: Write the failing provider tests**
 
 Create `backend/tests/test_siming_llm_provider.py`:
 
@@ -387,7 +393,7 @@ def test_fake_provider_can_raise_timeout() -> None:
         provider.generate_candidates(snapshot=make_snapshot(), recent_events=[make_event()], recent_audit=[])
 ```
 
-- [ ] **Step 2: Run the provider tests to verify failure**
+- [x] **Step 2: Run the provider tests to verify failure**
 
 Run:
 
@@ -398,7 +404,7 @@ python -m pytest -q tests/test_siming_llm_provider.py
 
 Expected before implementation: FAIL because `siming_llm_provider.py` does not exist.
 
-- [ ] **Step 3: Implement provider protocol, disabled provider, fake provider, and errors**
+- [x] **Step 3: Implement provider protocol, disabled provider, fake provider, and errors**
 
 Create `backend/app/services/siming_llm_provider.py`:
 
@@ -460,7 +466,7 @@ class FakeSimingLlmCandidateProvider:
         return [candidate.model_copy(deep=True) for candidate in self._candidates]
 ```
 
-- [ ] **Step 4: Run provider tests to verify pass**
+- [x] **Step 4: Run provider tests to verify pass**
 
 Run:
 
@@ -471,12 +477,18 @@ python -m pytest -q tests/test_siming_llm_provider.py
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/services/siming_llm_provider.py backend/tests/test_siming_llm_provider.py
 git commit -m "Add Siming LLM provider ports and deterministic fakes"
 ```
+
+Evidence:
+
+- RED: `cd backend; python -m pytest -q tests/test_siming_llm_provider.py`; expected pre-implementation failure was missing `app.services.siming_llm_provider`.
+- GREEN: `2e4b41f`; `cd backend; python -m pytest -q tests/test_siming_llm_provider.py` and `cd backend; python -m pytest -q tests/test_siming_llm_models.py tests/test_siming_llm_provider.py`.
+- Harness: final 2026-06-16 focused suite passed with `58 passed`; final phase1-slice profile passed with `candidate_and_siming_observed=proved`.
 
 ### Task 3: Add Policy Guardrails For LLM Candidates
 
@@ -484,7 +496,7 @@ git commit -m "Add Siming LLM provider ports and deterministic fakes"
 - Create: `backend/app/services/siming_policy.py`
 - Create: `backend/tests/test_siming_llm_policy.py`
 
-- [ ] **Step 1: Write the failing policy tests**
+- [x] **Step 1: Write the failing policy tests**
 
 Create `backend/tests/test_siming_llm_policy.py`:
 
@@ -561,7 +573,7 @@ def test_policy_rejects_locked_truth_rewrite_tag() -> None:
     assert "locked_truth_rewrite" in result.reasons
 ```
 
-- [ ] **Step 2: Run policy tests to verify failure**
+- [x] **Step 2: Run policy tests to verify failure**
 
 Run:
 
@@ -572,7 +584,7 @@ python -m pytest -q tests/test_siming_llm_policy.py
 
 Expected before implementation: FAIL because `SimingInterventionPolicy` does not exist.
 
-- [ ] **Step 3: Implement policy result and guardrails**
+- [x] **Step 3: Implement policy result and guardrails**
 
 Create `backend/app/services/siming_policy.py`:
 
@@ -613,7 +625,7 @@ class SimingInterventionPolicy:
         return SimingPolicyResult(accepted=True, reasons=["established_fact_visible"])
 ```
 
-- [ ] **Step 4: Run policy tests to verify pass**
+- [x] **Step 4: Run policy tests to verify pass**
 
 Run:
 
@@ -624,12 +636,18 @@ python -m pytest -q tests/test_siming_llm_policy.py
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/services/siming_policy.py backend/tests/test_siming_llm_policy.py
 git commit -m "Add Siming intervention policy guardrails"
 ```
+
+Evidence:
+
+- RED: `cd backend; python -m pytest -q tests/test_siming_llm_policy.py`; expected pre-implementation failure was missing `SimingInterventionPolicy`.
+- GREEN: `c685563`; `cd backend; python -m pytest -q tests/test_siming_llm_policy.py` and `cd backend; python -m pytest -q tests/test_siming_llm_models.py tests/test_siming_llm_policy.py`.
+- Harness: final 2026-06-16 focused suite passed with `58 passed`; final boundaries profile kept `siming_llm_stays_inside_runtime=proved`.
 
 ### Task 4: Add Execution Feasibility Mapping
 
@@ -637,7 +655,7 @@ git commit -m "Add Siming intervention policy guardrails"
 - Create: `backend/app/services/siming_feasibility.py`
 - Create: `backend/tests/test_siming_llm_feasibility.py`
 
-- [ ] **Step 1: Write the failing feasibility tests**
+- [x] **Step 1: Write the failing feasibility tests**
 
 Create `backend/tests/test_siming_llm_feasibility.py`:
 
@@ -700,7 +718,7 @@ def test_environment_request_maps_to_environment_change_path_without_claiming_su
     assert "esm_result_required_for_success" in result.reasons
 ```
 
-- [ ] **Step 2: Run feasibility tests to verify failure**
+- [x] **Step 2: Run feasibility tests to verify failure**
 
 Run:
 
@@ -711,7 +729,7 @@ python -m pytest -q tests/test_siming_llm_feasibility.py
 
 Expected before implementation: FAIL because `SimingExecutionFeasibility` does not exist.
 
-- [ ] **Step 3: Implement feasibility result and deterministic mapping**
+- [x] **Step 3: Implement feasibility result and deterministic mapping**
 
 Create `backend/app/services/siming_feasibility.py`:
 
@@ -744,7 +762,7 @@ class SimingExecutionFeasibility:
         return SimingFeasibilityResult(False, "no_action", ["no_executable_path"])
 ```
 
-- [ ] **Step 4: Run feasibility tests to verify pass**
+- [x] **Step 4: Run feasibility tests to verify pass**
 
 Run:
 
@@ -755,12 +773,18 @@ python -m pytest -q tests/test_siming_llm_feasibility.py
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/services/siming_feasibility.py backend/tests/test_siming_llm_feasibility.py
 git commit -m "Add Siming execution feasibility mapping"
 ```
+
+Evidence:
+
+- RED: `cd backend; python -m pytest -q tests/test_siming_llm_feasibility.py`; expected pre-implementation failure was missing `SimingExecutionFeasibility`.
+- GREEN: `138fd79`; `cd backend; python -m pytest -q tests/test_siming_llm_feasibility.py`; LSP diagnostics were run on the new feasibility service and tests.
+- Harness: final 2026-06-16 focused suite passed with `58 passed`; final backend suite passed with `327 passed`.
 
 ### Task 5: Integrate Provider, Policy, And Feasibility Inside `SimingRuntime.tick()`
 
@@ -769,7 +793,7 @@ git commit -m "Add Siming execution feasibility mapping"
 - Create: `backend/tests/test_siming_llm_runtime.py`
 - Modify: `backend/tests/test_siming_event_pipeline.py`
 
-- [ ] **Step 1: Write failing runtime tests**
+- [x] **Step 1: Write failing runtime tests**
 
 Create `backend/tests/test_siming_llm_runtime.py`:
 
@@ -864,7 +888,7 @@ def test_runtime_falls_back_when_llm_provider_times_out() -> None:
     assert any(output.output_type == "no_action" for output in result.outputs)
 ```
 
-- [ ] **Step 2: Run runtime tests to verify failure**
+- [x] **Step 2: Run runtime tests to verify failure**
 
 Run:
 
@@ -875,7 +899,7 @@ python -m pytest -q tests/test_siming_llm_runtime.py
 
 Expected before implementation: FAIL because `SimingRuntime` does not accept an injected provider and does not build canonical LLM-assisted outputs.
 
-- [ ] **Step 3: Refactor `SimingRuntime.__init__` for dependency injection**
+- [x] **Step 3: Refactor `SimingRuntime.__init__` for dependency injection**
 
 In `backend/app/services/siming_runtime.py`, add constructor dependencies:
 
@@ -903,7 +927,7 @@ class SimingRuntime:
         self._feasibility = feasibility or SimingExecutionFeasibility()
 ```
 
-- [ ] **Step 4: Add snapshot construction and provider call inside `tick()`**
+- [x] **Step 4: Add snapshot construction and provider call inside `tick()`**
 
 Add helper methods:
 
@@ -939,7 +963,7 @@ def _llm_candidates_for(self, event: AuthorityEvent, snapshot: FairnessStateSnap
 
 Call `_llm_candidates_for()` only from `tick()` after creating a fairness snapshot. Do not call the provider from consumer, producer, or pipeline code.
 
-- [ ] **Step 5: Convert accepted candidates into existing `SimingOutput` shapes**
+- [x] **Step 5: Convert accepted candidates into existing `SimingOutput` shapes**
 
 Add a helper that performs policy and feasibility:
 
@@ -967,7 +991,7 @@ def _outputs_for_candidate(
 
 Preserve the existing rule-based path by using it when provider returns no candidates and there was no provider failure.
 
-- [ ] **Step 6: Run runtime and existing pipeline tests**
+- [x] **Step 6: Run runtime and existing pipeline tests**
 
 Run:
 
@@ -978,7 +1002,7 @@ python -m pytest -q tests/test_siming_llm_runtime.py tests/test_siming_event_pip
 
 Expected: PASS.
 
-- [ ] **Step 7: Add pipeline proof for LLM-assisted bus production**
+- [x] **Step 7: Add pipeline proof for LLM-assisted bus production**
 
 In `backend/tests/test_siming_event_pipeline.py`, add:
 
@@ -1021,7 +1045,7 @@ def test_pipeline_publishes_llm_assisted_output_only_through_siming_event_produc
     assert "siming.dispatch_requested" not in event_types
 ```
 
-- [ ] **Step 8: Re-run pipeline tests**
+- [x] **Step 8: Re-run pipeline tests**
 
 Run:
 
@@ -1032,12 +1056,18 @@ python -m pytest -q tests/test_siming_event_pipeline.py tests/test_siming_llm_ru
 
 Expected: PASS.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add backend/app/services/siming_runtime.py backend/tests/test_siming_llm_runtime.py backend/tests/test_siming_event_pipeline.py
 git commit -m "Run LLM-assisted Siming candidates inside runtime tick"
 ```
+
+Evidence:
+
+- RED: `cd backend; python -m pytest -q tests/test_siming_llm_runtime.py`; expected pre-implementation failure was missing provider injection and candidate execution inside `SimingRuntime.tick()`.
+- GREEN: `f5aa12c` plus review fix `65cdb65`; `cd backend; python -m pytest -q tests/test_siming_llm_runtime.py tests/test_siming_event_pipeline.py` and the model/provider/policy/feasibility/provenance regression set.
+- Harness: final 2026-06-16 boundaries profile proved `siming_llm_stays_inside_runtime`; final phase1-slice profile proved `candidate_and_siming_observed`.
 
 ### Task 6: Harden `SimingEventProducer` Event Family Mapping
 
@@ -1045,7 +1075,7 @@ git commit -m "Run LLM-assisted Siming candidates inside runtime tick"
 - Modify: `backend/app/services/siming_event_producer.py`
 - Create: `backend/tests/test_siming_event_producer.py`
 
-- [ ] **Step 1: Write failing producer tests**
+- [x] **Step 1: Write failing producer tests**
 
 Create `backend/tests/test_siming_event_producer.py`:
 
@@ -1090,7 +1120,7 @@ def test_producer_rejects_forbidden_dispatch_requested_event_family() -> None:
         SimingEventProducer(InMemoryAuthorityEventBus()).publish_outputs([output])
 ```
 
-- [ ] **Step 2: Run producer tests to verify failure**
+- [x] **Step 2: Run producer tests to verify failure**
 
 Run:
 
@@ -1101,7 +1131,7 @@ python -m pytest -q tests/test_siming_event_producer.py
 
 Expected before implementation: FAIL on forbidden payload event family guard.
 
-- [ ] **Step 3: Add explicit forbidden family guard**
+- [x] **Step 3: Add explicit forbidden family guard**
 
 In `backend/app/services/siming_event_producer.py`, before creating `AuthorityEvent`, add:
 
@@ -1113,7 +1143,7 @@ if "physical_success" in output.payload:
     raise ValueError("Siming outputs must not claim physical_success")
 ```
 
-- [ ] **Step 4: Run producer tests and existing provenance tests**
+- [x] **Step 4: Run producer tests and existing provenance tests**
 
 Run:
 
@@ -1124,12 +1154,18 @@ python -m pytest -q tests/test_siming_event_producer.py tests/test_siming_author
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/app/services/siming_event_producer.py backend/tests/test_siming_event_producer.py
 git commit -m "Harden Siming event producer authority mappings"
 ```
+
+Evidence:
+
+- RED: `cd backend; python -m pytest -q tests/test_siming_event_producer.py`; expected pre-implementation failure was missing forbidden family/physical-success producer regressions.
+- GREEN: `598a31a` plus review test-only fix `7ffc854`; `cd backend; python -m pytest -q tests/test_siming_event_producer.py tests/test_siming_authority_bus_provenance.py`.
+- Harness: final 2026-06-16 focused suite passed with producer/provenance tests included; final phase1-slice profile passed through the producer-owned authority path.
 
 ### Task 7: Add Optional Real Provider Configuration Without Side Channels
 
@@ -1139,7 +1175,7 @@ git commit -m "Harden Siming event producer authority mappings"
 - Modify: `backend/app/main.py`
 - Create: `backend/tests/test_siming_llm_provider_config.py`
 
-- [ ] **Step 1: Write failing config/provider tests**
+- [x] **Step 1: Write failing config/provider tests**
 
 Create `backend/tests/test_siming_llm_provider_config.py`:
 
@@ -1178,7 +1214,7 @@ def test_provider_factory_returns_http_provider_when_configured() -> None:
     assert isinstance(provider, HttpSimingLlmCandidateProvider)
 ```
 
-- [ ] **Step 2: Run config tests to verify failure**
+- [x] **Step 2: Run config tests to verify failure**
 
 Run:
 
@@ -1189,7 +1225,7 @@ python -m pytest -q tests/test_siming_llm_provider_config.py
 
 Expected before implementation: FAIL because settings and factory do not exist.
 
-- [ ] **Step 3: Extend settings with safe defaults**
+- [x] **Step 3: Extend settings with safe defaults**
 
 Modify `backend/app/config.py`:
 
@@ -1210,7 +1246,7 @@ class Settings(BaseModel):
 
 Do not read environment variables yet unless the repo already has an env-loading pattern. This plan keeps config injectable and deterministic.
 
-- [ ] **Step 4: Add HTTP provider skeleton and factory**
+- [x] **Step 4: Add HTTP provider skeleton and factory**
 
 In `backend/app/services/siming_llm_provider.py`, add:
 
@@ -1275,7 +1311,7 @@ def build_siming_llm_provider(settings: Settings) -> SimingLlmCandidateProvider:
     )
 ```
 
-- [ ] **Step 5: Wire provider factory in app startup**
+- [x] **Step 5: Wire provider factory in app startup**
 
 In `backend/app/main.py`, change:
 
@@ -1292,7 +1328,7 @@ runtime=SimingRuntime(llm_provider=build_siming_llm_provider(settings)),
 
 Keep all provider use inside `SimingRuntime`.
 
-- [ ] **Step 6: Run config and architecture tests**
+- [x] **Step 6: Run config and architecture tests**
 
 Run:
 
@@ -1303,12 +1339,18 @@ python -m pytest -q tests/test_siming_llm_provider_config.py tests/test_architec
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/app/config.py backend/app/services/siming_llm_provider.py backend/app/main.py backend/tests/test_siming_llm_provider_config.py
 git commit -m "Wire optional Siming LLM provider configuration"
 ```
+
+Evidence:
+
+- RED: `cd backend; python -m pytest -q tests/test_siming_llm_provider_config.py`; expected pre-implementation failure was missing Siming LLM settings and provider factory.
+- GREEN: `68bfa4f` plus review hardening `ee1d6c7`; `cd backend; python -m pytest -q tests/test_siming_llm_provider_config.py tests/test_architecture_entrypoints.py tests/test_siming_event_pipeline.py`.
+- Harness: final 2026-06-16 focused suite included provider config and runtime tests; final backend suite passed with `327 passed`.
 
 ### Task 8: Add Static Boundary Audits For LLM Side-Channel Prevention
 
@@ -1317,7 +1359,7 @@ git commit -m "Wire optional Siming LLM provider configuration"
 - Modify: `scripts/verification/check_boundaries.py`
 - Modify: `scripts/verification/tests/test_boundary_checks.py`
 
-- [ ] **Step 1: Write failing static boundary tests**
+- [x] **Step 1: Write failing static boundary tests**
 
 Create `backend/tests/test_siming_llm_boundary_static.py`:
 
@@ -1359,7 +1401,7 @@ def test_no_formal_dispatch_requested_event_family_exists() -> None:
         assert "siming.dispatch_requested" not in read(rel).replace('"siming.dispatch_requested"', "")
 ```
 
-- [ ] **Step 2: Run static boundary tests to verify failure or pass**
+- [x] **Step 2: Run static boundary tests to verify failure or pass**
 
 Run:
 
@@ -1370,7 +1412,7 @@ python -m pytest -q tests/test_siming_llm_boundary_static.py
 
 Expected: PASS if earlier tasks kept boundaries; FAIL if any side-channel slipped in.
 
-- [ ] **Step 3: If boundary tests fail, remove side-channel imports or direct calls**
+- [x] **Step 3: If boundary tests fail, remove side-channel imports or direct calls**
 
 Fix only the files reported by the static test. Valid provider call sites are:
 
@@ -1379,7 +1421,7 @@ backend/app/services/siming_runtime.py
 backend/app/services/siming_llm_provider.py
 ```
 
-- [ ] **Step 4: Add harness boundary check coverage**
+- [x] **Step 4: Add harness boundary check coverage**
 
 Modify `scripts/verification/check_boundaries.py` with a helper:
 
@@ -1415,7 +1457,7 @@ _result(
 )
 ```
 
-- [ ] **Step 5: Add boundary checker test**
+- [x] **Step 5: Add boundary checker test**
 
 Modify `scripts/verification/tests/test_boundary_checks.py`:
 
@@ -1427,7 +1469,7 @@ def test_boundaries_prove_siming_llm_runtime_containment() -> None:
     assert statuses["siming_llm_stays_inside_runtime"] == "proved"
 ```
 
-- [ ] **Step 6: Run boundary tests and harness**
+- [x] **Step 6: Run boundary tests and harness**
 
 Run:
 
@@ -1441,12 +1483,18 @@ python scripts/verification/harness.py --profile boundaries
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add backend/tests/test_siming_llm_boundary_static.py scripts/verification/check_boundaries.py scripts/verification/tests/test_boundary_checks.py
 git commit -m "Guard Siming LLM against authority bus side channels"
 ```
+
+Evidence:
+
+- RED: `cd backend; python -m pytest -q tests/test_siming_llm_boundary_static.py`; expected outcome was pass only if earlier tasks preserved runtime containment, otherwise offender paths would fail.
+- GREEN: `3ff29fb`; `python -m pytest -q backend/tests/test_siming_llm_boundary_static.py`, `python -m pytest -q scripts/verification/tests/test_boundary_checks.py`, and `python scripts/verification/harness.py --profile boundaries`.
+- Harness: final 2026-06-16 boundaries profile passed with `siming_llm_stays_inside_runtime=proved`.
 
 ### Task 9: Extend Replay, Audit, And Provenance Tests
 
@@ -1455,7 +1503,7 @@ git commit -m "Guard Siming LLM against authority bus side channels"
 - Modify: `backend/tests/test_authority_event_bus.py`
 - Modify: `backend/tests/test_siming_event_pipeline.py`
 
-- [ ] **Step 1: Add LLM-assisted provenance test**
+- [x] **Step 1: Add LLM-assisted provenance test**
 
 In `backend/tests/test_siming_authority_bus_provenance.py`, add a test that:
 
@@ -1505,7 +1553,7 @@ def test_llm_assisted_siming_output_preserves_authority_causation_chain() -> Non
 
 Use the same event fixture shape as `test_siming_event_pipeline.py`.
 
-- [ ] **Step 2: Add public envelope forbidden-field regression**
+- [x] **Step 2: Add public envelope forbidden-field regression**
 
 In `backend/tests/test_authority_event_bus.py`, add:
 
@@ -1515,7 +1563,7 @@ def test_authority_event_rejects_sim_tick_ts_public_envelope_field() -> None:
         make_authority_event(sim_tick_ts=301)
 ```
 
-- [ ] **Step 3: Add audit coverage for timeout, policy rejection, and no action**
+- [x] **Step 3: Add audit coverage for timeout, policy rejection, and no action**
 
 In `backend/tests/test_siming_event_pipeline.py`, add concrete audit tests:
 
@@ -1580,7 +1628,7 @@ def test_pipeline_preserves_no_action_audit_when_no_candidate_or_rule_applies() 
     assert any(record.status == "no_action" for record in records)
 ```
 
-- [ ] **Step 4: Run provenance and audit tests**
+- [x] **Step 4: Run provenance and audit tests**
 
 Run:
 
@@ -1591,12 +1639,18 @@ python -m pytest -q tests/test_siming_authority_bus_provenance.py tests/test_aut
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/tests/test_siming_authority_bus_provenance.py backend/tests/test_authority_event_bus.py backend/tests/test_siming_event_pipeline.py
 git commit -m "Prove Siming LLM audit and authority provenance"
 ```
+
+Evidence:
+
+- RED: `cd backend; python -m pytest -q tests/test_siming_authority_bus_provenance.py tests/test_authority_event_bus.py tests/test_siming_event_pipeline.py`; expected pre-fix gaps were missing LLM-only provenance, public envelope regression, and audit coverage.
+- GREEN: `549af55` plus review strengthening `899abe9`; `cd backend; python -m pytest -q tests/test_siming_authority_bus_provenance.py tests/test_authority_event_bus.py tests/test_siming_event_pipeline.py`.
+- Harness: final 2026-06-16 focused suite passed with provenance and pipeline tests included; final backend suite passed with `327 passed`.
 
 ### Task 10: Extend Phase1 Slice Verification
 
@@ -1605,7 +1659,7 @@ git commit -m "Prove Siming LLM audit and authority provenance"
 - Modify: `scripts/verification/tests/test_formal_profile_checks.py` only if the profile evidence list is asserted there
 - Modify: `docs/harness.md`
 
-- [ ] **Step 1: Update phase1-slice pytest command**
+- [x] **Step 1: Update phase1-slice pytest command**
 
 In `scripts/verification/verify_phase1_slice.py`, extend the pytest list:
 
@@ -1627,7 +1681,7 @@ In `scripts/verification/verify_phase1_slice.py`, extend the pytest list:
 ]
 ```
 
-- [ ] **Step 2: Update harness guide**
+- [x] **Step 2: Update harness guide**
 
 In `docs/harness.md`, under `phase1-slice`, add:
 
@@ -1640,7 +1694,7 @@ Current mechanical/runtime evidence includes:
 - static boundary audits prove LLM provider calls stay inside `SimingRuntime`
 ```
 
-- [ ] **Step 3: Run focused backend tests**
+- [x] **Step 3: Run focused backend tests**
 
 Run:
 
@@ -1651,7 +1705,7 @@ python -m pytest -q tests/test_siming_llm_models.py tests/test_siming_llm_provid
 
 Expected: PASS.
 
-- [ ] **Step 4: Run docs and static harness profiles**
+- [x] **Step 4: Run docs and static harness profiles**
 
 Run:
 
@@ -1664,7 +1718,7 @@ python scripts/verification/harness.py --profile boundaries
 
 Expected: PASS.
 
-- [ ] **Step 5: Run runtime harness profile**
+- [x] **Step 5: Run runtime harness profile**
 
 Run:
 
@@ -1674,19 +1728,25 @@ python scripts/verification/harness.py --profile phase1-slice
 
 Expected: PASS. If Godot executable is unavailable, record the exact failure and run all backend/static commands above as partial evidence.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/verification/verify_phase1_slice.py docs/harness.md scripts/verification/tests/test_formal_profile_checks.py
 git commit -m "Add Siming LLM checks to phase1 slice verification"
 ```
 
+Evidence:
+
+- RED: `python scripts/verification/harness.py --profile phase1-slice`; the initial runtime path failed in a clean workspace because `MainDemo.tscn` depended on ignored generated `.godot/imported` texture cache files.
+- GREEN: `392082b`; `python scripts/verification/harness.py --profile phase1-slice` passed with `overall_phase1_slice_passed=True`, `authority_ack_observed=proved`, `runtime_projection_observed=proved`, and `candidate_and_siming_observed=proved`.
+- Harness: final 2026-06-16 `docs`, `backend-contract`, `boundaries`, and `phase1-slice` profiles all passed. Task 10 quality re-review by subagent `019ecea9-25ed-7671-ae4b-2013b310d2c1` returned no Critical or Important issues and `Ready to merge? Yes`; one minor future hardening suggestion remains to require `payload.accepted == true` when counting probe ack routes.
+
 ### Task 11: Final Full Verification And Plan Closure
 
 **Files:**
 - Modify: `docs/superpowers/plans/2026-06-15-siming-phase1-llm-authority-bus-runtime-implementation-plan.md`
 
-- [ ] **Step 1: Run the complete focused test suite**
+- [x] **Step 1: Run the complete focused test suite**
 
 Run:
 
@@ -1697,7 +1757,7 @@ python -m pytest -q tests/test_siming_llm_models.py tests/test_siming_llm_provid
 
 Expected: PASS.
 
-- [ ] **Step 2: Run harness profiles**
+- [x] **Step 2: Run harness profiles**
 
 Run:
 
@@ -1711,7 +1771,7 @@ python scripts/verification/harness.py --profile phase1-slice
 
 Expected: PASS.
 
-- [ ] **Step 3: Run full backend tests if focused suite is green**
+- [x] **Step 3: Run full backend tests if focused suite is green**
 
 Run:
 
@@ -1722,24 +1782,22 @@ python -m pytest -q
 
 Expected: PASS.
 
-- [ ] **Step 4: Update this plan with final evidence**
+- [x] **Step 4: Update this plan with final evidence**
 
-Append an `Evidence` block under each task with:
+Evidence blocks have been appended under Tasks 1-11 with concrete RED, GREEN, and harness results.
 
-```markdown
-Evidence:
-
-- RED: command and expected failure summary.
-- GREEN: command and pass summary.
-- Harness: profile command and pass summary.
-```
-
-- [ ] **Step 5: Commit closure evidence**
+- [x] **Step 5: Commit closure evidence**
 
 ```bash
 git add docs/superpowers/plans/2026-06-15-siming-phase1-llm-authority-bus-runtime-implementation-plan.md
 git commit -m "Record Siming LLM authority bus implementation evidence"
 ```
+
+Evidence:
+
+- RED: `cd backend; python -m pytest -q` initially failed only at `tests/test_health.py::test_health_exposes_current_backend_identity` because the test still accepted the historical `paralls-phase-0-demo` path or `.worktrees\`, while this workspace correctly reported `D:\Paralls-phase0-1`.
+- GREEN: `8f7c317` fixed the stale health identity assertion; `cd backend; python -m pytest -q tests/test_health.py` passed with `1 passed`; `cd backend; python -m pytest -q` passed with `327 passed`.
+- Harness: final 2026-06-16 focused suite passed with `58 passed`; final harness profiles passed with `overall_docs_passed=True`, `overall_backend_contract_passed=True`, `overall_boundaries_passed=True`, and `overall_phase1_slice_passed=True`.
 
 ---
 
