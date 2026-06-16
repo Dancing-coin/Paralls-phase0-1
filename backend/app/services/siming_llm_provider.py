@@ -43,6 +43,35 @@ class DisabledSimingLlmCandidateProvider:
         return []
 
 
+class SimingLlmProviderRouter:
+    def __init__(self, providers: list[SimingLlmCandidateProvider]) -> None:
+        self.providers = list(providers)
+
+    def generate_candidates(
+        self,
+        *,
+        snapshot: FairnessStateSnapshot,
+        recent_events: list[AuthorityEvent],
+        recent_audit: list[SimingAuditRecord],
+    ) -> list[InterventionCandidate]:
+        last_error: SimingLlmProviderError | None = None
+        for provider in self.providers:
+            try:
+                candidates = provider.generate_candidates(
+                    snapshot=snapshot,
+                    recent_events=recent_events,
+                    recent_audit=recent_audit,
+                )
+            except SimingLlmProviderError as exc:
+                last_error = exc
+                continue
+            if candidates:
+                return candidates
+        if last_error is not None:
+            raise last_error
+        return []
+
+
 class HttpSimingLlmCandidateProvider:
     def __init__(self, *, api_key: str, endpoint: str, model: str, timeout_seconds: float) -> None:
         self._api_key = api_key
@@ -218,6 +247,16 @@ class FakeSimingLlmCandidateProvider:
 
 
 def build_siming_llm_provider(settings: Settings) -> SimingLlmCandidateProvider:
+    providers: list[SimingLlmCandidateProvider] = []
+    for provider_name in settings.siming_llm_provider_order:
+        if provider_name == "disabled":
+            providers.append(DisabledSimingLlmCandidateProvider())
+        elif provider_name == "openai_responses":
+            providers.append(_build_openai_responses_provider(settings))
+    return SimingLlmProviderRouter(providers or [DisabledSimingLlmCandidateProvider()])
+
+
+def _build_openai_responses_provider(settings: Settings) -> SimingLlmCandidateProvider:
     if settings.siming_llm_mode != "http" or not settings.siming_llm_api_key:
         return DisabledSimingLlmCandidateProvider()
     return HttpSimingLlmCandidateProvider(

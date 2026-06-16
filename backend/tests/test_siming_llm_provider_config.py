@@ -14,6 +14,7 @@ from app.services.siming_llm_provider import (
     SimingLlmProviderError,
     SimingLlmProviderInvalidOutput,
     SimingLlmProviderTimeout,
+    SimingLlmProviderRouter,
     build_siming_llm_provider,
 )
 
@@ -36,7 +37,8 @@ def test_settings_repr_and_dump_hide_siming_llm_api_key() -> None:
 def test_provider_factory_returns_disabled_without_api_key() -> None:
     provider = build_siming_llm_provider(Settings(siming_llm_mode="http", siming_llm_api_key=None))
 
-    assert isinstance(provider, DisabledSimingLlmCandidateProvider)
+    assert isinstance(provider, SimingLlmProviderRouter)
+    assert isinstance(provider.providers[0], DisabledSimingLlmCandidateProvider)
 
 
 def test_provider_factory_returns_http_provider_when_configured() -> None:
@@ -49,7 +51,22 @@ def test_provider_factory_returns_http_provider_when_configured() -> None:
         )
     )
 
-    assert isinstance(provider, HttpSimingLlmCandidateProvider)
+    assert isinstance(provider, SimingLlmProviderRouter)
+    assert isinstance(provider.providers[0], HttpSimingLlmCandidateProvider)
+
+
+def test_provider_factory_orders_router_from_settings() -> None:
+    provider = build_siming_llm_provider(
+        Settings(
+            siming_llm_mode="http",
+            siming_llm_api_key="test-key",
+            siming_llm_provider_order=["disabled", "openai_responses"],
+        )
+    )
+
+    assert isinstance(provider, SimingLlmProviderRouter)
+    assert isinstance(provider.providers[0], DisabledSimingLlmCandidateProvider)
+    assert isinstance(provider.providers[1], HttpSimingLlmCandidateProvider)
 
 
 class FakeResponse:
@@ -246,6 +263,45 @@ def test_http_provider_maps_json_parse_error_to_invalid_output(monkeypatch: pyte
 
     with pytest.raises(SimingLlmProviderInvalidOutput):
         provider.generate_candidates(snapshot=make_snapshot(), recent_events=[make_event()], recent_audit=[])
+
+
+class TimeoutProvider:
+    def generate_candidates(self, **_: object) -> list[InterventionCandidate]:
+        raise SimingLlmProviderTimeout("timed out")
+
+
+class RecordingProvider:
+    def __init__(self, candidates: list[InterventionCandidate]) -> None:
+        self.calls = 0
+        self._candidates = candidates
+
+    def generate_candidates(self, **_: object) -> list[InterventionCandidate]:
+        self.calls += 1
+        return self._candidates
+
+
+def test_router_falls_back_to_next_provider_after_failure() -> None:
+    candidate = InterventionCandidate.model_validate(make_candidate_payload())
+    fallback = RecordingProvider([candidate])
+    router = SimingLlmProviderRouter([TimeoutProvider(), fallback])
+
+    candidates = router.generate_candidates(snapshot=make_snapshot(), recent_events=[make_event()], recent_audit=[])
+
+    assert candidates == [candidate]
+    assert fallback.calls == 1
+
+
+def test_router_returns_first_non_empty_candidate_result() -> None:
+    first = RecordingProvider([])
+    second_candidate = InterventionCandidate.model_validate(make_candidate_payload(candidate_id="cand:second"))
+    second = RecordingProvider([second_candidate])
+    router = SimingLlmProviderRouter([first, second])
+
+    candidates = router.generate_candidates(snapshot=make_snapshot(), recent_events=[make_event()], recent_audit=[])
+
+    assert candidates == [second_candidate]
+    assert first.calls == 1
+    assert second.calls == 1
 
 
 def test_reset_runtime_state_builds_and_injects_provider_without_calling_it(monkeypatch: pytest.MonkeyPatch) -> None:

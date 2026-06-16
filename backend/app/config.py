@@ -11,6 +11,9 @@ class Settings(BaseModel):
     siming_llm_endpoint: str = "https://api.openai.com/v1/responses"
     siming_llm_model: str = "gpt-5.4-mini"
     siming_llm_timeout_seconds: float = 8.0
+    siming_llm_provider_order: list[Literal["disabled", "openai_responses"]] = Field(
+        default_factory=lambda: ["openai_responses"]
+    )
 
 
 settings = Settings()
