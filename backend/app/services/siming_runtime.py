@@ -1,8 +1,35 @@
 from app.models.authority_event import AuthorityEvent
-from app.models.siming_event import SimingAuditRecord, SimingInput, SimingOutput, SimingTickResult
+from app.models.siming_event import (
+    FairnessStateSnapshot,
+    InterventionCandidate,
+    SelectedPath,
+    SimingAuditRecord,
+    SimingInput,
+    SimingOutput,
+    SimingTickResult,
+)
+from app.services.siming_feasibility import SimingExecutionFeasibility
+from app.services.siming_llm_provider import (
+    DisabledSimingLlmCandidateProvider,
+    SimingLlmCandidateProvider,
+    SimingLlmProviderInvalidOutput,
+    SimingLlmProviderTimeout,
+)
+from app.services.siming_policy import SimingInterventionPolicy
 
 
 class SimingRuntime:
+    def __init__(
+        self,
+        *,
+        llm_provider: SimingLlmCandidateProvider | None = None,
+        policy: SimingInterventionPolicy | None = None,
+        feasibility: SimingExecutionFeasibility | None = None,
+    ) -> None:
+        self._llm_provider = llm_provider or DisabledSimingLlmCandidateProvider()
+        self._policy = policy or SimingInterventionPolicy()
+        self._feasibility = feasibility or SimingExecutionFeasibility()
+
     def tick(self, inputs: list[SimingInput]) -> SimingTickResult:
         result = SimingTickResult()
         for siming_input in inputs:
@@ -10,6 +37,17 @@ class SimingRuntime:
             result.outputs.append(self._fairness_snapshot(event))
 
             if self._is_light_drop(event):
+                snapshot = self._fairness_state_snapshot(event)
+                llm_candidates, llm_audit = self._llm_candidates_for(event, snapshot)
+                if llm_candidates:
+                    outputs, audit = self._outputs_for_candidate(event, llm_candidates[0])
+                    result.outputs.extend(outputs)
+                    result.audit_records.append(audit)
+                    continue
+                if llm_audit:
+                    result.outputs.append(self._no_action(event))
+                    result.audit_records.extend(llm_audit)
+                    continue
                 result.outputs.extend(
                     [
                         self._intervention_candidate(event),
@@ -39,6 +77,71 @@ class SimingRuntime:
             result.audit_records.append(self._audit(event, status="no_action", reason="no eligible intervention"))
         return result
 
+    def _fairness_state_snapshot(self, event: AuthorityEvent) -> FairnessStateSnapshot:
+        known_fact_id = str(event.payload.get("established_fact_id", event.event_id))
+        target_actor_id = str(event.payload.get("target_actor_id", "char_b") or "char_b")
+        return FairnessStateSnapshot(
+            snapshot_id=f"fairness:{event.event_id}",
+            room_id=event.room_id,
+            scene_id=event.scene_id,
+            zone_id=event.zone_id,
+            causation_id=event.event_id,
+            correlation_id=event.correlation_id,
+            known_fact_ids=[known_fact_id],
+            eligible_actor_ids=[target_actor_id],
+            blocked_actor_ids=[],
+            recent_intervention_ids=[],
+        )
+
+    def _llm_candidates_for(
+        self,
+        event: AuthorityEvent,
+        snapshot: FairnessStateSnapshot,
+    ) -> tuple[list[InterventionCandidate], list[SimingAuditRecord]]:
+        try:
+            return (
+                self._llm_provider.generate_candidates(snapshot=snapshot, recent_events=[event], recent_audit=[]),
+                [],
+            )
+        except SimingLlmProviderTimeout:
+            return [], [self._audit(event, status="llm_timeout", reason="LLM provider timed out")]
+        except (SimingLlmProviderInvalidOutput, ValueError) as exc:
+            return [], [self._audit(event, status="llm_invalid_output", reason=str(exc))]
+
+    def _outputs_for_candidate(
+        self,
+        event: AuthorityEvent,
+        candidate: InterventionCandidate,
+    ) -> tuple[list[SimingOutput], SimingAuditRecord]:
+        policy_result = self._policy.evaluate(candidate, snapshot=self._fairness_state_snapshot(event))
+        if not policy_result.accepted:
+            return [self._no_action(event)], self._audit(
+                event,
+                status="policy_rejected",
+                reason=";".join(policy_result.reasons),
+            )
+
+        feasibility_result = self._feasibility.evaluate(candidate)
+        if not feasibility_result.accepted:
+            return [self._no_action(event)], self._audit(
+                event,
+                status="feasibility_rejected",
+                reason=";".join(feasibility_result.reasons),
+            )
+
+        outputs = [
+            self._candidate_output(event, candidate),
+            self._decision_output(
+                event,
+                candidate,
+                feasibility_result.selected_path,
+                policy_result.reasons,
+                feasibility_result.reasons,
+            ),
+            self._dispatch_output(event, candidate, feasibility_result.selected_path),
+        ]
+        return outputs, self._audit(event, status="recorded", reason="LLM-assisted candidate accepted")
+
     def _fairness_snapshot(self, event: AuthorityEvent) -> SimingOutput:
         return SimingOutput(
             output_type="fairness_snapshot",
@@ -49,6 +152,87 @@ class SimingRuntime:
             correlation_id=event.correlation_id,
             producer_ts=event.producer_ts + 1,
             payload={"source_event_id": event.event_id},
+        )
+
+    def _candidate_output(self, event: AuthorityEvent, candidate: InterventionCandidate) -> SimingOutput:
+        return SimingOutput(
+            output_type="intervention_candidate",
+            room_id=event.room_id,
+            scene_id=event.scene_id,
+            zone_id=event.zone_id,
+            causation_id=event.event_id,
+            correlation_id=event.correlation_id,
+            producer_ts=event.producer_ts + 2,
+            payload={
+                "candidate_id": candidate.candidate_id,
+                "proposed_band": candidate.proposed_band,
+                "target_actor_id": candidate.target_actor_id,
+                "target_object_id": candidate.target_object_id,
+                "target_environment_id": candidate.target_environment_id,
+                "established_fact_ids": list(candidate.established_fact_ids),
+                "explanation": candidate.explanation,
+                "confidence": candidate.confidence,
+                "reason_tags": list(candidate.reason_tags),
+                "source": candidate.source,
+            },
+        )
+
+    def _decision_output(
+        self,
+        event: AuthorityEvent,
+        candidate: InterventionCandidate,
+        selected_path: SelectedPath,
+        policy_reasons: list[str],
+        feasibility_reasons: list[str],
+    ) -> SimingOutput:
+        return SimingOutput(
+            output_type="intervention_decision",
+            room_id=event.room_id,
+            scene_id=event.scene_id,
+            zone_id=event.zone_id,
+            causation_id=event.event_id,
+            correlation_id=event.correlation_id,
+            producer_ts=event.producer_ts + 3,
+            selected_path=selected_path,
+            intervention_band=candidate.proposed_band,
+            payload={
+                "decision_id": f"decision_{candidate.candidate_id}",
+                "candidate_id": candidate.candidate_id,
+                "accepted": True,
+                "policy_reasons": list(policy_reasons),
+                "feasibility_reasons": list(feasibility_reasons),
+            },
+        )
+
+    def _dispatch_output(
+        self,
+        event: AuthorityEvent,
+        candidate: InterventionCandidate,
+        selected_path: SelectedPath,
+    ) -> SimingOutput:
+        payload = {
+            "presentation_hint": candidate.explanation or "surface established fact",
+            "target_actor_id": candidate.target_actor_id,
+            "target_object_id": candidate.target_object_id,
+            "target_environment_id": candidate.target_environment_id,
+        }
+        if selected_path == "visual_fact_path":
+            payload["established_fact_id"] = (
+                candidate.established_fact_ids[0]
+                if candidate.established_fact_ids
+                else str(event.payload.get("established_fact_id", event.event_id))
+            )
+        return SimingOutput(
+            output_type="dispatch_intent",
+            room_id=event.room_id,
+            scene_id=event.scene_id,
+            zone_id=event.zone_id,
+            causation_id=event.event_id,
+            correlation_id=event.correlation_id,
+            producer_ts=event.producer_ts + 4,
+            selected_path=selected_path,
+            intervention_band=candidate.proposed_band,
+            payload=payload,
         )
 
     def _intervention_candidate(self, event: AuthorityEvent) -> SimingOutput:
