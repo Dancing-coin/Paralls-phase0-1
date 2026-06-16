@@ -79,9 +79,15 @@ class HttpSimingLlmCandidateProvider:
 
         try:
             data = response.json()
-            raw_candidates = data.get("candidates", [])
+            if not isinstance(data, dict):
+                raise TypeError("provider response JSON must be an object")
+            if "candidates" not in data:
+                raise KeyError("provider response missing candidates field")
+            raw_candidates = data["candidates"]
+            if not isinstance(raw_candidates, list):
+                raise TypeError("provider response candidates must be a list")
             return [InterventionCandidate.model_validate(item) for item in raw_candidates]
-        except (ValueError, ValidationError, AttributeError) as exc:
+        except (KeyError, TypeError, ValueError, ValidationError, AttributeError) as exc:
             raise SimingLlmProviderInvalidOutput(str(exc)) from exc
 
 
