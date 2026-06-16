@@ -260,6 +260,13 @@ Runtime validation for the current Phase1-shaped slice around visual facts, auth
 
 Use this before claiming Phase 0.5 runtime alignment progress.
 
+Current mechanical/runtime evidence includes:
+
+- visual fact authority routing remains wired
+- Siming event bus pipeline consumes and produces through `AuthorityEventBus`
+- LLM-assisted Siming candidate generation is verified with deterministic fake providers
+- static boundary audits prove LLM provider calls stay inside `SimingRuntime`
+
 Trace output:
 
 - `.harness/verification/phase1-slice-runtime-trace.ndjson`

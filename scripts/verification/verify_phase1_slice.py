@@ -41,7 +41,21 @@ def main() -> int:
 
         pytest_log = log_dir / "phase1-slice-pytest.log"
         run_command(
-            [python_exe, "-m", "pytest", "-v", "tests/test_visual_fact_pipeline.py", "tests/test_siming_service.py"],
+            [
+                python_exe,
+                "-m",
+                "pytest",
+                "-v",
+                "tests/test_visual_fact_pipeline.py",
+                "tests/test_siming_service.py",
+                "tests/test_siming_event_pipeline.py",
+                "tests/test_siming_llm_models.py",
+                "tests/test_siming_llm_provider.py",
+                "tests/test_siming_llm_policy.py",
+                "tests/test_siming_llm_feasibility.py",
+                "tests/test_siming_llm_runtime.py",
+                "tests/test_siming_llm_boundary_static.py",
+            ],
             project_root / "backend",
             pytest_log,
         )
