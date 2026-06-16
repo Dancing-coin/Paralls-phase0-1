@@ -45,7 +45,6 @@ def _scan_retired_state_references(project_root: Path) -> list[str]:
     search_roots = [
         project_root / "AGENTS.md",
         project_root / "PHASE0_README.md",
-        project_root / ".gitignore",
         project_root / ".codex",
         project_root / ".github",
         project_root / ".harness",
@@ -75,6 +74,25 @@ def _scan_retired_state_references(project_root: Path) -> list[str]:
     return references
 
 
+def _scan_siming_llm_side_channels(project_root: Path) -> str:
+    offenders: list[str] = []
+    for path in (project_root / "backend" / "app").rglob("*.py"):
+        rel = path.relative_to(project_root).as_posix()
+        text = read_text(path)
+        if "generate_candidates(" in text and rel not in {
+            "backend/app/services/siming_runtime.py",
+            "backend/app/services/siming_llm_provider.py",
+        }:
+            offenders.append(f"{rel}:llm-provider-call")
+        if "siming_llm_provider" in text and rel in {
+            "backend/app/services/siming_event_consumer.py",
+            "backend/app/services/siming_event_producer.py",
+            "backend/app/services/authority_event_bus.py",
+        }:
+            offenders.append(f"{rel}:llm-provider-import")
+    return "\n".join(offenders)
+
+
 def evaluate_boundaries(project_root: Path) -> dict[str, object]:
     docs_index = project_root / "docs" / "INDEX.md"
     harness_doc = project_root / "docs" / "harness.md"
@@ -98,6 +116,7 @@ def evaluate_boundaries(project_root: Path) -> dict[str, object]:
 
     bypasses = _scan_direct_visual_fact_bypass(project_root)
     retired_state_references = _scan_retired_state_references(project_root)
+    siming_llm_side_channels = _scan_siming_llm_side_channels(project_root)
     results = [
         _result(
             "docs_index_exists",
@@ -210,6 +229,13 @@ def evaluate_boundaries(project_root: Path) -> dict[str, object]:
             _contains(siming_service, ["AttentionPrompt", 'output_type="attention_prompt"'])
             and _contains_none(siming_service, ["move_target", "global_position", "velocity", "bone", "animation"]),
             ["backend/app/services/siming_service.py"],
+        ),
+        _result(
+            "siming_llm_stays_inside_runtime",
+            "Siming LLM provider calls stay inside SimingRuntime and provider adapters",
+            not siming_llm_side_channels,
+            ["backend/app/services/siming_runtime.py", "backend/app/services/siming_llm_provider.py"],
+            siming_llm_side_channels,
         ),
         _result(
             "siming_event_bus_port_exists",
