@@ -356,6 +356,22 @@ def test_phase1_slice_audit_requires_emitter_and_authority_lane_evidence() -> No
     assert results["evidence_projection_visual_fact_observed"]["status"] == "proved"
 
 
+def test_phase1_slice_audit_names_executed_probe_scene() -> None:
+    report = evaluate_phase1_slice_audit(
+        main_log="",
+        focus_log="",
+        direct_send_scan="",
+        scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+        scene_label="Phase1SliceRuntimeProbe",
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert results["emitter_scene_wired"]["status"] == "proved"
+    assert "Phase1SliceRuntimeProbe" in results["emitter_scene_wired"]["title"]
+    assert results["emitter_scene_wired"]["evidence"] == ["Phase1SliceRuntimeProbe VisualFactEmitter scene node"]
+
+
 def test_phase1_slice_audit_rejects_legacy_visual_fact_event_ack_contract() -> None:
     report = evaluate_phase1_slice_audit(
         main_log="""

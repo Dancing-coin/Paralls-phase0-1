@@ -1,4 +1,5 @@
 import importlib
+import json as json_module
 
 import httpx
 import pytest
@@ -139,7 +140,21 @@ def test_http_provider_returns_validated_candidates(monkeypatch: pytest.MonkeyPa
         captured["headers"] = headers
         captured["json"] = json
         captured["timeout"] = timeout
-        return FakeResponse({"candidates": [make_candidate_payload()]})
+        return FakeResponse(
+            {
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": '{"candidates":[%s]}' % json_module.dumps(make_candidate_payload()),
+                            }
+                        ],
+                    }
+                ]
+            }
+        )
 
     monkeypatch.setattr("app.services.siming_llm_provider.httpx.post", fake_post)
 
@@ -155,6 +170,20 @@ def test_http_provider_returns_validated_candidates(monkeypatch: pytest.MonkeyPa
     assert captured["url"] == "https://example.invalid/v1/responses"
     assert captured["headers"] == {"Authorization": "Bearer test-key"}
     assert captured["timeout"] == 1.5
+    request_payload = captured["json"]
+    assert isinstance(request_payload, dict)
+    assert request_payload["model"] == "test-model"
+    assert isinstance(request_payload["instructions"], str)
+    assert isinstance(request_payload["input"], list)
+    assert request_payload["input"][0]["role"] == "user"
+    assert request_payload["input"][0]["content"][0]["type"] == "input_text"
+    assert "snapshot" in request_payload["input"][0]["content"][0]["text"]
+    text_format = request_payload["text"]["format"]
+    assert text_format["type"] == "json_schema"
+    assert text_format["name"] == "siming_intervention_candidates"
+    assert text_format["strict"] is True
+    assert text_format["schema"]["required"] == ["candidates"]
+    assert "candidates" not in request_payload
 
 
 def test_http_provider_maps_timeout_to_provider_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -188,8 +217,8 @@ def test_http_provider_maps_http_error_to_provider_error(monkeypatch: pytest.Mon
     [
         ["not-a-dict"],
         {},
-        {"candidates": None},
-        {"candidates": [make_candidate_payload(candidate_id=None)]},
+        {"output_text": '{"candidates": null}'},
+        {"output_text": '{"candidates": [%s]}' % json_module.dumps(make_candidate_payload(candidate_id=None))},
     ],
 )
 def test_http_provider_maps_malformed_output_to_invalid_output(

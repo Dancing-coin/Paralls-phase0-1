@@ -160,7 +160,7 @@ func _emit_focus_facts() -> bool:
 
 func _on_backend_ack_received(payload: Dictionary) -> void:
 	var route := str(payload.get("route", ""))
-	if route != "":
+	if route != "" and bool(payload.get("accepted", false)):
 		_ack_counts_by_route[route] = int(_ack_counts_by_route.get(route, 0)) + 1
 	_bus_log("phase0_ack:%s" % JSON.stringify(payload))
 

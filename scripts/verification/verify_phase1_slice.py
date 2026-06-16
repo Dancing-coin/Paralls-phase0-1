@@ -25,6 +25,7 @@ from common import (
 from runtime_trace import write_runtime_trace
 
 PHASE1_SLICE_PROBE_SCENE = "res://scenes/phase0/Phase1SliceRuntimeProbe.tscn"
+PHASE1_SLICE_PROBE_SCENE_PATH = Path("scenes/phase0/Phase1SliceRuntimeProbe.tscn")
 
 
 def main() -> int:
@@ -124,7 +125,8 @@ def main() -> int:
             main_log=main_log_text,
             focus_log=focus_log_text,
             direct_send_scan=scan_direct_visual_fact_bypass(project_root),
-            scene_text=read_text(project_root / "scenes" / "phase0" / "MainDemo.tscn"),
+            scene_text=read_text(project_root / PHASE1_SLICE_PROBE_SCENE_PATH),
+            scene_label="Phase1SliceRuntimeProbe",
             candidate_policy_source=read_text(
                 project_root / "backend" / "app" / "services" / "candidate_percept_service.py"
             ),

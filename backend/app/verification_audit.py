@@ -288,6 +288,7 @@ def evaluate_phase1_slice_audit(
     focus_log: str,
     direct_send_scan: str,
     scene_text: str,
+    scene_label: str = "Phase1SliceRuntimeProbe",
     candidate_policy_source: str = "",
 ) -> dict[str, object]:
     results: list[dict[str, object]] = []
@@ -296,9 +297,9 @@ def evaluate_phase1_slice_audit(
     results.append(
         _result(
             "emitter_scene_wired",
-            "VisualFactEmitter is wired into MainDemo",
+            f"VisualFactEmitter is wired into {scene_label}",
             "proved" if emitter_scene_wired else "missing",
-            ["VisualFactEmitter scene node"] if emitter_scene_wired else [],
+            [f"{scene_label} VisualFactEmitter scene node"] if emitter_scene_wired else [],
         )
     )
 

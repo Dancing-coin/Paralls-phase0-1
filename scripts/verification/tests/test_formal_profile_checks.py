@@ -76,3 +76,12 @@ def test_harness_reference_profile_proves_awesome_harness_coverage() -> None:
     assert statuses["reference_categories_have_current_artifacts"] == "proved"
     assert statuses["awesome_templates_adapted"] == "proved"
     assert statuses["reference_docs_updated"] == "proved"
+
+
+def test_phase1_slice_probe_counts_only_accepted_authority_acks() -> None:
+    probe_source = (repo_root() / "scripts" / "verification" / "Phase1SliceRuntimeProbe.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'bool(payload.get("accepted", false))' in probe_source
+    assert "_ack_counts_by_route[route]" in probe_source
