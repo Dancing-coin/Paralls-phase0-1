@@ -1,0 +1,46 @@
+[gd_scene load_steps=12 format=3]
+
+[ext_resource type="Script" path="res://scripts/verification/Phase1SliceRuntimeProbe.gd" id="1_probe"]
+[ext_resource type="Script" path="res://scripts/visual/VisualFactEmitter.gd" id="2_visual_fact_emitter"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/CharacterVisualFactEmitter.gd" id="3_character_visual_fact_emitter"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/EnvironmentVisualFactEmitter.gd" id="4_environment_visual_fact_emitter"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/EvidenceProjectionEmitter.gd" id="5_evidence_projection_emitter"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/AuditoryFactEmitter.gd" id="6_auditory_fact_emitter"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/RoleStateFactEmitter.gd" id="7_role_state_fact_emitter"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/PhysiologyStateFactEmitter.gd" id="8_physiology_state_fact_emitter"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/TactileFactEmitter.gd" id="9_tactile_fact_emitter"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/ThermalFactEmitter.gd" id="10_thermal_fact_emitter"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/OlfactoryFactEmitter.gd" id="11_olfactory_fact_emitter"]
+
+[node name="Phase1SliceRuntimeProbe" type="Node"]
+script = ExtResource("1_probe")
+
+[node name="VisualFactEmitter" type="Node" parent="."]
+script = ExtResource("2_visual_fact_emitter")
+
+[node name="CharacterVisualFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("3_character_visual_fact_emitter")
+
+[node name="EnvironmentVisualFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("4_environment_visual_fact_emitter")
+
+[node name="EvidenceProjectionEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("5_evidence_projection_emitter")
+
+[node name="AuditoryFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("6_auditory_fact_emitter")
+
+[node name="RoleStateFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("7_role_state_fact_emitter")
+
+[node name="PhysiologyStateFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("8_physiology_state_fact_emitter")
+
+[node name="TactileFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("9_tactile_fact_emitter")
+
+[node name="ThermalFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("10_thermal_fact_emitter")
+
+[node name="OlfactoryFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("11_olfactory_fact_emitter")

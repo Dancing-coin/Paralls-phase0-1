@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
@@ -23,6 +24,8 @@ from common import (
 )
 from runtime_trace import write_runtime_trace
 
+PHASE1_SLICE_PROBE_SCENE = "res://scenes/phase0/Phase1SliceRuntimeProbe.tscn"
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -34,13 +37,14 @@ def main() -> int:
     log_dir = verification_dir(project_root)
     godot_exe = resolve_godot_exe(args.godot_exe)
     python_exe = resolve_python_exe(args.python_exe)
+    run_id = datetime.now().strftime("phase1-slice-%Y%m%d-%H%M%S-%f")
 
     backend_process = None
     try:
         health, backend_process = ensure_backend(project_root, python_exe)
 
         pytest_log = log_dir / "phase1-slice-pytest.log"
-        run_command(
+        pytest_result = run_command(
             [
                 python_exe,
                 "-m",
@@ -59,16 +63,17 @@ def main() -> int:
             project_root / "backend",
             pytest_log,
         )
+        if pytest_result.returncode != 0:
+            raise RuntimeError(f"phase1-slice pytest failed; see {pytest_log}")
 
-        main_screenshot = log_dir / "phase1-slice-main.png"
         main_log = log_dir / "phase1-slice-main.log"
-        run_command(
+        main_result = run_command(
             [
                 str(godot_exe),
                 "--path",
                 str(project_root),
                 "--scene",
-                "res://scenes/phase0/MainDemo.tscn",
+                PHASE1_SLICE_PROBE_SCENE,
                 "--quit-after",
                 "400",
                 "--verbose",
@@ -78,21 +83,21 @@ def main() -> int:
             project_root,
             main_log,
             env={
-                "PHASE0_AUTOTEST": "1",
-                "PHASE0_FOCUS_AUTOTEST": "",
-                "PHASE0_AUTOTEST_SCREENSHOT": str(main_screenshot),
+                "PHASE1_SLICE_PROBE_MODE": "main",
+                "PHASE1_SLICE_PROBE_RUN_ID": f"{run_id}-main",
             },
         )
+        if main_result.returncode != 0:
+            raise RuntimeError(f"phase1-slice main Godot probe failed; see {main_log}")
 
-        focus_screenshot = log_dir / "phase1-slice-focus.png"
         focus_log = log_dir / "phase1-slice-focus.log"
-        run_command(
+        focus_result = run_command(
             [
                 str(godot_exe),
                 "--path",
                 str(project_root),
                 "--scene",
-                "res://scenes/phase0/MainDemo.tscn",
+                PHASE1_SLICE_PROBE_SCENE,
                 "--quit-after",
                 "400",
                 "--verbose",
@@ -102,11 +107,12 @@ def main() -> int:
             project_root,
             focus_log,
             env={
-                "PHASE0_AUTOTEST": "",
-                "PHASE0_FOCUS_AUTOTEST": "1",
-                "PHASE0_AUTOTEST_SCREENSHOT": str(focus_screenshot),
+                "PHASE1_SLICE_PROBE_MODE": "focus",
+                "PHASE1_SLICE_PROBE_RUN_ID": f"{run_id}-focus",
             },
         )
+        if focus_result.returncode != 0:
+            raise RuntimeError(f"phase1-slice focus Godot probe failed; see {focus_log}")
 
         main_log_text = read_text(main_log)
         focus_log_text = read_text(focus_log)
@@ -119,15 +125,15 @@ def main() -> int:
             focus_log=focus_log_text,
             direct_send_scan=scan_direct_visual_fact_bypass(project_root),
             scene_text=read_text(project_root / "scenes" / "phase0" / "MainDemo.tscn"),
-            candidate_policy_source=read_text(project_root / "backend" / "app" / "services" / "candidate_percept_service.py"),
+            candidate_policy_source=read_text(
+                project_root / "backend" / "app" / "services" / "candidate_percept_service.py"
+            ),
         )
         report["backend_health"] = health
         report["artifacts"] = {
             "pytest_log": str(pytest_log),
             "main_log": str(main_log),
             "focus_log": str(focus_log),
-            "main_screenshot": str(main_screenshot),
-            "focus_screenshot": str(focus_screenshot),
             "runtime_trace": str(runtime_trace),
         }
 

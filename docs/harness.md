@@ -260,6 +260,8 @@ Runtime validation for the current Phase1-shaped slice around visual facts, auth
 
 Use this before claiming Phase 0.5 runtime alignment progress.
 
+This profile launches `scenes/phase0/Phase1SliceRuntimeProbe.tscn`, a lightweight Godot probe that uses the existing autoload `BackendBridge` plus the existing L1 raw fact emitters. It avoids `MainDemo.tscn` environment texture imports so clean workspaces do not depend on generated `.godot/imported` cache files for Phase1-slice evidence.
+
 Current mechanical/runtime evidence includes:
 
 - visual fact authority routing remains wired
