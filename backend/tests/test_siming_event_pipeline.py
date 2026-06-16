@@ -106,3 +106,10 @@ def test_pipeline_publishes_llm_assisted_output_only_through_siming_event_produc
     assert "siming.intervention_decision" in event_types
     assert "siming.visual_observability_request" in event_types
     assert "siming.dispatch_requested" not in event_types
+    projected = bus.list_events(event_type="siming.visual_observability_request")[0]
+    assert projected.source.system == "siming.dispatcher"
+    assert projected.causation_id == "visual_fact:300:char_c:light_level_drop"
+    assert projected.correlation_id == "visual_fact:300"
+    assert projected.payload["established_fact_id"] == "visual_fact:300:char_c:light_level_drop"
+    assert projected.payload["target_environment_id"] == "env_lamp"
+    assert projected.payload["target_actor_id"] == "char_b"

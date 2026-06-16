@@ -40,9 +40,9 @@ class SimingRuntime:
                 snapshot = self._fairness_state_snapshot(event)
                 llm_candidates, llm_audit = self._llm_candidates_for(event, snapshot)
                 if llm_candidates:
-                    outputs, audit = self._outputs_for_candidate(event, llm_candidates[0])
+                    outputs, audits = self._outputs_for_candidates(event, llm_candidates)
                     result.outputs.extend(outputs)
-                    result.audit_records.append(audit)
+                    result.audit_records.extend(audits)
                     continue
                 if llm_audit:
                     result.outputs.append(self._no_action(event))
@@ -108,39 +108,53 @@ class SimingRuntime:
         except (SimingLlmProviderInvalidOutput, ValueError) as exc:
             return [], [self._audit(event, status="llm_invalid_output", reason=str(exc))]
 
-    def _outputs_for_candidate(
+    def _outputs_for_candidates(
         self,
         event: AuthorityEvent,
-        candidate: InterventionCandidate,
-    ) -> tuple[list[SimingOutput], SimingAuditRecord]:
-        policy_result = self._policy.evaluate(candidate, snapshot=self._fairness_state_snapshot(event))
-        if not policy_result.accepted:
-            return [self._no_action(event)], self._audit(
-                event,
-                status="policy_rejected",
-                reason=";".join(policy_result.reasons),
-            )
+        candidates: list[InterventionCandidate],
+    ) -> tuple[list[SimingOutput], list[SimingAuditRecord]]:
+        snapshot = self._fairness_state_snapshot(event)
+        audits: list[SimingAuditRecord] = []
 
-        feasibility_result = self._feasibility.evaluate(candidate)
-        if not feasibility_result.accepted:
-            return [self._no_action(event)], self._audit(
-                event,
-                status="feasibility_rejected",
-                reason=";".join(feasibility_result.reasons),
-            )
+        for candidate in candidates:
+            policy_result = self._policy.evaluate(candidate, snapshot=snapshot)
+            if not policy_result.accepted:
+                audits.append(
+                    self._audit(
+                        event,
+                        status="policy_rejected",
+                        reason=";".join(policy_result.reasons),
+                    )
+                )
+                continue
 
-        outputs = [
-            self._candidate_output(event, candidate),
-            self._decision_output(
-                event,
-                candidate,
-                feasibility_result.selected_path,
-                policy_result.reasons,
-                feasibility_result.reasons,
-            ),
-            self._dispatch_output(event, candidate, feasibility_result.selected_path),
-        ]
-        return outputs, self._audit(event, status="recorded", reason="LLM-assisted candidate accepted")
+            feasibility_result = self._feasibility.evaluate(candidate)
+            if not feasibility_result.accepted:
+                audits.append(
+                    self._audit(
+                        event,
+                        status="feasibility_rejected",
+                        reason=";".join(feasibility_result.reasons),
+                    )
+                )
+                continue
+
+            outputs = [
+                self._candidate_output(event, candidate),
+                self._decision_output(
+                    event,
+                    candidate,
+                    feasibility_result.selected_path,
+                    policy_result.reasons,
+                    feasibility_result.reasons,
+                ),
+                self._dispatch_output(event, candidate, feasibility_result.selected_path),
+            ]
+            audits.append(self._audit(event, status="recorded", reason="LLM-assisted candidate accepted"))
+            return outputs, audits
+
+        audits.append(self._audit(event, status="no_action", reason="no executable llm candidate"))
+        return [self._no_action(event)], audits
 
     def _fairness_snapshot(self, event: AuthorityEvent) -> SimingOutput:
         return SimingOutput(
