@@ -39,3 +39,10 @@ def test_producer_rejects_forbidden_dispatch_requested_event_family() -> None:
 
     with pytest.raises(ValueError, match="forbidden Siming event family"):
         SimingEventProducer(InMemoryAuthorityEventBus()).publish_outputs([output])
+
+
+def test_producer_rejects_physical_success_claims() -> None:
+    output = make_output(payload={"target_environment_id": "env_lamp", "physical_success": True})
+
+    with pytest.raises(ValueError, match="physical_success"):
+        SimingEventProducer(InMemoryAuthorityEventBus()).publish_outputs([output])
