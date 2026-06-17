@@ -122,7 +122,7 @@ When integrating a new model, verify:
 2. The model is visible in the shared role skin shell.
 3. Required bones resolve to valid indices.
 4. Equipment anchors resolve to valid nodes.
-5. Locomotion animation still follows `CharacterMotionState`.
+5. Locomotion animation still follows the shared motor-owned motion-state publication path.
 6. Combat or short action overlays remain visible after animation evaluation.
 7. Head/nameplate/focus visuals still behave correctly.
 

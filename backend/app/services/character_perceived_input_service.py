@@ -18,6 +18,11 @@ class CharacterPerceivedInputService:
             "percept_channel": event.percept_channel,
             "perceived_summary": event.perceived_summary,
             "source_candidate_event_id": event.source_candidate_event_id,
+            "source_actor_id": event.source_actor_id,
+            "target_actor_id": event.target_actor_id,
+            "target_object_id": event.target_object_id,
+            "target_environment_id": event.target_environment_id,
+            "distance_m": event.distance_m,
         }
 
     def get_latest(self, actor_id: str) -> CharacterPerceivedEvent | None:

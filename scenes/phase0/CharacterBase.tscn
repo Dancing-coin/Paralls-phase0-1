@@ -3,9 +3,8 @@
 [ext_resource type="Script" path="res://scripts/player/PlayerShell.gd" id="1_shell"]
 [ext_resource type="PackedScene" path="res://scenes/phase0/CharacterReplica.tscn" id="2_character"]
 [ext_resource type="Script" path="res://scripts/player/Phase0PlayerBridge.gd" id="3_bridge"]
-[ext_resource type="Script" path="res://scripts/player/Phase0PlayerEmbodiment.gd" id="4_embodiment"]
 [ext_resource type="Script" path="res://scripts/player/CameraOcclusionFader.gd" id="5_occlusion"]
-[ext_resource type="Script" path="res://scripts/character/CharacterMotor.gd" id="6_motor"]
+[ext_resource type="Script" path="res://scripts/player/Phase0PlayerCommandRelay.gd" id="7_command_relay"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 height = 1.7
@@ -15,10 +14,6 @@ radius = 0.35
 collision_layer = 2
 collision_mask = 1
 script = ExtResource("1_shell")
-
-[node name="VisualRoot" type="Node3D" parent="."]
-unique_name_in_owner = true
-visible = false
 
 [node name="CameraHolder" type="Node3D" parent="."]
 unique_name_in_owner = true
@@ -48,11 +43,8 @@ idle_role_state = "guard"
 [node name="Phase0InputBridge" type="Node" parent="."]
 script = ExtResource("3_bridge")
 
-[node name="CharacterMotor" type="Node" parent="."]
-script = ExtResource("6_motor")
-
-[node name="Phase0Embodiment" type="Node" parent="."]
-script = ExtResource("4_embodiment")
+[node name="Phase0PlayerCommandRelay" type="Node" parent="."]
+script = ExtResource("7_command_relay")
 
 [node name="CameraOcclusionFader" type="Node" parent="."]
 script = ExtResource("5_occlusion")

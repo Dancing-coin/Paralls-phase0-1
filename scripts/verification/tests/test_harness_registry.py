@@ -19,6 +19,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "drift",
         "backend-contract",
         "godot-project",
+        "character-agent-execution",
         "release-gate",
         "harness-lifecycle",
         "change-lifecycle",
@@ -29,11 +30,13 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["docs"]["script"] == "scripts/verification/check_docs.py"
     assert registry.profiles["backend-contract"]["script"] == "scripts/verification/check_backend_contract.py"
     assert registry.profiles["godot-project"]["script"] == "scripts/verification/check_godot_project.py"
+    assert registry.profiles["character-agent-execution"]["script"] == "scripts/verification/verify_character_agent_execution.py"
     assert registry.profiles["release-gate"]["script"] == "scripts/verification/check_release_gate.py"
     assert registry.profiles["harness-lifecycle"]["script"] == "scripts/verification/check_harness_lifecycle.py"
     assert registry.profiles["change-lifecycle"]["script"] == "scripts/verification/check_change_lifecycle.py"
     assert registry.profiles["harness-reference"]["script"] == "scripts/verification/check_harness_reference.py"
     assert registry.profiles["phase0"]["requires_godot"] is True
+    assert int(registry.profiles["phase0"].get("max_attempts", 1)) >= 2
     assert all(profile["schema_version"] == 1 for profile in registry.profiles.values())
 
 

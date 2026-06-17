@@ -1,6 +1,5 @@
 extends Node3D
 
-const CharacterActorSchemaRef = preload("res://scripts/character/CharacterActorSchema.gd")
 const CharacterPresentationInputRef = preload("res://scripts/character/CharacterPresentationInput.gd")
 
 @export var locomotion_amplitude_scale := 0.75
@@ -347,18 +346,22 @@ func set_focus_highlight(is_focused: bool) -> void:
 
 func apply_presentation_input(next_input: Dictionary) -> void:
 	current_presentation_contract = CharacterPresentationInputRef.normalize(next_input)
-	var normalized := _normalize_presentation_input(next_input)
-	var motion_state: Dictionary = current_presentation_contract.get("motion_state", {})
-	var move_local_actual: Variant = motion_state.get("move_local_actual", Vector2.ZERO)
-	var _action_state: Dictionary = current_presentation_contract.get("action_state", {})
-	var _equipment_state: Dictionary = current_presentation_contract.get("equipment_state", {})
-	move_x = float(normalized.get("move_x", move_local_actual.x if move_local_actual is Vector2 else 0.0))
-	move_y = float(normalized.get("move_y", move_local_actual.y if move_local_actual is Vector2 else 0.0))
-	speed = float(normalized.get("speed", motion_state.get("speed_actual", 0.0)))
-	presentation_gait = str(normalized.get("gait", motion_state.get("gait_actual", "walk")))
-
-func _normalize_presentation_input(candidate: Dictionary) -> Dictionary:
-	return CharacterActorSchemaRef.normalize_presentation_input(candidate)
+	var move_local_actual := CharacterPresentationInputRef.get_motion_move_local_actual(current_presentation_contract)
+	var velocity_world := CharacterPresentationInputRef.get_motion_velocity_world(current_presentation_contract)
+	move_x = float(move_local_actual.x)
+	move_y = float(move_local_actual.y)
+	speed = float(velocity_world.length())
+	presentation_gait = CharacterPresentationInputRef.get_motion_gait_actual(current_presentation_contract)
+	var focus_target_id := CharacterPresentationInputRef.get_focus_target_id(current_presentation_contract)
+	var requested_action := CharacterPresentationInputRef.get_requested_action(current_presentation_contract)
+	var active_command_type := CharacterPresentationInputRef.get_active_command_type(current_presentation_contract)
+	var equipment_gait_hint := CharacterPresentationInputRef.get_equipment_gait_hint(current_presentation_contract)
+	if not requested_action.is_empty():
+		presentation_gait = CharacterPresentationInputRef.get_action_gait_hint(current_presentation_contract, presentation_gait)
+	elif not active_command_type.is_empty() and not focus_target_id.is_empty():
+		presentation_gait = CharacterPresentationInputRef.get_action_gait_hint(current_presentation_contract, presentation_gait)
+	elif not equipment_gait_hint.is_empty():
+		presentation_gait = equipment_gait_hint
 
 func _configure_animation_loops() -> void:
 	if animation_player == null:

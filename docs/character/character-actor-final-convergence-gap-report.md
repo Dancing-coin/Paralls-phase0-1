@@ -1,6 +1,6 @@
 # Character Actor Final Convergence Gap Report
 
-Date: `2026-06-15`
+Date: `2026-06-16`
 
 ## Purpose
 
@@ -11,9 +11,9 @@ It exists because the repository now has:
 - a completed near-term cleanup pass
 - a full character-agent design that explicitly depends on final actor-substrate convergence
 
-but it still does not have a dedicated final actor-convergence implementation plan.
+but still needs a clear record of what remains after the first Stage 2 landing batch.
 
-This report is the Stage A audit artifact for that missing plan.
+This report is the Stage A audit artifact updated after the first convergence batch landed.
 
 ## Current State Summary
 
@@ -51,7 +51,7 @@ CharacterActor
 
 This target is already described in architecture docs.
 
-What is not yet written is the implementation plan that converges the current repo toward that target.
+What is still required is finishing convergence work against that already-written target and plan.
 
 ## What Is Already Good Enough To Reuse In Stage B
 
@@ -80,7 +80,7 @@ This is acceptable as a Stage B bridge because:
 These are acceptable bridge contracts:
 
 - `CharacterIntentFrame`
-- `CharacterMotionState`
+- normalized local motion-state publication on the motor-owned path
 - `CharacterPresentationInput`
 
 They are not fully converged, but they are the correct ingress family for character-agent execution.
@@ -150,18 +150,18 @@ The contract exists, but the migration doc explicitly says the runtime still ass
 
 That means the presentation seam is conceptually correct but not yet converged.
 
-### 5. `ControllerPort` / adapter family is still only documented
+### 5. `ControllerPort` / adapter family is now landed as a first seam, but not yet fully expanded across every actor-side consumer
 
-The architecture docs name:
+The repository now has:
 
 - `HumanControllerAdapter`
 - `AgentControllerAdapter`
 - `ProgramControllerAdapter`
-- `ControllerPort`
+- `CharacterControllerPort`
 
-but these are still mid-term targets, not implemented seams.
+but the broader actor-side ecosystem is not yet fully normalized onto the same formal seam.
 
-This is the largest structural gap between the current actor substrate and the final-state target.
+So the remaining gap is no longer "missing seam exists nowhere"; it is "first seam exists, broader convergence is still incomplete."
 
 ### 6. Root-motion and hybrid execution are still only vocabulary-plus-guard
 
@@ -207,11 +207,11 @@ Allowed only if Stage B:
 
 These are the minimum actor-side final-convergence blockers.
 
-### Blocker 1: No final actor-convergence implementation plan exists
+### Blocker 1: The final actor-convergence implementation plan is not fully landed yet
 
-This is the immediate planning blocker.
+This is now an implementation-closeout blocker, not a planning blocker.
 
-Without it, Stage B has no explicit actor-side convergence target beyond architecture prose.
+The repo has the target doc and implementation plan; Stage B still cannot claim final `L4` convergence until the remaining actor-side items are actually closed.
 
 ### Blocker 2: No explicit final `L4 -> CharacterActor` ingress seam is frozen in code planning
 
@@ -221,9 +221,9 @@ The architecture docs name the concepts, but the plan still needs to freeze:
 - which current code surface temporarily hosts that seam
 - what will replace that host in the final-state runtime
 
-### Blocker 3: No explicit convergence path from `CharacterReplica` shell to final `CharacterRuntimeState` host is planned
+### Blocker 3: `CharacterRuntimeState` extraction is started, but `CharacterReplica` still remains the outer runtime shell
 
-As long as this remains unstated in planning, Stage B risks thickening `CharacterReplica` further.
+The risk is no longer missing planning; the risk is stopping at the first extraction seam and letting `CharacterReplica` keep too much long-term ownership.
 
 ### Blocker 4: No explicit convergence path for player outer shell unification is planned
 
@@ -281,15 +281,15 @@ and should avoid:
 - agent-only local body paths
 - permanent reliance on raw `CharacterReplica`-specific side effects
 
-## Recommended Stage A Outcome
+## Recommended Current Outcome
 
-Stage A should produce a dedicated final actor-convergence implementation plan that:
+The current repo should continue using the existing final actor-convergence implementation plan to:
 
 1. declares the final shared actor scene/runtime target
 2. names the acceptable temporary bridges for Stage B
 3. names the required preconditions for Stage B final-convergence claims
 4. splits final actor convergence into executable tasks
-5. updates migration status so repo state can be read without oral history
+5. keep migration status and repo-local summaries aligned with verified state
 
 ## Summary
 
@@ -297,6 +297,6 @@ The shared actor substrate is already strong enough to host early Stage B work.
 
 But it is not yet converged enough to let Stage B honestly claim final-state `CharacterAgent L4` convergence.
 
-The immediate missing artifact is not another architecture idea.
+The immediate missing artifact is no longer another architecture idea or another top-level plan.
 
-It is the explicit final actor-convergence implementation plan that turns the current actor-side final-state target into executable work.
+What remains is closing the still-transitional actor/runtime surfaces without overstating Stage B or full `L4` completion.

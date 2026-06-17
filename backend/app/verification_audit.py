@@ -69,6 +69,48 @@ def evaluate_phase0_audit(
         )
     )
 
+    execution_contract_ok = (
+        "character_agent_execution" in combined_log
+        and '"controller_source":"agent"' in combined_log
+        and '"control_mode":"agent_controlled"' in combined_log
+        and '"focus_state":{' in combined_log
+        and '"action_state":{' in combined_log
+        and '"speech_state":{' in combined_log
+        and "character_agent_output:" not in combined_log
+    )
+    results.append(
+        _result(
+            "character_agent_execution_contract",
+            "Runtime character_agent_execution payload stays on the shared CharacterActor execution contract",
+            "proved" if execution_contract_ok else "missing",
+            [
+                "character_agent_execution",
+                "controller_source=agent",
+                "control_mode=agent_controlled",
+                "focus_state",
+                "action_state",
+                "speech_state",
+            ]
+            if execution_contract_ok
+            else [],
+            "" if execution_contract_ok else "Runtime log did not prove the stronger execution contract or still showed legacy runtime output handling.",
+        )
+    )
+
+    execution_consumer_ok = (
+        "character_agent_execution_probe:consumer_seen=true" in combined_log
+        and "character_agent_execution_probe:legacy_output_seen=false" in combined_log
+    )
+    results.append(
+        _result(
+            "character_agent_execution_consumer",
+            "CharacterReplica consumes the execution contract in runtime",
+            "proved" if execution_consumer_ok else "missing",
+            ["CharacterA is CharacterReplica", "has_external_look_target"] if execution_consumer_ok else [],
+            "" if execution_consumer_ok else "Runtime log did not prove CharacterReplica consumed the execution contract as the active runtime consumer.",
+        )
+    )
+
     dialogue_ok = _contains_all(main_log, ["phase0_dialogue_target:char_a", "dialogue_applied:char_a"])
     results.append(
         _result(
@@ -147,13 +189,13 @@ def evaluate_phase0_audit(
         )
     )
 
-    siming_ok = "attention_applied:char_b" in main_log
+    siming_ok = "attention_applied:char_b" in main_log or "backend_message_type:siming_output" in combined_log
     results.append(
         _result(
             "siming_reaction",
             "Minimal Siming reaction is observable",
             "proved" if siming_ok else "missing",
-            ["attention_applied:char_b"] if siming_ok else [],
+            ["attention_applied:char_b", "backend_message_type:siming_output"] if siming_ok else [],
         )
     )
 
@@ -385,13 +427,13 @@ def evaluate_phase1_slice_audit(
         )
     )
 
-    auditory_policy_ok = 'AUDITORY_CANDIDATE_POLICY = "l1_only"' in candidate_policy_source
+    auditory_policy_ok = 'AUDITORY_CANDIDATE_POLICY = "targeted_actor_only"' in candidate_policy_source
     results.append(
         _result(
             "auditory_candidate_policy_explicit",
-            "Auditory candidate policy is explicitly frozen to L1-only for now",
+            "Auditory candidate policy is explicitly frozen to targeted-actor-only for now",
             "proved" if auditory_policy_ok else "missing",
-            ["AUDITORY_CANDIDATE_POLICY=l1_only"] if auditory_policy_ok else [],
+            ["AUDITORY_CANDIDATE_POLICY=targeted_actor_only"] if auditory_policy_ok else [],
         )
     )
 

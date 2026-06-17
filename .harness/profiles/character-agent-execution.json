@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "name": "character-agent-execution",
+  "order": 37,
+  "script": "scripts/verification/verify_character_agent_execution.py",
+  "requires_godot": true,
+  "description": "Narrow runtime verification for the shared CharacterActor character_agent_execution contract"
+}

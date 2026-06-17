@@ -65,7 +65,7 @@ For a locomotion issue:
 1. raw local input / `move_local`
 2. `CharacterIntentFrame`
 3. `CharacterMotor`
-4. `CharacterMotionState`
+4. normalized local motion-state publication
 5. `KnightRoleSkin` motion profile
 6. final visible movement
 
@@ -89,7 +89,7 @@ For a “input triggered but visible result is weak” issue:
 
 ## Recommended Future Direction
 
-Longer-term, debug output should be controlled through explicit debug modes instead of being permanently embedded in the default runtime path.
+That longer-term direction has now started landing: debug output is controlled through explicit debug/harness toggles on the shared bus and verification launchers, instead of being treated as permanently always-on default runtime noise.
 
 ## Current Verification Baseline
 

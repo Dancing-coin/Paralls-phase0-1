@@ -23,6 +23,9 @@ def test_character_perceived_event_shape() -> None:
     assert payload["event_type"] == "character_perceived_event"
     assert payload["actor_id"] == "char_a"
     assert payload["perceived_summary"] == "char_c is looking at char_a"
+    assert payload["source_actor_id"] == ""
+    assert payload["target_actor_id"] == ""
+    assert payload["distance_m"] is None
     assert payload["clarity_score"] == 0.85
     assert payload["certainty_score"] == 0.65
 
@@ -49,6 +52,8 @@ def test_filter_candidate_for_matching_actor_returns_character_perceived_event()
     assert perceived is not None
     assert perceived.actor_id == "char_a"
     assert perceived.percept_channel == "visual"
+    assert perceived.source_actor_id == "char_c"
+    assert perceived.target_actor_id == "char_a"
     assert perceived.clarity_score == 1.0
     assert perceived.certainty_score == 1.0
 
@@ -138,6 +143,7 @@ def test_filter_keeps_visual_candidate_when_actor_is_facing_target() -> None:
     assert perceived.actor_id == "char_a"
     assert perceived.clarity_score == 1.0
     assert perceived.certainty_score == 1.0
+    assert perceived.distance_m == 2.0
 
 
 def test_filter_returns_private_event_with_quality_scores() -> None:
@@ -205,3 +211,35 @@ def test_filter_reduces_certainty_for_distant_candidate() -> None:
     assert perceived is not None
     assert perceived.clarity_score == 1.0
     assert perceived.certainty_score == 0.6
+    assert perceived.distance_m == 6.0
+
+
+def test_filter_accepts_targeted_auditory_candidate_for_matching_actor() -> None:
+    candidate = CandidatePerceptEvent(
+        percept_channel="auditory",
+        source_fact_family="auditory_fact",
+        source_fact_type="speaker_active",
+        producer_ts=700,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source_actor_id="char_a",
+        target_actor_id="char_b",
+        audience_scope="candidate",
+        observability={"auditory": True},
+        causation_id="aud:700",
+        correlation_id="aud:700",
+    )
+
+    perceived = filter_candidate_for_actor(
+        candidate,
+        actor_id="char_b",
+        context={
+            "distance_m": 2.0,
+        },
+    )
+
+    assert perceived is not None
+    assert perceived.actor_id == "char_b"
+    assert perceived.percept_channel == "auditory"
+    assert perceived.perceived_summary == "auditory_fact/speaker_active"

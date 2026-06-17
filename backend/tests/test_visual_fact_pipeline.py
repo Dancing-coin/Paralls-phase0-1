@@ -99,7 +99,7 @@ def test_websocket_environment_visual_fact_emits_runtime_delta_without_candidate
         runtime_snapshot = websocket.receive_json()
         runtime_delta = websocket.receive_json()
         direct_siming_output = websocket.receive_json()
-        direct_character_agent_output = websocket.receive_json()
+        direct_character_agent_execution = websocket.receive_json()
         candidate_event = websocket.receive_json()
         candidate_runtime_delta = websocket.receive_json()
         siming_output = websocket.receive_json()
@@ -113,9 +113,8 @@ def test_websocket_environment_visual_fact_emits_runtime_delta_without_candidate
     assert runtime_delta["payload"]["nearby_environment_refs"] == ["env_lamp"]
     assert direct_siming_output["message_type"] == "siming_output"
     assert direct_siming_output["payload"]["target_environment_id"] == "env_lamp"
-    assert direct_character_agent_output["message_type"] == "character_agent_output"
-    assert direct_character_agent_output["payload"]["actor_id"] == "char_b"
-    assert direct_character_agent_output["payload"]["command_type"] in {"observe", "approach", "speak", "interact"}
+    assert direct_character_agent_execution["message_type"] == "character_agent_execution"
+    assert direct_character_agent_execution["payload"]["actor_id"] == "char_b"
     assert candidate_event["message_type"] == "conversation_candidate_event"
     assert candidate_event["payload"]["candidate_object_ids"] == []
     assert candidate_event["payload"]["candidate_environment_ids"] == ["env_lamp"]
@@ -216,7 +215,7 @@ def test_raw_visual_fact_updates_character_perceived_input_path() -> None:
     assert perceived.certainty_score == 1.0
 
 
-def test_raw_visual_fact_for_char_a_emits_character_agent_output() -> None:
+def test_raw_visual_fact_for_char_a_emits_character_agent_execution() -> None:
     event = VisualFactEvent(
         actor_id="char_c",
         room_id="room_demo",
@@ -237,10 +236,13 @@ def test_raw_visual_fact_for_char_a_emits_character_agent_output() -> None:
     )
 
     output_messages = [message for message in messages if message["message_type"] == "character_agent_output"]
+    execution_messages = [message for message in messages if message["message_type"] == "character_agent_execution"]
 
-    assert output_messages
-    assert output_messages[0]["payload"]["actor_id"] == "char_a"
-    assert output_messages[0]["payload"]["command_type"] in {"observe", "approach", "speak", "interact"}
+    assert output_messages == []
+    assert execution_messages
+    assert execution_messages[0]["payload"]["actor_id"] == "char_a"
+    assert "actor_control_frames" in execution_messages[0]["payload"]
+    assert "presentation_plan" in execution_messages[0]["payload"]
 
 
 def test_interact_world_result_updates_self_body_perceived_input_path() -> None:

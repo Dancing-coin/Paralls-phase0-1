@@ -17,4 +17,6 @@ def test_mid_term_controller_port_is_documented_but_not_implemented_in_near_term
     assert "ControllerPort" in control_doc
     assert "mid-term" in control_doc.lower()
     assert "not implemented in the near-term cleanup" in migration_doc
-    assert not (ROOT / "scripts" / "character" / "CharacterControllerPort.gd").exists()
+    assert (ROOT / "scripts" / "character" / "CharacterControllerPort.gd").exists()
+    assert "Actor Stage 2 first-batch items now landed in code:" in migration_doc
+    assert "`CharacterControllerPort` and adapter family" in migration_doc

@@ -442,6 +442,12 @@ Stage A is complete when:
 2. the relationship between actor-substrate convergence and character-agent convergence is documented
 3. the full character-agent plan can reference that actor-side plan as a concrete dependency
 
+Current repo status as of `2026-06-17`:
+
+- these Stage A exit conditions are now satisfied by the in-repo final-convergence target, gap report, migration-status sync, and linked actor final-convergence plan
+- this allows Stage B to continue on already-spec-backed tasks without treating actor convergence as implicit background work
+- this does **not** relax the separate rule that Stage B may not claim final-state `L4` convergence until the remaining actor-side Stage 2 implementation closeout is finished
+
 ### Stage B Exit
 
 Stage B is complete only when:

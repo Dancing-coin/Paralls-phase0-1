@@ -18,9 +18,10 @@ const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
 @export var focus_autotest_enabled := false
 @export var autotest_dialogue_delay := 0.25
 @export var autotest_interact_delay := 0.6
-@export var autotest_capture_delay := 0.8
+@export var autotest_failed_interact_timeout_ms := 3000
 @export var autotest_final_position := Vector3(0.0, 0.5, 20.0)
 @export var autotest_interact_position := Vector3(0.0, 0.5, 0.6)
+@export var autotest_failed_interact_position := Vector3(0.0, 0.5, 16.0)
 @export var focus_autotest_settle_delay := 0.45
 @export var focus_autotest_vantage_offset := Vector3(1.2, 0.5, 2.7)
 @export var focus_max_distance := 28.0
@@ -49,7 +50,6 @@ const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
 var current_focus_target: Node3D
 var last_reported_move_position := Vector3.INF
 var pending_focus_sync := false
-var last_debug_message := ""
 var focus_override_active := false
 var focus_response_seen := false
 var backend_health_request: HTTPRequest
@@ -59,14 +59,26 @@ var last_spatial_access_actor_target := ""
 var last_spatial_access_actor_ts := 0
 var current_privacy_band := "public"
 var spatial_zone_emitted := false
+var suspend_near_object_visual_fact := false
+var suspend_spatial_access_fact := false
+var pending_failed_move_ack_seen := false
+var pending_failed_interaction_result_seen := false
+var pending_failed_interaction_ack_seen := false
 var pending_backend_reconnect := false
+var backend_connected_once := false
 var pending_dialogue_request: Dictionary = {}
 var pending_interaction_request: Dictionary = {}
 var pending_move_request: Dictionary = {}
 
 func _ready() -> void:
+	autotest_enabled = OS.get_environment("PHASE0_AUTOTEST") == "1"
+	focus_autotest_enabled = OS.get_environment("PHASE0_FOCUS_AUTOTEST") == "1"
 	var bus := _get_bus()
 	if bus:
+		if bus.has_method("set_debug_logging_enabled"):
+			bus.set_debug_logging_enabled(
+				autotest_enabled or focus_autotest_enabled or OS.get_environment("PHASE0_DEBUG_LOGGING") == "1"
+			)
 		bus.backend_connected.connect(_on_backend_connected)
 		if bus.has_signal("backend_disconnected"):
 			bus.backend_disconnected.connect(_on_backend_disconnected)
@@ -83,8 +95,6 @@ func _ready() -> void:
 	_bootstrap_throne_room_collision()
 	_configure_open_field_camera()
 	_bus_log("phase0_main_ready")
-	autotest_enabled = OS.get_environment("PHASE0_AUTOTEST") == "1"
-	focus_autotest_enabled = OS.get_environment("PHASE0_FOCUS_AUTOTEST") == "1"
 	call_deferred("_connect_backend")
 
 func _bootstrap_throne_room_collision() -> void:
@@ -199,6 +209,7 @@ func submit_interaction() -> void:
 	_emit_interaction_request(target_object_id, "inspect")
 
 func _on_backend_connected(_payload: String) -> void:
+	backend_connected_once = true
 	pending_backend_reconnect = false
 	_request_backend_health()
 	_emit_spatial_access_zone_entry()
@@ -213,6 +224,9 @@ func _on_backend_connected(_payload: String) -> void:
 		_run_autotest_inputs()
 
 func _on_backend_disconnected(_code: int = 0) -> void:
+	if not backend_connected_once and _code == -1:
+		_request_backend_reconnect()
+		return
 	spatial_zone_emitted = false
 	pending_focus_sync = true
 	last_spatial_access_actor_target = ""
@@ -221,11 +235,17 @@ func _on_backend_disconnected(_code: int = 0) -> void:
 	_request_backend_reconnect()
 
 func _on_backend_ack_received(payload: Dictionary) -> void:
+	if str(payload.get("route", "")) == "local_motion":
+		pending_failed_move_ack_seen = true
+	if str(payload.get("route", "")) == "esm_service":
+		pending_failed_interaction_ack_seen = true
 	_bus_log("phase0_ack:%s" % JSON.stringify(payload))
 
 func _on_world_result_received(payload: Dictionary) -> void:
 	var result_type := str(payload.get("result_type", ""))
 	var result_id := str(payload.get("result_id", ""))
+	if result_type == "constraint_state_result":
+		pending_failed_interaction_result_seen = true
 	if result_type == "object_state_result" and str(payload.get("target_object_id", "")) == "obj_letter":
 		if str(payload.get("current_state", "")) == "visible":
 			if evidence_projection_emitter and evidence_projection_emitter.has_method("emit_visual_evidence_projection"):
@@ -242,17 +262,19 @@ func _on_world_result_received(payload: Dictionary) -> void:
 		_bus_log("phase0_world_result_seen:%s:%s" % [result_type, result_id])
 
 func _on_debug_event_logged(message: String) -> void:
-	last_debug_message = message
 	if message.contains("focus_state_applied:char_a") or message.contains("focus_attention:char_a"):
 		focus_response_seen = true
 
 func _process(_delta: float) -> void:
 	if focus_override_active:
-		_sample_spatial_access_facts()
+		if not suspend_spatial_access_fact:
+			_sample_spatial_access_facts()
 		return
 	_update_focus_target()
-	_sample_near_object_visual_fact()
-	_sample_spatial_access_facts()
+	if not suspend_near_object_visual_fact:
+		_sample_near_object_visual_fact()
+	if not suspend_spatial_access_fact:
+		_sample_spatial_access_facts()
 
 func _run_autotest_inputs() -> void:
 	_bus_log("phase0_autotest_begin")
@@ -277,16 +299,47 @@ func _run_autotest_inputs() -> void:
 	_move_player_to_demo_vantage()
 	_emit_move_intent_request(autotest_final_position, "locomotion")
 	await get_tree().create_timer(autotest_interact_delay).timeout
+	pending_failed_move_ack_seen = false
+	_emit_move_intent_request(autotest_failed_interact_position, "locomotion")
+	await _wait_for_failed_move_ack(1500)
+	await get_tree().create_timer(autotest_interact_delay).timeout
 	_orient_player_toward(interactive_object.global_position)
-	_force_focus_target(interactive_object)
+	suspend_near_object_visual_fact = true
+	suspend_spatial_access_fact = true
+	pending_failed_interaction_ack_seen = false
+	pending_failed_interaction_result_seen = false
 	_bus_log("phase0_autotest_failed_interaction_attempt")
-	player_input_bridge.trigger_interaction()
-	await get_tree().create_timer(autotest_capture_delay).timeout
+	_emit_interaction_request_without_near_object_fact("obj_letter", "inspect")
+	await _wait_for_failed_interaction_ack(1000)
+	await _wait_for_failed_interaction_result(autotest_failed_interact_timeout_ms)
+	suspend_near_object_visual_fact = false
+	suspend_spatial_access_fact = false
 	_capture_autotest_screenshot()
 	focus_override_active = false
 	if player_input_bridge and player_input_bridge.has_method("set_character_c_sync_enabled"):
 		player_input_bridge.set_character_c_sync_enabled(true)
 	get_tree().quit()
+
+func _wait_for_failed_interaction_result(timeout_ms: int) -> void:
+	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
+	while Time.get_ticks_msec() < deadline:
+		if pending_failed_interaction_result_seen:
+			return
+		await get_tree().process_frame
+
+func _wait_for_failed_interaction_ack(timeout_ms: int) -> void:
+	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
+	while Time.get_ticks_msec() < deadline:
+		if pending_failed_interaction_ack_seen:
+			return
+		await get_tree().process_frame
+
+func _wait_for_failed_move_ack(timeout_ms: int) -> void:
+	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
+	while Time.get_ticks_msec() < deadline:
+		if pending_failed_move_ack_seen:
+			return
+		await get_tree().process_frame
 
 func _probe_floor_coverage() -> void:
 	for checkpoint in FLOOR_CHECKPOINTS:
@@ -668,6 +721,19 @@ func _emit_interaction_request(target_object_id: String, interaction_type: Strin
 		return
 	bridge.send_envelope(intent_mapper.emit_interact_intent(target_object_id, interaction_type))
 
+func _emit_interaction_request_without_near_object_fact(target_object_id: String, interaction_type: String) -> void:
+	var bridge := _get_bridge()
+	if bridge == null or intent_mapper == null:
+		return
+	if not intent_mapper.has_method("emit_interact_intent"):
+		return
+	_bus_log("phase0_interact_target:%s" % target_object_id)
+	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
+		pending_interaction_request = {"target_object_id": target_object_id, "interaction_type": interaction_type}
+		_request_backend_reconnect()
+		return
+	bridge.send_envelope(intent_mapper.emit_interact_intent(target_object_id, interaction_type))
+
 func _emit_move_intent_request(target_point: Vector3, move_mode: String) -> void:
 	var bridge := _get_bridge()
 	if bridge == null or intent_mapper == null:
@@ -689,7 +755,7 @@ func _emit_move_intent_request(target_point: Vector3, move_mode: String) -> void
 	bridge.send_envelope(intent_mapper.emit_move_intent(move_mode, target_point))
 
 func _emit_move_intent_if_needed() -> void:
-	if autotest_enabled:
+	if autotest_enabled or focus_autotest_enabled:
 		return
 	if intent_mapper == null or not intent_mapper.has_method("emit_move_intent"):
 		return

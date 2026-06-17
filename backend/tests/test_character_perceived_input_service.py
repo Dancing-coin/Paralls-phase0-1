@@ -20,6 +20,9 @@ def test_character_perceived_input_service_stores_latest_event_per_actor() -> No
     payload = service.apply_character_perceived_event(event)
 
     assert payload["actor_id"] == "char_a"
+    assert payload["source_actor_id"] == ""
+    assert payload["target_actor_id"] == ""
+    assert payload["distance_m"] is None
     assert service.get_latest("char_a") == event
 
 

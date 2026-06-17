@@ -13,7 +13,6 @@ extends Node
 @export var sword_swing_action := "phase0_sword_swing"
 @export var shield_block_action := "phase0_shield_block"
 
-@onready var embodiment: Node = $"../Phase0Embodiment"
 @onready var player_bridge: Node = $"../Phase0InputBridge"
 
 var sword_swing_pressed := false
@@ -27,14 +26,10 @@ func handle_shell_action_event(event: InputEvent) -> void:
 	if event.is_action_pressed(crouch_toggle_action) and player_bridge.has_method("toggle_crouch_mode"):
 		player_bridge.toggle_crouch_mode()
 	if event.is_action_pressed(dialogue_action):
-		if embodiment and embodiment.has_method("trigger_dialogue_feedback"):
-			embodiment.trigger_dialogue_feedback()
 		_call_bridge_role_action("speak")
 		if player_bridge.has_method("trigger_dialogue"):
 			player_bridge.trigger_dialogue()
 	if event.is_action_pressed(interact_action):
-		if embodiment and embodiment.has_method("trigger_interact_feedback"):
-			embodiment.trigger_interact_feedback()
 		_call_bridge_role_action("inspect")
 		if player_bridge.has_method("trigger_interaction"):
 			player_bridge.trigger_interaction()

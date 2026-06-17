@@ -12,6 +12,7 @@ python scripts/verification/harness.py --profile boundaries
 python scripts/verification/harness.py --profile drift
 python scripts/verification/harness.py --profile backend-contract
 python scripts/verification/harness.py --profile godot-project
+python scripts/verification/harness.py --profile character-agent-execution
 python scripts/verification/harness.py --profile release-gate
 python scripts/verification/harness.py --profile harness-lifecycle
 python scripts/verification/harness.py --profile change-lifecycle
@@ -61,7 +62,7 @@ On this workspace, the harness auto-detects `D:\godot\Godot_v4.6.3-stable_win64.
 
 Harness inputs are versionable project files, while generated evidence stays ignored.
 
-- `.harness/profiles/`: profile manifests. The runner reads profile order, dispatch script, and Godot requirement from these files.
+- `.harness/profiles/`: profile manifests. The runner reads profile order, dispatch script, Godot requirement, and narrow runner policy such as per-profile retry budgets from these files.
 - `.harness/rules/`: rule manifests. These map stable rule IDs to the profile/check evidence that proves them.
 - `.harness/templates/`: starter manifests for future formal product modules.
 - `.harness/references/`: adapted external harness reference taxonomies.
@@ -167,6 +168,28 @@ Output:
 - `.harness/verification/harness-run-report.json`
 - `.harness/verification/harness-run-report.md`
 
+### `character-agent-execution`
+
+Narrow runtime validation for the shared CharacterActor `character_agent_execution` path. Use this when tightening the execution payload seam or proving that Godot still consumes the execution contract instead of the legacy output runtime path.
+
+Current mechanical invariants include:
+
+- Godot connects to the backend during the runtime run
+- runtime emits `character_agent_execution`
+- runtime payload keeps `controller_source=agent` and `control_mode=agent_controlled`
+- runtime payload keeps `focus_state`, `action_state`, and `speech_state`
+- runtime proves `CharacterA` is the current `CharacterReplica` consumer for that execution path
+- runtime proves `CharacterA.has_external_look_target == true` after the execution contract is consumed
+- runtime main path does not fall back to `character_agent_output` handling
+
+Output:
+
+- `.harness/verification/character-agent-execution-report.json`
+- `.harness/verification/character-agent-execution-report.md`
+- `.harness/verification/character-agent-execution-runtime-trace.ndjson`
+- `.harness/verification/harness-run-report.json`
+- `.harness/verification/harness-run-report.md`
+
 ### `release-gate`
 
 Static CI and release gate checks. Use this when changing harness workflow, release requirements, or CI metadata.
@@ -248,6 +271,8 @@ Output:
 Strict Phase 0 runtime validation. This starts or reuses the backend, runs backend tests, launches the Godot Phase 0 scene, captures logs/screenshots, and evaluates the full Phase 0 acceptance loop.
 
 Use this before claiming Phase 0 runtime completion.
+
+The current profile manifest also carries a retry budget (`max_attempts`) so the harness runner can absorb known intermittent runtime-start flakes without masking persistent failures.
 
 Trace output:
 

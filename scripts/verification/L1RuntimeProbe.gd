@@ -6,6 +6,7 @@ var _zone_entry_count := 0
 var _disconnect_count := 0
 var _environment_alert_count := 0
 var _privacy_local_count := 0
+var _backend_connected := false
 
 
 func _ready() -> void:
@@ -18,22 +19,40 @@ func _run_probe() -> void:
 		push_error("l1_runtime_probe:missing_local_presentation_bus")
 		get_tree().quit(1)
 		return
+	if bus.has_method("set_debug_logging_enabled"):
+		bus.set_debug_logging_enabled(true)
 	if bus.has_signal("debug_event_logged"):
 		bus.debug_event_logged.connect(_on_debug_event_logged)
+	if bus.has_signal("backend_connected"):
+		bus.backend_connected.connect(_on_backend_connected)
 	if bus.has_signal("backend_disconnected"):
 		bus.backend_disconnected.connect(_on_backend_disconnected)
 
 	var main_demo := MAIN_DEMO_SCENE.instantiate()
 	add_child(main_demo)
+	if bus.has_method("set_debug_logging_enabled"):
+		bus.set_debug_logging_enabled(true)
+
+	var backend_connected_ok := await _wait_for_backend_connected(10000)
+	if not backend_connected_ok:
+		push_error("l1_runtime_probe:backend_connect_timeout")
+		get_tree().quit(1)
+		return
+	main_demo.call("_emit_spatial_access_zone_entry")
+	main_demo.call("_sample_privacy_boundary_fact")
 
 	var initial_zone_ok := await _wait_for_zone_entries(1, 10000)
 	if not initial_zone_ok:
+		print("l1_runtime_probe:zone_entry_count_before_timeout=%s" % _zone_entry_count)
+		print("l1_runtime_probe:privacy_local_count_before_timeout=%s" % _privacy_local_count)
 		push_error("l1_runtime_probe:initial_zone_entry_timeout")
 		get_tree().quit(1)
 		return
 
 	var initial_privacy_ok := await _wait_for_privacy_local(1, 10000)
 	if not initial_privacy_ok:
+		print("l1_runtime_probe:zone_entry_count_before_timeout=%s" % _zone_entry_count)
+		print("l1_runtime_probe:privacy_local_count_before_timeout=%s" % _privacy_local_count)
 		push_error("l1_runtime_probe:initial_privacy_local_timeout")
 		get_tree().quit(1)
 		return
@@ -48,6 +67,7 @@ func _run_probe() -> void:
 
 	var disconnect_ok := await _wait_for_disconnect(1, 5000)
 	if not disconnect_ok:
+		print("l1_runtime_probe:disconnect_count_before_timeout=%s" % _disconnect_count)
 		push_error("l1_runtime_probe:disconnect_signal_timeout")
 		get_tree().quit(1)
 		return
@@ -57,15 +77,19 @@ func _run_probe() -> void:
 		push_error("l1_runtime_probe:reconnect_failed:%s" % reconnect_err)
 		get_tree().quit(1)
 		return
+	main_demo.call("_emit_spatial_access_zone_entry")
+	main_demo.call("_sample_privacy_boundary_fact")
 
 	var reseed_ok := await _wait_for_zone_entries(2, 10000)
 	if not reseed_ok:
+		print("l1_runtime_probe:zone_entry_count_before_timeout=%s" % _zone_entry_count)
 		push_error("l1_runtime_probe:zone_reseed_timeout")
 		get_tree().quit(1)
 		return
 
 	var privacy_reseed_ok := await _wait_for_privacy_local(2, 10000)
 	if not privacy_reseed_ok:
+		print("l1_runtime_probe:privacy_local_count_before_timeout=%s" % _privacy_local_count)
 		push_error("l1_runtime_probe:privacy_reseed_timeout")
 		get_tree().quit(1)
 		return
@@ -86,6 +110,7 @@ func _run_probe() -> void:
 
 	var environment_cycle_ok := await _wait_for_environment_alerts(2, 5000)
 	if not environment_cycle_ok:
+		print("l1_runtime_probe:environment_alert_count_before_timeout=%s" % _environment_alert_count)
 		push_error("l1_runtime_probe:environment_cycle_timeout")
 		get_tree().quit(1)
 		return
@@ -106,6 +131,10 @@ func _on_debug_event_logged(message: String) -> void:
 		_environment_alert_count += 1
 
 
+func _on_backend_connected(_url: String) -> void:
+	_backend_connected = true
+
+
 func _on_backend_disconnected(_code: int) -> void:
 	_disconnect_count += 1
 
@@ -114,6 +143,15 @@ func _wait_for_zone_entries(target_count: int, timeout_ms: int) -> bool:
 	var deadline := Time.get_ticks_msec() + timeout_ms
 	while Time.get_ticks_msec() < deadline:
 		if _zone_entry_count >= target_count:
+			return true
+		await get_tree().process_frame
+	return false
+
+
+func _wait_for_backend_connected(timeout_ms: int) -> bool:
+	var deadline := Time.get_ticks_msec() + timeout_ms
+	while Time.get_ticks_msec() < deadline:
+		if _backend_connected:
 			return true
 		await get_tree().process_frame
 	return false

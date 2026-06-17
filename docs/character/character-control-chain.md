@@ -18,9 +18,11 @@ The three supported control sources are:
 mouse / keyboard
 -> PlayerShell
 -> Phase0PlayerBridge
--> CharacterIntentFrame-style adaptation
+-> HumanControllerAdapter
+-> CharacterControllerPort
+-> CharacterIntentFrame
 -> CharacterMotor
--> CharacterMotionState
+-> normalized local motion-state publication
 -> CharacterReplica
 -> KnightRoleSkin
 -> KnightCombatModifier
@@ -32,17 +34,35 @@ mouse / keyboard
 - `PlayerShell.gd`
   - raw human input
   - camera/body yaw coupling
-  - raw shell motion frame
+  - human-source intent-frame staging
 
 - `Phase0PlayerBridge.gd`
-  - action translation
-  - player shell <-> visible actor sync
+  - action translation and demo/player-shell sync
+  - program-entry relay surface for the shared ingress family
+  - player shell <-> visible actor sync through thin actor-facing helper aliases
+  - normalized intent-frame consumption through `CharacterControllerPort` helper reads rather than bridge-local dict unpacking
+
+- `Phase0CharacterShellSync.gd`
+  - thin sync helper that now prefers actor-facing embodied-control aliases
+  - only falls back to older player-shell-specific method names for migration compatibility
+
+- `Phase0ViewAnchorResolver.gd`
+  - thin view/anchor helper that now prefers actor-facing embodied-control / forward aliases
+  - normalized intent-frame forward fallback now routes through `CharacterControllerPort` helper reads
+  - only falls back to older player-shell-specific names or nested scene-node lookup for migration compatibility
+
+- `HumanControllerAdapter.gd`
+  - human-source adaptation into shared actor intent
+
+- `CharacterControllerPort.gd`
+  - normalized actor-facing intent/control shape
+  - shared field-read surface for `move_local`, `gait`, `desired_facing_yaw`, and `actor_id`
 
 - `CharacterMotor.gd`
   - locomotion truth
 
 - `CharacterReplica.gd`
-  - role-runtime state
+  - actor runtime shell around `CharacterRuntimeState`
 
 - `KnightRoleSkin.gd`
   - base presentation
@@ -55,10 +75,12 @@ mouse / keyboard
 ```text
 CharacterAgent
 -> CharacterGoalCommand
--> adapter
+-> AgentControllerAdapter
+-> CharacterControllerPort
 -> CharacterIntentFrame
+-> CharacterRuntimeState
 -> CharacterMotor
--> CharacterMotionState
+-> normalized local motion-state publication
 -> CharacterReplica
 -> KnightRoleSkin
 -> KnightCombatModifier
@@ -71,10 +93,12 @@ The source differs, but the lower-half actor body path should stay shared.
 ```text
 autotest / replay / MCP / harness
 -> program command input
--> adapter
+-> ProgramControllerAdapter
+-> CharacterControllerPort
 -> CharacterIntentFrame
+-> CharacterRuntimeState
 -> CharacterMotor
--> CharacterMotionState
+-> normalized local motion-state publication
 -> CharacterReplica
 -> KnightRoleSkin
 -> KnightCombatModifier
@@ -117,10 +141,14 @@ mouse button right
 
 ```text
 WASD / run / jump
--> PlayerShell current_intent_frame
+-> PlayerShell human intent frame
+-> HumanControllerAdapter
+-> CharacterControllerPort
+-> CharacterIntentFrame
 -> CharacterMotor.apply_intent_frame()
--> CharacterMotionState
--> CharacterReplica player control frame sync
+-> normalized local motion-state publication
+-> Phase0CharacterShellSync actor-facing helper surface
+-> CharacterReplica embodied control / pose sync
 -> KnightRoleSkin motion profile / locomotion refinement
 -> final visible movement
 ```
@@ -154,4 +182,14 @@ The modifier exists because:
 
 ## Mid-Term ControllerPort Boundary
 
-`ControllerPort` is a Phase1-facing mid-term boundary. The near-term cleanup keeps `PlayerShell` and `Phase0PlayerBridge` as the demo-safe implementation seam and does not create adapter classes yet.
+`ControllerPort` was a Phase1-facing mid-term boundary during the near-term cleanup pass.
+
+Current repo truth is:
+
+- the near-term cleanup kept `PlayerShell` and `Phase0PlayerBridge` as the demo-safe seam
+- Stage 2 has now landed `CharacterControllerPort`
+- Stage 2 has now landed `HumanControllerAdapter`, `AgentControllerAdapter`, and `ProgramControllerAdapter`
+- Stage 2 now also routes more wrapper/helper-side normalized intent reads back through `CharacterControllerPort` helper methods instead of leaving those field names spread across `PlayerShell` and `Phase0ViewAnchorResolver`
+- Stage 2 now also prefers actor-facing helper aliases in `Phase0CharacterShellSync` and `Phase0ViewAnchorResolver` before falling back to older player-shell-specific naming
+- Stage 2 still keeps those older names only as thin migration-compat fallbacks, not as the preferred architecture truth
+- full actor convergence is still not complete, so these seams should be treated as the first landed shared ingress family rather than the final finished architecture

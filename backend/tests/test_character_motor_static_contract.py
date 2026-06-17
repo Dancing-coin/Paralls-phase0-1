@@ -15,8 +15,8 @@ def test_character_motor_script_declares_motor_owner() -> None:
     assert "move_and_slide()" in motor_source
 
 
-def test_character_base_scene_mounts_character_motor() -> None:
-    scene_source = (ROOT / "scenes" / "phase0" / "CharacterBase.tscn").read_text(encoding="utf-8")
+def test_character_replica_scene_mounts_character_motor_for_shared_actor_host_lineage() -> None:
+    scene_source = (ROOT / "scenes" / "phase0" / "CharacterReplica.tscn").read_text(encoding="utf-8")
 
     assert 'path="res://scripts/character/CharacterMotor.gd"' in scene_source
     assert '[node name="CharacterMotor" type="Node" parent="."]' in scene_source

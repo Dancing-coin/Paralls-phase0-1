@@ -44,9 +44,10 @@ def test_shared_character_actor_scripts_reference_frozen_vocabulary() -> None:
     player_shell_source = _read("scripts/player/PlayerShell.gd")
     bridge_source = _read("scripts/player/Phase0PlayerBridge.gd")
     replica_source = _read("scripts/character/CharacterReplica.gd")
+    runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
 
     assert "CharacterControlMode" in player_shell_source
     assert "human_controlled" in player_shell_source
     assert "CharacterControlMode" in bridge_source
     assert "CharacterLocomotionExecutionMode" in replica_source
-    assert "CharacterPresentationInput" in replica_source
+    assert "CharacterPresentationInput" in runtime_state_source
