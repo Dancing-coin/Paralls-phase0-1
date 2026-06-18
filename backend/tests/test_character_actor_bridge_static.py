@@ -37,7 +37,10 @@ def test_backend_bridge_and_replica_accept_actor_execution_ingress_payload() -> 
     assert '_bus_emit("character_agent_execution_received", [payload])' in bridge_source
     assert 'character_agent_execution_received.connect(_on_character_agent_execution_received)' in replica_source
     assert 'func _on_character_agent_execution_received(payload: Dictionary) -> void:' in replica_source
-    assert 'actor_control_frames' in replica_source
+    assert 'runtime_state.get_execution_payload_intent_frame(payload, actor_id)' in replica_source
+    assert 'actor_control_frames' in (project_root / "scripts" / "character" / "CharacterRuntimeState.gd").read_text(
+        encoding="utf-8"
+    )
     assert 'presentation_plan' in replica_source
 
 
@@ -69,3 +72,15 @@ def test_local_presentation_bus_exposes_explicit_debug_logging_toggle() -> None:
     assert "func _apply_debug_logging_mode() -> void:" in bus_source
     assert "set_process_input(debug_logging_enabled)" in bus_source
     assert "set_process_unhandled_input(debug_logging_enabled)" in bus_source
+
+
+def test_main_execution_envelope_builder_does_not_inline_legacy_reconstruction() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    main_source = (project_root / "backend" / "app" / "main.py").read_text(encoding="utf-8")
+    builder_slice = main_source.split("def _as_character_agent_execution_envelopes(", 1)[1].split(
+        "def _as_character_agent_action_request_envelopes(", 1
+    )[0]
+
+    assert "CharacterPrivateWorldSnapshot(" not in builder_slice
+    assert "CharacterInterpretation(" not in builder_slice
+    assert "CharacterIntentDecision(" not in builder_slice

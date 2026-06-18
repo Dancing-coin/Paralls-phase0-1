@@ -38,7 +38,8 @@ class CharacterAgentRuntime:
         self._control_modes = self.DEFAULT_CONTROL_MODES.copy()
         self._pending_suggestions: list[CharacterSuggestionPacket] = []
         self._session_store = CharacterAgentSessionStore(storage_root=storage_root)
-        self._memory_store = CharacterAgentMemoryStore(storage_root=storage_root)
+        self._memory_store = CharacterAgentMemoryStore()
+        self._rehydrate_memory_from_timeline()
 
     def ingest_character_perceived_event(self, event: CharacterPerceivedEvent) -> list[CharacterGoalCommand]:
         if event.actor_id not in self.SUPPORTED_ACTORS:
@@ -502,3 +503,9 @@ class CharacterAgentRuntime:
         updated = list(entries)
         updated.append(value)
         return updated[-self._RECENT_HISTORY_LIMIT :]
+
+    def _rehydrate_memory_from_timeline(self) -> None:
+        for actor_id, events in self._session_store.list_all_events().items():
+            for event in events:
+                if isinstance(event, dict):
+                    self._memory_store.write_event(event)

@@ -1,8 +1,6 @@
 extends Node3D
 
 const CharacterActorSchemaRef = preload("res://scripts/character/CharacterActorSchema.gd")
-const AgentControllerAdapterRef = preload("res://scripts/character/AgentControllerAdapter.gd")
-const CharacterControllerPortRef = preload("res://scripts/character/CharacterControllerPort.gd")
 const CharacterLocomotionExecutionModeRef = preload("res://scripts/character/CharacterLocomotionExecutionMode.gd")
 const CharacterRuntimeStateRef = preload("res://scripts/character/CharacterRuntimeState.gd")
 
@@ -309,15 +307,11 @@ func _on_siming_output_received(payload: Dictionary) -> void:
 func _on_character_agent_execution_received(payload: Dictionary) -> void:
 	if not runtime_state.execution_payload_targets_actor(payload, actor_id):
 		return
-	var actor_control_frames: Array = runtime_state.get_execution_payload_actor_control_frames(payload)
 	var presentation_plan: Dictionary = runtime_state.get_execution_payload_presentation_plan(payload)
-	var first_frame: Dictionary = runtime_state.get_execution_payload_first_frame(actor_control_frames)
-	if first_frame.is_empty():
+	var frame: Dictionary = runtime_state.get_execution_payload_intent_frame(payload, actor_id)
+	if frame.is_empty():
 		return
-	var frame: Dictionary = CharacterControllerPortRef.normalize_intent_frame(
-		AgentControllerAdapterRef.build_intent_frame(actor_id, first_frame)
-	)
-	var requested_action := CharacterControllerPortRef.get_action_name(frame)
+	var requested_action := runtime_state.get_intent_frame_action_name(frame)
 	runtime_state.set_active_command(requested_action, _command_priority(requested_action))
 	runtime_state.stage_agent_execution(presentation_plan, frame)
 	var execution_side_effect_plan: Dictionary = runtime_state.build_agent_execution_side_effect_plan(
@@ -369,8 +363,8 @@ func _apply_embodied_speak(payload: Dictionary) -> void:
 	apply_dialogue(
 		{
 			"actor_id": actor_id,
-			"content": _payload_string(payload, "dialogue_text"),
-			"target_actor_id": _payload_string(payload, "target_actor_id"),
+			"content": runtime_state.get_payload_string(payload, "dialogue_text"),
+			"target_actor_id": runtime_state.get_payload_string(payload, "target_actor_id"),
 		}
 	)
 	_clear_completed_command()
@@ -398,23 +392,17 @@ func _can_interrupt_current_action(next_command_type: String) -> bool:
 func _clear_completed_command() -> void:
 	runtime_state.clear_active_command()
 
-func _payload_string(payload: Dictionary, key: String, fallback: String = "") -> String:
-	var value: Variant = payload.get(key, fallback)
-	if value == null:
-		return fallback
-	return str(value)
-
 func _emit_character_actor_status(status: String, command_payload: Dictionary, failure_reason: String = "") -> void:
 	var payload := {
 		"actor_id": actor_id,
 		"command_status": status,
-		"command_type": _payload_string(command_payload, "command_type"),
-		"target_actor_id": _payload_string(command_payload, "target_actor_id"),
-		"target_object_id": _payload_string(command_payload, "target_object_id"),
-		"target_environment_id": _payload_string(command_payload, "target_environment_id"),
+		"command_type": runtime_state.get_payload_string(command_payload, "command_type"),
+		"target_actor_id": runtime_state.get_payload_string(command_payload, "target_actor_id"),
+		"target_object_id": runtime_state.get_payload_string(command_payload, "target_object_id"),
+		"target_environment_id": runtime_state.get_payload_string(command_payload, "target_environment_id"),
 		"failure_reason": failure_reason,
-		"causation_id": _payload_string(command_payload, "causation_id"),
-		"correlation_id": _payload_string(command_payload, "correlation_id"),
+		"causation_id": runtime_state.get_payload_string(command_payload, "causation_id"),
+		"correlation_id": runtime_state.get_payload_string(command_payload, "correlation_id"),
 	}
 	var bus := _get_bus()
 	if bus and bus.has_signal("character_actor_status_emitted"):
@@ -792,13 +780,13 @@ func _command_target_position(payload: Dictionary) -> Vector3:
 	return _resolve_attention_target(payload)
 
 func _command_target_node(payload: Dictionary) -> Node3D:
-	var object_id := _payload_string(payload, "target_object_id")
+	var object_id := runtime_state.get_payload_string(payload, "target_object_id")
 	if not object_id.is_empty():
 		return _find_node_by_property("object_id", object_id)
-	var actor_target := _payload_string(payload, "target_actor_id")
+	var actor_target := runtime_state.get_payload_string(payload, "target_actor_id")
 	if not actor_target.is_empty():
 		return _find_node_by_property("actor_id", actor_target)
-	var environment_id := _payload_string(payload, "target_environment_id")
+	var environment_id := runtime_state.get_payload_string(payload, "target_environment_id")
 	if not environment_id.is_empty():
 		return _find_node_by_property("environment_id", environment_id)
 	return null

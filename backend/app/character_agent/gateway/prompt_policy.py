@@ -40,6 +40,11 @@ class CharacterPromptPolicy:
 
     def _system_instruction(self, *, task_kind: str, route: dict[str, str]) -> str:
         route_mode = str(route.get("route_mode", "") or "online_default")
+        if task_kind == "dialogue_generation":
+            return (
+                f"CharacterAgent {task_kind} on {route_mode}: emit structured dialogue output "
+                "with content and tone."
+            )
         if task_kind == "l3_planning":
             return (
                 f"CharacterAgent {task_kind} on {route_mode}: emit structured planning output "
@@ -76,6 +81,11 @@ class CharacterPromptPolicy:
         )
 
     def _required_output_keys(self, task_kind: str) -> list[str]:
+        if task_kind == "dialogue_generation":
+            return [
+                "content",
+                "tone",
+            ]
         if task_kind == "l3_planning":
             return [
                 "candidate_intents",

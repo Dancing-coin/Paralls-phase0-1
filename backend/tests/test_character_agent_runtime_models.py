@@ -34,12 +34,19 @@ def test_character_goal_command_shape() -> None:
         correlation_id="character_agent:120",
         producer_ts=120,
         target_actor_id="char_c",
+        execution_payload={
+            "actor_id": "char_b",
+            "actor_control_frames": [{"actor_id": "char_b"}],
+            "presentation_plan": {"actor_id": "char_b"},
+            "action_request_bundle": {"requested_actions": []},
+        },
     )
 
     payload = command.model_dump(exclude_none=True)
 
     assert payload["command_type"] == "observe"
     assert payload["target_actor_id"] == "char_c"
+    assert payload["execution_payload"]["actor_id"] == "char_b"
 
 
 def test_character_intent_frame_shape() -> None:

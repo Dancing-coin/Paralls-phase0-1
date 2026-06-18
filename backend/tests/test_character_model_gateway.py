@@ -108,6 +108,32 @@ def test_model_gateway_runs_task_through_provider_and_validator() -> None:
     assert output["attention_target"] == "char_a"
 
 
+def test_model_gateway_supports_dialogue_generation_contract() -> None:
+    gateway = CharacterModelGateway()
+
+    output = gateway.run_task(
+        task_kind="dialogue_generation",
+        context={
+            "actor_id": "char_a",
+            "control_mode": "dialogue_service",
+            "snapshot": {},
+            "memory": {
+                "working_memory": [],
+                "episodic_memories": [],
+                "relational_memories": [],
+            },
+            "event": {
+                "content": "Where is the letter?",
+                "intent_type": "dialogue_submit",
+            },
+        },
+        route_override="local_only",
+    )
+
+    assert output["content"] == "I saw something move near the desk."
+    assert output["tone"] == "alert"
+
+
 def test_model_gateway_offline_l2_raises_risk_for_active_anomalies() -> None:
     gateway = CharacterModelGateway()
 

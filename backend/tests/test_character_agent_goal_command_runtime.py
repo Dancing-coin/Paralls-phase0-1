@@ -33,6 +33,7 @@ def test_character_agent_runtime_emits_goal_command() -> None:
     assert commands
     assert isinstance(commands[0], CharacterGoalCommand)
     assert commands[0].command_type == "observe"
+    assert commands[0].execution_payload is not None
 
 
 def test_character_agent_runtime_keeps_self_body_as_actor_goal_not_frame() -> None:

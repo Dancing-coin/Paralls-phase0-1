@@ -79,9 +79,6 @@ def main() -> int:
             ],
             project_root,
             scene_log,
-            env={
-                "PHASE0_DEBUG_LOGGING": "1",
-            },
         )
         scene_text = read_text(scene_log)
         scene_load_ok = (
@@ -111,7 +108,6 @@ def main() -> int:
                 "PHASE0_AUTOTEST": "1",
                 "PHASE0_FOCUS_AUTOTEST": "",
                 "PHASE0_AUTOTEST_SCREENSHOT": str(main_screenshot),
-                "PHASE0_DEBUG_LOGGING": "1",
             },
         )
 
@@ -136,7 +132,6 @@ def main() -> int:
                 "PHASE0_AUTOTEST": "",
                 "PHASE0_FOCUS_AUTOTEST": "1",
                 "PHASE0_AUTOTEST_SCREENSHOT": str(focus_screenshot),
-                "PHASE0_DEBUG_LOGGING": "1",
             },
         )
 

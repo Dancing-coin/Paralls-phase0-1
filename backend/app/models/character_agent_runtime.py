@@ -102,6 +102,7 @@ class CharacterGoalCommand(BaseModel):
     dialogue_text: str | None = None
     role_state_hint: str | None = None
     physiology_hint: str | None = None
+    execution_payload: dict[str, object] | None = None
 
 
 class CharacterIntentFrame(BaseModel):

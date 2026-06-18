@@ -81,18 +81,28 @@ def main() -> int:
         execution_entry = next(
             entry for entry in phase0_report["results"] if entry["id"] == "character_agent_execution_contract"
         )
+        execution_payload_direct_ok = "character_agent_execution_probe:execution_payload_direct=true" in main_log_text
+        if execution_entry["status"] == "proved" and execution_payload_direct_ok:
+            execution_entry["evidence"].append("execution_payload_direct")
+        elif execution_entry["status"] == "proved":
+            execution_entry["status"] = "missing"
+            execution_entry["evidence"] = []
+            execution_entry["notes"] = (
+                "Probe did not confirm the received execution payload directly carried "
+                "actor_control_frames/presentation_plan/action_request_bundle."
+            )
         consumer_ok = (
             "character_agent_execution_probe:consumer_seen=true" in main_log_text
             and "character_agent_execution_probe:legacy_output_seen=false" in main_log_text
         )
         consumer_entry = {
             "id": "character_agent_execution_consumer",
-            "title": "CharacterReplica consumes the execution contract in runtime",
+            "title": "Shared actor runtime consumes the execution contract",
             "status": "proved" if consumer_ok else "missing",
-            "evidence": ["observed actor node is CharacterReplica", "character_agent_execution_applied"]
+            "evidence": ["character_agent_execution_applied"]
             if consumer_ok
             else [],
-            "notes": "" if consumer_ok else "Probe did not confirm the observed execution actor consumed the contract as CharacterReplica with external look targeting.",
+            "notes": "" if consumer_ok else "Probe did not confirm the shared actor runtime consumed the execution contract and applied it.",
         }
         overall_passed = (
             execution_entry["status"] == "proved"

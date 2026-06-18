@@ -21,8 +21,10 @@ def test_human_agent_and_program_paths_use_the_adapter_family() -> None:
     assert "ProgramControllerAdapter" in player_bridge_source
     assert "build_intent_frame" in player_bridge_source
 
-    assert "AgentControllerAdapter" in replica_source
-    assert "build_intent_frame" in replica_source
+    assert "AgentControllerAdapter" not in replica_source
+    runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
+    assert "build_intent_frame" in runtime_state_source
+    assert "get_execution_payload_intent_frame" in replica_source
 
 
 def test_shared_ingress_keeps_control_sources_on_one_actor_facing_family() -> None:

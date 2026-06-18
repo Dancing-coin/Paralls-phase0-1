@@ -3,6 +3,7 @@ extends RefCounted
 class_name CharacterRuntimeState
 
 const CharacterActorSchemaRef = preload("res://scripts/character/CharacterActorSchema.gd")
+const AgentControllerAdapterRef = preload("res://scripts/character/AgentControllerAdapter.gd")
 const CharacterControllerPortRef = preload("res://scripts/character/CharacterControllerPort.gd")
 const CharacterPresentationInputRef = preload("res://scripts/character/CharacterPresentationInput.gd")
 
@@ -235,7 +236,7 @@ func build_agent_presentation_input(
 	intent_frame: Dictionary
 ) -> Dictionary:
 	var normalized_intent_frame := CharacterControllerPortRef.normalize_intent_frame(intent_frame)
-	var requested_action := CharacterControllerPortRef.get_action_name(normalized_intent_frame)
+	var requested_action := get_intent_frame_action_name(normalized_intent_frame)
 	return CharacterPresentationInputRef.from_agent_execution_plan(presentation_plan, requested_action)
 
 
@@ -397,6 +398,13 @@ func get_command_target_position(payload: Dictionary) -> Variant:
 	return payload.get("target_position", null)
 
 
+func get_payload_string(payload: Dictionary, key: String, fallback: String = "") -> String:
+	var value: Variant = payload.get(key, fallback)
+	if value == null:
+		return fallback
+	return str(value)
+
+
 func get_payload_actor_id(payload: Dictionary) -> String:
 	return str(payload.get("actor_id", ""))
 
@@ -439,11 +447,28 @@ func execution_payload_targets_actor(payload: Dictionary, current_actor_id: Stri
 	return get_payload_actor_id(payload) == current_actor_id
 
 
+func build_agent_intent_frame(actor_id: String, first_frame: Dictionary) -> Dictionary:
+	return CharacterControllerPortRef.normalize_intent_frame(
+		AgentControllerAdapterRef.build_intent_frame(actor_id, first_frame)
+	)
+
+
 func get_execution_payload_actor_control_frames(payload: Dictionary) -> Array:
 	var value: Variant = payload.get("actor_control_frames", [])
 	if value is Array:
 		return value
 	return []
+
+
+func get_execution_payload_first_frame_from_payload(payload: Dictionary) -> Dictionary:
+	return get_execution_payload_first_frame(get_execution_payload_actor_control_frames(payload))
+
+
+func get_execution_payload_intent_frame(payload: Dictionary, actor_id: String) -> Dictionary:
+	var first_frame := get_execution_payload_first_frame_from_payload(payload)
+	if first_frame.is_empty():
+		return {}
+	return build_agent_intent_frame(actor_id, first_frame)
 
 
 func get_execution_payload_first_frame(actor_control_frames: Array) -> Dictionary:
@@ -501,6 +526,10 @@ func set_active_command(command_type: String, priority: int) -> void:
 func clear_active_command() -> void:
 	active_command_type = ""
 	active_command_priority = 0
+
+
+func get_intent_frame_action_name(intent_frame: Dictionary) -> String:
+	return CharacterControllerPortRef.get_action_name(intent_frame)
 
 
 func get_active_command_type() -> String:

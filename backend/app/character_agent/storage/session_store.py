@@ -37,6 +37,12 @@ class CharacterAgentSessionStore:
     def list_events(self, actor_id: str) -> list[dict[str, object]]:
         return [dict(event) for event in self._events_by_actor.get(actor_id, [])]
 
+    def list_all_events(self) -> dict[str, list[dict[str, object]]]:
+        return {
+            actor_id: [dict(event) for event in events]
+            for actor_id, events in self._events_by_actor.items()
+        }
+
     def _load(self) -> None:
         if self._storage_path is None or not self._storage_path.exists():
             return

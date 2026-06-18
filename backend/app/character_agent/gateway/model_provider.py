@@ -47,9 +47,33 @@ class CharacterModelProvider:
         context = request.get("context", {})
         if not isinstance(context, dict):
             context = {}
+        if task_kind == "dialogue_generation":
+            return self._offline_dialogue_output(context)
         if task_kind == "l3_planning":
             return self._offline_l3_output(context)
         return self._offline_l2_output(context)
+
+    def _offline_dialogue_output(self, context: dict[str, object]) -> dict[str, object]:
+        event = context.get("event", {})
+        if not isinstance(event, dict):
+            event = {}
+        actor_id = str(context.get("actor_id", "") or "")
+        content = str(event.get("content", "") or "")
+        lowered = content.lower()
+        if "letter" in lowered:
+            return {
+                "content": "I saw something move near the desk.",
+                "tone": "alert",
+            }
+        if actor_id == "char_b":
+            return {
+                "content": "I am watching the room.",
+                "tone": "neutral",
+            }
+        return {
+            "content": "I am here. What do you need?",
+            "tone": "neutral",
+        }
 
     def _offline_l2_output(self, context: dict[str, object]) -> dict[str, object]:
         snapshot = context.get("snapshot", {})

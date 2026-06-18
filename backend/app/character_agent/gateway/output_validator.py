@@ -5,9 +5,22 @@ class CharacterStructuredOutputValidator:
     def validate(self, *, task_kind: str, output: dict[str, object]) -> dict[str, object]:
         if not isinstance(output, dict):
             raise ValueError("structured model output must be a dictionary")
+        if task_kind == "dialogue_generation":
+            return self._validate_dialogue_output(output)
         if task_kind == "l3_planning":
             return self._validate_l3_output(output)
         return self._validate_l2_output(output)
+
+    def _validate_dialogue_output(self, output: dict[str, object]) -> dict[str, object]:
+        required = [
+            "content",
+            "tone",
+        ]
+        self._require_keys(output, required, task_kind="dialogue_generation")
+        normalized = dict(output)
+        normalized["content"] = str(normalized.get("content", "") or "")
+        normalized["tone"] = str(normalized.get("tone", "") or "")
+        return normalized
 
     def _validate_l2_output(self, output: dict[str, object]) -> dict[str, object]:
         required = [

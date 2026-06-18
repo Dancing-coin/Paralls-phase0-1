@@ -92,6 +92,7 @@ def test_l4_adapter_derives_legacy_commands_from_executor_bundle() -> None:
     assert commands[0].correlation_id == "character_agent:1400:char_b"
     assert commands[0].causation_id == commands[0].correlation_id
     assert commands[0].role_state_hint == "speak"
+    assert commands[0].execution_payload == plan
 
 
 def test_l4_adapter_uses_frame_trace_fields_when_present() -> None:
@@ -207,3 +208,32 @@ def test_l4_adapter_preserves_dialogue_text_for_speech_requests() -> None:
     commands = adapter.build_commands_from_execution_plan(plan)
 
     assert commands[0].dialogue_text == "Look at the letter."
+
+
+def test_l4_adapter_can_rebuild_execution_payload_from_legacy_command_when_missing() -> None:
+    adapter = CharacterAgentL4Adapter()
+    command = adapter.build_commands(
+        snapshot=_snapshot(),
+        interpretation=_interpretation(),
+        decision=_decision(),
+    )[0]
+
+    rebuilt = adapter.build_commands_from_execution_plan(command.execution_payload or {})
+
+    assert command.execution_payload is not None
+    assert rebuilt
+    assert rebuilt[0].execution_payload == command.execution_payload
+
+
+def test_l4_adapter_exposes_command_to_execution_payload_for_compat_reconstruction() -> None:
+    adapter = CharacterAgentL4Adapter()
+    command = adapter.build_commands(
+        snapshot=_snapshot(),
+        interpretation=_interpretation(),
+        decision=_decision(),
+    )[0]
+
+    payload = adapter.command_to_execution_payload(command)
+
+    assert payload["actor_id"] == command.actor_id
+    assert payload == command.execution_payload

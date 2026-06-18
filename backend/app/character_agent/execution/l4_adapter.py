@@ -24,6 +24,45 @@ class CharacterAgentL4Adapter:
         )
         return self.build_commands_from_execution_plan(plan)
 
+    def command_to_execution_payload(self, command: CharacterGoalCommand) -> dict[str, object]:
+        if command.execution_payload is not None:
+            return command.execution_payload
+
+        target_ref = command.target_actor_id or command.target_object_id or command.target_environment_id or ""
+        snapshot = CharacterPrivateWorldSnapshot(
+            actor_id=command.actor_id,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            producer_ts=int(command.producer_ts or 0),
+            updated_at=int(command.producer_ts or 0),
+            attention_targets=[target_ref] if target_ref else [],
+        )
+        interpretation = CharacterInterpretation(
+            actor_id=command.actor_id,
+            interpreted_summary=command.dialogue_text or command.command_type,
+            interpretation_type="execution_bridge",
+            salience_score=1.0,
+            ambiguity_level="low",
+            risk_level="low",
+            opportunity_level="low",
+            attention_target=target_ref or None,
+            inner_prompt_candidate=command.command_type,
+        )
+        decision = CharacterIntentDecision(
+            actor_id=command.actor_id,
+            selected_intent=command.command_type,
+            persona_passed=True,
+            logic_passed=True,
+            gain_loss_passed=True,
+            rationale=command.command_type,
+        )
+        return self._executor.build_execution_plan(
+            snapshot=snapshot,
+            interpretation=interpretation,
+            decision=decision,
+        )
+
     def build_commands_from_execution_plan(self, plan: dict[str, object]) -> list[CharacterGoalCommand]:
         requested_actions = []
         bundle = plan.get("action_request_bundle", {})
@@ -95,6 +134,7 @@ class CharacterAgentL4Adapter:
                 dialogue_text=dialogue_text,
                 role_state_hint=role_state_hint,
                 physiology_hint=physiology_hint,
+                execution_payload=plan,
             )
         ]
 

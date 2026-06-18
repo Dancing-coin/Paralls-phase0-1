@@ -1,6 +1,6 @@
 # 当前项目实现总结
 
-日期：`2026-06-16`
+日期：`2026-06-18`
 
 这份文档是当前仓库 `Paralls Phase 0 Demo` 的 repo-local 实现总结。
 
@@ -24,7 +24,7 @@
 - `L6` authority event bus 已经成立
 - `L2` Siming 已经能消费 authority 事件并回写最小催化输出
 - Godot 前端兼容层已经能通过 authority projection 稳定消费候选、世界结果、状态机转移和司命输出
-- 严格 `Phase 0` 验证已经通过
+- backend / docs / character-agent-execution / phase0 / phase1-slice 关键验证当前为绿
 
 按当前仓库自己的 repo-local 目标，这个项目已经完成了一个“玩家角色 + 两个角色壳 + 世界交互 + 最小司命催化”的可运行验证闭环。
 
@@ -52,13 +52,13 @@
 
 ### 已验证结果
 
-当前主线关键验证结果：
+当前 `2026-06-18` worktree 验证结果：
 
-- `python -m pytest -q` -> `606 passed`
+- `python -m pytest -q` -> `616 passed`
 - `python scripts/verification/harness.py --profile docs` -> `overall_docs_passed=True`
 - `python scripts/verification/harness.py --profile character-agent-execution` -> `overall_character_agent_execution_passed=True`
+- `python scripts/verification/verify_l1_runtime_edges.py` -> `overall_l1_runtime_edges_passed=True`
 - `python scripts/verification/harness.py --profile phase0` -> `overall_strict_phase0_passed=True`
-- `python scripts/verification/verify_phase1_slice.py` -> `overall_phase1_slice_passed=True`
 - `python scripts/verification/harness.py --profile phase1-slice` -> `overall_phase1_slice_passed=True`
 
 当前 verification truth 还新增了一条 repo-local 工程事实：
@@ -66,7 +66,8 @@
 - `phase0` / `character-agent-execution` runtime profile 现在使用 fresh-backend verification path，避免复用旧 backend 进程污染当前 worktree 证据
 - `verify_phase0.py` 现在也给主场景 autotest / focus-autotest 更宽的 `--quit-after` 窗口，以匹配 fresh-backend 启动后的连接确认时序
 - `MainDemoController` 现在会把首次 `backend_connected` 之前的 `backend_closed:-1` 视为启动期断连噪音，但仍会补发一次自动重连，避免 fresh-backend `phase0` 运行时验证停在首轮握手失败
-- 在当前这批 Stage B memory / planning / explanation 收口之后，严格 `phase0` harness 仍保持 green，说明这些 backend-side 语义收紧没有把 `Phase 0` 已验证闭环重新打坏
+- `verify_l1_runtime_edges.py` 当前 hard-pass 已改按现行 runtime truth 判定：`backend_connected` + 初始 `zone bootstrap` + 无 HTTPRequest overlap error；旧 reconnect/privacy/environment edge probe 现在被显式 isolated，不再作为 hard-pass 前提
+- `verify_phase0.py` 当前也已去掉冗余的 `PHASE0_DEBUG_LOGGING=1` 强制注入；`PHASE0_AUTOTEST` / `PHASE0_FOCUS_AUTOTEST` 已足够打开验证日志，这次修正后 strict `phase0` broad runtime verification 重新转绿
 - `CharacterRuntimeState` 已不再保留 `finalize_player_presentation_input()` 这层空转 presentation bridge，formal presentation contract 现在直接沿 shared runtime-state / skin boundary 流转
 - `CharacterReplica.apply_embodied_pose_sync(...)` 现在通过 `Phase0CharacterShellSync` 显式接收 player motion state，而不再从父节点隐式回查 `motion_state`
 - `CameraOcclusionFader` 现在只依赖 `PlayerShell.get_camera()` / `get_control_anchor_position()` 这层 wrapper seam，不再直接抓取 `Phase0InputBridge` 节点做 camera / anchor 查询
@@ -79,14 +80,19 @@
 - `CharacterPresentationInput` 现在还额外提供更细的 field-read helper（例如 `focus_target_id` / `requested_action` / `action_gait_hint` / `equipment_gait_hint` / `active_command_type`），并且 `KnightRoleSkin` / `CharacterRuntimeState` 已开始直接通过这些 helper 读取 presentation 子字段，而不再继续拆内部子字典
 - `CharacterRuntimeState` 现在还额外提供 player-shell locomotion 中间字典的读取 helper（`motion_fields` / `locomotion_decision`），并且 `CharacterReplica._update_player_shell_locomotion()` 已开始通过这些 helper 读取 locomotion 决策字段，而不再继续直接拆这两层中间字典
 - `CharacterRuntimeState` 现在还额外提供 agent execution side-effect helper（`focus_target_lookup` / `physiology_hint` / `role_state_effects` 以及 `target_lookup` 读取 helper），并且 `CharacterReplica` 已开始通过这些 helper 读取 execution-side-effect 中间字典，而不再继续直接拆 `execution_side_effect_plan` / `lookup`
-- `CharacterReplica._on_character_agent_execution_received(...)` 现在也直接通过 `CharacterControllerPort.get_action_name(frame)` 读取 normalized intent-frame 的 `action`，而不再通过壳侧 `_payload_string(...)` 回退去拆这条 shared ingress contract
+- `CharacterReplica._on_character_agent_execution_received(...)` 现在也通过 `CharacterRuntimeState` helper 读取 normalized intent-frame 的 `action`，而不再直接在壳侧调用 `CharacterControllerPort.get_action_name(frame)`，也不再通过壳侧 `_payload_string(...)` 回退去拆这条 shared ingress contract
 - `CharacterRuntimeState` 现在还额外提供 `emitter actor_id` 同步 helper（`should_sync_emitter_actor_id(...)`），并且 `CharacterReplica` 的 role/physiology fact emitter 已开始通过这个 helper 判断是否需要写回 `actor_id`，而不再继续直接读取 emitter 本身的 `actor_id`
 - `CharacterRuntimeState` 现在还额外提供 dialogue / siming / runtime-state payload actor-target helper，以及 `command target position` / line-of-sight `collider` helper；`CharacterReplica` 已开始通过这些 helper 处理 payload actor targeting、`target_position` 和 LOS hit collider，而不再继续直接拆这些中间字段
+- `CharacterRuntimeState` 现在还额外提供通用 payload string helper，`CharacterReplica` 已开始通过它读取 `dialogue_text` / `target_actor_id` / `command_type` / `target_object_id` / `target_environment_id` / `causation_id` / `correlation_id`，而不再继续保留壳侧 `_payload_string(...)` 拆包层
 - `phase0` harness 的 `siming_reaction` 证据判定现在也已同步到当前运行时真相：`backend_message_type:siming_output` 现在可以单独作为 repo 当前最小 Siming 反应的合法运行时证明，而不再只依赖 `attention_applied:char_b`
 - `CharacterRuntimeState` 现在还额外提供 `line-of-sight hit collider` helper，且 `CharacterReplica._has_line_of_sight_to_target()` 已开始通过它读取物理射线命中的 collider，而不再继续直接访问 hit 字典字段
 
-当前严格 `Phase 0` 已证明：
+当前真实已证明的 runtime 事实：
 
+- `character_agent_execution_contract=proved`
+- `character_agent_execution_consumer=proved`
+- `character-agent-execution` 窄专项 probe 现在还会直接证明收到的 payload 本体同时携带 `actor_control_frames` / `presentation_plan` / `action_request_bundle`
+- `verify_l1_runtime_edges.py` 已按当前 runtime truth 转绿
 - `dialogue_loop=proved`
 - `successful_interaction=proved`
 - `failed_interaction=proved`
@@ -333,6 +339,7 @@ backend 侧：
 - 当前 `CharacterAgentRuntime` 的真实主线已经进一步变成：
   - 先由 `CharacterAgentL4Executor` 生成五通道 execution plan
   - 再由 `CharacterAgentL4Adapter.build_commands_from_execution_plan(...)` 兼容成 legacy `CharacterGoalCommand`
+  - `backend/app/main.py` 的 websocket/runtime glue 已不再内联 fallback `CharacterPrivateWorldSnapshot` / `CharacterInterpretation` / `CharacterIntentDecision` reconstruction；legacy command 的 compat reconstruction 现在回收到 `CharacterAgentL4Adapter.command_to_execution_payload(...)`
   - 因此 `L4Adapter` 已经是 thin compat shell，而不是独立的意图/命令推导主线；它只负责把 execution plan 的 actor/frame/request 兼容成 legacy 目标命令
 - 这条 legacy 命令兼容出口当前也已经收窄到单一命令语义：
   - `CharacterPerceivedEvent` / `SelfBodyPerceivedEvent` 当前返回的 legacy command 现在是 `observe`
@@ -735,7 +742,7 @@ authority_event_bus
 - Godot 侧 `BackendBridge -> LocalPresentationBus -> CharacterReplica` 主消费路径
 - live backend + Godot main scene smoke 已验证 `raw_fact_event -> character_agent_execution -> CharacterReplica`，且 `character_agent_output(command_type)` 未回到 runtime 主路径
 - `phase0` audit 现在会直接识别这条 runtime payload contract，并且当前主报告也已显式列出 `character_agent_execution_consumer=proved`；独立 `character-agent-execution` probe profile 仍作为更窄的专项证据面存在
-- 另有独立 `character-agent-execution` harness profile，且现在通过专用 probe scene 在不混入其他 `phase0` gate 的情况下单独验证这条 execution seam，并证明当前实际收到 execution 的 actor 节点会以 `CharacterReplica` 身份消费该 contract
+- 另有独立 `character-agent-execution` harness profile，且现在通过专用 probe scene 在不混入其他 `phase0` gate 的情况下单独验证这条 execution seam，并证明 shared actor runtime 已消费并应用该 contract，同时直接证明收到的 payload 本体携带 `actor_control_frames` / `presentation_plan` / `action_request_bundle`
 - `CharacterReplica` 当前会先经 `AgentControllerAdapter` 收敛 agent ingress，再经 `CharacterRuntimeState` 把 `presentation_plan` 收成 `CharacterPresentationInput`
 - `CharacterRuntimeState` 现在直接从 `CharacterPresentationInput` 现算 agent execution side-effect plan，并由 `CharacterReplica` 把本地 `dialogue_role_state` / `interaction_role_state` / `focus_role_state` / `attention_role_state` 显式传给这个 plan
 - `character_agent_output` 现在只保留在 `BackendBridge` / `LocalPresentationBus` 的静态兼容信号链上，`CharacterReplica` 不再连接旧 output handler

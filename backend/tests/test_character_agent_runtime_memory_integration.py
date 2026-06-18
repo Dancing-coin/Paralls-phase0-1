@@ -197,6 +197,36 @@ def test_runtime_can_recover_timeline_and_memory_bundle_from_optional_storage_ro
     assert bundle["episodic_memories"]
 
 
+def test_runtime_can_rebuild_memory_bundle_from_session_durability_path_only(tmp_path: Path) -> None:
+    runtime = CharacterAgentRuntime(storage_root=tmp_path)
+    event = CharacterPerceivedEvent(
+        actor_id="char_a",
+        percept_channel="visual",
+        producer_ts=1207,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="visual_fact/object_state_changed",
+        source_candidate_event_id="visual_fact:1207:char_a",
+        clarity_score=1.0,
+        certainty_score=1.0,
+    )
+
+    runtime.ingest_character_perceived_event(event)
+    memory_path = tmp_path / "character_agent_memory_store.json"
+    if memory_path.exists():
+        memory_path.unlink()
+    reloaded = CharacterAgentRuntime(storage_root=tmp_path)
+
+    timeline = reloaded.get_session_timeline("char_a")
+    bundle = reloaded.get_memory_bundle("char_a")
+
+    assert timeline
+    assert any(entry["event_type"] == "character_perceived_event" for entry in timeline)
+    assert bundle["working_memory"]
+    assert bundle["episodic_memories"]
+
+
 def test_runtime_records_l4_execution_request_for_full_auto_actor() -> None:
     runtime = CharacterAgentRuntime()
     event = CharacterPerceivedEvent(

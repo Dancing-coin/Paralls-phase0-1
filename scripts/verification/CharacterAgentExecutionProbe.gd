@@ -5,9 +5,11 @@ const MAIN_DEMO_SCENE := preload("res://scenes/phase0/MainDemo.tscn")
 var _execution_seen := false
 var _legacy_output_seen := false
 var _contract_seen := false
+var _execution_payload_direct := false
 var _backend_connected := false
 var _raw_fact_sent := false
 var _consumer_seen := false
+var _consumer_node_is_character_replica := false
 var _observed_execution_actor_id := ""
 var _execution_applied_actor_id := ""
 
@@ -109,6 +111,10 @@ func _run_probe() -> void:
 		return
 
 	var consumer_node := _resolve_consumer_node(main_demo)
+	_consumer_node_is_character_replica = (
+		consumer_node != null
+		and consumer_node.name == "CharacterReplica"
+	)
 	var target_actor_id := _execution_applied_actor_id
 	if target_actor_id.is_empty():
 		target_actor_id = _observed_execution_actor_id
@@ -126,8 +132,10 @@ func _run_probe() -> void:
 	print("character_agent_execution_probe:raw_fact_sent=%s" % _raw_fact_sent)
 	print("character_agent_execution_probe:execution_seen=%s" % _execution_seen)
 	print("character_agent_execution_probe:contract_seen=%s" % _contract_seen)
+	print("character_agent_execution_probe:execution_payload_direct=%s" % _execution_payload_direct)
 	print("character_agent_execution_probe:legacy_output_seen=%s" % _legacy_output_seen)
 	print("character_agent_execution_probe:consumer_seen=%s" % _consumer_seen)
+	print("character_agent_execution_probe:consumer_node_is_character_replica=%s" % _consumer_node_is_character_replica)
 	print("character_agent_execution_probe:observed_execution_actor_id=%s" % _observed_execution_actor_id)
 	print("character_agent_execution_probe:execution_applied_actor_id=%s" % _execution_applied_actor_id)
 	get_tree().quit(0)
@@ -154,6 +162,8 @@ func _on_debug_event_logged(message: String) -> void:
 					var actor_id_value := str(payload.get("actor_id", "") or "")
 					if not actor_id_value.is_empty():
 						_observed_execution_actor_id = actor_id_value
+					if payload.has("actor_control_frames") and payload.has("presentation_plan") and payload.has("action_request_bundle"):
+						_execution_payload_direct = true
 	if "character_agent_execution_applied:" in message:
 		var applied_prefix := "character_agent_execution_applied:"
 		var applied_index := message.find(applied_prefix)

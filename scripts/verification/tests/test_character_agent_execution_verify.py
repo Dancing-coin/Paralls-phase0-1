@@ -21,9 +21,9 @@ def test_character_agent_execution_report_shape(tmp_path: Path) -> None:
             },
             {
                 "id": "character_agent_execution_consumer",
-                "title": "CharacterReplica consumes the execution contract in runtime",
+                "title": "Shared actor runtime consumes the execution contract",
                 "status": "proved",
-                "evidence": ["observed actor node is CharacterReplica", "character_agent_execution_applied"],
+                "evidence": ["character_agent_execution_applied"],
                 "notes": "",
             }
         ],
@@ -58,6 +58,7 @@ def test_character_agent_execution_verify_script_uses_probe_scene() -> None:
     assert "character-agent-execution-main.log" in source
     assert "character-agent-execution-focus.log" not in source
     assert '"PHASE0_DEBUG_LOGGING": "1"' in source
+    assert "character_agent_execution_probe:execution_payload_direct=true" in source
 
 
 def test_phase0_verify_script_reads_character_agent_execution_probe_report() -> None:
@@ -66,7 +67,7 @@ def test_phase0_verify_script_reads_character_agent_execution_probe_report() -> 
     assert "verify_character_agent_execution.py" in source
     assert "character-agent-execution-report.json" in source
     assert "character_agent_execution_consumer" in source
-    assert '"PHASE0_DEBUG_LOGGING": "1"' in source
+    assert '"PHASE0_DEBUG_LOGGING": "1"' not in source
     assert '"--quit-after"' in source
     assert '"1800"' in source or '"2000"' in source
 

@@ -42,6 +42,9 @@ def test_character_agent_execution_probe_script_targets_execution_contract() -> 
     assert 'MAIN_DEMO_SCENE.instantiate()' not in script_text
     assert 'bus.set_debug_logging_enabled(true)' in script_text
     assert 'if bus.has_method("set_debug_logging_enabled"):' in script_text
+    assert 'print("character_agent_execution_probe:execution_payload_direct=%s" % _execution_payload_direct)' in script_text
+    assert '_execution_payload_direct = true' in script_text
+    assert 'character_agent_execution_probe:consumer_node_is_character_replica=%s' in script_text
 
 
 def test_l1_runtime_probe_enables_explicit_debug_logging_mode() -> None:

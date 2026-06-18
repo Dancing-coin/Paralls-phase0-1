@@ -14,10 +14,13 @@ def test_character_intent_frame_ingress_runs_through_stage2_adapter_seams() -> N
     player_shell_source = _read("scripts/player/PlayerShell.gd")
     player_bridge_source = _read("scripts/player/Phase0PlayerBridge.gd")
     replica_source = _read("scripts/character/CharacterReplica.gd")
+    runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
 
     assert "HumanControllerAdapterRef.build_intent_frame" in player_shell_source
     assert "ProgramControllerAdapterRef.build_intent_frame" in player_bridge_source
-    assert "AgentControllerAdapterRef.build_intent_frame" in replica_source
+    assert "AgentControllerAdapterRef.build_intent_frame" in runtime_state_source
+    assert "runtime_state.get_execution_payload_intent_frame(payload, actor_id)" in replica_source
+    assert 'const AgentControllerAdapterRef = preload("res://scripts/character/AgentControllerAdapter.gd")' not in replica_source
 
 
 def test_character_presentation_input_egress_runs_through_runtime_state_host() -> None:
@@ -57,7 +60,7 @@ def test_character_agent_execution_path_uses_stage2_shared_actor_contracts() -> 
     assert "CharacterPresentationInputRef.from_player_runtime_state(" in runtime_state_source
     assert "CharacterPresentationInputRef.from_agent_execution_plan(" in runtime_state_source
     assert "func from_agent_execution_plan(" in contract_source
-    assert "AgentControllerAdapterRef.build_intent_frame" in replica_source
+    assert "AgentControllerAdapterRef.build_intent_frame" in runtime_state_source
     assert "runtime_state.stage_agent_execution" in replica_source
     assert "runtime_state.get_agent_presentation_input" in replica_source
     assert "const CharacterPresentationInputRef" not in replica_source
@@ -126,6 +129,10 @@ def test_character_agent_execution_metadata_is_staged_through_runtime_state() ->
     assert "func get_target_lookup_expected(" in runtime_state_source
     assert "func execution_payload_targets_actor(" in runtime_state_source
     assert "func get_execution_payload_actor_control_frames(" in runtime_state_source
+    assert "func get_execution_payload_first_frame_from_payload(" in runtime_state_source
+    assert "func get_execution_payload_intent_frame(" in runtime_state_source
+    assert "func build_agent_intent_frame(" in runtime_state_source
+    assert "func get_intent_frame_action_name(intent_frame: Dictionary) -> String:" in runtime_state_source
     assert "func get_execution_payload_presentation_plan(" in runtime_state_source
     assert "func get_execution_payload_first_frame(" in runtime_state_source
     assert "func map_requested_action_to_role_state(" in runtime_state_source
@@ -150,10 +157,9 @@ def test_character_agent_execution_metadata_is_staged_through_runtime_state() ->
     assert "runtime_state.get_target_lookup_property_name(lookup)" in replica_source
     assert "runtime_state.get_target_lookup_expected(lookup)" in replica_source
     assert "runtime_state.execution_payload_targets_actor(payload, actor_id)" in replica_source
-    assert "runtime_state.get_execution_payload_actor_control_frames(payload)" in replica_source
+    assert "runtime_state.get_execution_payload_intent_frame(payload, actor_id)" in replica_source
     assert "runtime_state.get_execution_payload_presentation_plan(payload)" in replica_source
-    assert "runtime_state.get_execution_payload_first_frame(actor_control_frames)" in replica_source
-    assert "CharacterControllerPortRef.get_action_name(frame)" in replica_source
+    assert "runtime_state.get_intent_frame_action_name(frame)" in replica_source
     assert "_push_presentation_input(runtime_state.get_agent_presentation_input())" in replica_source
     assert "dialogue_role_state," in replica_source
     assert "interaction_role_state," in replica_source
@@ -177,6 +183,7 @@ def test_character_agent_execution_metadata_is_staged_through_runtime_state() ->
     assert 'payload.get("actor_control_frames", [])' not in execution_slice
     assert 'payload.get("presentation_plan", {})' not in execution_slice
     assert 'actor_control_frames[0]' not in execution_slice
+    assert "AgentControllerAdapterRef.build_intent_frame(actor_id, first_frame)" not in execution_slice
     assert '_find_node_by_property("actor_id", target_ref)' not in execution_slice
     assert '_find_node_by_property("object_id", target_ref)' not in execution_slice
     assert '_find_node_by_property("environment_id", target_ref)' not in execution_slice
@@ -247,6 +254,27 @@ def test_runtime_state_uses_thin_helpers_for_payload_actor_and_target_fields() -
     assert "func get_payload_target_actor_id(payload: Dictionary) -> String:" in runtime_state_source
 
 
+def test_runtime_state_exposes_generic_payload_string_helper() -> None:
+    runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
+    replica_source = _read("scripts/character/CharacterReplica.gd")
+
+    assert "func get_payload_string(payload: Dictionary, key: String, fallback: String = \"\") -> String:" in runtime_state_source
+    assert "runtime_state.get_payload_string(payload, \"dialogue_text\")" in replica_source
+    assert "runtime_state.get_payload_string(command_payload, \"command_type\")" in replica_source
+
+
+def test_runtime_state_exposes_execution_payload_intent_frame_helpers() -> None:
+    runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
+
+    assert "const AgentControllerAdapterRef = preload(" in runtime_state_source
+    assert "func build_agent_intent_frame(actor_id: String, first_frame: Dictionary) -> Dictionary:" in runtime_state_source
+    assert "func get_execution_payload_first_frame_from_payload(payload: Dictionary) -> Dictionary:" in runtime_state_source
+    assert "func get_execution_payload_intent_frame(payload: Dictionary, actor_id: String) -> Dictionary:" in runtime_state_source
+    assert "AgentControllerAdapterRef.build_intent_frame(actor_id, first_frame)" in runtime_state_source
+    assert "CharacterControllerPortRef.normalize_intent_frame(" in runtime_state_source
+    assert "return get_execution_payload_first_frame(get_execution_payload_actor_control_frames(payload))" in runtime_state_source
+
+
 def test_runtime_state_uses_helpers_for_runtime_state_payload_reference_lists() -> None:
     runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
 
@@ -306,7 +334,8 @@ def test_actor_side_intent_frame_consumers_normalize_through_controller_port() -
     assert "CharacterControllerPortRef.normalize_intent_frame(frame)" in motor_source
     assert "CharacterControllerPortRef.normalize_intent_frame(intent_frame)" in runtime_state_source
     assert "CharacterControllerPortRef.normalize_intent_frame(current_intent_frame)" in player_bridge_source
-    assert "CharacterControllerPortRef.normalize_intent_frame(" in replica_source
+    assert "CharacterControllerPortRef.normalize_intent_frame(" in runtime_state_source
+    assert "runtime_state.get_execution_payload_intent_frame(payload, actor_id)" in replica_source
 
 
 def test_phase0_player_bridge_reads_normalized_intent_fields_through_controller_port_helpers() -> None:
@@ -357,7 +386,8 @@ def test_runtime_state_reads_agent_requested_action_through_shared_helpers() -> 
     runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
     controller_port_source = _read("scripts/character/CharacterControllerPort.gd")
 
-    assert "CharacterControllerPortRef.get_action_name(normalized_intent_frame)" in runtime_state_source
+    assert "CharacterControllerPortRef.get_action_name(intent_frame)" in runtime_state_source
+    assert "get_intent_frame_action_name(normalized_intent_frame)" in runtime_state_source
     assert "CharacterPresentationInputRef.get_requested_action(agent_presentation_input)" in runtime_state_source
     assert "CharacterPresentationInputRef.get_focus_target_id(agent_presentation_input)" in runtime_state_source
     assert "static func get_action_name(" in controller_port_source

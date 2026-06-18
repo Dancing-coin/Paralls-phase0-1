@@ -27,9 +27,6 @@ from app.debug_stream import debug_stream
 from app.models.environment_request import EnvironmentRequest
 from app.models.character_agent_runtime import CharacterGoalCommand
 from app.models.character_agent_runtime import CharacterSuggestionPacket
-from app.models.character_agent_runtime import CharacterInterpretation
-from app.models.character_agent_runtime import CharacterIntentDecision
-from app.models.character_agent_runtime import CharacterPrivateWorldSnapshot
 from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent
 from app.models.raw_fact import RawFactEvent
 from app.models.runtime_state import ConversationCandidateEvent
@@ -64,6 +61,7 @@ from app.services.siming_event_pipeline import SimingEventPipeline
 from app.services.siming_event_producer import SimingEventProducer
 from app.services.siming_runtime import SimingRuntime
 from app.ws_protocol import Envelope
+from app.character_agent.execution.l4_adapter import CharacterAgentL4Adapter
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
 
 app = FastAPI(title="Paralls Phase0 Backend")
@@ -88,6 +86,7 @@ def reset_runtime_state() -> None:
     global siming_event_pipeline
     global frontend_authority_event_projector
     global character_agent_l4_executor
+    global character_agent_l4_adapter
 
     runtime = SessionRuntime()
     character_service = CharacterService()
@@ -115,6 +114,7 @@ def reset_runtime_state() -> None:
         authority_event_bus.subscribe(event_type, siming_event_pipeline.handle_event)
     frontend_authority_event_projector = FrontendAuthorityEventProjector()
     character_agent_l4_executor = CharacterAgentL4Executor()
+    character_agent_l4_adapter = CharacterAgentL4Adapter(executor=character_agent_l4_executor)
     for event_type in FRONTEND_AUTHORITY_EVENT_TYPES:
         authority_event_bus.subscribe(event_type, frontend_authority_event_projector.handle_event)
     debug_stream.clear()
@@ -780,43 +780,10 @@ def _as_envelope(message_type: str, payload: dict[str, object]) -> dict[str, obj
 def _as_character_agent_execution_envelopes(commands: list[CharacterGoalCommand]) -> list[dict[str, object]]:
     envelopes: list[dict[str, object]] = []
     for command in commands:
-        target_ref = command.target_actor_id or command.target_object_id or command.target_environment_id or ""
-        snapshot = CharacterPrivateWorldSnapshot(
-            actor_id=command.actor_id,
-            room_id="room_demo",
-            scene_id="scene_demo",
-            zone_id="zone_focus",
-            producer_ts=int(command.producer_ts or 0),
-            updated_at=int(command.producer_ts or 0),
-            attention_targets=[target_ref] if target_ref else [],
-        )
-        interpretation = CharacterInterpretation(
-            actor_id=command.actor_id,
-            interpreted_summary=command.dialogue_text or command.command_type,
-            interpretation_type="execution_bridge",
-            salience_score=1.0,
-            ambiguity_level="low",
-            risk_level="low",
-            opportunity_level="low",
-            attention_target=target_ref or None,
-            inner_prompt_candidate=command.command_type,
-        )
-        decision = CharacterIntentDecision(
-            actor_id=command.actor_id,
-            selected_intent=command.command_type,
-            persona_passed=True,
-            logic_passed=True,
-            gain_loss_passed=True,
-            rationale=command.command_type,
-        )
         envelopes.append(
             {
                 "message_type": "character_agent_execution",
-                "payload": character_agent_l4_executor.build_execution_plan(
-                    snapshot=snapshot,
-                    interpretation=interpretation,
-                    decision=decision,
-                ),
+                "payload": character_agent_l4_adapter.command_to_execution_payload(command),
             }
         )
     return envelopes
