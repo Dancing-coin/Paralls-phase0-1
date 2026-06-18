@@ -18,8 +18,6 @@ This is the agent-readable map for the runnable Paralls Phase 0 validation demo.
 - `docs/superpowers/plans/2026-06-15-character-actor-final-convergence-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-15-full-character-agent-runtime-with-llm-design.md`
 - `docs/superpowers/plans/2026-06-15-full-character-agent-runtime-with-llm-implementation-plan.md`
-- `docs/superpowers/specs/2026-06-16-character-model-router-openai-compatible-multiprovider-design.md`
-- `docs/superpowers/plans/2026-06-16-character-model-router-openai-compatible-multiprovider-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-12-character-actor-unification-design.md`
 - `docs/superpowers/specs/2026-06-12-character-actor-runtime-boundary-design.md`
 - `docs/superpowers/specs/2026-06-12-character-actor-control-and-locomotion-design.md`
@@ -107,6 +105,7 @@ Latest run manifest, baseline, and diff artifacts are written under `.harness/ve
 ## Character Docs
 
 - `docs/character/character-actor-architecture.md`
+- `docs/character/character-agent-runtime-architecture.md`
 - `docs/character/character-control-chain.md`
 - `docs/character/character-asset-integration.md`
 - `docs/character/character-action-asset-interface.md`

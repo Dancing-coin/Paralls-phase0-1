@@ -35,6 +35,18 @@ When this project needs design truth, use this order:
 
 Do not invent a new architecture if those files already define the boundary.
 
+## 2.1 Engineering Workflow Entry Points
+
+For repository-local AI engineering workflow, use:
+
+- `docs/INDEX.md`
+- `docs/ai-engineering-workflow.md`
+- `docs/harness.md`
+
+For broad verification, run:
+
+- `python scripts/verification/harness.py --profile all`
+
 ## 3. Core Boundary Rules
 
 ### 3.1 Godot
