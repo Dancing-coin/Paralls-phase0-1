@@ -13,6 +13,8 @@ var player_shell_grounded := true
 var player_stance := "stand"
 var player_gait := "walk"
 var player_jump_type := "none"
+var requested_action := ""
+var last_physiology_state_fact := ""
 var agent_presentation_input: Dictionary = {}
 var runtime_focus_target := ""
 var runtime_attention_source := ""
@@ -69,6 +71,22 @@ func get_player_gait() -> String:
 
 func get_player_jump_type() -> String:
 	return player_jump_type
+
+
+func set_requested_action(action_name: String) -> void:
+	requested_action = action_name
+
+
+func get_requested_action() -> String:
+	return requested_action
+
+
+func set_last_physiology_state_fact(strain_band: String) -> void:
+	last_physiology_state_fact = strain_band
+
+
+func get_last_physiology_state_fact() -> String:
+	return last_physiology_state_fact
 
 
 func resolve_player_locomotion_state(
@@ -199,9 +217,7 @@ func get_agent_presentation_input() -> Dictionary:
 
 
 func build_player_presentation_input(
-	requested_action: String,
 	action_override_state: String,
-	last_physiology_state_fact: String,
 ) -> Dictionary:
 	return CharacterPresentationInputRef.from_player_runtime_state(
 		player_motion_state,

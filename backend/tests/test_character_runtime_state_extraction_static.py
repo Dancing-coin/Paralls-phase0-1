@@ -311,3 +311,31 @@ def test_character_replica_reads_player_stance_and_jump_back_through_runtime_sta
     assert "runtime_state.get_player_jump_type()" in replica_source
     assert '"stance": player_stance' not in replica_source
     assert '"jump_type": player_jump_type' not in replica_source
+
+
+def test_runtime_state_owns_remaining_player_presentation_request_and_physiology_fields() -> None:
+    runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
+    replica_source = _read("scripts/character/CharacterReplica.gd")
+    build_slice = runtime_state_source.split("func build_player_presentation_input(", 1)[1].split(
+        "func resolve_player_presentation_motion_fields(", 1
+    )[0]
+    replica_build_slice = replica_source.split("func _build_player_presentation_input() -> Dictionary:", 1)[1].split(
+        "func _push_presentation_input(", 1
+    )[0]
+
+    assert 'var requested_action := ""' in runtime_state_source
+    assert 'var last_physiology_state_fact := ""' in runtime_state_source
+    assert "func set_requested_action(action_name: String) -> void:" in runtime_state_source
+    assert "func get_requested_action() -> String:" in runtime_state_source
+    assert "func set_last_physiology_state_fact(strain_band: String) -> void:" in runtime_state_source
+    assert "func get_last_physiology_state_fact() -> String:" in runtime_state_source
+    assert 'var requested_action := ""' not in replica_source
+    assert 'var last_physiology_state_fact := ""' not in replica_source
+    assert "runtime_state.set_requested_action(action_name)" in replica_source
+    assert "runtime_state.get_last_physiology_state_fact()" in replica_source
+    assert "runtime_state.set_last_physiology_state_fact(strain_band)" in replica_source
+    assert "requested_action: String" not in build_slice
+    assert "last_physiology_state_fact: String" not in build_slice
+    assert "return CharacterPresentationInputRef.from_player_runtime_state(" in build_slice
+    assert "runtime_state.get_requested_action()," not in replica_build_slice
+    assert "runtime_state.get_last_physiology_state_fact()," not in replica_build_slice

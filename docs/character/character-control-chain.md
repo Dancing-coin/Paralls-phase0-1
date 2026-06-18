@@ -49,7 +49,7 @@ mouse / keyboard
 - `Phase0ViewAnchorResolver.gd`
   - thin view/anchor helper that now prefers actor-facing embodied-control / forward aliases
   - normalized intent-frame forward fallback now routes through `CharacterControllerPort` helper reads
-  - only falls back to older player-shell-specific names or nested scene-node lookup for migration compatibility
+  - only falls back to older player-shell-specific names or wrapper camera seams for migration compatibility
 
 - `HumanControllerAdapter.gd`
   - human-source adaptation into shared actor intent
@@ -158,18 +158,16 @@ WASD / run / jump
 When debugging input or action problems, inspect the chain in this order:
 
 1. `global_input:*`
-2. `player_shell_mouse_button:*`
-3. `combat_mouse_event:*`
-4. `player_combat_action:*`
-5. `role_action_overlay:*`
-6. visible body result
+2. static relay/bridge coverage in `backend/tests/test_player_combat_action_static.py`
+3. `role_action_overlay:*`
+4. visible body result
 
 If the chain breaks:
 
 - before step 2: input never reached `PlayerShell`
-- before step 4: bridge/adaptation problem
-- before step 5: actor/runtime or timer problem
-- after step 5: presentation or modifier problem
+- before step 3: bridge/adaptation problem
+- before step 4: actor/runtime or timer problem
+- after step 4: presentation or modifier problem
 
 ## Why The Modifier Exists
 
@@ -190,6 +188,6 @@ Current repo truth is:
 - Stage 2 has now landed `CharacterControllerPort`
 - Stage 2 has now landed `HumanControllerAdapter`, `AgentControllerAdapter`, and `ProgramControllerAdapter`
 - Stage 2 now also routes more wrapper/helper-side normalized intent reads back through `CharacterControllerPort` helper methods instead of leaving those field names spread across `PlayerShell` and `Phase0ViewAnchorResolver`
-- Stage 2 now also prefers actor-facing helper aliases in `Phase0CharacterShellSync` and `Phase0ViewAnchorResolver` before falling back to older player-shell-specific naming
+- Stage 2 now also prefers actor-facing helper aliases in `Phase0CharacterShellSync` and `Phase0ViewAnchorResolver` before falling back to older player-shell-specific naming or broader wrapper-camera fallback
 - Stage 2 still keeps those older names only as thin migration-compat fallbacks, not as the preferred architecture truth
 - full actor convergence is still not complete, so these seams should be treated as the first landed shared ingress family rather than the final finished architecture

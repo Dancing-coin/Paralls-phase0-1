@@ -44,9 +44,9 @@ def test_player_bridge_dispatches_mouse_combat_actions_to_character_c() -> None:
     assert '_trigger_combat_action("sword_swing")' in bridge_source
     assert '_trigger_combat_action("shield_block")' in bridge_source
     assert "_trigger_character_c_action(action_name)" in bridge_source
-    assert '"player_combat_action:%s" % action_name' in bridge_source
-    assert "phase0_input_bridge_ready:combat_mouse_v3" in bridge_source
-    assert "combat_mouse_event:button=%s pressed=%s device=%s" in bridge_source
+    assert '"player_combat_action:%s" % action_name' not in bridge_source
+    assert "phase0_input_bridge_ready:combat_mouse_v3" not in bridge_source
+    assert "combat_mouse_event:button=%s pressed=%s device=%s" not in bridge_source
 
 
 def test_player_shell_instantiates_phase0_input_bridge() -> None:
@@ -69,8 +69,8 @@ def test_player_shell_forwards_raw_mouse_buttons_to_combat_bridge() -> None:
     assert "event is InputEventMouseButton" in player_shell_source
     assert 'has_method("handle_mouse_combat_event")' in player_shell_source
     assert "external_motion_driver.handle_mouse_combat_event(event as InputEventMouseButton)" in player_shell_source
-    assert "player_shell_mouse_button:button=%s pressed=%s device=%s" in player_shell_source
-    assert "mouse_button_state:left=%s right=%s" in player_shell_source
+    assert "player_shell_mouse_button:button=%s pressed=%s device=%s" not in player_shell_source
+    assert "mouse_button_state:left=%s right=%s" not in player_shell_source
 
 
 def test_character_replica_maps_combat_actions_to_role_states() -> None:
@@ -143,10 +143,10 @@ def test_debug_overlay_promotes_combat_trace_lines() -> None:
 
     assert 'message.begins_with("global_input:")' in overlay_source
     assert 'message.begins_with("global_unhandled_input:")' in overlay_source
-    assert 'message.begins_with("player_shell_mouse_button:")' in overlay_source
-    assert 'message.begins_with("mouse_button_state:")' in overlay_source
-    assert 'message.begins_with("combat_mouse_event:")' in overlay_source
-    assert 'message.begins_with("player_combat_action:")' in overlay_source
+    assert 'message.begins_with("player_shell_mouse_button:")' not in overlay_source
+    assert 'message.begins_with("mouse_button_state:")' not in overlay_source
+    assert 'message.begins_with("combat_mouse_event:")' not in overlay_source
+    assert 'message.begins_with("player_combat_action:")' not in overlay_source
     assert 'message.begins_with("role_action_overlay:")' in overlay_source
-    assert 'message.begins_with("phase0_input_bridge_ready:")' in overlay_source
+    assert 'message.begins_with("phase0_input_bridge_ready:")' not in overlay_source
     assert 'sections.append("Combat Trace")' in overlay_source

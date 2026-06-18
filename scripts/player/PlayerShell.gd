@@ -56,23 +56,16 @@ var queued_jump_variant := ""
 var queued_jump_move_local := Vector2.ZERO
 var forced_move_local := Vector2.ZERO
 var forced_run_state := false
-var last_left_mouse_pressed := false
-var last_right_mouse_pressed := false
 
 func _ready() -> void:
 	_recalculate_jump_profile()
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	look_pitch = cam_holder.rotation.x
 	cam_holder.rotation.y = 0.0
-	last_left_mouse_pressed = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-	last_right_mouse_pressed = Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
 
 func _input(event: InputEvent) -> void:
 	_forward_combat_mouse_event(event)
 	_forward_shell_action_event(event)
-
-func _process(_delta: float) -> void:
-	_poll_mouse_button_debug_state()
 
 func _unhandled_input(event: InputEvent) -> void:
 	_forward_combat_mouse_event(event)
@@ -100,7 +93,6 @@ func _unhandled_input(event: InputEvent) -> void:
 func _forward_combat_mouse_event(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton):
 		return
-	_bus_log("player_shell_mouse_button:button=%s pressed=%s device=%s" % [event.button_index, str((event as InputEventMouseButton).pressed), (event as InputEventMouseButton).device])
 	if external_motion_driver and external_motion_driver.has_method("handle_mouse_combat_event"):
 		external_motion_driver.handle_mouse_combat_event(event as InputEventMouseButton)
 
@@ -108,19 +100,6 @@ func _forward_shell_action_event(event: InputEvent) -> void:
 	var relay := get_node_or_null("Phase0PlayerCommandRelay")
 	if relay and relay.has_method("handle_shell_action_event"):
 		relay.handle_shell_action_event(event)
-
-func _poll_mouse_button_debug_state() -> void:
-	var left_pressed := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-	var right_pressed := Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
-	if left_pressed != last_left_mouse_pressed or right_pressed != last_right_mouse_pressed:
-		_bus_log("mouse_button_state:left=%s right=%s" % [str(left_pressed), str(right_pressed)])
-	last_left_mouse_pressed = left_pressed
-	last_right_mouse_pressed = right_pressed
-
-func _bus_log(message: String) -> void:
-	var bus := get_node_or_null("/root/LocalPresentationBus")
-	if bus and bus.has_method("log_debug"):
-		bus.log_debug(message)
 
 func _physics_process(delta: float) -> void:
 	current_intent_frame = _build_human_intent_frame()

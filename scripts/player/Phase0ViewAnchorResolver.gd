@@ -19,22 +19,16 @@ func resolve_player_look_target(
 		return player.global_position + _forward_from_yaw(
 			CharacterControllerPortRef.get_desired_facing_yaw(normalized_frame, desired_facing_yaw)
 		)
-	var character_c := player.get_node_or_null("CharacterReplica")
+	var character_c := _get_character_replica(player)
 	if character_c is Node:
 		if (character_c as Node).has_method("get_embodied_forward_vector"):
 			var actor_forward: Variant = (character_c as Node).get_embodied_forward_vector()
 			if actor_forward is Vector3 and (actor_forward as Vector3).length() > 0.001:
 				return player.global_position + (actor_forward as Vector3).normalized()
-		var nested_visual_root := (character_c as Node).get_node_or_null("VisualRoot")
-		if nested_visual_root is Node3D:
-			return player.global_position - (nested_visual_root as Node3D).global_basis.z
 	if player.has_method("get_visual_forward"):
 		var wrapper_forward: Variant = player.get_visual_forward()
 		if wrapper_forward is Vector3 and (wrapper_forward as Vector3).length() > 0.001:
 			return player.global_position + (wrapper_forward as Vector3).normalized()
-	var visual_root := player.find_child("VisualRoot", true, false)
-	if visual_root is Node3D:
-		return player.global_position - (visual_root as Node3D).global_basis.z
 	var camera_holder := player.get_node_or_null("CameraHolder")
 	if camera_holder is Node3D:
 		return player.global_position - (camera_holder as Node3D).global_basis.z
@@ -55,22 +49,16 @@ func resolve_player_forward(
 		return _forward_from_yaw(
 			CharacterControllerPortRef.get_desired_facing_yaw(normalized_frame, desired_facing_yaw)
 		)
-	var character_c := player.get_node_or_null("CharacterReplica")
+	var character_c := _get_character_replica(player)
 	if character_c is Node:
 		if (character_c as Node).has_method("get_embodied_forward_vector"):
 			var actor_forward: Variant = (character_c as Node).get_embodied_forward_vector()
 			if actor_forward is Vector3 and (actor_forward as Vector3).length() > 0.001:
 				return (actor_forward as Vector3).normalized()
-		var nested_visual_root := (character_c as Node).get_node_or_null("VisualRoot")
-		if nested_visual_root is Node3D:
-			return -((nested_visual_root as Node3D).global_basis.z).normalized()
 	if player.has_method("get_visual_forward"):
 		var wrapper_forward: Variant = player.get_visual_forward()
 		if wrapper_forward is Vector3 and (wrapper_forward as Vector3).length() > 0.001:
 			return (wrapper_forward as Vector3).normalized()
-	var visual_root := player.find_child("VisualRoot", true, false)
-	if visual_root is Node3D:
-		return -((visual_root as Node3D).global_basis.z).normalized()
 	var camera_holder := player.get_node_or_null("CameraHolder")
 	if camera_holder is Node3D:
 		return -((camera_holder as Node3D).global_basis.z).normalized()
@@ -108,6 +96,12 @@ func find_camera(player: CharacterBody3D) -> Camera3D:
 	var found := player.find_child("Camera3D", true, false)
 	if found is Camera3D:
 		return found as Camera3D
+	return null
+
+
+func _get_character_replica(player: CharacterBody3D) -> Node:
+	if player.has_method("get_character_replica"):
+		return player.get_character_replica()
 	return null
 
 

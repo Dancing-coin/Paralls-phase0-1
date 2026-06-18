@@ -40,9 +40,33 @@ def test_actor_runtime_scripts_trim_unused_default_migration_diagnostics() -> No
     role_skin_source = (ROOT / "scripts" / "character" / "KnightRoleSkin.gd").read_text(
         encoding="utf-8"
     )
+    player_shell_source = (ROOT / "scripts" / "player" / "PlayerShell.gd").read_text(
+        encoding="utf-8"
+    )
+    bridge_source = (ROOT / "scripts" / "player" / "Phase0PlayerBridge.gd").read_text(
+        encoding="utf-8"
+    )
+    debug_doc = (ROOT / "docs" / "character" / "character-debug-and-verification.md").read_text(
+        encoding="utf-8"
+    )
+    control_chain_doc = (ROOT / "docs" / "character" / "character-control-chain.md").read_text(
+        encoding="utf-8"
+    )
 
     assert "attention_target_environment:" not in replica_source
     assert "character_actor_status:" not in replica_source
     assert "runtime_state_applied:" not in replica_source
+    assert "player_shell_mouse_button:button=%s pressed=%s device=%s" not in player_shell_source
+    assert "mouse_button_state:left=%s right=%s" not in player_shell_source
+    assert "phase0_input_bridge_ready:combat_mouse_v3" not in bridge_source
+    assert "combat_mouse_event:button=%s pressed=%s device=%s" not in bridge_source
+    assert '"player_combat_action:%s" % action_name' not in bridge_source
+    assert "player_shell_mouse_button:*" not in debug_doc
+    assert "mouse_button_state:*" not in debug_doc
+    assert "combat_mouse_event:*" not in debug_doc
+    assert "player_combat_action:*" not in debug_doc
+    assert "player_shell_mouse_button:*" not in control_chain_doc
+    assert "combat_mouse_event:*" not in control_chain_doc
+    assert "player_combat_action:*" not in control_chain_doc
     assert "role_action_overlay:sword_swing" in role_skin_source
     assert "role_action_overlay:shield_block" in role_skin_source

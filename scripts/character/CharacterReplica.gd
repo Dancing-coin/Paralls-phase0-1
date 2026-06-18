@@ -76,7 +76,6 @@ var external_move_target := Vector3.ZERO
 var has_external_move_target := false
 var external_look_target := Vector3.ZERO
 var has_external_look_target := false
-var requested_action := ""
 var action_override_state := ""
 var action_override_timer := 0.0
 var player_shell_active := false
@@ -88,7 +87,6 @@ var focus_attention_posture_timer := 0.0
 var last_root_motion_world_delta := Vector3.ZERO
 var last_locomotion_status_signature := ""
 var last_role_state_fact := ""
-var last_physiology_state_fact := ""
 
 func _ready() -> void:
 	home_position = global_position
@@ -145,7 +143,7 @@ func set_visual_shell_visible(is_visible: bool) -> void:
 		visual_root.visible = is_visible
 
 func perform_action(action_name: String) -> void:
-	requested_action = action_name
+	runtime_state.set_requested_action(action_name)
 	match action_name:
 		"sword_swing":
 			if runtime_feedback and runtime_feedback.has_method("show_combat_feedback"):
@@ -502,7 +500,7 @@ func _get_physiology_state_fact_emitter() -> Node:
 	return get_node_or_null(physiology_state_fact_emitter_path)
 
 func _emit_physiology_state_fact(strain_band: String) -> void:
-	if strain_band.is_empty() or strain_band == last_physiology_state_fact:
+	if strain_band.is_empty() or strain_band == runtime_state.get_last_physiology_state_fact():
 		return
 	if not _is_backend_open():
 		return
@@ -515,7 +513,7 @@ func _emit_physiology_state_fact(strain_band: String) -> void:
 		return
 	var emitted: Variant = physiology_state_fact_emitter.emit_breathing_strain_fact(strain_band)
 	if bool(emitted):
-		last_physiology_state_fact = strain_band
+		runtime_state.set_last_physiology_state_fact(strain_band)
 
 func set_focus_highlight(is_focused: bool) -> void:
 	var runtime_attention_source := runtime_state.get_runtime_attention_source()
@@ -691,9 +689,7 @@ func _resolve_player_motion_state(player_motion_state: Dictionary, planar_veloci
 
 func _build_player_presentation_input() -> Dictionary:
 	return runtime_state.build_player_presentation_input(
-		requested_action,
 		action_override_state,
-		last_physiology_state_fact,
 	)
 
 func _push_presentation_input(presentation_input: Dictionary) -> void:

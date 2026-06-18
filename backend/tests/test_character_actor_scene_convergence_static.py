@@ -73,7 +73,7 @@ def test_character_base_wrapper_no_longer_keeps_separate_visual_root_marker() ->
 
     assert '[node name="VisualRoot" type="Node3D" parent="."]' not in character_base_scene
     assert 'find_child("VisualRoot", true, false)' not in bridge_source
-    assert 'get_node_or_null("VisualRoot")' in anchor_resolver_source
+    assert 'get_node_or_null("VisualRoot")' not in anchor_resolver_source
 
 
 def test_wrapper_visual_root_consumers_move_to_actor_facing_character_replica_surface() -> None:
@@ -82,7 +82,8 @@ def test_wrapper_visual_root_consumers_move_to_actor_facing_character_replica_su
     replica_source = _read("scripts/character/CharacterReplica.gd")
 
     assert '_get_character_c()' in bridge_source
-    assert 'get_node_or_null("CharacterReplica")' in anchor_resolver_source
+    assert 'get_character_replica()' in anchor_resolver_source
+    assert 'get_node_or_null("CharacterReplica")' not in anchor_resolver_source
     assert 'find_child("CharacterReplica", true, false)' not in anchor_resolver_source
     assert 'has_method("get_embodied_forward_vector")' in anchor_resolver_source
     assert "func get_embodied_forward_vector() -> Vector3:" in replica_source

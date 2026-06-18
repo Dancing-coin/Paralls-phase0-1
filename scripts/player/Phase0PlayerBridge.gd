@@ -27,7 +27,6 @@ var view_anchor_resolver = ViewAnchorResolverRef.new()
 # Phase0InputBridge still maps local controls into the visible knight child.
 
 func _ready() -> void:
-	_bus_log("phase0_input_bridge_ready:combat_mouse_v3")
 	if hide_player_visual_shell:
 		_set_player_visual_shell_visible(false)
 
@@ -64,7 +63,6 @@ func trigger_combat_action(action_tag: String) -> void:
 	_trigger_combat_action(action_tag)
 
 func handle_mouse_combat_event(event: InputEventMouseButton) -> void:
-	_bus_log("combat_mouse_event:button=%s pressed=%s device=%s" % [event.button_index, str(event.pressed), event.device])
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			if not sword_swing_pressed:
@@ -81,7 +79,6 @@ func handle_mouse_combat_event(event: InputEventMouseButton) -> void:
 			shield_block_pressed = false
 
 func _trigger_combat_action(action_name: String) -> void:
-	_bus_log("player_combat_action:%s" % action_name)
 	_trigger_character_c_action(action_name)
 
 func _get_main_demo() -> Node:
@@ -290,11 +287,6 @@ func _trigger_character_c_action(action_name: String) -> void:
 	var character_c := _get_character_c()
 	if character_c and character_c.has_method("perform_action"):
 		character_c.perform_action(action_name)
-
-func _bus_log(message: String) -> void:
-	var bus := get_node_or_null("/root/LocalPresentationBus")
-	if bus and bus.has_method("log_debug"):
-		bus.log_debug(message)
 
 func _find_camera() -> Camera3D:
 	return view_anchor_resolver.find_camera(player)

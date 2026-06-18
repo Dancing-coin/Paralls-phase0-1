@@ -37,28 +37,22 @@ The following log families are useful during actor debugging:
 
 - `global_input:*`
 - `global_unhandled_input:*`
-- `player_shell_mouse_button:*`
-- `mouse_button_state:*`
-- `combat_mouse_event:*`
-- `player_combat_action:*`
 - `role_action_overlay:*`
 - `character_actor_status:*`
 - `player_root_motion_step:*`
 
 ## Debug Overlay
 
-`DebugOverlay.gd` currently promotes combat-trace-related lines into a dedicated trace section so they are easier to inspect without being drowned by unrelated runtime output.
+`DebugOverlay.gd` currently promotes the remaining high-signal combat-trace lines into a dedicated trace section so they are easier to inspect without bringing back the older mouse-event migration noise.
 
 ## Typical Layered Debug Order
 
 For a click-triggered combat issue:
 
 1. `global_input:*`
-2. `player_shell_mouse_button:*`
-3. `combat_mouse_event:*`
-4. `player_combat_action:*`
-5. `role_action_overlay:*`
-6. visible role / weapon result
+2. static relay/bridge coverage in `backend/tests/test_player_combat_action_static.py`
+3. `role_action_overlay:*`
+4. visible role / weapon result
 
 For a locomotion issue:
 
@@ -82,7 +76,7 @@ For a “input triggered but visible result is weak” issue:
 
 ## Important Current Lessons
 
-- action logs do not prove visible embodiment
+- high-volume shell / bridge mouse logs are intentionally trimmed from default debug surfaces
 - bone-index validity does not prove final visible pose
 - final reliable combat embodiment may need post-animation correction
 - test scenes should suppress unrelated actor noise when debugging the player path
