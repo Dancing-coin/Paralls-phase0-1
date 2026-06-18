@@ -43,6 +43,12 @@ For repository-local AI engineering workflow, use:
 - `docs/ai-engineering-workflow.md`
 - `docs/harness.md`
 
+Workflow continuity and evidence rules for this repository:
+
+- Use Goal for active long-running execution continuity.
+- Use Superpowers skills and native subagents when the task shape warrants them.
+- Keep durable verification evidence under `.harness/verification/`.
+
 For broad verification, run:
 
 - `python scripts/verification/harness.py --profile all`
