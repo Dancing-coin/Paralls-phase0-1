@@ -10,37 +10,128 @@ class CharacterModelProvider:
     def __init__(
         self,
         *,
+        provider_kind: str | None = None,
         endpoint_url: str | None = None,
         api_key: str | None = None,
+        model_name: str | None = None,
         timeout_seconds: float = 20.0,
     ) -> None:
-        self._endpoint_url = (endpoint_url or os.getenv("CHARACTER_MODEL_ENDPOINT", "")).strip()
-        self._api_key = (api_key or os.getenv("CHARACTER_MODEL_API_KEY", "")).strip()
+        self._provider_kind = (provider_kind or os.getenv("CHARACTER_MODEL_PROVIDER_KIND", "deepseek")).strip() or "deepseek"
+        self._endpoint_url = (
+            endpoint_url
+            or os.getenv("DEEPSEEK_BASE_URL", "")
+            or os.getenv("CHARACTER_MODEL_ENDPOINT", "")
+            or "https://api.deepseek.com"
+        ).strip()
+        self._api_key = (
+            api_key
+            or os.getenv("DEEPSEEK_API_KEY", "")
+            or os.getenv("CHARACTER_MODEL_API_KEY", "")
+        ).strip()
+        self._model_name = (
+            model_name
+            or os.getenv("DEEPSEEK_MODEL", "")
+            or "deepseek-v4-flash"
+        ).strip()
         self._timeout_seconds = timeout_seconds
 
     def complete(self, request: dict[str, object]) -> dict[str, object]:
-        if self._endpoint_url:
+        route = request.get("route", {})
+        provider_kind = self._provider_kind
+        if isinstance(route, dict):
+            provider_kind = str(route.get("provider_kind", provider_kind) or provider_kind)
+        if provider_kind == "local":
+            return self._offline_complete(request)
+        if provider_kind in {"deepseek", "hybrid"}:
             try:
-                return self._complete_via_http(request)
+                return self._coerce_output_for_task(
+                    str(request.get("task_kind", "") or ""),
+                    self._complete_via_deepseek(request),
+                )
             except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError):
                 return self._offline_complete(request)
         return self._offline_complete(request)
 
-    def _complete_via_http(self, request: dict[str, object]) -> dict[str, object]:
-        body = json.dumps(request).encode("utf-8")
+    def _complete_via_deepseek(self, request: dict[str, object]) -> dict[str, object]:
+        if not self._endpoint_url or not self._api_key:
+            raise ValueError("deepseek provider requires endpoint and api key")
+        body = json.dumps(self._build_deepseek_request(request)).encode("utf-8")
         headers = {
             "Content-Type": "application/json",
+            "Authorization": f"Bearer {self._api_key}",
         }
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
-        req = Request(self._endpoint_url, data=body, headers=headers, method="POST")
+        req = Request(self._deepseek_chat_completions_url(), data=body, headers=headers, method="POST")
         with urlopen(req, timeout=self._timeout_seconds) as response:
             payload = json.loads(response.read().decode("utf-8"))
-        if isinstance(payload, dict) and isinstance(payload.get("output"), dict):
-            return dict(payload["output"])
-        if isinstance(payload, dict):
-            return dict(payload)
-        raise ValueError("model provider response must be a JSON object")
+        return self._normalize_deepseek_response(payload)
+
+    def _deepseek_chat_completions_url(self) -> str:
+        if self._endpoint_url.endswith("/chat/completions"):
+            return self._endpoint_url
+        return self._endpoint_url.rstrip("/") + "/chat/completions"
+
+    def _build_deepseek_request(self, request: dict[str, object]) -> dict[str, object]:
+        prompt = request.get("prompt", {})
+        policy = request.get("policy", {})
+        if not isinstance(prompt, dict):
+            prompt = {}
+        if not isinstance(policy, dict):
+            policy = {}
+        required_output_keys = prompt.get("required_output_keys", [])
+        return {
+            "model": self._model_name,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": str(prompt.get("system_instruction", "") or ""),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"{str(prompt.get('user_instruction', '') or '')}\n"
+                        f"Return valid JSON only. Required keys: {json.dumps(required_output_keys, ensure_ascii=True)}."
+                    ),
+                },
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": float(policy.get("temperature", 0.1) or 0.1),
+            "max_tokens": int(policy.get("max_tokens", 800) or 800),
+        }
+
+    def _normalize_deepseek_response(self, payload: object) -> dict[str, object]:
+        if not isinstance(payload, dict):
+            raise ValueError("deepseek response must be a JSON object")
+        choices = payload.get("choices", [])
+        if not isinstance(choices, list) or not choices:
+            raise ValueError("deepseek response must include at least one choice")
+        first_choice = choices[0]
+        if not isinstance(first_choice, dict):
+            raise ValueError("deepseek choice must be a JSON object")
+        message = first_choice.get("message", {})
+        if not isinstance(message, dict):
+            raise ValueError("deepseek choice message must be a JSON object")
+        content = str(message.get("content", "") or "").strip()
+        if not content:
+            raise ValueError("deepseek response content must not be empty")
+        normalized = json.loads(content)
+        if not isinstance(normalized, dict):
+            raise ValueError("deepseek response content must decode to a JSON object")
+        return normalized
+
+    def _coerce_output_for_task(self, task_kind: str, output: dict[str, object]) -> dict[str, object]:
+        normalized = dict(output)
+        if task_kind == "l3_planning":
+            for key in ("candidate_intents", "recommended_intents", "risk_notes"):
+                normalized[key] = self._coerce_string_list(normalized.get(key, []))
+        return normalized
+
+    def _coerce_string_list(self, value: object) -> list[object]:
+        if isinstance(value, list):
+            return value
+        text = str(value or "").strip()
+        if text == "":
+            return []
+        return [text]
 
     def _offline_complete(self, request: dict[str, object]) -> dict[str, object]:
         task_kind = str(request.get("task_kind", "") or "")

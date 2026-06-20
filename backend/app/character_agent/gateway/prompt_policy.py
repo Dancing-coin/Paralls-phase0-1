@@ -35,26 +35,30 @@ class CharacterPromptPolicy:
         return {
             "allow_model_call": provider_kind != "local",
             "fallback_mode": "local" if provider_kind == "local" else "hybrid",
+            "provider_kind": provider_kind,
             "task_kind": task_kind,
+            "temperature": 0.2 if task_kind == "dialogue_generation" else 0.1,
+            "max_tokens": 800,
         }
 
     def _system_instruction(self, *, task_kind: str, route: dict[str, str]) -> str:
         route_mode = str(route.get("route_mode", "") or "online_default")
         if task_kind == "dialogue_generation":
             return (
-                f"CharacterAgent {task_kind} on {route_mode}: emit structured dialogue output "
-                "with content and tone."
+                f"CharacterAgent {task_kind} on {route_mode}: return one JSON object with keys "
+                '["content", "tone"] and no extra text.'
             )
         if task_kind == "l3_planning":
             return (
-                f"CharacterAgent {task_kind} on {route_mode}: emit structured planning output "
-                "with candidate_intents, selected_intent, recommended_intents, risk_notes, "
-                "why_this_now, and role_consistency_hint."
+                f"CharacterAgent {task_kind} on {route_mode}: return one JSON object with keys "
+                '["candidate_intents", "selected_intent", "recommended_intents", "risk_notes", '
+                '"why_this_now", "role_consistency_hint"] and no extra text.'
             )
         return (
-            f"CharacterAgent {task_kind} on {route_mode}: emit structured reasoning output "
-            "with interpreted_summary, interpretation_type, salience_score, ambiguity_level, "
-            "risk_level, opportunity_level, attention_target, and inner_prompt_candidate."
+            f"CharacterAgent {task_kind} on {route_mode}: return one JSON object with keys "
+            '["interpreted_summary", "interpretation_type", "salience_score", '
+            '"ambiguity_level", "risk_level", "opportunity_level", "attention_target", '
+            '"inner_prompt_candidate"] and no extra text.'
         )
 
     def _user_instruction(

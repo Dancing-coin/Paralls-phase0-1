@@ -7,7 +7,7 @@ def test_model_router_defaults_to_online_route() -> None:
     route = router.resolve_route()
 
     assert route["route_mode"] == "online_default"
-    assert route["provider_kind"] == "online"
+    assert route["provider_kind"] == "deepseek"
 
 
 def test_model_router_supports_local_and_hybrid_routes() -> None:

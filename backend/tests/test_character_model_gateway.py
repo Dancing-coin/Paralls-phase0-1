@@ -39,8 +39,10 @@ def test_model_gateway_prepares_structured_run_request() -> None:
 
     assert request["task_kind"] == "l2_reasoning"
     assert request["route"]["route_mode"] == "online_default"
+    assert request["route"]["provider_kind"] == "deepseek"
     assert request["context"]["actor_id"] == "char_a"
     assert request["policy"]["allow_model_call"] is True
+    assert request["policy"]["provider_kind"] == "deepseek"
     assert "last_siming_catalyst=watch obj_letter" in str(request["prompt"]["user_instruction"])
     assert "vigilance_level=elevated" in str(request["prompt"]["user_instruction"])
     assert "body_state_hints_count=1" in str(request["prompt"]["user_instruction"])
@@ -70,6 +72,7 @@ def test_model_gateway_allows_route_override_without_changing_context_shape() ->
     )
 
     assert request["route"]["route_mode"] == "local_only"
+    assert request["route"]["provider_kind"] == "local"
     assert request["context"]["control_mode"] == "player_priority_assisted"
 
 
