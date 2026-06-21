@@ -2,12 +2,14 @@ from app.models.authority_event import AuthorityEvent
 from app.models.siming_event import (
     FairnessStateSnapshot,
     InterventionCandidate,
-    SelectedPath,
     SimingAuditRecord,
     SimingInput,
     SimingOutput,
     SimingTickResult,
 )
+from app.models.siming_runtime_state import ProjectionRunSnapshot, StateTreeSnapshot, StorylineStateSnapshot
+from app.services.siming_fact_core import SimingFactCore
+from app.services.siming_fairness_audit import SimingFairnessAuditEngine
 from app.services.siming_feasibility import SimingExecutionFeasibility
 from app.services.siming_llm_provider import (
     DisabledSimingLlmCandidateProvider,
@@ -15,7 +17,17 @@ from app.services.siming_llm_provider import (
     SimingLlmProviderInvalidOutput,
     SimingLlmProviderTimeout,
 )
+from app.services.siming_observe import SimingObservePipeline
 from app.services.siming_policy import SimingInterventionPolicy
+from app.services.siming_projection import (
+    GroupSimulationBridgePort,
+    StorylineProjectionPort,
+    StubGroupSimulationBridge,
+    StubStorylineProjection,
+)
+from app.services.siming_read_model import SimingReadModelBuilder
+from app.services.siming_state_tree import InMemorySimingStateTree
+from app.services.siming_storyline import InMemoryNarrativeObligationLedger, InMemoryStorylineState
 
 
 class SimingRuntime:
@@ -25,73 +37,183 @@ class SimingRuntime:
         llm_provider: SimingLlmCandidateProvider | None = None,
         policy: SimingInterventionPolicy | None = None,
         feasibility: SimingExecutionFeasibility | None = None,
+        observe_pipeline: SimingObservePipeline | None = None,
+        fact_core: SimingFactCore | None = None,
+        state_tree: InMemorySimingStateTree | None = None,
+        fairness_audit: SimingFairnessAuditEngine | None = None,
+        storyline_state: InMemoryStorylineState | None = None,
+        obligation_ledger: InMemoryNarrativeObligationLedger | None = None,
+        storyline_projection: StorylineProjectionPort | None = None,
+        group_bridge: GroupSimulationBridgePort | None = None,
+        read_model_builder: SimingReadModelBuilder | None = None,
     ) -> None:
         self._llm_provider = llm_provider or DisabledSimingLlmCandidateProvider()
         self._policy = policy or SimingInterventionPolicy()
         self._feasibility = feasibility or SimingExecutionFeasibility()
+        self._observe_pipeline = observe_pipeline or SimingObservePipeline()
+        self._fact_core = fact_core or SimingFactCore()
+        self._state_tree = state_tree or InMemorySimingStateTree()
+        self._fairness_audit = fairness_audit or SimingFairnessAuditEngine()
+        self._storyline_state = storyline_state or InMemoryStorylineState()
+        self._obligation_ledger = obligation_ledger or InMemoryNarrativeObligationLedger()
+        self._storyline_projection = storyline_projection or StubStorylineProjection()
+        self._group_bridge = group_bridge or StubGroupSimulationBridge()
+        self._read_model_builder = read_model_builder or SimingReadModelBuilder()
 
     def tick(self, inputs: list[SimingInput]) -> SimingTickResult:
         result = SimingTickResult()
         for siming_input in inputs:
             event = siming_input.source_event
+            observed = self._observe_pipeline.observe([event])
+            if not observed:
+                continue
+
+            fact_result = self._fact_core.evaluate(observed)
+            if not fact_result.accepted:
+                result.outputs.append(self._no_action(event))
+                result.audit_records.append(
+                    self._audit(
+                        event,
+                        status="no_action",
+                        reason=f"fact_veto:{fact_result.veto_reason}",
+                    )
+                )
+                continue
+
+            state_tree = self._state_tree.update_from_observed(
+                observed,
+                sim_tick_ts=event.producer_ts + 1,
+            )
+            state_tree.group_simulation = self._group_bridge.summarize(room_id=event.room_id)
+            fairness_snapshot = self._fairness_audit.build_snapshot(state_tree)
+            storyline = self._storyline_state.update_from_state_tree(state_tree)
+            ledger = self._obligation_ledger.update_from_storyline(storyline)
+            projection = self._storyline_projection.project(
+                state_tree=state_tree,
+                fairness=fairness_snapshot,
+                storyline=storyline,
+                ledger=ledger,
+            )
+
             result.outputs.append(self._fairness_snapshot(event))
 
             if self._is_light_drop(event):
-                snapshot = self._fairness_state_snapshot(event)
-                llm_candidates, llm_audit = self._llm_candidates_for(event, snapshot)
+                policy_snapshot = self._policy_snapshot_for_event(event, fairness_snapshot)
+                llm_candidates, llm_audit = self._llm_candidates_for(event, policy_snapshot)
                 if llm_candidates:
-                    outputs, audits = self._outputs_for_candidates(event, llm_candidates)
+                    outputs, audits = self._outputs_for_candidates(
+                        event,
+                        llm_candidates,
+                        snapshot=policy_snapshot,
+                    )
                     result.outputs.extend(outputs)
                     result.audit_records.extend(audits)
+                    self._finalize_tick_state(
+                        result,
+                        state_tree=state_tree,
+                        fairness_snapshot=fairness_snapshot,
+                        storyline=storyline,
+                        projection=projection,
+                    )
                     continue
                 if llm_audit:
                     result.outputs.append(self._no_action(event))
                     result.audit_records.extend(llm_audit)
+                    self._finalize_tick_state(
+                        result,
+                        state_tree=state_tree,
+                        fairness_snapshot=fairness_snapshot,
+                        storyline=storyline,
+                        projection=projection,
+                    )
                     continue
                 result.outputs.extend(
                     [
                         self._intervention_candidate(event),
-                        self._intervention_decision(event, selected_path="visual_fact_path", intervention_band="fact_reveal"),
+                        self._intervention_decision(
+                            event,
+                            selected_path="visual_fact_path",
+                            intervention_band="fact_reveal",
+                        ),
                         self._visual_fact_dispatch(event),
                     ]
                 )
-                result.audit_records.append(self._audit(event, status="recorded", reason="visual fact observability requested"))
+                result.audit_records.append(
+                    self._audit(
+                        event,
+                        status="recorded",
+                        reason="visual fact observability requested",
+                    )
+                )
+                self._finalize_tick_state(
+                    result,
+                    state_tree=state_tree,
+                    fairness_snapshot=fairness_snapshot,
+                    storyline=storyline,
+                    projection=projection,
+                )
                 continue
 
             if self._is_environment_attention_event(event):
                 result.outputs.append(self._environment_attention_dispatch(event))
-                result.audit_records.append(self._audit(event, status="recorded", reason="environment state attention requested"))
+                result.audit_records.append(
+                    self._audit(
+                        event,
+                        status="recorded",
+                        reason="environment state attention requested",
+                    )
+                )
+                self._finalize_tick_state(
+                    result,
+                    state_tree=state_tree,
+                    fairness_snapshot=fairness_snapshot,
+                    storyline=storyline,
+                    projection=projection,
+                )
                 continue
 
             if event.event_type == "conversation_resolution_event" and self._has_conversation_candidate(event):
                 result.outputs.append(self._conversation_fact_reveal(event))
-                result.audit_records.append(self._audit(event, status="recorded", reason="conversation candidate fact reveal requested"))
+                result.audit_records.append(
+                    self._audit(
+                        event,
+                        status="recorded",
+                        reason="conversation candidate fact reveal requested",
+                    )
+                )
+                self._finalize_tick_state(
+                    result,
+                    state_tree=state_tree,
+                    fairness_snapshot=fairness_snapshot,
+                    storyline=storyline,
+                    projection=projection,
+                )
                 continue
 
             if event.event_type == "constraint_state_event":
                 reason = str(event.payload.get("constraint_summary", "constraint rejected downstream"))
                 result.audit_records.append(self._audit(event, status="esm_rejected", reason=reason))
+                self._finalize_tick_state(
+                    result,
+                    state_tree=state_tree,
+                    fairness_snapshot=fairness_snapshot,
+                    storyline=storyline,
+                    projection=projection,
+                )
                 continue
 
             result.outputs.append(self._no_action(event))
-            result.audit_records.append(self._audit(event, status="no_action", reason="no eligible intervention"))
+            result.audit_records.append(
+                self._audit(event, status="no_action", reason="no eligible intervention")
+            )
+            self._finalize_tick_state(
+                result,
+                state_tree=state_tree,
+                fairness_snapshot=fairness_snapshot,
+                storyline=storyline,
+                projection=projection,
+            )
         return result
-
-    def _fairness_state_snapshot(self, event: AuthorityEvent) -> FairnessStateSnapshot:
-        known_fact_id = str(event.payload.get("established_fact_id", event.event_id))
-        target_actor_id = str(event.payload.get("target_actor_id", "char_b") or "char_b")
-        return FairnessStateSnapshot(
-            snapshot_id=f"fairness:{event.event_id}",
-            room_id=event.room_id,
-            scene_id=event.scene_id,
-            zone_id=event.zone_id,
-            causation_id=event.event_id,
-            correlation_id=event.correlation_id,
-            known_fact_ids=[known_fact_id],
-            eligible_actor_ids=[target_actor_id],
-            blocked_actor_ids=[],
-            recent_intervention_ids=[],
-        )
 
     def _llm_candidates_for(
         self,
@@ -112,8 +234,9 @@ class SimingRuntime:
         self,
         event: AuthorityEvent,
         candidates: list[InterventionCandidate],
+        *,
+        snapshot: FairnessStateSnapshot,
     ) -> tuple[list[SimingOutput], list[SimingAuditRecord]]:
-        snapshot = self._fairness_state_snapshot(event)
         audits: list[SimingAuditRecord] = []
 
         for candidate in candidates:
@@ -195,7 +318,7 @@ class SimingRuntime:
         self,
         event: AuthorityEvent,
         candidate: InterventionCandidate,
-        selected_path: SelectedPath,
+        selected_path: str,
         policy_reasons: list[str],
         feasibility_reasons: list[str],
     ) -> SimingOutput:
@@ -222,7 +345,7 @@ class SimingRuntime:
         self,
         event: AuthorityEvent,
         candidate: InterventionCandidate,
-        selected_path: SelectedPath,
+        selected_path: str,
     ) -> SimingOutput:
         payload = {
             "presentation_hint": candidate.explanation or "surface established fact",
@@ -364,6 +487,39 @@ class SimingRuntime:
             status=status,
             reason=reason,
         )
+
+    def _finalize_tick_state(
+        self,
+        result: SimingTickResult,
+        *,
+        state_tree: StateTreeSnapshot,
+        fairness_snapshot: FairnessStateSnapshot,
+        storyline: StorylineStateSnapshot,
+        projection: ProjectionRunSnapshot,
+    ) -> None:
+        result.checkpoints.append(
+            self._read_model_builder.build_checkpoint(
+                state_tree=state_tree,
+                fairness=fairness_snapshot,
+                storyline=storyline,
+            )
+        )
+        result.read_model = self._read_model_builder.build_read_model(
+            state_tree=state_tree,
+            fairness=fairness_snapshot,
+            storyline=storyline,
+            projection=projection,
+            audit_records=result.audit_records,
+        )
+
+    def _policy_snapshot_for_event(
+        self,
+        event: AuthorityEvent,
+        snapshot: FairnessStateSnapshot,
+    ) -> FairnessStateSnapshot:
+        if snapshot.eligible_actor_ids or not self._is_light_drop(event):
+            return snapshot
+        return snapshot.model_copy(update={"eligible_actor_ids": ["char_b"]})
 
     def _is_light_drop(self, event: AuthorityEvent) -> bool:
         return event.event_type == "visual_fact_event" and event.payload.get("fact_type") == "light_level_drop"

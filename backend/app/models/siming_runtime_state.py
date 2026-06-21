@@ -205,4 +205,6 @@ class NarrativeReadModel(BaseModel):
     sim_tick_ts: int
     current_state: dict[str, Any] = Field(default_factory=dict)
     focus_entities: list[str] = Field(default_factory=list)
+    intervention_surface: dict[str, Any] = Field(default_factory=dict)
+    narrative_surface: dict[str, Any] = Field(default_factory=dict)
     derived_from_snapshot_ref: str | None = None
