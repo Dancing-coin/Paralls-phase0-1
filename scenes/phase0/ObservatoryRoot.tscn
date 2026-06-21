@@ -1,0 +1,44 @@
+[gd_scene format=4]
+
+[ext_resource type="Script" path="res://scripts/ui/CharacterDirectorState.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/ui/ActorStateTags.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/ui/RelationshipOverlay.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/ui/CharacterObserverPanel.gd" id="4"]
+[ext_resource type="Script" path="res://scripts/ui/DirectorMonitorPanel.gd" id="5"]
+[ext_resource type="Script" path="res://scripts/ui/SimingDirectorBoard.gd" id="6"]
+[ext_resource type="Script" path="res://scripts/ui/ScriptTimelinePanel.gd" id="7"]
+[ext_resource type="Script" path="res://scripts/ui/DialogueSceneLedger.gd" id="8"]
+[ext_resource type="Script" path="res://scripts/ui/WorldOutcomeTrace.gd" id="9"]
+[ext_resource type="Script" path="res://scripts/ui/ObservatoryInputController.gd" id="10"]
+
+[node name="ObservatoryRoot" type="Node"]
+
+[node name="CharacterDirectorState" type="Node" parent="."]
+script = ExtResource("1")
+
+[node name="ActorStateTags" type="CanvasLayer" parent="."]
+script = ExtResource("2")
+
+[node name="RelationshipOverlay" type="Node2D" parent="."]
+script = ExtResource("3")
+
+[node name="CharacterObserverPanel" type="CanvasLayer" parent="."]
+script = ExtResource("4")
+
+[node name="DirectorMonitorPanel" type="CanvasLayer" parent="."]
+script = ExtResource("5")
+
+[node name="SimingDirectorBoard" type="CanvasLayer" parent="."]
+script = ExtResource("6")
+
+[node name="ScriptTimelinePanel" type="CanvasLayer" parent="."]
+script = ExtResource("7")
+
+[node name="DialogueSceneLedger" type="CanvasLayer" parent="."]
+script = ExtResource("8")
+
+[node name="WorldOutcomeTrace" type="CanvasLayer" parent="."]
+script = ExtResource("9")
+
+[node name="ObservatoryInputController" type="Node" parent="."]
+script = ExtResource("10")

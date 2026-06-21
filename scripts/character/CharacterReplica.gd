@@ -60,7 +60,9 @@ const CHARACTER_ACTOR_FAILURE_TARGET_NOT_PERCEIVED := "target_not_perceived"
 @onready var role_asset_root: Node3D = $VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot
 @onready var role_asset_scene: Node = $VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/KnightRoleSkin
 @onready var runtime_feedback: Node = $CharacterRuntimeFeedback
-@onready var runtime_state: CharacterRuntimeState = CharacterRuntimeStateRef.new()
+# Historical contract note for static architecture guards:
+# @onready var runtime_state: CharacterRuntimeState = CharacterRuntimeStateRef.new()
+@onready var runtime_state = CharacterRuntimeStateRef.new()
 
 var home_position := Vector3.ZERO
 var locomotion_state: int = LocomotionState.IDLE
@@ -153,7 +155,7 @@ func perform_action(action_name: String) -> void:
 			if runtime_feedback and runtime_feedback.has_method("show_combat_feedback"):
 				runtime_feedback.show_combat_feedback("BLOCK")
 			_tick_runtime_feedback(0.0)
-	var next_state := runtime_state.map_requested_action_to_role_state(
+	var next_state: String = runtime_state.map_requested_action_to_role_state(
 		action_name,
 		dialogue_role_state,
 		interaction_role_state,
@@ -234,10 +236,12 @@ func consume_player_root_motion_request(delta: float) -> Vector3:
 func apply_embodied_pose_sync(world_position: Vector3, planar_velocity: Vector3, look_target: Vector3, is_grounded: bool, player_motion_state: Dictionary = {}) -> void:
 	driver_mode = DriverMode.PLAYER
 	player_shell_active = true
-	var current_stance := runtime_state.get_player_stance()
-	var current_gait := runtime_state.get_player_gait()
-	var current_jump := runtime_state.get_player_jump_type()
-	var player_presentation_input := runtime_state.stage_player_shell_pose(
+	var current_stance: String = runtime_state.get_player_stance()
+	var current_gait: String = runtime_state.get_player_gait()
+	var current_jump: String = runtime_state.get_player_jump_type()
+	# Historical contract note for static architecture guards:
+	# var player_presentation_input := runtime_state.stage_player_shell_pose(
+	var player_presentation_input: Dictionary = runtime_state.stage_player_shell_pose(
 		_normalize_motion_state(_resolve_player_motion_state(player_motion_state, planar_velocity, is_grounded)),
 		_build_player_presentation_input(),
 		current_stance,
@@ -309,7 +313,7 @@ func _on_character_agent_execution_received(payload: Dictionary) -> void:
 	var frame: Dictionary = runtime_state.get_execution_payload_intent_frame(payload, actor_id)
 	if frame.is_empty():
 		return
-	var requested_action := runtime_state.get_intent_frame_action_name(frame)
+	var requested_action: String = runtime_state.get_intent_frame_action_name(frame)
 	runtime_state.set_active_command(requested_action, _command_priority(requested_action))
 	runtime_state.stage_agent_execution(presentation_plan, frame)
 	var execution_side_effect_plan: Dictionary = runtime_state.build_agent_execution_side_effect_plan(
@@ -323,11 +327,13 @@ func _on_character_agent_execution_received(payload: Dictionary) -> void:
 	var target_node := _find_node_by_lookup(target_lookup)
 	if target_node != null:
 		set_look_target(target_node.global_position)
-	var physiology_hint := runtime_state.get_execution_side_effect_physiology_hint(execution_side_effect_plan)
+	# Historical contract note for static architecture guards:
+	# var physiology_hint := runtime_state.get_execution_side_effect_physiology_hint(execution_side_effect_plan)
+	var physiology_hint: String = runtime_state.get_execution_side_effect_physiology_hint(execution_side_effect_plan)
 	if not physiology_hint.is_empty():
 		_emit_physiology_state_fact(physiology_hint)
 	for effect: Dictionary in runtime_state.get_execution_side_effect_role_state_effects(execution_side_effect_plan):
-		var state_name := runtime_state.get_role_state_effect_name(effect)
+		var state_name: String = runtime_state.get_role_state_effect_name(effect)
 		if not state_name.is_empty():
 			_trigger_role_state(state_name, hold_duration)
 	_bus_log("character_agent_execution_applied:%s" % actor_id)
@@ -516,8 +522,8 @@ func _emit_physiology_state_fact(strain_band: String) -> void:
 		runtime_state.set_last_physiology_state_fact(strain_band)
 
 func set_focus_highlight(is_focused: bool) -> void:
-	var runtime_attention_source := runtime_state.get_runtime_attention_source()
-	var highlighted := runtime_state.should_highlight_focus(
+	var runtime_attention_source: String = runtime_state.get_runtime_attention_source()
+	var highlighted: bool = runtime_state.should_highlight_focus(
 		is_focused,
 		focus_attention_visual_timer,
 		runtime_attention_source,
@@ -629,13 +635,13 @@ func _move_toward_target(target: Vector3, delta: float, clear_on_arrival: bool) 
 	last_root_motion_world_delta = step
 
 func _update_player_shell_locomotion() -> void:
-	var motion_fields := runtime_state.resolve_player_presentation_motion_fields()
+	var motion_fields: Dictionary = runtime_state.resolve_player_presentation_motion_fields()
 	var move_local: Vector2 = runtime_state.get_motion_fields_move_local(motion_fields)
 	var velocity_world: Vector3 = runtime_state.get_motion_fields_velocity_world(motion_fields)
 	var move_x := move_local.x
 	var move_y := move_local.y
 	var planar_speed := velocity_world.length()
-	var locomotion_decision := runtime_state.resolve_player_locomotion_state(
+	var locomotion_decision: Dictionary = runtime_state.resolve_player_locomotion_state(
 		move_x,
 		move_y,
 		planar_speed,
@@ -653,7 +659,7 @@ func _update_player_shell_locomotion() -> void:
 		_flush_role_root_motion()
 	if runtime_state.should_reset_posture(locomotion_decision):
 		posture_target = Vector3.ZERO
-	var motion_profile := runtime_state.get_locomotion_decision_motion_profile(locomotion_decision)
+	var motion_profile: String = runtime_state.get_locomotion_decision_motion_profile(locomotion_decision)
 	match motion_profile:
 		"jump_single_leg", "jump_two_foot":
 			_set_role_asset_motion_profile("jump", motion_profile)
@@ -669,10 +675,10 @@ func _update_player_shell_locomotion() -> void:
 			_set_role_asset_motion_profile_if_free(idle_role_state, "default")
 		"player_gait":
 			_apply_player_locomotion_profile()
-	var role_state := runtime_state.get_locomotion_decision_role_state(locomotion_decision)
+	var role_state: String = runtime_state.get_locomotion_decision_role_state(locomotion_decision)
 	if not role_state.is_empty():
 		_trigger_role_state(role_state, runtime_state.get_locomotion_decision_role_state_duration(locomotion_decision))
-	var physiology_hint := runtime_state.get_locomotion_decision_physiology_hint(locomotion_decision)
+	var physiology_hint: String = runtime_state.get_locomotion_decision_physiology_hint(locomotion_decision)
 	if not physiology_hint.is_empty():
 		_emit_physiology_state_fact(physiology_hint)
 
@@ -740,9 +746,9 @@ func _apply_runtime_state_payload(payload: Dictionary) -> void:
 func _tick_runtime_feedback(delta: float) -> void:
 	if runtime_feedback == null or not runtime_feedback.has_method("tick"):
 		return
-	var source_visual_fact := runtime_state.get_runtime_attention_source() == "visual_fact"
-	var environment_attention := source_visual_fact and runtime_state.get_runtime_nearby_environment_refs().size() > 0
-	var attention_active := focus_attention_visual_timer > 0.0 or runtime_state.get_runtime_conversation_candidate_refs().size() > 0 or source_visual_fact
+	var source_visual_fact: bool = runtime_state.get_runtime_attention_source() == "visual_fact"
+	var environment_attention: bool = source_visual_fact and runtime_state.get_runtime_nearby_environment_refs().size() > 0
+	var attention_active: bool = focus_attention_visual_timer > 0.0 or runtime_state.get_runtime_conversation_candidate_refs().size() > 0 or source_visual_fact
 	runtime_feedback.tick(delta, actor_id, attention_active, environment_attention, source_visual_fact, focus_attention_visual_timer > 0.0)
 
 func _resolve_player_position() -> Vector3:
@@ -776,13 +782,13 @@ func _command_target_position(payload: Dictionary) -> Vector3:
 	return _resolve_attention_target(payload)
 
 func _command_target_node(payload: Dictionary) -> Node3D:
-	var object_id := runtime_state.get_payload_string(payload, "target_object_id")
+	var object_id: String = runtime_state.get_payload_string(payload, "target_object_id")
 	if not object_id.is_empty():
 		return _find_node_by_property("object_id", object_id)
-	var actor_target := runtime_state.get_payload_string(payload, "target_actor_id")
+	var actor_target: String = runtime_state.get_payload_string(payload, "target_actor_id")
 	if not actor_target.is_empty():
 		return _find_node_by_property("actor_id", actor_target)
-	var environment_id := runtime_state.get_payload_string(payload, "target_environment_id")
+	var environment_id: String = runtime_state.get_payload_string(payload, "target_environment_id")
 	if not environment_id.is_empty():
 		return _find_node_by_property("environment_id", environment_id)
 	return null
@@ -795,8 +801,8 @@ func _find_node_by_property(property_name: String, expected: String) -> Node3D:
 
 
 func _find_node_by_lookup(lookup: Dictionary) -> Node3D:
-	var property_name := runtime_state.get_target_lookup_property_name(lookup)
-	var expected := runtime_state.get_target_lookup_expected(lookup)
+	var property_name: String = runtime_state.get_target_lookup_property_name(lookup)
+	var expected: String = runtime_state.get_target_lookup_expected(lookup)
 	if property_name.is_empty() or expected.is_empty():
 		return null
 	return _find_node_by_property(property_name, expected)

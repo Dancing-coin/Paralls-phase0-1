@@ -112,6 +112,24 @@ func _dispatch_message(raw_text: String) -> void:
         "character_agent_execution":
             _bus_log("character_agent_execution:%s" % JSON.stringify(payload))
             _bus_emit("character_agent_execution_received", [payload])
+        "character_agent_debug_snapshot":
+            _bus_log("character_agent_debug_snapshot:%s" % JSON.stringify(payload))
+            _bus_emit("character_agent_debug_snapshot_received", [payload])
+        "character_agent_debug_event":
+            _bus_log("character_agent_debug_event:%s" % JSON.stringify(payload))
+            _bus_emit("character_agent_debug_event_received", [payload])
+        "siming_debug_snapshot":
+            _bus_log("siming_debug_snapshot:%s" % JSON.stringify(payload))
+            _bus_emit("siming_debug_snapshot_received", [payload])
+        "siming_debug_event":
+            _bus_log("siming_debug_event:%s" % JSON.stringify(payload))
+            _bus_emit("siming_debug_event_received", [payload])
+        "world_outcome_trace":
+            _bus_log("world_outcome_trace:%s" % JSON.stringify(payload))
+            _bus_emit("world_outcome_trace_received", [payload])
+        "script_beat_event":
+            _bus_log("script_beat_event:%s" % JSON.stringify(payload))
+            _bus_emit("script_beat_event_received", [payload])
         "state_machine_transition":
             _bus_log("state_machine_transition:%s" % JSON.stringify(payload))
             _bus_emit("state_machine_transition_received", [payload])

@@ -1,6 +1,6 @@
 # 当前项目实现总结
 
-日期：`2026-06-18`
+日期：`2026-06-21`
 
 这份文档是当前仓库 `Paralls Phase 0 Demo` 的 repo-local 实现总结。
 
@@ -60,6 +60,48 @@
 - `python scripts/verification/verify_l1_runtime_edges.py` -> `overall_l1_runtime_edges_passed=True`
 - `python scripts/verification/harness.py --profile phase0` -> `overall_strict_phase0_passed=True`
 - `python scripts/verification/harness.py --profile phase1-slice` -> `overall_phase1_slice_passed=True`
+
+当前 `2026-06-21` observatory worktree 验证结果：
+
+- `python -m pytest -v` -> `648 passed`
+- `python scripts/verification/harness.py --profile docs` -> `overall_docs_passed=True`
+- `python scripts/verification/harness.py --profile godot-project` -> `overall_godot_project_passed=True`
+- `python scripts/verification/harness.py --profile phase0` -> `overall_strict_phase0_passed=True`
+
+当前 worktree 还新增了完整 `Character Director Observatory`：
+
+- backend 已落地结构化 observatory projection chain
+- Godot 已落地 unified observatory state center
+- `ObservatoryRoot.tscn` 已正式挂进 `MainDemo`
+- observatory 默认 developer-only、hidden-by-default
+
+当前 observatory backend family 为：
+
+- `character_agent_debug_snapshot`
+- `character_agent_debug_event`
+- `siming_debug_snapshot`
+- `siming_debug_event`
+- `world_outcome_trace`
+- `script_beat_event`
+
+当前 observatory Godot surfaces 为：
+
+- `ActorStateTags`
+- `RelationshipOverlay`
+- `CharacterObserverPanel`
+- `DirectorMonitorPanel`
+- `SimingDirectorBoard`
+- `ScriptTimelinePanel`
+- `DialogueSceneLedger`
+- `WorldOutcomeTrace`
+- `ObservatoryInputController`
+- `CharacterDirectorState`
+
+当前 observatory runtime 边界为：
+
+- backend 普通 websocket 默认不附加 observatory family
+- 只有 `PHASE0_OBSERVATORY_STREAM=1` 时才会向普通 websocket 追加 observatory family
+- Godot observatory root 默认关闭，需通过 `F6/F7/F8` 等开发者操作显式开启
 
 当前 verification truth 还新增了一条 repo-local 工程事实：
 

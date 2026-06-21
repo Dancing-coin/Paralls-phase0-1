@@ -31,6 +31,60 @@ Useful harness profiles:
 - `python scripts/verification/harness.py --profile godot-project`
 - `python scripts/verification/harness.py --profile phase0`
 
+### Observatory Verification
+
+The repo now also carries a developer-only `Character Director Observatory`.
+
+It is intentionally separate from the old `DebugOverlay` path:
+
+- `DebugOverlay.gd` remains the narrow log-oriented trace surface
+- the observatory is the structured dramatic inspection surface
+
+Current backend observatory projection files:
+
+- `backend/app/models/observatory.py`
+- `backend/app/services/character_agent_debug_projection.py`
+- `backend/app/services/siming_debug_projection.py`
+- `backend/app/services/world_outcome_debug_projection.py`
+- `backend/app/services/script_beat_projection.py`
+
+Current Godot observatory files:
+
+- `scripts/ui/CharacterDirectorState.gd`
+- `scripts/ui/ActorStateTags.gd`
+- `scripts/ui/RelationshipOverlay.gd`
+- `scripts/ui/CharacterObserverPanel.gd`
+- `scripts/ui/DirectorMonitorPanel.gd`
+- `scripts/ui/SimingDirectorBoard.gd`
+- `scripts/ui/ScriptTimelinePanel.gd`
+- `scripts/ui/DialogueSceneLedger.gd`
+- `scripts/ui/WorldOutcomeTrace.gd`
+- `scripts/ui/ObservatoryInputController.gd`
+- `scenes/phase0/ObservatoryRoot.tscn`
+
+Current observatory message families:
+
+- `character_agent_debug_snapshot`
+- `character_agent_debug_event`
+- `siming_debug_snapshot`
+- `siming_debug_event`
+- `world_outcome_trace`
+- `script_beat_event`
+
+Current observatory controls:
+
+- `F6` master toggle
+- `F7` director-mode toggle
+- `F8` script-mode toggle
+- `Tab` / `Shift+Tab` actor cycling
+- `Space` freeze
+- `Esc` unfreeze
+
+Current developer-only / hidden-by-default rules:
+
+- Godot-side observatory state starts disabled
+- backend-side observatory websocket family stays off unless `PHASE0_OBSERVATORY_STREAM=1`
+
 ## Useful Runtime Trace Messages
 
 The following log families are useful during actor debugging:
@@ -95,3 +149,22 @@ After the 2026-06-15 optimization convergence pass, the minimum useful verificat
 4. `python scripts/verification/harness.py --profile phase0`
 
 Do not claim runtime completion from static tests alone.
+
+Useful focused observatory tests include:
+
+- `backend/tests/test_observatory_models.py`
+- `backend/tests/test_character_agent_debug_projection.py`
+- `backend/tests/test_siming_debug_projection.py`
+- `backend/tests/test_world_outcome_debug_projection.py`
+- `backend/tests/test_script_beat_projection.py`
+- `backend/tests/test_observatory_message_delivery_static.py`
+- `backend/tests/test_character_director_state_static.py`
+- `backend/tests/test_actor_state_tags_static.py`
+- `backend/tests/test_relationship_overlay_static.py`
+- `backend/tests/test_character_observer_panel_static.py`
+- `backend/tests/test_director_monitor_panel_static.py`
+- `backend/tests/test_siming_director_board_static.py`
+- `backend/tests/test_script_timeline_panel_static.py`
+- `backend/tests/test_dialogue_scene_ledger_static.py`
+- `backend/tests/test_observatory_input_controller_static.py`
+- `backend/tests/test_observatory_scene_mount_static.py`
