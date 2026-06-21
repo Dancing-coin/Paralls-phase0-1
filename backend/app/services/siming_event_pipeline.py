@@ -29,4 +29,8 @@ class SimingEventPipeline:
         result = self._runtime.tick(inputs)
         for audit in result.audit_records:
             self._audit_writer.record(audit)
+        for checkpoint in result.checkpoints:
+            self._audit_writer.record_checkpoint(checkpoint)
+        if result.read_model is not None:
+            self._audit_writer.record_read_model(result.read_model)
         self._producer.publish_outputs(result.outputs)

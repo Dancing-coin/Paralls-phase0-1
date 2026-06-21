@@ -179,3 +179,24 @@ def test_pipeline_preserves_no_action_audit_when_no_candidate_or_rule_applies() 
 
     records = audit_writer.find_by_correlation(room_id="room_demo", correlation_id="visual_fact:300")
     assert any(record.status == "no_action" for record in records)
+
+
+def test_pipeline_records_checkpoint_and_read_model_for_runtime_tick() -> None:
+    bus = InMemoryAuthorityEventBus()
+    audit_writer = SimingAuditWriter()
+    pipeline = make_pipeline(bus, audit_writer)
+    bus.subscribe("visual_fact_event", pipeline.handle_event)
+
+    bus.publish(make_visual_fact_event())
+
+    checkpoints = audit_writer.list_checkpoints(room_id="room_demo")
+    read_models = audit_writer.list_read_models(room_id="room_demo")
+    assert checkpoints
+    assert checkpoints[0].fairness_snapshot_ref is not None
+    assert checkpoints[0].fairness_snapshot_ref.startswith("fairness:")
+    assert read_models
+    assert read_models[0].derived_from_snapshot_ref is not None
+    assert read_models[0].derived_from_snapshot_ref.startswith("fairness:")
+    event_types = [event.event_type for event in bus.list_events(room_id="room_demo")]
+    assert "siming.read_model" not in event_types
+    assert "siming.checkpoint" not in event_types
