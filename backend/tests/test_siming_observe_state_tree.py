@@ -48,6 +48,36 @@ def test_observe_pipeline_accepts_allowed_authority_events_only() -> None:
     assert ignored == []
 
 
+def test_observe_pipeline_rejects_allowed_events_not_routed_to_siming() -> None:
+    pipeline = SimingObservePipeline()
+
+    ignored_direct_target = pipeline.observe(
+        [
+            make_event(
+                routing={
+                    "audience_mode": "targeted",
+                    "routing_mode": "target_ids",
+                    "target_ids": ["character_agent:char_b"],
+                }
+            )
+        ]
+    )
+    observed_broadcast = pipeline.observe(
+        [
+            make_event(
+                routing={
+                    "audience_mode": "broadcast",
+                    "routing_mode": "event_type",
+                    "target_ids": [],
+                }
+            )
+        ]
+    )
+
+    assert ignored_direct_target == []
+    assert len(observed_broadcast) == 1
+
+
 def test_state_tree_mirrors_environment_and_character_without_taking_authority() -> None:
     observed = SimingObservePipeline().observe([make_event()])
     tree = InMemorySimingStateTree()

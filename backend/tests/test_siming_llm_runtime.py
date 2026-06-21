@@ -4,6 +4,7 @@ from app.services.siming_llm_provider import (
     FakeSimingLlmCandidateProvider,
     SimingLlmProviderInvalidOutput,
 )
+from app.services.siming_feature_registry import SimingFeatureRegistry
 from app.services.siming_runtime import SimingRuntime
 
 
@@ -155,4 +156,30 @@ def test_runtime_records_no_action_when_provider_raises_value_error() -> None:
     result = runtime.tick([SimingInput(input_type="visual_fact_event", source_event=make_visual_fact_event())])
 
     assert any(audit.status == "llm_invalid_output" for audit in result.audit_records)
+    assert any(output.output_type == "no_action" for output in result.outputs)
+
+
+def test_runtime_shares_feature_registry_between_fairness_snapshot_and_policy() -> None:
+    registry = SimingFeatureRegistry()
+    registry.register_fairness_dimension("resource_pressure", required=False)
+    registry.register_policy_mapping(
+        dimension_id="resource_pressure",
+        reject_reason_tag="resource_pressure_sensitive",
+        rejection_reason="resource_pressure_policy_rejected",
+    )
+    runtime = SimingRuntime(
+        feature_registry=registry,
+        llm_provider=FakeSimingLlmCandidateProvider(
+            [make_candidate(reason_tags=["resource_pressure_sensitive"])]
+        ),
+    )
+
+    result = runtime.tick([SimingInput(input_type="visual_fact_event", source_event=make_visual_fact_event())])
+
+    assert result.read_model is not None
+    assert any(output.output_type == "fairness_snapshot" for output in result.outputs)
+    assert any(
+        audit.status == "policy_rejected" and "resource_pressure_policy_rejected" in audit.reason
+        for audit in result.audit_records
+    )
     assert any(output.output_type == "no_action" for output in result.outputs)

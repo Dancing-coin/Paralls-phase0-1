@@ -10,6 +10,7 @@ from app.models.siming_event import (
 from app.models.siming_runtime_state import ProjectionRunSnapshot, StateTreeSnapshot, StorylineStateSnapshot
 from app.services.siming_fact_core import SimingFactCore
 from app.services.siming_fairness_audit import SimingFairnessAuditEngine
+from app.services.siming_feature_registry import SimingFeatureRegistry
 from app.services.siming_feasibility import SimingExecutionFeasibility
 from app.services.siming_llm_provider import (
     DisabledSimingLlmCandidateProvider,
@@ -34,6 +35,7 @@ class SimingRuntime:
     def __init__(
         self,
         *,
+        feature_registry: SimingFeatureRegistry | None = None,
         llm_provider: SimingLlmCandidateProvider | None = None,
         policy: SimingInterventionPolicy | None = None,
         feasibility: SimingExecutionFeasibility | None = None,
@@ -47,13 +49,14 @@ class SimingRuntime:
         group_bridge: GroupSimulationBridgePort | None = None,
         read_model_builder: SimingReadModelBuilder | None = None,
     ) -> None:
+        self._feature_registry = feature_registry or SimingFeatureRegistry()
         self._llm_provider = llm_provider or DisabledSimingLlmCandidateProvider()
-        self._policy = policy or SimingInterventionPolicy()
+        self._policy = policy or SimingInterventionPolicy(feature_registry=self._feature_registry)
         self._feasibility = feasibility or SimingExecutionFeasibility()
         self._observe_pipeline = observe_pipeline or SimingObservePipeline()
         self._fact_core = fact_core or SimingFactCore()
         self._state_tree = state_tree or InMemorySimingStateTree()
-        self._fairness_audit = fairness_audit or SimingFairnessAuditEngine()
+        self._fairness_audit = fairness_audit or SimingFairnessAuditEngine(self._feature_registry)
         self._storyline_state = storyline_state or InMemoryStorylineState()
         self._obligation_ledger = obligation_ledger or InMemoryNarrativeObligationLedger()
         self._storyline_projection = storyline_projection or StubStorylineProjection()

@@ -17,5 +17,13 @@ class SimingObservePipeline:
         for event in events:
             if event.event_type not in self.ALLOWED_EVENT_TYPES:
                 continue
+            if not self._is_routed_to_siming(event):
+                continue
             observed.append(ObservedSimingEvent.from_authority_event(event))
         return observed
+
+    def _is_routed_to_siming(self, event: AuthorityEvent) -> bool:
+        target_ids = {str(target_id) for target_id in event.routing.target_ids}
+        if "siming" in target_ids:
+            return True
+        return event.routing.audience_mode == "broadcast"
