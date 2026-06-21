@@ -60,7 +60,7 @@ const CHARACTER_ACTOR_FAILURE_TARGET_NOT_PERCEIVED := "target_not_perceived"
 @onready var role_asset_root: Node3D = $VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot
 @onready var role_asset_scene: Node = $VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/KnightRoleSkin
 @onready var runtime_feedback: Node = $CharacterRuntimeFeedback
-@onready var runtime_state: CharacterRuntimeState = CharacterRuntimeStateRef.new()
+@onready var runtime_state = CharacterRuntimeStateRef.new()
 
 var home_position := Vector3.ZERO
 var locomotion_state: int = LocomotionState.IDLE
