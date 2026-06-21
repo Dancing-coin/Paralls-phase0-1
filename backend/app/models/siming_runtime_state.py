@@ -154,8 +154,21 @@ class ProjectionRunSnapshot(BaseModel):
     sim_tick_ts: int
     causation_id: str
     correlation_id: str
-    branch_status: NodeStatus
+    status: NodeStatus | None = None
+    branch_status: NodeStatus | None = None
+    basis_state_tree_ref: str | None = None
+    basis_fairness_snapshot_ref: str | None = None
+    candidate_hints: list[dict[str, Any]] = Field(default_factory=list)
     summary: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_projection_status(self) -> "ProjectionRunSnapshot":
+        resolved_status = self.status or self.branch_status
+        if resolved_status is None:
+            raise ValueError("status or branch_status is required")
+        self.status = resolved_status
+        self.branch_status = resolved_status
+        return self
 
 
 class SimingCheckpoint(BaseModel):
