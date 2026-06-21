@@ -1511,6 +1511,147 @@ Read models never become authority.
 - group pressure summary -> future `opportunity` / representative promotion candidate
 - balanced state -> `no_action`
 
+## 不可破坏演化约束
+
+本节冻结“后续升级不需要推倒重来”的硬约束。后续阶段可以增强能力，但不得破坏以下结构。
+
+### 1. 主循环形状固定
+
+司命长期主链固定为：
+
+```text
+ingest
+-> fact
+-> fairness
+-> candidate
+-> decision
+-> dispatch
+-> audit
+-> read model
+```
+
+后续可插入 auditor、projection、group simulation summary、更多 execution paths，但不得把主链改写成新的第二套决策骨架。
+
+### 2. 最终收敛面固定
+
+所有高级能力最终都必须收敛到：
+
+```text
+InterventionCandidate
+-> InterventionDecision
+-> Dispatch
+```
+
+这条收敛面在 Phase 1、Phase 2+、未来群体模拟场景中都不应改变。
+
+### 3. 状态树只做统一查询面
+
+`StateTreeSnapshot` 是统一查询面和当前态投影，不是统一真值库。
+
+- 环境、角色、视觉事实、`ESM` 结果只能镜像进树。
+- 历史真源永远回到事件总线和 audit 链。
+- 只有 `storyline`、`obligation`、`group bridge summary` 等明确属于司命的分支，才允许 `Edit`。
+
+### 4. 故事线状态是司命自有运行态
+
+`StorylineStateSnapshot` 和薄 `NarrativeObligationLedger` 必须作为司命自有状态长期存在。
+
+- 它们不是 read model。
+- 它们不是 projection 产物。
+- 它们是后续 `ProjectionRun`、`EventChainCandidate`、`DramaticPriorityModel` 的稳定挂载层。
+
+### 5. 群体模拟桥不是第二主脑
+
+`GroupSimulationBridgePort` 只能是上游统计状态适配层。
+
+- 它可以影响 `StateTreeSnapshot`、`StorylineStateSnapshot` 和 `InterventionCandidate` 的生成上下文。
+- 它不能直接生成 `InterventionDecision`。
+- 它不能直接发布 `siming.*`。
+
+### 6. 总线信封、领域对象、读模型三层分离
+
+以下三层必须长期分离：
+
+- 事件总线公共信封
+- 司命领域对象
+- read model / dashboard surface
+
+`world_ts`、`sim_tick_ts`、`snapshot_id`、`candidate_id`、`decision_id` 等领域字段不进入公共信封；read model 不反向写回事实或知识状态。
+
+### 7. 公平顶层维度允许扩展，但必须两步生效
+
+`FairnessStateSnapshot` 允许在未来新增顶层公平主维度，但新增维度必须两步走：
+
+1. 先注册进 snapshot 结构，成为可记录、可展示、可审计的维度。
+2. 再单独声明它如何影响 `imbalance typing`、`urgency`、`policy mapping` 和 `candidate generation`。
+
+在补齐第二步前，新维度默认只参与 read model / audit，不直接影响主决策链。
+
+### 8. snapshot 承载维度，policy 解释维度
+
+`FairnessStateSnapshot` 负责承载维度；`InterventionPolicyEngine` 负责解释维度。
+
+- 新维度可以先进入结构。
+- 但只有补齐 `PolicyEngine` 映射后，才允许影响 `InterventionCandidate`。
+
+### 9. projection 永远只能间接生效
+
+`StorylineProjectionPort` 后续可以增强：
+
+- candidate generation
+- 排序
+- explanation
+- horizon
+
+但它永远不能越过：
+
+```text
+InterventionCandidate
+-> InterventionDecision
+```
+
+它不能直接产出最终 decision，也不能绕开 `PolicyGuard`、`ExecutionFeasibilityPort` 或 `AuditReplayPort`。
+
+### 10. 高层干预带保持小闭集
+
+`band` 的长期稳定性高于其表达丰富度。未来升级优先扩：
+
+- `reason_tag`
+- `goal`
+- `required_downstream_path`
+- `payload`
+
+而不是轻易新增新的顶层 `band`。只有当上述扩展位都无法表达时，才考虑扩 band，并同时更新 policy、feasibility、dispatcher、audit 和下游协议。
+
+### 11. 所有升级优先走注册式扩展点
+
+后续新增能力必须通过注册式扩展点接入，例如：
+
+- auditor
+- fairness dimension
+- projection strategy
+- execution path
+- guardrail
+- group simulation input mode
+- read model detail level
+
+不允许靠在 `tick()` 主链中不断堆叠新的硬编码条件分支来演化系统。
+
+### 12. 允许增强，不允许改写主链语义
+
+后续阶段允许：
+
+- 增加新能力
+- 提高叙事推演强度
+- 扩展群体模拟输入
+- 增强 read model
+
+但不允许：
+
+- 改写 `tick()` 主链语义
+- 引入第二条并列决策主链
+- 把上游统计状态、projection 结果或 read model 伪装成事实真源
+
 ## 验收标准
 
 完整司命 Agent Loop 架构成立时，系统应能证明：
