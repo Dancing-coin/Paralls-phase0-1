@@ -1,8 +1,11 @@
+import pytest
+
 from app.models.siming_event import FairnessStateSnapshot
 from app.models.siming_runtime_state import (
     GroupSimulationBranchSnapshot,
     NarrativeObligation,
     NarrativeObligationLedgerSnapshot,
+    ProjectionRunSnapshot,
     StateTreeNode,
     StateTreeSnapshot,
     StorylineStateSnapshot,
@@ -202,3 +205,22 @@ def test_candidate_hints_do_not_include_decision_ids() -> None:
     )
 
     assert "decision_id" not in projection.candidate_hints[0]
+
+
+def test_projection_rejects_conflicting_status_aliases() -> None:
+    with pytest.raises(
+        ValueError,
+        match="status and branch_status must match",
+    ):
+        ProjectionRunSnapshot(
+            projection_id="projection:room_demo:301",
+            schema_version=1,
+            producer_system="siming.projection",
+            room_id="room_demo",
+            world_ts=300,
+            sim_tick_ts=301,
+            causation_id="visual_fact:300",
+            correlation_id="visual_fact:300",
+            status="fresh",
+            branch_status="stale",
+        )
