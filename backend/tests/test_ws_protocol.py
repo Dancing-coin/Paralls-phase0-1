@@ -537,7 +537,7 @@ def test_websocket_environment_request_accepts_light_level_restore_variant() -> 
         for _ in range(5):
             websocket.receive_json()
         drop_siming_output = websocket.receive_json()
-        drop_character_agent_output = websocket.receive_json()
+        drop_character_agent_execution = websocket.receive_json()
 
         websocket.send_json(
             {
@@ -573,9 +573,8 @@ def test_websocket_environment_request_accepts_light_level_restore_variant() -> 
     assert drop_siming_output["payload"]["authority_event_type"] == "siming.fact_reveal"
     assert drop_siming_output["payload"]["authority_event_id"].startswith("siming:dispatch_intent:")
     assert drop_siming_output["payload"]["target_environment_id"] == "env_lamp"
-    assert drop_character_agent_output["message_type"] == "character_agent_output"
-    assert drop_character_agent_output["payload"]["actor_id"] == "char_b"
-    assert drop_character_agent_output["payload"]["command_type"] in {"observe", "approach", "speak", "interact"}
+    assert drop_character_agent_execution["message_type"] == "character_agent_execution"
+    assert drop_character_agent_execution["payload"]["actor_id"] == "char_b"
     assert ack["message_type"] == "ack"
     assert ack["payload"]["accepted"] is True
     assert ack["payload"]["route"] == "esm_service"
@@ -859,7 +858,7 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
         self_body_perceived = websocket.receive_json()
         environment_result = websocket.receive_json()
         siming_output = websocket.receive_json()
-        character_agent_output = websocket.receive_json()
+        character_agent_execution = websocket.receive_json()
         runtime_snapshot = websocket.receive_json()
         projection_delta = websocket.receive_json()
         candidate_event = websocket.receive_json()
@@ -959,9 +958,8 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
     assert environment_result["payload"]["current_state"] == "alerted"
     assert siming_output["message_type"] == "siming_output"
     assert siming_output["payload"]["target_actor_id"] == "char_b"
-    assert character_agent_output["message_type"] == "character_agent_output"
-    assert character_agent_output["payload"]["actor_id"] == "char_b"
-    assert character_agent_output["payload"]["command_type"] in {"observe", "approach", "speak", "interact"}
+    assert character_agent_execution["message_type"] == "character_agent_execution"
+    assert character_agent_execution["payload"]["actor_id"] == "char_b"
     assert runtime_snapshot["message_type"] == "character_runtime_state_snapshot"
     assert runtime_snapshot["payload"]["actor_id"] == "char_c"
     assert projection_delta["message_type"] == "character_runtime_state_delta"
@@ -1135,7 +1133,7 @@ def test_websocket_focus_target_change_emits_runtime_alignment_messages() -> Non
     assert siming_output["payload"]["target_actor_id"] == "char_a"
 
 
-def test_websocket_raw_visual_fact_event_emits_character_agent_output_for_char_a() -> None:
+def test_websocket_raw_visual_fact_event_emits_character_agent_execution_for_char_a() -> None:
     reset_runtime_state()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
@@ -1174,10 +1172,70 @@ def test_websocket_raw_visual_fact_event_emits_character_agent_output_for_char_a
             }
         )
 
-        received = [websocket.receive_json() for _ in range(7)]
+        received = [websocket.receive_json() for _ in range(8)]
 
     outputs = [message for message in received if message["message_type"] == "character_agent_output"]
+    executions = [message for message in received if message["message_type"] == "character_agent_execution"]
 
-    assert outputs
-    assert outputs[0]["payload"]["actor_id"] == "char_a"
-    assert outputs[0]["payload"]["command_type"] in {"observe", "approach", "speak", "interact"}
+    assert outputs == []
+    assert executions
+    assert executions[0]["payload"]["actor_id"] == "char_a"
+    assert all(message["payload"]["actor_id"] == "char_a" for message in executions)
+    assert "actor_control_frames" in executions[0]["payload"]
+    assert "presentation_plan" in executions[0]["payload"]
+
+
+def test_websocket_targeted_auditory_fact_event_emits_character_agent_execution_for_char_b() -> None:
+    reset_runtime_state()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "raw_fact_event",
+                "payload": {
+                    "event_type": "raw_fact_event",
+                    "fact_family": "auditory_fact",
+                    "fact_type": "speaker_active",
+                    "relation_type": "speech_mode_changed",
+                    "producer_ts": 902,
+                    "room_id": "room_demo",
+                    "scene_id": "scene_demo",
+                    "zone_id": "zone_focus",
+                    "source": {
+                        "layer": "L1",
+                        "system": "godot.raw_fact_emitter",
+                        "actor_id": "char_a",
+                        "object_id": "",
+                        "environment_id": "",
+                    },
+                    "targets": {
+                        "actor_id": "char_b",
+                        "object_id": "",
+                        "environment_id": "",
+                    },
+                    "world": {},
+                    "observability": {"visual": False, "auditory": True, "occluded": False},
+                    "acoustics": {
+                        "loudness_band": "medium",
+                        "speech_mode": "normal",
+                        "reachability": "clear",
+                        "ambient_noise": "quiet",
+                    },
+                    "effect_kind": "pulse",
+                    "subject_key": "",
+                    "causation_id": "aud:902",
+                    "correlation_id": "aud:902",
+                },
+            }
+        )
+
+        received = [websocket.receive_json() for _ in range(2)]
+
+    outputs = [message for message in received if message["message_type"] == "character_agent_output"]
+    executions = [message for message in received if message["message_type"] == "character_agent_execution"]
+
+    assert outputs == []
+    assert executions
+    assert executions[0]["payload"]["actor_id"] == "char_b"
+    assert "actor_control_frames" in executions[0]["payload"]
+    assert "presentation_plan" in executions[0]["payload"]

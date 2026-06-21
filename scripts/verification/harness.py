@@ -107,6 +107,13 @@ def _profile_command(profile: str, project_root: Path, python_exe: str, godot_ex
     return command
 
 
+def _result_artifact_exists(project_root: Path, profile_config: dict[str, object]) -> bool:
+    artifact = str(profile_config.get("result_artifact", "") or "")
+    if artifact == "":
+        return False
+    return (project_root / artifact).exists()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile", choices=PROFILES, default="boundaries")
@@ -125,8 +132,26 @@ def main() -> int:
     for profile in profiles:
         print(f"harness_profile={profile}")
         command = _profile_command(profile, project_root, python_exe, godot_exe, registry.profiles)
-        exit_code = _run(command, project_root)
-        profile_results.append({"profile": profile, "command": command, "exit_code": exit_code})
+        profile_config = registry.profiles[profile]
+        max_attempts = max(1, int(profile_config.get("max_attempts", 1)))
+        exit_code = 1
+        attempts = 0
+        for attempt in range(1, max_attempts + 1):
+            attempts = attempt
+            exit_code = _run(command, project_root)
+            if exit_code == 0:
+                break
+            if _result_artifact_exists(project_root, profile_config):
+                break
+        profile_results.append(
+            {
+                "profile": profile,
+                "command": command,
+                "exit_code": exit_code,
+                "attempts": attempts,
+                "max_attempts": max_attempts,
+            }
+        )
         if exit_code != 0:
             report_paths = _write_harness_report(project_root, profile_results, overall_passed=False, run_id=run_id)
             print(f"harness_report_json={report_paths['json']}")

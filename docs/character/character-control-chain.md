@@ -18,9 +18,11 @@ The three supported control sources are:
 mouse / keyboard
 -> PlayerShell
 -> Phase0PlayerBridge
--> CharacterIntentFrame-style adaptation
+-> HumanControllerAdapter
+-> CharacterControllerPort
+-> CharacterIntentFrame
 -> CharacterMotor
--> CharacterMotionState
+-> normalized local motion-state publication
 -> CharacterReplica
 -> KnightRoleSkin
 -> KnightCombatModifier
@@ -32,17 +34,35 @@ mouse / keyboard
 - `PlayerShell.gd`
   - raw human input
   - camera/body yaw coupling
-  - raw shell motion frame
+  - human-source intent-frame staging
 
 - `Phase0PlayerBridge.gd`
-  - action translation
-  - player shell <-> visible actor sync
+  - action translation and demo/player-shell sync
+  - program-entry relay surface for the shared ingress family
+  - player shell <-> visible actor sync through thin actor-facing helper aliases
+  - normalized intent-frame consumption through `CharacterControllerPort` helper reads rather than bridge-local dict unpacking
+
+- `Phase0CharacterShellSync.gd`
+  - thin sync helper that now prefers actor-facing embodied-control aliases
+  - only falls back to older player-shell-specific method names for migration compatibility
+
+- `Phase0ViewAnchorResolver.gd`
+  - thin view/anchor helper that now prefers actor-facing embodied-control / forward aliases
+  - normalized intent-frame forward fallback now routes through `CharacterControllerPort` helper reads
+  - only falls back to older player-shell-specific names or wrapper camera seams for migration compatibility
+
+- `HumanControllerAdapter.gd`
+  - human-source adaptation into shared actor intent
+
+- `CharacterControllerPort.gd`
+  - normalized actor-facing intent/control shape
+  - shared field-read surface for `move_local`, `gait`, `desired_facing_yaw`, and `actor_id`
 
 - `CharacterMotor.gd`
   - locomotion truth
 
 - `CharacterReplica.gd`
-  - role-runtime state
+  - actor runtime shell around `CharacterRuntimeState`
 
 - `KnightRoleSkin.gd`
   - base presentation
@@ -55,10 +75,12 @@ mouse / keyboard
 ```text
 CharacterAgent
 -> CharacterGoalCommand
--> adapter
+-> AgentControllerAdapter
+-> CharacterControllerPort
 -> CharacterIntentFrame
+-> CharacterRuntimeState
 -> CharacterMotor
--> CharacterMotionState
+-> normalized local motion-state publication
 -> CharacterReplica
 -> KnightRoleSkin
 -> KnightCombatModifier
@@ -71,10 +93,12 @@ The source differs, but the lower-half actor body path should stay shared.
 ```text
 autotest / replay / MCP / harness
 -> program command input
--> adapter
+-> ProgramControllerAdapter
+-> CharacterControllerPort
 -> CharacterIntentFrame
+-> CharacterRuntimeState
 -> CharacterMotor
--> CharacterMotionState
+-> normalized local motion-state publication
 -> CharacterReplica
 -> KnightRoleSkin
 -> KnightCombatModifier
@@ -117,10 +141,14 @@ mouse button right
 
 ```text
 WASD / run / jump
--> PlayerShell current_intent_frame
+-> PlayerShell human intent frame
+-> HumanControllerAdapter
+-> CharacterControllerPort
+-> CharacterIntentFrame
 -> CharacterMotor.apply_intent_frame()
--> CharacterMotionState
--> CharacterReplica player control frame sync
+-> normalized local motion-state publication
+-> Phase0CharacterShellSync actor-facing helper surface
+-> CharacterReplica embodied control / pose sync
 -> KnightRoleSkin motion profile / locomotion refinement
 -> final visible movement
 ```
@@ -130,18 +158,16 @@ WASD / run / jump
 When debugging input or action problems, inspect the chain in this order:
 
 1. `global_input:*`
-2. `player_shell_mouse_button:*`
-3. `combat_mouse_event:*`
-4. `player_combat_action:*`
-5. `role_action_overlay:*`
-6. visible body result
+2. static relay/bridge coverage in `backend/tests/test_player_combat_action_static.py`
+3. `role_action_overlay:*`
+4. visible body result
 
 If the chain breaks:
 
 - before step 2: input never reached `PlayerShell`
-- before step 4: bridge/adaptation problem
-- before step 5: actor/runtime or timer problem
-- after step 5: presentation or modifier problem
+- before step 3: bridge/adaptation problem
+- before step 4: actor/runtime or timer problem
+- after step 4: presentation or modifier problem
 
 ## Why The Modifier Exists
 
@@ -151,3 +177,17 @@ The modifier exists because:
 
 - writing combat pose directly in the base presentation layer can be overwritten by animation playback
 - post-animation correction is the correct place for reliable final combat embodiment
+
+## Mid-Term ControllerPort Boundary
+
+`ControllerPort` was a Phase1-facing mid-term boundary during the near-term cleanup pass.
+
+Current repo truth is:
+
+- the near-term cleanup kept `PlayerShell` and `Phase0PlayerBridge` as the demo-safe seam
+- Stage 2 has now landed `CharacterControllerPort`
+- Stage 2 has now landed `HumanControllerAdapter`, `AgentControllerAdapter`, and `ProgramControllerAdapter`
+- Stage 2 now also routes more wrapper/helper-side normalized intent reads back through `CharacterControllerPort` helper methods instead of leaving those field names spread across `PlayerShell` and `Phase0ViewAnchorResolver`
+- Stage 2 now also prefers actor-facing helper aliases in `Phase0CharacterShellSync` and `Phase0ViewAnchorResolver` before falling back to older player-shell-specific naming or broader wrapper-camera fallback
+- Stage 2 still keeps those older names only as thin migration-compat fallbacks, not as the preferred architecture truth
+- full actor convergence is still not complete, so these seams should be treated as the first landed shared ingress family rather than the final finished architecture

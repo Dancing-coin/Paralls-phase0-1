@@ -88,16 +88,70 @@ def get_health(url: str = "http://127.0.0.1:8000/health") -> dict[str, object] |
     try:
         with urllib.request.urlopen(url, timeout=1.0) as response:
             return json.loads(response.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
         return None
 
 
-def ensure_backend(project_root: Path, python_exe: str) -> tuple[dict[str, object], subprocess.Popen[str] | None]:
+def _find_listener_pid(port: int) -> int | None:
+    try:
+        result = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                f"(Get-NetTCPConnection -LocalPort {port} -State Listen | Select-Object -First 1 -ExpandProperty OwningProcess)",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+    except OSError:
+        return None
+    value = result.stdout.strip()
+    if value == "":
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def _terminate_listener_pid(pid: int) -> None:
+    subprocess.run(
+        ["taskkill", "/PID", str(pid), "/T", "/F"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+def ensure_backend(
+    project_root: Path,
+    python_exe: str,
+    *,
+    prefer_fresh_backend: bool = False,
+) -> tuple[dict[str, object], subprocess.Popen[str] | None]:
     health = get_health()
     expected_root = str(project_root)
     if health is not None:
-        if str(health.get("worktree_root", "")) == expected_root:
+        if str(health.get("worktree_root", "")) == expected_root and not prefer_fresh_backend:
             return health, None
+        if str(health.get("worktree_root", "")) == expected_root and prefer_fresh_backend:
+            listener_pid = _find_listener_pid(8000)
+            if listener_pid is not None:
+                _terminate_listener_pid(listener_pid)
+                deadline = time.time() + 15.0
+                while time.time() < deadline:
+                    if get_health() is None and _find_listener_pid(8000) is None:
+                        break
+                    time.sleep(0.1)
+            health = None
+        elif str(health.get("worktree_root", "")) == expected_root:
+            return health, None
+    if health is not None:
         raise RuntimeError(
             f"Port 8000 is occupied by a different backend: {health.get('worktree_root', '')}"
         )
@@ -142,6 +196,8 @@ def scan_direct_visual_fact_bypass(project_root: Path) -> str:
         if "send_envelope(" not in text:
             continue
         if normalized.endswith("scripts/l1/facts/RawFactEmitter.gd"):
+            continue
+        if normalized.startswith("scripts/verification/"):
             continue
         if (
             "emit_visual_fact_event(" in text

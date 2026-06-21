@@ -2,6 +2,8 @@ extends CharacterBody3D
 
 const CharacterActorSchemaRef = preload("res://scripts/character/CharacterActorSchema.gd")
 const CharacterControlModeRef = preload("res://scripts/character/CharacterControlMode.gd")
+const CharacterControllerPortRef = preload("res://scripts/character/CharacterControllerPort.gd")
+const HumanControllerAdapterRef = preload("res://scripts/character/HumanControllerAdapter.gd")
 const HUMAN_CONTROL_MODE_NAME := "human_controlled"
 const HUMAN_CONTROL_MODE := CharacterControlModeRef.HUMAN_CONTROLLED
 
@@ -33,12 +35,12 @@ const HUMAN_CONTROL_MODE := CharacterControlModeRef.HUMAN_CONTROLLED
 @export var min_spring_length: float = 2.2
 @export var max_spring_length: float = 9.0
 
-@onready var visual_root: Node3D = $VisualRoot
+@onready var visual_root: Node3D = get_node_or_null("VisualRoot") as Node3D
 @onready var cam_holder: Node3D = $CameraHolder
 @onready var spring_arm: SpringArm3D = $CameraHolder/SpringArm3D
 @onready var camera: Camera3D = $CameraHolder/SpringArm3D/Camera3D
 @onready var external_motion_driver: Node = get_node_or_null("Phase0InputBridge")
-@onready var character_motor: Node = get_node_or_null("CharacterMotor")
+@onready var character_motor: Node = find_child("CharacterMotor", true, false)
 
 var base_jump_velocity: float = 0.0
 var base_jump_gravity: float = 0.0
@@ -54,23 +56,16 @@ var queued_jump_variant := ""
 var queued_jump_move_local := Vector2.ZERO
 var forced_move_local := Vector2.ZERO
 var forced_run_state := false
-var last_left_mouse_pressed := false
-var last_right_mouse_pressed := false
 
 func _ready() -> void:
 	_recalculate_jump_profile()
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	look_pitch = cam_holder.rotation.x
 	cam_holder.rotation.y = 0.0
-	last_left_mouse_pressed = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-	last_right_mouse_pressed = Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
 
 func _input(event: InputEvent) -> void:
 	_forward_combat_mouse_event(event)
 	_forward_shell_action_event(event)
-
-func _process(_delta: float) -> void:
-	_poll_mouse_button_debug_state()
 
 func _unhandled_input(event: InputEvent) -> void:
 	_forward_combat_mouse_event(event)
@@ -98,26 +93,13 @@ func _unhandled_input(event: InputEvent) -> void:
 func _forward_combat_mouse_event(event: InputEvent) -> void:
 	if not (event is InputEventMouseButton):
 		return
-	_bus_log("player_shell_mouse_button:button=%s pressed=%s device=%s" % [event.button_index, str((event as InputEventMouseButton).pressed), (event as InputEventMouseButton).device])
 	if external_motion_driver and external_motion_driver.has_method("handle_mouse_combat_event"):
 		external_motion_driver.handle_mouse_combat_event(event as InputEventMouseButton)
 
 func _forward_shell_action_event(event: InputEvent) -> void:
-	if external_motion_driver and external_motion_driver.has_method("handle_shell_action_event"):
-		external_motion_driver.handle_shell_action_event(event)
-
-func _poll_mouse_button_debug_state() -> void:
-	var left_pressed := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-	var right_pressed := Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
-	if left_pressed != last_left_mouse_pressed or right_pressed != last_right_mouse_pressed:
-		_bus_log("mouse_button_state:left=%s right=%s" % [str(left_pressed), str(right_pressed)])
-	last_left_mouse_pressed = left_pressed
-	last_right_mouse_pressed = right_pressed
-
-func _bus_log(message: String) -> void:
-	var bus := get_node_or_null("/root/LocalPresentationBus")
-	if bus and bus.has_method("log_debug"):
-		bus.log_debug(message)
+	var relay := get_node_or_null("Phase0PlayerCommandRelay")
+	if relay and relay.has_method("handle_shell_action_event"):
+		relay.handle_shell_action_event(event)
 
 func _physics_process(delta: float) -> void:
 	current_intent_frame = _build_human_intent_frame()
@@ -168,6 +150,45 @@ func can_trigger_movement_jump() -> bool:
 func get_camera() -> Camera3D:
 	return camera
 
+func get_control_anchor_position() -> Vector3:
+	if external_motion_driver and external_motion_driver.has_method("get_control_anchor_position"):
+		return external_motion_driver.get_control_anchor_position()
+	return global_position
+
+func get_motion_state() -> Dictionary:
+	return motion_state if motion_state is Dictionary else {}
+
+func get_action_binding(property_name: StringName, fallback: StringName) -> StringName:
+	return _get_player_action(property_name, fallback)
+
+func get_numeric_setting(property_name: StringName, fallback: float) -> float:
+	var value: Variant = get(property_name)
+	if value is float:
+		return value
+	if value is int:
+		return float(value)
+	return fallback
+
+func get_planar_velocity() -> Vector3:
+	return Vector3(velocity.x, 0.0, velocity.z)
+
+func is_grounded_state() -> bool:
+	return is_on_floor()
+
+func get_body_position() -> Vector3:
+	return global_position
+
+func get_vertical_velocity() -> float:
+	return velocity.y
+
+func get_character_replica() -> Node:
+	return get_node_or_null("CharacterReplica")
+
+func get_visual_forward() -> Vector3:
+	if visual_root:
+		return -(visual_root.global_basis.z).normalized()
+	return -(global_basis.z).normalized()
+
 func set_forced_control(move_local: Vector2, wants_run: bool) -> void:
 	forced_move_local = move_local.limit_length(1.0)
 	forced_run_state = wants_run
@@ -183,34 +204,39 @@ func _build_human_intent_frame() -> Dictionary:
 	var move_local := queued_jump_move_local if queued_jump_move_local.length() > 0.001 else _current_move_local_input()
 	var gait := "run" if (forced_run_state or Input.is_action_pressed(run_action)) and move_local.length() > 0.001 else "walk"
 	var action := "locomotion" if move_local.length() > 0.001 else "idle"
+	var stance := "stand"
 	if queued_jump_variant != "":
 		action = "jump_%s" % queued_jump_variant
 	elif is_on_floor() and Input.is_action_just_pressed(jump_action):
 		action = "jump_single_leg" if gait == "run" and move_local.length() > 0.001 else "jump_two_foot"
 	queued_jump_variant = ""
 	queued_jump_move_local = Vector2.ZERO
-	return {
-		"controller_source": "human",
-		"control_mode": HUMAN_CONTROL_MODE,
+	return HumanControllerAdapterRef.build_intent_frame(
+		"char_c",
+		{
 		"move_local": move_local,
+		"look_local": Vector2(0.0, look_pitch),
 		"desired_facing_yaw": rotation.y,
 		"look_pitch": look_pitch,
+		"stance": stance,
 		"gait": gait,
 		"action": action,
-	}
+		}
+	)
 
 func _publish_motion_state(next_motion_state: Dictionary) -> void:
 	if not next_motion_state.is_empty():
 		motion_state = CharacterActorSchemaRef.normalize_motion_state(next_motion_state)
 		return
+	var normalized_frame := CharacterControllerPortRef.normalize_intent_frame(current_intent_frame)
 	motion_state = CharacterActorSchemaRef.normalize_motion_state(
 		{
 		"position": global_position,
 		"velocity_world": velocity,
 		"facing_yaw": rotation.y,
 		"camera_pitch": look_pitch,
-		"move_local_actual": current_intent_frame.get("move_local", Vector2.ZERO),
-		"gait_actual": current_intent_frame.get("gait", "walk"),
+		"move_local_actual": CharacterControllerPortRef.get_move_local(normalized_frame),
+		"gait_actual": CharacterControllerPortRef.get_gait_name(normalized_frame),
 		"grounded": is_on_floor(),
 		}
 	)
@@ -225,6 +251,15 @@ func _current_move_local_input() -> Vector2:
 		move_backward_action
 	)
 	return Vector2(raw_move_local.x, -raw_move_local.y)
+
+
+func _get_player_action(property_name: StringName, fallback: StringName) -> StringName:
+	var value: Variant = get(property_name)
+	if value is StringName:
+		return value as StringName
+	if value is String:
+		return StringName(value)
+	return fallback
 
 func _recalculate_jump_profile() -> void:
 	base_jump_velocity = (2.0 * jump_height) / jump_time_to_peak

@@ -99,3 +99,25 @@ def test_extract_runtime_trace_projects_backend_payload_fields() -> None:
     assert world_event["actor_id"] == "char_c"
     assert world_event["target_object_id"] == "obj_letter"
     assert world_event["result_type"] == "object_state_result"
+
+
+def test_extract_runtime_trace_projects_character_agent_execution_contract_fields() -> None:
+    logs = {
+        "main": "\n".join(
+            [
+                '[LocalPresentationBus] backend_message_raw:{"message_type":"character_agent_execution","payload":{"actor_id":"char_a","actor_control_frames":[{"actor_id":"char_a","controller_source":"agent","control_mode":"agent_controlled","target_ref":"char_a","action":"observe","gait":"walk"}],"presentation_plan":{"actor_id":"char_a","target_ref":"char_a","motion_state":{},"focus_state":{"target_id":"char_a"},"action_state":{"requested_action":"observe","override_state":""},"equipment_state":{},"expression_hint":"execution_bridge","physiology_hint":"stable","speech_state":{"active_command_type":"observe","utterance_request":"observe"}},"action_request_bundle":{"requested_actions":[]}}}',
+            ]
+        )
+    }
+
+    events = extract_runtime_trace(logs)
+
+    execution_event = events[0]
+    assert execution_event["message_type"] == "character_agent_execution"
+    assert execution_event["actor_id"] == "char_a"
+    assert execution_event["controller_source"] == "agent"
+    assert execution_event["control_mode"] == "agent_controlled"
+    assert execution_event["action"] == "observe"
+    assert execution_event["has_focus_state"] is True
+    assert execution_event["has_action_state"] is True
+    assert execution_event["has_speech_state"] is True

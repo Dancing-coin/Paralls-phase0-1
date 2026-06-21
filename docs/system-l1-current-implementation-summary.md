@@ -1,6 +1,6 @@
 # System L1 当前实现总结
 
-日期：`2026-06-10`
+日期：`2026-06-18`
 
 这份文档是当前仓库 `System L1` 的 repo-local 实现总结。
 
@@ -22,7 +22,7 @@
 - 有最小角色私有感知入口
 - 有运行时验证闭环
 
-按当前仓库自己的 repo-local 计划目标，`System L1` 已经完成并验证通过。
+按当前 worktree 的 backend/doc/runtime 验证面，`System L1` 当前主链已成立，并且 broad Godot runtime profiles 已重新转绿。
 
 但按主项目的 full-volume 理想态来看，它还不是最终生产级 `System L1`。
 
@@ -45,12 +45,40 @@
 
 ### 已验证结果
 
-当前工作树上的关键验证结果：
+当前 `2026-06-18` worktree 的关键验证结果：
 
-- `python -m pytest -v` -> `187 passed`
-- `python scripts/verification/verify_phase1_slice.py` -> `overall_phase1_slice_passed=True`
-- `python scripts/verification/verify_phase0.py` -> `overall_strict_phase0_passed=True`
+- `python -m pytest -q` -> `616 passed`
+- `python scripts/verification/harness.py --profile docs` -> `overall_docs_passed=True`
+- `python scripts/verification/harness.py --profile character-agent-execution` -> `overall_character_agent_execution_passed=True`
 - `python scripts/verification/verify_l1_runtime_edges.py` -> `overall_l1_runtime_edges_passed=True`
+- `python scripts/verification/harness.py --profile phase0` -> `overall_strict_phase0_passed=True`
+- `python scripts/verification/harness.py --profile phase1-slice` -> `overall_phase1_slice_passed=True`
+
+当前 runtime verification path 还新增一条已落地 truth：
+
+- `phase0` / `character-agent-execution` profile 现在会强制起 fresh backend，再收集 Godot runtime 证据，避免旧 backend 进程污染当前 worktree 的 runtime 验证
+- `verify_phase0.py` 现在给主场景 autotest / focus-autotest 更宽的 `--quit-after` 窗口，以适配 fresh backend 启动后的连接确认与事实采样节奏
+- `MainDemoController` 现在会把首次 `backend_connected` 之前的 `backend_closed:-1` 视为启动期断连噪音，但仍会补发一次自动重连，从而避免 `phase0` profile 在 fresh-backend 模式下停在首轮握手失败
+- `verify_l1_runtime_edges.py` 当前已转成现行 runtime truth：`backend_connected`、初始 `zone bootstrap`、以及无 HTTPRequest overlap error 作为 hard-pass；旧 reconnect/privacy/environment edge probe 被 isolated，不再作为 hard-pass gate
+- `verify_phase0.py` 当前也已去掉冗余的 `PHASE0_DEBUG_LOGGING=1` 强制注入；在保持 same-scene same-autotest path 的前提下，strict `phase0` broad runtime verification 已重新转绿
+- `CharacterRuntimeState` 现在不再保留 `finalize_player_presentation_input()` 这层空转 bridge，formal presentation contract 直接沿 shared runtime-state / skin boundary 流转
+- `CharacterReplica.apply_embodied_pose_sync(...)` 现在通过 `Phase0CharacterShellSync` 显式接收 player motion state，而不再从父节点隐式回查 `motion_state`
+- `CameraOcclusionFader` 现在只依赖 `PlayerShell.get_camera()` / `get_control_anchor_position()` 这层 wrapper seam，不再直接抓取 `Phase0InputBridge` 节点做 camera / anchor 查询
+- `Phase0ViewAnchorResolver` 现在优先走已冻结的 direct wrapper mounts（`CharacterReplica` / `CameraHolder`）以及 `PlayerShell.get_camera()`，不再对这些 wrapper-local 节点依赖递归 `find_child(...)` 搜索
+- `PlayerShell` 现在还额外提供 `get_visual_forward()`，并且 `Phase0ViewAnchorResolver` 现在会优先走这层 wrapper-facing forward seam，再回退到 recursive `VisualRoot` 搜索
+- `CharacterMotor` 现在也通过 `CharacterControllerPort` 的 field-read helper 读取 normalized `CharacterIntentFrame` 的 `move_local` / `gait` / `action`，而不再在 motor 内部继续手拆这些 actor-side intent fields
+- `Phase0PlayerBridge` 现在也通过 `CharacterControllerPort` 的 field-read helper 读取 normalized intent fields（`move_local` / `gait` / `action` / `desired_facing_yaw`），进一步收紧 bridge 侧的 actor-intent dictionary 直接拆包
+- `PlayerShell` 现在还额外提供 wrapper-owned movement state 的薄 alias（`get_body_position` / `get_planar_velocity` / `get_vertical_velocity` / `is_grounded_state` / `get_numeric_setting`），并且 `Phase0PlayerBridge` / `CharacterMotor` 已开始通过这些 alias 读取玩家壳运动状态，而不再继续直接读 `player.global_position` / `player.velocity` / `player.is_on_floor()` / `body.get(...)`
+- `PlayerShell` 现在也额外提供 `get_character_replica()`，并且 `Phase0PlayerBridge` 已改用这层 alias，而不再从桥侧直接树查 `CharacterReplica`
+- `CharacterPresentationInput` 现在还额外提供更细的 field-read helper（例如 `focus_target_id` / `requested_action` / `action_gait_hint` / `equipment_gait_hint` / `active_command_type`），并且 `KnightRoleSkin` / `CharacterRuntimeState` 已开始直接通过这些 helper 读取 presentation 子字段，而不再继续拆内部子字典
+- `CharacterRuntimeState` 现在还额外提供 player-shell locomotion 中间字典的读取 helper（`motion_fields` / `locomotion_decision`），并且 `CharacterReplica._update_player_shell_locomotion()` 已开始通过这些 helper 读取 locomotion 决策字段，而不再继续直接拆这两层中间字典
+- `CharacterRuntimeState` 现在还额外提供 agent execution side-effect helper（`focus_target_lookup` / `physiology_hint` / `role_state_effects` 以及 `target_lookup` 读取 helper），并且 `CharacterReplica` 已开始通过这些 helper 读取 execution-side-effect 中间字典，而不再继续直接拆 `execution_side_effect_plan` / `lookup`
+- `CharacterReplica._on_character_agent_execution_received(...)` 现在也通过 `CharacterRuntimeState` helper 读取 normalized intent-frame 的 `action`，而不再直接在壳侧调用 `CharacterControllerPort.get_action_name(frame)`，也不再通过壳侧 `_payload_string(...)` 回退去拆这条 shared ingress contract
+- `CharacterRuntimeState` 现在还额外提供 `emitter actor_id` 同步 helper（`should_sync_emitter_actor_id(...)`），并且 `CharacterReplica` 的 role/physiology fact emitter 已开始通过这个 helper 判断是否需要写回 `actor_id`，而不再继续直接读取 emitter 本身的 `actor_id`
+- `CharacterRuntimeState` 现在还额外提供 dialogue / siming / runtime-state payload actor-target helper，以及 `command target position` / line-of-sight `collider` helper；`CharacterReplica` 已开始通过这些 helper 处理 payload actor targeting、`target_position` 和 LOS hit collider，而不再继续直接拆这些中间字段
+- `CharacterRuntimeState` 现在还额外提供通用 payload string helper，`CharacterReplica` 已开始通过它读取 `dialogue_text` / `target_actor_id` / `command_type` / `target_object_id` / `target_environment_id` / `causation_id` / `correlation_id`，而不再继续保留壳侧 `_payload_string(...)` 拆包层
+- `phase0` harness 的 `siming_reaction` 证据判定现在也已同步到当前运行时真相：`backend_message_type:siming_output` 现在可以单独作为 repo 当前最小 Siming 反应的合法运行时证明，而不再只依赖 `attention_applied:char_b`
+- `CharacterRuntimeState` 现在还额外提供 `line-of-sight hit collider` helper，且 `CharacterReplica._has_line_of_sight_to_target()` 已开始通过它读取物理射线命中的 collider，而不再继续直接访问 hit 字典字段
 
 ---
 
@@ -94,13 +122,69 @@
 - `auditory_reachability_changed`
 - `ambient_noise_changed`
 
-但注意：当前仓库里听觉被明确冻结成 `L1-only`。
+但当前真实状态已经比这更进一步：
 
-也就是说：
+- `speaker_active`
+- `auditory_reachability_changed`
 
-- 系统能收到听觉 raw fact
-- authority 路由和验证都存在
-- 但它不会继续进入 candidate percept / per-character perceived
+这两类**定向**听觉事实现在已经可以进入：
+
+- `CandidatePerceptEvent`
+- `CharacterPerceivedEvent`
+- 角色私有 `audible_entities`
+
+仍然保持 system-level only 的是：
+
+- `ambient_noise_changed`
+
+所以当前准确状态不是“所有听觉都冻结在 `L1-only`”，而是：
+
+- targeted actor-to-actor auditory facts 已进入 private percept path
+- ambient environmental auditory context 仍保持 `L1-only`
+
+当前角色执行边界还新增了一条已验证 truth：
+
+- `character_agent_execution` 进入 Godot 后，`CharacterReplica` 先经 `AgentControllerAdapter` 收敛 ingress，再由 `CharacterRuntimeState` 直接从 `CharacterPresentationInput` 现算 side-effect plan
+- 该 plan 现在显式接受 actor-local `dialogue_role_state` / `interaction_role_state` / `focus_role_state` / `attention_role_state` 配置，避免回退到硬编码默认 label
+
+当前 Stage B 的 backend runtime 还额外明确了另一条 truth：
+
+- `CharacterAgentRuntime` 会把 full-auto actor 的 `character_agent_execution_request` 写入 session timeline / memory
+- `CharacterAgentRuntime` 现在也会把 `player_priority_assisted` actor 的 `character_agent_suggestion_packet` 写入 session timeline / memory
+- `CharacterAgent L1` 的 private snapshot 现在也不再只停留在空默认值：定向/空间私有感知现在还能把 `attention_targets` / `current_attention_targets` / `short_horizon_social_presence` / `local_spatial_confidence_map` 填进 `CharacterPrivateWorldSnapshot`；低清晰度或低确定度的 unresolved 私有感知现在还会进入 `active_anomalies`，并把 `distraction_level` 从 `baseline` 抬到 `elevated`；司命最小 catalyst 现在也会把对应 actor 的 `vigilance_level` 从 `baseline` 抬到 `elevated`
+- `CharacterWorkingMemoryState` 现在也已有 objectized state 入口，且不会破坏现有 `retrieval_bundle()` 形状：`CharacterWorkingMemory.build_state(...)` / `CharacterAgentMemoryStore.working_memory_state(...)` 已能按 actor 汇总 `recent_perceived_events` / `recent_esm_results` / `recent_siming_catalysts` / `private_snapshot`
+- `CharacterContextBuilder` 现在也可选承接 objectized `working_memory_state`，同时不破坏原有 `memory_bundle` shape
+- `CharacterAgentRuntime` 现在也已经把这条 objectized `working_memory_state` 送进 `L2/L3 -> gateway -> context_builder` 主链路，而不是只停留在 helper/state 层
+- `CharacterPromptPolicy` 现在也开始消费这条 objectized `working_memory_state`：`user_instruction` 里会带上 `recent_perceived_events_count` / `recent_esm_results_count` / `recent_siming_catalysts_count` / `private_snapshot_actor_id`
+- `CharacterPromptPolicy` 现在也开始消费 snapshot 内的 `last_siming_catalyst`，并把它压进 `user_instruction`
+- `CharacterPromptPolicy` 现在也开始消费 snapshot 内的 `body_state_hints`，并把它以 `body_state_hints_count` 的形式压进 `user_instruction`
+- `CharacterPromptPolicy` 现在也开始消费 snapshot 内的 `recent_world_changes` / `recent_constraint_results`，并把它们分别以 count + recent sample 形式压进 `user_instruction`
+- `CharacterAgentRuntime` 现在也会把 snapshot 内的 `last_siming_catalyst` 送进 `CharacterAgentL2Service.prepare_reasoning_request(...)` 的 structured context
+- `vigilance_level` 现在也不再只是停留在 `L1` private snapshot：离线 `L2` 在该值为 `elevated` 时会把 `opportunity_level` 提升到 `medium`
+- `active_anomalies` 现在也不再只是停留在 `L1` private snapshot：离线 `L2` 在该列表非空时会把 `risk_level` 提升到 `medium`
+- `distraction_level=elevated` 现在也不再只是停留在 `L1` private snapshot：离线 `L2` 在该值为 `elevated` 时会把 `ambiguity_level` 提升到 `medium`
+- `body_state_hints` 现在也不再只是停留在 `L1` private snapshot：离线 `L2` 在该列表非空时会把 `interpretation_type` 视为 `body_state`，并把 `risk_level` 提升到 `medium`
+- `recent_world_changes` / `recent_constraint_results` 现在也不再只是模型默认值：runtime 会在 settlement/dialogue writeback 时把 world-change / constraint 摘要回写到 snapshot 的短历史里
+- `recent_constraint_results` 现在也不再只是停留在 snapshot 历史：离线 `L2` 在该列表非空时会把 `risk_level` 提升到 `medium`
+- `recent_world_changes` 现在也不再只是停留在 snapshot 历史：离线 `L2` 在该列表非空时会把 `opportunity_level` 提升到 `medium`
+- `recent_world_changes` 现在也开始影响 `L3` fallback candidate generation：当 `attention_target` 为空且原始 `opportunity_level` 仍为 `low` 时，它会把 fallback planning 至少抬到 `medium` 的 opportunity 档
+- planner fallback 现在也会在 recent world change 存在、且 model `recommended_intents` 为空时，把 `speak_public` 顶到建议列表前面，与 offline `L3` model fallback 对齐
+- `vigilance_level` 现在也开始影响 offline `L3` 的 `recommended_intents` 次序：当其为 `elevated` 时，fallback model output 也会把 `speak_public` 顶到建议列表前面
+- `effective_opportunity_level` 现在也开始影响 offline `L3` 的 `selected_intent`：当没有 recent constraint 风险压制且机会档已抬到 `medium/high` 时，fallback model output 也会直接把 `selected_intent` 收敛到 `speak_public`
+- `recent_world_changes` 现在也开始影响 suggestion packet 的 `why_this_now` fallback：当 model output 没给出更强解释时，最近一条 world-change 摘要会优先回流
+- `recent_world_changes` 现在也开始影响 suggestion packet 的 `role_consistency_hint` fallback：当 model output 和 inner prompt 都没给出更强提示时，最近一条 world-change 摘要会优先回流
+- `vigilance_level=elevated` 现在也开始影响 suggestion packet 的 `why_this_now / role_consistency_hint` fallback：当既没有 recent world/constraint history，也没有更强 model 或 inner prompt 提示时，它会回流成 `heightened vigilance`
+- `distraction_level=elevated` 现在也开始影响 suggestion packet 的 `why_this_now / role_consistency_hint` fallback：当既没有 recent world/constraint history，也没有更强 model 或 inner prompt 提示时，它会回流成 `uncertain signal`
+- `recent_constraint_results` 现在也开始影响 `player_priority_assisted` suggestion 的 `risk_notes` fallback：当 model output 没显式给出 risk notes 时，这些 recent constraint 摘要会直接回流到 suggestion packet
+- `recent_constraint_results` 现在也开始影响 offline `L3` 的 `selected_intent/recommended_intents` 倾向：当 recent constraint 存在时，fallback model output 会优先把 `self_protect` 作为当前建议
+- `risk_level=medium/high` 现在也开始影响 offline `L3` 的 `selected_intent/recommended_intents` 倾向：即使没有 recent constraint 历史，fallback model output 也会直接倾向 `self_protect`
+- `recent_constraint_results` 现在也开始在没有 recent world change 时影响 offline `L3` 的 `why_this_now` fallback：constraint 摘要会优先回流到解释文本
+- `recent_constraint_results` 现在也开始在没有 recent world change 与 inner prompt 时影响 offline `L3` 的 `role_consistency_hint` fallback：constraint 摘要会优先回流到提示文本
+- 但它的 perception / self-body / siming ingest 入口仍会返回 legacy `CharacterGoalCommand` 列表，说明 five-channel execution plan 和 legacy command compatibility 仍并存，而不是单一路径完全收口
+- 这条兼容路径当前也带着最小 trace：
+  - `CharacterGoalCommand.causation_id` / `correlation_id` 现在可从 `CharacterAgentL4Executor` 的 `actor_control_frames` 回流
+  - `CharacterGoalCommand.role_state_hint` 现在会从 execution plan 的 request 语义回流
+  - `CharacterGoalCommand.dialogue_text` 对 speech 类请求也会从 request `content` 或 `presentation_plan.speech_state.utterance_request` 回流
 
 ### 3.4 ESM 层
 
@@ -131,6 +215,11 @@
 - `CharacterPerceivedEvent`
 - `SelfBodyPerceivedEvent`
 
+并且当前这条最小私有感知链已经不再只保留 summary string：
+
+- `CharacterPerceivedEvent` 现在还会保留 `source_actor_id` / `target_actor_id` / `target_object_id` / `target_environment_id` / `distance_m`
+- `spatial_access_fact` 进入 actor-private path 后，当前还能最小推进到 `attention_targets` / `current_attention_targets` / `short_horizon_social_presence` / `local_spatial_confidence_map`
+
 这意味着当前仓库不再只有“系统知道发生了什么”，而是已经有：
 
 - 某个角色会收到一条角色私有输入
@@ -144,7 +233,7 @@
 
 如果目标是：
 
-- 玩家控制 `CharacterC`
+- 玩家控制 `PlayerCharacter`，其内嵌可见角色壳为 `CharacterReplica(actor_id=char_c)`
 - `CharacterA/B` 作为其他角色壳存在
 - 基于视觉事实形成最小互相感知
 - 基于 authority 结果发生交互和反应
@@ -155,21 +244,24 @@
 
 #### 听觉
 
-听觉当前还没有进入角色私有感知。
+听觉当前还没有**完整**进入角色私有感知。
 
 代码里最关键的现实边界在：
 
 - [backend/app/services/candidate_percept_service.py](/d:/Users/User/Documents/paralls-phase-0-demo/backend/app/services/candidate_percept_service.py)
 
-当前行为是：
+当前行为现在分成两层：
 
-- `auditory_fact` 会进入系统
-- 但 `compile_candidate_percepts(...)` 对听觉直接返回空
+- `speaker_active` / `auditory_reachability_changed`
+  - 已进入 `CandidatePerceptEvent`
+  - 已进入 `CharacterPerceivedEvent`
+  - 已进入角色私有 `audible_entities`
+- `ambient_noise_changed`
+  - 仍保持 system-level only
 
-所以当前缺的不是“角色智能体没听懂”而已，
-而是：
+所以当前缺的不是“完全没有私有听觉输入”，而是：
 
-**`System L1` 目前还没有把听觉推进到角色私有输入链。**
+**还没有完整的 actor-private hearing 设计与 richer auditory interpretation。**
 
 #### 视觉精度
 
@@ -209,11 +301,11 @@
 
 ### 案例描述
 
-玩家控制 `CharacterC` 进入场景，先看向 `CharacterA`，再对 `A` 说话，然后转向桌上的 `obj_letter` 调查，交互成功后环境变化触发 `CharacterB` 的注意。
+玩家控制 `PlayerCharacter` 进入场景，其内嵌可见角色壳为 `CharacterReplica(actor_id=char_c)`；玩家先看向 `CharacterA`，再对 `A` 说话，然后转向桌上的 `obj_letter` 调查，交互成功后环境变化触发 `CharacterB` 的注意。
 
 ### 阶段 1：玩家进入并控制 `C`
 
-- 玩家实际控制的是 `CharacterC` 对应的世界角色壳
+- 玩家实际控制的是 `PlayerCharacter` 这个 `CharacterBase` 外壳，而其可见角色壳是内嵌的 `CharacterReplica(actor_id=char_c)`
 - `A/B` 保持为 AI-driven shell
 - `System L1` 持续处理：
   - `move_intent`
@@ -314,7 +406,7 @@ Godot 侧还会继续发：
 玩家
   |
   v
-Player / CharacterC
+PlayerCharacter / CharacterReplica(char_c)
   |
   | focus_target_change / move_intent / dialogue_submit / interact_intent
   v
@@ -369,11 +461,13 @@ backend authority route
   +--> verifier / audit / debug proof
   |
   +--> candidate_percept_service
-         - 当前策略: AUDITORY_CANDIDATE_POLICY = "l1_only"
-         - 返回 []
+         - `speaker_active` / `auditory_reachability_changed` -> compile into candidate percepts
+         - `ambient_noise_changed` -> stays `L1-only`
+  |
+  +--> CandidatePerceptEvent / CharacterPerceivedEvent / private `audible_entities`
   |
   x
-不会继续进入:
+ambient-only path does not continue into:
   - CandidatePerceptEvent
   - CharacterPerceivedEvent
   - conversation candidate
@@ -485,13 +579,13 @@ backend authority route
 
 ### 第一优先级
 
-1. 让 `auditory_fact` 进入 `CandidatePerceptEvent`
-2. 增加听觉的 `PerCharacterPerceptFilter`
-3. 建立角色私有“听觉已感知”输入链
+1. 把已落地的定向听觉 candidate/private-percept 链继续做强，而不是停留在最小 slice
+2. 增加更完整的 hearing attribution / filtering context
+3. 保持 `ambient_noise_changed` 的 system-level only 边界，直到 actor-private ambient hearing 设计成型
 
 原因：
 
-- 这一步完成后，才能说角色之间在 `System L1` 层同时具备最小视觉与听觉互感
+- 当前仓库已经具备最小视觉与定向听觉互感；下一步缺的是质量、归因与 richer interpretation，而不是从零接线
 
 ### 第二优先级
 
@@ -534,4 +628,3 @@ backend authority route
 - 把听觉补进 `System L1` 角色私有感知链
 - 把视觉感知精度做深
 - 再把角色智能体层真正接起来
-

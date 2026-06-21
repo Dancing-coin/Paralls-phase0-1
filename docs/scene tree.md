@@ -6,26 +6,26 @@ This is a current snapshot of the Phase 0 runtime structure after removing the t
 
 ```text
 MainDemo
-├─ Player                          -> project-owned PlayerShell.tscn
-│  ├─ VisualRoot                   -> hidden local shell marker
+├─ PlayerCharacter                 -> CharacterBase.tscn
 │  ├─ CameraHolder
 │  │  └─ SpringArm3D
 │  │     └─ Camera3D
 │  ├─ CollisionShape3D
+│  ├─ CharacterReplica             -> visible shared actor shell for char_c
 │  ├─ Phase0InputBridge            -> scripts/player/Phase0PlayerBridge.gd
-│  ├─ Phase0Embodiment             -> scripts/player/Phase0PlayerEmbodiment.gd
+│  ├─ CharacterMotor               -> scripts/character/CharacterMotor.gd
+│  ├─ Phase0PlayerCommandRelay     -> scripts/player/Phase0PlayerCommandRelay.gd
 │  └─ CameraOcclusionFader         -> scripts/player/CameraOcclusionFader.gd
 ├─ IntentMapper                    -> scripts/player/PlayerIntentMapper.gd
 ├─ VisualFactEmitter
 ├─ CharacterA                      -> CharacterReplica.tscn
 ├─ CharacterB                      -> CharacterReplica.tscn
-├─ CharacterC                      -> CharacterReplica.tscn
 ├─ InteractiveObject
 ├─ EnvironmentStateNode
 └─ ThroneRoomImported
 ```
 
-`Player` is now a small project-owned `CharacterBody3D` collision/camera shell. It no longer carries a bundled animation state machine, HUD, or plugin skin. `CharacterC` remains the visible player role shell.
+`PlayerCharacter` is the current player wrapper scene (`CharacterBase.tscn`). It owns the collision/camera shell, mounts the thin command relay, and nests the visible shared actor shell for `char_c` as `CharacterReplica`. This is still transitional relative to the final-convergence target, but it is the current repo-local runtime truth.
 
 ## CharacterReplica
 
@@ -64,8 +64,9 @@ KnightRoleSkin
 
 ```text
 PlayerShell          = collision, gravity, jump, camera rig, input action fields
-Phase0PlayerBridge   = maps local player controls into CharacterC frame requests
-CharacterC           = visible player role shell and root-motion source
+CharacterBase        = current player wrapper scene for PlayerShell + CharacterReplica
+Phase0PlayerBridge   = maps local player controls into char_c frame requests
+CharacterReplica     = visible shared actor shell and root-motion source
 CharacterA/B         = AI-driven replicas using the same role asset stack
 BackendBridge        = structured backend protocol boundary
 LocalPresentationBus = local presentation event fan-out
@@ -80,3 +81,5 @@ KnightRoleSkin.consume_root_motion_delta()
 -> PlayerShell.velocity
 -> PlayerShell.move_and_slide()
 ```
+
+The earlier `Phase0Embodiment` helper shell has been removed; `CharacterBase.tscn` no longer mounts it, and current player-wrapper runtime truth flows through `CharacterReplica`, `Phase0PlayerBridge`, and `Phase0PlayerCommandRelay`.

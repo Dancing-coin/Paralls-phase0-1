@@ -27,6 +27,7 @@ from app.debug_narration import (
 from app.debug_stream import debug_stream
 from app.models.environment_request import EnvironmentRequest
 from app.models.character_agent_runtime import CharacterGoalCommand
+from app.models.character_agent_runtime import CharacterSuggestionPacket
 from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent
 from app.models.raw_fact import RawFactEvent
 from app.models.runtime_state import ConversationCandidateEvent
@@ -62,6 +63,8 @@ from app.services.siming_event_producer import SimingEventProducer
 from app.services.siming_llm_provider import build_siming_llm_provider
 from app.services.siming_runtime import SimingRuntime
 from app.ws_protocol import Envelope
+from app.character_agent.execution.l4_adapter import CharacterAgentL4Adapter
+from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
 
 app = FastAPI(title="Paralls Phase0 Backend")
 BACKEND_BUILD = "paralls-phase0-backend-worktree-2026-06-02"
@@ -84,6 +87,8 @@ def reset_runtime_state() -> None:
     global siming_audit_writer
     global siming_event_pipeline
     global frontend_authority_event_projector
+    global character_agent_l4_executor
+    global character_agent_l4_adapter
 
     runtime = SessionRuntime()
     character_service = CharacterService()
@@ -110,6 +115,8 @@ def reset_runtime_state() -> None:
     for event_type in SimingEventConsumer.ALLOWED_EVENT_TYPES:
         authority_event_bus.subscribe(event_type, siming_event_pipeline.handle_event)
     frontend_authority_event_projector = FrontendAuthorityEventProjector()
+    character_agent_l4_executor = CharacterAgentL4Executor()
+    character_agent_l4_adapter = CharacterAgentL4Adapter(executor=character_agent_l4_executor)
     for event_type in FRONTEND_AUTHORITY_EVENT_TYPES:
         authority_event_bus.subscribe(event_type, frontend_authority_event_projector.handle_event)
     debug_stream.clear()
@@ -217,6 +224,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             envelope.message_type,
             _build_visual_fact_handler_context(),
         )
+        messages.extend(_character_agent_messages_from_fact_candidates(event))
         _publish_route_event(event, messages)
         return _finalize_outbound_messages(messages)
 
@@ -243,53 +251,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 detail=event.model_dump(),
             )
         )
-        compiled_candidates = compile_candidate_percepts(event)
-        character_agent_messages: list[dict[str, object]] = []
-        for candidate in compiled_candidates:
-            _publish_debug_event(
-                build_debug_event(
-                    producer_ts=candidate.producer_ts,
-                    domain="backend",
-                    stage="candidate_percept_compiled",
-                    actor_id=candidate.source_actor_id or None,
-                    summary=summarize_character_input_from_candidate(candidate),
-                    detail=candidate.model_dump(),
-                )
-            )
-            candidate_actor_ids: list[str] = []
-            if candidate.target_actor_id != "":
-                candidate_actor_ids.append(candidate.target_actor_id)
-            elif event.source.actor_id:
-                candidate_actor_ids.append(event.source.actor_id)
-
-            for actor_id in candidate_actor_ids:
-                perceived = filter_candidate_for_actor(
-                    candidate,
-                    actor_id=actor_id,
-                    context={"is_facing_target": True},
-                )
-                if perceived is not None:
-                    if _should_suppress_character_agent_candidate_from_focus_mirror(
-                        candidate=candidate,
-                        actor_id=actor_id,
-                    ):
-                        continue
-                    _ = character_perceived_input_service.apply_character_perceived_event(perceived)
-                    _publish_debug_event(
-                        build_debug_event(
-                            producer_ts=perceived.producer_ts,
-                            domain="character",
-                            stage="character_perceived_applied",
-                            actor_id=perceived.actor_id,
-                            summary=summarize_character_input_from_character_perceived(perceived),
-                            detail=perceived.model_dump(),
-                        )
-                    )
-                    character_agent_messages.extend(
-                        _as_character_agent_output_envelopes(
-                            character_agent_runtime.ingest_character_perceived_event(perceived)
-                        )
-                    )
+        character_agent_messages = _character_agent_messages_from_fact_candidates(event)
         messages = route_raw_fact_event(
             event,
             source_type=envelope.message_type,
@@ -371,6 +333,155 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 },
             }
         ]
+
+    if envelope.message_type == "character_agent_execution":
+        payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+        actor_id = str(payload.get("actor_id", "") or "")
+        route_name = "esm_service"
+        bundle = payload.get("action_request_bundle", {})
+        requested_actions = bundle.get("requested_actions", []) if isinstance(bundle, dict) else []
+        if isinstance(requested_actions, list):
+            for action in requested_actions:
+                if isinstance(action, dict) and str(action.get("request_type", "") or "") in {"speak_public", "speak_private", "share_info", "withhold"}:
+                    route_name = "character_service"
+                    break
+        messages: list[dict[str, object]] = [
+            {
+                "message_type": "ack",
+                "payload": {
+                    "accepted": True,
+                    "source_type": envelope.message_type,
+                    "route": route_name,
+                },
+            }
+        ]
+        action_requests = _as_character_agent_action_request_envelopes(payload, producer_ts=0)
+        messages.extend(action_requests)
+        for action in requested_actions:
+            if not isinstance(action, dict):
+                continue
+            if str(action.get("request_type", "") or "") in {"speak_public", "speak_private", "share_info", "withhold"}:
+                character_agent_runtime.record_execution_request(
+                    actor_id=actor_id,
+                    producer_ts=0,
+                    payload=action,
+                )
+                dialogue_event = DialogueSubmit(
+                    player_id="character_agent",
+                    room_id="room_demo",
+                    scene_id="scene_demo",
+                    zone_id="zone_focus",
+                    actor_id=str(action.get("actor_id", "") or actor_id),
+                    intent_type="dialogue_submit",
+                    producer_ts=0,
+                    target_actor_id=str(action.get("target_actor_id", "") or ""),
+                    content=str(action.get("content", "") or ""),
+                )
+                response = character_service.handle_dialogue(dialogue_event)
+                character_agent_runtime.record_dialogue_response(
+                    actor_id=dialogue_event.actor_id,
+                    producer_ts=int(response.producer_ts or 0),
+                    payload=response.model_dump(),
+                )
+                messages.append(
+                    {
+                        "message_type": "dialogue_response",
+                        "payload": response.model_dump(),
+                    }
+                )
+                continue
+            character_agent_runtime.record_execution_request(
+                actor_id=actor_id,
+                producer_ts=0,
+                payload=action,
+            )
+            request_type = str(action.get("request_type", "") or "")
+            if request_type == "approach":
+                world_result = _actor_target_action_settlement(
+                    actor_id=actor_id,
+                    request_type=request_type,
+                    target_actor_id=str(action.get("target_actor_id", "") or ""),
+                )
+                character_agent_runtime.record_settlement_result(
+                    actor_id=actor_id,
+                    producer_ts=1,
+                    payload=world_result,
+                )
+                messages.append(_as_world_result_envelope(world_result))
+                continue
+            if request_type == "follow_target":
+                world_result = _actor_target_action_settlement(
+                    actor_id=actor_id,
+                    request_type=request_type,
+                    target_actor_id=str(action.get("target_actor_id", "") or ""),
+                )
+                character_agent_runtime.record_settlement_result(
+                    actor_id=actor_id,
+                    producer_ts=1,
+                    payload=world_result,
+                )
+                messages.append(_as_world_result_envelope(world_result))
+                continue
+            if request_type == "seek_private_distance":
+                world_result = _actor_target_action_settlement(
+                    actor_id=actor_id,
+                    request_type=request_type,
+                    target_actor_id=str(action.get("target_actor_id", "") or ""),
+                )
+                character_agent_runtime.record_settlement_result(
+                    actor_id=actor_id,
+                    producer_ts=1,
+                    payload=world_result,
+                )
+                messages.append(_as_world_result_envelope(world_result))
+                continue
+            if request_type == "withdraw":
+                world_result = _actor_target_action_settlement(
+                    actor_id=actor_id,
+                    request_type=request_type,
+                    target_actor_id=str(action.get("target_actor_id", "") or ""),
+                )
+                character_agent_runtime.record_settlement_result(
+                    actor_id=actor_id,
+                    producer_ts=1,
+                    payload=world_result,
+                )
+                messages.append(_as_world_result_envelope(world_result))
+                continue
+            if request_type == "break_contact":
+                world_result = _actor_target_action_settlement(
+                    actor_id=actor_id,
+                    request_type=request_type,
+                    target_actor_id=str(action.get("target_actor_id", "") or ""),
+                )
+                character_agent_runtime.record_settlement_result(
+                    actor_id=actor_id,
+                    producer_ts=1,
+                    payload=world_result,
+                )
+                messages.append(_as_world_result_envelope(world_result))
+                continue
+            if request_type != "interact":
+                continue
+            interact_event = InteractIntent(
+                player_id="character_agent",
+                room_id="room_demo",
+                scene_id="scene_demo",
+                zone_id="zone_focus",
+                actor_id=str(action.get("actor_id", "") or actor_id),
+                intent_type="interact_intent",
+                producer_ts=0,
+                target_object_id=str(action.get("target_object_id", "") or ""),
+                interaction_type=str(action.get("interaction_type", "inspect") or "inspect"),
+            )
+            world_result = esm_service.resolve_interaction(interact_event)
+            character_agent_runtime.record_settlement_result(
+                actor_id=interact_event.actor_id,
+                producer_ts=int(world_result.producer_ts or 0),
+                payload=world_result.model_dump(exclude_none=True),
+            )
+            messages.extend(_publish_world_result_authority_event(world_result, source_event=interact_event))
+        return _finalize_outbound_messages(messages)
 
     if envelope.message_type != "player_input":
         return [
@@ -504,6 +615,15 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         messages.append(_as_action_request_envelope(action_request.model_dump()))
         actor_position = runtime.get_actor_position(event.actor_id)
         world_result = esm_service.resolve_interaction(event, actor_position=actor_position)
+        print(
+            "phase0_failed_interaction_diag actor_id=%s target_object_id=%s actor_position=%s result_type=%s"
+            % (
+                event.actor_id,
+                event.target_object_id,
+                actor_position,
+                world_result.result_type,
+            )
+        )
         event_trace.record(world_result.result_type)
 
         if world_result.result_type == "action_resolution_result":
@@ -578,11 +698,14 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             )
             _ = character_perceived_input_service.apply_self_body_perceived_event(self_body_perceived)
             messages.append(_as_envelope("self_body_perceived_event", self_body_perceived.model_dump()))
-            messages.extend(
-                _as_character_agent_output_envelopes(
-                    character_agent_runtime.ingest_self_body_perceived_event(self_body_perceived)
+            self_body_commands = character_agent_runtime.ingest_self_body_perceived_event(self_body_perceived)
+            messages.extend(_as_character_agent_execution_envelopes(self_body_commands))
+            if event.actor_id != "char_c":
+                messages.extend(
+                    _as_character_agent_suggestion_envelopes(
+                        character_agent_runtime.drain_suggestion_packets(event.actor_id)
+                    )
                 )
-            )
 
             environment_result = esm_service.emit_environment_shift(
                 room_id=event.room_id,
@@ -656,13 +779,286 @@ def _as_envelope(message_type: str, payload: dict[str, object]) -> dict[str, obj
     }
 
 
-def _as_character_agent_output_envelopes(commands: list[CharacterGoalCommand]) -> list[dict[str, object]]:
+def _as_character_agent_execution_envelopes(commands: list[CharacterGoalCommand]) -> list[dict[str, object]]:
+    envelopes: list[dict[str, object]] = []
+    for command in commands:
+        envelopes.append(
+            {
+                "message_type": "character_agent_execution",
+                "payload": character_agent_l4_adapter.command_to_execution_payload(command),
+            }
+        )
+    return envelopes
+
+
+def _as_character_agent_action_request_envelopes(
+    execution_payload: dict[str, object],
+    *,
+    producer_ts: int,
+) -> list[dict[str, object]]:
+    bundle = execution_payload.get("action_request_bundle", {})
+    if not isinstance(bundle, dict):
+        return []
+    requested_actions = bundle.get("requested_actions", [])
+    if not isinstance(requested_actions, list):
+        return []
+
+    messages: list[dict[str, object]] = []
+    actor_id = str(execution_payload.get("actor_id", "") or "")
+    for idx, action in enumerate(requested_actions):
+        if not isinstance(action, dict):
+            continue
+        request_type = str(action.get("request_type", "") or "")
+        if request_type == "interact":
+            target_object_id = str(action.get("target_object_id", "") or "")
+            payload = {
+                "request_id": f"character_agent:{producer_ts}:{actor_id}:{idx}",
+                "request_type": "interact",
+                "room_id": "room_demo",
+                "scene_id": "scene_demo",
+                "zone_id": "zone_focus",
+                "actor_id": actor_id,
+                "action_type": "character_agent_execution",
+                "source": {
+                    "layer": "L4",
+                    "system": "character_agent_l4",
+                    "actor_id": actor_id,
+                },
+                "target_entity_refs": {
+                    "actor_ids": [],
+                    "object_ids": [target_object_id] if target_object_id else [],
+                    "environment_ids": [],
+                },
+                "action_profile": str(action.get("interaction_type", "inspect") or "inspect"),
+                "intent_strength": "normal",
+                "constraints_hint": {},
+                "producer_ts": producer_ts,
+                "causation_id": f"character_agent:{producer_ts}:{actor_id}",
+                "correlation_id": f"character_agent:{producer_ts}:{actor_id}",
+                "target_object_id": target_object_id,
+                "payload": {
+                    "interaction_type": str(action.get("interaction_type", "inspect") or "inspect"),
+                },
+            }
+            messages.append(_as_action_request_envelope(payload))
+        elif request_type == "approach":
+            target_actor_id = str(action.get("target_actor_id", "") or "")
+            payload = {
+                "request_id": f"character_agent:{producer_ts}:{actor_id}:{idx}",
+                "request_type": "approach",
+                "room_id": "room_demo",
+                "scene_id": "scene_demo",
+                "zone_id": "zone_focus",
+                "actor_id": actor_id,
+                "action_type": "character_agent_execution",
+                "source": {
+                    "layer": "L4",
+                    "system": "character_agent_l4",
+                    "actor_id": actor_id,
+                },
+                "target_entity_refs": {
+                    "actor_ids": [target_actor_id] if target_actor_id else [],
+                    "object_ids": [],
+                    "environment_ids": [],
+                },
+                "action_profile": "approach",
+                "intent_strength": "normal",
+                "constraints_hint": {},
+                "producer_ts": producer_ts,
+                "causation_id": f"character_agent:{producer_ts}:{actor_id}",
+                "correlation_id": f"character_agent:{producer_ts}:{actor_id}",
+                "target_actor_id": target_actor_id,
+                "payload": {},
+            }
+            messages.append(_as_action_request_envelope(payload))
+        elif request_type == "seek_private_distance":
+            target_actor_id = str(action.get("target_actor_id", "") or "")
+            payload = {
+                "request_id": f"character_agent:{producer_ts}:{actor_id}:{idx}",
+                "request_type": "seek_private_distance",
+                "room_id": "room_demo",
+                "scene_id": "scene_demo",
+                "zone_id": "zone_focus",
+                "actor_id": actor_id,
+                "action_type": "character_agent_execution",
+                "source": {
+                    "layer": "L4",
+                    "system": "character_agent_l4",
+                    "actor_id": actor_id,
+                },
+                "target_entity_refs": {
+                    "actor_ids": [target_actor_id] if target_actor_id else [],
+                    "object_ids": [],
+                    "environment_ids": [],
+                },
+                "action_profile": "seek_private_distance",
+                "intent_strength": "normal",
+                "constraints_hint": {},
+                "producer_ts": producer_ts,
+                "causation_id": f"character_agent:{producer_ts}:{actor_id}",
+                "correlation_id": f"character_agent:{producer_ts}:{actor_id}",
+                "target_actor_id": target_actor_id,
+                "payload": {},
+            }
+            messages.append(_as_action_request_envelope(payload))
+        elif request_type == "withdraw":
+            target_actor_id = str(action.get("target_actor_id", "") or "")
+            payload = {
+                "request_id": f"character_agent:{producer_ts}:{actor_id}:{idx}",
+                "request_type": "withdraw",
+                "room_id": "room_demo",
+                "scene_id": "scene_demo",
+                "zone_id": "zone_focus",
+                "actor_id": actor_id,
+                "action_type": "character_agent_execution",
+                "source": {
+                    "layer": "L4",
+                    "system": "character_agent_l4",
+                    "actor_id": actor_id,
+                },
+                "target_entity_refs": {
+                    "actor_ids": [target_actor_id] if target_actor_id else [],
+                    "object_ids": [],
+                    "environment_ids": [],
+                },
+                "action_profile": "withdraw",
+                "intent_strength": "normal",
+                "constraints_hint": {},
+                "producer_ts": producer_ts,
+                "causation_id": f"character_agent:{producer_ts}:{actor_id}",
+                "correlation_id": f"character_agent:{producer_ts}:{actor_id}",
+                "target_actor_id": target_actor_id,
+                "payload": {},
+            }
+            messages.append(_as_action_request_envelope(payload))
+        elif request_type == "follow_target":
+            target_actor_id = str(action.get("target_actor_id", "") or "")
+            payload = {
+                "request_id": f"character_agent:{producer_ts}:{actor_id}:{idx}",
+                "request_type": "follow_target",
+                "room_id": "room_demo",
+                "scene_id": "scene_demo",
+                "zone_id": "zone_focus",
+                "actor_id": actor_id,
+                "action_type": "character_agent_execution",
+                "source": {
+                    "layer": "L4",
+                    "system": "character_agent_l4",
+                    "actor_id": actor_id,
+                },
+                "target_entity_refs": {
+                    "actor_ids": [target_actor_id] if target_actor_id else [],
+                    "object_ids": [],
+                    "environment_ids": [],
+                },
+                "action_profile": "follow_target",
+                "intent_strength": "normal",
+                "constraints_hint": {},
+                "producer_ts": producer_ts,
+                "causation_id": f"character_agent:{producer_ts}:{actor_id}",
+                "correlation_id": f"character_agent:{producer_ts}:{actor_id}",
+                "target_actor_id": target_actor_id,
+                "payload": {},
+            }
+            messages.append(_as_action_request_envelope(payload))
+        elif request_type == "break_contact":
+            target_actor_id = str(action.get("target_actor_id", "") or "")
+            payload = {
+                "request_id": f"character_agent:{producer_ts}:{actor_id}:{idx}",
+                "request_type": "break_contact",
+                "room_id": "room_demo",
+                "scene_id": "scene_demo",
+                "zone_id": "zone_focus",
+                "actor_id": actor_id,
+                "action_type": "character_agent_execution",
+                "source": {
+                    "layer": "L4",
+                    "system": "character_agent_l4",
+                    "actor_id": actor_id,
+                },
+                "target_entity_refs": {
+                    "actor_ids": [target_actor_id] if target_actor_id else [],
+                    "object_ids": [],
+                    "environment_ids": [],
+                },
+                "action_profile": "break_contact",
+                "intent_strength": "normal",
+                "constraints_hint": {},
+                "producer_ts": producer_ts,
+                "causation_id": f"character_agent:{producer_ts}:{actor_id}",
+                "correlation_id": f"character_agent:{producer_ts}:{actor_id}",
+                "target_actor_id": target_actor_id,
+                "payload": {},
+            }
+            messages.append(_as_action_request_envelope(payload))
+        elif request_type == "speak_public":
+            target_actor_id = str(action.get("target_actor_id", "") or "")
+            messages.append(
+                {
+                    "message_type": "character_agent_dialogue_request",
+                    "payload": {
+                        "actor_id": actor_id,
+                        "target_actor_id": target_actor_id,
+                        "content": str(action.get("content", "") or ""),
+                        "producer_ts": producer_ts,
+                        "source_system": "character_agent_l4",
+                    },
+                }
+            )
+        elif request_type == "speak_private":
+            target_actor_id = str(action.get("target_actor_id", "") or "")
+            messages.append(
+                {
+                    "message_type": "character_agent_dialogue_request",
+                    "payload": {
+                        "actor_id": actor_id,
+                        "target_actor_id": target_actor_id,
+                        "content": str(action.get("content", "") or ""),
+                        "producer_ts": producer_ts,
+                        "source_system": "character_agent_l4",
+                    },
+                }
+            )
+        elif request_type == "share_info":
+            target_actor_id = str(action.get("target_actor_id", "") or "")
+            messages.append(
+                {
+                    "message_type": "character_agent_dialogue_request",
+                    "payload": {
+                        "actor_id": actor_id,
+                        "target_actor_id": target_actor_id,
+                        "content": str(action.get("content", "") or ""),
+                        "producer_ts": producer_ts,
+                        "source_system": "character_agent_l4",
+                    },
+                }
+            )
+        elif request_type == "withhold":
+            target_actor_id = str(action.get("target_actor_id", "") or "")
+            messages.append(
+                {
+                    "message_type": "character_agent_dialogue_request",
+                    "payload": {
+                        "actor_id": actor_id,
+                        "target_actor_id": target_actor_id,
+                        "content": str(action.get("content", "") or ""),
+                        "producer_ts": producer_ts,
+                        "source_system": "character_agent_l4",
+                    },
+                }
+            )
+    return messages
+
+
+def _as_character_agent_suggestion_envelopes(
+    packets: list[CharacterSuggestionPacket],
+) -> list[dict[str, object]]:
     return [
         {
-            "message_type": "character_agent_output",
-            "payload": command.model_dump(exclude_none=True),
+            "message_type": "character_agent_suggestion",
+            "payload": packet.model_dump(exclude_none=True),
         }
-        for command in commands
+        for packet in packets
     ]
 
 
@@ -698,6 +1094,59 @@ def _should_suppress_character_agent_candidate_from_focus_mirror(
     focus_ts = int(str(focus.get("producer_ts", "0") or "0"))
     producer_ts = int(getattr(candidate, "producer_ts", 0) or 0)
     return abs(focus_ts - producer_ts) <= 160
+
+
+def _character_agent_messages_from_fact_candidates(event: RawFactEvent) -> list[dict[str, object]]:
+    character_agent_messages: list[dict[str, object]] = []
+    for candidate in compile_candidate_percepts(event):
+        _publish_debug_event(
+            build_debug_event(
+                producer_ts=candidate.producer_ts,
+                domain="backend",
+                stage="candidate_percept_compiled",
+                actor_id=candidate.source_actor_id or None,
+                summary=summarize_character_input_from_candidate(candidate),
+                detail=candidate.model_dump(),
+            )
+        )
+        candidate_actor_ids: list[str] = []
+        if candidate.target_actor_id != "":
+            candidate_actor_ids.append(candidate.target_actor_id)
+        elif event.source.actor_id:
+            candidate_actor_ids.append(event.source.actor_id)
+
+        for actor_id in candidate_actor_ids:
+            perceived = filter_candidate_for_actor(
+                candidate,
+                actor_id=actor_id,
+                context={"is_facing_target": True},
+            )
+            if perceived is None:
+                continue
+            if _should_suppress_character_agent_candidate_from_focus_mirror(
+                candidate=candidate,
+                actor_id=actor_id,
+            ):
+                continue
+            _ = character_perceived_input_service.apply_character_perceived_event(perceived)
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=perceived.producer_ts,
+                    domain="character",
+                    stage="character_perceived_applied",
+                    actor_id=perceived.actor_id,
+                    summary=summarize_character_input_from_character_perceived(perceived),
+                    detail=perceived.model_dump(),
+                )
+            )
+            character_agent_commands = character_agent_runtime.ingest_character_perceived_event(perceived)
+            character_agent_messages.extend(_as_character_agent_execution_envelopes(character_agent_commands))
+            character_agent_messages.extend(
+                _as_character_agent_suggestion_envelopes(
+                    character_agent_runtime.drain_suggestion_packets(actor_id)
+                )
+            )
+    return character_agent_messages
 
 
 def _as_error_ack(*, source_type: str, route: str, error: Exception) -> dict[str, object]:
@@ -809,6 +1258,36 @@ def _publish_visual_fact_authority_event(event: VisualFactEvent) -> list[dict[st
     return _drain_frontend_authority_events()
 
 
+def _actor_target_action_settlement(
+    *,
+    actor_id: str,
+    request_type: str,
+    target_actor_id: str,
+) -> dict[str, object]:
+    return {
+        "request_ref": f"character_agent:0:{actor_id}:{request_type}",
+        "result_id": f"action_resolution:character_agent:0:{actor_id}:{request_type}",
+        "room_id": "room_demo",
+        "scene_id": "scene_demo",
+        "zone_id": "zone_focus",
+        "actor_id": actor_id,
+        "source_type": "system",
+        "entity_id": target_actor_id,
+        "result_type": "action_resolution_result",
+        "causation_id": f"character_agent:0:{actor_id}",
+        "correlation_id": f"character_agent:0:{actor_id}",
+        "producer_ts": 1,
+        "resolution_status": "accepted",
+        "resolved_entities": [target_actor_id] if target_actor_id else [],
+        "applied_state_changes": ["social_spatial_state_result"],
+        "stable_state_summary": f"{request_type} accepted",
+        "settlement_status": "accepted",
+        "target_actor_id": target_actor_id,
+        "action_profile": request_type,
+        "source_action_request_type": request_type,
+    }
+
+
 def _publish_world_result_authority_event(
     result: WorldResultBase,
     *,
@@ -843,12 +1322,12 @@ def _drain_frontend_authority_events() -> list[dict[str, object]]:
 
 def _finalize_outbound_messages(messages: list[dict[str, object]]) -> list[dict[str, object]]:
     messages.extend(_drain_frontend_authority_events())
-    messages = _insert_character_agent_outputs_after_siming(messages)
+    messages = _insert_character_agent_execution_after_siming(messages)
     _emit_debug_from_messages(messages)
     return messages
 
 
-def _insert_character_agent_outputs_after_siming(messages: list[dict[str, object]]) -> list[dict[str, object]]:
+def _insert_character_agent_execution_after_siming(messages: list[dict[str, object]]) -> list[dict[str, object]]:
     ordered: list[dict[str, object]] = []
     for message in messages:
         ordered.append(message)
@@ -857,7 +1336,13 @@ def _insert_character_agent_outputs_after_siming(messages: list[dict[str, object
         payload = message.get("payload", {})
         if not isinstance(payload, dict):
             continue
-        ordered.extend(_as_character_agent_output_envelopes(character_agent_runtime.ingest_siming_output(payload)))
+        outputs = character_agent_runtime.ingest_siming_output(payload)
+        ordered.extend(_as_character_agent_execution_envelopes(outputs))
+        ordered.extend(
+            _as_character_agent_suggestion_envelopes(
+                character_agent_runtime.drain_suggestion_packets(str(payload.get("target_actor_id", "") or ""))
+            )
+        )
     return ordered
 
 

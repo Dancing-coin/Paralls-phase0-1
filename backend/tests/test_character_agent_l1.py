@@ -61,3 +61,4 @@ def test_character_agent_l1_tracks_targeted_siming_catalyst() -> None:
     assert snapshot.actor_id == "char_b"
     assert snapshot.last_siming_catalyst == "watch obj_letter"
     assert snapshot.attention_targets == ["obj_letter"]
+    assert snapshot.vigilance_level == "elevated"

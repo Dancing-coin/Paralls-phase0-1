@@ -30,6 +30,11 @@ def filter_candidate_for_actor(
         zone_id=candidate.zone_id,
         perceived_summary=f"{candidate.source_fact_family}/{candidate.source_fact_type}",
         source_candidate_event_id=f"{candidate.source_fact_family}:{candidate.producer_ts}:{actor_id}",
+        source_actor_id=candidate.source_actor_id,
+        target_actor_id=candidate.target_actor_id,
+        target_object_id=candidate.target_object_id,
+        target_environment_id=candidate.target_environment_id,
+        distance_m=distance_m,
         clarity_score=clarity_score,
         certainty_score=certainty_score,
     )

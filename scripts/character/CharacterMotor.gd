@@ -3,12 +3,13 @@ extends Node
 class_name CharacterMotor
 
 const CharacterActorSchemaRef = preload("res://scripts/character/CharacterActorSchema.gd")
+const CharacterControllerPortRef = preload("res://scripts/character/CharacterControllerPort.gd")
 
 func apply_intent_frame(body: CharacterBody3D, frame: Dictionary, delta: float) -> Dictionary:
-	var move_local_value: Variant = frame.get("move_local", Vector2.ZERO)
-	var move_local: Vector2 = move_local_value if move_local_value is Vector2 else Vector2.ZERO
-	var gait_name := str(frame.get("gait", "walk"))
-	var action_name := str(frame.get("action", "idle"))
+	var normalized_frame := CharacterControllerPortRef.normalize_intent_frame(frame)
+	var move_local := CharacterControllerPortRef.get_move_local(normalized_frame)
+	var gait_name := CharacterControllerPortRef.get_gait_name(normalized_frame)
+	var action_name := CharacterControllerPortRef.get_action_name(normalized_frame)
 	var forward := -body.global_basis.z
 	var right := body.global_basis.x
 	var target_planar_velocity := Vector3.ZERO
@@ -76,9 +77,10 @@ func _apply_vertical_motion(
 
 
 func _get_body_float(body: CharacterBody3D, property_name: String, fallback: float) -> float:
-	var value: Variant = body.get(property_name)
-	if value is float:
-		return value
-	if value is int:
-		return float(value)
+	if body and body.has_method("get_numeric_setting"):
+		var value: Variant = body.get_numeric_setting(StringName(property_name), fallback)
+		if value is float:
+			return value
+		if value is int:
+			return float(value)
 	return fallback

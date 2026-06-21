@@ -14,6 +14,9 @@ class SimingLlmRouteSettings(BaseModel):
     api_key: str | None = Field(default=None, repr=False, exclude=True)
     timeout_seconds: float | None = None
     enabled: bool = True
+import os
+
+from pydantic import BaseModel
 
 
 class Settings(BaseModel):
@@ -28,4 +31,7 @@ class Settings(BaseModel):
     siming_llm_routes: list[SimingLlmRouteSettings] = Field(default_factory=list)
 
 
-settings = Settings()
+settings = Settings(
+    dialogue_mode=os.getenv("DIALOGUE_MODE", "stub"),
+    tts_mode=os.getenv("TTS_MODE", "stub"),
+)

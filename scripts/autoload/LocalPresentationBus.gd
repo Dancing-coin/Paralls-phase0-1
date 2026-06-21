@@ -10,6 +10,7 @@ signal character_runtime_state_snapshot_received(payload)
 signal character_runtime_state_delta_received(payload)
 signal conversation_candidate_received(payload)
 signal character_agent_output_received(payload)
+signal character_agent_execution_received(payload)
 signal character_actor_status_emitted(payload)
 signal debug_event_logged(message)
 signal backend_connected(url)
@@ -17,29 +18,48 @@ signal backend_disconnected(code)
 signal backend_ack_received(payload)
 signal backend_connection_failed(url, code)
 
+var debug_logging_enabled := false
+
 func _ready() -> void:
-    set_process_input(true)
-    set_process_unhandled_input(true)
+	debug_logging_enabled = (
+		OS.get_environment("PHASE0_AUTOTEST") == "1"
+		or OS.get_environment("PHASE0_FOCUS_AUTOTEST") == "1"
+		or OS.get_environment("PHASE0_DEBUG_LOGGING") == "1"
+	)
+	_apply_debug_logging_mode()
 
 func _input(event: InputEvent) -> void:
-    _log_mouse_button_event("global_input", event)
+	_log_mouse_button_event("global_input", event)
 
 func _unhandled_input(event: InputEvent) -> void:
-    _log_mouse_button_event("global_unhandled_input", event)
+	_log_mouse_button_event("global_unhandled_input", event)
+
+func set_debug_logging_enabled(enabled: bool) -> void:
+	debug_logging_enabled = enabled
+	_apply_debug_logging_mode()
+
+func is_debug_logging_enabled() -> bool:
+	return debug_logging_enabled
+
+func _apply_debug_logging_mode() -> void:
+	set_process_input(debug_logging_enabled)
+	set_process_unhandled_input(debug_logging_enabled)
 
 func log_debug(message: String) -> void:
-    print("[LocalPresentationBus] %s" % message)
-    emit_signal("debug_event_logged", message)
+	if not debug_logging_enabled:
+		return
+	print("[LocalPresentationBus] %s" % message)
+	emit_signal("debug_event_logged", message)
 
 func _log_mouse_button_event(source: String, event: InputEvent) -> void:
-    if not (event is InputEventMouseButton):
-        return
-    var mouse_event := event as InputEventMouseButton
-    log_debug(
-        "%s:button=%s pressed=%s device=%s" % [
-            source,
-            mouse_event.button_index,
-            str(mouse_event.pressed),
-            mouse_event.device,
-        ]
-    )
+	if not (event is InputEventMouseButton):
+		return
+	var mouse_event := event as InputEventMouseButton
+	log_debug(
+		"%s:button=%s pressed=%s device=%s" % [
+			source,
+			mouse_event.button_index,
+			str(mouse_event.pressed),
+			mouse_event.device,
+		]
+	)

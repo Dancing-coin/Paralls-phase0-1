@@ -12,8 +12,15 @@ This is the agent-readable map for the runnable Paralls Phase 0 validation demo.
 
 ## Active Design And Plans
 
+- `docs/superpowers/specs/2026-06-19-deepseek-character-model-gateway-design.md`
+- `docs/superpowers/plans/2026-06-19-deepseek-character-model-gateway-implementation-plan.md`
+- `docs/superpowers/plans/2026-06-19-character-actor-stage2-closeout-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-15-character-actor-architecture-optimization-design.md`
 - `docs/superpowers/plans/2026-06-15-character-actor-architecture-optimization-implementation-plan.md`
+- `docs/superpowers/plans/2026-06-15-character-actor-near-term-cleanup-implementation-plan.md`
+- `docs/superpowers/plans/2026-06-15-character-actor-final-convergence-implementation-plan.md`
+- `docs/superpowers/specs/2026-06-15-full-character-agent-runtime-with-llm-design.md`
+- `docs/superpowers/plans/2026-06-15-full-character-agent-runtime-with-llm-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-12-character-actor-unification-design.md`
 - `docs/superpowers/specs/2026-06-12-character-actor-runtime-boundary-design.md`
 - `docs/superpowers/specs/2026-06-12-character-actor-control-and-locomotion-design.md`
@@ -101,10 +108,13 @@ Latest run manifest, baseline, and diff artifacts are written under `.harness/ve
 ## Character Docs
 
 - `docs/character/character-actor-architecture.md`
+- `docs/character/character-agent-runtime-architecture.md`
 - `docs/character/character-control-chain.md`
 - `docs/character/character-asset-integration.md`
 - `docs/character/character-action-asset-interface.md`
 - `docs/character/character-actor-migration-status.md`
+- `docs/character/character-actor-final-convergence-target.md`
+- `docs/character/character-actor-final-convergence-gap-report.md`
 - `docs/character/character-debug-and-verification.md`
 
 Reference docs are supporting context. Current task truth still follows `AGENTS.md` and active specs/plans.

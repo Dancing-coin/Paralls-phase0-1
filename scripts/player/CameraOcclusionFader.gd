@@ -8,7 +8,6 @@ extends Node
 
 @onready var player: CharacterBody3D = get_parent() as CharacterBody3D
 @onready var cam: Camera3D = _find_camera()
-@onready var player_bridge: Node = player.get_node_or_null("Phase0InputBridge")
 
 var material_by_mesh: Dictionary = {}
 var base_alpha_by_mesh: Dictionary = {}
@@ -122,18 +121,18 @@ func _get_or_create_override_material(mesh: MeshInstance3D) -> StandardMaterial3
 	return material_copy
 
 func _find_camera() -> Camera3D:
-	if player_bridge and player_bridge.has_method("get_camera"):
-		var bridge_camera: Variant = player_bridge.get_camera()
-		if bridge_camera is Camera3D:
-			return bridge_camera as Camera3D
+	if player and player.has_method("get_camera"):
+		var player_camera: Variant = player.get_camera()
+		if player_camera is Camera3D:
+			return player_camera as Camera3D
 	var found := player.find_child("Camera3D", true, false)
 	if found is Camera3D:
 		return found as Camera3D
 	return null
 
 func _get_occlusion_anchor_position() -> Vector3:
-	if player_bridge and player_bridge.has_method("get_control_anchor_position"):
-		var anchor: Variant = player_bridge.get_control_anchor_position()
+	if player and player.has_method("get_control_anchor_position"):
+		var anchor: Variant = player.get_control_anchor_position()
 		if anchor is Vector3:
 			return anchor
 	return player.global_position

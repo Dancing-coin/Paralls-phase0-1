@@ -26,24 +26,27 @@ def test_player_bridge_dispatches_mouse_combat_actions_to_character_c() -> None:
     bridge_source = (ROOT / "scripts" / "player" / "Phase0PlayerBridge.gd").read_text(
         encoding="utf-8"
     )
+    relay_source = (ROOT / "scripts" / "player" / "Phase0PlayerCommandRelay.gd").read_text(
+        encoding="utf-8"
+    )
 
-    assert "func handle_shell_action_event(event: InputEvent) -> void:" in bridge_source
-    assert "sword_swing_pressed" in bridge_source
-    assert "shield_block_pressed" in bridge_source
-    assert "event.is_action_pressed(sword_swing_action)" in bridge_source
-    assert "event.is_action_pressed(shield_block_action)" in bridge_source
-    assert "event is InputEventMouseButton" in bridge_source
+    assert "func handle_shell_action_event(event: InputEvent) -> void:" in relay_source
+    assert "sword_swing_pressed" in relay_source
+    assert "shield_block_pressed" in relay_source
+    assert "event.is_action_pressed(sword_swing_action)" in relay_source
+    assert "event.is_action_pressed(shield_block_action)" in relay_source
+    assert "func trigger_combat_action(action_tag: String) -> void:" in bridge_source
     assert "MOUSE_BUTTON_LEFT" in bridge_source
     assert "MOUSE_BUTTON_RIGHT" in bridge_source
     assert "func handle_mouse_combat_event(event: InputEventMouseButton) -> void:" in bridge_source
-    assert "sword_swing_action" in bridge_source
-    assert "shield_block_action" in bridge_source
+    assert "sword_swing_action" in relay_source
+    assert "shield_block_action" in relay_source
     assert '_trigger_combat_action("sword_swing")' in bridge_source
     assert '_trigger_combat_action("shield_block")' in bridge_source
     assert "_trigger_character_c_action(action_name)" in bridge_source
-    assert '"player_combat_action:%s" % action_name' in bridge_source
-    assert "phase0_input_bridge_ready:combat_mouse_v3" in bridge_source
-    assert "combat_mouse_event:button=%s pressed=%s device=%s" in bridge_source
+    assert '"player_combat_action:%s" % action_name' not in bridge_source
+    assert "phase0_input_bridge_ready:combat_mouse_v3" not in bridge_source
+    assert "combat_mouse_event:button=%s pressed=%s device=%s" not in bridge_source
 
 
 def test_player_shell_instantiates_phase0_input_bridge() -> None:
@@ -66,21 +69,29 @@ def test_player_shell_forwards_raw_mouse_buttons_to_combat_bridge() -> None:
     assert "event is InputEventMouseButton" in player_shell_source
     assert 'has_method("handle_mouse_combat_event")' in player_shell_source
     assert "external_motion_driver.handle_mouse_combat_event(event as InputEventMouseButton)" in player_shell_source
-    assert "player_shell_mouse_button:button=%s pressed=%s device=%s" in player_shell_source
-    assert "mouse_button_state:left=%s right=%s" in player_shell_source
+    assert "player_shell_mouse_button:button=%s pressed=%s device=%s" not in player_shell_source
+    assert "mouse_button_state:left=%s right=%s" not in player_shell_source
 
 
 def test_character_replica_maps_combat_actions_to_role_states() -> None:
     replica_source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(
         encoding="utf-8"
     )
+    feedback_source = (ROOT / "scripts" / "character" / "CharacterRuntimeFeedback.gd").read_text(
+        encoding="utf-8"
+    )
+    runtime_state_source = (ROOT / "scripts" / "character" / "CharacterRuntimeState.gd").read_text(
+        encoding="utf-8"
+    )
 
     assert '"sword_swing"' in replica_source
     assert '"shield_block"' in replica_source
-    assert 'return "sword_swing"' in replica_source
-    assert 'return "shield_block"' in replica_source
-    assert "combat_feedback_timer" in replica_source
-    assert "_show_combat_feedback(" in replica_source
+    assert "runtime_state.map_requested_action_to_role_state(" in replica_source
+    assert "map_requested_action_to_role_state(" in runtime_state_source
+    assert "runtime_feedback.show_combat_feedback" in replica_source
+    assert "combat_feedback_timer" not in replica_source
+    assert "func show_combat_feedback(text: String) -> void:" in feedback_source
+    assert "combat_feedback_timer" in feedback_source
     assert '"SWING"' in replica_source
     assert '"BLOCK"' in replica_source
 
@@ -132,10 +143,10 @@ def test_debug_overlay_promotes_combat_trace_lines() -> None:
 
     assert 'message.begins_with("global_input:")' in overlay_source
     assert 'message.begins_with("global_unhandled_input:")' in overlay_source
-    assert 'message.begins_with("player_shell_mouse_button:")' in overlay_source
-    assert 'message.begins_with("mouse_button_state:")' in overlay_source
-    assert 'message.begins_with("combat_mouse_event:")' in overlay_source
-    assert 'message.begins_with("player_combat_action:")' in overlay_source
+    assert 'message.begins_with("player_shell_mouse_button:")' not in overlay_source
+    assert 'message.begins_with("mouse_button_state:")' not in overlay_source
+    assert 'message.begins_with("combat_mouse_event:")' not in overlay_source
+    assert 'message.begins_with("player_combat_action:")' not in overlay_source
     assert 'message.begins_with("role_action_overlay:")' in overlay_source
-    assert 'message.begins_with("phase0_input_bridge_ready:")' in overlay_source
+    assert 'message.begins_with("phase0_input_bridge_ready:")' not in overlay_source
     assert 'sections.append("Combat Trace")' in overlay_source

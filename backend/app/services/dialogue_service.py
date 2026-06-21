@@ -1,15 +1,33 @@
+from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from app.config import settings
 
 
 class DialogueService:
-    def generate_reply(self, actor_id: str, content: str) -> tuple[str, str]:
-        if settings.dialogue_mode == "stub":
-            if "letter" in content.lower():
-                return ("I saw something move near the desk.", "alert")
-            if actor_id == "char_b":
-                return ("I am watching the room.", "neutral")
-            return ("I am here. What do you need?", "neutral")
+    def __init__(self, gateway: CharacterModelGateway | None = None) -> None:
+        self._gateway = gateway or CharacterModelGateway()
 
-        if "letter" in content.lower():
-            return ("I saw something move near the desk.", "alert")
-        return ("I am here. What do you need?", "neutral")
+    def generate_reply(self, actor_id: str, content: str) -> tuple[str, str]:
+        route_override = "local_only" if settings.dialogue_mode == "stub" else None
+        output = self._gateway.run_task(
+            task_kind="dialogue_generation",
+            context={
+                "actor_id": actor_id,
+                "control_mode": "dialogue_service",
+                "snapshot": {},
+                "memory": {
+                    "working_memory": [],
+                    "episodic_memories": [],
+                    "relational_memories": [],
+                },
+                "event": {
+                    "content": content,
+                    "target_actor_id": actor_id,
+                    "intent_type": "dialogue_submit",
+                },
+            },
+            route_override=route_override,
+        )
+        return (
+            str(output.get("content", "") or ""),
+            str(output.get("tone", "") or "neutral"),
+        )

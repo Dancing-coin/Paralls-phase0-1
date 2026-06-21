@@ -641,7 +641,7 @@ This spec is accepted when implementation can prove:
 
 ## Completion Status
 
-Status as of `2026-06-15`: first near-term optimization pass completed and verified.
+Status as of `2026-06-15`: first near-term optimization pass completed and verified; second near-term cleanup pass completed and verified.
 
 The repository now proves:
 
@@ -656,9 +656,14 @@ The repository now proves:
   - `hybrid`
 - `PlayerShell` owns raw input capture and forwards shell events to the controller adapter seam
 - `Phase0PlayerBridge` no longer runs a parallel raw-input polling loop for the same concerns
+- `Phase0PlayerCommandRelay` owns shell command dispatch that used to live in `Phase0PlayerBridge`
 - `CharacterReplica` remains the shared actor runtime shell rather than being bypassed by scene code
+- visible runtime feedback moved out of `CharacterReplica` into `CharacterRuntimeFeedback`
+- `CharacterPresentationInput` is preserved at the actor-to-skin boundary while near-term flat fallback fields remain available
 - `KnightRoleSkin` and `KnightCombatModifier` now expose a clearer composition -> modifier handoff
 - model / equipment / action asset entry contracts are frozen in code as explicit schema helpers
+- asset lookup remains gated behind explicit readiness criteria rather than adding a full runtime library
+- future root-motion / hybrid work has an explicit motor-owned displacement guard
 - strict `Phase 0` verification remains green after the convergence pass
 
 Verified acceptance evidence for this pass includes:
@@ -676,21 +681,29 @@ The architecture is cleaner, but this pass intentionally stops short of a full P
 
 The main transitional areas that remain are:
 
-- `Phase0PlayerBridge.gd` still contains some demo/helper and autotest-oriented responsibilities in addition to pure control adaptation
-- `CharacterReplica.gd` still carries presentation-adjacent feedback and debug-support behavior that should eventually be split more cleanly from actor-runtime state ownership
+- `Phase0PlayerBridge.gd` still contains some demo sync/helper and autotest-oriented responsibilities in addition to pure control adaptation
+- `CharacterReplica.gd` still owns the actor runtime shell and remains a transition point for future `CharacterRuntimeState` extraction
 - `CharacterPresentationInput` is frozen as a contract, but the runtime still assembles it through near-term dictionary bridging rather than a fuller typed pipeline
-- the new asset binding / equipment / action descriptor files are contract-level entry points only and are not yet used as a full runtime asset lookup system
+- the new asset binding / equipment / action descriptor files are contract-level entry points only and are not yet used as a full runtime asset lookup system; actual lookup is gated behind explicit readiness criteria
 - near-term locomotion remains `physics`-first with coordinated root-motion consumption rather than a full mid-term `LocomotionExecutionMode` execution stack
 
 These are acceptable for the current repository goal because they preserve demo stability while preventing further architectural drift.
 
 ## Next Steps
 
-Recommended next work after this optimization pass:
+After the near-term cleanup closeout, do not re-plan the completed near-term work:
 
-1. Continue slimming `Phase0PlayerBridge` into a narrower controller adapter by moving demo orchestration helpers out of the bridge.
-2. Continue slimming `CharacterReplica` so actor-runtime state, presentation feedback, and debug affordances are more explicitly separated.
-3. Introduce explicit controller-port style adapters for human / agent / program control when the next runtime slice needs them.
-4. Move `CharacterPresentationInput` and modifier input handling toward stronger typed consumption once runtime consumers are ready.
-5. Start using the frozen asset contract files for actual model / skeleton / equipment / action lookup only when the repository is ready for that integration step.
-6. Preserve the hard rule that locomotion truth remains motor-owned even when future root-motion or hybrid execution modes become more complete.
+- `Phase0PlayerBridge` shell command dispatch has been extracted
+- `CharacterReplica` visible runtime feedback has been split out
+- `CharacterPresentationInput` is preserved at the actor-to-skin boundary
+- `ControllerPort` has been documented as a mid-term boundary and intentionally not implemented in the near-term cleanup
+- asset lookup has a documented readiness gate and remains contract-only until multiple role skins require real lookup
+- future root-motion / hybrid work has a motor-owned displacement guard
+
+Remaining follow-up should start from the Phase1-facing mid-term target:
+
+1. Implement explicit `ControllerPort` adapters only when the next runtime slice needs human / agent / program control ports.
+2. Replace near-term dictionary bridging with a stronger typed presentation pipeline when runtime consumers are ready.
+3. Build actual asset lookup only after multiple role skins require binding profiles and fallback behavior.
+4. Expand `LocomotionExecutionMode` into real root-motion or hybrid execution only while preserving `CharacterMotor` as displacement owner.
+5. Keep Phase 0 demo verification green before and after each mid-term slice.

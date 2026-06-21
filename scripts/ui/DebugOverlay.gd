@@ -23,12 +23,7 @@ func _on_debug_event_logged(message: String) -> void:
 	if (
 		message.begins_with("global_input:")
 		or message.begins_with("global_unhandled_input:")
-		or message.begins_with("player_shell_mouse_button:")
-		or message.begins_with("mouse_button_state:")
-		or message.begins_with("combat_mouse_event:")
-		or message.begins_with("player_combat_action:")
 		or message.begins_with("role_action_overlay:")
-		or message.begins_with("phase0_input_bridge_ready:")
 	):
 		combat_status.append(message)
 		if combat_status.size() > 8:

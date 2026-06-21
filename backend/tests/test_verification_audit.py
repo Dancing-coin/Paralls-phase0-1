@@ -52,6 +52,252 @@ def test_phase0_audit_marks_missing_failed_interaction_and_weak_voice() -> None:
     assert results["npc_root_motion_patrol"]["status"] == "missing"
 
 
+def test_phase0_audit_accepts_siming_output_runtime_evidence_without_attention_applied_log() -> None:
+    report = evaluate_phase0_audit(
+        pytest_passed=True,
+        scene_load_ok=True,
+        main_log="""
+        [LocalPresentationBus] backend_connected:ws://127.0.0.1:8000/ws
+        [LocalPresentationBus] phase0_dialogue_target:char_a
+        [LocalPresentationBus] dialogue_applied:char_a
+        [LocalPresentationBus] phase0_interact_target:obj_letter
+        [LocalPresentationBus] object_state:obj_letter:visible
+        [LocalPresentationBus] constraint_state_result:distance
+        [LocalPresentationBus] environment_state:alerted
+        [LocalPresentationBus] backend_message_type:siming_output
+        [LocalPresentationBus] phase0_screenshot_saved:D:\\demo-main.png:0
+        """,
+        focus_log="""
+        [LocalPresentationBus] phase0_focus_autotest_begin
+        [LocalPresentationBus] backend_message_type:siming_output
+        [LocalPresentationBus] phase0_screenshot_saved:D:\\demo-focus.png:0
+        """,
+        main_screenshot_exists=True,
+        focus_screenshot_exists=True,
+        interaction_source="world_result = esm_service.resolve_interaction(event, is_in_range=False)",
+        esm_service_source='thermal_level=field_state.thermal_level\n"thermal_level"',
+        voice_controller_source='func play_stub_voice(_payload: Dictionary) -> void:\n    _bus_log("voice_stub_played")',
+        player_bridge_source='func before_player_shell_move(delta: float) -> void:\n    _apply_player_root_motion_drive(delta)',
+        character_replica_source='func consume_player_root_motion_request(delta: float) -> Vector3:\n    return _consume_role_root_motion_world_delta()',
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert results["siming_reaction"]["status"] == "proved"
+
+
+def test_phase0_main_demo_autotest_failed_interaction_attempt_moves_to_far_position() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    controller_source = (
+        project_root / "scripts" / "phase0" / "MainDemoController.gd"
+    ).read_text(encoding="utf-8")
+
+    assert '@export var autotest_failed_interact_position := Vector3(0.0, 0.5, 16.0)' in controller_source
+    assert "_emit_move_intent_request(autotest_failed_interact_position, \"locomotion\")" in controller_source
+    assert "_bus_log(\"phase0_autotest_failed_interaction_attempt\")" in controller_source
+
+
+def test_phase0_main_demo_failed_interaction_position_stays_distinct_from_observation_vantage() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    controller_source = (
+        project_root / "scripts" / "phase0" / "MainDemoController.gd"
+    ).read_text(encoding="utf-8")
+
+    assert '@export var autotest_final_position := Vector3(0.0, 0.5, 20.0)' in controller_source
+    assert '@export var autotest_failed_interact_position := Vector3(0.0, 0.5, 20.0)' not in controller_source
+
+
+def test_phase0_main_demo_failed_interaction_attempt_does_not_reemit_near_object_fact() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    controller_source = (
+        project_root / "scripts" / "phase0" / "MainDemoController.gd"
+    ).read_text(encoding="utf-8")
+
+    assert "_emit_near_object_visual_fact(target_object_id)" in controller_source
+    assert "_emit_interaction_request_without_near_object_fact(" in controller_source
+    assert "phase0_autotest_failed_interaction_attempt" in controller_source
+    assert "suspend_near_object_visual_fact = true" in controller_source
+    assert "suspend_spatial_access_fact = true" in controller_source
+
+
+def test_phase0_main_demo_failed_interaction_attempt_does_not_force_focus_target_change() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    controller_source = (
+        project_root / "scripts" / "phase0" / "MainDemoController.gd"
+    ).read_text(encoding="utf-8")
+
+    failed_section = controller_source.split('_bus_log("phase0_autotest_failed_interaction_attempt")', 1)[0]
+    tail = failed_section.split("_emit_move_intent_request(autotest_failed_interact_position, \"locomotion\")", 1)[-1]
+    assert "_force_focus_target(interactive_object)" not in tail
+
+
+def test_phase0_main_demo_failed_interaction_attempt_waits_for_constraint_result() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    controller_source = (
+        project_root / "scripts" / "phase0" / "MainDemoController.gd"
+    ).read_text(encoding="utf-8")
+
+    assert "var pending_failed_move_ack_seen := false" in controller_source
+    assert "var pending_failed_interaction_result_seen := false" in controller_source
+    assert "var pending_failed_interaction_ack_seen := false" in controller_source
+    assert "@export var autotest_failed_interact_timeout_ms := 3000" in controller_source
+    assert "await _wait_for_failed_move_ack(" in controller_source
+    assert 'if str(payload.get("route", "")) == "local_motion":' in controller_source
+    assert "pending_failed_move_ack_seen = true" in controller_source
+    assert "await _wait_for_failed_interaction_ack(" in controller_source
+    assert 'if result_type == "constraint_state_result":' in controller_source
+    assert 'if str(payload.get("route", "")) == "esm_service":' in controller_source
+    assert "pending_failed_interaction_ack_seen = true" in controller_source
+    assert "pending_failed_interaction_result_seen = true" in controller_source
+    assert "await _wait_for_failed_interaction_result(autotest_failed_interact_timeout_ms)" in controller_source
+
+
+def test_phase0_main_demo_suppresses_free_move_intent_loop_during_focus_autotest() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    controller_source = (
+        project_root / "scripts" / "phase0" / "MainDemoController.gd"
+    ).read_text(encoding="utf-8")
+
+    emit_move_section = controller_source.split("func _emit_move_intent_if_needed() -> void:", 1)[1].split(
+        "func _sample_near_object_visual_fact", 1
+    )[0]
+
+    assert "if autotest_enabled or focus_autotest_enabled:" in emit_move_section
+
+
+def test_backend_interact_route_emits_failed_interaction_diagnostics() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    main_source = (project_root / "backend" / "app" / "main.py").read_text(encoding="utf-8")
+
+    assert "phase0_failed_interaction_diag" in main_source
+    assert "actor_position" in main_source
+    assert "target_object_id" in main_source
+    assert "world_result.result_type" in main_source
+
+
+def test_phase0_audit_proves_character_agent_execution_contract_runtime_evidence() -> None:
+    report = evaluate_phase0_audit(
+        pytest_passed=True,
+        scene_load_ok=True,
+        main_log="""
+        [LocalPresentationBus] backend_connected:ws://127.0.0.1:8000/ws
+        [LocalPresentationBus] phase0_dialogue_target:char_a
+        [LocalPresentationBus] dialogue_applied:char_a
+        [LocalPresentationBus] phase0_interact_target:obj_letter
+        [LocalPresentationBus] object_state:obj_letter:visible
+        [LocalPresentationBus] constraint_state_result:distance
+        [LocalPresentationBus] environment_state:alerted
+        [LocalPresentationBus] attention_applied:char_b
+        [LocalPresentationBus] backend_message_raw:{"message_type":"character_agent_execution","payload":{"actor_id":"char_a","actor_control_frames":[{"actor_id":"char_a","controller_source":"agent","control_mode":"agent_controlled","target_ref":"char_a","action":"observe","gait":"walk"}],"presentation_plan":{"actor_id":"char_a","target_ref":"char_a","motion_state":{},"focus_state":{"target_id":"char_a"},"action_state":{"requested_action":"observe","override_state":""},"equipment_state":{},"expression_hint":"execution_bridge","physiology_hint":"stable","speech_state":{"active_command_type":"observe","utterance_request":"observe"}},"action_request_bundle":{"requested_actions":[]}}}
+        [LocalPresentationBus] character_agent_execution:{"actor_id":"char_a","actor_control_frames":[{"actor_id":"char_a","controller_source":"agent","control_mode":"agent_controlled","target_ref":"char_a","action":"observe","gait":"walk"}],"presentation_plan":{"actor_id":"char_a","target_ref":"char_a","motion_state":{},"focus_state":{"target_id":"char_a"},"action_state":{"requested_action":"observe","override_state":""},"equipment_state":{},"expression_hint":"execution_bridge","physiology_hint":"stable","speech_state":{"active_command_type":"observe","utterance_request":"observe"}},"action_request_bundle":{"requested_actions":[]}}
+        [LocalPresentationBus] voice_stub_played
+        [LocalPresentationBus] player_root_motion_step:char_c
+        [LocalPresentationBus] patrol_root_motion_step:char_a
+        [LocalPresentationBus] locomotion_state:stance=stand gait=walk jump=none clip=walk_guard profile=walk rm=active
+        [LocalPresentationBus] jump_probe:type=two_foot run=False apex=1.100 distance=0.820
+        [LocalPresentationBus] jump_probe:type=single_leg run=True apex=1.240 distance=1.180
+        [LocalPresentationBus] phase0_screenshot_saved:D:\\demo-main.png:0
+        """,
+        focus_log="""
+        [LocalPresentationBus] phase0_focus_autotest_begin
+        [LocalPresentationBus] focus_state_applied:char_a
+        [LocalPresentationBus] focus_attention:char_a
+        [LocalPresentationBus] phase0_screenshot_saved:D:\\demo-focus.png:0
+        """,
+        main_screenshot_exists=True,
+        focus_screenshot_exists=True,
+        interaction_source="""
+        request_ref=world_result.request_ref
+        causation_id=world_result.causation_id
+        correlation_id=world_result.correlation_id
+        """,
+        esm_service_source="""
+        thermal_level=field_state.thermal_level
+        "thermal_level"
+        """,
+        voice_controller_source="""
+        func play_stub_voice(_payload: Dictionary) -> void:
+            _bus_log("voice_stub_played")
+        """,
+        player_bridge_source="""
+        func before_player_shell_move(delta: float) -> void:
+            _apply_player_root_motion_drive(delta)
+        """,
+        character_replica_source="""
+        func consume_player_root_motion_request(delta: float) -> Vector3:
+            return _consume_role_root_motion_world_delta()
+        func _move_toward_target(target: Vector3, delta: float, clear_on_arrival: bool) -> void:
+            _bus_log("patrol_root_motion_step:%s" % actor_id)
+        """,
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert results["character_agent_execution_contract"]["status"] == "proved"
+
+
+def test_phase0_audit_proves_character_agent_execution_consumer_runtime_evidence() -> None:
+    report = evaluate_phase0_audit(
+        pytest_passed=True,
+        scene_load_ok=True,
+        main_log="""
+        [LocalPresentationBus] backend_connected:ws://127.0.0.1:8000/ws
+        [LocalPresentationBus] backend_message_raw:{"message_type":"character_agent_execution","payload":{"actor_id":"char_a","actor_control_frames":[{"actor_id":"char_a","controller_source":"agent","control_mode":"agent_controlled","target_ref":"char_a","action":"observe","gait":"walk"}],"presentation_plan":{"actor_id":"char_a","target_ref":"char_a","motion_state":{},"focus_state":{"target_id":"char_a"},"action_state":{"requested_action":"observe","override_state":""},"equipment_state":{},"expression_hint":"execution_bridge","physiology_hint":"stable","speech_state":{"active_command_type":"observe","utterance_request":"observe"}},"action_request_bundle":{"requested_actions":[]}}}
+        [LocalPresentationBus] backend_message_type:character_agent_execution
+        [LocalPresentationBus] character_agent_execution:{"actor_id":"char_a","actor_control_frames":[{"actor_id":"char_a","controller_source":"agent","control_mode":"agent_controlled","target_ref":"char_a","action":"observe","gait":"walk"}],"presentation_plan":{"actor_id":"char_a","target_ref":"char_a","motion_state":{},"focus_state":{"target_id":"char_a"},"action_state":{"requested_action":"observe","override_state":""},"equipment_state":{},"expression_hint":"execution_bridge","physiology_hint":"stable","speech_state":{"active_command_type":"observe","utterance_request":"observe"}},"action_request_bundle":{"requested_actions":[]}}
+        character_agent_execution_probe:consumer_seen=true
+        character_agent_execution_probe:legacy_output_seen=false
+        [LocalPresentationBus] phase0_dialogue_target:char_a
+        [LocalPresentationBus] dialogue_applied:char_a
+        [LocalPresentationBus] phase0_interact_target:obj_letter
+        [LocalPresentationBus] object_state:obj_letter:visible
+        [LocalPresentationBus] constraint_state_result:distance
+        [LocalPresentationBus] environment_state:alerted
+        [LocalPresentationBus] attention_applied:char_b
+        [LocalPresentationBus] voice_stub_played
+        [LocalPresentationBus] player_root_motion_step:char_c
+        [LocalPresentationBus] patrol_root_motion_step:char_a
+        [LocalPresentationBus] locomotion_state:stance=stand gait=walk jump=none clip=walk_guard profile=walk rm=active
+        [LocalPresentationBus] jump_probe:type=two_foot run=False apex=1.100 distance=0.820
+        [LocalPresentationBus] jump_probe:type=single_leg run=True apex=1.240 distance=1.180
+        [LocalPresentationBus] phase0_screenshot_saved:D:\\demo-main.png:0
+        """,
+        focus_log="""
+        [LocalPresentationBus] phase0_focus_autotest_begin
+        [LocalPresentationBus] phase0_screenshot_saved:D:\\demo-focus.png:0
+        """,
+        main_screenshot_exists=True,
+        focus_screenshot_exists=True,
+        interaction_source="""
+        request_ref=world_result.request_ref
+        causation_id=world_result.causation_id
+        correlation_id=world_result.correlation_id
+        """,
+        esm_service_source="""
+        thermal_level=field_state.thermal_level
+        "thermal_level"
+        """,
+        voice_controller_source="""
+        func play_stub_voice(_payload: Dictionary) -> void:
+            _bus_log("voice_stub_played")
+        """,
+        player_bridge_source="""
+        func before_player_shell_move(delta: float) -> void:
+            _apply_player_root_motion_drive(delta)
+        """,
+        character_replica_source="""
+        func consume_player_root_motion_request(delta: float) -> Vector3:
+            return _consume_role_root_motion_world_delta()
+        func _move_toward_target(target: Vector3, delta: float, clear_on_arrival: bool) -> void:
+            _bus_log("patrol_root_motion_step:%s" % actor_id)
+        """,
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert results["character_agent_execution_consumer"]["status"] == "proved"
+
+
 def test_phase0_audit_proves_root_motion_player_and_patrol_evidence() -> None:
     report = evaluate_phase0_audit(
         pytest_passed=True,
@@ -336,7 +582,7 @@ def test_phase1_slice_audit_requires_emitter_and_authority_lane_evidence() -> No
         scripts/player/PlayerIntentMapper.gd:76:func emit_visual_fact_event(...)
         """,
         scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
-        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "l1_only"',
+        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "targeted_actor_only"',
     )
 
     results = _index_by_id(report["results"])
@@ -400,7 +646,7 @@ def test_phase1_slice_audit_rejects_legacy_visual_fact_event_ack_contract() -> N
         scripts/player/PlayerIntentMapper.gd:76:func emit_visual_fact_event(...)
         """,
         scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
-        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "l1_only"',
+        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "targeted_actor_only"',
     )
 
     results = _index_by_id(report["results"])
@@ -431,7 +677,7 @@ def test_phase1_slice_audit_requires_auditory_fact_proof() -> None:
         scripts/player/PlayerIntentMapper.gd:76:func emit_visual_fact_event(...)
         """,
         scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
-        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "l1_only"',
+        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "targeted_actor_only"',
     )
 
     results = _index_by_id(report["results"])
@@ -467,7 +713,7 @@ def test_phase1_slice_audit_requires_evidence_projection_visual_fact_proof() -> 
         scripts/player/PlayerIntentMapper.gd:76:func emit_visual_fact_event(...)
         """,
         scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
-        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "l1_only"',
+        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "targeted_actor_only"',
     )
 
     results = _index_by_id(report["results"])
@@ -940,8 +1186,8 @@ def test_backend_bridge_exposes_character_agent_output_signal_chain() -> None:
     assert 'signal character_agent_output_received(payload)' in bus_source
     assert '"character_agent_output":' in bridge_source
     assert '_bus_emit("character_agent_output_received", [payload])' in bridge_source
-    assert 'character_agent_output_received.connect(_on_character_agent_output_received)' in character_source
-    assert 'func _on_character_agent_output_received(payload: Dictionary) -> void:' in character_source
+    assert 'character_agent_output_received.connect(_on_character_agent_output_received)' not in character_source
+    assert 'func _on_character_agent_output_received(payload: Dictionary) -> void:' not in character_source
 
 def test_backend_bridge_polls_before_closed_state_early_return() -> None:
     project_root = Path(__file__).resolve().parents[2]
@@ -1208,7 +1454,7 @@ func emit_visual_fact_event(...) -> Dictionary:
         """,
         direct_send_scan=scan,
         scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
-        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "l1_only"',
+        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "targeted_actor_only"',
     )
     results = _index_by_id(report["results"])
 

@@ -7,6 +7,7 @@ from pathlib import Path
 MARKERS: tuple[tuple[str, str, str], ...] = (
     ("backend_connected:ws://127.0.0.1:8000/ws", "backend_connected", "backend_connectivity"),
     ('"message_type":"world_result"', "world_result_observed", "successful_interaction"),
+    ('"message_type":"character_agent_execution"', "character_agent_execution_observed", "character_agent_execution_contract"),
     ("phase0_dialogue_target:", "dialogue_target_selected", "dialogue_loop"),
     ("dialogue_applied:", "dialogue_applied", "dialogue_loop"),
     ("object_state:", "object_state_changed", "successful_interaction"),
@@ -39,6 +40,9 @@ PROJECTED_PAYLOAD_FIELDS = (
     "current_state",
     "causation_id",
     "correlation_id",
+    "controller_source",
+    "control_mode",
+    "action",
 )
 
 
@@ -102,6 +106,19 @@ def _extract_structured_fields(line: str) -> dict[str, object]:
     for key in PROJECTED_PAYLOAD_FIELDS:
         if key in body:
             fields[key] = body[key]
+
+    if fields.get("message_type") == "character_agent_execution":
+        actor_control_frames = body.get("actor_control_frames")
+        if isinstance(actor_control_frames, list) and actor_control_frames and isinstance(actor_control_frames[0], dict):
+            first_frame = actor_control_frames[0]
+            for key in ("controller_source", "control_mode", "action"):
+                if key in first_frame:
+                    fields[key] = first_frame[key]
+        presentation_plan = body.get("presentation_plan")
+        if isinstance(presentation_plan, dict):
+            fields["has_focus_state"] = "focus_state" in presentation_plan
+            fields["has_action_state"] = "action_state" in presentation_plan
+            fields["has_speech_state"] = "speech_state" in presentation_plan
     return fields
 
 

@@ -60,16 +60,16 @@ Responsibilities:
 ### L2 Control Adaptation Layer
 
 - `scripts/player/Phase0PlayerBridge.gd`
-- future:
-  - `HumanControllerAdapter`
-  - `AgentControllerAdapter`
-  - `ProgramControllerAdapter`
+- `scripts/character/HumanControllerAdapter.gd`
+- `scripts/character/AgentControllerAdapter.gd`
+- `scripts/character/ProgramControllerAdapter.gd`
+- `scripts/character/CharacterControllerPort.gd`
 
 Responsibilities:
 
 - normalize source-specific input into `CharacterIntentFrame`
 - translate traveler combat clicks into actor action requests
-- keep player shell and visible actor in sync
+- keep player shell and visible actor in sync through thin actor-facing helper surfaces
 
 ### L3 Actor Runtime Layer
 
@@ -86,7 +86,7 @@ Responsibilities:
 ### L4 Motor / Locomotion Execution Layer
 
 - `scripts/character/CharacterMotor.gd`
-- `scenes/phase0/CharacterBase.tscn`
+- current live player path: `scenes/phase0/CharacterReplica.tscn`
 
 Responsibilities:
 
@@ -94,7 +94,7 @@ Responsibilities:
 - gravity
 - move_and_slide
 - collision and grounded state
-- `CharacterMotionState`
+- normalized local motion-state publication used by the shared actor presentation path
 
 ### L5 Presentation Composition Layer
 
@@ -147,6 +147,21 @@ Near-term default:
 - `physics`
 
 Future root-motion support must remain motor-owned rather than presentation-owned.
+
+## Root-Motion Ownership Guard
+
+CharacterMotor remains the only normal owner of baseline displacement.
+
+`KnightRoleSkin` may expose sampled root-motion deltas, and `CharacterReplica` may coordinate those deltas with actor runtime state, but presentation nodes must not directly move the world body.
+
+Future root-motion and hybrid work must be motor-owned. A complete mid-term `root_motion` or `hybrid` execution mode must preserve this path:
+
+```text
+presentation root-motion sample
+-> CharacterReplica coordination
+-> CharacterMotor-owned displacement
+-> normalized local motion-state publication
+```
 
 ## Shared Actor Principle
 

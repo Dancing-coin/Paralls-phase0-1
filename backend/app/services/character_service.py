@@ -1,3 +1,4 @@
+from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from app.models.ai_output import DialogueResponse
 from app.models.player_input import DialogueSubmit, FocusTargetChange
 from app.services.dialogue_service import DialogueService
@@ -5,9 +6,15 @@ from app.services.tts_service import TTSService
 
 
 class CharacterService:
-    def __init__(self) -> None:
-        self.dialogue = DialogueService()
-        self.tts = TTSService()
+    def __init__(
+        self,
+        *,
+        dialogue_gateway: CharacterModelGateway | None = None,
+        dialogue_service: DialogueService | None = None,
+        tts_service: TTSService | None = None,
+    ) -> None:
+        self.dialogue = dialogue_service or DialogueService(gateway=dialogue_gateway)
+        self.tts = tts_service or TTSService()
 
     def handle_dialogue(self, event: DialogueSubmit) -> DialogueResponse:
         content, tone = self.dialogue.generate_reply(event.target_actor_id, event.content)

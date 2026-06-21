@@ -13,13 +13,6 @@ const MOTION_STATE_KEYS := {
 	"grounded": true,
 }
 
-const PRESENTATION_INPUT_KEYS := {
-	"move_x": true,
-	"move_y": true,
-	"speed": true,
-	"gait": true,
-}
-
 
 static func normalize_motion_state(candidate: Dictionary) -> Dictionary:
 	return {
@@ -33,13 +26,22 @@ static func normalize_motion_state(candidate: Dictionary) -> Dictionary:
 	}
 
 
-static func normalize_presentation_input(candidate: Dictionary) -> Dictionary:
-	return {
-		"move_x": float(candidate.get("move_x", 0.0)),
-		"move_y": float(candidate.get("move_y", 0.0)),
-		"speed": float(candidate.get("speed", 0.0)),
-		"gait": str(candidate.get("gait", "walk")),
-	}
+static func get_velocity_world(motion_state: Dictionary) -> Vector3:
+	return _as_vector3(motion_state.get("velocity_world", Vector3.ZERO))
+
+
+static func is_grounded(motion_state: Dictionary, fallback: bool = false) -> bool:
+	if not motion_state.has("grounded"):
+		return fallback
+	return bool(motion_state.get("grounded", fallback))
+
+
+static func get_move_local_actual(motion_state: Dictionary) -> Vector2:
+	return _as_vector2(motion_state.get("move_local_actual", Vector2.ZERO))
+
+
+static func get_gait_actual(motion_state: Dictionary) -> String:
+	return str(motion_state.get("gait_actual", "walk"))
 
 
 static func _as_vector2(value: Variant) -> Vector2:

@@ -32,7 +32,8 @@ def test_character_agent_runtime_emits_goal_command() -> None:
 
     assert commands
     assert isinstance(commands[0], CharacterGoalCommand)
-    assert commands[0].command_type in {"look_at", "approach", "observe", "interact", "speak"}
+    assert commands[0].command_type == "observe"
+    assert commands[0].execution_payload is not None
 
 
 def test_character_agent_runtime_keeps_self_body_as_actor_goal_not_frame() -> None:
@@ -52,4 +53,24 @@ def test_character_agent_runtime_keeps_self_body_as_actor_goal_not_frame() -> No
 
     assert commands
     assert isinstance(commands[0], CharacterGoalCommand)
-    assert commands[0].command_type in {"look_at", "approach", "observe", "interact", "speak"}
+    assert commands[0].command_type == "observe"
+
+
+def test_character_agent_runtime_threads_self_body_state_into_legacy_command_physiology_hint() -> None:
+    runtime = CharacterAgentRuntime()
+    event = SelfBodyPerceivedEvent(
+        actor_id="char_b",
+        body_state_class="interaction_strain",
+        producer_ts=321,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="body_state_result/interaction_strain=engaged",
+        source_body_result_id="body_result:char_b:321",
+    )
+
+    commands = runtime.ingest_self_body_perceived_event(event)
+
+    assert commands
+    assert isinstance(commands[0], CharacterGoalCommand)
+    assert commands[0].physiology_hint == "elevated"

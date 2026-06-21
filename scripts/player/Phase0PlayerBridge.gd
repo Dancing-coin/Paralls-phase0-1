@@ -1,46 +1,32 @@
 extends Node
 
+const CharacterControllerPortRef = preload("res://scripts/character/CharacterControllerPort.gd")
 const CharacterControlModeRef = preload("res://scripts/character/CharacterControlMode.gd")
+const CharacterShellSyncRef = preload("res://scripts/player/Phase0CharacterShellSync.gd")
+const LocomotionControlStateRef = preload("res://scripts/player/Phase0LocomotionControlState.gd")
+const ProgramControllerAdapterRef = preload("res://scripts/character/ProgramControllerAdapter.gd")
+const ProgramControlStateRef = preload("res://scripts/player/Phase0ProgramControlState.gd")
+const ViewAnchorResolverRef = preload("res://scripts/player/Phase0ViewAnchorResolver.gd")
 
-@export var dialogue_action := "phase0_submit_dialogue"
-@export var interact_action := "phase0_interact"
-@export var guard_pose_action := "phase0_knight_guard_pose"
-@export var observe_pose_action := "phase0_knight_observe_pose"
-@export var speak_pose_action := "phase0_knight_speak_pose"
-@export var inspect_pose_action := "phase0_knight_inspect_pose"
-@export var alert_pose_action := "phase0_knight_alert_pose"
-@export var ambient_pose_action := "phase0_knight_ambient_pose"
-@export var sword_swing_action := "phase0_sword_swing"
-@export var shield_block_action := "phase0_shield_block"
-@export var gait_cycle_action := "phase0_cycle_walk_mode"
-@export var crouch_toggle_action := "phase0_toggle_crouch"
 @export var character_c_sync_enabled := true
 @export var hide_player_visual_shell := true
 @export var player_root_motion_enabled := true
 
-@onready var embodiment: Node = $"../Phase0Embodiment"
 @onready var player: CharacterBody3D = get_parent() as CharacterBody3D
 
-var forced_move_direction := Vector3.ZERO
-var forced_run_state := false
-var forced_jump_request := ""
-var locomotion_gait_mode := 1
-var locomotion_stance_mode := 0
-var current_jump_type := "none"
 var current_intent_frame: Dictionary = {}
 var desired_facing_yaw := 0.0
 var sword_swing_pressed := false
 var shield_block_pressed := false
-
-const STANCE_STAND := 0
-const STANCE_CROUCH := 1
-const GAIT_CYCLE := ["amble", "walk", "brisk_walk"]
+var character_shell_sync = CharacterShellSyncRef.new()
+var locomotion_control_state = LocomotionControlStateRef.new()
+var program_control_state = ProgramControlStateRef.new()
+var view_anchor_resolver = ViewAnchorResolverRef.new()
 
 # The player-controlled role shell now lives under the same CharacterBase root.
 # Phase0InputBridge still maps local controls into the visible knight child.
 
 func _ready() -> void:
-	_bus_log("phase0_input_bridge_ready:combat_mouse_v3")
 	if hide_player_visual_shell:
 		_set_player_visual_shell_visible(false)
 
@@ -54,62 +40,29 @@ func _physics_process(_delta: float) -> void:
 		return
 	_sync_character_c_from_player()
 
-func handle_shell_action_event(event: InputEvent) -> void:
+func cycle_gait_mode() -> void:
+	locomotion_control_state.cycle_gait_mode()
+
+func toggle_crouch_mode() -> void:
+	locomotion_control_state.toggle_crouch_mode()
+
+func trigger_dialogue() -> void:
 	var main_demo := _get_main_demo()
-
-	if event.is_action_pressed(gait_cycle_action):
-		_cycle_gait_mode()
-
-	if event.is_action_pressed(crouch_toggle_action):
-		_toggle_crouch_mode()
-
-	if main_demo != null and event.is_action_pressed(dialogue_action) and main_demo.has_method("submit_dialogue"):
-		if embodiment and embodiment.has_method("trigger_dialogue_feedback"):
-			embodiment.trigger_dialogue_feedback()
-		_trigger_character_c_action("speak")
+	if main_demo != null and main_demo.has_method("submit_dialogue"):
 		main_demo.submit_dialogue()
 
-	if main_demo != null and event.is_action_pressed(interact_action) and main_demo.has_method("submit_interaction"):
-		if embodiment and embodiment.has_method("trigger_interact_feedback"):
-			embodiment.trigger_interact_feedback()
-		_trigger_character_c_action("inspect")
+func trigger_interaction() -> void:
+	var main_demo := _get_main_demo()
+	if main_demo != null and main_demo.has_method("submit_interaction"):
 		main_demo.submit_interaction()
 
-	if event.is_action_pressed(guard_pose_action):
-		_trigger_character_c_action("guard")
-	if event.is_action_pressed(observe_pose_action):
-		_trigger_character_c_action("observe")
-	if event.is_action_pressed(speak_pose_action):
-		_trigger_character_c_action("speak")
-	if event.is_action_pressed(inspect_pose_action):
-		_trigger_character_c_action("inspect")
-	if event.is_action_pressed(alert_pose_action):
-		_trigger_character_c_action("alert")
-	if event.is_action_pressed(ambient_pose_action):
-		_trigger_character_c_action("ambient")
+func trigger_role_action(action_tag: String) -> void:
+	_trigger_character_c_action(action_tag)
 
-	_handle_combat_input_event(event)
-
-func _handle_combat_input_event(event: InputEvent) -> void:
-	if event is InputEventMouseButton:
-		handle_mouse_combat_event(event as InputEventMouseButton)
-
-	if event.is_action_pressed(sword_swing_action):
-		if not sword_swing_pressed:
-			_trigger_combat_action("sword_swing")
-		sword_swing_pressed = true
-	elif event.is_action_released(sword_swing_action):
-		sword_swing_pressed = false
-
-	if event.is_action_pressed(shield_block_action):
-		if not shield_block_pressed:
-			_trigger_combat_action("shield_block")
-		shield_block_pressed = true
-	elif event.is_action_released(shield_block_action):
-		shield_block_pressed = false
+func trigger_combat_action(action_tag: String) -> void:
+	_trigger_combat_action(action_tag)
 
 func handle_mouse_combat_event(event: InputEventMouseButton) -> void:
-	_bus_log("combat_mouse_event:button=%s pressed=%s device=%s" % [event.button_index, str(event.pressed), event.device])
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			if not sword_swing_pressed:
@@ -125,24 +78,7 @@ func handle_mouse_combat_event(event: InputEventMouseButton) -> void:
 		else:
 			shield_block_pressed = false
 
-func trigger_dialogue() -> void:
-	var main_demo := _get_main_demo()
-	if embodiment and embodiment.has_method("trigger_dialogue_feedback"):
-		embodiment.trigger_dialogue_feedback()
-	_trigger_character_c_action("speak")
-	if main_demo and main_demo.has_method("submit_dialogue"):
-		main_demo.submit_dialogue()
-
-func trigger_interaction() -> void:
-	var main_demo := _get_main_demo()
-	if embodiment and embodiment.has_method("trigger_interact_feedback"):
-		embodiment.trigger_interact_feedback()
-	_trigger_character_c_action("inspect")
-	if main_demo and main_demo.has_method("submit_interaction"):
-		main_demo.submit_interaction()
-
 func _trigger_combat_action(action_name: String) -> void:
-	_bus_log("player_combat_action:%s" % action_name)
 	_trigger_character_c_action(action_name)
 
 func _get_main_demo() -> Node:
@@ -154,28 +90,42 @@ func set_character_c_sync_enabled(enabled: bool) -> void:
 		_clear_character_c_sync()
 
 func set_human_intent_frame(frame: Dictionary) -> void:
-	current_intent_frame = frame.duplicate(true)
-	current_intent_frame["control_mode"] = CharacterControlModeRef.HUMAN_CONTROLLED
-	desired_facing_yaw = float(current_intent_frame.get("desired_facing_yaw", player.global_rotation.y))
+	current_intent_frame = CharacterControllerPortRef.normalize_intent_frame(frame)
+	desired_facing_yaw = CharacterControllerPortRef.get_desired_facing_yaw(current_intent_frame, player.global_rotation.y)
+
+func build_program_intent_frame(candidate: Dictionary) -> Dictionary:
+	return ProgramControllerAdapterRef.build_intent_frame("char_c", candidate)
 
 func set_forced_player_motion(world_direction: Vector3, wants_run: bool = false) -> void:
-	forced_move_direction = Vector3(world_direction.x, 0.0, world_direction.z)
-	if forced_move_direction.length() > 1.0:
-		forced_move_direction = forced_move_direction.normalized()
-	forced_run_state = wants_run
+	var _program_frame := build_program_intent_frame(
+		{
+			"move_local": Vector2(world_direction.x, -world_direction.z).limit_length(1.0),
+			"look_local": Vector2.ZERO,
+			"stance": locomotion_control_state.resolve_stance_name(),
+			"gait": "run" if wants_run else "walk",
+			"action": "locomotion",
+		}
+	)
+	program_control_state.set_forced_player_motion(world_direction, wants_run)
 	if player and player.has_method("set_forced_control"):
-		var local_x := forced_move_direction.dot(player.global_basis.x)
-		var local_y := forced_move_direction.dot(-player.global_basis.z)
+		var local_x: float = program_control_state.forced_move_direction.dot(player.global_basis.x)
+		var local_y: float = program_control_state.forced_move_direction.dot(-player.global_basis.z)
 		player.set_forced_control(Vector2(local_x, local_y), wants_run)
 
 func clear_forced_player_motion() -> void:
-	forced_move_direction = Vector3.ZERO
-	forced_run_state = false
+	program_control_state.clear_forced_player_motion()
 	if player and player.has_method("clear_forced_control"):
 		player.clear_forced_control()
 
 func trigger_forced_jump(jump_type: String) -> void:
-	forced_jump_request = jump_type
+	var _program_frame := build_program_intent_frame(
+		{
+			"look_local": Vector2.ZERO,
+			"stance": locomotion_control_state.resolve_stance_name(),
+			"action": "jump_%s" % jump_type,
+		}
+	)
+	program_control_state.queue_forced_jump(jump_type)
 
 func before_player_shell_move(delta: float) -> void:
 	if not player_root_motion_enabled or not character_c_sync_enabled:
@@ -192,212 +142,160 @@ func after_player_shell_move(_delta: float) -> void:
 
 func _sync_character_c_from_player() -> void:
 	var character_c := _get_character_c()
-	if character_c == null:
-		return
 
-	var planar_velocity := Vector3(player.velocity.x, 0.0, player.velocity.z)
+	var planar_velocity: Vector3 = player.get_planar_velocity() if player and player.has_method("get_planar_velocity") else Vector3.ZERO
 	var look_target := _resolve_player_look_target()
-	if character_c.has_method("apply_player_shell_pose"):
-		character_c.apply_player_shell_pose(player.global_position, planar_velocity, look_target, player.is_on_floor())
-		return
-	if character_c.has_method("apply_player_shell_frame"):
-		character_c.apply_player_shell_frame(player.global_position, planar_velocity, look_target, player.is_on_floor())
+	character_shell_sync.sync_from_player_shell_pose(
+		character_c,
+		player.get_body_position() if player and player.has_method("get_body_position") else Vector3.ZERO,
+		planar_velocity,
+		look_target,
+		player.is_grounded_state() if player and player.has_method("is_grounded_state") else false,
+		player.get_motion_state() if player and player.has_method("get_motion_state") else {},
+	)
 
 func _sync_character_c_control_frame(delta: float) -> void:
 	var character_c := _get_character_c()
-	if character_c == null or not character_c.has_method("begin_player_control_frame"):
-		return
 
 	var move_direction := _resolve_player_move_direction()
 	var wants_run := _should_run(move_direction)
 	var look_target := _resolve_player_look_target()
 	var jump_type := _resolve_jump_type(move_direction, wants_run)
-	if forced_jump_request != "" and player and player.has_method("queue_forced_jump"):
-		player.queue_forced_jump(forced_jump_request)
-		current_jump_type = forced_jump_request
-		jump_type = forced_jump_request
-		forced_jump_request = ""
+	var queued_forced_jump: String = program_control_state.consume_forced_jump_request()
+	if queued_forced_jump != "" and player and player.has_method("queue_forced_jump"):
+		player.queue_forced_jump(queued_forced_jump)
+		locomotion_control_state.current_jump_type = queued_forced_jump
+		jump_type = queued_forced_jump
 	if player and player.has_method("set_jump_variant_profile"):
 		player.set_jump_variant_profile(jump_type if jump_type != "none" else "default")
-	if jump_type != "none" and locomotion_stance_mode == STANCE_CROUCH:
-		locomotion_stance_mode = STANCE_STAND
-	var stance_name := _resolve_stance_name()
-	var gait_name := _resolve_gait_name(move_direction, wants_run)
-	character_c.begin_player_control_frame(player.global_position, move_direction, look_target, player.is_on_floor(), wants_run, gait_name, stance_name, jump_type)
-	if character_c.has_method("consume_player_root_motion_request"):
-		character_c.consume_player_root_motion_request(delta)
+	if jump_type != "none" and locomotion_control_state.locomotion_stance_mode == locomotion_control_state.STANCE_CROUCH:
+		locomotion_control_state.set_crouch_enabled(false)
+	var stance_name: String = locomotion_control_state.resolve_stance_name()
+	var gait_name: String = locomotion_control_state.resolve_gait_name(move_direction, wants_run)
+	character_shell_sync.sync_player_control_frame(
+		character_c,
+		player.get_body_position() if player and player.has_method("get_body_position") else Vector3.ZERO,
+		move_direction,
+		look_target,
+		player.is_grounded_state() if player and player.has_method("is_grounded_state") else false,
+		wants_run,
+		gait_name,
+		stance_name,
+		jump_type,
+		delta,
+	)
 
 func _clear_character_c_sync() -> void:
 	var character_c := _get_character_c()
-	if character_c and character_c.has_method("clear_player_shell_frame"):
-		character_c.clear_player_shell_frame()
+	character_shell_sync.clear_character_shell_frame(character_c)
 
 func get_control_anchor_position() -> Vector3:
 	var character_c := _get_character_c()
-	if character_c and character_c.has_method("is_player_shell_active") and character_c.is_player_shell_active():
-		if character_c.has_method("get_role_anchor_position"):
-			return character_c.get_role_anchor_position()
-		if character_c is Node3D:
-			return (character_c as Node3D).global_position
-	return player.global_position
+	return view_anchor_resolver.resolve_control_anchor_position(player, character_c)
 
 func get_control_forward() -> Vector3:
 	var character_c := _get_character_c()
-	if character_c and character_c.has_method("is_player_shell_active") and character_c.is_player_shell_active():
-		var look_target := _resolve_player_look_target()
-		var forward := look_target - get_control_anchor_position()
-		forward.y = 0.0
-		if forward.length() > 0.001:
-			return forward.normalized()
-		if character_c is Node3D:
-			return -((character_c as Node3D).global_basis.z).normalized()
-	return _resolve_player_forward()
+	return view_anchor_resolver.resolve_control_forward(
+		player,
+		character_c,
+		_resolve_player_look_target(),
+		get_control_anchor_position(),
+		_resolve_player_forward(),
+	)
 
 func get_camera() -> Camera3D:
 	return _find_camera()
 
 func _resolve_player_look_target() -> Vector3:
-	if forced_move_direction.length() > 0.001:
-		return player.global_position + forced_move_direction.normalized()
-	if not current_intent_frame.is_empty():
-		return player.global_position + _forward_from_yaw(desired_facing_yaw)
-	var visual_root := player.find_child("VisualRoot", true, false)
-	if visual_root is Node3D:
-		return player.global_position - (visual_root as Node3D).global_basis.z
-	var camera_holder := player.find_child("CameraHolder", true, false)
-	if camera_holder is Node3D:
-		return player.global_position - (camera_holder as Node3D).global_basis.z
-	var camera := _find_camera()
-	if camera is Camera3D:
-		return player.global_position - (camera as Camera3D).global_basis.z
-	return player.global_position - player.global_basis.z
+	return view_anchor_resolver.resolve_player_look_target(
+		player,
+		program_control_state,
+		current_intent_frame,
+		desired_facing_yaw,
+		Callable(self, "_find_camera"),
+	)
 
 func _resolve_player_forward() -> Vector3:
-	if not current_intent_frame.is_empty():
-		return _forward_from_yaw(desired_facing_yaw)
-	var visual_root := player.find_child("VisualRoot", true, false)
-	if visual_root is Node3D:
-		return -((visual_root as Node3D).global_basis.z).normalized()
-	var camera_holder := player.find_child("CameraHolder", true, false)
-	if camera_holder is Node3D:
-		return -((camera_holder as Node3D).global_basis.z).normalized()
-	var camera := _find_camera()
-	if camera:
-		return -(camera.global_basis.z).normalized()
-	return -(player.global_basis.z).normalized()
+	return view_anchor_resolver.resolve_player_forward(
+		player,
+		current_intent_frame,
+		desired_facing_yaw,
+		Callable(self, "_find_camera"),
+	)
 
 func _set_player_visual_shell_visible(is_visible: bool) -> void:
-	var visual_root := player.find_child("VisualRoot", true, false)
-	if visual_root is Node3D:
-		(visual_root as Node3D).visible = is_visible
+	var character_c := _get_character_c()
+	if character_c and character_c.has_method("set_visual_shell_visible"):
+		character_c.set_visual_shell_visible(is_visible)
 
 func _resolve_player_move_direction() -> Vector3:
-	if forced_move_direction.length() > 0.001:
-		return forced_move_direction
+	if program_control_state.has_forced_move_direction():
+		return program_control_state.forced_move_direction
 	if player == null:
 		return Vector3.ZERO
 
-	var move_local_value: Variant = current_intent_frame.get("move_local", Vector2.ZERO)
-	var move_local: Vector2 = move_local_value if move_local_value is Vector2 else Vector2.ZERO
+	var normalized_frame := CharacterControllerPortRef.normalize_intent_frame(current_intent_frame)
+	var move_local := CharacterControllerPortRef.get_move_local(normalized_frame)
 	if move_local.length() <= 0.001:
 		return Vector3.ZERO
-	var facing_yaw := desired_facing_yaw if not current_intent_frame.is_empty() else player.global_rotation.y
-	var forward := _forward_from_yaw(facing_yaw)
+	var facing_yaw := CharacterControllerPortRef.get_desired_facing_yaw(normalized_frame, player.global_rotation.y)
+	var forward: Vector3 = view_anchor_resolver._forward_from_yaw(facing_yaw)
 	var right := Vector3.RIGHT.rotated(Vector3.UP, facing_yaw)
-	var move_direction := (right * move_local.x) + (forward * move_local.y)
+	var move_direction: Vector3 = (right * move_local.x) + (forward * move_local.y)
 	return move_direction.normalized()
 
-func _forward_from_yaw(yaw: float) -> Vector3:
-	return -Vector3.FORWARD.rotated(Vector3.UP, yaw).normalized()
-
-func _cycle_gait_mode() -> void:
-	if locomotion_stance_mode == STANCE_CROUCH:
-		return
-	locomotion_gait_mode = (locomotion_gait_mode + 1) % GAIT_CYCLE.size()
-
-func _toggle_crouch_mode() -> void:
-	if locomotion_stance_mode == STANCE_STAND:
-		locomotion_stance_mode = STANCE_CROUCH
-	else:
-		locomotion_stance_mode = STANCE_STAND
-
 func set_gait_mode_by_name(gait_name: String) -> void:
-	var idx := GAIT_CYCLE.find(gait_name)
-	if idx >= 0:
-		locomotion_gait_mode = idx
+	locomotion_control_state.set_gait_mode_by_name(gait_name)
 
 func set_crouch_enabled(enabled: bool) -> void:
-	locomotion_stance_mode = STANCE_CROUCH if enabled else STANCE_STAND
+	locomotion_control_state.set_crouch_enabled(enabled)
 
 func _should_run(move_direction: Vector3) -> bool:
-	var gait_name := str(current_intent_frame.get("gait", ""))
+	var normalized_frame := CharacterControllerPortRef.normalize_intent_frame(current_intent_frame)
+	var gait_name := CharacterControllerPortRef.get_gait_name(normalized_frame)
 	return (
-		locomotion_stance_mode == STANCE_STAND
+		locomotion_control_state.locomotion_stance_mode == locomotion_control_state.STANCE_STAND
 		and move_direction.length() > 0.001
 		and (
-			forced_run_state
+			program_control_state.forced_run_state
 			or gait_name == "run"
 		)
 	)
 
-func _resolve_stance_name() -> String:
-	return "crouch" if locomotion_stance_mode == STANCE_CROUCH else "stand"
-
-func _resolve_gait_name(move_direction: Vector3, wants_run: bool) -> String:
-	if locomotion_stance_mode == STANCE_CROUCH:
-		return "crouch_walk" if move_direction.length() > 0.001 else "crouch_idle"
-	if move_direction.length() <= 0.001:
-		return GAIT_CYCLE[locomotion_gait_mode]
-	if wants_run:
-		return "run"
-	return GAIT_CYCLE[locomotion_gait_mode]
-
 func _resolve_jump_type(move_direction: Vector3, wants_run: bool) -> String:
 	if player == null:
 		return "none"
-	var requested_action := str(current_intent_frame.get("action", ""))
-	if player.is_on_floor():
-		if requested_action.begins_with("jump") and move_direction.length() > 0.001:
-			current_jump_type = "single_leg" if wants_run else "two_foot"
-		elif current_jump_type != "none" and abs(player.velocity.y) > 0.001:
-			return current_jump_type
-		elif current_jump_type != "none":
-			current_jump_type = "none"
-	else:
-		if current_jump_type == "none" and move_direction.length() > 0.001:
-			current_jump_type = "single_leg" if wants_run else "two_foot"
-	return current_jump_type
+	var normalized_frame := CharacterControllerPortRef.normalize_intent_frame(current_intent_frame)
+	var requested_action := CharacterControllerPortRef.get_action_name(normalized_frame)
+	return locomotion_control_state.resolve_jump_type(
+		player.is_grounded_state() if player and player.has_method("is_grounded_state") else false,
+		move_direction,
+		wants_run,
+		requested_action,
+		player.get_vertical_velocity() if player and player.has_method("get_vertical_velocity") else 0.0,
+	)
 
 func can_trigger_movement_jump() -> bool:
 	return _resolve_player_move_direction().length() > 0.001
 
 func _get_character_c() -> Node:
-	if player == null:
-		return null
-	return player.get_node_or_null("CharacterReplica")
+	if player and player.has_method("get_character_replica"):
+		return player.get_character_replica()
+	return null
 
 func _trigger_character_c_action(action_name: String) -> void:
 	var character_c := _get_character_c()
 	if character_c and character_c.has_method("perform_action"):
 		character_c.perform_action(action_name)
 
-func _bus_log(message: String) -> void:
-	var bus := get_node_or_null("/root/LocalPresentationBus")
-	if bus and bus.has_method("log_debug"):
-		bus.log_debug(message)
-
 func _find_camera() -> Camera3D:
-	var found := player.find_child("Camera3D", true, false)
-	if found is Camera3D:
-		return found as Camera3D
-	return null
+	return view_anchor_resolver.find_camera(player)
 
 func _get_player_action(property_name: StringName, fallback: StringName) -> StringName:
-	if player == null:
-		return fallback
-	var value: Variant = player.get(property_name)
-	if value is StringName:
-		return value as StringName
-	if value is String:
-		return StringName(value)
+	if player and player.has_method("get_action_binding"):
+		var value: Variant = player.get_action_binding(property_name, fallback)
+		if value is StringName:
+			return value as StringName
+		if value is String:
+			return StringName(value)
 	return fallback

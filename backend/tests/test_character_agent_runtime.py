@@ -31,7 +31,7 @@ def test_character_agent_runtime_turns_perceived_event_into_output() -> None:
     }
 
 
-def test_character_agent_runtime_ignores_unsupported_actor() -> None:
+def test_character_agent_runtime_accepts_char_c_into_the_shared_runtime_species() -> None:
     runtime = CharacterAgentRuntime()
     event = CharacterPerceivedEvent(
         actor_id="char_c",
@@ -47,7 +47,11 @@ def test_character_agent_runtime_ignores_unsupported_actor() -> None:
     )
 
     commands = runtime.ingest_character_perceived_event(event)
+    snapshot = runtime.get_private_snapshot("char_c")
 
+    assert runtime.supports_actor("char_c")
+    assert snapshot is not None
+    assert snapshot.actor_id == "char_c"
     assert commands == []
 
 
