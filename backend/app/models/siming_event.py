@@ -3,6 +3,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.authority_event import AuthorityEvent
+from app.models.siming_runtime_state import (
+    FairnessDimensionSnapshot,
+    NarrativeReadModel,
+    SimingCheckpoint,
+)
 
 
 SimingInputType = Literal[
@@ -75,6 +80,7 @@ class FairnessStateSnapshot(BaseModel):
     eligible_actor_ids: list[str] = Field(default_factory=list)
     blocked_actor_ids: list[str] = Field(default_factory=list)
     recent_intervention_ids: list[str] = Field(default_factory=list)
+    dimensions: dict[str, FairnessDimensionSnapshot] = Field(default_factory=dict)
 
 
 class InterventionCandidate(BaseModel):
@@ -178,3 +184,5 @@ class SimingAuditRecord(BaseModel):
 class SimingTickResult(BaseModel):
     outputs: list[SimingOutput] = Field(default_factory=list)
     audit_records: list[SimingAuditRecord] = Field(default_factory=list)
+    checkpoints: list[SimingCheckpoint] = Field(default_factory=list)
+    read_model: NarrativeReadModel | None = None
