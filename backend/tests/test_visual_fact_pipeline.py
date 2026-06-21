@@ -303,6 +303,9 @@ def test_websocket_raw_visual_fact_event_emits_same_runtime_alignment_messages_a
     assert ack["payload"]["accepted"] is True
     assert ack["payload"]["route"] == "authority_visual_fact"
     assert ack["payload"]["source_type"] == "raw_fact_event"
+    assert ack["payload"]["fact_key"] == "actor_looks_at_object"
+    assert ack["payload"]["fact_type"] == "fixed_gaze_on_target"
+    assert ack["payload"]["relation_type"] == "actor_looks_at_object"
     assert runtime_snapshot["message_type"] == "character_runtime_state_snapshot"
     assert runtime_snapshot["payload"]["actor_id"] == "char_c"
     assert runtime_delta["message_type"] == "character_runtime_state_delta"
@@ -586,26 +589,23 @@ def test_handle_envelope_raw_visual_fact_mirror_after_focus_matches_legacy_ack_o
         )
     )
 
-    assert legacy_messages == [
-        {
-            "message_type": "ack",
-            "payload": {
-                "accepted": True,
-                "source_type": "visual_fact_event",
-                "route": "authority_visual_fact",
-            },
-        }
-    ]
-    assert raw_messages == [
-        {
-            "message_type": "ack",
-            "payload": {
-                "accepted": True,
-                "source_type": "raw_fact_event",
-                "route": "authority_visual_fact",
-            },
-        }
-    ]
+    assert len(legacy_messages) == 1
+    assert legacy_messages[0]["message_type"] == "ack"
+    assert legacy_messages[0]["payload"]["accepted"] is True
+    assert legacy_messages[0]["payload"]["source_type"] == "visual_fact_event"
+    assert legacy_messages[0]["payload"]["route"] == "authority_visual_fact"
+    assert legacy_messages[0]["payload"]["fact_key"] == "actor_looks_at_actor"
+    assert legacy_messages[0]["payload"]["fact_type"] == "fixed_gaze_on_target"
+    assert legacy_messages[0]["payload"]["relation_type"] == "actor_looks_at_actor"
+
+    assert len(raw_messages) == 1
+    assert raw_messages[0]["message_type"] == "ack"
+    assert raw_messages[0]["payload"]["accepted"] is True
+    assert raw_messages[0]["payload"]["source_type"] == "raw_fact_event"
+    assert raw_messages[0]["payload"]["route"] == "authority_visual_fact"
+    assert raw_messages[0]["payload"]["fact_key"] == "actor_looks_at_actor"
+    assert raw_messages[0]["payload"]["fact_type"] == "fixed_gaze_on_target"
+    assert raw_messages[0]["payload"]["relation_type"] == "actor_looks_at_actor"
 
 
 def test_handle_envelope_unsupported_raw_fact_family_returns_negative_ack_only() -> None:

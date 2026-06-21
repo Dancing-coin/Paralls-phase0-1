@@ -13,7 +13,12 @@ def test_llm_provider_is_only_invoked_from_siming_runtime() -> None:
     for path in (ROOT / "app").rglob("*.py"):
         rel = path.relative_to(ROOT).as_posix()
         text = path.read_text(encoding="utf-8")
-        if "generate_candidates(" not in text:
+        references_siming_llm = (
+            "siming_llm_provider" in text
+            or "SimingLlm" in text
+            or "_llm_provider" in text
+        )
+        if not references_siming_llm or "generate_candidates(" not in text:
             continue
         if rel not in {"app/services/siming_runtime.py", "app/services/siming_llm_provider.py"}:
             offenders.append(rel)

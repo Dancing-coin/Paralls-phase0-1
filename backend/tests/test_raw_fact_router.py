@@ -884,18 +884,93 @@ def test_raw_fact_router_dispatches_auditory_fact_without_breaking_visual_and_sp
         ],
     )
 
-    assert auditory_messages == [
-        {
-            "message_type": "ack",
-            "payload": {
-                "accepted": True,
-                "source_type": "raw_fact_event",
-                "route": "authority_auditory_fact",
-            },
-        }
-    ]
+    assert auditory_messages[0]["message_type"] == "ack"
+    assert auditory_messages[0]["payload"]["accepted"] is True
+    assert auditory_messages[0]["payload"]["source_type"] == "raw_fact_event"
+    assert auditory_messages[0]["payload"]["route"] == "authority_auditory_fact"
+    assert auditory_messages[0]["payload"]["fact_key"] == "speaker_active"
     assert spatial_messages[0]["payload"]["route"] == "authority_spatial_access_fact"
     assert visual_messages[0]["payload"]["route"] == "authority_visual_fact"
+
+
+def test_authority_ack_payloads_include_backend_confirmed_fact_keys() -> None:
+    visual_event = RawFactEvent(
+        fact_family="visual_fact",
+        fact_type="fixed_gaze_on_target",
+        relation_type="actor_looks_at_actor",
+        producer_ts=713,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={
+            "layer": "L1",
+            "system": "godot.raw_fact_emitter",
+            "actor_id": "char_c",
+        },
+        targets={"actor_id": "char_a"},
+    )
+    auditory_event = RawFactEvent(
+        fact_family="auditory_fact",
+        fact_type="speaker_active",
+        relation_type="speech_mode_changed",
+        producer_ts=714,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={
+            "layer": "L1",
+            "system": "godot.raw_fact_emitter",
+            "actor_id": "char_a",
+        },
+        targets={"actor_id": "char_c"},
+        observability={"auditory": True},
+    )
+    role_state_event = RawFactEvent(
+        fact_family="role_state_fact",
+        fact_type="role_state_transition",
+        relation_type="runtime_state_changed",
+        producer_ts=715,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={
+            "layer": "L1",
+            "system": "godot.raw_fact_emitter",
+            "actor_id": "char_c",
+        },
+        targets={},
+    )
+
+    visual_messages = route_raw_fact_event(
+        visual_event,
+        source_type="raw_fact_event",
+        context=object(),
+        visual_fact_handler=lambda event, source_type, _context: [
+            {
+                "message_type": "ack",
+                "payload": {
+                    "accepted": True,
+                    "source_type": source_type,
+                    "route": "authority_visual_fact",
+                    "fact_key": event.relation_type,
+                    "fact_type": event.fact_type,
+                    "relation_type": event.relation_type,
+                },
+            }
+        ],
+    )
+    auditory_messages = route_raw_fact_event(auditory_event, source_type="raw_fact_event")
+    role_state_messages = route_raw_fact_event(role_state_event, source_type="raw_fact_event")
+
+    assert visual_messages[0]["payload"]["fact_key"] == "actor_looks_at_actor"
+    assert visual_messages[0]["payload"]["fact_type"] == "fixed_gaze_on_target"
+    assert visual_messages[0]["payload"]["relation_type"] == "actor_looks_at_actor"
+    assert auditory_messages[0]["payload"]["fact_key"] == "speaker_active"
+    assert auditory_messages[0]["payload"]["fact_type"] == "speaker_active"
+    assert auditory_messages[0]["payload"]["relation_type"] == "speech_mode_changed"
+    assert role_state_messages[0]["payload"]["fact_key"] == "role_state_transition"
+    assert role_state_messages[0]["payload"]["fact_type"] == "role_state_transition"
+    assert role_state_messages[0]["payload"]["relation_type"] == "runtime_state_changed"
 
 
 def test_raw_fact_router_dispatches_expanded_auditory_fact_types() -> None:
@@ -933,16 +1008,12 @@ def test_raw_fact_router_dispatches_expanded_auditory_fact_types() -> None:
             source_type="raw_fact_event",
         )
 
-        assert messages == [
-            {
-                "message_type": "ack",
-                "payload": {
-                    "accepted": True,
-                    "source_type": "raw_fact_event",
-                    "route": "authority_auditory_fact",
-                },
-            }
-        ]
+        assert messages[0]["message_type"] == "ack"
+        assert messages[0]["payload"]["accepted"] is True
+        assert messages[0]["payload"]["source_type"] == "raw_fact_event"
+        assert messages[0]["payload"]["route"] == "authority_auditory_fact"
+        assert messages[0]["payload"]["fact_key"] == fact_type
+        assert messages[0]["payload"]["relation_type"] == relation_type
 
 
 def test_raw_fact_router_accepts_runtime_wired_remaining_l1_fact_families() -> None:
@@ -976,13 +1047,9 @@ def test_raw_fact_router_accepts_runtime_wired_remaining_l1_fact_families() -> N
             source_type="raw_fact_event",
         )
 
-        assert messages == [
-            {
-                "message_type": "ack",
-                "payload": {
-                    "accepted": True,
-                    "source_type": "raw_fact_event",
-                    "route": route,
-                },
-            }
-        ]
+        assert messages[0]["message_type"] == "ack"
+        assert messages[0]["payload"]["accepted"] is True
+        assert messages[0]["payload"]["source_type"] == "raw_fact_event"
+        assert messages[0]["payload"]["route"] == route
+        assert messages[0]["payload"]["fact_family"] == fact_family
+        assert messages[0]["payload"]["fact_key"] == "probe_fact"

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import re
+
 
 def _result(
     result_id: str,
@@ -23,6 +26,108 @@ def _contains_all(text: str, patterns: list[str]) -> bool:
 
 def _status_index(results: list[dict[str, object]]) -> dict[str, str]:
     return {str(entry["id"]): str(entry["status"]) for entry in results}
+
+
+def _extract_probe_json(body: str, field: str) -> dict[str, object]:
+    marker = f"{field}="
+    start = body.find(marker)
+    if start < 0:
+        return {}
+    index = start + len(marker)
+    while index < len(body) and body[index].isspace():
+        index += 1
+    if index >= len(body) or body[index] != "{":
+        return {}
+
+    depth = 0
+    in_string = False
+    escaped = False
+    for end in range(index, len(body)):
+        char = body[end]
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\":
+            escaped = True
+            continue
+        if char == '"':
+            in_string = not in_string
+            continue
+        if in_string:
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    parsed = json.loads(body[index : end + 1])
+                except json.JSONDecodeError:
+                    return {}
+                return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _extract_probe_int(body: str, field: str) -> int:
+    match = re.search(rf"\b{re.escape(field)}=(?P<value>\d+)", body)
+    if match is None:
+        return 0
+    return int(match.group("value"))
+
+
+def _phase1_probe_summary(log: str, mode: str) -> dict[str, object]:
+    pattern = re.compile(rf"phase1_slice_runtime_probe:{re.escape(mode)}:(?P<body>.+)")
+    match = pattern.search(log)
+    if match is None:
+        return {"acks": {}, "sources": {}, "facts": {}, "deltas": 0, "candidates": 0, "siming": 0}
+    body = match.group("body")
+    acks = _extract_probe_json(body, "acks")
+    sources = _extract_probe_json(body, "sources")
+    facts = _extract_probe_json(body, "facts")
+    return {
+        "acks": acks,
+        "sources": sources,
+        "facts": facts,
+        "deltas": _extract_probe_int(body, "deltas"),
+        "candidates": _extract_probe_int(body, "candidates"),
+        "siming": _extract_probe_int(body, "siming"),
+    }
+
+
+def _probe_source_ack_count(summary: dict[str, object], route: str, source_type: str) -> int:
+    sources = summary.get("sources", {})
+    if not isinstance(sources, dict):
+        return 0
+    route_sources = sources.get(route, {})
+    if not isinstance(route_sources, dict):
+        return 0
+    try:
+        return int(route_sources.get(source_type, 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _probe_has_fact(
+    summary: dict[str, object],
+    route: str,
+    fact_key: str,
+    *,
+    source_type: str = "raw_fact_event",
+) -> bool:
+    facts = summary.get("facts", {})
+    if not isinstance(facts, dict):
+        return False
+    route_facts_by_source = facts.get(route, {})
+    if not isinstance(route_facts_by_source, dict):
+        return False
+    route_facts = route_facts_by_source.get(source_type, [])
+    if not isinstance(route_facts, list):
+        return False
+    return fact_key in {str(entry) for entry in route_facts}
+
+
+def _probe_has_all_facts(summary: dict[str, object], route: str, fact_keys: list[str]) -> bool:
+    return all(_probe_has_fact(summary, route, fact_key) for fact_key in fact_keys)
 
 
 def evaluate_phase0_audit(
@@ -334,7 +439,8 @@ def evaluate_phase1_slice_audit(
     candidate_policy_source: str = "",
 ) -> dict[str, object]:
     results: list[dict[str, object]] = []
-
+    main_probe = _phase1_probe_summary(main_log, "main")
+    focus_probe = _phase1_probe_summary(focus_log, "focus")
     emitter_scene_wired = 'name="VisualFactEmitter"' in scene_text
     results.append(
         _result(
@@ -361,7 +467,7 @@ def evaluate_phase1_slice_audit(
         )
     )
 
-    object_fact_ok = "phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_object" in main_log
+    object_fact_ok = _probe_has_fact(main_probe, "authority_visual_fact", "actor_looks_at_object")
     results.append(
         _result(
             "object_visual_fact_observed",
@@ -371,7 +477,7 @@ def evaluate_phase1_slice_audit(
         )
     )
 
-    actor_fact_ok = "phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_actor" in focus_log
+    actor_fact_ok = _probe_has_fact(focus_probe, "authority_visual_fact", "actor_looks_at_actor")
     results.append(
         _result(
             "actor_visual_fact_observed",
@@ -381,7 +487,7 @@ def evaluate_phase1_slice_audit(
         )
     )
 
-    near_object_ok = "phase0_visual_fact_emitter:spatial_relation:actor_near_object" in main_log
+    near_object_ok = _probe_has_fact(main_probe, "authority_visual_fact", "actor_near_object")
     results.append(
         _result(
             "near_object_visual_fact_observed",
@@ -391,7 +497,7 @@ def evaluate_phase1_slice_audit(
         )
     )
 
-    environment_ok = "phase0_visual_fact_emitter:light_level_drop:environment_light_drop" in main_log
+    environment_ok = _probe_has_fact(main_probe, "authority_visual_fact", "environment_light_drop")
     results.append(
         _result(
             "environment_visual_fact_observed",
@@ -401,7 +507,7 @@ def evaluate_phase1_slice_audit(
         )
     )
 
-    evidence_projection_ok = "phase0_visual_fact_emitter:visual_evidence_projection:evidence_projection" in main_log
+    evidence_projection_ok = _probe_has_fact(main_probe, "authority_visual_fact", "evidence_projection")
     results.append(
         _result(
             "evidence_projection_visual_fact_observed",
@@ -411,13 +517,10 @@ def evaluate_phase1_slice_audit(
         )
     )
 
-    auditory_ok = _contains_all(
-        main_log,
-        [
-            "phase0_auditory_fact_emitter:speaker_active:",
-            "phase0_auditory_fact_emitter:auditory_reachability_changed:",
-            "phase0_auditory_fact_emitter:ambient_noise_changed:",
-        ],
+    auditory_ok = _probe_has_all_facts(
+        main_probe,
+        "authority_auditory_fact",
+        ["speaker_active", "auditory_reachability_changed", "ambient_noise_changed"],
     )
     results.append(
         _result(
@@ -438,7 +541,7 @@ def evaluate_phase1_slice_audit(
         )
     )
 
-    role_state_ok = "phase0_role_state_fact_emitter:role_state_transition:" in main_log
+    role_state_ok = _probe_has_fact(main_probe, "authority_role_state_fact", "role_state_transition")
     results.append(
         _result(
             "role_state_fact_observed",
@@ -448,7 +551,7 @@ def evaluate_phase1_slice_audit(
         )
     )
 
-    physiology_ok = "phase0_physiology_fact_emitter:breathing_strain_changed:" in main_log
+    physiology_ok = _probe_has_fact(main_probe, "authority_physiology_fact", "breathing_strain_changed")
     results.append(
         _result(
             "physiology_fact_observed",
@@ -458,7 +561,7 @@ def evaluate_phase1_slice_audit(
         )
     )
 
-    tactile_ok = "phase0_tactile_fact_emitter:contact_started:" in main_log
+    tactile_ok = _probe_has_fact(main_probe, "authority_tactile_fact", "contact_started")
     results.append(
         _result(
             "tactile_fact_observed",
@@ -468,7 +571,7 @@ def evaluate_phase1_slice_audit(
         )
     )
 
-    thermal_ok = "phase0_thermal_fact_emitter:thermal_proximity_changed:" in main_log
+    thermal_ok = _probe_has_fact(main_probe, "authority_thermal_fact", "thermal_proximity_changed")
     results.append(
         _result(
             "thermal_fact_observed",
@@ -478,7 +581,7 @@ def evaluate_phase1_slice_audit(
         )
     )
 
-    olfactory_ok = "phase0_olfactory_fact_emitter:odor_state_changed:" in main_log
+    olfactory_ok = _probe_has_fact(main_probe, "authority_olfactory_fact", "odor_state_changed")
     results.append(
         _result(
             "olfactory_fact_observed",
@@ -488,8 +591,10 @@ def evaluate_phase1_slice_audit(
         )
     )
 
-    authority_ack_token = '"route":"authority_visual_fact","source_type":"raw_fact_event"'
-    authority_ack_ok = authority_ack_token in main_log or authority_ack_token in focus_log
+    authority_ack_ok = (
+        _probe_source_ack_count(main_probe, "authority_visual_fact", "raw_fact_event") >= 4
+        and _probe_source_ack_count(focus_probe, "authority_visual_fact", "raw_fact_event") >= 1
+    )
     results.append(
         _result(
             "authority_ack_observed",
@@ -499,7 +604,10 @@ def evaluate_phase1_slice_audit(
         )
     )
 
-    runtime_projection_ok = "character_runtime_state_delta" in main_log and '"current_attention_source":"visual_fact"' in main_log
+    runtime_projection_ok = (
+        "character_runtime_state_delta" in main_log
+        and '"current_attention_source":"visual_fact"' in main_log
+    ) or int(main_probe["deltas"]) >= 1
     results.append(
         _result(
             "runtime_projection_observed",
@@ -509,7 +617,10 @@ def evaluate_phase1_slice_audit(
         )
     )
 
-    candidate_and_siming_ok = "conversation_candidate_event" in main_log and "backend_message_type:siming_output" in main_log
+    candidate_and_siming_ok = (
+        "conversation_candidate_event" in main_log
+        and "backend_message_type:siming_output" in main_log
+    ) or (int(main_probe["candidates"]) >= 1 and int(main_probe["siming"]) >= 1)
     results.append(
         _result(
             "candidate_and_siming_observed",

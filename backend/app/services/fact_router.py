@@ -13,7 +13,7 @@ from app.services.fact_handlers.visual_fact_handler import (
 )
 
 
-def _ack_known_raw_fact(source_type: str, route: str) -> list[Message]:
+def _ack_known_raw_fact(event: RawFactEvent, *, source_type: str, route: str) -> list[Message]:
     return [
         {
             "message_type": "ack",
@@ -21,6 +21,10 @@ def _ack_known_raw_fact(source_type: str, route: str) -> list[Message]:
                 "accepted": True,
                 "source_type": source_type,
                 "route": route,
+                "fact_family": event.fact_family,
+                "fact_type": event.fact_type,
+                "relation_type": event.relation_type,
+                "fact_key": event.fact_type,
             },
         }
     ]
@@ -52,19 +56,19 @@ def route_raw_fact_event(
         return handle_auditory_fact_event(event, source_type)
 
     if event.fact_family == "role_state_fact":
-        return _ack_known_raw_fact(source_type, "authority_role_state_fact")
+        return _ack_known_raw_fact(event, source_type=source_type, route="authority_role_state_fact")
 
     if event.fact_family == "physiology_state_fact":
-        return _ack_known_raw_fact(source_type, "authority_physiology_fact")
+        return _ack_known_raw_fact(event, source_type=source_type, route="authority_physiology_fact")
 
     if event.fact_family == "tactile_fact":
-        return _ack_known_raw_fact(source_type, "authority_tactile_fact")
+        return _ack_known_raw_fact(event, source_type=source_type, route="authority_tactile_fact")
 
     if event.fact_family == "thermal_fact":
-        return _ack_known_raw_fact(source_type, "authority_thermal_fact")
+        return _ack_known_raw_fact(event, source_type=source_type, route="authority_thermal_fact")
 
     if event.fact_family == "olfactory_fact":
-        return _ack_known_raw_fact(source_type, "authority_olfactory_fact")
+        return _ack_known_raw_fact(event, source_type=source_type, route="authority_olfactory_fact")
 
     return [
         {

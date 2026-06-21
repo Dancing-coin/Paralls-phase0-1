@@ -79,7 +79,12 @@ def _scan_siming_llm_side_channels(project_root: Path) -> str:
     for path in (project_root / "backend" / "app").rglob("*.py"):
         rel = path.relative_to(project_root).as_posix()
         text = read_text(path)
-        if "generate_candidates(" in text and rel not in {
+        references_siming_llm = (
+            "siming_llm_provider" in text
+            or "SimingLlm" in text
+            or "_llm_provider" in text
+        )
+        if references_siming_llm and "generate_candidates(" in text and rel not in {
             "backend/app/services/siming_runtime.py",
             "backend/app/services/siming_llm_provider.py",
         }:

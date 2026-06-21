@@ -8,6 +8,8 @@ var _room_id := ""
 var _scene_id := ""
 var _zone_id := ""
 var _ack_counts_by_route: Dictionary = {}
+var _ack_source_counts_by_route: Dictionary = {}
+var _ack_fact_keys_by_route: Dictionary = {}
 var _expected_ack_counts_by_route: Dictionary = {}
 var _runtime_delta_count := 0
 var _candidate_count := 0
@@ -85,8 +87,10 @@ func _run_probe() -> void:
 
 	if not await _wait_for_backend_observations(10000):
 		push_error(
-			"phase1_slice_runtime_probe:observation_timeout:acks=%s deltas=%s candidates=%s siming=%s run=%s" % [
+			"phase1_slice_runtime_probe:observation_timeout:acks=%s sources=%s facts=%s deltas=%s candidates=%s siming=%s run=%s" % [
 				JSON.stringify(_ack_counts_by_route),
+				JSON.stringify(_ack_source_counts_by_route),
+				JSON.stringify(_ack_fact_keys_by_route),
 				_runtime_delta_count,
 				_candidate_count,
 				_siming_count,
@@ -97,9 +101,11 @@ func _run_probe() -> void:
 		return
 
 	print(
-		"phase1_slice_runtime_probe:%s:acks=%s deltas=%s candidates=%s siming=%s run=%s" % [
+		"phase1_slice_runtime_probe:%s:acks=%s sources=%s facts=%s deltas=%s candidates=%s siming=%s run=%s" % [
 			_mode,
 			JSON.stringify(_ack_counts_by_route),
+			JSON.stringify(_ack_source_counts_by_route),
+			JSON.stringify(_ack_fact_keys_by_route),
 			_runtime_delta_count,
 			_candidate_count,
 			_siming_count,
@@ -162,6 +168,9 @@ func _on_backend_ack_received(payload: Dictionary) -> void:
 	var route := str(payload.get("route", ""))
 	if route != "" and bool(payload.get("accepted", false)):
 		_ack_counts_by_route[route] = int(_ack_counts_by_route.get(route, 0)) + 1
+		var source_type := str(payload.get("source_type", ""))
+		_record_ack_source(route, source_type)
+		_record_ack_fact(route, source_type, str(payload.get("fact_key", "")))
 	_bus_log("phase0_ack:%s" % JSON.stringify(payload))
 
 
@@ -241,6 +250,26 @@ func _ack_routes_observed() -> bool:
 		if int(_ack_counts_by_route.get(route, 0)) < int(_expected_ack_counts_by_route[route]):
 			return false
 	return true
+
+
+func _record_ack_source(route: String, source_type: String) -> void:
+	if source_type == "":
+		return
+	if not _ack_source_counts_by_route.has(route):
+		_ack_source_counts_by_route[route] = {}
+	var source_counts: Dictionary = _ack_source_counts_by_route[route]
+	source_counts[source_type] = int(source_counts.get(source_type, 0)) + 1
+
+
+func _record_ack_fact(route: String, source_type: String, fact_key: String) -> void:
+	if source_type == "" or fact_key == "":
+		return
+	if not _ack_fact_keys_by_route.has(route):
+		_ack_fact_keys_by_route[route] = {}
+	var route_facts_by_source: Dictionary = _ack_fact_keys_by_route[route]
+	if not route_facts_by_source.has(source_type):
+		route_facts_by_source[source_type] = []
+	route_facts_by_source[source_type].append(fact_key)
 
 
 func _wait_for_backend_observations(timeout_ms: int) -> bool:
