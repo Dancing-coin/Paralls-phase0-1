@@ -1,6 +1,6 @@
 # 司命 Agent Loop 架构设计
 
-Status: awaiting-user-review
+Status: approved
 
 ## 问题
 
