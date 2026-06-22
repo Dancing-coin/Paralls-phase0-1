@@ -7,9 +7,13 @@ class SimingEventProducer:
     def __init__(self, bus: AuthorityEventBusPort) -> None:
         self._bus = bus
 
-    def publish_outputs(self, outputs: list[SimingOutput]) -> None:
+    def publish_outputs(self, outputs: list[SimingOutput]) -> list[AuthorityEvent]:
+        published_events: list[AuthorityEvent] = []
         for output in outputs:
-            self._bus.publish(self._to_authority_event(output))
+            event = self._to_authority_event(output)
+            self._bus.publish(event)
+            published_events.append(event)
+        return published_events
 
     def _to_authority_event(self, output: SimingOutput) -> AuthorityEvent:
         event_type = self._event_type_for(output)
@@ -80,5 +84,6 @@ class SimingEventProducer:
         if output.selected_path == "l3_highlight_path":
             return ["presentation"]
         if output.selected_path == "character_input_path":
-            return ["character_runtime"]
+            target_actor_id = str(output.payload.get("target_actor_id", "") or "").strip()
+            return [target_actor_id] if target_actor_id else ["character_runtime"]
         return ["audit"]

@@ -1,7 +1,9 @@
 from app.models.authority_event import AuthorityEvent
-from app.models.siming_event import InterventionCandidate
+from app.models.siming_event import InterventionCandidate, SimingOutput, SimingTickResult
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
+from app.services.character_agent_runtime import CharacterAgentRuntime
 from app.services.siming_audit_writer import SimingAuditWriter
+from app.services.siming_character_dispatch_adapter import SimingCharacterDispatchAdapter
 from app.services.siming_event_consumer import SimingEventConsumer
 from app.services.siming_event_pipeline import SimingEventPipeline
 from app.services.siming_event_producer import SimingEventProducer
@@ -42,6 +44,30 @@ def make_pipeline(bus: InMemoryAuthorityEventBus, audit_writer: SimingAuditWrite
         producer=SimingEventProducer(bus),
         audit_writer=audit_writer,
     )
+
+
+class FakeCharacterInputRuntime:
+    def tick(self, _inputs: list[object]) -> SimingTickResult:
+        return SimingTickResult(
+            outputs=[
+                SimingOutput(
+                    output_type="dispatch_intent",
+                    room_id="room_demo",
+                    scene_id="scene_demo",
+                    zone_id="zone_focus",
+                    causation_id="visual_fact:300:char_c:light_level_drop",
+                    correlation_id="visual_fact:300",
+                    producer_ts=304,
+                    selected_path="character_input_path",
+                    intervention_band="fact_reveal",
+                    payload={
+                        "presentation_hint": "surface established fact",
+                        "target_actor_id": "char_b",
+                        "target_environment_id": "env_lamp",
+                    },
+                )
+            ]
+        )
 
 
 def test_pipeline_publishes_visual_observability_event_from_visual_fact_input() -> None:
@@ -113,6 +139,53 @@ def test_pipeline_publishes_llm_assisted_output_only_through_siming_event_produc
     assert projected.payload["established_fact_id"] == "visual_fact:300:char_c:light_level_drop"
     assert projected.payload["target_environment_id"] == "env_lamp"
     assert projected.payload["target_actor_id"] == "char_b"
+
+
+def test_pipeline_dispatches_new_character_input_outputs_through_adapter() -> None:
+    bus = InMemoryAuthorityEventBus()
+    audit_writer = SimingAuditWriter()
+    character_runtime = CharacterAgentRuntime()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=FakeCharacterInputRuntime(),
+        producer=SimingEventProducer(bus),
+        audit_writer=audit_writer,
+        character_dispatch_adapter=SimingCharacterDispatchAdapter(runtime=character_runtime),
+    )
+    bus.subscribe("visual_fact_event", pipeline.handle_event)
+
+    bus.publish(make_visual_fact_event())
+
+    dispatched = bus.list_events(event_type="siming.fact_reveal")[0]
+    snapshot = character_runtime.get_private_snapshot("char_b")
+    timeline = character_runtime.get_session_timeline("char_b")
+
+    assert dispatched.routing.target_ids == ["char_b"]
+    assert dispatched.correlation_id == "visual_fact:300"
+    assert snapshot is not None
+    assert snapshot.last_siming_catalyst == "surface established fact"
+    assert any(entry["event_type"] == "siming_output_event" for entry in timeline)
+
+
+def test_pipeline_does_not_dispatch_visual_observability_outputs_through_adapter() -> None:
+    bus = InMemoryAuthorityEventBus()
+    audit_writer = SimingAuditWriter()
+    character_runtime = CharacterAgentRuntime()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=SimingRuntime(),
+        producer=SimingEventProducer(bus),
+        audit_writer=audit_writer,
+        character_dispatch_adapter=SimingCharacterDispatchAdapter(runtime=character_runtime),
+    )
+    bus.subscribe("visual_fact_event", pipeline.handle_event)
+
+    bus.publish(make_visual_fact_event())
+
+    assert bus.list_events(event_type="siming.visual_observability_request")
+    assert character_runtime.get_private_snapshot("char_b") is None
 
 
 def test_pipeline_records_llm_timeout_audit() -> None:
