@@ -72,6 +72,28 @@ def test_compatibility_input_rejects_low_level_command_fields() -> None:
         raise AssertionError("expected ValidationError")
 
 
+def test_compatibility_input_rejects_mismatched_target_actor_id() -> None:
+    try:
+        SimingCharacterCompatibilityInput(
+            message_id="msg:siming:5",
+            delivery_id="delivery:msg:siming:5:char_a:1",
+            actor_id="char_a",
+            input_type="siming_high_level_message",
+            band="impulse",
+            producer_ts=105,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            causation_id="cause:5",
+            correlation_id="corr:5",
+            target_actor_id="char_b",
+        )
+    except ValidationError as exc:
+        assert "target_actor_id must match actor_id" in str(exc)
+    else:
+        raise AssertionError("expected ValidationError")
+
+
 def test_delivery_audit_summary_accepts_restricted_outcome_labels_only() -> None:
     summary = CharacterDeliveryAuditSummary(
         message_id="msg:siming:3",

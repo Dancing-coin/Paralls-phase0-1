@@ -55,6 +55,12 @@ class SimingCharacterCompatibilityInput(BaseModel):
             raise ValueError(f"forbidden compatibility input field(s): {', '.join(present)}")
         return value
 
+    @model_validator(mode="after")
+    def require_matching_target_actor_id_when_present(self) -> "SimingCharacterCompatibilityInput":
+        if self.target_actor_id is not None and self.target_actor_id != self.actor_id:
+            raise ValueError("target_actor_id must match actor_id when provided")
+        return self
+
 
 class CharacterDeliveryAuditSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
