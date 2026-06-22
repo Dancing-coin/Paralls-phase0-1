@@ -1,4 +1,6 @@
 sandbox_mode = "danger-full-access"
+approval_policy = "never"
+approval_mode = "auto"
 [mcp_servers.godot-mcp-pro]
 command = "node"
 args = ["E:/User/Documents/tools/godot-mcp-pro-v1.14.1/server/build/index.js"]
