@@ -50,6 +50,26 @@ def test_compatibility_input_requires_delivery_id() -> None:
         raise AssertionError("expected ValidationError")
 
 
+def test_compatibility_input_allows_omitted_target_actor_id() -> None:
+    payload = SimingCharacterCompatibilityInput(
+        message_id="msg:siming:optional-target",
+        delivery_id="delivery:msg:siming:optional-target:char_a:1",
+        actor_id="char_a",
+        input_type="siming_high_level_message",
+        band="impulse",
+        producer_ts=106,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        causation_id="cause:optional-target",
+        correlation_id="corr:optional-target",
+        presentation_hint="wait and observe",
+    )
+
+    assert payload.target_actor_id is None
+    assert payload.actor_id == "char_a"
+
+
 def test_compatibility_input_rejects_low_level_command_fields() -> None:
     try:
         SimingCharacterCompatibilityInput(
@@ -68,6 +88,29 @@ def test_compatibility_input_rejects_low_level_command_fields() -> None:
         )
     except ValidationError as exc:
         assert "forbidden" in str(exc)
+    else:
+        raise AssertionError("expected ValidationError")
+
+
+def test_compatibility_input_rejects_unexpected_extra_field() -> None:
+    try:
+        SimingCharacterCompatibilityInput(
+            message_id="msg:siming:extra-field",
+            delivery_id="delivery:msg:siming:extra-field:char_a:1",
+            actor_id="char_a",
+            input_type="siming_high_level_message",
+            band="impulse",
+            producer_ts=107,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            causation_id="cause:extra-field",
+            correlation_id="corr:extra-field",
+            unexpected="x",
+        )
+    except ValidationError as exc:
+        assert "unexpected" in str(exc)
+        assert "Extra inputs are not permitted" in str(exc)
     else:
         raise AssertionError("expected ValidationError")
 
