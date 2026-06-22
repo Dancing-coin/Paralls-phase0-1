@@ -7,6 +7,28 @@ from app.models.siming_character_bridge import (
 
 
 def test_compatibility_input_requires_delivery_id_and_target_actor() -> None:
+    payload = SimingCharacterCompatibilityInput(
+        message_id="msg:siming:1",
+        delivery_id="delivery:msg:siming:1:char_a:1",
+        actor_id="char_a",
+        input_type="siming_high_level_message",
+        band="impulse",
+        producer_ts=101,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        causation_id="cause:1",
+        correlation_id="corr:1",
+        presentation_hint="look toward the sound",
+        target_actor_id="char_a",
+    )
+
+    assert payload.delivery_id == "delivery:msg:siming:1:char_a:1"
+    assert payload.actor_id == "char_a"
+    assert payload.input_type == "siming_high_level_message"
+
+
+def test_compatibility_input_requires_delivery_id() -> None:
     try:
         SimingCharacterCompatibilityInput(
             message_id="msg:siming:1",
