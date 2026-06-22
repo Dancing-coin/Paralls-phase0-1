@@ -58,6 +58,16 @@ def test_adapter_rejects_expired_delivery_before_runtime_ingress() -> None:
     assert result.audit_summaries[0].status == "expired"
 
 
+def test_adapter_accepts_delivery_at_exact_ttl_boundary() -> None:
+    runtime = CharacterAgentRuntime()
+    adapter = SimingCharacterDispatchAdapter(runtime=runtime, now_ts_provider=lambda: 5101)
+
+    result = adapter.dispatch(make_siming_event(target_ids=["char_a"]))
+
+    assert len(result.delivery_inputs) == 1
+    assert result.audit_summaries == []
+
+
 def test_adapter_preserves_high_level_semantics_without_low_level_command_fields() -> None:
     runtime = CharacterAgentRuntime()
     adapter = SimingCharacterDispatchAdapter(runtime=runtime)
@@ -68,3 +78,37 @@ def test_adapter_preserves_high_level_semantics_without_low_level_command_fields
     assert payload.band == "fact_reveal"
     assert payload.input_type == "siming_high_level_message"
     assert "go_to_position" not in payload.model_dump()
+
+
+def test_adapter_records_target_unavailable_for_unsupported_actor() -> None:
+    runtime = CharacterAgentRuntime()
+    adapter = SimingCharacterDispatchAdapter(runtime=runtime)
+
+    result = adapter.dispatch(make_siming_event(target_ids=["char_a", "char_unknown"]))
+
+    assert [entry.actor_id for entry in result.delivery_inputs] == ["char_a"]
+    assert len(result.audit_summaries) == 1
+    assert result.audit_summaries[0].actor_id == "char_unknown"
+    assert result.audit_summaries[0].status == "target_unavailable"
+
+
+def test_adapter_falls_back_to_event_id_when_message_id_is_missing() -> None:
+    runtime = CharacterAgentRuntime()
+    adapter = SimingCharacterDispatchAdapter(runtime=runtime)
+    event = make_siming_event(target_ids=["char_a"])
+    event.payload.pop("message_id")
+
+    result = adapter.dispatch(event)
+
+    assert result.delivery_inputs[0].message_id == event.event_id
+    assert result.delivery_inputs[0].delivery_id == f"delivery:{event.event_id}:char_a:1"
+
+
+def test_adapter_deduplicates_duplicate_target_ids_per_actor() -> None:
+    runtime = CharacterAgentRuntime()
+    adapter = SimingCharacterDispatchAdapter(runtime=runtime)
+
+    result = adapter.dispatch(make_siming_event(target_ids=["char_a", "char_a", "char_b"]))
+
+    assert [entry.actor_id for entry in result.delivery_inputs] == ["char_a", "char_b"]
+    assert len(result.commands_by_actor) == 2

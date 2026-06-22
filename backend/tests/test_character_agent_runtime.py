@@ -1,4 +1,5 @@
 from app.models.character_perceived import CharacterPerceivedEvent
+from app.models.siming_character_bridge import SimingCharacterCompatibilityInput
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
 from app.services.character_agent_runtime import CharacterAgentRuntime
 
@@ -93,3 +94,60 @@ def test_character_agent_runtime_accepts_targeted_siming_output() -> None:
 
     assert commands
     assert commands[0].actor_id == "char_b"
+
+
+def test_character_agent_runtime_accepts_actor_id_only_siming_dict() -> None:
+    runtime = CharacterAgentRuntime()
+
+    commands = runtime.ingest_siming_output(
+        {
+            "room_id": "room_demo",
+            "scene_id": "scene_demo",
+            "zone_id": "zone_focus",
+            "actor_id": "char_b",
+            "target_object_id": "obj_letter",
+            "presentation_hint": "watch obj_letter",
+            "producer_ts": 330,
+            "causation_id": "siming:330",
+            "correlation_id": "siming:330",
+        }
+    )
+
+    snapshot = runtime.get_private_snapshot("char_b")
+    timeline = runtime.get_session_timeline("char_b")
+
+    assert commands
+    assert commands[0].actor_id == "char_b"
+    assert snapshot is not None
+    assert snapshot.actor_id == "char_b"
+    assert timeline[0]["event_type"] == "siming_output_event"
+
+
+def test_character_agent_runtime_accepts_bridge_input_without_optional_target_actor_id() -> None:
+    runtime = CharacterAgentRuntime()
+
+    commands = runtime.ingest_siming_output(
+        SimingCharacterCompatibilityInput(
+            message_id="msg:siming:runtime:1",
+            delivery_id="delivery:msg:siming:runtime:1:char_a:1",
+            actor_id="char_a",
+            input_type="siming_high_level_message",
+            band="impulse",
+            producer_ts=331,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            causation_id="siming:331",
+            correlation_id="siming:331",
+            presentation_hint="watch obj_letter",
+            target_object_id="obj_letter",
+        )
+    )
+
+    snapshot = runtime.get_private_snapshot("char_a")
+
+    assert commands
+    assert commands[0].actor_id == "char_a"
+    assert snapshot is not None
+    assert snapshot.actor_id == "char_a"
+    assert snapshot.last_siming_catalyst == "watch obj_letter"

@@ -58,7 +58,12 @@ class SimingCharacterDispatchAdapter:
             )
 
         result = SimingCharacterDispatchResult()
-        for delivery_index, actor_id in enumerate(event.routing.target_ids, start=1):
+        seen_actor_ids: set[str] = set()
+        for actor_id in event.routing.target_ids:
+            if actor_id in seen_actor_ids:
+                continue
+            seen_actor_ids.add(actor_id)
+            delivery_index = len(seen_actor_ids)
             delivery_id = f"delivery:{message_id}:{actor_id}:{delivery_index}"
             if not self._runtime.supports_actor(actor_id):
                 result.audit_summaries.append(

@@ -173,10 +173,10 @@ class CharacterAgentRuntime:
         self,
         payload: dict[str, object] | SimingCharacterCompatibilityInput,
     ) -> list[CharacterGoalCommand]:
-        normalized_payload = (
-            payload.model_dump(exclude_none=True)
+        normalized_payload: dict[str, object] = (
+            dict(payload.model_dump(exclude_none=True))
             if isinstance(payload, SimingCharacterCompatibilityInput)
-            else payload
+            else dict(payload)
         )
         actor_id = str(
             normalized_payload.get("target_actor_id")
@@ -185,6 +185,7 @@ class CharacterAgentRuntime:
         )
         if actor_id not in self.SUPPORTED_ACTORS:
             return []
+        normalized_payload["target_actor_id"] = actor_id
         self._record_siming_event(normalized_payload)
         snapshot = self._l1.apply_siming_output(normalized_payload)
         memory_bundle = self.get_memory_bundle(actor_id)
