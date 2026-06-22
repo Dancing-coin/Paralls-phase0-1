@@ -21,7 +21,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif key_event.keycode == KEY_TAB:
 		state.cycle_actor(1)
 	elif key_event.keycode == KEY_SPACE:
-		state.set_freeze_mode(true)
+		state.set_freeze_mode(not state.freeze_mode)
 	elif key_event.keycode == KEY_ESCAPE:
 		state.set_freeze_mode(false)
 

@@ -29,6 +29,19 @@ def test_character_agent_runtime_turns_perceived_event_into_output() -> None:
         "interact",
         "speak",
     }
+    observatory_messages = runtime.drain_observatory_messages("char_a")
+    message_types = [message["message_type"] for message in observatory_messages]
+    stages = [
+        message["payload"]["stage"]
+        for message in observatory_messages
+        if message["message_type"] == "character_agent_debug_event"
+    ]
+
+    assert "character_agent_debug_snapshot" in message_types
+    assert "character_perceived_event" in stages
+    assert "interpretation" in stages
+    assert "decision" in stages
+    assert "execution_request" in stages
 
 
 def test_character_agent_runtime_accepts_char_c_into_the_shared_runtime_species() -> None:
@@ -69,9 +82,18 @@ def test_character_agent_runtime_accepts_self_body_input() -> None:
     )
 
     commands = runtime.ingest_self_body_perceived_event(event)
+    observatory_messages = runtime.drain_observatory_messages("char_b")
+    stages = [
+        message["payload"]["stage"]
+        for message in observatory_messages
+        if message["message_type"] == "character_agent_debug_event"
+    ]
 
     assert commands
     assert commands[0].actor_id == "char_b"
+    assert "self_body_perceived_event" in stages
+    assert "interpretation" in stages
+    assert "decision" in stages
 
 
 def test_character_agent_runtime_accepts_targeted_siming_output() -> None:
@@ -90,6 +112,21 @@ def test_character_agent_runtime_accepts_targeted_siming_output() -> None:
             "correlation_id": "siming:330",
         }
     )
+    observatory_messages = runtime.drain_observatory_messages("char_b")
+    stages = [
+        message["payload"]["stage"]
+        for message in observatory_messages
+        if message["message_type"] == "character_agent_debug_event"
+    ]
+    snapshots = [
+        message["payload"]
+        for message in observatory_messages
+        if message["message_type"] == "character_agent_debug_snapshot"
+    ]
 
     assert commands
     assert commands[0].actor_id == "char_b"
+    assert "siming_output_event" in stages
+    assert "interpretation" in stages
+    assert "decision" in stages
+    assert snapshots[-1]["latest_siming_summary"] == "watch obj_letter"

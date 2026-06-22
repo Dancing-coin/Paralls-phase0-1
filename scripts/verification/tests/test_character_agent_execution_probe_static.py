@@ -56,3 +56,22 @@ def test_l1_runtime_probe_enables_explicit_debug_logging_mode() -> None:
     assert 'if bus.has_method("set_debug_logging_enabled"):' in script_text
     assert 'var backend_connected_ok := await _wait_for_backend_connected(10000)' in script_text
     assert 'main_demo.call("_emit_spatial_access_zone_entry")' in script_text or 'main_demo.call("_sample_privacy_boundary_fact")' in script_text
+
+
+def test_observatory_probe_scene_and_script_exist() -> None:
+    scene_text = (ROOT / "scenes" / "phase0" / "CharacterDirectorObservatoryProbe.tscn").read_text(
+        encoding="utf-8"
+    )
+    script_text = (
+        ROOT / "scripts" / "verification" / "CharacterDirectorObservatoryProbe.gd"
+    ).read_text(encoding="utf-8")
+
+    assert 'path="res://scenes/phase0/MainDemo.tscn"' in scene_text
+    assert '[node name="CharacterDirectorObservatoryProbe" type="Node"]' in scene_text
+    assert "character_director_observatory_probe:state_payloads_ok=true" in script_text
+    assert "character_director_observatory_probe:panels_populated=true" in script_text
+    assert "character_director_observatory_probe:freeze_roundtrip_ok=true" in script_text
+    assert "CharacterDirectorState" in script_text
+    assert "DirectorMonitorPanel" in script_text
+    assert "ScriptTimelinePanel" in script_text
+    assert "DialogueSceneLedger" in script_text

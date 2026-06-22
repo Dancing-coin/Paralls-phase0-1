@@ -159,10 +159,11 @@ func _on_debug_event_logged(message: String) -> void:
 			if parsed is Dictionary:
 				var payload: Variant = parsed.get("payload", {})
 				if payload is Dictionary:
-					var actor_id_value := str(payload.get("actor_id", "") or "")
+					var payload_dict: Dictionary = payload as Dictionary
+					var actor_id_value := str(payload_dict.get("actor_id", ""))
 					if not actor_id_value.is_empty():
 						_observed_execution_actor_id = actor_id_value
-					if payload.has("actor_control_frames") and payload.has("presentation_plan") and payload.has("action_request_bundle"):
+					if payload_dict.has("actor_control_frames") and payload_dict.has("presentation_plan") and payload_dict.has("action_request_bundle"):
 						_execution_payload_direct = true
 	if "character_agent_execution_applied:" in message:
 		var applied_prefix := "character_agent_execution_applied:"

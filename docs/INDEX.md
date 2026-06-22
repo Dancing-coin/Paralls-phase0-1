@@ -14,6 +14,7 @@ This is the agent-readable map for the runnable Paralls Phase 0 validation demo.
 
 - `docs/superpowers/specs/2026-06-21-character-director-observatory-design.md`
 - `docs/superpowers/plans/2026-06-21-character-director-observatory-implementation-plan.md`
+- `docs/superpowers/plans/2026-06-22-character-director-observatory-finalization-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-19-deepseek-character-model-gateway-design.md`
 - `docs/superpowers/plans/2026-06-19-deepseek-character-model-gateway-implementation-plan.md`
 - `docs/superpowers/plans/2026-06-19-character-actor-stage2-closeout-implementation-plan.md`
@@ -74,6 +75,12 @@ Use `python scripts/verification/harness.py --profile <name>`.
 - `phase0`: strict Phase 0 backend plus Godot runtime validation.
 - `phase1-slice`: current Phase1-shaped runtime slice validation.
 - `all`: runs all profiles in order.
+
+Observatory-specific runtime verifiers:
+
+- `python scripts/verification/verify_character_agent_execution.py`
+- `python scripts/verification/verify_character_director_observatory.py`
+- `python scripts/verification/verify_phase0.py`
 
 Reports are written under `.harness/verification/`.
 

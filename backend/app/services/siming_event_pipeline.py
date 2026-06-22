@@ -30,3 +30,6 @@ class SimingEventPipeline:
         for audit in result.audit_records:
             self._audit_writer.record(audit)
         self._producer.publish_outputs(result.outputs)
+
+    def drain_observatory_messages(self) -> list[dict[str, object]]:
+        return self._runtime.drain_observatory_messages()

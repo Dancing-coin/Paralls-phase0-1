@@ -17,6 +17,7 @@ from app.character_agent.execution.l4_adapter import CharacterAgentL4Adapter
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
 from app.character_agent.storage.session_store import CharacterAgentSessionStore
 from app.character_agent.storage.memory_store import CharacterAgentMemoryStore
+from app.services.character_agent_debug_projection import CharacterAgentDebugProjection
 
 
 class CharacterAgentRuntime:
@@ -35,8 +36,11 @@ class CharacterAgentRuntime:
         self._l3 = CharacterAgentL3Service()
         self._l4 = CharacterAgentL4Adapter()
         self._l4_executor = CharacterAgentL4Executor()
+        self._observatory_projection = CharacterAgentDebugProjection()
         self._control_modes = self.DEFAULT_CONTROL_MODES.copy()
         self._pending_suggestions: list[CharacterSuggestionPacket] = []
+        self._pending_observatory_messages: list[dict[str, object]] = []
+        self._observatory_actor_context: dict[str, dict[str, str]] = {}
         self._session_store = CharacterAgentSessionStore(storage_root=storage_root)
         self._memory_store = CharacterAgentMemoryStore()
         self._rehydrate_memory_from_timeline()
@@ -47,8 +51,24 @@ class CharacterAgentRuntime:
         self._record_character_perceived_event(event)
         self._record_relational_belief_from_perceived_event(event)
         snapshot = self._l1.apply_character_perceived_event(event)
+        self._queue_observatory_stage_event(
+            actor_id=event.actor_id,
+            producer_ts=event.producer_ts,
+            stage="character_perceived_event",
+            summary=event.perceived_summary,
+            focus_target=self._snapshot_focus_target(snapshot),
+            intent_label="",
+            participants=self._participants_for_actor(event.actor_id, self._snapshot_focus_target(snapshot)),
+            detail=event.model_dump(),
+        )
         memory_bundle = self.get_memory_bundle(event.actor_id)
         working_memory_state = self.get_working_memory_state(event.actor_id, snapshot.model_dump())
+        self._queue_observatory_snapshot(
+            actor_id=event.actor_id,
+            producer_ts=event.producer_ts,
+            snapshot=snapshot,
+            memory_bundle=memory_bundle,
+        )
         reasoning_request = self._l2.prepare_reasoning_request(
             snapshot=snapshot,
             event=event,
@@ -65,12 +85,46 @@ class CharacterAgentRuntime:
             working_memory_state=working_memory_state,
         )
         self._record_interpretation_event(event.actor_id, event.producer_ts, interpretation)
+        self._set_observatory_context(event.actor_id, "interpretation_summary", interpretation.interpreted_summary)
+        self._queue_observatory_stage_event(
+            actor_id=event.actor_id,
+            producer_ts=event.producer_ts,
+            stage="interpretation",
+            summary=interpretation.interpreted_summary,
+            focus_target=str(interpretation.attention_target or self._snapshot_focus_target(snapshot)),
+            intent_label=interpretation.interpretation_type,
+            participants=self._participants_for_actor(event.actor_id, str(interpretation.attention_target or self._snapshot_focus_target(snapshot))),
+            detail=interpretation.model_dump(),
+        )
+        self._queue_observatory_snapshot(
+            actor_id=event.actor_id,
+            producer_ts=event.producer_ts,
+            snapshot=snapshot,
+            memory_bundle=memory_bundle,
+        )
         decision = self._l3.select_intent(
             interpretation,
             snapshot=snapshot.model_dump(),
             memory_bundle=memory_bundle,
             control_mode=self.get_control_mode(event.actor_id),
             working_memory_state=working_memory_state,
+        )
+        self._set_observatory_context(event.actor_id, "decision_summary", decision.selected_intent)
+        self._queue_observatory_stage_event(
+            actor_id=event.actor_id,
+            producer_ts=event.producer_ts,
+            stage="decision",
+            summary=decision.rationale or interpretation.interpreted_summary,
+            focus_target=str(interpretation.attention_target or self._snapshot_focus_target(snapshot)),
+            intent_label=decision.selected_intent,
+            participants=self._participants_for_actor(event.actor_id, str(interpretation.attention_target or self._snapshot_focus_target(snapshot))),
+            detail=decision.model_dump(),
+        )
+        self._queue_observatory_snapshot(
+            actor_id=event.actor_id,
+            producer_ts=event.producer_ts,
+            snapshot=snapshot,
+            memory_bundle=memory_bundle,
         )
         if self.get_control_mode(event.actor_id) == "player_priority_assisted":
             self._pending_suggestions.append(self._planner_suggestion_packet(
@@ -123,8 +177,24 @@ class CharacterAgentRuntime:
             return []
         self._record_self_body_event(event)
         snapshot = self._l1.apply_self_body_perceived_event(event)
+        self._queue_observatory_stage_event(
+            actor_id=event.actor_id,
+            producer_ts=event.producer_ts,
+            stage="self_body_perceived_event",
+            summary=event.perceived_summary,
+            focus_target=self._snapshot_focus_target(snapshot),
+            intent_label=event.body_state_class,
+            participants=self._participants_for_actor(event.actor_id, self._snapshot_focus_target(snapshot)),
+            detail=event.model_dump(),
+        )
         memory_bundle = self.get_memory_bundle(event.actor_id)
         working_memory_state = self.get_working_memory_state(event.actor_id, snapshot.model_dump())
+        self._queue_observatory_snapshot(
+            actor_id=event.actor_id,
+            producer_ts=event.producer_ts,
+            snapshot=snapshot,
+            memory_bundle=memory_bundle,
+        )
         reasoning_request = self._l2.prepare_reasoning_request(
             snapshot=snapshot,
             event=event,
@@ -141,12 +211,46 @@ class CharacterAgentRuntime:
             working_memory_state=working_memory_state,
         )
         self._record_interpretation_event(event.actor_id, event.producer_ts, interpretation)
+        self._set_observatory_context(event.actor_id, "interpretation_summary", interpretation.interpreted_summary)
+        self._queue_observatory_stage_event(
+            actor_id=event.actor_id,
+            producer_ts=event.producer_ts,
+            stage="interpretation",
+            summary=interpretation.interpreted_summary,
+            focus_target=str(interpretation.attention_target or self._snapshot_focus_target(snapshot)),
+            intent_label=interpretation.interpretation_type,
+            participants=self._participants_for_actor(event.actor_id, str(interpretation.attention_target or self._snapshot_focus_target(snapshot))),
+            detail=interpretation.model_dump(),
+        )
+        self._queue_observatory_snapshot(
+            actor_id=event.actor_id,
+            producer_ts=event.producer_ts,
+            snapshot=snapshot,
+            memory_bundle=memory_bundle,
+        )
         decision = self._l3.select_intent(
             interpretation,
             snapshot=snapshot.model_dump(),
             memory_bundle=memory_bundle,
             control_mode=self.get_control_mode(event.actor_id),
             working_memory_state=working_memory_state,
+        )
+        self._set_observatory_context(event.actor_id, "decision_summary", decision.selected_intent)
+        self._queue_observatory_stage_event(
+            actor_id=event.actor_id,
+            producer_ts=event.producer_ts,
+            stage="decision",
+            summary=decision.rationale or interpretation.interpreted_summary,
+            focus_target=str(interpretation.attention_target or self._snapshot_focus_target(snapshot)),
+            intent_label=decision.selected_intent,
+            participants=self._participants_for_actor(event.actor_id, str(interpretation.attention_target or self._snapshot_focus_target(snapshot))),
+            detail=decision.model_dump(),
+        )
+        self._queue_observatory_snapshot(
+            actor_id=event.actor_id,
+            producer_ts=event.producer_ts,
+            snapshot=snapshot,
+            memory_bundle=memory_bundle,
         )
         if self.get_control_mode(event.actor_id) == "player_priority_assisted":
             self._pending_suggestions.append(self._planner_suggestion_packet(
@@ -174,8 +278,25 @@ class CharacterAgentRuntime:
             return []
         self._record_siming_event(payload)
         snapshot = self._l1.apply_siming_output(payload)
+        self._set_observatory_context(actor_id, "latest_siming_summary", str(payload.get("presentation_hint", "") or ""))
+        self._queue_observatory_stage_event(
+            actor_id=actor_id,
+            producer_ts=int(payload.get("producer_ts", 0) or 0),
+            stage="siming_output_event",
+            summary=str(payload.get("presentation_hint", "") or ""),
+            focus_target=self._snapshot_focus_target(snapshot),
+            intent_label=str(payload.get("output_type", "siming_output") or "siming_output"),
+            participants=self._participants_for_actor(actor_id, self._snapshot_focus_target(snapshot)),
+            detail=dict(payload),
+        )
         memory_bundle = self.get_memory_bundle(actor_id)
         working_memory_state = self.get_working_memory_state(actor_id, snapshot.model_dump())
+        self._queue_observatory_snapshot(
+            actor_id=actor_id,
+            producer_ts=int(payload.get("producer_ts", 0) or 0),
+            snapshot=snapshot,
+            memory_bundle=memory_bundle,
+        )
         reasoning_request = self._gateway_reasoning_request_for_siming(actor_id, snapshot, payload, memory_bundle, working_memory_state)
         self._record_reasoning_request(actor_id, int(payload.get("producer_ts", 0) or 0), reasoning_request)
         interpretation = self._l2.interpret_siming_output(
@@ -186,12 +307,46 @@ class CharacterAgentRuntime:
             working_memory_state=working_memory_state,
         )
         self._record_interpretation_event(actor_id, int(payload.get("producer_ts", 0) or 0), interpretation)
+        self._set_observatory_context(actor_id, "interpretation_summary", interpretation.interpreted_summary)
+        self._queue_observatory_stage_event(
+            actor_id=actor_id,
+            producer_ts=int(payload.get("producer_ts", 0) or 0),
+            stage="interpretation",
+            summary=interpretation.interpreted_summary,
+            focus_target=str(interpretation.attention_target or self._snapshot_focus_target(snapshot)),
+            intent_label=interpretation.interpretation_type,
+            participants=self._participants_for_actor(actor_id, str(interpretation.attention_target or self._snapshot_focus_target(snapshot))),
+            detail=interpretation.model_dump(),
+        )
+        self._queue_observatory_snapshot(
+            actor_id=actor_id,
+            producer_ts=int(payload.get("producer_ts", 0) or 0),
+            snapshot=snapshot,
+            memory_bundle=memory_bundle,
+        )
         decision = self._l3.select_intent(
             interpretation,
             snapshot=snapshot.model_dump(),
             memory_bundle=memory_bundle,
             control_mode=self.get_control_mode(actor_id),
             working_memory_state=working_memory_state,
+        )
+        self._set_observatory_context(actor_id, "decision_summary", decision.selected_intent)
+        self._queue_observatory_stage_event(
+            actor_id=actor_id,
+            producer_ts=int(payload.get("producer_ts", 0) or 0),
+            stage="decision",
+            summary=decision.rationale or interpretation.interpreted_summary,
+            focus_target=str(interpretation.attention_target or self._snapshot_focus_target(snapshot)),
+            intent_label=decision.selected_intent,
+            participants=self._participants_for_actor(actor_id, str(interpretation.attention_target or self._snapshot_focus_target(snapshot))),
+            detail=decision.model_dump(),
+        )
+        self._queue_observatory_snapshot(
+            actor_id=actor_id,
+            producer_ts=int(payload.get("producer_ts", 0) or 0),
+            snapshot=snapshot,
+            memory_bundle=memory_bundle,
         )
         if self.get_control_mode(actor_id) == "player_priority_assisted":
             self._pending_suggestions.append(self._planner_suggestion_packet(
@@ -235,6 +390,22 @@ class CharacterAgentRuntime:
             return packets
         matched = [packet for packet in self._pending_suggestions if packet.actor_id == actor_id]
         self._pending_suggestions = [packet for packet in self._pending_suggestions if packet.actor_id != actor_id]
+        return matched
+
+    def drain_observatory_messages(self, actor_id: str | None = None) -> list[dict[str, object]]:
+        if actor_id is None:
+            messages = self._pending_observatory_messages
+            self._pending_observatory_messages = []
+            return messages
+        matched: list[dict[str, object]] = []
+        remaining: list[dict[str, object]] = []
+        for message in self._pending_observatory_messages:
+            payload = message.get("payload", {})
+            if isinstance(payload, dict) and str(payload.get("actor_id", "") or "") == actor_id:
+                matched.append(message)
+            else:
+                remaining.append(message)
+        self._pending_observatory_messages = remaining
         return matched
 
     def filter_commands_for_actor(
@@ -346,7 +517,7 @@ class CharacterAgentRuntime:
                 snapshot.recent_world_changes = self._append_recent_entry(
                     snapshot.recent_world_changes,
                     str(payload.get("change_summary", "") or result_type or "world_result"),
-                )
+        )
         stored = self._session_store.append_event(
             actor_id=actor_id,
             event_type="character_agent_settlement_result",
@@ -354,6 +525,24 @@ class CharacterAgentRuntime:
             payload=payload,
         )
         self._memory_store.write_event(stored)
+        outcome_summary = str(payload.get("constraint_summary", "") or payload.get("change_summary", "") or payload.get("stable_state_summary", "") or payload.get("result_type", "") or "")
+        self._set_observatory_context(actor_id, "latest_outcome_summary", outcome_summary)
+        self._queue_observatory_stage_event(
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+            stage="settlement_result",
+            summary=outcome_summary,
+            focus_target=self._snapshot_focus_target(self._get_snapshot_for_observatory(actor_id, producer_ts)),
+            intent_label=str(payload.get("result_type", "") or ""),
+            participants=self._participants_for_actor(actor_id, str(payload.get("target_actor_id", "") or str(payload.get("target_object_id", "") or str(payload.get("target_environment_id", "") or "")))),
+            detail=dict(payload),
+        )
+        self._queue_observatory_snapshot(
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+            snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
+            memory_bundle=self.get_memory_bundle(actor_id),
+        )
 
     def record_dialogue_response(
         self,
@@ -376,6 +565,33 @@ class CharacterAgentRuntime:
             payload=payload,
         )
         self._memory_store.write_event(stored)
+        dialogue_summary = str(payload.get("content", "") or payload.get("summary", "") or "")
+        self._set_observatory_context(actor_id, "latest_outcome_summary", dialogue_summary)
+        self._queue_observatory_stage_event(
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+            stage="dialogue_writeback",
+            summary=dialogue_summary,
+            focus_target=self._snapshot_focus_target(self._get_snapshot_for_observatory(actor_id, producer_ts)),
+            intent_label="dialogue_response",
+            participants=self._participants_for_actor(actor_id, ""),
+            detail={
+                **dict(payload),
+                "spoken_content": dialogue_summary,
+                "interpreted_summary": self._observatory_context(actor_id).get("interpretation_summary", ""),
+                "perceived_summary": self._get_snapshot_for_observatory(actor_id, producer_ts).visible_entities[0]
+                if self._get_snapshot_for_observatory(actor_id, producer_ts).visible_entities
+                else "",
+                "alignment_label": "alignment",
+                "target_actor_id": str(payload.get("target_actor_id", "") or ""),
+            },
+        )
+        self._queue_observatory_snapshot(
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+            snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
+            memory_bundle=self.get_memory_bundle(actor_id),
+        )
 
     def _record_reasoning_request(
         self,
@@ -418,10 +634,27 @@ class CharacterAgentRuntime:
             interpretation=interpretation,
             decision=decision,
         )
+        self._set_observatory_context(actor_id, "execution_summary", str(plan.get("social_spatial_channel", {}).get("spacing_behavior", "") if isinstance(plan.get("social_spatial_channel"), dict) else ""))
         self.record_execution_request(
             actor_id=actor_id,
             producer_ts=producer_ts,
             payload=plan,
+        )
+        self._queue_observatory_stage_event(
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+            stage="execution_request",
+            summary=self._observatory_context(actor_id).get("execution_summary", "") or "execution request staged",
+            focus_target=self._snapshot_focus_target(snapshot),
+            intent_label=decision.selected_intent,
+            participants=self._participants_for_actor(actor_id, self._snapshot_focus_target(snapshot)),
+            detail=plan,
+        )
+        self._queue_observatory_snapshot(
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+            snapshot=snapshot,
+            memory_bundle=self.get_memory_bundle(actor_id),
         )
         return plan
 
@@ -495,6 +728,30 @@ class CharacterAgentRuntime:
             payload=suggestion_packet.model_dump(exclude_none=True),
         )
         self._memory_store.write_event(stored)
+        self._set_observatory_context(actor_id, "decision_summary", suggestion_packet.why_this_now or (suggestion_packet.recommended_intents[0] if suggestion_packet.recommended_intents else ""))
+        self._queue_observatory_stage_event(
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+            stage="suggestion_packet",
+            summary=suggestion_packet.why_this_now,
+            focus_target=self._snapshot_focus_target(self._get_snapshot_for_observatory(actor_id, producer_ts)),
+            intent_label=suggestion_packet.recommended_intents[0] if suggestion_packet.recommended_intents else "",
+            participants=self._participants_for_actor(actor_id, self._snapshot_focus_target(self._get_snapshot_for_observatory(actor_id, producer_ts))),
+            detail={
+                **suggestion_packet.model_dump(exclude_none=True),
+                "target_actor_id": self._snapshot_focus_target(self._get_snapshot_for_observatory(actor_id, producer_ts)),
+                "interpreted_summary": self._observatory_context(actor_id).get("interpretation_summary", ""),
+                "perceived_summary": self._snapshot_focus_target(self._get_snapshot_for_observatory(actor_id, producer_ts)),
+                "spoken_content": suggestion_packet.why_this_now,
+                "alignment_label": "alignment",
+            },
+        )
+        self._queue_observatory_snapshot(
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+            snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
+            memory_bundle=self.get_memory_bundle(actor_id),
+        )
         return suggestion_packet
 
     def _append_recent_entry(self, entries: list[str], value: str) -> list[str]:
@@ -509,3 +766,100 @@ class CharacterAgentRuntime:
             for event in events:
                 if isinstance(event, dict):
                     self._memory_store.write_event(event)
+
+    def _observatory_context(self, actor_id: str) -> dict[str, str]:
+        return self._observatory_actor_context.setdefault(
+            actor_id,
+            {
+                "interpretation_summary": "",
+                "decision_summary": "",
+                "execution_summary": "",
+                "latest_outcome_summary": "",
+                "latest_siming_summary": "",
+            },
+        )
+
+    def _set_observatory_context(self, actor_id: str, key: str, value: str) -> None:
+        self._observatory_context(actor_id)[key] = value
+
+    def _queue_observatory_stage_event(
+        self,
+        *,
+        actor_id: str,
+        producer_ts: int,
+        stage: str,
+        summary: str,
+        focus_target: str,
+        intent_label: str,
+        participants: list[str],
+        detail: dict[str, object],
+    ) -> None:
+        event = self._observatory_projection.project_stage_event(
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+            stage=stage,
+            summary=summary,
+            focus_target=focus_target,
+            intent_label=intent_label,
+            participants=participants,
+            detail=detail,
+        )
+        self._pending_observatory_messages.append(
+            {
+                "message_type": "character_agent_debug_event",
+                "payload": event.model_dump(exclude_none=True),
+            }
+        )
+
+    def _queue_observatory_snapshot(
+        self,
+        *,
+        actor_id: str,
+        producer_ts: int,
+        snapshot: CharacterPrivateWorldSnapshot,
+        memory_bundle: dict[str, list[dict[str, object]]],
+    ) -> None:
+        context = self._observatory_context(actor_id)
+        state = self._observatory_projection.project_snapshot(
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+            snapshot=snapshot,
+            memory_bundle=memory_bundle,
+            interpretation_summary=context.get("interpretation_summary", ""),
+            decision_summary=context.get("decision_summary", ""),
+            execution_summary=context.get("execution_summary", ""),
+            latest_outcome_summary=context.get("latest_outcome_summary", ""),
+            latest_siming_summary=context.get("latest_siming_summary", ""),
+        )
+        self._pending_observatory_messages.append(
+            {
+                "message_type": "character_agent_debug_snapshot",
+                "payload": state.model_dump(exclude_none=True),
+            }
+        )
+
+    def _snapshot_focus_target(self, snapshot: CharacterPrivateWorldSnapshot) -> str:
+        if snapshot.current_attention_targets:
+            return str(snapshot.current_attention_targets[0])
+        if snapshot.attention_targets:
+            return str(snapshot.attention_targets[0])
+        return ""
+
+    def _participants_for_actor(self, actor_id: str, target_ref: str) -> list[str]:
+        participants = [actor_id]
+        if target_ref != "":
+            participants.append(target_ref)
+        return participants
+
+    def _get_snapshot_for_observatory(self, actor_id: str, producer_ts: int) -> CharacterPrivateWorldSnapshot:
+        snapshot = self.get_private_snapshot(actor_id)
+        if snapshot is not None:
+            return snapshot
+        return CharacterPrivateWorldSnapshot(
+            actor_id=actor_id,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            producer_ts=producer_ts,
+            updated_at=producer_ts,
+        )

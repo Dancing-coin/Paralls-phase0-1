@@ -13,3 +13,9 @@ def test_relationship_overlay_supports_required_relationship_line_families() -> 
     assert "blocked_lines" in source
     assert "siming_influence_lines" in source
     assert "target_markers" in source
+    assert "draw_line(" in source
+    assert "draw_circle(" in source
+    assert "_resolve_world_target_node" in source
+    assert "_project_world_to_canvas" in source
+    assert 'get_node_or_null("/root/MainDemo")' not in source
+    assert "get_viewport().get_camera_3d()" in source

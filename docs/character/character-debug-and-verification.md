@@ -48,6 +48,13 @@ Current backend observatory projection files:
 - `backend/app/services/world_outcome_debug_projection.py`
 - `backend/app/services/script_beat_projection.py`
 
+Current runtime observatory owners:
+
+- `backend/app/character_agent/runtime/runtime_loop.py`
+- `backend/app/services/siming_runtime.py`
+- `backend/app/services/siming_event_pipeline.py`
+- `backend/app/main.py` only drains and delivers owner-emitted records
+
 Current Godot observatory files:
 
 - `scripts/ui/CharacterDirectorState.gd`
@@ -83,7 +90,22 @@ Current observatory controls:
 Current developer-only / hidden-by-default rules:
 
 - Godot-side observatory state starts disabled
-- backend-side observatory websocket family stays off unless `PHASE0_OBSERVATORY_STREAM=1`
+- backend-side observatory websocket family is now delivered on the normal developer runtime path by default
+- developer visibility still remains hidden-by-default and requires explicit `F6/F7/F8` activation in-scene
+
+Current observatory runtime-verification files:
+
+- `scenes/phase0/CharacterDirectorObservatoryProbe.tscn`
+- `scripts/verification/CharacterDirectorObservatoryProbe.gd`
+- `scripts/verification/verify_character_director_observatory.py`
+
+Current observatory runtime proof:
+
+- `python scripts/verification/verify_character_director_observatory.py`
+- `python scripts/verification/verify_character_agent_execution.py`
+- `python scripts/verification/verify_phase0.py`
+
+These runtime verifiers now pre-run Godot import for the active worktree before launching the scene/probe, so strict runtime validation does not fail only because `.godot/imported` cache files have not yet been generated in the current worktree.
 
 ## Useful Runtime Trace Messages
 
@@ -168,3 +190,6 @@ Useful focused observatory tests include:
 - `backend/tests/test_dialogue_scene_ledger_static.py`
 - `backend/tests/test_observatory_input_controller_static.py`
 - `backend/tests/test_observatory_scene_mount_static.py`
+- `backend/tests/test_verification_audit.py`
+- `scripts/verification/tests/test_character_agent_execution_probe_static.py`
+- `scripts/verification/tests/test_character_agent_execution_verify.py`
