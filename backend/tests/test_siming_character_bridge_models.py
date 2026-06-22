@@ -20,6 +20,7 @@ def test_compatibility_input_requires_delivery_id_and_target_actor() -> None:
             causation_id="cause:1",
             correlation_id="corr:1",
             presentation_hint="look toward the sound",
+            target_actor_id="char_a",
         )
     except ValidationError as exc:
         assert "delivery_id" in str(exc)
