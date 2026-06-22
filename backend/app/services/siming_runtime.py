@@ -448,6 +448,17 @@ class SimingRuntime:
         target_object_id = self._first_payload_entry(event, "candidate_object_ids")
         target_environment_id = self._first_payload_entry(event, "candidate_environment_ids")
         target_label = target_actor_id or target_object_id or target_environment_id or event.source.actor_id or "candidate"
+        selected_path = "character_input_path" if target_actor_id else "visual_fact_path"
+        payload = {
+            "presentation_hint": f"watch {target_label}",
+            "target_actor_id": target_actor_id,
+            "target_object_id": target_object_id,
+            "target_environment_id": target_environment_id,
+        }
+        if selected_path == "visual_fact_path":
+            payload["established_fact_id"] = str(
+                event.payload.get("candidate_ref") or event.payload.get("event_id") or event.event_id
+            )
         return SimingOutput(
             output_type="dispatch_intent",
             room_id=event.room_id,
@@ -456,14 +467,9 @@ class SimingRuntime:
             causation_id=event.event_id,
             correlation_id=event.correlation_id,
             producer_ts=event.producer_ts + 1,
-            selected_path="character_input_path",
+            selected_path=selected_path,
             intervention_band="fact_reveal",
-            payload={
-                "presentation_hint": f"watch {target_label}",
-                "target_actor_id": target_actor_id,
-                "target_object_id": target_object_id,
-                "target_environment_id": target_environment_id,
-            },
+            payload=payload,
         )
 
     def _no_action(self, event: AuthorityEvent) -> SimingOutput:

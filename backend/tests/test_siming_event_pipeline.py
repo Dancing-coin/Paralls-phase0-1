@@ -36,6 +36,41 @@ def make_visual_fact_event(**overrides: object) -> AuthorityEvent:
     return AuthorityEvent.model_validate(payload)
 
 
+def make_conversation_resolution_event(**overrides: object) -> AuthorityEvent:
+    payload = {
+        "event_id": "conversation_candidate:456:char_c",
+        "event_type": "conversation_resolution_event",
+        "producer_ts": 456,
+        "room_id": "room_demo",
+        "scene_id": "scene_demo",
+        "zone_id": "zone_focus",
+        "source": {"layer": "L2", "system": "conversation_relation", "actor_id": "char_c"},
+        "routing": {"audience_mode": "room", "routing_mode": "event_type", "target_ids": ["siming"]},
+        "priority": "p2",
+        "ttl": 5000,
+        "durability": "replayable",
+        "causation_id": "interact:456",
+        "correlation_id": "interact:456",
+        "payload": {
+            "actor_id": "char_c",
+            "room_id": "room_demo",
+            "scene_id": "scene_demo",
+            "zone_id": "zone_focus",
+            "producer_ts": 456,
+            "candidate_ref": "cand_obj_letter",
+            "candidate_actor_ids": [],
+            "candidate_object_ids": ["obj_letter"],
+            "candidate_environment_ids": [],
+            "engagement_pressure": "present",
+            "privacy_risk_hint": "low",
+            "causation_id": "interact:456",
+            "correlation_id": "interact:456",
+        },
+    }
+    payload.update(overrides)
+    return AuthorityEvent.model_validate(payload)
+
+
 def make_pipeline(bus: InMemoryAuthorityEventBus, audit_writer: SimingAuditWriter) -> SimingEventPipeline:
     return SimingEventPipeline(
         bus=bus,
@@ -185,6 +220,31 @@ def test_pipeline_does_not_dispatch_visual_observability_outputs_through_adapter
     bus.publish(make_visual_fact_event())
 
     assert bus.list_events(event_type="siming.visual_observability_request")
+    assert character_runtime.get_private_snapshot("char_b") is None
+
+
+def test_pipeline_routes_object_only_conversation_fact_reveal_to_visual_observability() -> None:
+    bus = InMemoryAuthorityEventBus()
+    audit_writer = SimingAuditWriter()
+    character_runtime = CharacterAgentRuntime()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=SimingRuntime(),
+        producer=SimingEventProducer(bus),
+        audit_writer=audit_writer,
+        character_dispatch_adapter=SimingCharacterDispatchAdapter(runtime=character_runtime),
+    )
+    bus.subscribe("conversation_resolution_event", pipeline.handle_event)
+
+    bus.publish(make_conversation_resolution_event())
+
+    event_types = [event.event_type for event in bus.list_events(room_id="room_demo")]
+    projected = bus.list_events(event_type="siming.visual_observability_request")[0]
+
+    assert "siming.fact_reveal" not in event_types
+    assert "siming.visual_observability_request" in event_types
+    assert projected.payload["target_object_id"] == "obj_letter"
     assert character_runtime.get_private_snapshot("char_b") is None
 
 

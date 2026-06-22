@@ -19,6 +19,10 @@ class SimingEventProducer:
         event_type = self._event_type_for(output)
         if event_type == "siming.visual_observability_request" and not output.payload.get("established_fact_id"):
             raise ValueError("visual observability requests require established_fact_id")
+        if output.selected_path == "character_input_path":
+            target_actor_id = str(output.payload.get("target_actor_id", "") or "").strip()
+            if target_actor_id == "":
+                raise ValueError("character_input_path requires target_actor_id")
         forbidden_event_type = output.payload.get("event_type")
         if forbidden_event_type == "siming.dispatch_requested":
             raise ValueError("forbidden Siming event family: siming.dispatch_requested")
@@ -84,6 +88,5 @@ class SimingEventProducer:
         if output.selected_path == "l3_highlight_path":
             return ["presentation"]
         if output.selected_path == "character_input_path":
-            target_actor_id = str(output.payload.get("target_actor_id", "") or "").strip()
-            return [target_actor_id] if target_actor_id else ["character_runtime"]
+            return [str(output.payload.get("target_actor_id", "") or "").strip()]
         return ["audit"]

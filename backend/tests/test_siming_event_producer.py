@@ -46,3 +46,39 @@ def test_producer_rejects_physical_success_claims() -> None:
 
     with pytest.raises(ValueError, match="physical_success"):
         SimingEventProducer(InMemoryAuthorityEventBus()).publish_outputs([output])
+
+
+def test_producer_maps_character_input_path_to_target_actor_id() -> None:
+    bus = InMemoryAuthorityEventBus()
+    output = make_output(
+        selected_path="character_input_path",
+        intervention_band="fact_reveal",
+        payload={"target_actor_id": "char_b", "target_object_id": "obj_letter"},
+    )
+
+    SimingEventProducer(bus).publish_outputs([output])
+
+    event = bus.list_events(event_type="siming.fact_reveal")[0]
+    assert event.routing.target_ids == ["char_b"]
+
+
+def test_producer_rejects_character_input_path_without_target_actor_id() -> None:
+    output = make_output(
+        selected_path="character_input_path",
+        intervention_band="fact_reveal",
+        payload={"target_object_id": "obj_letter"},
+    )
+
+    with pytest.raises(ValueError, match="character_input_path requires target_actor_id"):
+        SimingEventProducer(InMemoryAuthorityEventBus()).publish_outputs([output])
+
+
+def test_producer_rejects_character_input_path_with_blank_target_actor_id() -> None:
+    output = make_output(
+        selected_path="character_input_path",
+        intervention_band="fact_reveal",
+        payload={"target_actor_id": "   ", "target_object_id": "obj_letter"},
+    )
+
+    with pytest.raises(ValueError, match="character_input_path requires target_actor_id"):
+        SimingEventProducer(InMemoryAuthorityEventBus()).publish_outputs([output])
