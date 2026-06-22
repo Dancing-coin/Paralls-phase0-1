@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, model_validator
 
 
 BridgeBand = Literal["impulse", "opportunity", "fact_reveal"]
@@ -19,8 +19,6 @@ DeliveryStatus = Literal[
 
 
 class SimingCharacterCompatibilityInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
     message_id: str
     delivery_id: str
     actor_id: str
@@ -57,8 +55,6 @@ class SimingCharacterCompatibilityInput(BaseModel):
 
 
 class CharacterDeliveryAuditSummary(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
     message_id: str
     delivery_id: str
     actor_id: str

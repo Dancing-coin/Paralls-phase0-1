@@ -7,24 +7,24 @@ from app.models.siming_character_bridge import (
 
 
 def test_compatibility_input_requires_delivery_id_and_target_actor() -> None:
-    payload = SimingCharacterCompatibilityInput(
-        message_id="msg:siming:1",
-        delivery_id="delivery:msg:siming:1:char_a:1",
-        actor_id="char_a",
-        input_type="siming_high_level_message",
-        band="impulse",
-        producer_ts=101,
-        room_id="room_demo",
-        scene_id="scene_demo",
-        zone_id="zone_focus",
-        causation_id="cause:1",
-        correlation_id="corr:1",
-        presentation_hint="look toward the sound",
-    )
-
-    assert payload.delivery_id == "delivery:msg:siming:1:char_a:1"
-    assert payload.actor_id == "char_a"
-    assert payload.input_type == "siming_high_level_message"
+    try:
+        SimingCharacterCompatibilityInput(
+            message_id="msg:siming:1",
+            actor_id="char_a",
+            input_type="siming_high_level_message",
+            band="impulse",
+            producer_ts=101,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            causation_id="cause:1",
+            correlation_id="corr:1",
+            presentation_hint="look toward the sound",
+        )
+    except ValidationError as exc:
+        assert "delivery_id" in str(exc)
+    else:
+        raise AssertionError("expected ValidationError")
 
 
 def test_compatibility_input_rejects_low_level_command_fields() -> None:
@@ -61,3 +61,18 @@ def test_delivery_audit_summary_accepts_restricted_outcome_labels_only() -> None
     )
 
     assert summary.status == "suggested_only"
+
+    try:
+        CharacterDeliveryAuditSummary(
+            message_id="msg:siming:4",
+            delivery_id="delivery:msg:siming:4:char_b:1",
+            actor_id="char_b",
+            status="completed",
+            producer_ts=104,
+            causation_id="cause:4",
+            correlation_id="corr:4",
+        )
+    except ValidationError as exc:
+        assert "status" in str(exc)
+    else:
+        raise AssertionError("expected ValidationError")
