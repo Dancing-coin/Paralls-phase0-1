@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+import app.main as main
 
 from app.main import (
     _handle_envelope,
@@ -9,6 +10,7 @@ from app.main import (
     reset_runtime_state,
 )
 from app.debug_stream import debug_stream
+from app.models.authority_event import AuthorityEvent
 from app.models.player_input import FocusTargetChange
 from app.models.raw_fact import RawFactEvent
 from app.models.runtime_state import CharacterRuntimeStateSnapshot
@@ -51,6 +53,55 @@ def test_visual_fact_event_model_dump_supports_environment_state_subject_key() -
 
     assert payload["effect_kind"] == "set"
     assert payload["subject_key"] == "environment_state/env_lamp"
+
+
+def test_fact_reveal_bridge_does_not_degrade_into_role_conclusion_payload() -> None:
+    reset_runtime_state()
+    event = AuthorityEvent.model_validate(
+        {
+            "event_id": "siming:fact_reveal:702:cause:1",
+            "event_type": "siming.fact_reveal",
+            "producer_ts": 702,
+            "room_id": "room_demo",
+            "scene_id": "scene_demo",
+            "zone_id": "zone_focus",
+            "source": {"layer": "L2", "system": "siming.dispatcher", "actor_id": None},
+            "routing": {
+                "audience_mode": "targeted",
+                "routing_mode": "event_type",
+                "target_ids": ["char_b"],
+            },
+            "priority": "p1",
+            "ttl": 5000,
+            "durability": "replayable",
+            "causation_id": "cause:1",
+            "correlation_id": "corr:1",
+            "payload": {
+                "message_id": "msg:702",
+                "presentation_hint": "surface established fact",
+                "target_environment_id": "env_lamp",
+            },
+        }
+    )
+    adapter = main.FrontendSimingCharacterDispatchAdapter(runtime=main.character_agent_runtime)
+    result = adapter.dispatch(event)
+
+    delivery = result.delivery_inputs[0]
+    delivery_payload = delivery.model_dump(exclude_none=True)
+    timeline = main.character_agent_runtime.get_session_timeline("char_b")
+    event_types = [entry["event_type"] for entry in timeline]
+
+    assert delivery.band == "fact_reveal"
+    assert delivery.input_type == "siming_high_level_message"
+    assert delivery_payload["target_actor_id"] == "char_b"
+    assert "believe_X_now" not in delivery_payload
+    assert "choose_Y_now" not in delivery_payload
+    assert "go_to_position" not in delivery_payload
+    assert "siming_output_event" in event_types
+    assert "l2_reasoning_request" in event_types
+    assert "character_interpretation_event" in event_types
+    assert "character_agent_execution_request" in event_types
+    assert "relational_belief_event" not in event_types
 
 
 def test_relation_service_projects_environment_visual_fact_to_runtime_state() -> None:
@@ -98,11 +149,32 @@ def test_websocket_environment_visual_fact_emits_runtime_delta_without_candidate
         ack = websocket.receive_json()
         runtime_snapshot = websocket.receive_json()
         runtime_delta = websocket.receive_json()
-        direct_siming_output = websocket.receive_json()
-        direct_character_agent_execution = websocket.receive_json()
-        candidate_event = websocket.receive_json()
-        candidate_runtime_delta = websocket.receive_json()
-        siming_output = websocket.receive_json()
+        remaining = [websocket.receive_json() for _ in range(5)]
+
+    direct_siming_output = next(
+        message
+        for message in remaining
+        if message["message_type"] == "siming_output"
+        and message["payload"].get("target_actor_id") == "char_b"
+    )
+    candidate_event = next(
+        message for message in remaining if message["message_type"] == "conversation_candidate_event"
+    )
+    candidate_runtime_delta = next(
+        message
+        for message in remaining
+        if message["message_type"] == "character_runtime_state_delta"
+        and message["payload"].get("conversation_candidate_refs") == ["cand_env_lamp"]
+    )
+    siming_output = next(
+        message
+        for message in remaining
+        if message["message_type"] == "siming_output"
+        and message["payload"].get("target_actor_id") is None
+    )
+    suggestion_packet = next(
+        message for message in remaining if message["message_type"] == "character_agent_suggestion"
+    )
 
     assert ack["message_type"] == "ack"
     assert ack["payload"]["route"] == "authority_visual_fact"
@@ -113,8 +185,6 @@ def test_websocket_environment_visual_fact_emits_runtime_delta_without_candidate
     assert runtime_delta["payload"]["nearby_environment_refs"] == ["env_lamp"]
     assert direct_siming_output["message_type"] == "siming_output"
     assert direct_siming_output["payload"]["target_environment_id"] == "env_lamp"
-    assert direct_character_agent_execution["message_type"] == "character_agent_execution"
-    assert direct_character_agent_execution["payload"]["actor_id"] == "char_b"
     assert candidate_event["message_type"] == "conversation_candidate_event"
     assert candidate_event["payload"]["candidate_object_ids"] == []
     assert candidate_event["payload"]["candidate_environment_ids"] == ["env_lamp"]
@@ -123,6 +193,9 @@ def test_websocket_environment_visual_fact_emits_runtime_delta_without_candidate
     assert siming_output["message_type"] == "siming_output"
     assert siming_output["payload"]["target_actor_id"] is None
     assert siming_output["payload"]["target_environment_id"] == "env_lamp"
+    assert suggestion_packet["message_type"] == "character_agent_suggestion"
+    assert suggestion_packet["payload"]["actor_id"] == "char_c"
+    assert suggestion_packet["payload"]["control_mode"] == "player_priority_assisted"
 
 
 def test_handle_envelope_raw_visual_fact_matches_legacy_visual_fact_runtime_messages() -> None:

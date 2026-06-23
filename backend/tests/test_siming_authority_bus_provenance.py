@@ -4,7 +4,9 @@ import app.main as main
 from app.models.authority_event import AuthorityEvent
 from app.models.siming_event import InterventionCandidate
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
+from app.services.character_agent_runtime import CharacterAgentRuntime
 from app.services.siming_audit_writer import SimingAuditWriter
+from app.services.siming_character_dispatch_adapter import SimingCharacterDispatchAdapter
 from app.services.siming_event_consumer import SimingEventConsumer
 from app.services.siming_event_pipeline import SimingEventPipeline
 from app.services.siming_event_producer import SimingEventProducer
@@ -40,6 +42,56 @@ def make_visual_fact_event(**overrides: object) -> AuthorityEvent:
     }
     payload.update(overrides)
     return AuthorityEvent.model_validate(payload)
+
+
+def test_authority_siming_event_fans_out_per_actor_with_distinct_delivery_instances() -> None:
+    bus = InMemoryAuthorityEventBus()
+    runtime = CharacterAgentRuntime()
+    dispatch_results = []
+
+    def dispatch(event: AuthorityEvent) -> None:
+        dispatch_results.append(SimingCharacterDispatchAdapter(runtime=runtime).dispatch(event))
+
+    bus.subscribe("siming.fact_reveal", dispatch)
+    event = AuthorityEvent.model_validate(
+        {
+            "event_id": "siming:fact_reveal:701:cause:1",
+            "event_type": "siming.fact_reveal",
+            "producer_ts": 701,
+            "room_id": "room_demo",
+            "scene_id": "scene_demo",
+            "zone_id": "zone_focus",
+            "source": {"layer": "L2", "system": "siming.dispatcher", "actor_id": None},
+            "routing": {
+                "audience_mode": "targeted",
+                "routing_mode": "event_type",
+                "target_ids": ["char_a", "char_c"],
+            },
+            "priority": "p1",
+            "ttl": 5000,
+            "durability": "replayable",
+            "causation_id": "cause:1",
+            "correlation_id": "corr:1",
+            "payload": {
+                "message_id": "msg:701",
+                "presentation_hint": "surface established fact",
+                "target_environment_id": "env_lamp",
+            },
+        }
+    )
+
+    bus.publish(event)
+
+    assert len(dispatch_results) == 1
+    deliveries = dispatch_results[0].delivery_inputs
+    assert [entry.actor_id for entry in deliveries] == ["char_a", "char_c"]
+    assert [entry.delivery_id for entry in deliveries] == [
+        "delivery:msg:701:char_a:1",
+        "delivery:msg:701:char_c:2",
+    ]
+    assert len({entry.delivery_id for entry in deliveries}) == 2
+    assert runtime.get_private_snapshot("char_a") is not None
+    assert runtime.get_private_snapshot("char_c") is not None
 
 
 def test_visual_fact_siming_output_is_projected_from_authority_event() -> None:
