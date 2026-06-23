@@ -1,5 +1,4 @@
 import asyncio
-import os
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket
@@ -7,6 +6,7 @@ from fastapi.responses import HTMLResponse, Response
 from pydantic import ValidationError
 from starlette.websockets import WebSocketDisconnect
 
+from app.config import settings
 from app.debug_narration import (
     build_debug_event,
     summarize_backend_route,
@@ -58,9 +58,11 @@ from app.services.per_character_percept_filter import filter_candidate_for_actor
 from app.services.phase0_authority_event_adapter import Phase0AuthorityEventAdapter
 from app.services.session_runtime import SessionRuntime
 from app.services.siming_audit_writer import SimingAuditWriter
+from app.services.siming_character_dispatch_adapter import SimingCharacterDispatchAdapter, SimingCharacterDispatchResult
 from app.services.siming_event_consumer import SimingEventConsumer
 from app.services.siming_event_pipeline import SimingEventPipeline
 from app.services.siming_event_producer import SimingEventProducer
+from app.services.siming_llm_provider import build_siming_llm_provider
 from app.services.siming_debug_projection import SimingDebugProjection
 from app.services.siming_runtime import SimingRuntime
 from app.services.character_agent_debug_projection import CharacterAgentDebugProjection
@@ -74,6 +76,14 @@ app = FastAPI(title="Paralls Phase0 Backend")
 BACKEND_BUILD = "paralls-phase0-backend-worktree-2026-06-02"
 WORKTREE_ROOT = str(Path(__file__).resolve().parents[2])
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+_pending_siming_character_dispatch_messages: dict[str, list[dict[str, object]]] = {}
+
+
+class FrontendSimingCharacterDispatchAdapter(SimingCharacterDispatchAdapter):
+    def dispatch(self, event: AuthorityEvent) -> SimingCharacterDispatchResult:
+        result = super().dispatch(event)
+        _queue_siming_character_dispatch_messages(event.event_id, result)
+        return result
 
 
 def reset_runtime_state() -> None:
@@ -97,6 +107,7 @@ def reset_runtime_state() -> None:
     global siming_debug_projection
     global world_outcome_debug_projection
     global script_beat_projection
+    global _pending_siming_character_dispatch_messages
 
     runtime = SessionRuntime()
     character_service = CharacterService()
@@ -113,12 +124,14 @@ def reset_runtime_state() -> None:
     authority_event_adapter = Phase0AuthorityEventAdapter()
     authority_event_bus = InMemoryAuthorityEventBus()
     siming_audit_writer = SimingAuditWriter()
+    _pending_siming_character_dispatch_messages = {}
     siming_event_pipeline = SimingEventPipeline(
         bus=authority_event_bus,
         consumer=SimingEventConsumer(),
-        runtime=SimingRuntime(),
+        runtime=SimingRuntime(llm_provider=build_siming_llm_provider(settings)),
         producer=SimingEventProducer(authority_event_bus),
         audit_writer=siming_audit_writer,
+        character_dispatch_adapter=FrontendSimingCharacterDispatchAdapter(runtime=character_agent_runtime),
     )
     for event_type in SimingEventConsumer.ALLOWED_EVENT_TYPES:
         authority_event_bus.subscribe(event_type, siming_event_pipeline.handle_event)
@@ -1074,6 +1087,27 @@ def _as_character_agent_suggestion_envelopes(
     ]
 
 
+def _queue_siming_character_dispatch_messages(authority_event_id: str, result: SimingCharacterDispatchResult) -> None:
+    messages: list[dict[str, object]] = []
+    commands_by_actor = getattr(result, "commands_by_actor", {})
+    if isinstance(commands_by_actor, dict):
+        for commands in commands_by_actor.values():
+            if isinstance(commands, list):
+                messages.extend(_as_character_agent_execution_envelopes(commands))
+    delivery_inputs = getattr(result, "delivery_inputs", [])
+    for delivery_input in delivery_inputs if isinstance(delivery_inputs, list) else []:
+        actor_id = str(getattr(delivery_input, "actor_id", "") or "")
+        messages.extend(
+            _as_character_agent_suggestion_envelopes(character_agent_runtime.drain_suggestion_packets(actor_id))
+        )
+    if messages:
+        _pending_siming_character_dispatch_messages.setdefault(authority_event_id, []).extend(messages)
+
+
+def _drain_siming_character_dispatch_messages(authority_event_id: str) -> list[dict[str, object]]:
+    return _pending_siming_character_dispatch_messages.pop(authority_event_id, [])
+
+
 def _should_suppress_character_agent_candidate_from_focus_mirror(
     *,
     candidate: object,
@@ -1344,18 +1378,10 @@ def _insert_character_agent_execution_after_siming(messages: list[dict[str, obje
     ordered: list[dict[str, object]] = []
     for message in messages:
         ordered.append(message)
-        if message.get("message_type") != "siming_output":
-            continue
-        payload = message.get("payload", {})
-        if not isinstance(payload, dict):
-            continue
-        outputs = character_agent_runtime.ingest_siming_output(payload)
-        ordered.extend(_as_character_agent_execution_envelopes(outputs))
-        ordered.extend(
-            _as_character_agent_suggestion_envelopes(
-                character_agent_runtime.drain_suggestion_packets(str(payload.get("target_actor_id", "") or ""))
-            )
-        )
+        if message.get("message_type") == "siming_output":
+            payload = message.get("payload", {})
+            authority_event_id = str(payload.get("authority_event_id", "") or "") if isinstance(payload, dict) else ""
+            ordered.extend(_drain_siming_character_dispatch_messages(authority_event_id))
     return ordered
 
 

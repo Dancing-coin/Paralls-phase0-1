@@ -658,19 +658,216 @@ def test_phase1_slice_audit_requires_emitter_and_authority_lane_evidence() -> No
 
     results = _index_by_id(report["results"])
 
-    assert report["overall_phase1_slice_passed"] is True
+    assert report["overall_phase1_slice_passed"] is False
     assert results["emitter_scene_wired"]["status"] == "proved"
     assert results["no_direct_visual_fact_send_bypass"]["status"] == "proved"
-    assert results["auditory_fact_observed"]["status"] == "proved"
+    assert results["auditory_fact_observed"]["status"] == "missing"
     assert results["auditory_candidate_policy_explicit"]["status"] == "proved"
+    assert results["role_state_fact_observed"]["status"] == "missing"
+    assert results["physiology_fact_observed"]["status"] == "missing"
+    assert results["tactile_fact_observed"]["status"] == "missing"
+    assert results["thermal_fact_observed"]["status"] == "missing"
+    assert results["olfactory_fact_observed"]["status"] == "missing"
+    assert results["authority_ack_observed"]["status"] == "missing"
+    assert results["environment_visual_fact_observed"]["status"] == "missing"
+    assert results["evidence_projection_visual_fact_observed"]["status"] == "missing"
+
+
+def test_phase1_slice_audit_names_executed_probe_scene() -> None:
+    report = evaluate_phase1_slice_audit(
+        main_log="",
+        focus_log="",
+        direct_send_scan="",
+        scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+        scene_label="Phase1SliceRuntimeProbe",
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert results["emitter_scene_wired"]["status"] == "proved"
+    assert "Phase1SliceRuntimeProbe" in results["emitter_scene_wired"]["title"]
+    assert results["emitter_scene_wired"]["evidence"] == ["Phase1SliceRuntimeProbe VisualFactEmitter scene node"]
+
+
+def test_phase1_slice_audit_rejects_plain_emitter_logs_mixed_with_raw_ack() -> None:
+    report = evaluate_phase1_slice_audit(
+        main_log="""
+        [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_object
+        [LocalPresentationBus] phase0_visual_fact_emitter:spatial_relation:actor_near_object
+        [LocalPresentationBus] phase0_visual_fact_emitter:light_level_drop:environment_light_drop
+        [LocalPresentationBus] phase0_visual_fact_emitter:visual_evidence_projection:evidence_projection
+        [LocalPresentationBus] phase0_auditory_fact_emitter:speaker_active:char_a:normal
+        [LocalPresentationBus] phase0_auditory_fact_emitter:auditory_reachability_changed:char_a:clear
+        [LocalPresentationBus] phase0_auditory_fact_emitter:ambient_noise_changed:quiet
+        [LocalPresentationBus] phase0_role_state_fact_emitter:role_state_transition:speak
+        [LocalPresentationBus] phase0_physiology_fact_emitter:breathing_strain_changed:elevated
+        [LocalPresentationBus] phase0_tactile_fact_emitter:contact_started:light
+        [LocalPresentationBus] phase0_thermal_fact_emitter:thermal_proximity_changed:warm
+        [LocalPresentationBus] phase0_olfactory_fact_emitter:odor_state_changed:noticeable
+        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
+        [LocalPresentationBus] conversation_candidate_event:{"candidate_object_ids":["obj_letter"]}
+        [LocalPresentationBus] character_runtime_state_delta:{"current_attention_source":"visual_fact"}
+        [LocalPresentationBus] backend_message_type:siming_output
+        """,
+        focus_log="""
+        [LocalPresentationBus] phase0_visual_fact_emitter:fixed_gaze_on_target:actor_looks_at_actor
+        [LocalPresentationBus] phase0_ack:{"accepted":true,"route":"authority_visual_fact","source_type":"raw_fact_event"}
+        """,
+        direct_send_scan="",
+        scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "targeted_actor_only"',
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert report["overall_phase1_slice_passed"] is False
+    assert results["authority_ack_observed"]["status"] == "missing"
+    assert results["object_visual_fact_observed"]["status"] == "missing"
+    assert results["actor_visual_fact_observed"]["status"] == "missing"
+    assert results["auditory_fact_observed"]["status"] == "missing"
+
+
+def test_phase1_slice_audit_accepts_probe_summary_lines() -> None:
+    report = evaluate_phase1_slice_audit(
+        main_log=(
+            'phase1_slice_runtime_probe:main:acks={"authority_auditory_fact":3,'
+            '"authority_olfactory_fact":1,"authority_physiology_fact":1,'
+            '"authority_role_state_fact":1,"authority_tactile_fact":1,'
+            '"authority_thermal_fact":1,"authority_visual_fact":4} '
+            'sources={"authority_auditory_fact":{"raw_fact_event":3},'
+            '"authority_olfactory_fact":{"raw_fact_event":1},'
+            '"authority_physiology_fact":{"raw_fact_event":1},'
+            '"authority_role_state_fact":{"raw_fact_event":1},'
+            '"authority_tactile_fact":{"raw_fact_event":1},'
+            '"authority_thermal_fact":{"raw_fact_event":1},'
+            '"authority_visual_fact":{"raw_fact_event":4}} '
+            'facts={"authority_auditory_fact":{"raw_fact_event":["speaker_active",'
+            '"auditory_reachability_changed","ambient_noise_changed"]},'
+            '"authority_olfactory_fact":{"raw_fact_event":["odor_state_changed"]},'
+            '"authority_physiology_fact":{"raw_fact_event":["breathing_strain_changed"]},'
+            '"authority_role_state_fact":{"raw_fact_event":["role_state_transition"]},'
+            '"authority_tactile_fact":{"raw_fact_event":["contact_started"]},'
+            '"authority_thermal_fact":{"raw_fact_event":["thermal_proximity_changed"]},'
+            '"authority_visual_fact":{"raw_fact_event":["actor_looks_at_object","actor_near_object",'
+            '"environment_light_drop","evidence_projection"]}} '
+            "deltas=5 candidates=2 siming=3 run=phase1-slice-main"
+        ),
+        focus_log=(
+            'phase1_slice_runtime_probe:focus:acks={"authority_visual_fact":1} '
+            'sources={"authority_visual_fact":{"raw_fact_event":1}} '
+            'facts={"authority_visual_fact":{"raw_fact_event":["actor_looks_at_actor"]}} '
+            "deltas=2 candidates=1 siming=1 run=phase1-slice-focus"
+        ),
+        direct_send_scan="",
+        scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "targeted_actor_only"',
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert report["overall_phase1_slice_passed"] is True
+    assert results["object_visual_fact_observed"]["status"] == "proved"
+    assert results["actor_visual_fact_observed"]["status"] == "proved"
+    assert results["near_object_visual_fact_observed"]["status"] == "proved"
+    assert results["environment_visual_fact_observed"]["status"] == "proved"
+    assert results["evidence_projection_visual_fact_observed"]["status"] == "proved"
+    assert results["auditory_fact_observed"]["status"] == "proved"
     assert results["role_state_fact_observed"]["status"] == "proved"
     assert results["physiology_fact_observed"]["status"] == "proved"
     assert results["tactile_fact_observed"]["status"] == "proved"
     assert results["thermal_fact_observed"]["status"] == "proved"
     assert results["olfactory_fact_observed"]["status"] == "proved"
     assert results["authority_ack_observed"]["status"] == "proved"
-    assert results["environment_visual_fact_observed"]["status"] == "proved"
-    assert results["evidence_projection_visual_fact_observed"]["status"] == "proved"
+    assert results["runtime_projection_observed"]["status"] == "proved"
+    assert results["candidate_and_siming_observed"]["status"] == "proved"
+
+
+def test_phase1_slice_audit_rejects_aggregate_probe_summary_without_fact_details() -> None:
+    report = evaluate_phase1_slice_audit(
+        main_log=(
+            'phase1_slice_runtime_probe:main:acks={"authority_auditory_fact":3,'
+            '"authority_olfactory_fact":1,"authority_physiology_fact":1,'
+            '"authority_role_state_fact":1,"authority_tactile_fact":1,'
+            '"authority_thermal_fact":1,"authority_visual_fact":4} '
+            "deltas=5 candidates=2 siming=3 run=phase1-slice-main"
+        ),
+        focus_log=(
+            'phase1_slice_runtime_probe:focus:acks={"authority_visual_fact":1} '
+            "deltas=2 candidates=1 siming=1 run=phase1-slice-focus"
+        ),
+        direct_send_scan="",
+        scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "targeted_actor_only"',
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert report["overall_phase1_slice_passed"] is False
+    assert results["object_visual_fact_observed"]["status"] == "missing"
+    assert results["actor_visual_fact_observed"]["status"] == "missing"
+    assert results["near_object_visual_fact_observed"]["status"] == "missing"
+    assert results["environment_visual_fact_observed"]["status"] == "missing"
+    assert results["evidence_projection_visual_fact_observed"]["status"] == "missing"
+    assert results["auditory_fact_observed"]["status"] == "missing"
+    assert results["authority_ack_observed"]["status"] == "missing"
+    assert results["runtime_projection_observed"]["status"] == "proved"
+    assert results["candidate_and_siming_observed"]["status"] == "proved"
+
+
+def test_phase1_slice_audit_rejects_probe_summary_without_raw_fact_ack_source() -> None:
+    report = evaluate_phase1_slice_audit(
+        main_log=(
+            'phase1_slice_runtime_probe:main:acks={"authority_visual_fact":4} '
+            'sources={"authority_visual_fact":{"visual_fact_event":4}} '
+            'facts={"authority_visual_fact":{"visual_fact_event":["actor_looks_at_object","actor_near_object",'
+            '"environment_light_drop","evidence_projection"]}} '
+            "deltas=5 candidates=2 siming=3 run=phase1-slice-main"
+        ),
+        focus_log=(
+            'phase1_slice_runtime_probe:focus:acks={"authority_visual_fact":1} '
+            'sources={"authority_visual_fact":{"visual_fact_event":1}} '
+            'facts={"authority_visual_fact":{"visual_fact_event":["actor_looks_at_actor"]}} '
+            "deltas=2 candidates=1 siming=1 run=phase1-slice-focus"
+        ),
+        direct_send_scan="",
+        scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "targeted_actor_only"',
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert results["object_visual_fact_observed"]["status"] == "missing"
+    assert results["actor_visual_fact_observed"]["status"] == "missing"
+    assert results["authority_ack_observed"]["status"] == "missing"
+    assert report["overall_phase1_slice_passed"] is False
+
+
+def test_phase1_slice_audit_rejects_mixed_source_probe_fact_summary() -> None:
+    report = evaluate_phase1_slice_audit(
+        main_log=(
+            'phase1_slice_runtime_probe:main:acks={"authority_visual_fact":8} '
+            'sources={"authority_visual_fact":{"raw_fact_event":4,"visual_fact_event":4}} '
+            'facts={"authority_visual_fact":{"visual_fact_event":["actor_looks_at_object",'
+            '"actor_near_object","environment_light_drop","evidence_projection"]}} '
+            "deltas=5 candidates=2 siming=3 run=phase1-slice-main"
+        ),
+        focus_log=(
+            'phase1_slice_runtime_probe:focus:acks={"authority_visual_fact":2} '
+            'sources={"authority_visual_fact":{"raw_fact_event":1,"visual_fact_event":1}} '
+            'facts={"authority_visual_fact":{"visual_fact_event":["actor_looks_at_actor"]}} '
+            "deltas=2 candidates=1 siming=1 run=phase1-slice-focus"
+        ),
+        direct_send_scan="",
+        scene_text='[node name="VisualFactEmitter" type="Node" parent="."]',
+        candidate_policy_source='AUDITORY_CANDIDATE_POLICY = "targeted_actor_only"',
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert results["authority_ack_observed"]["status"] == "proved"
+    assert results["object_visual_fact_observed"]["status"] == "missing"
+    assert results["actor_visual_fact_observed"]["status"] == "missing"
+    assert report["overall_phase1_slice_passed"] is False
 
 
 def test_phase1_slice_audit_rejects_legacy_visual_fact_event_ack_contract() -> None:
@@ -708,8 +905,8 @@ def test_phase1_slice_audit_rejects_legacy_visual_fact_event_ack_contract() -> N
 
     assert report["overall_phase1_slice_passed"] is False
     assert results["authority_ack_observed"]["status"] == "missing"
-    assert results["environment_visual_fact_observed"]["status"] == "proved"
-    assert results["evidence_projection_visual_fact_observed"]["status"] == "proved"
+    assert results["environment_visual_fact_observed"]["status"] == "missing"
+    assert results["evidence_projection_visual_fact_observed"]["status"] == "missing"
 
 
 def test_phase1_slice_audit_requires_auditory_fact_proof() -> None:
@@ -1514,7 +1711,8 @@ func emit_visual_fact_event(...) -> Dictionary:
     results = _index_by_id(report["results"])
 
     assert scan == "scripts/player/PlayerIntentMapper.gd:visual-fact-envelope-builder"
-    assert report["overall_phase1_slice_passed"] is True
+    assert report["overall_phase1_slice_passed"] is False
     assert results["no_direct_visual_fact_send_bypass"]["status"] == "proved"
-    assert results["authority_ack_observed"]["status"] == "proved"
+    assert results["authority_ack_observed"]["status"] == "missing"
+    assert results["object_visual_fact_observed"]["status"] == "missing"
     assert results["auditory_candidate_policy_explicit"]["status"] == "proved"

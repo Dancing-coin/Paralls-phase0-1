@@ -35,6 +35,9 @@ SPEC_PLAN_COVERAGE: dict[str, tuple[str, ...]] = {
 }
 
 
+AWAITING_USER_REVIEW_STATUS = "awaiting-user-review"
+
+
 def _result(result_id: str, title: str, proved: bool, evidence: list[str], notes: str = "") -> dict[str, object]:
     return {
         "id": result_id,
@@ -64,11 +67,23 @@ def _missing_index_refs(project_root: Path) -> list[str]:
     return missing
 
 
+def _spec_is_awaiting_user_review(spec: Path) -> bool:
+    text = read_text(spec)
+    return bool(
+        re.search(
+            rf"(?im)^\s*(?:-\s*)?Status:\s*`?{re.escape(AWAITING_USER_REVIEW_STATUS)}`?\s*$",
+            text,
+        )
+    )
+
+
 def _specs_without_plans(project_root: Path) -> list[str]:
     specs_dir = project_root / "docs" / "superpowers" / "specs"
     plans_dir = project_root / "docs" / "superpowers" / "plans"
     missing: list[str] = []
     for spec in sorted(specs_dir.glob("*-design.md")):
+        if _spec_is_awaiting_user_review(spec):
+            continue
         spec_slug = spec.stem.removesuffix("-design")
         expected_plan_names = (
             f"{spec_slug}-implementation-plan.md",
@@ -128,7 +143,7 @@ def evaluate_docs(project_root: Path) -> dict[str, object]:
         ),
         _result(
             "superpowers_specs_have_plans",
-            "Every Superpowers design spec has a matching implementation plan",
+            "Every approved Superpowers design spec has a matching implementation plan",
             not specs_without_plans,
             ["docs/superpowers/specs", "docs/superpowers/plans"],
             "\n".join(specs_without_plans),

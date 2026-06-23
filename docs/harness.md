@@ -80,7 +80,8 @@ Static documentation freshness checks. Use this before and after edits that touc
 Current mechanical invariants include:
 
 - all local paths referenced by `docs/INDEX.md` exist
-- every `docs/superpowers/specs/*-design.md` has a matching implementation plan
+- every approved `docs/superpowers/specs/*-design.md` has a matching implementation plan
+- specs marked `Status: awaiting-user-review` are allowed to pause at the Superpowers brainstorming review gate before planning
 - every harness profile is documented in this guide
 
 Output:
@@ -283,6 +284,15 @@ Trace output:
 Runtime validation for the current Phase1-shaped slice around visual facts, authority routing, runtime projection, and Siming consumption.
 
 Use this before claiming Phase 0.5 runtime alignment progress.
+
+This profile launches `scenes/phase0/Phase1SliceRuntimeProbe.tscn`, a lightweight Godot probe that uses the existing autoload `BackendBridge` plus the existing L1 raw fact emitters. It avoids `MainDemo.tscn` environment texture imports so clean workspaces do not depend on generated `.godot/imported` cache files for Phase1-slice evidence.
+
+Current mechanical/runtime evidence includes:
+
+- visual fact authority routing remains wired
+- Siming event bus pipeline consumes and produces through `AuthorityEventBus`
+- LLM-assisted Siming candidate generation is verified with deterministic fake providers
+- static boundary audits prove LLM provider calls stay inside `SimingRuntime`
 
 Trace output:
 

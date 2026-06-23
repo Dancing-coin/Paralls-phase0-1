@@ -35,6 +35,10 @@ def handle_visual_fact_event(
                 "accepted": True,
                 "source_type": source_type,
                 "route": "authority_visual_fact",
+                "fact_family": event.fact_family,
+                "fact_type": event.fact_type,
+                "relation_type": event.relation_type,
+                "fact_key": event.relation_type,
             },
         }
     ]

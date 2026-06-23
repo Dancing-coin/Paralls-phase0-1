@@ -4,6 +4,13 @@ This file governs the repository rooted at `D:\Users\User\Documents\paralls-phas
 
 Its purpose is to let coding agents execute the `Phase 0` validation demo without drifting into `Phase 1` system redesign.
 
+## Documentation Entry Points
+
+- Start from `docs/INDEX.md` for the current documentation map.
+- Use `docs/harness.md` for harness profiles and verification evidence rules.
+- Use `docs/ai-engineering-workflow.md` for spec, plan, Goal, and harness lifecycle gates.
+- Run `python scripts/verification/harness.py --profile all` before broad completion claims.
+
 ## 1. Mission
 
 This project is a runnable validation slice for 《开本 / Paralls》 `Phase 0`.

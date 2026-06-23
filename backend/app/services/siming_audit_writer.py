@@ -1,9 +1,12 @@
 from app.models.siming_event import SimingAuditCorrection, SimingAuditRecord
+from app.models.siming_runtime_state import NarrativeReadModel, SimingCheckpoint
 
 
 class SimingAuditWriter:
     def __init__(self) -> None:
         self._records_by_id: dict[str, SimingAuditRecord] = {}
+        self._checkpoints_by_id: dict[str, SimingCheckpoint] = {}
+        self._read_models_by_id: dict[str, NarrativeReadModel] = {}
         self.duplicate_count = 0
 
     def record(self, audit: SimingAuditRecord) -> None:
@@ -11,6 +14,26 @@ class SimingAuditWriter:
             self.duplicate_count += 1
             return
         self._records_by_id[audit.audit_id] = audit.model_copy(deep=True)
+
+    def record_checkpoint(self, checkpoint: SimingCheckpoint) -> None:
+        self._checkpoints_by_id[checkpoint.checkpoint_id] = checkpoint.model_copy(deep=True)
+
+    def record_read_model(self, read_model: NarrativeReadModel) -> None:
+        self._read_models_by_id[read_model.read_model_id] = read_model.model_copy(deep=True)
+
+    def list_checkpoints(self, *, room_id: str) -> list[SimingCheckpoint]:
+        return [
+            checkpoint.model_copy(deep=True)
+            for checkpoint in self._checkpoints_by_id.values()
+            if checkpoint.room_id == room_id
+        ]
+
+    def list_read_models(self, *, room_id: str) -> list[NarrativeReadModel]:
+        return [
+            read_model.model_copy(deep=True)
+            for read_model in self._read_models_by_id.values()
+            if read_model.room_id == room_id
+        ]
 
     def append_correction(self, audit_id: str, correction: SimingAuditCorrection) -> None:
         record = self._records_by_id[audit_id]

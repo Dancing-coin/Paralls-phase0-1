@@ -13,6 +13,7 @@ from app.models.world_result import (
 )
 from app.models.siming_output import NarrativeNudge
 from fastapi.testclient import TestClient
+import app.main as main
 from app.main import app, reset_runtime_state
 from app.l6.authority_bus.router import handle_envelope_entry
 from app.ws_protocol import Envelope
@@ -246,6 +247,61 @@ def test_siming_output_narrative_nudge_shape() -> None:
         nudge_intensity="low",
     )
     assert event.nudge_intensity == "low"
+
+
+def test_post_siming_hook_keeps_ordering_without_character_dispatch_ownership() -> None:
+    reset_runtime_state()
+    messages = [
+        {
+            "message_type": "siming_output",
+            "payload": {
+                "room_id": "room_demo",
+                "output_type": "attention_prompt",
+                "target_actor_id": "char_b",
+                "target_environment_id": "env_lamp",
+                "prompt_summary": "notice the lamp",
+                "producer_ts": 500,
+                "causation_id": "cause:1",
+                "correlation_id": "corr:1",
+            },
+        }
+    ]
+
+    ordered = main._insert_character_agent_execution_after_siming(messages)
+
+    assert ordered == messages
+    assert main.character_agent_runtime.get_private_snapshot("char_b") is None
+
+
+def test_player_priority_assisted_actor_gets_suggestion_without_auto_execution() -> None:
+    reset_runtime_state()
+    received = main._handle_envelope(
+        Envelope(
+            message_type="player_input",
+            payload={
+                "player_id": "p1",
+                "room_id": "room_demo",
+                "scene_id": "scene_demo",
+                "zone_id": "zone_focus",
+                "actor_id": "char_a",
+                "intent_type": "focus_target_change",
+                "producer_ts": 701,
+                "target_actor_id": "char_c",
+            },
+        )
+    )
+
+    siming_outputs = [message for message in received if message["message_type"] == "siming_output"]
+    suggestions = [message for message in received if message["message_type"] == "character_agent_suggestion"]
+    executions = [message for message in received if message["message_type"] == "character_agent_execution"]
+
+    assert siming_outputs
+    assert siming_outputs[0]["payload"]["authority_event_type"] == "siming.fact_reveal"
+    assert siming_outputs[0]["payload"]["target_actor_id"] == "char_c"
+    assert suggestions
+    assert suggestions[0]["payload"]["actor_id"] == "char_c"
+    assert suggestions[0]["payload"]["control_mode"] == "player_priority_assisted"
+    assert executions == []
 
 
 def test_character_runtime_state_snapshot_shape() -> None:

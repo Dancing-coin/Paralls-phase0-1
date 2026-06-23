@@ -1,0 +1,1680 @@
+# 司命 Agent Loop 架构设计
+
+Status: approved
+
+## 问题
+
+当前司命文档其实有两层视角：
+
+- `docs/phase1/core/01-运行时核心/司命设计文档.md` 是主源头，定义的是完整司命本体：一个运行在 `L2` 的全局叙事智能体，具备五大子系统、高层催化、四原则、优先级治理和运行时主循环。
+- `docs/phase1/core/01-运行时核心/司命/02-Phase1公平裁判型司命增强方案.md`、`04-Intervention Policy Engine 规则表.md`、`05-Godot Execution Feasibility Layer 接口契约.md`、`19-司命接入事件总线后端设计.md` 是工程切片，负责把完整司命收敛成能实现、能测试、能 replay、能接入权威事件总线的运行时边界。
+
+下一步设计要做的不是把司命压成一个被动事件处理器，也不是把它放开成一个无限制 LLM 工具 Agent，而是明确：**司命应作为一个受严格工程护栏约束的叙事 Agent Loop**。
+
+## 目标
+
+把司命设计成一个：
+
+```text
+目标驱动
+事件驱动
+策略约束
+多智能体协作
+可审计可回放
+```
+
+的叙事编排循环系统。
+
+本设计覆盖完整未来态的“单局 / 单房间”司命 Agent Loop，并为跨局记忆、命运种子和长期演化保留明确接口。跨局能力只定义接入位置，不要求第一阶段实现。
+
+同时，本设计要为未来群体模拟提前准备基础。这里的“准备基础”不是提前实现完整多人世界模拟，也不是让 `Phase 1` 进入 `SLG`，而是在 runtime 主骨架中固定四个不会被以后推翻的承载面：
+
+- 群体认知图谱：记录“谁知道什么、谁知道别人知道什么”。
+- 单局状态树：整理环境、角色、剧情和群体局势的当前状态视图。
+- 故事线状态：由司命负责维护的剧情推进、悬念、阶段、冲突和收束状态。
+- 群体模拟桥：未来把“统计群体 / 游戏 AI / 按需注入智能体”接入司命状态树与故事线推演。
+
+其中知识图谱是群体模拟的重要基础，但不是唯一基础。当前知识图谱只负责群体认知；更广义的环境状态、角色状态和故事线状态必须通过状态树或其等价结构承载。
+
+## 非目标
+
+- 不设计通用 LangChain / ReAct 式自主工具 Agent。
+- 不允许 LLM 直接发布 authority event。
+- 不允许 LLM 直接调用 ESM、Character、L3 或 Godot API。
+- 不替代 ESM 的物理权威。
+- 不替代角色智能体的自主决策。
+- 不把知识图谱扩展成所有 runtime state 的总容器。
+- 不让司命直接编辑 L1 / ESM / Character 的权威状态。
+- 不在本 spec 中实现 `SLG` 群体模拟引擎、经济系统、人口系统或游戏 AI 行为树。
+- 不替代视觉事实边界或 AuthorityEventBus。
+- 不让 read model、dashboard、memory 或 model output 成为世界真值。
+- 不把本 spec 扩展成 implementation plan。
+- 不要求第一阶段实现跨局长期演化。
+
+## 设计源头
+
+主源头：
+
+- `D:/Paralls/docs/phase1/core/01-运行时核心/司命设计文档.md`
+
+工程切片：
+
+- `D:/Paralls/docs/phase1/core/01-运行时核心/司命/02-Phase1公平裁判型司命增强方案.md`
+- `D:/Paralls/docs/phase1/core/01-运行时核心/司命/03-Fairness State Model 设计.md`
+- `D:/Paralls/docs/phase1/core/01-运行时核心/司命/07-Siming Orchestrator Interface Contract.md`
+- `D:/Paralls/docs/phase1/core/01-运行时核心/司命/12-司命数据表与缓存键设计.md`
+- `D:/Paralls-phase0-1/docs/phase1/core/01-运行时核心/司命/15-司命后端框架设计文档.md`
+- `D:/Paralls/docs/phase1/core/01-运行时核心/司命/04-Intervention Policy Engine 规则表.md`
+- `D:/Paralls/docs/phase1/core/01-运行时核心/司命/05-Godot Execution Feasibility Layer 接口契约.md`
+- `D:/Paralls/docs/phase1/core/01-运行时核心/司命/06-Checkpoint-Audit-ReadModel 设计.md`
+- `D:/Paralls/docs/phase1/core/01-运行时核心/司命/08-司命与角色智能体协作协议.md`
+- `D:/Paralls/docs/phase1/core/01-运行时核心/司命/09-司命与 ESM 协作协议.md`
+- `D:/Paralls/docs/phase1/core/01-运行时核心/司命/10-司命与事件总线契约.md`
+- `D:/Paralls/docs/phase1/core/01-运行时核心/司命/11-司命与视觉事实系统协作协议.md`
+- `D:/Paralls/docs/phase1/core/01-运行时核心/司命/14-司命高并发与子智能体运行策略.md`
+- `D:/Paralls/docs/phase1/core/01-运行时核心/司命/19-司命接入事件总线后端设计.md`
+- `D:/Paralls/docs/phase1/core/01-运行时核心/信息共享与知识状态设计.md`
+- `D:/Paralls/docs/phase1/core/01-运行时核心/ESM设计文档.md`
+- `D:/Paralls/docs/phase1/core/01-运行时核心/角色智能体设计文档.md`
+- `D:/Paralls/docs/phase1/core/01-运行时核心/事件总线/05-事件信封与字段分层规范.md`
+- `D:/Paralls/docs/phase1/core/01-运行时核心/事件总线/08-回放、审计与联调边界.md`
+- `D:/Paralls/docs/phase1/core/01-运行时核心/角色智能体/10-数据 Schema、事件契约与调试回放.md`
+- `D:/Paralls/最新待处理文档/L1层架构.md`
+- `D:/Paralls/filtered_conversation_split/turns/by-range/201-250/240-这样同时运行的智能体会不会太多了-能不能.md`
+- `D:/Paralls/filtered_conversation_split/turns/by-range/201-250/241-然后我们就可以在slg游戏里面用我们的司.md`
+- `D:/Paralls/filtered_conversation_split/turns/by-range/251-300/255-游戏ai不同于智能体-不是由大模型驱动的.md`
+- `docs/superpowers/specs/2026-06-15-siming-phase1-llm-authority-bus-runtime-design.md`
+
+参考说明：
+
+- `PlotPilot` 只借工程思想：`stateful narrative model`、checkpoint、guardrail、read facade、orchestrator / daemon、quality monitor、runtime projection。
+- `D:/Paralls/docs/phase1/core/01-运行时核心/司命/00-司命总索引.md` 提到 `15-司命后端框架设计文档.md`，但当前 `D:/Paralls` 路径下未发现该文件；本 spec 参考的是当前仓库实际存在的 `D:/Paralls-phase0-1/docs/phase1/core/01-运行时核心/司命/15-司命后端框架设计文档.md`。
+- `Mirofish` 在当前本地文档中没有详细落点；本 spec 不虚构其实现，只保留为“状态驱动群体模拟参考项目”的外部参考名。可落地设计只采信本地已有的 `SLG` / 群体模拟对话口径。
+
+## 术语边界
+
+本 spec 采用以下术语，不再混用：
+
+| 术语 | 含义 | 禁止误用 |
+| --- | --- | --- |
+| `司命 / Siming` | `L2` 全局叙事裁判、催化者、运行时编排核心 | 不能当成中央控制脚本、物理引擎、角色动作执行器 |
+| `Agent Loop` | 司命在活动单局内的观察、状态、推理、护栏、催化、回流循环 | 不能等同于无限制工具调用 Agent |
+| `FairnessStateSnapshot` | 公平裁判主链的核心运行时快照 | 不能被状态树、read model 或叙事投影替代 |
+| `StateTreeSnapshot` | 司命可查询的当前态索引，组织环境、角色、故事线和群体分支 | 不能成为历史真源，也不能覆盖 `ESM` / 角色权威状态 |
+| `StorylineStateSnapshot` | 司命拥有的故事线运行态压缩 | 不是小说章节，不是已发生事实，不是完整长线剧情搜索结果 |
+| `EventChainCandidate` | 叙事推演候选链 | 不是世界事实，不能直接 dispatch |
+| `NarrativeReadModel` | 面向工作台、QA、运营、大玩家的只读局势表面 | 不能反向污染事实、知识图谱或角色记忆 |
+| `群体模拟桥` | 未来统计群体 / 游戏 AI 接入司命状态树的适配层 | 不是 Phase 1 群体模拟引擎 |
+
+## 架构选择
+
+采用：
+
+```text
+SimingOrchestrator + 五子系统端口 + 工程护栏端口
+```
+
+不采用的方案：
+
+- 单体 `SimingAgentLoop`：启动简单，但会把 observe、state、planning、guard、dispatch、model routing、audit 全塞进一个大核心。
+- 直接多 Agent runtime：更接近远期分布式司命，但在领域对象和生命周期稳定前过早拆分，容易让系统散掉。
+
+`SimingOrchestrator` 只负责循环调度和生命周期。五大子系统负责领域判断。工程护栏端口负责确定性边界。
+
+## 核心定位
+
+司命是叙事运行时总导演，不是直接执行者。
+
+通用 Agent Loop 结构：
+
+```text
+Observe
+  -> State
+  -> Reason / Plan
+  -> Guard
+  -> Act
+  -> Observe Result
+  -> Loop
+```
+
+映射到司命领域：
+
+```text
+AuthorityEvent / ESM / Character / L1 / L3 输入
+  -> ObservePipeline
+  -> FactCore / KnowledgeGraph / StateTree / StorylineState / BalanceSystem
+  -> GoalStack + ConflictGenerator + ModelRouter
+  -> InterventionCandidate
+  -> Fact veto + PolicyGuard + ExecutionFeasibility
+  -> InterventionDecision
+  -> InterventionExecutor
+  -> siming.* 高层事件
+  -> 下游回流结果
+  -> Audit / Replay / State correction
+```
+
+一句话：
+
+> 司命持续观察世界，维护事实、群体认知、状态树和故事线状态，基于目标栈规划候选干预，再经过事实、策略、可执行性和审计护栏，只通过高层事件影响角色、环境和信息流。
+
+## 层级目标栈
+
+司命使用层级目标栈。高层目标约束低层目标：
+
+1. **命运主题 / 本局核心张力**：这一局到底围绕什么主题和命运压力展开。
+2. **戏剧推进 / 防止停滞**：让冲突、悬念、揭示、转折和收束持续发生。
+3. **公平可玩 / 参与窗口**：保证玩家和角色有合理参与机会，避免信息垄断、角色边缘化和线索卡死。
+4. **最小干预 / 自然发生**：优先选择弱的、局部的、可解释的催化。
+5. **可审计可回放**：每次行动和不行动都必须能解释、能 replay、能纠错。
+
+这使司命既不是“戏剧最大化机器”，也不是“只做公平裁判”。它可以主动思考如何影响故事线，但每次行动都要被完整目标栈裁决。
+
+当前设计倾向以“公平裁判型司命”为主：游戏平衡、参与机会、信息公平和事实边界优先于单纯追求强戏剧性。戏剧推进必须服务于公平裁判链，而不是为了好看突破权威状态或角色自主。
+
+## 核心组件
+
+### `SimingOrchestrator`
+
+职责：
+
+- 驱动 Agent Loop。
+- 管理 event-triggered tick、scheduled tick、phase tick。
+- 把任务路由到优先级 lane。
+- 调用五大子系统端口。
+- 汇总子系统输出并形成决策。
+- 不直接改世界真值。
+- 不直接改 ESM 状态。
+- 不直接改角色状态。
+- 不直接改 Godot 表现状态。
+
+状态：必须存在。
+
+方法级契约：
+
+```text
+ingest_event(event) -> None
+build_state_tree(event_window) -> StateTreeSnapshot
+run_fairness_auditors(state_tree, knowledge_graph) -> FairnessAuditResult[]
+build_fairness_snapshot(state_tree, knowledge_graph) -> FairnessStateSnapshot
+build_storyline_state(state_tree, fairness_snapshot) -> StorylineStateSnapshot
+generate_intervention_candidates(context) -> InterventionCandidate[]
+evaluate_candidates(candidates, context) -> EvaluatedCandidate[]
+select_intervention(evaluated_candidates) -> InterventionDecision
+dispatch_intervention(decision) -> DispatchResult
+audit_cycle(snapshot_before, candidates, decision, dispatch_result, snapshot_after) -> InterventionAuditRecord
+refresh_read_model(runtime_state, recent_audit) -> NarrativeReadModel
+tick(sim_tick_ts, world_ts) -> SimingTickResult
+recover_room(room_id) -> SimingRuntimeState
+shutdown_room(room_id) -> AuditSummary
+```
+
+`tick()` 顺序固定为：
+
+```text
+consume queued events
+-> update FactCore
+-> update KnowledgeGraph
+-> build StateTreeSnapshot
+-> fan out FairnessAuditors
+-> build FairnessStateSnapshot
+-> build StorylineStateSnapshot
+-> optionally run StorylineProjection
+-> generate InterventionCandidate[]
+-> evaluate candidates
+-> select InterventionDecision
+-> dispatch if approved
+-> audit
+-> refresh NarrativeReadModel
+```
+
+`07-Siming Orchestrator Interface Contract` 中已经冻结的最小主链是 `ingest -> fairness snapshot -> candidate -> decision -> audit -> read model`。本 spec 的增量不是替代它，而是把 `StateTreeSnapshot` 与 `StorylineStateSnapshot` 插到 fairness 与 candidate 之间，作为群体模拟和故事线推演的长期基础。
+
+兼容关系：
+
+- `ingest_event` 仍然是唯一入口，不新增旁路输入。
+- `build_fairness_snapshot` 仍然是公平裁判主链；状态树只提供可查询上下文，不替代 `FairnessStateSnapshot`。
+- `generate_intervention_candidates` 可以读取义务账本、短 horizon 推演和群体模拟摘要，但输出仍收敛为 `InterventionCandidate`。
+- `evaluate_candidates`、`select_intervention`、`dispatch_intervention`、`audit_cycle`、`refresh_read_model` 保持 `07` 文档定义的运行时职责。
+- 当 `StorylineProjectionPort` 或 `GroupSimulationBridgePort` 不可用时，主循环必须退回 `07` 的最小公平裁判链，而不是阻塞 tick。
+
+### `FairnessAuditEngine`
+
+职责：
+
+- 调度公平审计子智能体。
+- 合并各维度审计结果。
+- 生成 `FairnessStateSnapshot` 所需的五类分布。
+- 在 auditor 失败时构建降级 snapshot，而不是阻塞主链。
+
+固定 auditor：
+
+| Auditor | 关注对象 | 输出进入 |
+| --- | --- | --- |
+| `information-auditor` | 关键事实可见性、信息传播状态、知识态分布 | `information_distribution` |
+| `participation-auditor` | 行动窗口、会话参与、边缘化角色 | `participation_distribution` |
+| `conversation-access-auditor` | 私密通道、偷听窗口、被排斥者、公共流动阻塞 | `conversation_access_fairness` |
+| `suspicion-auditor` | 怀疑热度、目标集中度、过早锁死风险 | `suspicion_heat_distribution` |
+| `evidence-auditor` | 证据可见性、高价值视觉事实、可达性差异 | `evidence_visibility_distribution` |
+
+降级规则：
+
+- 单个 auditor 失败时，`FairnessStateSnapshot` 标记该维度 `partial` 或 `unavailable`。
+- `information`、`participation`、`conversation_access` 是 Phase 1 第一优先级。
+- `suspicion`、`evidence` 在压力模式下可以降采样，但不能伪装成完整结果。
+- auditor 只能返回审计结果，不得直接 dispatch、写物理事实或写角色心理真值。
+
+### `GoalStack`
+
+职责：
+
+- 表示本局命运主题、戏剧压力、公平可玩需求、最小干预原则和审计要求。
+- 当目标冲突时提供优先级。
+- 为 planning 提供权重，不直接产生动作。
+
+状态：完整设计中必须存在；第一阶段可以先用固定配置实现。
+
+### `ObservePipeline`
+
+职责：
+
+- 消费司命有资格观察的事件。
+- 把原始事件和结构化事件归一化成司命输入对象。
+- 保留 source、causation、correlation、phase、timing 元数据。
+- 拒绝或忽略司命无资格消费的事件。
+
+输入包括：
+
+- world fact
+- ESM result
+- environment state report
+- character state report
+- constraint state
+- visual fact
+- character behavior result
+- knowledge propagation change
+- storyline phase signal
+- room phase signal
+
+状态：必须存在。
+
+事件信封分层：
+
+司命接收的总线事件必须遵守事件总线 canonical 公共信封。公共信封包含：
+
+```text
+event_id
+event_type
+producer_ts
+room_id
+scene_id
+zone_id
+source.layer
+source.system
+source.actor_id
+source.object_id
+routing.audience_mode
+routing.routing_mode
+routing.dialog_group_id
+routing.target_ids
+priority
+ttl
+durability
+causation_id
+correlation_id
+payload
+```
+
+公共信封不再使用平铺的 `producer`、`source_actor_id`、`target_actor_ids`，也不把 `world_ts` 作为信封字段。司命领域对象可以保留 `world_ts` 和 `sim_tick_ts`，但它们属于 payload 或领域记录，用来解释房间世界时间和司命裁判周期，不参与事件总线公共字段命名。
+
+`ObservePipeline` 必须把输入分成三层：
+
+| 层 | 例子 | 司命处理方式 |
+| --- | --- | --- |
+| 原始 / 结构化世界事件 | 角色动作、物体变化、环境状态、会话结构、空间音频事件 | 可进入 FactCore / StateTree / FairnessAudit |
+| 系统状态事件 | 房间阶段、时钟、角色注册表、知识状态变化、冷却状态 | 可进入 runtime state |
+| 派生高价值事件 | `visual_fact_event`、`visual_evidence_projection`、证据链摘要 | 可作为公平与叙事判断输入，但不是原始物理真值 |
+
+司命不直接消费：
+
+- 原始骨骼 / 表情高频流。
+- `PoseSampleFrame` / `SemanticFrame` 原始对象。
+- 角色私有内心独白或未公开候选行动列表。
+- Godot 本地纯表现缓存。
+
+### `FactCorePort`
+
+职责：
+
+- 维护 `T0-T3` 事实边界。
+- 追踪已成立事实、已拒绝事实和锁定事实。
+- 检测矛盾。
+- veto 会泄露未知信息或改写锁定真相的候选。
+
+它守护真相，不负责让戏更好看。
+
+状态：必须存在；可以从窄的 fact-lock 模型开始。
+
+### `KnowledgeGraphPort`
+
+职责：
+
+- 维护“谁知道什么”。
+- 维护“谁知道别人知道什么”。
+- 表达会话接入、偷听、共享、误解、隐私风险、成员资格。
+- 给 planning 和 guard 提供结构化知识摘要。
+
+它是群体认知图谱，不是环境状态树、角色状态树或故事线状态机。
+
+它只能基于 L1 / ESM / event facts 推断社会关系和知识状态，不得虚构原始空间事实或声学事实。它可以记录“某角色知道门已经烧毁”，但不能因此写入“门已经烧毁”；门的物理状态仍由 `ESM` 状态变化事件提供。
+
+状态：预留但应尽早定义接口；完整图谱深度可以渐进实现。
+
+### `StateTreePort`
+
+职责：
+
+- 维护单局 / 单房间的状态树视图。
+- 整理环境、角色、剧情、群体局势等状态分支。
+- 为 planning、guard、debug dashboard 和 replay 提供可查询的 state snapshot。
+- 把不同来源的状态事件挂到同一棵可解释树上，保留 source、version、timestamp 和 authority owner。
+- 为未来群体模拟保留“参与者状态集合 + 关系/局势状态集合”的接入位置。
+
+状态树的权威边界：
+
+- 环境 / 物体状态来自 `L1/ESM` 上报，司命只镜像、整理、索引和摘要，不直接改写。
+- 角色身体表现与行为结果来自 `L1` / 角色智能体回写，司命只镜像、整理、索引和摘要，不直接改写。
+- 角色心理、信念、记忆和行动意图由角色智能体拥有，司命只能读有权限的结构化回报或高层摘要。
+- 故事线状态由司命拥有，可以写入和编辑，但必须保留版本与审计链。
+
+状态：完整司命应定义接口；第一阶段可以用单局内存树或窄 schema 实现。它是群体模拟基础，应早于完整群体模拟本体进入 runtime 设计。
+
+第一阶段边界：
+
+- 状态树端口应先固定。
+- `storyline` 分支应先进入可用实现，因为故事线状态管理属于司命。
+- `environment` 分支先只接入已有 `ESM` / `L1` 状态上报，不提前设计完整环境 schema。
+- `character` 分支先只接入已有角色行为结果和显性状态上报，不提前设计完整角色状态 schema。
+- 等 `L1` 和角色智能体接口完全定下来后，再扩展环境与角色分支的字段深度。
+
+最小树形结构：
+
+```text
+StateTreeSnapshot
+  room
+    phase
+    clock
+    scene_scope
+  environment
+    scene_nodes
+    object_states
+    zone_states
+    esm_report_refs
+  participants
+    actor_presence
+    action_window
+    visible_body_state
+    social_position
+    character_report_refs
+  knowledge
+    graph_summary_ref
+    conversation_boundaries
+    privacy_risk_refs
+  storyline
+    phase
+    active_threads
+    obligations
+    convergence_pressure
+  group_simulation
+    aggregate_states
+    representative_slots
+    promotion_candidates
+```
+
+最小节点字段：
+
+```text
+node_id
+node_type
+schema_version
+authority_owner
+source_event_refs
+version
+world_ts
+sim_tick_ts
+summary
+state_payload
+editable_by_siming
+audit_refs
+```
+
+更新规则：
+
+- `authority_owner` 为 `ESM`、`L1`、`CharacterRuntime` 的节点，司命只能追加镜像版本，不能原地编辑。
+- `authority_owner` 为 `Siming` 且 `editable_by_siming=true` 的节点，司命可以 `Edit`，但必须写新版本和 audit 引用。
+- 每次 `tick` 生成一个 `StateTreeSnapshot`，snapshot 只记录司命本轮可见投影，不声称覆盖完整世界。
+- 状态树必须允许缺分支和 stale 标记；高负载下可以把部分环境或角色分支标记为 `stale`，不能用缺字段伪装“没有状态”。
+- 状态树不能替代事件总线 replay；它是当前态索引，不是历史真源。
+- 状态树节点新增字段必须通过 `schema_version` 兼容旧记录；新增字段优先可选，不改变旧字段语义。
+
+### `StorylineStatePort`
+
+职责：
+
+- 维护本局故事线状态。
+- 记录当前 phase、剧情节拍、悬念、冲突线、线索揭示窗口、收束条件和结局压力。
+- 把事实状态、知识状态、平衡状态和下游回流整理成“故事线现在走到哪”的可查询状态。
+- 为 `GoalStack`、`ConflictGeneratorPort`、`BalanceSystemPort` 和模型路由提供 storyline context。
+- 在干预后追加 storyline correction，而不是静默改写历史。
+
+归属：
+
+- 故事线状态管理属于司命。
+- 最初可作为 `StateTreePort` 的 `storyline` 分支实现。
+- 如果未来演化为复杂多线叙事图谱，可以迁移为独立图结构，但对主 loop 保持同一个端口。
+
+状态：必须预留；第一阶段可用固定 phase + 少量 storyline markers 实现。相比环境和角色分支，故事线分支优先级更高，因为它是司命自有状态，不依赖 `L1` / Character 完整定稿后才能开始。
+
+最小对象：
+
+```text
+StorylineStateSnapshot
+  snapshot_id
+  room_id
+  phase
+  active_thread_refs
+  active_obligation_refs
+  stalled_thread_refs
+  open_possibility_count
+  dominant_uncertainty
+  story_pressure
+  convergence_pressure
+  reusable_pattern_refs
+  derived_from_state_tree_ref
+  derived_from_fairness_snapshot_ref
+```
+
+故事线状态不是小说章节，也不是写作大纲。它是司命对“当前局势下一步可能如何演化”的运行时状态压缩，服务于两个问题：
+
+1. 现在有哪些故事线正在运行、停滞、过热或接近收束？
+2. 为了平衡和戏剧性，司命应该催化什么、怎么催化、是否应该不行动？
+
+### `NarrativeObligationLedger`
+
+职责：
+
+- 记录本局未闭合的叙事义务。
+- 把公平问题和故事线问题转成可追踪 debt。
+- 支持“复用已经验证可行的故事线套路”，但不能机械套模板。
+
+义务类型：
+
+```text
+unresolved_fact
+unseen_evidence
+blocked_conversation
+stalled_actor_window
+pending_environment_consequence
+overheated_suspicion_chain
+underused_character_motive
+unresolved_relationship_shift
+```
+
+最小字段：
+
+```text
+obligation_id
+obligation_type
+source_refs
+affected_actor_ids
+related_fact_refs
+related_state_node_refs
+urgency
+fairness_impact
+dramatic_value
+allowed_bands
+status
+```
+
+状态：第一阶段应至少有薄实现。它不需要完整事件链搜索，但要能让 `NarrativeReadModel` 解释“当前有什么未闭合义务”。
+
+### `StorylineProjectionPort`
+
+职责：
+
+- 基于当前 `StateTreeSnapshot`、`KnowledgeGraphPort`、`FairnessStateSnapshot` 和 `StorylineStateSnapshot` 推演短 horizon 的故事线可能性。
+- 生成 `EventChainCandidate`，供 `InterventionPlanner` 选择。
+- 复用已验证的故事线模式时，只能作为候选生成启发，不得覆盖事实、角色自主或执行可行性。
+
+输入：
+
+```text
+StateTreeSnapshot
+KnowledgeGraphSummary
+FairnessStateSnapshot
+StorylineStateSnapshot
+NarrativeObligationLedger
+recent_intervention_history
+available_execution_paths
+```
+
+输出：
+
+```text
+EventChainCandidate
+  chain_id
+  basis_state_tree_ref
+  basis_fairness_snapshot_ref
+  basis_storyline_snapshot_ref
+  trigger_condition
+  required_conditions
+  expected_effect
+  candidate_band
+  target_actor_ids
+  target_state_node_refs
+  dramatic_value
+  fairness_delta
+  role_autonomy_safety
+  fact_lock_safety
+  execution_cost
+  audit_clarity
+  risk_tags
+  reusable_pattern_ref
+```
+
+推演步骤：
+
+```text
+1. 读取当前状态树、知识图谱、公平快照和故事线快照
+2. 找出 stalled / overheated / underused / blocked 的故事线节点
+3. 将这些节点转成 NarrativeObligation
+4. 枚举能缓解义务的事件链候选
+5. 用 DramaticPriorityModel 排序，但不能覆盖 fairness_delta 与安全护栏
+6. 把候选降成 InterventionCandidate，不直接写事实或发布事件
+```
+
+状态：第一阶段可做 stub 或短 horizon 规则版；完整事件链搜索和长时程剧情弧优化后置。
+
+Phase 边界：
+
+| 对象 | Phase 1 | Phase 2+ |
+| --- | --- | --- |
+| `StorylineStateSnapshot` | 可用薄实现，记录 phase、active threads、dominant uncertainty、convergence pressure | 扩展成多线叙事图或更复杂状态机 |
+| `NarrativeObligationLedger` | 薄账本，服务 read model 和少量候选提示 | 完整伏笔 / 义务闭合管理 |
+| `ProjectionRun` | nullable / stub / read-only，不作为验收阻塞 | 正式短 horizon 推演记录 |
+| `EventChainCandidate` | 可作为候选提示，不得覆盖公平主链 | 作为事件链生成器正式输出 |
+| `DramaticPriorityModel` | 简单排序或关闭，不覆盖 fairness / feasibility / audit | 参与复杂叙事弧优化 |
+
+`NarrativeProjectionCore` 如果启用，只能插在 `FairnessStateSnapshot` 与 `InterventionCandidate` 之间，提供 candidate hints；不能绕过 `PolicyGuard`、`ExecutionFeasibilityPort` 或 `AuditReplayPort`。
+
+### `DramaticPriorityModel`
+
+职责：
+
+- 排序 `EventChainCandidate`。
+- 把“戏剧性”压成可解释评分，而不是让 LLM 自由觉得“好看”。
+
+评分维度：
+
+```text
+dramatic_value
+fairness_delta
+playability_gain
+role_autonomy_safety
+fact_lock_safety
+execution_cost
+audit_clarity
+repetition_penalty
+pattern_reuse_confidence
+```
+
+硬规则：
+
+- `fact_lock_safety` 不合格时直接拒绝。
+- `role_autonomy_safety` 不合格时只能降级为 `opportunity` 或 `none`。
+- `execution_cost` 超预算时必须降级或延后。
+- `dramatic_value` 不得覆盖 `fairness_delta`，当前基调仍是公平裁判型。
+
+### `BalanceSystemPort`
+
+职责：
+
+- 检测信息垄断。
+- 检测参与饥饿。
+- 检测私密通道锁死。
+- 检测怀疑过热。
+- 检测证据瓶颈。
+- 产出 planning 可使用的局势压力信号。
+
+状态：必须存在。
+
+### `ConflictGeneratorPort`
+
+职责：
+
+- 枚举冲突机会。
+- 识别次生事件候选。
+- 识别环境催化窗口。
+- 识别阶段收束和结局机会。
+- 估计叙事价值和风险。
+
+状态：完整司命必须存在；第一阶段可以从有限候选生成器开始。
+
+### `ModelRouterPort`
+
+职责：
+
+- 把推理任务路由给规则、小模型、大模型或专门子智能体。
+- 执行 latency budget 和 priority lane 约束。
+- 只返回 candidate-level 输出。
+
+可选 route：
+
+- rule route：硬边界和确定性过滤。
+- small-model route：快速分类、风险打分、候选排序。
+- large-model route：复杂叙事判断、多角色动机解释、冲突机会枚举、催化方案候选。
+- specialist route：公平 auditor、Conflict Scout、Knowledge Agent、Narrative Planner、Ending Agent、环境可行性 helper、L3 coordination agent。
+
+状态：必须作为端口存在；具体 route 可逐步增加。
+
+模型路由硬边界：
+
+- P0 / 硬事实 / 锁定真相 / 权限过滤只走规则路径。
+- auditor 可以用规则、小模型或大模型辅助，但输出必须归一成结构化审计结果。
+- 大模型只能生成 candidate、解释或排序建议，不能生成最终 `InterventionDecision`。
+- route 选择必须记录在 audit 中，至少包含 `route_type`、`latency_budget`、`timeout_policy`、`fallback_route`。
+
+### `FeatureRegistryPort`
+
+职责：
+
+- 注册当前房间启用的 auditor、projection strategy、execution path、guardrail 和 read model 细节等级。
+- 让 Phase 1 最小能力和 Phase 2+ 扩展能力走同一主链。
+- 防止通过隐式配置让未成熟能力阻塞主循环。
+
+最小配置形状：
+
+```text
+enabled_auditors
+enabled_projection_strategies
+enabled_execution_paths
+enabled_guardrails
+read_model_detail_level
+group_simulation_bridge_mode
+```
+
+规则：
+
+- `enabled_auditors` 至少包含 `information`、`participation`、`conversation_access`。
+- `StorylineProjectionPort` 默认 `stub` 或 `off`，除非房间能力显式启用。
+- `GroupSimulationBridgePort` 默认 `shape_only`，只保留状态树分支。
+- 新能力只能通过 registry 增量接入，不能改写 `SimingOrchestrator` 主链。
+
+### `RuntimeCapabilityPort`
+
+职责：
+
+- 把司命 runtime 的基础能力固定为 `Read`、`Write`、`Edit`、`Execute` 四类。
+- 让模型、子智能体和规则模块只能通过受限能力面工作，不能直接触碰底层系统。
+- 为后续工具化、工作台调试和权限审计提供统一能力表。
+
+四类能力：
+
+| 能力 | 允许做什么 | 禁止做什么 |
+| --- | --- | --- |
+| `Read` | 读取有权限的 event、fact、knowledge summary、state snapshot、storyline state、audit record | 读取角色私有未共享心理真值、绕过 Per-Character / authority 权限读全局真相 |
+| `Write` | 追加司命拥有的候选、决策、审计、故事线 marker、read model 快照 | 写入 ESM 物理成功、写入角色信念真值、写入 Godot 表现状态 |
+| `Edit` | 编辑司命拥有且标记为 editable 的工作状态、故事线状态、候选解释和 dashboard 摘要，并保留版本链 | 改写 locked fact、改写 ESM / Character / L1 权威状态、删除审计历史 |
+| `Execute` | 通过 `InterventionExecutorPort` 发布高层 `siming.*` 事件，或记录 `no_action` | 直接调用 ESM / Character / L3 / Godot API，直接发布 authority success fact |
+
+原则：
+
+```text
+Read can observe only authorized projections.
+Write can append only Siming-owned records.
+Edit can revise only editable Siming-owned state with audit.
+Execute can emit only guarded high-level events.
+```
+
+状态：必须作为端口存在。第一阶段可以先实现为能力枚举 + guard 检查 + audit 记录，不需要完整工具系统。
+
+### `InterventionPlanner`
+
+职责：
+
+- 把机会、模型输出和子系统建议转成 `InterventionCandidate`。
+- 选择 proposed band：
+  - `impulse`
+  - `opportunity`
+  - `fact_reveal`
+  - `environment_request`
+  - `none`
+- 保留候选理由、预期叙事效果、风险标签和需要的下游路径。
+
+状态：必须存在。
+
+### `PolicyGuard`
+
+职责：
+
+- 执行四原则：间接性、不可见性、逻辑自洽性、公平性。
+- 保护角色自主性。
+- 防止改写锁定事实。
+- 防止绕过 ESM。
+- 降级或拒绝不安全候选。
+
+状态：必须存在。
+
+### `ExecutionFeasibilityPort`
+
+职责：
+
+- 判断候选能否在当前引擎和房间状态里自然落地。
+- 选择路径：
+  - `character_input_path`
+  - `environment_change_path`
+  - `visual_fact_path`
+  - `l3_highlight_path`
+  - `no_action`
+- 对同一个 candidate + context 返回确定性 decision。
+
+状态：必须存在。
+
+### `InterventionExecutorPort`
+
+职责：
+
+- 通过 AuthorityEventBus 发布高层 `siming.*` 事件。
+- 不发布物理成功事实。
+- 不直接调用 ESM、Character、L3 或 Godot。
+- 保留 causation、correlation、idempotency、TTL、priority 和 audit 引用。
+
+状态：必须存在。
+
+### `AuditReplayPort`
+
+职责：
+
+- 记录观察、候选、veto、降级、dispatch、ack、timeout、rejection、no_action 和 correction。
+- 支持按 `correlation_id`、`causation_id`、`event_id` replay。
+- 解释司命为什么行动，也解释为什么没选其他行动。
+
+状态：必须存在。
+
+### `LongTermMemoryPort`
+
+职责：
+
+- 预留跨局玩家风格画像。
+- 预留 recurring theme memory。
+- 预留 destiny seed library。
+- 预留未解决的 archetype pattern。
+- 预留 pacing profile。
+- 预留跨局 safety notes。
+
+长期记忆可以影响：
+
+- 新局主题建议。
+- 命运主题权重。
+- 冲突种子选择。
+- 节奏偏好。
+- 安全和体验约束。
+
+长期记忆不能影响：
+
+- 当前局锁定事实。
+- 当前局物理结果。
+- 角色即时心理真值。
+- ESM 成功事实。
+
+状态：预留端口。
+
+## 优先级 Lane
+
+司命不能只有一个 FIFO 队列。
+
+```text
+P0 Critical Guard Lane
+  关键公平失衡临界点、致命环境风险、关键会话接入断裂、锁定真相 veto
+  只走规则，不等待 LLM
+
+P1 Judge Main Lane
+  ingest、fact core、FairnessStateSnapshot、InterventionCandidate、InterventionDecision、核心 environment_request
+  必须优先于视觉、L3 和复杂叙事推演
+
+P2 Support Lane
+  视觉事实高价值输入聚合、证据可见性补充、角色承接回流采样
+  可以调用小模型或局部 auditor
+
+P3 Presentation / Enhancement Lane
+  l3_highlight_path、复杂 visual_fact_path、次级 narrative surface 刷新
+  可降级、可延迟
+
+P4 Optional Lane
+  延迟统计、非关键解释增强、低优先级运营摘要
+  可丢弃
+```
+
+`P0/P1` 不得被 `P2/P3/P4` 模型调用、视觉增强或 L3 调度阻塞。系统高负载时优先保留 `P0/P1`，`P4` 可以丢弃，`P3` 可以降频或改走 `character_input_path` / `no_action`。
+
+`P1 State Maintenance Lane` 至少要包括 `KnowledgeGraphPort` 更新、`StateTreePort` 更新和 `StorylineStatePort` 的轻量推进。这样未来群体模拟需要的状态基础不会被延后到完整模拟阶段才补。
+
+运行模式：
+
+| 模式 | 启用能力 | 降级行为 |
+| --- | --- | --- |
+| 标准模式 | 五个 auditor 全开，正常 fairness snapshot，正常 decision | 无 |
+| 压力模式 | 保留 `information`、`participation`、`conversation_access`，`suspicion` / `evidence` 可降采样 | L3 降频，projection horizon 缩短 |
+| 生存模式 | 只保 `P0/P1`、最小 snapshot、decision、audit | 停止 P3/P4，read model 降为 thin，输出保守 `no_action` 或低强度 candidate |
+
+不可降级字段：
+
+- `snapshot_id`
+- `candidate_id`
+- `decision_id`
+- `audit_id`
+- `event_id`
+- `causation_id`
+- `correlation_id`
+
+## Tick 触发
+
+司命有三类 tick：
+
+- **Event-triggered tick**：关键 AuthorityEvent、ESM 结果、角色行为、视觉事实或约束变化触发。
+- **Scheduled tick**：周期性检查节奏、参与度、信息瓶颈和 cooldown。
+- **Phase tick**：阶段切换、案件升级、接近结局或房间关闭时触发。
+
+因此司命是事件驱动的，但允许周期性和阶段级思考。
+
+## 行动边界
+
+允许的高层输出：
+
+- `siming.impulse`
+- `siming.opportunity`
+- `siming.fact_reveal`
+- `siming.environment_request`
+- `siming.visual_observability_request`
+- `siming.presentation_highlight_request`
+- `siming.no_action_recorded`
+
+禁止输出：
+
+- 直接 `world_fact` 成功结果。
+- 直接 ESM 状态 mutation。
+- 直接角色移动、台词或心理真值。
+- 直接 Godot 动画、transform 或骨骼命令。
+- 直接创建未成立事实。
+- 绕过 AuthorityEventBus。
+
+## 下游协作
+
+### Character Runtime
+
+接收：
+
+- `impulse`
+- `opportunity`
+- `fact_reveal`
+
+角色仍保持自主。角色可以返回 ack、result、ignore、reject、behavior event 或 character state report。司命可以观察并重新规划，可以把角色状态摘要整理进 `StateTreePort`，但不能强制执行，也不能改写角色心理、信念、记忆或行动意图。
+
+角色承接顺序必须固定为：
+
+```text
+SimingHighLevelMessage
+-> L2 Interpretation
+-> Belief / Affect Delta
+-> L3 Candidate Shift
+-> Three Filters
+-> Intent Selected / Rejected
+-> L4 Expression / Action Plan
+-> L1 / ESM Resolution
+```
+
+角色侧最小回流对象：
+
+```text
+IntentCommitted
+SpeechActPublished
+ActionRequestIssued
+SocialSignalPublished
+InformationShareIssued
+AutonomyModeChanged
+```
+
+司命只需要结构化回流摘要，不读取角色完整 chain-of-thought。审计链至少要能串起：
+
+```text
+SimingHighLevelMessage
+-> CharacterInterpretationSummary
+-> CandidateActionShift
+-> FilterDecision
+-> IntentCommitted / Rejected
+-> ExternalObservedEffect
+```
+
+### ESM
+
+接收：
+
+- `environment_request`
+
+ESM 判断物理、空间和规则约束是否允许该请求。ESM 返回 accept、reject、constraint、world fact result 或 environment state report。司命可以把这些环境状态整理进 `StateTreePort`，但不得把 rejection 改写成 success，也不得直接编辑 ESM 的状态机。
+
+标准闭环固定为：
+
+```text
+FairnessStateSnapshot
+-> InterventionCandidate
+-> InterventionDecision
+-> environment_request
+-> ESM Resolution
+-> World Fact Event
+-> Siming Re-evaluation
+```
+
+ESM 最小回流对象：
+
+```text
+EnvironmentStateResult
+ObjectStateResult
+BodyStateResult
+ActionResolutionResult
+ConstraintStateResult
+```
+
+`environment_request` 只是请求，不是事实。只有 `ESM Resolution` 重新回流总线后，司命才能把环境变化镜像进 `StateTreePort`。
+
+### VisualFact / Perception Boundary
+
+接收：
+
+- `visual_observability_request`
+
+它只能放大已成立事实的可见性，不能创造事实。
+
+司命可消费：
+
+```text
+visual_character_fact
+visual_object_fact
+visual_environment_fact
+visual_spatial_relation_fact
+visual_evidence_projection
+```
+
+司命不可消费原始 `PoseSampleFrame`、全骨骼流、全 AU 权重或 `SkeletonModifier3D` 中间修正量。视觉事实中的 `gaze_bias`、`concealment_bias`、`recoil_bias` 只能作为观察偏向提示，不能直接当成角色心理真值。
+
+`visual_fact_path` 只能做一件事：放大已经成立事实的可观察性。它不能伪造事实，也不能绕过 Godot / L1 的视觉事实采样链。
+
+### L3 / Godot Presentation
+
+接收：
+
+- `presentation_highlight_request`
+
+它选择表现策略和降级方式，但不成为世界真值权威。
+
+L3 调度边界：
+
+- 司命负责“是否触发、何时触发、触发哪类高层表现请求、是否通过叙事与信息安全检验”。
+- L3 / Godot 负责“如何呈现、走哪种本地生成策略、如何降级”。
+- L3 任务必须进入 `P3` 或更低优先级；不得挤占 `P0/P1` 主裁判链。
+
+### AuthorityEventBus
+
+所有跨系统输入输出都必须经过总线。总线负责保留 causation、correlation、priority、TTL、durability 和 replay 链。
+
+最小 replay 链：
+
+```text
+World / Visual / ESM / Character Event
+-> FactCoreSnapshot
+-> FairnessStateSnapshot
+-> InterventionCandidate
+-> InterventionDecision
+-> Dispatch Event
+-> Observed Effect
+-> InterventionAuditRecord
+-> NarrativeReadModel
+```
+
+若启用叙事投影，可在 `FairnessStateSnapshot` 与 `InterventionCandidate` 之间插入：
+
+```text
+StorylineStateSnapshot
+-> ProjectionRun
+-> EventChainCandidate
+```
+
+但 Phase 1 最小 replay 不依赖完整 projection。
+
+## 群体模拟基础
+
+未来 `SLG` 形态里，不应该让每个国民都运行完整智能体。240/241/255 轮已经形成的口径是：
+
+| 层级 | 角色类型 | 驱动方式 | 司命需要的状态基础 |
+| --- | --- | --- | --- |
+| L1 关键角色 | 领袖、核心官员、贵族、将领、重要商人 | 完整角色智能体 | 角色状态摘要、知识状态、关系状态、行动窗口、故事线权重 |
+| L2 交互代表 | 被玩家接触或被剧情挑中的普通成员 | 从群体状态按需注入临时智能体 | 群体来源、临时档案、注入记忆、回流结果 |
+| L3 群体 / 游戏 AI | 农民、矿工、士兵、市民等大量背景个体 | 群体模拟 + 状态机 + 统计数据 | 人口、职业、阶层情绪、派系支持、资源压力、视觉密度 |
+
+司命在 `Phase 1` 不实现这套群体模拟引擎，但当前状态树必须为它保留兼容形状。否则未来接入时会把知识图谱、角色状态和世界状态推倒重来。
+
+未来群体模拟至少需要五类基础状态：
+
+1. **群体认知图谱**：谁知道什么、谁知道别人知道什么、哪些信息被共享或误解。
+2. **参与者状态树**：角色是否在场、可行动性、社交位置、显性行为状态、参与度、压力摘要。
+3. **环境 / 物体状态树**：场景、物体、区域参数、可交互实体状态和 ESM 上报的稳定态。
+4. **故事线状态树**：当前剧情阶段、冲突线、悬念、线索揭示、案件收束和结局压力。
+5. **事件与审计历史**：状态为什么变化、由哪个系统上报、司命为何选择行动或不行动。
+
+当前阶段的切分：
+
+- `KnowledgeGraphPort` 先负责第一类：群体认知。
+- `StateTreePort` 先负责第二、第三、第四类的组织视图，但环境和角色分支先保持窄 schema。
+- `StorylineStatePort` 负责第四类中的司命自有状态。
+- `AuditReplayPort` 负责第五类。
+- `BalanceSystemPort` 读取这些基础，输出公平和游戏平衡压力，不直接持有所有状态。
+
+这样做的目的，是让司命从一开始就具备群体模拟所需的数据承载形状，但仍保持公平裁判型边界：环境权威在 `L1/ESM`，角色权威在角色智能体，故事线状态管理在司命。
+
+### `GroupSimulationBridgePort`
+
+职责：
+
+- 预留未来群体模拟输出接入点。
+- 把统计群体状态转成司命可读的 `group_simulation` 状态树分支。
+- 支持从群体中提取 L2 交互代表，并在交互后把结果回流为群体统计变化。
+- 给 `StorylineProjectionPort` 提供“格局变化 -> 史诗事件 / 政治压力 / 阴谋事件链”的候选来源。
+
+未来输入：
+
+```text
+population_distribution
+economy_pressure
+class_mood
+faction_support
+migration_pressure
+war_pressure
+representative_interaction_result
+```
+
+未来输出到司命状态树：
+
+```text
+group_state_node
+  group_id
+  group_type
+  scope
+  aggregate_metrics
+  mood_vector
+  pressure_tags
+  representative_slots
+  promotion_candidates
+  source_simulation_refs
+```
+
+Phase 1 分支形状：
+
+```text
+group_simulation
+  bridge_status: shape_only | unavailable | active
+  aggregate_state_refs
+  representative_slot_refs
+  pressure_summary
+  promotion_candidate_refs
+  last_source_simulation_ref
+```
+
+按需注入闭环：
+
+```text
+group_state_node
+-> representative_slot
+-> temporary_profile
+-> injected_character_runtime
+-> interaction_result
+-> group_state_delta
+-> StateTreeSnapshot / StorylineProjection
+```
+
+边界：
+
+- `GroupSimulationBridgePort` 不让群体模拟直接发布 `siming.*` 干预。
+- 群体模拟输出的是统计状态和候选压力，不是个体心理真值。
+- 被注入的 L2 代表一旦保留为关键角色，就必须迁移到角色智能体权威边界，不再只是群体统计样本。
+- 普通游戏 AI 不是完整智能体；它由群体模拟、状态机和统计数据驱动，不由大模型逐个推理。
+- L2 代表的临时档案和记忆注入只能作为交互上下文；是否保留为长期角色，必须由角色生命周期系统和司命 audit 共同记录。
+- L2 代表交互结果回流群体模拟时，只能形成统计 delta 或代表性事件，不得凭一次对话改写全体成员心理真值。
+- `Phase 1` 只需要定义接口形状和状态树分支，具体群体模拟、游戏 AI 行为和 SLG 经济系统后置。
+
+## 模型与子智能体输出契约
+
+模型和子智能体输出在影响主循环前必须先归一化。
+
+输入结构：
+
+```text
+SimingReasoningContext
+  room_id
+  phase
+  goal_stack
+  fact_state_summary
+  knowledge_state_summary
+  state_tree_summary
+  storyline_state
+  narrative_obligations
+  event_chain_candidates
+  group_simulation_summary
+  balance_state
+  narrative_pressure
+  recent_events
+  recent_interventions
+  forbidden_actions
+  available_paths
+  latency_budget
+  priority_lane
+```
+
+输出结构：
+
+```text
+InterventionCandidate
+  candidate_id
+  reason
+  proposed_band
+  target_actor_ids
+  target_object_ids
+  target_environment_ids
+  target_state_node_refs
+  source_event_chain_ref
+  source_obligation_refs
+  established_fact_refs
+  expected_narrative_effect
+  expected_fairness_delta
+  risk_tags
+  confidence
+  required_downstream_path
+```
+
+禁止模型输出：
+
+- authority event
+- final selected decision
+- physical success claim
+- Character belief truth
+- ESM mutation
+- Godot command
+
+所有模型输出必须经过：
+
+```text
+CandidateNormalizer
+  -> FactCorePort
+  -> PolicyGuard
+  -> ExecutionFeasibilityPort
+  -> AuditReplayPort
+```
+
+## 状态模型
+
+### Working State
+
+单轮 tick 临时状态：
+
+- current event batch
+- state snapshot
+- reasoning context
+- candidate set
+- decision set
+- dispatch plan
+
+### Runtime State
+
+单局 / 单房间状态：
+
+- fact state
+- knowledge state：群体认知图谱，记录知识、共享、误解、互相知晓和隐私风险。
+- state tree：环境、角色、剧情和群体局势的组织视图。
+- environment state mirror：来自 `L1/ESM` 的环境与物体状态摘要，只读镜像。
+- character state mirror：来自角色智能体 / L1 上抛的角色状态摘要，只读镜像。
+- storyline state：司命拥有的故事线状态，可写可编辑但必须版本化和审计。
+- narrative obligation ledger：司命拥有的未闭合义务账本。
+- projection state：短 horizon 故事线推演状态；第一阶段可为空或 stub。
+- group simulation bridge state：未来群体模拟接入摘要；第一阶段只保留分支形状。
+- balance state
+- intervention state
+- priority lane state
+- audit cursor
+
+所有持久化或跨模块引用的司命领域对象必须带：
+
+```text
+schema_version
+producer_system
+created_at
+causation_id
+correlation_id
+```
+
+适用对象：
+
+- `FairnessStateSnapshot`
+- `StorylineStateSnapshot`
+- `ProjectionRun`
+- `EventChainCandidate`
+- `InterventionCandidate`
+- `InterventionDecision`
+- `InterventionAuditRecord`
+- `NarrativeReadModel`
+
+状态归属表：
+
+| 状态 | 权威拥有者 | 司命权限 | 第一阶段形态 |
+| --- | --- | --- | --- |
+| 环境 / 物体状态 | `L1/ESM` | `Read` 镜像、索引、摘要；不能 `Edit` | state tree 分支 |
+| 角色显性状态 | 角色智能体 / `L1` | `Read` 镜像、索引、摘要；不能 `Edit` | state tree 分支 |
+| 角色心理 / 信念 / 记忆 | 角色智能体 | 只读有权限的摘要或回报；不能改写 | summary refs |
+| 群体认知状态 | 司命高阶知识图谱，基于事件事实推断 | `Read/Write/Edit` 图谱内记录，受事实来源限制 | `KnowledgeGraphPort` |
+| 故事线状态 | 司命 | `Read/Write/Edit`，必须版本化和审计 | `StorylineStatePort` 或 state tree 分支 |
+| 叙事义务账本 | 司命 | `Read/Write/Edit`，必须版本化和审计 | `NarrativeObligationLedger` |
+| 故事线推演候选 | 司命 | `Read/Write` 候选；不能成为事实 | `StorylineProjectionPort` stub |
+| 群体统计状态 | 未来群体模拟引擎 | `Read` 摘要、索引；不能把统计样本当个体真值 | `GroupSimulationBridgePort` 分支 |
+| 公平 / 平衡状态 | 司命 | `Read/Write` 快照，不能替代底层状态 | `BalanceSystemPort` |
+
+### Read Models
+
+Read model 用来解释 loop，不成为权威。
+
+- Siming dashboard read model
+- State tree read model
+- Narrative read model
+- Obligation read model
+- Projection read model
+- Group simulation bridge read model
+- Audit replay model
+
+`NarrativeReadModel` 最小表面：
+
+```text
+read_model_id
+schema_version
+producer_system
+room_id
+scene_scope
+world_ts
+sim_tick_ts
+current_state
+focus_entities
+conversation_surface
+evidence_surface
+intervention_surface
+narrative_surface
+summary_text
+derived_from_snapshot_ref
+updated_at
+```
+
+`current_state` 至少包含：
+
+```text
+imbalance_type
+imbalance_score
+intervention_urgency
+active_phase_marker
+heat_level
+stability_level
+```
+
+`NarrativeReadModel` 可以引用 `StateTreeSnapshot`、`FairnessStateSnapshot`、`InterventionAuditRecord`，但不能成为任何事实、环境状态、角色状态或知识状态的写入来源。
+
+### Checkpoint / Audit
+
+司命审计最低必须有三层：
+
+```text
+SimingCheckpoint
+InterventionAuditRecord
+NarrativeReadModel
+```
+
+`SimingCheckpoint` 至少分为：
+
+- `fairness_before_checkpoint`
+- `fairness_after_checkpoint`
+
+最小字段：
+
+```text
+checkpoint_id
+schema_version
+room_id
+world_ts
+sim_tick_ts
+checkpoint_type
+fairness_snapshot_ref
+state_tree_snapshot_ref
+storyline_snapshot_ref
+focus_actor_ids
+hot_conversation_ids
+hot_evidence_refs
+```
+
+`InterventionAuditRecord` 最小字段：
+
+```text
+audit_id
+schema_version
+room_id
+world_ts
+sim_tick_ts
+snapshot_before_ref
+candidate_ref
+decision_ref
+dispatch_event_ref
+snapshot_after_ref
+expected_effect
+observed_effect
+result_status
+causation_id
+correlation_id
+```
+
+`result_status`：
+
+```text
+effective
+partially_effective
+ineffective
+harmful
+no_action
+```
+
+Audit 不只是日志。没有 checkpoint、candidate、decision、dispatch、observed effect 的引用链，司命的行动就不能被认为是 runtime 可用。
+
+原则：
+
+```text
+Memory informs planning.
+Memory never overwrites truth.
+Read models explain decisions.
+Read models never become authority.
+```
+
+## 错误处理与降级
+
+| 情况 | 行为 |
+| --- | --- |
+| LLM timeout | 使用规则候选、小模型候选或 `no_action`；audit 写 `llm_timeout` / `degraded`。 |
+| Invalid model output | 在 normalization 阶段拒绝；不进入 act；audit 写 `invalid_candidate`。 |
+| Fact conflict | FactCore veto；audit 写 `fact_veto`。 |
+| Policy violation | reject 或 downgrade；audit 写 `policy_rejected` / `downgraded`。 |
+| Execution infeasible | 选择 fallback path 或 `no_action`；audit 写 `feasibility_rejected`。 |
+| ESM rejection | 不改写成成功；重新规划或 `no_action`；audit 写 `esm_rejected`。 |
+| Character ignored impulse | 当作自然反馈；不强制角色；audit 写 `character_ignored`。 |
+| Storyline projection failed | 保留 fairness 主链；跳过事件链候选；audit 写 `projection_failed`。 |
+| Too many event chain candidates | 按 `fairness_delta`、`fact_lock_safety`、`role_autonomy_safety`、`execution_cost`、`audit_clarity` 截断；audit 写 `candidate_truncated`。 |
+| Group simulation bridge unavailable | 保留单局角色 / 环境 / 知识主链；`group_simulation` 分支标记 `unavailable`；不阻塞 Phase 1 tick。 |
+| Auditor failure | 标记维度 `partial` / `unavailable`；继续生成降级 snapshot；audit 写 `auditor_failed`。 |
+| Event envelope invalid | ObservePipeline 拒绝或隔离；不得进入 FactCore；audit 写 `invalid_envelope`。 |
+| Role feedback missing | 不重试强控角色；进入 cooldown 或 `no_action`；audit 写 `feedback_missing`。 |
+| Visual fact path unsafe | 降级到 `character_input_path` 或 `no_action`；audit 写 `visual_path_rejected`。 |
+| Queue overload | 保留 P0/P1，降级 P2/P3，丢弃或延迟 P4；audit 写 `load_shed` / `delayed`。 |
+
+## 测试与验收
+
+### Model / Schema Tests
+
+- goal stack
+- state snapshot
+- state tree node
+- storyline state
+- narrative obligation
+- event chain candidate
+- group simulation bridge node
+- fairness audit result
+- siming checkpoint
+- narrative read model
+- event envelope projection
+- runtime capability request
+- intervention candidate
+- intervention decision
+- audit record
+
+### Loop Unit Tests
+
+- event batch -> state update
+- ESM state report -> state tree mirror update
+- Character state report -> state tree mirror update
+- storyline marker -> storyline state update
+- storyline state + fairness snapshot -> narrative obligations
+- narrative obligations -> event chain candidates
+- event chain candidate -> intervention candidate
+- group simulation summary -> group state branch
+- raw event envelope -> ObservePipeline projection
+- fairness auditor result[] -> FairnessStateSnapshot
+- decision -> checkpoint before / after
+- state -> candidate generation
+- candidate -> policy decision
+- decision -> dispatch event
+- result event -> audit correction
+
+### Boundary Tests
+
+- LLM 不能 publish event。
+- 司命不能写 world fact success。
+- `environment_request` 成功只能来自 ESM。
+- 司命不能编辑 ESM / L1 权威环境状态。
+- 司命不能编辑角色智能体权威心理或信念状态。
+- 司命不能把 `EventChainCandidate` 当作已发生事实。
+- 司命不能把群体统计样本当成具体角色心理真值。
+- Character input 不能强制 belief 或 dialogue。
+- Visual path 只能引用 established fact。
+- 司命不能消费原始骨骼 / 全 AU / Godot 本地表现缓存作为业务输入。
+- 公共信封不能混入角色私有会话状态、内心独白、全局知识图谱快照。
+- `Execute` 只能通过 `InterventionExecutorPort` 发出高层 `siming.*` 事件。
+
+### Replay Tests
+
+- 同一事件链得到同类 decision。
+- `no_action` 也有 audit。
+- late result 只追加 correction。
+- duplicate dispatch 被抑制。
+- story projection 候选必须能回溯到 `basis_state_tree_ref` / `basis_fairness_snapshot_ref`。
+- obligation close / reopen 必须保留版本链。
+- `environment_request -> ESM Resolution -> World Fact Event` 必须能串链。
+- `SimingHighLevelMessage -> CharacterInterpretationSummary -> IntentCommitted / Rejected` 必须能串链。
+- `VisualFactEvent -> FairnessStateSnapshot -> InterventionDecision` 必须能串链。
+
+### Load / Priority Tests
+
+- P0/P1 不被 P2/P3/P4 阻塞。
+- P4 可以丢弃。
+- P3 可以降频或降级。
+- LLM timeout 不阻塞 FactCore。
+- Projection failure 不阻塞 fairness 主链。
+- Group simulation bridge unavailable 不阻塞 Phase 1 主链。
+- 单 auditor 失败不阻塞完整 tick。
+- 并发事件保持确定性 ordering。
+
+### Narrative Scenario Tests
+
+- information monopoly -> `fact_reveal` / `opportunity`
+- participation starvation -> `opportunity`
+- private channel lock -> `environment_request` / `opportunity`
+- suspicion runaway -> low `impulse` / `fact_reveal`
+- stalled storyline state -> `opportunity` / `impulse` / `no_action`
+- unresolved obligation -> `fact_reveal` / `opportunity` / `no_action`
+- reusable pattern match -> candidate hint only, not direct dispatch
+- group pressure summary -> future `opportunity` / representative promotion candidate
+- balanced state -> `no_action`
+
+## 不可破坏演化约束
+
+本节冻结“后续升级不需要推倒重来”的硬约束。后续阶段可以增强能力，但不得破坏以下结构。
+
+### 1. 主循环形状固定
+
+司命长期主链固定为：
+
+```text
+ingest
+-> fact
+-> fairness
+-> candidate
+-> decision
+-> dispatch
+-> audit
+-> read model
+```
+
+后续可插入 auditor、projection、group simulation summary、更多 execution paths，但不得把主链改写成新的第二套决策骨架。
+
+### 2. 最终收敛面固定
+
+所有高级能力最终都必须收敛到：
+
+```text
+InterventionCandidate
+-> InterventionDecision
+-> Dispatch
+```
+
+这条收敛面在 Phase 1、Phase 2+、未来群体模拟场景中都不应改变。
+
+### 3. 状态树只做统一查询面
+
+`StateTreeSnapshot` 是统一查询面和当前态投影，不是统一真值库。
+
+- 环境、角色、视觉事实、`ESM` 结果只能镜像进树。
+- 历史真源永远回到事件总线和 audit 链。
+- 只有 `storyline`、`obligation`、`group bridge summary` 等明确属于司命的分支，才允许 `Edit`。
+
+### 4. 故事线状态是司命自有运行态
+
+`StorylineStateSnapshot` 和薄 `NarrativeObligationLedger` 必须作为司命自有状态长期存在。
+
+- 它们不是 read model。
+- 它们不是 projection 产物。
+- 它们是后续 `ProjectionRun`、`EventChainCandidate`、`DramaticPriorityModel` 的稳定挂载层。
+
+### 5. 群体模拟桥不是第二主脑
+
+`GroupSimulationBridgePort` 只能是上游统计状态适配层。
+
+- 它可以影响 `StateTreeSnapshot`、`StorylineStateSnapshot` 和 `InterventionCandidate` 的生成上下文。
+- 它不能直接生成 `InterventionDecision`。
+- 它不能直接发布 `siming.*`。
+
+### 6. 总线信封、领域对象、读模型三层分离
+
+以下三层必须长期分离：
+
+- 事件总线公共信封
+- 司命领域对象
+- read model / dashboard surface
+
+`world_ts`、`sim_tick_ts`、`snapshot_id`、`candidate_id`、`decision_id` 等领域字段不进入公共信封；read model 不反向写回事实或知识状态。
+
+### 7. 公平顶层维度允许扩展，但必须两步生效
+
+`FairnessStateSnapshot` 允许在未来新增顶层公平主维度，但新增维度必须两步走：
+
+1. 先注册进 snapshot 结构，成为可记录、可展示、可审计的维度。
+2. 再单独声明它如何影响 `imbalance typing`、`urgency`、`policy mapping` 和 `candidate generation`。
+
+在补齐第二步前，新维度默认只参与 read model / audit，不直接影响主决策链。
+
+### 8. snapshot 承载维度，policy 解释维度
+
+`FairnessStateSnapshot` 负责承载维度；`InterventionPolicyEngine` 负责解释维度。
+
+- 新维度可以先进入结构。
+- 但只有补齐 `PolicyEngine` 映射后，才允许影响 `InterventionCandidate`。
+
+### 9. projection 永远只能间接生效
+
+`StorylineProjectionPort` 后续可以增强：
+
+- candidate generation
+- 排序
+- explanation
+- horizon
+
+但它永远不能越过：
+
+```text
+InterventionCandidate
+-> InterventionDecision
+```
+
+它不能直接产出最终 decision，也不能绕开 `PolicyGuard`、`ExecutionFeasibilityPort` 或 `AuditReplayPort`。
+
+### 10. 高层干预带保持小闭集
+
+`band` 的长期稳定性高于其表达丰富度。未来升级优先扩：
+
+- `reason_tag`
+- `goal`
+- `required_downstream_path`
+- `payload`
+
+而不是轻易新增新的顶层 `band`。只有当上述扩展位都无法表达时，才考虑扩 band，并同时更新 policy、feasibility、dispatcher、audit 和下游协议。
+
+### 11. 所有升级优先走注册式扩展点
+
+后续新增能力必须通过注册式扩展点接入，例如：
+
+- auditor
+- fairness dimension
+- projection strategy
+- execution path
+- guardrail
+- group simulation input mode
+- read model detail level
+
+不允许靠在 `tick()` 主链中不断堆叠新的硬编码条件分支来演化系统。
+
+### 12. 允许增强，不允许改写主链语义
+
+后续阶段允许：
+
+- 增加新能力
+- 提高叙事推演强度
+- 扩展群体模拟输入
+- 增强 read model
+
+但不允许：
+
+- 改写 `tick()` 主链语义
+- 引入第二条并列决策主链
+- 把上游统计状态、projection 结果或 read model 伪装成事实真源
+
+## 验收标准
+
+完整司命 Agent Loop 架构成立时，系统应能证明：
+
+1. 持续消费有权限消费的 authority events。
+2. 维护可查询的 runtime state，包括认知图谱、状态树、故事线状态和审计游标。
+3. 基于 goal stack、状态树、公平快照、故事线状态和薄义务账本生成 candidates。
+4. 每个 candidate 都经过 fact、policy、feasibility、audit 护栏。
+5. 只通过高层事件影响 Character、ESM、VisualFact、L3。
+6. 能处理 rejection、timeout、no-action、duplicate、late-result。
+7. 能 replay 为什么行动、为什么不行动。
+8. `Read/Write/Edit/Execute` 四种基础能力都有权限边界和审计记录。
+9. 能证明事件总线公共信封、司命领域对象和 read model 三层字段没有混写。
+10. 能证明角色、ESM、视觉事实系统和 L3 的外部协作闭环都经过总线和 audit。
+11. `StorylineProjectionPort`、`DramaticPriorityModel`、`GroupSimulationBridgePort` 和其他未实现子系统即使只提供 stub / read-only 接口，也不需要重写主 loop。
+
+## 实施备注
+
+- 第一份 implementation plan 不应尝试一次实现完整未来态。
+- `SimingOrchestrator`、`GoalStack`、`ObservePipeline`、`FactCorePort`、`StateTreePort`、`StorylineStatePort`、薄 `NarrativeObligationLedger`、`FairnessAuditEngine`、`BalanceSystemPort`、`ModelRouterPort`、`FeatureRegistryPort`、`RuntimeCapabilityPort`、`PolicyGuard`、`ExecutionFeasibilityPort`、`InterventionExecutorPort`、`AuditReplayPort` 应作为第一阶段主骨架。
+- `KnowledgeGraphPort`、`ConflictGeneratorPort`、specialist sub-agents、P0-P4 distributed scheduling、`LongTermMemoryPort` 应先定义稳定端口，即使最初由 deterministic / stub 实现支撑。
+- `KnowledgeGraphPort` 第一阶段只承载群体认知，不承载全部状态。环境、角色、剧情状态先由 `StateTreePort` 组织；故事线状态由 `StorylineStatePort` 负责。
+- `StateTreePort` 第一阶段不要抢跑成完整世界状态系统：故事线分支先可用；环境和角色分支先做镜像、索引和摘要，字段深度等待 `L1` 与角色智能体接口稳定后扩展。
+- `StorylineProjectionPort`、`DramaticPriorityModel` 和 `GroupSimulationBridgePort` 第一阶段可以是 stub / read-only / feature-flagged，但接口形状要稳定。
+- 当前已经实现的 LLM route router 应归入 `ModelRouterPort`。
+- 现有 Phase 1 工程切片文档负责约束实现安全；本 spec 是更高层的司命 Agent Loop 架构蓝图。

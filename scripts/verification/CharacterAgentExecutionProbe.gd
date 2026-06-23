@@ -1,6 +1,6 @@
 extends Node
 
-const MAIN_DEMO_SCENE := preload("res://scenes/phase0/MainDemo.tscn")
+const BACKEND_URL := "ws://127.0.0.1:8000/ws"
 
 var _execution_seen := false
 var _legacy_output_seen := false
@@ -37,15 +37,20 @@ func _run_probe() -> void:
 		get_tree().quit(1)
 		return
 
-	var connected_ok := await _wait_for_backend_connected(10000)
-	if not connected_ok:
-		push_error("character_agent_execution_probe:backend_connect_timeout")
-		get_tree().quit(1)
-		return
-
 	var bridge := get_node_or_null("/root/BackendBridge")
 	if bridge == null:
 		push_error("character_agent_execution_probe:missing_backend_bridge")
+		get_tree().quit(1)
+		return
+	var connect_err: int = bridge.connect_to_backend(BACKEND_URL)
+	if connect_err != OK:
+		push_error("character_agent_execution_probe:backend_connect_failed:%s" % connect_err)
+		get_tree().quit(1)
+		return
+
+	var connected_ok := await _wait_for_backend_connected(10000)
+	if not connected_ok:
+		push_error("character_agent_execution_probe:backend_connect_timeout")
 		get_tree().quit(1)
 		return
 
@@ -138,6 +143,7 @@ func _run_probe() -> void:
 	print("character_agent_execution_probe:consumer_node_is_character_replica=%s" % _consumer_node_is_character_replica)
 	print("character_agent_execution_probe:observed_execution_actor_id=%s" % _observed_execution_actor_id)
 	print("character_agent_execution_probe:execution_applied_actor_id=%s" % _execution_applied_actor_id)
+	_capture_autotest_screenshot()
 	get_tree().quit(0)
 
 
@@ -214,3 +220,12 @@ func _resolve_consumer_node(main_demo: Node) -> Node:
 			if player_character != null:
 				return player_character.get_node_or_null("CharacterReplica")
 	return null
+
+
+func _capture_autotest_screenshot() -> void:
+	var screenshot_path := OS.get_environment("PHASE0_AUTOTEST_SCREENSHOT")
+	if screenshot_path == "":
+		return
+	var image := get_viewport().get_texture().get_image()
+	var err := image.save_png(screenshot_path)
+	print("character_agent_execution_probe:screenshot_saved=%s:%s" % [screenshot_path, err])

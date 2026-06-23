@@ -7,14 +7,27 @@ class SimingEventProducer:
     def __init__(self, bus: AuthorityEventBusPort) -> None:
         self._bus = bus
 
-    def publish_outputs(self, outputs: list[SimingOutput]) -> None:
+    def publish_outputs(self, outputs: list[SimingOutput]) -> list[AuthorityEvent]:
+        published_events: list[AuthorityEvent] = []
         for output in outputs:
-            self._bus.publish(self._to_authority_event(output))
+            event = self._to_authority_event(output)
+            self._bus.publish(event)
+            published_events.append(event)
+        return published_events
 
     def _to_authority_event(self, output: SimingOutput) -> AuthorityEvent:
         event_type = self._event_type_for(output)
         if event_type == "siming.visual_observability_request" and not output.payload.get("established_fact_id"):
             raise ValueError("visual observability requests require established_fact_id")
+        if output.selected_path == "character_input_path":
+            target_actor_id = str(output.payload.get("target_actor_id", "") or "").strip()
+            if target_actor_id == "":
+                raise ValueError("character_input_path requires target_actor_id")
+        forbidden_event_type = output.payload.get("event_type")
+        if forbidden_event_type == "siming.dispatch_requested":
+            raise ValueError("forbidden Siming event family: siming.dispatch_requested")
+        if "physical_success" in output.payload:
+            raise ValueError("Siming outputs must not claim physical_success")
 
         return AuthorityEvent(
             event_id=f"siming:{output.output_type}:{output.producer_ts}:{output.causation_id}",
@@ -75,5 +88,5 @@ class SimingEventProducer:
         if output.selected_path == "l3_highlight_path":
             return ["presentation"]
         if output.selected_path == "character_input_path":
-            return ["character_runtime"]
+            return [str(output.payload.get("target_actor_id", "") or "").strip()]
         return ["audit"]

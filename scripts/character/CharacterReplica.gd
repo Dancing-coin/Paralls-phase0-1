@@ -62,8 +62,7 @@ const FOCUS_ANCHOR_LOCAL_OFFSET := Vector3(0.0, 1.55, 0.0)
 @onready var role_asset_scene: Node = $VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/KnightRoleSkin
 @onready var runtime_feedback: Node = $CharacterRuntimeFeedback
 @onready var perception_cone_debug: MeshInstance3D = $PerceptionConeDebug
-# Historical contract note for static architecture guards:
-# @onready var runtime_state: CharacterRuntimeState = CharacterRuntimeStateRef.new()
+# Keep runtime_state constructed via the host ref rather than a typed onready binding.
 @onready var runtime_state = CharacterRuntimeStateRef.new()
 
 var home_position := Vector3.ZERO

@@ -24,7 +24,8 @@ def test_character_replica_uses_runtime_state_host_for_extracted_state() -> None
     replica_source = _read("scripts/character/CharacterReplica.gd")
 
     assert "CharacterRuntimeState" in replica_source
-    assert "@onready var runtime_state:" in replica_source
+    assert "@onready var runtime_state = CharacterRuntimeStateRef.new()" in replica_source
+    assert "@onready var runtime_state: CharacterRuntimeState" not in replica_source
     assert "runtime_state.stage_player_shell_pose" in replica_source
     assert "runtime_state.build_player_presentation_input" in replica_source
     assert "runtime_state.apply_runtime_state_payload" in replica_source

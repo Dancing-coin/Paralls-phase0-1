@@ -21,3 +21,10 @@ def test_evaluate_boundaries_proves_core_runtime_ownership_rules() -> None:
     assert statuses["siming_service_emits_high_level_outputs_only"] == "proved"
     assert statuses["siming_event_bus_port_exists"] == "proved"
     assert statuses["runtime_trace_schema_is_enriched"] == "proved"
+
+
+def test_boundaries_prove_siming_llm_runtime_containment() -> None:
+    report = evaluate_boundaries(repo_root())
+    statuses = {entry["id"]: entry["status"] for entry in report["results"]}
+
+    assert statuses["siming_llm_stays_inside_runtime"] == "proved"
