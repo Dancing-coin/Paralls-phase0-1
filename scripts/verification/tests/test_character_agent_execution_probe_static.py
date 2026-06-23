@@ -71,7 +71,12 @@ def test_observatory_probe_scene_and_script_exist() -> None:
     assert "character_director_observatory_probe:state_payloads_ok=true" in script_text
     assert "character_director_observatory_probe:panels_populated=true" in script_text
     assert "character_director_observatory_probe:freeze_roundtrip_ok=true" in script_text
+    assert "character_director_observatory_probe:actor_panel_populated=true" in script_text
+    assert "character_director_observatory_probe:director_cast_world_siming_populated=true" in script_text
+    assert "character_director_observatory_probe:timeline_multi_role_populated=true" in script_text
+    assert "character_director_observatory_probe:ledger_pairwise_populated=true" in script_text
     assert "CharacterDirectorState" in script_text
+    assert "CharacterObserverPanel" in script_text
     assert "DirectorMonitorPanel" in script_text
     assert "ScriptTimelinePanel" in script_text
     assert "DialogueSceneLedger" in script_text

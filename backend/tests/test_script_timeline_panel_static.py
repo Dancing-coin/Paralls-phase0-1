@@ -17,3 +17,11 @@ def test_script_timeline_panel_supports_beat_list_filter_and_detail() -> None:
     assert "_build_beat_summary_line" in source
     assert "_build_expanded_payload_lines" in source
     assert "sort_custom" in source or ".sort()" in source
+    assert 'beat.get("beat_id"' in source
+    assert 'beat.get("actor_summaries"' in source
+    assert 'beat.get("siming_summaries"' in source
+    assert 'beat.get("world_summaries"' in source
+    assert 'beat.get("dialogue_pairs"' in source
+    assert '"节拍编号=%s" % str(beat.get("beat_id", "") or "")' in source
+    assert 'state.get("observatory_enabled")' in source
+    assert 'state.get("script_mode")' in source

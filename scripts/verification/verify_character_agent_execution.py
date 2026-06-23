@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -16,12 +17,16 @@ from common import (
     resolve_godot_exe,
     resolve_python_exe,
     run_command,
+    run_command_until_markers,
     stop_backend,
     verification_dir,
     write_json,
     write_markdown,
 )
 from runtime_trace import write_runtime_trace
+
+EXECUTION_PROBE_QUIT_AFTER = "240"
+EXECUTION_PROBE_MARKER_TIMEOUT_SECONDS = 90.0
 
 
 def main() -> int:
@@ -42,7 +47,7 @@ def main() -> int:
 
         main_screenshot = log_dir / "character-agent-execution-main.png"
         main_log = log_dir / "character-agent-execution-main.log"
-        main_result = run_command(
+        main_result = run_command_until_markers(
             [
                 str(godot_exe),
                 "--path",
@@ -50,13 +55,18 @@ def main() -> int:
                 "--scene",
                 "res://scenes/phase0/CharacterAgentExecutionProbe.tscn",
                 "--quit-after",
-                "700",
+                EXECUTION_PROBE_QUIT_AFTER,
                 "--verbose",
                 "--render-thread",
                 "safe",
             ],
             project_root,
             main_log,
+            success_markers=[
+                "character_agent_execution_probe:consumer_seen=true",
+                "character_agent_execution_probe:legacy_output_seen=false",
+            ],
+            timeout_seconds=EXECUTION_PROBE_MARKER_TIMEOUT_SECONDS,
             env={
                 "PHASE0_AUTOTEST_SCREENSHOT": str(main_screenshot),
                 "PHASE0_DEBUG_LOGGING": "1",
@@ -142,4 +152,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    exit_code = main()
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    finally:
+        os._exit(exit_code)

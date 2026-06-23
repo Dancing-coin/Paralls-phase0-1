@@ -59,6 +59,20 @@ def test_character_agent_execution_verify_script_uses_probe_scene() -> None:
     assert "character-agent-execution-focus.log" not in source
     assert '"PHASE0_DEBUG_LOGGING": "1"' in source
     assert "character_agent_execution_probe:execution_payload_direct=true" in source
+    assert "run_command_until_markers(" in source
+    assert "character_agent_execution_probe:consumer_seen=true" in source
+
+
+def test_character_director_observatory_verify_script_uses_marker_driven_runtime_closeout() -> None:
+    source = (
+        Path(__file__).resolve().parents[1] / "verify_character_director_observatory.py"
+    ).read_text(encoding="utf-8")
+
+    assert "res://scenes/phase0/CharacterDirectorObservatoryProbe.tscn" in source
+    assert "run_command_until_markers(" in source
+    assert "character_director_observatory_probe:state_payloads_ok=true" in source
+    assert "character_director_observatory_probe:panels_populated=true" in source
+    assert "character_director_observatory_probe:freeze_roundtrip_ok=true" in source
 
 
 def test_phase0_verify_script_reads_character_agent_execution_probe_report() -> None:
@@ -68,8 +82,17 @@ def test_phase0_verify_script_reads_character_agent_execution_probe_report() -> 
     assert "character-agent-execution-report.json" in source
     assert "character_agent_execution_consumer" in source
     assert '"PHASE0_DEBUG_LOGGING": "1"' not in source
-    assert '"--quit-after"' in source
-    assert '"1800"' in source or '"2000"' in source
+    assert "SCENE_LOAD_QUIT_AFTER" in source
+    assert "MAIN_AUTOTEST_QUIT_AFTER" in source
+    assert "FOCUS_AUTOTEST_QUIT_AFTER" in source
+    assert '"PHASE0_SCENE_LOAD_ONLY": "1"' in source
+    assert "run_command_until_markers(" in source
+    assert "phase0_autotest_complete" in source
+    assert "phase0_focus_autotest_complete" in source
+    assert "verify_character_agent_execution.py" in source
+    assert "verify_character_director_observatory.py" in source
+    assert "character-agent-execution-from-phase0.log" in source
+    assert "character-director-observatory-from-phase0.log" in source
 
 
 def test_phase0_main_demo_ignores_preopen_disconnect_before_first_backend_connected() -> None:
@@ -86,3 +109,14 @@ def test_phase0_main_demo_ignores_preopen_disconnect_before_first_backend_connec
     assert "_request_backend_reconnect()" in disconnect_section.split(
         "if not backend_connected_once and _code == -1:", 1
     )[1].split("return", 1)[0]
+
+
+def test_phase0_main_demo_supports_fast_scene_load_probe_mode() -> None:
+    source = (
+        Path(__file__).resolve().parents[2] / "phase0" / "MainDemoController.gd"
+    ).read_text(encoding="utf-8")
+
+    assert 'OS.get_environment("PHASE0_SCENE_LOAD_ONLY") == "1"' in source
+    assert 'call_deferred("_finish_scene_load_probe")' in source
+    assert "func _finish_scene_load_probe() -> void:" in source
+    assert 'phase0_scene_load_probe_complete' in source

@@ -322,6 +322,48 @@ def evaluate_phase0_audit(
         )
     )
 
+    observatory_actor_panel_populated_ok = "character_director_observatory_probe:actor_panel_populated=true" in combined_log
+    results.append(
+        _result(
+            "observatory_actor_panel_populated",
+            "At least one actor panel contains real dramatic inspection content",
+            "proved" if observatory_actor_panel_populated_ok else "missing",
+            ["character_director_observatory_probe:actor_panel_populated=true"] if observatory_actor_panel_populated_ok else [],
+        )
+    )
+
+    observatory_director_workstation_populated_ok = (
+        "character_director_observatory_probe:director_cast_world_siming_populated=true" in combined_log
+    )
+    results.append(
+        _result(
+            "observatory_director_workstation_populated",
+            "Director monitor contains cast, world, and Siming workstation detail",
+            "proved" if observatory_director_workstation_populated_ok else "missing",
+            ["character_director_observatory_probe:director_cast_world_siming_populated=true"] if observatory_director_workstation_populated_ok else [],
+        )
+    )
+
+    observatory_timeline_multi_role_ok = "character_director_observatory_probe:timeline_multi_role_populated=true" in combined_log
+    results.append(
+        _result(
+            "observatory_timeline_multi_role",
+            "Script timeline contains multi-role beat content",
+            "proved" if observatory_timeline_multi_role_ok else "missing",
+            ["character_director_observatory_probe:timeline_multi_role_populated=true"] if observatory_timeline_multi_role_ok else [],
+        )
+    )
+
+    observatory_ledger_pairwise_ok = "character_director_observatory_probe:ledger_pairwise_populated=true" in combined_log
+    results.append(
+        _result(
+            "observatory_ledger_pairwise",
+            "Dialogue ledger contains pairwise cross-role accounting content",
+            "proved" if observatory_ledger_pairwise_ok else "missing",
+            ["character_director_observatory_probe:ledger_pairwise_populated=true"] if observatory_ledger_pairwise_ok else [],
+        )
+    )
+
     observatory_freeze_roundtrip_ok = "character_director_observatory_probe:freeze_roundtrip_ok=true" in combined_log
     results.append(
         _result(
@@ -352,6 +394,10 @@ def evaluate_phase0_audit(
         "repeatable_run",
         "observatory_state_payloads",
         "observatory_panels_populated",
+        "observatory_actor_panel_populated",
+        "observatory_director_workstation_populated",
+        "observatory_timeline_multi_role",
+        "observatory_ledger_pairwise",
         "observatory_freeze_roundtrip",
     ]
     index = _status_index(results)

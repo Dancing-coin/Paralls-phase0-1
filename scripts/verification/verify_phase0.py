@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -16,12 +17,19 @@ from common import (
     resolve_godot_exe,
     resolve_python_exe,
     run_command,
+    run_command_until_markers,
     stop_backend,
     verification_dir,
     write_json,
     write_markdown,
 )
 from runtime_trace import write_runtime_trace
+
+SCENE_LOAD_QUIT_AFTER = "120"
+MAIN_AUTOTEST_QUIT_AFTER = "900"
+FOCUS_AUTOTEST_QUIT_AFTER = "180"
+MAIN_AUTOTEST_MARKER_TIMEOUT_SECONDS = 900.0
+FOCUS_AUTOTEST_MARKER_TIMEOUT_SECONDS = 120.0
 
 
 def _read_character_agent_execution_result(log_dir: Path, project_root: Path, python_exe: str, godot_exe: Path) -> dict[str, object]:
@@ -96,13 +104,16 @@ def main() -> int:
                 "--scene",
                 "res://scenes/phase0/MainDemo.tscn",
                 "--quit-after",
-                "1800",
+                SCENE_LOAD_QUIT_AFTER,
                 "--verbose",
                 "--render-thread",
                 "safe",
             ],
             project_root,
             scene_log,
+            env={
+                "PHASE0_SCENE_LOAD_ONLY": "1",
+            },
         )
         scene_text = read_text(scene_log)
         scene_load_ok = (
@@ -113,7 +124,7 @@ def main() -> int:
 
         main_screenshot = log_dir / "phase0-strict-main.png"
         main_log = log_dir / "phase0-main-autotest.log"
-        main_result = run_command(
+        main_result = run_command_until_markers(
             [
                 str(godot_exe),
                 "--path",
@@ -121,13 +132,15 @@ def main() -> int:
                 "--scene",
                 "res://scenes/phase0/MainDemo.tscn",
                 "--quit-after",
-                "1800",
+                MAIN_AUTOTEST_QUIT_AFTER,
                 "--verbose",
                 "--render-thread",
                 "safe",
             ],
             project_root,
             main_log,
+            success_markers=["phase0_autotest_complete"],
+            timeout_seconds=MAIN_AUTOTEST_MARKER_TIMEOUT_SECONDS,
             env={
                 "PHASE0_AUTOTEST": "1",
                 "PHASE0_FOCUS_AUTOTEST": "",
@@ -137,7 +150,7 @@ def main() -> int:
 
         focus_screenshot = log_dir / "phase0-focus-main.png"
         focus_log = log_dir / "phase0-focus-autotest.log"
-        focus_result = run_command(
+        focus_result = run_command_until_markers(
             [
                 str(godot_exe),
                 "--path",
@@ -145,13 +158,15 @@ def main() -> int:
                 "--scene",
                 "res://scenes/phase0/MainDemo.tscn",
                 "--quit-after",
-                "1800",
+                FOCUS_AUTOTEST_QUIT_AFTER,
                 "--verbose",
                 "--render-thread",
                 "safe",
             ],
             project_root,
             focus_log,
+            success_markers=["phase0_focus_autotest_complete"],
+            timeout_seconds=FOCUS_AUTOTEST_MARKER_TIMEOUT_SECONDS,
             env={
                 "PHASE0_AUTOTEST": "",
                 "PHASE0_FOCUS_AUTOTEST": "1",
@@ -197,6 +212,10 @@ def main() -> int:
         observatory_ids = {
             "observatory_state_payloads",
             "observatory_panels_populated",
+            "observatory_actor_panel_populated",
+            "observatory_director_workstation_populated",
+            "observatory_timeline_multi_role",
+            "observatory_ledger_pairwise",
             "observatory_freeze_roundtrip",
         }
         if observatory_probe_results:
@@ -228,6 +247,10 @@ def main() -> int:
             "repeatable_run",
             "observatory_state_payloads",
             "observatory_panels_populated",
+            "observatory_actor_panel_populated",
+            "observatory_director_workstation_populated",
+            "observatory_timeline_multi_role",
+            "observatory_ledger_pairwise",
             "observatory_freeze_roundtrip",
         ]
         index = {str(entry["id"]): str(entry["status"]) for entry in report["results"]}
@@ -261,4 +284,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    exit_code = main()
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    finally:
+        os._exit(exit_code)

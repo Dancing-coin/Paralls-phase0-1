@@ -74,7 +74,7 @@ class ScriptBeatProjection:
         )
 
     def _build_dialogue_pairs(self, actor_events: list[ActorDramaticEvent]) -> list[dict[str, object]]:
-        pair_rows: list[dict[str, object]] = []
+        pair_rows: dict[str, dict[str, object]] = {}
         for event in actor_events:
             if event.stage not in {"decision", "execution_request", "dialogue_writeback", "suggestion_packet"}:
                 continue
@@ -84,16 +84,28 @@ class ScriptBeatProjection:
                 continue
             pair_members = sorted([event.actor_id, target_ref])
             pair_key = "%s<->%s" % (pair_members[0], pair_members[1])
-            pair_rows.append(
+            row = pair_rows.setdefault(
+                pair_key,
                 {
                     "pair_key": pair_key,
-                    "speaker_actor_id": event.actor_id,
-                    "listener_actor_id": target_ref,
-                    "perceived_summary": str(detail.get("perceived_summary", "") or event.summary),
-                    "interpreted_summary": str(detail.get("interpreted_summary", "") or event.summary),
-                    "spoken_content": str(detail.get("spoken_content", "") or detail.get("content", "") or event.summary),
-                    "alignment_label": "mismatch" if str(detail.get("alignment_label", "") or "") == "mismatch" else "alignment",
+                    "speaker_actor_id": pair_members[0],
+                    "listener_actor_id": pair_members[1],
+                    "speaker_perceived_summary": "",
+                    "listener_perceived_summary": "",
+                    "speaker_interpreted_summary": "",
+                    "listener_interpreted_summary": "",
+                    "speaker_said": "",
+                    "listener_said": "",
+                    "speaker_alignment_label": "alignment",
+                    "listener_alignment_label": "alignment",
                     "correlation_id": event.correlation_id,
-                }
+                },
             )
-        return pair_rows
+            role_prefix = "speaker" if event.actor_id == row["speaker_actor_id"] else "listener"
+            row[f"{role_prefix}_perceived_summary"] = str(detail.get("perceived_summary", "") or event.summary)
+            row[f"{role_prefix}_interpreted_summary"] = str(detail.get("interpreted_summary", "") or event.summary)
+            row[f"{role_prefix}_said"] = str(detail.get("spoken_content", "") or detail.get("content", "") or event.summary)
+            row[f"{role_prefix}_alignment_label"] = (
+                "mismatch" if str(detail.get("alignment_label", "") or "") == "mismatch" else "alignment"
+            )
+        return list(pair_rows.values())

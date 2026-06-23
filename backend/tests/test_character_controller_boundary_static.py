@@ -191,6 +191,16 @@ def test_view_anchor_resolver_prefers_player_shell_visual_forward_alias_before_r
     assert "player.get_visual_forward()" in helper_source
 
 
+def test_view_anchor_resolver_prefers_camera_direction_before_avatar_facing_for_focus() -> None:
+    helper_source = (ROOT / "scripts" / "player" / "Phase0ViewAnchorResolver.gd").read_text(
+        encoding="utf-8"
+    )
+
+    camera_holder_index = helper_source.index('var camera_holder := player.get_node_or_null("CameraHolder")')
+    actor_forward_index = helper_source.index('has_method("get_embodied_forward_vector")')
+    assert camera_holder_index < actor_forward_index
+
+
 def test_view_anchor_resolver_prefers_actor_facing_anchor_aliases() -> None:
     helper_source = (ROOT / "scripts" / "player" / "Phase0ViewAnchorResolver.gd").read_text(
         encoding="utf-8"

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 from common import (
@@ -12,11 +13,15 @@ from common import (
     resolve_godot_exe,
     resolve_python_exe,
     run_command,
+    run_command_until_markers,
     stop_backend,
     verification_dir,
     write_json,
     write_markdown,
 )
+
+OBSERVATORY_PROBE_QUIT_AFTER = "300"
+OBSERVATORY_PROBE_MARKER_TIMEOUT_SECONDS = 120.0
 
 
 def main() -> int:
@@ -36,7 +41,7 @@ def main() -> int:
         ensure_godot_import(project_root, godot_exe, "character-director-observatory-godot-import.log")
         main_log = log_dir / "character-director-observatory-main.log"
         main_screenshot = log_dir / "character-director-observatory-main.png"
-        result = run_command(
+        result = run_command_until_markers(
             [
                 str(godot_exe),
                 "--path",
@@ -44,13 +49,19 @@ def main() -> int:
                 "--scene",
                 "res://scenes/phase0/CharacterDirectorObservatoryProbe.tscn",
                 "--quit-after",
-                "900",
+                OBSERVATORY_PROBE_QUIT_AFTER,
                 "--verbose",
                 "--render-thread",
                 "safe",
             ],
             project_root,
             main_log,
+            success_markers=[
+                "character_director_observatory_probe:state_payloads_ok=true",
+                "character_director_observatory_probe:panels_populated=true",
+                "character_director_observatory_probe:freeze_roundtrip_ok=true",
+            ],
+            timeout_seconds=OBSERVATORY_PROBE_MARKER_TIMEOUT_SECONDS,
             env={
                 "PHASE0_AUTOTEST_SCREENSHOT": str(main_screenshot),
                 "PHASE0_DEBUG_LOGGING": "1",
@@ -74,6 +85,34 @@ def main() -> int:
                     "notes": "",
                 },
                 {
+                    "id": "observatory_actor_panel_populated",
+                    "title": "At least one actor panel contains real dramatic inspection content",
+                    "status": "proved" if "character_director_observatory_probe:actor_panel_populated=true" in log_text else "missing",
+                    "evidence": ["actor_panel_populated"] if "character_director_observatory_probe:actor_panel_populated=true" in log_text else [],
+                    "notes": "",
+                },
+                {
+                    "id": "observatory_director_workstation_populated",
+                    "title": "Director monitor contains cast, world, and Siming workstation detail",
+                    "status": "proved" if "character_director_observatory_probe:director_cast_world_siming_populated=true" in log_text else "missing",
+                    "evidence": ["director_cast_world_siming_populated"] if "character_director_observatory_probe:director_cast_world_siming_populated=true" in log_text else [],
+                    "notes": "",
+                },
+                {
+                    "id": "observatory_timeline_multi_role",
+                    "title": "Script timeline contains multi-role beat content",
+                    "status": "proved" if "character_director_observatory_probe:timeline_multi_role_populated=true" in log_text else "missing",
+                    "evidence": ["timeline_multi_role_populated"] if "character_director_observatory_probe:timeline_multi_role_populated=true" in log_text else [],
+                    "notes": "",
+                },
+                {
+                    "id": "observatory_ledger_pairwise",
+                    "title": "Dialogue ledger contains pairwise cross-role accounting content",
+                    "status": "proved" if "character_director_observatory_probe:ledger_pairwise_populated=true" in log_text else "missing",
+                    "evidence": ["ledger_pairwise_populated"] if "character_director_observatory_probe:ledger_pairwise_populated=true" in log_text else [],
+                    "notes": "",
+                },
+                {
                     "id": "observatory_freeze_roundtrip",
                     "title": "Freeze mode can be entered and exited while preserving inspectable state",
                     "status": "proved" if "character_director_observatory_probe:freeze_roundtrip_ok=true" in log_text else "missing",
@@ -85,6 +124,10 @@ def main() -> int:
                 result.returncode == 0
                 and "character_director_observatory_probe:state_payloads_ok=true" in log_text
                 and "character_director_observatory_probe:panels_populated=true" in log_text
+                and "character_director_observatory_probe:actor_panel_populated=true" in log_text
+                and "character_director_observatory_probe:director_cast_world_siming_populated=true" in log_text
+                and "character_director_observatory_probe:timeline_multi_role_populated=true" in log_text
+                and "character_director_observatory_probe:ledger_pairwise_populated=true" in log_text
                 and "character_director_observatory_probe:freeze_roundtrip_ok=true" in log_text
             ),
             "backend_health": health,
@@ -111,4 +154,11 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    exit_code = main()
+    try:
+        import sys
+
+        sys.stdout.flush()
+        sys.stderr.flush()
+    finally:
+        os._exit(exit_code)

@@ -265,3 +265,27 @@ def test_ensure_backend_can_restart_same_worktree_backend_when_fresh_backend_req
     assert terminated["pid"] == 4242
     assert popen_calls["count"] == 1
     assert process is not None
+
+
+def test_run_command_until_markers_terminates_once_marker_is_seen(tmp_path: Path) -> None:
+    script = tmp_path / "emit_marker.py"
+    script.write_text(
+        "import time\n"
+        "print('before', flush=True)\n"
+        "print('MARKER_OK', flush=True)\n"
+        "time.sleep(30)\n",
+        encoding="utf-8",
+    )
+    log_path = tmp_path / "marker.log"
+
+    result = common.run_command_until_markers(
+        ["C:/Anaconda3/python.exe", str(script)],
+        tmp_path,
+        log_path,
+        success_markers=["MARKER_OK"],
+        timeout_seconds=5.0,
+    )
+
+    assert result.returncode == 0
+    assert result.marker_found is True
+    assert "MARKER_OK" in log_path.read_text(encoding="utf-8")

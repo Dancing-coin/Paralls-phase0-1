@@ -26,6 +26,7 @@ const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
 @export var focus_autotest_vantage_offset := Vector3(1.2, 0.5, 2.7)
 @export var focus_max_distance := 28.0
 @export var focus_forward_threshold := 0.2
+@export var focus_precision_alignment_threshold := 0.97
 @export var near_object_visual_fact_distance := 18.0
 @export var near_object_visual_fact_cooldown_ms := 650
 @export var near_actor_spatial_access_distance := 18.0
@@ -46,8 +47,12 @@ const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
 @onready var tactile_fact_emitter: Node = $VisualFactEmitter/TactileFactEmitter
 @onready var thermal_fact_emitter: Node = $VisualFactEmitter/ThermalFactEmitter
 @onready var olfactory_fact_emitter: Node = $VisualFactEmitter/OlfactoryFactEmitter
+@onready var focus_hint_label: Label = Label.new()
 
 var current_focus_target: Node3D
+var current_precise_focus_target: Node3D
+var visible_focus_targets: Array[Node3D] = []
+var observatory_view_actor_id := "char_c"
 var last_reported_move_position := Vector3.INF
 var pending_focus_sync := false
 var focus_override_active := false
@@ -69,10 +74,15 @@ var backend_connected_once := false
 var pending_dialogue_request: Dictionary = {}
 var pending_interaction_request: Dictionary = {}
 var pending_move_request: Dictionary = {}
+var autotest_run_started := false
+var autotest_shutdown_in_progress := false
+var scene_load_probe_only := false
+var perception_debug_enabled := false
 
 func _ready() -> void:
 	autotest_enabled = OS.get_environment("PHASE0_AUTOTEST") == "1"
 	focus_autotest_enabled = OS.get_environment("PHASE0_FOCUS_AUTOTEST") == "1"
+	scene_load_probe_only = OS.get_environment("PHASE0_SCENE_LOAD_ONLY") == "1"
 	var bus := _get_bus()
 	if bus:
 		if bus.has_method("set_debug_logging_enabled"):
@@ -94,7 +104,11 @@ func _ready() -> void:
 	LIGHTING_TUNER.apply_blender_approx(get_node_or_null("ThroneRoomImported"))
 	_bootstrap_throne_room_collision()
 	_configure_open_field_camera()
+	_setup_focus_hint_label()
 	_bus_log("phase0_main_ready")
+	if scene_load_probe_only:
+		call_deferred("_finish_scene_load_probe")
+		return
 	call_deferred("_connect_backend")
 
 func _bootstrap_throne_room_collision() -> void:
@@ -209,6 +223,8 @@ func submit_interaction() -> void:
 	_emit_interaction_request(target_object_id, "inspect")
 
 func _on_backend_connected(_payload: String) -> void:
+	if autotest_shutdown_in_progress:
+		return
 	backend_connected_once = true
 	pending_backend_reconnect = false
 	_request_backend_health()
@@ -218,12 +234,20 @@ func _on_backend_connected(_payload: String) -> void:
 		pending_focus_sync = false
 	_flush_pending_backend_requests()
 	if focus_autotest_enabled:
+		if autotest_run_started:
+			return
+		autotest_run_started = true
 		_run_focus_autotest()
 		return
 	if autotest_enabled:
+		if autotest_run_started:
+			return
+		autotest_run_started = true
 		_run_autotest_inputs()
 
 func _on_backend_disconnected(_code: int = 0) -> void:
+	if autotest_shutdown_in_progress:
+		return
 	if not backend_connected_once and _code == -1:
 		_request_backend_reconnect()
 		return
@@ -266,6 +290,8 @@ func _on_debug_event_logged(message: String) -> void:
 		focus_response_seen = true
 
 func _process(_delta: float) -> void:
+	if autotest_shutdown_in_progress:
+		return
 	if focus_override_active:
 		if not suspend_spatial_access_fact:
 			_sample_spatial_access_facts()
@@ -276,26 +302,44 @@ func _process(_delta: float) -> void:
 	if not suspend_spatial_access_fact:
 		_sample_spatial_access_facts()
 
+func _unhandled_input(event: InputEvent) -> void:
+	if not (event is InputEventKey):
+		return
+	var key_event := event as InputEventKey
+	if not key_event.pressed:
+		return
+	if key_event.keycode == KEY_F11:
+		perception_debug_enabled = not perception_debug_enabled
+		_apply_perception_debug_visibility()
+		_refresh_focus_hint()
+
 func _run_autotest_inputs() -> void:
 	_bus_log("phase0_autotest_begin")
 	focus_override_active = true
 	_set_debug_overlay_visible(false)
 	await _probe_floor_coverage()
+	_bus_log("phase0_autotest_stage:floor_coverage_complete")
 	await _probe_floor_grid()
+	_bus_log("phase0_autotest_stage:floor_grid_complete")
 	await _run_locomotion_probe()
+	_bus_log("phase0_autotest_stage:locomotion_probe_complete")
 	await _run_npc_patrol_root_motion_probe()
+	_bus_log("phase0_autotest_stage:npc_patrol_probe_complete")
+	_bus_log("phase0_autotest_stage:probes_complete")
 	if player_input_bridge and player_input_bridge.has_method("set_character_c_sync_enabled"):
 		player_input_bridge.set_character_c_sync_enabled(false)
 	_orient_player_toward(character_a.global_position)
 	_force_focus_target(character_a)
 	await get_tree().create_timer(autotest_dialogue_delay).timeout
 	player_input_bridge.trigger_dialogue()
+	_bus_log("phase0_autotest_stage:dialogue_submitted")
 	_orient_player_toward(interactive_object.global_position)
 	_move_player_to_interact_position()
 	_force_focus_target(interactive_object)
 	_emit_move_intent_request(autotest_interact_position, "locomotion")
 	await get_tree().create_timer(autotest_interact_delay).timeout
 	player_input_bridge.trigger_interaction()
+	_bus_log("phase0_autotest_stage:success_interaction_submitted")
 	_move_player_to_demo_vantage()
 	_emit_move_intent_request(autotest_final_position, "locomotion")
 	await get_tree().create_timer(autotest_interact_delay).timeout
@@ -312,13 +356,11 @@ func _run_autotest_inputs() -> void:
 	_emit_interaction_request_without_near_object_fact("obj_letter", "inspect")
 	await _wait_for_failed_interaction_ack(1000)
 	await _wait_for_failed_interaction_result(autotest_failed_interact_timeout_ms)
+	_bus_log("phase0_autotest_stage:failed_interaction_resolved")
 	suspend_near_object_visual_fact = false
 	suspend_spatial_access_fact = false
-	_capture_autotest_screenshot()
-	focus_override_active = false
-	if player_input_bridge and player_input_bridge.has_method("set_character_c_sync_enabled"):
-		player_input_bridge.set_character_c_sync_enabled(true)
-	get_tree().quit()
+	await _capture_autotest_screenshot()
+	await _begin_autotest_shutdown("phase0_autotest_complete")
 
 func _wait_for_failed_interaction_result(timeout_ms: int) -> void:
 	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
@@ -402,10 +444,13 @@ func _run_locomotion_probe() -> void:
 	await _probe_gait_segment("brisk_walk", false, false, 0.35)
 	await _probe_gait_segment("run", true, false, 0.35)
 	await _probe_gait_segment("crouch_walk", false, true, 0.35)
+	_bus_log("phase0_autotest_stage:gait_probe_complete")
 	await _probe_jump_variant("two_foot", false)
 	await _probe_jump_variant("single_leg", true)
+	_bus_log("phase0_autotest_stage:jump_probe_complete")
 
 func _run_npc_patrol_root_motion_probe() -> void:
+	_bus_log("phase0_autotest_stage:npc_patrol_probe_begin")
 	for actor in [character_a, character_b]:
 		if actor == null:
 			continue
@@ -494,70 +539,129 @@ func _run_focus_autotest() -> void:
 	focus_override_active = true
 	_force_focus_target(character_a)
 	await _wait_for_focus_response()
-	_capture_autotest_screenshot()
-	get_tree().quit()
+	await _capture_autotest_screenshot()
+	await _begin_autotest_shutdown("phase0_focus_autotest_complete")
 
 func _update_focus_target() -> void:
-	var next_target := _pick_focus_target()
-	if next_target == current_focus_target:
+	_sync_observatory_view_actor()
+	visible_focus_targets = _collect_visible_focus_targets()
+	var next_target := _pick_precise_focus_target(visible_focus_targets)
+	if next_target == current_precise_focus_target:
+		_refresh_focus_hint()
 		return
 
-	_set_focus_visual(current_focus_target, false)
-	current_focus_target = next_target
+	_set_focus_visual(current_precise_focus_target, false)
+	current_precise_focus_target = next_target
+	current_focus_target = current_precise_focus_target
 	_set_focus_visual(current_focus_target, true)
 	_emit_focus_target_change()
+	_refresh_focus_hint()
 
 	if current_focus_target:
 		_bus_log("phase0_focus:%s" % current_focus_target.name)
 
-func _pick_focus_target() -> Node3D:
-	# Keep focus/interaction candidates stable for the current Phase 0 loop:
-	# A controls the key object, B observes, and the player-driven C shell is present
-	# in-world but is not yet a separate focusable NPC target.
-	var candidates: Array[Node3D] = [character_a, character_b, interactive_object]
+func _collect_visible_focus_targets() -> Array[Node3D]:
+	var candidates := _get_focus_candidates()
 	var player_origin := _get_focus_origin()
-	var forward := _get_focus_forward()
+	var view_forward := _get_view_forward()
+	var visible_candidates: Array[Node3D] = []
+	var view_actor := _get_view_origin_actor_node()
+
+	for candidate in candidates:
+		if candidate == null:
+			continue
+		if candidate == view_actor:
+			continue
+
+		var candidate_position := _get_focus_candidate_position(candidate)
+		var offset := candidate_position - player_origin
+		var distance := offset.length()
+		if distance > focus_max_distance or distance <= 0.001:
+			continue
+
+		var direction := offset / distance
+		var alignment := view_forward.dot(direction)
+		if alignment < focus_forward_threshold:
+			continue
+
+		if _precise_focus_alignment(candidate_position, direction) < 0.0:
+			continue
+		if not _has_focus_line_of_sight(candidate):
+			continue
+		visible_candidates.append(candidate)
+
+	visible_candidates.sort_custom(Callable(self, "_compare_visible_focus_targets"))
+	return visible_candidates
+
+func _get_focus_candidates() -> Array[Node3D]:
+	var candidates: Array[Node3D] = []
+	for candidate in [character_a, character_b, get_node_or_null("PlayerCharacter/CharacterReplica"), interactive_object]:
+		if candidate is Node3D and not candidates.has(candidate):
+			candidates.append(candidate)
+	return candidates
+
+func _pick_precise_focus_target(candidates: Array[Node3D]) -> Node3D:
+	var camera := _get_camera()
+	var player_origin := _get_focus_origin()
+	var view_forward := _get_view_forward()
 	var best_target: Node3D
 	var best_score := -1.0
 
 	for candidate in candidates:
 		if candidate == null:
 			continue
-
-		var offset := candidate.global_position - player_origin
+		var candidate_position := _get_focus_candidate_position(candidate)
+		var offset := candidate_position - player_origin
 		var distance := offset.length()
-		if distance > focus_max_distance or distance <= 0.001:
+		if distance <= 0.001:
 			continue
-
 		var direction := offset / distance
-		var alignment := forward.dot(direction)
-		if alignment < focus_forward_threshold:
+		var broad_alignment := view_forward.dot(direction)
+		var precise_alignment := _precise_focus_alignment(candidate_position, direction)
+		if precise_alignment < focus_precision_alignment_threshold:
 			continue
-
-		var score := alignment - distance * 0.05
+		var score := precise_alignment * 4.0 + broad_alignment - distance * 0.03
 		if score > best_score:
 			best_score = score
 			best_target = candidate
 
 	return best_target
 
+func _compare_visible_focus_targets(left: Node3D, right: Node3D) -> bool:
+	return _visible_focus_target_score(left) > _visible_focus_target_score(right)
+
+func _visible_focus_target_score(candidate: Node3D) -> float:
+	if candidate == null:
+		return -INF
+	var player_origin := _get_focus_origin()
+	var view_forward := _get_view_forward()
+	var candidate_position := _get_focus_candidate_position(candidate)
+	var offset := candidate_position - player_origin
+	var distance := offset.length()
+	if distance <= 0.001:
+		return -INF
+	var direction := offset / distance
+	return view_forward.dot(direction) * 2.0 + _precise_focus_alignment(candidate_position, direction) - distance * 0.03
+
 func _resolve_focused_actor_id() -> String:
-	if current_focus_target == null:
+	if current_precise_focus_target == null:
 		return ""
-	var actor_value: Variant = current_focus_target.get("actor_id")
+	var actor_value: Variant = current_precise_focus_target.get("actor_id")
 	if actor_value != null and str(actor_value) != "":
 		return str(actor_value)
 	return ""
 
 func _resolve_focused_object_id() -> String:
-	if current_focus_target == null:
+	if current_precise_focus_target == null:
 		return ""
-	var object_value: Variant = current_focus_target.get("object_id")
+	var object_value: Variant = current_precise_focus_target.get("object_id")
 	if object_value != null and str(object_value) != "":
 		return str(object_value)
 	return ""
 
 func _physics_process(_delta: float) -> void:
+	if autotest_shutdown_in_progress:
+		return
 	_emit_move_intent_if_needed()
 
 func _set_focus_visual(target: Node3D, is_focused: bool) -> void:
@@ -565,10 +669,16 @@ func _set_focus_visual(target: Node3D, is_focused: bool) -> void:
 		target.set_focus_highlight(is_focused)
 
 func _force_focus_target(target: Node3D) -> void:
-	_set_focus_visual(current_focus_target, false)
+	_set_focus_visual(current_precise_focus_target, false)
+	_sync_observatory_view_actor()
+	visible_focus_targets = _collect_visible_focus_targets()
+	if target != null and not visible_focus_targets.has(target):
+		visible_focus_targets.push_front(target)
+	current_precise_focus_target = target
 	current_focus_target = target
 	_set_focus_visual(current_focus_target, true)
 	_emit_focus_target_change()
+	_refresh_focus_hint()
 	if current_focus_target:
 		_bus_log("phase0_focus_forced:%s" % current_focus_target.name)
 
@@ -618,6 +728,29 @@ func _capture_autotest_screenshot() -> void:
 	var image := get_viewport().get_texture().get_image()
 	var err := image.save_png(screenshot_path)
 	_bus_log("phase0_screenshot_saved:%s:%s" % [screenshot_path, err])
+
+func _finish_scene_load_probe() -> void:
+	_bus_log("phase0_scene_load_probe_complete")
+	get_tree().quit()
+
+func _begin_autotest_shutdown(reason: String) -> void:
+	if autotest_shutdown_in_progress:
+		return
+	autotest_shutdown_in_progress = true
+	focus_override_active = false
+	set_process(false)
+	set_physics_process(false)
+	var bridge := _get_bridge()
+	if bridge and bridge.has_method("close_backend_connection"):
+		bridge.close_backend_connection()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	call_deferred("_finish_autotest_run", reason)
+
+
+func _finish_autotest_run(reason: String) -> void:
+	_bus_log(reason)
+	get_tree().quit()
 
 func _get_bus() -> Node:
 	return get_node_or_null("/root/LocalPresentationBus")
@@ -873,6 +1006,13 @@ func _get_camera_holder() -> Node3D:
 	return null
 
 func _get_focus_origin() -> Vector3:
+	var view_actor := _get_view_origin_actor_node()
+	if view_actor != null and observatory_view_actor_id != "char_c":
+		if view_actor.has_method("get_focus_anchor_position"):
+			var actor_anchor: Variant = view_actor.get_focus_anchor_position()
+			if actor_anchor is Vector3:
+				return actor_anchor
+		return view_actor.global_position + Vector3(0.0, 1.0, 0.0)
 	if player_input_bridge and player_input_bridge.has_method("get_control_anchor_position"):
 		var anchor: Variant = player_input_bridge.get_control_anchor_position()
 		if anchor is Vector3:
@@ -880,6 +1020,13 @@ func _get_focus_origin() -> Vector3:
 	return player.global_position + Vector3(0.0, 1.0, 0.0)
 
 func _get_focus_forward() -> Vector3:
+	var view_actor := _get_view_origin_actor_node()
+	if view_actor != null and observatory_view_actor_id != "char_c":
+		if view_actor.has_method("get_embodied_forward_vector"):
+			var actor_forward: Variant = view_actor.get_embodied_forward_vector()
+			if actor_forward is Vector3 and (actor_forward as Vector3).length() > 0.001:
+				return (actor_forward as Vector3).normalized()
+		return view_actor.global_basis.z.normalized()
 	if player_input_bridge and player_input_bridge.has_method("get_control_forward"):
 		var forward: Variant = player_input_bridge.get_control_forward()
 		if forward is Vector3 and (forward as Vector3).length() > 0.001:
@@ -888,6 +1035,13 @@ func _get_focus_forward() -> Vector3:
 	if camera:
 		return -camera.global_basis.z.normalized()
 	return -player.global_basis.z.normalized()
+
+func _get_view_forward() -> Vector3:
+	if observatory_view_actor_id == "char_c":
+		var camera := _get_camera()
+		if camera:
+			return -camera.global_basis.z.normalized()
+	return _get_focus_forward()
 
 func _configure_open_field_camera() -> void:
 	var camera_holder := _get_camera_holder()
@@ -903,6 +1057,214 @@ func _set_debug_overlay_visible(is_visible: bool) -> void:
 	var overlay := get_node_or_null("DebugOverlay")
 	if overlay is CanvasLayer:
 		(overlay as CanvasLayer).visible = is_visible
+
+func _setup_focus_hint_label() -> void:
+	focus_hint_label.name = "PlayerFocusHint"
+	focus_hint_label.position = Vector2(16, 16)
+	focus_hint_label.size = Vector2(940, 180)
+	focus_hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	focus_hint_label.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	focus_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	add_child(focus_hint_label)
+	_refresh_focus_hint()
+
+func _refresh_focus_hint() -> void:
+	if focus_hint_label == null:
+		return
+	var actor_id := _resolve_focused_actor_id()
+	var object_id := _resolve_focused_object_id()
+	var half_fov_degrees := rad_to_deg(acos(clamp(focus_forward_threshold, -1.0, 1.0)))
+	var precision_half_fov_degrees := rad_to_deg(acos(clamp(focus_precision_alignment_threshold, -1.0, 1.0)))
+	var rule_summary := "判定规则：距离不超过 %.1f 米，进入视线锥体约 %.1f 度内，就算“看见”；只有镜头真正对准目标，才会精确锁定，精确锁定大约要落在 %.1f 度内。按 F11 可以显示所有角色的视线锥体。" % [focus_max_distance, half_fov_degrees, precision_half_fov_degrees]
+	var visible_summary := _build_visible_focus_summary()
+	var observer_summary := "当前观察角色：%s" % _describe_actor_id_name(observatory_view_actor_id)
+	if actor_id != "":
+		var actor_name := "角色A" if actor_id == "char_a" else "角色B" if actor_id == "char_b" else "你自己"
+		var actor_node := _find_node_by_property("actor_id", actor_id)
+		focus_hint_label.text = "%s\n当前精确锁定：%s（%.1f 米）。想测试对话，就保持镜头对准他再按对话键。\n%s\n%s" % [observer_summary, actor_name, _distance_to_focus_candidate(actor_node), visible_summary, rule_summary]
+		return
+	if object_id != "":
+		var object_node := _find_node_by_property("object_id", object_id)
+		focus_hint_label.text = "%s\n当前精确锁定物体：%s（%.1f 米）。想测试交互，就继续对着它再按交互键。\n%s\n%s" % [observer_summary, object_id, _distance_to_focus_candidate(object_node), visible_summary, rule_summary]
+		return
+	if visible_focus_targets.is_empty():
+		focus_hint_label.text = "%s\n当前视野里没有可用目标。先把角色或物体放进你的视线锥体里。\n%s" % [observer_summary, rule_summary]
+		return
+	focus_hint_label.text = "%s\n当前还没有精确锁定目标。现在只是“看见了”，只有镜头真正对准目标，才会精确锁定。\n%s\n%s" % [observer_summary, visible_summary, rule_summary]
+
+func _apply_perception_debug_visibility() -> void:
+	var half_fov_degrees: float = rad_to_deg(acos(clamp(focus_forward_threshold, -1.0, 1.0)))
+	for actor in _get_perception_debug_characters():
+		if actor == null:
+			continue
+		if actor.has_method("configure_perception_debug"):
+			actor.configure_perception_debug(focus_max_distance, half_fov_degrees)
+		if actor.has_method("set_perception_debug_visible"):
+			actor.set_perception_debug_visible(perception_debug_enabled)
+
+func _get_perception_debug_characters() -> Array[Node3D]:
+	var actors: Array[Node3D] = []
+	for candidate in [character_a, character_b, get_node_or_null("PlayerCharacter/CharacterReplica")]:
+		if candidate is Node3D:
+			actors.append(candidate)
+	return actors
+
+func _get_focus_candidate_position(candidate: Node3D) -> Vector3:
+	if candidate == null:
+		return Vector3.ZERO
+	if candidate.has_method("get_focus_anchor_position"):
+		var focus_anchor: Variant = candidate.get_focus_anchor_position()
+		if focus_anchor is Vector3:
+			return focus_anchor
+	return candidate.global_position
+
+func _distance_to_focus_candidate(candidate: Node3D) -> float:
+	if candidate == null:
+		return 0.0
+	return _get_focus_origin().distance_to(_get_focus_candidate_position(candidate))
+
+func _camera_ray_alignment(camera: Camera3D, world_position: Vector3) -> float:
+	if camera == null:
+		return -1.0
+	var origin := camera.global_position
+	var direction := (world_position - origin).normalized()
+	return (-camera.global_basis.z).normalized().dot(direction)
+
+func _build_visible_focus_summary() -> String:
+	if visible_focus_targets.is_empty():
+		return "当前视野里没有目标。"
+
+	var segments: Array[String] = []
+	for candidate in visible_focus_targets:
+		segments.append(_describe_visible_focus_target(candidate))
+	return "视野里目标：%s" % "；".join(segments)
+
+func _describe_visible_focus_target(candidate: Node3D) -> String:
+	if candidate == null:
+		return "空目标"
+	var descriptor := _describe_focus_target_name(candidate)
+	var coords := _get_target_relative_view_coordinates(candidate)
+	var horizontal_angle := rad_to_deg(atan2(coords.x, max(coords.z, 0.001)))
+	var vertical_angle := rad_to_deg(atan2(coords.y, max(coords.z, 0.001)))
+	return "%s 相对坐标[x=%.1f, y=%.1f, z=%.1f]，水平 %.1f°，垂直 %.1f°" % [
+		descriptor,
+		coords.x,
+		coords.y,
+		coords.z,
+		horizontal_angle,
+		vertical_angle,
+	]
+
+func _describe_focus_target_name(candidate: Node3D) -> String:
+	if candidate == null:
+		return "未知目标"
+	var actor_value: Variant = candidate.get("actor_id")
+	if actor_value != null and str(actor_value) != "":
+		var actor_id := str(actor_value)
+		if actor_id == "char_a":
+			return "角色A"
+		if actor_id == "char_b":
+			return "角色B"
+		if actor_id == "char_c":
+			return "玩家角色"
+		return actor_id
+	var object_value: Variant = candidate.get("object_id")
+	if object_value != null and str(object_value) != "":
+		return "物体 %s" % str(object_value)
+	return candidate.name
+
+func _get_target_relative_view_coordinates(candidate: Node3D) -> Vector3:
+	var origin := _get_focus_origin()
+	var target_position := _get_focus_candidate_position(candidate)
+	var offset := target_position - origin
+	if observatory_view_actor_id != "char_c":
+		var forward := _get_view_forward()
+		var right := forward.cross(Vector3.UP).normalized()
+		var up := right.cross(forward).normalized()
+		return Vector3(offset.dot(right), offset.dot(up), offset.dot(forward))
+	var camera := _get_camera()
+	if camera == null:
+		var forward := _get_view_forward()
+		var right := forward.cross(Vector3.UP).normalized()
+		var up := right.cross(forward).normalized()
+		return Vector3(offset.dot(right), offset.dot(up), offset.dot(forward))
+	var right_axis := camera.global_basis.x.normalized()
+	var up_axis := camera.global_basis.y.normalized()
+	var forward_axis := (-camera.global_basis.z).normalized()
+	return Vector3(offset.dot(right_axis), offset.dot(up_axis), offset.dot(forward_axis))
+
+func _get_observatory_state() -> Node:
+	return get_node_or_null("ObservatoryRoot/CharacterDirectorState")
+
+func _sync_observatory_view_actor() -> void:
+	observatory_view_actor_id = "char_c"
+	var state := _get_observatory_state()
+	if state == null:
+		return
+	var observatory_enabled: Variant = state.get("observatory_enabled")
+	if observatory_enabled != true:
+		return
+	var selected_actor_id := str(state.selected_actor_id)
+	if selected_actor_id.is_empty():
+		return
+	if _find_node_by_property("actor_id", selected_actor_id) == null:
+		return
+	observatory_view_actor_id = selected_actor_id
+
+func _get_view_origin_actor_node() -> Node3D:
+	if observatory_view_actor_id == "char_c":
+		var player_replica := get_node_or_null("PlayerCharacter/CharacterReplica")
+		if player_replica is Node3D:
+			return player_replica as Node3D
+		return player
+	var actor_node := _find_node_by_property("actor_id", observatory_view_actor_id)
+	if actor_node is Node3D:
+		return actor_node as Node3D
+	return null
+
+func _precise_focus_alignment(candidate_position: Vector3, direction: Vector3) -> float:
+	if observatory_view_actor_id == "char_c":
+		return _camera_ray_alignment(_get_camera(), candidate_position)
+	return _get_view_forward().dot(direction)
+
+func _has_focus_line_of_sight(candidate: Node3D) -> bool:
+	if candidate == null or not candidate.is_inside_tree():
+		return false
+	if not is_inside_tree() or get_world_3d() == null:
+		return false
+	var query := PhysicsRayQueryParameters3D.create(_get_focus_origin(), _get_focus_candidate_position(candidate))
+	query.exclude = _build_focus_raycast_exclusions()
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return true
+	return _is_focus_hit_target(hit.get("collider"), candidate)
+
+func _build_focus_raycast_exclusions() -> Array:
+	var exclusions: Array = []
+	exclusions.append(player)
+	var view_actor := _get_view_origin_actor_node()
+	if view_actor != null and not exclusions.has(view_actor):
+		exclusions.append(view_actor)
+	var player_replica := get_node_or_null("PlayerCharacter/CharacterReplica")
+	if player_replica != null and not exclusions.has(player_replica):
+		exclusions.append(player_replica)
+	return exclusions
+
+func _is_focus_hit_target(collider: Variant, candidate: Node3D) -> bool:
+	if collider == candidate:
+		return true
+	if collider is Node:
+		return candidate.is_ancestor_of(collider as Node)
+	return false
+
+func _describe_actor_id_name(actor_id: String) -> String:
+	if actor_id == "char_a":
+		return "角色A"
+	if actor_id == "char_b":
+		return "角色B"
+	if actor_id == "char_c":
+		return "玩家角色"
+	return actor_id
 
 func _wait_for_focus_response() -> void:
 	var deadline := Time.get_ticks_msec() + int(focus_autotest_settle_delay * 1000.0)

@@ -74,7 +74,6 @@ app = FastAPI(title="Paralls Phase0 Backend")
 BACKEND_BUILD = "paralls-phase0-backend-worktree-2026-06-02"
 WORKTREE_ROOT = str(Path(__file__).resolve().parents[2])
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-OBSERVATORY_STREAM_ENABLED = os.environ.get("PHASE0_OBSERVATORY_STREAM", "1") == "1"
 
 
 def reset_runtime_state() -> None:
@@ -1336,8 +1335,7 @@ def _drain_frontend_authority_events() -> list[dict[str, object]]:
 def _finalize_outbound_messages(messages: list[dict[str, object]]) -> list[dict[str, object]]:
     messages.extend(_drain_frontend_authority_events())
     messages = _insert_character_agent_execution_after_siming(messages)
-    if OBSERVATORY_STREAM_ENABLED:
-        messages.extend(_observatory_messages_from_outbound(messages))
+    messages.extend(_observatory_messages_from_outbound(messages))
     _emit_debug_from_messages(messages)
     return messages
 

@@ -9,7 +9,7 @@ const ProgramControlStateRef = preload("res://scripts/player/Phase0ProgramContro
 const ViewAnchorResolverRef = preload("res://scripts/player/Phase0ViewAnchorResolver.gd")
 
 @export var character_c_sync_enabled := true
-@export var hide_player_visual_shell := true
+@export var hide_player_visual_shell := false
 @export var player_root_motion_enabled := true
 
 @onready var player: CharacterBody3D = get_parent() as CharacterBody3D

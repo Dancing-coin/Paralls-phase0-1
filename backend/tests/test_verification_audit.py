@@ -165,6 +165,35 @@ def test_phase0_main_demo_suppresses_free_move_intent_loop_during_focus_autotest
     assert "if autotest_enabled or focus_autotest_enabled:" in emit_move_section
 
 
+def test_phase0_autotest_paths_await_screenshot_before_quit_and_guard_reentry() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    controller_source = (
+        project_root / "scripts" / "phase0" / "MainDemoController.gd"
+    ).read_text(encoding="utf-8")
+
+    assert "var autotest_run_started := false" in controller_source
+    assert "var autotest_shutdown_in_progress := false" in controller_source
+    assert "if autotest_run_started:" in controller_source
+    assert "autotest_run_started = true" in controller_source
+    assert "await _capture_autotest_screenshot()" in controller_source
+    assert '_bus_log("phase0_autotest_stage:floor_coverage_complete")' in controller_source
+    assert '_bus_log("phase0_autotest_stage:floor_grid_complete")' in controller_source
+    assert '_bus_log("phase0_autotest_stage:locomotion_probe_complete")' in controller_source
+    assert '_bus_log("phase0_autotest_stage:npc_patrol_probe_complete")' in controller_source
+    assert '_bus_log("phase0_autotest_stage:gait_probe_complete")' in controller_source
+    assert '_bus_log("phase0_autotest_stage:jump_probe_complete")' in controller_source
+    assert '_bus_log("phase0_autotest_stage:npc_patrol_probe_begin")' in controller_source
+    assert 'await _begin_autotest_shutdown("phase0_autotest_complete")' in controller_source
+    assert 'await _begin_autotest_shutdown("phase0_focus_autotest_complete")' in controller_source
+    assert 'func _begin_autotest_shutdown(reason: String) -> void:' in controller_source
+    assert 'autotest_shutdown_in_progress = true' in controller_source
+    assert 'bridge.close_backend_connection()' in controller_source
+    assert 'call_deferred("_finish_autotest_run", reason)' in controller_source
+    assert 'func _finish_autotest_run(reason: String) -> void:' in controller_source
+    assert '_bus_log(reason)' in controller_source
+    assert "get_tree().quit()" in controller_source
+
+
 def test_phase0_audit_proves_observatory_runtime_evidence() -> None:
     report = evaluate_phase0_audit(
         pytest_passed=True,
@@ -174,6 +203,10 @@ def test_phase0_audit_proves_observatory_runtime_evidence() -> None:
         character_director_observatory_probe:state_payloads_ok=true
         character_director_observatory_probe:panels_populated=true
         character_director_observatory_probe:freeze_roundtrip_ok=true
+        character_director_observatory_probe:actor_panel_populated=true
+        character_director_observatory_probe:director_cast_world_siming_populated=true
+        character_director_observatory_probe:timeline_multi_role_populated=true
+        character_director_observatory_probe:ledger_pairwise_populated=true
         [LocalPresentationBus] character_agent_debug_snapshot:{"actor_id":"char_a"}
         [LocalPresentationBus] siming_debug_snapshot:{"selected_path":"visual_fact_path"}
         [LocalPresentationBus] world_outcome_trace:{"request_type":"inspect"}
@@ -196,6 +229,10 @@ def test_phase0_audit_proves_observatory_runtime_evidence() -> None:
 
     assert results["observatory_state_payloads"]["status"] == "proved"
     assert results["observatory_panels_populated"]["status"] == "proved"
+    assert results["observatory_actor_panel_populated"]["status"] == "proved"
+    assert results["observatory_director_workstation_populated"]["status"] == "proved"
+    assert results["observatory_timeline_multi_role"]["status"] == "proved"
+    assert results["observatory_ledger_pairwise"]["status"] == "proved"
     assert results["observatory_freeze_roundtrip"]["status"] == "proved"
 
 

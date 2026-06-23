@@ -19,6 +19,12 @@ func resolve_player_look_target(
 		return player.global_position + _forward_from_yaw(
 			CharacterControllerPortRef.get_desired_facing_yaw(normalized_frame, desired_facing_yaw)
 		)
+	var camera_holder := player.get_node_or_null("CameraHolder")
+	if camera_holder is Node3D:
+		return player.global_position - (camera_holder as Node3D).global_basis.z
+	var camera_result: Variant = find_camera_callable.call()
+	if camera_result is Camera3D:
+		return player.global_position - (camera_result as Camera3D).global_basis.z
 	var character_c := _get_character_replica(player)
 	if character_c is Node:
 		if (character_c as Node).has_method("get_embodied_forward_vector"):
@@ -29,12 +35,6 @@ func resolve_player_look_target(
 		var wrapper_forward: Variant = player.get_visual_forward()
 		if wrapper_forward is Vector3 and (wrapper_forward as Vector3).length() > 0.001:
 			return player.global_position + (wrapper_forward as Vector3).normalized()
-	var camera_holder := player.get_node_or_null("CameraHolder")
-	if camera_holder is Node3D:
-		return player.global_position - (camera_holder as Node3D).global_basis.z
-	var camera_result: Variant = find_camera_callable.call()
-	if camera_result is Camera3D:
-		return player.global_position - (camera_result as Camera3D).global_basis.z
 	return player.global_position - player.global_basis.z
 
 
@@ -49,6 +49,12 @@ func resolve_player_forward(
 		return _forward_from_yaw(
 			CharacterControllerPortRef.get_desired_facing_yaw(normalized_frame, desired_facing_yaw)
 		)
+	var camera_holder := player.get_node_or_null("CameraHolder")
+	if camera_holder is Node3D:
+		return -((camera_holder as Node3D).global_basis.z).normalized()
+	var camera_result: Variant = find_camera_callable.call()
+	if camera_result is Camera3D:
+		return -(camera_result as Camera3D).global_basis.z.normalized()
 	var character_c := _get_character_replica(player)
 	if character_c is Node:
 		if (character_c as Node).has_method("get_embodied_forward_vector"):
@@ -59,12 +65,6 @@ func resolve_player_forward(
 		var wrapper_forward: Variant = player.get_visual_forward()
 		if wrapper_forward is Vector3 and (wrapper_forward as Vector3).length() > 0.001:
 			return (wrapper_forward as Vector3).normalized()
-	var camera_holder := player.get_node_or_null("CameraHolder")
-	if camera_holder is Node3D:
-		return -((camera_holder as Node3D).global_basis.z).normalized()
-	var camera_result: Variant = find_camera_callable.call()
-	if camera_result is Camera3D:
-		return -(camera_result as Camera3D).global_basis.z.normalized()
 	return -(player.global_basis.z).normalized()
 
 

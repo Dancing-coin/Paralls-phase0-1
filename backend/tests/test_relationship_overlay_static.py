@@ -17,5 +17,14 @@ def test_relationship_overlay_supports_required_relationship_line_families() -> 
     assert "draw_circle(" in source
     assert "_resolve_world_target_node" in source
     assert "_project_world_to_canvas" in source
+    assert "resolve_target_node(target_ref: String) -> Node3D" not in source
+    assert 'state.call("get_visible_actor_states")' in source or "get_visible_actor_states" in source
+    assert "for actor_id in actor_states.keys()" in source
+    assert 'payload.get("focus_target"' in source
+    assert 'payload.get("current_intent"' in source
+    assert 'outcome.get("settlement_status"' in source
+    assert 'state.call("get_latest_siming_state")' in source or "get_latest_siming_state" in source
+    assert 'target_node.global_position + Vector3(0.0, 1.2, 0.0)' in source
+    assert 'source_node.global_position + Vector3(0.0, 1.4, 0.0)' in source
     assert 'get_node_or_null("/root/MainDemo")' not in source
     assert "get_viewport().get_camera_3d()" in source

@@ -42,6 +42,12 @@ func send_envelope(envelope: Dictionary) -> int:
         _bus_log("backend_send_failed:%s" % err)
     return err
 
+func close_backend_connection() -> void:
+    if ws.get_ready_state() == WebSocketPeer.STATE_CLOSED:
+        return
+    ws.close()
+    _handle_state_transition()
+
 func _process(_delta: float) -> void:
     ws.poll()
     if ws.get_ready_state() == WebSocketPeer.STATE_CLOSED and last_ready_state == WebSocketPeer.STATE_CLOSED:

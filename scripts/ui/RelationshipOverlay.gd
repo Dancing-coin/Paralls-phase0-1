@@ -19,11 +19,12 @@ func _refresh() -> void:
 	var state := _get_state()
 	if state == null:
 		return
-	visible = bool(state.observatory_enabled)
-	var payload: Dictionary = state.get_selected_actor_state()
-	attention_lines = _build_actor_line_family(state, payload, Color(0.45, 0.75, 1.0, 0.9), "focus_target", "attention")
+	var observatory_enabled: Variant = state.get("observatory_enabled")
+	visible = observatory_enabled == true
+	var payload: Dictionary = state.call("get_selected_actor_state")
+	attention_lines = _build_attention_line_family(state)
 	dialogue_lines = _build_dialogue_line_family(state)
-	action_intent_lines = _build_actor_line_family(state, payload, Color(1.0, 0.75, 0.25, 0.9), "focus_target", "intent")
+	action_intent_lines = _build_action_intent_line_family(state)
 	blocked_lines = _build_blocked_line_family(state)
 	siming_influence_lines = _build_siming_line_family(state)
 	target_markers = _build_target_markers(state, payload)
@@ -58,9 +59,31 @@ func _build_actor_line_family(state: Node, payload: Dictionary, color: Color, ta
 	return _build_line_entries(state, actor_id, target_ref, color, label)
 
 
+func _build_attention_line_family(state: Node) -> Array[Dictionary]:
+	var actor_states: Dictionary = state.call("get_visible_actor_states")
+	var lines: Array[Dictionary] = []
+	for actor_id in actor_states.keys():
+		var payload: Dictionary = actor_states[actor_id]
+		var target_ref := str(payload.get("focus_target", "") or "")
+		lines.append_array(_build_line_entries(state, str(actor_id), target_ref, Color(0.45, 0.75, 1.0, 0.9), "attention"))
+	return lines
+
+
+func _build_action_intent_line_family(state: Node) -> Array[Dictionary]:
+	var actor_states: Dictionary = state.call("get_visible_actor_states")
+	var lines: Array[Dictionary] = []
+	for actor_id in actor_states.keys():
+		var payload: Dictionary = actor_states[actor_id]
+		var target_ref := str(payload.get("focus_target", "") or "")
+		if str(payload.get("current_intent", "") or "").is_empty():
+			continue
+		lines.append_array(_build_line_entries(state, str(actor_id), target_ref, Color(1.0, 0.75, 0.25, 0.9), "intent"))
+	return lines
+
+
 func _build_dialogue_line_family(state: Node) -> Array[Dictionary]:
 	var lines: Array[Dictionary] = []
-	for pair_entry in state.get_dialogue_pair_entries():
+	for pair_entry in state.call("get_dialogue_pair_entries"):
 		var speaker := str(pair_entry.get("speaker_actor_id", "") or "")
 		var listener := str(pair_entry.get("listener_actor_id", "") or "")
 		lines.append_array(_build_line_entries(state, speaker, listener, Color(0.6, 1.0, 0.6, 0.9), "dialogue"))
@@ -69,7 +92,7 @@ func _build_dialogue_line_family(state: Node) -> Array[Dictionary]:
 
 func _build_blocked_line_family(state: Node) -> Array[Dictionary]:
 	var lines: Array[Dictionary] = []
-	for outcome in state.get_recent_world_outcomes():
+	for outcome in state.call("get_recent_world_outcomes"):
 		if str(outcome.get("settlement_status", "") or "") != "rejected":
 			continue
 		lines.append_array(
@@ -85,11 +108,15 @@ func _build_blocked_line_family(state: Node) -> Array[Dictionary]:
 
 
 func _build_siming_line_family(state: Node) -> Array[Dictionary]:
-	var target_ref := str(state.get_latest_siming_state().get("target_ref", "") or "")
-	var selected_actor_id := str(state.selected_actor_id)
-	if selected_actor_id.is_empty() or target_ref.is_empty():
+	var siming_state: Dictionary = state.get_latest_siming_state()
+	var target_ref := str(siming_state.get("target_ref", "") or "")
+	if target_ref.is_empty():
 		return []
-	return _build_line_entries(state, selected_actor_id, target_ref, Color(1.0, 0.45, 0.85, 0.95), "siming")
+	var lines: Array[Dictionary] = []
+	var actor_states: Dictionary = state.call("get_visible_actor_states")
+	for actor_id in actor_states.keys():
+		lines.append_array(_build_line_entries(state, str(actor_id), target_ref, Color(1.0, 0.45, 0.85, 0.95), "siming"))
+	return lines
 
 
 func _build_target_markers(state: Node, payload: Dictionary) -> Array[Dictionary]:
@@ -100,7 +127,7 @@ func _build_target_markers(state: Node, payload: Dictionary) -> Array[Dictionary
 		return markers
 	markers.append(
 		{
-			"point": _project_world_to_canvas(target_node.global_position),
+			"point": _project_world_to_canvas(target_node.global_position + Vector3(0.0, 1.2, 0.0)),
 			"label": target_ref,
 			"color": Color(1.0, 0.95, 0.35, 0.95),
 		}
@@ -115,8 +142,8 @@ func _build_line_entries(state: Node, source_ref: String, target_ref: String, co
 		return []
 	return [
 		{
-			"from_point": _project_world_to_canvas(source_node.global_position),
-			"to_point": _project_world_to_canvas(target_node.global_position),
+			"from_point": _project_world_to_canvas(source_node.global_position + Vector3(0.0, 1.4, 0.0)),
+			"to_point": _project_world_to_canvas(target_node.global_position + Vector3(0.0, 1.2, 0.0)),
 			"color": color,
 			"label": label,
 		}
@@ -135,7 +162,7 @@ func _draw_overlay_line(line: Dictionary) -> void:
 func _resolve_world_target_node(state: Node, target_ref: String) -> Node3D:
 	if target_ref.is_empty():
 		return null
-	return state.resolve_target_node(target_ref)
+	return state.call("resolve_target_node", target_ref)
 
 
 func _project_world_to_canvas(world_position: Vector3) -> Vector2:

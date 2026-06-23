@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://scripts/l1/facts/emitters/RoleStateFactEmitter.gd" id="5_role_state_fact_emitter"]
 [ext_resource type="Script" path="res://scripts/l1/facts/emitters/PhysiologyStateFactEmitter.gd" id="6_physiology_state_fact_emitter"]
 [ext_resource type="Script" path="res://scripts/character/CharacterRuntimeFeedback.gd" id="7_runtime_feedback"]
+[ext_resource type="Script" path="res://scripts/character/PerceptionConeDebug.gd" id="8_perception_debug"]
 
 [node name="CharacterReplica" type="Node3D"]
 script = ExtResource("1_character")
@@ -34,6 +35,10 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8, 0)
 text = "Replica"
 font_size = 32
 billboard = 1
+
+[node name="PerceptionConeDebug" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.55, 0)
+script = ExtResource("8_perception_debug")
 
 [node name="CharacterRuntimeFeedback" type="Node" parent="."]
 script = ExtResource("7_runtime_feedback")

@@ -9,9 +9,9 @@ def test_observatory_input_controller_binds_required_developer_controls() -> Non
 
     assert "KEY_F6" in source
     assert "KEY_F7" in source
-    assert "KEY_F8" in source
+    assert "KEY_F9" in source
     assert "KEY_TAB" in source
-    assert "KEY_SPACE" in source
+    assert "KEY_F10" in source
     assert "KEY_ESCAPE" in source
     assert "click-to-lock" not in source.lower()
     assert "select_actor_by_click" in source

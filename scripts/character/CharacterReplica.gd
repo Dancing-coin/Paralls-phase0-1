@@ -55,11 +55,13 @@ const CHARACTER_ACTOR_FAILURE_TARGET_NOT_VISIBLE := "target_not_visible"
 const CHARACTER_ACTOR_FAILURE_TARGET_OUT_OF_RANGE := "target_out_of_range"
 const CHARACTER_ACTOR_FAILURE_TARGET_UNREACHABLE := "target_unreachable"
 const CHARACTER_ACTOR_FAILURE_TARGET_NOT_PERCEIVED := "target_not_perceived"
+const FOCUS_ANCHOR_LOCAL_OFFSET := Vector3(0.0, 1.55, 0.0)
 
 @onready var visual_root: Node3D = $VisualRoot
 @onready var role_asset_root: Node3D = $VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot
 @onready var role_asset_scene: Node = $VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/KnightRoleSkin
 @onready var runtime_feedback: Node = $CharacterRuntimeFeedback
+@onready var perception_cone_debug: MeshInstance3D = $PerceptionConeDebug
 # Historical contract note for static architecture guards:
 # @onready var runtime_state: CharacterRuntimeState = CharacterRuntimeStateRef.new()
 @onready var runtime_state = CharacterRuntimeStateRef.new()
@@ -89,10 +91,16 @@ var focus_attention_posture_timer := 0.0
 var last_root_motion_world_delta := Vector3.ZERO
 var last_locomotion_status_signature := ""
 var last_role_state_fact := ""
+var last_player_root_motion_log_ms := 0
+var last_patrol_root_motion_log_ms := 0
+
+const ROOT_MOTION_LOG_COOLDOWN_MS := 250
 
 func _ready() -> void:
 	home_position = global_position
 	current_look_target = global_position - global_basis.z
+	if perception_cone_debug:
+		perception_cone_debug.position = FOCUS_ANCHOR_LOCAL_OFFSET
 	_apply_asset_mode()
 	_normalize_patrol_points()
 	_apply_visual_config()
@@ -143,6 +151,17 @@ func clear_look_target() -> void:
 func set_visual_shell_visible(is_visible: bool) -> void:
 	if visual_root:
 		visual_root.visible = is_visible
+
+func set_perception_debug_visible(is_visible: bool) -> void:
+	if perception_cone_debug and perception_cone_debug.has_method("set_debug_visible"):
+		perception_cone_debug.set_debug_visible(is_visible)
+
+func configure_perception_debug(range_m: float, half_fov_degrees: float) -> void:
+	if perception_cone_debug and perception_cone_debug.has_method("set_parameters"):
+		perception_cone_debug.set_parameters(range_m, half_fov_degrees)
+
+func get_focus_anchor_position() -> Vector3:
+	return global_position + FOCUS_ANCHOR_LOCAL_OFFSET
 
 func perform_action(action_name: String) -> void:
 	runtime_state.set_requested_action(action_name)
@@ -230,7 +249,7 @@ func consume_player_root_motion_request(delta: float) -> Vector3:
 	var requested_step: Vector3 = move_direction * motion_amount
 	current_velocity = requested_step / max(delta, 0.0001)
 	last_root_motion_world_delta = requested_step
-	_bus_log("player_root_motion_step:%s" % actor_id)
+	_log_root_motion_step("player_root_motion_step", true)
 	return requested_step
 
 func apply_embodied_pose_sync(world_position: Vector3, planar_velocity: Vector3, look_target: Vector3, is_grounded: bool, player_motion_state: Dictionary = {}) -> void:
@@ -278,9 +297,7 @@ func get_embodied_anchor_position() -> Vector3:
 	return global_position
 
 func get_embodied_forward_vector() -> Vector3:
-	if role_asset_scene is Node3D:
-		return -((role_asset_scene as Node3D).global_basis.z).normalized()
-	return -(global_basis.z).normalized()
+	return global_basis.z.normalized()
 
 func apply_dialogue(payload: Dictionary) -> void:
 	var voice := get_node_or_null("SpatialVoiceController")
@@ -623,7 +640,7 @@ func _move_toward_target(target: Vector3, delta: float, clear_on_arrival: bool) 
 			global_position += world_step
 			current_velocity = world_step / max(delta, 0.0001)
 			last_root_motion_world_delta = world_step
-			_bus_log("patrol_root_motion_step:%s" % actor_id)
+			_log_root_motion_step("patrol_root_motion_step", false)
 			return
 
 	current_velocity = current_velocity.move_toward(move_direction * move_speed, move_accel * delta)
@@ -973,6 +990,19 @@ func _emit_locomotion_status_if_changed() -> void:
 			"active" if status["root_motion_active"] else "inactive",
 		]
 	)
+
+
+func _log_root_motion_step(marker: String, is_player_step: bool) -> void:
+	var now_ms := Time.get_ticks_msec()
+	if is_player_step:
+		if now_ms - last_player_root_motion_log_ms < ROOT_MOTION_LOG_COOLDOWN_MS:
+			return
+		last_player_root_motion_log_ms = now_ms
+	else:
+		if now_ms - last_patrol_root_motion_log_ms < ROOT_MOTION_LOG_COOLDOWN_MS:
+			return
+		last_patrol_root_motion_log_ms = now_ms
+	_bus_log("%s:%s" % [marker, actor_id])
 
 func _apply_player_locomotion_profile() -> void:
 	var motion_profile: String = runtime_state.resolve_player_gait_motion_profile()

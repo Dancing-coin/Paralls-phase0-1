@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from types import SimpleNamespace
 
 
 DEFAULT_GODOT_EXE = Path(r"E:\下载\Godot_v4.6.3-stable_win64.exe\Godot_v4.6.3-stable_win64_console.exe")
@@ -82,6 +85,93 @@ def run_command(args: list[str], cwd: Path, log_path: Path, env: dict[str, str] 
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.write_text(result.stdout, encoding="utf-8")
     return result
+
+
+def run_command_until_markers(
+    args: list[str],
+    cwd: Path,
+    log_path: Path,
+    *,
+    success_markers: list[str],
+    timeout_seconds: float,
+    env: dict[str, str] | None = None,
+) -> SimpleNamespace:
+    merged_env = os.environ.copy()
+    if env:
+        merged_env.update(env)
+    process = subprocess.Popen(
+        args,
+        cwd=str(cwd),
+        env=merged_env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+    )
+    output_lines: list[str] = []
+    line_queue: queue.Queue[str | None] = queue.Queue()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_handle = log_path.open("w", encoding="utf-8")
+
+    def _reader() -> None:
+        if process.stdout is None:
+            line_queue.put(None)
+            return
+        try:
+            for line in iter(process.stdout.readline, ""):
+                output_lines.append(line)
+                log_handle.write(line)
+                log_handle.flush()
+                line_queue.put(line)
+        finally:
+            try:
+                process.stdout.close()
+            except Exception:
+                pass
+            try:
+                log_handle.flush()
+                log_handle.close()
+            except Exception:
+                pass
+            line_queue.put(None)
+
+    reader_thread = threading.Thread(target=_reader, daemon=True)
+    reader_thread.start()
+    marker_found = False
+    deadline = time.time() + timeout_seconds
+    try:
+        while time.time() < deadline:
+            if process.poll() is not None:
+                break
+            try:
+                item = line_queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            if item is None:
+                break
+            if any(marker in item for marker in success_markers):
+                marker_found = True
+                break
+        if marker_found and process.poll() is None:
+            process.terminate()
+    finally:
+        if process.poll() is None:
+            process.kill()
+        try:
+            process.wait(timeout=5.0)
+        except subprocess.TimeoutExpired:
+            pass
+        reader_thread.join(timeout=5.0)
+    output = "".join(output_lines)
+    if not marker_found and any(marker in output for marker in success_markers):
+        marker_found = True
+    return SimpleNamespace(
+        returncode=0 if marker_found else (process.returncode if process.returncode is not None else 1),
+        stdout=output,
+        marker_found=marker_found,
+    )
 
 
 def ensure_godot_import(project_root: Path, godot_exe: Path, log_name: str = "godot-import.log") -> subprocess.CompletedProcess[str]:
