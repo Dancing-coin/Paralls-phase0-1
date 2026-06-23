@@ -76,12 +76,18 @@ Status: approved
 
 司命输出必须先转成“该角色有资格收到的输入对象”，再进入角色 `L2 / L3 / L4`。
 
+补充约束：
+
+- 在架构归属上，`SimingCharacterDispatchAdapter` 属于角色私有输入编译链的特例分支
+- 它不是独立于角色感知链之外的长期旁路输入系统
+- 第一阶段仅在物理落点上复用 `ingest_siming_output(payload)` 做兼容承接
+
 ### 4. 双通道回流
 
 角色回流要同时覆盖：
 
 - 公共世界可见结果
-- 本地可审计但不公开的承接摘要
+- 受限审计面可见、默认不进入公共业务总线的承接摘要
 
 ### 5. 公共层与本地层分离
 
@@ -143,9 +149,17 @@ Authority Event Bus
 职责：
 
 - 接收 `siming.*` 总线事件
-- 按 `routing.target_ids` 和目标 actor 生成角色私有输入
+- 按 `routing.target_ids` 和目标 actor 逐角色 fan-out
+- 为每个 actor 生成单独的角色私有输入实例
 - 将司命高层消息转换为当前角色 runtime 能消费的兼容 payload
 - 调用现有 `CharacterAgentRuntime.ingest_siming_output(payload)`
+- 在投递时执行合法性检查
+
+架构定位：
+
+- 输出在类型归属上属于角色正式输入族中的 `SimingHighLevelMessage`
+- 它不是原始世界感知链上的 `CharacterPerceivedEvent`
+- 第一阶段只是在运行时落点上复用现有 `ingest_siming_output(payload)`
 
 这是本设计的关键边界层。
 
@@ -172,13 +186,23 @@ Authority Event Bus
 
 职责：
 
-- 将角色已承诺、已外化、已结算的结构化结果重新写回总线
-- 同时为 replay / audit 生成本地承接摘要
+- 位于 `CharacterAgentRuntime` 外部
+- 将角色侧外化结果写回总线
+- 为 replay / audit 生成受限承接摘要
+- 关联 `ESM` / 会话链产生的权威结算结果
 
 不负责：
 
+- 重复生产 `world_result`
+- 重复生产 `constraint_result`
+- 重复生产 `conversation_resolution`
 - 暴露角色完整 chain-of-thought
 - 暴露角色私有心理真值
+
+说明：
+
+- 角色可以回写“我做了什么”
+- 不能回写“世界最终成立了什么”或“会话最终确认了什么”
 
 ## 消息分层
 
@@ -230,6 +254,17 @@ canonical 字段采用：
 - `siming.opportunity`
 - `siming.fact_reveal`
 
+本 spec 的作用域只覆盖 `character_input_path`。
+
+不覆盖：
+
+- `environment_change_path`
+- `visual_fact_path`
+- `l3_highlight_path`
+- `siming.environment_request`
+- `siming.visual_observability_request`
+- `siming.presentation_highlight_request`
+
 建议最小 `payload` 字段：
 
 - `message_id`
@@ -245,10 +280,27 @@ canonical 字段采用：
 - `world_ts` 可选，仅留在 payload / 领域对象
 - `sim_tick_ts` 可选，仅留在 payload / 领域对象
 
+其中 `fact_reveal` 只允许表达“事实接入权限变化”，不允许表达“直接给角色结论”。
+
+允许：
+
+- 已成立事实的可接触引用
+- 已存在信息项的接入窗口
+- 角色通过当前催化合法接触到的信息
+
+不允许：
+
+- 司命内部公平判断
+- 高阶知识图谱全局真值
+- 角色最终结论
+- `you_now_believe_X`
+- `you_should_suspect_Y`
+
 ### 第 3 层：角色兼容输入对象
 
 为了兼容当前仓库实现，adapter 可继续生成现有 runtime 已支持的输入字段，例如：
 
+- `delivery_id`
 - `target_actor_id`
 - `target_object_id`
 - `target_environment_id`
@@ -262,6 +314,12 @@ canonical 字段采用：
 - 对外使用 canonical `AuthorityEvent`
 - 对内保留兼容 payload
 - 未来若角色输入合同升级，只替换 adapter，不动司命主链与角色心智主链
+
+其中：
+
+- `message_id` 标识原始司命高层消息
+- `delivery_id` 标识某次 fan-out 后落到某个角色的私有输入实例
+- 多目标分发时，必须为每个 actor 生成独立 `delivery_id`
 
 ## 角色本地状态边界
 
@@ -282,43 +340,57 @@ canonical 字段采用：
 
 ## 双向回流闭环
 
-### 通道 A：公共结果通道
+### 通道 A：结构化外化结果通道
 
-只回写世界和其他系统需要知道的结构化结果：
+只回写角色侧真正外化的结构化结果：
 
-- `IntentCommitted`
 - `SpeechActPublished`
 - `ActionRequestIssued`
 - `InformationShareIssued`
 - `SocialSignalPublished`
 - `AutonomyModeChanged`
-- `world_result`
-- `constraint_result`
-- `conversation_resolution`
 
 司命应基于这些对象判断：
 
 - 角色是否真正接住了催化
 - 是否形成了外部可见行为
-- 世界和会话层面最终发生了什么
+- 后续是否引出了世界或会话层结算
 
-### 通道 B：本地 audit / replay 通道
+补充约束：
 
-只写入调试、审计和角色工作台所需摘要，不作为公共世界广播：
+- 进入总线不等于全局公开
+- `SpeechActPublished`
+- `InformationShareIssued`
+- `SocialSignalPublished`
+
+都必须继续受 `routing.audience_mode / routing.dialog_group_id / routing.target_ids` 约束
+
+### 通道 B：受限审计结果通道
+
+只写入调试、审计、工作台或受限内部审计流，不作为公共业务广播：
 
 - `InterpretationSummary`
 - `BeliefAffectDeltaSummary`
 - `CandidateShiftSummary`
 - `FilterDecisionSummary`
+- `IntentCommitted`
 - `IntentRejected`
 - `IntentDeferred`
 - `SuggestedOnly`
+- `rejected_by_filter`
+- `blocked_by_world_constraint`
 
 这条链用来回答：
 
 - 角色为什么没接住
 - 玩家接管下是否只生成了建议
 - 是角色拒绝，还是 `ESM` 拒绝，还是环境约束拒绝
+
+默认规则：
+
+- 司命主业务判断默认不依赖 `IntentCommitted`
+- 司命默认看“做没做出来”
+- `IntentCommitted` 属于受限审计对象，而不是默认公共结果对象
 
 ### 闭环判定规则
 
@@ -369,6 +441,7 @@ siming message emitted
 整条链至少要稳定传递以下关联键：
 
 - `message_id`
+- `delivery_id`
 - `event_id`
 - `correlation_id`
 - `causation_id`
@@ -376,9 +449,43 @@ siming message emitted
 它们分别回答：
 
 - 这是哪条司命消息
+- 这是哪次逐角色投递实例
 - 这是哪次具体事件
 - 这条链属于哪次整体影响链
 - 这次结果直接由谁触发
+
+## 合法性检查分层
+
+### `SimingRuntime`
+
+负责业务层合法性：
+
+- 这条消息是否应发出
+- 这条 `fact_reveal` 是否引用合法事实
+- 这条 `opportunity` 是否确有窗口
+- 目标 actor 集合与 `reason_tag` 是否合理
+
+### `SimingCharacterDispatchAdapter`
+
+负责投递时合法性：
+
+- `routing.target_ids` 是否仍可落到该 actor
+- `ttl` 是否过期
+- actor 当前是否仍支持接收该类消息
+- fan-out 后是否能成功实例化单角色输入
+- 失败时记录 `expired / unroutable / target_unavailable`
+
+### `CharacterAgentRuntime`
+
+负责角色承接合法性：
+
+- 消息合法送达后，角色是否接受
+- 如何解释、过滤、拒绝或建议化
+
+不负责：
+
+- 兜底总线分发错误
+- 兜底过期投递错误
 
 ## 最小落地策略
 
@@ -414,6 +521,20 @@ siming message emitted
 
 而不是长期 canonical 协作面。
 
+过渡钩子只允许：
+
+- 维持现有输出顺序
+- 承担兼容层 envelope 转发
+- 在迁移阶段挂接 adapter 结果
+
+过渡钩子不允许：
+
+- 新增司命业务判断
+- 新增角色筛选逻辑
+- 决定角色是否执行
+- 新增世界结算逻辑
+- 维护长期 canonical schema
+
 ### 第二阶段演进位
 
 后续若角色智能体切换到正式私有输入事件合同：
@@ -442,6 +563,10 @@ siming message emitted
    - `world_ts`
    - 角色私有运行态字段
    - chain-of-thought
+8. adapter 验证的不只是“送达”，还包括语义不降级：
+   - `impulse` 不得降级为低层动作命令
+   - `fact_reveal` 不得降级为角色最终结论
+   - 角色 runtime 看到的仍然是输入材料，而不是已决定结果
 
 ## 风险与后续专题
 
