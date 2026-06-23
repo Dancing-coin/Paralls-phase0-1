@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 from app.verification_audit import evaluate_phase0_audit
 
 from common import (
+    ensure_godot_import,
     ensure_backend,
     read_text,
     repo_root,
@@ -45,6 +46,28 @@ def _read_character_agent_execution_result(log_dir: Path, project_root: Path, py
     return json.loads(report_path.read_text(encoding="utf-8"))
 
 
+def _read_character_director_observatory_result(log_dir: Path, project_root: Path, python_exe: str, godot_exe: Path) -> dict[str, object]:
+    probe_log = log_dir / "character-director-observatory-from-phase0.log"
+    run_command(
+        [
+            python_exe,
+            str(project_root / "scripts" / "verification" / "verify_character_director_observatory.py"),
+            "--python-exe",
+            python_exe,
+            "--godot-exe",
+            str(godot_exe),
+        ],
+        project_root,
+        probe_log,
+    )
+    report_path = log_dir / "character-director-observatory-report.json"
+    if not report_path.exists():
+        return {}
+    import json
+
+    return json.loads(report_path.read_text(encoding="utf-8"))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--godot-exe", default=None)
@@ -59,6 +82,7 @@ def main() -> int:
     backend_process = None
     try:
         health, backend_process = ensure_backend(project_root, python_exe, prefer_fresh_backend=True)
+        ensure_godot_import(project_root, godot_exe, "phase0-godot-import.log")
 
         pytest_log = log_dir / "phase0-pytest.log"
         pytest_result = run_command([python_exe, "-m", "pytest", "-v"], project_root / "backend", pytest_log)
@@ -168,6 +192,46 @@ def main() -> int:
                 ]
                 report["results"].append(entry)
                 break
+        observatory_probe_report = _read_character_director_observatory_result(log_dir, project_root, python_exe, godot_exe)
+        observatory_probe_results = observatory_probe_report.get("results", []) if isinstance(observatory_probe_report, dict) else []
+        observatory_ids = {
+            "observatory_state_payloads",
+            "observatory_panels_populated",
+            "observatory_freeze_roundtrip",
+        }
+        if observatory_probe_results:
+            report["results"] = [
+                existing
+                for existing in report["results"]
+                if str(existing.get("id", "")) not in observatory_ids
+            ]
+            for entry in observatory_probe_results:
+                if isinstance(entry, dict) and str(entry.get("id", "")) in observatory_ids:
+                    report["results"].append(entry)
+        strict_ids = [
+            "backend_tests",
+            "scene_load",
+            "backend_connectivity",
+            "dialogue_loop",
+            "successful_interaction",
+            "failed_interaction",
+            "visible_world_state_change",
+            "esm_request_lineage",
+            "esm_thermal_field",
+            "siming_reaction",
+            "voice_stub_path",
+            "player_root_motion_chain",
+            "npc_root_motion_patrol",
+            "locomotion_state_ui",
+            "jump_variant_probes",
+            "forward_direction_probe",
+            "repeatable_run",
+            "observatory_state_payloads",
+            "observatory_panels_populated",
+            "observatory_freeze_roundtrip",
+        ]
+        index = {str(entry["id"]): str(entry["status"]) for entry in report["results"]}
+        report["overall_strict_phase0_passed"] = all(index.get(result_id) == "proved" for result_id in strict_ids)
         report["backend_health"] = health
         report["artifacts"] = {
             "pytest_log": str(pytest_log),
@@ -178,6 +242,7 @@ def main() -> int:
             "focus_screenshot": str(focus_screenshot),
             "runtime_trace": str(runtime_trace),
             "character_agent_execution_report": str(log_dir / "character-agent-execution-report.json"),
+            "character_director_observatory_report": str(log_dir / "character-director-observatory-report.json"),
         }
 
         json_path = log_dir / "phase0-report.json"

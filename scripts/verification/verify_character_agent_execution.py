@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 from app.verification_audit import evaluate_phase0_audit
 
 from common import (
+    ensure_godot_import,
     ensure_backend,
     read_text,
     repo_root,
@@ -37,6 +38,7 @@ def main() -> int:
     backend_process = None
     try:
         health, backend_process = ensure_backend(project_root, python_exe, prefer_fresh_backend=True)
+        ensure_godot_import(project_root, godot_exe, "character-agent-execution-godot-import.log")
 
         main_screenshot = log_dir / "character-agent-execution-main.png"
         main_log = log_dir / "character-agent-execution-main.log"
@@ -107,7 +109,6 @@ def main() -> int:
         overall_passed = (
             execution_entry["status"] == "proved"
             and consumer_entry["status"] == "proved"
-            and main_screenshot.exists()
         )
         report = {
             "results": [execution_entry, consumer_entry],

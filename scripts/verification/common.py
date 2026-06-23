@@ -84,6 +84,25 @@ def run_command(args: list[str], cwd: Path, log_path: Path, env: dict[str, str] 
     return result
 
 
+def ensure_godot_import(project_root: Path, godot_exe: Path, log_name: str = "godot-import.log") -> subprocess.CompletedProcess[str]:
+    log_dir = verification_dir(project_root)
+    log_path = log_dir / log_name
+    return run_command(
+        [
+            str(godot_exe),
+            "--path",
+            str(project_root),
+            "--import",
+            "--quit",
+            "--verbose",
+            "--render-thread",
+            "safe",
+        ],
+        project_root,
+        log_path,
+    )
+
+
 def get_health(url: str = "http://127.0.0.1:8000/health") -> dict[str, object] | None:
     try:
         with urllib.request.urlopen(url, timeout=1.0) as response:

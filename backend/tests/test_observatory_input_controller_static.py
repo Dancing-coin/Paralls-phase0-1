@@ -15,3 +15,5 @@ def test_observatory_input_controller_binds_required_developer_controls() -> Non
     assert "KEY_ESCAPE" in source
     assert "click-to-lock" not in source.lower()
     assert "select_actor_by_click" in source
+    assert "state.set_freeze_mode(not state.freeze_mode)" in source
+    assert "state.set_freeze_mode(false)" in source

@@ -616,7 +616,11 @@ def test_handle_envelope_visual_fact_mirror_after_focus_returns_ack_only() -> No
         )
     )
 
-    assert [message["message_type"] for message in visual_messages] == ["ack"]
+    assert visual_messages[0]["message_type"] == "ack"
+    assert visual_messages[0]["payload"]["route"] == "authority_visual_fact"
+    assert not any(message["message_type"] == "character_agent_execution" for message in visual_messages[1:])
+    assert not any(message["message_type"] == "siming_output" for message in visual_messages[1:])
+    assert any(message["message_type"] == "siming_debug_snapshot" for message in visual_messages[1:])
 
 
 def test_handle_envelope_raw_visual_fact_mirror_after_focus_matches_legacy_ack_only() -> None:
@@ -662,6 +666,25 @@ def test_handle_envelope_raw_visual_fact_mirror_after_focus_matches_legacy_ack_o
         )
     )
 
+    assert legacy_messages[0] == {
+        "message_type": "ack",
+        "payload": {
+            "accepted": True,
+            "source_type": "visual_fact_event",
+            "route": "authority_visual_fact",
+        },
+    }
+    assert raw_messages[0] == {
+        "message_type": "ack",
+        "payload": {
+            "accepted": True,
+            "source_type": "raw_fact_event",
+            "route": "authority_visual_fact",
+        },
+    }
+    assert not any(message["message_type"] == "character_agent_execution" for message in legacy_messages[1:])
+    assert not any(message["message_type"] == "character_agent_execution" for message in raw_messages[1:])
+    assert legacy_messages[1:] == raw_messages[1:]
     assert len(legacy_messages) == 1
     assert legacy_messages[0]["message_type"] == "ack"
     assert legacy_messages[0]["payload"]["accepted"] is True

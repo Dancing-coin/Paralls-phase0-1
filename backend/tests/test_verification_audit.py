@@ -165,6 +165,40 @@ def test_phase0_main_demo_suppresses_free_move_intent_loop_during_focus_autotest
     assert "if autotest_enabled or focus_autotest_enabled:" in emit_move_section
 
 
+def test_phase0_audit_proves_observatory_runtime_evidence() -> None:
+    report = evaluate_phase0_audit(
+        pytest_passed=True,
+        scene_load_ok=True,
+        main_log="""
+        [LocalPresentationBus] backend_connected:ws://127.0.0.1:8000/ws
+        character_director_observatory_probe:state_payloads_ok=true
+        character_director_observatory_probe:panels_populated=true
+        character_director_observatory_probe:freeze_roundtrip_ok=true
+        [LocalPresentationBus] character_agent_debug_snapshot:{"actor_id":"char_a"}
+        [LocalPresentationBus] siming_debug_snapshot:{"selected_path":"visual_fact_path"}
+        [LocalPresentationBus] world_outcome_trace:{"request_type":"inspect"}
+        [LocalPresentationBus] script_beat_event:{"correlation_id":"corr-1"}
+        [LocalPresentationBus] phase0_screenshot_saved:D:\\demo-main.png:0
+        """,
+        focus_log="""
+        [LocalPresentationBus] phase0_screenshot_saved:D:\\demo-focus.png:0
+        """,
+        main_screenshot_exists=True,
+        focus_screenshot_exists=True,
+        interaction_source="request_ref=world_result.request_ref",
+        esm_service_source='"thermal_level"',
+        voice_controller_source='func play_stub_voice(_payload: Dictionary) -> void:\n    _bus_log("voice_stub_played")',
+        player_bridge_source='func before_player_shell_move(delta: float) -> void:\n    _apply_player_root_motion_drive(delta)',
+        character_replica_source='func consume_player_root_motion_request(delta: float) -> Vector3:\n    return _consume_role_root_motion_world_delta()',
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert results["observatory_state_payloads"]["status"] == "proved"
+    assert results["observatory_panels_populated"]["status"] == "proved"
+    assert results["observatory_freeze_roundtrip"]["status"] == "proved"
+
+
 def test_backend_interact_route_emits_failed_interaction_diagnostics() -> None:
     project_root = Path(__file__).resolve().parents[2]
     main_source = (project_root / "backend" / "app" / "main.py").read_text(encoding="utf-8")

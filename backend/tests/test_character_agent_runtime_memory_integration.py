@@ -244,8 +244,79 @@ def test_runtime_records_l4_execution_request_for_full_auto_actor() -> None:
 
     runtime.ingest_character_perceived_event(event)
     timeline = runtime.get_session_timeline("char_a")
+    observatory_messages = runtime.drain_observatory_messages("char_a")
+    execution_events = [
+        message["payload"]
+        for message in observatory_messages
+        if message["message_type"] == "character_agent_debug_event"
+        and message["payload"]["stage"] == "execution_request"
+    ]
 
     assert any(entry["event_type"] == "character_agent_execution_request" for entry in timeline)
+    assert execution_events
+
+
+def test_runtime_record_settlement_result_updates_observatory_snapshot_and_event() -> None:
+    runtime = CharacterAgentRuntime()
+    runtime.record_settlement_result(
+        actor_id="char_a",
+        producer_ts=1301,
+        payload={
+            "result_type": "constraint_state_result",
+            "actor_id": "char_a",
+            "constraint_summary": "too far from obj_letter",
+            "causation_id": "interact:1301",
+            "correlation_id": "interact:1301",
+        },
+    )
+
+    observatory_messages = runtime.drain_observatory_messages("char_a")
+    snapshots = [
+        message["payload"]
+        for message in observatory_messages
+        if message["message_type"] == "character_agent_debug_snapshot"
+    ]
+    settlement_events = [
+        message["payload"]
+        for message in observatory_messages
+        if message["message_type"] == "character_agent_debug_event"
+        and message["payload"]["stage"] == "settlement_result"
+    ]
+
+    assert settlement_events
+    assert settlement_events[-1]["summary"] == "too far from obj_letter"
+    assert snapshots[-1]["latest_outcome_summary"] == "too far from obj_letter"
+
+
+def test_runtime_record_dialogue_response_updates_observatory_snapshot_and_event() -> None:
+    runtime = CharacterAgentRuntime()
+    runtime.record_dialogue_response(
+        actor_id="char_b",
+        producer_ts=1302,
+        payload={
+            "actor_id": "char_b",
+            "content": "Keep your eyes on the letter.",
+            "causation_id": "dialogue:1302",
+            "correlation_id": "dialogue:1302",
+        },
+    )
+
+    observatory_messages = runtime.drain_observatory_messages("char_b")
+    snapshots = [
+        message["payload"]
+        for message in observatory_messages
+        if message["message_type"] == "character_agent_debug_snapshot"
+    ]
+    dialogue_events = [
+        message["payload"]
+        for message in observatory_messages
+        if message["message_type"] == "character_agent_debug_event"
+        and message["payload"]["stage"] == "dialogue_writeback"
+    ]
+
+    assert dialogue_events
+    assert dialogue_events[-1]["summary"] == "Keep your eyes on the letter."
+    assert snapshots[-1]["latest_outcome_summary"] == "Keep your eyes on the letter."
 
 
 def test_runtime_still_returns_legacy_goal_commands_while_recording_execution_requests() -> None:

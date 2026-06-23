@@ -619,11 +619,24 @@ def test_websocket_environment_request_accepts_light_level_restore_variant() -> 
             }
         )
 
-        ack = websocket.receive_json()
-        action_request = websocket.receive_json()
-        action_resolution = websocket.receive_json()
-        transition = websocket.receive_json()
-        environment_result = websocket.receive_json()
+        received = []
+        while True:
+            message = websocket.receive_json()
+            received.append(message)
+            message_types = {entry["message_type"] for entry in received}
+            world_result_types = {
+                entry.get("event_type", "")
+                for entry in received
+                if entry["message_type"] == "world_result"
+            }
+            if (
+                "ack" in message_types
+                and "action_request" in message_types
+                and "state_machine_transition" in message_types
+                and "action_resolution_result" in world_result_types
+                and "environment_state_result" in world_result_types
+            ):
+                break
 
     assert drop_siming_output["message_type"] == "siming_output"
     assert drop_siming_output["payload"]["authority_event_type"] == "siming.fact_reveal"
@@ -631,6 +644,21 @@ def test_websocket_environment_request_accepts_light_level_restore_variant() -> 
     assert drop_siming_output["payload"]["target_environment_id"] == "env_lamp"
     assert drop_character_agent_execution["message_type"] == "character_agent_execution"
     assert drop_character_agent_execution["payload"]["actor_id"] == "char_b"
+    ack = next(message for message in received if message["message_type"] == "ack")
+    action_request = next(message for message in received if message["message_type"] == "action_request")
+    action_resolution = next(
+        message
+        for message in received
+        if message["message_type"] == "world_result"
+        and message["event_type"] == "action_resolution_result"
+    )
+    transition = next(message for message in received if message["message_type"] == "state_machine_transition")
+    environment_result = next(
+        message
+        for message in received
+        if message["message_type"] == "world_result"
+        and message["event_type"] == "environment_state_result"
+    )
     assert ack["message_type"] == "ack"
     assert ack["payload"]["accepted"] is True
     assert ack["payload"]["route"] == "esm_service"

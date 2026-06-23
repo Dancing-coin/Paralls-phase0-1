@@ -92,3 +92,23 @@ def test_siming_debug_projection_builds_no_action_and_decision_events() -> None:
     assert decision_event.downstream_status == "published"
     assert no_action_event.stage == "no_action"
     assert no_action_event.no_action_reason == "no eligible intervention"
+
+
+def test_siming_debug_projection_supports_runtime_stage_markers() -> None:
+    event = make_visual_fact_event()
+    projection = SimingDebugProjection()
+
+    fairness_event = projection.project_event(
+        source_event=event,
+        stage="fairness_snapshot",
+        summary="scene balance reviewed",
+        selected_path="no_action",
+        intervention_band="none",
+        target_ref="",
+        reason_summary="",
+        downstream_status="audit_only",
+        no_action_reason="",
+    )
+
+    assert fairness_event.stage == "fairness_snapshot"
+    assert fairness_event.downstream_status == "audit_only"

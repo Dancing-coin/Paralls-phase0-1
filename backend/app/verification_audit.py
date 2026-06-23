@@ -401,6 +401,42 @@ def evaluate_phase0_audit(
         )
     )
 
+    observatory_state_payloads_ok = (
+        "character_director_observatory_probe:state_payloads_ok=true" in combined_log
+        and "character_agent_debug_snapshot" in combined_log
+        and "siming_debug_snapshot" in combined_log
+        and "world_outcome_trace" in combined_log
+        and "script_beat_event" in combined_log
+    )
+    results.append(
+        _result(
+            "observatory_state_payloads",
+            "Observatory state center receives actor/siming/world/script payloads",
+            "proved" if observatory_state_payloads_ok else "missing",
+            ["character_director_observatory_probe:state_payloads_ok=true"] if observatory_state_payloads_ok else [],
+        )
+    )
+
+    observatory_panels_populated_ok = "character_director_observatory_probe:panels_populated=true" in combined_log
+    results.append(
+        _result(
+            "observatory_panels_populated",
+            "Observatory workstation panels populate with dramatic scene data",
+            "proved" if observatory_panels_populated_ok else "missing",
+            ["character_director_observatory_probe:panels_populated=true"] if observatory_panels_populated_ok else [],
+        )
+    )
+
+    observatory_freeze_roundtrip_ok = "character_director_observatory_probe:freeze_roundtrip_ok=true" in combined_log
+    results.append(
+        _result(
+            "observatory_freeze_roundtrip",
+            "Observatory freeze mode can be entered and exited cleanly",
+            "proved" if observatory_freeze_roundtrip_ok else "missing",
+            ["character_director_observatory_probe:freeze_roundtrip_ok=true"] if observatory_freeze_roundtrip_ok else [],
+        )
+    )
+
     strict_ids = [
         "backend_tests",
         "scene_load",
@@ -419,6 +455,9 @@ def evaluate_phase0_audit(
         "jump_variant_probes",
         "forward_direction_probe",
         "repeatable_run",
+        "observatory_state_payloads",
+        "observatory_panels_populated",
+        "observatory_freeze_roundtrip",
     ]
     index = _status_index(results)
     overall_strict_phase0_passed = all(index[result_id] == "proved" for result_id in strict_ids)

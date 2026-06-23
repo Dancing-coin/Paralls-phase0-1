@@ -13,3 +13,7 @@ def test_script_timeline_panel_supports_beat_list_filter_and_detail() -> None:
     assert "expanded_beat_id" in source
     assert 'beat.get("correlation_id"' in source
     assert 'beat.get("participants"' in source
+    assert "_build_filtered_beats" in source
+    assert "_build_beat_summary_line" in source
+    assert "_build_expanded_payload_lines" in source
+    assert "sort_custom" in source or ".sort()" in source

@@ -40,6 +40,8 @@ class CharacterModelProvider:
         provider_kind = self._provider_kind
         if isinstance(route, dict):
             provider_kind = str(route.get("provider_kind", provider_kind) or provider_kind)
+        if not self._allow_live_provider_calls():
+            return self._offline_complete(request)
         if provider_kind == "local":
             return self._offline_complete(request)
         if provider_kind in {"deepseek", "hybrid"}:
@@ -51,6 +53,9 @@ class CharacterModelProvider:
             except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError):
                 return self._offline_complete(request)
         return self._offline_complete(request)
+
+    def _allow_live_provider_calls(self) -> bool:
+        return os.getenv("CHARACTER_MODEL_ALLOW_LIVE", "0").strip() == "1"
 
     def _complete_via_deepseek(self, request: dict[str, object]) -> dict[str, object]:
         if not self._endpoint_url or not self._api_key:

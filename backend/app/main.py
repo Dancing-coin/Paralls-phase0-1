@@ -86,6 +86,7 @@ class FrontendSimingCharacterDispatchAdapter(SimingCharacterDispatchAdapter):
         result = super().dispatch(event)
         _queue_siming_character_dispatch_messages(event.event_id, result)
         return result
+OBSERVATORY_STREAM_ENABLED = os.environ.get("PHASE0_OBSERVATORY_STREAM", "1") == "1"
 
 
 def reset_runtime_state() -> None:
@@ -1651,157 +1652,97 @@ def _emit_debug_from_messages(messages: list[dict[str, object]]) -> None:
             )
 
 
-def _character_agent_observatory_messages_from_execution_payload(payload: dict[str, object]) -> list[dict[str, object]]:
-    actor_id = str(payload.get("actor_id", "") or "")
-    producer_ts = 0
-    actor_control_frames = payload.get("actor_control_frames", [])
-    if isinstance(actor_control_frames, list) and actor_control_frames:
-        first_frame = actor_control_frames[0]
-        if isinstance(first_frame, dict):
-            producer_ts = int(first_frame.get("producer_ts", 0) or 0)
-    focus_target = ""
-    presentation_plan = payload.get("presentation_plan", {})
-    if isinstance(presentation_plan, dict):
-        focus_state = presentation_plan.get("focus_state", {})
-        if isinstance(focus_state, dict):
-            focus_target = str(focus_state.get("target_id", "") or "")
-    execution_summary = ""
-    social_spatial_channel = payload.get("social_spatial_channel", {})
-    if isinstance(social_spatial_channel, dict):
-        execution_summary = str(social_spatial_channel.get("spacing_behavior", "") or "")
-    snapshot_message = {
-        "message_type": "character_agent_debug_snapshot",
-        "payload": character_agent_debug_projection.project_snapshot(
-            actor_id=actor_id,
-            producer_ts=producer_ts,
-            snapshot=character_agent_runtime.get_private_snapshot(actor_id),
-            memory_bundle=character_agent_runtime.get_memory_bundle(actor_id),
-            interpretation_summary=str(payload.get("speech_channel", {}).get("utterance_request", "") if isinstance(payload.get("speech_channel"), dict) else ""),
-            decision_summary=str(payload.get("body_channel", {}).get("gesture_hint", "") if isinstance(payload.get("body_channel"), dict) else ""),
-            execution_summary=execution_summary,
-            latest_outcome_summary="",
-            latest_siming_summary="",
-        ).model_dump(exclude_none=True),
-    }
-    event_message = {
-        "message_type": "character_agent_debug_event",
-        "payload": character_agent_debug_projection.project_stage_event(
-            actor_id=actor_id,
-            producer_ts=producer_ts,
-            stage="execution_request",
-            summary=execution_summary or "execution request staged",
-            focus_target=focus_target,
-            intent_label=str(payload.get("body_channel", {}).get("gesture_hint", "") if isinstance(payload.get("body_channel"), dict) else ""),
-            participants=[value for value in [actor_id, focus_target] if value != ""],
-            detail={"message_family": "character_agent_execution"},
-        ).model_dump(exclude_none=True),
-    }
-    return [snapshot_message, event_message]
-
-
-def _character_agent_observatory_messages_from_suggestion_payload(payload: dict[str, object]) -> list[dict[str, object]]:
-    actor_id = str(payload.get("actor_id", "") or "")
-    producer_ts = int(payload.get("producer_ts", 0) or 0)
-    state = character_agent_debug_projection.project_stage_event(
-        actor_id=actor_id,
-        producer_ts=producer_ts,
-        stage="suggestion_packet",
-        summary=str(payload.get("why_this_now", "") or ""),
-        focus_target="",
-        intent_label=str((payload.get("recommended_intents") or [""])[0]),
-        participants=[actor_id],
-        detail=dict(payload),
-    )
-    return [
-        {
-            "message_type": "character_agent_debug_event",
-            "payload": state.model_dump(exclude_none=True),
-        }
-    ]
-
-
 def _observatory_messages_from_outbound(messages: list[dict[str, object]]) -> list[dict[str, object]]:
     extras: list[dict[str, object]] = []
+    extras.extend(character_agent_runtime.drain_observatory_messages())
+    extras.extend(siming_event_pipeline.drain_observatory_messages())
+    actor_events: list[dict[str, object]] = []
+    siming_events: list[dict[str, object]] = []
+    world_events: list[dict[str, object]] = []
     for message in messages:
         message_type = str(message.get("message_type", "") or "")
         payload = message.get("payload", {})
         if not isinstance(payload, dict):
             continue
-        if message_type == "character_agent_execution":
-            extras.extend(_character_agent_observatory_messages_from_execution_payload(payload))
-        elif message_type == "character_agent_suggestion":
-            extras.extend(_character_agent_observatory_messages_from_suggestion_payload(payload))
-        if message_type == "siming_output":
-            extras.extend(_siming_observatory_messages_from_payload(payload))
-        elif message_type == "world_result":
-            extras.extend(_world_outcome_observatory_messages_from_payload(payload))
+        if message_type == "world_result":
+            for world_message in _world_outcome_observatory_messages_from_payload(payload):
+                extras.append(world_message)
+                world_payload = world_message.get("payload", {})
+                if world_message.get("message_type") == "world_outcome_trace" and isinstance(world_payload, dict):
+                    world_events.append(world_payload)
+    for message in extras:
+        payload = message.get("payload", {})
+        if not isinstance(payload, dict):
+            continue
+        if message.get("message_type") == "character_agent_debug_event":
+            actor_events.append(payload)
+        elif message.get("message_type") == "siming_debug_event":
+            siming_events.append(payload)
+    extras.extend(_script_beat_messages_from_observatory_events(actor_events, siming_events, world_events))
     return extras
-
-
-def _siming_observatory_messages_from_payload(payload: dict[str, object]) -> list[dict[str, object]]:
-    source_event = _observatory_authority_event_from_payload(
-        payload,
-        event_type=str(payload.get("authority_event_type", "siming_output") or "siming_output"),
-        event_id=str(payload.get("authority_event_id", "") or str(payload.get("causation_id", "") or "siming_output")),
-    )
-    target_ref = (
-        str(payload.get("target_actor_id", "") or "")
-        or str(payload.get("target_object_id", "") or "")
-        or str(payload.get("target_environment_id", "") or "")
-    )
-    prompt_summary = str(payload.get("prompt_summary", "") or payload.get("presentation_hint", "") or "")
-    snapshot = siming_debug_projection.project_snapshot(
-        source_event=source_event,
-        fairness_summary=prompt_summary or "siming considered the current scene balance",
-        intervention_candidate=prompt_summary or "attention prompt candidate",
-        intervention_decision="emitted" if prompt_summary != "" else "no_action",
-        selected_path="character_input_path" if str(payload.get("target_actor_id", "") or "") != "" else "visual_fact_path",
-        intervention_band="fact_reveal",
-        target_ref=target_ref,
-        reason_summary=prompt_summary,
-        downstream_status="published",
-        no_action_reason="",
-    )
-    event = siming_debug_projection.project_event(
-        source_event=source_event,
-        stage="intervention_decision",
-        summary=prompt_summary or "siming emitted an observability cue",
-        selected_path=snapshot.selected_path,
-        intervention_band=snapshot.intervention_band,
-        target_ref=target_ref,
-        reason_summary=prompt_summary,
-        downstream_status="published",
-        no_action_reason="",
-    )
-    beat = script_beat_projection.project([], [event], [])
-    return [
-        {
-            "message_type": "siming_debug_snapshot",
-            "payload": snapshot.model_dump(exclude_none=True),
-        },
-        {
-            "message_type": "siming_debug_event",
-            "payload": event.model_dump(exclude_none=True),
-        },
-        {
-            "message_type": "script_beat_event",
-            "payload": beat.model_dump(exclude_none=True),
-        },
-    ]
 
 
 def _world_outcome_observatory_messages_from_payload(payload: dict[str, object]) -> list[dict[str, object]]:
     world_event = world_outcome_debug_projection.project(message_type="world_result", payload=payload)
-    beat = script_beat_projection.project([], [], [world_event])
     return [
         {
             "message_type": "world_outcome_trace",
             "payload": world_event.model_dump(exclude_none=True),
         },
+    ]
+
+
+def _script_beat_messages_from_observatory_events(
+    actor_events: list[dict[str, object]],
+    siming_events: list[dict[str, object]],
+    world_events: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    if not actor_events and not siming_events and not world_events:
+        return []
+    actor_models = [
+        character_agent_debug_projection.project_stage_event(
+            actor_id=str(event.get("actor_id", "") or ""),
+            producer_ts=int(event.get("producer_ts", 0) or 0),
+            stage=str(event.get("stage", "") or ""),
+            summary=str(event.get("summary", "") or ""),
+            focus_target=str(event.get("focus_target", "") or ""),
+            intent_label=str(event.get("intent_label", "") or ""),
+            participants=[str(value) for value in event.get("participants", [])],
+            detail=dict(event.get("detail", {})) if isinstance(event.get("detail", {}), dict) else {},
+        )
+        for event in actor_events
+        if str(event.get("actor_id", "") or "") != ""
+    ]
+    siming_models = [
+        siming_debug_projection.project_event(
+            source_event=_observatory_authority_event_from_payload(
+                event,
+                event_type="siming_debug_event",
+                event_id=str(event.get("causation_id", "") or "siming_debug_event"),
+            ),
+            stage=str(event.get("stage", "") or ""),
+            summary=str(event.get("summary", "") or ""),
+            selected_path=str(event.get("selected_path", "") or ""),
+            intervention_band=str(event.get("intervention_band", "") or ""),
+            target_ref=str(event.get("target_ref", "") or ""),
+            reason_summary=str(event.get("reason_summary", "") or ""),
+            downstream_status=str(event.get("downstream_status", "") or ""),
+            no_action_reason=str(event.get("no_action_reason", "") or ""),
+        )
+        for event in siming_events
+    ]
+    world_models = [
+        world_outcome_debug_projection.project(message_type="world_result", payload=event)
+        for event in world_events
+    ]
+    if not actor_models and not siming_models and not world_models:
+        return []
+    beat = script_beat_projection.project(actor_models, siming_models, world_models)
+    return [
         {
             "message_type": "script_beat_event",
             "payload": beat.model_dump(exclude_none=True),
-        },
+        }
     ]
 
 

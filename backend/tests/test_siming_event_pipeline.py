@@ -117,10 +117,23 @@ def test_pipeline_publishes_visual_observability_event_from_visual_fact_input() 
     assert "visual_fact_event" in event_types
     assert "siming.visual_observability_request" in event_types
     projected = bus.list_events(event_type="siming.visual_observability_request")[0]
+    observatory_messages = pipeline.drain_observatory_messages()
+    message_types = [message["message_type"] for message in observatory_messages]
+    stages = [
+        message["payload"]["stage"]
+        for message in observatory_messages
+        if message["message_type"] == "siming_debug_event"
+    ]
+
     assert projected.source.system == "siming.dispatcher"
     assert projected.causation_id == "visual_fact:300:char_c:light_level_drop"
     assert projected.payload["established_fact_id"] == "visual_fact:300:char_c:light_level_drop"
     assert audit_writer.find_by_correlation(room_id="room_demo", correlation_id="visual_fact:300")
+    assert "siming_debug_snapshot" in message_types
+    assert "fairness_snapshot" in stages
+    assert "intervention_candidate" in stages
+    assert "intervention_decision" in stages
+    assert "dispatch_finalized" in stages
 
 
 def test_pipeline_ignores_events_outside_siming_allowlist() -> None:
@@ -133,6 +146,7 @@ def test_pipeline_ignores_events_outside_siming_allowlist() -> None:
 
     assert [event.event_type for event in bus.list_events()] == ["presentation_event"]
     assert audit_writer.find_by_correlation(room_id="room_demo", correlation_id="visual_fact:300") == []
+    assert pipeline.drain_observatory_messages() == []
 
 
 def test_pipeline_publishes_llm_assisted_output_only_through_siming_event_producer() -> None:

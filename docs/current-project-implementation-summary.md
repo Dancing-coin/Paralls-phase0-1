@@ -1,6 +1,6 @@
 # 当前项目实现总结
 
-日期：`2026-06-21`
+日期：`2026-06-22`
 
 这份文档是当前仓库 `Paralls Phase 0 Demo` 的 repo-local 实现总结。
 
@@ -61,19 +61,22 @@
 - `python scripts/verification/harness.py --profile phase0` -> `overall_strict_phase0_passed=True`
 - `python scripts/verification/harness.py --profile phase1-slice` -> `overall_phase1_slice_passed=True`
 
-当前 `2026-06-21` observatory worktree 验证结果：
+当前 `2026-06-22` observatory finalization worktree 验证结果：
 
-- `python -m pytest -v` -> `648 passed`
+- `python -m pytest -v` -> `654 passed`
 - `python scripts/verification/harness.py --profile docs` -> `overall_docs_passed=True`
 - `python scripts/verification/harness.py --profile godot-project` -> `overall_godot_project_passed=True`
-- `python scripts/verification/harness.py --profile phase0` -> `overall_strict_phase0_passed=True`
+- `python scripts/verification/verify_character_agent_execution.py` -> `overall_character_agent_execution_passed=True`
+- `python scripts/verification/verify_character_director_observatory.py` -> `overall_character_director_observatory_passed=True`
+- `python scripts/verification/verify_phase0.py` -> `overall_strict_phase0_passed=True`
 
 当前 worktree 还新增了完整 `Character Director Observatory`：
 
-- backend 已落地结构化 observatory projection chain
+- backend 已落地结构化 observatory projection chain，并把 actor / Siming observatory emission ownership 移回 runtime owner
 - Godot 已落地 unified observatory state center
 - `ObservatoryRoot.tscn` 已正式挂进 `MainDemo`
 - observatory 默认 developer-only、hidden-by-default
+- default developer runtime websocket path 现在默认携带 observatory family
 
 当前 observatory backend family 为：
 
@@ -99,9 +102,13 @@
 
 当前 observatory runtime 边界为：
 
-- backend 普通 websocket 默认不附加 observatory family
-- 只有 `PHASE0_OBSERVATORY_STREAM=1` 时才会向普通 websocket 追加 observatory family
+- `CharacterAgentRuntime` 直接在 perception / self-body / Siming / interpretation / decision / execution / suggestion / settlement / dialogue writeback 阶段产出 observatory records
+- `SimingRuntime` / `SimingEventPipeline` 直接在 fairness / candidate / decision / dispatch / no-action 阶段产出 observatory records
+- `backend/app/main.py` 只 drain + deliver owner-emitted observatory records，并继续聚合 world/script 层
+- backend 普通 developer runtime websocket 默认附加 observatory family
 - Godot observatory root 默认关闭，需通过 `F6/F7/F8` 等开发者操作显式开启
+- `Freeze Mode` 现在通过 `CharacterDirectorState` frozen frame 保存可检查状态，而不是仅保留一个布尔开关
+- observatory 现在有专用 runtime probe：`CharacterDirectorObservatoryProbe`
 
 当前 verification truth 还新增了一条 repo-local 工程事实：
 
@@ -110,6 +117,7 @@
 - `MainDemoController` 现在会把首次 `backend_connected` 之前的 `backend_closed:-1` 视为启动期断连噪音，但仍会补发一次自动重连，避免 fresh-backend `phase0` 运行时验证停在首轮握手失败
 - `verify_l1_runtime_edges.py` 当前 hard-pass 已改按现行 runtime truth 判定：`backend_connected` + 初始 `zone bootstrap` + 无 HTTPRequest overlap error；旧 reconnect/privacy/environment edge probe 现在被显式 isolated，不再作为 hard-pass 前提
 - `verify_phase0.py` 当前也已去掉冗余的 `PHASE0_DEBUG_LOGGING=1` 强制注入；`PHASE0_AUTOTEST` / `PHASE0_FOCUS_AUTOTEST` 已足够打开验证日志，这次修正后 strict `phase0` broad runtime verification 重新转绿
+- `verify_phase0.py` / `verify_character_agent_execution.py` / `verify_character_director_observatory.py` 现在会先对当前 worktree 执行 Godot `--import --quit`，避免因为 active worktree 尚未生成 `.godot/imported` 缓存而把 strict runtime 误判成 scene-load failure
 - `CharacterRuntimeState` 已不再保留 `finalize_player_presentation_input()` 这层空转 presentation bridge，formal presentation contract 现在直接沿 shared runtime-state / skin boundary 流转
 - `CharacterReplica.apply_embodied_pose_sync(...)` 现在通过 `Phase0CharacterShellSync` 显式接收 player motion state，而不再从父节点隐式回查 `motion_state`
 - `CameraOcclusionFader` 现在只依赖 `PlayerShell.get_camera()` / `get_control_anchor_position()` 这层 wrapper seam，不再直接抓取 `Phase0InputBridge` 节点做 camera / anchor 查询

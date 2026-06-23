@@ -21,22 +21,125 @@ func _refresh() -> void:
 		return
 	visible = bool(state.observatory_enabled)
 	var payload: Dictionary = state.get_selected_actor_state()
-	attention_lines = [{"from": str(payload.get("actor_id", "") or ""), "to": str(payload.get("focus_target", "") or "")}]
-	dialogue_lines = [{"summary": str(payload.get("interpretation_summary", "") or "")}]
-	action_intent_lines = [{"summary": str(payload.get("current_intent", "") or "")}]
-	blocked_lines = [{"summary": str(payload.get("latest_outcome_summary", "") or "")}]
-	siming_influence_lines = [{"summary": str(payload.get("latest_siming_summary", "") or "")}]
-	target_markers = [{"target": str(payload.get("focus_target", "") or "")}]
+	attention_lines = _build_actor_line_family(state, payload, Color(0.45, 0.75, 1.0, 0.9), "focus_target", "attention")
+	dialogue_lines = _build_dialogue_line_family(state)
+	action_intent_lines = _build_actor_line_family(state, payload, Color(1.0, 0.75, 0.25, 0.9), "focus_target", "intent")
+	blocked_lines = _build_blocked_line_family(state)
+	siming_influence_lines = _build_siming_line_family(state)
+	target_markers = _build_target_markers(state, payload)
 	queue_redraw()
 
 
 func _draw() -> void:
-	var y := 24.0
-	for line_family in [attention_lines, dialogue_lines, action_intent_lines, blocked_lines, siming_influence_lines]:
-		for line in line_family:
-			draw_string(ThemeDB.fallback_font, Vector2(18, y), JSON.stringify(line), HORIZONTAL_ALIGNMENT_LEFT, -1, 14)
-			y += 18.0
+	for line in attention_lines:
+		_draw_overlay_line(line)
+	for line in dialogue_lines:
+		_draw_overlay_line(line)
+	for line in action_intent_lines:
+		_draw_overlay_line(line)
+	for line in blocked_lines:
+		_draw_overlay_line(line)
+	for line in siming_influence_lines:
+		_draw_overlay_line(line)
+	for marker in target_markers:
+		draw_circle(marker.get("point", Vector2.ZERO), 8.0, marker.get("color", Color.WHITE))
+		draw_string(ThemeDB.fallback_font, marker.get("point", Vector2.ZERO) + Vector2(10.0, -8.0), str(marker.get("label", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, 14)
 
 
 func _get_state() -> Node:
 	return get_node_or_null("../CharacterDirectorState")
+
+
+func _build_actor_line_family(state: Node, payload: Dictionary, color: Color, target_key: String, label: String) -> Array[Dictionary]:
+	var actor_id := str(payload.get("actor_id", "") or "")
+	var target_ref := str(payload.get(target_key, "") or "")
+	if actor_id.is_empty() or target_ref.is_empty():
+		return []
+	return _build_line_entries(state, actor_id, target_ref, color, label)
+
+
+func _build_dialogue_line_family(state: Node) -> Array[Dictionary]:
+	var lines: Array[Dictionary] = []
+	for pair_entry in state.get_dialogue_pair_entries():
+		var speaker := str(pair_entry.get("speaker_actor_id", "") or "")
+		var listener := str(pair_entry.get("listener_actor_id", "") or "")
+		lines.append_array(_build_line_entries(state, speaker, listener, Color(0.6, 1.0, 0.6, 0.9), "dialogue"))
+	return lines
+
+
+func _build_blocked_line_family(state: Node) -> Array[Dictionary]:
+	var lines: Array[Dictionary] = []
+	for outcome in state.get_recent_world_outcomes():
+		if str(outcome.get("settlement_status", "") or "") != "rejected":
+			continue
+		lines.append_array(
+			_build_line_entries(
+				state,
+				str(outcome.get("actor_id", "") or ""),
+				str(outcome.get("target_ref", "") or ""),
+				Color(1.0, 0.35, 0.35, 0.95),
+				"blocked"
+			)
+		)
+	return lines
+
+
+func _build_siming_line_family(state: Node) -> Array[Dictionary]:
+	var target_ref := str(state.get_latest_siming_state().get("target_ref", "") or "")
+	var selected_actor_id := str(state.selected_actor_id)
+	if selected_actor_id.is_empty() or target_ref.is_empty():
+		return []
+	return _build_line_entries(state, selected_actor_id, target_ref, Color(1.0, 0.45, 0.85, 0.95), "siming")
+
+
+func _build_target_markers(state: Node, payload: Dictionary) -> Array[Dictionary]:
+	var markers: Array[Dictionary] = []
+	var target_ref := str(payload.get("focus_target", "") or "")
+	var target_node := _resolve_world_target_node(state, target_ref)
+	if target_node == null:
+		return markers
+	markers.append(
+		{
+			"point": _project_world_to_canvas(target_node.global_position),
+			"label": target_ref,
+			"color": Color(1.0, 0.95, 0.35, 0.95),
+		}
+	)
+	return markers
+
+
+func _build_line_entries(state: Node, source_ref: String, target_ref: String, color: Color, label: String) -> Array[Dictionary]:
+	var source_node := _resolve_world_target_node(state, source_ref)
+	var target_node := _resolve_world_target_node(state, target_ref)
+	if source_node == null or target_node == null:
+		return []
+	return [
+		{
+			"from_point": _project_world_to_canvas(source_node.global_position),
+			"to_point": _project_world_to_canvas(target_node.global_position),
+			"color": color,
+			"label": label,
+		}
+	]
+
+
+func _draw_overlay_line(line: Dictionary) -> void:
+	var from_point: Vector2 = line.get("from_point", Vector2.ZERO)
+	var to_point: Vector2 = line.get("to_point", Vector2.ZERO)
+	var color: Color = line.get("color", Color.WHITE)
+	draw_line(from_point, to_point, color, 3.0)
+	draw_circle(to_point, 5.0, color)
+	draw_string(ThemeDB.fallback_font, (from_point + to_point) * 0.5 + Vector2(6.0, -6.0), str(line.get("label", "")), HORIZONTAL_ALIGNMENT_LEFT, -1, 14)
+
+
+func _resolve_world_target_node(state: Node, target_ref: String) -> Node3D:
+	if target_ref.is_empty():
+		return null
+	return state.resolve_target_node(target_ref)
+
+
+func _project_world_to_canvas(world_position: Vector3) -> Vector2:
+	var camera := get_viewport().get_camera_3d()
+	if camera == null:
+		return Vector2.ZERO
+	return camera.unproject_position(world_position)

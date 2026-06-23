@@ -16,6 +16,13 @@ def test_main_demo_enables_debug_logging_explicitly_for_autotest_and_harness() -
     assert "autotest_enabled or focus_autotest_enabled" in controller_source
 
 
+def test_backend_default_runtime_path_no_longer_hides_observatory_delivery_behind_private_toggle() -> None:
+    main_source = (ROOT / "backend" / "app" / "main.py").read_text(encoding="utf-8")
+
+    assert 'OBSERVATORY_STREAM_ENABLED = os.environ.get("PHASE0_OBSERVATORY_STREAM", "1")' in main_source
+    assert 'OBSERVATORY_STREAM_ENABLED = os.environ.get("PHASE0_OBSERVATORY_STREAM", "0")' not in main_source
+
+
 def test_main_demo_does_not_keep_unused_debug_message_cache_state() -> None:
     controller_source = (ROOT / "scripts" / "phase0" / "MainDemoController.gd").read_text(
         encoding="utf-8"

@@ -14,6 +14,7 @@ def test_character_director_state_caches_all_observatory_families() -> None:
     assert "var recent_world_outcomes: Array[Dictionary] = []" in source
     assert "var recent_script_beats: Array[Dictionary] = []" in source
     assert "var freeze_mode := false" in source
+    assert "var frozen_frame := {}" in source
     assert 'character_agent_debug_snapshot_received.connect(_on_character_agent_debug_snapshot_received)' in source
     assert 'character_agent_debug_event_received.connect(_on_character_agent_debug_event_received)' in source
     assert 'siming_debug_snapshot_received.connect(_on_siming_debug_snapshot_received)' in source
@@ -32,3 +33,6 @@ def test_character_director_state_exposes_master_mode_and_freeze_controls() -> N
     assert "func set_director_mode(enabled: bool) -> void:" in source
     assert "func set_script_mode(enabled: bool) -> void:" in source
     assert "func set_freeze_mode(enabled: bool) -> void:" in source
+    assert "_capture_frozen_frame" in source
+    assert "get_dialogue_pair_entries" in source
+    assert "resolve_target_node" in source

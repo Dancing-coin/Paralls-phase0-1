@@ -48,3 +48,6 @@ class SimingEventPipeline:
             if published_event.event_type not in SUPPORTED_SIMING_EVENT_TYPES:
                 continue
             self._character_dispatch_adapter.dispatch(published_event)
+
+    def drain_observatory_messages(self) -> list[dict[str, object]]:
+        return self._runtime.drain_observatory_messages()

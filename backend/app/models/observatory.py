@@ -89,3 +89,7 @@ class ScriptBeat(ObservatoryRecord):
     actor_event_refs: list[str] = Field(default_factory=list)
     siming_event_refs: list[str] = Field(default_factory=list)
     world_event_refs: list[str] = Field(default_factory=list)
+    actor_summaries: list[dict[str, Any]] = Field(default_factory=list)
+    siming_summaries: list[dict[str, Any]] = Field(default_factory=list)
+    world_summaries: list[dict[str, Any]] = Field(default_factory=list)
+    dialogue_pairs: list[dict[str, Any]] = Field(default_factory=list)
