@@ -289,22 +289,24 @@ class CharacterAgentRuntime:
         )
         if actor_id not in self.SUPPORTED_ACTORS:
             return []
-        self._record_siming_event(payload)
-        snapshot = self._l1.apply_siming_output(payload)
-        self._set_observatory_context(actor_id, "latest_siming_summary", str(payload.get("presentation_hint", "") or ""))
-        self._queue_observatory_stage_event(
-            actor_id=actor_id,
-            producer_ts=int(payload.get("producer_ts", 0) or 0),
-            stage="siming_output_event",
-            summary=str(payload.get("presentation_hint", "") or ""),
-            focus_target=self._snapshot_focus_target(snapshot),
-            intent_label=str(payload.get("output_type", "siming_output") or "siming_output"),
-            participants=self._participants_for_actor(actor_id, self._snapshot_focus_target(snapshot)),
-            detail=dict(payload),
-        )
         normalized_payload["target_actor_id"] = actor_id
         self._record_siming_event(normalized_payload)
         snapshot = self._l1.apply_siming_output(normalized_payload)
+        self._set_observatory_context(
+            actor_id,
+            "latest_siming_summary",
+            str(normalized_payload.get("presentation_hint", "") or ""),
+        )
+        self._queue_observatory_stage_event(
+            actor_id=actor_id,
+            producer_ts=int(normalized_payload.get("producer_ts", 0) or 0),
+            stage="siming_output_event",
+            summary=str(normalized_payload.get("presentation_hint", "") or ""),
+            focus_target=self._snapshot_focus_target(snapshot),
+            intent_label=str(normalized_payload.get("output_type", "siming_output") or "siming_output"),
+            participants=self._participants_for_actor(actor_id, self._snapshot_focus_target(snapshot)),
+            detail=dict(normalized_payload),
+        )
         memory_bundle = self.get_memory_bundle(actor_id)
         working_memory_state = self.get_working_memory_state(actor_id, snapshot.model_dump())
         reasoning_request = self._gateway_reasoning_request_for_siming(
@@ -321,12 +323,10 @@ class CharacterAgentRuntime:
         )
         self._queue_observatory_snapshot(
             actor_id=actor_id,
-            producer_ts=int(payload.get("producer_ts", 0) or 0),
+            producer_ts=int(normalized_payload.get("producer_ts", 0) or 0),
             snapshot=snapshot,
             memory_bundle=memory_bundle,
         )
-        reasoning_request = self._gateway_reasoning_request_for_siming(actor_id, snapshot, payload, memory_bundle, working_memory_state)
-        self._record_reasoning_request(actor_id, int(payload.get("producer_ts", 0) or 0), reasoning_request)
         interpretation = self._l2.interpret_siming_output(
             snapshot,
             normalized_payload,
@@ -339,11 +339,10 @@ class CharacterAgentRuntime:
             int(normalized_payload.get("producer_ts", 0) or 0),
             interpretation,
         )
-        self._record_interpretation_event(actor_id, int(payload.get("producer_ts", 0) or 0), interpretation)
         self._set_observatory_context(actor_id, "interpretation_summary", interpretation.interpreted_summary)
         self._queue_observatory_stage_event(
             actor_id=actor_id,
-            producer_ts=int(payload.get("producer_ts", 0) or 0),
+            producer_ts=int(normalized_payload.get("producer_ts", 0) or 0),
             stage="interpretation",
             summary=interpretation.interpreted_summary,
             focus_target=str(interpretation.attention_target or self._snapshot_focus_target(snapshot)),
@@ -353,7 +352,7 @@ class CharacterAgentRuntime:
         )
         self._queue_observatory_snapshot(
             actor_id=actor_id,
-            producer_ts=int(payload.get("producer_ts", 0) or 0),
+            producer_ts=int(normalized_payload.get("producer_ts", 0) or 0),
             snapshot=snapshot,
             memory_bundle=memory_bundle,
         )
@@ -367,7 +366,7 @@ class CharacterAgentRuntime:
         self._set_observatory_context(actor_id, "decision_summary", decision.selected_intent)
         self._queue_observatory_stage_event(
             actor_id=actor_id,
-            producer_ts=int(payload.get("producer_ts", 0) or 0),
+            producer_ts=int(normalized_payload.get("producer_ts", 0) or 0),
             stage="decision",
             summary=decision.rationale or interpretation.interpreted_summary,
             focus_target=str(interpretation.attention_target or self._snapshot_focus_target(snapshot)),
@@ -377,7 +376,7 @@ class CharacterAgentRuntime:
         )
         self._queue_observatory_snapshot(
             actor_id=actor_id,
-            producer_ts=int(payload.get("producer_ts", 0) or 0),
+            producer_ts=int(normalized_payload.get("producer_ts", 0) or 0),
             snapshot=snapshot,
             memory_bundle=memory_bundle,
         )

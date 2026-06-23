@@ -34,10 +34,6 @@ from app.services.siming_debug_projection import SimingDebugProjection
 
 
 class SimingRuntime:
-    def __init__(self) -> None:
-        self._observatory_projection = SimingDebugProjection()
-        self._pending_observatory_messages: list[dict[str, object]] = []
-
     def __init__(
         self,
         *,
@@ -68,6 +64,8 @@ class SimingRuntime:
         self._storyline_projection = storyline_projection or StubStorylineProjection()
         self._group_bridge = group_bridge or StubGroupSimulationBridge()
         self._read_model_builder = read_model_builder or SimingReadModelBuilder()
+        self._observatory_projection = SimingDebugProjection()
+        self._pending_observatory_messages: list[dict[str, object]] = []
 
     def tick(self, inputs: list[SimingInput]) -> SimingTickResult:
         result = SimingTickResult()
@@ -128,8 +126,6 @@ class SimingRuntime:
                 storyline=storyline,
                 ledger=ledger,
             )
-
-            result.outputs.append(self._fairness_snapshot(event))
 
             if self._is_light_drop(event):
                 policy_snapshot = self._policy_snapshot_for_event(event, fairness_snapshot)
@@ -219,7 +215,6 @@ class SimingRuntime:
                     downstream_status="published",
                     no_action_reason="",
                 )
-                result.audit_records.append(self._audit(event, status="recorded", reason="visual fact observability requested"))
                 result.audit_records.append(
                     self._audit(
                         event,
@@ -245,15 +240,6 @@ class SimingRuntime:
                         reason="environment state attention requested",
                     )
                 )
-                self._finalize_tick_state(
-                    result,
-                    state_tree=state_tree,
-                    fairness_snapshot=fairness_snapshot,
-                    storyline=storyline,
-                    projection=projection,
-                )
-                dispatch = self._environment_attention_dispatch(event)
-                result.outputs.append(dispatch)
                 self._queue_event(
                     source_event=event,
                     stage="dispatch_finalized",
@@ -277,7 +263,13 @@ class SimingRuntime:
                     downstream_status="published",
                     no_action_reason="",
                 )
-                result.audit_records.append(self._audit(event, status="recorded", reason="environment state attention requested"))
+                self._finalize_tick_state(
+                    result,
+                    state_tree=state_tree,
+                    fairness_snapshot=fairness_snapshot,
+                    storyline=storyline,
+                    projection=projection,
+                )
                 continue
 
             if event.event_type == "conversation_resolution_event" and self._has_conversation_candidate(event):
@@ -289,15 +281,6 @@ class SimingRuntime:
                         reason="conversation candidate fact reveal requested",
                     )
                 )
-                self._finalize_tick_state(
-                    result,
-                    state_tree=state_tree,
-                    fairness_snapshot=fairness_snapshot,
-                    storyline=storyline,
-                    projection=projection,
-                )
-                dispatch = self._conversation_fact_reveal(event)
-                result.outputs.append(dispatch)
                 self._queue_event(
                     source_event=event,
                     stage="dispatch_finalized",
@@ -321,7 +304,13 @@ class SimingRuntime:
                     downstream_status="published",
                     no_action_reason="",
                 )
-                result.audit_records.append(self._audit(event, status="recorded", reason="conversation candidate fact reveal requested"))
+                self._finalize_tick_state(
+                    result,
+                    state_tree=state_tree,
+                    fairness_snapshot=fairness_snapshot,
+                    storyline=storyline,
+                    projection=projection,
+                )
                 continue
 
             if event.event_type == "constraint_state_event":
@@ -393,7 +382,6 @@ class SimingRuntime:
                 downstream_status="audit_only",
                 no_action_reason="no eligible intervention",
             )
-            result.audit_records.append(self._audit(event, status="no_action", reason="no eligible intervention"))
         return result
 
     def _llm_candidates_for(

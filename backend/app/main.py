@@ -77,7 +77,7 @@ app = FastAPI(title="Paralls Phase0 Backend")
 BACKEND_BUILD = "paralls-phase0-backend-worktree-2026-06-02"
 WORKTREE_ROOT = str(Path(__file__).resolve().parents[2])
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-OBSERVATORY_STREAM_ENABLED = os.environ.get("PHASE0_OBSERVATORY_STREAM", "0") == "1"
+OBSERVATORY_STREAM_ENABLED = os.environ.get("PHASE0_OBSERVATORY_STREAM", "1") == "1"
 _pending_siming_character_dispatch_messages: dict[str, list[dict[str, object]]] = {}
 
 
@@ -86,7 +86,6 @@ class FrontendSimingCharacterDispatchAdapter(SimingCharacterDispatchAdapter):
         result = super().dispatch(event)
         _queue_siming_character_dispatch_messages(event.event_id, result)
         return result
-OBSERVATORY_STREAM_ENABLED = os.environ.get("PHASE0_OBSERVATORY_STREAM", "1") == "1"
 
 
 def reset_runtime_state() -> None:
