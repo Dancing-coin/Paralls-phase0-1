@@ -1,9 +1,13 @@
 from types import SimpleNamespace
 
+from app.models.authority_event import AuthorityEvent
 from app.models.runtime_state import ConversationCandidateEvent
 from app.models.state_machine_transition import StateMachineTransitionEvent
 from app.models.world_result import ActionResolutionResult
-from app.services.frontend_authority_event_projection import FrontendAuthorityEventProjector
+from app.services.frontend_authority_event_projection import (
+    FrontendAuthorityEventProjector,
+    project_authority_event_as_siming_output,
+)
 from app.services.phase0_authority_event_adapter import Phase0AuthorityEventAdapter
 
 
@@ -141,3 +145,39 @@ def test_projector_emits_legacy_state_machine_transition_for_authority_transitio
             "payload": transition.model_dump(),
         }
     ]
+
+
+def test_frontend_siming_output_projection_remains_frontend_compatibility_only() -> None:
+    event = AuthorityEvent.model_validate(
+        {
+            "event_id": "siming:fact_reveal:500:cause:1",
+            "event_type": "siming.fact_reveal",
+            "producer_ts": 500,
+            "room_id": "room_demo",
+            "scene_id": "scene_demo",
+            "zone_id": "zone_focus",
+            "source": {"layer": "L2", "system": "siming.dispatcher", "actor_id": None},
+            "routing": {
+                "audience_mode": "targeted",
+                "routing_mode": "event_type",
+                "target_ids": ["char_a"],
+            },
+            "priority": "p1",
+            "ttl": 5000,
+            "durability": "replayable",
+            "causation_id": "cause:1",
+            "correlation_id": "corr:1",
+            "payload": {
+                "message_id": "msg:1",
+                "target_actor_id": "char_a",
+                "presentation_hint": "look at the lamp",
+            },
+        }
+    )
+
+    envelope = project_authority_event_as_siming_output(event)
+
+    assert envelope is not None
+    assert envelope["message_type"] == "siming_output"
+    assert envelope["payload"]["authority_event_id"] == "siming:fact_reveal:500:cause:1"
+    assert envelope["payload"]["authority_event_type"] == "siming.fact_reveal"
