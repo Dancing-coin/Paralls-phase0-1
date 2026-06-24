@@ -65,7 +65,7 @@
     },
     {
       "id": "decision-observability",
-      "title": "Harness decision observability records active change intent and failed-profile digests",
+      "name": "Harness decision observability records active change intent and failed-profile digests",
       "status": "pass",
       "evidence": ".harness/changes/, .harness/templates/change-manifest-template.json, harness-run-manifest.json:harness_changes"
     }

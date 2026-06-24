@@ -300,7 +300,7 @@ Trace output:
 
 ### `all`
 
-Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `phase0`, and `phase1-slice` in order. It stops on the first failed profile.
+Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `phase0`, and `phase1-slice` in order. It stops on the first failed profile.
 
 ## Decision Observability
 

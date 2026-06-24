@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from check_harness_lifecycle import evaluate_harness_lifecycle
 from check_harness_reference import evaluate_harness_reference
 from check_release_gate import evaluate_release_gate
 from common import repo_root
+from registry import load_profile_registry
 
 
 def test_backend_contract_profile_proves_protocol_contracts() -> None:
@@ -45,7 +47,8 @@ def test_release_gate_profile_proves_ci_entrypoint() -> None:
 
 
 def test_harness_lifecycle_profile_proves_project06_hardening_artifacts() -> None:
-    report = evaluate_harness_lifecycle(repo_root())
+    project_root = repo_root()
+    report = evaluate_harness_lifecycle(project_root)
     statuses = {entry["id"]: entry["status"] for entry in report["results"]}
 
     assert statuses["lifecycle_feature_ledger_exists"] == "proved"
@@ -55,6 +58,16 @@ def test_harness_lifecycle_profile_proves_project06_hardening_artifacts() -> Non
     assert statuses["lifecycle_decision_observability_docs_exist"] == "proved"
     assert statuses["lifecycle_retention_policy_exists"] == "proved"
     assert statuses["lifecycle_quality_docs_exist"] == "proved"
+
+    features = json.loads((project_root / ".harness" / "features.json").read_text(encoding="utf-8"))["features"]
+    decision_feature = next(entry for entry in features if entry["id"] == "decision-observability")
+    assert decision_feature["name"] == "Harness decision observability records active change intent and failed-profile digests"
+    assert "title" not in decision_feature
+
+    harness_doc = (project_root / "docs" / "harness.md").read_text(encoding="utf-8")
+    for profile in load_profile_registry(project_root).profile_order:
+        assert f"`{profile}`" in harness_doc
+    assert "`godot-project`, `character-agent-execution`, `release-gate`" in harness_doc
 
 
 def test_change_lifecycle_profile_proves_ai_engineering_workflow() -> None:
