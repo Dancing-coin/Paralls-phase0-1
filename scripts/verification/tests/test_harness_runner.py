@@ -195,6 +195,49 @@ def test_collect_harness_changes_reports_invalid_manifest_without_raising(tmp_pa
     ]
 
 
+def test_collect_harness_changes_reports_invalid_text_without_raising(tmp_path: Path) -> None:
+    changes_dir = tmp_path / ".harness" / "changes"
+    changes_dir.mkdir(parents=True)
+    (changes_dir / "invalid-text.json").write_bytes(b"\xff\xfe\xfa")
+
+    result = collect_harness_changes(tmp_path)
+
+    assert result["harness_changes"] == []
+    assert result["harness_change_errors"] == [
+        {
+            "path": ".harness/changes/invalid-text.json",
+            "error": "invalid_text",
+        }
+    ]
+
+
+def test_collect_harness_changes_rejects_mixed_verification_profile_types(tmp_path: Path) -> None:
+    changes_dir = tmp_path / ".harness" / "changes"
+    changes_dir.mkdir(parents=True)
+    (changes_dir / "mixed-profiles.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "id": "chg-mixed",
+                "title": "Mixed profiles",
+                "status": "active",
+                "verification_profiles": ["docs", 3],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = collect_harness_changes(tmp_path)
+
+    assert result["harness_changes"] == []
+    assert result["harness_change_errors"] == [
+        {
+            "path": ".harness/changes/mixed-profiles.json",
+            "error": "invalid_verification_profiles",
+        }
+    ]
+
+
 def test_extract_failed_checks_reads_missing_result_entries() -> None:
     report = {
         "results": [
@@ -237,6 +280,30 @@ def test_build_failure_digest_degrades_when_report_has_no_structured_checks(tmp_
     assert digest["primary_report"] == ".harness/verification/custom-report.json"
     assert digest["failed_checks"] == []
     assert digest["runtime_trace_refs"] == []
+    assert digest["source_artifacts"] == [".harness/verification/custom-report.json"]
+
+
+def test_build_failure_digest_degrades_when_report_json_is_invalid(tmp_path: Path) -> None:
+    report_path = tmp_path / ".harness" / "verification" / "custom-report.json"
+    report_path.parent.mkdir(parents=True)
+    report_path.write_text("{not-json", encoding="utf-8")
+
+    digest = build_failure_digest(
+        project_root=tmp_path,
+        run_id="run_digest",
+        profile_result={
+            "profile": "custom",
+            "command": ["python", "scripts/verification/custom.py"],
+            "exit_code": 1,
+        },
+        profile_config={
+            "result_artifact": ".harness/verification/custom-report.json",
+        },
+    )
+
+    assert digest["summary_status"] == "profile_failed_without_structured_checks"
+    assert digest["primary_report"] == ".harness/verification/custom-report.json"
+    assert digest["failed_checks"] == []
     assert digest["source_artifacts"] == [".harness/verification/custom-report.json"]
 
 
