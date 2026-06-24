@@ -89,6 +89,10 @@ def evaluate_harness_lifecycle(project_root: Path) -> dict[str, object]:
                 change_manifest_template,
                 [
                     '"schema_version"',
+                    '"id"',
+                    '"title"',
+                    '"status"',
+                    '"active"',
                     '"predicted_fixes"',
                     '"predicted_regressions"',
                     '"verification_profiles"',
@@ -106,6 +110,7 @@ def evaluate_harness_lifecycle(project_root: Path) -> dict[str, object]:
                     ".harness/changes/",
                     "failure-digest",
                     "harness_changes",
+                    "harness_change_errors",
                 ],
             ),
             ["docs/harness.md"],
