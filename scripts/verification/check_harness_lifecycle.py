@@ -34,6 +34,9 @@ def evaluate_harness_lifecycle(project_root: Path) -> dict[str, object]:
     profile_template = project_root / ".harness" / "templates" / "profile-template.json"
     rule_template = project_root / ".harness" / "templates" / "rule-template.json"
     retention_policy_path = project_root / ".harness" / "retention-policy.json"
+    changes_dir = project_root / ".harness" / "changes"
+    change_manifest_template = project_root / ".harness" / "templates" / "change-manifest-template.json"
+    harness_guide = project_root / "docs" / "harness.md"
     quality_docs = [
         project_root / ".harness" / "clean-state-checklist.md",
         project_root / ".harness" / "session-handoff.md",
@@ -76,6 +79,36 @@ def evaluate_harness_lifecycle(project_root: Path) -> dict[str, object]:
             _contains(profile_template, ['"script"', '"requires_godot"', '"template_variables"'])
             and _contains(rule_template, ['"profile"', '"rules"', '"evidence"']),
             [".harness/templates/profile-template.json", ".harness/templates/rule-template.json"],
+        ),
+        _result(
+            "lifecycle_decision_manifest_surface_exists",
+            "Harness decision manifest directory and template exist",
+            changes_dir.exists()
+            and change_manifest_template.exists()
+            and _contains(
+                change_manifest_template,
+                [
+                    '"schema_version"',
+                    '"predicted_fixes"',
+                    '"predicted_regressions"',
+                    '"verification_profiles"',
+                ],
+            ),
+            [".harness/changes/", ".harness/templates/change-manifest-template.json"],
+        ),
+        _result(
+            "lifecycle_decision_observability_docs_exist",
+            "Harness guide documents decision observability and failure digest artifacts",
+            _contains(
+                harness_guide,
+                [
+                    "Decision Observability",
+                    ".harness/changes/",
+                    "failure-digest",
+                    "harness_changes",
+                ],
+            ),
+            ["docs/harness.md"],
         ),
         _result(
             "lifecycle_retention_policy_exists",

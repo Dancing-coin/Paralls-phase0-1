@@ -53,6 +53,8 @@ def test_harness_lifecycle_profile_proves_project06_hardening_artifacts() -> Non
     assert statuses["lifecycle_feature_ledger_exists"] == "proved"
     assert statuses["lifecycle_local_ci_gate_exists"] == "proved"
     assert statuses["lifecycle_templates_exist"] == "proved"
+    assert statuses["lifecycle_decision_manifest_surface_exists"] == "proved"
+    assert statuses["lifecycle_decision_observability_docs_exist"] == "proved"
     assert statuses["lifecycle_retention_policy_exists"] == "proved"
     assert statuses["lifecycle_quality_docs_exist"] == "proved"
 

@@ -1,6 +1,6 @@
 # Harness Engineering Guide
 
-This project uses a narrow Harness Engineering layer so agents can verify the repository's active mainline runtime, while preserving the older demo and slice profiles as bounded proof surfaces.
+This project uses a narrow Harness Engineering layer so agents can verify the demo without relying on hidden human context.
 
 ## Command Surface
 
@@ -19,7 +19,6 @@ python scripts/verification/harness.py --profile change-lifecycle
 python scripts/verification/harness.py --profile harness-reference
 python scripts/verification/harness.py --profile phase0
 python scripts/verification/harness.py --profile phase1-slice
-python scripts/verification/harness.py --profile mainline-unified-runtime
 python scripts/verification/harness.py --profile all
 ```
 
@@ -201,9 +200,7 @@ Current mechanical invariants include:
 - `.harness/ci/release-gate.json` points at the full `all` profile
 - `.github/workflows/harness.yml` exists
 - CI invokes `python scripts/verification/harness.py --profile all`
-- CI also invokes `python scripts/verification/harness.py --profile mainline-unified-runtime`
 - local CI-equivalent gate exists and invokes the same full harness profile
-- local CI-equivalent gate also invokes `mainline-unified-runtime`
 
 Output:
 
@@ -305,34 +302,18 @@ Trace output:
 
 Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `phase0`, and `phase1-slice` in order. It stops on the first failed profile.
 
-### `mainline-unified-runtime`
+## Decision Observability
 
-Higher-level runtime proof that composes:
+Harness-facing changes can be recorded under `.harness/changes/` as decision manifests. These manifests are project inputs, not generated evidence. An active manifest records the evidence that motivated a Harness change, the root-cause hypothesis, predicted fixes, predicted regressions, and the profiles that should verify the change.
 
-- actor-local perception
-- autonomous social contact
-- shared actor execution ingress
-- phase1-shaped runtime slice
-- authority settlement writeback
-- asset-runtime registry and Kimodo adapter contracts
-- world-runtime policy/model focused tests
-- degraded-mode perception/cognition deferral
-- continuity recovery across renewed social contact
-- scheduling round state, round trace, debug-stream, script-beat, websocket, and frontend signal/state chain evidence
+The Harness runner includes active manifests in `harness-run-manifest.json` under `harness_changes`. Malformed manifests are reported under `harness_change_errors` so normal profile runs remain usable while evidence problems stay visible.
 
-Use this when you need one report that is closer to the repository's new mainline than any single narrow verifier.
-
-Output:
-
-- `.harness/verification/mainline-unified-runtime-report.json`
-- `.harness/verification/mainline-unified-runtime-report.md`
-- `.harness/verification/harness-run-report.json`
-- `.harness/verification/harness-run-report.md`
+When a profile fails, the runner writes a deterministic failure digest such as `.harness/verification/phase0-failure-digest.json` and archives the same digest under that run's `.harness/verification/runs/run-.../` directory. A digest is an index into existing reports and traces; it does not replace the original profile report or runtime trace.
 
 ## Evidence Rules
 
 - Static checks prove only static wiring.
-- Runtime claims require `phase0`, `phase1-slice`, or `mainline-unified-runtime`, depending on the scope being claimed.
+- Runtime claims require `phase0` or `phase1-slice`.
 - Godot claims require scene execution or Godot MCP/editor inspection.
 - Generated evidence should stay under `.harness/verification/`.
 - Profile and rule manifests stay under `.harness/profiles/` and `.harness/rules/`.
