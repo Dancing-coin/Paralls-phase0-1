@@ -56,7 +56,15 @@ def collect_harness_changes(project_root: Path) -> dict[str, object]:
     for path in sorted(changes_dir.glob("*.json")):
         relative = _relative_path(project_root, path)
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            errors.append({"path": relative, "error": "invalid_text"})
+            continue
+        except OSError:
+            errors.append({"path": relative, "error": "read_error"})
+            continue
+        try:
+            payload = json.loads(text)
         except json.JSONDecodeError:
             errors.append({"path": relative, "error": "invalid_json"})
             continue
@@ -78,7 +86,7 @@ def collect_harness_changes(project_root: Path) -> dict[str, object]:
             errors.append({"path": relative, "error": "missing_title"})
             continue
         verification_profiles = payload.get("verification_profiles", [])
-        if not isinstance(verification_profiles, list):
+        if not _is_non_empty_string_list(verification_profiles):
             errors.append({"path": relative, "error": "invalid_verification_profiles"})
             continue
         changes.append(
@@ -87,7 +95,7 @@ def collect_harness_changes(project_root: Path) -> dict[str, object]:
                 "title": title,
                 "status": status,
                 "path": relative,
-                "verification_profiles": [str(profile) for profile in verification_profiles],
+                "verification_profiles": verification_profiles,
             }
         )
     return {"harness_changes": changes, "harness_change_errors": errors}
@@ -129,7 +137,7 @@ def build_failure_digest(
     profile = str(profile_result["profile"])
     report_path = _resolve_profile_report(project_root, profile_config)
     source_artifacts = _source_artifacts(project_root, report_path)
-    report = read_json_object(report_path) if report_path is not None else None
+    report = _read_json_object_tolerant(report_path) if report_path is not None else None
     failed_checks = extract_failed_checks(report or {})
     trace_refs = _runtime_trace_refs(project_root, profile)
     if report_path is None:
@@ -150,6 +158,17 @@ def build_failure_digest(
         "runtime_trace_refs": trace_refs,
         "source_artifacts": source_artifacts,
     }
+
+
+def _is_non_empty_string_list(value: object) -> bool:
+    return isinstance(value, list) and all(isinstance(entry, str) and entry != "" for entry in value)
+
+
+def _read_json_object_tolerant(path: Path) -> dict[str, object] | None:
+    try:
+        return read_json_object(path)
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        return None
 
 
 def _resolve_profile_report(project_root: Path, profile_config: dict[str, object]) -> Path | None:
