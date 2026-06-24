@@ -79,9 +79,30 @@ class CharacterAgentL1Service:
         if attention_target != "":
             snapshot.attention_targets = [attention_target]
             snapshot.current_attention_targets = [attention_target]
-        snapshot.last_siming_catalyst = str(payload.get("presentation_hint", "") or "")
-        if snapshot.last_siming_catalyst != "":
+        presentation_hint = str(payload.get("presentation_hint", "") or "").strip()
+        snapshot.last_siming_catalyst = presentation_hint or None
+        if snapshot.last_siming_catalyst is not None:
             snapshot.vigilance_level = "elevated"
+        pressure_hint = str(payload.get("pressure_hint", "") or "").strip()
+        if pressure_hint != "":
+            snapshot.distraction_level = "elevated"
+            pressure_marker = f"siming_pressure:{pressure_hint}"
+            if pressure_marker not in snapshot.unresolved_signals:
+                snapshot.unresolved_signals = (snapshot.unresolved_signals + [pressure_marker])[-4:]
+        reason_scope = str(payload.get("reason_scope", "") or "").strip()
+        if reason_scope != "":
+            reason_scope_tag = f"siming_reason_scope:{reason_scope}"
+            if reason_scope_tag not in snapshot.bias_tags:
+                snapshot.bias_tags = (snapshot.bias_tags + [reason_scope_tag])[-4:]
+        salience_boost = payload.get("salience_boost")
+        if attention_target != "" and isinstance(salience_boost, int | float):
+            snapshot.local_spatial_confidence_map = {
+                **snapshot.local_spatial_confidence_map,
+                attention_target: max(
+                    float(snapshot.local_spatial_confidence_map.get(attention_target, 0.0) or 0.0),
+                    min(1.0, max(0.0, float(salience_boost))),
+                ),
+            }
         snapshot.updated_at = int(payload.get("producer_ts", 0) or 0)
         snapshot.producer_ts = int(payload.get("producer_ts", 0) or 0)
         return snapshot

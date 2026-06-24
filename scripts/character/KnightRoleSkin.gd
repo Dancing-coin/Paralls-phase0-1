@@ -274,6 +274,8 @@ var move_y := 0.0
 var speed := 0.0
 var presentation_gait := "walk"
 var current_presentation_contract: Dictionary = {}
+var last_stage2_role_state := ""
+var last_stage2_motion_profile := ""
 func _ready() -> void:
 	_configure_animation_loops()
 	_cache_pose_refinement_bones()
@@ -348,20 +350,101 @@ func apply_presentation_input(next_input: Dictionary) -> void:
 	current_presentation_contract = CharacterPresentationInputRef.normalize(next_input)
 	var move_local_actual := CharacterPresentationInputRef.get_motion_move_local_actual(current_presentation_contract)
 	var velocity_world := CharacterPresentationInputRef.get_motion_velocity_world(current_presentation_contract)
-	move_x = float(move_local_actual.x)
-	move_y = float(move_local_actual.y)
-	speed = float(velocity_world.length())
-	presentation_gait = CharacterPresentationInputRef.get_motion_gait_actual(current_presentation_contract)
 	var focus_target_id := CharacterPresentationInputRef.get_focus_target_id(current_presentation_contract)
+	var presentation_gait_actual := CharacterPresentationInputRef.get_motion_gait_actual(current_presentation_contract)
 	var requested_action := CharacterPresentationInputRef.get_requested_action(current_presentation_contract)
 	var active_command_type := CharacterPresentationInputRef.get_active_command_type(current_presentation_contract)
 	var equipment_gait_hint := CharacterPresentationInputRef.get_equipment_gait_hint(current_presentation_contract)
+	move_x = float(move_local_actual.x)
+	move_y = float(move_local_actual.y)
+	speed = float(velocity_world.length())
+	set_focus_highlight(not focus_target_id.is_empty())
+	presentation_gait = presentation_gait_actual
 	if not requested_action.is_empty():
 		presentation_gait = CharacterPresentationInputRef.get_action_gait_hint(current_presentation_contract, presentation_gait)
-	elif not active_command_type.is_empty() and not focus_target_id.is_empty():
+	elif not active_command_type.is_empty():
 		presentation_gait = CharacterPresentationInputRef.get_action_gait_hint(current_presentation_contract, presentation_gait)
 	elif not equipment_gait_hint.is_empty():
 		presentation_gait = equipment_gait_hint
+	presentation_gait = _resolve_stage2_presentation_gait(current_presentation_contract)
+	var stage2_role_state := _resolve_stage2_contract_role_state(current_presentation_contract)
+	var stage2_motion_profile := _resolve_stage2_motion_profile(presentation_gait)
+	_apply_stage2_contract_expression(stage2_role_state, stage2_motion_profile)
+
+func _resolve_stage2_presentation_gait(contract: Dictionary) -> String:
+	var presentation_gait := CharacterPresentationInputRef.get_motion_gait_actual(contract)
+	var requested_action := CharacterPresentationInputRef.get_requested_action(contract)
+	if not requested_action.is_empty():
+		return CharacterPresentationInputRef.get_action_gait_hint(contract, presentation_gait)
+	var active_command_type := CharacterPresentationInputRef.get_active_command_type(contract)
+	if not active_command_type.is_empty():
+		return CharacterPresentationInputRef.get_action_gait_hint(contract, presentation_gait)
+	var equipment_gait_hint := CharacterPresentationInputRef.get_equipment_gait_hint(contract)
+	if not equipment_gait_hint.is_empty():
+		return equipment_gait_hint
+	return presentation_gait
+
+func _resolve_stage2_contract_role_state(contract: Dictionary) -> String:
+	var requested_action := CharacterPresentationInputRef.get_requested_action(contract)
+	if not requested_action.is_empty():
+		return _map_stage2_action_to_role_state(requested_action)
+	var active_command_type := CharacterPresentationInputRef.get_active_command_type(contract)
+	if active_command_type.is_empty():
+		return ""
+	return _map_stage2_action_to_role_state(active_command_type)
+
+func _map_stage2_action_to_role_state(action_name: String) -> String:
+	match action_name:
+		"dialogue", "talk", "speak", "brief_dialogue_response", "speak_public", "speak_private", "share_info", "withhold":
+			return "speak"
+		"inspect", "interact", "inspect_object":
+			return "inspect"
+		"observe", "focus", "observe_target":
+			return "observe"
+		"alert", "attention_shift":
+			return "alert"
+		"approach", "follow_target", "seek_private_distance", "withdraw", "break_contact", "reposition_step":
+			return "walk"
+		"jump", "sword_swing", "shield_block":
+			return action_name
+		_:
+			return ""
+
+func _resolve_stage2_motion_profile(presentation_gait_name: String) -> String:
+	match presentation_gait_name:
+		"amble":
+			return "amble"
+		"walk":
+			return "walk"
+		"brisk_walk":
+			return "brisk_walk"
+		"run":
+			return "run"
+		"crouch_idle":
+			return "crouch_idle"
+		"crouch_walk":
+			return "crouch_walk"
+		"jump_single_leg":
+			return "jump_single_leg"
+		"jump_two_foot":
+			return "jump_two_foot"
+		_:
+			return "default"
+
+func _apply_stage2_contract_expression(role_state_name: String, motion_profile_name: String) -> void:
+	if role_state_name.is_empty():
+		last_stage2_role_state = ""
+		last_stage2_motion_profile = ""
+		return
+	if role_state_name != last_stage2_role_state:
+		last_stage2_role_state = role_state_name
+		last_stage2_motion_profile = motion_profile_name
+		set_motion_profile(role_state_name, motion_profile_name)
+		return
+	if motion_profile_name == last_stage2_motion_profile:
+		return
+	last_stage2_motion_profile = motion_profile_name
+	_apply_motion_profile(motion_profile_name)
 
 func _configure_animation_loops() -> void:
 	if animation_player == null:

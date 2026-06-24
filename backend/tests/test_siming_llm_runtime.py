@@ -8,6 +8,39 @@ from app.services.siming_feature_registry import SimingFeatureRegistry
 from app.services.siming_runtime import SimingRuntime
 
 
+class HighLevelHintCandidate:
+    def __init__(self) -> None:
+        self.candidate_id = "cand:llm:high-level"
+        self.room_id = "room_demo"
+        self.scene_id = "scene_demo"
+        self.zone_id = "zone_focus"
+        self.causation_id = "visual_fact:300:char_c:light_level_drop"
+        self.correlation_id = "visual_fact:300"
+        self.proposed_band = "fact_reveal"
+        self.target_actor_id = "char_b"
+        self.target_object_id = None
+        self.target_environment_id = None
+        self.established_fact_ids = ["visual_fact:300:char_c:light_level_drop"]
+        self.explanation = "Escalate crowd awareness around the light drop."
+        self.confidence = 0.9
+        self.reason_tags = []
+        self.source = "llm"
+        self.pressure_hint = "crowd closing in"
+        self.salience_boost = 0.85
+        self.reason_scope = "threat_scan"
+
+
+class HighLevelHintProvider:
+    def generate_candidates(
+        self,
+        *,
+        snapshot: object,
+        recent_events: list[AuthorityEvent],
+        recent_audit: list[object],
+    ) -> list[HighLevelHintCandidate]:
+        return [HighLevelHintCandidate()]
+
+
 def make_visual_fact_event(**payload_overrides: object) -> AuthorityEvent:
     payload = {
         "event_id": "visual_fact:300:char_c:light_level_drop",
@@ -183,3 +216,19 @@ def test_runtime_shares_feature_registry_between_fairness_snapshot_and_policy() 
         for audit in result.audit_records
     )
     assert any(output.output_type == "no_action" for output in result.outputs)
+
+
+def test_runtime_preserves_high_level_siming_hints_in_dispatch_payload() -> None:
+    runtime = SimingRuntime(llm_provider=HighLevelHintProvider())
+
+    result = runtime.tick([SimingInput(input_type="visual_fact_event", source_event=make_visual_fact_event())])
+
+    dispatches = [output for output in result.outputs if output.output_type == "dispatch_intent"]
+    assert dispatches
+    payload = dispatches[0].payload
+    assert payload["pressure_hint"] == "crowd closing in"
+    assert payload["salience_boost"] == 0.85
+    assert payload["reason_scope"] == "threat_scan"
+    assert "go_to_position" not in payload
+    assert "character_low_level_command" not in payload
+    assert "physical_success" not in payload

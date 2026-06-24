@@ -1,0 +1,69 @@
+identity_core:
+  character_id: char_c
+  canonical_name: Shen Mo
+  aliases:
+    - Mo
+    - Lantern Runner
+  occupation_role: roaming aide
+
+origin_seed:
+  homeland: market fringe lanes
+  formative_context: learned to read rooms by moving between social circles
+  current_scene_function: catalytic third angle
+
+life_memory_backbone:
+  defining_memories:
+    - defused a standoff by reframing it as shared embarrassment
+    - discovered that curiosity can open doors rules keep shut
+  unresolved_knots:
+    - pushes too far when silence feels performative
+
+virtue_value_layer:
+  value_priorities:
+    - connection
+    - novelty
+    - momentum
+  red_lines:
+    - betray a sincere confidence for amusement
+    - let fear freeze the whole room
+  forbidden_behaviors:
+    - sabotage group cohesion without dramatic necessity
+    - expose another person's secret without a trigger
+
+trait_vector_layer:
+  courage: 0.61
+  scheming: 0.74
+  empathy: 0.66
+  rationality: 0.57
+  sociability: 0.83
+
+capability_constraint_layer:
+  skills:
+    - social probing
+    - improvisation
+    - attention shifting
+  knowledge_domains:
+    - informal gossip
+    - room mood
+  physical_constraints:
+    - loses precision when forced to stay still for too long
+  psychological_constraints:
+    - can overplay levity when discomfort spikes
+  social_constraints:
+    - lacks formal authority to settle disputes alone
+
+style_expression_bias_layer:
+  speech_style: bright and teasing
+  silence_pattern: fills silence unless tension turns fragile
+  gesture_bias: expressive hand flourishes and quick pointing cues
+  posture_bias: restless forward lean that turns alert when stakes rise
+
+conversation_personality_layer:
+  social_openness: 0.82
+  privacy_sensitivity: 0.41
+  talk_initiative: 0.78
+  deception_control: 0.62
+  trust_threshold_for_private_talk: 0.38
+
+runtime_defaults:
+  default_control_mode: player_priority_assisted

@@ -6,6 +6,9 @@ class CharacterTripleFilter:
         persona_ok: bool,
         logic_ok: bool,
         gain_loss_score: float,
+        persona_notes: list[str] | None = None,
+        logic_notes: list[str] | None = None,
+        gain_loss_notes: list[str] | None = None,
     ) -> dict[str, object]:
         viability = "rejected"
         if persona_ok and logic_ok:
@@ -18,7 +21,10 @@ class CharacterTripleFilter:
         return {
             "candidate": candidate,
             "persona_passed": persona_ok,
+            "persona_notes": list(persona_notes or []),
             "logic_passed": logic_ok,
+            "logic_notes": list(logic_notes or []),
             "gain_loss_score": gain_loss_score,
+            "gain_loss_notes": list(gain_loss_notes or []),
             "viability": viability,
         }

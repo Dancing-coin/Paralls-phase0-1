@@ -112,6 +112,11 @@ class CharacterAgentL4Adapter:
         if isinstance(presentation_plan, dict):
             physiology_hint_value = str(presentation_plan.get("physiology_hint", "") or "")
             physiology_hint = physiology_hint_value or None
+            if physiology_hint is None:
+                physiology_state = presentation_plan.get("physiology_state", {})
+                if isinstance(physiology_state, dict):
+                    physiology_hint_value = str(physiology_state.get("state_band", "") or "")
+                    physiology_hint = physiology_hint_value or None
             if role_state_hint is None:
                 role_state_hint = self._map_role_state_hint(str(presentation_plan.get("action_state", {}).get("requested_action", "") or ""))
             if dialogue_text is None:

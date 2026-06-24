@@ -153,18 +153,12 @@ class CharacterModelProvider:
         event = context.get("event", {})
         if not isinstance(event, dict):
             event = {}
-        actor_id = str(context.get("actor_id", "") or "")
         content = str(event.get("content", "") or "")
         lowered = content.lower()
         if "letter" in lowered:
             return {
                 "content": "I saw something move near the desk.",
                 "tone": "alert",
-            }
-        if actor_id == "char_b":
-            return {
-                "content": "I am watching the room.",
-                "tone": "neutral",
             }
         return {
             "content": "I am here. What do you need?",
@@ -184,7 +178,12 @@ class CharacterModelProvider:
         body_state_hints = snapshot.get("body_state_hints", [])
         if not isinstance(body_state_hints, list):
             body_state_hints = []
-        summary = str(event.get("perceived_summary", "") or snapshot.get("perceived_summary", "") or "state_change")
+        summary = str(
+            event.get("perceived_summary", "")
+            or event.get("presentation_hint", "")
+            or snapshot.get("perceived_summary", "")
+            or "state_change"
+        )
         interpretation_type = "state_change"
         if str(event.get("body_state_class", "") or ""):
             interpretation_type = "body_state"
@@ -212,18 +211,33 @@ class CharacterModelProvider:
         last_siming_catalyst = str(snapshot.get("last_siming_catalyst", "") or "")
         vigilance_level = str(snapshot.get("vigilance_level", "") or "")
         distraction_level = str(snapshot.get("distraction_level", "") or "")
+        pressure_hint = str(event.get("pressure_hint", "") or "")
+        reason_scope = str(event.get("reason_scope", "") or "")
         attention_target = str(attention_targets[0] if attention_targets else event.get("target_actor_id", "") or event.get("target_object_id", "") or event.get("target_environment_id", "") or "")
         guarded_attention_target = self._is_guarded_relational_target(attention_target, relational_memories)
         salience_score = float(event.get("clarity_score", snapshot.get("clarity_score", 0.5)) or 0.5)
+        salience_boost = event.get("salience_boost")
+        if isinstance(salience_boost, int | float):
+            salience_score = max(salience_score, min(1.0, max(0.0, float(salience_boost))))
         opportunity_level = "medium" if interpretation_type in {"opportunity", "social_signal"} else "low"
-        if recent_world_changes or last_siming_catalyst != "" or vigilance_level == "elevated":
+        if recent_world_changes or last_siming_catalyst != "" or vigilance_level == "elevated" or salience_score >= 0.75:
             opportunity_level = "medium"
         risk_level = "medium" if interpretation_type == "body_state" else "low"
-        if active_anomalies or recent_constraint_results or guarded_attention_target:
+        if active_anomalies or recent_constraint_results or guarded_attention_target or pressure_hint != "":
             risk_level = "medium"
         ambiguity_level = "medium" if float(event.get("certainty_score", snapshot.get("certainty_score", 1.0)) or 1.0) < 0.7 else "low"
-        if distraction_level == "elevated":
+        if distraction_level == "elevated" or pressure_hint != "":
             ambiguity_level = "medium"
+        reasoning_trace = ":".join(
+            part
+            for part in (
+                str(event.get("actor_id", "") or snapshot.get("actor_id", "") or ""),
+                reason_scope,
+                pressure_hint,
+                summary,
+            )
+            if part
+        )
         return {
             "interpreted_summary": summary,
             "interpretation_type": interpretation_type,
@@ -232,7 +246,7 @@ class CharacterModelProvider:
             "risk_level": risk_level,
             "opportunity_level": opportunity_level,
             "attention_target": attention_target or None,
-            "inner_prompt_candidate": f"{str(event.get('actor_id', '') or snapshot.get('actor_id', '') or '')}:{summary}",
+            "inner_prompt_candidate": reasoning_trace or f"{str(event.get('actor_id', '') or snapshot.get('actor_id', '') or '')}:{summary}",
         }
 
     def _offline_l3_output(self, context: dict[str, object]) -> dict[str, object]:
@@ -261,8 +275,14 @@ class CharacterModelProvider:
             recent_world_changes = []
         vigilance_level = str(snapshot.get("vigilance_level", "") or "")
         distraction_level = str(snapshot.get("distraction_level", "") or "")
+        salience_score = float(interpretation.get("salience_score", 0.0) or 0.0)
         effective_opportunity_level = opportunity_level
-        if (recent_world_changes or vigilance_level == "elevated" or distraction_level == "elevated") and effective_opportunity_level == "low":
+        if (
+            recent_world_changes
+            or vigilance_level == "elevated"
+            or distraction_level == "elevated"
+            or salience_score >= 0.75
+        ) and effective_opportunity_level == "low":
             effective_opportunity_level = "medium"
         candidate_intents = ["observe", "inspect_object", "self_protect"]
         if attention_target:
@@ -276,12 +296,21 @@ class CharacterModelProvider:
             selected_intent = "self_protect"
         elif attention_target and effective_opportunity_level in {"medium", "high"}:
             selected_intent = "ask_probe"
-        elif effective_opportunity_level in {"medium", "high"}:
+        elif effective_opportunity_level in {"medium", "high"} and (
+            attention_target
+            or recent_world_changes
+            or vigilance_level == "elevated"
+            or distraction_level == "elevated"
+        ):
             selected_intent = "speak_public"
         recommended_intents = [selected_intent, "observe"] if selected_intent != "observe" else ["observe"]
         if guarded_attention_target:
             recommended_intents = ["self_protect"] + [intent for intent in recommended_intents if intent != "self_protect"]
-        if (recent_world_changes or vigilance_level == "elevated") and "speak_public" in candidate_intents:
+        if (
+            recent_world_changes
+            or vigilance_level == "elevated"
+            or distraction_level == "elevated"
+        ) and "speak_public" in candidate_intents:
             recommended_intents = ["speak_public"] + [intent for intent in recommended_intents if intent != "speak_public"]
         risk_notes = [str(item) for item in recent_constraint_results if str(item)]
         if guarded_relation_note:

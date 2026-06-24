@@ -527,6 +527,15 @@ class SimingRuntime:
             "target_object_id": candidate.target_object_id,
             "target_environment_id": candidate.target_environment_id,
         }
+        pressure_hint = str(getattr(candidate, "pressure_hint", "") or "").strip()
+        if pressure_hint != "":
+            payload["pressure_hint"] = pressure_hint
+        salience_boost = getattr(candidate, "salience_boost", None)
+        if isinstance(salience_boost, int | float):
+            payload["salience_boost"] = min(1.0, max(0.0, float(salience_boost)))
+        reason_scope = str(getattr(candidate, "reason_scope", "") or "").strip()
+        if reason_scope != "":
+            payload["reason_scope"] = reason_scope
         if selected_path == "visual_fact_path":
             payload["established_fact_id"] = (
                 candidate.established_fact_ids[0]

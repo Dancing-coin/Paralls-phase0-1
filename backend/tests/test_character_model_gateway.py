@@ -137,6 +137,49 @@ def test_model_gateway_supports_dialogue_generation_contract() -> None:
     assert output["tone"] == "alert"
 
 
+def test_model_gateway_offline_dialogue_generation_does_not_branch_on_actor_id() -> None:
+    gateway = CharacterModelGateway()
+
+    char_b_output = gateway.run_task(
+        task_kind="dialogue_generation",
+        context={
+            "actor_id": "char_b",
+            "control_mode": "dialogue_service",
+            "snapshot": {},
+            "memory": {
+                "working_memory": [],
+                "episodic_memories": [],
+                "relational_memories": [],
+            },
+            "event": {
+                "content": "Status update.",
+                "intent_type": "dialogue_submit",
+            },
+        },
+        route_override="local_only",
+    )
+    generic_output = gateway.run_task(
+        task_kind="dialogue_generation",
+        context={
+            "actor_id": "char_registry_only",
+            "control_mode": "dialogue_service",
+            "snapshot": {},
+            "memory": {
+                "working_memory": [],
+                "episodic_memories": [],
+                "relational_memories": [],
+            },
+            "event": {
+                "content": "Status update.",
+                "intent_type": "dialogue_submit",
+            },
+        },
+        route_override="local_only",
+    )
+
+    assert char_b_output == generic_output
+
+
 def test_model_gateway_offline_l2_raises_risk_for_active_anomalies() -> None:
     gateway = CharacterModelGateway()
 

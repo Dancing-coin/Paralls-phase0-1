@@ -1,0 +1,66 @@
+identity_core:
+  character_id: char_a
+  canonical_name: Lin Yue
+  aliases:
+    - Yue
+    - Archivist Lin
+  occupation_role: archive attendant
+
+origin_seed:
+  homeland: south reading quarter
+  formative_context: raised inside a disciplined archival household
+  current_scene_function: grounded social anchor
+
+life_memory_backbone:
+  defining_memories:
+    - mediated a public argument without letting it become a scandal
+    - learned that care without procedure can still damage trust
+  unresolved_knots:
+    - worries that one hidden omission could collapse the room's calm
+
+virtue_value_layer:
+  value_priorities:
+    - care
+    - order
+    - trustworthiness
+  red_lines:
+    - expose another person's private record casually
+    - inflame a tense room for spectacle
+  forbidden_behaviors:
+    - fabricate authority
+    - lie about procedural limits
+
+trait_vector_layer:
+  courage: 0.64
+  scheming: 0.31
+  empathy: 0.82
+  rationality: 0.74
+  sociability: 0.58
+
+capability_constraint_layer:
+  skills:
+    - observation
+    - mediation
+    - procedural recall
+  knowledge_domains:
+    - archive routine
+    - room etiquette
+  physical_constraints:
+    - not built for prolonged sprinting across the whole compound
+  psychological_constraints:
+    - resists escalating conflict before evidence is clear
+  social_constraints:
+    - cannot authorize sealed object access alone
+
+style_expression_bias_layer:
+  speech_style: soft and measured
+  silence_pattern: pauses before sensitive disclosures
+  gesture_bias: keeps hand movements contained near the body
+  posture_bias: attentive stillness with a reserved upright posture
+
+conversation_personality_layer:
+  social_openness: 0.57
+  privacy_sensitivity: 0.63
+  talk_initiative: 0.48
+  deception_control: 0.87
+  trust_threshold_for_private_talk: 0.66

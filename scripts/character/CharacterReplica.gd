@@ -329,8 +329,6 @@ func _on_character_agent_execution_received(payload: Dictionary) -> void:
 	var frame: Dictionary = runtime_state.get_execution_payload_intent_frame(payload, actor_id)
 	if frame.is_empty():
 		return
-	var requested_action: String = runtime_state.get_intent_frame_action_name(frame)
-	runtime_state.set_active_command(requested_action, _command_priority(requested_action))
 	runtime_state.stage_agent_execution(presentation_plan, frame)
 	var execution_side_effect_plan: Dictionary = runtime_state.build_agent_execution_side_effect_plan(
 		dialogue_role_state,
@@ -338,6 +336,10 @@ func _on_character_agent_execution_received(payload: Dictionary) -> void:
 		focus_role_state,
 		attention_role_state,
 	)
+	var active_command_type: String = runtime_state.get_execution_side_effect_active_command_type(execution_side_effect_plan)
+	if active_command_type.is_empty():
+		active_command_type = runtime_state.get_intent_frame_action_name(frame)
+	runtime_state.set_active_command(active_command_type, _command_priority(active_command_type))
 	_push_presentation_input(runtime_state.get_agent_presentation_input())
 	var target_lookup: Dictionary = runtime_state.get_execution_side_effect_focus_target_lookup(execution_side_effect_plan)
 	var target_node := _find_node_by_lookup(target_lookup)

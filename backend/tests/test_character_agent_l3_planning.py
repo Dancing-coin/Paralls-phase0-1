@@ -38,6 +38,41 @@ def _interpretation() -> CharacterInterpretation:
     )
 
 
+def _profile_payload(
+    *,
+    actor_id: str = "char_b",
+    occupation_role: str = "security steward",
+    social_openness: float = 0.34,
+    privacy_sensitivity: float = 0.71,
+    talk_initiative: float = 0.52,
+    deception_control: float = 0.91,
+    trust_threshold_for_private_talk: float = 0.77,
+    value_priorities: list[str] | None = None,
+    red_lines: list[str] | None = None,
+    forbidden_behaviors: list[str] | None = None,
+) -> dict[str, object]:
+    return {
+        "identity_core": {
+            "character_id": actor_id,
+            "canonical_name": "Qiao Ren",
+            "aliases": ["Ren"],
+            "occupation_role": occupation_role,
+        },
+        "virtue_value_layer": {
+            "value_priorities": value_priorities or ["duty", "safety", "clarity"],
+            "red_lines": red_lines or ["grant access on vibes alone"],
+            "forbidden_behaviors": forbidden_behaviors or ["downplay a proven threat"],
+        },
+        "conversation_personality_layer": {
+            "social_openness": social_openness,
+            "privacy_sensitivity": privacy_sensitivity,
+            "talk_initiative": talk_initiative,
+            "deception_control": deception_control,
+            "trust_threshold_for_private_talk": trust_threshold_for_private_talk,
+        },
+    }
+
+
 def test_l3_planner_generates_candidate_set_and_filter_results() -> None:
     planner = CharacterAgentL3Service()
 
@@ -119,9 +154,11 @@ def test_l3_planner_build_intent_plan_accepts_explicit_snapshot_and_memory_bundl
         interpretation=_interpretation(),
         control_mode="agent_full_auto",
         snapshot={"attention_targets": ["char_a"]},
+        profile=_profile_payload(),
         memory_bundle={
             "working_memory": [{"event_id": "evt:1"}],
             "episodic_memories": [{"summary": "char_a spoke nearby"}],
+            "social_memories": [{"entity_id": "char_a", "trust_baseline": 0.25, "suspicion_baseline": 0.81}],
             "relational_memories": [{"entity_id": "char_a", "value": "guarded"}],
         },
         working_memory_state={
@@ -134,6 +171,8 @@ def test_l3_planner_build_intent_plan_accepts_explicit_snapshot_and_memory_bundl
 
     assert gateway.requests
     assert gateway.requests[0]["context"]["snapshot"]["attention_targets"] == ["char_a"]
+    assert gateway.requests[0]["context"]["profile"]["conversation_personality_layer"]["privacy_sensitivity"] == 0.71
+    assert gateway.requests[0]["context"]["memory"]["social_memories"][0]["entity_id"] == "char_a"
     assert gateway.requests[0]["context"]["memory"]["episodic_memories"][0]["summary"] == "char_a spoke nearby"
     assert gateway.requests[0]["context"]["working_memory_state"]["private_snapshot"]["actor_id"] == "char_b"
 
@@ -216,6 +255,138 @@ def test_l3_planner_prefers_self_protect_when_relational_memory_marks_attention_
 
     assert plan["model_output"]["selected_intent"] == "self_protect"
     assert plan["model_output"]["recommended_intents"][0] == "self_protect"
+    assert decision.selected_intent == "physiology_hint"
+
+
+def test_l3_planner_rejects_share_info_for_private_profile_with_low_social_trust() -> None:
+    planner = CharacterAgentL3Service()
+
+    plan = planner.build_intent_plan(
+        interpretation=_interpretation(),
+        control_mode="agent_full_auto",
+        profile=_profile_payload(privacy_sensitivity=0.84, trust_threshold_for_private_talk=0.82),
+        memory_bundle={
+            "working_memory": [],
+            "episodic_memories": [],
+            "social_memories": [{"entity_id": "char_a", "trust_baseline": 0.25, "suspicion_baseline": 0.88}],
+        },
+    )
+
+    share_info = next(result for result in plan["filter_results"] if result["candidate"] == "share_info")
+    inspect_object = next(result for result in plan["filter_results"] if result["candidate"] == "inspect_object")
+
+    assert share_info["persona_passed"] is False
+    assert share_info["viability"] == "rejected"
+    assert share_info["persona_notes"]
+    assert inspect_object["logic_passed"] is False
+    assert inspect_object["logic_notes"]
+
+
+def test_l3_planner_uses_social_memories_as_primary_trust_path_for_share_info() -> None:
+    planner = CharacterAgentL3Service()
+    profile = _profile_payload(privacy_sensitivity=0.84, trust_threshold_for_private_talk=0.82)
+
+    low_trust_plan = planner.build_intent_plan(
+        interpretation=_interpretation(),
+        control_mode="agent_full_auto",
+        profile=profile,
+        memory_bundle={
+            "working_memory": [],
+            "episodic_memories": [],
+            "social_memories": [{"entity_id": "char_a", "trust_baseline": 0.25, "suspicion_baseline": 0.88}],
+        },
+    )
+    high_trust_plan = planner.build_intent_plan(
+        interpretation=_interpretation(),
+        control_mode="agent_full_auto",
+        profile=profile,
+        memory_bundle={
+            "working_memory": [],
+            "episodic_memories": [],
+            "social_memories": [{"entity_id": "char_a", "trust_baseline": 0.93, "suspicion_baseline": 0.1}],
+        },
+    )
+
+    low_trust_share_info = next(result for result in low_trust_plan["filter_results"] if result["candidate"] == "share_info")
+    high_trust_share_info = next(result for result in high_trust_plan["filter_results"] if result["candidate"] == "share_info")
+
+    assert low_trust_share_info["persona_passed"] is False
+    assert high_trust_share_info["persona_passed"] is True
+    assert high_trust_share_info["gain_loss_score"] > low_trust_share_info["gain_loss_score"]
+
+
+def test_l3_planner_logic_uses_same_profile_guard_threshold_as_other_filters() -> None:
+    planner = CharacterAgentL3Service()
+
+    logic_ok, logic_notes = planner._evaluate_logic(
+        "self_protect",
+        CharacterInterpretation(
+            actor_id="char_b",
+            interpreted_summary="char_a is hard to read",
+            interpretation_type="state_change",
+            salience_score=0.6,
+            ambiguity_level="low",
+            risk_level="low",
+            opportunity_level="low",
+            attention_target="char_a",
+            inner_prompt_candidate="",
+        ),
+        snapshot={},
+        memory_bundle={
+            "working_memory": [],
+            "episodic_memories": [],
+            "social_memories": [{"entity_id": "char_a", "trust_baseline": 0.45, "suspicion_baseline": 0.1}],
+        },
+        profile=_profile_payload(trust_threshold_for_private_talk=0.82),
+        control_mode="agent_full_auto",
+    )
+
+    assert logic_ok is True
+    assert logic_notes == []
+
+
+def test_l3_planner_target_memory_context_ignores_unstructured_substring_mentions() -> None:
+    planner = CharacterAgentL3Service()
+
+    has_context = planner._has_target_memory_context(
+        "char_a",
+        {
+            "working_memory": [],
+            "episodic_memories": [{"summary": "heard char_a discussed in passing"}],
+            "event_memories": [{"summary": "heard char_a discussed in passing"}],
+            "knowledge_memories": [{"proposition": "someone else mentioned char_a in a rumor"}],
+            "social_memories": [{"entity_id": "char_b", "notes": "char_a appears in free text only"}],
+            "relational_memories": [],
+        },
+    )
+
+    assert has_context is False
+
+
+def test_l3_planner_select_intent_rejects_model_share_info_when_local_profile_filter_blocks_it() -> None:
+    gateway = _RecordingGateway(
+        {
+            "candidate_intents": ["share_info", "self_protect", "observe"],
+            "selected_intent": "share_info",
+            "recommended_intents": ["share_info", "self_protect"],
+            "risk_notes": [],
+            "why_this_now": "char_a is salient",
+            "role_consistency_hint": "stay guarded",
+        }
+    )
+    planner = CharacterAgentL3Service(gateway=gateway)
+
+    decision = planner.select_intent(
+        _interpretation(),
+        control_mode="agent_full_auto",
+        profile=_profile_payload(privacy_sensitivity=0.84, trust_threshold_for_private_talk=0.82),
+        memory_bundle={
+            "working_memory": [],
+            "episodic_memories": [],
+            "social_memories": [{"entity_id": "char_a", "trust_baseline": 0.25, "suspicion_baseline": 0.88}],
+        },
+    )
+
     assert decision.selected_intent == "physiology_hint"
 
 
@@ -642,7 +813,7 @@ def test_l3_suggestion_packet_prefers_speak_public_for_elevated_vigilance_when_m
     assert packet["role_consistency_hint"] == "heightened vigilance"
 
 
-def test_l3_suggestion_packet_prefers_speak_public_for_elevated_vigilance_when_model_selected_intent_is_empty() -> None:
+def test_l3_suggestion_packet_prefers_speak_public_for_elevated_vigilance_when_model_selected_intent_is_empty_in_assisted_mode() -> None:
     interpretation = CharacterInterpretation(
         actor_id="char_b",
         interpreted_summary="state_change",
@@ -675,7 +846,7 @@ def test_l3_suggestion_packet_prefers_speak_public_for_elevated_vigilance_when_m
     assert packet["recommended_intents"][0] == "speak_public"
 
 
-def test_l3_suggestion_packet_prefers_speak_public_for_elevated_vigilance_when_model_selected_intent_is_empty() -> None:
+def test_l3_suggestion_packet_prefers_speak_public_for_elevated_vigilance_when_model_selected_intent_is_empty_in_full_auto() -> None:
     interpretation = CharacterInterpretation(
         actor_id="char_b",
         interpreted_summary="state_change",

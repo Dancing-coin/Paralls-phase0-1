@@ -351,6 +351,7 @@ func build_agent_execution_side_effect_plan(
 	return {
 		"focus_target_lookup": resolve_focus_target_lookup(CharacterPresentationInputRef.get_focus_target_id(agent_presentation_input)),
 		"physiology_hint": CharacterPresentationInputRef.get_physiology_hint(agent_presentation_input),
+		"active_command_type": CharacterPresentationInputRef.get_active_command_type(agent_presentation_input),
 		"role_state_effects": build_agent_role_state_effects(
 			dialogue_role_state,
 			interaction_role_state,
@@ -366,6 +367,10 @@ func get_execution_side_effect_focus_target_lookup(execution_side_effect_plan: D
 
 func get_execution_side_effect_physiology_hint(execution_side_effect_plan: Dictionary) -> String:
 	return str(get_execution_side_effect_physiology_hint_payload(execution_side_effect_plan))
+
+
+func get_execution_side_effect_active_command_type(execution_side_effect_plan: Dictionary) -> String:
+	return str(get_execution_side_effect_active_command_type_payload(execution_side_effect_plan))
 
 
 func get_execution_side_effect_role_state_effects(execution_side_effect_plan: Dictionary) -> Array[Dictionary]:
@@ -396,6 +401,10 @@ func get_execution_side_effect_focus_target_lookup_payload(execution_side_effect
 
 func get_execution_side_effect_physiology_hint_payload(execution_side_effect_plan: Dictionary) -> Variant:
 	return execution_side_effect_plan.get("physiology_hint", "")
+
+
+func get_execution_side_effect_active_command_type_payload(execution_side_effect_plan: Dictionary) -> Variant:
+	return execution_side_effect_plan.get("active_command_type", "")
 
 
 func get_execution_side_effect_role_state_effects_payload(execution_side_effect_plan: Dictionary) -> Variant:

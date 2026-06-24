@@ -5,6 +5,28 @@ from app.main import _handle_envelope, reset_runtime_state
 from app.ws_protocol import Envelope
 from pathlib import Path
 
+_STAGE2_MEMORY_KEYS = {
+    "working_memory",
+    "event_memories",
+    "observation_memories",
+    "knowledge_memories",
+    "social_memories",
+}
+_COMPATIBILITY_MEMORY_ALIAS_KEYS = {
+    "episodic_memories",
+    "relational_memories",
+}
+
+
+def _assert_stage2_memory_bundle_contract(bundle: dict[str, object]) -> None:
+    assert _STAGE2_MEMORY_KEYS.issubset(bundle.keys())
+    assert set(bundle.keys()) <= _STAGE2_MEMORY_KEYS | _COMPATIBILITY_MEMORY_ALIAS_KEYS
+
+    if "episodic_memories" in bundle:
+        assert isinstance(bundle["episodic_memories"], list)
+    if "relational_memories" in bundle:
+        assert isinstance(bundle["relational_memories"], list)
+
 
 def test_runtime_writes_character_perceived_event_into_session_timeline() -> None:
     runtime = CharacterAgentRuntime()
@@ -52,7 +74,7 @@ def test_runtime_writes_self_body_event_into_working_memory_bundle() -> None:
     assert bundle["working_memory"][0]["event_type"] == "self_body_perceived_event"
 
 
-def test_runtime_builds_episodic_memory_from_character_perceived_events() -> None:
+def test_runtime_builds_stage2_memory_pools_from_character_perceived_events() -> None:
     runtime = CharacterAgentRuntime()
     event = CharacterPerceivedEvent(
         actor_id="char_a",
@@ -70,8 +92,16 @@ def test_runtime_builds_episodic_memory_from_character_perceived_events() -> Non
     runtime.ingest_character_perceived_event(event)
     bundle = runtime.get_memory_bundle("char_a")
 
-    assert bundle["episodic_memories"]
-    assert bundle["episodic_memories"][0]["summary"] == "auditory_fact/speaker_active"
+    _assert_stage2_memory_bundle_contract(bundle)
+    assert bundle["event_memories"]
+    assert bundle["event_memories"][0]["summary"] == "auditory_fact/speaker_active"
+    assert bundle["observation_memories"]
+    assert bundle["observation_memories"][0]["observation_summary"] == "auditory_fact/speaker_active"
+    if "episodic_memories" in bundle:
+        assert bundle["episodic_memories"]
+        assert bundle["episodic_memories"][0]["summary"] == bundle["event_memories"][0]["summary"]
+    if "relational_memories" in bundle:
+        assert bundle["relational_memories"] == []
 
 
 def test_runtime_records_l2_reasoning_request_and_interpretation_events() -> None:
@@ -97,7 +127,7 @@ def test_runtime_records_l2_reasoning_request_and_interpretation_events() -> Non
     assert "character_interpretation_event" in event_types
 
 
-def test_runtime_reasoning_request_uses_current_memory_bundle() -> None:
+def test_runtime_reasoning_request_coexists_with_stage2_memory_bundle() -> None:
     runtime = CharacterAgentRuntime()
 
     runtime.ingest_character_perceived_event(
@@ -130,12 +160,27 @@ def test_runtime_reasoning_request_uses_current_memory_bundle() -> None:
     )
 
     timeline = runtime.get_session_timeline("char_a")
+    bundle = runtime.get_memory_bundle("char_a")
     reasoning_requests = [entry for entry in timeline if entry["event_type"] == "l2_reasoning_request"]
 
     assert reasoning_requests
     latest_request = reasoning_requests[-1]
-    assert latest_request["payload"]["context"]["memory"]["episodic_memories"]
-    assert latest_request["payload"]["context"]["working_memory_state"]["recent_perceived_events"]
+    _assert_stage2_memory_bundle_contract(bundle)
+    assert bundle["event_memories"]
+    assert bundle["observation_memories"]
+    if "episodic_memories" in bundle:
+        assert bundle["episodic_memories"]
+        assert bundle["episodic_memories"][0]["summary"] == bundle["event_memories"][0]["summary"]
+    if "relational_memories" in bundle:
+        assert bundle["relational_memories"] == []
+    state = latest_request["payload"]["context"]["working_memory_state"]
+    assert state["recent_perceived_events"]
+    assert "episodic_memories" not in state
+    assert "event_memories" not in state
+    assert "observation_memories" not in state
+    assert "knowledge_memories" not in state
+    assert "relational_memories" not in state
+    assert "social_memories" not in state
 
 
 def test_interact_intent_records_self_body_event_once() -> None:
@@ -194,7 +239,7 @@ def test_runtime_can_recover_timeline_and_memory_bundle_from_optional_storage_ro
     assert timeline
     assert any(entry["event_type"] == "character_perceived_event" for entry in timeline)
     assert bundle["working_memory"]
-    assert bundle["episodic_memories"]
+    assert bundle["event_memories"]
 
 
 def test_runtime_can_rebuild_memory_bundle_from_session_durability_path_only(tmp_path: Path) -> None:
@@ -224,7 +269,7 @@ def test_runtime_can_rebuild_memory_bundle_from_session_durability_path_only(tmp
     assert timeline
     assert any(entry["event_type"] == "character_perceived_event" for entry in timeline)
     assert bundle["working_memory"]
-    assert bundle["episodic_memories"]
+    assert bundle["event_memories"]
 
 
 def test_runtime_records_l4_execution_request_for_full_auto_actor() -> None:
@@ -451,7 +496,36 @@ def test_runtime_writes_relational_belief_event_for_targeted_actor_private_perce
     assert relational_events[-1]["payload"]["entity_id"] == "char_a"
     assert relational_events[-1]["payload"]["belief_type"] == "trust_level"
     assert relational_events[-1]["payload"]["value"] == "guarded"
-    assert bundle["relational_memories"]
-    assert bundle["relational_memories"][-1]["entity_id"] == "char_a"
-    assert bundle["relational_memories"][-1]["belief_type"] == "trust_level"
-    assert bundle["relational_memories"][-1]["value"] == "guarded"
+    assert bundle["social_memories"]
+    assert bundle["social_memories"][-1]["entity_id"] == "char_a"
+    assert bundle["knowledge_memories"]
+    assert bundle["knowledge_memories"][-1]["proposition_key"] == "social:char_a:trust_level"
+    if "relational_memories" in bundle:
+        assert bundle["relational_memories"]
+        assert bundle["relational_memories"][-1]["entity_id"] == "char_a"
+        assert bundle["relational_memories"][-1]["belief_type"] == "trust_level"
+        assert bundle["relational_memories"][-1]["value"] == "guarded"
+
+
+def test_runtime_working_memory_state_remains_short_window_only() -> None:
+    runtime = CharacterAgentRuntime()
+    runtime.record_settlement_result(
+        actor_id="char_d",
+        producer_ts=1214,
+        payload={
+            "result_type": "action_resolution_result",
+            "change_summary": "door half open",
+            "causation_id": "settlement:1214",
+            "correlation_id": "settlement:1214",
+        },
+    )
+
+    state = runtime.get_working_memory_state("char_d", private_snapshot={"actor_id": "char_d"})
+
+    assert state["recent_esm_results"]
+    assert "episodic_memories" not in state
+    assert "event_memories" not in state
+    assert "observation_memories" not in state
+    assert "knowledge_memories" not in state
+    assert "relational_memories" not in state
+    assert "social_memories" not in state

@@ -1,6 +1,9 @@
 extends Node
 
 const BACKEND_URL := "ws://127.0.0.1:8000/ws"
+const EXECUTION_PAYLOAD_DIRECT_MARKER := "character_agent_execution_probe:execution_payload_direct=true"
+const CONSUMER_SEEN_MARKER := "character_agent_execution_probe:consumer_seen=true"
+const ALL_CHECKS_COMPLETE_MARKER := "character_agent_execution_probe:all_checks_complete=true"
 
 var _execution_seen := false
 var _legacy_output_seen := false
@@ -137,13 +140,14 @@ func _run_probe() -> void:
 	print("character_agent_execution_probe:raw_fact_sent=%s" % _raw_fact_sent)
 	print("character_agent_execution_probe:execution_seen=%s" % _execution_seen)
 	print("character_agent_execution_probe:contract_seen=%s" % _contract_seen)
-	print("character_agent_execution_probe:execution_payload_direct=%s" % _execution_payload_direct)
+	print(EXECUTION_PAYLOAD_DIRECT_MARKER if _execution_payload_direct else "character_agent_execution_probe:execution_payload_direct=false")
 	print("character_agent_execution_probe:legacy_output_seen=%s" % _legacy_output_seen)
-	print("character_agent_execution_probe:consumer_seen=%s" % _consumer_seen)
+	print(CONSUMER_SEEN_MARKER if _consumer_seen else "character_agent_execution_probe:consumer_seen=false")
 	print("character_agent_execution_probe:consumer_node_is_character_replica=%s" % _consumer_node_is_character_replica)
 	print("character_agent_execution_probe:observed_execution_actor_id=%s" % _observed_execution_actor_id)
 	print("character_agent_execution_probe:execution_applied_actor_id=%s" % _execution_applied_actor_id)
 	_capture_autotest_screenshot()
+	print(ALL_CHECKS_COMPLETE_MARKER)
 	get_tree().quit(0)
 
 

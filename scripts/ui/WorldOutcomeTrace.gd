@@ -36,11 +36,25 @@ func _get_state() -> Node:
 
 
 func _format_bottom_strip_row(row: Dictionary) -> String:
-	var row_type := str(row.get("type", "") or "")
+	var row_type := _string_or_empty(row.get("type", ""))
+	var summary := _summary_or_placeholder(row.get("summary", ""))
 	if row_type == "世界":
-		return "[世界] %s" % str(row.get("summary", "") or "暂无摘要")
+		return "[世界] %s" % summary
 	if row_type == "司命":
-		return "[司命] %s" % str(row.get("summary", "") or "暂无摘要")
+		return "[司命] %s" % summary
 	if row_type == "节拍":
-		return "[节拍] %s" % str(row.get("summary", "") or "暂无摘要")
-	return "[%s] %s" % [row_type, str(row.get("summary", "") or "暂无摘要")]
+		return "[节拍] %s" % summary
+	return "[%s] %s" % [row_type, summary]
+
+
+func _string_or_empty(value: Variant) -> String:
+	if value == null:
+		return ""
+	return str(value)
+
+
+func _summary_or_placeholder(value: Variant) -> String:
+	var summary := _string_or_empty(value)
+	if summary.is_empty():
+		return "暂无摘要"
+	return summary

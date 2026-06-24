@@ -214,8 +214,12 @@ def main() -> int:
             "observatory_panels_populated",
             "observatory_actor_panel_populated",
             "observatory_director_workstation_populated",
+            "observatory_selected_actor_siming_summary",
+            "observatory_bottom_strip_siming",
             "observatory_timeline_multi_role",
+            "observatory_timeline_siming",
             "observatory_ledger_pairwise",
+            "observatory_ledger_siming_pressure",
             "observatory_freeze_roundtrip",
         }
         if observatory_probe_results:
@@ -249,8 +253,12 @@ def main() -> int:
             "observatory_panels_populated",
             "observatory_actor_panel_populated",
             "observatory_director_workstation_populated",
+            "observatory_selected_actor_siming_summary",
+            "observatory_bottom_strip_siming",
             "observatory_timeline_multi_role",
+            "observatory_timeline_siming",
             "observatory_ledger_pairwise",
+            "observatory_ledger_siming_pressure",
             "observatory_freeze_roundtrip",
         ]
         index = {str(entry["id"]): str(entry["status"]) for entry in report["results"]}

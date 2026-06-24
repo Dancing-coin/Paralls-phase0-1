@@ -449,6 +449,30 @@ def evaluate_phase0_audit(
         )
     )
 
+    observatory_selected_actor_siming_summary_ok = (
+        "character_director_observatory_probe:selected_actor_siming_summary_populated=true" in combined_log
+    )
+    results.append(
+        _result(
+            "observatory_selected_actor_siming_summary",
+            "Selected actor rail shows the latest Siming summary for the observed role",
+            "proved" if observatory_selected_actor_siming_summary_ok else "missing",
+            ["character_director_observatory_probe:selected_actor_siming_summary_populated=true"] if observatory_selected_actor_siming_summary_ok else [],
+        )
+    )
+
+    observatory_bottom_strip_siming_ok = (
+        "character_director_observatory_probe:bottom_strip_siming_populated=true" in combined_log
+    )
+    results.append(
+        _result(
+            "observatory_bottom_strip_siming",
+            "Bottom strip can surface a Siming row from runtime state through the live strip or its formatter path",
+            "proved" if observatory_bottom_strip_siming_ok else "missing",
+            ["character_director_observatory_probe:bottom_strip_siming_populated=true"] if observatory_bottom_strip_siming_ok else [],
+        )
+    )
+
     observatory_timeline_multi_role_ok = "character_director_observatory_probe:timeline_multi_role_populated=true" in combined_log
     results.append(
         _result(
@@ -459,6 +483,16 @@ def evaluate_phase0_audit(
         )
     )
 
+    observatory_timeline_siming_ok = "character_director_observatory_probe:timeline_siming_populated=true" in combined_log
+    results.append(
+        _result(
+            "observatory_timeline_siming",
+            "Script timeline exposes non-empty Siming summaries in beat review content",
+            "proved" if observatory_timeline_siming_ok else "missing",
+            ["character_director_observatory_probe:timeline_siming_populated=true"] if observatory_timeline_siming_ok else [],
+        )
+    )
+
     observatory_ledger_pairwise_ok = "character_director_observatory_probe:ledger_pairwise_populated=true" in combined_log
     results.append(
         _result(
@@ -466,6 +500,18 @@ def evaluate_phase0_audit(
             "Dialogue ledger contains pairwise cross-role accounting content",
             "proved" if observatory_ledger_pairwise_ok else "missing",
             ["character_director_observatory_probe:ledger_pairwise_populated=true"] if observatory_ledger_pairwise_ok else [],
+        )
+    )
+
+    observatory_ledger_siming_pressure_ok = (
+        "character_director_observatory_probe:ledger_siming_pressure_populated=true" in combined_log
+    )
+    results.append(
+        _result(
+            "observatory_ledger_siming_pressure",
+            "Dialogue ledger can resolve populated Siming pressure context from runtime-backed exchange data",
+            "proved" if observatory_ledger_siming_pressure_ok else "missing",
+            ["character_director_observatory_probe:ledger_siming_pressure_populated=true"] if observatory_ledger_siming_pressure_ok else [],
         )
     )
 
@@ -501,8 +547,12 @@ def evaluate_phase0_audit(
         "observatory_panels_populated",
         "observatory_actor_panel_populated",
         "observatory_director_workstation_populated",
+        "observatory_selected_actor_siming_summary",
+        "observatory_bottom_strip_siming",
         "observatory_timeline_multi_role",
+        "observatory_timeline_siming",
         "observatory_ledger_pairwise",
+        "observatory_ledger_siming_pressure",
         "observatory_freeze_roundtrip",
     ]
     index = _status_index(results)

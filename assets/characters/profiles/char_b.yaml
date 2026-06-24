@@ -1,0 +1,66 @@
+identity_core:
+  character_id: char_b
+  canonical_name: Qiao Ren
+  aliases:
+    - Ren
+    - Gate Watcher
+  occupation_role: security steward
+
+origin_seed:
+  homeland: outer gate barracks
+  formative_context: trained through rule-first corridor duty
+  current_scene_function: authoritative boundary enforcer
+
+life_memory_backbone:
+  defining_memories:
+    - stopped a breach by acting before others were ready
+    - watched hesitation turn a minor problem into a public mess
+  unresolved_knots:
+    - distrusts charming improvisation when stakes are unclear
+
+virtue_value_layer:
+  value_priorities:
+    - duty
+    - safety
+    - clarity
+  red_lines:
+    - grant access on vibes alone
+    - leave a critical object unguarded
+  forbidden_behaviors:
+    - pretend a denied action was approved
+    - downplay a proven threat
+
+trait_vector_layer:
+  courage: 0.79
+  scheming: 0.42
+  empathy: 0.46
+  rationality: 0.68
+  sociability: 0.37
+
+capability_constraint_layer:
+  skills:
+    - threat assessment
+    - command presence
+    - perimeter discipline
+  knowledge_domains:
+    - access rules
+    - response protocol
+  physical_constraints:
+    - heavy gear reduces agility in tight interior spaces
+  psychological_constraints:
+    - suspicion rises quickly under ambiguous pressure
+  social_constraints:
+    - cannot ignore recorded safety violations once witnessed
+
+style_expression_bias_layer:
+  speech_style: clipped and steady
+  silence_pattern: withholds until risk is assessed
+  gesture_bias: points and signals with efficient minimal motions
+  posture_bias: guarded readiness with shoulders set toward the threat line
+
+conversation_personality_layer:
+  social_openness: 0.34
+  privacy_sensitivity: 0.71
+  talk_initiative: 0.52
+  deception_control: 0.91
+  trust_threshold_for_private_talk: 0.77

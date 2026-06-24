@@ -27,6 +27,10 @@ from runtime_trace import write_runtime_trace
 
 EXECUTION_PROBE_QUIT_AFTER = "240"
 EXECUTION_PROBE_MARKER_TIMEOUT_SECONDS = 90.0
+EXECUTION_PAYLOAD_DIRECT_MARKER = "character_agent_execution_probe:execution_payload_direct=true"
+CONSUMER_SEEN_MARKER = "character_agent_execution_probe:consumer_seen=true"
+LEGACY_OUTPUT_CLEAR_MARKER = "character_agent_execution_probe:legacy_output_seen=false"
+ALL_CHECKS_COMPLETE_MARKER = "character_agent_execution_probe:all_checks_complete=true"
 
 
 def main() -> int:
@@ -63,8 +67,7 @@ def main() -> int:
             project_root,
             main_log,
             success_markers=[
-                "character_agent_execution_probe:consumer_seen=true",
-                "character_agent_execution_probe:legacy_output_seen=false",
+                ALL_CHECKS_COMPLETE_MARKER,
             ],
             timeout_seconds=EXECUTION_PROBE_MARKER_TIMEOUT_SECONDS,
             env={
@@ -93,7 +96,7 @@ def main() -> int:
         execution_entry = next(
             entry for entry in phase0_report["results"] if entry["id"] == "character_agent_execution_contract"
         )
-        execution_payload_direct_ok = "character_agent_execution_probe:execution_payload_direct=true" in main_log_text
+        execution_payload_direct_ok = EXECUTION_PAYLOAD_DIRECT_MARKER in main_log_text
         if execution_entry["status"] == "proved" and execution_payload_direct_ok:
             execution_entry["evidence"].append("execution_payload_direct")
         elif execution_entry["status"] == "proved":
@@ -104,14 +107,14 @@ def main() -> int:
                 "actor_control_frames/presentation_plan/action_request_bundle."
             )
         consumer_ok = (
-            "character_agent_execution_probe:consumer_seen=true" in main_log_text
-            and "character_agent_execution_probe:legacy_output_seen=false" in main_log_text
+            CONSUMER_SEEN_MARKER in main_log_text
+            and LEGACY_OUTPUT_CLEAR_MARKER in main_log_text
         )
         consumer_entry = {
             "id": "character_agent_execution_consumer",
             "title": "Shared actor runtime consumes the execution contract",
             "status": "proved" if consumer_ok else "missing",
-            "evidence": ["character_agent_execution_applied"]
+            "evidence": ["character_agent_execution_applied", CONSUMER_SEEN_MARKER]
             if consumer_ok
             else [],
             "notes": "" if consumer_ok else "Probe did not confirm the shared actor runtime consumed the execution contract and applied it.",

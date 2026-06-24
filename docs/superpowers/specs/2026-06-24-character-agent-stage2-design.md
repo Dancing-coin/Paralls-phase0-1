@@ -10,7 +10,8 @@ The repository already has:
 - a real `CharacterAgentRuntime` backbone
 - shared actor ingress into the Godot-side actor stack
 - minimal memory/timeline/runtime truth
-- working `Siming` authority/event paths
+- merged `Siming` authority/event/runtime paths on mainline
+- merged `Siming`-to-character delivery through the current role runtime ingress
 
 But it still does not provide a complete character-mind stage that supports:
 
@@ -101,12 +102,47 @@ Stage 2 must preserve current repository truths:
 - the character agent still consumes only role-legal business inputs
 - `Siming` remains catalyst-level, not direct role replacement
 - the Godot actor stack remains shared across human/agent/program control families
+- canonical `Siming` role delivery already enters the mainline runtime through the merged bridge/dispatch path
 
 This stage must not create:
 
 - a second agent-only embodiment path
 - direct world-truth writes from character reasoning
 - profile-specific hardcoded logic in runtime services
+
+## Current Mainline Gap Audit
+
+Stage 2 is not starting from zero, but the current mainline is still materially short of this spec.
+
+The mainline truth at the time of this spec update is:
+
+- `Siming` is merged and already reaches the role runtime through:
+  - `SimingEventPipeline`
+  - `SimingCharacterDispatchAdapter`
+  - `SimingCharacterCompatibilityInput`
+  - `CharacterAgentRuntime.ingest_siming_output(...)`
+- the runtime still hardcodes `SUPPORTED_ACTORS = {"char_a", "char_b", "char_c"}`
+- there is no generalized `CharacterProfile` loader or runtime profile object
+- memory is still organized primarily as:
+  - working memory
+  - episodic memory
+  - relational memory
+- there is no explicit `Observation Memory` pool
+- there is no explicit `Knowledge Memory` pool with proposition-state progression
+- there is no explicit `KnowledgeState` model
+- current relational memory is still a thin belief upsert surface, not full `Social Memory`
+- `L3` still sets `persona_ok = True` and `logic_ok = True` in its candidate scoring path rather than reading real profile/memory/knowledge inputs
+- `L4` already produces a five-channel-shaped execution plan, but the face/body/physiology semantics are still shallow and partly placeholder-like
+
+So the Stage 2 work is not a cosmetic extension.
+
+It must replace several transitional runtime truths:
+
+- actor hardcoding
+- thin memory layering
+- placeholder persona/logic filtering
+- weak social-memory semantics
+- thin Siming-to-mentality semantics
 
 ## Character Profile System
 
@@ -501,6 +537,8 @@ Stage 2 treats `Siming` as a legal catalyst for role mentality, not as a role-re
 - `L2` pressure and risk interpretation
 - `L3` candidate ranking bias
 
+In current mainline terms, this influence already reaches the role runtime through a structured compatibility ingress rather than an ad-hoc direct scene mutation path.
+
 ### Forbidden Influence Surface
 
 `Siming` may not:
@@ -514,7 +552,29 @@ Stage 2 treats `Siming` as a legal catalyst for role mentality, not as a role-re
 
 ### Stage 2 Siming Input Shape
 
-Stage 2 should treat Siming influence as a structured catalyst packet with fields conceptually like:
+Stage 2 should treat Siming influence as a structured catalyst packet.
+
+Current mainline already exposes a concrete compatibility form through `SimingCharacterCompatibilityInput`, carrying fields such as:
+
+- `message_id`
+- `delivery_id`
+- `actor_id`
+- `input_type`
+- `band`
+- `producer_ts`
+- `room_id`
+- `scene_id`
+- `zone_id`
+- `causation_id`
+- `correlation_id`
+- `presentation_hint`
+- `target_actor_id`
+- `target_object_id`
+- `target_environment_id`
+
+For Stage 2, the behavior contract matters more than freezing the exact compatibility type forever.
+
+Conceptually, the catalyst packet must continue to preserve fields like:
 
 - `target_ref`
 - `catalyst_type`
@@ -523,7 +583,7 @@ Stage 2 should treat Siming influence as a structured catalyst packet with field
 - `salience_boost`
 - `reason_scope`
 
-Exact field naming may evolve, but the behavior contract must stay stable.
+Exact field naming may continue evolving, but the behavior contract must stay stable.
 
 ### Player Rule
 
@@ -619,13 +679,20 @@ AI-driven roles keep:
 
 - full automatic `L3/L4` authority within the same runtime family
 
-## Siming Branch Relationship
+## Mainline Siming Relationship
 
-The active `feat/siming` branch is treated as an implementation input source for Stage 2, not as architecture truth by itself.
+`Siming` is now merged into mainline and already participates in the current runtime through:
 
-Stage 2 design assumes that Siming-related work may later merge to mainline, but this spec defines the role-mind contract independently of that branch’s exact file layout.
+- `SimingEventPipeline`
+- `SimingCharacterDispatchAdapter`
+- `SimingCharacterCompatibilityInput`
+- `CharacterAgentRuntime.ingest_siming_output(...)`
 
-The contract that matters is:
+Stage 2 therefore does not treat Siming as hypothetical future work.
+
+Instead, Stage 2 treats the merged Siming path as an existing upstream catalyst path whose role-mind semantics now need to be deepened.
+
+The contract that still matters is:
 
 - `Siming` can legally influence role mentality
 - `Siming` cannot replace role agency

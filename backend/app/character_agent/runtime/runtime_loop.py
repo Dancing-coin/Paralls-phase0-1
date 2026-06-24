@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
 from app.models.character_agent_runtime import CharacterGoalCommand
 from app.models.character_agent_runtime import CHARACTER_AGENT_CONTROL_MODES
@@ -22,23 +23,20 @@ from app.models.siming_character_bridge import SimingCharacterCompatibilityInput
 
 
 class CharacterAgentRuntime:
-    SUPPORTED_ACTORS = {"char_a", "char_b", "char_c"}
     AWAY_CONSERVATIVE_ALLOWED_COMMANDS = {"look_at", "observe", "speak"}
     _RECENT_HISTORY_LIMIT = 4
-    DEFAULT_CONTROL_MODES = {
-        "char_a": "agent_full_auto",
-        "char_b": "agent_full_auto",
-        "char_c": "player_priority_assisted",
-    }
+    _PROFILE_DIRECTORY = Path(__file__).resolve().parents[4] / "assets" / "characters" / "profiles"
 
     def __init__(self, storage_root: str | Path | None = None) -> None:
+        self._profile_registry = CharacterProfileRegistry.from_directory(self._PROFILE_DIRECTORY)
+        self._supported_actor_ids = set(self._profile_registry.actor_ids())
         self._l1 = CharacterAgentL1Service()
-        self._l2 = CharacterAgentL2Service()
+        self._l2 = CharacterAgentL2Service(profile_registry=self._profile_registry)
         self._l3 = CharacterAgentL3Service()
         self._l4 = CharacterAgentL4Adapter()
         self._l4_executor = CharacterAgentL4Executor()
         self._observatory_projection = CharacterAgentDebugProjection()
-        self._control_modes = self.DEFAULT_CONTROL_MODES.copy()
+        self._control_modes = self._build_default_control_modes()
         self._pending_suggestions: list[CharacterSuggestionPacket] = []
         self._pending_observatory_messages: list[dict[str, object]] = []
         self._observatory_actor_context: dict[str, dict[str, str]] = {}
@@ -47,7 +45,7 @@ class CharacterAgentRuntime:
         self._rehydrate_memory_from_timeline()
 
     def ingest_character_perceived_event(self, event: CharacterPerceivedEvent) -> list[CharacterGoalCommand]:
-        if event.actor_id not in self.SUPPORTED_ACTORS:
+        if not self.supports_actor(event.actor_id):
             return []
         self._record_character_perceived_event(event)
         self._record_relational_belief_from_perceived_event(event)
@@ -167,14 +165,14 @@ class CharacterAgentRuntime:
         return self._control_modes.get(actor_id, "agent_full_auto")
 
     def set_control_mode(self, actor_id: str, mode: str) -> None:
-        if actor_id not in self.SUPPORTED_ACTORS:
+        if not self.supports_actor(actor_id):
             raise ValueError(f"unsupported actor_id: {actor_id}")
         if not self.is_valid_control_mode(mode):
             raise ValueError(f"unsupported control mode: {mode}")
         self._control_modes[actor_id] = mode
 
     def ingest_self_body_perceived_event(self, event: SelfBodyPerceivedEvent) -> list[CharacterGoalCommand]:
-        if event.actor_id not in self.SUPPORTED_ACTORS:
+        if not self.supports_actor(event.actor_id):
             return []
         self._record_self_body_event(event)
         snapshot = self._l1.apply_self_body_perceived_event(event)
@@ -277,17 +275,20 @@ class CharacterAgentRuntime:
         self,
         payload: dict[str, object] | SimingCharacterCompatibilityInput,
     ) -> list[CharacterGoalCommand]:
-        normalized_payload: dict[str, object] = (
-            dict(payload.model_dump(exclude_none=True))
+        validated_payload = (
+            payload
             if isinstance(payload, SimingCharacterCompatibilityInput)
-            else dict(payload)
+            else SimingCharacterCompatibilityInput.model_validate(payload)
+        )
+        normalized_payload = self._normalize_siming_payload(
+            validated_payload.model_dump(exclude_none=True)
         )
         actor_id = str(
             normalized_payload.get("target_actor_id")
             or normalized_payload.get("actor_id")
             or ""
         )
-        if actor_id not in self.SUPPORTED_ACTORS:
+        if not self.supports_actor(actor_id):
             return []
         normalized_payload["target_actor_id"] = actor_id
         self._record_siming_event(normalized_payload)
@@ -401,7 +402,7 @@ class CharacterAgentRuntime:
         )
 
     def supports_actor(self, actor_id: str) -> bool:
-        return actor_id in self.SUPPORTED_ACTORS
+        return actor_id in self._supported_actor_ids
 
     def get_private_snapshot(self, actor_id: str):
         return self._l1.get_snapshot(actor_id)
@@ -509,6 +510,9 @@ class CharacterAgentRuntime:
             producer_ts=int(payload.get("producer_ts", 0) or 0),
             payload={
                 "summary": str(payload.get("presentation_hint", "") or ""),
+                "pressure_hint": str(payload.get("pressure_hint", "") or ""),
+                "salience_boost": payload.get("salience_boost"),
+                "reason_scope": str(payload.get("reason_scope", "") or ""),
                 "target_object_id": str(payload.get("target_object_id", "") or ""),
                 "target_environment_id": str(payload.get("target_environment_id", "") or ""),
             },
@@ -701,15 +705,26 @@ class CharacterAgentRuntime:
         class _SimingEvent:
             def __init__(self, actor_id: str, payload: dict[str, object]) -> None:
                 self.actor_id = actor_id
-                self.percept_channel = "siming"
+                self.percept_channel = str(payload.get("percept_channel", "") or "siming")
                 self.producer_ts = int(payload.get("producer_ts", 0) or 0)
                 self.room_id = str(payload.get("room_id", "") or "")
                 self.scene_id = str(payload.get("scene_id", "") or "")
                 self.zone_id = str(payload.get("zone_id", "") or "")
-                self.perceived_summary = str(payload.get("presentation_hint", "") or "siming_catalyst")
+                self.perceived_summary = str(
+                    payload.get("perceived_summary", "")
+                    or payload.get("presentation_hint", "")
+                    or "siming_catalyst"
+                )
                 self.source_candidate_event_id = str(payload.get("causation_id", "") or f"siming:{self.producer_ts}")
-                self.clarity_score = 1.0
-                self.certainty_score = 1.0
+                self.clarity_score = float(payload.get("clarity_score", 1.0) or 1.0)
+                self.certainty_score = float(payload.get("certainty_score", 1.0) or 1.0)
+                self.target_actor_id = str(payload.get("target_actor_id", "") or "")
+                self.target_object_id = str(payload.get("target_object_id", "") or "")
+                self.target_environment_id = str(payload.get("target_environment_id", "") or "")
+                self.presentation_hint = str(payload.get("presentation_hint", "") or "")
+                self.pressure_hint = str(payload.get("pressure_hint", "") or "")
+                self.reason_scope = str(payload.get("reason_scope", "") or "")
+                self.salience_boost = payload.get("salience_boost")
 
             def model_dump(self) -> dict[str, object]:
                 return {
@@ -723,6 +738,13 @@ class CharacterAgentRuntime:
                     "source_candidate_event_id": self.source_candidate_event_id,
                     "clarity_score": self.clarity_score,
                     "certainty_score": self.certainty_score,
+                    "target_actor_id": self.target_actor_id,
+                    "target_object_id": self.target_object_id,
+                    "target_environment_id": self.target_environment_id,
+                    "presentation_hint": self.presentation_hint,
+                    "pressure_hint": self.pressure_hint,
+                    "reason_scope": self.reason_scope,
+                    "salience_boost": self.salience_boost,
                 }
 
         return self._l2.prepare_reasoning_request(
@@ -732,6 +754,35 @@ class CharacterAgentRuntime:
             control_mode=self.get_control_mode(actor_id),
             working_memory_state=working_memory_state,
         )
+
+    def _normalize_siming_payload(self, payload: dict[str, object]) -> dict[str, object]:
+        normalized = dict(payload)
+        presentation_hint = str(normalized.get("presentation_hint", "") or "").strip()
+        if presentation_hint != "":
+            normalized["presentation_hint"] = presentation_hint
+            normalized.setdefault("perceived_summary", presentation_hint)
+        else:
+            normalized.pop("presentation_hint", None)
+        normalized.setdefault("percept_channel", "siming")
+
+        pressure_hint = str(normalized.get("pressure_hint", "") or "").strip()
+        if pressure_hint != "":
+            normalized["pressure_hint"] = pressure_hint
+        else:
+            normalized.pop("pressure_hint", None)
+
+        reason_scope = str(normalized.get("reason_scope", "") or "").strip()
+        if reason_scope != "":
+            normalized["reason_scope"] = reason_scope
+        else:
+            normalized.pop("reason_scope", None)
+
+        salience_boost = normalized.get("salience_boost")
+        if isinstance(salience_boost, int | float):
+            normalized_boost = min(1.0, max(0.0, float(salience_boost)))
+            normalized["salience_boost"] = normalized_boost
+            normalized.setdefault("clarity_score", normalized_boost if normalized_boost >= 0.5 else 0.5)
+        return normalized
 
     def _planner_suggestion_packet(
         self,
@@ -792,6 +843,12 @@ class CharacterAgentRuntime:
         updated = list(entries)
         updated.append(value)
         return updated[-self._RECENT_HISTORY_LIMIT :]
+
+    def _build_default_control_modes(self) -> dict[str, str]:
+        return {
+            actor_id: self._profile_registry.get(actor_id).runtime_defaults.default_control_mode
+            for actor_id in self._supported_actor_ids
+        }
 
     def _rehydrate_memory_from_timeline(self) -> None:
         for actor_id, events in self._session_store.list_all_events().items():

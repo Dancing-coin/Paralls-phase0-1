@@ -92,6 +92,24 @@ func get_selected_actor_events() -> Array[Dictionary]:
 	return _dictionary_array(events)
 
 
+func get_selected_actor_latest_siming_summary() -> String:
+	return str(get_selected_actor_state().get("latest_siming_summary", "") or "")
+
+
+func get_selected_actor_recent_siming_reasons(limit: int = 2) -> Array[String]:
+	if limit <= 0:
+		return []
+	var rows: Array[String] = []
+	var events: Array[Dictionary] = get_recent_siming_events()
+	for event in events:
+		if str(event.get("target_ref", "") or "") != selected_actor_id:
+			continue
+		rows.append(str(event.get("reason_summary", "") or event.get("summary", "") or ""))
+	if rows.size() > limit:
+		rows = _string_array(rows.slice(rows.size() - limit, rows.size()))
+	return rows
+
+
 func get_visible_actor_states() -> Dictionary:
 	return _state_frame_value("latest_actor_states", {})
 
@@ -306,6 +324,15 @@ func _dictionary_array(value: Variant) -> Array[Dictionary]:
 			if entry is Dictionary:
 				rows.append((entry as Dictionary).duplicate(true))
 	return rows
+
+
+func _string_array(value: Variant) -> Array[String]:
+	var rows: Array[String] = []
+	if value is Array:
+		for entry in value:
+			rows.append(str(entry))
+	return rows
+
 
 func _actor_label(actor_id: String) -> String:
 	if actor_id == "char_a":
