@@ -73,6 +73,7 @@ def _write_harness_report(
 
     profile_configs = profile_configs or {}
     failure_digest_artifacts: list[str] = []
+    archived_failure_digest_artifacts: list[str] = []
     for profile in profiles:
         if int(profile["exit_code"]) == 0:
             continue
@@ -88,6 +89,7 @@ def _write_harness_report(
         digest_path.write_text(json.dumps(digest, ensure_ascii=False, indent=2), encoding="utf-8")
         archived_digest_path.write_text(json.dumps(digest, ensure_ascii=False, indent=2), encoding="utf-8")
         failure_digest_artifacts.append(str(digest_path.relative_to(project_root)).replace("\\", "/"))
+        archived_failure_digest_artifacts.append(str(archived_digest_path.relative_to(project_root)).replace("\\", "/"))
 
     harness_change_result = collect_harness_changes(project_root)
     manifest = build_run_manifest(
@@ -104,9 +106,23 @@ def _write_harness_report(
         harness_change_errors=list(harness_change_result["harness_change_errors"]),
         failure_digest_artifacts=failure_digest_artifacts,
     )
+    archived_manifest = build_run_manifest(
+        run_id=run_id,
+        overall_passed=overall_passed,
+        profiles=profiles,
+        artifacts={
+            "latest_report_json": str(json_path),
+            "latest_report_markdown": str(markdown_path),
+            "archived_report_json": str(archived_json_path),
+            "archived_report_markdown": str(archived_markdown_path),
+        },
+        harness_changes=list(harness_change_result["harness_changes"]),
+        harness_change_errors=list(harness_change_result["harness_change_errors"]),
+        failure_digest_artifacts=archived_failure_digest_artifacts,
+    )
     diff = build_run_diff(previous_baseline, manifest)
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
-    archived_manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    archived_manifest_path.write_text(json.dumps(archived_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     baseline_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     diff_path.write_text(json.dumps(diff, ensure_ascii=False, indent=2), encoding="utf-8")
     archived_diff_path.write_text(json.dumps(diff, ensure_ascii=False, indent=2), encoding="utf-8")

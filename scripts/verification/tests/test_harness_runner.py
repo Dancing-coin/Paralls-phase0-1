@@ -168,6 +168,7 @@ def test_write_harness_report_records_active_changes_and_failure_digest(tmp_path
     )
 
     manifest = json.loads(report_paths["manifest"].read_text(encoding="utf-8"))
+    archived_manifest = json.loads((report_paths["run_dir"] / "run-manifest.json").read_text(encoding="utf-8"))
     digest_path = tmp_path / ".harness" / "verification" / "docs-failure-digest.json"
     archived_digest_path = report_paths["run_dir"] / "docs-failure-digest.json"
 
@@ -183,6 +184,9 @@ def test_write_harness_report_records_active_changes_and_failure_digest(tmp_path
     assert manifest["harness_change_errors"] == []
     assert manifest["failure_digest_artifacts"] == [
         ".harness/verification/docs-failure-digest.json"
+    ]
+    assert archived_manifest["failure_digest_artifacts"] == [
+        ".harness/verification/runs/run_observable/docs-failure-digest.json"
     ]
     assert digest_path.exists()
     assert archived_digest_path.exists()
