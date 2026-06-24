@@ -121,6 +121,73 @@ def test_write_harness_report_preserves_attempt_count_when_present(tmp_path: Pat
     assert payload["profiles"][0]["max_attempts"] == 2
 
 
+def test_write_harness_report_records_active_changes_and_failure_digest(tmp_path: Path) -> None:
+    changes_dir = tmp_path / ".harness" / "changes"
+    changes_dir.mkdir(parents=True)
+    (changes_dir / "chg-active.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "id": "chg-active",
+                "title": "Active change",
+                "status": "active",
+                "verification_profiles": ["docs"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    report_path = tmp_path / ".harness" / "verification" / "docs-report.json"
+    report_path.parent.mkdir(parents=True)
+    report_path.write_text(
+        json.dumps(
+            {
+                "results": [
+                    {"id": "docs_index_paths_exist", "status": "missing", "evidence": []}
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report_paths = _write_harness_report(
+        tmp_path,
+        [
+            {
+                "profile": "docs",
+                "command": ["python", "scripts/verification/check_docs.py"],
+                "exit_code": 1,
+            }
+        ],
+        overall_passed=False,
+        run_id="run_observable",
+        profile_configs={
+            "docs": {
+                "result_artifact": ".harness/verification/docs-report.json",
+            }
+        },
+    )
+
+    manifest = json.loads(report_paths["manifest"].read_text(encoding="utf-8"))
+    digest_path = tmp_path / ".harness" / "verification" / "docs-failure-digest.json"
+    archived_digest_path = report_paths["run_dir"] / "docs-failure-digest.json"
+
+    assert manifest["harness_changes"] == [
+        {
+            "id": "chg-active",
+            "title": "Active change",
+            "status": "active",
+            "path": ".harness/changes/chg-active.json",
+            "verification_profiles": ["docs"],
+        }
+    ]
+    assert manifest["harness_change_errors"] == []
+    assert manifest["failure_digest_artifacts"] == [
+        ".harness/verification/docs-failure-digest.json"
+    ]
+    assert digest_path.exists()
+    assert archived_digest_path.exists()
+
+
 def test_collect_harness_changes_reads_only_active_manifests(tmp_path: Path) -> None:
     changes_dir = tmp_path / ".harness" / "changes"
     changes_dir.mkdir(parents=True)

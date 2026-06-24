@@ -9,7 +9,13 @@ from os import environ
 from pathlib import Path
 
 from common import repo_root, resolve_python_exe, verification_dir
-from evidence import build_run_diff, build_run_manifest, read_json_object
+from evidence import (
+    build_failure_digest,
+    build_run_diff,
+    build_run_manifest,
+    collect_harness_changes,
+    read_json_object,
+)
 from registry import load_profile_registry
 
 
@@ -28,7 +34,14 @@ def _run(args: list[str], cwd: Path) -> int:
     return result.returncode
 
 
-def _write_harness_report(project_root: Path, profiles: list[dict[str, object]], *, overall_passed: bool, run_id: str | None = None) -> dict[str, Path]:
+def _write_harness_report(
+    project_root: Path,
+    profiles: list[dict[str, object]],
+    *,
+    overall_passed: bool,
+    run_id: str | None = None,
+    profile_configs: dict[str, dict[str, object]] | None = None,
+) -> dict[str, Path]:
     run_id = run_id or datetime.now().strftime("run-%Y%m%d-%H%M%S-%f")
     report = {
         "run_id": run_id,
@@ -58,6 +71,25 @@ def _write_harness_report(project_root: Path, profiles: list[dict[str, object]],
     markdown_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     archived_markdown_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+    profile_configs = profile_configs or {}
+    failure_digest_artifacts: list[str] = []
+    for profile in profiles:
+        if int(profile["exit_code"]) == 0:
+            continue
+        profile_name = str(profile["profile"])
+        digest = build_failure_digest(
+            project_root=project_root,
+            run_id=run_id,
+            profile_result=profile,
+            profile_config=profile_configs.get(profile_name, {}),
+        )
+        digest_path = log_dir / f"{profile_name}-failure-digest.json"
+        archived_digest_path = run_dir / f"{profile_name}-failure-digest.json"
+        digest_path.write_text(json.dumps(digest, ensure_ascii=False, indent=2), encoding="utf-8")
+        archived_digest_path.write_text(json.dumps(digest, ensure_ascii=False, indent=2), encoding="utf-8")
+        failure_digest_artifacts.append(str(digest_path.relative_to(project_root)).replace("\\", "/"))
+
+    harness_change_result = collect_harness_changes(project_root)
     manifest = build_run_manifest(
         run_id=run_id,
         overall_passed=overall_passed,
@@ -68,6 +100,9 @@ def _write_harness_report(project_root: Path, profiles: list[dict[str, object]],
             "archived_report_json": str(archived_json_path),
             "archived_report_markdown": str(archived_markdown_path),
         },
+        harness_changes=list(harness_change_result["harness_changes"]),
+        harness_change_errors=list(harness_change_result["harness_change_errors"]),
+        failure_digest_artifacts=failure_digest_artifacts,
     )
     diff = build_run_diff(previous_baseline, manifest)
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -153,12 +188,24 @@ def main() -> int:
             }
         )
         if exit_code != 0:
-            report_paths = _write_harness_report(project_root, profile_results, overall_passed=False, run_id=run_id)
+            report_paths = _write_harness_report(
+                project_root,
+                profile_results,
+                overall_passed=False,
+                run_id=run_id,
+                profile_configs=registry.profiles,
+            )
             print(f"harness_report_json={report_paths['json']}")
             print(f"harness_report_md={report_paths['markdown']}")
             print(f"harness_run_dir={report_paths['run_dir']}")
             return exit_code
-    report_paths = _write_harness_report(project_root, profile_results, overall_passed=True, run_id=run_id)
+    report_paths = _write_harness_report(
+        project_root,
+        profile_results,
+        overall_passed=True,
+        run_id=run_id,
+        profile_configs=registry.profiles,
+    )
     print(f"harness_report_json={report_paths['json']}")
     print(f"harness_report_md={report_paths['markdown']}")
     print(f"harness_run_dir={report_paths['run_dir']}")
