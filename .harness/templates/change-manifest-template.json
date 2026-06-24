@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "chg-20260624-example-decision-observability",
+  "title": "Example Harness decision observability change",
+  "status": "active",
+  "created_at": "2026-06-24",
+  "changed_files": [
+    "scripts/verification/harness.py"
+  ],
+  "evidence_refs": [
+    ".harness/verification/harness-run-diff.json"
+  ],
+  "root_cause_hypothesis": "One sentence describing the observed gap this change addresses.",
+  "predicted_fixes": [
+    {
+      "profile": "docs",
+      "claim": "The profile exposes the intended evidence after this change."
+    }
+  ],
+  "predicted_regressions": [
+    {
+      "profile": "harness-lifecycle",
+      "risk": "Lifecycle docs or templates may fall out of sync."
+    }
+  ],
+  "verification_profiles": [
+    "docs",
+    "harness-lifecycle"
+  ]
+}
