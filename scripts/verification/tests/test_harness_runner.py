@@ -12,6 +12,11 @@ import common
 import harness
 from common import get_health
 
+from evidence import (
+    build_failure_digest,
+    collect_harness_changes,
+    extract_failed_checks,
+)
 from harness import _write_harness_report
 
 
@@ -114,6 +119,125 @@ def test_write_harness_report_preserves_attempt_count_when_present(tmp_path: Pat
 
     assert payload["profiles"][0]["attempts"] == 2
     assert payload["profiles"][0]["max_attempts"] == 2
+
+
+def test_collect_harness_changes_reads_only_active_manifests(tmp_path: Path) -> None:
+    changes_dir = tmp_path / ".harness" / "changes"
+    changes_dir.mkdir(parents=True)
+    active_path = changes_dir / "chg-active.json"
+    superseded_path = changes_dir / "chg-superseded.json"
+    rejected_path = changes_dir / "chg-rejected.json"
+
+    active_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "id": "chg-active",
+                "title": "Active change",
+                "status": "active",
+                "verification_profiles": ["docs", "harness-lifecycle"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    superseded_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "id": "chg-superseded",
+                "title": "Old change",
+                "status": "superseded",
+                "verification_profiles": ["docs"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    rejected_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "id": "chg-rejected",
+                "title": "Rejected change",
+                "status": "rejected",
+                "verification_profiles": ["docs"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = collect_harness_changes(tmp_path)
+
+    assert result["harness_change_errors"] == []
+    assert result["harness_changes"] == [
+        {
+            "id": "chg-active",
+            "title": "Active change",
+            "status": "active",
+            "path": ".harness/changes/chg-active.json",
+            "verification_profiles": ["docs", "harness-lifecycle"],
+        }
+    ]
+
+
+def test_collect_harness_changes_reports_invalid_manifest_without_raising(tmp_path: Path) -> None:
+    changes_dir = tmp_path / ".harness" / "changes"
+    changes_dir.mkdir(parents=True)
+    (changes_dir / "broken.json").write_text("{not-json", encoding="utf-8")
+
+    result = collect_harness_changes(tmp_path)
+
+    assert result["harness_changes"] == []
+    assert result["harness_change_errors"] == [
+        {
+            "path": ".harness/changes/broken.json",
+            "error": "invalid_json",
+        }
+    ]
+
+
+def test_extract_failed_checks_reads_missing_result_entries() -> None:
+    report = {
+        "results": [
+            {"id": "docs_index_paths_exist", "status": "proved", "evidence": ["docs/INDEX.md"]},
+            {"id": "runtime_trace_exists", "status": "missing", "evidence": []},
+            {"id": "phase0_loop", "status": "failed", "evidence": ["phase0-report.json"]},
+        ]
+    }
+
+    assert extract_failed_checks(report) == [
+        {"id": "runtime_trace_exists", "status": "missing", "evidence": []},
+        {"id": "phase0_loop", "status": "failed", "evidence": ["phase0-report.json"]},
+    ]
+
+
+def test_build_failure_digest_degrades_when_report_has_no_structured_checks(tmp_path: Path) -> None:
+    report_path = tmp_path / ".harness" / "verification" / "custom-report.json"
+    report_path.parent.mkdir(parents=True)
+    report_path.write_text(json.dumps({"overall_custom_passed": False}), encoding="utf-8")
+
+    digest = build_failure_digest(
+        project_root=tmp_path,
+        run_id="run_digest",
+        profile_result={
+            "profile": "custom",
+            "command": ["python", "scripts/verification/custom.py"],
+            "exit_code": 1,
+        },
+        profile_config={
+            "result_artifact": ".harness/verification/custom-report.json",
+        },
+    )
+
+    assert digest["schema_version"] == 1
+    assert digest["run_id"] == "run_digest"
+    assert digest["profile"] == "custom"
+    assert digest["status"] == "failed"
+    assert digest["exit_code"] == 1
+    assert digest["summary_status"] == "profile_failed_without_structured_checks"
+    assert digest["primary_report"] == ".harness/verification/custom-report.json"
+    assert digest["failed_checks"] == []
+    assert digest["runtime_trace_refs"] == []
+    assert digest["source_artifacts"] == [".harness/verification/custom-report.json"]
 
 
 def test_harness_runner_retries_profile_up_to_max_attempts(monkeypatch, tmp_path: Path) -> None:
@@ -279,7 +403,7 @@ def test_run_command_until_markers_terminates_once_marker_is_seen(tmp_path: Path
     log_path = tmp_path / "marker.log"
 
     result = common.run_command_until_markers(
-        ["C:/Anaconda3/python.exe", str(script)],
+        [sys.executable, str(script)],
         tmp_path,
         log_path,
         success_markers=["MARKER_OK"],
