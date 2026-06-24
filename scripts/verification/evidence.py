@@ -71,6 +71,9 @@ def collect_harness_changes(project_root: Path) -> dict[str, object]:
         if not isinstance(payload, dict):
             errors.append({"path": relative, "error": "not_json_object"})
             continue
+        if payload.get("schema_version") != 1:
+            errors.append({"path": relative, "error": "invalid_schema_version"})
+            continue
         status = str(payload.get("status", ""))
         if status not in KNOWN_HARNESS_CHANGE_STATUSES:
             errors.append({"path": relative, "error": "invalid_status"})
@@ -152,6 +155,7 @@ def build_failure_digest(
         "profile": profile,
         "status": "failed",
         "exit_code": int(profile_result["exit_code"]),
+        "command": _profile_command(profile_result),
         "summary_status": summary_status,
         "primary_report": _relative_path(project_root, report_path) if report_path is not None else None,
         "failed_checks": failed_checks,
@@ -162,6 +166,13 @@ def build_failure_digest(
 
 def _is_non_empty_string_list(value: object) -> bool:
     return isinstance(value, list) and all(isinstance(entry, str) and entry != "" for entry in value)
+
+
+def _profile_command(profile_result: dict[str, object]) -> list[str]:
+    command = profile_result.get("command", [])
+    if not isinstance(command, list):
+        return []
+    return [str(part) for part in command]
 
 
 def _read_json_object_tolerant(path: Path) -> dict[str, object] | None:

@@ -282,6 +282,48 @@ def test_collect_harness_changes_reports_invalid_text_without_raising(tmp_path: 
     ]
 
 
+def test_collect_harness_changes_rejects_missing_or_unsupported_schema_version(tmp_path: Path) -> None:
+    changes_dir = tmp_path / ".harness" / "changes"
+    changes_dir.mkdir(parents=True)
+    (changes_dir / "missing-schema.json").write_text(
+        json.dumps(
+            {
+                "id": "chg-missing-schema",
+                "title": "Missing schema",
+                "status": "active",
+                "verification_profiles": ["docs"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (changes_dir / "unsupported-schema.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "id": "chg-unsupported-schema",
+                "title": "Unsupported schema",
+                "status": "active",
+                "verification_profiles": ["docs"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = collect_harness_changes(tmp_path)
+
+    assert result["harness_changes"] == []
+    assert result["harness_change_errors"] == [
+        {
+            "path": ".harness/changes/missing-schema.json",
+            "error": "invalid_schema_version",
+        },
+        {
+            "path": ".harness/changes/unsupported-schema.json",
+            "error": "invalid_schema_version",
+        },
+    ]
+
+
 def test_collect_harness_changes_rejects_mixed_verification_profile_types(tmp_path: Path) -> None:
     changes_dir = tmp_path / ".harness" / "changes"
     changes_dir.mkdir(parents=True)
@@ -347,6 +389,7 @@ def test_build_failure_digest_degrades_when_report_has_no_structured_checks(tmp_
     assert digest["profile"] == "custom"
     assert digest["status"] == "failed"
     assert digest["exit_code"] == 1
+    assert digest["command"] == ["python", "scripts/verification/custom.py"]
     assert digest["summary_status"] == "profile_failed_without_structured_checks"
     assert digest["primary_report"] == ".harness/verification/custom-report.json"
     assert digest["failed_checks"] == []
@@ -376,6 +419,24 @@ def test_build_failure_digest_degrades_when_report_json_is_invalid(tmp_path: Pat
     assert digest["primary_report"] == ".harness/verification/custom-report.json"
     assert digest["failed_checks"] == []
     assert digest["source_artifacts"] == [".harness/verification/custom-report.json"]
+
+
+def test_build_failure_digest_preserves_command_when_profile_has_no_report(tmp_path: Path) -> None:
+    digest = build_failure_digest(
+        project_root=tmp_path,
+        run_id="run_no_report",
+        profile_result={
+            "profile": "custom",
+            "command": ["python", "scripts/verification/custom.py", "--flag"],
+            "exit_code": 7,
+        },
+        profile_config={},
+    )
+
+    assert digest["summary_status"] == "profile_failed_without_report"
+    assert digest["primary_report"] is None
+    assert digest["command"] == ["python", "scripts/verification/custom.py", "--flag"]
+    assert digest["exit_code"] == 7
 
 
 def test_harness_runner_retries_profile_up_to_max_attempts(monkeypatch, tmp_path: Path) -> None:
