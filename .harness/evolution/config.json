@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "max_runs_to_analyze": 20,
+  "profiles_in_scope": [
+    "docs",
+    "harness-lifecycle",
+    "change-lifecycle",
+    "harness-reference",
+    "phase0",
+    "phase1-slice"
+  ],
+  "allowed_mutation_types": [
+    "validator",
+    "profile_policy",
+    "failure_digest",
+    "docs_gate",
+    "rule_evidence"
+  ],
+  "promotion_requires_profiles": [
+    "docs",
+    "harness-lifecycle",
+    "harness-evolution"
+  ]
+}

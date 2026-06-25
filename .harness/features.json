@@ -68,6 +68,12 @@
       "name": "Harness decision observability records active change intent and failed-profile digests",
       "status": "pass",
       "evidence": ".harness/changes/, .harness/templates/change-manifest-template.json, harness-run-manifest.json:harness_changes"
+    },
+    {
+      "id": "harness-evolution-agent",
+      "name": "Governed Harness Evolution Agent proposal lane",
+      "status": "pass",
+      "evidence": ".harness/evolution/, scripts/verification/analyze_harness_evolution.py, and harness-evolution profile"
     }
   ]
 }

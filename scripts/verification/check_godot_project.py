@@ -59,9 +59,24 @@ def _autoload_resources(project_root: Path) -> list[str]:
     return resources
 
 
+def _blend_files(project_root: Path) -> list[str]:
+    return sorted(
+        str(path.relative_to(project_root)).replace("\\", "/")
+        for path in project_root.rglob("*.blend")
+        if ".godot" not in path.parts
+    )
+
+
+def _blend_import_is_noninteractive(project_root: Path) -> bool:
+    if not _blend_files(project_root):
+        return True
+    return bool(re.search(r"(?m)^import/blender/enabled=false$", read_text(project_root / "project.godot")))
+
+
 def evaluate_godot_project(project_root: Path) -> dict[str, object]:
     main_scene = _main_scene(project_root)
     autoloads = _autoload_resources(project_root)
+    blend_files = _blend_files(project_root)
     missing_autoloads = [resource for resource in autoloads if not _resource_to_path(project_root, resource).exists()]
     missing_resources = [
         f"{source.relative_to(project_root)} -> {resource}"
@@ -90,6 +105,13 @@ def evaluate_godot_project(project_root: Path) -> dict[str, object]:
             not missing_resources,
             ["project.godot", "scenes", "scripts"],
             "\n".join(missing_resources),
+        ),
+        _result(
+            "blend_import_is_noninteractive",
+            "Godot .blend import is disabled when Blender is not a project prerequisite",
+            _blend_import_is_noninteractive(project_root),
+            ["project.godot", *blend_files],
+            "\n".join(blend_files),
         ),
     ]
     return {

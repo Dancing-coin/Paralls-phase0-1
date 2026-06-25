@@ -23,6 +23,7 @@ This repository uses a four-layer workflow for non-trivial AI-assisted changes:
 - `.harness/profiles/` and `.harness/rules/` are the source of truth for machine-checkable acceptance.
 - `.harness/verification/` is generated evidence.
 - Goal is transient execution state; it does not replace specs, plans, or harness reports.
+- Evolution Agent candidate manifests are proposals, not implementation approval. A candidate under `.harness/evolution/candidates/` must still be reviewed, converted into an implementation plan, implemented through normal edits, and verified by its promotion profiles before it changes operational harness behavior.
 
 ## Change-State Closure
 

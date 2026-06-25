@@ -24,6 +24,13 @@
       "evidence": [
         ".harness/verification/godot-project-report.json:results.scene_resource_paths_exist"
       ]
+    },
+    {
+      "id": "blend_import_is_noninteractive",
+      "title": "Blend source files do not trigger interactive Godot import prompts",
+      "evidence": [
+        ".harness/verification/godot-project-report.json:results.blend_import_is_noninteractive"
+      ]
     }
   ]
 }
