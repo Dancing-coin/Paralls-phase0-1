@@ -3,7 +3,7 @@
 ## Status
 
 - Date: `2026-06-25`
-- Status: `awaiting-user-review`
+- Status: `approved`
 - Scope: `D:\Paralls-phase0-1\.worktrees\harness-decision-observability`
 - Purpose: add a governed Evolution Agent prototype on top of the existing Harness decision-observability layer.
 - Design mode: user-approved aggressive path, based on `Code as Agent Harness` and the existing `codex/harness-decision-observability` worktree.
@@ -234,7 +234,7 @@ Initial shape:
   "mutation_type": "failure_digest",
   "risk_tier": "sandbox-edit",
   "source_failures": [
-    "run-...",
+    "run-20260625-000000-000000",
     "phase0"
   ],
   "hypothesis": "phase0 failures need resource-missing classification before raw Godot logs are inspected.",
