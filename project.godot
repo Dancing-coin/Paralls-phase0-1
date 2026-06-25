@@ -27,6 +27,10 @@ MCPGameInspector="*res://addons/godot_mcp/mcp_game_inspector_service.gd"
 
 enabled=PackedStringArray("res://addons/godot_mcp/plugin.cfg")
 
+[filesystem]
+
+import/blender/enabled=false
+
 [input]
 
 phase0_submit_dialogue={

@@ -10,6 +10,7 @@ from check_backend_contract import evaluate_backend_contract
 from check_change_lifecycle import evaluate_change_lifecycle
 from check_godot_project import evaluate_godot_project
 from check_harness_lifecycle import evaluate_harness_lifecycle
+from check_harness_evolution import evaluate_harness_evolution
 from check_harness_reference import evaluate_harness_reference
 from check_release_gate import evaluate_release_gate
 from common import repo_root
@@ -33,6 +34,7 @@ def test_godot_project_profile_proves_static_project_integrity() -> None:
     assert statuses["project_main_scene_exists"] == "proved"
     assert statuses["autoload_scripts_exist"] == "proved"
     assert statuses["scene_resource_paths_exist"] == "proved"
+    assert statuses["blend_import_is_noninteractive"] == "proved"
 
 
 def test_release_gate_profile_proves_ci_entrypoint() -> None:
@@ -93,6 +95,16 @@ def test_harness_reference_profile_proves_awesome_harness_coverage() -> None:
     assert statuses["reference_categories_have_current_artifacts"] == "proved"
     assert statuses["awesome_templates_adapted"] == "proved"
     assert statuses["reference_docs_updated"] == "proved"
+
+
+def test_harness_evolution_profile_proves_governed_evolution_surface() -> None:
+    report = evaluate_harness_evolution(repo_root())
+    statuses = {entry["id"]: entry["status"] for entry in report["results"]}
+
+    assert statuses["evolution_config_valid"] == "proved"
+    assert statuses["evolution_replay_set_valid"] == "proved"
+    assert statuses["evolution_candidates_governed"] == "proved"
+    assert statuses["evolution_report_exists"] == "proved"
 
 
 def test_phase1_slice_probe_counts_only_accepted_authority_acks() -> None:

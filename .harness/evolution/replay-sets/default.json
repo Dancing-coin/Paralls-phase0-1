@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "default",
+  "profile_cases": [
+    {
+      "profile": "harness-lifecycle",
+      "expected_artifacts": [
+        ".harness/verification/harness-lifecycle-report.json"
+      ]
+    },
+    {
+      "profile": "docs",
+      "expected_artifacts": [
+        ".harness/verification/docs-report.json"
+      ]
+    }
+  ],
+  "regression_guards": [
+    "profile_exit_code_does_not_worsen",
+    "report_schema_stable"
+  ]
+}

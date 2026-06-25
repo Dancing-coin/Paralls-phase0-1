@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "name": "harness-evolution-rules",
+  "profile": "harness-evolution",
+  "description": "Mechanical invariants enforced by scripts/verification/check_harness_evolution.py",
+  "rules": [
+    {
+      "id": "evolution_config_valid",
+      "title": "Harness evolution config exists and validates",
+      "evidence": [
+        ".harness/verification/harness-evolution-report.json:results.evolution_config_valid"
+      ]
+    },
+    {
+      "id": "evolution_replay_set_valid",
+      "title": "Default harness evolution replay set exists and validates",
+      "evidence": [
+        ".harness/verification/harness-evolution-report.json:results.evolution_replay_set_valid"
+      ]
+    },
+    {
+      "id": "evolution_candidates_governed",
+      "title": "Candidate manifests are schema-valid, scoped, and approval-gated",
+      "evidence": [
+        ".harness/verification/harness-evolution-report.json:results.evolution_candidates_governed"
+      ]
+    },
+    {
+      "id": "evolution_report_exists",
+      "title": "Harness evolution report exists after analyzer execution",
+      "evidence": [
+        ".harness/verification/harness-evolution-report.json:results.evolution_report_exists"
+      ]
+    }
+  ]
+}

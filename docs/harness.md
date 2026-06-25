@@ -17,6 +17,7 @@ python scripts/verification/harness.py --profile release-gate
 python scripts/verification/harness.py --profile harness-lifecycle
 python scripts/verification/harness.py --profile change-lifecycle
 python scripts/verification/harness.py --profile harness-reference
+python scripts/verification/harness.py --profile harness-evolution
 python scripts/verification/harness.py --profile phase0
 python scripts/verification/harness.py --profile phase1-slice
 python scripts/verification/harness.py --profile all
@@ -66,6 +67,7 @@ Harness inputs are versionable project files, while generated evidence stays ign
 - `.harness/rules/`: rule manifests. These map stable rule IDs to the profile/check evidence that proves them.
 - `.harness/templates/`: starter manifests for future formal product modules.
 - `.harness/references/`: adapted external harness reference taxonomies.
+- `.harness/evolution/`: versionable evolution config, replay sets, and candidate mutation manifests.
 - `.harness/ci/`: release gate metadata and the local CI-equivalent gate.
 - `.harness/verification/`: generated evidence, reports, screenshots, logs, traces, and run archives.
 
@@ -161,6 +163,7 @@ Current mechanical invariants include:
 - `project.godot` declares an existing main scene
 - autoload entries point at existing scripts
 - scenes and scripts reference existing `res://` resources
+- `.blend` source files do not trigger interactive Godot import prompts during harness runs
 
 Output:
 
@@ -267,6 +270,30 @@ Output:
 - `.harness/verification/harness-run-report.json`
 - `.harness/verification/harness-run-report.md`
 
+### `harness-evolution`
+
+Governed Harness Evolution Agent checks for the versioned evolution config, replay set, candidate manifest surface, and generated report trail. Use this when changing the evolution lane, candidate governance, or proposal workflow.
+
+Current mechanical invariants include:
+
+- `.harness/evolution/config.json` exists and validates
+- `.harness/evolution/replay-sets/default.json` exists and validates
+- candidate manifests under `.harness/evolution/candidates/` are schema-valid, harness-scoped, and approval-gated
+- `.harness/verification/harness-evolution-report.json` exists after analyzer execution
+
+Analyzer commands:
+
+```powershell
+python scripts/verification/analyze_harness_evolution.py --mode analyze
+python scripts/verification/analyze_harness_evolution.py --mode propose --candidate-id evo-20260625-example-failure-digest
+```
+
+Output:
+
+- `.harness/verification/harness-evolution-report.json`
+- `.harness/verification/harness-evolution-report.md`
+- optional `.harness/evolution/candidates/<id>.json` in propose mode
+
 ### `phase0`
 
 Strict Phase 0 runtime validation. This starts or reuses the backend, runs backend tests, launches the Godot Phase 0 scene, captures logs/screenshots, and evaluates the full Phase 0 acceptance loop.
@@ -300,7 +327,15 @@ Trace output:
 
 ### `all`
 
-Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `phase0`, and `phase1-slice` in order. It stops on the first failed profile.
+Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, and `phase1-slice` in order. It stops on the first failed profile.
+
+## Harness Evolution
+
+The Harness Evolution Agent is a governed proposal lane. It reads existing harness telemetry, writes an evolution report, and may create candidate mutation manifests under `.harness/evolution/candidates/`.
+
+It does not apply patches or promote its own proposals. A candidate must be converted into a normal implementation plan, implemented through the repository workflow, and verified through its promotion profiles before it can become operational harness behavior.
+
+First-version candidates may target harness-owned surfaces such as `.harness/`, `scripts/verification/`, `docs/harness.md`, `docs/ai-engineering-workflow.md`, and `.github/workflows/harness.yml`. Product runtime paths such as `backend/`, `scenes/`, character scripts, or Siming runtime modules are outside the mutation scope.
 
 ## Decision Observability
 

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "id": "evo-20260625-example-failure-digest",
+  "status": "proposed",
+  "mutation_type": "failure_digest",
+  "risk_tier": "sandbox-edit",
+  "source_failures": [
+    "run-20260625-000000-000000",
+    "profile-name"
+  ],
+  "hypothesis": "One sentence describing why this harness mutation should improve reliability, cost, or diagnosability.",
+  "proposed_changes": [
+    {
+      "path": "scripts/verification/evidence.py",
+      "summary": "One sentence describing the harness-owned change."
+    }
+  ],
+  "replay_set": "default",
+  "promotion_checks": [
+    "docs",
+    "harness-lifecycle",
+    "harness-evolution"
+  ],
+  "requires_human_approval": false
+}
