@@ -20,6 +20,7 @@ python scripts/verification/harness.py --profile harness-reference
 python scripts/verification/harness.py --profile harness-evolution
 python scripts/verification/harness.py --profile phase0
 python scripts/verification/harness.py --profile phase1-slice
+python scripts/verification/harness.py --profile siming-backend-chain
 python scripts/verification/harness.py --profile all
 ```
 
@@ -325,6 +326,32 @@ Trace output:
 
 - `.harness/verification/phase1-slice-runtime-trace.ndjson`
 
+### `siming-backend-chain`
+
+Explicit-only backend architecture proof for Siming. This profile does not start Godot and does not rely on frontend `siming_output` projection. It proves deterministic component-chain scenarios and a real app-wiring DeepSeek path through `backend/app/main.py`.
+
+This profile is intentionally excluded from `all` by `include_in_all=false` because it requires a real `SIMING_LLM_API_KEY` and a live DeepSeek request:
+
+```powershell
+python scripts/verification/harness.py --profile siming-backend-chain
+```
+
+Required configuration:
+
+```env
+SIMING_LLM_MODE=http
+SIMING_LLM_PROVIDER_ORDER=deepseek_chat
+SIMING_LLM_API_KEY=<real DeepSeek key>
+SIMING_LLM_ENDPOINT=https://api.deepseek.com/chat/completions
+SIMING_LLM_MODEL=deepseek-chat
+SIMING_LLM_TIMEOUT_SECONDS=8.0
+```
+
+Output:
+
+- `.harness/verification/siming-backend-chain-report.json`
+- `.harness/verification/siming-backend-chain-report.md`
+
 ### `all`
 
 Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, and `phase1-slice` in order. It stops on the first failed profile.
@@ -349,6 +376,7 @@ When a profile fails, the runner writes a deterministic failure digest such as `
 
 - Static checks prove only static wiring.
 - Runtime claims require `phase0` or `phase1-slice`.
+- Backend-only live Siming/DeepSeek architecture claims require explicit `siming-backend-chain`.
 - Godot claims require scene execution or Godot MCP/editor inspection.
 - Generated evidence should stay under `.harness/verification/`.
 - Profile and rule manifests stay under `.harness/profiles/` and `.harness/rules/`.

@@ -24,7 +24,9 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "harness-lifecycle",
         "change-lifecycle",
         "harness-reference",
+        "harness-evolution",
         "phase0",
+        "siming-backend-chain",
         "phase1-slice",
     ]
     assert registry.profiles["docs"]["script"] == "scripts/verification/check_docs.py"
@@ -35,6 +37,9 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["harness-lifecycle"]["script"] == "scripts/verification/check_harness_lifecycle.py"
     assert registry.profiles["change-lifecycle"]["script"] == "scripts/verification/check_change_lifecycle.py"
     assert registry.profiles["harness-reference"]["script"] == "scripts/verification/check_harness_reference.py"
+    assert registry.profiles["harness-evolution"]["script"] == "scripts/verification/check_harness_evolution.py"
+    assert registry.profiles["siming-backend-chain"]["script"] == "scripts/verification/verify_siming_backend_chain.py"
+    assert registry.profiles["siming-backend-chain"]["include_in_all"] is False
     assert registry.profiles["phase0"]["requires_godot"] is True
     assert int(registry.profiles["phase0"].get("max_attempts", 1)) >= 2
     assert all(profile["schema_version"] == 1 for profile in registry.profiles.values())
@@ -50,6 +55,7 @@ def test_load_rule_registry_reads_versioned_rule_manifests() -> None:
         "docs-rules",
         "drift-rules",
         "godot-project-rules",
+        "harness-evolution-rules",
         "harness-lifecycle-rules",
         "harness-reference-rules",
         "release-gate-rules",

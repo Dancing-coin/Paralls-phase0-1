@@ -18,6 +18,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .idea
+.env
 
 docs/architecture
 docs/上下文不够用/

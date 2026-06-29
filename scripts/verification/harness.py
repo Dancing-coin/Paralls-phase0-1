@@ -158,11 +158,33 @@ def _profile_command(profile: str, project_root: Path, python_exe: str, godot_ex
     return command
 
 
+def _missing_godot_result(profile: str, project_root: Path, python_exe: str, profiles: dict[str, dict[str, object]]) -> dict[str, object]:
+    return {
+        "profile": profile,
+        "command": _profile_command(profile, project_root, python_exe, None, profiles),
+        "exit_code": 1,
+        "attempts": 0,
+        "max_attempts": 1,
+    }
+
+
 def _result_artifact_exists(project_root: Path, profile_config: dict[str, object]) -> bool:
     artifact = str(profile_config.get("result_artifact", "") or "")
     if artifact == "":
         return False
     return (project_root / artifact).exists()
+
+
+def _profiles_for_selection(selection: str, registry: object) -> list[str]:
+    if selection != "all":
+        return [selection]
+    profile_order = list(getattr(registry, "profile_order"))
+    profiles = getattr(registry, "profiles")
+    return [
+        profile
+        for profile in profile_order
+        if bool(profiles[profile].get("include_in_all", True))
+    ]
 
 
 def main() -> int:
@@ -176,14 +198,29 @@ def main() -> int:
     registry = load_profile_registry(project_root)
     python_exe = resolve_python_exe(args.python_exe)
     godot_exe = _resolve_godot_exe(args.godot_exe)
-    profiles = registry.profile_order if args.profile == "all" else [args.profile]
+    profiles = _profiles_for_selection(args.profile, registry)
     profile_results: list[dict[str, object]] = []
     run_id = datetime.now().strftime("run-%Y%m%d-%H%M%S-%f")
 
     for profile in profiles:
         print(f"harness_profile={profile}")
-        command = _profile_command(profile, project_root, python_exe, godot_exe, registry.profiles)
         profile_config = registry.profiles[profile]
+        if profile_config.get("requires_godot") and godot_exe is None:
+            profile_results.append(_missing_godot_result(profile, project_root, python_exe, registry.profiles))
+            report_paths = _write_harness_report(
+                project_root,
+                profile_results,
+                overall_passed=False,
+                run_id=run_id,
+                profile_configs=registry.profiles,
+            )
+            print("harness_error=Godot executable not found. Set GODOT_EXE or pass --godot-exe.")
+            print(f"harness_report_json={report_paths['json']}")
+            print(f"harness_report_md={report_paths['markdown']}")
+            print(f"harness_run_dir={report_paths['run_dir']}")
+            return 1
+
+        command = _profile_command(profile, project_root, python_exe, godot_exe, registry.profiles)
         max_attempts = max(1, int(profile_config.get("max_attempts", 1)))
         exit_code = 1
         attempts = 0
