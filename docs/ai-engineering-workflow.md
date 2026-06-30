@@ -62,3 +62,16 @@ Goal is the long-running objective ledger for explicit tasks. New work should ke
 - Failure investigation: use systematic-debugging before edits.
 - Completion claim: use verification-before-completion and report fresh evidence.
 - Broad workflow change: run `python scripts/verification/harness.py --profile change-lifecycle` and `python scripts/verification/harness.py --profile all`.
+
+## Character-Agent Mainline Rule
+
+For character-agent work after `2026-06-29`, the source of truth begins with:
+
+- `docs/superpowers/specs/world-character-siming-authority-mainline/README.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md`
+- `docs/superpowers/plans/world-character-siming-authority-mainline/README.md`
+- `docs/superpowers/specs/2026-06-29-complete-character-mind-core-design.md`
+
+The completed character mind core remains a required inner-loop prerequisite, but it is not the whole repository mainline by itself.
+
+Older `Phase 0`-bounded character-agent docs are historical or transitional unless explicitly re-linked by a newer spec inside the dedicated mainline tree above.

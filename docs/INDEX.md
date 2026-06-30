@@ -1,17 +1,32 @@
-# Paralls Phase 0 Repository Index
+# Paralls Mainline Repository Index
 
-This is the agent-readable map for the runnable Paralls Phase 0 validation demo.
+This is the agent-readable map for the repository's current mainline:
+
+- `world-character-Siming-authority unified runtime`
+
+The preserved `Phase 0` demo remains an important smoke-compatibility surface, but
+it is no longer the top-level mission for the repository.
 
 ## Start Here
 
 - `AGENTS.md`: operating contract, mission, boundaries, verification rules, and non-goals.
 - `docs/ai-engineering-workflow.md`: OpenSpec, Superpowers, Harness, Goal, and native subagent workflow.
 - `PHASE0_README.md`: short workspace summary and verification entry points.
+- `docs/character/character-mind-core-status.md`: Chinese status definition for what “complete character mind core” now means in this repository.
 - `docs/harness.md`: Harness Engineering command surface for repeatable verification.
 - `docs/demo-script.md`: expected demo beats and observable proof path.
 
 ## Active Design And Plans
 
+- `docs/superpowers/specs/world-character-siming-authority-mainline/README.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md`
+- `docs/superpowers/plans/world-character-siming-authority-mainline/README.md`
+- `docs/superpowers/specs/2026-06-29-complete-character-mind-core-design.md`
+- `docs/superpowers/plans/2026-06-29-mind-core-foundation-implementation-plan.md`
+- `docs/superpowers/plans/2026-06-29-full-l1-and-memory-implementation-plan.md`
+- `docs/superpowers/plans/2026-06-29-full-l2-and-l3-implementation-plan.md`
+- `docs/superpowers/plans/2026-06-29-execution-preservation-and-readiness-implementation-plan.md`
+- `docs/superpowers/plans/2026-06-29-mind-core-closure-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-21-character-director-observatory-design.md`
 - `docs/superpowers/plans/2026-06-21-character-director-observatory-implementation-plan.md`
 - `docs/superpowers/plans/2026-06-22-character-director-observatory-finalization-implementation-plan.md`
@@ -74,15 +89,25 @@ Use `python scripts/verification/harness.py --profile <name>`.
 - `harness-reference`: adapted external Harness Engineering taxonomy, template, and reference coverage checks.
 - `phase0`: strict Phase 0 backend plus Godot runtime validation.
 - `phase1-slice`: current Phase1-shaped runtime slice validation.
+- `mainline-unified-runtime`: aggregate repository-mainline proof across world runtime, actor-local perception, autonomous social contact, execution ingress, settlement writeback, asset-runtime/Kimodo contracts, and scheduling/continuity evidence.
 - `all`: runs all profiles in order.
 
-Observatory-specific runtime verifiers:
+Runtime verifiers and aggregate proof scripts:
 
+- `python scripts/verification/verify_actor_local_perception.py`
+- `python scripts/verification/verify_autonomous_social_contact.py`
 - `python scripts/verification/verify_character_agent_execution.py`
+- `python scripts/verification/verify_mainline_unified_runtime.py`
 - `python scripts/verification/verify_character_director_observatory.py`
+- `python scripts/verification/verify_phase1_slice.py`
 - `python scripts/verification/verify_phase0.py`
 
 Reports are written under `.harness/verification/`.
+
+Mainline aggregate proof reports:
+
+- `.harness/verification/mainline-unified-runtime-report.json`
+- `.harness/verification/mainline-unified-runtime-report.md`
 
 Harness profile and rule manifests are project inputs:
 
@@ -117,7 +142,9 @@ Latest run manifest, baseline, and diff artifacts are written under `.harness/ve
 ## Character Docs
 
 - `docs/character/character-actor-architecture.md`
+- `docs/character/character-mind-core-status.md`
 - `docs/character/character-agent-runtime-architecture.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/README.md`
 - `docs/character/character-control-chain.md`
 - `docs/character/character-asset-integration.md`
 - `docs/character/character-action-asset-interface.md`

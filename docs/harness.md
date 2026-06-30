@@ -1,6 +1,6 @@
 # Harness Engineering Guide
 
-This project uses a narrow Harness Engineering layer so agents can verify the demo without relying on hidden human context.
+This project uses a narrow Harness Engineering layer so agents can verify the repository's active mainline runtime, while preserving the older demo and slice profiles as bounded proof surfaces.
 
 ## Command Surface
 
@@ -19,6 +19,7 @@ python scripts/verification/harness.py --profile change-lifecycle
 python scripts/verification/harness.py --profile harness-reference
 python scripts/verification/harness.py --profile phase0
 python scripts/verification/harness.py --profile phase1-slice
+python scripts/verification/harness.py --profile mainline-unified-runtime
 python scripts/verification/harness.py --profile all
 ```
 
@@ -200,7 +201,9 @@ Current mechanical invariants include:
 - `.harness/ci/release-gate.json` points at the full `all` profile
 - `.github/workflows/harness.yml` exists
 - CI invokes `python scripts/verification/harness.py --profile all`
+- CI also invokes `python scripts/verification/harness.py --profile mainline-unified-runtime`
 - local CI-equivalent gate exists and invokes the same full harness profile
+- local CI-equivalent gate also invokes `mainline-unified-runtime`
 
 Output:
 
@@ -302,10 +305,34 @@ Trace output:
 
 Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `phase0`, and `phase1-slice` in order. It stops on the first failed profile.
 
+### `mainline-unified-runtime`
+
+Higher-level runtime proof that composes:
+
+- actor-local perception
+- autonomous social contact
+- shared actor execution ingress
+- phase1-shaped runtime slice
+- authority settlement writeback
+- asset-runtime registry and Kimodo adapter contracts
+- world-runtime policy/model focused tests
+- degraded-mode perception/cognition deferral
+- continuity recovery across renewed social contact
+- scheduling round state, round trace, debug-stream, script-beat, websocket, and frontend signal/state chain evidence
+
+Use this when you need one report that is closer to the repository's new mainline than any single narrow verifier.
+
+Output:
+
+- `.harness/verification/mainline-unified-runtime-report.json`
+- `.harness/verification/mainline-unified-runtime-report.md`
+- `.harness/verification/harness-run-report.json`
+- `.harness/verification/harness-run-report.md`
+
 ## Evidence Rules
 
 - Static checks prove only static wiring.
-- Runtime claims require `phase0` or `phase1-slice`.
+- Runtime claims require `phase0`, `phase1-slice`, or `mainline-unified-runtime`, depending on the scope being claimed.
 - Godot claims require scene execution or Godot MCP/editor inspection.
 - Generated evidence should stay under `.harness/verification/`.
 - Profile and rule manifests stay under `.harness/profiles/` and `.harness/rules/`.

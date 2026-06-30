@@ -1,8 +1,11 @@
-# AGENTS Operating Guide For Paralls Phase 0 Demo
+# AGENTS Operating Guide For Paralls Mainline Runtime
 
 This file governs the repository rooted at `D:\Users\User\Documents\paralls-phase-0-demo`.
 
-Its purpose is to let coding agents execute the `Phase 0` validation demo without drifting into `Phase 1` system redesign.
+Its purpose is to let coding agents execute the `world-character-Siming-authority` mainline runtime without drifting back into `Phase 0`-only mission framing or forward into unconstrained `Phase 1` redesign.
+
+`Phase 0` guidance in this file is preserved as a smoke-compatibility runtime surface.
+It is historical/transitional support material, not the top-level architectural mission for the repository.
 
 ## Documentation Entry Points
 
@@ -13,10 +16,12 @@ Its purpose is to let coding agents execute the `Phase 0` validation demo withou
 
 ## 1. Mission
 
-This project is a runnable validation slice for 《开本 / Paralls》 `Phase 0`.
+This project is now the implementation home for the repository's
+`world-character-Siming-authority unified runtime` mainline.
 
-The goal is not to implement the full product.
-The goal is to prove that the minimum dramatic runtime loop can run end-to-end inside a real Godot project plus a Python backend.
+The completed character mind core is a prerequisite, not the stopping point.
+The preserved `Phase 0` demo remains important as a smoke-compatibility slice,
+but it is no longer the top-level architectural mission for the repository.
 
 The minimum validated loop is:
 
@@ -35,10 +40,14 @@ The minimum validated loop is:
 When this project needs design truth, use this order:
 
 1. explicit user instruction in the current thread
-2. `D:\Projects\Paralls\docs\superpowers\plans\2026-05-31-phase0-demo-implementation-plan.md`
-3. `D:\Projects\Paralls\docs\phase0\*.md`
-4. `D:\Projects\Paralls\docs\phase1\core\00-总纲\Godot源码底层基础设施与运行时约束.md`
-5. `D:\Projects\Paralls\docs\phase1\core\01-运行时核心\*.md`
+2. `docs/superpowers/specs/world-character-siming-authority-mainline/README.md`
+3. `docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md`
+4. `docs/superpowers/plans/world-character-siming-authority-mainline/README.md`
+5. `docs/superpowers/specs/2026-06-29-complete-character-mind-core-design.md`
+6. `docs/character/character-mind-core-status.md`
+7. `D:\Projects\Paralls\docs\phase0\*.md` as preserved compatibility references
+8. `D:\Projects\Paralls\docs\phase1\core\00-总纲\Godot源码底层基础设施与运行时约束.md`
+9. `D:\Projects\Paralls\docs\phase1\core\01-运行时核心\*.md`
 
 Do not invent a new architecture if those files already define the boundary.
 
@@ -127,6 +136,8 @@ Before changing behavior, read these files:
 
 Unless the user explicitly changes priority, use this order:
 
+For preserved `Phase 0` smoke-compatibility verification, use this order:
+
 1. repair and stabilize Godot project structure
 2. register autoloads and fix scene/script references
 3. verify `MainDemo.tscn` opens and runs
@@ -188,7 +199,7 @@ Verify:
 
 ## 9. Definition Of Done
 
-`Phase 0` is done only if all of these are true:
+The preserved `Phase 0` smoke path is done only if all of these are true:
 - backend tests pass
 - Godot main scene opens and runs
 - dialogue loop is observable
@@ -209,7 +220,7 @@ Do not expand this project into:
 - multi-scene story flow
 - Phase 1 production architecture cleanup
 
-If a request starts drifting there, narrow it back to the minimum demo loop.
+If a request starts drifting beyond the approved mainline tree, narrow it back to the current spec/plan truth instead of defaulting to the old minimum demo loop.
 
 ## 11. Reporting Contract
 
