@@ -125,6 +125,48 @@ def test_load_candidate_manifests_rejects_out_of_scope_and_unapproved_full_acces
     ]
 
 
+def test_load_candidate_manifests_requires_qa_artifacts_before_promotion_ready_or_promoted(tmp_path: Path) -> None:
+    candidates_dir = tmp_path / ".harness" / "evolution" / "candidates"
+    for filename, status, lifecycle_stage in [
+        ("promoted.json", "promoted", None),
+        ("promotion-ready.json", "evaluated", "promotion-ready"),
+    ]:
+        payload = {
+            "schema_version": 1,
+            "id": f"evo-{filename.removesuffix('.json')}",
+            "status": status,
+            "mutation_type": "docs_gate",
+            "risk_tier": "sandbox-edit",
+            "source_failures": ["run-1", "docs"],
+            "hypothesis": "Repeated docs profile failures need better diagnostics.",
+            "proposed_changes": [
+                {
+                    "path": "scripts/verification/check_docs.py",
+                    "summary": "Tighten docs diagnostics for repeated failures.",
+                }
+            ],
+            "replay_set": "default",
+            "promotion_checks": ["docs", "harness-evolution"],
+            "requires_human_approval": False,
+            "qa_review_required": True,
+            "qa_review_artifacts": [],
+        }
+        if lifecycle_stage is not None:
+            payload["lifecycle_stage"] = lifecycle_stage
+        _write_json(candidates_dir / filename, payload)
+
+    candidates, errors = load_candidate_manifests(
+        tmp_path,
+        allowed_mutation_types=["docs_gate"],
+    )
+
+    assert candidates == []
+    assert errors == [
+        ".harness/evolution/candidates/promoted.json: promoted candidates require qa_review_artifacts",
+        ".harness/evolution/candidates/promotion-ready.json: promotion-ready candidates require qa_review_artifacts",
+    ]
+
+
 def test_analyze_harness_evolution_aggregates_repeated_profile_failures(tmp_path: Path) -> None:
     for run_id in ["run-1", "run-2"]:
         run_dir = tmp_path / ".harness" / "verification" / "runs" / run_id
@@ -254,6 +296,7 @@ def test_build_candidate_from_analysis_creates_governed_candidate() -> None:
         "schema_version": 1,
         "id": "evo-docs-gate",
         "status": "proposed",
+        "lifecycle_stage": "proposed",
         "mutation_type": "docs_gate",
         "risk_tier": "sandbox-edit",
         "source_failures": ["run-1", "run-2", "docs"],
@@ -267,6 +310,8 @@ def test_build_candidate_from_analysis_creates_governed_candidate() -> None:
         "replay_set": "default",
         "promotion_checks": ["docs", "harness-lifecycle", "harness-evolution"],
         "requires_human_approval": False,
+        "qa_review_required": True,
+        "qa_review_artifacts": [],
     }
 
 
@@ -347,6 +392,7 @@ def test_evaluate_harness_evolution_proves_valid_surface_after_analysis(tmp_path
     assert statuses["evolution_config_valid"] == "proved"
     assert statuses["evolution_replay_set_valid"] == "proved"
     assert statuses["evolution_candidates_governed"] == "proved"
+    assert statuses["evolution_candidate_lifecycle_governed"] == "proved"
     assert statuses["evolution_report_exists"] == "proved"
 
 

@@ -280,6 +280,7 @@ Current mechanical invariants include:
 - `.harness/evolution/config.json` exists and validates
 - `.harness/evolution/replay-sets/default.json` exists and validates
 - candidate manifests under `.harness/evolution/candidates/` are schema-valid, harness-scoped, and approval-gated
+- candidate lifecycle stages are governed; `promotion-ready` and `promoted` candidates require non-empty `qa_review_artifacts`
 - `.harness/verification/harness-evolution-report.json` exists after analyzer execution
 
 Analyzer commands:
@@ -361,6 +362,8 @@ Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `charac
 The Harness Evolution Agent is a governed proposal lane. It reads existing harness telemetry, writes an evolution report, and may create candidate mutation manifests under `.harness/evolution/candidates/`.
 
 It does not apply patches or promote its own proposals. A candidate must be converted into a normal implementation plan, implemented through the repository workflow, and verified through its promotion profiles before it can become operational harness behavior.
+
+Candidate manifests may carry lifecycle metadata: `proposed`, `qa-review`, `promotion-ready`, `promoted`, or `rejected`. Generated candidates start as `proposed` with `qa_review_required=true` and empty `qa_review_artifacts`; moving a candidate to `promotion-ready` or `promoted` requires at least one QA/replay artifact reference so promotion is attributable and reviewable.
 
 First-version candidates may target harness-owned surfaces such as `.harness/`, `scripts/verification/`, `docs/harness.md`, `docs/ai-engineering-workflow.md`, and `.github/workflows/harness.yml`. Product runtime paths such as `backend/`, `scenes/`, character scripts, or Siming runtime modules are outside the mutation scope.
 

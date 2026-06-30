@@ -26,6 +26,13 @@
       ]
     },
     {
+      "id": "evolution_candidate_lifecycle_governed",
+      "title": "Candidate lifecycle stages require QA/replay evidence before promotion",
+      "evidence": [
+        ".harness/verification/harness-evolution-report.json:results.evolution_candidate_lifecycle_governed"
+      ]
+    },
+    {
       "id": "evolution_report_exists",
       "title": "Harness evolution report exists after analyzer execution",
       "evidence": [
