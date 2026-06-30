@@ -10,6 +10,7 @@ from app.character_agent.models.event_memory import CharacterEventMemoryRecord
 from app.character_agent.models.goal_runtime import (
     CharacterActiveGoalFrame,
     CharacterGoalHint,
+    CharacterGoalPortfolioEntry,
     CharacterGoalStateRecord,
 )
 from app.character_agent.models.higher_order_memory import CharacterHigherOrderMemoryRecord
@@ -17,6 +18,14 @@ from app.character_agent.models.knowledge_memory import CharacterKnowledgeMemory
 from app.character_agent.models.memory_record_bundle import CharacterMemoryRecordBundle
 from app.character_agent.models.observation_memory import CharacterObservationMemoryRecord
 from app.character_agent.models.social_memory import CharacterSocialMemoryRecord
+from app.character_agent.models.supervision import (
+    CharacterBackgroundCognitionResult,
+    CharacterSupervisionAuthorization,
+    CharacterSupervisionConstraints,
+    CharacterSupervisionRequest,
+    CharacterSupervisionState,
+    CharacterUnresolvedTension,
+)
 
 
 def test_dynamic_state_tracks_live_subjective_pressure_fields() -> None:
@@ -234,6 +243,66 @@ def test_active_goal_frame_tracks_long_mid_and_immediate_layers() -> None:
     assert frame.mid_term_strategy == "contain_exposure"
 
 
+def test_goal_portfolio_entry_tracks_parallel_goal_metadata() -> None:
+    entry = CharacterGoalPortfolioEntry(
+        goal_id="goal_protect_secret",
+        goal="protect_secret",
+        horizon="long",
+        status="active",
+        priority=0.92,
+        urgency="high",
+        source="model_deliberation",
+        target_ref="char_b",
+        blockers=["high_masking_pressure"],
+        supporting_evidence=["guarded_attention"],
+    )
+
+    assert entry.goal_id == "goal_protect_secret"
+    assert entry.horizon == "long"
+    assert entry.supporting_evidence == ["guarded_attention"]
+
+
+def test_active_goal_frame_can_carry_parallel_goal_portfolio_state() -> None:
+    frame = CharacterActiveGoalFrame(
+        primary_goal="protect_secret",
+        long_term_goal="preserve_order",
+        mid_term_strategy="contain_exposure",
+        immediate_goal="withhold_until_private",
+        supporting_goals=["clarify_intent"],
+        blockers=["char_b_public_presence"],
+        goal_sources=["l2_goal_hint:social_signal"],
+        urgency="high",
+        dominant_goal_id="goal_protect_secret",
+        preserved_goal_ids=["goal_clarify_intent"],
+        suppressed_goal_ids=["goal_social_ease"],
+        goal_arbitration_summary="safety dominates while keeping clarification active",
+        goal_portfolio=[
+            CharacterGoalPortfolioEntry(
+                goal_id="goal_protect_secret",
+                goal="protect_secret",
+                horizon="long",
+                status="active",
+                priority=0.93,
+                urgency="high",
+                source="model_deliberation",
+            ),
+            CharacterGoalPortfolioEntry(
+                goal_id="goal_clarify_intent",
+                goal="clarify_intent",
+                horizon="mid",
+                status="active",
+                priority=0.71,
+                urgency="medium",
+                source="model_deliberation",
+            ),
+        ],
+    )
+
+    assert frame.dominant_goal_id == "goal_protect_secret"
+    assert frame.preserved_goal_ids == ["goal_clarify_intent"]
+    assert frame.goal_portfolio[1].goal == "clarify_intent"
+
+
 def test_goal_state_record_tracks_repair_and_recovery_metadata() -> None:
     record = CharacterGoalStateRecord(
         actor_id="char_c",
@@ -245,8 +314,93 @@ def test_goal_state_record_tracks_repair_and_recovery_metadata() -> None:
         blockers=["target_already_suspicious"],
         goal_sources=["knowledge_state", "l2_goal_hint:social_signal"],
         urgency="high",
+        dominant_goal_id="goal_protect_secret",
+        preserved_goal_ids=["goal_preserve_optionality"],
+        suppressed_goal_ids=["goal_public_reassurance"],
+        goal_arbitration_summary="safety remains dominant while public reassurance is suppressed",
+        goal_portfolio=[
+            CharacterGoalPortfolioEntry(
+                goal_id="goal_protect_secret",
+                goal="protect_secret",
+                horizon="long",
+                status="active",
+                priority=0.94,
+                urgency="high",
+                source="model_deliberation",
+            )
+        ],
         transition_kind="repairing",
         transition_reason_tags=["strategy_blocked", "social_signal_reappraisal"],
     )
 
     assert record.transition_kind == "repairing"
+    assert record.goal_portfolio[0].goal_id == "goal_protect_secret"
+
+
+def test_supervision_models_capture_authorized_background_cognition_contract() -> None:
+    constraints = CharacterSupervisionConstraints(
+        allow_background_loop=True,
+        background_mode="quiet",
+        min_tick_interval_ms=9000,
+        max_tick_budget_tokens=220,
+        attention_theme=["safety_watch"],
+        blocked_goal_classes=["conflict_escalation"],
+        allow_proactive_initiation=False,
+    )
+    request = CharacterSupervisionRequest(
+        request_id="req:1",
+        actor_id="char_a",
+        requested_level="medium",
+        reason_code="safety_risk",
+        reason_summary="room instability is rising",
+        requested_constraints=constraints,
+        requested_duration_ms=30000,
+        producer_ts=10,
+    )
+    authorization = CharacterSupervisionAuthorization(
+        authorization_id="auth:1",
+        actor_id="char_a",
+        approved_level="medium",
+        approved_by="strategy_service",
+        approval_reason="approved by strategy",
+        constraints=constraints,
+        effective_from_ts=10,
+        expires_at_ts=40,
+        producer_ts=10,
+    )
+    state = CharacterSupervisionState(
+        actor_id="char_a",
+        current_level="medium",
+        source="strategy_authorized",
+        active_constraints=constraints,
+        entered_at_ts=10,
+        expires_at_ts=40,
+        last_refresh_ts=10,
+        last_reason_summary="approved by strategy",
+    )
+    tension = CharacterUnresolvedTension(
+        tension_id="char_a:constraint_result:obj_letter",
+        category="constraint_result",
+        summary="obj_letter remains locked",
+        target_ref="obj_letter",
+        priority=0.82,
+        status="active",
+        source_event_id="result:1",
+        source_stage="settlement_result",
+        last_reinforced_ts=12,
+    )
+    result = CharacterBackgroundCognitionResult(
+        actor_id="char_a",
+        ran=True,
+        producer_ts=20,
+        reason="background_tick_completed",
+        interpretation_summary="the lock failure still matters",
+        selected_intent="observe",
+        current_level="medium",
+    )
+
+    assert request.requested_constraints.background_mode == "quiet"
+    assert authorization.constraints.allow_proactive_initiation is False
+    assert state.active_constraints.blocked_goal_classes == ["conflict_escalation"]
+    assert tension.target_ref == "obj_letter"
+    assert result.current_level == "medium"

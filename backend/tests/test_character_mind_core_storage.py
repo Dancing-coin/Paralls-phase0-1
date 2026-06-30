@@ -1,5 +1,5 @@
 from app.character_agent.models.dynamic_state import CharacterDynamicState
-from app.character_agent.models.goal_runtime import CharacterGoalStateRecord
+from app.character_agent.models.goal_runtime import CharacterGoalPortfolioEntry, CharacterGoalStateRecord
 from app.character_agent.storage.dynamic_state_store import CharacterDynamicStateStore
 from app.character_agent.storage.goal_state_store import CharacterGoalStateStore
 from app.character_agent.storage.higher_order_memory_store import CharacterHigherOrderMemoryStore
@@ -113,6 +113,30 @@ def test_goal_state_store_round_trips_active_goal_frame() -> None:
             "blockers": ["high_masking_pressure"],
             "goal_sources": ["dynamic_state", "knowledge_state"],
             "urgency": "high",
+            "dominant_goal_id": "goal_protect_secret",
+            "preserved_goal_ids": ["goal_clarify_intent"],
+            "suppressed_goal_ids": ["goal_social_ease"],
+            "goal_arbitration_summary": "safety dominates while clarification remains active",
+            "goal_portfolio": [
+                {
+                    "goal_id": "goal_protect_secret",
+                    "goal": "protect_secret",
+                    "horizon": "long",
+                    "status": "active",
+                    "priority": 0.93,
+                    "urgency": "high",
+                    "source": "model_deliberation",
+                },
+                {
+                    "goal_id": "goal_clarify_intent",
+                    "goal": "clarify_intent",
+                    "horizon": "mid",
+                    "status": "active",
+                    "priority": 0.72,
+                    "urgency": "medium",
+                    "source": "model_deliberation",
+                },
+            ],
         },
     )
 
@@ -121,6 +145,8 @@ def test_goal_state_store_round_trips_active_goal_frame() -> None:
     assert state["primary_goal"] == "protect_secret"
     assert state["long_term_goal"] == "preserve_order"
     assert state["urgency"] == "high"
+    assert state["dominant_goal_id"] == "goal_protect_secret"
+    assert len(state["goal_portfolio"]) == 2
 
 
 def test_goal_state_store_exposes_previous_state_before_overwrite() -> None:
@@ -182,6 +208,21 @@ def test_goal_state_store_exposes_typed_record_view() -> None:
         blockers=["high_masking_pressure"],
         goal_sources=["dynamic_state", "knowledge_state"],
         urgency="high",
+        dominant_goal_id="goal_protect_secret",
+        preserved_goal_ids=["goal_clarify_intent"],
+        suppressed_goal_ids=["goal_social_ease"],
+        goal_arbitration_summary="safety dominates while clarification remains active",
+        goal_portfolio=[
+            CharacterGoalPortfolioEntry(
+                goal_id="goal_protect_secret",
+                goal="protect_secret",
+                horizon="long",
+                status="active",
+                priority=0.93,
+                urgency="high",
+                source="model_deliberation",
+            )
+        ],
         transition_kind="repairing",
         transition_reason_tags=["strategy_blocked"],
     )
@@ -193,3 +234,4 @@ def test_goal_state_store_exposes_typed_record_view() -> None:
     assert typed is not None
     assert typed.mid_term_strategy == "contain_exposure"
     assert typed.transition_kind == "repairing"
+    assert typed.goal_portfolio[0].goal == "protect_secret"

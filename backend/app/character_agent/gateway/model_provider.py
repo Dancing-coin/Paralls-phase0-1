@@ -5,9 +5,6 @@ import os
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from app.character_agent.reasoning.cognition_engine import CharacterCognitionEngine
-
-
 class CharacterModelProvider:
     def __init__(
         self,
@@ -36,10 +33,10 @@ class CharacterModelProvider:
             or "deepseek-v4-flash"
         ).strip()
         self._timeout_seconds = timeout_seconds
-        self._cognition_engine = CharacterCognitionEngine()
 
     def complete(self, request: dict[str, object]) -> dict[str, object]:
         route = request.get("route", {})
+        task_kind = str(request.get("task_kind", "") or "")
         provider_kind = self._provider_kind
         if isinstance(route, dict):
             provider_kind = str(route.get("provider_kind", provider_kind) or provider_kind)
@@ -53,12 +50,19 @@ class CharacterModelProvider:
         if provider_kind == "hybrid":
             try:
                 return self._coerce_output_for_task(
-                    str(request.get("task_kind", "") or ""),
+                    task_kind,
                     self._complete_via_deepseek(request),
                 )
             except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError):
+                if self._requires_model_semantic_ownership(task_kind):
+                    raise
                 return self._offline_complete(request)
+        if self._requires_model_semantic_ownership(task_kind):
+            raise ValueError(f"unsupported provider_kind for model-led task: {provider_kind or 'unknown'}")
         return self._offline_complete(request)
+
+    def _requires_model_semantic_ownership(self, task_kind: str) -> bool:
+        return task_kind in {"l2_reasoning", "l3_planning"}
 
     def _complete_via_deepseek(self, request: dict[str, object]) -> dict[str, object]:
         if not self._endpoint_url or not self._api_key:
@@ -171,20 +175,66 @@ class CharacterModelProvider:
     def _offline_l2_output(self, context: dict[str, object]) -> dict[str, object]:
         snapshot = context.get("snapshot", {})
         event = context.get("event", {})
-        memory = context.get("memory", {})
         if not isinstance(snapshot, dict):
             snapshot = {}
         if not isinstance(event, dict):
             event = {}
-        if not isinstance(memory, dict):
-            memory = {}
         actor_id = str(event.get("actor_id", "") or snapshot.get("actor_id", "") or "")
-        return self._cognition_engine.build_reasoning_output(
-            actor_id=actor_id,
-            snapshot=snapshot,
-            event=event,
-            memory=memory,
+        summary = str(
+            event.get("perceived_summary", "")
+            or event.get("presentation_hint", "")
+            or snapshot.get("perceived_summary", "")
+            or "model cognition unavailable; local-only stub active"
         )
+        interpretation_type = "cognition_unavailable"
+        if str(event.get("body_state_class", "") or "") or bool(snapshot.get("body_state_hints", [])):
+            interpretation_type = "body_state"
+        salience_score = float(event.get("clarity_score", snapshot.get("clarity_score", 0.5)) or 0.5)
+        salience_boost = event.get("salience_boost")
+        if isinstance(salience_boost, (int, float)):
+            salience_score = max(salience_score, min(1.0, max(0.0, float(salience_boost))))
+        attention_targets = snapshot.get("attention_targets", [])
+        if not isinstance(attention_targets, list):
+            attention_targets = []
+        attention_target = str(
+            attention_targets[0]
+            if attention_targets
+            else event.get("target_actor_id", "") or event.get("target_object_id", "") or event.get("target_environment_id", "") or ""
+        )
+        recent_world_changes = snapshot.get("recent_world_changes", [])
+        if not isinstance(recent_world_changes, list):
+            recent_world_changes = []
+        recent_constraint_results = snapshot.get("recent_constraint_results", [])
+        if not isinstance(recent_constraint_results, list):
+            recent_constraint_results = []
+        active_anomalies = snapshot.get("active_anomalies", [])
+        if not isinstance(active_anomalies, list):
+            active_anomalies = []
+        vigilance_level = str(snapshot.get("vigilance_level", "") or "")
+        distraction_level = str(snapshot.get("distraction_level", "") or "")
+        opportunity_level = "medium" if recent_world_changes or str(snapshot.get("last_siming_catalyst", "") or "") != "" else "low"
+        if vigilance_level == "elevated" and opportunity_level == "low":
+            opportunity_level = "medium"
+        risk_level = "medium" if interpretation_type == "body_state" or active_anomalies or recent_constraint_results else "low"
+        ambiguity_level = "high"
+        return {
+            "interpreted_summary": summary,
+            "interpretation_type": interpretation_type,
+            "salience_score": salience_score,
+            "ambiguity_level": ambiguity_level,
+            "risk_level": risk_level,
+            "opportunity_level": opportunity_level,
+            "attention_target": attention_target or None,
+            "inner_prompt_candidate": "local_only_stub",
+            "belief_deltas": [],
+            "social_deltas": [],
+            "higher_order_deltas": [],
+            "dynamic_state_delta": {},
+            "goal_hints": [],
+            "reasoning_trace_summary": f"local_only_stub:{actor_id}",
+            "cognition_status": "continuity_floor",
+            "fallback_mode": "local_only_stub",
+        }
 
     def _offline_l3_output(self, context: dict[str, object]) -> dict[str, object]:
         interpretation = context.get("interpretation", {})
@@ -213,42 +263,15 @@ class CharacterModelProvider:
         vigilance_level = str(snapshot.get("vigilance_level", "") or "")
         distraction_level = str(snapshot.get("distraction_level", "") or "")
         salience_score = float(interpretation.get("salience_score", 0.0) or 0.0)
-        effective_opportunity_level = opportunity_level
-        if (
-            recent_world_changes
-            or vigilance_level == "elevated"
-            or distraction_level == "elevated"
-            or salience_score >= 0.75
-        ) and effective_opportunity_level == "low":
-            effective_opportunity_level = "medium"
-        candidate_intents = ["observe", "inspect_object", "self_protect"]
-        if attention_target:
-            candidate_intents.extend(["ask_probe", "share_info"])
-        if effective_opportunity_level in {"medium", "high"}:
-            candidate_intents.append("speak_public")
+        candidate_intents = ["observe", "self_protect"]
         if control_mode == "player_priority_assisted":
             candidate_intents.append("stay_silent")
         selected_intent = "observe"
-        if guarded_attention_target or recent_constraint_results or str(interpretation.get("risk_level", "") or "low") in {"medium", "high"}:
+        if recent_constraint_results or str(interpretation.get("risk_level", "") or "low") in {"medium", "high"}:
             selected_intent = "self_protect"
-        elif attention_target and effective_opportunity_level in {"medium", "high"}:
-            selected_intent = "ask_probe"
-        elif effective_opportunity_level in {"medium", "high"} and (
-            attention_target
-            or recent_world_changes
-            or vigilance_level == "elevated"
-            or distraction_level == "elevated"
-        ):
-            selected_intent = "speak_public"
-        recommended_intents = [selected_intent, "observe"] if selected_intent != "observe" else ["observe"]
-        if guarded_attention_target:
-            recommended_intents = ["self_protect"] + [intent for intent in recommended_intents if intent != "self_protect"]
-        if (
-            recent_world_changes
-            or vigilance_level == "elevated"
-            or distraction_level == "elevated"
-        ) and "speak_public" in candidate_intents:
-            recommended_intents = ["speak_public"] + [intent for intent in recommended_intents if intent != "speak_public"]
+        elif control_mode == "player_priority_assisted":
+            selected_intent = "stay_silent"
+        recommended_intents = [selected_intent]
         risk_notes = [str(item) for item in recent_constraint_results if str(item)]
         if guarded_relation_note:
             risk_notes = [guarded_relation_note] + [item for item in risk_notes if item != guarded_relation_note]
@@ -271,6 +294,72 @@ class CharacterModelProvider:
             or ("uncertain signal" if str(snapshot.get("distraction_level", "") or "") == "elevated" else "")
             or "keep within role"
         )
+        active_goal_tags = ["preserve_continuity"]
+        active_goal_frame = {
+            "primary_goal": "preserve_continuity",
+            "long_term_goal": "preserve_continuity",
+            "mid_term_strategy": "hold_position",
+            "immediate_goal": "preserve_continuity",
+            "supporting_goals": [],
+            "blockers": [],
+            "goal_sources": ["local_only_fallback"],
+            "urgency": "low",
+            "dominant_goal_id": "goal_preserve_continuity",
+            "preserved_goal_ids": [],
+            "suppressed_goal_ids": [],
+            "goal_arbitration_summary": "local continuity shell keeps only a minimal continuity goal active",
+            "goal_portfolio": [
+                {
+                    "goal_id": "goal_preserve_continuity",
+                    "goal": "preserve_continuity",
+                    "horizon": "long",
+                    "status": "active",
+                    "priority": 0.5,
+                    "urgency": "low",
+                    "source": "local_only_fallback",
+                    "supporting_evidence": ["continuity_floor"],
+                }
+            ],
+        }
+        if selected_intent == "self_protect":
+            active_goal_tags = ["protect_self"]
+            active_goal_frame = {
+                "primary_goal": "protect_self",
+                "long_term_goal": "preserve_safety",
+                "mid_term_strategy": "stabilize_self",
+                "immediate_goal": "protect_self",
+                "supporting_goals": [],
+                "blockers": ["recent_constraint_pressure"] if recent_constraint_results else [],
+                "goal_sources": ["local_only_fallback"],
+                "urgency": "high" if recent_constraint_results else "medium",
+                "dominant_goal_id": "goal_protect_self",
+                "preserved_goal_ids": ["goal_preserve_continuity"],
+                "suppressed_goal_ids": [],
+                "goal_arbitration_summary": "local continuity shell prioritizes self-protection while preserving continuity as a background goal",
+                "goal_portfolio": [
+                    {
+                        "goal_id": "goal_protect_self",
+                        "goal": "protect_self",
+                        "horizon": "short",
+                        "status": "active",
+                        "priority": 0.8,
+                        "urgency": "high" if recent_constraint_results else "medium",
+                        "source": "local_only_fallback",
+                        "blockers": ["recent_constraint_pressure"] if recent_constraint_results else [],
+                        "supporting_evidence": risk_notes,
+                    },
+                    {
+                        "goal_id": "goal_preserve_continuity",
+                        "goal": "preserve_continuity",
+                        "horizon": "long",
+                        "status": "active",
+                        "priority": 0.5,
+                        "urgency": "low",
+                        "source": "local_only_fallback",
+                        "supporting_evidence": ["continuity_floor"],
+                    },
+                ],
+            }
         return {
             "candidate_intents": candidate_intents,
             "selected_intent": selected_intent,
@@ -278,6 +367,10 @@ class CharacterModelProvider:
             "risk_notes": risk_notes,
             "why_this_now": why_this_now,
             "role_consistency_hint": role_consistency_hint,
+            "active_goal_tags": active_goal_tags,
+            "active_goal_frame": active_goal_frame,
+            "planning_status": "continuity_floor",
+            "fallback_mode": "local_only_stub",
         }
 
     def _is_guarded_relational_target(self, attention_target: str, relational_memories: list[object]) -> bool:

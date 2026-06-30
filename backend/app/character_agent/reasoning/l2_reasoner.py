@@ -40,6 +40,11 @@ class CharacterAgentL2Service:
         memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle,
         control_mode: str,
         working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None = None,
+        current_goal_state: dict[str, object] | None = None,
+        goal_state_history: list[dict[str, object]] | None = None,
+        supervision_state: dict[str, object] | None = None,
+        unresolved_tensions: list[dict[str, object]] | None = None,
+        background_agenda_state: dict[str, object] | None = None,
     ) -> dict[str, object]:
         return self._gateway.prepare_run_request(
             task_kind="l2_reasoning",
@@ -50,6 +55,11 @@ class CharacterAgentL2Service:
                 memory_bundle=memory_bundle,
                 control_mode=control_mode,
                 working_memory_state=working_memory_state,
+                current_goal_state=current_goal_state,
+                goal_state_history=goal_state_history,
+                supervision_state=supervision_state,
+                unresolved_tensions=unresolved_tensions,
+                background_agenda_state=background_agenda_state,
             ),
         )
 
@@ -134,6 +144,8 @@ class CharacterAgentL2Service:
                 if isinstance(item, dict) and str(item.get("goal", "") or "")
             ],
             reasoning_trace_summary=str(output.get("reasoning_trace_summary", "") or "") or None,
+            cognition_status=str(output.get("cognition_status", "model") or "model"),
+            fallback_mode=str(output.get("fallback_mode", "") or "") or None,
         )
 
     def interpret_perceived_event(
@@ -144,6 +156,11 @@ class CharacterAgentL2Service:
         memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None = None,
         control_mode: str = "agent_full_auto",
         working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None = None,
+        current_goal_state: dict[str, object] | None = None,
+        goal_state_history: list[dict[str, object]] | None = None,
+        supervision_state: dict[str, object] | None = None,
+        unresolved_tensions: list[dict[str, object]] | None = None,
+        background_agenda_state: dict[str, object] | None = None,
     ) -> CharacterInterpretation:
         model_output = self._gateway.run_task(
             task_kind="l2_reasoning",
@@ -154,6 +171,11 @@ class CharacterAgentL2Service:
                 memory_bundle=memory_bundle,
                 control_mode=control_mode,
                 working_memory_state=working_memory_state,
+                current_goal_state=current_goal_state,
+                goal_state_history=goal_state_history,
+                supervision_state=supervision_state,
+                unresolved_tensions=unresolved_tensions,
+                background_agenda_state=background_agenda_state,
             ),
         )
         return self.map_reasoning_output(actor_id=event.actor_id, output=model_output)
@@ -166,6 +188,11 @@ class CharacterAgentL2Service:
         memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None = None,
         control_mode: str = "agent_full_auto",
         working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None = None,
+        current_goal_state: dict[str, object] | None = None,
+        goal_state_history: list[dict[str, object]] | None = None,
+        supervision_state: dict[str, object] | None = None,
+        unresolved_tensions: list[dict[str, object]] | None = None,
+        background_agenda_state: dict[str, object] | None = None,
     ) -> CharacterInterpretation:
         model_output = self._gateway.run_task(
             task_kind="l2_reasoning",
@@ -176,6 +203,11 @@ class CharacterAgentL2Service:
                 memory_bundle=memory_bundle,
                 control_mode=control_mode,
                 working_memory_state=working_memory_state,
+                current_goal_state=current_goal_state,
+                goal_state_history=goal_state_history,
+                supervision_state=supervision_state,
+                unresolved_tensions=unresolved_tensions,
+                background_agenda_state=background_agenda_state,
             ),
         )
         return self.map_reasoning_output(actor_id=event.actor_id, output=model_output)
@@ -188,6 +220,11 @@ class CharacterAgentL2Service:
         memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None = None,
         control_mode: str = "agent_full_auto",
         working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None = None,
+        current_goal_state: dict[str, object] | None = None,
+        goal_state_history: list[dict[str, object]] | None = None,
+        supervision_state: dict[str, object] | None = None,
+        unresolved_tensions: list[dict[str, object]] | None = None,
+        background_agenda_state: dict[str, object] | None = None,
     ) -> CharacterInterpretation:
         model_output = self._gateway.run_task(
             task_kind="l2_reasoning",
@@ -198,6 +235,43 @@ class CharacterAgentL2Service:
                 memory_bundle=memory_bundle,
                 control_mode=control_mode,
                 working_memory_state=working_memory_state,
+                current_goal_state=current_goal_state,
+                goal_state_history=goal_state_history,
+                supervision_state=supervision_state,
+                unresolved_tensions=unresolved_tensions,
+                background_agenda_state=background_agenda_state,
+            ),
+        )
+        return self.map_reasoning_output(actor_id=snapshot.actor_id, output=model_output)
+
+    def interpret_background_state(
+        self,
+        snapshot: CharacterPrivateWorldSnapshot,
+        payload: dict[str, object],
+        *,
+        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None = None,
+        control_mode: str = "agent_full_auto",
+        working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None = None,
+        current_goal_state: dict[str, object] | None = None,
+        goal_state_history: list[dict[str, object]] | None = None,
+        supervision_state: dict[str, object] | None = None,
+        unresolved_tensions: list[dict[str, object]] | None = None,
+        background_agenda_state: dict[str, object] | None = None,
+    ) -> CharacterInterpretation:
+        model_output = self._gateway.run_task(
+            task_kind="l2_reasoning",
+            context=self._reasoning_context(
+                actor_id=snapshot.actor_id,
+                snapshot=snapshot.model_dump(),
+                event=payload,
+                memory_bundle=memory_bundle,
+                control_mode=control_mode,
+                working_memory_state=working_memory_state,
+                current_goal_state=current_goal_state,
+                goal_state_history=goal_state_history,
+                supervision_state=supervision_state,
+                unresolved_tensions=unresolved_tensions,
+                background_agenda_state=background_agenda_state,
             ),
         )
         return self.map_reasoning_output(actor_id=snapshot.actor_id, output=model_output)
@@ -211,6 +285,11 @@ class CharacterAgentL2Service:
         memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None,
         control_mode: str,
         working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None,
+        current_goal_state: dict[str, object] | None,
+        goal_state_history: list[dict[str, object]] | None,
+        supervision_state: dict[str, object] | None,
+        unresolved_tensions: list[dict[str, object]] | None,
+        background_agenda_state: dict[str, object] | None,
     ) -> dict[str, object]:
         context = self._context_builder.build_context(
             actor_id=actor_id,
@@ -221,6 +300,11 @@ class CharacterAgentL2Service:
             profile=self._profile_for_actor(actor_id),
         )
         context["event"] = dict(event)
+        context["current_goal_state"] = dict(current_goal_state or {})
+        context["goal_state_history"] = [dict(item) for item in goal_state_history or [] if isinstance(item, dict)]
+        context["supervision_state"] = dict(supervision_state or {})
+        context["unresolved_tensions"] = [dict(item) for item in unresolved_tensions or [] if isinstance(item, dict)]
+        context["background_agenda_state"] = dict(background_agenda_state or {})
         return context
 
     def _profile_for_actor(self, actor_id: str) -> dict[str, object]:

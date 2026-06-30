@@ -1,3 +1,5 @@
+import pytest
+
 from app.character_agent.gateway.model_provider import CharacterModelProvider
 
 
@@ -130,14 +132,16 @@ def test_model_provider_offline_l2_returns_extended_cognition_contract_keys() ->
         }
     )
 
-    assert "belief_deltas" in output
-    assert "social_deltas" in output
-    assert "higher_order_deltas" in output
-    assert "dynamic_state_delta" in output
+    assert output["belief_deltas"] == []
+    assert output["social_deltas"] == []
+    assert output["higher_order_deltas"] == []
+    assert output["dynamic_state_delta"] == {}
     assert "reasoning_trace_summary" in output
+    assert output["cognition_status"] == "continuity_floor"
+    assert output["fallback_mode"] == "local_only_stub"
 
 
-def test_model_provider_offline_l2_generates_cognition_deltas_for_guarded_social_signal() -> None:
+def test_model_provider_offline_l2_does_not_fabricate_cognition_deltas_for_guarded_social_signal() -> None:
     provider = CharacterModelProvider(provider_kind="local")
 
     output = provider.complete(
@@ -172,16 +176,15 @@ def test_model_provider_offline_l2_generates_cognition_deltas_for_guarded_social
         }
     )
 
-    assert output["belief_deltas"]
-    assert output["belief_deltas"][0]["proposition_key"] == "char_b:is_probing"
-    assert output["social_deltas"]
-    assert output["social_deltas"][0]["entity_id"] == "char_b"
-    assert output["higher_order_deltas"]
-    assert output["higher_order_deltas"][0]["subject_actor_id"] == "char_b"
-    assert output["dynamic_state_delta"]["social_pressure"] >= 0.5
+    assert output["attention_target"] == "char_b"
+    assert output["belief_deltas"] == []
+    assert output["social_deltas"] == []
+    assert output["higher_order_deltas"] == []
+    assert output["goal_hints"] == []
+    assert output["cognition_status"] == "continuity_floor"
 
 
-def test_model_provider_offline_l2_generates_knowledge_and_dynamic_deltas_for_world_change() -> None:
+def test_model_provider_offline_l2_keeps_world_change_as_shallow_stub_interpretation() -> None:
     provider = CharacterModelProvider(provider_kind="local")
 
     output = provider.complete(
@@ -216,12 +219,13 @@ def test_model_provider_offline_l2_generates_knowledge_and_dynamic_deltas_for_wo
         }
     )
 
-    assert output["belief_deltas"]
-    assert output["belief_deltas"][0]["proposition_key"] == "env_lamp:state_change"
-    assert output["dynamic_state_delta"]["vigilance_level"] >= 0.6
+    assert output["attention_target"] == "env_lamp"
+    assert output["opportunity_level"] == "medium"
+    assert output["belief_deltas"] == []
+    assert output["dynamic_state_delta"] == {}
 
 
-def test_model_provider_offline_l2_generates_self_state_deltas_for_body_state_events() -> None:
+def test_model_provider_offline_l2_keeps_body_state_as_shallow_stub_interpretation() -> None:
     provider = CharacterModelProvider(provider_kind="local")
 
     output = provider.complete(
@@ -254,12 +258,12 @@ def test_model_provider_offline_l2_generates_self_state_deltas_for_body_state_ev
         }
     )
 
-    assert output["belief_deltas"]
-    assert output["belief_deltas"][0]["proposition_key"] == "self:interaction_strain"
-    assert output["dynamic_state_delta"]["stress_load"] >= 0.6
+    assert output["interpretation_type"] == "body_state"
+    assert output["risk_level"] == "medium"
+    assert output["belief_deltas"] == []
 
 
-def test_model_provider_offline_l2_generates_dynamic_pressure_for_siming_input_without_fake_world_truth() -> None:
+def test_model_provider_offline_l2_keeps_siming_input_as_shallow_stub_without_fake_cognition() -> None:
     provider = CharacterModelProvider(provider_kind="local")
 
     output = provider.complete(
@@ -299,12 +303,12 @@ def test_model_provider_offline_l2_generates_dynamic_pressure_for_siming_input_w
     )
 
     assert output["belief_deltas"] == []
-    assert output["dynamic_state_delta"]["vigilance_level"] >= 0.8
-    assert output["dynamic_state_delta"]["distraction_level"] >= 0.7
-    assert output["dynamic_state_delta"]["stress_load"] >= 0.5
+    assert output["dynamic_state_delta"] == {}
+    assert output["opportunity_level"] == "medium"
+    assert output["cognition_status"] == "continuity_floor"
 
 
-def test_model_provider_offline_l2_uses_existing_higher_order_memory_to_raise_masking_pressure() -> None:
+def test_model_provider_offline_l2_does_not_use_higher_order_memory_to_fabricate_dynamic_pressure() -> None:
     provider = CharacterModelProvider(provider_kind="local")
 
     output = provider.complete(
@@ -346,11 +350,10 @@ def test_model_provider_offline_l2_uses_existing_higher_order_memory_to_raise_ma
         }
     )
 
-    assert output["dynamic_state_delta"]["masking_pressure"] >= 0.6
-    assert output["dynamic_state_delta"]["social_pressure"] >= 0.6
+    assert output["dynamic_state_delta"] == {}
 
 
-def test_model_provider_offline_l2_emits_goal_hints_for_high_pressure_social_probe() -> None:
+def test_model_provider_offline_l2_does_not_emit_goal_hints_for_high_pressure_social_probe() -> None:
     provider = CharacterModelProvider(provider_kind="local")
 
     output = provider.complete(
@@ -399,15 +402,10 @@ def test_model_provider_offline_l2_emits_goal_hints_for_high_pressure_social_pro
         }
     )
 
-    assert output["goal_hints"]
-    assert output["goal_hints"][0]["goal"] == "protect_secret"
-    assert output["goal_hints"][0]["source"] == "social_signal"
-    assert output["goal_hints"][0]["strength"] >= 0.7
-    assert "guarded_attention" in output["goal_hints"][0]["evidence_tags"]
-    assert any(item["goal"] == "clarify_intent" for item in output["goal_hints"])
+    assert output["goal_hints"] == []
 
 
-def test_model_provider_offline_l2_scales_goal_hint_strength_with_knowledge_confidence() -> None:
+def test_model_provider_offline_l2_does_not_scale_goal_hint_strength_from_knowledge_confidence() -> None:
     provider = CharacterModelProvider(provider_kind="local")
 
     high_confidence = provider.complete(
@@ -487,10 +485,8 @@ def test_model_provider_offline_l2_scales_goal_hint_strength_with_knowledge_conf
         }
     )
 
-    high_clarify = next(item for item in high_confidence["goal_hints"] if item["goal"] == "clarify_intent")
-    low_clarify = next(item for item in low_confidence["goal_hints"] if item["goal"] == "clarify_intent")
-
-    assert high_clarify["strength"] > low_clarify["strength"]
+    assert high_confidence["goal_hints"] == []
+    assert low_confidence["goal_hints"] == []
 
 
 def test_model_provider_hybrid_falls_back_to_offline_on_provider_error() -> None:
@@ -515,6 +511,44 @@ def test_model_provider_hybrid_falls_back_to_offline_on_provider_error() -> None
 
     assert output["content"] == "I saw something move near the desk."
     assert output["tone"] == "alert"
+
+
+def test_model_provider_hybrid_l2_surfaces_provider_error_instead_of_offline_fallback() -> None:
+    provider = CharacterModelProvider(
+        provider_kind="hybrid",
+        endpoint_url="https://api.deepseek.com",
+        model_name="deepseek-chat",
+    )
+
+    provider._complete_via_deepseek = lambda request: (_ for _ in ()).throw(ValueError("boom"))  # type: ignore[method-assign]
+
+    with pytest.raises(ValueError, match="boom"):
+        provider.complete(
+            {
+                "task_kind": "l2_reasoning",
+                "route": {"route_mode": "hybrid_ready", "provider_kind": "hybrid"},
+                "context": {
+                    "actor_id": "char_a",
+                    "snapshot": {"attention_targets": ["char_b"]},
+                    "memory": {
+                        "working_memory": [],
+                        "event_memories": [],
+                        "observation_memories": [],
+                        "knowledge_memories": [],
+                        "social_memories": [],
+                        "higher_order_memories": [],
+                    },
+                    "event": {
+                        "actor_id": "char_a",
+                        "percept_channel": "auditory",
+                        "perceived_summary": "auditory_fact/speaker_active",
+                        "target_actor_id": "char_b",
+                        "clarity_score": 0.82,
+                        "certainty_score": 0.61,
+                    },
+                },
+            }
+        )
 
 
 def test_model_provider_deepseek_route_surfaces_provider_error() -> None:

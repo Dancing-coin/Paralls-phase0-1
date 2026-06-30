@@ -524,6 +524,53 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             messages.extend(_publish_world_result_authority_event(world_result, source_event=interact_event))
         return _finalize_outbound_messages(messages)
 
+    if envelope.message_type == "character_supervision_authorization":
+        payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+        state = character_agent_runtime.apply_supervision_authorization(payload)
+        return _finalize_outbound_messages(
+            [
+                {
+                    "message_type": "ack",
+                    "payload": {
+                        "accepted": True,
+                        "source_type": envelope.message_type,
+                        "route": "character_supervision_runtime",
+                    },
+                },
+                {
+                    "message_type": "character_supervision_state",
+                    "payload": state.model_dump(),
+                },
+            ]
+        )
+
+    if envelope.message_type == "character_supervision_clear":
+        payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+        actor_id = str(payload.get("actor_id", "") or "")
+        producer_ts = int(payload.get("producer_ts", 0) or 0)
+        reason = str(payload.get("reason", "") or "external_supervision_clear")
+        state = character_agent_runtime.clear_supervision_authorization(
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+            reason=reason,
+        )
+        return _finalize_outbound_messages(
+            [
+                {
+                    "message_type": "ack",
+                    "payload": {
+                        "accepted": True,
+                        "source_type": envelope.message_type,
+                        "route": "character_supervision_runtime",
+                    },
+                },
+                {
+                    "message_type": "character_supervision_state",
+                    "payload": state.model_dump(),
+                },
+            ]
+        )
+
     if envelope.message_type != "player_input":
         return [
             {
@@ -741,6 +788,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             messages.append(_as_envelope("self_body_perceived_event", self_body_perceived.model_dump()))
             self_body_commands = character_agent_runtime.ingest_self_body_perceived_event(self_body_perceived)
             messages.extend(_as_character_agent_execution_envelopes(self_body_commands))
+            character_agent_runtime.run_scheduled_background_cognition_ticks(self_body_perceived.producer_ts)
             if event.actor_id != "char_c":
                 messages.extend(
                     _as_character_agent_suggestion_envelopes(
@@ -1113,6 +1161,9 @@ def _queue_siming_character_dispatch_messages(authority_event_id: str, result: S
     delivery_inputs = getattr(result, "delivery_inputs", [])
     for delivery_input in delivery_inputs if isinstance(delivery_inputs, list) else []:
         actor_id = str(getattr(delivery_input, "actor_id", "") or "")
+        producer_ts = int(getattr(delivery_input, "producer_ts", 0) or 0)
+        if producer_ts > 0:
+            character_agent_runtime.run_scheduled_background_cognition_ticks(producer_ts)
         messages.extend(
             _as_character_agent_suggestion_envelopes(character_agent_runtime.drain_suggestion_packets(actor_id))
         )
@@ -1203,6 +1254,7 @@ def _character_agent_messages_from_fact_candidates(event: RawFactEvent) -> list[
             )
             character_agent_commands = character_agent_runtime.ingest_character_perceived_event(perceived)
             character_agent_messages.extend(_as_character_agent_execution_envelopes(character_agent_commands))
+            character_agent_runtime.run_scheduled_background_cognition_ticks(perceived.producer_ts)
             character_agent_messages.extend(
                 _as_character_agent_suggestion_envelopes(
                     character_agent_runtime.drain_suggestion_packets(actor_id)

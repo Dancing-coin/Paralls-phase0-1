@@ -85,6 +85,8 @@ class CharacterInterpretation(BaseModel):
     dynamic_state_delta: CharacterDynamicStateDelta = Field(default_factory=CharacterDynamicStateDelta)
     goal_hints: list[CharacterGoalHint] = Field(default_factory=list)
     reasoning_trace_summary: str | None = None
+    cognition_status: Literal["model", "continuity_floor"] = "model"
+    fallback_mode: str | None = None
 
 
 class CharacterIntentDecision(BaseModel):
@@ -103,6 +105,8 @@ class CharacterIntentDecision(BaseModel):
     goal_sources: list[str] = Field(default_factory=list)
     urgency: Literal["low", "medium", "high"] = "low"
     active_goal_frame: CharacterActiveGoalFrame | None = None
+    planning_status: Literal["model", "continuity_floor"] = "model"
+    fallback_mode: str | None = None
 
 
 class CharacterSuggestionPacket(BaseModel):
@@ -130,6 +134,8 @@ class CharacterSuggestionPacket(BaseModel):
     why_this_now: str = ""
     role_consistency_hint: str = ""
     reasoning_trace_summary: str = ""
+    planning_status: Literal["model", "continuity_floor"] = "model"
+    fallback_mode: str | None = None
 
 
 class CharacterGoalCommand(BaseModel):

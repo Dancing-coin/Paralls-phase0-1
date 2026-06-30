@@ -6,7 +6,9 @@ from app.character_agent.models.cognition_delta import (
     CharacterHigherOrderDelta,
     CharacterSocialDelta,
 )
+from app.character_agent.models.goal_runtime import CharacterActiveGoalFrame
 from app.character_agent.models.goal_runtime import CharacterGoalHint
+from app.character_agent.models.goal_runtime import CharacterGoalPortfolioEntry
 
 
 class CharacterStructuredOutputValidator:
@@ -58,6 +60,10 @@ class CharacterStructuredOutputValidator:
         normalized["goal_hints"] = self._as_goal_hint_list(normalized.get("goal_hints", []))
         reasoning_trace_summary = str(normalized.get("reasoning_trace_summary", "") or "")
         normalized["reasoning_trace_summary"] = reasoning_trace_summary or None
+        cognition_status = str(normalized.get("cognition_status", "") or "")
+        normalized["cognition_status"] = cognition_status or "model"
+        fallback_mode = str(normalized.get("fallback_mode", "") or "")
+        normalized["fallback_mode"] = fallback_mode or None
         return normalized
 
     def _validate_l3_output(self, output: dict[str, object]) -> dict[str, object]:
@@ -77,6 +83,12 @@ class CharacterStructuredOutputValidator:
         normalized["risk_notes"] = self._as_string_list(normalized.get("risk_notes", []))
         normalized["why_this_now"] = str(normalized.get("why_this_now", "") or "")
         normalized["role_consistency_hint"] = str(normalized.get("role_consistency_hint", "") or "")
+        normalized["active_goal_tags"] = self._as_string_list(normalized.get("active_goal_tags", []))
+        normalized["active_goal_frame"] = self._as_active_goal_frame_mapping(normalized.get("active_goal_frame", {}))
+        planning_status = str(normalized.get("planning_status", "") or "")
+        normalized["planning_status"] = planning_status or "model"
+        fallback_mode = str(normalized.get("fallback_mode", "") or "")
+        normalized["fallback_mode"] = fallback_mode or None
         return normalized
 
     def _require_keys(self, output: dict[str, object], keys: list[str], *, task_kind: str) -> None:
@@ -172,3 +184,67 @@ class CharacterStructuredOutputValidator:
             if isinstance(item, (int, float))
         }
         return CharacterDynamicStateDelta(**filtered).as_mapping()
+
+    def _as_active_goal_frame_mapping(self, value: object) -> dict[str, object]:
+        if not isinstance(value, dict):
+            raise ValueError("structured model output active_goal_frame field must be a mapping")
+        primary_goal = str(value.get("primary_goal", "") or "")
+        if primary_goal == "":
+            raise ValueError("structured model output active_goal_frame.primary_goal must not be empty")
+        return CharacterActiveGoalFrame(
+            primary_goal=primary_goal,
+            long_term_goal=str(value.get("long_term_goal", "") or ""),
+            mid_term_strategy=str(value.get("mid_term_strategy", "") or ""),
+            immediate_goal=str(value.get("immediate_goal", "") or primary_goal),
+            supporting_goals=self._as_string_list(value.get("supporting_goals", []))
+            if isinstance(value.get("supporting_goals", []), list)
+            else [],
+            blockers=self._as_string_list(value.get("blockers", []))
+            if isinstance(value.get("blockers", []), list)
+            else [],
+            goal_sources=self._as_string_list(value.get("goal_sources", []))
+            if isinstance(value.get("goal_sources", []), list)
+            else [],
+            urgency=str(value.get("urgency", "low") or "low"),
+            dominant_goal_id=str(value.get("dominant_goal_id", "") or ""),
+            preserved_goal_ids=self._as_string_list(value.get("preserved_goal_ids", []))
+            if isinstance(value.get("preserved_goal_ids", []), list)
+            else [],
+            suppressed_goal_ids=self._as_string_list(value.get("suppressed_goal_ids", []))
+            if isinstance(value.get("suppressed_goal_ids", []), list)
+            else [],
+            goal_arbitration_summary=str(value.get("goal_arbitration_summary", "") or ""),
+            goal_portfolio=self._as_goal_portfolio_entries(value.get("goal_portfolio", [])),
+        ).model_dump()
+
+    def _as_goal_portfolio_entries(self, value: object) -> list[CharacterGoalPortfolioEntry]:
+        if not isinstance(value, list):
+            return []
+        entries: list[CharacterGoalPortfolioEntry] = []
+        for item in value:
+            if not isinstance(item, dict):
+                continue
+            goal_id = str(item.get("goal_id", "") or "")
+            goal = str(item.get("goal", "") or "")
+            source = str(item.get("source", "") or "model")
+            if goal_id == "" or goal == "":
+                continue
+            entries.append(
+                CharacterGoalPortfolioEntry(
+                    goal_id=goal_id,
+                    goal=goal,
+                    horizon=str(item.get("horizon", "mid") or "mid"),
+                    status=str(item.get("status", "active") or "active"),
+                    priority=float(item.get("priority", 0.5) or 0.5),
+                    urgency=str(item.get("urgency", "low") or "low"),
+                    source=source,
+                    target_ref=str(item.get("target_ref", "") or ""),
+                    blockers=self._as_string_list(item.get("blockers", []))
+                    if isinstance(item.get("blockers", []), list)
+                    else [],
+                    supporting_evidence=self._as_string_list(item.get("supporting_evidence", []))
+                    if isinstance(item.get("supporting_evidence", []), list)
+                    else [],
+                )
+            )
+        return entries

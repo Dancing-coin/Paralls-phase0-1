@@ -249,7 +249,7 @@ def test_model_gateway_offline_l2_raises_risk_for_active_anomalies() -> None:
     )
 
     assert output["risk_level"] == "medium"
-    assert output["ambiguity_level"] == "medium"
+    assert output["ambiguity_level"] == "high"
 
 
 def test_model_gateway_offline_l2_treats_body_state_hints_as_body_state_interpretation() -> None:
@@ -436,10 +436,10 @@ def test_model_gateway_offline_l2_raises_ambiguity_for_elevated_distraction_leve
         },
     )
 
-    assert output["ambiguity_level"] == "medium"
+    assert output["ambiguity_level"] == "high"
 
 
-def test_model_gateway_offline_l2_raises_risk_for_guarded_relational_memory_about_attention_target() -> None:
+def test_model_gateway_offline_l2_does_not_fabricate_risk_from_guarded_relational_memory_about_attention_target() -> None:
     gateway = CharacterModelGateway()
 
     output = _run_local_task(
@@ -471,7 +471,7 @@ def test_model_gateway_offline_l2_raises_risk_for_guarded_relational_memory_abou
         },
     )
 
-    assert output["risk_level"] == "medium"
+    assert output["risk_level"] == "low"
 
 
 def test_model_gateway_offline_l3_prefers_self_protect_for_recent_constraint_results() -> None:
@@ -505,6 +505,9 @@ def test_model_gateway_offline_l3_prefers_self_protect_for_recent_constraint_res
 
     assert output["selected_intent"] == "self_protect"
     assert output["recommended_intents"][0] == "self_protect"
+    assert output["planning_status"] == "continuity_floor"
+    assert output["fallback_mode"] == "local_only_stub"
+    assert output["active_goal_frame"]["primary_goal"] == "protect_self"
 
 
 def test_model_gateway_offline_l3_prefers_self_protect_for_medium_risk_even_without_recent_constraint_history() -> None:
@@ -540,7 +543,7 @@ def test_model_gateway_offline_l3_prefers_self_protect_for_medium_risk_even_with
     assert output["recommended_intents"][0] == "self_protect"
 
 
-def test_model_gateway_offline_l3_prefers_speak_public_for_recent_world_changes() -> None:
+def test_model_gateway_offline_l3_keeps_recent_world_changes_on_observe_without_rich_local_tactic() -> None:
     gateway = CharacterModelGateway()
 
     output = _run_local_task(
@@ -569,10 +572,12 @@ def test_model_gateway_offline_l3_prefers_speak_public_for_recent_world_changes(
         },
     )
 
-    assert output["recommended_intents"][0] == "speak_public"
+    assert output["recommended_intents"][0] == "observe"
+    assert output["planning_status"] == "continuity_floor"
+    assert output["active_goal_frame"]["primary_goal"] == "preserve_continuity"
 
 
-def test_model_gateway_offline_l3_prefers_speak_public_for_elevated_vigilance() -> None:
+def test_model_gateway_offline_l3_keeps_elevated_vigilance_on_observe_without_rich_local_tactic() -> None:
     gateway = CharacterModelGateway()
 
     output = _run_local_task(
@@ -601,11 +606,11 @@ def test_model_gateway_offline_l3_prefers_speak_public_for_elevated_vigilance() 
         },
     )
 
-    assert output["recommended_intents"][0] == "speak_public"
-    assert output["selected_intent"] == "speak_public"
+    assert output["recommended_intents"][0] == "observe"
+    assert output["selected_intent"] == "observe"
 
 
-def test_model_gateway_offline_l3_prefers_speak_public_for_elevated_distraction() -> None:
+def test_model_gateway_offline_l3_keeps_elevated_distraction_on_observe_without_rich_local_tactic() -> None:
     gateway = CharacterModelGateway()
 
     output = _run_local_task(
@@ -634,10 +639,10 @@ def test_model_gateway_offline_l3_prefers_speak_public_for_elevated_distraction(
         },
     )
 
-    assert output["recommended_intents"][0] == "speak_public"
+    assert output["recommended_intents"][0] == "observe"
 
 
-def test_model_gateway_offline_l3_prefers_self_protect_for_guarded_relational_memory_about_attention_target() -> None:
+def test_model_gateway_offline_l3_does_not_turn_guarded_relation_into_rich_local_self_protect_selection() -> None:
     gateway = CharacterModelGateway()
 
     output = _run_local_task(
@@ -668,8 +673,8 @@ def test_model_gateway_offline_l3_prefers_self_protect_for_guarded_relational_me
         },
     )
 
-    assert output["selected_intent"] == "self_protect"
-    assert output["recommended_intents"][0] == "self_protect"
+    assert output["selected_intent"] == "observe"
+    assert output["recommended_intents"][0] == "observe"
 
 
 def test_model_gateway_offline_l3_uses_guarded_relational_memory_in_risk_notes() -> None:
@@ -1001,12 +1006,72 @@ def test_prompt_policy_and_output_validator_expose_task_specific_contracts() -> 
             "risk_notes": [],
             "why_this_now": "char_a is salient",
             "role_consistency_hint": "hold position",
+            "active_goal_tags": ["preserve_optionality"],
+            "active_goal_frame": {
+                "primary_goal": "preserve_optionality",
+                "long_term_goal": "preserve_continuity",
+                "mid_term_strategy": "hold_position",
+                "immediate_goal": "preserve_optionality",
+                "supporting_goals": [],
+                "blockers": [],
+                "goal_sources": ["model_deliberation"],
+                "urgency": "low",
+            },
         },
     )
 
     assert "l3_planning" in prompt["system_instruction"]
     assert "candidate_intents" in prompt["required_output_keys"]
+    assert "active_goal_tags" in prompt["required_output_keys"]
+    assert "active_goal_frame" in prompt["required_output_keys"]
     assert output["selected_intent"] == "observe"
+    assert output["active_goal_frame"]["primary_goal"] == "preserve_optionality"
+
+
+def test_prompt_policy_includes_supervision_and_unresolved_tensions_in_user_instruction() -> None:
+    prompt_policy = CharacterPromptPolicy()
+
+    prompt = prompt_policy.build_prompt(
+        task_kind="l2_reasoning",
+        context={
+            "actor_id": "char_a",
+            "control_mode": "agent_full_auto",
+            "snapshot": {"attention_targets": ["obj_letter"], "last_siming_catalyst": "watch obj_letter"},
+            "memory": {"working_memory": [], "episodic_memories": [], "relational_memories": []},
+            "event": {"actor_id": "char_a", "event_type": "background_reappraisal", "perceived_summary": "obj_letter remains unresolved"},
+            "supervision_state": {
+                "current_level": "medium",
+                "source": "strategy_authorized",
+                "last_reason_summary": "safety-first review window",
+                "active_constraints": {
+                    "background_mode": "quiet",
+                    "allow_background_loop": True,
+                    "caution_bias": "high",
+                    "pressure_theme": "room_instability",
+                    "attention_theme": ["safety_watch"],
+                    "blocked_goal_classes": ["conflict_escalation"],
+                    "preferred_goal_classes": ["safety", "observation"],
+                    "allow_proactive_initiation": False,
+                    "allow_proactive_tendency_generation": False,
+                },
+            },
+            "unresolved_tensions": [
+                {
+                    "tension_id": "char_a:constraint_result:obj_letter",
+                    "category": "constraint_result",
+                    "summary": "obj_letter remains locked",
+                }
+            ],
+        },
+        route={"route_mode": "online_default", "provider_kind": "online"},
+    )
+
+    user_instruction = str(prompt["user_instruction"])
+
+    assert "supervision_state=" in user_instruction
+    assert "level=medium" in user_instruction
+    assert "blocked_goal_classes=conflict_escalation" in user_instruction
+    assert "unresolved_tensions=count=1" in user_instruction
 
 
 def test_output_validator_enforces_typed_l2_delta_constraints() -> None:

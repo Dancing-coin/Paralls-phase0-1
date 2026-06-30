@@ -485,7 +485,7 @@ def test_l2_reasoner_offline_path_raises_risk_for_active_anomalies() -> None:
     )
 
     assert interpretation.risk_level == "medium"
-    assert interpretation.ambiguity_level == "medium"
+    assert interpretation.ambiguity_level == "high"
 
 
 def test_l2_reasoner_offline_path_treats_body_state_hints_as_body_state_interpretation() -> None:
@@ -628,7 +628,7 @@ def test_l2_reasoner_offline_path_raises_ambiguity_for_elevated_distraction_leve
         ),
     )
 
-    assert interpretation.ambiguity_level == "medium"
+    assert interpretation.ambiguity_level == "high"
 
 
 def test_l2_reasoner_profile_cache_isolated_from_nested_context_mutation() -> None:

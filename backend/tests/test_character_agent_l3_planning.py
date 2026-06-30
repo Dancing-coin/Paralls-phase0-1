@@ -54,6 +54,28 @@ class _LocalGateway:
         )
 
 
+def _recording_gateway_for_candidates(
+    candidates: list[str],
+    *,
+    selected_intent: str | None = None,
+    recommended_intents: list[str] | None = None,
+    why_this_now: str = "test planning",
+    role_consistency_hint: str = "test contract",
+) -> _RecordingGateway:
+    selected = selected_intent or (candidates[0] if candidates else "")
+    recommended = recommended_intents if recommended_intents is not None else ([selected] if selected != "" else [])
+    return _RecordingGateway(
+        {
+            "candidate_intents": candidates,
+            "selected_intent": selected,
+            "recommended_intents": recommended,
+            "risk_notes": [],
+            "why_this_now": why_this_now,
+            "role_consistency_hint": role_consistency_hint,
+        }
+    )
+
+
 def _interpretation() -> CharacterInterpretation:
     return CharacterInterpretation(
         actor_id="char_b",
@@ -112,7 +134,7 @@ def test_l3_planner_generates_candidate_set_and_filter_results() -> None:
     )
 
     assert plan["actor_id"] == "char_b"
-    assert plan["candidates"]
+    assert plan["candidates"] == ["observe", "self_protect"]
     assert plan["filter_results"]
     assert "observe" in plan["candidates"]
     assert any(result["candidate"] == "observe" for result in plan["filter_results"])
@@ -124,7 +146,7 @@ def test_l3_planner_selects_intent_from_viable_candidates() -> None:
     decision = planner.select_intent(_interpretation())
 
     assert decision.actor_id == "char_b"
-    assert decision.selected_intent in {"observe", "observe_target", "speak_public", "ask_probe", "share_info"}
+    assert decision.selected_intent in {"observe", "physiology_hint"}
     assert decision.rationale
 
 
@@ -138,7 +160,7 @@ def test_l3_planner_builds_char_c_suggestion_packet_in_player_priority_mode() ->
 
     assert packet["control_mode"] == "player_priority_assisted"
     assert packet["recommended_intents"]
-    assert packet["why_this_now"] == "char_a may be speaking nearby"
+    assert packet["why_this_now"] == "model planning unavailable; continuity floor active"
     assert "urge_vector" in packet
     assert "belief_cues" in packet
     assert "dynamic_pressure" in packet
@@ -149,6 +171,8 @@ def test_l3_planner_builds_char_c_suggestion_packet_in_player_priority_mode() ->
     assert "blockers" in packet
     assert "goal_sources" in packet
     assert "urgency" in packet
+    assert packet["planning_status"] == "continuity_floor"
+    assert packet["fallback_mode"] == "continuity_floor"
 
 
 def test_l3_planner_uses_model_gateway_for_candidate_generation() -> None:
@@ -174,6 +198,199 @@ def test_l3_planner_uses_model_gateway_for_candidate_generation() -> None:
     assert gateway.requests[0]["task_kind"] == "l3_planning"
     assert "ask_probe" in plan["candidates"]
     assert decision.selected_intent == "ask_probe"
+
+
+def test_l3_planner_preserves_model_owned_selection_when_candidate_is_locally_valid() -> None:
+    gateway = _RecordingGateway(
+        {
+            "candidate_intents": ["share_info", "ask_probe", "observe"],
+            "selected_intent": "share_info",
+            "recommended_intents": ["share_info", "ask_probe"],
+            "risk_notes": [],
+            "why_this_now": "char_a appears open to a controlled disclosure",
+            "role_consistency_hint": "speak narrowly",
+        }
+    )
+    planner = CharacterAgentL3Service(gateway=gateway)
+
+    decision = planner.select_intent(
+        _interpretation(),
+        control_mode="agent_full_auto",
+        profile=_profile_payload(privacy_sensitivity=0.2, trust_threshold_for_private_talk=0.2),
+        memory_bundle={
+            "working_memory": [],
+            "episodic_memories": [],
+            "social_memories": [{"entity_id": "char_a", "trust_baseline": 0.95, "suspicion_baseline": 0.05}],
+        },
+    )
+
+    assert decision.selected_intent == "share_info"
+    assert decision.rationale == "char_a appears open to a controlled disclosure"
+    assert decision.planning_status == "model"
+
+
+def test_l3_planner_does_not_append_local_candidates_when_model_candidates_are_present() -> None:
+    gateway = _RecordingGateway(
+        {
+            "candidate_intents": ["share_info"],
+            "selected_intent": "share_info",
+            "recommended_intents": ["share_info"],
+            "risk_notes": [],
+            "why_this_now": "controlled disclosure is enough",
+            "role_consistency_hint": "stay narrow",
+        }
+    )
+    planner = CharacterAgentL3Service(gateway=gateway)
+
+    plan = planner.build_intent_plan(
+        interpretation=_interpretation(),
+        control_mode="agent_full_auto",
+        profile=_profile_payload(privacy_sensitivity=0.2, trust_threshold_for_private_talk=0.2),
+        memory_bundle={
+            "working_memory": [],
+            "episodic_memories": [],
+            "social_memories": [{"entity_id": "char_a", "trust_baseline": 0.95, "suspicion_baseline": 0.05}],
+        },
+    )
+
+    assert plan["candidates"] == ["share_info"]
+
+
+def test_l3_planner_uses_model_owned_active_goal_frame_when_present() -> None:
+    gateway = _RecordingGateway(
+        {
+            "candidate_intents": ["ask_probe"],
+            "selected_intent": "ask_probe",
+            "recommended_intents": ["ask_probe"],
+            "risk_notes": [],
+            "why_this_now": "probe before committing",
+            "role_consistency_hint": "probe softly",
+            "active_goal_tags": ["clarify_intent", "preserve_optionality"],
+            "active_goal_frame": {
+                "primary_goal": "clarify_intent",
+                "long_term_goal": "protect_secret",
+                "mid_term_strategy": "probe_safely",
+                "immediate_goal": "clarify_intent",
+                "supporting_goals": ["preserve_optionality"],
+                "blockers": ["insufficient_context"],
+                "goal_sources": ["model_deliberation"],
+                "urgency": "medium",
+                "dominant_goal_id": "goal_clarify_intent",
+                "preserved_goal_ids": ["goal_preserve_optionality"],
+                "suppressed_goal_ids": ["goal_project_confidence"],
+                "goal_arbitration_summary": "clarification dominates while optionality stays active",
+                "goal_portfolio": [
+                    {
+                        "goal_id": "goal_clarify_intent",
+                        "goal": "clarify_intent",
+                        "horizon": "mid",
+                        "status": "active",
+                        "priority": 0.83,
+                        "urgency": "medium",
+                        "source": "model_deliberation",
+                    },
+                    {
+                        "goal_id": "goal_preserve_optionality",
+                        "goal": "preserve_optionality",
+                        "horizon": "mid",
+                        "status": "active",
+                        "priority": 0.66,
+                        "urgency": "low",
+                        "source": "model_deliberation",
+                    },
+                ],
+            },
+        }
+    )
+    planner = CharacterAgentL3Service(gateway=gateway)
+
+    plan = planner.build_intent_plan(
+        interpretation=_interpretation(),
+        control_mode="agent_full_auto",
+    )
+    decision = planner.select_intent(
+        _interpretation(),
+        control_mode="agent_full_auto",
+    )
+
+    assert plan["active_goal_tags"] == ["clarify_intent", "preserve_optionality"]
+    assert plan["active_goal_frame"]["primary_goal"] == "clarify_intent"
+    assert plan["active_goal_frame"]["mid_term_strategy"] == "probe_safely"
+    assert plan["active_goal_frame"]["goal_sources"] == ["model_deliberation"]
+    assert plan["active_goal_frame"]["dominant_goal_id"] == "goal_clarify_intent"
+    assert plan["active_goal_frame"]["preserved_goal_ids"] == ["goal_preserve_optionality"]
+    assert plan["active_goal_frame"]["goal_portfolio"][0]["goal"] == "clarify_intent"
+    assert decision.primary_goal == "clarify_intent"
+    assert decision.mid_term_strategy == "probe_safely"
+    assert decision.active_goal_frame is not None
+    assert decision.active_goal_frame.dominant_goal_id == "goal_clarify_intent"
+    assert decision.active_goal_frame.goal_portfolio[1].goal_id == "goal_preserve_optionality"
+
+
+def test_l3_planner_injects_current_goal_state_and_history_into_model_context() -> None:
+    gateway = _recording_gateway_for_candidates(["ask_probe"])
+    planner = CharacterAgentL3Service(gateway=gateway)
+
+    current_goal_state = {
+        "actor_id": "char_b",
+        "primary_goal": "protect_secret",
+        "long_term_goal": "preserve_order",
+        "mid_term_strategy": "contain_exposure",
+        "immediate_goal": "protect_secret",
+        "supporting_goals": ["clarify_intent"],
+        "blockers": ["high_masking_pressure"],
+        "goal_sources": ["goal_state_store"],
+        "urgency": "high",
+        "dominant_goal_id": "goal_protect_secret",
+        "preserved_goal_ids": ["goal_clarify_intent"],
+        "suppressed_goal_ids": ["goal_project_confidence"],
+        "goal_arbitration_summary": "safety dominates while clarification remains active",
+        "goal_portfolio": [
+            {
+                "goal_id": "goal_protect_secret",
+                "goal": "protect_secret",
+                "horizon": "long",
+                "status": "active",
+                "priority": 0.93,
+                "urgency": "high",
+                "source": "goal_state_store",
+            }
+        ],
+        "transition_kind": "maintained",
+        "transition_reason_tags": ["goal_portfolio_stable"],
+    }
+    goal_state_history = [
+        {
+            "actor_id": "char_b",
+            "primary_goal": "preserve_optionality",
+            "long_term_goal": "preserve_order",
+            "mid_term_strategy": "hold_position",
+            "immediate_goal": "preserve_optionality",
+            "supporting_goals": [],
+            "blockers": [],
+            "goal_sources": ["goal_state_store"],
+            "urgency": "medium",
+            "dominant_goal_id": "goal_preserve_optionality",
+            "preserved_goal_ids": [],
+            "suppressed_goal_ids": [],
+            "goal_arbitration_summary": "optionality dominated before the new pressure spike",
+            "goal_portfolio": [],
+            "transition_kind": "initial",
+            "transition_reason_tags": [],
+        }
+    ]
+
+    planner.build_intent_plan(
+        interpretation=_interpretation(),
+        control_mode="agent_full_auto",
+        current_goal_state=current_goal_state,
+        goal_state_history=goal_state_history,
+    )
+
+    request = gateway.requests[0]
+    assert request["context"]["current_goal_state"]["dominant_goal_id"] == "goal_protect_secret"
+    assert request["context"]["current_goal_state"]["goal_portfolio"][0]["goal"] == "protect_secret"
+    assert request["context"]["goal_state_history"][0]["transition_kind"] == "initial"
 
 
 def test_l3_suggestion_packet_surfaces_interpretation_cognition_cues() -> None:
@@ -303,7 +520,13 @@ def test_l3_planner_build_intent_plan_accepts_typed_memory_record_bundle() -> No
 
 
 def test_l3_planner_uses_typed_memory_record_bundle_for_core_social_and_higher_order_reasoning() -> None:
-    planner = CharacterAgentL3Service(gateway=_LocalGateway())
+    planner = CharacterAgentL3Service(
+        gateway=_recording_gateway_for_candidates(
+            ["ask_probe", "share_info", "observe"],
+            selected_intent="ask_probe",
+            recommended_intents=["ask_probe", "observe"],
+        )
+    )
 
     plan = planner.build_intent_plan(
         interpretation=_interpretation(),
@@ -354,10 +577,10 @@ def test_l3_planner_uses_typed_memory_record_bundle_for_core_social_and_higher_o
     ask_probe = next(result for result in plan["filter_results"] if result["candidate"] == "ask_probe")
     share_info = next(result for result in plan["filter_results"] if result["candidate"] == "share_info")
 
-    assert ask_probe["gain_loss_score"] > share_info["gain_loss_score"]
+    assert ask_probe["gain_loss_score"] == share_info["gain_loss_score"]
 
 
-def test_l3_planner_fallback_candidates_expand_for_recent_world_changes_even_without_attention_target() -> None:
+def test_l3_planner_local_only_candidates_stay_narrow_even_with_recent_world_changes() -> None:
     interpretation = CharacterInterpretation(
         actor_id="char_b",
         interpreted_summary="state_change",
@@ -377,13 +600,32 @@ def test_l3_planner_fallback_candidates_expand_for_recent_world_changes_even_wit
         snapshot={"recent_world_changes": ["moved closer to target"]},
     )
 
-    assert "observe" in plan["candidates"]
-    assert "inspect_object" in plan["candidates"]
-    assert "speak_public" in plan["candidates"]
+    assert plan["candidates"] == ["observe", "self_protect"]
 
 
 def test_l3_candidate_generation_supports_broad_role_action_space() -> None:
-    planner = CharacterAgentL3Service(gateway=_LocalGateway())
+    planner = CharacterAgentL3Service(
+        gateway=_recording_gateway_for_candidates(
+            [
+                "observe",
+                "inspect_object",
+                "self_protect",
+                "pause",
+                "defer",
+                "withhold",
+                "ask_probe",
+                "share_info",
+                "speak_private",
+                "follow_target",
+                "seek_private_distance",
+                "break_contact",
+                "withdraw",
+                "approach",
+                "speak_public",
+            ],
+            selected_intent="observe",
+        )
+    )
 
     plan = planner.build_intent_plan(
         interpretation=CharacterInterpretation(
@@ -408,7 +650,29 @@ def test_l3_candidate_generation_supports_broad_role_action_space() -> None:
 
 
 def test_l3_build_intent_plan_exposes_active_goal_tags() -> None:
-    planner = CharacterAgentL3Service(gateway=_LocalGateway())
+    planner = CharacterAgentL3Service(
+        gateway=_RecordingGateway(
+            {
+                "candidate_intents": ["self_protect", "observe", "ask_probe"],
+                "selected_intent": "self_protect",
+                "recommended_intents": ["self_protect"],
+                "risk_notes": [],
+                "why_this_now": "pressure remains elevated",
+                "role_consistency_hint": "stay guarded",
+                "active_goal_tags": ["protect_secret", "protect_self", "clarify_intent"],
+                "active_goal_frame": {
+                    "primary_goal": "protect_secret",
+                    "long_term_goal": "preserve_order",
+                    "mid_term_strategy": "contain_exposure",
+                    "immediate_goal": "protect_secret",
+                    "supporting_goals": ["protect_self", "clarify_intent"],
+                    "blockers": ["high_masking_pressure"],
+                    "goal_sources": ["dynamic_state", "knowledge_state", "profile_values", "l2_goal_hint:social_signal"],
+                    "urgency": "high",
+                },
+            }
+        )
+    )
 
     plan = planner.build_intent_plan(
         interpretation=_interpretation().model_copy(
@@ -461,7 +725,28 @@ def test_l3_build_intent_plan_exposes_active_goal_tags() -> None:
 
 
 def test_l3_goal_frame_prioritizes_stronger_l2_goal_hint_over_default_priority_order() -> None:
-    planner = CharacterAgentL3Service(gateway=_LocalGateway())
+    planner = CharacterAgentL3Service(
+        gateway=_RecordingGateway(
+            {
+                "candidate_intents": ["ask_probe", "observe"],
+                "selected_intent": "ask_probe",
+                "recommended_intents": ["ask_probe"],
+                "risk_notes": [],
+                "why_this_now": "clarity matters more than concealment here",
+                "role_consistency_hint": "probe softly",
+                "active_goal_frame": {
+                    "primary_goal": "clarify_intent",
+                    "long_term_goal": "preserve_order",
+                    "mid_term_strategy": "probe_safely",
+                    "immediate_goal": "clarify_intent",
+                    "supporting_goals": [],
+                    "blockers": [],
+                    "goal_sources": ["l2_goal_hint:social_signal"],
+                    "urgency": "medium",
+                },
+            }
+        )
+    )
 
     plan = planner.build_intent_plan(
         interpretation=_interpretation().model_copy(
@@ -489,7 +774,28 @@ def test_l3_goal_frame_prioritizes_stronger_l2_goal_hint_over_default_priority_o
 
 
 def test_l3_select_intent_carries_typed_active_goal_frame_on_decision() -> None:
-    planner = CharacterAgentL3Service(gateway=_LocalGateway())
+    planner = CharacterAgentL3Service(
+        gateway=_RecordingGateway(
+            {
+                "candidate_intents": ["self_protect", "observe"],
+                "selected_intent": "self_protect",
+                "recommended_intents": ["self_protect"],
+                "risk_notes": [],
+                "why_this_now": "contain exposure before speaking",
+                "role_consistency_hint": "stay guarded",
+                "active_goal_frame": {
+                    "primary_goal": "protect_secret",
+                    "long_term_goal": "preserve_order",
+                    "mid_term_strategy": "contain_exposure",
+                    "immediate_goal": "protect_secret",
+                    "supporting_goals": [],
+                    "blockers": ["high_masking_pressure"],
+                    "goal_sources": ["l2_goal_hint:social_signal"],
+                    "urgency": "high",
+                },
+            }
+        )
+    )
 
     decision = planner.select_intent(
         _interpretation().model_copy(
@@ -566,13 +872,10 @@ def test_l3_planner_fallback_candidates_include_self_protect_for_recent_constrai
     )
 
     assert "self_protect" in plan["candidates"]
-    assert any(
-        result["candidate"] == "self_protect" and result["viability"] in {"viable", "highly_compelling"}
-        for result in plan["filter_results"]
-    )
+    assert any(result["candidate"] == "self_protect" for result in plan["filter_results"])
 
 
-def test_l3_planner_prefers_self_protect_when_relational_memory_marks_attention_target_as_guarded() -> None:
+def test_l3_planner_no_longer_gets_local_self_protect_selection_from_guarded_relational_memory() -> None:
     planner = CharacterAgentL3Service(gateway=_LocalGateway())
 
     plan = planner.build_intent_plan(
@@ -596,13 +899,13 @@ def test_l3_planner_prefers_self_protect_when_relational_memory_marks_attention_
         control_mode="agent_full_auto",
     )
 
-    assert plan["model_output"]["selected_intent"] == "self_protect"
-    assert plan["model_output"]["recommended_intents"][0] == "self_protect"
-    assert decision.selected_intent == "physiology_hint"
+    assert plan["model_output"]["selected_intent"] == "observe"
+    assert plan["model_output"]["recommended_intents"][0] == "observe"
+    assert decision.selected_intent == "observe"
 
 
-def test_l3_planner_rejects_share_info_for_private_profile_with_low_social_trust() -> None:
-    planner = CharacterAgentL3Service(gateway=_LocalGateway())
+def test_l3_planner_no_longer_rejects_share_info_from_local_private_profile_and_low_trust() -> None:
+    planner = CharacterAgentL3Service(gateway=_recording_gateway_for_candidates(["share_info", "inspect_object", "observe"], selected_intent="share_info"))
 
     plan = planner.build_intent_plan(
         interpretation=_interpretation(),
@@ -618,15 +921,14 @@ def test_l3_planner_rejects_share_info_for_private_profile_with_low_social_trust
     share_info = next(result for result in plan["filter_results"] if result["candidate"] == "share_info")
     inspect_object = next(result for result in plan["filter_results"] if result["candidate"] == "inspect_object")
 
-    assert share_info["persona_passed"] is False
-    assert share_info["viability"] == "rejected"
-    assert share_info["persona_notes"]
+    assert share_info["persona_passed"] is True
+    assert share_info["viability"] in {"weakly_viable", "viable", "highly_compelling"}
     assert inspect_object["logic_passed"] is False
     assert inspect_object["logic_notes"]
 
 
-def test_l3_planner_uses_social_memories_as_primary_trust_path_for_share_info() -> None:
-    planner = CharacterAgentL3Service(gateway=_LocalGateway())
+def test_l3_planner_no_longer_uses_social_trust_to_change_share_info_local_persona_result() -> None:
+    planner = CharacterAgentL3Service(gateway=_recording_gateway_for_candidates(["share_info", "observe"], selected_intent="share_info"))
     profile = _profile_payload(privacy_sensitivity=0.84, trust_threshold_for_private_talk=0.82)
 
     low_trust_plan = planner.build_intent_plan(
@@ -653,9 +955,9 @@ def test_l3_planner_uses_social_memories_as_primary_trust_path_for_share_info() 
     low_trust_share_info = next(result for result in low_trust_plan["filter_results"] if result["candidate"] == "share_info")
     high_trust_share_info = next(result for result in high_trust_plan["filter_results"] if result["candidate"] == "share_info")
 
-    assert low_trust_share_info["persona_passed"] is False
+    assert low_trust_share_info["persona_passed"] is True
     assert high_trust_share_info["persona_passed"] is True
-    assert high_trust_share_info["gain_loss_score"] > low_trust_share_info["gain_loss_score"]
+    assert high_trust_share_info["gain_loss_score"] == low_trust_share_info["gain_loss_score"]
 
 
 def test_l3_planner_logic_uses_same_profile_guard_threshold_as_other_filters() -> None:
@@ -688,105 +990,7 @@ def test_l3_planner_logic_uses_same_profile_guard_threshold_as_other_filters() -
     assert logic_notes == []
 
 
-def test_l3_planner_target_memory_context_ignores_unstructured_substring_mentions() -> None:
-    planner = CharacterAgentL3Service(gateway=_LocalGateway())
-
-    has_context = planner._has_target_memory_context(
-        "char_a",
-        {
-            "working_memory": [],
-            "episodic_memories": [{"summary": "heard char_a discussed in passing"}],
-            "event_memories": [{"summary": "heard char_a discussed in passing"}],
-            "knowledge_memories": [{"proposition": "someone else mentioned char_a in a rumor"}],
-            "social_memories": [{"entity_id": "char_b", "notes": "char_a appears in free text only"}],
-            "relational_memories": [],
-        },
-    )
-
-    assert has_context is False
-
-
-def test_l3_planner_helper_methods_accept_typed_memory_record_bundle() -> None:
-    planner = CharacterAgentL3Service(gateway=_LocalGateway())
-    memory_bundle = CharacterMemoryRecordBundle(
-        event_memories=[
-            CharacterEventMemoryRecord(
-                memory_id="event:char_b:char_a:1",
-                actor_id="char_b",
-                event_id="evt:char_a:1",
-                source_event_id="evt:char_a:1",
-                world_ts=1,
-                event_type="dialogue",
-                summary="char_a spoke nearby",
-                clarity_score=0.72,
-                certainty_score=0.8,
-                refs=["char_a"],
-            )
-        ],
-        observation_memories=[
-            CharacterObservationMemoryRecord(
-                memory_id="obs:char_b:char_a:1",
-                actor_id="char_b",
-                source_event_id="evt:char_a:2",
-                world_ts=2,
-                observed_entity_id="char_a",
-                observation_type="posture",
-                observation_summary="char_a looked guarded",
-                clarity_score=0.76,
-                certainty_score=0.81,
-                distortion_tags=[],
-                refs=[],
-            )
-        ],
-        knowledge_memories=[
-            CharacterKnowledgeMemoryRecord(
-                memory_id="knowledge:char_b:char_a:is_hiding_something",
-                actor_id="char_b",
-                proposition_key="char_a:is_hiding_something",
-                proposition="char_a may be hiding something",
-                state="suspected",
-                confidence=0.62,
-                source_event_id="evt:1",
-                producer_ts=1,
-            )
-        ],
-        social_memories=[
-            CharacterSocialMemoryRecord(
-                memory_id="social:char_b:char_a",
-                actor_id="char_b",
-                entity_id="char_a",
-                trust_baseline=0.28,
-                suspicion_baseline=0.84,
-                intimacy=0.0,
-                dependency=0.0,
-                unresolved_tension=0.2,
-                shared_secret_refs=[],
-                source_event_id="evt:2",
-                producer_ts=2,
-            )
-        ],
-        higher_order_memories=[
-            CharacterHigherOrderMemoryRecord(
-                memory_id="higher:char_b:char_a:1",
-                actor_id="char_b",
-                subject_actor_id="char_a",
-                proposition_key="social_probe:knowledge_asymmetry",
-                meta_belief="char_a suspects char_b knows more",
-                confidence=0.72,
-                source_event_id="evt:3",
-                producer_ts=3,
-            )
-        ],
-    )
-
-    assert planner._has_target_memory_context("char_a", memory_bundle) is True
-    assert planner._social_trust_baseline("char_a", memory_bundle) == 0.28
-    assert planner._social_suspicion_baseline("char_a", memory_bundle) == 0.84
-    assert planner._knowledge_state_for_target("char_a", memory_bundle) == "suspected"
-    assert planner._ambient_knowledge_state(memory_bundle) == "suspected"
-
-
-def test_l3_planner_select_intent_rejects_model_share_info_when_local_profile_filter_blocks_it() -> None:
+def test_l3_planner_select_intent_no_longer_rejects_model_share_info_from_local_profile_filter() -> None:
     gateway = _RecordingGateway(
         {
             "candidate_intents": ["share_info", "self_protect", "observe"],
@@ -810,11 +1014,11 @@ def test_l3_planner_select_intent_rejects_model_share_info_when_local_profile_fi
         },
     )
 
-    assert decision.selected_intent == "physiology_hint"
+    assert decision.selected_intent == "share_info"
 
 
-def test_l3_planner_uses_dynamic_state_and_higher_order_memory_in_filtering() -> None:
-    planner = CharacterAgentL3Service(gateway=_LocalGateway())
+def test_l3_planner_no_longer_rejects_share_info_from_dynamic_state_and_higher_order_alone() -> None:
+    planner = CharacterAgentL3Service(gateway=_recording_gateway_for_candidates(["share_info", "ask_probe", "observe"], selected_intent="observe"))
 
     plan = planner.build_intent_plan(
         interpretation=_interpretation(),
@@ -843,14 +1047,14 @@ def test_l3_planner_uses_dynamic_state_and_higher_order_memory_in_filtering() ->
     share_info = next(result for result in plan["filter_results"] if result["candidate"] == "share_info")
     ask_probe = next(result for result in plan["filter_results"] if result["candidate"] == "ask_probe")
 
-    assert share_info["viability"] == "rejected"
-    assert ask_probe["gain_loss_score"] > 0.6
+    assert share_info["viability"] in {"weakly_viable", "viable", "highly_compelling"}
+    assert ask_probe["gain_loss_score"] == 0.5
 
 
-def test_l3_planner_prefers_withhold_when_higher_order_memory_signals_target_suspects_hidden_knowledge() -> None:
-    planner = CharacterAgentL3Service(gateway=_LocalGateway())
+def test_l3_planner_no_longer_raises_withhold_value_from_higher_order_suspicion() -> None:
+    planner = CharacterAgentL3Service(gateway=_recording_gateway_for_candidates(["withhold", "share_info", "observe"], selected_intent="observe"))
 
-    plan = planner.build_intent_plan(
+    plan_with_higher_order = planner.build_intent_plan(
         interpretation=_interpretation(),
         control_mode="agent_full_auto",
         profile=_profile_payload(privacy_sensitivity=0.55, trust_threshold_for_private_talk=0.5),
@@ -873,15 +1077,34 @@ def test_l3_planner_prefers_withhold_when_higher_order_memory_signals_target_sus
             }
         },
     )
+    baseline_plan = planner.build_intent_plan(
+        interpretation=_interpretation(),
+        control_mode="agent_full_auto",
+        profile=_profile_payload(privacy_sensitivity=0.55, trust_threshold_for_private_talk=0.5),
+        memory_bundle={
+            "working_memory": [],
+            "episodic_memories": [],
+            "social_memories": [{"entity_id": "char_a", "trust_baseline": 0.93, "suspicion_baseline": 0.1}],
+        },
+        working_memory_state={
+            "dynamic_state": {
+                "masking_pressure": 0.35,
+            }
+        },
+    )
 
-    withhold = next(result for result in plan["filter_results"] if result["candidate"] == "withhold")
-    share_info = next(result for result in plan["filter_results"] if result["candidate"] == "share_info")
+    withhold_with_higher_order = next(
+        result for result in plan_with_higher_order["filter_results"] if result["candidate"] == "withhold"
+    )
+    withhold_baseline = next(
+        result for result in baseline_plan["filter_results"] if result["candidate"] == "withhold"
+    )
 
-    assert withhold["gain_loss_score"] > share_info["gain_loss_score"]
+    assert withhold_with_higher_order["gain_loss_score"] == withhold_baseline["gain_loss_score"]
 
 
 def test_l3_goal_activator_biases_defer_and_withhold_under_conflict_pressure() -> None:
-    planner = CharacterAgentL3Service(gateway=_LocalGateway())
+    planner = CharacterAgentL3Service(gateway=_recording_gateway_for_candidates(["defer", "withhold", "share_info", "observe"], selected_intent="observe"))
 
     plan = planner.build_intent_plan(
         interpretation=_interpretation().model_copy(
@@ -927,14 +1150,14 @@ def test_l3_goal_activator_biases_defer_and_withhold_under_conflict_pressure() -
     withhold = next(result for result in plan["filter_results"] if result["candidate"] == "withhold")
     share_info = next(result for result in plan["filter_results"] if result["candidate"] == "share_info")
 
-    assert defer["gain_loss_score"] > 0.6
-    assert withhold["gain_loss_score"] > share_info["gain_loss_score"]
+    assert defer["gain_loss_score"] == 0.5
+    assert withhold["gain_loss_score"] == share_info["gain_loss_score"]
 
 
-def test_l3_planner_uses_suspected_knowledge_state_to_raise_probe_value() -> None:
-    planner = CharacterAgentL3Service(gateway=_LocalGateway())
+def test_l3_planner_no_longer_raises_probe_value_from_suspected_knowledge_state() -> None:
+    planner = CharacterAgentL3Service(gateway=_recording_gateway_for_candidates(["ask_probe", "observe"], selected_intent="observe"))
 
-    plan = planner.build_intent_plan(
+    plan_with_knowledge = planner.build_intent_plan(
         interpretation=_interpretation(),
         control_mode="agent_full_auto",
         memory_bundle={
@@ -948,18 +1171,31 @@ def test_l3_planner_uses_suspected_knowledge_state_to_raise_probe_value() -> Non
                     "confidence": 0.62,
                 }
             ],
+                "social_memories": [{"entity_id": "char_a", "trust_baseline": 0.55, "suspicion_baseline": 0.2}],
+            },
+        )
+    baseline_plan = planner.build_intent_plan(
+        interpretation=_interpretation(),
+        control_mode="agent_full_auto",
+        memory_bundle={
+            "working_memory": [],
+            "episodic_memories": [],
             "social_memories": [{"entity_id": "char_a", "trust_baseline": 0.55, "suspicion_baseline": 0.2}],
         },
     )
 
-    ask_probe = next(result for result in plan["filter_results"] if result["candidate"] == "ask_probe")
-    observe = next(result for result in plan["filter_results"] if result["candidate"] == "observe")
+    ask_probe_with_knowledge = next(
+        result for result in plan_with_knowledge["filter_results"] if result["candidate"] == "ask_probe"
+    )
+    ask_probe_baseline = next(
+        result for result in baseline_plan["filter_results"] if result["candidate"] == "ask_probe"
+    )
 
-    assert ask_probe["gain_loss_score"] > observe["gain_loss_score"]
+    assert ask_probe_with_knowledge["gain_loss_score"] == ask_probe_baseline["gain_loss_score"]
 
 
 def test_l3_planner_uses_disputed_knowledge_state_to_raise_defer_value_and_suppress_public_action() -> None:
-    planner = CharacterAgentL3Service(gateway=_LocalGateway())
+    planner = CharacterAgentL3Service(gateway=_recording_gateway_for_candidates(["defer", "speak_public", "observe"], selected_intent="observe"))
 
     plan = planner.build_intent_plan(
         interpretation=_interpretation().model_copy(
@@ -988,7 +1224,7 @@ def test_l3_planner_uses_disputed_knowledge_state_to_raise_defer_value_and_suppr
     defer = next(result for result in plan["filter_results"] if result["candidate"] == "defer")
     speak_public = next(result for result in plan["filter_results"] if result["candidate"] == "speak_public")
 
-    assert defer["gain_loss_score"] > speak_public["gain_loss_score"]
+    assert defer["gain_loss_score"] == speak_public["gain_loss_score"]
 
 
 def test_l3_suggestion_packet_uses_recent_constraint_results_as_risk_notes_fallback() -> None:
@@ -1247,7 +1483,7 @@ def test_l3_suggestion_packet_uses_elevated_distraction_as_explanation_fallback_
     assert packet["role_consistency_hint"] == "uncertain signal"
 
 
-def test_l3_suggestion_packet_prefers_speak_public_when_recent_world_change_exists_and_model_recommendations_are_empty() -> None:
+def test_l3_suggestion_packet_enters_continuity_floor_when_recent_world_change_exists_and_model_recommendations_are_empty() -> None:
     interpretation = CharacterInterpretation(
         actor_id="char_b",
         interpreted_summary="state_change",
@@ -1277,7 +1513,9 @@ def test_l3_suggestion_packet_prefers_speak_public_when_recent_world_change_exis
         snapshot={"recent_world_changes": ["moved closer to target"]},
     )
 
-    assert packet["recommended_intents"][0] == "speak_public"
+    assert packet["recommended_intents"][0] == "stay_silent"
+    assert packet["planning_status"] == "continuity_floor"
+    assert packet["fallback_mode"] == "continuity_floor"
 
 
 def test_l3_suggestion_packet_uses_recent_constraint_as_why_this_now_fallback_when_no_world_change_exists() -> None:
@@ -1379,7 +1617,7 @@ def test_l3_suggestion_packet_uses_recent_constraint_as_role_consistency_hint_fa
     assert packet["role_consistency_hint"] == "target is too far away"
 
 
-def test_l3_suggestion_packet_prefers_speak_public_for_elevated_vigilance_when_model_recommendations_are_empty() -> None:
+def test_l3_suggestion_packet_enters_continuity_floor_for_elevated_vigilance_when_model_recommendations_are_empty() -> None:
     interpretation = CharacterInterpretation(
         actor_id="char_b",
         interpreted_summary="state_change",
@@ -1409,12 +1647,14 @@ def test_l3_suggestion_packet_prefers_speak_public_for_elevated_vigilance_when_m
         snapshot={"vigilance_level": "elevated"},
     )
 
-    assert packet["recommended_intents"][0] == "speak_public"
+    assert packet["recommended_intents"][0] == "stay_silent"
+    assert packet["planning_status"] == "continuity_floor"
+    assert packet["fallback_mode"] == "continuity_floor"
     assert packet["why_this_now"] == "heightened vigilance"
     assert packet["role_consistency_hint"] == "heightened vigilance"
 
 
-def test_l3_suggestion_packet_prefers_speak_public_for_elevated_vigilance_when_model_selected_intent_is_empty_in_assisted_mode() -> None:
+def test_l3_suggestion_packet_enters_continuity_floor_for_elevated_vigilance_when_model_selected_intent_is_empty_in_assisted_mode() -> None:
     interpretation = CharacterInterpretation(
         actor_id="char_b",
         interpreted_summary="state_change",
@@ -1444,10 +1684,11 @@ def test_l3_suggestion_packet_prefers_speak_public_for_elevated_vigilance_when_m
         snapshot={"vigilance_level": "elevated"},
     )
 
-    assert packet["recommended_intents"][0] == "speak_public"
+    assert packet["recommended_intents"][0] == "stay_silent"
+    assert packet["planning_status"] == "continuity_floor"
 
 
-def test_l3_suggestion_packet_prefers_speak_public_for_elevated_vigilance_when_model_selected_intent_is_empty_in_full_auto() -> None:
+def test_l3_suggestion_packet_enters_continuity_floor_for_elevated_vigilance_when_model_selected_intent_is_empty_in_full_auto() -> None:
     interpretation = CharacterInterpretation(
         actor_id="char_b",
         interpreted_summary="state_change",
@@ -1477,4 +1718,5 @@ def test_l3_suggestion_packet_prefers_speak_public_for_elevated_vigilance_when_m
         snapshot={"vigilance_level": "elevated"},
     )
 
-    assert packet["recommended_intents"][0] == "speak_public"
+    assert packet["recommended_intents"][0] == "stay_silent"
+    assert packet["planning_status"] == "continuity_floor"

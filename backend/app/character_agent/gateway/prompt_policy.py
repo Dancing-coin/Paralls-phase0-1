@@ -52,7 +52,14 @@ class CharacterPromptPolicy:
             return (
                 f"CharacterAgent {task_kind} on {route_mode}: return one JSON object with keys "
                 '["candidate_intents", "selected_intent", "recommended_intents", "risk_notes", '
-                '"why_this_now", "role_consistency_hint"] and no extra text.'
+                '"why_this_now", "role_consistency_hint", "active_goal_tags", "active_goal_frame", '
+                '"planning_status", "fallback_mode"] and no extra text. '
+                'active_goal_tags must be a list of strings. '
+                'active_goal_frame must be an object with keys '
+                '["primary_goal", "long_term_goal", "mid_term_strategy", "immediate_goal", '
+                '"supporting_goals", "blockers", "goal_sources", "urgency", "dominant_goal_id", '
+                '"preserved_goal_ids", "suppressed_goal_ids", "goal_arbitration_summary", "goal_portfolio"]. '
+                'goal_portfolio must be a list of goal objects and should preserve multiple concurrent motives, not only the dominant goal.'
             )
         return (
             f"CharacterAgent {task_kind} on {route_mode}: return one JSON object with keys "
@@ -75,6 +82,11 @@ class CharacterPromptPolicy:
         memory = context.get("memory", {})
         working_memory_state = context.get("working_memory_state", {})
         event = context.get("event", {})
+        current_goal_state = context.get("current_goal_state", {})
+        goal_state_history = context.get("goal_state_history", {})
+        supervision_state = context.get("supervision_state", {})
+        unresolved_tensions = context.get("unresolved_tensions", {})
+        background_agenda_state = context.get("background_agenda_state", {})
         profile_summary = self._profile_summary(profile if isinstance(profile, dict) else {})
         snapshot_summary = self._snapshot_summary(snapshot if isinstance(snapshot, dict) else {})
         memory_summary = self._memory_summary(memory if isinstance(memory, dict) else {})
@@ -82,11 +94,28 @@ class CharacterPromptPolicy:
             working_memory_state if isinstance(working_memory_state, dict) else {}
         )
         event_summary = self._event_summary(event if isinstance(event, dict) else {})
+        current_goal_state_summary = self._goal_state_summary(
+            current_goal_state if isinstance(current_goal_state, dict) else {}
+        )
+        goal_state_history_summary = self._goal_state_history_summary(goal_state_history)
+        supervision_state_summary = self._supervision_state_summary(
+            supervision_state if isinstance(supervision_state, dict) else {}
+        )
+        unresolved_tension_summary = self._unresolved_tension_summary(unresolved_tensions)
+        background_agenda_summary = self._background_agenda_summary(
+            background_agenda_state if isinstance(background_agenda_state, dict) else {}
+        )
         return (
             f"actor_id={actor_id}; control_mode={control_mode}; "
             f"profile_summary={profile_summary}; "
             f"snapshot={snapshot_summary}; memory={memory_summary}; "
-            f"working_memory_state={working_memory_state_summary}; event_summary={event_summary}"
+            f"working_memory_state={working_memory_state_summary}; "
+            f"current_goal_state={current_goal_state_summary}; "
+            f"goal_state_history={goal_state_history_summary}; "
+            f"supervision_state={supervision_state_summary}; "
+            f"unresolved_tensions={unresolved_tension_summary}; "
+            f"background_agenda_state={background_agenda_summary}; "
+            f"event_summary={event_summary}"
         )
 
     def _required_output_keys(self, task_kind: str) -> list[str]:
@@ -103,6 +132,10 @@ class CharacterPromptPolicy:
                 "risk_notes",
                 "why_this_now",
                 "role_consistency_hint",
+                "active_goal_tags",
+                "active_goal_frame",
+                "planning_status",
+                "fallback_mode",
             ]
         return [
             "interpreted_summary",
@@ -258,6 +291,100 @@ class CharacterPromptPolicy:
                 f"event_type={self._truncate(event_type)}",
                 f"event_summary={self._truncate(event_summary)}",
                 f"source_ref={self._truncate(event.get('source_candidate_event_id', '') or event.get('source_body_result_id', '') or event.get('request_id', ''))}",
+            ]
+        )
+
+    def _goal_state_summary(self, state: dict[str, object]) -> str:
+        if not state:
+            return ""
+        goal_portfolio = state.get("goal_portfolio", [])
+        return "; ".join(
+            [
+                f"primary_goal={self._truncate(state.get('primary_goal', '') or '')}",
+                f"long_term_goal={self._truncate(state.get('long_term_goal', '') or '')}",
+                f"mid_term_strategy={self._truncate(state.get('mid_term_strategy', '') or '')}",
+                f"urgency={self._truncate(state.get('urgency', '') or '')}",
+                f"dominant_goal_id={self._truncate(state.get('dominant_goal_id', '') or '')}",
+                f"preserved_goal_ids={self._join_list(state.get('preserved_goal_ids'))}",
+                f"suppressed_goal_ids={self._join_list(state.get('suppressed_goal_ids'))}",
+                f"goal_arbitration_summary={self._truncate(state.get('goal_arbitration_summary', '') or '')}",
+                f"goal_portfolio_count={self._count_of(goal_portfolio)}",
+                f"goal_portfolio_sample={self._goal_portfolio_sample(goal_portfolio)}",
+            ]
+        )
+
+    def _goal_state_history_summary(self, value: object) -> str:
+        if not isinstance(value, list) or not value:
+            return ""
+        latest = value[-1] if isinstance(value[-1], dict) else {}
+        latest_goal = str(latest.get("primary_goal", "") or "") if isinstance(latest, dict) else ""
+        latest_transition = str(latest.get("transition_kind", "") or "") if isinstance(latest, dict) else ""
+        return "; ".join(
+            [
+                f"history_count={len(value)}",
+                f"latest_goal={self._truncate(latest_goal)}",
+                f"latest_transition={self._truncate(latest_transition)}",
+            ]
+        )
+
+    def _goal_portfolio_sample(self, value: object) -> str:
+        if not isinstance(value, list) or not value:
+            return ""
+        first = value[0]
+        if not isinstance(first, dict):
+            return self._truncate(first)
+        goal_id = str(first.get("goal_id", "") or "")
+        goal = str(first.get("goal", "") or "")
+        status = str(first.get("status", "") or "")
+        horizon = str(first.get("horizon", "") or "")
+        return self._truncate(f"{goal_id}:{goal}:{horizon}:{status}")
+
+    def _supervision_state_summary(self, state: dict[str, object]) -> str:
+        if not state:
+            return ""
+        constraints = state.get("active_constraints", {})
+        return "; ".join(
+            [
+                f"level={self._truncate(state.get('current_level', '') or '')}",
+                f"source={self._truncate(state.get('source', '') or '')}",
+                f"reason={self._truncate(state.get('last_reason_summary', '') or '')}",
+                f"background_mode={self._truncate(self._nested_value(constraints, 'background_mode'))}",
+                f"allow_background_loop={self._truncate(self._nested_value(constraints, 'allow_background_loop'))}",
+                f"caution_bias={self._truncate(self._nested_value(constraints, 'caution_bias'))}",
+                f"pressure_theme={self._truncate(self._nested_value(constraints, 'pressure_theme'))}",
+                f"attention_theme={self._join_list(self._nested_value(constraints, 'attention_theme'))}",
+                f"blocked_goal_classes={self._join_list(self._nested_value(constraints, 'blocked_goal_classes'))}",
+                f"preferred_goal_classes={self._join_list(self._nested_value(constraints, 'preferred_goal_classes'))}",
+                f"allow_proactive_initiation={self._truncate(self._nested_value(constraints, 'allow_proactive_initiation'))}",
+                f"allow_proactive_tendency_generation={self._truncate(self._nested_value(constraints, 'allow_proactive_tendency_generation'))}",
+            ]
+        )
+
+    def _unresolved_tension_summary(self, value: object) -> str:
+        if not isinstance(value, list) or not value:
+            return ""
+        first = value[0]
+        if not isinstance(first, dict):
+            return self._truncate(first)
+        return "; ".join(
+            [
+                f"count={len(value)}",
+                f"top_tension_id={self._truncate(first.get('tension_id', '') or '')}",
+                f"top_category={self._truncate(first.get('category', '') or '')}",
+                f"top_summary={self._truncate(first.get('summary', '') or '')}",
+            ]
+        )
+
+    def _background_agenda_summary(self, value: dict[str, object]) -> str:
+        if not value:
+            return ""
+        return "; ".join(
+            [
+                f"latent_tendency={self._truncate(value.get('latent_tendency', '') or '')}",
+                f"watch_focus={self._truncate(value.get('watch_focus', '') or '')}",
+                f"agenda_phase={self._truncate(value.get('agenda_phase', '') or '')}",
+                f"agenda_summary={self._truncate(value.get('agenda_summary', '') or '')}",
+                f"supervision_level={self._truncate(value.get('supervision_level', '') or '')}",
             ]
         )
 

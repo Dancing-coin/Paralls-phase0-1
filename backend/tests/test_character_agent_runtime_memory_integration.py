@@ -353,6 +353,140 @@ def test_runtime_can_rebuild_memory_bundle_from_session_durability_path_only(tmp
     assert bundle["event_memories"]
 
 
+def test_runtime_can_recover_unresolved_tensions_and_supervision_from_storage_root(tmp_path: Path) -> None:
+    runtime = _local_runtime(storage_root=tmp_path)
+    runtime.set_background_cognition_enabled(True)
+    runtime.set_background_mode("char_a", "active")
+    runtime.ingest_siming_output(
+        SimingCharacterCompatibilityInput.model_validate(
+            {
+                "message_id": "msg:siming:storage:1",
+                "delivery_id": "delivery:msg:siming:storage:1:char_a:1",
+                "actor_id": "char_a",
+                "room_id": "room_demo",
+                "scene_id": "scene_demo",
+                "zone_id": "zone_focus",
+                "producer_ts": 2201,
+                "input_type": "siming_high_level_message",
+                "band": "opportunity",
+                "presentation_hint": "watch obj_letter",
+                "pressure_hint": "crowd closing in",
+                "reason_scope": "threat_scan",
+                "salience_boost": 0.7,
+                "target_actor_id": "char_a",
+                "causation_id": "siming:2201",
+                "correlation_id": "siming:2201",
+            }
+        )
+    )
+    runtime.apply_supervision_authorization(
+        {
+            "authorization_id": "auth:storage:1",
+            "actor_id": "char_a",
+            "approved_level": "medium",
+            "approved_by": "strategy_service",
+            "approval_reason": "persist quiet supervision for reload",
+            "constraints": {
+                "allow_background_loop": True,
+                "background_mode": "quiet",
+                "min_tick_interval_ms": 1000,
+                "max_tick_budget_tokens": 180,
+                "blocked_goal_classes": ["conflict_escalation"],
+            },
+            "effective_from_ts": 2201,
+            "expires_at_ts": 4201,
+            "producer_ts": 2201,
+        }
+    )
+    reloaded = _local_runtime(storage_root=tmp_path)
+
+    tensions = reloaded.get_unresolved_tensions("char_a")
+    supervision_state = reloaded.get_supervision_state("char_a")
+
+    assert tensions
+    assert tensions[0]["category"] == "siming_pressure"
+    assert supervision_state["current_level"] == "medium"
+    assert supervision_state["active_constraints"]["background_mode"] == "quiet"
+
+
+def test_runtime_can_recover_background_agenda_state_from_storage_root(tmp_path: Path) -> None:
+    runtime = _local_runtime(storage_root=tmp_path)
+    runtime.set_background_cognition_enabled(True)
+    runtime.set_background_mode("char_a", "active")
+    runtime.ingest_character_perceived_event(
+        CharacterPerceivedEvent(
+            actor_id="char_a",
+            percept_channel="auditory",
+            producer_ts=2301,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            perceived_summary="auditory_fact/metal_click",
+            source_candidate_event_id="auditory_fact:2301:char_a",
+            target_object_id="obj_letter",
+            clarity_score=0.71,
+            certainty_score=0.73,
+        )
+    )
+    runtime.apply_supervision_authorization(
+        {
+            "authorization_id": "auth:agenda:1",
+            "actor_id": "char_a",
+            "approved_level": "medium",
+            "approved_by": "strategy_service",
+            "approval_reason": "quiet review window",
+            "constraints": {
+                "allow_background_loop": True,
+                "background_mode": "quiet",
+                "min_tick_interval_ms": 1000,
+            },
+            "effective_from_ts": 2301,
+            "expires_at_ts": 4301,
+            "producer_ts": 2301,
+        }
+    )
+    runtime.run_background_cognition_tick(actor_id="char_a", producer_ts=3301)
+    reloaded = _local_runtime(storage_root=tmp_path)
+
+    agenda_state = reloaded.get_background_agenda_state("char_a")
+
+    assert agenda_state["latent_tendency"]
+    assert agenda_state["agenda_phase"] == "quiet"
+
+
+def test_handle_envelope_can_apply_external_supervision_authorization() -> None:
+    _reset_runtime_state_with_local_character_model()
+
+    messages = _handle_envelope(
+        Envelope(
+            message_type="character_supervision_authorization",
+            payload={
+                "authorization_id": "auth:envelope:1",
+                "actor_id": "char_a",
+                "approved_level": "medium",
+                "approved_by": "strategy_service",
+                "approval_reason": "quiet the room and constrain escalation",
+                "constraints": {
+                    "allow_background_loop": True,
+                    "background_mode": "quiet",
+                    "min_tick_interval_ms": 2000,
+                    "blocked_goal_classes": ["conflict_escalation"],
+                },
+                "effective_from_ts": 4000,
+                "expires_at_ts": 6000,
+                "producer_ts": 4000,
+            },
+        )
+    )
+
+    supervision_state = app_main.character_agent_runtime.get_supervision_state("char_a")
+
+    assert messages[0]["message_type"] == "ack"
+    assert messages[1]["message_type"] == "character_supervision_state"
+    assert supervision_state["current_level"] == "medium"
+    assert supervision_state["active_constraints"]["background_mode"] == "quiet"
+
+
 def test_runtime_records_l4_execution_request_for_full_auto_actor() -> None:
     runtime = _local_runtime()
     event = CharacterPerceivedEvent(
