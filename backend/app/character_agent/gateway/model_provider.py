@@ -5,6 +5,8 @@ import os
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from app.character_agent.reasoning.cognition_engine import CharacterCognitionEngine
+
 
 class CharacterModelProvider:
     def __init__(
@@ -34,17 +36,21 @@ class CharacterModelProvider:
             or "deepseek-v4-flash"
         ).strip()
         self._timeout_seconds = timeout_seconds
+        self._cognition_engine = CharacterCognitionEngine()
 
     def complete(self, request: dict[str, object]) -> dict[str, object]:
         route = request.get("route", {})
         provider_kind = self._provider_kind
         if isinstance(route, dict):
             provider_kind = str(route.get("provider_kind", provider_kind) or provider_kind)
-        if not self._allow_live_provider_calls():
-            return self._offline_complete(request)
         if provider_kind == "local":
             return self._offline_complete(request)
-        if provider_kind in {"deepseek", "hybrid"}:
+        if provider_kind == "deepseek":
+            return self._coerce_output_for_task(
+                str(request.get("task_kind", "") or ""),
+                self._complete_via_deepseek(request),
+            )
+        if provider_kind == "hybrid":
             try:
                 return self._coerce_output_for_task(
                     str(request.get("task_kind", "") or ""),
@@ -53,9 +59,6 @@ class CharacterModelProvider:
             except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError):
                 return self._offline_complete(request)
         return self._offline_complete(request)
-
-    def _allow_live_provider_calls(self) -> bool:
-        return os.getenv("CHARACTER_MODEL_ALLOW_LIVE", "0").strip() == "1"
 
     def _complete_via_deepseek(self, request: dict[str, object]) -> dict[str, object]:
         if not self._endpoint_url or not self._api_key:
@@ -175,79 +178,13 @@ class CharacterModelProvider:
             event = {}
         if not isinstance(memory, dict):
             memory = {}
-        body_state_hints = snapshot.get("body_state_hints", [])
-        if not isinstance(body_state_hints, list):
-            body_state_hints = []
-        summary = str(
-            event.get("perceived_summary", "")
-            or event.get("presentation_hint", "")
-            or snapshot.get("perceived_summary", "")
-            or "state_change"
+        actor_id = str(event.get("actor_id", "") or snapshot.get("actor_id", "") or "")
+        return self._cognition_engine.build_reasoning_output(
+            actor_id=actor_id,
+            snapshot=snapshot,
+            event=event,
+            memory=memory,
         )
-        interpretation_type = "state_change"
-        if str(event.get("body_state_class", "") or ""):
-            interpretation_type = "body_state"
-        elif body_state_hints:
-            interpretation_type = "body_state"
-        elif str(event.get("percept_channel", "") or "") == "auditory":
-            interpretation_type = "social_signal"
-        elif "visual_fact" in summary:
-            interpretation_type = "opportunity"
-        attention_targets = snapshot.get("attention_targets", [])
-        if not isinstance(attention_targets, list):
-            attention_targets = []
-        relational_memories = memory.get("relational_memories", [])
-        if not isinstance(relational_memories, list):
-            relational_memories = []
-        active_anomalies = snapshot.get("active_anomalies", [])
-        if not isinstance(active_anomalies, list):
-            active_anomalies = []
-        recent_constraint_results = snapshot.get("recent_constraint_results", [])
-        if not isinstance(recent_constraint_results, list):
-            recent_constraint_results = []
-        recent_world_changes = snapshot.get("recent_world_changes", [])
-        if not isinstance(recent_world_changes, list):
-            recent_world_changes = []
-        last_siming_catalyst = str(snapshot.get("last_siming_catalyst", "") or "")
-        vigilance_level = str(snapshot.get("vigilance_level", "") or "")
-        distraction_level = str(snapshot.get("distraction_level", "") or "")
-        pressure_hint = str(event.get("pressure_hint", "") or "")
-        reason_scope = str(event.get("reason_scope", "") or "")
-        attention_target = str(attention_targets[0] if attention_targets else event.get("target_actor_id", "") or event.get("target_object_id", "") or event.get("target_environment_id", "") or "")
-        guarded_attention_target = self._is_guarded_relational_target(attention_target, relational_memories)
-        salience_score = float(event.get("clarity_score", snapshot.get("clarity_score", 0.5)) or 0.5)
-        salience_boost = event.get("salience_boost")
-        if isinstance(salience_boost, int | float):
-            salience_score = max(salience_score, min(1.0, max(0.0, float(salience_boost))))
-        opportunity_level = "medium" if interpretation_type in {"opportunity", "social_signal"} else "low"
-        if recent_world_changes or last_siming_catalyst != "" or vigilance_level == "elevated" or salience_score >= 0.75:
-            opportunity_level = "medium"
-        risk_level = "medium" if interpretation_type == "body_state" else "low"
-        if active_anomalies or recent_constraint_results or guarded_attention_target or pressure_hint != "":
-            risk_level = "medium"
-        ambiguity_level = "medium" if float(event.get("certainty_score", snapshot.get("certainty_score", 1.0)) or 1.0) < 0.7 else "low"
-        if distraction_level == "elevated" or pressure_hint != "":
-            ambiguity_level = "medium"
-        reasoning_trace = ":".join(
-            part
-            for part in (
-                str(event.get("actor_id", "") or snapshot.get("actor_id", "") or ""),
-                reason_scope,
-                pressure_hint,
-                summary,
-            )
-            if part
-        )
-        return {
-            "interpreted_summary": summary,
-            "interpretation_type": interpretation_type,
-            "salience_score": salience_score,
-            "ambiguity_level": ambiguity_level,
-            "risk_level": risk_level,
-            "opportunity_level": opportunity_level,
-            "attention_target": attention_target or None,
-            "inner_prompt_candidate": reasoning_trace or f"{str(event.get('actor_id', '') or snapshot.get('actor_id', '') or '')}:{summary}",
-        }
 
     def _offline_l3_output(self, context: dict[str, object]) -> dict[str, object]:
         interpretation = context.get("interpretation", {})
@@ -354,6 +291,26 @@ class CharacterModelProvider:
             if str(entry.get("belief_type", "") or "") != "trust_level":
                 continue
             if str(entry.get("value", "") or "") == "guarded":
+                return True
+        return False
+
+    def _is_guarded_attention_target(
+        self,
+        attention_target: str,
+        relational_memories: list[object],
+        social_memories: list[object],
+    ) -> bool:
+        if self._is_guarded_relational_target(attention_target, relational_memories):
+            return True
+        if attention_target == "":
+            return False
+        for entry in social_memories:
+            if not isinstance(entry, dict):
+                continue
+            if str(entry.get("entity_id", "") or "") != attention_target:
+                continue
+            suspicion = entry.get("suspicion_baseline")
+            if isinstance(suspicion, (int, float)) and float(suspicion) >= 0.75:
                 return True
         return False
 

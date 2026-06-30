@@ -31,10 +31,11 @@ class CharacterModelGateway:
         route = self._router.resolve_route(route_override)
         prepared_context = self._context_builder.build_context(
             actor_id=str(context.get("actor_id", "") or ""),
-            snapshot=dict(context.get("snapshot", {}) or {}),
+            snapshot=context.get("snapshot", {}) or {},
             memory_bundle=dict(context.get("memory", {}) or {}),
             control_mode=str(context.get("control_mode", "") or ""),
-            working_memory_state=dict(context.get("working_memory_state", {}) or {}) if context.get("working_memory_state") is not None else None,
+            working_memory_state=context.get("working_memory_state") if context.get("working_memory_state") is not None else None,
+            profile=context.get("profile") if context.get("profile") is not None else None,
         )
         for key, value in context.items():
             if key in {"actor_id", "snapshot", "memory", "control_mode", "working_memory_state"}:

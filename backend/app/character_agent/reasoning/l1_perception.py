@@ -22,11 +22,28 @@ class CharacterAgentL1Service:
             snapshot.visible_entities = [event.perceived_summary]
         elif event.percept_channel == "auditory":
             snapshot.audible_entities = [event.perceived_summary]
+        elif event.percept_channel == "olfactory":
+            snapshot.olfactory_entities = self._append_unique(snapshot.olfactory_entities, event.perceived_summary)
+        elif event.percept_channel == "thermal":
+            snapshot.thermal_entities = self._append_unique(snapshot.thermal_entities, event.perceived_summary)
+        elif event.percept_channel == "tactile":
+            snapshot.tactile_entities = self._append_unique(snapshot.tactile_entities, event.perceived_summary)
         else:
-            snapshot.unresolved_signals = [event.perceived_summary]
+            snapshot.unresolved_signals = self._append_unique(snapshot.unresolved_signals, event.perceived_summary)
             if event.clarity_score < 0.7 or event.certainty_score < 0.7:
-                snapshot.active_anomalies = [event.perceived_summary]
+                snapshot.active_anomalies = self._append_unique(snapshot.active_anomalies, event.perceived_summary)
                 snapshot.distraction_level = "elevated"
+        if event.clarity_score < 0.75:
+            snapshot.partial_observations = self._append_unique(snapshot.partial_observations, event.perceived_summary)
+        if event.certainty_score < 0.65:
+            snapshot.distorted_details = self._append_unique(snapshot.distorted_details, event.perceived_summary)
+        if event.certainty_score < 0.45:
+            snapshot.missed_details = self._append_unique(snapshot.missed_details, event.perceived_summary)
+        if event.clarity_score < 0.85 or event.certainty_score < 0.85:
+            snapshot.salience_tags = self._append_unique(
+                snapshot.salience_tags,
+                f"{event.percept_channel}:{event.perceived_summary}",
+            )
         attention_target = self._resolve_attention_target(
             target_actor_id=event.target_actor_id,
             target_object_id=event.target_object_id,
@@ -45,6 +62,7 @@ class CharacterAgentL1Service:
             snapshot.current_attention_targets = snapshot.attention_targets.copy()
         snapshot.clarity_score = event.clarity_score
         snapshot.certainty_score = event.certainty_score
+        snapshot.attention_pressure = max(snapshot.attention_pressure, min(1.0, max(event.clarity_score, event.certainty_score)))
         snapshot.updated_at = event.producer_ts
         snapshot.producer_ts = event.producer_ts
         return snapshot
@@ -106,6 +124,13 @@ class CharacterAgentL1Service:
         snapshot.updated_at = int(payload.get("producer_ts", 0) or 0)
         snapshot.producer_ts = int(payload.get("producer_ts", 0) or 0)
         return snapshot
+
+    def _append_unique(self, entries: list[str], value: str) -> list[str]:
+        if value == "":
+            return entries
+        if value in entries:
+            return entries
+        return (entries + [value])[-4:]
 
     def _resolve_attention_target(
         self,

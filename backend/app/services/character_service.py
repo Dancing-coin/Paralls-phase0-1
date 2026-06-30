@@ -17,6 +17,25 @@ class CharacterService:
         self.tts = tts_service or TTSService()
 
     def handle_dialogue(self, event: DialogueSubmit) -> DialogueResponse:
+        if event.player_id == "character_agent":
+            content, tone = self.dialogue.generate_utterance(
+                event.actor_id,
+                event.target_actor_id,
+                event.content,
+            )
+            _audio = self.tts.synthesize(event.actor_id, content)
+            return DialogueResponse(
+                actor_id=event.actor_id,
+                room_id=event.room_id,
+                output_type="dialogue_response",
+                causation_id=f"dialogue:{event.producer_ts}",
+                producer_ts=event.producer_ts + 1,
+                target_actor_id=event.target_actor_id,
+                content=content,
+                tone=tone,
+                tts_required=True,
+            )
+
         content, tone = self.dialogue.generate_reply(event.target_actor_id, event.content)
         _audio = self.tts.synthesize(event.target_actor_id, content)
         return DialogueResponse(

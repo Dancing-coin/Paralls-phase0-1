@@ -1,5 +1,8 @@
 from app.models.authority_event import AuthorityEvent
 from app.models.siming_event import InterventionCandidate, SimingOutput, SimingTickResult
+from app.character_agent.gateway.model_gateway import CharacterModelGateway
+from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.character_agent_runtime import CharacterAgentRuntime
 from app.services.siming_audit_writer import SimingAuditWriter
@@ -9,6 +12,45 @@ from app.services.siming_event_pipeline import SimingEventPipeline
 from app.services.siming_event_producer import SimingEventProducer
 from app.services.siming_llm_provider import FakeSimingLlmCandidateProvider
 from app.services.siming_runtime import SimingRuntime
+
+
+class _LocalGateway:
+    def __init__(self) -> None:
+        self._gateway = CharacterModelGateway()
+
+    def run_task(
+        self,
+        *,
+        task_kind: str,
+        context: dict[str, object],
+        route_override: str | None = None,
+    ) -> dict[str, object]:
+        return self._gateway.run_task(
+            task_kind=task_kind,
+            context=context,
+            route_override=route_override or "local_only",
+        )
+
+    def prepare_run_request(
+        self,
+        *,
+        task_kind: str,
+        context: dict[str, object],
+        route_override: str | None = None,
+    ) -> dict[str, object]:
+        return self._gateway.prepare_run_request(
+            task_kind=task_kind,
+            context=context,
+            route_override=route_override or "local_only",
+        )
+
+
+def _local_runtime() -> CharacterAgentRuntime:
+    runtime = CharacterAgentRuntime()
+    local_gateway = _LocalGateway()
+    runtime._l2 = CharacterAgentL2Service(gateway=local_gateway, profile_registry=runtime._profile_registry)
+    runtime._l3 = CharacterAgentL3Service(gateway=local_gateway)
+    return runtime
 
 
 def make_visual_fact_event(**overrides: object) -> AuthorityEvent:
@@ -193,7 +235,7 @@ def test_pipeline_publishes_llm_assisted_output_only_through_siming_event_produc
 def test_pipeline_dispatches_new_character_input_outputs_through_adapter() -> None:
     bus = InMemoryAuthorityEventBus()
     audit_writer = SimingAuditWriter()
-    character_runtime = CharacterAgentRuntime()
+    character_runtime = _local_runtime()
     pipeline = SimingEventPipeline(
         bus=bus,
         consumer=SimingEventConsumer(),
@@ -220,7 +262,7 @@ def test_pipeline_dispatches_new_character_input_outputs_through_adapter() -> No
 def test_pipeline_does_not_dispatch_visual_observability_outputs_through_adapter() -> None:
     bus = InMemoryAuthorityEventBus()
     audit_writer = SimingAuditWriter()
-    character_runtime = CharacterAgentRuntime()
+    character_runtime = _local_runtime()
     pipeline = SimingEventPipeline(
         bus=bus,
         consumer=SimingEventConsumer(),
@@ -240,7 +282,7 @@ def test_pipeline_does_not_dispatch_visual_observability_outputs_through_adapter
 def test_pipeline_routes_object_only_conversation_fact_reveal_to_visual_observability() -> None:
     bus = InMemoryAuthorityEventBus()
     audit_writer = SimingAuditWriter()
-    character_runtime = CharacterAgentRuntime()
+    character_runtime = _local_runtime()
     pipeline = SimingEventPipeline(
         bus=bus,
         consumer=SimingEventConsumer(),

@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+from app.character_agent.models.event_memory import CharacterEventMemoryRecord
+
 
 class CharacterEventMemory:
     def __init__(self) -> None:
@@ -40,3 +42,6 @@ class CharacterEventMemory:
 
     def recall(self, actor_id: str) -> list[dict[str, object]]:
         return [deepcopy(entry) for entry in self._entries_by_actor.get(actor_id, [])]
+
+    def recall_records(self, actor_id: str) -> list[CharacterEventMemoryRecord]:
+        return [CharacterEventMemoryRecord(**deepcopy(entry)) for entry in self._entries_by_actor.get(actor_id, [])]

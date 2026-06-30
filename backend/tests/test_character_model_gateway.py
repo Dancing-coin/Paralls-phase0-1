@@ -1,6 +1,9 @@
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
+from app.character_agent.models.dynamic_state import CharacterDynamicState
+from app.character_agent.models.working_memory_state import CharacterWorkingMemoryState
 from app.character_agent.gateway.output_validator import CharacterStructuredOutputValidator
 from app.character_agent.gateway.prompt_policy import CharacterPromptPolicy
+from app.character_agent.gateway.model_router import CharacterModelRouter
 
 
 class _RecordingProvider:
@@ -11,6 +14,19 @@ class _RecordingProvider:
     def complete(self, request: dict[str, object]) -> dict[str, object]:
         self.requests.append(request)
         return self.response
+
+
+def _run_local_task(
+    gateway: CharacterModelGateway,
+    *,
+    task_kind: str,
+    context: dict[str, object],
+) -> dict[str, object]:
+    return gateway.run_task(
+        task_kind=task_kind,
+        context=context,
+        route_override="local_only",
+    )
 
 
 def test_model_gateway_prepares_structured_run_request() -> None:
@@ -33,6 +49,12 @@ def test_model_gateway_prepares_structured_run_request() -> None:
                 "working_memory": [],
                 "episodic_memories": [],
                 "relational_memories": [{"entity_id": "char_a", "belief_type": "trust_level", "value": "guarded"}],
+                "higher_order_memories": [
+                    {"subject_actor_id": "char_a", "meta_belief": "char_a suspects char_b knows more"}
+                ],
+            },
+            "working_memory_state": {
+                "dynamic_state": {"social_pressure": 0.7, "masking_pressure": 0.55},
             },
         },
     )
@@ -51,6 +73,23 @@ def test_model_gateway_prepares_structured_run_request() -> None:
     assert "recent_world_change_sample=moved closer to target" in str(request["prompt"]["user_instruction"])
     assert "recent_constraint_result_sample=target is too far away" in str(request["prompt"]["user_instruction"])
     assert "relational_memory_sample=guarded" in str(request["prompt"]["user_instruction"])
+    assert "higher_order_memories_count=1" in str(request["prompt"]["user_instruction"])
+    assert "dynamic_state_summary=social_pressure=0.7|masking_pressure=0.55" in str(request["prompt"]["user_instruction"])
+    assert "belief_deltas" in request["prompt"]["required_output_keys"]
+    assert "higher_order_deltas" in request["prompt"]["required_output_keys"]
+    assert "dynamic_state_delta" in request["prompt"]["required_output_keys"]
+    assert "goal_hints" in request["prompt"]["required_output_keys"]
+    assert "goal_hints" in request["prompt"]["system_instruction"]
+    assert "evidence_tags" in request["prompt"]["system_instruction"]
+
+
+def test_model_router_supports_environment_default_override(monkeypatch) -> None:
+    monkeypatch.setenv("CHARACTER_MODEL_ROUTE_OVERRIDE", "local_only")
+
+    route = CharacterModelRouter().resolve_route()
+
+    assert route["route_mode"] == "local_only"
+    assert route["provider_kind"] == "local"
 
 
 def test_model_gateway_allows_route_override_without_changing_context_shape() -> None:
@@ -183,7 +222,8 @@ def test_model_gateway_offline_dialogue_generation_does_not_branch_on_actor_id()
 def test_model_gateway_offline_l2_raises_risk_for_active_anomalies() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l2_reasoning",
         context={
             "actor_id": "char_a",
@@ -215,7 +255,8 @@ def test_model_gateway_offline_l2_raises_risk_for_active_anomalies() -> None:
 def test_model_gateway_offline_l2_treats_body_state_hints_as_body_state_interpretation() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l2_reasoning",
         context={
             "actor_id": "char_b",
@@ -246,7 +287,8 @@ def test_model_gateway_offline_l2_treats_body_state_hints_as_body_state_interpre
 def test_model_gateway_offline_l2_raises_opportunity_for_recent_world_changes() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l2_reasoning",
         context={
             "actor_id": "char_b",
@@ -276,7 +318,8 @@ def test_model_gateway_offline_l2_raises_opportunity_for_recent_world_changes() 
 def test_model_gateway_offline_l2_raises_risk_for_recent_constraint_results() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l2_reasoning",
         context={
             "actor_id": "char_b",
@@ -306,7 +349,8 @@ def test_model_gateway_offline_l2_raises_risk_for_recent_constraint_results() ->
 def test_model_gateway_offline_l2_raises_opportunity_for_last_siming_catalyst() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l2_reasoning",
         context={
             "actor_id": "char_b",
@@ -336,7 +380,8 @@ def test_model_gateway_offline_l2_raises_opportunity_for_last_siming_catalyst() 
 def test_model_gateway_offline_l2_raises_opportunity_for_elevated_vigilance_level() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l2_reasoning",
         context={
             "actor_id": "char_b",
@@ -366,7 +411,8 @@ def test_model_gateway_offline_l2_raises_opportunity_for_elevated_vigilance_leve
 def test_model_gateway_offline_l2_raises_ambiguity_for_elevated_distraction_level() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l2_reasoning",
         context={
             "actor_id": "char_a",
@@ -396,7 +442,8 @@ def test_model_gateway_offline_l2_raises_ambiguity_for_elevated_distraction_leve
 def test_model_gateway_offline_l2_raises_risk_for_guarded_relational_memory_about_attention_target() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l2_reasoning",
         context={
             "actor_id": "char_b",
@@ -430,7 +477,8 @@ def test_model_gateway_offline_l2_raises_risk_for_guarded_relational_memory_abou
 def test_model_gateway_offline_l3_prefers_self_protect_for_recent_constraint_results() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l3_planning",
         context={
             "actor_id": "char_b",
@@ -462,7 +510,8 @@ def test_model_gateway_offline_l3_prefers_self_protect_for_recent_constraint_res
 def test_model_gateway_offline_l3_prefers_self_protect_for_medium_risk_even_without_recent_constraint_history() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l3_planning",
         context={
             "actor_id": "char_b",
@@ -494,7 +543,8 @@ def test_model_gateway_offline_l3_prefers_self_protect_for_medium_risk_even_with
 def test_model_gateway_offline_l3_prefers_speak_public_for_recent_world_changes() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l3_planning",
         context={
             "actor_id": "char_b",
@@ -525,7 +575,8 @@ def test_model_gateway_offline_l3_prefers_speak_public_for_recent_world_changes(
 def test_model_gateway_offline_l3_prefers_speak_public_for_elevated_vigilance() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l3_planning",
         context={
             "actor_id": "char_b",
@@ -557,7 +608,8 @@ def test_model_gateway_offline_l3_prefers_speak_public_for_elevated_vigilance() 
 def test_model_gateway_offline_l3_prefers_speak_public_for_elevated_distraction() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l3_planning",
         context={
             "actor_id": "char_b",
@@ -588,7 +640,8 @@ def test_model_gateway_offline_l3_prefers_speak_public_for_elevated_distraction(
 def test_model_gateway_offline_l3_prefers_self_protect_for_guarded_relational_memory_about_attention_target() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l3_planning",
         context={
             "actor_id": "char_b",
@@ -622,7 +675,8 @@ def test_model_gateway_offline_l3_prefers_self_protect_for_guarded_relational_me
 def test_model_gateway_offline_l3_uses_guarded_relational_memory_in_risk_notes() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l3_planning",
         context={
             "actor_id": "char_b",
@@ -655,7 +709,8 @@ def test_model_gateway_offline_l3_uses_guarded_relational_memory_in_risk_notes()
 def test_model_gateway_offline_l3_uses_guarded_relational_memory_in_explanation_when_history_is_absent() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l3_planning",
         context={
             "actor_id": "char_b",
@@ -689,7 +744,8 @@ def test_model_gateway_offline_l3_uses_guarded_relational_memory_in_explanation_
 def test_model_gateway_offline_l3_uses_recent_history_for_risk_notes_and_explanations() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l3_planning",
         context={
             "actor_id": "char_b",
@@ -725,7 +781,8 @@ def test_model_gateway_offline_l3_uses_recent_history_for_risk_notes_and_explana
 def test_model_gateway_offline_l3_uses_recent_constraint_as_why_this_now_when_no_world_change_exists() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l3_planning",
         context={
             "actor_id": "char_b",
@@ -758,7 +815,8 @@ def test_model_gateway_offline_l3_uses_recent_constraint_as_why_this_now_when_no
 def test_model_gateway_offline_l3_uses_recent_constraint_as_role_consistency_hint_when_no_world_change_exists() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l3_planning",
         context={
             "actor_id": "char_b",
@@ -791,7 +849,8 @@ def test_model_gateway_offline_l3_uses_recent_constraint_as_role_consistency_hin
 def test_model_gateway_offline_l3_uses_elevated_vigilance_in_explanation_fallbacks_when_history_is_absent() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l3_planning",
         context={
             "actor_id": "char_b",
@@ -823,7 +882,8 @@ def test_model_gateway_offline_l3_uses_elevated_vigilance_in_explanation_fallbac
 def test_model_gateway_offline_l3_uses_elevated_distraction_in_explanation_fallbacks_when_history_is_absent() -> None:
     gateway = CharacterModelGateway()
 
-    output = gateway.run_task(
+    output = _run_local_task(
+        gateway,
         task_kind="l3_planning",
         context={
             "actor_id": "char_b",
@@ -881,6 +941,43 @@ def test_model_gateway_preserves_memory_bundle_while_accepting_optional_working_
     assert "private_snapshot_actor_id=char_c" in str(request["prompt"]["user_instruction"])
 
 
+def test_model_gateway_accepts_typed_working_memory_state_with_typed_dynamic_state() -> None:
+    gateway = CharacterModelGateway()
+
+    request = gateway.prepare_run_request(
+        task_kind="l2_reasoning",
+        context={
+            "actor_id": "char_c",
+            "control_mode": "player_priority_assisted",
+            "snapshot": {"audible_entities": ["auditory_fact/speaker_active"]},
+            "memory": {
+                "working_memory": [{"event_id": "evt:2"}],
+                "episodic_memories": [],
+                "relational_memories": [],
+            },
+            "working_memory_state": CharacterWorkingMemoryState(
+                recent_perceived_events=[{"event_type": "character_perceived_event"}],
+                recent_esm_results=[],
+                recent_siming_catalysts=[],
+                private_snapshot={"actor_id": "char_c"},
+                dynamic_state=CharacterDynamicState(
+                    actor_id="char_c",
+                    vigilance_level=0.2,
+                    distraction_level=0.1,
+                    stress_load=0.4,
+                    social_pressure=0.3,
+                    masking_pressure=0.2,
+                    motivation_stack=["preserve_order"],
+                ),
+            ),
+        },
+    )
+
+    assert request["context"]["working_memory_state"]["dynamic_state"]["actor_id"] == "char_c"
+    assert request["context"]["working_memory_state"]["dynamic_state"]["motivation_stack"] == ["preserve_order"]
+    assert "dynamic_state_summary=vigilance_level=0.2|distraction_level=0.1|stress_load=0.4|social_pressure=0.3|masking_pressure=0.2|actor_id=char_c|affect_valence=0.0|motivation_stack=['preserve_order']|unresolved_conflicts=[]" in str(request["prompt"]["user_instruction"])
+
+
 def test_prompt_policy_and_output_validator_expose_task_specific_contracts() -> None:
     prompt_policy = CharacterPromptPolicy()
     validator = CharacterStructuredOutputValidator()
@@ -910,6 +1007,50 @@ def test_prompt_policy_and_output_validator_expose_task_specific_contracts() -> 
     assert "l3_planning" in prompt["system_instruction"]
     assert "candidate_intents" in prompt["required_output_keys"]
     assert output["selected_intent"] == "observe"
+
+
+def test_output_validator_enforces_typed_l2_delta_constraints() -> None:
+    validator = CharacterStructuredOutputValidator()
+
+    normalized = validator.validate(
+        task_kind="l2_reasoning",
+        output={
+            "interpreted_summary": "char_b is probing",
+            "interpretation_type": "social_signal",
+            "salience_score": 0.8,
+            "ambiguity_level": "medium",
+            "risk_level": "medium",
+            "opportunity_level": "low",
+            "belief_deltas": [{"proposition_key": "char_b:is_probing", "state": "suspected", "confidence": 0.72}],
+            "social_deltas": [{"entity_id": "char_b", "suspicion_baseline": 0.8}],
+            "higher_order_deltas": [{"subject_actor_id": "char_b", "meta_belief": "char_b suspects char_c knows more", "confidence": 0.66}],
+            "dynamic_state_delta": {"social_pressure": 0.7, "masking_pressure": 0.55},
+            "goal_hints": [{"goal": "protect_secret", "source": "social_signal", "strength": 0.85, "evidence_tags": ["guarded_attention"]}],
+            "reasoning_trace_summary": "char_a:probing-read",
+        },
+    )
+
+    assert normalized["dynamic_state_delta"]["social_pressure"] == 0.7
+    assert normalized["goal_hints"][0]["evidence_tags"] == ["guarded_attention"]
+
+    try:
+        validator.validate(
+            task_kind="l2_reasoning",
+            output={
+                "interpreted_summary": "char_b is probing",
+                "interpretation_type": "social_signal",
+                "salience_score": 0.8,
+                "ambiguity_level": "medium",
+                "risk_level": "medium",
+                "opportunity_level": "low",
+                "dynamic_state_delta": {"social_pressure": 1.7},
+                "goal_hints": [{"goal": "protect_secret", "source": "social_signal", "strength": 1.5}],
+            },
+        )
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected invalid typed l2 delta payload to be rejected")
 
 
 def test_prompt_policy_user_instruction_stays_bounded_for_large_context() -> None:

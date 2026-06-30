@@ -1,10 +1,98 @@
 import pytest
 from pydantic import ValidationError
 
+from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
+from app.character_agent.gateway.model_gateway import CharacterModelGateway
+from app.character_agent.models.dynamic_state import CharacterDynamicState
+from app.character_agent.models.memory_record_bundle import CharacterMemoryRecordBundle
+from app.character_agent.models.working_memory_state import CharacterWorkingMemoryState
+from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
 from app.models.character_perceived import CharacterPerceivedEvent
+from app.models.character_agent_runtime import (
+    CharacterIntentDecision,
+    CharacterInterpretation,
+    CharacterPrivateWorldSnapshot,
+)
 from app.models.siming_character_bridge import SimingCharacterCompatibilityInput
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
 from app.services.character_agent_runtime import CharacterAgentRuntime
+
+
+class _LocalGateway:
+    def __init__(self) -> None:
+        self._gateway = CharacterModelGateway()
+
+    def run_task(
+        self,
+        *,
+        task_kind: str,
+        context: dict[str, object],
+        route_override: str | None = None,
+    ) -> dict[str, object]:
+        return self._gateway.run_task(
+            task_kind=task_kind,
+            context=context,
+            route_override=route_override or "local_only",
+        )
+
+    def prepare_run_request(
+        self,
+        *,
+        task_kind: str,
+        context: dict[str, object],
+        route_override: str | None = None,
+    ) -> dict[str, object]:
+        return self._gateway.prepare_run_request(
+            task_kind=task_kind,
+            context=context,
+            route_override=route_override or "local_only",
+        )
+
+
+def _local_runtime() -> CharacterAgentRuntime:
+    runtime = CharacterAgentRuntime()
+    local_gateway = _LocalGateway()
+    runtime._l2 = CharacterAgentL2Service(gateway=local_gateway, profile_registry=runtime._profile_registry)
+    runtime._l3 = CharacterAgentL3Service(gateway=local_gateway)
+    return runtime
+
+
+def _execution_snapshot() -> CharacterPrivateWorldSnapshot:
+    return CharacterPrivateWorldSnapshot(
+        actor_id="char_a",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        producer_ts=1800,
+        updated_at=1800,
+        attention_targets=["char_b"],
+    )
+
+
+def _execution_interpretation() -> CharacterInterpretation:
+    return CharacterInterpretation(
+        actor_id="char_a",
+        interpreted_summary="char_b may be open to greeting",
+        interpretation_type="social_signal",
+        salience_score=0.9,
+        ambiguity_level="low",
+        risk_level="low",
+        opportunity_level="high",
+        attention_target="char_b",
+        inner_prompt_candidate="approach calmly",
+    )
+
+
+def _execution_decision() -> CharacterIntentDecision:
+    return CharacterIntentDecision(
+        actor_id="char_a",
+        selected_intent="approach",
+        persona_passed=True,
+        logic_passed=True,
+        gain_loss_passed=True,
+        rationale="char_b may be open to greeting",
+    )
 
 
 def _siming_bridge_input(
@@ -41,7 +129,7 @@ def _siming_bridge_input(
 
 
 def test_character_agent_runtime_turns_perceived_event_into_output() -> None:
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
     event = CharacterPerceivedEvent(
         actor_id="char_a",
         percept_channel="visual",
@@ -81,8 +169,23 @@ def test_character_agent_runtime_turns_perceived_event_into_output() -> None:
     assert "execution_request" in stages
 
 
+def test_execution_plan_carries_contact_and_realization_semantic_keys() -> None:
+    executor = CharacterAgentL4Executor()
+
+    plan = executor.build_execution_plan(
+        snapshot=_execution_snapshot(),
+        interpretation=_execution_interpretation(),
+        decision=_execution_decision(),
+    )
+
+    assert plan["execution_semantics"]["movement_intent"] == "approach"
+    assert plan["execution_semantics"]["contact_phase"] == "greeting"
+    assert plan["execution_semantics"]["speech_mode"] == "none"
+    assert plan["execution_semantics"]["gesture_mode"] == "acknowledge"
+
+
 def test_character_agent_runtime_accepts_char_c_into_the_shared_runtime_species() -> None:
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
     event = CharacterPerceivedEvent(
         actor_id="char_c",
         percept_channel="visual",
@@ -105,8 +208,114 @@ def test_character_agent_runtime_accepts_char_c_into_the_shared_runtime_species(
     assert commands == []
 
 
+def test_character_agent_runtime_passes_profile_into_l3_decision_path() -> None:
+    runtime = _local_runtime()
+    captured: dict[str, object] = {}
+    original = runtime._l3.select_intent
+
+    def wrapped(*args, **kwargs):
+        captured["kwargs"] = dict(kwargs)
+        return original(*args, **kwargs)
+
+    runtime._l3.select_intent = wrapped
+    event = CharacterPerceivedEvent(
+        actor_id="char_b",
+        percept_channel="auditory",
+        producer_ts=302,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="auditory_fact/speaker_active",
+        source_candidate_event_id="auditory_fact:302:char_b",
+        source_actor_id="char_a",
+        target_actor_id="char_b",
+        clarity_score=0.81,
+        certainty_score=0.69,
+    )
+
+    runtime.ingest_character_perceived_event(event)
+
+    kwargs = captured["kwargs"]
+    assert "profile" in kwargs
+    assert kwargs["profile"]["identity_core"]["character_id"] == "char_b"
+    assert kwargs["profile"]["conversation_personality_layer"]["privacy_sensitivity"] == 0.71
+    assert isinstance(kwargs["memory_bundle"], CharacterMemoryRecordBundle)
+    assert isinstance(kwargs["working_memory_state"], CharacterWorkingMemoryState)
+    assert kwargs["working_memory_state"].dynamic_state is not None
+    assert isinstance(kwargs["working_memory_state"].dynamic_state, CharacterDynamicState)
+
+
+def test_character_agent_runtime_passes_profile_into_player_suggestion_path() -> None:
+    runtime = _local_runtime()
+    captured: dict[str, object] = {}
+    original = runtime._l3.build_suggestion_packet
+
+    def wrapped(*args, **kwargs):
+        captured["kwargs"] = dict(kwargs)
+        return original(*args, **kwargs)
+
+    runtime._l3.build_suggestion_packet = wrapped
+    event = CharacterPerceivedEvent(
+        actor_id="char_c",
+        percept_channel="auditory",
+        producer_ts=303,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="auditory_fact/speaker_active",
+        source_candidate_event_id="auditory_fact:303:char_c",
+        source_actor_id="char_a",
+        target_actor_id="char_c",
+        clarity_score=0.81,
+        certainty_score=0.69,
+    )
+
+    runtime.ingest_character_perceived_event(event)
+
+    kwargs = captured["kwargs"]
+    assert "profile" in kwargs
+    assert kwargs["profile"]["identity_core"]["character_id"] == "char_c"
+    assert kwargs["profile"]["conversation_personality_layer"]["social_openness"] == 0.82
+    assert isinstance(kwargs["memory_bundle"], CharacterMemoryRecordBundle)
+    assert isinstance(kwargs["working_memory_state"], CharacterWorkingMemoryState)
+    assert kwargs["working_memory_state"].dynamic_state is not None
+
+
+def test_character_agent_runtime_passes_typed_working_memory_state_into_l2_reasoning_path() -> None:
+    runtime = _local_runtime()
+    captured: dict[str, object] = {}
+    original = runtime._l2.interpret_perceived_event
+
+    def wrapped(*args, **kwargs):
+        captured["kwargs"] = dict(kwargs)
+        return original(*args, **kwargs)
+
+    runtime._l2.interpret_perceived_event = wrapped
+    event = CharacterPerceivedEvent(
+        actor_id="char_a",
+        percept_channel="auditory",
+        producer_ts=304,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="auditory_fact/speaker_active",
+        source_candidate_event_id="auditory_fact:304:char_a",
+        source_actor_id="char_b",
+        target_actor_id="char_a",
+        clarity_score=0.81,
+        certainty_score=0.69,
+    )
+
+    runtime.ingest_character_perceived_event(event)
+
+    kwargs = captured["kwargs"]
+    assert isinstance(kwargs["memory_bundle"], CharacterMemoryRecordBundle)
+    assert isinstance(kwargs["working_memory_state"], CharacterWorkingMemoryState)
+    assert kwargs["working_memory_state"].dynamic_state is not None
+
+
 def test_character_agent_runtime_accepts_self_body_input() -> None:
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
     event = SelfBodyPerceivedEvent(
         actor_id="char_b",
         body_state_class="interaction_strain",
@@ -134,7 +343,7 @@ def test_character_agent_runtime_accepts_self_body_input() -> None:
 
 
 def test_character_agent_runtime_accepts_targeted_siming_output() -> None:
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
     payload = _siming_bridge_input(
         message_id="msg:siming:runtime:targeted",
         producer_ts=330,
@@ -167,7 +376,7 @@ def test_character_agent_runtime_accepts_targeted_siming_output() -> None:
 
 
 def test_character_agent_runtime_accepts_actor_id_only_siming_dict() -> None:
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
     payload = _siming_bridge_input(
         message_id="msg:siming:runtime:actor-id-only",
         producer_ts=330,
@@ -190,7 +399,7 @@ def test_character_agent_runtime_accepts_actor_id_only_siming_dict() -> None:
 
 
 def test_character_agent_runtime_accepts_bridge_input_without_optional_target_actor_id() -> None:
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
 
     commands = runtime.ingest_siming_output(
         SimingCharacterCompatibilityInput(
@@ -220,7 +429,7 @@ def test_character_agent_runtime_accepts_bridge_input_without_optional_target_ac
 
 
 def test_character_agent_runtime_rejects_raw_siming_dict_with_forbidden_low_level_field() -> None:
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
     payload = _siming_bridge_input(
         message_id="msg:siming:runtime:forbidden",
         producer_ts=332,
@@ -235,7 +444,7 @@ def test_character_agent_runtime_rejects_raw_siming_dict_with_forbidden_low_leve
 
 
 def test_character_agent_runtime_normalizes_whitespace_only_siming_hints() -> None:
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
 
     commands = runtime.ingest_siming_output(
         _siming_bridge_input(
@@ -276,8 +485,8 @@ def test_character_agent_runtime_normalizes_whitespace_only_siming_hints() -> No
 
 
 def test_character_agent_runtime_routes_siming_high_level_hints_through_reasoning_and_planning() -> None:
-    base_runtime = CharacterAgentRuntime()
-    hinted_runtime = CharacterAgentRuntime()
+    base_runtime = _local_runtime()
+    hinted_runtime = _local_runtime()
 
     base_commands = base_runtime.ingest_siming_output(
         _siming_bridge_input(
@@ -361,3 +570,361 @@ def test_character_agent_runtime_routes_siming_high_level_hints_through_reasonin
     assert hinted_execution["physiology_channel"]["guarding"] == "elevated"
     assert base_execution["speech_channel"]["dialogue_act"] == base_decision["detail"]["selected_intent"]
     assert hinted_execution["speech_channel"]["dialogue_act"] == hinted_decision["detail"]["selected_intent"]
+
+
+def test_character_agent_runtime_local_l2_generates_and_writes_cognition_deltas() -> None:
+    runtime = _local_runtime()
+    event = CharacterPerceivedEvent(
+        actor_id="char_c",
+        percept_channel="auditory",
+        producer_ts=335,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="auditory_fact/speaker_active",
+        source_candidate_event_id="auditory_fact:335:char_c",
+        source_actor_id="char_a",
+        target_actor_id="char_c",
+        clarity_score=0.81,
+        certainty_score=0.69,
+    )
+
+    runtime.ingest_character_perceived_event(event)
+
+    timeline = runtime.get_session_timeline("char_c")
+    memory_bundle = runtime.get_memory_bundle("char_c")
+    dynamic_state = runtime.get_dynamic_state("char_c")
+    interpretation = next(entry["payload"] for entry in timeline if entry["event_type"] == "character_interpretation_event")
+
+    assert interpretation["belief_deltas"]
+    assert interpretation["social_deltas"]
+    assert interpretation["higher_order_deltas"]
+    assert interpretation["dynamic_state_delta"]
+    assert any(entry["event_type"] == "knowledge_belief_event" for entry in timeline)
+    assert any(entry["event_type"] == "social_cognition_event" for entry in timeline)
+    assert any(entry["event_type"] == "higher_order_belief_event" for entry in timeline)
+    assert any(entry["event_type"] == "dynamic_state_event" for entry in timeline)
+    assert memory_bundle["higher_order_memories"]
+    assert dynamic_state["social_pressure"] >= 0.5
+
+
+def test_character_agent_runtime_persists_goal_state_from_latest_decision() -> None:
+    runtime = _local_runtime()
+    event = CharacterPerceivedEvent(
+        actor_id="char_a",
+        percept_channel="auditory",
+        producer_ts=336,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="auditory_fact/speaker_active",
+        source_candidate_event_id="auditory_fact:336:char_a",
+        source_actor_id="char_b",
+        target_actor_id="char_a",
+        clarity_score=0.81,
+        certainty_score=0.69,
+    )
+
+    runtime.ingest_character_perceived_event(event)
+
+    goal_state = runtime.get_goal_state("char_a")
+    goal_state_record = runtime.get_goal_state_record("char_a")
+    timeline = runtime.get_session_timeline("char_a")
+
+    assert goal_state["primary_goal"]
+    assert goal_state["long_term_goal"]
+    assert goal_state["mid_term_strategy"]
+    assert goal_state_record is not None
+    assert goal_state_record.primary_goal == goal_state["primary_goal"]
+    assert goal_state_record.mid_term_strategy == goal_state["mid_term_strategy"]
+    assert goal_state["urgency"] in {"low", "medium", "high"}
+    assert any(entry["event_type"] == "goal_state_event" for entry in timeline)
+
+
+def test_character_agent_runtime_exposes_typed_dynamic_state_record() -> None:
+    runtime = _local_runtime()
+    event = CharacterPerceivedEvent(
+        actor_id="char_a",
+        percept_channel="auditory",
+        producer_ts=346,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="auditory_fact/speaker_active",
+        source_candidate_event_id="auditory_fact:346:char_a",
+        source_actor_id="char_b",
+        target_actor_id="char_a",
+        clarity_score=0.81,
+        certainty_score=0.69,
+    )
+
+    runtime.ingest_character_perceived_event(event)
+
+    dynamic_state_record = runtime.get_dynamic_state_record("char_a")
+
+    assert dynamic_state_record is not None
+    assert dynamic_state_record.actor_id == "char_a"
+    assert dynamic_state_record.social_pressure >= 0.0
+
+
+def test_character_agent_runtime_goal_state_event_records_changed_fields() -> None:
+    runtime = _local_runtime()
+    first_event = CharacterPerceivedEvent(
+        actor_id="char_a",
+        percept_channel="auditory",
+        producer_ts=337,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="auditory_fact/speaker_active",
+        source_candidate_event_id="auditory_fact:337:char_a",
+        source_actor_id="char_b",
+        target_actor_id="char_a",
+        clarity_score=0.81,
+        certainty_score=0.69,
+    )
+    second_event = CharacterPerceivedEvent(
+        actor_id="char_a",
+        percept_channel="visual",
+        producer_ts=338,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="visual_fact/light_level_drop",
+        source_candidate_event_id="visual_fact:338:char_a",
+        target_environment_id="env_lamp",
+        clarity_score=1.0,
+        certainty_score=1.0,
+    )
+
+    runtime.ingest_character_perceived_event(first_event)
+    runtime.ingest_character_perceived_event(second_event)
+
+    goal_events = [entry for entry in runtime.get_session_timeline("char_a") if entry["event_type"] == "goal_state_event"]
+
+    assert len(goal_events) >= 2
+    assert "goal_changed" in goal_events[-1]["payload"]
+    assert "changed_fields" in goal_events[-1]["payload"]
+    assert goal_events[0]["payload"]["transition_kind"] == "initial"
+    assert goal_events[-1]["payload"]["transition_kind"] in {"shifted", "escalated", "deescalated", "maintained", "reorganized"}
+    assert "transition_reason_tags" in goal_events[-1]["payload"]
+    assert "primary_goal_changed" in goal_events[-1]["payload"]["transition_reason_tags"] or "urgency_raised" in goal_events[-1]["payload"]["transition_reason_tags"]
+
+
+def test_character_agent_runtime_marks_goal_reorganization_when_primary_goal_holds_but_supporting_structure_changes() -> None:
+    runtime = _local_runtime()
+    first_event = CharacterPerceivedEvent(
+        actor_id="char_a",
+        percept_channel="auditory",
+        producer_ts=342,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="auditory_fact/speaker_active",
+        source_candidate_event_id="auditory_fact:342:char_a",
+        source_actor_id="char_b",
+        target_actor_id="char_a",
+        clarity_score=0.82,
+        certainty_score=0.61,
+    )
+    second_event = CharacterPerceivedEvent(
+        actor_id="char_a",
+        percept_channel="auditory",
+        producer_ts=343,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="auditory_fact/speaker_active",
+        source_candidate_event_id="auditory_fact:343:char_a",
+        source_actor_id="char_b",
+        target_actor_id="char_a",
+        clarity_score=0.92,
+        certainty_score=0.94,
+    )
+
+    runtime.ingest_character_perceived_event(first_event)
+    runtime.ingest_character_perceived_event(second_event)
+
+    goal_events = [entry for entry in runtime.get_session_timeline("char_a") if entry["event_type"] == "goal_state_event"]
+
+    assert len(goal_events) >= 2
+    assert goal_events[-1]["payload"]["transition_kind"] in {"reorganized", "maintained", "shifted", "escalated", "deescalated"}
+
+
+def test_goal_transition_kind_returns_reorganized_for_same_primary_with_changed_supporting_structure() -> None:
+    runtime = _local_runtime()
+
+    transition_kind = runtime._goal_transition_kind(  # type: ignore[attr-defined]
+        {
+            "primary_goal": "protect_secret",
+            "supporting_goals": ["clarify_intent"],
+            "blockers": ["high_masking_pressure"],
+            "urgency": "high",
+        },
+        {
+            "primary_goal": "protect_secret",
+            "supporting_goals": ["preserve_optionality"],
+            "blockers": [],
+            "urgency": "high",
+        },
+    )
+
+    assert transition_kind == "reorganized"
+
+
+def test_goal_transition_kind_returns_repairing_for_same_primary_when_strategy_changes_under_pressure() -> None:
+    runtime = _local_runtime()
+
+    transition_kind = runtime._goal_transition_kind(  # type: ignore[attr-defined]
+        {
+            "primary_goal": "protect_secret",
+            "mid_term_strategy": "contain_exposure",
+            "blockers": ["high_masking_pressure"],
+            "urgency": "high",
+        },
+        {
+            "primary_goal": "protect_secret",
+            "mid_term_strategy": "repair_cover_story",
+            "blockers": ["high_masking_pressure"],
+            "urgency": "high",
+        },
+    )
+
+    assert transition_kind == "repairing"
+
+
+def test_goal_transition_kind_returns_recovering_for_same_primary_when_blockers_clear_after_strategy_shift() -> None:
+    runtime = _local_runtime()
+
+    transition_kind = runtime._goal_transition_kind(  # type: ignore[attr-defined]
+        {
+            "primary_goal": "protect_secret",
+            "mid_term_strategy": "repair_cover_story",
+            "blockers": ["high_masking_pressure"],
+            "urgency": "high",
+        },
+        {
+            "primary_goal": "protect_secret",
+            "mid_term_strategy": "contain_exposure",
+            "blockers": [],
+            "urgency": "medium",
+        },
+    )
+
+    assert transition_kind == "recovering"
+
+
+def test_goal_transition_reason_tags_include_higher_level_reappraisal_markers() -> None:
+    runtime = _local_runtime()
+
+    tags = runtime._goal_transition_reason_tags(  # type: ignore[attr-defined]
+        ["goal_sources", "supporting_goals"],
+        "reorganized",
+        previous_goal_state={"goal_sources": ["dynamic_state", "knowledge_state"]},
+        goal_state={"goal_sources": ["dynamic_state", "l2_goal_hint:social_signal"]},
+    )
+
+    assert "goal_sources_changed" in tags
+    assert "social_signal_reappraisal" in tags or "knowledge_state_reappraisal" in tags
+
+
+def test_character_agent_runtime_exposes_goal_state_history_tail() -> None:
+    runtime = _local_runtime()
+    events = [
+        CharacterPerceivedEvent(
+            actor_id="char_a",
+            percept_channel="auditory",
+            producer_ts=339,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            perceived_summary="auditory_fact/speaker_active",
+            source_candidate_event_id="auditory_fact:339:char_a",
+            source_actor_id="char_b",
+            target_actor_id="char_a",
+            clarity_score=0.81,
+            certainty_score=0.69,
+        ),
+        CharacterPerceivedEvent(
+            actor_id="char_a",
+            percept_channel="visual",
+            producer_ts=340,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            perceived_summary="visual_fact/light_level_drop",
+            source_candidate_event_id="visual_fact:340:char_a",
+            target_environment_id="env_lamp",
+            clarity_score=1.0,
+            certainty_score=1.0,
+        ),
+        CharacterPerceivedEvent(
+            actor_id="char_a",
+            percept_channel="auditory",
+            producer_ts=341,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            perceived_summary="auditory_fact/speaker_active",
+            source_candidate_event_id="auditory_fact:341:char_a",
+            source_actor_id="char_b",
+            target_actor_id="char_a",
+            clarity_score=0.92,
+            certainty_score=0.94,
+        ),
+    ]
+
+    for event in events:
+        runtime.ingest_character_perceived_event(event)
+
+    history = runtime.get_goal_state_history("char_a")
+
+    assert len(history) >= 3
+    assert history[0]["primary_goal"]
+    assert history[-1]["primary_goal"]
+
+
+def test_character_agent_runtime_exposes_typed_goal_state_history_records() -> None:
+    runtime = _local_runtime()
+    events = [
+        CharacterPerceivedEvent(
+            actor_id="char_a",
+            percept_channel="auditory",
+            producer_ts=344,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            perceived_summary="auditory_fact/speaker_active",
+            source_candidate_event_id="auditory_fact:344:char_a",
+            source_actor_id="char_b",
+            target_actor_id="char_a",
+            clarity_score=0.81,
+            certainty_score=0.69,
+        ),
+        CharacterPerceivedEvent(
+            actor_id="char_a",
+            percept_channel="visual",
+            producer_ts=345,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            perceived_summary="visual_fact/light_level_drop",
+            source_candidate_event_id="visual_fact:345:char_a",
+            target_environment_id="env_lamp",
+            clarity_score=1.0,
+            certainty_score=1.0,
+        ),
+    ]
+
+    for event in events:
+        runtime.ingest_character_perceived_event(event)
+
+    current = runtime.get_goal_state_record("char_a")
+    history = runtime.get_goal_state_history_records("char_a")
+
+    assert current is not None
+    assert current.actor_id == "char_a"
+    assert current.primary_goal
+    assert history
+    assert history[-1].actor_id == "char_a"
+    assert history[-1].primary_goal

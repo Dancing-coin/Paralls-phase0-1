@@ -243,3 +243,28 @@ def test_filter_accepts_targeted_auditory_candidate_for_matching_actor() -> None
     assert perceived.actor_id == "char_b"
     assert perceived.percept_channel == "auditory"
     assert perceived.perceived_summary == "auditory_fact/speaker_active"
+
+
+def test_filter_accepts_olfactory_candidate_and_preserves_environment_target() -> None:
+    candidate = CandidatePerceptEvent(
+        percept_channel="olfactory",
+        source_fact_family="olfactory_fact",
+        source_fact_type="odor_state_changed",
+        producer_ts=701,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source_actor_id="char_c",
+        target_environment_id="env_lamp",
+        audience_scope="candidate",
+        observability={"auditory": False, "visual": False},
+        causation_id="olf:701",
+        correlation_id="olf:701",
+    )
+
+    perceived = filter_candidate_for_actor(candidate, actor_id="char_c", context={"distance_m": 1.0})
+
+    assert perceived is not None
+    assert perceived.percept_channel == "olfactory"
+    assert perceived.target_environment_id == "env_lamp"
+    assert perceived.perceived_summary == "olfactory_fact/odor_state_changed"

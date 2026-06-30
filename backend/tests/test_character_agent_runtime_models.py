@@ -1,3 +1,4 @@
+from app.character_agent.models.goal_runtime import CharacterActiveGoalFrame, CharacterGoalHint
 from app.models.character_agent_runtime import (
     CharacterIntentDecision,
     CharacterInterpretation,
@@ -86,7 +87,69 @@ def test_character_interpretation_and_intent_decision_shape() -> None:
         logic_passed=True,
         gain_loss_passed=True,
         rationale=interpretation.interpreted_summary,
+        primary_goal="clarify_intent",
+        long_term_goal="preserve_clarity",
+        immediate_goal="clarify_intent",
+        supporting_goals=["stabilize_situation"],
+        blockers=[],
+        goal_sources=["knowledge_state"],
+        urgency="medium",
     )
 
     assert interpretation.actor_id == "char_a"
     assert decision.selected_intent == "observe_target"
+    assert decision.primary_goal == "clarify_intent"
+
+
+def test_character_interpretation_accepts_typed_goal_hints() -> None:
+    interpretation = CharacterInterpretation(
+        actor_id="char_a",
+        interpreted_summary="char_b is probing",
+        interpretation_type="social_signal",
+        salience_score=0.8,
+        ambiguity_level="medium",
+        risk_level="medium",
+        opportunity_level="low",
+        goal_hints=[
+            CharacterGoalHint(
+                goal="protect_secret",
+                source="social_signal",
+                strength=0.85,
+                evidence_tags=["guarded_attention"],
+            )
+        ],
+    )
+
+    assert interpretation.goal_hints[0].goal == "protect_secret"
+    assert interpretation.goal_hints[0].evidence_tags == ["guarded_attention"]
+
+
+def test_character_intent_decision_accepts_active_goal_frame_object() -> None:
+    decision = CharacterIntentDecision(
+        actor_id="char_a",
+        selected_intent="observe_target",
+        persona_passed=True,
+        logic_passed=True,
+        gain_loss_passed=True,
+        rationale="hold position until target clarifies intent",
+        primary_goal="protect_secret",
+        long_term_goal="preserve_order",
+        immediate_goal="withhold_until_private",
+        supporting_goals=["clarify_intent"],
+        blockers=["char_b_public_presence"],
+        goal_sources=["l2_goal_hint:social_signal"],
+        urgency="high",
+        active_goal_frame=CharacterActiveGoalFrame(
+            primary_goal="protect_secret",
+            long_term_goal="preserve_order",
+            mid_term_strategy="contain_exposure",
+            immediate_goal="withhold_until_private",
+            supporting_goals=["clarify_intent"],
+            blockers=["char_b_public_presence"],
+            goal_sources=["l2_goal_hint:social_signal"],
+            urgency="high",
+        ),
+    )
+
+    assert decision.active_goal_frame is not None
+    assert decision.active_goal_frame.mid_term_strategy == "contain_exposure"

@@ -4,6 +4,9 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.character_agent.models.dynamic_state import CharacterDynamicState
+from app.character_agent.models.goal_runtime import CharacterGoalStateRecord
+
 
 class ObservatoryRecord(BaseModel):
     producer_ts: int
@@ -25,6 +28,11 @@ class ActorDramaticState(ObservatoryRecord):
     execution_summary: str
     latest_outcome_summary: str
     latest_siming_summary: str
+    cadence_summary: str = ""
+    continuity_summary: str = ""
+    scheduling_summary: str = ""
+    dynamic_state: CharacterDynamicState | None = None
+    goal_state: CharacterGoalStateRecord | None = None
 
 
 class ActorDramaticEvent(ObservatoryRecord):

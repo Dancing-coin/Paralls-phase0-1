@@ -1,7 +1,16 @@
 from copy import deepcopy
 
 from app.character_agent.gateway.context_builder import CharacterContextBuilder
+from app.character_agent.models.cognition_delta import (
+    CharacterBeliefDelta,
+    CharacterDynamicStateDelta,
+    CharacterHigherOrderDelta,
+    CharacterSocialDelta,
+)
+from app.character_agent.models.goal_runtime import CharacterGoalHint
+from app.character_agent.models.memory_record_bundle import CharacterMemoryRecordBundle
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
+from app.character_agent.models.working_memory_state import CharacterWorkingMemoryState
 from app.character_agent.profile.loader import CharacterProfileLoader
 from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.models.character_agent_runtime import CharacterInterpretation
@@ -28,9 +37,9 @@ class CharacterAgentL2Service:
         *,
         snapshot: CharacterPrivateWorldSnapshot,
         event: CharacterPerceivedEvent | SelfBodyPerceivedEvent,
-        memory_bundle: dict[str, list[dict[str, object]]],
+        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle,
         control_mode: str,
-        working_memory_state: dict[str, object] | None = None,
+        working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None = None,
     ) -> dict[str, object]:
         return self._gateway.prepare_run_request(
             task_kind="l2_reasoning",
@@ -60,6 +69,71 @@ class CharacterAgentL2Service:
             opportunity_level=str(output.get("opportunity_level", "low") or "low"),
             attention_target=str(output.get("attention_target", "") or "") or None,
             inner_prompt_candidate=str(output.get("inner_prompt_candidate", "") or "") or None,
+            belief_deltas=[
+                CharacterBeliefDelta(
+                    proposition_key=str(item.get("proposition_key", "") or ""),
+                    proposition=str(item.get("proposition", "") or ""),
+                    state=str(item.get("state", "suspected") or "suspected"),
+                    confidence=float(item.get("confidence", 0.0) or 0.0),
+                )
+                for item in output.get("belief_deltas", [])
+                if isinstance(item, dict) and str(item.get("proposition_key", "") or "")
+            ],
+            social_deltas=[
+                CharacterSocialDelta(
+                    entity_id=str(item.get("entity_id", "") or ""),
+                    trust_baseline=float(item.get("trust_baseline", 0.5) or 0.5),
+                    suspicion_baseline=float(item.get("suspicion_baseline", 0.0) or 0.0),
+                    intimacy=float(item.get("intimacy", 0.0) or 0.0),
+                    dependency=float(item.get("dependency", 0.0) or 0.0),
+                    unresolved_tension=float(item.get("unresolved_tension", 0.0) or 0.0),
+                    shared_secret_refs=[
+                        str(ref)
+                        for ref in item.get("shared_secret_refs", [])
+                        if str(ref)
+                    ]
+                    if isinstance(item.get("shared_secret_refs", []), list)
+                    else [],
+                )
+                for item in output.get("social_deltas", [])
+                if isinstance(item, dict) and str(item.get("entity_id", "") or "")
+            ],
+            higher_order_deltas=[
+                CharacterHigherOrderDelta(
+                    subject_actor_id=str(item.get("subject_actor_id", "") or ""),
+                    proposition_key=str(item.get("proposition_key", "") or ""),
+                    meta_belief=str(item.get("meta_belief", "") or ""),
+                    confidence=float(item.get("confidence", 0.0) or 0.0),
+                )
+                for item in output.get("higher_order_deltas", [])
+                if isinstance(item, dict) and str(item.get("subject_actor_id", "") or "") and str(item.get("meta_belief", "") or "")
+            ],
+            dynamic_state_delta=CharacterDynamicStateDelta(
+                **{
+                    str(key): float(value)
+                    for key, value in dict(output.get("dynamic_state_delta", {})).items()
+                    if isinstance(value, (int, float))
+                }
+            )
+            if isinstance(output.get("dynamic_state_delta", {}), dict)
+            else CharacterDynamicStateDelta(),
+            goal_hints=[
+                CharacterGoalHint(
+                    goal=str(item.get("goal", "") or ""),
+                    source=str(item.get("source", "") or "model"),
+                    strength=float(item.get("strength", 0.5) or 0.5),
+                    evidence_tags=[
+                        str(tag)
+                        for tag in item.get("evidence_tags", [])
+                        if str(tag)
+                    ]
+                    if isinstance(item.get("evidence_tags", []), list)
+                    else [],
+                )
+                for item in output.get("goal_hints", [])
+                if isinstance(item, dict) and str(item.get("goal", "") or "")
+            ],
+            reasoning_trace_summary=str(output.get("reasoning_trace_summary", "") or "") or None,
         )
 
     def interpret_perceived_event(
@@ -67,9 +141,9 @@ class CharacterAgentL2Service:
         snapshot: CharacterPrivateWorldSnapshot,
         event: CharacterPerceivedEvent,
         *,
-        memory_bundle: dict[str, list[dict[str, object]]] | None = None,
+        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None = None,
         control_mode: str = "agent_full_auto",
-        working_memory_state: dict[str, object] | None = None,
+        working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None = None,
     ) -> CharacterInterpretation:
         model_output = self._gateway.run_task(
             task_kind="l2_reasoning",
@@ -89,9 +163,9 @@ class CharacterAgentL2Service:
         snapshot: CharacterPrivateWorldSnapshot,
         event: SelfBodyPerceivedEvent,
         *,
-        memory_bundle: dict[str, list[dict[str, object]]] | None = None,
+        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None = None,
         control_mode: str = "agent_full_auto",
-        working_memory_state: dict[str, object] | None = None,
+        working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None = None,
     ) -> CharacterInterpretation:
         model_output = self._gateway.run_task(
             task_kind="l2_reasoning",
@@ -111,9 +185,9 @@ class CharacterAgentL2Service:
         snapshot: CharacterPrivateWorldSnapshot,
         payload: dict[str, object],
         *,
-        memory_bundle: dict[str, list[dict[str, object]]] | None = None,
+        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None = None,
         control_mode: str = "agent_full_auto",
-        working_memory_state: dict[str, object] | None = None,
+        working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None = None,
     ) -> CharacterInterpretation:
         model_output = self._gateway.run_task(
             task_kind="l2_reasoning",
@@ -134,9 +208,9 @@ class CharacterAgentL2Service:
         actor_id: str,
         snapshot: dict[str, object],
         event: dict[str, object],
-        memory_bundle: dict[str, list[dict[str, object]]] | None,
+        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None,
         control_mode: str,
-        working_memory_state: dict[str, object] | None,
+        working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None,
     ) -> dict[str, object]:
         context = self._context_builder.build_context(
             actor_id=actor_id,

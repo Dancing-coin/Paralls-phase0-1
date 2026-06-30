@@ -1,5 +1,19 @@
 from copy import deepcopy
 
+from app.character_agent.gateway.model_gateway import CharacterModelGateway
+from app.character_agent.models.cognition_delta import (
+    CharacterBeliefDelta,
+    CharacterDynamicStateDelta,
+    CharacterHigherOrderDelta,
+    CharacterSocialDelta,
+)
+from app.character_agent.models.dynamic_state import CharacterDynamicState
+from app.character_agent.models.goal_runtime import CharacterGoalHint
+from app.character_agent.models.higher_order_memory import CharacterHigherOrderMemoryRecord
+from app.character_agent.models.knowledge_memory import CharacterKnowledgeMemoryRecord
+from app.character_agent.models.memory_record_bundle import CharacterMemoryRecordBundle
+from app.character_agent.models.social_memory import CharacterSocialMemoryRecord
+from app.character_agent.models.working_memory_state import CharacterWorkingMemoryState
 from app.models.character_agent_runtime import CharacterPrivateWorldSnapshot
 from app.models.character_perceived import CharacterPerceivedEvent
 from app.services.character_agent_l2 import CharacterAgentL2Service
@@ -25,6 +39,37 @@ class _RecordingGateway:
             }
         )
         return self.response
+
+
+class _LocalGateway:
+    def __init__(self) -> None:
+        self._gateway = CharacterModelGateway()
+
+    def run_task(
+        self,
+        *,
+        task_kind: str,
+        context: dict[str, object],
+        route_override: str | None = None,
+    ) -> dict[str, object]:
+        return self._gateway.run_task(
+            task_kind=task_kind,
+            context=context,
+            route_override=route_override or "local_only",
+        )
+
+    def prepare_run_request(
+        self,
+        *,
+        task_kind: str,
+        context: dict[str, object],
+        route_override: str | None = None,
+    ) -> dict[str, object]:
+        return self._gateway.prepare_run_request(
+            task_kind=task_kind,
+            context=context,
+            route_override=route_override or "local_only",
+        )
 
 
 class _StubProfile:
@@ -57,7 +102,33 @@ def _profile_payload(
             "canonical_name": canonical_name,
             "aliases": [canonical_name],
             "occupation_role": occupation_role,
-        }
+        },
+        "trait_vector_layer": {
+            "courage": 0.64,
+            "scheming": 0.31,
+            "empathy": 0.82,
+            "rationality": 0.74,
+            "sociability": 0.58,
+        },
+        "virtue_value_layer": {
+            "value_priorities": ["care", "order", "trustworthiness"],
+            "red_lines": ["expose another person's private record casually"],
+            "forbidden_behaviors": ["fabricate authority"],
+        },
+        "capability_constraint_layer": {
+            "skills": ["observation", "mediation"],
+            "knowledge_domains": ["archive routine", "room etiquette"],
+            "physical_constraints": ["not built for prolonged sprinting"],
+            "psychological_constraints": ["resists escalating conflict before evidence is clear"],
+            "social_constraints": ["cannot authorize sealed object access alone"],
+        },
+        "conversation_personality_layer": {
+            "social_openness": 0.57,
+            "privacy_sensitivity": 0.63,
+            "talk_initiative": 0.48,
+            "deception_control": 0.87,
+            "trust_threshold_for_private_talk": 0.66,
+        },
     }
 
 
@@ -139,6 +210,155 @@ def test_l2_reasoner_prepares_model_run_request_from_snapshot_memory_and_control
     assert profile_loader.loaded_actor_ids == ["char_a"]
 
 
+def test_l2_reasoner_prompt_includes_profile_behavioral_fields_for_model_routes() -> None:
+    service, _ = _service()
+    event = CharacterPerceivedEvent(
+        actor_id="char_a",
+        percept_channel="auditory",
+        producer_ts=1301,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="auditory_fact/speaker_active",
+        source_candidate_event_id="auditory_fact:1301:char_a",
+        clarity_score=0.82,
+        certainty_score=0.61,
+    )
+
+    run_request = service.prepare_reasoning_request(
+        snapshot=_snapshot(),
+        event=event,
+        memory_bundle={
+            "working_memory": [],
+            "event_memories": [],
+            "observation_memories": [],
+            "knowledge_memories": [],
+            "social_memories": [],
+        },
+        control_mode="player_priority_assisted",
+    )
+
+    prompt = run_request["prompt"]["user_instruction"]
+
+    assert "value_priorities=care|order|trustworthiness" in prompt
+    assert "skills=observation|mediation" in prompt
+    assert "privacy_sensitivity=0.63" in prompt
+    assert "trust_threshold_for_private_talk=0.66" in prompt
+
+
+def test_l2_reasoner_accepts_typed_working_memory_state_in_reasoning_request() -> None:
+    service, _ = _service()
+    event = CharacterPerceivedEvent(
+        actor_id="char_a",
+        percept_channel="auditory",
+        producer_ts=1301,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="auditory_fact/speaker_active",
+        source_candidate_event_id="auditory_fact:1301:char_a",
+        clarity_score=0.82,
+        certainty_score=0.61,
+    )
+
+    run_request = service.prepare_reasoning_request(
+        snapshot=_snapshot(),
+        event=event,
+        memory_bundle={
+            "working_memory": [],
+            "event_memories": [],
+            "observation_memories": [],
+            "knowledge_memories": [],
+            "social_memories": [],
+        },
+        control_mode="player_priority_assisted",
+        working_memory_state=CharacterWorkingMemoryState(
+            recent_perceived_events=[{"event_type": "character_perceived_event"}],
+            recent_esm_results=[],
+            recent_siming_catalysts=[],
+            private_snapshot={"actor_id": "char_a"},
+            dynamic_state=CharacterDynamicState(
+                actor_id="char_a",
+                vigilance_level=0.2,
+                distraction_level=0.1,
+                stress_load=0.4,
+                social_pressure=0.3,
+                masking_pressure=0.2,
+                motivation_stack=["preserve_order"],
+            ),
+        ),
+    )
+
+    assert run_request["context"]["working_memory_state"]["dynamic_state"]["actor_id"] == "char_a"
+    assert run_request["context"]["working_memory_state"]["dynamic_state"]["motivation_stack"] == ["preserve_order"]
+
+
+def test_l2_reasoner_accepts_typed_memory_record_bundle_in_reasoning_request() -> None:
+    service, _ = _service()
+    event = CharacterPerceivedEvent(
+        actor_id="char_a",
+        percept_channel="auditory",
+        producer_ts=1301,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="auditory_fact/speaker_active",
+        source_candidate_event_id="auditory_fact:1301:char_a",
+        clarity_score=0.82,
+        certainty_score=0.61,
+    )
+
+    run_request = service.prepare_reasoning_request(
+        snapshot=_snapshot(),
+        event=event,
+        memory_bundle=CharacterMemoryRecordBundle(
+            knowledge_memories=[
+                CharacterKnowledgeMemoryRecord(
+                    memory_id="knowledge:char_a:social:char_a:trust_level",
+                    actor_id="char_a",
+                    proposition_key="social:char_a:trust_level",
+                    proposition="char_a:trust_level=guarded",
+                    state="tentatively_believed",
+                    confidence=0.65,
+                    source_event_id="evt:1",
+                    producer_ts=1,
+                )
+            ],
+            social_memories=[
+                CharacterSocialMemoryRecord(
+                    memory_id="social:char_a:char_a",
+                    actor_id="char_a",
+                    entity_id="char_a",
+                    trust_baseline=0.25,
+                    suspicion_baseline=0.75,
+                    intimacy=0.0,
+                    dependency=0.0,
+                    unresolved_tension=0.5,
+                    shared_secret_refs=[],
+                    source_event_id="evt:2",
+                    producer_ts=2,
+                )
+            ],
+            higher_order_memories=[
+                CharacterHigherOrderMemoryRecord(
+                    memory_id="higher:char_a:char_a:1",
+                    actor_id="char_a",
+                    subject_actor_id="char_a",
+                    proposition_key="social_probe:knowledge_asymmetry",
+                    meta_belief="char_a suspects char_b knows more",
+                    confidence=0.72,
+                    source_event_id="evt:3",
+                    producer_ts=3,
+                )
+            ],
+        ),
+        control_mode="player_priority_assisted",
+    )
+
+    assert run_request["context"]["memory"]["knowledge_memories"][0]["proposition_key"] == "social:char_a:trust_level"
+    assert run_request["context"]["memory"]["social_memories"][0]["entity_id"] == "char_a"
+
+
 def test_l2_reasoner_maps_structured_gateway_output_into_interpretation() -> None:
     service, _ = _service()
 
@@ -160,6 +380,49 @@ def test_l2_reasoner_maps_structured_gateway_output_into_interpretation() -> Non
     assert interpretation.interpreted_summary == "char_a may be speaking nearby"
     assert interpretation.interpretation_type == "social_signal"
     assert interpretation.attention_target == "char_a"
+
+
+def test_l2_reasoner_maps_belief_social_higher_order_and_dynamic_deltas() -> None:
+    service, _ = _service()
+
+    interpretation = service.map_reasoning_output(
+        actor_id="char_a",
+        output={
+            "interpreted_summary": "char_b is probing",
+            "interpretation_type": "social_signal",
+            "salience_score": 0.8,
+            "ambiguity_level": "medium",
+            "risk_level": "medium",
+            "opportunity_level": "low",
+            "attention_target": "char_b",
+            "inner_prompt_candidate": "stay guarded",
+            "belief_deltas": [{"proposition_key": "char_b:is_probing", "state": "suspected"}],
+            "social_deltas": [{"entity_id": "char_b", "suspicion_baseline": 0.8}],
+            "higher_order_deltas": [{"subject_actor_id": "char_b", "meta_belief": "char_b suspects char_c knows more"}],
+            "dynamic_state_delta": {"social_pressure": 0.7},
+            "goal_hints": [
+                {
+                    "goal": "protect_secret",
+                    "source": "social_signal",
+                    "strength": 0.85,
+                    "evidence_tags": ["guarded_attention"],
+                }
+            ],
+            "reasoning_trace_summary": "char_a:probing-read",
+        },
+    )
+
+    assert isinstance(interpretation.belief_deltas[0], CharacterBeliefDelta)
+    assert isinstance(interpretation.social_deltas[0], CharacterSocialDelta)
+    assert isinstance(interpretation.higher_order_deltas[0], CharacterHigherOrderDelta)
+    assert interpretation.belief_deltas[0].proposition_key == "char_b:is_probing"
+    assert interpretation.social_deltas[0].entity_id == "char_b"
+    assert interpretation.higher_order_deltas[0].subject_actor_id == "char_b"
+    assert isinstance(interpretation.dynamic_state_delta, CharacterDynamicStateDelta)
+    assert interpretation.dynamic_state_delta.social_pressure == 0.7
+    assert isinstance(interpretation.goal_hints[0], CharacterGoalHint)
+    assert interpretation.goal_hints[0].evidence_tags == ["guarded_attention"]
+    assert interpretation.reasoning_trace_summary == "char_a:probing-read"
 
 
 def test_l2_reasoner_uses_model_gateway_for_interpretation() -> None:
@@ -203,7 +466,7 @@ def test_l2_reasoner_uses_model_gateway_for_interpretation() -> None:
 
 
 def test_l2_reasoner_offline_path_raises_risk_for_active_anomalies() -> None:
-    service, _ = _service()
+    service, _ = _service(gateway=_LocalGateway())
     snapshot = _snapshot().model_copy(update={"active_anomalies": ["olfactory_fact/smoke_density_rise"]})
     interpretation = service.interpret_perceived_event(
         snapshot,
@@ -226,7 +489,7 @@ def test_l2_reasoner_offline_path_raises_risk_for_active_anomalies() -> None:
 
 
 def test_l2_reasoner_offline_path_treats_body_state_hints_as_body_state_interpretation() -> None:
-    service, _ = _service()
+    service, _ = _service(gateway=_LocalGateway())
     snapshot = _snapshot().model_copy(
         update={
             "body_state_hints": ["interaction_strain:body_state_result/interaction_strain=engaged"],
@@ -254,7 +517,7 @@ def test_l2_reasoner_offline_path_treats_body_state_hints_as_body_state_interpre
 
 
 def test_l2_reasoner_offline_path_raises_opportunity_for_recent_world_changes() -> None:
-    service, _ = _service()
+    service, _ = _service(gateway=_LocalGateway())
     snapshot = _snapshot().model_copy(
         update={
             "audible_entities": [],
@@ -281,7 +544,7 @@ def test_l2_reasoner_offline_path_raises_opportunity_for_recent_world_changes() 
 
 
 def test_l2_reasoner_offline_path_raises_risk_for_recent_constraint_results() -> None:
-    service, _ = _service()
+    service, _ = _service(gateway=_LocalGateway())
     snapshot = _snapshot().model_copy(update={"recent_constraint_results": ["target is too far away"]})
     interpretation = service.interpret_perceived_event(
         snapshot,
@@ -303,7 +566,7 @@ def test_l2_reasoner_offline_path_raises_risk_for_recent_constraint_results() ->
 
 
 def test_l2_reasoner_offline_path_raises_opportunity_for_last_siming_catalyst() -> None:
-    service, _ = _service()
+    service, _ = _service(gateway=_LocalGateway())
     snapshot = _snapshot().model_copy(update={"last_siming_catalyst": "watch obj_letter", "audible_entities": []})
     interpretation = service.interpret_perceived_event(
         snapshot,
@@ -325,7 +588,7 @@ def test_l2_reasoner_offline_path_raises_opportunity_for_last_siming_catalyst() 
 
 
 def test_l2_reasoner_offline_path_raises_opportunity_for_elevated_vigilance_level() -> None:
-    service, _ = _service()
+    service, _ = _service(gateway=_LocalGateway())
     snapshot = _snapshot().model_copy(update={"vigilance_level": "elevated", "audible_entities": []})
     interpretation = service.interpret_perceived_event(
         snapshot,
@@ -347,7 +610,7 @@ def test_l2_reasoner_offline_path_raises_opportunity_for_elevated_vigilance_leve
 
 
 def test_l2_reasoner_offline_path_raises_ambiguity_for_elevated_distraction_level() -> None:
-    service, _ = _service()
+    service, _ = _service(gateway=_LocalGateway())
     snapshot = _snapshot().model_copy(update={"distraction_level": "elevated", "audible_entities": []})
     interpretation = service.interpret_perceived_event(
         snapshot,

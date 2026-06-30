@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+from app.character_agent.models.cognition_delta import (
+    CharacterBeliefDelta,
+    CharacterDynamicStateDelta,
+    CharacterHigherOrderDelta,
+    CharacterSocialDelta,
+)
+from app.character_agent.models.goal_runtime import CharacterGoalHint
+
 
 class CharacterStructuredOutputValidator:
     def validate(self, *, task_kind: str, output: dict[str, object]) -> dict[str, object]:
@@ -43,6 +51,13 @@ class CharacterStructuredOutputValidator:
         normalized["attention_target"] = attention_target or None
         inner_prompt_candidate = str(normalized.get("inner_prompt_candidate", "") or "")
         normalized["inner_prompt_candidate"] = inner_prompt_candidate or None
+        normalized["belief_deltas"] = self._as_belief_delta_list(normalized.get("belief_deltas", []))
+        normalized["social_deltas"] = self._as_social_delta_list(normalized.get("social_deltas", []))
+        normalized["higher_order_deltas"] = self._as_higher_order_delta_list(normalized.get("higher_order_deltas", []))
+        normalized["dynamic_state_delta"] = self._as_dynamic_state_delta(normalized.get("dynamic_state_delta", {}))
+        normalized["goal_hints"] = self._as_goal_hint_list(normalized.get("goal_hints", []))
+        reasoning_trace_summary = str(normalized.get("reasoning_trace_summary", "") or "")
+        normalized["reasoning_trace_summary"] = reasoning_trace_summary or None
         return normalized
 
     def _validate_l3_output(self, output: dict[str, object]) -> dict[str, object]:
@@ -73,3 +88,87 @@ class CharacterStructuredOutputValidator:
         if not isinstance(value, list):
             raise ValueError("structured model output list field must be a list")
         return [str(item) for item in value]
+
+    def _as_mapping_list(self, value: object) -> list[dict[str, object]]:
+        if isinstance(value, dict):
+            return [dict(value)] if value else []
+        if not isinstance(value, list):
+            raise ValueError("structured model output mapping list field must be a list")
+        return [dict(item) for item in value if isinstance(item, dict)]
+
+    def _as_goal_hint_list(self, value: object) -> list[dict[str, object]]:
+        if not isinstance(value, list):
+            raise ValueError("structured model output goal_hints field must be a list")
+        hints: list[dict[str, object]] = []
+        for item in value:
+            if isinstance(item, dict):
+                goal = str(item.get("goal", "") or "")
+                if goal == "":
+                    continue
+                hints.append(
+                    CharacterGoalHint(
+                        goal=goal,
+                        source=str(item.get("source", "") or "model"),
+                        strength=float(item.get("strength", 0.5) or 0.5),
+                        evidence_tags=self._as_string_list(item.get("evidence_tags", []))
+                        if isinstance(item.get("evidence_tags", []), list)
+                        else [],
+                    ).model_dump()
+                )
+                continue
+            goal = str(item or "").strip()
+            if goal == "":
+                continue
+            hints.append(CharacterGoalHint(goal=goal, source="model", strength=0.5, evidence_tags=[]).model_dump())
+        return hints
+
+    def _as_belief_delta_list(self, value: object) -> list[dict[str, object]]:
+        return [
+            CharacterBeliefDelta(
+                proposition_key=str(item.get("proposition_key", "") or ""),
+                proposition=str(item.get("proposition", "") or ""),
+                state=str(item.get("state", "suspected") or "suspected"),
+                confidence=float(item.get("confidence", 0.0) or 0.0),
+            ).model_dump()
+            for item in self._as_mapping_list(value)
+            if str(item.get("proposition_key", "") or "")
+        ]
+
+    def _as_social_delta_list(self, value: object) -> list[dict[str, object]]:
+        return [
+            CharacterSocialDelta(
+                entity_id=str(item.get("entity_id", "") or ""),
+                trust_baseline=float(item.get("trust_baseline", 0.5) or 0.5),
+                suspicion_baseline=float(item.get("suspicion_baseline", 0.0) or 0.0),
+                intimacy=float(item.get("intimacy", 0.0) or 0.0),
+                dependency=float(item.get("dependency", 0.0) or 0.0),
+                unresolved_tension=float(item.get("unresolved_tension", 0.0) or 0.0),
+                shared_secret_refs=self._as_string_list(item.get("shared_secret_refs", []))
+                if isinstance(item.get("shared_secret_refs", []), list)
+                else [],
+            ).model_dump()
+            for item in self._as_mapping_list(value)
+            if str(item.get("entity_id", "") or "")
+        ]
+
+    def _as_higher_order_delta_list(self, value: object) -> list[dict[str, object]]:
+        return [
+            CharacterHigherOrderDelta(
+                subject_actor_id=str(item.get("subject_actor_id", "") or ""),
+                proposition_key=str(item.get("proposition_key", "") or ""),
+                meta_belief=str(item.get("meta_belief", "") or ""),
+                confidence=float(item.get("confidence", 0.0) or 0.0),
+            ).model_dump()
+            for item in self._as_mapping_list(value)
+            if str(item.get("subject_actor_id", "") or "") and str(item.get("meta_belief", "") or "")
+        ]
+
+    def _as_dynamic_state_delta(self, value: object) -> dict[str, float]:
+        if not isinstance(value, dict):
+            return {}
+        filtered = {
+            str(key): float(item)
+            for key, item in value.items()
+            if isinstance(item, (int, float))
+        }
+        return CharacterDynamicStateDelta(**filtered).as_mapping()

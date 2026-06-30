@@ -58,6 +58,7 @@ from app.services.per_character_percept_filter import filter_candidate_for_actor
 from app.services.phase0_authority_event_adapter import Phase0AuthorityEventAdapter
 from app.services.session_runtime import SessionRuntime
 from app.services.siming_audit_writer import SimingAuditWriter
+from app.world_runtime.projection import project_world_result_delta
 from app.services.siming_character_dispatch_adapter import SimingCharacterDispatchAdapter, SimingCharacterDispatchResult
 from app.services.siming_event_consumer import SimingEventConsumer
 from app.services.siming_event_pipeline import SimingEventPipeline
@@ -433,6 +434,9 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                     payload=world_result,
                 )
                 messages.append(_as_world_result_envelope(world_result))
+                var_social_spatial_result = _as_social_spatial_runtime_result(world_result)
+                if var_social_spatial_result is not None:
+                    messages.append(var_social_spatial_result)
                 continue
             if request_type == "follow_target":
                 world_result = _actor_target_action_settlement(
@@ -446,6 +450,9 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                     payload=world_result,
                 )
                 messages.append(_as_world_result_envelope(world_result))
+                var_social_spatial_result = _as_social_spatial_runtime_result(world_result)
+                if var_social_spatial_result is not None:
+                    messages.append(var_social_spatial_result)
                 continue
             if request_type == "seek_private_distance":
                 world_result = _actor_target_action_settlement(
@@ -459,6 +466,9 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                     payload=world_result,
                 )
                 messages.append(_as_world_result_envelope(world_result))
+                var_social_spatial_result = _as_social_spatial_runtime_result(world_result)
+                if var_social_spatial_result is not None:
+                    messages.append(var_social_spatial_result)
                 continue
             if request_type == "withdraw":
                 world_result = _actor_target_action_settlement(
@@ -472,6 +482,9 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                     payload=world_result,
                 )
                 messages.append(_as_world_result_envelope(world_result))
+                var_social_spatial_result = _as_social_spatial_runtime_result(world_result)
+                if var_social_spatial_result is not None:
+                    messages.append(var_social_spatial_result)
                 continue
             if request_type == "break_contact":
                 world_result = _actor_target_action_settlement(
@@ -485,6 +498,9 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                     payload=world_result,
                 )
                 messages.append(_as_world_result_envelope(world_result))
+                var_social_spatial_result = _as_social_spatial_runtime_result(world_result)
+                if var_social_spatial_result is not None:
+                    messages.append(var_social_spatial_result)
                 continue
             if request_type != "interact":
                 continue
@@ -1267,6 +1283,10 @@ def _as_world_result_envelope(payload: dict[str, object]) -> dict[str, object]:
     target_environment_id = str(payload.get("target_environment_id", "") or "")
     entity_id = str(payload.get("entity_id", "") or "")
     object_id = entity_id or target_object_id or target_environment_id or None
+    envelope_payload = dict(payload)
+    delta = project_world_result_delta(envelope_payload)
+    if delta is not None:
+        envelope_payload["world_runtime_delta"] = delta.model_dump()
     return {
         "message_type": "world_result",
         "event_id": str(payload.get("result_id", "") or ""),
@@ -1293,7 +1313,31 @@ def _as_world_result_envelope(payload: dict[str, object]) -> dict[str, object]:
         "durability": "replayable",
         "causation_id": str(payload.get("causation_id", "") or ""),
         "correlation_id": str(payload.get("correlation_id", "") or ""),
-        "payload": payload,
+        "payload": envelope_payload,
+    }
+
+
+def _as_social_spatial_runtime_result(payload: dict[str, object]) -> dict[str, object] | None:
+    if str(payload.get("result_type", "") or "") != "action_resolution_result":
+        return None
+    action_profile = str(payload.get("action_profile", "") or "")
+    if action_profile not in {
+        "approach",
+        "follow_target",
+        "seek_private_distance",
+        "withdraw",
+        "break_contact",
+    }:
+        return None
+    return {
+        "message_type": "social_spatial_runtime_result",
+        "payload": {
+            "actor_id": str(payload.get("actor_id", "") or ""),
+            "target_actor_id": str(payload.get("target_actor_id", "") or ""),
+            "action_profile": action_profile,
+            "settlement_status": str(payload.get("settlement_status", "") or ""),
+            "producer_ts": int(payload.get("producer_ts", 0) or 0),
+        },
     }
 
 
@@ -1613,6 +1657,17 @@ def _emit_debug_from_messages(messages: list[dict[str, object]]) -> None:
                     detail=payload,
                 )
             )
+        elif message_type == "character_agent_debug_event":
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=producer_ts,
+                    domain="character",
+                    stage=str(payload.get("stage", "") or ""),
+                    actor_id=str(payload.get("actor_id", "")) or None,
+                    summary=str(payload.get("summary", "") or ""),
+                    detail=payload,
+                )
+            )
         elif message_type == "character_agent_debug_snapshot":
             _publish_debug_event(
                 build_debug_event(
@@ -1646,6 +1701,28 @@ def _emit_debug_from_messages(messages: list[dict[str, object]]) -> None:
                     detail=payload,
                 )
             )
+        elif message_type == "script_beat_event":
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=producer_ts,
+                    domain="world",
+                    stage="script_beat_event",
+                    actor_id=None,
+                    summary=str(payload.get("dramatic_summary", "") or ""),
+                    detail=payload,
+                )
+            )
+        elif message_type == "scheduling_round_trace":
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=producer_ts,
+                    domain="world",
+                    stage="scheduling_round_trace",
+                    actor_id=str(payload.get("lead_actor_id", "")) or None,
+                    summary=str(payload.get("round_summary", "") or ""),
+                    detail=payload,
+                )
+            )
 
 
 def _observatory_messages_from_outbound(messages: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -1674,6 +1751,7 @@ def _observatory_messages_from_outbound(messages: list[dict[str, object]]) -> li
             actor_events.append(payload)
         elif message.get("message_type") == "siming_debug_event":
             siming_events.append(payload)
+    extras.extend(_scheduling_round_trace_messages_from_actor_events(actor_events))
     extras.extend(_script_beat_messages_from_observatory_events(actor_events, siming_events, world_events))
     return extras
 
@@ -1686,6 +1764,30 @@ def _world_outcome_observatory_messages_from_payload(payload: dict[str, object])
             "payload": world_event.model_dump(exclude_none=True),
         },
     ]
+
+
+def _scheduling_round_trace_messages_from_actor_events(
+    actor_events: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    traces: list[dict[str, object]] = []
+    seen_round_ids: set[int] = set()
+    for event in actor_events:
+        if str(event.get("stage", "") or "") != "scheduling_round_state":
+            continue
+        detail = event.get("detail", {})
+        if not isinstance(detail, dict):
+            continue
+        round_id = int(detail.get("round_id", 0) or 0)
+        if round_id in seen_round_ids:
+            continue
+        seen_round_ids.add(round_id)
+        traces.append(
+            {
+                "message_type": "scheduling_round_trace",
+                "payload": dict(detail),
+            }
+        )
+    return traces
 
 
 def _script_beat_messages_from_observatory_events(

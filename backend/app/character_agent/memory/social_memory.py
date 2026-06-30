@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+from app.character_agent.models.social_memory import CharacterSocialMemoryRecord
+
 
 class CharacterSocialMemory:
     def __init__(self) -> None:
@@ -42,3 +44,6 @@ class CharacterSocialMemory:
 
     def recall(self, actor_id: str) -> list[dict[str, object]]:
         return [deepcopy(entry) for entry in self._entries_by_actor.get(actor_id, [])]
+
+    def recall_records(self, actor_id: str) -> list[CharacterSocialMemoryRecord]:
+        return [CharacterSocialMemoryRecord(**deepcopy(entry)) for entry in self._entries_by_actor.get(actor_id, [])]

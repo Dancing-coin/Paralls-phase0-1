@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 from app.character_agent.models.knowledge_state import KnowledgeState
+from app.character_agent.models.knowledge_memory import CharacterKnowledgeMemoryRecord
 
 
 class CharacterKnowledgeMemory:
@@ -39,6 +40,9 @@ class CharacterKnowledgeMemory:
 
     def recall(self, actor_id: str) -> list[dict[str, object]]:
         return [deepcopy(entry) for entry in self._entries_by_actor.get(actor_id, [])]
+
+    def recall_records(self, actor_id: str) -> list[CharacterKnowledgeMemoryRecord]:
+        return [CharacterKnowledgeMemoryRecord(**deepcopy(entry)) for entry in self._entries_by_actor.get(actor_id, [])]
 
     def _normalize_state(self, state: KnowledgeState | str) -> str:
         if isinstance(state, KnowledgeState):

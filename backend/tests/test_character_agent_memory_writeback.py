@@ -29,6 +29,7 @@ def test_memory_store_writes_timeline_event_into_working_and_episodic_layers() -
         "observation_memories",
         "knowledge_memories",
         "social_memories",
+        "higher_order_memories",
         "episodic_memories",
         "relational_memories",
     }

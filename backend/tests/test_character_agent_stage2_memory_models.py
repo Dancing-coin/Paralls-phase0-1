@@ -1,7 +1,12 @@
 from app.character_agent.memory.event_memory import CharacterEventMemory
+from app.character_agent.memory.higher_order_memory import CharacterHigherOrderMemory
 from app.character_agent.memory.knowledge_memory import CharacterKnowledgeMemory
 from app.character_agent.memory.observation_memory import CharacterObservationMemory
 from app.character_agent.memory.social_memory import CharacterSocialMemory
+from app.character_agent.models.event_memory import CharacterEventMemoryRecord
+from app.character_agent.models.knowledge_memory import CharacterKnowledgeMemoryRecord
+from app.character_agent.models.observation_memory import CharacterObservationMemoryRecord
+from app.character_agent.models.social_memory import CharacterSocialMemoryRecord
 from app.character_agent.models.knowledge_state import KnowledgeState
 
 
@@ -181,6 +186,96 @@ def test_social_memory_records_stage2_semantics_with_entity_id() -> None:
     assert entry["trust_baseline"] == 0.7
     assert entry["shared_secret_refs"] == ["secret:1"]
     assert memory.recall("char_c")[0]["entity_id"] == "char_a"
+
+
+def test_stage2_memory_components_expose_typed_record_views() -> None:
+    event_memory = CharacterEventMemory()
+    observation_memory = CharacterObservationMemory()
+    knowledge_memory = CharacterKnowledgeMemory()
+    social_memory = CharacterSocialMemory()
+
+    event_memory.record_event(
+        actor_id="char_c",
+        source_event_id="evt:2002",
+        world_ts=2002,
+        event_type="door_opened",
+        summary="the nearby door opened",
+        clarity_score=0.8,
+        certainty_score=0.9,
+        refs=["door:1"],
+    )
+    observation_memory.record_observation(
+        actor_id="char_c",
+        source_event_id="evt:2003",
+        world_ts=2003,
+        observed_entity_id="char_a",
+        observation_type="character_perceived_event",
+        observation_summary="saw char_a speaking",
+        clarity_score=0.4,
+        certainty_score=0.55,
+        distortion_tags=["occluded"],
+        refs=["char_a"],
+    )
+    knowledge_memory.upsert_proposition(
+        actor_id="char_c",
+        proposition_key="prop:1",
+        proposition="char_a may be nearby",
+        state=KnowledgeState.SUSPECTED,
+        confidence=0.35,
+        source_event_id="evt:2001",
+        producer_ts=2001,
+    )
+    social_memory.upsert_relation(
+        actor_id="char_c",
+        entity_id="char_a",
+        trust_baseline=0.7,
+        suspicion_baseline=0.2,
+        intimacy=0.4,
+        dependency=0.1,
+        unresolved_tension=0.0,
+        shared_secret_refs=["secret:1"],
+        source_event_id="evt:2004",
+        producer_ts=2004,
+    )
+
+    event_record = event_memory.recall_records("char_c")[0]
+    observation_record = observation_memory.recall_records("char_c")[0]
+    knowledge_record = knowledge_memory.recall_records("char_c")[0]
+    social_record = social_memory.recall_records("char_c")[0]
+
+    assert isinstance(event_record, CharacterEventMemoryRecord)
+    assert isinstance(observation_record, CharacterObservationMemoryRecord)
+    assert isinstance(knowledge_record, CharacterKnowledgeMemoryRecord)
+    assert isinstance(social_record, CharacterSocialMemoryRecord)
+
+
+def test_higher_order_memory_upsert_replaces_existing_subject_and_proposition_slot() -> None:
+    memory = CharacterHigherOrderMemory()
+
+    memory.upsert_meta_belief(
+        actor_id="char_c",
+        subject_actor_id="char_a",
+        proposition_key="obj_letter:is_sensitive",
+        meta_belief="char_a suspects char_c knows more",
+        confidence=0.55,
+        source_event_id="evt:3001",
+        producer_ts=3001,
+    )
+    memory.upsert_meta_belief(
+        actor_id="char_c",
+        subject_actor_id="char_a",
+        proposition_key="obj_letter:is_sensitive",
+        meta_belief="char_a is nearly certain char_c knows more",
+        confidence=0.82,
+        source_event_id="evt:3002",
+        producer_ts=3002,
+    )
+
+    recalled = memory.recall("char_c")
+
+    assert len(recalled) == 1
+    assert recalled[0]["meta_belief"] == "char_a is nearly certain char_c knows more"
+    assert recalled[0]["confidence"] == 0.82
 
 
 def test_recall_returns_isolated_copies() -> None:

@@ -93,3 +93,71 @@ def test_relational_belief_event_deposits_stage2_social_memory_shape() -> None:
     assert bundle["social_memories"][0]["source_event_id"] == "evt:rel:3003"
     assert "belief_type" not in bundle["social_memories"][0]
     assert "value" not in bundle["social_memories"][0]
+
+
+def test_higher_order_belief_event_deposits_higher_order_memory_shape() -> None:
+    store = CharacterAgentMemoryStore()
+
+    store.write_event(
+        {
+            "event_id": "evt:hom:3004",
+            "event_index": 4,
+            "actor_id": "char_c",
+            "event_type": "higher_order_belief_event",
+            "producer_ts": 3004,
+            "payload": {
+                "subject_actor_id": "char_a",
+                "proposition_key": "obj_letter:is_sensitive",
+                "meta_belief": "char_a suspects char_b knows the letter matters",
+                "confidence": 0.66,
+            },
+        }
+    )
+
+    bundle = store.retrieval_bundle("char_c")
+
+    assert bundle["higher_order_memories"]
+    assert bundle["higher_order_memories"][0]["subject_actor_id"] == "char_a"
+    assert bundle["higher_order_memories"][0]["proposition_key"] == "obj_letter:is_sensitive"
+    assert bundle["higher_order_memories"][0]["meta_belief"] == "char_a suspects char_b knows the letter matters"
+
+
+def test_higher_order_belief_event_upserts_existing_meta_belief_slot() -> None:
+    store = CharacterAgentMemoryStore()
+
+    store.write_event(
+        {
+            "event_id": "evt:hom:3005",
+            "event_index": 5,
+            "actor_id": "char_c",
+            "event_type": "higher_order_belief_event",
+            "producer_ts": 3005,
+            "payload": {
+                "subject_actor_id": "char_a",
+                "proposition_key": "obj_letter:is_sensitive",
+                "meta_belief": "char_a suspects char_b knows the letter matters",
+                "confidence": 0.44,
+            },
+        }
+    )
+    store.write_event(
+        {
+            "event_id": "evt:hom:3006",
+            "event_index": 6,
+            "actor_id": "char_c",
+            "event_type": "higher_order_belief_event",
+            "producer_ts": 3006,
+            "payload": {
+                "subject_actor_id": "char_a",
+                "proposition_key": "obj_letter:is_sensitive",
+                "meta_belief": "char_a is now almost certain char_b knows the letter matters",
+                "confidence": 0.81,
+            },
+        }
+    )
+
+    bundle = store.retrieval_bundle("char_c")
+
+    assert len(bundle["higher_order_memories"]) == 1
+    assert bundle["higher_order_memories"][0]["meta_belief"] == "char_a is now almost certain char_b knows the letter matters"
+    assert bundle["higher_order_memories"][0]["confidence"] == 0.81

@@ -33,8 +33,30 @@ class CharacterAgentL4Executor:
         gesture_hint = self._gesture_hint(target=target, decision=decision, posture=posture)
         hesitation_hint = self._hesitation_hint(interpretation=interpretation)
         focus_mode = self._focus_mode(target=target, snapshot=snapshot, interpretation=interpretation, decision=decision)
+        contact_phase = self._contact_phase(target=target, interpretation=interpretation, decision=decision)
+        execution_semantics = self._execution_semantics(
+            decision=decision,
+            contact_phase=contact_phase,
+            gesture_hint=gesture_hint,
+        )
         expression_hint = self._expression_hint(snapshot=snapshot, interpretation=interpretation)
         breath = "elevated" if snapshot.vigilance_level == "elevated" or guarding_elevated else "steady"
+        micro_expression_plan = self._micro_expression_plan(
+            snapshot=snapshot,
+            interpretation=interpretation,
+            decision=decision,
+        )
+        facs_ready_tags = self._facs_ready_tags(
+            expression_hint=expression_hint,
+            micro_expression_plan=micro_expression_plan,
+        )
+        motion_emphasis = self._motion_emphasis(
+            snapshot=snapshot,
+            interpretation=interpretation,
+            decision=decision,
+        )
+        breath_state = "tight" if breath == "elevated" else "steady"
+        fatigue_signal = "latent_strain" if bool(snapshot.body_state_hints) else "none"
         physiology_state_band = self._physiology_state_band(
             snapshot=snapshot,
             interpretation=interpretation,
@@ -43,27 +65,34 @@ class CharacterAgentL4Executor:
         )
         return {
             "actor_id": decision.actor_id,
+            "execution_semantics": execution_semantics,
             "speech_channel": {
                 "dialogue_act": decision.selected_intent,
                 "utterance_request": interpretation.interpreted_summary,
             },
             "face_channel": {
                 "expression_hint": expression_hint,
+                "micro_expression_plan": micro_expression_plan,
+                "facs_ready_tags": facs_ready_tags,
             },
             "body_channel": {
                 "posture": posture,
                 "gesture_hint": gesture_hint,
                 "hesitation_hint": hesitation_hint,
+                "motion_emphasis": motion_emphasis,
             },
             "social_spatial_channel": {
                 "spacing_behavior": spacing_behavior,
                 "target_ref": target,
                 "orientation_mode": orientation_mode,
+                "contact_phase": contact_phase,
             },
             "physiology_channel": {
                 "breath": breath,
+                "breath_state": breath_state,
                 "guarding": "elevated" if guarding_elevated else "low",
                 "state_band": physiology_state_band,
+                "fatigue_signal": fatigue_signal,
             },
             "actor_control_frames": [
                 {
@@ -85,6 +114,7 @@ class CharacterAgentL4Executor:
                     "posture": posture,
                     "gesture_hint": gesture_hint,
                     "hesitation_hint": hesitation_hint,
+                    "motion_emphasis": motion_emphasis,
                 },
                 "focus_state": {
                     "target_id": target,
@@ -96,13 +126,21 @@ class CharacterAgentL4Executor:
                     "requested_action": decision.selected_intent,
                     "override_state": "",
                 },
+                "contact_phase": contact_phase,
+                "execution_semantics": execution_semantics,
                 "equipment_state": {},
                 "expression_hint": expression_hint,
+                "face_state": {
+                    "micro_expression_plan": micro_expression_plan,
+                    "facs_ready_tags": facs_ready_tags,
+                },
                 "physiology_hint": physiology_hint,
                 "physiology_state": {
                     "breath": breath,
+                    "breath_state": breath_state,
                     "guarding": "elevated" if guarding_elevated else "low",
                     "state_band": physiology_state_band,
+                    "fatigue_signal": fatigue_signal,
                 },
                 "speech_state": {
                     "active_command_type": decision.selected_intent,
@@ -118,6 +156,55 @@ class CharacterAgentL4Executor:
                 ),
             },
         }
+
+    def _contact_phase(
+        self,
+        *,
+        target: str,
+        interpretation: CharacterInterpretation,
+        decision: CharacterIntentDecision,
+    ) -> str:
+        if not self._has_actor_target(target):
+            return "none"
+        if decision.selected_intent in {"approach", "speak_public", "speak_private"}:
+            return "greeting"
+        if decision.selected_intent in {"follow_target", "share_info", "withhold"}:
+            return "contact_hold"
+        if interpretation.interpretation_type == "social_signal" and decision.selected_intent in {"observe_target", "attention_shift"}:
+            return "contact_probe"
+        return "none"
+
+    def _execution_semantics(
+        self,
+        *,
+        decision: CharacterIntentDecision,
+        contact_phase: str,
+        gesture_hint: str,
+    ) -> dict[str, str]:
+        return {
+            "movement_intent": decision.selected_intent,
+            "contact_phase": contact_phase,
+            "speech_mode": self._speech_mode(decision.selected_intent),
+            "gesture_mode": self._gesture_mode(decision.selected_intent, gesture_hint),
+        }
+
+    def _speech_mode(self, selected_intent: str) -> str:
+        if selected_intent == "speak_public":
+            return "public"
+        if selected_intent == "speak_private":
+            return "private"
+        if selected_intent in {"share_info", "withhold"}:
+            return "targeted"
+        return "none"
+
+    def _gesture_mode(self, selected_intent: str, gesture_hint: str) -> str:
+        if selected_intent in {"approach", "speak_public", "speak_private"}:
+            return "acknowledge"
+        if gesture_hint in {"draw_back", "brace"}:
+            return "guard"
+        if gesture_hint in {"inspect", "trail"}:
+            return gesture_hint
+        return "steady"
 
     def _guarding_elevated(
         self,
@@ -320,6 +407,46 @@ class CharacterAgentL4Executor:
         if snapshot.vigilance_level == "elevated":
             return "heightened_vigilance"
         return interpretation.interpretation_type
+
+    def _micro_expression_plan(
+        self,
+        *,
+        snapshot: CharacterPrivateWorldSnapshot,
+        interpretation: CharacterInterpretation,
+        decision: CharacterIntentDecision,
+    ) -> list[str]:
+        plan: list[str] = []
+        if interpretation.ambiguity_level in {"medium", "high"}:
+            plan.append("brow_tension")
+        if snapshot.vigilance_level == "elevated" or interpretation.risk_level in {"medium", "high"}:
+            plan.append("eye_narrow")
+        if decision.selected_intent in {"withhold", "speak_private"}:
+            plan.append("lip_press")
+        if not plan:
+            plan.append("neutral_hold")
+        return plan
+
+    def _facs_ready_tags(self, *, expression_hint: str, micro_expression_plan: list[str]) -> list[str]:
+        tags = [f"expression:{expression_hint}"]
+        tags.extend(f"micro:{item}" for item in micro_expression_plan)
+        return tags
+
+    def _motion_emphasis(
+        self,
+        *,
+        snapshot: CharacterPrivateWorldSnapshot,
+        interpretation: CharacterInterpretation,
+        decision: CharacterIntentDecision,
+    ) -> str:
+        if decision.selected_intent in {"approach", "follow_target"}:
+            return "forward_intent"
+        if decision.selected_intent in {"withdraw", "break_contact", "seek_private_distance"}:
+            return "defensive_recoil"
+        if snapshot.vigilance_level == "elevated" or interpretation.risk_level in {"medium", "high"}:
+            return "guarded_precision"
+        if interpretation.ambiguity_level in {"medium", "high"}:
+            return "hesitant_precision"
+        return "neutral"
 
     def _build_requested_actions(
         self,

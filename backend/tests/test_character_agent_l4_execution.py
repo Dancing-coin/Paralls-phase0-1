@@ -55,6 +55,11 @@ def test_l4_executor_builds_five_channel_execution_plan() -> None:
     assert "body_channel" in plan
     assert "social_spatial_channel" in plan
     assert "physiology_channel" in plan
+    assert "micro_expression_plan" in plan["face_channel"]
+    assert "facs_ready_tags" in plan["face_channel"]
+    assert "motion_emphasis" in plan["body_channel"]
+    assert "breath_state" in plan["physiology_channel"]
+    assert "fatigue_signal" in plan["physiology_channel"]
 
 
 def test_l4_executor_keeps_actor_facing_ingress_explicit() -> None:

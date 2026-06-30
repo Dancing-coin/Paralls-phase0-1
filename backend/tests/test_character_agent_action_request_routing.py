@@ -1025,6 +1025,155 @@ def test_approach_request_and_settlement_are_written_back_to_runtime_timeline() 
     assert any(entry["event_type"] == "character_agent_settlement_result" for entry in bundle["working_memory"])
 
 
+def test_social_spatial_settlement_updates_runtime_continuity_state() -> None:
+    import app.main as main
+
+    reset_runtime_state()
+    _handle_envelope(
+        Envelope(
+            message_type="character_agent_execution",
+            payload={
+                "actor_id": "char_b",
+                "action_request_bundle": {
+                    "requested_actions": [
+                        {
+                            "request_type": "approach",
+                            "actor_id": "char_b",
+                            "target_actor_id": "char_a",
+                        }
+                    ]
+                },
+            },
+        )
+    )
+
+    approached = main.character_agent_runtime.get_runtime_continuity_state("char_b")
+    assert approached["ongoing_contact_target"] == "char_a"
+    assert approached["interrupted_action"] == ""
+    assert approached["last_transition_kind"] == "accepted"
+
+    _handle_envelope(
+        Envelope(
+            message_type="character_agent_execution",
+            payload={
+                "actor_id": "char_b",
+                "action_request_bundle": {
+                    "requested_actions": [
+                        {
+                            "request_type": "break_contact",
+                            "actor_id": "char_b",
+                            "target_actor_id": "char_a",
+                        }
+                    ]
+                },
+            },
+        )
+    )
+
+    settled = main.character_agent_runtime.get_runtime_continuity_state("char_b")
+    assert settled["ongoing_contact_target"] == ""
+    assert settled["interrupted_action"] == ""
+    assert settled["last_transition_kind"] == "accepted"
+
+
+def test_social_spatial_continuity_marks_recovering_when_contact_resumes() -> None:
+    import app.main as main
+
+    reset_runtime_state()
+    _handle_envelope(
+        Envelope(
+            message_type="character_agent_execution",
+            payload={
+                "actor_id": "char_b",
+                "action_request_bundle": {
+                    "requested_actions": [
+                        {
+                            "request_type": "approach",
+                            "actor_id": "char_b",
+                            "target_actor_id": "char_a",
+                        }
+                    ]
+                },
+            },
+        )
+    )
+    _handle_envelope(
+        Envelope(
+            message_type="character_agent_execution",
+            payload={
+                "actor_id": "char_b",
+                "action_request_bundle": {
+                    "requested_actions": [
+                        {
+                            "request_type": "break_contact",
+                            "actor_id": "char_b",
+                            "target_actor_id": "char_a",
+                        }
+                    ]
+                },
+            },
+        )
+    )
+    _handle_envelope(
+        Envelope(
+            message_type="character_agent_execution",
+            payload={
+                "actor_id": "char_b",
+                "action_request_bundle": {
+                    "requested_actions": [
+                        {
+                            "request_type": "approach",
+                            "actor_id": "char_b",
+                            "target_actor_id": "char_a",
+                        }
+                    ]
+                },
+            },
+        )
+    )
+
+    timeline = main.character_agent_runtime.get_session_timeline("char_b")
+    execution_requests = [
+        entry
+        for entry in timeline
+        if entry["event_type"] == "character_agent_execution_request"
+    ]
+    recovered = main.character_agent_runtime.get_runtime_continuity_state("char_b")
+    assert execution_requests
+    assert recovered["last_transition_kind"] == "accepted"
+    assert recovered["ongoing_contact_target"] == "char_a"
+    assert recovered["interrupted_action"] == ""
+
+
+def test_character_agent_execution_route_emits_scheduling_round_trace() -> None:
+    reset_runtime_state()
+    messages = _handle_envelope(
+        Envelope(
+            message_type="character_agent_execution",
+            payload={
+                "actor_id": "char_b",
+                "action_request_bundle": {
+                    "requested_actions": [
+                        {
+                            "request_type": "approach",
+                            "actor_id": "char_b",
+                            "target_actor_id": "char_a",
+                        }
+                    ]
+                },
+            },
+        )
+    )
+
+    traces = [message for message in messages if message["message_type"] == "scheduling_round_trace"]
+
+    assert traces
+    payload = traces[-1]["payload"]
+    assert payload["round_id"] == 1
+    assert payload["lead_actor_id"] == "char_b"
+    assert payload["active_actor_ids"]
+
+
 def test_follow_target_request_and_settlement_are_written_back_to_runtime_timeline() -> None:
     import app.main as main
 

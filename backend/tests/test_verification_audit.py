@@ -1484,7 +1484,18 @@ def test_backend_bridge_exposes_backend_disconnected_signal_chain() -> None:
 
     assert 'signal backend_disconnected(code)' in bus_source
     assert '_bus_emit("backend_disconnected", [ws.get_close_code()])' in bridge_source
-    assert "last_ready_state = WebSocketPeer.STATE_CLOSED" in bridge_source
+
+
+def test_backend_bridge_marks_connect_request_as_connecting_before_poll_short_circuit() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    bridge_source = (project_root / "scripts" / "autoload" / "BackendBridge.gd").read_text(
+        encoding="utf-8"
+    )
+    connect_section = bridge_source.split("func connect_to_backend(url: String) -> int:", 1)[1].split(
+        "func send_envelope", 1
+    )[0]
+
+    assert "last_ready_state = WebSocketPeer.STATE_CONNECTING" in connect_section
 
 
 def test_main_demo_controller_reconnects_and_replays_pending_phase0_requests() -> None:

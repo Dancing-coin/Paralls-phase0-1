@@ -5,11 +5,19 @@ import json
 from pathlib import Path
 
 from app.character_agent.memory.event_memory import CharacterEventMemory
+from app.character_agent.memory.higher_order_memory import CharacterHigherOrderMemory
 from app.character_agent.memory.knowledge_memory import CharacterKnowledgeMemory
 from app.character_agent.memory.observation_memory import CharacterObservationMemory
 from app.character_agent.memory.social_memory import CharacterSocialMemory
 from app.character_agent.memory.working_memory import CharacterWorkingMemory
+from app.character_agent.models.dynamic_state import CharacterDynamicState
+from app.character_agent.models.event_memory import CharacterEventMemoryRecord
+from app.character_agent.models.higher_order_memory import CharacterHigherOrderMemoryRecord
 from app.character_agent.models.knowledge_state import KnowledgeState
+from app.character_agent.models.knowledge_memory import CharacterKnowledgeMemoryRecord
+from app.character_agent.models.memory_record_bundle import CharacterMemoryRecordBundle
+from app.character_agent.models.observation_memory import CharacterObservationMemoryRecord
+from app.character_agent.models.social_memory import CharacterSocialMemoryRecord
 from app.character_agent.models.working_memory_state import CharacterWorkingMemoryState
 
 
@@ -28,6 +36,7 @@ class CharacterAgentMemoryStore:
         self._observation = CharacterObservationMemory()
         self._knowledge = CharacterKnowledgeMemory()
         self._social = CharacterSocialMemory()
+        self._higher_order = CharacterHigherOrderMemory()
         self._events_by_actor: dict[str, list[dict[str, object]]] = {}
         self._storage_path: Path | None = None
         if storage_root is not None:
@@ -165,28 +174,99 @@ class CharacterAgentMemoryStore:
                 source_event_id=source_event_id,
                 producer_ts=producer_ts,
             )
+        elif event_type == "knowledge_belief_event":
+            source_event_id = str(event.get("event_id", "") or "")
+            producer_ts = int(event.get("producer_ts", 0) or 0)
+            proposition_key = str(payload.get("proposition_key", "") or "")
+            proposition = str(payload.get("proposition", "") or proposition_key)
+            if proposition_key == "":
+                return
+            self._knowledge.upsert_proposition(
+                actor_id=actor_id,
+                proposition_key=proposition_key,
+                proposition=proposition,
+                state=payload.get("state", KnowledgeState.SUSPECTED),
+                confidence=float(payload.get("confidence", 0.0) or 0.0),
+                source_event_id=source_event_id,
+                producer_ts=producer_ts,
+            )
+        elif event_type == "social_cognition_event":
+            source_event_id = str(event.get("event_id", "") or "")
+            producer_ts = int(event.get("producer_ts", 0) or 0)
+            entity_id = str(payload.get("entity_id", "") or "")
+            if entity_id == "":
+                return
+            self._social.upsert_relation(
+                actor_id=actor_id,
+                entity_id=entity_id,
+                trust_baseline=float(payload.get("trust_baseline", 0.5) or 0.5),
+                suspicion_baseline=float(payload.get("suspicion_baseline", 0.0) or 0.0),
+                intimacy=float(payload.get("intimacy", 0.0) or 0.0),
+                dependency=float(payload.get("dependency", 0.0) or 0.0),
+                unresolved_tension=float(payload.get("unresolved_tension", 0.0) or 0.0),
+                shared_secret_refs=[
+                    str(item) for item in payload.get("shared_secret_refs", []) if str(item)
+                ]
+                if isinstance(payload.get("shared_secret_refs", []), list)
+                else [],
+                source_event_id=source_event_id,
+                producer_ts=producer_ts,
+            )
+        elif event_type == "higher_order_belief_event":
+            source_event_id = str(event.get("event_id", "") or "")
+            producer_ts = int(event.get("producer_ts", 0) or 0)
+            subject_actor_id = str(payload.get("subject_actor_id", "") or "")
+            proposition_key = str(payload.get("proposition_key", "") or "")
+            meta_belief = str(payload.get("meta_belief", "") or "")
+            if subject_actor_id == "" or proposition_key == "" or meta_belief == "":
+                return
+            self._higher_order.upsert_meta_belief(
+                actor_id=actor_id,
+                subject_actor_id=subject_actor_id,
+                proposition_key=proposition_key,
+                meta_belief=meta_belief,
+                confidence=float(payload.get("confidence", 0.0) or 0.0),
+                source_event_id=source_event_id,
+                producer_ts=producer_ts,
+            )
 
     def retrieval_bundle(self, actor_id: str) -> dict[str, list[dict[str, object]]]:
         event_memories = self._event.recall(actor_id)
         observation_memories = self._observation.recall(actor_id)
         knowledge_memories = self._knowledge.recall(actor_id)
         social_memories = self._social.recall(actor_id)
+        higher_order_memories = self._higher_order.recall(actor_id)
         return {
             "working_memory": self._working.recall(actor_id),
             "event_memories": event_memories,
             "observation_memories": observation_memories,
             "knowledge_memories": knowledge_memories,
             "social_memories": social_memories,
+            "higher_order_memories": higher_order_memories,
             "episodic_memories": self._legacy_episodic_memories(event_memories),
             "relational_memories": self._legacy_relational_memories(knowledge_memories),
         }
+
+    def retrieval_record_bundle(self, actor_id: str) -> CharacterMemoryRecordBundle:
+        return CharacterMemoryRecordBundle(
+            event_memories=self._event.recall_records(actor_id),
+            observation_memories=self._observation.recall_records(actor_id),
+            knowledge_memories=self._knowledge.recall_records(actor_id),
+            social_memories=self._social.recall_records(actor_id),
+            higher_order_memories=self._higher_order.recall_records(actor_id),
+        )
 
     def working_memory_state(
         self,
         actor_id: str,
         private_snapshot: dict[str, object] | None = None,
+        dynamic_state: dict[str, object] | CharacterDynamicState | None = None,
     ) -> CharacterWorkingMemoryState:
-        return self._working.build_state(actor_id, private_snapshot=private_snapshot)
+        return self._working.build_state(
+            actor_id,
+            private_snapshot=private_snapshot,
+            dynamic_state=dynamic_state,
+        )
 
     def _sanitize_working_memory_event(self, event: dict[str, object]) -> dict[str, object]:
         stored = dict(event)
@@ -224,12 +304,14 @@ class CharacterAgentMemoryStore:
             "observation_memories_count": self._count_of(memory_dict.get("observation_memories")),
             "knowledge_memories_count": self._count_of(memory_dict.get("knowledge_memories")),
             "social_memories_count": self._count_of(memory_dict.get("social_memories")),
+            "higher_order_memories_count": self._count_of(memory_dict.get("higher_order_memories")),
             "working_memory_sample": self._sample_summary(memory_dict.get("working_memory")),
             "event_memory_sample": self._sample_summary(memory_dict.get("event_memories")),
             "observation_memory_sample": self._sample_summary(memory_dict.get("observation_memories")),
             "relational_memory_sample": self._sample_summary(memory_dict.get("relational_memories")),
             "knowledge_memory_sample": self._sample_summary(memory_dict.get("knowledge_memories")),
             "social_memory_sample": self._sample_summary(memory_dict.get("social_memories")),
+            "higher_order_memory_sample": self._sample_summary(memory_dict.get("higher_order_memories")),
         }
 
     def _event_summary(self, event: object) -> dict[str, object]:
@@ -253,6 +335,7 @@ class CharacterAgentMemoryStore:
                 first.get("summary", "")
                 or first.get("observation_summary", "")
                 or first.get("proposition", "")
+                or first.get("meta_belief", "")
                 or first.get("entity_id", "")
                 or first.get("event_type", "")
             )

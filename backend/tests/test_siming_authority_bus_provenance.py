@@ -1,6 +1,9 @@
 from pathlib import Path
 
 import app.main as main
+from app.character_agent.gateway.model_gateway import CharacterModelGateway
+from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
 from app.models.authority_event import AuthorityEvent
 from app.models.siming_event import InterventionCandidate
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
@@ -15,8 +18,54 @@ from app.services.siming_runtime import SimingRuntime
 from app.ws_protocol import Envelope
 
 
+class _LocalGateway:
+    def __init__(self) -> None:
+        self._gateway = CharacterModelGateway()
+
+    def run_task(
+        self,
+        *,
+        task_kind: str,
+        context: dict[str, object],
+        route_override: str | None = None,
+    ) -> dict[str, object]:
+        return self._gateway.run_task(
+            task_kind=task_kind,
+            context=context,
+            route_override=route_override or "local_only",
+        )
+
+    def prepare_run_request(
+        self,
+        *,
+        task_kind: str,
+        context: dict[str, object],
+        route_override: str | None = None,
+    ) -> dict[str, object]:
+        return self._gateway.prepare_run_request(
+            task_kind=task_kind,
+            context=context,
+            route_override=route_override or "local_only",
+        )
+
+
+def _local_runtime() -> CharacterAgentRuntime:
+    runtime = CharacterAgentRuntime()
+    local_gateway = _LocalGateway()
+    runtime._l2 = CharacterAgentL2Service(gateway=local_gateway, profile_registry=runtime._profile_registry)
+    runtime._l3 = CharacterAgentL3Service(gateway=local_gateway)
+    return runtime
+
+
 def _messages_of_type(messages: list[dict[str, object]], message_type: str) -> list[dict[str, object]]:
     return [message for message in messages if message.get("message_type") == message_type]
+
+
+def _reset_runtime_state_with_local_character_model() -> None:
+    main.reset_runtime_state()
+    runtime = _local_runtime()
+    main.character_agent_runtime = runtime
+    main.siming_event_pipeline._character_dispatch_adapter._runtime = runtime
 
 
 def make_visual_fact_event(**overrides: object) -> AuthorityEvent:
@@ -46,7 +95,7 @@ def make_visual_fact_event(**overrides: object) -> AuthorityEvent:
 
 def test_authority_siming_event_fans_out_per_actor_with_distinct_delivery_instances() -> None:
     bus = InMemoryAuthorityEventBus()
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
     dispatch_results = []
 
     def dispatch(event: AuthorityEvent) -> None:
@@ -95,7 +144,7 @@ def test_authority_siming_event_fans_out_per_actor_with_distinct_delivery_instan
 
 
 def test_visual_fact_siming_output_is_projected_from_authority_event() -> None:
-    main.reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
 
     outbound = main._handle_envelope(
         Envelope(
@@ -134,7 +183,7 @@ def test_visual_fact_siming_output_is_projected_from_authority_event() -> None:
 
 
 def test_interact_success_siming_outputs_are_projected_from_authority_bus() -> None:
-    main.reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
 
     outbound = main._handle_envelope(
         Envelope(

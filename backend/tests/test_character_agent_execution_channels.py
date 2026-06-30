@@ -325,3 +325,24 @@ def test_execution_channels_map_withdraw_to_visible_backoff_semantics() -> None:
             "target_actor_id": "char_a",
         }
     ]
+
+
+@pytest.mark.parametrize("selected_intent", ["approach", "speak_public", "speak_private"])
+def test_execution_channels_stage_greeting_contact_phase_for_social_contact(
+    selected_intent: str,
+) -> None:
+    executor = CharacterAgentL4Executor()
+
+    plan = executor.build_execution_plan(
+        snapshot=_snapshot().model_copy(update={"attention_targets": ["char_a"]}),
+        interpretation=_interpretation().model_copy(
+            update={
+                "attention_target": "char_a",
+                "interpretation_type": "social_signal",
+            }
+        ),
+        decision=_decision().model_copy(update={"selected_intent": selected_intent}),
+    )
+
+    assert plan["social_spatial_channel"]["contact_phase"] == "greeting"
+    assert plan["presentation_plan"]["contact_phase"] == "greeting"

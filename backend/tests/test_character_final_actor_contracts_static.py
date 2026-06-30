@@ -120,6 +120,17 @@ def test_knight_role_skin_consumes_character_presentation_input_contract_directl
     assert "CharacterActorSchemaRef.normalize_presentation_input(candidate)" not in role_skin_source
 
 
+def test_contact_phase_semantics_flow_through_runtime_state_and_role_skin() -> None:
+    runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
+    role_skin_source = _read("scripts/character/KnightRoleSkin.gd")
+    contract_source = _read("scripts/character/CharacterPresentationInput.gd")
+
+    assert "func get_contact_phase(" in contract_source
+    assert "CharacterPresentationInputRef.get_contact_phase(agent_presentation_input)" in runtime_state_source
+    assert "CharacterPresentationInputRef.get_contact_phase(contract)" in role_skin_source
+    assert "greeting_nod" in role_skin_source
+
+
 def test_character_agent_execution_metadata_is_staged_through_runtime_state() -> None:
     runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
     replica_source = _read("scripts/character/CharacterReplica.gd")
