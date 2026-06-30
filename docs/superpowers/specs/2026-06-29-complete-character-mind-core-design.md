@@ -271,6 +271,37 @@ It must also be able to update:
 
 `L2` is therefore a live cognition-update layer, not just a structured classifier.
 
+`L2` must also be **model-led**.
+
+That means:
+
+- the semantic ownership of subjective interpretation belongs to the character model
+- local code may assemble context, validate schema, enforce safety boundaries, and persist outputs
+- local code may not silently replace role interpretation with a rule-only cognition engine while still claiming the same mind-core semantics
+
+The repository may keep local helpers for:
+
+- context shaping
+- retry orchestration
+- structured validation
+- provenance capture
+- observability
+
+But it may not keep a hidden second brain that locally decides:
+
+- what another role probably meant
+- what the current event means for the role
+- which belief / social / higher-order updates should exist
+- which goal hints the role should now adopt
+
+If the primary model path is unavailable, the honest state is:
+
+- cognition unavailable
+
+not:
+
+- local cognition replacement succeeded
+
 ### 7. Unified Cognition Engine Semantics
 
 `L2` cannot remain a bag of one-off scenario handlers.
@@ -298,7 +329,16 @@ It is:
 
 - unify the evidence-to-update rules
 - make update provenance explicit
-- keep the model-facing contract and local fallback contract semantically aligned
+- deepen the model-facing reasoning contract so the role can perform real inner deliberation
+
+This also means the repository must reject a false form of “closure” where:
+
+- model inference is optional for core role cognition
+- local heuristic handlers fabricate belief, social, higher-order, dynamic, or goal updates as if they were equivalent to model-led thought
+
+Structured local validation is allowed.
+
+Structured local cognition substitution is not.
 
 ### 8. Goal System As A First-Class Runtime Layer
 
@@ -309,7 +349,10 @@ Required goal layers:
 - long-term motive
 - mid-term social or situational strategy
 - immediate tactical goal
+- parallel non-dominant goals that remain active even when they are not currently leading
 - supporting goals
+- explicitly preserved secondary goals
+- explicitly suppressed or backgrounded goals
 - blockers
 - explicit goal sources
 
@@ -317,11 +360,15 @@ Required runtime goal artifacts:
 
 - structured `goal_hint` objects rather than raw strings
 - a structured active-goal frame carried from `L2/L3` into runtime outputs
+- a structured multi-goal portfolio carrying `goal_id`, `goal`, `horizon`, `status`, `priority`, `urgency`, `source`, and local blockers/evidence
+- explicit dominant-goal identity plus preserved/suppressed goal identities for the current turn
 - persisted current goal state
 - previous goal state and short history tail
 - explicit transition semantics
 - explicit reorganization semantics
 - explicit repair / recovery semantics after failure, contradiction, or blocked execution
+- an optional background-cognition loop that can be globally disabled to prevent idle compute burn
+- explicit supervision state describing whether the background loop is off, passive, active, or quiet
 
 Required transition semantics include at minimum:
 
@@ -338,8 +385,12 @@ The goal system is complete only when the runtime can answer all of the followin
 - what the role wants long-term
 - what strategy it is currently pursuing
 - what it is trying to do right now
+- which other goals remain active in parallel even when they are not currently dominant
+- which goals were preserved versus suppressed in the current arbitration step
 - what evidence changed that goal frame
+- how a new event reweighted or reorganized the goal portfolio across turns
 - whether the current frame is a continuation, escalation, reorganization, or repair
+- whether the role is currently under weak / medium / strong supervision and how that supervision constrained reappraisal
 
 ### 9. Full `L3` Planning
 
@@ -385,8 +436,73 @@ The complete mind core requires this layer to be:
 It must also be:
 
 - goal-frame-aware
+- multi-goal-aware
 - transition-aware
 - able to favor repair, withdrawal, concealment, or strategy change when the active goal frame is blocked or contradicted
+- able to continue low-frequency reappraisal when background cognition is enabled, without requiring fresh external stimulus every turn
+
+`L3` must also be **model-led** in its planning semantics.
+
+That means:
+
+- the model is responsible for intent-space reasoning, tradeoff judgment, and final role-consistent intent selection
+- the model is responsible for multi-goal arbitration: deciding the dominant goal, preserved secondary goals, and suppressed/backgrounded goals for the current turn
+- local code may contribute action-affordance inventories, authority boundaries, control-mode restrictions, and schema validation
+- local code may not retain final semantic ownership by merging model candidates with a local fallback planner and then choosing the final intent itself
+
+Local planning guardrails are allowed to answer:
+
+- is this action contract-valid
+- is this action allowed in the current control mode
+- is this action currently executable without violating authority boundaries
+
+Local planning guardrails are not allowed to answer:
+
+- what the role should really do instead
+- which social tactic best fits the role right now
+- whether the role should probe, conceal, disclose, distance, or escalate
+- which competing goals should dominate the role's mind this turn
+
+### 9.1 Background Cognition Loop
+
+The complete role runtime should not rely only on foreground event reactions. It needs an optional low-frequency background cognition loop so a role can continue reappraising unresolved tensions, recent outcomes, and goal continuity even when external input is sparse.
+
+This background loop must satisfy all of the following:
+
+- it is optional and globally switchable so rooms can avoid idle compute burn
+- per-role background mode is explicit: `off`, `passive`, `active`, or `quiet`
+- most background ticks update internal cognition / goals only and do not directly emit world actions
+- background ticks use the same role brain (`L2` / `L3`) rather than a second local rule brain
+- background ticks consume persisted goal state, goal history, unresolved tensions, recent outcomes, and current supervision state
+- background ticks participate in the runtime scheduling layer rather than existing only as an unused helper path
+- scheduled background ticks should prefer already schedulable / active actors instead of waking the whole room indiscriminately
+- background ticks should write an explicit background-agenda state, not only an opaque debug log, so later turns can inherit latent tendency and watch focus
+
+### 9.2 Supervision Boundary
+
+`Siming` may weakly supervise role background cognition by default, but medium / strong supervision must remain externally authorized.
+
+Allowed supervision shape:
+
+- `weak`: `Siming` may directly influence cadence, caution, pressure theme, attention theme, wake-up hints, and quieting hints
+- `medium`: externally authorized; may constrain goal classes, intent classes, and proactive initiation posture
+- `strong`: externally authorized; may force quiet conservative cognition and prohibit specific escalation classes
+
+Hard boundary:
+
+- supervision constrains the space of thought
+- supervision does not directly write final belief updates
+- supervision does not directly assign the dominant goal
+- supervision does not directly assign the final selected intent
+
+Authorization boundary:
+
+- `Siming` may request medium / strong supervision upgrades
+- default approval source is an external strategy / scenario layer
+- GM / operator override may exist as an emergency path
+- player-facing gameplay surfaces are not an authorization source for background cognition supervision
+- supervision authorizations and unresolved-tension state must survive session durability / reload boundaries
+- the runtime must expose a real external authorization ingress rather than requiring in-process direct method calls
 
 ### 10. Control Arbitration That Preserves One Role Species
 
@@ -407,6 +523,24 @@ Requirements:
 - player-priority mode still produces suggestion packets and automatic micro-continuity
 - away-takeover stays conservative and low-risk
 - scripted override still writes the same runtime lineage and does not bypass the mind core invisibly
+
+When cognition or planning models are unavailable, arbitration may enter an explicit
+`continuity_floor` mode.
+
+In that mode:
+
+- no new belief / social / higher-order updates are invented locally
+- no new rich planning semantics are invented locally
+- only narrow continuity-preserving actions may be emitted
+
+Allowed continuity-floor outcomes include:
+
+- observe
+- hold position
+- remain silent
+- preserve distance
+- self-protect
+- withdraw
 
 ### 11. `L4` Contract Completeness Without Full Embodiment Completion
 
@@ -456,6 +590,20 @@ It may not:
 - directly rewrite physical truth
 - bypass `System L1 / ESM`
 
+### Model-Failure Rule
+
+If the model path for `L2` or `L3` is unavailable, the system may:
+
+- retry the same provider
+- retry an alternate provider
+- enter a declared continuity-floor runtime state
+
+It may not:
+
+- silently substitute a pure local cognition engine for `L2`
+- silently substitute a pure local planning engine for `L3`
+- emit fabricated belief, social, higher-order, or goal updates while presenting them as equivalent to model-led role thought
+
 ### Siming Rule
 
 `Siming` may:
@@ -500,6 +648,8 @@ Implement the missing core layers and deepen existing ones:
 - goal-system closure
 - stronger typed runtime state and provenance
 - stronger storage, replay, and auditability
+- removal of local rule-brain ownership from `L2/L3`
+- explicit continuity-floor semantics for model-unavailable states
 
 ### Track C: Execution Preservation
 
@@ -543,15 +693,19 @@ This character mind core is accepted only when all are true.
 5. Dynamic state exists as its own first-class runtime layer rather than being smeared into snapshot or memory.
 6. `L2` consumes profile + snapshot + memory + dynamic state and produces real cognition-update outputs.
 7. `L2` updates knowledge, social, higher-order, and dynamic state rather than only returning a summary object.
-8. `L2` uses a unified cognition-update logic across social, world, body, and Siming-triggered evidence rather than only disconnected scenario patches.
-9. Goal hints, active-goal frames, and persisted goal-state are structured runtime objects with explicit provenance and continuity semantics.
-10. The goal system preserves long-term motive, mid-term strategy, immediate goal, supporting goals, blockers, sources, and repair/recovery semantics.
+8. `L2` is model-led for subjective interpretation and cognition-update production; local code does not silently replace that function with heuristic cognition generation.
+9. Goal hints, active-goal frames, goal portfolios, and persisted goal-state are structured runtime objects with explicit provenance and continuity semantics.
+10. The goal system preserves long-term motive, mid-term strategy, immediate goal, parallel active goals, preserved/suppressed goal sets, blockers, sources, and repair/recovery semantics.
 11. `L3` consumes `L2` outputs and manages a broad role action space rather than a narrow demo-only reaction set.
-12. `L3` uses persona / logic / gain-loss filtering grounded in profile, memory, knowledge state, higher-order cognition, dynamic state, and current goal-frame state.
+12. `L3` is model-led for intent deliberation, multi-goal arbitration, and final selection; local code remains a guardrail and execution-feasibility layer rather than a replacement planner.
 13. Player-priority, away-conservative, scripted, and full-auto modes all remain one runtime species.
-14. The output of the mind core is already sufficient to support later full embodiment completion without redesigning upstream layers.
-15. `System L1 / ESM / Siming` boundaries remain intact.
-16. A minimal `Phase 0` smoke path remains available unless a later approved plan explicitly and temporarily suspends it.
+14. Model-unavailable runtime states enter an explicit continuity-floor mode instead of fabricating replacement cognition.
+15. The output of the mind core is already sufficient to support later full embodiment completion without redesigning upstream layers.
+16. `System L1 / ESM / Siming` boundaries remain intact.
+17. Background cognition remains the character's own model-led loop; `Siming` supervision constrains cadence and context but does not replace role thought.
+18. Unresolved tensions and supervision authorizations are durable runtime state rather than transient in-memory only hints.
+19. Background agenda state is a first-class durable runtime artifact, not just a transient background tick byproduct.
+20. A minimal `Phase 0` smoke path remains available unless a later approved plan explicitly and temporarily suspends it.
 
 ## Verification Requirements
 
@@ -565,12 +719,22 @@ Minimum proof for the complete mind core must include:
   - higher-order-memory updates
   - dynamic-state updates
   - `L2` cognition outputs and writebacks
-  - unified cognition-update behavior across social / world / body / Siming evidence families
+  - model-led `L2` cognition outputs and writebacks without local replacement-cognition ownership
   - goal-hint typing, provenance, and normalization
+  - multi-goal portfolio typing, persistence, and normalization
   - goal-state transitions, reorganization, and repair/recovery behavior
+  - reinjection of persisted goal state / goal portfolio into later `L2/L3` turns
+  - background cognition switch / cadence / quiet-mode behavior
+  - supervision request, authorization, and effective supervision-state transitions
+  - weak `Siming` supervision context flow into `L2/L3`
+  - unresolved-tension persistence and recovery after session reload
+  - scheduled background cognition execution against the runtime schedulable-actor set
+  - background agenda state persistence and reinjection
+  - external supervision-authorization ingress
   - `L3` candidate generation breadth
-  - `L3` filter behavior under profile / memory / higher-order / goal-frame conditions
+  - model-led `L3` planning outputs with local guardrail-only postvalidation and model-owned goal arbitration
   - control-mode arbitration
+  - continuity-floor behavior when cognition/planning models are unavailable
 - runtime integration tests for:
   - full-auto roles
   - player-priority suggestion roles
@@ -578,6 +742,7 @@ Minimum proof for the complete mind core must include:
   - Siming pressure and salience bias
   - memory and cognition writeback after settlement/dialogue
   - suggestion packets and observability snapshots preserving current goal frame and reasoning lineage
+  - explicit cognition-unavailable / continuity-floor observability rather than silent local-brain substitution
 - fresh smoke verification proving the minimal `Phase 0` path still runs
 - fresh shared actor ingress verification proving the preserved execution path still consumes mind-core outputs
 
@@ -596,16 +761,16 @@ At minimum:
    - five-pool memory
    - dynamic state
 3. `full-l2-and-l3`
-   - cognition update layer
+   - model-led cognition update layer
    - higher-order reasoning
-   - broad action-space planning
-   - control arbitration and suggestion semantics
+   - model-led broad action-space planning
+   - control arbitration, suggestion semantics, and continuity-floor downgrade semantics
 4. `execution-preservation-and-readiness`
    - preserve smoke path
    - preserve shared actor ingress
    - make `L4` contracts embodiment-ready without requiring full embodiment completion now
 5. `mind-core-closure`
-   - unify remaining cognition-engine semantics
+   - remove remaining local replacement-brain semantics
    - formalize typed goal and mind-state runtime artifacts
    - complete goal transition / reorganization / repair semantics
    - preserve observability and assisted-mode carry-through for the final mind-core contract
