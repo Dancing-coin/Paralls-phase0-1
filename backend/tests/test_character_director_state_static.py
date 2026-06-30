@@ -22,6 +22,7 @@ def test_character_director_state_caches_all_observatory_families() -> None:
     assert "var recent_world_outcomes: Array[Dictionary] = []" in source
     assert "var recent_scheduling_rounds: Array[Dictionary] = []" in source
     assert "var recent_script_beats: Array[Dictionary] = []" in source
+    assert "var recent_dialogue_pairs: Array[Dictionary] = []" in source
     assert "var freeze_mode := false" in source
     assert "var frozen_frame := {}" in source
     assert 'character_agent_debug_snapshot_received.connect(_on_character_agent_debug_snapshot_received)' in source
@@ -62,6 +63,7 @@ def test_character_director_state_exposes_master_mode_and_freeze_controls() -> N
     assert "func get_latest_siming_summaries(limit: int = 3) -> Array[String]:" in source
     assert "func get_selected_actor_latest_siming_summary() -> String:" in source
     assert "func get_selected_actor_recent_siming_reasons(limit: int = 2) -> Array[String]:" in source
+    assert "func _merge_dialogue_pair_rows(" in source
 
 
 def test_character_director_state_selected_actor_siming_helpers_stay_presentation_only() -> None:
@@ -99,6 +101,24 @@ def test_character_director_state_bottom_strip_stays_single_merged_builder() -> 
     assert "if rows.size() > 3:" in bottom_strip_block
     assert "rows.slice(0, 3)" in bottom_strip_block
     assert "_dictionary_array(" in bottom_strip_block
+
+
+def test_character_director_state_keeps_dialogue_pair_ledger_outside_script_beat_window() -> None:
+    source = (ROOT / "scripts" / "ui" / "CharacterDirectorState.gd").read_text(encoding="utf-8")
+    dialogue_pair_block = _function_block(source, "func get_dialogue_pair_entries() -> Array[Dictionary]:")
+    script_beat_handler_block = _function_block(source, "func _on_script_beat_event_received(payload: Dictionary) -> void:")
+
+    assert '_state_frame_value("recent_dialogue_pairs", [])' in dialogue_pair_block
+    assert "recent_script_beats" not in dialogue_pair_block
+    assert "recent_dialogue_pairs = _merge_dialogue_pair_rows(" in script_beat_handler_block
+    assert 'payload.get("dialogue_pairs", [])' in script_beat_handler_block
+
+
+def test_character_director_state_freeze_frame_captures_dialogue_pair_ledger() -> None:
+    source = (ROOT / "scripts" / "ui" / "CharacterDirectorState.gd").read_text(encoding="utf-8")
+    freeze_block = _function_block(source, "func _capture_frozen_frame() -> void:")
+
+    assert '"recent_dialogue_pairs": recent_dialogue_pairs.duplicate(true)' in freeze_block
 
 
 def test_character_director_state_emits_signal_when_tab_cycles_actor_selection() -> None:

@@ -15,6 +15,7 @@ var recent_siming_events: Array[Dictionary] = []
 var recent_world_outcomes: Array[Dictionary] = []
 var recent_scheduling_rounds: Array[Dictionary] = []
 var recent_script_beats: Array[Dictionary] = []
+var recent_dialogue_pairs: Array[Dictionary] = []
 
 const MAX_EVENT_HISTORY := 24
 const DEFAULT_OBSERVATORY_ACTOR_IDS := ["char_c", "char_a", "char_b"]
@@ -199,22 +200,7 @@ func get_latest_bottom_strip_entries() -> Array[Dictionary]:
 
 
 func get_dialogue_pair_entries() -> Array[Dictionary]:
-	var pairs_by_key := {}
-	for beat in get_recent_script_beats():
-		var pair_entries = beat.get("dialogue_pairs", [])
-		if not (pair_entries is Array):
-			continue
-		for entry_variant in pair_entries:
-			if not (entry_variant is Dictionary):
-				continue
-			var entry: Dictionary = _normalize_dialogue_pair_entry((entry_variant as Dictionary).duplicate(true))
-			var pair_key := str(entry.get("pair_key", "") or "")
-			if pair_key.is_empty():
-				continue
-			pairs_by_key[pair_key] = entry
-	var rows: Array[Dictionary] = []
-	for pair_key in pairs_by_key.keys():
-		rows.append(pairs_by_key[pair_key])
+	var rows := _dictionary_array(_state_frame_value("recent_dialogue_pairs", []))
 	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		return str(a.get("pair_key", "")) < str(b.get("pair_key", ""))
 	)
@@ -294,6 +280,10 @@ func _on_script_beat_event_received(payload: Dictionary) -> void:
 	recent_script_beats.append(payload.duplicate(true))
 	if recent_script_beats.size() > MAX_EVENT_HISTORY:
 		recent_script_beats = _dictionary_array(recent_script_beats.slice(recent_script_beats.size() - MAX_EVENT_HISTORY, recent_script_beats.size()))
+	recent_dialogue_pairs = _merge_dialogue_pair_rows(
+		recent_dialogue_pairs,
+		payload.get("dialogue_pairs", [])
+	)
 	emit_signal("observatory_state_changed")
 
 
@@ -306,6 +296,7 @@ func _capture_frozen_frame() -> void:
 		"recent_world_outcomes": recent_world_outcomes.duplicate(true),
 		"recent_scheduling_rounds": recent_scheduling_rounds.duplicate(true),
 		"recent_script_beats": recent_script_beats.duplicate(true),
+		"recent_dialogue_pairs": recent_dialogue_pairs.duplicate(true),
 	}
 
 
@@ -390,3 +381,27 @@ func _normalize_dialogue_pair_entry(entry: Dictionary) -> Dictionary:
 	entry["spoken_content"] = "%s | %s" % [speaker_said, listener_said]
 	entry["alignment_label"] = "mismatch" if speaker_alignment == "mismatch" or listener_alignment == "mismatch" else "alignment"
 	return entry
+
+
+func _merge_dialogue_pair_rows(existing_rows: Array[Dictionary], incoming_rows_value: Variant) -> Array[Dictionary]:
+	var pairs_by_key := {}
+	for row in existing_rows:
+		var pair_key := str(row.get("pair_key", "") or "")
+		if pair_key.is_empty():
+			continue
+		pairs_by_key[pair_key] = row.duplicate(true)
+	if incoming_rows_value is Array:
+		for incoming_variant in incoming_rows_value:
+			if not (incoming_variant is Dictionary):
+				continue
+			var incoming_row := _normalize_dialogue_pair_entry((incoming_variant as Dictionary).duplicate(true))
+			var incoming_pair_key := str(incoming_row.get("pair_key", "") or "")
+			if incoming_pair_key.is_empty():
+				continue
+			pairs_by_key[incoming_pair_key] = incoming_row
+	var merged_rows: Array[Dictionary] = []
+	for pair_key in pairs_by_key.keys():
+		merged_rows.append((pairs_by_key[pair_key] as Dictionary).duplicate(true))
+	if merged_rows.size() > MAX_EVENT_HISTORY:
+		merged_rows = _dictionary_array(merged_rows.slice(merged_rows.size() - MAX_EVENT_HISTORY, merged_rows.size()))
+	return merged_rows
