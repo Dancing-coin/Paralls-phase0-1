@@ -1,6 +1,6 @@
 # 当前项目智能体与世界交互增量专题规格树
 
-- 状态：`awaiting-user-review`
+- 状态：`implemented-and-verified`
 - 日期：`2026-06-30`
 
 这个文件夹不再定义仓库主线。

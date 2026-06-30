@@ -7,17 +7,28 @@
 
 ## 任务
 
-- [ ] 明确 `Non-Runtime Tool Stack`
-- [ ] 明确 `Non-Runtime Production Stack`
-- [ ] 设计 `Scene Semantic Extractor`
-- [ ] 设计 `Spatial Structure Baker`
-- [ ] 设计 `Multimodal Semantic Classifier`
-- [ ] 设计 `Scene Knowledge Generator`
-- [ ] 设计 `Review Workbench`
-- [ ] 设计 `Dataset and Replay Builder`
+- [x] 明确 `Non-Runtime Tool Stack`
+- [x] 明确 `Non-Runtime Production Stack`
+- [x] 设计 `Scene Semantic Extractor`
+- [x] 设计 `Spatial Structure Baker`
+- [x] 设计 `Multimodal Semantic Classifier`
+- [x] 设计 `Scene Knowledge Generator`
+- [x] 设计 `Review Workbench`
+- [x] 设计 `Dataset and Replay Builder`
 
 ## 产出
 
 - 两类非运行时多模态工具链方案
 - 自动抽取 + 多模态识别 + 人工审核工作流
 - 数据集和回放构建路线
+
+## 执行证据
+
+- 落地文件：
+  - `backend/app/world_runtime/intelligence_upgrade.py`
+  - `backend/tests/test_current_project_intelligence_upgrade.py`
+- 验证：
+  - `python -m pytest backend/tests/test_current_project_intelligence_upgrade.py::test_non_runtime_multimodal_tooling_uses_tool_contexts_and_review_only_human_role -v`
+  - `python scripts/verification/verify_current_project_intelligence_upgrade.py`
+- 剩余风险：
+  - 当前落地为工具链 manifest 和上下文隔离契约，未实现真实资产处理或数据集构建流水线。

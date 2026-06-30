@@ -1,7 +1,7 @@
 # 当前项目 `Perception Query Frame` 与感知结果协议设计
 
 - 日期：`2026-06-29`
-- 状态：`awaiting-user-review`
+- 状态：`implemented-and-verified`
 - 上位规格：[2026-06-29-current-project-intelligence-upgrade-master-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-06-29-current-project-intelligence-upgrade-master-design.md)
 
 ## 1. 目标

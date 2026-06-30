@@ -7,15 +7,29 @@
 
 ## 任务
 
-- [ ] 设计 `Visual Patch Provider`
-- [ ] 设计 `Spatial Patch Provider`
-- [ ] 设计 `Auditory Context Provider`
-- [ ] 设计 `Embodied State Provider`
-- [ ] 明确按需、局部、节流原则
-- [ ] 设计 focused verifier，证明 Godot 不承担重推理和重体素化
+- [x] 设计 `Visual Patch Provider`
+- [x] 设计 `Spatial Patch Provider`
+- [x] 设计 `Auditory Context Provider`
+- [x] 设计 `Embodied State Provider`
+- [x] 明确按需、局部、节流原则
+- [x] 设计 focused verifier，证明 Godot 不承担重推理和重体素化
 
 ## 产出
 
 - 四类 Provider 方案
 - 性能保护约束
 - 与 `Perception Query Frame` 的接线关系
+
+## 执行证据
+
+- 落地文件：
+  - `scripts/character/VisualPatchProvider.gd`
+  - `scripts/character/SpatialPatchProvider.gd`
+  - `scripts/character/AuditoryContextProvider.gd`
+  - `scripts/character/EmbodiedStateProvider.gd`
+  - `backend/app/world_runtime/intelligence_upgrade.py`
+- 验证：
+  - `python -m pytest backend/tests/test_current_project_intelligence_upgrade.py::test_godot_sampling_frontend_declares_four_sampling_only_providers -v`
+  - `python scripts/verification/verify_current_project_intelligence_upgrade.py`
+- 剩余风险：
+  - 当前 provider 是采样协议前端，未做 Godot runtime 截图或音频采集实跑。

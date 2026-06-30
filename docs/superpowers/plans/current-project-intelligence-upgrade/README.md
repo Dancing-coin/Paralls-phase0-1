@@ -1,6 +1,6 @@
 # 当前项目智能体与世界交互增量专题计划树
 
-- 状态：`draft-tree-only`
+- 状态：`implemented-and-verified`
 - 日期：`2026-06-30`
 
 这份计划树服务于：
@@ -36,3 +36,14 @@
 ## 一句话收束
 
 这棵计划树的职责不是重新推进主线，而是把 mainline 已闭合之后仍需补强的感知、多模态、协议、具身和工具链能力逐步落地。
+
+## 当前执行证据
+
+- 聚合 focused verifier:
+  - `python scripts/verification/verify_current_project_intelligence_upgrade.py`
+- 最新证据报告：
+  - `.harness/verification/current-project-intelligence-upgrade-report.json`
+  - `.harness/verification/current-project-intelligence-upgrade-report.md`
+- 主线回归面保持使用：
+  - `python scripts/verification/harness.py --profile docs`
+  - `python scripts/verification/harness.py --profile mainline-unified-runtime`

@@ -7,14 +7,25 @@
 
 ## 任务
 
-- [ ] 让角色专属多模态栈与 `Perception Query Frame` 对齐
-- [ ] 设计角色专属 Fusion 的输入输出
-- [ ] 定义 `Actor Scene Knowledge` 的结构、更新原则和与现有 memory/snapshot 的关系
-- [ ] 定义主动感知触发条件
-- [ ] 设计 focused proof，证明角色智能体不是重做心智核心，而是在其之上增强
+- [x] 让角色专属多模态栈与 `Perception Query Frame` 对齐
+- [x] 设计角色专属 Fusion 的输入输出
+- [x] 定义 `Actor Scene Knowledge` 的结构、更新原则和与现有 memory/snapshot 的关系
+- [x] 定义主动感知触发条件
+- [x] 设计 focused proof，证明角色智能体不是重做心智核心，而是在其之上增强
 
 ## 产出
 
 - 角色专属多模态链方案
 - `Actor Scene Knowledge` 更新方案
 - 主动感知闭环方案
+
+## 执行证据
+
+- 落地文件：
+  - `backend/app/world_runtime/intelligence_upgrade.py`
+  - `backend/tests/test_current_project_intelligence_upgrade.py`
+- 验证：
+  - `python -m pytest backend/tests/test_current_project_intelligence_upgrade.py::test_character_multimodal_stack_and_actor_scene_knowledge_extend_mind_core_without_rewriting_it -v`
+  - `python scripts/verification/verify_current_project_intelligence_upgrade.py`
+- 剩余风险：
+  - 当前落地为角色私有多模态栈与 Actor Scene Knowledge 契约，未改写或重跑 character mind core。
