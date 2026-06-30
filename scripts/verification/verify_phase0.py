@@ -30,6 +30,10 @@ MAIN_AUTOTEST_QUIT_AFTER = "900"
 FOCUS_AUTOTEST_QUIT_AFTER = "180"
 MAIN_AUTOTEST_MARKER_TIMEOUT_SECONDS = 900.0
 FOCUS_AUTOTEST_MARKER_TIMEOUT_SECONDS = 120.0
+PHASE0_VERIFY_ENV = {
+    "CHARACTER_MODEL_PROVIDER_KIND": "local",
+    "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
+}
 
 
 def _read_character_agent_execution_result(log_dir: Path, project_root: Path, python_exe: str, godot_exe: Path) -> dict[str, object]:
@@ -45,6 +49,7 @@ def _read_character_agent_execution_result(log_dir: Path, project_root: Path, py
         ],
         project_root,
         probe_log,
+        env=PHASE0_VERIFY_ENV,
     )
     report_path = log_dir / "character-agent-execution-report.json"
     if not report_path.exists():
@@ -88,12 +93,18 @@ def main() -> int:
     python_exe = resolve_python_exe(args.python_exe)
 
     backend_process = None
+    health: dict[str, object] = {}
     try:
-        health, backend_process = ensure_backend(project_root, python_exe, prefer_fresh_backend=True)
-        ensure_godot_import(project_root, godot_exe, "phase0-godot-import.log")
-
         pytest_log = log_dir / "phase0-pytest.log"
         pytest_result = run_command([python_exe, "-m", "pytest", "-v"], project_root / "backend", pytest_log)
+
+        health, backend_process = ensure_backend(
+            project_root,
+            python_exe,
+            prefer_fresh_backend=True,
+            env=PHASE0_VERIFY_ENV,
+        )
+        ensure_godot_import(project_root, godot_exe, "phase0-godot-import.log")
 
         scene_log = log_dir / "phase0-scene-load.log"
         scene_result = run_command(
@@ -198,15 +209,19 @@ def main() -> int:
             backend_process = None
         execution_probe_report = _read_character_agent_execution_result(log_dir, project_root, python_exe, godot_exe)
         execution_probe_results = execution_probe_report.get("results", []) if isinstance(execution_probe_report, dict) else []
-        for entry in execution_probe_results:
-            if isinstance(entry, dict) and str(entry.get("id", "")) == "character_agent_execution_consumer":
-                report["results"] = [
-                    existing
-                    for existing in report["results"]
-                    if str(existing.get("id", "")) != "character_agent_execution_consumer"
-                ]
-                report["results"].append(entry)
-                break
+        execution_ids = {
+            "character_agent_execution_contract",
+            "character_agent_execution_consumer",
+        }
+        if execution_probe_results:
+            report["results"] = [
+                existing
+                for existing in report["results"]
+                if str(existing.get("id", "")) not in execution_ids
+            ]
+            for entry in execution_probe_results:
+                if isinstance(entry, dict) and str(entry.get("id", "")) in execution_ids:
+                    report["results"].append(entry)
         observatory_probe_report = _read_character_director_observatory_result(log_dir, project_root, python_exe, godot_exe)
         observatory_probe_results = observatory_probe_report.get("results", []) if isinstance(observatory_probe_report, dict) else []
         observatory_ids = {

@@ -40,8 +40,10 @@ def test_release_gate_profile_proves_ci_entrypoint() -> None:
     assert statuses["release_gate_metadata_exists"] == "proved"
     assert statuses["ci_harness_workflow_exists"] == "proved"
     assert statuses["ci_runs_full_harness_profile"] == "proved"
+    assert statuses["ci_runs_mainline_unified_runtime_profile"] == "proved"
     assert statuses["local_ci_gate_exists"] == "proved"
     assert statuses["local_ci_gate_matches_release_profile"] == "proved"
+    assert statuses["local_ci_gate_runs_mainline_unified_runtime_profile"] == "proved"
 
 
 def test_harness_lifecycle_profile_proves_project06_hardening_artifacts() -> None:

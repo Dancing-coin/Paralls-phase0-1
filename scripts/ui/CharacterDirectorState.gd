@@ -13,6 +13,7 @@ var recent_actor_events := {}
 var latest_siming_state := {}
 var recent_siming_events: Array[Dictionary] = []
 var recent_world_outcomes: Array[Dictionary] = []
+var recent_scheduling_rounds: Array[Dictionary] = []
 var recent_script_beats: Array[Dictionary] = []
 
 const MAX_EVENT_HISTORY := 24
@@ -33,6 +34,8 @@ func _ready() -> void:
 		bus.siming_debug_event_received.connect(_on_siming_debug_event_received)
 	if bus.has_signal("world_outcome_trace_received"):
 		bus.world_outcome_trace_received.connect(_on_world_outcome_trace_received)
+	if bus.has_signal("scheduling_round_trace_received"):
+		bus.scheduling_round_trace_received.connect(_on_scheduling_round_trace_received)
 	if bus.has_signal("script_beat_event_received"):
 		bus.script_beat_event_received.connect(_on_script_beat_event_received)
 
@@ -117,6 +120,9 @@ func get_visible_actor_states() -> Dictionary:
 func get_recent_world_outcomes() -> Array[Dictionary]:
 	return _dictionary_array(_state_frame_value("recent_world_outcomes", []))
 
+func get_recent_scheduling_rounds() -> Array[Dictionary]:
+	return _dictionary_array(_state_frame_value("recent_scheduling_rounds", []))
+
 
 func get_recent_script_beats() -> Array[Dictionary]:
 	return _dictionary_array(_state_frame_value("recent_script_beats", []))
@@ -157,6 +163,14 @@ func get_latest_bottom_strip_entries() -> Array[Dictionary]:
 				"type": "世界",
 				"summary": str(outcome.get("dramatic_consequence_summary", "") or outcome.get("world_change_summary", "") or outcome.get("settlement_status", "") or ""),
 				"producer_ts": int(outcome.get("producer_ts", 0)),
+			}
+		)
+	for round in get_recent_scheduling_rounds():
+		rows.append(
+			{
+				"type": "调度",
+				"summary": str(round.get("round_summary", "") or ""),
+				"producer_ts": int(round.get("round_started_at", round.get("producer_ts", 0))),
 			}
 		)
 	for event in get_recent_siming_events():
@@ -265,6 +279,15 @@ func _on_world_outcome_trace_received(payload: Dictionary) -> void:
 	emit_signal("observatory_state_changed")
 
 
+func _on_scheduling_round_trace_received(payload: Dictionary) -> void:
+	if freeze_mode:
+		return
+	recent_scheduling_rounds.append(payload.duplicate(true))
+	if recent_scheduling_rounds.size() > MAX_EVENT_HISTORY:
+		recent_scheduling_rounds = _dictionary_array(recent_scheduling_rounds.slice(recent_scheduling_rounds.size() - MAX_EVENT_HISTORY, recent_scheduling_rounds.size()))
+	emit_signal("observatory_state_changed")
+
+
 func _on_script_beat_event_received(payload: Dictionary) -> void:
 	if freeze_mode:
 		return
@@ -281,6 +304,7 @@ func _capture_frozen_frame() -> void:
 		"latest_siming_state": latest_siming_state.duplicate(true),
 		"recent_siming_events": recent_siming_events.duplicate(true),
 		"recent_world_outcomes": recent_world_outcomes.duplicate(true),
+		"recent_scheduling_rounds": recent_scheduling_rounds.duplicate(true),
 		"recent_script_beats": recent_script_beats.duplicate(true),
 	}
 

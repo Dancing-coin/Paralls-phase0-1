@@ -1,0 +1,9 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/verification/AutonomousSocialContactProbe.gd" id="1_probe"]
+[ext_resource type="PackedScene" path="res://scenes/phase0/CharacterAgentExecutionProbeHost.tscn" id="2_host"]
+
+[node name="AutonomousSocialContactProbe" type="Node"]
+script = ExtResource("1_probe")
+
+[node name="MainDemo" parent="." instance=ExtResource("2_host")]

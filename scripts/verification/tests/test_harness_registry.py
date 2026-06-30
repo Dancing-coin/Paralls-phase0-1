@@ -26,6 +26,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "harness-reference",
         "phase0",
         "phase1-slice",
+        "mainline-unified-runtime",
     ]
     assert registry.profiles["docs"]["script"] == "scripts/verification/check_docs.py"
     assert registry.profiles["backend-contract"]["script"] == "scripts/verification/check_backend_contract.py"
@@ -36,6 +37,8 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["change-lifecycle"]["script"] == "scripts/verification/check_change_lifecycle.py"
     assert registry.profiles["harness-reference"]["script"] == "scripts/verification/check_harness_reference.py"
     assert registry.profiles["phase0"]["requires_godot"] is True
+    assert registry.profiles["mainline-unified-runtime"]["script"] == "scripts/verification/verify_mainline_unified_runtime.py"
+    assert int(registry.profiles["mainline-unified-runtime"].get("max_attempts", 1)) >= 2
     assert int(registry.profiles["phase0"].get("max_attempts", 1)) >= 2
     assert all(profile["schema_version"] == 1 for profile in registry.profiles.values())
 

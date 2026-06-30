@@ -19,6 +19,7 @@ const CLIP_MAP := {
 	"speak": "speak_order",
 	"inspect": "inspect_relic",
 	"alert": "alert_recoil",
+	"greeting_nod": "observe_watch",
 	"ambient": "ambient_patrol",
 	"sword_swing": "idle_guard",
 	"shield_block": "idle_guard",
@@ -385,6 +386,9 @@ func _resolve_stage2_presentation_gait(contract: Dictionary) -> String:
 	return presentation_gait
 
 func _resolve_stage2_contract_role_state(contract: Dictionary) -> String:
+	var contact_phase := CharacterPresentationInputRef.get_contact_phase(contract)
+	if contact_phase == "greeting":
+		return "greeting_nod"
 	var requested_action := CharacterPresentationInputRef.get_requested_action(contract)
 	if not requested_action.is_empty():
 		return _map_stage2_action_to_role_state(requested_action)

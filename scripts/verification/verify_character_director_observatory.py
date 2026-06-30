@@ -35,6 +35,10 @@ REQUIRED_MARKERS = [
     "character_director_observatory_probe:ledger_siming_pressure_populated=true",
     "character_director_observatory_probe:freeze_roundtrip_ok=true",
 ]
+OBSERVATORY_VERIFY_ENV = {
+    "CHARACTER_MODEL_PROVIDER_KIND": "local",
+    "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
+}
 
 
 def main() -> int:
@@ -50,7 +54,12 @@ def main() -> int:
 
     backend_process = None
     try:
-        health, backend_process = ensure_backend(project_root, python_exe, prefer_fresh_backend=True)
+        health, backend_process = ensure_backend(
+            project_root,
+            python_exe,
+            prefer_fresh_backend=True,
+            env=OBSERVATORY_VERIFY_ENV,
+        )
         ensure_godot_import(project_root, godot_exe, "character-director-observatory-godot-import.log")
         main_log = log_dir / "character-director-observatory-main.log"
         main_screenshot = log_dir / "character-director-observatory-main.png"
@@ -74,6 +83,8 @@ def main() -> int:
             env={
                 "PHASE0_AUTOTEST_SCREENSHOT": str(main_screenshot),
                 "PHASE0_DEBUG_LOGGING": "1",
+                "CHARACTER_MODEL_PROVIDER_KIND": "local",
+                "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
             },
         )
         log_text = read_text(main_log)

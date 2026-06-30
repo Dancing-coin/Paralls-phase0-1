@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/character/CharacterReplica.gd" id="1_character"]
 [ext_resource type="Script" path="res://scripts/audio/SpatialVoiceController.gd" id="2_voice"]
@@ -8,6 +8,9 @@
 [ext_resource type="Script" path="res://scripts/l1/facts/emitters/PhysiologyStateFactEmitter.gd" id="6_physiology_state_fact_emitter"]
 [ext_resource type="Script" path="res://scripts/character/CharacterRuntimeFeedback.gd" id="7_runtime_feedback"]
 [ext_resource type="Script" path="res://scripts/character/PerceptionConeDebug.gd" id="8_perception_debug"]
+[ext_resource type="Script" path="res://scripts/visual/VisualFactEmitter.gd" id="9_visual_fact_emitter"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/CharacterVisualFactEmitter.gd" id="10_character_visual_fact_emitter"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/SpatialAccessFactEmitter.gd" id="11_spatial_access_fact_emitter"]
 
 [node name="CharacterReplica" type="Node3D"]
 script = ExtResource("1_character")
@@ -45,6 +48,15 @@ script = ExtResource("7_runtime_feedback")
 
 [node name="CharacterMotor" type="Node" parent="."]
 script = ExtResource("3_motor")
+
+[node name="VisualFactEmitter" type="Node" parent="."]
+script = ExtResource("9_visual_fact_emitter")
+
+[node name="CharacterVisualFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("10_character_visual_fact_emitter")
+
+[node name="SpatialAccessFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("11_spatial_access_fact_emitter")
 
 [node name="RoleStateFactEmitter" type="Node" parent="."]
 script = ExtResource("5_role_state_fact_emitter")

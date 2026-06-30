@@ -31,6 +31,10 @@ EXECUTION_PAYLOAD_DIRECT_MARKER = "character_agent_execution_probe:execution_pay
 CONSUMER_SEEN_MARKER = "character_agent_execution_probe:consumer_seen=true"
 LEGACY_OUTPUT_CLEAR_MARKER = "character_agent_execution_probe:legacy_output_seen=false"
 ALL_CHECKS_COMPLETE_MARKER = "character_agent_execution_probe:all_checks_complete=true"
+CHARACTER_EXECUTION_VERIFY_ENV = {
+    "CHARACTER_MODEL_PROVIDER_KIND": "local",
+    "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
+}
 
 
 def main() -> int:
@@ -46,7 +50,12 @@ def main() -> int:
 
     backend_process = None
     try:
-        health, backend_process = ensure_backend(project_root, python_exe, prefer_fresh_backend=True)
+        health, backend_process = ensure_backend(
+            project_root,
+            python_exe,
+            prefer_fresh_backend=True,
+            env=CHARACTER_EXECUTION_VERIFY_ENV,
+        )
         ensure_godot_import(project_root, godot_exe, "character-agent-execution-godot-import.log")
 
         main_screenshot = log_dir / "character-agent-execution-main.png"
@@ -73,6 +82,8 @@ def main() -> int:
             env={
                 "PHASE0_AUTOTEST_SCREENSHOT": str(main_screenshot),
                 "PHASE0_DEBUG_LOGGING": "1",
+                "CHARACTER_MODEL_PROVIDER_KIND": "local",
+                "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
             },
         )
 

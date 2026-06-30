@@ -2,6 +2,8 @@ extends Node3D
 
 const LIGHTING_TUNER := preload("res://scripts/visual/ThroneRoomLightingTuner.gd")
 const THRONE_HALL_WALK_PREVIEW := preload("res://scenes/phase0/ThroneHallWalkPreview.tscn")
+const ACTOR_PERCEPTION_SAMPLER := preload("res://scripts/character/ActorPerceptionSampler.gd")
+const ACTOR_PERCEPTION_TARGET_RESOLVER := preload("res://scripts/character/ActorPerceptionTargetResolver.gd")
 const FLOOR_CHECKPOINTS := [
 	{"name": "entry_carpet", "position": Vector3(0.0, 0.5, 16.0)},
 	{"name": "center_carpet", "position": Vector3(0.0, 0.5, 4.0)},
@@ -78,8 +80,13 @@ var autotest_run_started := false
 var autotest_shutdown_in_progress := false
 var scene_load_probe_only := false
 var perception_debug_enabled := false
+var _perception_sampler = ACTOR_PERCEPTION_SAMPLER.new()
+var _perception_target_resolver = ACTOR_PERCEPTION_TARGET_RESOLVER.new()
 
 func _ready() -> void:
+	_perception_sampler.range_m = focus_max_distance
+	_perception_sampler.forward_threshold = focus_forward_threshold
+	_perception_target_resolver.target_property_names = PackedStringArray(["actor_id", "object_id"])
 	autotest_enabled = OS.get_environment("PHASE0_AUTOTEST") == "1"
 	focus_autotest_enabled = OS.get_environment("PHASE0_FOCUS_AUTOTEST") == "1"
 	scene_load_probe_only = OS.get_environment("PHASE0_SCENE_LOAD_ONLY") == "1"
@@ -564,41 +571,37 @@ func _collect_visible_focus_targets() -> Array[Node3D]:
 	var candidates := _get_focus_candidates()
 	var player_origin := _get_focus_origin()
 	var view_forward := _get_view_forward()
-	var visible_candidates: Array[Node3D] = []
 	var view_actor := _get_view_origin_actor_node()
-
-	for candidate in candidates:
-		if candidate == null:
-			continue
-		if candidate == view_actor:
-			continue
-
+	var visible_candidates := _perception_sampler.sample_visible_targets(
+		player_origin,
+		view_forward,
+		candidates,
+		view_actor,
+		Callable(self, "_get_focus_candidate_position"),
+		Callable(self, "_has_focus_line_of_sight")
+	)
+	var filtered_candidates: Array[Node3D] = []
+	for candidate: Node3D in visible_candidates:
 		var candidate_position := _get_focus_candidate_position(candidate)
 		var offset := candidate_position - player_origin
 		var distance := offset.length()
-		if distance > focus_max_distance or distance <= 0.001:
+		if distance <= 0.001:
 			continue
 
 		var direction := offset / distance
-		var alignment := view_forward.dot(direction)
-		if alignment < focus_forward_threshold:
-			continue
-
 		if _precise_focus_alignment(candidate_position, direction) < 0.0:
 			continue
-		if not _has_focus_line_of_sight(candidate):
-			continue
-		visible_candidates.append(candidate)
+		filtered_candidates.append(candidate)
 
-	visible_candidates.sort_custom(Callable(self, "_compare_visible_focus_targets"))
-	return visible_candidates
+	filtered_candidates.sort_custom(Callable(self, "_compare_visible_focus_targets"))
+	return filtered_candidates
 
 func _get_focus_candidates() -> Array[Node3D]:
-	var candidates: Array[Node3D] = []
-	for candidate in [character_a, character_b, get_node_or_null("PlayerCharacter/CharacterReplica"), interactive_object]:
-		if candidate is Node3D and not candidates.has(candidate):
-			candidates.append(candidate)
-	return candidates
+	var scene := get_tree().current_scene
+	var view_actor := _get_view_origin_actor_node()
+	if scene == null:
+		return []
+	return _perception_target_resolver.resolve_targets(scene, view_actor)
 
 func _pick_precise_focus_target(candidates: Array[Node3D]) -> Node3D:
 	var camera := _get_camera()

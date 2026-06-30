@@ -7,6 +7,8 @@ const PRESENTATION_INPUT_KEYS := {
 	"motion_state": true,
 	"focus_state": true,
 	"action_state": true,
+	"contact_phase": true,
+	"execution_semantics": true,
 	"equipment_state": true,
 	"expression_hint": true,
 	"physiology_hint": true,
@@ -19,6 +21,8 @@ static func normalize(candidate: Dictionary) -> Dictionary:
 		"motion_state": candidate.get("motion_state", {}),
 		"focus_state": candidate.get("focus_state", {}),
 		"action_state": candidate.get("action_state", {}),
+		"contact_phase": candidate.get("contact_phase", ""),
+		"execution_semantics": candidate.get("execution_semantics", {}),
 		"equipment_state": candidate.get("equipment_state", {}),
 		"expression_hint": candidate.get("expression_hint", ""),
 		"physiology_hint": candidate.get("physiology_hint", ""),
@@ -67,6 +71,14 @@ static func get_action_gait_hint(contract: Dictionary, fallback: String = "") ->
 	return str(get_action_state(contract).get("gait_hint", fallback))
 
 
+static func get_contact_phase(contract: Dictionary) -> String:
+	return str(normalize(contract).get("contact_phase", ""))
+
+
+static func get_execution_semantics(contract: Dictionary) -> Dictionary:
+	return normalize(contract).get("execution_semantics", {})
+
+
 static func get_equipment_state(contract: Dictionary) -> Dictionary:
 	return normalize(contract).get("equipment_state", {})
 
@@ -109,6 +121,8 @@ static func from_player_runtime_state(
 				"requested_action": requested_action,
 				"override_state": action_override_state,
 			},
+			"contact_phase": "",
+			"execution_semantics": {},
 			"equipment_state": {},
 			"physiology_hint": last_physiology_state_fact,
 			"speech_state": {
@@ -137,6 +151,8 @@ static func from_agent_execution_plan(presentation_plan: Dictionary, requested_a
 			"motion_state": presentation_plan.get("motion_state", {}),
 			"focus_state": focus_state,
 			"action_state": action_state,
+			"contact_phase": presentation_plan.get("contact_phase", ""),
+			"execution_semantics": presentation_plan.get("execution_semantics", {}),
 			"equipment_state": presentation_plan.get("equipment_state", {}),
 			"expression_hint": presentation_plan.get("expression_hint", ""),
 			"physiology_hint": presentation_plan.get("physiology_hint", ""),
