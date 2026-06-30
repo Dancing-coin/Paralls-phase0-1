@@ -477,6 +477,7 @@ This background loop must satisfy all of the following:
 - background ticks participate in the runtime scheduling layer rather than existing only as an unused helper path
 - scheduled background ticks should prefer already schedulable / active actors instead of waking the whole room indiscriminately
 - background ticks should write an explicit background-agenda state, not only an opaque debug log, so later turns can inherit latent tendency and watch focus
+- background agenda must contain a persistent agenda pool rather than only one scalar summary, so long-running concerns can survive, decay, and be reactivated across turns
 
 ### 9.2 Supervision Boundary
 
@@ -705,7 +706,8 @@ This character mind core is accepted only when all are true.
 17. Background cognition remains the character's own model-led loop; `Siming` supervision constrains cadence and context but does not replace role thought.
 18. Unresolved tensions and supervision authorizations are durable runtime state rather than transient in-memory only hints.
 19. Background agenda state is a first-class durable runtime artifact, not just a transient background tick byproduct.
-20. A minimal `Phase 0` smoke path remains available unless a later approved plan explicitly and temporarily suspends it.
+20. Background agenda is a pool of persistent agenda entries, not only a single current-summary field.
+21. A minimal `Phase 0` smoke path remains available unless a later approved plan explicitly and temporarily suspends it.
 
 ## Verification Requirements
 
@@ -730,6 +732,7 @@ Minimum proof for the complete mind core must include:
   - unresolved-tension persistence and recovery after session reload
   - scheduled background cognition execution against the runtime schedulable-actor set
   - background agenda state persistence and reinjection
+  - persistent agenda-pool generation, decay, preservation, and recovery
   - external supervision-authorization ingress
   - `L3` candidate generation breadth
   - model-led `L3` planning outputs with local guardrail-only postvalidation and model-owned goal arbitration

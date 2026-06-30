@@ -38,6 +38,11 @@ class _StubL2:
         memory_bundle,
         control_mode,
         working_memory_state=None,
+        current_goal_state=None,
+        goal_state_history=None,
+        supervision_state=None,
+        unresolved_tensions=None,
+        background_agenda_state=None,
     ) -> dict[str, object]:
         return {
             "task_kind": "l2_reasoning",
@@ -48,6 +53,11 @@ class _StubL2:
                 "memory": memory_bundle,
                 "event": event.model_dump(),
                 "working_memory_state": dict(working_memory_state or {}),
+                "current_goal_state": dict(current_goal_state or {}),
+                "goal_state_history": list(goal_state_history or []),
+                "supervision_state": dict(supervision_state or {}),
+                "unresolved_tensions": list(unresolved_tensions or []),
+                "background_agenda_state": dict(background_agenda_state or {}),
             },
         }
 
@@ -59,6 +69,11 @@ class _StubL2:
         memory_bundle=None,
         control_mode="agent_full_auto",
         working_memory_state=None,
+        current_goal_state=None,
+        goal_state_history=None,
+        supervision_state=None,
+        unresolved_tensions=None,
+        background_agenda_state=None,
     ) -> CharacterInterpretation:
         return CharacterInterpretation(
             actor_id=event.actor_id,

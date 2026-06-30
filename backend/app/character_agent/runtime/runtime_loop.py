@@ -6,7 +6,7 @@ from app.character_agent.models.cognition_delta import (
     CharacterHigherOrderDelta,
     CharacterSocialDelta,
 )
-from app.character_agent.models.background_agenda import CharacterBackgroundAgendaState
+from app.character_agent.models.background_agenda import CharacterBackgroundAgendaEntry, CharacterBackgroundAgendaState
 from app.character_agent.models.goal_runtime import CharacterActiveGoalFrame
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
 from app.character_agent.models.goal_runtime import CharacterGoalStateRecord
@@ -1082,6 +1082,7 @@ class CharacterAgentRuntime:
             interpretation=interpretation,
             decision=decision,
             supervision_state=supervision_state.model_dump(),
+            unresolved_tensions=unresolved_tensions,
         )
         self._background_agenda_states[actor_id] = agenda_state
         self._record_background_cognition_event(
@@ -2578,11 +2579,21 @@ class CharacterAgentRuntime:
         interpretation: CharacterInterpretation,
         decision: CharacterIntentDecision,
         supervision_state: dict[str, object],
+        unresolved_tensions: list[dict[str, object]],
     ) -> CharacterBackgroundAgendaState:
         watch_focus = str(interpretation.attention_target or "")
         latent_tendency = decision.selected_intent
         agenda_phase = str(supervision_state.get("active_constraints", {}).get("background_mode", "") or "passive")
         agenda_summary = decision.rationale or interpretation.interpreted_summary
+        previous_state = self._background_agenda_states.get(actor_id)
+        agenda_entries = self._background_agenda_entries(
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+            decision=decision,
+            unresolved_tensions=unresolved_tensions,
+            previous_state=previous_state,
+        )
+        dominant_agenda_id = agenda_entries[0].agenda_id if agenda_entries else ""
         return CharacterBackgroundAgendaState(
             actor_id=actor_id,
             latent_tendency=latent_tendency,
@@ -2590,8 +2601,86 @@ class CharacterAgentRuntime:
             agenda_summary=agenda_summary,
             agenda_phase=agenda_phase,
             supervision_level=str(supervision_state.get("current_level", "weak") or "weak"),
+            dominant_agenda_id=dominant_agenda_id,
+            agenda_entries=agenda_entries,
             updated_at=producer_ts,
         )
+
+    def _background_agenda_entries(
+        self,
+        *,
+        actor_id: str,
+        producer_ts: int,
+        decision: CharacterIntentDecision,
+        unresolved_tensions: list[dict[str, object]],
+        previous_state: CharacterBackgroundAgendaState | None,
+    ) -> list[CharacterBackgroundAgendaEntry]:
+        previous_entries = {
+            entry.agenda_id: entry
+            for entry in (previous_state.agenda_entries if previous_state is not None else [])
+        }
+        entries: list[CharacterBackgroundAgendaEntry] = []
+
+        dominant_goal_id = (
+            decision.active_goal_frame.dominant_goal_id
+            if decision.active_goal_frame is not None and decision.active_goal_frame.dominant_goal_id
+            else f"agenda_goal:{decision.primary_goal or 'preserve_continuity'}"
+        )
+        dominant_goal_title = decision.primary_goal or "preserve_continuity"
+        existing_goal_entry = previous_entries.get(dominant_goal_id)
+        entries.append(
+            CharacterBackgroundAgendaEntry(
+                agenda_id=dominant_goal_id,
+                agenda_kind="goal",
+                title=dominant_goal_title,
+                summary=decision.rationale,
+                target_ref="",
+                horizon="long" if decision.long_term_goal else "mid",
+                status="active",
+                priority=max(0.55, float(existing_goal_entry.priority) if existing_goal_entry is not None else 0.72),
+                source="goal_state",
+                last_reinforced_ts=producer_ts,
+                last_progress_ts=producer_ts,
+                blocked_count=len(decision.blockers),
+            )
+        )
+
+        top_tension = unresolved_tensions[0] if unresolved_tensions else {}
+        if top_tension:
+            tension_id = str(top_tension.get("tension_id", "") or f"{actor_id}:tension")
+            existing_tension_entry = previous_entries.get(tension_id)
+            entries.append(
+                CharacterBackgroundAgendaEntry(
+                    agenda_id=tension_id,
+                    agenda_kind="tension_watch",
+                    title=str(top_tension.get("summary", "") or "watch unresolved tension"),
+                    summary=str(top_tension.get("summary", "") or ""),
+                    target_ref=str(top_tension.get("target_ref", "") or ""),
+                    horizon="mid",
+                    status=str(top_tension.get("status", "active") or "active"),
+                    priority=max(0.45, float(existing_tension_entry.priority) if existing_tension_entry is not None else float(top_tension.get("priority", 0.64) or 0.64)),
+                    source="unresolved_tension",
+                    last_reinforced_ts=producer_ts,
+                    last_progress_ts=producer_ts,
+                    blocked_count=int(existing_tension_entry.blocked_count if existing_tension_entry is not None else 0),
+                )
+            )
+
+        for agenda_id, entry in previous_entries.items():
+            if agenda_id in {item.agenda_id for item in entries}:
+                continue
+            decayed_priority = max(0.15, round(float(entry.priority) * 0.9, 4))
+            entries.append(
+                entry.model_copy(
+                    update={
+                        "priority": decayed_priority,
+                        "status": "dormant" if entry.status == "active" else entry.status,
+                    }
+                )
+            )
+
+        entries.sort(key=lambda item: float(item.priority), reverse=True)
+        return entries[: self._RECENT_HISTORY_LIMIT]
 
     def _remember_unresolved_tension(
         self,

@@ -319,6 +319,7 @@ Task 3 also owns cross-turn goal continuity:
 - scheduled background cognition should run through a public runtime scheduling entry instead of remaining an ad-hoc helper
 - unresolved tensions and supervision authorizations should be recoverable from durable session history after reload
 - background cognition should write an explicit durable agenda state so later turns can inherit latent tendency / watch focus
+- background cognition should maintain a persistent agenda pool rather than replacing state with a single latest-summary field
 - external systems should be able to authorize or clear supervision through a real runtime ingress surface rather than only via in-process calls
 
 Use the helper in all ingress families so perception and planning still run even when execution is suppressed.

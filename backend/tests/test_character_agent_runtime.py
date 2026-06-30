@@ -1102,7 +1102,39 @@ def test_background_cognition_tick_runs_under_authorized_quiet_supervision_witho
     assert background_events
     assert agenda_state["latent_tendency"] == "observe"
     assert agenda_state["agenda_phase"] == "quiet"
+    assert agenda_state["dominant_agenda_id"]
+    assert agenda_state["agenda_entries"]
     assert not runtime.drain_suggestion_packets("char_a")
+
+
+def test_background_cognition_tick_builds_persistent_agenda_pool_from_goals_and_tensions() -> None:
+    runtime = _local_runtime()
+    runtime.set_background_cognition_enabled(True)
+    runtime.set_background_mode("char_a", "active")
+    runtime.ingest_character_perceived_event(
+        CharacterPerceivedEvent(
+            actor_id="char_a",
+            percept_channel="auditory",
+            producer_ts=522,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            perceived_summary="auditory_fact/metal_click",
+            source_candidate_event_id="auditory_fact:522:char_a",
+            target_object_id="obj_letter",
+            clarity_score=0.71,
+            certainty_score=0.73,
+        )
+    )
+
+    result = runtime.run_background_cognition_tick(actor_id="char_a", producer_ts=3000)
+    agenda_state = runtime.get_background_agenda_state("char_a")
+
+    assert result.ran is True
+    assert agenda_state["agenda_entries"]
+    assert any(entry["agenda_kind"] == "goal" for entry in agenda_state["agenda_entries"])
+    assert any(entry["agenda_kind"] == "tension_watch" for entry in agenda_state["agenda_entries"])
+    assert agenda_state["dominant_agenda_id"]
 
 
 def test_run_scheduled_background_cognition_ticks_respects_schedulable_actor_ids() -> None:

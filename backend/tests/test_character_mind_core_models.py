@@ -1,3 +1,4 @@
+from app.character_agent.models.background_agenda import CharacterBackgroundAgendaEntry, CharacterBackgroundAgendaState
 from app.character_agent.models.cognition_update import CharacterCognitionUpdate
 from app.character_agent.models.cognition_delta import (
     CharacterBeliefDelta,
@@ -404,3 +405,45 @@ def test_supervision_models_capture_authorized_background_cognition_contract() -
     assert state.active_constraints.blocked_goal_classes == ["conflict_escalation"]
     assert tension.target_ref == "obj_letter"
     assert result.current_level == "medium"
+
+
+def test_background_agenda_state_tracks_persistent_agenda_entries() -> None:
+    state = CharacterBackgroundAgendaState(
+        actor_id="char_a",
+        latent_tendency="observe",
+        watch_focus="obj_letter",
+        agenda_summary="keep tracking the locked object while preserving cover",
+        agenda_phase="quiet",
+        supervision_level="medium",
+        dominant_agenda_id="agenda_clarify_obj_letter",
+        agenda_entries=[
+            CharacterBackgroundAgendaEntry(
+                agenda_id="agenda_clarify_obj_letter",
+                agenda_kind="clarify",
+                title="clarify obj_letter anomaly",
+                summary="the object remains suspicious after earlier failure",
+                target_ref="obj_letter",
+                horizon="mid",
+                status="active",
+                priority=0.82,
+                source="background_reflection",
+                last_reinforced_ts=20,
+            ),
+            CharacterBackgroundAgendaEntry(
+                agenda_id="agenda_preserve_cover",
+                agenda_kind="protect",
+                title="preserve cover",
+                target_ref="char_b",
+                horizon="long",
+                status="active",
+                priority=0.74,
+                source="goal_state",
+                last_reinforced_ts=20,
+            ),
+        ],
+        updated_at=20,
+    )
+
+    assert state.dominant_agenda_id == "agenda_clarify_obj_letter"
+    assert state.agenda_entries[0].agenda_kind == "clarify"
+    assert state.agenda_entries[1].title == "preserve cover"

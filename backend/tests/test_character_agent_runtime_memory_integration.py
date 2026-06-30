@@ -452,6 +452,7 @@ def test_runtime_can_recover_background_agenda_state_from_storage_root(tmp_path:
 
     assert agenda_state["latent_tendency"]
     assert agenda_state["agenda_phase"] == "quiet"
+    assert agenda_state["agenda_entries"]
 
 
 def test_handle_envelope_can_apply_external_supervision_authorization() -> None:
