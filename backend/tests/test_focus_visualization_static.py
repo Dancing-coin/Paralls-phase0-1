@@ -51,10 +51,11 @@ def test_main_demo_visible_focus_targets_require_line_of_sight() -> None:
         encoding="utf-8"
     )
 
+    assert "_perception_sampler.sample_visible_targets(" in controller_source
     assert "_has_focus_line_of_sight(" in controller_source
+    assert 'Callable(self, "_has_focus_line_of_sight")' in controller_source
     assert "PhysicsRayQueryParameters3D.create" in controller_source
     assert "intersect_ray" in controller_source
-    assert "if not _has_focus_line_of_sight(candidate):" in controller_source
 
 
 def test_main_demo_focus_candidates_include_player_replica_for_other_actors() -> None:
@@ -64,7 +65,7 @@ def test_main_demo_focus_candidates_include_player_replica_for_other_actors() ->
 
     assert "_get_focus_candidates()" in controller_source
     assert 'get_node_or_null("PlayerCharacter/CharacterReplica")' in controller_source
-    assert "if candidate == view_actor:" in controller_source
+    assert "_perception_target_resolver.resolve_targets(scene, view_actor)" in controller_source
     assert "if candidate == current_view_actor:" not in controller_source
 
 
