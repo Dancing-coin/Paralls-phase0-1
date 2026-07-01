@@ -67,5 +67,5 @@ def test_session_input_router_routes_focus_target_change_event() -> None:
     assert result["route"] == "character_service"
 
 
-def test_session_runtime_import_remains_compatible() -> None:
+def test_legacy_session_runtime_import_remains_compatible() -> None:
     assert SessionRuntime is SessionInputRouter

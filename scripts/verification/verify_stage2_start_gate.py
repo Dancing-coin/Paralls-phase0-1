@@ -102,7 +102,7 @@ def main() -> int:
             ),
             _result(
                 "l1_runtime_edges_green",
-                "L1 runtime edge verification is green",
+                "L1 edge runtime-verification is green",
                 "proved" if l1_edges_ok else "missing",
                 ["verify_l1_runtime_edges.py"] if l1_edges_ok else [],
                 "" if l1_edges_ok else f"Inspect {l1_edges_log}",

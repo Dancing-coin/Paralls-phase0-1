@@ -51,7 +51,7 @@
 | 角色默认不直接消费全局原始事实流，而是消费过滤后的角色私有感知结果 | 当前 repo 还没有完整的 `Per-Character` 感知过滤器和正式角色私有感知事件层 | 明显未达到 |
 | 会话接入、偷听、私密边界等要落入感知链，但候选层不直接做成员资格结论 | 当前 `privacy_band` / `zone` / `nearby_actor_refs` 已经进入低层事实与投影，但只到最小接入证据层 | 部分达到 |
 | Godot 本地表现总线与后端权威事实总线职责必须分离 | `BackendBridge` / `LocalPresentationBus` 与 backend authority lane 已分开，职责比早期更清楚 | 基本达到 |
-| `L1` 需要可 replay / 可审计 / 可调试 | 当前有 debug trace、verification audit、Phase0/Phase1 slice 报告、L1 runtime edge probe | 已达到最小可审计水平 |
+| `L1` 需要可 replay / 可审计 / 可调试 | 当前有 debug trace、verification audit、Phase0/Phase1 slice 报告、L1 edge runtime-verification probe | 已达到最小可审计水平 |
 | `L1` 需要在 reconnect / runtime reset 下可恢复最小状态 | 现在已验证 zone reseed、privacy reseed、environment cycle、disconnect signal clean path | 已达到当前 demo 所需水平 |
 
 ## 当前已经做对的关键点

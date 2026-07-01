@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the current `raw_fact_event` fact-production path stable, add a formal `CandidatePerceptEvent` model and compilation service behind it, then add a first `PerCharacterPerceptFilter` and `CharacterPerceivedEvent` model so character-facing consumption can stop depending on shared raw/candidate state. The plan intentionally scopes itself to the currently implemented fact families (`visual_fact` and `spatial_access_fact`) instead of trying to complete all sensory families at once.
 
-**Tech Stack:** Godot 4.x GDScript, Python 3.13, FastAPI backend, Pydantic models, pytest, existing L1 runtime probes, current Phase 0 and Phase1-slice verification harnesses.
+**Tech Stack:** Godot 4.x GDScript, Python 3.13, FastAPI backend, Pydantic models, pytest, existing L1 runtime-verification probes, current Phase 0 and Phase1-slice verification harnesses.
 
 ---
 

@@ -157,5 +157,5 @@ def test_esm_environment_result_can_update_l1_occupancy_field() -> None:
     assert snapshot.dirty_events[-1].source_refs == [result.result_id]
 
 
-def test_runtime_spatial_occupancy_import_remains_compatible() -> None:
+def test_legacy_runtime_spatial_occupancy_import_remains_compatible() -> None:
     assert RuntimeSpatialOccupancyService is SpatialOccupancyService
