@@ -1,4 +1,4 @@
-# 当前项目智能体与世界交互增量专题母规格
+﻿# 当前项目智能体与世界交互增量专题母规格
 
 - 日期：`2026-06-29`
 - 状态：`implemented-and-verified`
@@ -147,7 +147,7 @@
 
 1. `L1 世界事实层`
 2. `Scene 3D Space Model`
-3. `Runtime Spatial Occupancy Field`
+3. `Spatial Occupancy Field runtime state`
 4. `Godot 取样前端`
 5. `Perception Query Frame`
 6. `角色智能体专属多模态栈`
@@ -192,7 +192,7 @@
 
 即：
 
-- `Runtime Spatial Occupancy Field`
+- `Spatial Occupancy Field runtime state`
 
 它维护：
 

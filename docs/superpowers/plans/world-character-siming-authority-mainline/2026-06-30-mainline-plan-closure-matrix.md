@@ -1,4 +1,4 @@
-# World-Character-Siming-Authority Mainline Closure Matrix
+﻿# World-Character-Siming-Authority Mainline Closure Matrix
 
 Status: `audited`
 
@@ -144,12 +144,12 @@ Current aggregate proof status:
 - Planned closure scope:
   - Asset registry/preload contracts, Kimodo request/realization seam, and generated-motion plus local-fallback composition rules.
 - Landed implementation files:
-  - `scripts/character/CharacterEmbodimentAssetRuntime.gd`
+  - `scripts/character/CharacterEmbodimentAssetRegistry.gd`
   - `backend/app/character_agent/execution/kimodo_adapter_contract.py`
   - `scripts/verification/verify_mainline_unified_runtime.py`
   - `docs/character/character-asset-integration.md`
 - Direct verification evidence:
-  - `backend/tests/test_character_asset_runtime_static.py`
+  - `backend/tests/test_character_asset_registry_static.py`
   - `backend/tests/test_kimodo_adapter_contract.py`
   - `scripts/verification/tests/test_mainline_unified_runtime_verify.py`
   - unified result `asset_runtime_kimodo_contracts=proved`

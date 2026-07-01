@@ -20,6 +20,8 @@ python scripts/verification/harness.py --profile harness-reference
 python scripts/verification/harness.py --profile harness-evolution
 python scripts/verification/harness.py --profile phase0
 python scripts/verification/harness.py --profile phase1-slice
+python scripts/verification/harness.py --profile l1-world-fact-runtime
+python scripts/verification/harness.py --profile mainline-unified-runtime
 python scripts/verification/harness.py --profile all
 ```
 
@@ -325,9 +327,69 @@ Trace output:
 
 - `.harness/verification/phase1-slice-runtime-trace.ndjson`
 
+### `l1-world-fact-runtime`
+
+Compatibility runtime-verification profile for the System L1 world fact subsystem. The profile name is historical and means "verify the runtime-facing integration"; it is not permission to introduce a product `L1Runtime`.
+
+This profile verifies that L1 is wired as services on the existing `world_runtime` / ESM / `raw_fact_event` / candidate / private percept / character or Siming runtime chain, not as a second runtime loop or parallel fact bus.
+
+Hard boundary:
+
+- do not add an L1 main loop
+- do not add an L1 event bus
+- do not add an L1 scheduler
+- do not add L1 authority
+- do not bypass `raw_fact_event -> candidate percept -> CharacterPerceivedEvent`
+
+Current proof includes:
+
+- `Scene3DSpaceModel` extraction artifacts with Godot node path, group/metadata, collision-shape, and navigation/walkable source refs
+- `SpatialOccupancyField` / `SpatialOccupancyService` dirty-zone/event-driven updates for actor zone, object state, and environment field changes
+- environment field merge into L1 projection inputs
+- `FactProjectionLayer` outputs for LOS, reachability, affordance, and negative facts using existing `raw_fact_event` shape
+- projected facts entering candidate/private percept path unless explicitly system-only
+- provider runtime source refs for visual, spatial, auditory, and embodied inputs
+- real `PerceptionQueryFrame` / `CanonicalPerceptBundle` backend assembly and character or Siming runtime consumption
+- optional Godot probe evidence from `scenes/phase0/L1WorldFactRuntimeProbe.tscn`
+
+If Godot cannot be launched, the report marks `godot-runtime-unverified`; do not use that state to claim a fully Godot-verified L1 subsystem integration.
+
+Output:
+
+- `.harness/verification/l1-world-fact-runtime-report.json`
+- `.harness/verification/l1-world-fact-runtime-report.md`
+- `.harness/verification/l1-space-model-runtime.json` when the Godot probe runs
+- `.harness/verification/l1-space-model-backend-contract.json` for backend contract proof
+- `.harness/verification/harness-run-report.json`
+- `.harness/verification/harness-run-report.md`
+
 ### `all`
 
-Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, and `phase1-slice` in order. It stops on the first failed profile.
+Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, `phase1-slice`, `l1-world-fact-runtime`, and `mainline-unified-runtime` in order. It stops on the first failed profile.
+
+### `mainline-unified-runtime`
+
+Higher-level runtime proof that composes:
+
+- actor-local perception
+- autonomous social contact
+- shared actor execution ingress
+- phase1-shaped runtime slice
+- authority settlement writeback
+- asset registry and Kimodo adapter contracts
+- world-runtime policy/model focused tests
+- degraded-mode perception/cognition deferral
+- continuity recovery across renewed social contact
+- scheduling round state, round trace, debug-stream, script-beat, websocket, and frontend signal/state chain evidence
+
+Use this when you need one report that is closer to the repository's new mainline than any single narrow verifier.
+
+Output:
+
+- `.harness/verification/mainline-unified-runtime-report.json`
+- `.harness/verification/mainline-unified-runtime-report.md`
+- `.harness/verification/harness-run-report.json`
+- `.harness/verification/harness-run-report.md`
 
 ## Harness Evolution
 
@@ -348,7 +410,8 @@ When a profile fails, the runner writes a deterministic failure digest such as `
 ## Evidence Rules
 
 - Static checks prove only static wiring.
-- Runtime claims require `phase0` or `phase1-slice`.
+- Runtime claims require `phase0`, `phase1-slice`, or `mainline-unified-runtime`, depending on the scope being claimed.
+- L1 subsystem integration claims may use `l1-world-fact-runtime`; this is a runtime-verification profile, not a product runtime.
 - Godot claims require scene execution or Godot MCP/editor inspection.
 - Generated evidence should stay under `.harness/verification/`.
 - Profile and rule manifests stay under `.harness/profiles/` and `.harness/rules/`.

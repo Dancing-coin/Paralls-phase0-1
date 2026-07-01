@@ -199,8 +199,8 @@ def test_mainline_unified_runtime_verifier_includes_frontend_scheduling_round_tr
     assert "backend/tests/test_character_director_state_static.py" in source
 
 
-def test_mainline_unified_runtime_verifier_includes_asset_runtime_and_kimodo_contract_evidence() -> None:
+def test_mainline_unified_runtime_verifier_includes_asset_registry_and_kimodo_contract_evidence() -> None:
     source = Path(verifier.__file__).read_text(encoding="utf-8")
 
-    assert "backend/tests/test_character_asset_runtime_static.py" in source
+    assert "backend/tests/test_character_asset_registry_static.py" in source
     assert "backend/tests/test_kimodo_adapter_contract.py" in source

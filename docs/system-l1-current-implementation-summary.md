@@ -419,7 +419,7 @@ System L1 统一出口
   v
 backend/main.py
   |
-  +--> SessionRuntime
+  +--> SessionInputRouter
   |      - 接受 move/focus/interact/dialogue 路由
   |
   +--> ConversationRelationService

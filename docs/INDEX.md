@@ -14,6 +14,7 @@ it is no longer the top-level mission for the repository.
 - `PHASE0_README.md`: short workspace summary and verification entry points.
 - `docs/character/character-mind-core-status.md`: Chinese status definition for what “complete character mind core” now means in this repository.
 - `docs/harness.md`: Harness Engineering command surface for repeatable verification.
+- `docs/runtime-boundary-audit.md`: runtime naming boundary audit and migration table.
 - `docs/demo-script.md`: expected demo beats and observable proof path.
 
 ## Active Design And Plans
@@ -89,6 +90,7 @@ Use `python scripts/verification/harness.py --profile <name>`.
 - `harness-reference`: adapted external Harness Engineering taxonomy, template, and reference coverage checks.
 - `phase0`: strict Phase 0 backend plus Godot runtime validation.
 - `phase1-slice`: current Phase1-shaped runtime slice validation.
+- `l1-world-fact-runtime`: compatibility runtime-verification profile for the System L1 world fact subsystem. The name is historical; it proves runtime-facing L1 services and integration, not a product L1 runtime.
 - `mainline-unified-runtime`: aggregate repository-mainline proof across world runtime, actor-local perception, autonomous social contact, execution ingress, settlement writeback, asset-runtime/Kimodo contracts, and scheduling/continuity evidence.
 - `all`: runs all profiles in order.
 
@@ -97,6 +99,7 @@ Runtime verifiers and aggregate proof scripts:
 - `python scripts/verification/verify_actor_local_perception.py`
 - `python scripts/verification/verify_autonomous_social_contact.py`
 - `python scripts/verification/verify_character_agent_execution.py`
+- `python scripts/verification/verify_l1_world_fact_runtime.py`
 - `python scripts/verification/verify_mainline_unified_runtime.py`
 - `python scripts/verification/verify_character_director_observatory.py`
 - `python scripts/verification/verify_phase1_slice.py`

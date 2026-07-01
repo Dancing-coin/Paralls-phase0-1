@@ -1,6 +1,6 @@
 extends RefCounted
 
-class_name CharacterEmbodimentAssetRuntime
+class_name CharacterEmbodimentAssetRegistry
 
 var _motion_assets: Dictionary = {}
 

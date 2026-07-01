@@ -31,6 +31,7 @@ from app.services.siming_state_tree import InMemorySimingStateTree
 from app.services.siming_storyline import InMemoryNarrativeObligationLedger, InMemoryStorylineState
 from app.models.siming_event import SimingAuditRecord, SimingInput, SimingOutput, SimingTickResult
 from app.services.siming_debug_projection import SimingDebugProjection
+from app.world_runtime.intelligence_upgrade import CanonicalPerceptBundle
 
 
 class SimingRuntime:
@@ -384,6 +385,58 @@ class SimingRuntime:
             )
         return result
 
+    def ingest_canonical_percept_bundle(self, bundle: CanonicalPerceptBundle) -> SimingTickResult:
+        if bundle.consumer_kind != "siming":
+            raise ValueError("SimingRuntime only accepts siming CanonicalPerceptBundle payloads")
+        producer_ts = self._producer_ts_from_bundle(bundle)
+        output_base = {
+            "room_id": str(bundle.local_spatial_state.get("room_id", "") or "room_demo"),
+            "scene_id": str(bundle.local_spatial_state.get("scene_id", "") or "scene_demo"),
+            "zone_id": str(bundle.local_spatial_state.get("zone_id", "") or "zone_focus"),
+            "causation_id": bundle.bundle_id,
+            "correlation_id": bundle.query_id,
+        }
+        result = SimingTickResult()
+        result.outputs.append(
+            SimingOutput(
+                output_type="fairness_snapshot",
+                producer_ts=producer_ts + 1,
+                payload={
+                    "source_bundle_id": bundle.bundle_id,
+                    "known_fact_ids": list(bundle.structured_fact_refs),
+                    "environment_state": dict(bundle.environment_state),
+                },
+                **output_base,
+            )
+        )
+        result.outputs.append(
+            SimingOutput(
+                output_type="intervention_candidate",
+                producer_ts=producer_ts + 2,
+                selected_path="character_input_path",
+                intervention_band="fact_reveal",
+                payload={
+                    "candidate_id": f"candidate:{bundle.bundle_id}",
+                    "source_bundle_id": bundle.bundle_id,
+                    "target_state": dict(bundle.target_state),
+                },
+                **output_base,
+            )
+        )
+        result.read_model = self._read_model_builder.build_bundle_read_model(bundle, producer_ts=producer_ts + 2)
+        self._pending_observatory_messages.append(
+            {
+                "message_type": "siming_debug_event",
+                "payload": {
+                    "stage": "canonical_percept_bundle_consumed",
+                    "summary": "Siming consumed L1 global situation bundle",
+                    "bundle_id": bundle.bundle_id,
+                    "producer_ts": producer_ts + 2,
+                },
+            }
+        )
+        return result
+
     def _llm_candidates_for(
         self,
         event: AuthorityEvent,
@@ -398,6 +451,12 @@ class SimingRuntime:
             return [], [self._audit(event, status="llm_timeout", reason="LLM provider timed out")]
         except (SimingLlmProviderInvalidOutput, ValueError) as exc:
             return [], [self._audit(event, status="llm_invalid_output", reason=str(exc))]
+
+    def _producer_ts_from_bundle(self, bundle: CanonicalPerceptBundle) -> int:
+        try:
+            return int(str(bundle.query_id).split(":")[-1])
+        except ValueError:
+            return 0
 
     def _outputs_for_candidates(
         self,

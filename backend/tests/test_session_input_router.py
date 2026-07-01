@@ -1,9 +1,10 @@
+﻿from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent
+from app.services.session_input_router import SessionInputRouter
 from app.services.session_runtime import SessionRuntime
-from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent
 
 
-def test_session_runtime_routes_dialogue_event() -> None:
-    runtime = SessionRuntime()
+def test_session_input_router_routes_dialogue_event() -> None:
+    runtime = SessionInputRouter()
     event = DialogueSubmit(
         player_id="p1",
         room_id="room_demo",
@@ -18,8 +19,8 @@ def test_session_runtime_routes_dialogue_event() -> None:
     assert result["route"] == "character_service"
 
 
-def test_session_runtime_routes_interaction_event() -> None:
-    runtime = SessionRuntime()
+def test_session_input_router_routes_interaction_event() -> None:
+    runtime = SessionInputRouter()
     event = InteractIntent(
         player_id="p1",
         room_id="room_demo",
@@ -34,8 +35,8 @@ def test_session_runtime_routes_interaction_event() -> None:
     assert result["route"] == "esm_service"
 
 
-def test_session_runtime_routes_move_event() -> None:
-    runtime = SessionRuntime()
+def test_session_input_router_routes_move_event() -> None:
+    runtime = SessionInputRouter()
     event = MoveIntent(
         player_id="p1",
         room_id="room_demo",
@@ -51,8 +52,8 @@ def test_session_runtime_routes_move_event() -> None:
     assert runtime.get_actor_position("char_c") == (1.0, 0.0, 2.0)
 
 
-def test_session_runtime_routes_focus_target_change_event() -> None:
-    runtime = SessionRuntime()
+def test_session_input_router_routes_focus_target_change_event() -> None:
+    runtime = SessionInputRouter()
     event = FocusTargetChange(
         player_id="p1",
         room_id="room_demo",
@@ -64,3 +65,7 @@ def test_session_runtime_routes_focus_target_change_event() -> None:
     result = runtime.accept_player_input(event)
     assert result["accepted"] is True
     assert result["route"] == "character_service"
+
+
+def test_session_runtime_import_remains_compatible() -> None:
+    assert SessionRuntime is SessionInputRouter

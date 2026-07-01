@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "l1-world-fact-runtime",
+  "order": 60,
+  "script": "scripts/verification/verify_l1_world_fact_runtime.py",
+  "requires_godot": true,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/l1-world-fact-runtime-report.json",
+  "description": "Compatibility runtime-verification profile for the System L1 world fact subsystem; this is not a product L1 runtime and must not add an L1 loop, scheduler, authority, or parallel fact bus"
+}

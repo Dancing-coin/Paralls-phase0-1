@@ -140,7 +140,7 @@ def main() -> int:
             python_exe,
             "-m",
             "pytest",
-            "backend/tests/test_character_asset_runtime_static.py",
+            "backend/tests/test_character_asset_registry_static.py",
             "backend/tests/test_kimodo_adapter_contract.py",
             "-v",
         ],
@@ -148,7 +148,7 @@ def main() -> int:
     results.append(
         _result(
             "asset_runtime_kimodo_contracts",
-            "Asset runtime registry/preload contracts and Kimodo adapter contract checks pass",
+            "Asset registry/preload contracts and Kimodo adapter contract checks pass",
             asset_runtime_exit,
             [asset_runtime_log],
         )

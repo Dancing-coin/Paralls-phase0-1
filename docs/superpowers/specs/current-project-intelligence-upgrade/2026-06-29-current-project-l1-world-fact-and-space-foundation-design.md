@@ -25,7 +25,7 @@
 `L1` 由四块组成：
 
 1. `Scene 3D Space Model`
-2. `Runtime Spatial Occupancy Field`
+2. `Spatial Occupancy Field` runtime state
 3. `Environment Field Model`
 4. `Fact Projection Layer`
 
@@ -53,9 +53,9 @@
 
 不允许人工逐模型逐字段补表。
 
-## 4. `Runtime Spatial Occupancy Field`
+## 4. `Spatial Occupancy Field` Runtime State
 
-这是动态空间真相层。
+这是动态空间真相状态层，不是独立运行时宿主。
 
 它应维护：
 
@@ -69,6 +69,8 @@
 
 - 静态基底离线生成
 - 动态部分运行时增量更新
+
+它不得拥有自己的主循环、调度器、authority 或平行事实总线；对外事实仍走现有 `raw_fact_event` / candidate / private percept 主链。
 
 ## 5. `Environment Field Model`
 

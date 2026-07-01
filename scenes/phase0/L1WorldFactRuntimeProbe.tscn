@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=4]
+
+[ext_resource type="Script" path="res://scripts/verification/L1WorldFactRuntimeProbe.gd" id="1_probe"]
+
+[node name="L1WorldFactRuntimeProbe" type="Node"]
+script = ExtResource("1_probe")

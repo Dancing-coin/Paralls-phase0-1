@@ -228,7 +228,7 @@ class OccupancyCell(BaseModel):
     updated_at: int
 
 
-class RuntimeSpatialOccupancyField(BaseModel):
+class SpatialOccupancyField(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     field_id: str
@@ -242,7 +242,7 @@ class FactProjectionLayerManifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     input_foundations: list[str] = Field(
-        default_factory=lambda: ["Scene3DSpaceModel", "RuntimeSpatialOccupancyField", "EnvironmentFieldModel"]
+        default_factory=lambda: ["Scene3DSpaceModel", "SpatialOccupancyField", "EnvironmentFieldModel"]
     )
     projected_fact_families: list[str] = Field(
         default_factory=lambda: [
@@ -564,3 +564,7 @@ def assert_isolated_runtime_contexts(stacks: list[MultimodalStackSpec | NonRunti
         if "shared" in context_id:
             raise ValueError("multimodal runtime contexts must not use shared namespaces")
     return True
+
+
+# Compatibility alias for existing contract tests and external imports.
+RuntimeSpatialOccupancyField = SpatialOccupancyField

@@ -1,17 +1,17 @@
-# Asset Runtime And Kimodo Adapter Implementation Plan
+﻿# Asset Runtime And Kimodo Adapter Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Define and then implement the final-target realization backend for asset indexing, preload, fallback, and Kimodo integration.
 
-**Architecture:** Treat the asset runtime as the future embodiment-realization host below execution semantics. Start by introducing interface and registry contracts without forcing immediate heavy runtime adoption. Keep the current local presentation host alive while adding a clean adapter seam for Kimodo and asset-library-backed realization.
+**Architecture:** Treat the asset registry as the future embodiment-realization host below execution semantics. Start by introducing interface and registry contracts without forcing immediate heavy runtime adoption. Keep the current local presentation host alive while adding a clean adapter seam for Kimodo and asset-library-backed realization.
 
 **Tech Stack:** GDScript, repository asset docs, future adapter interfaces, pytest static tests, docs verification.
 
 **Progress Snapshot (`2026-06-30`):**
 - Tasks `1-4` now have direct repository evidence.
 - Current proof chain covers:
-  - `CharacterEmbodimentAssetRuntime.gd` registry and preload API
+  - `CharacterEmbodimentAssetRegistry.gd` registry and preload API
   - `KimodoActionRequest` semantic/target metadata contract
   - `KimodoRealizationPlan` generated-motion plus local-fallback composition contract
   - `compose_realization_plan(...)` realization planning surface with
@@ -20,7 +20,7 @@
     - `missing_semantic_keys`
   - unified mainline verifier result `asset_runtime_kimodo_contracts=proved`
 - Current direct evidence:
-  - `pytest backend/tests/test_character_asset_runtime_static.py backend/tests/test_kimodo_adapter_contract.py -v`
+  - `pytest backend/tests/test_character_asset_registry_static.py backend/tests/test_kimodo_adapter_contract.py -v`
   - `python scripts/verification/harness.py --profile docs`
   - `python scripts/verification/verify_mainline_unified_runtime.py`
   - `python scripts/verification/harness.py --profile mainline-unified-runtime`
@@ -28,12 +28,12 @@
 **Direct Evidence Audit (`2026-06-30`):**
 - Required outcome `1. explicit asset indexing and capability binding model`
   - Direct evidence:
-    - `backend/tests/test_character_asset_runtime_static.py::test_character_asset_runtime_declares_registry_and_preload_api`
-    - `scripts/character/CharacterEmbodimentAssetRuntime.gd` now defines `register_motion_asset(...)`
+    - `backend/tests/test_character_asset_registry_static.py::test_character_asset_registry_declares_registry_and_preload_api`
+    - `scripts/character/CharacterEmbodimentAssetRegistry.gd` now defines `register_motion_asset(...)`
 - Required outcome `2. on-demand preload policy`
   - Direct evidence:
-    - `backend/tests/test_character_asset_runtime_static.py::test_character_asset_runtime_declares_registry_and_preload_api`
-    - `scripts/character/CharacterEmbodimentAssetRuntime.gd` now defines `preload_assets_for_semantics(...)`
+    - `backend/tests/test_character_asset_registry_static.py::test_character_asset_registry_declares_registry_and_preload_api`
+    - `scripts/character/CharacterEmbodimentAssetRegistry.gd` now defines `preload_assets_for_semantics(...)`
 - Required outcome `3. Kimodo adapter contract`
   - Direct evidence:
     - `backend/tests/test_kimodo_adapter_contract.py::test_kimodo_action_request_carries_semantic_and_target_metadata`
@@ -41,9 +41,9 @@
 - Required outcome `4. generated-motion plus local-asset fallback composition rules`
   - Direct evidence:
     - `backend/tests/test_kimodo_adapter_contract.py::test_kimodo_realization_plan_carries_generated_motion_and_local_fallback_assets`
-    - `backend/tests/test_character_asset_runtime_static.py::test_character_asset_runtime_declares_realization_plan_api`
+    - `backend/tests/test_character_asset_registry_static.py::test_character_asset_registry_declares_realization_plan_api`
     - `backend/app/character_agent/execution/kimodo_adapter_contract.py` now defines `KimodoRealizationPlan`
-    - `scripts/character/CharacterEmbodimentAssetRuntime.gd` now defines `compose_realization_plan(...)`
+    - `scripts/character/CharacterEmbodimentAssetRegistry.gd` now defines `compose_realization_plan(...)`
 - Unified proof status:
   - `.harness/verification/mainline-unified-runtime-report.json` currently records:
     - `asset_runtime_kimodo_contracts=proved`
@@ -65,9 +65,9 @@
 ### Task 1: Define asset-runtime registry and preload contracts
 
 **Files:**
-- Create: `scripts/character/CharacterEmbodimentAssetRuntime.gd`
+- Create: `scripts/character/CharacterEmbodimentAssetRegistry.gd`
 - Modify: `docs/character/character-asset-integration.md`
-- Test: `backend/tests/test_character_asset_runtime_static.py`
+- Test: `backend/tests/test_character_asset_registry_static.py`
 
 - [x] **Step 1: Write the failing static contract test**
 
@@ -75,15 +75,15 @@
 from pathlib import Path
 
 
-def test_character_asset_runtime_declares_registry_and_preload_api() -> None:
-    text = Path("scripts/character/CharacterEmbodimentAssetRuntime.gd").read_text(encoding="utf-8")
+def test_character_asset_registry_declares_registry_and_preload_api() -> None:
+    text = Path("scripts/character/CharacterEmbodimentAssetRegistry.gd").read_text(encoding="utf-8")
     assert "register_motion_asset" in text
     assert "preload_assets_for_semantics" in text
 ```
 
 - [x] **Step 2: Run test to verify it fails**
 
-Run: `pytest backend/tests/test_character_asset_runtime_static.py -v`
+Run: `pytest backend/tests/test_character_asset_registry_static.py -v`
 Expected: `FAIL`
 
 - [x] **Step 3: Write minimal implementation**
@@ -91,7 +91,7 @@ Expected: `FAIL`
 ```gdscript
 extends RefCounted
 
-class_name CharacterEmbodimentAssetRuntime
+class_name CharacterEmbodimentAssetRegistry
 
 var _motion_assets: Dictionary = {}
 
@@ -108,21 +108,21 @@ func preload_assets_for_semantics(semantic_keys: Array[String]) -> Array[String]
 
 - [x] **Step 4: Run test to verify it passes**
 
-Run: `pytest backend/tests/test_character_asset_runtime_static.py -v`
+Run: `pytest backend/tests/test_character_asset_registry_static.py -v`
 Expected: `PASS`
 
 - [x] **Step 5: Commit**
 
 ```bash
-git add scripts/character/CharacterEmbodimentAssetRuntime.gd docs/character/character-asset-integration.md backend/tests/test_character_asset_runtime_static.py
-git commit -m "Define initial embodiment asset runtime registry contracts
+git add scripts/character/CharacterEmbodimentAssetRegistry.gd docs/character/character-asset-integration.md backend/tests/test_character_asset_registry_static.py
+git commit -m "Define initial embodiment asset registry registry contracts
 
 Constraint: Future heavy realization must run through a formal asset-runtime layer rather than one-off scene wiring
 Rejected: Leave asset and preload semantics implicit until Kimodo lands | makes the adapter contract too vague
 Confidence: medium
 Scope-risk: moderate
 Directive: Execution semantics must map to registrable asset-runtime keys before backend-generated realization is attempted
-Tested: pytest backend/tests/test_character_asset_runtime_static.py -v
+Tested: pytest backend/tests/test_character_asset_registry_static.py -v
 Not-tested: live preload behavior"
 ```
 
@@ -200,7 +200,7 @@ Not-tested: real Kimodo runtime"
 ```python
 def test_mainline_unified_runtime_verifier_includes_asset_runtime_and_kimodo_contract_evidence() -> None:
     # assert the unified verifier runs:
-    # backend/tests/test_character_asset_runtime_static.py
+    # backend/tests/test_character_asset_registry_static.py
     # backend/tests/test_kimodo_adapter_contract.py
 ```
 
@@ -213,7 +213,7 @@ Expected: `FAIL`
 
 ```python
 # in verify_mainline_unified_runtime.py, add a focused pytest profile for:
-# - backend/tests/test_character_asset_runtime_static.py
+# - backend/tests/test_character_asset_registry_static.py
 # - backend/tests/test_kimodo_adapter_contract.py
 ```
 
@@ -232,8 +232,8 @@ Expected: `PASS`
 **Files:**
 - Modify: `backend/app/character_agent/execution/kimodo_adapter_contract.py`
 - Modify: `backend/tests/test_kimodo_adapter_contract.py`
-- Modify: `scripts/character/CharacterEmbodimentAssetRuntime.gd`
-- Modify: `backend/tests/test_character_asset_runtime_static.py`
+- Modify: `scripts/character/CharacterEmbodimentAssetRegistry.gd`
+- Modify: `backend/tests/test_character_asset_registry_static.py`
 - Modify: `docs/character/character-asset-integration.md`
 
 - [x] **Step 1: Write the failing focused tests**
@@ -259,15 +259,15 @@ def test_kimodo_realization_plan_carries_generated_motion_and_local_fallback_ass
 from pathlib import Path
 
 
-def test_character_asset_runtime_declares_realization_plan_api() -> None:
-    text = Path("scripts/character/CharacterEmbodimentAssetRuntime.gd").read_text(encoding="utf-8")
+def test_character_asset_registry_declares_realization_plan_api() -> None:
+    text = Path("scripts/character/CharacterEmbodimentAssetRegistry.gd").read_text(encoding="utf-8")
     assert "compose_realization_plan" in text
 ```
 ```
 
 - [x] **Step 2: Run tests to verify they fail**
 
-Run: `pytest backend/tests/test_kimodo_adapter_contract.py backend/tests/test_character_asset_runtime_static.py -v`
+Run: `pytest backend/tests/test_kimodo_adapter_contract.py backend/tests/test_character_asset_registry_static.py -v`
 Expected: `FAIL`
 
 - [x] **Step 3: Write minimal implementation**
@@ -299,7 +299,7 @@ func compose_realization_plan(semantic_keys: Array[String], generated_motion_all
 
 - [x] **Step 4: Run tests to verify they pass**
 
-Run: `pytest backend/tests/test_kimodo_adapter_contract.py backend/tests/test_character_asset_runtime_static.py -v`
+Run: `pytest backend/tests/test_kimodo_adapter_contract.py backend/tests/test_character_asset_registry_static.py -v`
 Expected: `PASS`
 
 - [x] **Step 5: Re-run docs and unified proof**

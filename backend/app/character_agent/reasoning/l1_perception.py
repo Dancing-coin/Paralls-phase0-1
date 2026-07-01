@@ -1,6 +1,7 @@
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
 from app.models.character_perceived import CharacterPerceivedEvent
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
+from app.world_runtime.intelligence_upgrade import CanonicalPerceptBundle
 
 
 class CharacterAgentL1Service:
@@ -125,6 +126,44 @@ class CharacterAgentL1Service:
         snapshot.producer_ts = int(payload.get("producer_ts", 0) or 0)
         return snapshot
 
+    def apply_canonical_percept_bundle(self, bundle: CanonicalPerceptBundle) -> CharacterPrivateWorldSnapshot:
+        if bundle.consumer_kind != "character":
+            raise ValueError("CharacterAgentL1Service only accepts character CanonicalPerceptBundle payloads")
+        producer_ts = self._producer_ts_from_bundle(bundle)
+        zone_id = str(bundle.local_spatial_state.get("zone_id", "") or "zone_focus")
+        snapshot = self._get_or_create_snapshot(
+            actor_id=bundle.subject_id,
+            room_id=str(bundle.local_spatial_state.get("room_id", "") or "room_demo"),
+            scene_id=str(bundle.local_spatial_state.get("scene_id", "") or "scene_demo"),
+            zone_id=zone_id,
+            producer_ts=producer_ts,
+        )
+        snapshot.zone_id = zone_id
+        target_ref = self._bundle_target_ref(bundle)
+        if target_ref:
+            snapshot.attention_targets = [target_ref]
+            snapshot.current_attention_targets = [target_ref]
+            snapshot.local_spatial_confidence_map = {
+                **snapshot.local_spatial_confidence_map,
+                target_ref: max(float(snapshot.local_spatial_confidence_map.get(target_ref, 0.0) or 0.0), 0.75),
+            }
+        for fact_ref in bundle.structured_fact_refs:
+            snapshot.recent_world_changes = self._append_unique(snapshot.recent_world_changes, fact_ref)
+            if "target_unreachable" in fact_ref or "expected_target_missing" in fact_ref:
+                snapshot.recent_constraint_results = self._append_unique(snapshot.recent_constraint_results, fact_ref)
+        if bundle.uncertainty:
+            snapshot.active_anomalies = self._append_unique(
+                snapshot.active_anomalies,
+                str(bundle.uncertainty.get("reason", "l1_world_fact_uncertainty") or "l1_world_fact_uncertainty"),
+            )
+            snapshot.distraction_level = "elevated"
+        visibility = str(bundle.environment_state.get("visibility_level", "") or "")
+        if visibility in {"reduced", "blocked"}:
+            snapshot.salience_tags = self._append_unique(snapshot.salience_tags, f"environment_visibility:{visibility}")
+        snapshot.updated_at = producer_ts
+        snapshot.producer_ts = producer_ts
+        return snapshot
+
     def _append_unique(self, entries: list[str], value: str) -> list[str]:
         if value == "":
             return entries
@@ -140,6 +179,23 @@ class CharacterAgentL1Service:
         target_environment_id: str,
     ) -> str:
         return target_actor_id or target_object_id or target_environment_id
+
+    def _bundle_target_ref(self, bundle: CanonicalPerceptBundle) -> str:
+        target_ref = str(bundle.target_state.get("target_ref", "") or "")
+        if target_ref:
+            return target_ref
+        attention = bundle.attention_state
+        for key in ("target_actor_ids", "target_object_ids", "target_environment_ids"):
+            values = attention.get(key, [])
+            if isinstance(values, list) and values:
+                return str(values[0])
+        return ""
+
+    def _producer_ts_from_bundle(self, bundle: CanonicalPerceptBundle) -> int:
+        try:
+            return int(str(bundle.query_id).split(":")[-1])
+        except ValueError:
+            return 0
 
     def _get_or_create_snapshot(
         self,

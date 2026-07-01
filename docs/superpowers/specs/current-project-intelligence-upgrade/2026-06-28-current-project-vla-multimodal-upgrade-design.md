@@ -1,4 +1,4 @@
-# 当前项目 VLA 与多模态感知增量设计
+﻿# 当前项目 VLA 与多模态感知增量设计
 
 - 日期：`2026-06-28`
 - 状态：`implemented-and-verified`
@@ -165,7 +165,7 @@ L1 结构化事实 / world_result / siming_input ------\
 - 对象实例
 - 环境节点
 
-#### B. `Runtime Spatial Occupancy Field`
+#### B. `Spatial Occupancy Field runtime state`
 
 这是 `L1` 的动态空间真相底座。
 
@@ -567,7 +567,7 @@ L1 结构化事实 / world_result / siming_input ------\
 
 - `L1` 世界事实层
 - `Scene 3D Space Model`
-- `Runtime Spatial Occupancy Field`
+- `Spatial Occupancy Field runtime state`
 - `Visual Patch Provider`
 - `Spatial Patch Provider`
 - `Auditory Context Provider`
@@ -591,4 +591,4 @@ L1 结构化事实 / world_result / siming_input ------\
 
 当前项目的正确升级方向不是从“结构化事实链”跳到“纯多模态 agent”，而是：
 
-> 保留 `L1` 世界事实主链，把 `Godot` 升级为视角化取样前端，引入 `Scene 3D Space Model` 与 `Runtime Spatial Occupancy Field` 作为空间底座，再为角色智能体和司命分别建立独立多模态栈、独立融合层和统一感知对象，最终让它们在游戏场景里真正基于局部世界而不是碎片文本运行。
+> 保留 `L1` 世界事实主链，把 `Godot` 升级为视角化取样前端，引入 `Scene 3D Space Model` 与 `Spatial Occupancy Field runtime state` 作为空间底座，再为角色智能体和司命分别建立独立多模态栈、独立融合层和统一感知对象，最终让它们在游戏场景里真正基于局部世界而不是碎片文本运行。

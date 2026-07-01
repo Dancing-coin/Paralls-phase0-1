@@ -1,4 +1,4 @@
-# Asset Runtime And Kimodo Adapter Design
+﻿# Asset Runtime And Kimodo Adapter Design
 
 Status: `execution-active`
 
@@ -12,7 +12,7 @@ Parent:
 
 Define the final-target realization backend:
 
-- embodiment asset runtime
+- embodiment asset registry
 - preload/cache/fallback behavior
 - Kimodo real-time action generation adapter
 - local skeletal or bone-space presentation
@@ -30,8 +30,8 @@ This design now has direct implementation evidence in the repository.
 
 Current implementation/proof anchors include:
 
-- `scripts/character/CharacterEmbodimentAssetRuntime.gd`
+- `scripts/character/CharacterEmbodimentAssetRegistry.gd`
 - `backend/app/character_agent/execution/kimodo_adapter_contract.py`
-- `backend/tests/test_character_asset_runtime_static.py`
+- `backend/tests/test_character_asset_registry_static.py`
 - `backend/tests/test_kimodo_adapter_contract.py`
 - `.harness/verification/mainline-unified-runtime-report.json`

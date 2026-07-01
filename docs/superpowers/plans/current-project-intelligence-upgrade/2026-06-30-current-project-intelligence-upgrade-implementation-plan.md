@@ -1,4 +1,4 @@
-# 当前项目智能体与世界交互增量专题总实施计划
+﻿# 当前项目智能体与世界交互增量专题总实施计划
 
 > 适用范围：`docs/superpowers/specs/current-project-intelligence-upgrade/`
 
@@ -6,18 +6,23 @@
 
 **架构定位：** 本计划不重做 `world-character-siming-authority-mainline` 已闭合范围，而是把专题树里的能力拆成有依赖关系的增量任务组。
 
+**状态纠偏：** 2026-06-30 本计划已完成的是协议、manifest、静态 provider 和 focused proof 切片。它不满足完整规格的运行时能力完成口径。`System L1 world fact subsystem` 集成必须继续执行：
+
+- [2026-07-01-current-project-l1-world-fact-runtime-full-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-01-current-project-l1-world-fact-runtime-full-implementation-plan.md)
+
 **建议执行顺序：**
 
 1. `Perception Query Frame` 与感知结果协议
 2. `Godot` 取样前端与 Providers
 3. `L1` 世界事实层与空间底座
-4. 角色智能体多模态链与 `Actor Scene Knowledge`
-5. 司命多模态链与全局态势理解
-6. `Interaction Orchestration Layer`
-7. `ESM` 双通道世界作用层
-8. `Embodied Skeletal State Provider`
-9. `VLA` 与多模态慢通路
-10. 非运行时多模态工具链与生产工具链
+4. `System L1 world fact subsystem` 集成
+5. 角色智能体多模态链与 `Actor Scene Knowledge`
+6. 司命多模态链与全局态势理解
+7. `Interaction Orchestration Layer`
+8. `ESM` 双通道世界作用层
+9. `Embodied Skeletal State Provider`
+10. `VLA` 与多模态慢通路
+11. 非运行时多模态工具链与生产工具链
 
 **约束：**
 
@@ -56,8 +61,19 @@
 ### 任务组 C：世界空间底座
 
 - [x] 明确 `Scene 3D Space Model` 的抽取来源和对象类型
-- [x] 明确 `Runtime Spatial Occupancy Field` 的静态/动态分层
+- [x] 明确 `Spatial Occupancy Field runtime state` 的静态/动态分层
 - [x] 明确结构化事实上抛从底座导出的边界
+
+### 任务组 C2：`System L1 world fact subsystem` 集成
+
+- [ ] 从当前 Godot 主场景真实抽取 `Scene3DSpaceModel`
+- [ ] 维护 `SpatialOccupancyField` 并支持 dirty-zone/event-driven 增量更新
+- [ ] 将 `EnvironmentFieldState` 合流进 L1 projection 输入
+- [ ] 实现runtime-facing `FactProjectionLayer`
+- [ ] 从空间/环境底座投影 LOS、可达性、affordance、失败/负事实
+- [ ] 组装真实 `PerceptionQueryFrame`
+- [ ] 让角色或司命 runtime 消费 `CanonicalPerceptBundle`
+- [ ] 保留并通过兼容验证入口 `l1-world-fact-runtime`
 
 ### 任务组 D：角色侧多模态增强
 
@@ -114,6 +130,7 @@
   - `.harness/verification/current-project-intelligence-upgrade-report.md`
 - 剩余风险：
   - 当前计划树闭合在协议、manifest、静态 provider 和 focused proof 层；真实 VLA provider、Godot runtime 截图/音频采集、离线空间烘焙、连续物理作用 runtime 和生产工具流水线仍是后续非目标。
+  - `L1` subsystem integration 不是后续可选项，而是当前用户指定的下一优先级；必须按 `2026-07-01-current-project-l1-world-fact-runtime-full-implementation-plan.md` 执行后才能称为完整规格实现。
 
 ## 一句话收束
 

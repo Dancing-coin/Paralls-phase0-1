@@ -1,4 +1,4 @@
-# Phase 0 Open Scene Camera Implementation Plan
+﻿# Phase 0 Open Scene Camera Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -46,7 +46,7 @@
 ### Verify only
 
 - `backend/tests/test_ws_protocol.py`
-- `backend/tests/test_session_runtime.py`
+- `backend/tests/test_session_input_router.py`
 - `backend/tests/test_character_service.py`
 - `backend/tests/test_esm_service.py`
 - `backend/tests/test_siming_service.py`
@@ -421,7 +421,7 @@ Expected result: the runbook matches the approved open scene design.
 - Verify: `scripts/phase0/MainDemoController.gd`
 - Verify: `scripts/player/CameraOcclusionFader.gd`
 - Verify: `backend/tests/test_ws_protocol.py`
-- Verify: `backend/tests/test_session_runtime.py`
+- Verify: `backend/tests/test_session_input_router.py`
 - Verify: `backend/tests/test_character_service.py`
 - Verify: `backend/tests/test_esm_service.py`
 - Verify: `backend/tests/test_siming_service.py`

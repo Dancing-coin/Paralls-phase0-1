@@ -56,9 +56,11 @@ from app.services.frontend_authority_event_projection import (
 )
 from app.services.per_character_percept_filter import filter_candidate_for_actor
 from app.services.phase0_authority_event_adapter import Phase0AuthorityEventAdapter
-from app.services.session_runtime import SessionRuntime
+from app.services.session_input_router import SessionInputRouter
 from app.services.siming_audit_writer import SimingAuditWriter
 from app.world_runtime.projection import project_world_result_delta
+from app.world_runtime.l1_fact_projection import FactProjectionLayer
+from app.world_runtime.l1_occupancy import SpatialOccupancyService
 from app.services.siming_character_dispatch_adapter import SimingCharacterDispatchAdapter, SimingCharacterDispatchResult
 from app.services.siming_event_consumer import SimingEventConsumer
 from app.services.siming_event_pipeline import SimingEventPipeline
@@ -108,9 +110,11 @@ def reset_runtime_state() -> None:
     global siming_debug_projection
     global world_outcome_debug_projection
     global script_beat_projection
+    global l1_occupancy_service
+    global l1_projection_layer
     global _pending_siming_character_dispatch_messages
 
-    runtime = SessionRuntime()
+    runtime = SessionInputRouter()
     character_service = CharacterService()
     if "character_perceived_input_service" not in globals():
         character_perceived_input_service = CharacterPerceivedInputService()
@@ -118,6 +122,8 @@ def reset_runtime_state() -> None:
         character_perceived_input_service.clear()
     character_agent_runtime = CharacterAgentRuntime()
     esm_service = ESMService()
+    l1_occupancy_service = SpatialOccupancyService()
+    l1_projection_layer = FactProjectionLayer()
     event_trace = EventTraceService()
     focus_state = FocusStateService()
     conversation_relation_service = ConversationRelationService()
@@ -277,6 +283,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 detail=event.model_dump(),
             )
         )
+        projected_facts = _ingest_l1_world_fact_foundation(event)
         character_agent_messages = _character_agent_messages_from_fact_candidates(event)
         messages = route_raw_fact_event(
             event,
@@ -284,6 +291,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             context=_build_visual_fact_handler_context(),
         )
         messages.extend(character_agent_messages)
+        messages.extend(_messages_from_projected_l1_facts(projected_facts))
         _publish_route_event(event, messages)
         return _finalize_outbound_messages(messages)
 
@@ -317,6 +325,8 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         event_trace.record(resolution.result_type)
         messages.extend(_publish_world_result_authority_event(resolution, source_event=event))
         if environment_result is not None:
+            l1_occupancy_service.apply_environment_result(environment_result)
+            messages.extend(_messages_from_projected_l1_facts(_project_l1_facts_for_dirty_zones(environment_result.producer_ts)))
             transition_trigger_type = "environment_request.light_level_drop"
             transition_from_state = "stable"
             if event.requested_change_type == "thermal_level_rise":
@@ -756,6 +766,15 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 causation_id=world_result.causation_id,
                 correlation_id=world_result.correlation_id,
             )
+            l1_occupancy_service.apply_object_state_update(
+                object_id=object_state_result.target_object_id,
+                zone_id=object_state_result.zone_id,
+                state=object_state_result.current_state,
+                affordances=["inspect", "read"],
+                occludes=False,
+                producer_ts=object_state_result.producer_ts,
+                source_ref=object_state_result.result_id,
+            )
             event_trace.record(object_state_result.result_type)
             messages.extend(_publish_world_result_authority_event(object_state_result, source_event=event))
 
@@ -809,6 +828,8 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 causation_id=world_result.causation_id,
                 correlation_id=world_result.correlation_id,
             )
+            l1_occupancy_service.apply_environment_result(environment_result)
+            messages.extend(_messages_from_projected_l1_facts(_project_l1_facts_for_dirty_zones(environment_result.producer_ts)))
             event_trace.record(environment_result.result_type)
             messages.extend(_publish_world_result_authority_event(environment_result, source_event=event))
 
@@ -1207,6 +1228,91 @@ def _should_suppress_character_agent_candidate_from_focus_mirror(
     focus_ts = int(str(focus.get("producer_ts", "0") or "0"))
     producer_ts = int(getattr(candidate, "producer_ts", 0) or 0)
     return abs(focus_ts - producer_ts) <= 160
+
+
+def _ingest_l1_world_fact_foundation(event: RawFactEvent) -> list[RawFactEvent]:
+    if event.source.system == "world_runtime.l1_fact_projection":
+        return []
+    if event.fact_family != "spatial_access_fact":
+        return []
+    if event.fact_type == "actor_entered_zone":
+        l1_occupancy_service.apply_actor_zone_update(
+            actor_id=event.source.actor_id,
+            previous_zone_id="",
+            next_zone_id=event.zone_id,
+            producer_ts=event.producer_ts,
+            source_ref=f"raw_fact_event:{event.fact_type}:{event.producer_ts}",
+        )
+    elif event.fact_type == "actor_left_actor_range":
+        l1_occupancy_service.apply_actor_proximity_update(
+            actor_id=event.source.actor_id,
+            producer_ts=event.producer_ts,
+            source_ref=f"raw_fact_event:{event.fact_type}:{event.producer_ts}",
+        )
+    elif event.fact_type in {"actor_approached_actor", "actor_approached_object"}:
+        l1_occupancy_service.apply_actor_proximity_update(
+            actor_id=event.source.actor_id,
+            target_actor_id=event.targets.actor_id,
+            target_object_id=event.targets.object_id,
+            distance_m=event.world.distance_m,
+            producer_ts=event.producer_ts,
+            source_ref=f"raw_fact_event:{event.fact_type}:{event.producer_ts}",
+        )
+    else:
+        return []
+    if event.targets.actor_id == "" and event.targets.object_id == "":
+        return []
+    return l1_projection_layer.project_actor_target_facts(
+        l1_occupancy_service.snapshot(),
+        actor_id=event.source.actor_id,
+        target_actor_id=event.targets.actor_id,
+        target_object_id=event.targets.object_id,
+        producer_ts=event.producer_ts + 1,
+    )
+
+
+def _project_l1_facts_for_dirty_zones(producer_ts: int) -> list[RawFactEvent]:
+    snapshot = l1_occupancy_service.snapshot()
+    facts: list[RawFactEvent] = []
+    for zone_id in snapshot.dirty_zone_ids:
+        zone = snapshot.zone_states.get(zone_id)
+        if zone is None:
+            continue
+        target_object_id = zone.object_ids[0] if zone.object_ids else ""
+        for actor_id in zone.actor_ids:
+            facts.extend(
+                l1_projection_layer.project_actor_target_facts(
+                    snapshot,
+                    actor_id=actor_id,
+                    target_object_id=target_object_id,
+                    producer_ts=producer_ts + 1,
+                )
+            )
+    return facts
+
+
+def _messages_from_projected_l1_facts(projected_facts: list[RawFactEvent]) -> list[dict[str, object]]:
+    messages: list[dict[str, object]] = []
+    for fact in projected_facts:
+        _publish_debug_event(
+            build_debug_event(
+                producer_ts=fact.producer_ts,
+                domain="world",
+                stage="l1_fact_projected",
+                actor_id=fact.source.actor_id or None,
+                summary=summarize_raw_fact_event(fact),
+                detail=fact.model_dump(),
+            )
+        )
+        messages.extend(
+            route_raw_fact_event(
+                fact,
+                source_type="raw_fact_event",
+                context=_build_visual_fact_handler_context(),
+            )
+        )
+        messages.extend(_character_agent_messages_from_fact_candidates(fact))
+    return messages
 
 
 def _character_agent_messages_from_fact_candidates(event: RawFactEvent) -> list[dict[str, object]]:

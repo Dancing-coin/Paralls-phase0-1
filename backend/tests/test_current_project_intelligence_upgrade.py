@@ -19,7 +19,7 @@ from app.world_runtime.intelligence_upgrade import (
     MultimodalStackSpec,
     NonRuntimeStackManifest,
     PerceptionQueryFrame,
-    RuntimeSpatialOccupancyField,
+    SpatialOccupancyField,
     SampleInputRef,
     Scene3DSpaceModel,
     SceneSpaceElement,
@@ -101,7 +101,7 @@ def test_l1_world_fact_and_space_foundation_models_static_and_dynamic_space_with
             )
         ],
     )
-    occupancy = RuntimeSpatialOccupancyField(field_id="occupancy:demo", static_model_ref=space_model.model_id)
+    occupancy = SpatialOccupancyField(field_id="occupancy:demo", static_model_ref=space_model.model_id)
     projection = FactProjectionLayerManifest()
 
     assert space_model.manual_role == "review_only"

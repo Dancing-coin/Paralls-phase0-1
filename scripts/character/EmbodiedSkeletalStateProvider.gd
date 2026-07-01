@@ -33,6 +33,7 @@ func build_main_chain_payload(actor_id: String, high_level_state: Dictionary, mi
 	return {
 		"provider_kind": provider_kind,
 		"actor_id": actor_id,
+		"runtime_source_refs": ["runtime://embodied_skeletal/%s/high_mid/%s" % [actor_id, Time.get_ticks_msec()]],
 		"high_level_state": high_level_state,
 		"mid_level_parameters": mid_level_parameters,
 	}

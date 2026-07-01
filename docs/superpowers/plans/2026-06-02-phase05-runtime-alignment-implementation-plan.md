@@ -1,4 +1,4 @@
-# Phase 0.5 Runtime Alignment Implementation Plan
+﻿# Phase 0.5 Runtime Alignment Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -29,8 +29,8 @@
   - `backend/tests/test_health.py::test_health_exposes_current_backend_identity`
   - `backend/tests/test_ws_protocol.py::test_websocket_move_intent_emits_ack_and_runtime_snapshot`
   - `backend/tests/test_ws_protocol.py::test_websocket_focus_target_change_emits_runtime_alignment_messages`
-  - `backend/tests/test_session_runtime.py::test_session_runtime_routes_move_event`
-  - `backend/tests/test_session_runtime.py::test_session_runtime_routes_focus_target_change_event`
+  - `backend/tests/test_session_input_router.py::test_session_input_router_routes_move_event`
+  - `backend/tests/test_session_input_router.py::test_session_input_router_routes_focus_target_change_event`
 
 ## File Structure
 
@@ -78,7 +78,7 @@
 ### Tests
 
 - Modify: `backend/tests/test_ws_protocol.py`
-- Modify: `backend/tests/test_session_runtime.py`
+- Modify: `backend/tests/test_session_input_router.py`
 - Modify: `backend/tests/test_character_service.py`
 - Modify: `backend/tests/test_siming_service.py`
 - Modify: `backend/tests/test_demo_script.py` if trace expectations widen

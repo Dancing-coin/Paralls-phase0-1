@@ -41,6 +41,7 @@ from app.character_agent.storage.goal_state_store import CharacterGoalStateStore
 from app.character_agent.storage.unresolved_tension_store import CharacterUnresolvedTensionStore
 from app.services.character_agent_debug_projection import CharacterAgentDebugProjection
 from app.models.siming_character_bridge import SimingCharacterCompatibilityInput
+from app.world_runtime.intelligence_upgrade import CanonicalPerceptBundle
 from app.world_runtime.continuity import RuntimeContinuityState
 from app.world_runtime.scheduling import (
     RuntimeCadencePolicy,
@@ -899,6 +900,35 @@ class CharacterAgentRuntime:
 
     def get_private_snapshot(self, actor_id: str):
         return self._l1.get_snapshot(actor_id)
+
+    def ingest_canonical_percept_bundle(self, bundle: CanonicalPerceptBundle) -> CharacterPrivateWorldSnapshot:
+        if not self.supports_actor(bundle.subject_id):
+            raise ValueError(f"unsupported actor_id: {bundle.subject_id}")
+        snapshot = self._l1.apply_canonical_percept_bundle(bundle)
+        stored = self._session_store.append_event(
+            actor_id=bundle.subject_id,
+            event_type="canonical_percept_bundle",
+            producer_ts=snapshot.producer_ts,
+            payload=bundle.model_dump(),
+        )
+        self._memory_store.write_event(stored)
+        self._queue_observatory_stage_event(
+            actor_id=bundle.subject_id,
+            producer_ts=snapshot.producer_ts,
+            stage="canonical_percept_bundle_consumed",
+            summary="L1 world fact bundle consumed into private snapshot",
+            focus_target=self._snapshot_focus_target(snapshot),
+            intent_label="l1_world_fact",
+            participants=self._participants_for_actor(bundle.subject_id, self._snapshot_focus_target(snapshot)),
+            detail=bundle.model_dump(),
+        )
+        self._queue_observatory_snapshot(
+            actor_id=bundle.subject_id,
+            producer_ts=snapshot.producer_ts,
+            snapshot=snapshot,
+            memory_bundle=self.get_memory_bundle(bundle.subject_id),
+        )
+        return snapshot
 
     def get_session_timeline(self, actor_id: str) -> list[dict[str, object]]:
         return self._session_store.list_events(actor_id)

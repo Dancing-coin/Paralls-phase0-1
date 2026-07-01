@@ -14,11 +14,13 @@ func build_query_input_ref(
 	los_failure: bool = false,
 	reachability_failure: bool = false
 ) -> Dictionary:
+	var runtime_state_ref := "runtime://embodied/%s/state/%s" % [subject_id, Time.get_ticks_msec()]
 	return {
 		"provider_kind": provider_kind,
-		"ref_id": "embodied_state:%s:%s" % [subject_id, Time.get_ticks_msec()],
+		"ref_id": runtime_state_ref,
 		"summary": "high-level embodied state slice",
 		"retention": "ref_only",
+		"runtime_source_refs": [runtime_state_ref],
 		"posture": posture,
 		"locomotion_state": locomotion_state,
 		"grounded": grounded,

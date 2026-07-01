@@ -153,7 +153,7 @@ The repository is ready to start actual runtime lookup only after:
 
 ## Mainline Asset Runtime Seam
 
-The new mainline now reserves `CharacterEmbodimentAssetRuntime` as the first
+The new mainline now reserves `CharacterEmbodimentAssetRegistry` as the first
 formal asset-runtime seam below execution semantics.
 
 Its immediate responsibilities are intentionally narrow:

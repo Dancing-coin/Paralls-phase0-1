@@ -1,4 +1,4 @@
-# World-Character-Siming-Authority Mainline Design
+﻿# World-Character-Siming-Authority Mainline Design
 
 Status: `execution-active`
 
@@ -208,7 +208,7 @@ This executed mainline direction remains valid when:
 3. it treats the completed mind core as already-done truth
 4. it treats future embodiment as:
    - execution semantics
-   - asset runtime
+   - asset registry
    - Kimodo realization adapter
 5. it names the full framework inventory needed to make intelligent roles live continuously in the world
 6. it gives a phased migration path from current repo truth to the new runtime organism
@@ -224,4 +224,4 @@ Inside that runtime:
 - the character mind core is the completed inner cognition engine
 - the world runtime is the outer life loop
 - execution realization is the downstream presentation and settlement segment
-- asset runtime and Kimodo are the future realization target
+- asset registry and Kimodo are the future realization target

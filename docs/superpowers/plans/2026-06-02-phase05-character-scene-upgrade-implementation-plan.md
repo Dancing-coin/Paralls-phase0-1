@@ -1,4 +1,4 @@
-# Phase 0.5 Character Scene Upgrade Implementation Plan
+﻿# Phase 0.5 Character Scene Upgrade Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -67,7 +67,7 @@
 ### Verification
 
 - Verify: `backend/tests/test_ws_protocol.py`
-- Verify: `backend/tests/test_session_runtime.py`
+- Verify: `backend/tests/test_session_input_router.py`
 - Verify: `backend/tests/test_character_service.py`
 - Verify: `backend/tests/test_esm_service.py`
 - Verify: `backend/tests/test_siming_service.py`
@@ -665,7 +665,7 @@ Expected: local docs clearly define how `homebuilder` should be used in this pro
 - Verify: `scripts/character/CharacterReplica.gd`
 - Verify: `scripts/phase0/MainDemoController.gd`
 - Verify: `backend/tests/test_ws_protocol.py`
-- Verify: `backend/tests/test_session_runtime.py`
+- Verify: `backend/tests/test_session_input_router.py`
 - Verify: `backend/tests/test_character_service.py`
 - Verify: `backend/tests/test_esm_service.py`
 - Verify: `backend/tests/test_siming_service.py`
