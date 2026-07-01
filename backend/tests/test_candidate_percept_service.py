@@ -131,3 +131,66 @@ def test_compile_ambient_noise_changed_keeps_environmental_audio_system_only_for
     )
 
     assert compile_candidate_percepts(event) == []
+
+
+def test_compile_olfactory_fact_to_candidate_percept() -> None:
+    event = RawFactEvent(
+        fact_family="olfactory_fact",
+        fact_type="odor_state_changed",
+        relation_type="odor_state_changed",
+        producer_ts=303,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L1", "system": "godot.raw_fact_emitter", "actor_id": "char_c"},
+        targets={"environment_id": "env_lamp"},
+        observability={"auditory": False, "visual": False},
+    )
+
+    compiled = compile_candidate_percepts(event)
+
+    assert len(compiled) == 1
+    assert compiled[0].percept_channel == "olfactory"
+    assert compiled[0].target_environment_id == "env_lamp"
+
+
+def test_compile_thermal_fact_to_candidate_percept() -> None:
+    event = RawFactEvent(
+        fact_family="thermal_fact",
+        fact_type="thermal_proximity_changed",
+        relation_type="thermal_proximity_changed",
+        producer_ts=304,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L1", "system": "godot.raw_fact_emitter", "actor_id": "char_c"},
+        targets={"object_id": "obj_letter"},
+        observability={"auditory": False, "visual": False},
+    )
+
+    compiled = compile_candidate_percepts(event)
+
+    assert len(compiled) == 1
+    assert compiled[0].percept_channel == "thermal"
+    assert compiled[0].target_object_id == "obj_letter"
+
+
+def test_compile_tactile_fact_to_candidate_percept() -> None:
+    event = RawFactEvent(
+        fact_family="tactile_fact",
+        fact_type="contact_started",
+        relation_type="contact_started",
+        producer_ts=305,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L1", "system": "godot.raw_fact_emitter", "actor_id": "char_c"},
+        targets={"actor_id": "char_a"},
+        observability={"auditory": False, "visual": False},
+    )
+
+    compiled = compile_candidate_percepts(event)
+
+    assert len(compiled) == 1
+    assert compiled[0].percept_channel == "tactile"
+    assert compiled[0].target_actor_id == "char_a"

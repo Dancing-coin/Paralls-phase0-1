@@ -242,6 +242,7 @@ def ensure_backend(
     python_exe: str,
     *,
     prefer_fresh_backend: bool = False,
+    env: dict[str, str] | None = None,
 ) -> tuple[dict[str, object], subprocess.Popen[str] | None]:
     health = get_health()
     expected_root = str(project_root)
@@ -270,9 +271,13 @@ def ensure_backend(
     stderr_path = log_dir / "backend-verify.stderr.log"
     stdout_handle = stdout_path.open("w", encoding="utf-8")
     stderr_handle = stderr_path.open("w", encoding="utf-8")
+    merged_env = os.environ.copy()
+    if env:
+        merged_env.update(env)
     process = subprocess.Popen(
         [python_exe, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
         cwd=str(project_root / "backend"),
+        env=merged_env,
         stdout=stdout_handle,
         stderr=stderr_handle,
         text=True,

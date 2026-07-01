@@ -28,3 +28,11 @@ def test_relationship_overlay_supports_required_relationship_line_families() -> 
     assert 'source_node.global_position + Vector3(0.0, 1.4, 0.0)' in source
     assert 'get_node_or_null("/root/MainDemo")' not in source
     assert "get_viewport().get_camera_3d()" in source
+
+
+def test_actor_perception_sampler_declares_cone_range_and_los_hooks() -> None:
+    text = (ROOT / "scripts" / "character" / "ActorPerceptionSampler.gd").read_text(encoding="utf-8")
+
+    assert "sample_visible_targets" in text
+    assert "_has_line_of_sight_to_target" in text
+    assert "focus_max_distance" not in text

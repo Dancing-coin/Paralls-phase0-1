@@ -1,0 +1,62 @@
+# World-Character-Siming-Authority Mainline Spec Tree
+
+Status: `execution-active`
+
+Date: `2026-06-29`
+
+This folder contains the dedicated spec tree for the repository’s new mainline:
+
+- **world-character-Siming-authority unified runtime**
+
+Use this folder rather than the old flat-file entrypoint for all follow-on architecture work.
+
+## Current Truth
+
+- This spec tree is now active repository truth for the mainline runtime direction.
+- Implementation and verification evidence already exist in the matching plan tree and
+  the `mainline-unified-runtime` harness profile.
+
+## Current Proof Aggregate
+
+The current unified proof aggregate records direct evidence for:
+
+- world runtime foundation
+- actor-local perception
+- autonomous social contact
+- shared actor execution ingress
+- authority settlement writeback
+- asset-runtime and Kimodo contracts
+- scheduling / continuity observability and replay surfaces
+
+Primary commands:
+
+- `python scripts/verification/verify_mainline_unified_runtime.py`
+- `python scripts/verification/harness.py --profile mainline-unified-runtime`
+
+## Entry Points
+
+- Master spec:
+  - [2026-06-29-world-character-siming-authority-mainline-master-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md>)
+- Matching plan tree:
+  - [plans/world-character-siming-authority-mainline/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/world-character-siming-authority-mainline/README.md>)
+
+## Spec Tree
+
+1. [2026-06-29-world-character-siming-authority-mainline-master-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md>)
+2. [2026-06-29-world-runtime-foundation-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-runtime-foundation-design.md>)
+3. [2026-06-29-actor-local-perception-and-fact-production-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-actor-local-perception-and-fact-production-design.md>)
+4. [2026-06-29-autonomous-social-contact-and-exchange-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-autonomous-social-contact-and-exchange-design.md>)
+5. [2026-06-29-authority-and-settlement-runtime-closure-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-authority-and-settlement-runtime-closure-design.md>)
+6. [2026-06-29-execution-semantics-and-realization-runtime-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-execution-semantics-and-realization-runtime-design.md>)
+7. [2026-06-29-asset-runtime-and-kimodo-adapter-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-asset-runtime-and-kimodo-adapter-design.md>)
+8. [2026-06-29-world-runtime-scheduling-and-continuity-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-runtime-scheduling-and-continuity-design.md>)
+9. [2026-06-29-mainline-docs-truth-rewrite-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-mainline-docs-truth-rewrite-design.md>)
+
+## Notes
+
+- The character mind core is already completed repository truth.
+- This tree is for the runtime organism around that completed core.
+- Execution realization must target future asset-library and Kimodo integration, not freeze the current light Godot path as final truth.
+- Remaining work should now prefer direct-evidence closure over re-framing the mainline.
+- Incremental follow-on design topics now live in:
+  - [current-project-intelligence-upgrade/README.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/README.md)

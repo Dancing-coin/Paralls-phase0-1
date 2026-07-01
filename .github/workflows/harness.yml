@@ -16,4 +16,6 @@ jobs:
         with:
           python-version: "3.13"
       - name: Run full harness
-        run: python scripts/verification/harness.py --profile all
+        run: |
+          python scripts/verification/harness.py --profile all
+          python scripts/verification/harness.py --profile mainline-unified-runtime

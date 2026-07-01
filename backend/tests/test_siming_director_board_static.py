@@ -16,4 +16,6 @@ def test_siming_director_board_shows_director_seat_fields() -> None:
     assert 'payload.get("reason_summary"' in source
     assert 'payload.get("downstream_status"' in source
     assert 'payload.get("no_action_reason"' in source
+    assert "司命为什么这么做" in source
+    assert "司命这步现在走到哪了" in source
     assert "_build_director_rows" in source

@@ -55,6 +55,34 @@ def project_authority_event_as_world_result(event: AuthorityEvent) -> dict[str, 
     }
 
 
+def project_authority_event_as_social_spatial_runtime_result(event: AuthorityEvent) -> dict[str, object] | None:
+    if event.event_type not in {"esm_result_event", "constraint_state_event"}:
+        return None
+
+    payload = dict(event.payload)
+    if str(payload.get("result_type", "") or "") != "action_resolution_result":
+        return None
+    if str(payload.get("action_profile", "") or "") not in {
+        "approach",
+        "follow_target",
+        "seek_private_distance",
+        "withdraw",
+        "break_contact",
+    }:
+        return None
+
+    return {
+        "message_type": "social_spatial_runtime_result",
+        "payload": {
+            "actor_id": str(payload.get("actor_id", "") or ""),
+            "target_actor_id": str(payload.get("target_actor_id", "") or ""),
+            "action_profile": str(payload.get("action_profile", "") or ""),
+            "settlement_status": str(payload.get("settlement_status", "") or ""),
+            "producer_ts": int(payload.get("producer_ts", 0) or 0),
+        },
+    }
+
+
 def project_authority_event_as_state_machine_transition(event: AuthorityEvent) -> dict[str, object] | None:
     if event.event_type != "state_machine_transition_event":
         return None
@@ -134,6 +162,9 @@ class FrontendAuthorityEventProjector:
         envelope = project_authority_event_as_world_result(event)
         if envelope is not None:
             self._pending.append(envelope)
+            social_spatial = project_authority_event_as_social_spatial_runtime_result(event)
+            if social_spatial is not None:
+                self._pending.append(social_spatial)
             return
 
         envelope = project_authority_event_as_state_machine_transition(event)

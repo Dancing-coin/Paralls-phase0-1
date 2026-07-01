@@ -1,6 +1,48 @@
+from app.character_agent.gateway.model_gateway import CharacterModelGateway
+from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
 from app.services.character_agent_runtime import CharacterAgentRuntime
 from app.models.authority_event import AuthorityEvent
 from app.services.siming_character_dispatch_adapter import SimingCharacterDispatchAdapter
+
+
+class _LocalGateway:
+    def __init__(self) -> None:
+        self._gateway = CharacterModelGateway()
+
+    def run_task(
+        self,
+        *,
+        task_kind: str,
+        context: dict[str, object],
+        route_override: str | None = None,
+    ) -> dict[str, object]:
+        return self._gateway.run_task(
+            task_kind=task_kind,
+            context=context,
+            route_override=route_override or "local_only",
+        )
+
+    def prepare_run_request(
+        self,
+        *,
+        task_kind: str,
+        context: dict[str, object],
+        route_override: str | None = None,
+    ) -> dict[str, object]:
+        return self._gateway.prepare_run_request(
+            task_kind=task_kind,
+            context=context,
+            route_override=route_override or "local_only",
+        )
+
+
+def _local_runtime() -> CharacterAgentRuntime:
+    runtime = CharacterAgentRuntime()
+    local_gateway = _LocalGateway()
+    runtime._l2 = CharacterAgentL2Service(gateway=local_gateway, profile_registry=runtime._profile_registry)
+    runtime._l3 = CharacterAgentL3Service(gateway=local_gateway)
+    return runtime
 
 
 def make_siming_event(
@@ -37,7 +79,7 @@ def make_siming_event(
 
 
 def test_adapter_fans_out_one_delivery_per_actor() -> None:
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
     adapter = SimingCharacterDispatchAdapter(runtime=runtime)
 
     result = adapter.dispatch(make_siming_event())
@@ -48,7 +90,7 @@ def test_adapter_fans_out_one_delivery_per_actor() -> None:
 
 
 def test_adapter_rejects_expired_delivery_before_runtime_ingress() -> None:
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
     adapter = SimingCharacterDispatchAdapter(runtime=runtime, now_ts_provider=lambda: 999999)
 
     result = adapter.dispatch(make_siming_event())
@@ -59,7 +101,7 @@ def test_adapter_rejects_expired_delivery_before_runtime_ingress() -> None:
 
 
 def test_adapter_accepts_delivery_at_exact_ttl_boundary() -> None:
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
     adapter = SimingCharacterDispatchAdapter(runtime=runtime, now_ts_provider=lambda: 5101)
 
     result = adapter.dispatch(make_siming_event(target_ids=["char_a"]))
@@ -69,7 +111,7 @@ def test_adapter_accepts_delivery_at_exact_ttl_boundary() -> None:
 
 
 def test_adapter_preserves_high_level_semantics_without_low_level_command_fields() -> None:
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
     adapter = SimingCharacterDispatchAdapter(runtime=runtime)
 
     result = adapter.dispatch(make_siming_event(event_type="siming.fact_reveal", target_ids=["char_a"]))
@@ -81,7 +123,7 @@ def test_adapter_preserves_high_level_semantics_without_low_level_command_fields
 
 
 def test_adapter_records_target_unavailable_for_unsupported_actor() -> None:
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
     adapter = SimingCharacterDispatchAdapter(runtime=runtime)
 
     result = adapter.dispatch(make_siming_event(target_ids=["char_a", "char_unknown"]))
@@ -93,7 +135,7 @@ def test_adapter_records_target_unavailable_for_unsupported_actor() -> None:
 
 
 def test_adapter_falls_back_to_event_id_when_message_id_is_missing() -> None:
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
     adapter = SimingCharacterDispatchAdapter(runtime=runtime)
     event = make_siming_event(target_ids=["char_a"])
     event.payload.pop("message_id")
@@ -105,7 +147,7 @@ def test_adapter_falls_back_to_event_id_when_message_id_is_missing() -> None:
 
 
 def test_adapter_deduplicates_duplicate_target_ids_per_actor() -> None:
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
     adapter = SimingCharacterDispatchAdapter(runtime=runtime)
 
     result = adapter.dispatch(make_siming_event(target_ids=["char_a", "char_a", "char_b"]))

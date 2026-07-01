@@ -4,6 +4,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _function_block(source: str, signature: str) -> str:
+    start = source.index(signature)
+    next_func = source.find("\nfunc ", start + len(signature))
+    if next_func == -1:
+        return source[start:]
+    return source[start:next_func]
+
+
 def test_character_director_state_caches_all_observatory_families() -> None:
     source = (ROOT / "scripts" / "ui" / "CharacterDirectorState.gd").read_text(encoding="utf-8")
 
@@ -12,7 +20,9 @@ def test_character_director_state_caches_all_observatory_families() -> None:
     assert "var latest_siming_state := {}" in source
     assert "var recent_siming_events: Array[Dictionary] = []" in source
     assert "var recent_world_outcomes: Array[Dictionary] = []" in source
+    assert "var recent_scheduling_rounds: Array[Dictionary] = []" in source
     assert "var recent_script_beats: Array[Dictionary] = []" in source
+    assert "var recent_dialogue_pairs: Array[Dictionary] = []" in source
     assert "var freeze_mode := false" in source
     assert "var frozen_frame := {}" in source
     assert 'character_agent_debug_snapshot_received.connect(_on_character_agent_debug_snapshot_received)' in source
@@ -20,6 +30,7 @@ def test_character_director_state_caches_all_observatory_families() -> None:
     assert 'siming_debug_snapshot_received.connect(_on_siming_debug_snapshot_received)' in source
     assert 'siming_debug_event_received.connect(_on_siming_debug_event_received)' in source
     assert 'world_outcome_trace_received.connect(_on_world_outcome_trace_received)' in source
+    assert 'scheduling_round_trace_received.connect(_on_scheduling_round_trace_received)' in source
     assert 'script_beat_event_received.connect(_on_script_beat_event_received)' in source
 
 
@@ -47,7 +58,67 @@ def test_character_director_state_exposes_master_mode_and_freeze_controls() -> N
     assert "func get_selected_actor_label() -> String:" in source
     assert "func get_latest_bottom_strip_entries() -> Array[Dictionary]:" in source
     assert "func get_latest_script_beat_summaries(" in source
-    assert "func get_latest_siming_summaries(" in source
+    assert "func get_recent_siming_events() -> Array[Dictionary]:" in source
+    assert "func get_recent_scheduling_rounds() -> Array[Dictionary]:" in source
+    assert "func get_latest_siming_summaries(limit: int = 3) -> Array[String]:" in source
+    assert "func get_selected_actor_latest_siming_summary() -> String:" in source
+    assert "func get_selected_actor_recent_siming_reasons(limit: int = 2) -> Array[String]:" in source
+    assert "func _merge_dialogue_pair_rows(" in source
+
+
+def test_character_director_state_selected_actor_siming_helpers_stay_presentation_only() -> None:
+    source = (ROOT / "scripts" / "ui" / "CharacterDirectorState.gd").read_text(encoding="utf-8")
+    latest_summary_block = _function_block(source, "func get_selected_actor_latest_siming_summary() -> String:")
+    recent_reasons_block = _function_block(source, "func get_selected_actor_recent_siming_reasons(limit: int = 2) -> Array[String]:")
+
+    assert "latest_siming_summary" in latest_summary_block
+    assert "get_selected_actor_state()" in latest_summary_block
+    assert "get_recent_siming_events()" in recent_reasons_block
+    assert "target_ref" in recent_reasons_block
+    assert "selected_actor_id" in recent_reasons_block
+    assert "reason_summary" in recent_reasons_block
+    assert "summary" in recent_reasons_block
+    assert "if rows.size() > limit:" in recent_reasons_block
+    assert "rows.slice(rows.size() - limit, rows.size())" in recent_reasons_block
+    assert "_string_array(" in recent_reasons_block
+
+
+def test_character_director_state_bottom_strip_stays_single_merged_builder() -> None:
+    source = (ROOT / "scripts" / "ui" / "CharacterDirectorState.gd").read_text(encoding="utf-8")
+    bottom_strip_block = _function_block(source, "func get_latest_bottom_strip_entries() -> Array[Dictionary]:")
+
+    assert "for outcome in get_recent_world_outcomes():" in bottom_strip_block
+    assert "for round in get_recent_scheduling_rounds():" in bottom_strip_block
+    assert "for event in get_recent_siming_events():" in bottom_strip_block
+    assert "for beat in get_recent_script_beats():" in bottom_strip_block
+    assert '"type": "世界"' in bottom_strip_block
+    assert '"type": "调度"' in bottom_strip_block
+    assert '"type": "司命"' in bottom_strip_block
+    assert '"type": "节拍"' in bottom_strip_block
+    assert "rows.sort_custom(" in bottom_strip_block
+    assert 'a.get("producer_ts", 0)' in bottom_strip_block
+    assert '> int(b.get("producer_ts", 0))' in bottom_strip_block
+    assert "if rows.size() > 3:" in bottom_strip_block
+    assert "rows.slice(0, 3)" in bottom_strip_block
+    assert "_dictionary_array(" in bottom_strip_block
+
+
+def test_character_director_state_keeps_dialogue_pair_ledger_outside_script_beat_window() -> None:
+    source = (ROOT / "scripts" / "ui" / "CharacterDirectorState.gd").read_text(encoding="utf-8")
+    dialogue_pair_block = _function_block(source, "func get_dialogue_pair_entries() -> Array[Dictionary]:")
+    script_beat_handler_block = _function_block(source, "func _on_script_beat_event_received(payload: Dictionary) -> void:")
+
+    assert '_state_frame_value("recent_dialogue_pairs", [])' in dialogue_pair_block
+    assert "recent_script_beats" not in dialogue_pair_block
+    assert "recent_dialogue_pairs = _merge_dialogue_pair_rows(" in script_beat_handler_block
+    assert 'payload.get("dialogue_pairs", [])' in script_beat_handler_block
+
+
+def test_character_director_state_freeze_frame_captures_dialogue_pair_ledger() -> None:
+    source = (ROOT / "scripts" / "ui" / "CharacterDirectorState.gd").read_text(encoding="utf-8")
+    freeze_block = _function_block(source, "func _capture_frozen_frame() -> void:")
+
+    assert '"recent_dialogue_pairs": recent_dialogue_pairs.duplicate(true)' in freeze_block
 
 
 def test_character_director_state_emits_signal_when_tab_cycles_actor_selection() -> None:

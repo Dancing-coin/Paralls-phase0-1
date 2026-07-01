@@ -11,6 +11,10 @@ from app.services.fact_handlers.visual_fact_handler import (
     VisualFactHandlerContext,
     handle_visual_fact_event,
 )
+from app.world_runtime.fact_registry import WorldFactRegistry
+
+
+_FACT_REGISTRY = WorldFactRegistry()
 
 
 def _ack_known_raw_fact(event: RawFactEvent, *, source_type: str, route: str) -> list[Message]:
@@ -38,7 +42,9 @@ def route_raw_fact_event(
     visual_fact_handler: VisualFactHandler | None = None,
     spatial_access_fact_handler: SpatialAccessFactRouteHandler | None = None,
 ) -> list[Message]:
-    if event.fact_family == "visual_fact":
+    route_kind = _FACT_REGISTRY.route_for_family(event.fact_family)
+
+    if route_kind == "visual":
         if context is None:
             raise ValueError("visual_fact routing requires a handler context")
         handler = visual_fact_handler or handle_visual_fact_event
@@ -48,27 +54,27 @@ def route_raw_fact_event(
             context,
         )
 
-    if event.fact_family == "spatial_access_fact":
+    if route_kind == "spatial_access":
         handler = spatial_access_fact_handler or handle_spatial_access_fact_event
         return handler(event, source_type)
 
-    if event.fact_family == "auditory_fact":
+    if route_kind == "auditory":
         return handle_auditory_fact_event(event, source_type)
 
-    if event.fact_family == "role_state_fact":
-        return _ack_known_raw_fact(event, source_type=source_type, route="authority_role_state_fact")
+    if route_kind == "authority_role_state_fact":
+        return _ack_known_raw_fact(event, source_type=source_type, route=route_kind)
 
-    if event.fact_family == "physiology_state_fact":
-        return _ack_known_raw_fact(event, source_type=source_type, route="authority_physiology_fact")
+    if route_kind == "authority_physiology_fact":
+        return _ack_known_raw_fact(event, source_type=source_type, route=route_kind)
 
-    if event.fact_family == "tactile_fact":
-        return _ack_known_raw_fact(event, source_type=source_type, route="authority_tactile_fact")
+    if route_kind == "authority_tactile_fact":
+        return _ack_known_raw_fact(event, source_type=source_type, route=route_kind)
 
-    if event.fact_family == "thermal_fact":
-        return _ack_known_raw_fact(event, source_type=source_type, route="authority_thermal_fact")
+    if route_kind == "authority_thermal_fact":
+        return _ack_known_raw_fact(event, source_type=source_type, route=route_kind)
 
-    if event.fact_family == "olfactory_fact":
-        return _ack_known_raw_fact(event, source_type=source_type, route="authority_olfactory_fact")
+    if route_kind == "authority_olfactory_fact":
+        return _ack_known_raw_fact(event, source_type=source_type, route=route_kind)
 
     return [
         {

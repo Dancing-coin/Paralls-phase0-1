@@ -70,6 +70,32 @@ def test_compatibility_input_allows_omitted_target_actor_id() -> None:
     assert payload.actor_id == "char_a"
 
 
+def test_compatibility_input_accepts_high_level_siming_hints() -> None:
+    payload = SimingCharacterCompatibilityInput(
+        message_id="msg:siming:high-level-hints",
+        delivery_id="delivery:msg:siming:high-level-hints:char_a:1",
+        actor_id="char_a",
+        input_type="siming_high_level_message",
+        band="fact_reveal",
+        producer_ts=108,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        causation_id="cause:high-level-hints",
+        correlation_id="corr:high-level-hints",
+        presentation_hint="watch env_lamp",
+        pressure_hint="crowd closing in",
+        salience_boost=0.85,
+        reason_scope="threat_scan",
+        target_environment_id="env_lamp",
+    )
+
+    assert payload.pressure_hint == "crowd closing in"
+    assert payload.salience_boost == 0.85
+    assert payload.reason_scope == "threat_scan"
+    assert payload.target_environment_id == "env_lamp"
+
+
 def test_compatibility_input_rejects_low_level_command_fields() -> None:
     try:
         SimingCharacterCompatibilityInput(

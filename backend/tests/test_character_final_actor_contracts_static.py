@@ -72,8 +72,17 @@ def test_knight_role_skin_consumes_character_presentation_input_contract_directl
     contract_source = _read("scripts/character/CharacterPresentationInput.gd")
 
     assert "CharacterPresentationInputRef.normalize(next_input)" in role_skin_source
+    assert "func _resolve_stage2_presentation_gait(contract: Dictionary) -> String:" in role_skin_source
+    assert "func _resolve_stage2_contract_role_state(contract: Dictionary) -> String:" in role_skin_source
+    assert "func _resolve_stage2_motion_profile(presentation_gait_name: String) -> String:" in role_skin_source
+    assert "func _apply_stage2_contract_expression(role_state_name: String, motion_profile_name: String) -> void:" in role_skin_source
+    assert "if role_state_name != last_stage2_role_state:" in role_skin_source
+    assert "_apply_motion_profile(motion_profile_name)" in role_skin_source
+    assert "set_motion_profile(role_state_name, motion_profile_name)" in role_skin_source
+    assert "if role_state_name == last_stage2_role_state and motion_profile_name == last_stage2_motion_profile:" not in role_skin_source
     assert "func get_focus_target_id(" in contract_source
     assert "func get_requested_action(" in contract_source
+    assert "func get_action_gait_hint(" in contract_source
     assert "func get_equipment_gait_hint(" in contract_source
     assert "func get_active_command_type(" in contract_source
     assert "func get_motion_move_local_actual(" in contract_source
@@ -85,11 +94,15 @@ def test_knight_role_skin_consumes_character_presentation_input_contract_directl
     assert "func get_speech_state(" in contract_source
     assert "CharacterPresentationInputRef.get_motion_move_local_actual(current_presentation_contract)" in role_skin_source
     assert "CharacterPresentationInputRef.get_motion_velocity_world(current_presentation_contract)" in role_skin_source
-    assert "CharacterPresentationInputRef.get_motion_gait_actual(current_presentation_contract)" in role_skin_source
-    assert "CharacterPresentationInputRef.get_focus_target_id(current_presentation_contract)" in role_skin_source
-    assert "CharacterPresentationInputRef.get_requested_action(current_presentation_contract)" in role_skin_source
-    assert "CharacterPresentationInputRef.get_equipment_gait_hint(current_presentation_contract)" in role_skin_source
-    assert "CharacterPresentationInputRef.get_active_command_type(current_presentation_contract)" in role_skin_source
+    assert "presentation_gait = _resolve_stage2_presentation_gait(current_presentation_contract)" in role_skin_source
+    assert "var stage2_role_state := _resolve_stage2_contract_role_state(current_presentation_contract)" in role_skin_source
+    assert "var stage2_motion_profile := _resolve_stage2_motion_profile(presentation_gait)" in role_skin_source
+    assert "_apply_stage2_contract_expression(stage2_role_state, stage2_motion_profile)" in role_skin_source
+    assert "CharacterPresentationInputRef.get_motion_gait_actual(contract)" in role_skin_source
+    assert "CharacterPresentationInputRef.get_requested_action(contract)" in role_skin_source
+    assert "CharacterPresentationInputRef.get_action_gait_hint(contract, presentation_gait)" in role_skin_source
+    assert "CharacterPresentationInputRef.get_active_command_type(contract)" in role_skin_source
+    assert "CharacterPresentationInputRef.get_equipment_gait_hint(contract)" in role_skin_source
     assert 'current_presentation_contract.get("motion_state", {})' not in role_skin_source
     assert 'current_presentation_contract.get("focus_state", {})' not in role_skin_source
     assert 'current_presentation_contract.get("action_state", {})' not in role_skin_source
@@ -102,8 +115,20 @@ def test_knight_role_skin_consumes_character_presentation_input_contract_directl
     assert 'motion_state.get("move_local_actual", Vector2.ZERO)' not in role_skin_source
     assert 'motion_state.get("velocity_world", Vector3.ZERO)' not in role_skin_source
     assert 'motion_state.get("gait_actual", "walk")' not in role_skin_source
+    assert 'role_asset_scene.apply_presentation_input(runtime_state.get_agent_presentation_input())' not in role_skin_source
     assert "_normalize_presentation_input(next_input)" not in role_skin_source
     assert "CharacterActorSchemaRef.normalize_presentation_input(candidate)" not in role_skin_source
+
+
+def test_contact_phase_semantics_flow_through_runtime_state_and_role_skin() -> None:
+    runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
+    role_skin_source = _read("scripts/character/KnightRoleSkin.gd")
+    contract_source = _read("scripts/character/CharacterPresentationInput.gd")
+
+    assert "func get_contact_phase(" in contract_source
+    assert "CharacterPresentationInputRef.get_contact_phase(agent_presentation_input)" in runtime_state_source
+    assert "CharacterPresentationInputRef.get_contact_phase(contract)" in role_skin_source
+    assert "greeting_nod" in role_skin_source
 
 
 def test_character_agent_execution_metadata_is_staged_through_runtime_state() -> None:

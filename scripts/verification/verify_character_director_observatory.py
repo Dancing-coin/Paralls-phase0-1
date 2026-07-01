@@ -22,6 +22,23 @@ from common import (
 
 OBSERVATORY_PROBE_QUIT_AFTER = "300"
 OBSERVATORY_PROBE_MARKER_TIMEOUT_SECONDS = 120.0
+REQUIRED_MARKERS = [
+    "character_director_observatory_probe:state_payloads_ok=true",
+    "character_director_observatory_probe:panels_populated=true",
+    "character_director_observatory_probe:actor_panel_populated=true",
+    "character_director_observatory_probe:director_cast_world_siming_populated=true",
+    "character_director_observatory_probe:selected_actor_siming_summary_populated=true",
+    "character_director_observatory_probe:bottom_strip_siming_populated=true",
+    "character_director_observatory_probe:timeline_multi_role_populated=true",
+    "character_director_observatory_probe:timeline_siming_populated=true",
+    "character_director_observatory_probe:ledger_pairwise_populated=true",
+    "character_director_observatory_probe:ledger_siming_pressure_populated=true",
+    "character_director_observatory_probe:freeze_roundtrip_ok=true",
+]
+OBSERVATORY_VERIFY_ENV = {
+    "CHARACTER_MODEL_PROVIDER_KIND": "local",
+    "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
+}
 
 
 def main() -> int:
@@ -37,7 +54,12 @@ def main() -> int:
 
     backend_process = None
     try:
-        health, backend_process = ensure_backend(project_root, python_exe, prefer_fresh_backend=True)
+        health, backend_process = ensure_backend(
+            project_root,
+            python_exe,
+            prefer_fresh_backend=True,
+            env=OBSERVATORY_VERIFY_ENV,
+        )
         ensure_godot_import(project_root, godot_exe, "character-director-observatory-godot-import.log")
         main_log = log_dir / "character-director-observatory-main.log"
         main_screenshot = log_dir / "character-director-observatory-main.png"
@@ -56,15 +78,13 @@ def main() -> int:
             ],
             project_root,
             main_log,
-            success_markers=[
-                "character_director_observatory_probe:state_payloads_ok=true",
-                "character_director_observatory_probe:panels_populated=true",
-                "character_director_observatory_probe:freeze_roundtrip_ok=true",
-            ],
+            success_markers=REQUIRED_MARKERS,
             timeout_seconds=OBSERVATORY_PROBE_MARKER_TIMEOUT_SECONDS,
             env={
                 "PHASE0_AUTOTEST_SCREENSHOT": str(main_screenshot),
                 "PHASE0_DEBUG_LOGGING": "1",
+                "CHARACTER_MODEL_PROVIDER_KIND": "local",
+                "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
             },
         )
         log_text = read_text(main_log)
@@ -99,10 +119,31 @@ def main() -> int:
                     "notes": "",
                 },
                 {
+                    "id": "observatory_selected_actor_siming_summary",
+                    "title": "Selected actor rail shows the latest Siming summary for the observed role",
+                    "status": "proved" if "character_director_observatory_probe:selected_actor_siming_summary_populated=true" in log_text else "missing",
+                    "evidence": ["selected_actor_siming_summary_populated"] if "character_director_observatory_probe:selected_actor_siming_summary_populated=true" in log_text else [],
+                    "notes": "",
+                },
+                {
+                    "id": "observatory_bottom_strip_siming",
+                    "title": "Bottom strip can surface a Siming row from runtime state through the live strip or its formatter path",
+                    "status": "proved" if "character_director_observatory_probe:bottom_strip_siming_populated=true" in log_text else "missing",
+                    "evidence": ["bottom_strip_siming_populated"] if "character_director_observatory_probe:bottom_strip_siming_populated=true" in log_text else [],
+                    "notes": "",
+                },
+                {
                     "id": "observatory_timeline_multi_role",
                     "title": "Script timeline contains multi-role beat content",
                     "status": "proved" if "character_director_observatory_probe:timeline_multi_role_populated=true" in log_text else "missing",
                     "evidence": ["timeline_multi_role_populated"] if "character_director_observatory_probe:timeline_multi_role_populated=true" in log_text else [],
+                    "notes": "",
+                },
+                {
+                    "id": "observatory_timeline_siming",
+                    "title": "Script timeline exposes non-empty Siming summaries in beat review content",
+                    "status": "proved" if "character_director_observatory_probe:timeline_siming_populated=true" in log_text else "missing",
+                    "evidence": ["timeline_siming_populated"] if "character_director_observatory_probe:timeline_siming_populated=true" in log_text else [],
                     "notes": "",
                 },
                 {
@@ -113,6 +154,13 @@ def main() -> int:
                     "notes": "",
                 },
                 {
+                    "id": "observatory_ledger_siming_pressure",
+                    "title": "Dialogue ledger can resolve populated Siming pressure context from runtime-backed exchange data",
+                    "status": "proved" if "character_director_observatory_probe:ledger_siming_pressure_populated=true" in log_text else "missing",
+                    "evidence": ["ledger_siming_pressure_populated"] if "character_director_observatory_probe:ledger_siming_pressure_populated=true" in log_text else [],
+                    "notes": "",
+                },
+                {
                     "id": "observatory_freeze_roundtrip",
                     "title": "Freeze mode can be entered and exited while preserving inspectable state",
                     "status": "proved" if "character_director_observatory_probe:freeze_roundtrip_ok=true" in log_text else "missing",
@@ -120,16 +168,7 @@ def main() -> int:
                     "notes": "",
                 },
             ],
-            "overall_character_director_observatory_passed": (
-                result.returncode == 0
-                and "character_director_observatory_probe:state_payloads_ok=true" in log_text
-                and "character_director_observatory_probe:panels_populated=true" in log_text
-                and "character_director_observatory_probe:actor_panel_populated=true" in log_text
-                and "character_director_observatory_probe:director_cast_world_siming_populated=true" in log_text
-                and "character_director_observatory_probe:timeline_multi_role_populated=true" in log_text
-                and "character_director_observatory_probe:ledger_pairwise_populated=true" in log_text
-                and "character_director_observatory_probe:freeze_roundtrip_ok=true" in log_text
-            ),
+            "overall_character_director_observatory_passed": result.returncode == 0 and all(marker in log_text for marker in REQUIRED_MARKERS),
             "backend_health": health,
             "artifacts": {
                 "main_log": str(main_log),

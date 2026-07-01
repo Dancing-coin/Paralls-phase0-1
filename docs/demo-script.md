@@ -1,5 +1,8 @@
 # Phase 0 Demo Script
 
+This script is preserved as a Phase 0 smoke-compatibility verification surface.
+It is historical/supporting runtime evidence rather than the repository's top-level mainline mission.
+
 1. Launch backend.
 2. Launch Godot scene.
 3. Connect player to scene.

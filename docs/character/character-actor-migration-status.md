@@ -1,5 +1,18 @@
 # Character Actor Migration Status
 
+## Status
+
+This document tracks current actor-substrate migration and convergence state.
+
+For the approved mainline target for character-agent work, see:
+
+- `docs/superpowers/specs/world-character-siming-authority-mainline/README.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md`
+- `docs/superpowers/specs/2026-06-29-complete-character-mind-core-design.md`
+
+This file must not be treated as the final target for character mind completeness. It remains an actor-substrate migration ledger.
+Its purpose is to describe a downstream migration lane inside the broader `world-character-Siming-authority` mainline, not to replace that mainline.
+
 This document tracks which parts of the optimized `CharacterActor` architecture are already aligned and which remain transitional.
 
 ## Active Architecture Truth

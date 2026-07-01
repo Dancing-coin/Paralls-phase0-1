@@ -14,6 +14,7 @@ class WorldResultBase(BaseModel):
     causation_id: str
     correlation_id: str = ""
     producer_ts: int
+    target_actor_id: str | None = None
     target_object_id: str | None = None
     target_environment_id: str | None = None
     settlement_status: str = ""
@@ -25,6 +26,8 @@ class ActionResolutionResult(WorldResultBase):
     resolved_entities: list[str] = []
     applied_state_changes: list[str] = []
     stable_state_summary: str = ""
+    action_profile: str = ""
+    source_action_request_type: str = ""
 
 
 class EnvironmentStateResult(WorldResultBase):

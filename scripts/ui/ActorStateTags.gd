@@ -109,7 +109,11 @@ func _build_secondary_line(payload: Dictionary) -> String:
 
 
 func _build_reason_line(payload: Dictionary) -> String:
-	return "原因摘要：%s" % str(payload.get("why_now_summary", "") or "暂无")
+	var why_now := str(payload.get("why_now_summary", "") or "暂无")
+	var siming_summary := str(payload.get("latest_siming_summary", "") or "")
+	if siming_summary.is_empty():
+		return "原因摘要：%s" % why_now
+	return "原因摘要：%s | 司命影响：%s" % [why_now, siming_summary]
 
 
 func _actor_label(actor_id: String) -> String:

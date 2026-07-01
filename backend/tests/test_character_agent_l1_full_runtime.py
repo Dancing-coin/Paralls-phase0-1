@@ -1,7 +1,49 @@
 from app.models.character_perceived import CharacterPerceivedEvent
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
+from app.character_agent.gateway.model_gateway import CharacterModelGateway
+from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
 from app.services.character_agent_l1 import CharacterAgentL1Service
 from app.services.character_agent_runtime import CharacterAgentRuntime
+
+
+class _LocalGateway:
+    def __init__(self) -> None:
+        self._gateway = CharacterModelGateway()
+
+    def run_task(
+        self,
+        *,
+        task_kind: str,
+        context: dict[str, object],
+        route_override: str | None = None,
+    ) -> dict[str, object]:
+        return self._gateway.run_task(
+            task_kind=task_kind,
+            context=context,
+            route_override=route_override or "local_only",
+        )
+
+    def prepare_run_request(
+        self,
+        *,
+        task_kind: str,
+        context: dict[str, object],
+        route_override: str | None = None,
+    ) -> dict[str, object]:
+        return self._gateway.prepare_run_request(
+            task_kind=task_kind,
+            context=context,
+            route_override=route_override or "local_only",
+        )
+
+
+def _local_runtime() -> CharacterAgentRuntime:
+    runtime = CharacterAgentRuntime()
+    local_gateway = _LocalGateway()
+    runtime._l2 = CharacterAgentL2Service(gateway=local_gateway, profile_registry=runtime._profile_registry)
+    runtime._l3 = CharacterAgentL3Service(gateway=local_gateway)
+    return runtime
 
 
 def test_character_agent_l1_tracks_full_private_snapshot_fields() -> None:
@@ -40,8 +82,33 @@ def test_character_agent_l1_tracks_full_private_snapshot_fields() -> None:
     assert snapshot.certainty_score == 0.58
 
 
+def test_character_agent_l1_tracks_new_modality_and_quality_fields() -> None:
+    service = CharacterAgentL1Service()
+    perceived = CharacterPerceivedEvent(
+        actor_id="char_a",
+        percept_channel="olfactory",
+        producer_ts=419,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="olfactory_fact/smoke_trace",
+        source_candidate_event_id="olfactory_fact:419:char_a",
+        clarity_score=0.62,
+        certainty_score=0.41,
+    )
+
+    snapshot = service.apply_character_perceived_event(perceived)
+
+    assert snapshot.olfactory_entities == ["olfactory_fact/smoke_trace"]
+    assert snapshot.partial_observations == ["olfactory_fact/smoke_trace"]
+    assert snapshot.distorted_details == ["olfactory_fact/smoke_trace"]
+    assert snapshot.missed_details == ["olfactory_fact/smoke_trace"]
+    assert snapshot.salience_tags == ["olfactory:olfactory_fact/smoke_trace"]
+    assert snapshot.attention_pressure == 0.62
+
+
 def test_character_agent_l1_keeps_char_c_inside_the_runtime_species() -> None:
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
     event = CharacterPerceivedEvent(
         actor_id="char_c",
         percept_channel="visual",
@@ -65,7 +132,7 @@ def test_character_agent_l1_keeps_char_c_inside_the_runtime_species() -> None:
 
 
 def test_character_agent_l1_keeps_char_c_self_body_inputs_inside_runtime_species() -> None:
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
     event = SelfBodyPerceivedEvent(
         actor_id="char_c",
         body_state_class="interaction_strain",
@@ -134,7 +201,7 @@ def test_character_agent_l1_siming_catalyst_raises_vigilance_level() -> None:
 
 
 def test_runtime_settlement_and_dialogue_writeback_update_private_snapshot_history() -> None:
-    runtime = CharacterAgentRuntime()
+    runtime = _local_runtime()
     event = CharacterPerceivedEvent(
         actor_id="char_b",
         percept_channel="visual",

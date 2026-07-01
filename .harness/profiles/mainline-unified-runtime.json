@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "name": "mainline-unified-runtime",
+  "order": 61,
+  "script": "scripts/verification/verify_mainline_unified_runtime.py",
+  "requires_godot": true,
+  "max_attempts": 2,
+  "description": "Aggregate repository-mainline runtime proof across actor-local perception, autonomous social contact, shared execution ingress, phase1-shaped slice, authority settlement writeback, asset-runtime/Kimodo contracts, world-runtime cadence/continuity policies, degraded-mode deferral, continuity recovery, and scheduling round/debug/websocket/frontend signal-chain evidence"
+}

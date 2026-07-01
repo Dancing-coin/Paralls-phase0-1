@@ -15,3 +15,8 @@ def test_actor_state_tags_surface_exposes_required_fields() -> None:
     assert "当前意图" in source
     assert "当前目标" in source
     assert "原因摘要" in source
+    assert "司命影响" in source
+    assert 'payload.get("why_now_summary"' in source
+    assert 'payload.get("latest_siming_summary"' in source
+    assert "siming_summary.is_empty()" in source
+    assert "司命影响：%s" in source

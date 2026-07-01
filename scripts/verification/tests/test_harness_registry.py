@@ -28,6 +28,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "phase0",
         "siming-backend-chain",
         "phase1-slice",
+        "mainline-unified-runtime",
     ]
     assert registry.profiles["docs"]["script"] == "scripts/verification/check_docs.py"
     assert registry.profiles["backend-contract"]["script"] == "scripts/verification/check_backend_contract.py"
@@ -41,6 +42,8 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["siming-backend-chain"]["script"] == "scripts/verification/verify_siming_backend_chain.py"
     assert registry.profiles["siming-backend-chain"]["include_in_all"] is False
     assert registry.profiles["phase0"]["requires_godot"] is True
+    assert registry.profiles["mainline-unified-runtime"]["script"] == "scripts/verification/verify_mainline_unified_runtime.py"
+    assert int(registry.profiles["mainline-unified-runtime"].get("max_attempts", 1)) >= 2
     assert int(registry.profiles["phase0"].get("max_attempts", 1)) >= 2
     assert all(profile["schema_version"] == 1 for profile in registry.profiles.values())
 

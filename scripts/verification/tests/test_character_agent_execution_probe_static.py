@@ -28,6 +28,9 @@ def test_character_agent_execution_probe_script_targets_execution_contract() -> 
         ROOT / "scripts" / "verification" / "CharacterAgentExecutionProbe.gd"
     ).read_text(encoding="utf-8")
 
+    assert 'const EXECUTION_PAYLOAD_DIRECT_MARKER := "character_agent_execution_probe:execution_payload_direct=true"' in script_text
+    assert 'const CONSUMER_SEEN_MARKER := "character_agent_execution_probe:consumer_seen=true"' in script_text
+    assert 'const ALL_CHECKS_COMPLETE_MARKER := "character_agent_execution_probe:all_checks_complete=true"' in script_text
     assert 'backend_message_type:character_agent_execution' in script_text
     assert '"controller_source":"agent"' in script_text
     assert '"control_mode":"agent_controlled"' in script_text
@@ -51,7 +54,9 @@ def test_character_agent_execution_probe_script_targets_execution_contract() -> 
     assert 'MAIN_DEMO_SCENE.instantiate()' not in script_text
     assert 'bus.set_debug_logging_enabled(true)' in script_text
     assert 'if bus.has_method("set_debug_logging_enabled"):' in script_text
-    assert 'print("character_agent_execution_probe:execution_payload_direct=%s" % _execution_payload_direct)' in script_text
+    assert 'print(EXECUTION_PAYLOAD_DIRECT_MARKER if _execution_payload_direct else "character_agent_execution_probe:execution_payload_direct=false")' in script_text
+    assert 'print(CONSUMER_SEEN_MARKER if _consumer_seen else "character_agent_execution_probe:consumer_seen=false")' in script_text
+    assert 'print(ALL_CHECKS_COMPLETE_MARKER)' in script_text
     assert '_execution_payload_direct = true' in script_text
     assert 'character_agent_execution_probe:consumer_node_is_character_replica=%s' in script_text
 
@@ -65,6 +70,22 @@ def test_l1_runtime_probe_enables_explicit_debug_logging_mode() -> None:
     assert 'if bus.has_method("set_debug_logging_enabled"):' in script_text
     assert 'var backend_connected_ok := await _wait_for_backend_connected(10000)' in script_text
     assert 'main_demo.call("_emit_spatial_access_zone_entry")' in script_text or 'main_demo.call("_sample_privacy_boundary_fact")' in script_text
+
+
+def test_character_agent_execution_verifier_requires_probe_markers_for_pass() -> None:
+    verifier_text = (
+        ROOT / "scripts" / "verification" / "verify_character_agent_execution.py"
+    ).read_text(encoding="utf-8")
+
+    assert 'EXECUTION_PAYLOAD_DIRECT_MARKER = "character_agent_execution_probe:execution_payload_direct=true"' in verifier_text
+    assert 'CONSUMER_SEEN_MARKER = "character_agent_execution_probe:consumer_seen=true"' in verifier_text
+    assert 'LEGACY_OUTPUT_CLEAR_MARKER = "character_agent_execution_probe:legacy_output_seen=false"' in verifier_text
+    assert 'ALL_CHECKS_COMPLETE_MARKER = "character_agent_execution_probe:all_checks_complete=true"' in verifier_text
+    assert "success_markers=[" in verifier_text
+    assert "success_markers=[\n                ALL_CHECKS_COMPLETE_MARKER," in verifier_text
+    assert 'execution_entry["status"] == "proved"' in verifier_text
+    assert 'consumer_entry["status"] == "proved"' in verifier_text
+    assert "overall_character_agent_execution_passed" in verifier_text
 
 
 def test_observatory_probe_scene_and_script_exist() -> None:

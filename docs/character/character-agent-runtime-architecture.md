@@ -1,5 +1,25 @@
 # Character Agent Runtime Architecture
 
+## Status
+
+This document describes the current runnable runtime shape only.
+
+For the approved mainline target for character-agent work, see:
+
+- `docs/superpowers/specs/world-character-siming-authority-mainline/README.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md`
+- `docs/superpowers/specs/2026-06-29-complete-character-mind-core-design.md`
+- `docs/character/character-mind-core-status.md`
+
+This file must not be used as the final architectural target for perception, cognition memory, or planning completeness.
+Current mainline architecture truth now lives in the dedicated `world-character-siming-authority-mainline` tree, with this file preserved as a runtime-shape ledger under that broader direction.
+
+Current truth after the latest closure work:
+
+- the repository-level **character mind core** is now completed and freshly verified
+- this document still remains a runtime-shape document, not the final design definition
+- full final `L4 -> CharacterActor` convergence still must not be claimed from this file alone
+
 This document describes the current in-repo character-agent runtime as it actually exists in code.
 
 It is intentionally narrower than the long-term design docs.
@@ -216,6 +236,10 @@ Current execution semantics already use snapshot-side context such as:
 
 This affects posture, guarding, spacing, breath, and expression.
 
+Current downstream execution plans now also carry an explicit `execution_semantics`
+layer so realization hosts can consume stable movement/contact/speech/gesture
+meaning without re-owning upstream intent semantics.
+
 ## Model Gateway Surface
 
 Main files:
@@ -296,6 +320,11 @@ Current actor-side side effects include:
 - physiology hint emission
 - role-state effect triggering
 
+Current actor-side realization remains a compatibility host for these execution
+semantics. `CharacterReplica` consumes `execution_semantics` through
+`CharacterRuntimeState`; it must not become the long-term owner of role intent
+selection or semantic interpretation.
+
 This is why current repo truth should be described as:
 
 - shared actor ingress is real
@@ -350,13 +379,18 @@ Current main-path truths:
 
 Current repo truth does not support claiming:
 
-- Stage B complete
-- full `CharacterAgent` runtime complete
 - final single-path `L4 -> CharacterActor` convergence complete
 - full actor-side Stage 2 closeout complete
 
+Use the Chinese status file to distinguish:
+
+- what is already complete at the **mind-core** layer
+- what is still incomplete at the **final embodiment / full product** layer
+
 ## Related Docs
 
+- `docs/superpowers/specs/world-character-siming-authority-mainline/README.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md`
 - `docs/character/character-actor-architecture.md`
 - `docs/character/character-control-chain.md`
 - `docs/character/character-actor-migration-status.md`

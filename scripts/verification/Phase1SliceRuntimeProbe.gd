@@ -14,6 +14,7 @@ var _expected_ack_counts_by_route: Dictionary = {}
 var _runtime_delta_count := 0
 var _candidate_count := 0
 var _siming_count := 0
+var _backend_connected := false
 
 
 func _ready() -> void:
@@ -35,6 +36,8 @@ func _run_probe() -> void:
 		push_error("phase1_slice_runtime_probe:missing_local_presentation_bus")
 		get_tree().quit(1)
 		return
+	if bus.has_method("set_debug_logging_enabled"):
+		bus.set_debug_logging_enabled(true)
 
 	if bus.has_signal("backend_ack_received"):
 		bus.backend_ack_received.connect(_on_backend_ack_received)
@@ -44,6 +47,8 @@ func _run_probe() -> void:
 		bus.conversation_candidate_received.connect(_on_conversation_candidate_received)
 	if bus.has_signal("siming_output_received"):
 		bus.siming_output_received.connect(_on_siming_output_received)
+	if bus.has_signal("backend_connected"):
+		bus.backend_connected.connect(_on_backend_connected)
 
 	var bridge := get_node_or_null("/root/BackendBridge")
 	if bridge == null or not bridge.has_method("connect_to_backend"):
@@ -57,16 +62,18 @@ func _run_probe() -> void:
 		get_tree().quit(1)
 		return
 
-	if not await _wait_for_backend_open(5000):
+	if not await _wait_for_backend_connected(5000):
 		push_error("phase1_slice_runtime_probe:backend_connect_timeout")
 		get_tree().quit(1)
 		return
+	await get_tree().process_frame
+	await get_tree().process_frame
 
 	_configure_fact_context()
 
 	if _mode == "focus":
 		_expected_ack_counts_by_route = {"authority_visual_fact": 1}
-		if not _emit_focus_facts():
+		if not await _emit_focus_facts():
 			push_error("phase1_slice_runtime_probe:focus_emit_failed")
 			get_tree().quit(1)
 			return
@@ -80,7 +87,7 @@ func _run_probe() -> void:
 			"authority_thermal_fact": 1,
 			"authority_olfactory_fact": 1,
 		}
-		if not _emit_main_facts():
+		if not await _emit_main_facts():
 			push_error("phase1_slice_runtime_probe:main_emit_failed")
 			get_tree().quit(1)
 			return
@@ -144,24 +151,31 @@ func _configure_fact_context() -> void:
 
 
 func _emit_main_facts() -> bool:
-	return (
-		$VisualFactEmitter/CharacterVisualFactEmitter.emit_fixed_gaze_on_target("", "obj_letter")
-		and $VisualFactEmitter/CharacterVisualFactEmitter.emit_actor_near_object("obj_letter")
-		and $VisualFactEmitter/EnvironmentVisualFactEmitter.emit_environment_state_transition("env_lamp", "stable", "alerted")
-		and $VisualFactEmitter/EvidenceProjectionEmitter.emit_visual_evidence_projection("obj_letter", "")
-		and $VisualFactEmitter/AuditoryFactEmitter.emit_speaker_active("char_a", "char_c")
-		and $VisualFactEmitter/AuditoryFactEmitter.emit_auditory_reachability_changed("char_a", "char_c", "clear")
-		and $VisualFactEmitter/AuditoryFactEmitter.emit_ambient_noise_changed("char_a", "quiet")
-		and $VisualFactEmitter/RoleStateFactEmitter.emit_role_state_transition("observing")
-		and $VisualFactEmitter/PhysiologyStateFactEmitter.emit_breathing_strain_fact("elevated")
-		and $VisualFactEmitter/TactileFactEmitter.emit_contact_fact("", "obj_letter", "light")
-		and $VisualFactEmitter/ThermalFactEmitter.emit_thermal_proximity_fact("env_lamp", "warm")
-		and $VisualFactEmitter/OlfactoryFactEmitter.emit_odor_state_fact("env_lamp", "noticeable")
-	)
+	var emitters: Array[Callable] = [
+		func() -> bool: return $VisualFactEmitter/CharacterVisualFactEmitter.emit_fixed_gaze_on_target("", "obj_letter"),
+		func() -> bool: return $VisualFactEmitter/CharacterVisualFactEmitter.emit_actor_near_object("obj_letter"),
+		func() -> bool: return $VisualFactEmitter/EnvironmentVisualFactEmitter.emit_environment_state_transition("env_lamp", "stable", "alerted"),
+		func() -> bool: return $VisualFactEmitter/EvidenceProjectionEmitter.emit_visual_evidence_projection("obj_letter", ""),
+		func() -> bool: return $VisualFactEmitter/AuditoryFactEmitter.emit_speaker_active("char_a", "char_c"),
+		func() -> bool: return $VisualFactEmitter/AuditoryFactEmitter.emit_auditory_reachability_changed("char_a", "char_c", "clear"),
+		func() -> bool: return $VisualFactEmitter/AuditoryFactEmitter.emit_ambient_noise_changed("char_a", "quiet"),
+		func() -> bool: return $VisualFactEmitter/RoleStateFactEmitter.emit_role_state_transition("observing"),
+		func() -> bool: return $VisualFactEmitter/PhysiologyStateFactEmitter.emit_breathing_strain_fact("elevated"),
+		func() -> bool: return $VisualFactEmitter/TactileFactEmitter.emit_contact_fact("", "obj_letter", "light"),
+		func() -> bool: return $VisualFactEmitter/ThermalFactEmitter.emit_thermal_proximity_fact("env_lamp", "warm"),
+		func() -> bool: return $VisualFactEmitter/OlfactoryFactEmitter.emit_odor_state_fact("env_lamp", "noticeable"),
+	]
+	for emit: Callable in emitters:
+		if not bool(emit.call()):
+			return false
+		await get_tree().process_frame
+	return true
 
 
 func _emit_focus_facts() -> bool:
-	return $VisualFactEmitter/CharacterVisualFactEmitter.emit_fixed_gaze_on_target("char_b", "")
+	var emitted: bool = $VisualFactEmitter/CharacterVisualFactEmitter.emit_fixed_gaze_on_target("char_b", "")
+	await get_tree().process_frame
+	return emitted
 
 
 func _on_backend_ack_received(payload: Dictionary) -> void:
@@ -172,6 +186,10 @@ func _on_backend_ack_received(payload: Dictionary) -> void:
 		_record_ack_source(route, source_type)
 		_record_ack_fact(route, source_type, str(payload.get("fact_key", "")))
 	_bus_log("phase0_ack:%s" % JSON.stringify(payload))
+
+
+func _on_backend_connected(_url: String) -> void:
+	_backend_connected = true
 
 
 func _on_character_runtime_state_delta_received(payload: Dictionary) -> void:
@@ -235,11 +253,10 @@ func _string_array_contains(value: Variant, expected: String) -> bool:
 	return false
 
 
-func _wait_for_backend_open(timeout_ms: int) -> bool:
-	var bridge := get_node_or_null("/root/BackendBridge")
+func _wait_for_backend_connected(timeout_ms: int) -> bool:
 	var deadline := Time.get_ticks_msec() + timeout_ms
 	while Time.get_ticks_msec() < deadline:
-		if bridge != null and bridge.has_method("is_backend_open") and bridge.is_backend_open():
+		if _backend_connected:
 			return true
 		await get_tree().process_frame
 	return false

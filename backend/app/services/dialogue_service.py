@@ -31,3 +31,29 @@ class DialogueService:
             str(output.get("content", "") or ""),
             str(output.get("tone", "") or "neutral"),
         )
+
+    def generate_utterance(self, actor_id: str, target_actor_id: str, content: str) -> tuple[str, str]:
+        route_override = "local_only" if settings.dialogue_mode == "stub" else None
+        output = self._gateway.run_task(
+            task_kind="dialogue_generation",
+            context={
+                "actor_id": actor_id,
+                "control_mode": "agent_initiated_utterance",
+                "snapshot": {},
+                "memory": {
+                    "working_memory": [],
+                    "episodic_memories": [],
+                    "relational_memories": [],
+                },
+                "event": {
+                    "content": content,
+                    "target_actor_id": target_actor_id,
+                    "intent_type": "agent_initiated_utterance",
+                },
+            },
+            route_override=route_override,
+        )
+        return (
+            str(output.get("content", "") or ""),
+            str(output.get("tone", "") or "neutral"),
+        )

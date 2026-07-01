@@ -1,3 +1,8 @@
+from pathlib import Path
+
+from app.character_agent.gateway.model_gateway import CharacterModelGateway
+from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
 from app.models.player_input import DialogueSubmit
 from app.models.ai_output import DialogueResponse
 from app.models.environment_request import EnvironmentRequest
@@ -16,7 +21,49 @@ from fastapi.testclient import TestClient
 import app.main as main
 from app.main import app, reset_runtime_state
 from app.l6.authority_bus.router import handle_envelope_entry
+from app.services.character_agent_runtime import CharacterAgentRuntime
 from app.ws_protocol import Envelope
+
+
+class _LocalGateway:
+    def __init__(self) -> None:
+        self._gateway = CharacterModelGateway()
+
+    def run_task(
+        self,
+        *,
+        task_kind: str,
+        context: dict[str, object],
+        route_override: str | None = None,
+    ) -> dict[str, object]:
+        return self._gateway.run_task(
+            task_kind=task_kind,
+            context=context,
+            route_override=route_override or "local_only",
+        )
+
+    def prepare_run_request(
+        self,
+        *,
+        task_kind: str,
+        context: dict[str, object],
+        route_override: str | None = None,
+    ) -> dict[str, object]:
+        return self._gateway.prepare_run_request(
+            task_kind=task_kind,
+            context=context,
+            route_override=route_override or "local_only",
+        )
+
+
+def _reset_runtime_state_with_local_character_model() -> None:
+    reset_runtime_state()
+    runtime = CharacterAgentRuntime()
+    local_gateway = _LocalGateway()
+    runtime._l2 = CharacterAgentL2Service(gateway=local_gateway, profile_registry=runtime._profile_registry)
+    runtime._l3 = CharacterAgentL3Service(gateway=local_gateway)
+    main.character_agent_runtime = runtime
+    main.siming_event_pipeline._character_dispatch_adapter._runtime = runtime
 
 
 def test_player_input_dialogue_submit_shape() -> None:
@@ -116,6 +163,37 @@ def test_world_result_action_resolution_shape() -> None:
     assert event.request_ref == "interact:123:obj_letter"
     assert event.entity_id == "obj_letter"
     assert event.resolved_entities == ["obj_letter"]
+
+
+def test_approach_settlement_result_preserves_action_profile_and_target_actor() -> None:
+    event = ActionResolutionResult(
+        request_ref="character_agent:0:char_a:approach",
+        result_id="action_resolution:character_agent:0:char_a:approach",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        actor_id="char_a",
+        source_type="system",
+        entity_id="char_b",
+        result_type="action_resolution_result",
+        causation_id="character_agent:0:char_a",
+        correlation_id="character_agent:0:char_a",
+        producer_ts=1,
+        settlement_status="accepted",
+        resolution_status="accepted",
+        resolved_entities=["char_b"],
+        applied_state_changes=["social_spatial_state_result"],
+        stable_state_summary="approach accepted",
+        target_actor_id="char_b",
+        action_profile="approach",
+        source_action_request_type="approach",
+    )
+
+    payload = event.model_dump(exclude_none=True)
+
+    assert payload["target_actor_id"] == "char_b"
+    assert payload["action_profile"] == "approach"
+    assert payload["source_action_request_type"] == "approach"
 
 
 def test_world_result_body_state_shape() -> None:
@@ -250,7 +328,7 @@ def test_siming_output_narrative_nudge_shape() -> None:
 
 
 def test_post_siming_hook_keeps_ordering_without_character_dispatch_ownership() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     messages = [
         {
             "message_type": "siming_output",
@@ -274,7 +352,7 @@ def test_post_siming_hook_keeps_ordering_without_character_dispatch_ownership() 
 
 
 def test_player_priority_assisted_actor_gets_suggestion_without_auto_execution() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     received = main._handle_envelope(
         Envelope(
             message_type="player_input",
@@ -301,6 +379,9 @@ def test_player_priority_assisted_actor_gets_suggestion_without_auto_execution()
     assert suggestions
     assert suggestions[0]["payload"]["actor_id"] == "char_c"
     assert suggestions[0]["payload"]["control_mode"] == "player_priority_assisted"
+    assert "mid_term_strategy" in suggestions[0]["payload"]
+    assert "transition_kind" in suggestions[0]["payload"]
+    assert "transition_reason_tags" in suggestions[0]["payload"]
     assert executions == []
 
 
@@ -345,7 +426,7 @@ def test_character_runtime_state_delta_shape() -> None:
 
 
 def test_authority_bus_router_entrypoint_matches_legacy_behavior() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     envelope = Envelope(
         message_type="player_input",
         payload={
@@ -368,7 +449,7 @@ def test_authority_bus_router_entrypoint_matches_legacy_behavior() -> None:
 
 
 def test_websocket_move_intent_emits_ack_and_runtime_snapshot() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -402,7 +483,7 @@ def test_websocket_move_intent_emits_ack_and_runtime_snapshot() -> None:
 
 
 def test_websocket_dialogue_submit_emits_ack_and_dialogue_response() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -431,7 +512,7 @@ def test_websocket_dialogue_submit_emits_ack_and_dialogue_response() -> None:
 
 
 def test_websocket_invalid_player_input_returns_negative_ack_without_dropping_connection() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -482,7 +563,7 @@ def test_websocket_invalid_player_input_returns_negative_ack_without_dropping_co
 
 
 def test_websocket_environment_request_emits_ack_action_resolution_transition_and_environment_state_result() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -564,7 +645,7 @@ def test_websocket_environment_request_emits_ack_action_resolution_transition_an
 
 
 def test_websocket_environment_request_accepts_light_level_restore_variant() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -686,7 +767,7 @@ def test_websocket_environment_request_accepts_light_level_restore_variant() -> 
 
 
 def test_websocket_environment_request_accepts_thermal_level_rise_variant() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -746,7 +827,7 @@ def test_websocket_environment_request_accepts_thermal_level_rise_variant() -> N
 
 
 def test_websocket_environment_request_accepts_smoke_density_rise_variant() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -807,7 +888,7 @@ def test_websocket_environment_request_accepts_smoke_density_rise_variant() -> N
 
 
 def test_websocket_environment_request_accepts_noise_level_rise_variant() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -868,7 +949,7 @@ def test_websocket_environment_request_accepts_noise_level_rise_variant() -> Non
 
 
 def test_websocket_environment_request_rejects_unsupported_change_type_with_constraint_result() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -915,7 +996,7 @@ def test_websocket_environment_request_rejects_unsupported_change_type_with_cons
 
 
 def test_websocket_interact_intent_emits_ack_action_resolution_transition_object_state_body_state_environment_shift_and_siming_output() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -1057,7 +1138,7 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
 
 
 def test_websocket_interact_intent_emits_constraint_when_player_is_far() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -1120,7 +1201,7 @@ def test_websocket_interact_intent_emits_constraint_when_player_is_far() -> None
 
 
 def test_websocket_interact_intent_emits_constraint_state_when_actor_is_far() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -1174,7 +1255,7 @@ def test_websocket_interact_intent_emits_constraint_state_when_actor_is_far() ->
     assert world_result["payload"]["constraint_code"] == "out_of_range"
 
 def test_websocket_focus_target_change_emits_runtime_alignment_messages() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -1217,8 +1298,69 @@ def test_websocket_focus_target_change_emits_runtime_alignment_messages() -> Non
     assert siming_output["payload"]["target_actor_id"] == "char_a"
 
 
+def test_websocket_character_agent_execution_emits_scheduling_round_trace() -> None:
+    _reset_runtime_state_with_local_character_model()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "character_agent_execution",
+                "payload": {
+                    "actor_id": "char_b",
+                    "action_request_bundle": {
+                        "requested_actions": [
+                            {
+                                "request_type": "approach",
+                                "actor_id": "char_b",
+                                "target_actor_id": "char_a",
+                            }
+                        ]
+                    },
+                },
+            }
+        )
+
+        received = [websocket.receive_json() for _ in range(13)]
+
+    traces = [message for message in received if message["message_type"] == "scheduling_round_trace"]
+
+    assert traces
+    assert traces[0]["payload"]["round_id"] == 1
+    assert traces[0]["payload"]["lead_actor_id"] == "char_b"
+
+
+def test_websocket_interact_intent_emits_scheduling_round_trace_after_character_agent_execution() -> None:
+    _reset_runtime_state_with_local_character_model()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "player_input",
+                "payload": {
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "actor_id": "char_c",
+                    "intent_type": "interact_intent",
+                    "producer_ts": 456,
+                    "target_object_id": "obj_letter",
+                    "interaction_type": "inspect",
+                },
+            }
+        )
+
+        received = [websocket.receive_json() for _ in range(70)]
+
+    traces = [message for message in received if message["message_type"] == "scheduling_round_trace"]
+
+    assert traces
+    assert traces[-1]["payload"]["round_id"] == 2
+    assert traces[-1]["payload"]["lead_actor_id"] == "char_a"
+    assert traces[-1]["payload"]["active_actor_ids"] == ["char_a", "char_b", "char_c"]
+    assert traces[-1]["payload"]["round_summary"] == "round 2 selects char_a, char_b, char_c because baseline_priority"
+
+
 def test_websocket_raw_visual_fact_event_emits_character_agent_execution_for_char_a() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -1323,3 +1465,15 @@ def test_websocket_targeted_auditory_fact_event_emits_character_agent_execution_
     assert executions[0]["payload"]["actor_id"] == "char_b"
     assert "actor_control_frames" in executions[0]["payload"]
     assert "presentation_plan" in executions[0]["payload"]
+
+
+def test_autonomous_approach_can_emit_arrival_fact_after_execution() -> None:
+    source = (Path(__file__).resolve().parents[2] / "scripts" / "character" / "CharacterReplica.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert "_active_contact_target_actor_id" in source
+    assert "_update_autonomous_contact_target(" in source
+    assert "set_move_target(target_node.global_position)" in source
+    assert 'if clear_on_arrival and _active_contact_target_actor_id != "":' in source
+    assert "_emit_arrival_fact(_active_contact_target_actor_id, 0.0)" in source

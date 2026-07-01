@@ -23,5 +23,6 @@ def test_script_timeline_panel_supports_beat_list_filter_and_detail() -> None:
     assert 'beat.get("world_summaries"' in source
     assert 'beat.get("dialogue_pairs"' in source
     assert '"节拍编号=%s" % str(beat.get("beat_id", "") or "")' in source
+    assert "司命侧摘要" in source
     assert 'state.get("observatory_enabled")' in source
     assert 'state.get("script_mode")' in source

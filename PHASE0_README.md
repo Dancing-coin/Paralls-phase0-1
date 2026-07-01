@@ -1,6 +1,14 @@
 # Paralls Phase 0 Demo Workspace
 
-This workspace contains the runnable validation demo for Phase 0.
+This document now describes a preserved smoke-compatibility runtime surface for Phase 0.
+It is not the top-level architectural mission for the repository.
+
+Current mainline truth lives under:
+- `docs/superpowers/specs/world-character-siming-authority-mainline/README.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md`
+- `docs/superpowers/plans/world-character-siming-authority-mainline/README.md`
+
+This workspace still contains the runnable validation demo for Phase 0.
 
 Directories:
 - `godot/`: local client runtime and presentation shell

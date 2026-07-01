@@ -26,6 +26,10 @@ from runtime_trace import write_runtime_trace
 
 PHASE1_SLICE_PROBE_SCENE = "res://scenes/phase0/Phase1SliceRuntimeProbe.tscn"
 PHASE1_SLICE_PROBE_SCENE_PATH = Path("scenes/phase0/Phase1SliceRuntimeProbe.tscn")
+PHASE1_SLICE_VERIFY_ENV = {
+    "CHARACTER_MODEL_PROVIDER_KIND": "local",
+    "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
+}
 
 
 def main() -> int:
@@ -42,7 +46,12 @@ def main() -> int:
 
     backend_process = None
     try:
-        health, backend_process = ensure_backend(project_root, python_exe)
+        health, backend_process = ensure_backend(
+            project_root,
+            python_exe,
+            prefer_fresh_backend=True,
+            env=PHASE1_SLICE_VERIFY_ENV,
+        )
 
         pytest_log = log_dir / "phase1-slice-pytest.log"
         pytest_result = run_command(

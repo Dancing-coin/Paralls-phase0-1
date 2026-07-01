@@ -33,6 +33,9 @@ class SimingCharacterCompatibilityInput(BaseModel):
     causation_id: str
     correlation_id: str
     presentation_hint: str | None = None
+    pressure_hint: str | None = None
+    salience_boost: float | None = None
+    reason_scope: str | None = None
     target_actor_id: str | None = None
     target_object_id: str | None = None
     target_environment_id: str | None = None

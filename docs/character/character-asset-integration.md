@@ -151,6 +151,25 @@ The repository is ready to start actual runtime lookup only after:
 3. a new lookup path can prove fallback behavior for missing model, skeleton, equipment, and action entries
 4. the lookup result still feeds the shared `CharacterActor` substrate rather than creating a model-specific runtime species
 
+## Mainline Asset Runtime Seam
+
+The new mainline now reserves `CharacterEmbodimentAssetRuntime` as the first
+formal asset-runtime seam below execution semantics.
+
+Its immediate responsibilities are intentionally narrow:
+
+- register semantic motion keys against asset refs
+- queue preload work for a requested semantic set
+- compose a realization plan that names:
+  - local fallback asset refs
+  - missing semantic keys
+  - whether generated motion is allowed
+- stay independent from the temporary local `CharacterReplica` host
+
+This is not yet the final heavy runtime, cache, or Kimodo bridge.
+It is the first explicit contract surface those future realization backends must
+target.
+
 ## Long-Term Direction
 
 Future model swaps should move toward:

@@ -58,6 +58,7 @@ def test_character_agent_execution_verify_script_uses_probe_scene() -> None:
     assert "character-agent-execution-main.log" in source
     assert "character-agent-execution-focus.log" not in source
     assert '"PHASE0_DEBUG_LOGGING": "1"' in source
+    assert '"CHARACTER_MODEL_PROVIDER_KIND": "local"' in source
     assert "character_agent_execution_probe:execution_payload_direct=true" in source
     assert "run_command_until_markers(" in source
     assert "character_agent_execution_probe:consumer_seen=true" in source
@@ -70,6 +71,8 @@ def test_character_director_observatory_verify_script_uses_marker_driven_runtime
 
     assert "res://scenes/phase0/CharacterDirectorObservatoryProbe.tscn" in source
     assert "run_command_until_markers(" in source
+    assert '"CHARACTER_MODEL_PROVIDER_KIND": "local"' in source
+    assert '"CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only"' in source
     assert "character_director_observatory_probe:state_payloads_ok=true" in source
     assert "character_director_observatory_probe:panels_populated=true" in source
     assert "character_director_observatory_probe:freeze_roundtrip_ok=true" in source
@@ -80,6 +83,8 @@ def test_phase0_verify_script_reads_character_agent_execution_probe_report() -> 
 
     assert "verify_character_agent_execution.py" in source
     assert "character-agent-execution-report.json" in source
+    assert '"CHARACTER_MODEL_PROVIDER_KIND": "local"' in source
+    assert '"character_agent_execution_contract"' in source
     assert "character_agent_execution_consumer" in source
     assert '"PHASE0_DEBUG_LOGGING": "1"' not in source
     assert "SCENE_LOAD_QUIT_AFTER" in source
@@ -93,6 +98,15 @@ def test_phase0_verify_script_reads_character_agent_execution_probe_report() -> 
     assert "verify_character_director_observatory.py" in source
     assert "character-agent-execution-from-phase0.log" in source
     assert "character-director-observatory-from-phase0.log" in source
+
+
+def test_phase0_verify_script_runs_backend_pytest_before_starting_runtime_backend() -> None:
+    source = (Path(__file__).resolve().parents[1] / "verify_phase0.py").read_text(encoding="utf-8")
+
+    pytest_index = source.index('pytest_result = run_command([python_exe, "-m", "pytest", "-v"], project_root / "backend", pytest_log)')
+    ensure_backend_index = source.index("health, backend_process = ensure_backend(")
+
+    assert pytest_index < ensure_backend_index
 
 
 def test_phase0_main_demo_ignores_preopen_disconnect_before_first_backend_connected() -> None:

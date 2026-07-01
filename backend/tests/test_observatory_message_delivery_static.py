@@ -32,10 +32,12 @@ def test_backend_bridge_and_local_presentation_bus_expose_observatory_signal_cha
     assert "signal siming_debug_snapshot_received(payload)" in bus_source
     assert "signal siming_debug_event_received(payload)" in bus_source
     assert "signal world_outcome_trace_received(payload)" in bus_source
+    assert "signal scheduling_round_trace_received(payload)" in bus_source
     assert "signal script_beat_event_received(payload)" in bus_source
     assert '"character_agent_debug_snapshot":' in bridge_source
     assert '"character_agent_debug_event":' in bridge_source
     assert '"siming_debug_snapshot":' in bridge_source
     assert '"siming_debug_event":' in bridge_source
     assert '"world_outcome_trace":' in bridge_source
+    assert '"scheduling_round_trace":' in bridge_source
     assert '"script_beat_event":' in bridge_source

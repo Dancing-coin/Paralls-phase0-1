@@ -1,4 +1,32 @@
+import pytest
+
 from app.character_agent.gateway.model_provider import CharacterModelProvider
+
+
+def test_model_provider_deepseek_path_is_live_by_default_without_env_gate() -> None:
+    provider = CharacterModelProvider(provider_kind="deepseek")
+    calls: list[dict[str, object]] = []
+
+    def _fake_complete_via_deepseek(request: dict[str, object]) -> dict[str, object]:
+        calls.append(request)
+        return {"content": "Live response", "tone": "focused"}
+
+    provider._complete_via_deepseek = _fake_complete_via_deepseek  # type: ignore[method-assign]
+
+    output = provider.complete(
+        {
+            "task_kind": "dialogue_generation",
+            "route": {"route_mode": "online_default", "provider_kind": "deepseek"},
+            "context": {
+                "actor_id": "char_a",
+                "event": {"content": "Where is the letter?"},
+            },
+        }
+    )
+
+    assert calls
+    assert output["content"] == "Live response"
+    assert output["tone"] == "focused"
 
 
 def test_model_provider_builds_deepseek_chat_completion_request() -> None:
@@ -74,6 +102,393 @@ def test_model_provider_coerces_l3_string_fields_to_current_structured_contract(
     assert output["risk_notes"] == ["No risks detected"]
 
 
+def test_model_provider_offline_l2_returns_extended_cognition_contract_keys() -> None:
+    provider = CharacterModelProvider(provider_kind="local")
+
+    output = provider.complete(
+        {
+            "task_kind": "l2_reasoning",
+            "route": {"route_mode": "local_only", "provider_kind": "local"},
+            "context": {
+                "actor_id": "char_a",
+                "snapshot": {"attention_targets": ["char_b"]},
+                "memory": {
+                    "working_memory": [],
+                    "event_memories": [],
+                    "observation_memories": [],
+                    "knowledge_memories": [],
+                    "social_memories": [],
+                    "higher_order_memories": [],
+                },
+                "event": {
+                    "actor_id": "char_a",
+                    "percept_channel": "auditory",
+                    "perceived_summary": "auditory_fact/speaker_active",
+                    "target_actor_id": "char_b",
+                    "clarity_score": 0.82,
+                    "certainty_score": 0.61,
+                },
+            },
+        }
+    )
+
+    assert output["belief_deltas"] == []
+    assert output["social_deltas"] == []
+    assert output["higher_order_deltas"] == []
+    assert output["dynamic_state_delta"] == {}
+    assert "reasoning_trace_summary" in output
+    assert output["cognition_status"] == "continuity_floor"
+    assert output["fallback_mode"] == "local_only_stub"
+
+
+def test_model_provider_offline_l2_does_not_fabricate_cognition_deltas_for_guarded_social_signal() -> None:
+    provider = CharacterModelProvider(provider_kind="local")
+
+    output = provider.complete(
+        {
+            "task_kind": "l2_reasoning",
+            "route": {"route_mode": "local_only", "provider_kind": "local"},
+            "context": {
+                "actor_id": "char_a",
+                "snapshot": {
+                    "attention_targets": ["char_b"],
+                    "clarity_score": 0.82,
+                    "certainty_score": 0.61,
+                },
+                "memory": {
+                    "working_memory": [],
+                    "event_memories": [],
+                    "observation_memories": [],
+                    "knowledge_memories": [],
+                    "social_memories": [{"entity_id": "char_b", "trust_baseline": 0.25, "suspicion_baseline": 0.75}],
+                    "higher_order_memories": [],
+                    "relational_memories": [{"entity_id": "char_b", "belief_type": "trust_level", "value": "guarded"}],
+                },
+                "event": {
+                    "actor_id": "char_a",
+                    "percept_channel": "auditory",
+                    "perceived_summary": "auditory_fact/speaker_active",
+                    "target_actor_id": "char_b",
+                    "clarity_score": 0.82,
+                    "certainty_score": 0.61,
+                },
+            },
+        }
+    )
+
+    assert output["attention_target"] == "char_b"
+    assert output["belief_deltas"] == []
+    assert output["social_deltas"] == []
+    assert output["higher_order_deltas"] == []
+    assert output["goal_hints"] == []
+    assert output["cognition_status"] == "continuity_floor"
+
+
+def test_model_provider_offline_l2_keeps_world_change_as_shallow_stub_interpretation() -> None:
+    provider = CharacterModelProvider(provider_kind="local")
+
+    output = provider.complete(
+        {
+            "task_kind": "l2_reasoning",
+            "route": {"route_mode": "local_only", "provider_kind": "local"},
+            "context": {
+                "actor_id": "char_a",
+                "snapshot": {
+                    "recent_world_changes": ["env_lamp changed from stable to alerted"],
+                    "attention_targets": ["env_lamp"],
+                    "clarity_score": 1.0,
+                    "certainty_score": 1.0,
+                },
+                "memory": {
+                    "working_memory": [],
+                    "event_memories": [],
+                    "observation_memories": [],
+                    "knowledge_memories": [],
+                    "social_memories": [],
+                    "higher_order_memories": [],
+                },
+                "event": {
+                    "actor_id": "char_a",
+                    "percept_channel": "visual",
+                    "perceived_summary": "visual_fact/light_level_drop",
+                    "target_environment_id": "env_lamp",
+                    "clarity_score": 1.0,
+                    "certainty_score": 1.0,
+                },
+            },
+        }
+    )
+
+    assert output["attention_target"] == "env_lamp"
+    assert output["opportunity_level"] == "medium"
+    assert output["belief_deltas"] == []
+    assert output["dynamic_state_delta"] == {}
+
+
+def test_model_provider_offline_l2_keeps_body_state_as_shallow_stub_interpretation() -> None:
+    provider = CharacterModelProvider(provider_kind="local")
+
+    output = provider.complete(
+        {
+            "task_kind": "l2_reasoning",
+            "route": {"route_mode": "local_only", "provider_kind": "local"},
+            "context": {
+                "actor_id": "char_b",
+                "snapshot": {
+                    "body_state_hints": ["interaction_strain:body_state_result/interaction_strain=engaged"],
+                    "clarity_score": 1.0,
+                    "certainty_score": 1.0,
+                },
+                "memory": {
+                    "working_memory": [],
+                    "event_memories": [],
+                    "observation_memories": [],
+                    "knowledge_memories": [],
+                    "social_memories": [],
+                    "higher_order_memories": [],
+                },
+                "event": {
+                    "actor_id": "char_b",
+                    "body_state_class": "interaction_strain",
+                    "perceived_summary": "body_state_result/interaction_strain=engaged",
+                    "clarity_score": 1.0,
+                    "certainty_score": 1.0,
+                },
+            },
+        }
+    )
+
+    assert output["interpretation_type"] == "body_state"
+    assert output["risk_level"] == "medium"
+    assert output["belief_deltas"] == []
+
+
+def test_model_provider_offline_l2_keeps_siming_input_as_shallow_stub_without_fake_cognition() -> None:
+    provider = CharacterModelProvider(provider_kind="local")
+
+    output = provider.complete(
+        {
+            "task_kind": "l2_reasoning",
+            "route": {"route_mode": "local_only", "provider_kind": "local"},
+            "context": {
+                "actor_id": "char_a",
+                "snapshot": {
+                    "last_siming_catalyst": "watch env_lamp",
+                    "attention_targets": ["env_lamp"],
+                    "vigilance_level": "elevated",
+                    "clarity_score": 0.85,
+                    "certainty_score": 0.9,
+                },
+                "memory": {
+                    "working_memory": [],
+                    "event_memories": [],
+                    "observation_memories": [],
+                    "knowledge_memories": [],
+                    "social_memories": [],
+                    "higher_order_memories": [],
+                },
+                "event": {
+                    "actor_id": "char_a",
+                    "percept_channel": "siming",
+                    "presentation_hint": "watch env_lamp",
+                    "pressure_hint": "crowd closing in",
+                    "reason_scope": "threat_scan",
+                    "target_environment_id": "env_lamp",
+                    "salience_boost": 0.85,
+                    "clarity_score": 0.85,
+                    "certainty_score": 0.9,
+                },
+            },
+        }
+    )
+
+    assert output["belief_deltas"] == []
+    assert output["dynamic_state_delta"] == {}
+    assert output["opportunity_level"] == "medium"
+    assert output["cognition_status"] == "continuity_floor"
+
+
+def test_model_provider_offline_l2_does_not_use_higher_order_memory_to_fabricate_dynamic_pressure() -> None:
+    provider = CharacterModelProvider(provider_kind="local")
+
+    output = provider.complete(
+        {
+            "task_kind": "l2_reasoning",
+            "route": {"route_mode": "local_only", "provider_kind": "local"},
+            "context": {
+                "actor_id": "char_a",
+                "snapshot": {
+                    "attention_targets": ["char_b"],
+                    "clarity_score": 0.92,
+                    "certainty_score": 0.94,
+                },
+                "memory": {
+                    "working_memory": [],
+                    "event_memories": [],
+                    "observation_memories": [],
+                    "knowledge_memories": [],
+                    "social_memories": [{"entity_id": "char_b", "trust_baseline": 0.65, "suspicion_baseline": 0.2}],
+                    "higher_order_memories": [
+                        {
+                            "subject_actor_id": "char_b",
+                            "proposition_key": "social_probe:knowledge_asymmetry",
+                            "meta_belief": "char_b suspects char_a knows more",
+                            "confidence": 0.72,
+                        }
+                    ],
+                    "relational_memories": [],
+                },
+                "event": {
+                    "actor_id": "char_a",
+                    "percept_channel": "auditory",
+                    "perceived_summary": "auditory_fact/speaker_active",
+                    "target_actor_id": "char_b",
+                    "clarity_score": 0.92,
+                    "certainty_score": 0.94,
+                },
+            },
+        }
+    )
+
+    assert output["dynamic_state_delta"] == {}
+
+
+def test_model_provider_offline_l2_does_not_emit_goal_hints_for_high_pressure_social_probe() -> None:
+    provider = CharacterModelProvider(provider_kind="local")
+
+    output = provider.complete(
+        {
+            "task_kind": "l2_reasoning",
+            "route": {"route_mode": "local_only", "provider_kind": "local"},
+            "context": {
+                "actor_id": "char_a",
+                "snapshot": {
+                    "attention_targets": ["char_b"],
+                    "clarity_score": 0.82,
+                    "certainty_score": 0.61,
+                },
+                "memory": {
+                    "working_memory": [],
+                    "event_memories": [],
+                    "observation_memories": [],
+                    "knowledge_memories": [
+                        {
+                            "proposition_key": "char_b:is_hiding_something",
+                            "proposition": "char_b may be hiding something",
+                            "state": "suspected",
+                            "confidence": 0.62,
+                        }
+                    ],
+                    "social_memories": [{"entity_id": "char_b", "trust_baseline": 0.25, "suspicion_baseline": 0.75}],
+                    "higher_order_memories": [
+                        {
+                            "subject_actor_id": "char_b",
+                            "proposition_key": "social_probe:knowledge_asymmetry",
+                            "meta_belief": "char_b suspects char_a knows more",
+                            "confidence": 0.72,
+                        }
+                    ],
+                    "relational_memories": [],
+                },
+                "event": {
+                    "actor_id": "char_a",
+                    "percept_channel": "auditory",
+                    "perceived_summary": "auditory_fact/speaker_active",
+                    "target_actor_id": "char_b",
+                    "clarity_score": 0.82,
+                    "certainty_score": 0.61,
+                },
+            },
+        }
+    )
+
+    assert output["goal_hints"] == []
+
+
+def test_model_provider_offline_l2_does_not_scale_goal_hint_strength_from_knowledge_confidence() -> None:
+    provider = CharacterModelProvider(provider_kind="local")
+
+    high_confidence = provider.complete(
+        {
+            "task_kind": "l2_reasoning",
+            "route": {"route_mode": "local_only", "provider_kind": "local"},
+            "context": {
+                "actor_id": "char_a",
+                "snapshot": {
+                    "attention_targets": ["char_b"],
+                    "clarity_score": 0.92,
+                    "certainty_score": 0.94,
+                },
+                "memory": {
+                    "working_memory": [],
+                    "event_memories": [],
+                    "observation_memories": [],
+                    "knowledge_memories": [
+                        {
+                            "proposition_key": "char_b:is_hiding_something",
+                            "proposition": "char_b may be hiding something",
+                            "state": "suspected",
+                            "confidence": 0.82,
+                        }
+                    ],
+                    "social_memories": [],
+                    "higher_order_memories": [],
+                    "relational_memories": [],
+                },
+                "event": {
+                    "actor_id": "char_a",
+                    "percept_channel": "auditory",
+                    "perceived_summary": "auditory_fact/speaker_active",
+                    "target_actor_id": "char_b",
+                    "clarity_score": 0.92,
+                    "certainty_score": 0.94,
+                },
+            },
+        }
+    )
+    low_confidence = provider.complete(
+        {
+            "task_kind": "l2_reasoning",
+            "route": {"route_mode": "local_only", "provider_kind": "local"},
+            "context": {
+                "actor_id": "char_a",
+                "snapshot": {
+                    "attention_targets": ["char_b"],
+                    "clarity_score": 0.92,
+                    "certainty_score": 0.94,
+                },
+                "memory": {
+                    "working_memory": [],
+                    "event_memories": [],
+                    "observation_memories": [],
+                    "knowledge_memories": [
+                        {
+                            "proposition_key": "char_b:is_hiding_something",
+                            "proposition": "char_b may be hiding something",
+                            "state": "suspected",
+                            "confidence": 0.35,
+                        }
+                    ],
+                    "social_memories": [],
+                    "higher_order_memories": [],
+                    "relational_memories": [],
+                },
+                "event": {
+                    "actor_id": "char_a",
+                    "percept_channel": "auditory",
+                    "perceived_summary": "auditory_fact/speaker_active",
+                    "target_actor_id": "char_b",
+                    "clarity_score": 0.92,
+                    "certainty_score": 0.94,
+                },
+            },
+        }
+    )
+
+    assert high_confidence["goal_hints"] == []
+    assert low_confidence["goal_hints"] == []
+
+
 def test_model_provider_hybrid_falls_back_to_offline_on_provider_error() -> None:
     provider = CharacterModelProvider(
         provider_kind="hybrid",
@@ -96,3 +511,67 @@ def test_model_provider_hybrid_falls_back_to_offline_on_provider_error() -> None
 
     assert output["content"] == "I saw something move near the desk."
     assert output["tone"] == "alert"
+
+
+def test_model_provider_hybrid_l2_surfaces_provider_error_instead_of_offline_fallback() -> None:
+    provider = CharacterModelProvider(
+        provider_kind="hybrid",
+        endpoint_url="https://api.deepseek.com",
+        model_name="deepseek-chat",
+    )
+
+    provider._complete_via_deepseek = lambda request: (_ for _ in ()).throw(ValueError("boom"))  # type: ignore[method-assign]
+
+    with pytest.raises(ValueError, match="boom"):
+        provider.complete(
+            {
+                "task_kind": "l2_reasoning",
+                "route": {"route_mode": "hybrid_ready", "provider_kind": "hybrid"},
+                "context": {
+                    "actor_id": "char_a",
+                    "snapshot": {"attention_targets": ["char_b"]},
+                    "memory": {
+                        "working_memory": [],
+                        "event_memories": [],
+                        "observation_memories": [],
+                        "knowledge_memories": [],
+                        "social_memories": [],
+                        "higher_order_memories": [],
+                    },
+                    "event": {
+                        "actor_id": "char_a",
+                        "percept_channel": "auditory",
+                        "perceived_summary": "auditory_fact/speaker_active",
+                        "target_actor_id": "char_b",
+                        "clarity_score": 0.82,
+                        "certainty_score": 0.61,
+                    },
+                },
+            }
+        )
+
+
+def test_model_provider_deepseek_route_surfaces_provider_error() -> None:
+    provider = CharacterModelProvider(
+        provider_kind="deepseek",
+        endpoint_url="https://api.deepseek.com",
+        model_name="deepseek-chat",
+    )
+
+    provider._complete_via_deepseek = lambda request: (_ for _ in ()).throw(ValueError("boom"))  # type: ignore[method-assign]
+
+    try:
+        provider.complete(
+            {
+                "task_kind": "dialogue_generation",
+                "route": {"route_mode": "online_default", "provider_kind": "deepseek"},
+                "context": {
+                    "actor_id": "char_a",
+                    "event": {"content": "Where is the letter?"},
+                },
+            }
+        )
+    except ValueError as exc:
+        assert str(exc) == "boom"
+    else:
+        raise AssertionError("expected deepseek provider error to surface for strict online route")

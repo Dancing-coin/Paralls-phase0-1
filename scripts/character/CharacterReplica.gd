@@ -1,5 +1,7 @@
 extends Node3D
 
+const ActorPerceptionSamplerRef = preload("res://scripts/character/ActorPerceptionSampler.gd")
+const ActorPerceptionTargetResolverRef = preload("res://scripts/character/ActorPerceptionTargetResolver.gd")
 const CharacterActorSchemaRef = preload("res://scripts/character/CharacterActorSchema.gd")
 const CharacterLocomotionExecutionModeRef = preload("res://scripts/character/CharacterLocomotionExecutionMode.gd")
 const CharacterRuntimeStateRef = preload("res://scripts/character/CharacterRuntimeState.gd")
@@ -32,11 +34,17 @@ enum DriverMode {
 @export var driver_mode := DriverMode.AI
 @export var player_shell_visual_offset := Vector3(0.0, 0.0, 0.0)
 @export var reacts_to_player_focus := false
+@export var perception_range_m := 28.0
+@export var perception_forward_threshold := 0.2
+@export var actor_notice_cooldown_ms := 650
+@export var actor_arrival_distance := 18.0
 @export var idle_role_state := "idle"
 @export var dialogue_role_state := "speak"
 @export var attention_role_state := "alert"
 @export var focus_role_state := "observe"
 @export var interaction_role_state := "inspect"
+@export_node_path("Node") var character_visual_fact_emitter_path := NodePath("VisualFactEmitter/CharacterVisualFactEmitter")
+@export_node_path("Node") var spatial_access_fact_emitter_path := NodePath("VisualFactEmitter/SpatialAccessFactEmitter")
 @export_node_path("Node") var role_state_fact_emitter_path := NodePath("RoleStateFactEmitter")
 @export_node_path("Node") var physiology_state_fact_emitter_path := NodePath("PhysiologyStateFactEmitter")
 @export var player_walk_speed_threshold := 0.08
@@ -92,6 +100,11 @@ var last_locomotion_status_signature := ""
 var last_role_state_fact := ""
 var last_player_root_motion_log_ms := 0
 var last_patrol_root_motion_log_ms := 0
+var _perception_sampler = ActorPerceptionSamplerRef.new()
+var _perception_target_resolver = ActorPerceptionTargetResolverRef.new()
+var _last_notice_target := ""
+var _last_notice_ts := 0
+var _active_contact_target_actor_id := ""
 
 const ROOT_MOTION_LOG_COOLDOWN_MS := 250
 
@@ -100,6 +113,8 @@ func _ready() -> void:
 	current_look_target = global_position - global_basis.z
 	if perception_cone_debug:
 		perception_cone_debug.position = FOCUS_ANCHOR_LOCAL_OFFSET
+	_configure_actor_local_perception()
+	_configure_actor_local_emitters()
 	_apply_asset_mode()
 	_normalize_patrol_points()
 	_apply_visual_config()
@@ -123,6 +138,7 @@ func _process(delta: float) -> void:
 	_apply_idle_sway()
 	_update_posture(delta)
 	_tick_runtime_feedback(delta)
+	_sample_actor_local_perception()
 	_update_hold(delta)
 	_update_rotation(delta)
 	_update_movement(delta)
@@ -138,6 +154,7 @@ func set_move_target(target: Vector3) -> void:
 func clear_move_target() -> void:
 	has_external_move_target = false
 	external_move_target = Vector3.ZERO
+	_active_contact_target_actor_id = ""
 
 func set_look_target(target: Vector3) -> void:
 	external_look_target = target
@@ -329,8 +346,6 @@ func _on_character_agent_execution_received(payload: Dictionary) -> void:
 	var frame: Dictionary = runtime_state.get_execution_payload_intent_frame(payload, actor_id)
 	if frame.is_empty():
 		return
-	var requested_action: String = runtime_state.get_intent_frame_action_name(frame)
-	runtime_state.set_active_command(requested_action, _command_priority(requested_action))
 	runtime_state.stage_agent_execution(presentation_plan, frame)
 	var execution_side_effect_plan: Dictionary = runtime_state.build_agent_execution_side_effect_plan(
 		dialogue_role_state,
@@ -338,10 +353,17 @@ func _on_character_agent_execution_received(payload: Dictionary) -> void:
 		focus_role_state,
 		attention_role_state,
 	)
+	var active_command_type: String = runtime_state.get_execution_side_effect_active_command_type(execution_side_effect_plan)
+	if active_command_type.is_empty():
+		active_command_type = runtime_state.get_intent_frame_action_name(frame)
+	runtime_state.set_active_command(active_command_type, _command_priority(active_command_type))
 	_push_presentation_input(runtime_state.get_agent_presentation_input())
+	var execution_semantics: Dictionary = runtime_state.get_execution_side_effect_execution_semantics(execution_side_effect_plan)
 	var target_lookup: Dictionary = runtime_state.get_execution_side_effect_focus_target_lookup(execution_side_effect_plan)
 	var target_node := _find_node_by_lookup(target_lookup)
 	if target_node != null:
+		var movement_intent := runtime_state.get_execution_semantics_movement_intent(execution_semantics)
+		_update_autonomous_contact_target(movement_intent, target_node)
 		set_look_target(target_node.global_position)
 	# Historical contract note for static architecture guards:
 	# var physiology_hint := runtime_state.get_execution_side_effect_physiology_hint(execution_side_effect_plan)
@@ -352,7 +374,24 @@ func _on_character_agent_execution_received(payload: Dictionary) -> void:
 		var state_name: String = runtime_state.get_role_state_effect_name(effect)
 		if not state_name.is_empty():
 			_trigger_role_state(state_name, hold_duration)
+			if state_name == "greeting_nod":
+				_bus_log("autonomous_contact:greeting_applied=true:%s" % actor_id)
 	_bus_log("character_agent_execution_applied:%s" % actor_id)
+
+func _update_autonomous_contact_target(active_command_type: String, target_node: Node3D) -> void:
+	if target_node == null:
+		_active_contact_target_actor_id = ""
+		return
+	var target_actor_id := str(target_node.get("actor_id") or "")
+	match active_command_type:
+		"approach", "follow_target":
+			if not target_actor_id.is_empty():
+				_active_contact_target_actor_id = target_actor_id
+				set_move_target(target_node.global_position)
+				_bus_log("autonomous_contact:approach_started=true:%s:%s" % [actor_id, target_actor_id])
+		_:
+			if active_command_type != "speak_public" and active_command_type != "speak_private":
+				_active_contact_target_actor_id = ""
 
 func _handle_interact_goal_command(payload: Dictionary) -> void:
 	# Agent target_id is a request, not authority.
@@ -457,6 +496,124 @@ func _has_line_of_sight_to_target(target_node: Node3D) -> bool:
 	if collider is Node:
 		return target_node.is_ancestor_of(collider as Node)
 	return false
+
+func _resolve_character_visual_fact_emitter() -> Node:
+	if not character_visual_fact_emitter_path.is_empty():
+		var local_emitter := get_node_or_null(character_visual_fact_emitter_path)
+		if local_emitter != null:
+			return local_emitter
+	var scene := get_tree().current_scene
+	if scene != null:
+		return scene.get_node_or_null("VisualFactEmitter/CharacterVisualFactEmitter")
+	return null
+
+func _resolve_spatial_access_fact_emitter() -> Node:
+	if not spatial_access_fact_emitter_path.is_empty():
+		var local_emitter := get_node_or_null(spatial_access_fact_emitter_path)
+		if local_emitter != null:
+			return local_emitter
+	var scene := get_tree().current_scene
+	if scene != null:
+		return scene.get_node_or_null("VisualFactEmitter/SpatialAccessFactEmitter")
+	return null
+
+func _emit_actor_notice_fact(target_actor_id: String) -> bool:
+	if target_actor_id.is_empty():
+		return false
+	var emitter := _resolve_character_visual_fact_emitter()
+	if emitter == null:
+		return false
+	if emitter.has_method("emit_fixed_gaze_on_target"):
+		var emitted: Variant = emitter.emit_fixed_gaze_on_target(target_actor_id, "")
+		if bool(emitted):
+			_bus_log("actor_local_perception:notice_emitted=true:%s:%s" % [actor_id, target_actor_id])
+			_bus_log("actor_local_perception:fact_routed=true:%s:%s" % [actor_id, target_actor_id])
+			_bus_log("autonomous_contact:notice=true:%s:%s" % [actor_id, target_actor_id])
+			return true
+	return false
+
+func _emit_arrival_fact(target_actor_id: String, distance_m: float) -> bool:
+	if target_actor_id.is_empty():
+		return false
+	var emitter := _resolve_spatial_access_fact_emitter()
+	if emitter == null:
+		return false
+	if emitter.has_method("emit_actor_approached_actor"):
+		var emitted: Variant = emitter.emit_actor_approached_actor(target_actor_id, distance_m)
+		if bool(emitted):
+			_bus_log("autonomous_contact:arrival_fact=true:%s:%s" % [actor_id, target_actor_id])
+		return bool(emitted)
+	return false
+
+func _configure_actor_local_perception() -> void:
+	_perception_sampler.range_m = perception_range_m
+	_perception_sampler.forward_threshold = perception_forward_threshold
+	_perception_target_resolver.target_property_names = PackedStringArray([
+		"actor_id",
+		"object_id",
+		"environment_id",
+	])
+
+func _configure_actor_local_emitters() -> void:
+	var visual_fact_emitter := get_node_or_null("VisualFactEmitter")
+	if visual_fact_emitter != null and visual_fact_emitter.get("actor_id") != actor_id:
+		visual_fact_emitter.set("actor_id", actor_id)
+	var spatial_access_fact_emitter := _resolve_spatial_access_fact_emitter()
+	if spatial_access_fact_emitter != null and spatial_access_fact_emitter.get("actor_id") != actor_id:
+		spatial_access_fact_emitter.set("actor_id", actor_id)
+
+func _sample_actor_local_perception() -> void:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return
+	var targets := _perception_target_resolver.resolve_targets(scene, self)
+	if targets.is_empty():
+		return
+	var visible := _perception_sampler.sample_visible_targets(
+		get_focus_anchor_position(),
+		get_embodied_forward_vector(),
+		targets,
+		self,
+		Callable(self, "_get_perception_target_position"),
+		Callable(self, "_has_line_of_sight_to_target")
+	)
+	if visible.is_empty():
+		return
+	var actor_target := _first_visible_actor_target(visible)
+	if actor_target == null:
+		return
+	var target_actor_id := str(actor_target.get("actor_id") or "")
+	if target_actor_id.is_empty():
+		return
+	var target_position := _get_perception_target_position(actor_target)
+	var distance_m := get_focus_anchor_position().distance_to(target_position)
+	var now_ms := Time.get_ticks_msec()
+	if target_actor_id == _last_notice_target and now_ms - _last_notice_ts < actor_notice_cooldown_ms:
+		return
+	_last_notice_target = target_actor_id
+	_last_notice_ts = now_ms
+	var notice_emitted := _emit_actor_notice_fact(target_actor_id)
+	if notice_emitted:
+		_bus_log("actor_local_perception:character_runtime_seen=true:%s" % actor_id)
+	if distance_m <= actor_arrival_distance:
+		_emit_arrival_fact(target_actor_id, distance_m)
+
+func _first_visible_actor_target(candidates: Array[Node3D]) -> Node3D:
+	for candidate: Node3D in candidates:
+		var candidate_actor_id := str(candidate.get("actor_id") or "")
+		if candidate_actor_id.is_empty() or candidate_actor_id == actor_id:
+			continue
+		return candidate
+	return null
+
+func _get_perception_target_position(candidate: Node3D) -> Vector3:
+	if candidate == null:
+		return Vector3.ZERO
+	if candidate.has_method("get_focus_anchor_position"):
+		var focus_anchor: Variant = candidate.get_focus_anchor_position()
+		if focus_anchor is Vector3:
+			return focus_anchor
+	return candidate.global_position
 
 func _is_target_reachable(target_node: Node3D) -> bool:
 	if target_node == null or not target_node.is_inside_tree():
@@ -613,6 +770,8 @@ func _move_toward_target(target: Vector3, delta: float, clear_on_arrival: bool) 
 	var to_target: Vector3 = target - global_position
 	to_target.y = 0.0
 	if to_target.length() < 0.05:
+		if clear_on_arrival and _active_contact_target_actor_id != "":
+			_emit_arrival_fact(_active_contact_target_actor_id, 0.0)
 		if clear_on_arrival:
 			clear_move_target()
 		_flush_role_root_motion()

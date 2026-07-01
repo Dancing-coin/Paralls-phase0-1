@@ -55,6 +55,11 @@ def test_l4_executor_builds_five_channel_execution_plan() -> None:
     assert "body_channel" in plan
     assert "social_spatial_channel" in plan
     assert "physiology_channel" in plan
+    assert "micro_expression_plan" in plan["face_channel"]
+    assert "facs_ready_tags" in plan["face_channel"]
+    assert "motion_emphasis" in plan["body_channel"]
+    assert "breath_state" in plan["physiology_channel"]
+    assert "fatigue_signal" in plan["physiology_channel"]
 
 
 def test_l4_executor_keeps_actor_facing_ingress_explicit() -> None:
@@ -93,6 +98,7 @@ def test_l4_adapter_derives_legacy_commands_from_executor_bundle() -> None:
     assert commands[0].causation_id == commands[0].correlation_id
     assert commands[0].role_state_hint == "speak"
     assert commands[0].execution_payload == plan
+    assert commands[0].physiology_hint == "hesitant"
 
 
 def test_l4_adapter_uses_frame_trace_fields_when_present() -> None:
@@ -113,7 +119,9 @@ def test_l4_adapter_uses_frame_trace_fields_when_present() -> None:
             }
         ],
         "presentation_plan": {
-            "physiology_hint": "stable",
+            "physiology_state": {
+                "state_band": "stable",
+            },
         },
         "action_request_bundle": {
             "requested_actions": [
@@ -131,6 +139,7 @@ def test_l4_adapter_uses_frame_trace_fields_when_present() -> None:
     assert commands[0].producer_ts == 1505
     assert commands[0].causation_id == "character_agent:1505:char_b"
     assert commands[0].correlation_id == "character_agent:1505:char_b"
+    assert commands[0].physiology_hint == "stable"
 
 
 def test_l4_adapter_preserves_role_state_hint_from_plan_when_present() -> None:
@@ -208,6 +217,68 @@ def test_l4_adapter_preserves_dialogue_text_for_speech_requests() -> None:
     commands = adapter.build_commands_from_execution_plan(plan)
 
     assert commands[0].dialogue_text == "Look at the letter."
+
+
+def test_l4_adapter_preserves_nested_visible_semantics_inside_execution_payload() -> None:
+    executor = CharacterAgentL4Executor()
+    adapter = CharacterAgentL4Adapter()
+
+    plan = executor.build_execution_plan(
+        snapshot=_snapshot(),
+        interpretation=_interpretation(),
+        decision=_decision(),
+    )
+
+    commands = adapter.build_commands_from_execution_plan(plan)
+
+    assert commands[0].execution_payload is not None
+    presentation_plan = commands[0].execution_payload["presentation_plan"]
+    assert presentation_plan["motion_state"]["gesture_hint"] == plan["body_channel"]["gesture_hint"]
+    assert presentation_plan["focus_state"]["orientation_mode"] == plan["social_spatial_channel"]["orientation_mode"]
+    assert presentation_plan["physiology_state"]["state_band"] == plan["physiology_channel"]["state_band"]
+
+
+def test_l4_adapter_preserves_inspect_object_focus_semantics_from_plan() -> None:
+    executor = CharacterAgentL4Executor()
+    adapter = CharacterAgentL4Adapter()
+
+    plan = executor.build_execution_plan(
+        snapshot=_snapshot().model_copy(update={"attention_targets": ["obj_letter"]}),
+        interpretation=_interpretation().model_copy(
+            update={
+                "attention_target": "obj_letter",
+                "ambiguity_level": "low",
+                "interpreted_summary": "inspect the letter quietly",
+            }
+        ),
+        decision=_decision().model_copy(update={"selected_intent": "inspect_object"}),
+    )
+
+    commands = adapter.build_commands_from_execution_plan(plan)
+
+    assert commands[0].command_type == "observe"
+    assert commands[0].role_state_hint == "inspect"
+    assert commands[0].target_object_id == "obj_letter"
+    assert commands[0].physiology_hint == "stable"
+    assert commands[0].execution_payload["presentation_plan"]["focus_state"]["focus_mode"] == "inspect"
+
+
+def test_l4_adapter_keeps_withdraw_role_state_conservative_and_physiology_from_plan() -> None:
+    executor = CharacterAgentL4Executor()
+    adapter = CharacterAgentL4Adapter()
+
+    plan = executor.build_execution_plan(
+        snapshot=_snapshot().model_copy(update={"attention_targets": ["char_a"]}),
+        interpretation=_interpretation().model_copy(update={"attention_target": "char_a"}),
+        decision=_decision().model_copy(update={"selected_intent": "withdraw"}),
+    )
+
+    commands = adapter.build_commands_from_execution_plan(plan)
+
+    assert commands[0].command_type == "approach"
+    assert commands[0].role_state_hint == "approach"
+    assert commands[0].physiology_hint == "guarded"
+    assert commands[0].target_actor_id == "char_a"
 
 
 def test_l4_adapter_can_rebuild_execution_payload_from_legacy_command_when_missing() -> None:

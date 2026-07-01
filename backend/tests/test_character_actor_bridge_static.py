@@ -38,6 +38,11 @@ def test_backend_bridge_and_replica_accept_actor_execution_ingress_payload() -> 
     assert 'character_agent_execution_received.connect(_on_character_agent_execution_received)' in replica_source
     assert 'func _on_character_agent_execution_received(payload: Dictionary) -> void:' in replica_source
     assert 'runtime_state.get_execution_payload_intent_frame(payload, actor_id)' in replica_source
+    assert 'runtime_state.build_agent_execution_side_effect_plan(' in replica_source
+    assert 'runtime_state.get_execution_side_effect_active_command_type(execution_side_effect_plan)' in replica_source
+    assert 'runtime_state.get_execution_side_effect_focus_target_lookup(execution_side_effect_plan)' in replica_source
+    assert 'runtime_state.get_execution_side_effect_physiology_hint(execution_side_effect_plan)' in replica_source
+    assert 'runtime_state.get_execution_side_effect_role_state_effects(execution_side_effect_plan)' in replica_source
     assert 'actor_control_frames' in (project_root / "scripts" / "character" / "CharacterRuntimeState.gd").read_text(
         encoding="utf-8"
     )

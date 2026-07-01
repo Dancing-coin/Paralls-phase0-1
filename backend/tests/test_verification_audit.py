@@ -236,6 +236,107 @@ def test_phase0_audit_proves_observatory_runtime_evidence() -> None:
     assert results["observatory_freeze_roundtrip"]["status"] == "proved"
 
 
+def test_phase0_audit_requires_stronger_siming_ui_presence_in_observatory() -> None:
+    report = evaluate_phase0_audit(
+        pytest_passed=True,
+        scene_load_ok=True,
+        main_log="""
+        [LocalPresentationBus] backend_connected:ws://127.0.0.1:8000/ws
+        [LocalPresentationBus] phase0_dialogue_target:char_a
+        [LocalPresentationBus] dialogue_applied:char_a
+        [LocalPresentationBus] phase0_interact_target:obj_letter
+        [LocalPresentationBus] object_state:obj_letter:visible
+        [LocalPresentationBus] constraint_state_result:distance
+        [LocalPresentationBus] environment_state:alerted
+        [LocalPresentationBus] backend_message_type:siming_output
+        [LocalPresentationBus] voice_stub_played
+        [LocalPresentationBus] player_root_motion_step:char_c
+        [LocalPresentationBus] patrol_root_motion_step:char_a
+        [LocalPresentationBus] locomotion_state:stance=stand gait=walk jump=none clip=walk_guard profile=walk rm=active
+        [LocalPresentationBus] jump_probe:type=two_foot run=False apex=1.100 distance=0.820
+        [LocalPresentationBus] jump_probe:type=single_leg run=True apex=1.240 distance=1.180
+        [LocalPresentationBus] locomotion_probe:dx=0.010 dy=0.000 dz=-0.830
+        character_director_observatory_probe:state_payloads_ok=true
+        character_director_observatory_probe:panels_populated=true
+        character_director_observatory_probe:freeze_roundtrip_ok=true
+        character_director_observatory_probe:actor_panel_populated=true
+        character_director_observatory_probe:director_cast_world_siming_populated=true
+        character_director_observatory_probe:selected_actor_siming_summary_populated=true
+        character_director_observatory_probe:bottom_strip_siming_populated=true
+        character_director_observatory_probe:timeline_multi_role_populated=true
+        character_director_observatory_probe:timeline_siming_populated=true
+        character_director_observatory_probe:ledger_pairwise_populated=true
+        character_director_observatory_probe:ledger_siming_pressure_populated=true
+        [LocalPresentationBus] character_agent_debug_snapshot:{"actor_id":"char_a","latest_siming_summary":"催促追问"}
+        [LocalPresentationBus] siming_debug_snapshot:{"selected_path":"visual_fact_path","summary":"催促追问"}
+        [LocalPresentationBus] world_outcome_trace:{"request_type":"inspect"}
+        [LocalPresentationBus] script_beat_event:{"correlation_id":"corr-1","siming_summaries":["催促追问"]}
+        [LocalPresentationBus] phase0_screenshot_saved:D:\\demo-main.png:0
+        """,
+        focus_log="""
+        [LocalPresentationBus] phase0_focus_autotest_begin
+        [LocalPresentationBus] phase0_screenshot_saved:D:\\demo-focus.png:0
+        """,
+        main_screenshot_exists=True,
+        focus_screenshot_exists=True,
+        interaction_source="""
+        request_ref=world_result.request_ref
+        causation_id=world_result.causation_id
+        correlation_id=world_result.correlation_id
+        """,
+        esm_service_source="""
+        thermal_level=field_state.thermal_level
+        "thermal_level"
+        """,
+        voice_controller_source='func play_stub_voice(_payload: Dictionary) -> void:\n    _bus_log("voice_stub_played")',
+        player_bridge_source='func before_player_shell_move(delta: float) -> void:\n    _apply_player_root_motion_drive(delta)',
+        character_replica_source="""
+        func consume_player_root_motion_request(delta: float) -> Vector3:
+            return _consume_role_root_motion_world_delta()
+        func _move_toward_target(target: Vector3, delta: float, clear_on_arrival: bool) -> void:
+            _bus_log("patrol_root_motion_step:%s" % actor_id)
+        """,
+    )
+
+    results = _index_by_id(report["results"])
+
+    assert results["observatory_selected_actor_siming_summary"]["status"] == "proved"
+    assert results["observatory_bottom_strip_siming"]["status"] == "proved"
+    assert results["observatory_timeline_siming"]["status"] == "proved"
+    assert results["observatory_ledger_siming_pressure"]["status"] == "proved"
+    assert report["overall_strict_phase0_passed"] is True
+
+
+def test_character_director_observatory_probe_uses_runtime_backed_siming_evidence_only() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    probe_source = (
+        project_root / "scripts" / "verification" / "CharacterDirectorObservatoryProbe.gd"
+    ).read_text(encoding="utf-8")
+
+    assert '"_format_bottom_strip_row"' in probe_source
+    assert 'state.call("get_latest_bottom_strip_entries")' in probe_source
+    assert 'state.call("get_dialogue_pair_entries")' in probe_source
+    assert '"_build_expanded_payload_lines"' in probe_source
+    assert '"_resolve_siming_pressure_context"' in probe_source
+    assert 'synthetic_row["siming_summary"]' not in probe_source
+    assert "dialogue_pairs[0].duplicate(true)" not in probe_source
+    assert '{"type": "司命", "summary": current_runtime_siming_summary}' not in probe_source
+    assert '{"type": "司命", "summary": runtime_summary}' not in probe_source
+    bottom_strip_block = probe_source.split("var bottom_strip_siming_populated: bool = (", 1)[1].split(
+        "var panels_populated: bool = (",
+        1,
+    )[0]
+    assert "formatter_bottom_strip_siming_populated" not in bottom_strip_block
+    assert "timeline_siming_populated" not in bottom_strip_block
+    assert "if actor_panel_populated and selected_actor_siming_summary_populated:" in probe_source
+    assert 'actor_panel.call("_resolve_feedback_summary", selected_payload)' in probe_source
+    assert "not selected_actor_siming_summary.is_empty()" in probe_source
+    assert probe_source.index("not selected_actor_siming_summary.is_empty()") < probe_source.index(
+        "rendered_feedback_summary.find(selected_actor_siming_summary) >= 0"
+    )
+    assert "rendered_feedback_summary.find(selected_actor_siming_summary) >= 0" in probe_source
+
+
 def test_backend_interact_route_emits_failed_interaction_diagnostics() -> None:
     project_root = Path(__file__).resolve().parents[2]
     main_source = (project_root / "backend" / "app" / "main.py").read_text(encoding="utf-8")
@@ -1383,7 +1484,18 @@ def test_backend_bridge_exposes_backend_disconnected_signal_chain() -> None:
 
     assert 'signal backend_disconnected(code)' in bus_source
     assert '_bus_emit("backend_disconnected", [ws.get_close_code()])' in bridge_source
-    assert "last_ready_state = WebSocketPeer.STATE_CLOSED" in bridge_source
+
+
+def test_backend_bridge_marks_connect_request_as_connecting_before_poll_short_circuit() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    bridge_source = (project_root / "scripts" / "autoload" / "BackendBridge.gd").read_text(
+        encoding="utf-8"
+    )
+    connect_section = bridge_source.split("func connect_to_backend(url: String) -> int:", 1)[1].split(
+        "func send_envelope", 1
+    )[0]
+
+    assert "last_ready_state = WebSocketPeer.STATE_CONNECTING" in connect_section
 
 
 def test_main_demo_controller_reconnects_and_replays_pending_phase0_requests() -> None:

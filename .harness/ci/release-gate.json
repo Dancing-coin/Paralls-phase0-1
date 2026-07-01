@@ -2,6 +2,9 @@
   "schema_version": 1,
   "name": "release-gate",
   "required_profile": "all",
+  "required_additional_profiles": [
+    "mainline-unified-runtime"
+  ],
   "ci_workflow": ".github/workflows/harness.yml",
   "local_ci_gate": ".harness/ci/local-ci-gate.ps1",
   "required_latest_artifacts": [

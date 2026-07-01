@@ -288,6 +288,12 @@ func build_agent_role_state_effects(
 	attention_role_state: String,
 ) -> Array[Dictionary]:
 	var effects: Array[Dictionary] = []
+	var contact_phase := CharacterPresentationInputRef.get_contact_phase(agent_presentation_input)
+	if contact_phase == "greeting":
+		effects.append({
+			"source": "contact_phase",
+			"state_name": "greeting_nod",
+		})
 	var expression_hint := CharacterPresentationInputRef.get_expression_hint(agent_presentation_input)
 	if not expression_hint.is_empty():
 		effects.append({
@@ -350,7 +356,10 @@ func build_agent_execution_side_effect_plan(
 ) -> Dictionary:
 	return {
 		"focus_target_lookup": resolve_focus_target_lookup(CharacterPresentationInputRef.get_focus_target_id(agent_presentation_input)),
+		"contact_phase": CharacterPresentationInputRef.get_contact_phase(agent_presentation_input),
+		"execution_semantics": CharacterPresentationInputRef.get_execution_semantics(agent_presentation_input),
 		"physiology_hint": CharacterPresentationInputRef.get_physiology_hint(agent_presentation_input),
+		"active_command_type": CharacterPresentationInputRef.get_active_command_type(agent_presentation_input),
 		"role_state_effects": build_agent_role_state_effects(
 			dialogue_role_state,
 			interaction_role_state,
@@ -366,6 +375,21 @@ func get_execution_side_effect_focus_target_lookup(execution_side_effect_plan: D
 
 func get_execution_side_effect_physiology_hint(execution_side_effect_plan: Dictionary) -> String:
 	return str(get_execution_side_effect_physiology_hint_payload(execution_side_effect_plan))
+
+
+func get_execution_side_effect_active_command_type(execution_side_effect_plan: Dictionary) -> String:
+	return str(get_execution_side_effect_active_command_type_payload(execution_side_effect_plan))
+
+
+func get_execution_side_effect_contact_phase(execution_side_effect_plan: Dictionary) -> String:
+	return str(get_execution_side_effect_contact_phase_payload(execution_side_effect_plan))
+
+
+func get_execution_side_effect_execution_semantics(execution_side_effect_plan: Dictionary) -> Dictionary:
+	var value: Variant = get_execution_side_effect_execution_semantics_payload(execution_side_effect_plan)
+	if value is Dictionary:
+		return value
+	return {}
 
 
 func get_execution_side_effect_role_state_effects(execution_side_effect_plan: Dictionary) -> Array[Dictionary]:
@@ -396,6 +420,18 @@ func get_execution_side_effect_focus_target_lookup_payload(execution_side_effect
 
 func get_execution_side_effect_physiology_hint_payload(execution_side_effect_plan: Dictionary) -> Variant:
 	return execution_side_effect_plan.get("physiology_hint", "")
+
+
+func get_execution_side_effect_active_command_type_payload(execution_side_effect_plan: Dictionary) -> Variant:
+	return execution_side_effect_plan.get("active_command_type", "")
+
+
+func get_execution_side_effect_contact_phase_payload(execution_side_effect_plan: Dictionary) -> Variant:
+	return execution_side_effect_plan.get("contact_phase", "")
+
+
+func get_execution_side_effect_execution_semantics_payload(execution_side_effect_plan: Dictionary) -> Variant:
+	return execution_side_effect_plan.get("execution_semantics", {})
 
 
 func get_execution_side_effect_role_state_effects_payload(execution_side_effect_plan: Dictionary) -> Variant:
@@ -570,6 +606,10 @@ func get_runtime_nearby_environment_refs() -> Array[String]:
 
 func get_runtime_conversation_candidate_refs() -> Array[String]:
 	return runtime_conversation_candidate_refs
+
+
+func get_execution_semantics_movement_intent(execution_semantics: Dictionary) -> String:
+	return str(execution_semantics.get("movement_intent", ""))
 
 
 func should_apply_focus_attention(payload: Dictionary, current_actor_id: String, reacts_to_player_focus: bool) -> bool:

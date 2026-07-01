@@ -73,3 +73,10 @@ def test_character_actor_embodied_gates_are_not_unconditional_placeholders() -> 
     assert "is_inside_tree()" in replica_source
     assert "func _has_line_of_sight_to_target(_target_node: Node3D) -> bool:\n\treturn true" not in replica_source
     assert "func _is_target_reachable(_target_node: Node3D) -> bool:\n\treturn true" not in replica_source
+
+
+def test_character_replica_wires_actor_perception_sampler() -> None:
+    source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(encoding="utf-8")
+
+    assert "ActorPerceptionSampler" in source
+    assert "_sample_actor_local_perception" in source

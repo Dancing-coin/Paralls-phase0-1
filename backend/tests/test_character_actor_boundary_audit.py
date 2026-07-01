@@ -33,3 +33,13 @@ def test_character_actor_runtime_models_do_not_keep_legacy_presentation_command(
     assert "CharacterPresentationCommand" not in model_test_source
     assert "CharacterGoalCommand" in model_test_source
     assert "CharacterIntentFrame" in model_test_source
+
+
+def test_character_replica_still_behaves_as_local_realization_host_not_semantics_owner() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    source = (project_root / "scripts" / "character" / "CharacterReplica.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert "execution_semantics" in source
+    assert "selected_intent" not in source

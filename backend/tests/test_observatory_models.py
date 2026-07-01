@@ -1,3 +1,5 @@
+from app.character_agent.models.dynamic_state import CharacterDynamicState
+from app.character_agent.models.goal_runtime import CharacterGoalStateRecord
 from app.models.observatory import (
     ActorDramaticEvent,
     ActorDramaticState,
@@ -26,6 +28,29 @@ def test_actor_dramatic_state_carries_stable_observatory_fields() -> None:
         execution_summary="approach with guarded posture",
         latest_outcome_summary="none",
         latest_siming_summary="siming nudged attention toward char_b",
+        cadence_summary="perception=200|cognition=500|degraded=False",
+        continuity_summary="contact=char_b|interrupted=approach|transition=accepted",
+        dynamic_state=CharacterDynamicState(
+            actor_id="char_a",
+            vigilance_level=0.3,
+            distraction_level=0.1,
+            stress_load=0.4,
+            social_pressure=0.2,
+            masking_pressure=0.1,
+        ),
+        goal_state=CharacterGoalStateRecord(
+            actor_id="char_a",
+            primary_goal="protect_secret",
+            long_term_goal="preserve_order",
+            mid_term_strategy="contain_exposure",
+            immediate_goal="withhold_until_private",
+            supporting_goals=["clarify_intent"],
+            blockers=["high_masking_pressure"],
+            goal_sources=["dynamic_state"],
+            urgency="high",
+            transition_kind="repairing",
+            transition_reason_tags=["strategy_blocked"],
+        ),
     )
 
     assert state.actor_id == "char_a"
@@ -34,6 +59,12 @@ def test_actor_dramatic_state_carries_stable_observatory_fields() -> None:
     assert state.correlation_id == "corr-1"
     assert state.participants == ["char_a", "char_b"]
     assert state.latest_siming_summary == "siming nudged attention toward char_b"
+    assert state.cadence_summary == "perception=200|cognition=500|degraded=False"
+    assert state.continuity_summary == "contact=char_b|interrupted=approach|transition=accepted"
+    assert state.dynamic_state is not None
+    assert state.dynamic_state.vigilance_level == 0.3
+    assert state.goal_state is not None
+    assert state.goal_state.mid_term_strategy == "contain_exposure"
 
 
 def test_actor_dramatic_event_carries_structured_stage_and_summary() -> None:

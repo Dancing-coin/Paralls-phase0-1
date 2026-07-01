@@ -132,6 +132,45 @@ def test_runtime_state_host_exposes_player_locomotion_interpretation_helper() ->
     assert "runtime_state.resolve_player_locomotion_state" in replica_source
 
 
+def test_runtime_state_builds_agent_execution_side_effect_plan_from_presentation_input() -> None:
+    runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
+    side_effect_slice = runtime_state_source.split("func build_agent_execution_side_effect_plan(", 1)[1].split(
+        "func get_execution_side_effect_focus_target_lookup(", 1
+    )[0]
+
+    assert '"focus_target_lookup": resolve_focus_target_lookup(' in side_effect_slice
+    assert "CharacterPresentationInputRef.get_focus_target_id(agent_presentation_input)" in side_effect_slice
+    assert '"physiology_hint": CharacterPresentationInputRef.get_physiology_hint(agent_presentation_input)' in side_effect_slice
+    assert '"active_command_type": CharacterPresentationInputRef.get_active_command_type(agent_presentation_input)' in side_effect_slice
+    assert '"role_state_effects": build_agent_role_state_effects(' in side_effect_slice
+    assert "func get_execution_side_effect_active_command_type(" in runtime_state_source
+    assert "func get_execution_side_effect_active_command_type_payload(" in runtime_state_source
+
+
+def test_character_replica_applies_agent_execution_side_effects_through_runtime_state_helpers() -> None:
+    runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
+    replica_source = _read("scripts/character/CharacterReplica.gd")
+    handler_slice = replica_source.split("func _on_character_agent_execution_received(payload: Dictionary) -> void:", 1)[1].split(
+        "func _handle_interact_goal_command(", 1
+    )[0]
+
+    assert "func get_execution_side_effect_active_command_type(" in runtime_state_source
+    assert "func get_execution_side_effect_focus_target_lookup(" in runtime_state_source
+    assert "func get_execution_side_effect_physiology_hint(" in runtime_state_source
+    assert "func get_execution_side_effect_role_state_effects(" in runtime_state_source
+    assert "runtime_state.build_agent_execution_side_effect_plan(" in handler_slice
+    assert "runtime_state.get_execution_side_effect_active_command_type(execution_side_effect_plan)" in handler_slice
+    assert "runtime_state.set_active_command(active_command_type, _command_priority(active_command_type))" in handler_slice
+    assert "runtime_state.get_execution_side_effect_focus_target_lookup(execution_side_effect_plan)" in handler_slice
+    assert "runtime_state.get_execution_side_effect_physiology_hint(execution_side_effect_plan)" in handler_slice
+    assert "runtime_state.get_execution_side_effect_role_state_effects(execution_side_effect_plan)" in handler_slice
+    assert 'presentation_plan.get("focus_target_id"' not in handler_slice
+    assert 'presentation_plan.get("physiology_hint"' not in handler_slice
+    assert 'presentation_plan.get("expression_hint"' not in handler_slice
+    assert 'presentation_plan.get("active_command_type"' not in handler_slice
+    assert "CharacterPresentationInputRef." not in handler_slice
+
+
 def test_runtime_state_host_builds_player_presentation_payload_fields() -> None:
     runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
     replica_source = _read("scripts/character/CharacterReplica.gd")

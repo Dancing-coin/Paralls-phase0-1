@@ -1,21 +1,42 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 from pathlib import Path
 
-from app.character_agent.memory.episodic_memory import CharacterEpisodicMemory
-from app.character_agent.memory.relational_memory import CharacterRelationalMemory
+from app.character_agent.memory.event_memory import CharacterEventMemory
+from app.character_agent.memory.higher_order_memory import CharacterHigherOrderMemory
+from app.character_agent.memory.knowledge_memory import CharacterKnowledgeMemory
+from app.character_agent.memory.observation_memory import CharacterObservationMemory
+from app.character_agent.memory.social_memory import CharacterSocialMemory
 from app.character_agent.memory.working_memory import CharacterWorkingMemory
+from app.character_agent.models.dynamic_state import CharacterDynamicState
+from app.character_agent.models.event_memory import CharacterEventMemoryRecord
+from app.character_agent.models.higher_order_memory import CharacterHigherOrderMemoryRecord
+from app.character_agent.models.knowledge_state import KnowledgeState
+from app.character_agent.models.knowledge_memory import CharacterKnowledgeMemoryRecord
+from app.character_agent.models.memory_record_bundle import CharacterMemoryRecordBundle
+from app.character_agent.models.observation_memory import CharacterObservationMemoryRecord
+from app.character_agent.models.social_memory import CharacterSocialMemoryRecord
 from app.character_agent.models.working_memory_state import CharacterWorkingMemoryState
 
 
 class CharacterAgentMemoryStore:
     _SUMMARY_VALUE_CHARS = 240
+    _SOCIAL_BELIEF_TRUST_BASELINES = {
+        "guarded": 0.25,
+        "neutral": 0.5,
+        "trusting": 0.75,
+        "trusted": 0.9,
+    }
 
     def __init__(self, storage_root: str | Path | None = None) -> None:
         self._working = CharacterWorkingMemory()
-        self._episodic = CharacterEpisodicMemory()
-        self._relational = CharacterRelationalMemory()
+        self._event = CharacterEventMemory()
+        self._observation = CharacterObservationMemory()
+        self._knowledge = CharacterKnowledgeMemory()
+        self._social = CharacterSocialMemory()
+        self._higher_order = CharacterHigherOrderMemory()
         self._events_by_actor: dict[str, list[dict[str, object]]] = {}
         self._storage_path: Path | None = None
         if storage_root is not None:
@@ -28,7 +49,7 @@ class CharacterAgentMemoryStore:
         actor_id = str(event.get("actor_id", "") or "")
         if actor_id == "":
             return
-        stored_event = dict(event)
+        stored_event = deepcopy(event)
         self._events_by_actor.setdefault(actor_id, []).append(stored_event)
         self._ingest_event(stored_event)
         self._persist()
@@ -45,12 +66,37 @@ class CharacterAgentMemoryStore:
             payload = {}
 
         if event_type == "character_perceived_event":
-            self._episodic.remember(
+            summary = str(payload.get("summary", "") or "")
+            source_event_id = str(event.get("event_id", "") or "")
+            producer_ts = int(event.get("producer_ts", 0) or 0)
+            self._event.record_event(
                 actor_id=actor_id,
-                summary=str(payload.get("summary", "") or ""),
-                tags=[str(tag) for tag in payload.get("tags", [])] if isinstance(payload.get("tags", []), list) else [],
-                source_event_id=str(event.get("event_id", "") or ""),
-                producer_ts=int(event.get("producer_ts", 0) or 0),
+                source_event_id=source_event_id,
+                world_ts=producer_ts,
+                event_type=event_type,
+                summary=summary,
+                clarity_score=float(payload.get("clarity_score", 1.0) or 1.0),
+                certainty_score=float(payload.get("certainty_score", 1.0) or 1.0),
+                refs=[source_event_id] if source_event_id else [],
+                event_id=source_event_id,
+            )
+            observed_entity_id = str(
+                payload.get("target_actor_id", "")
+                or payload.get("source_actor_id", "")
+                or payload.get("source_candidate_event_id", "")
+                or "scene"
+            )
+            self._observation.record_observation(
+                actor_id=actor_id,
+                source_event_id=source_event_id,
+                world_ts=producer_ts,
+                observed_entity_id=observed_entity_id,
+                observation_type=str(payload.get("percept_channel", "") or "perception"),
+                observation_summary=summary,
+                clarity_score=float(payload.get("clarity_score", 1.0) or 1.0),
+                certainty_score=float(payload.get("certainty_score", 1.0) or 1.0),
+                distortion_tags=[],
+                refs=[source_event_id] if source_event_id else [],
             )
         elif event_type == "character_agent_settlement_result":
             settlement_summary = (
@@ -59,45 +105,168 @@ class CharacterAgentMemoryStore:
                 or str(payload.get("stable_state_summary", "") or "").strip()
                 or str(payload.get("result_type", "") or "").strip()
             )
-            self._episodic.remember(
+            source_event_id = str(event.get("event_id", "") or "")
+            producer_ts = int(event.get("producer_ts", 0) or 0)
+            self._event.record_event(
                 actor_id=actor_id,
+                source_event_id=source_event_id,
+                world_ts=producer_ts,
+                event_type=event_type,
                 summary=settlement_summary,
-                tags=["settlement"],
-                source_event_id=str(event.get("event_id", "") or ""),
-                producer_ts=int(event.get("producer_ts", 0) or 0),
+                clarity_score=1.0,
+                certainty_score=1.0,
+                refs=[source_event_id] if source_event_id else [],
+                event_id=source_event_id,
+            )
+            proposition_key, proposition = self._settlement_knowledge_record(payload, settlement_summary)
+            self._knowledge.upsert_proposition(
+                actor_id=actor_id,
+                proposition_key=proposition_key,
+                proposition=proposition,
+                state=self._settlement_knowledge_state(payload),
+                confidence=self._settlement_knowledge_confidence(payload),
+                source_event_id=source_event_id,
+                producer_ts=producer_ts,
             )
         elif event_type == "character_agent_dialogue_response":
             dialogue_summary = str(payload.get("content", "") or payload.get("summary", "") or "").strip()
-            self._episodic.remember(
+            source_event_id = str(event.get("event_id", "") or "")
+            producer_ts = int(event.get("producer_ts", 0) or 0)
+            self._event.record_event(
                 actor_id=actor_id,
+                source_event_id=source_event_id,
+                world_ts=producer_ts,
+                event_type=event_type,
                 summary=f"dialogue_response:{dialogue_summary}" if dialogue_summary else "dialogue_response",
-                tags=["dialogue"],
-                source_event_id=str(event.get("event_id", "") or ""),
-                producer_ts=int(event.get("producer_ts", 0) or 0),
+                clarity_score=1.0,
+                certainty_score=1.0,
+                refs=[source_event_id] if source_event_id else [],
+                event_id=source_event_id,
             )
         elif event_type == "relational_belief_event":
-            self._relational.upsert_belief(
+            source_event_id = str(event.get("event_id", "") or "")
+            producer_ts = int(event.get("producer_ts", 0) or 0)
+            entity_id = str(payload.get("entity_id", "") or "")
+            belief_type = str(payload.get("belief_type", "") or "")
+            value = str(payload.get("value", "") or "")
+            if entity_id == "" or belief_type == "":
+                return
+            self._knowledge.upsert_proposition(
                 actor_id=actor_id,
-                entity_id=str(payload.get("entity_id", "") or ""),
-                belief_type=str(payload.get("belief_type", "") or ""),
-                value=str(payload.get("value", "") or ""),
-                source_event_id=str(event.get("event_id", "") or ""),
-                producer_ts=int(event.get("producer_ts", 0) or 0),
+                proposition_key=f"social:{entity_id}:{belief_type}",
+                proposition=f"{entity_id}:{belief_type}={value}",
+                state=KnowledgeState.TENTATIVELY_BELIEVED,
+                confidence=0.65,
+                source_event_id=source_event_id,
+                producer_ts=producer_ts,
+            )
+            if belief_type != "trust_level":
+                return
+            self._social.upsert_relation(
+                actor_id=actor_id,
+                entity_id=entity_id,
+                trust_baseline=self._trust_baseline_for_belief(belief_type, value),
+                suspicion_baseline=self._suspicion_baseline_for_belief(belief_type, value),
+                intimacy=0.0,
+                dependency=0.0,
+                unresolved_tension=0.5 if value == "guarded" else 0.0,
+                shared_secret_refs=[],
+                source_event_id=source_event_id,
+                producer_ts=producer_ts,
+            )
+        elif event_type == "knowledge_belief_event":
+            source_event_id = str(event.get("event_id", "") or "")
+            producer_ts = int(event.get("producer_ts", 0) or 0)
+            proposition_key = str(payload.get("proposition_key", "") or "")
+            proposition = str(payload.get("proposition", "") or proposition_key)
+            if proposition_key == "":
+                return
+            self._knowledge.upsert_proposition(
+                actor_id=actor_id,
+                proposition_key=proposition_key,
+                proposition=proposition,
+                state=payload.get("state", KnowledgeState.SUSPECTED),
+                confidence=float(payload.get("confidence", 0.0) or 0.0),
+                source_event_id=source_event_id,
+                producer_ts=producer_ts,
+            )
+        elif event_type == "social_cognition_event":
+            source_event_id = str(event.get("event_id", "") or "")
+            producer_ts = int(event.get("producer_ts", 0) or 0)
+            entity_id = str(payload.get("entity_id", "") or "")
+            if entity_id == "":
+                return
+            self._social.upsert_relation(
+                actor_id=actor_id,
+                entity_id=entity_id,
+                trust_baseline=float(payload.get("trust_baseline", 0.5) or 0.5),
+                suspicion_baseline=float(payload.get("suspicion_baseline", 0.0) or 0.0),
+                intimacy=float(payload.get("intimacy", 0.0) or 0.0),
+                dependency=float(payload.get("dependency", 0.0) or 0.0),
+                unresolved_tension=float(payload.get("unresolved_tension", 0.0) or 0.0),
+                shared_secret_refs=[
+                    str(item) for item in payload.get("shared_secret_refs", []) if str(item)
+                ]
+                if isinstance(payload.get("shared_secret_refs", []), list)
+                else [],
+                source_event_id=source_event_id,
+                producer_ts=producer_ts,
+            )
+        elif event_type == "higher_order_belief_event":
+            source_event_id = str(event.get("event_id", "") or "")
+            producer_ts = int(event.get("producer_ts", 0) or 0)
+            subject_actor_id = str(payload.get("subject_actor_id", "") or "")
+            proposition_key = str(payload.get("proposition_key", "") or "")
+            meta_belief = str(payload.get("meta_belief", "") or "")
+            if subject_actor_id == "" or proposition_key == "" or meta_belief == "":
+                return
+            self._higher_order.upsert_meta_belief(
+                actor_id=actor_id,
+                subject_actor_id=subject_actor_id,
+                proposition_key=proposition_key,
+                meta_belief=meta_belief,
+                confidence=float(payload.get("confidence", 0.0) or 0.0),
+                source_event_id=source_event_id,
+                producer_ts=producer_ts,
             )
 
     def retrieval_bundle(self, actor_id: str) -> dict[str, list[dict[str, object]]]:
+        event_memories = self._event.recall(actor_id)
+        observation_memories = self._observation.recall(actor_id)
+        knowledge_memories = self._knowledge.recall(actor_id)
+        social_memories = self._social.recall(actor_id)
+        higher_order_memories = self._higher_order.recall(actor_id)
         return {
             "working_memory": self._working.recall(actor_id),
-            "episodic_memories": self._episodic.recall(actor_id),
-            "relational_memories": self._relational.recall(actor_id),
+            "event_memories": event_memories,
+            "observation_memories": observation_memories,
+            "knowledge_memories": knowledge_memories,
+            "social_memories": social_memories,
+            "higher_order_memories": higher_order_memories,
+            "episodic_memories": self._legacy_episodic_memories(event_memories),
+            "relational_memories": self._legacy_relational_memories(knowledge_memories),
         }
+
+    def retrieval_record_bundle(self, actor_id: str) -> CharacterMemoryRecordBundle:
+        return CharacterMemoryRecordBundle(
+            event_memories=self._event.recall_records(actor_id),
+            observation_memories=self._observation.recall_records(actor_id),
+            knowledge_memories=self._knowledge.recall_records(actor_id),
+            social_memories=self._social.recall_records(actor_id),
+            higher_order_memories=self._higher_order.recall_records(actor_id),
+        )
 
     def working_memory_state(
         self,
         actor_id: str,
         private_snapshot: dict[str, object] | None = None,
+        dynamic_state: dict[str, object] | CharacterDynamicState | None = None,
     ) -> CharacterWorkingMemoryState:
-        return self._working.build_state(actor_id, private_snapshot=private_snapshot)
+        return self._working.build_state(
+            actor_id,
+            private_snapshot=private_snapshot,
+            dynamic_state=dynamic_state,
+        )
 
     def _sanitize_working_memory_event(self, event: dict[str, object]) -> dict[str, object]:
         stored = dict(event)
@@ -131,11 +300,18 @@ class CharacterAgentMemoryStore:
         memory_dict = memory if isinstance(memory, dict) else {}
         return {
             "working_memory_count": self._count_of(memory_dict.get("working_memory")),
-            "episodic_memories_count": self._count_of(memory_dict.get("episodic_memories")),
-            "relational_memories_count": self._count_of(memory_dict.get("relational_memories")),
+            "event_memories_count": self._count_of(memory_dict.get("event_memories")),
+            "observation_memories_count": self._count_of(memory_dict.get("observation_memories")),
+            "knowledge_memories_count": self._count_of(memory_dict.get("knowledge_memories")),
+            "social_memories_count": self._count_of(memory_dict.get("social_memories")),
+            "higher_order_memories_count": self._count_of(memory_dict.get("higher_order_memories")),
             "working_memory_sample": self._sample_summary(memory_dict.get("working_memory")),
-            "episodic_memory_sample": self._sample_summary(memory_dict.get("episodic_memories")),
+            "event_memory_sample": self._sample_summary(memory_dict.get("event_memories")),
+            "observation_memory_sample": self._sample_summary(memory_dict.get("observation_memories")),
             "relational_memory_sample": self._sample_summary(memory_dict.get("relational_memories")),
+            "knowledge_memory_sample": self._sample_summary(memory_dict.get("knowledge_memories")),
+            "social_memory_sample": self._sample_summary(memory_dict.get("social_memories")),
+            "higher_order_memory_sample": self._sample_summary(memory_dict.get("higher_order_memories")),
         }
 
     def _event_summary(self, event: object) -> dict[str, object]:
@@ -155,7 +331,14 @@ class CharacterAgentMemoryStore:
             return ""
         first = value[0]
         if isinstance(first, dict):
-            return self._truncate(first.get("summary", "") or first.get("event_type", "") or first.get("relation_summary", ""))
+            return self._truncate(
+                first.get("summary", "")
+                or first.get("observation_summary", "")
+                or first.get("proposition", "")
+                or first.get("meta_belief", "")
+                or first.get("entity_id", "")
+                or first.get("event_type", "")
+            )
         return self._truncate(first)
 
     def _count_of(self, value: object) -> int:
@@ -168,6 +351,109 @@ class CharacterAgentMemoryStore:
         if len(text) <= self._SUMMARY_VALUE_CHARS:
             return text
         return text[: self._SUMMARY_VALUE_CHARS - 3] + "..."
+
+    def _trust_baseline_for_belief(self, belief_type: str, value: str) -> float:
+        if belief_type != "trust_level":
+            return 0.5
+        return self._SOCIAL_BELIEF_TRUST_BASELINES.get(value, 0.5)
+
+    def _suspicion_baseline_for_belief(self, belief_type: str, value: str) -> float:
+        if belief_type != "trust_level":
+            return 0.0
+        if value == "guarded":
+            return 0.75
+        if value in {"trusting", "trusted"}:
+            return 0.1
+        return 0.25
+
+    def _settlement_knowledge_record(self, payload: dict[str, object], settlement_summary: str) -> tuple[str, str]:
+        target_kind, target_ref = self._settlement_target_ref(payload)
+        result_type = str(payload.get("result_type", "") or "").strip() or "result"
+        proposition_key = f"settlement:{target_kind}:{target_ref}:{result_type}"
+        proposition = f"{target_kind} {target_ref} {result_type}: {settlement_summary or result_type}"
+        return proposition_key, proposition
+
+    def _settlement_target_ref(self, payload: dict[str, object]) -> tuple[str, str]:
+        target_actor_id = str(payload.get("target_actor_id", "") or "").strip()
+        if target_actor_id != "":
+            return "actor", target_actor_id
+        target_object_id = str(payload.get("target_object_id", "") or "").strip()
+        if target_object_id != "":
+            return "object", target_object_id
+        target_environment_id = str(payload.get("target_environment_id", "") or "").strip()
+        if target_environment_id != "":
+            return "environment", target_environment_id
+        return "world", "world"
+
+    def _settlement_knowledge_state(self, payload: dict[str, object]) -> KnowledgeState:
+        result_type = str(payload.get("result_type", "") or "").strip()
+        if result_type == "constraint_state_result":
+            return KnowledgeState.NOTICED
+        return KnowledgeState.BELIEVED
+
+    def _settlement_knowledge_confidence(self, payload: dict[str, object]) -> float:
+        result_type = str(payload.get("result_type", "") or "").strip()
+        if result_type == "constraint_state_result":
+            return 0.7
+        return 0.9
+
+    def _legacy_episodic_memories(
+        self,
+        event_memories: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        return [
+            {
+                "summary": str(entry.get("summary", "") or ""),
+                "source_event_id": str(entry.get("source_event_id", "") or ""),
+                "producer_ts": int(entry.get("world_ts", 0) or 0),
+                "tags": [],
+            }
+            for entry in event_memories
+        ]
+
+    def _legacy_relational_memories(
+        self,
+        knowledge_memories: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        relational_memories: list[dict[str, object]] = []
+        for entry in knowledge_memories:
+            proposition_key = str(entry.get("proposition_key", "") or "")
+            if not proposition_key.startswith("social:"):
+                continue
+            entity_id, belief_type = self._parse_social_proposition_key(proposition_key)
+            if entity_id == "" or belief_type == "":
+                continue
+            relational_memories.append(
+                {
+                    "entity_id": entity_id,
+                    "belief_type": belief_type,
+                    "value": self._parse_social_proposition_value(
+                        str(entry.get("proposition", "") or ""),
+                        entity_id,
+                        belief_type,
+                    ),
+                    "source_event_id": str(entry.get("source_event_id", "") or ""),
+                    "producer_ts": int(entry.get("producer_ts", 0) or 0),
+                }
+            )
+        return relational_memories
+
+    def _parse_social_proposition_key(self, proposition_key: str) -> tuple[str, str]:
+        _, entity_id, belief_type = (proposition_key.split(":", 2) + ["", ""])[:3]
+        return entity_id, belief_type
+
+    def _parse_social_proposition_value(
+        self,
+        proposition: str,
+        entity_id: str,
+        belief_type: str,
+    ) -> str:
+        expected_prefix = f"{entity_id}:{belief_type}="
+        if proposition.startswith(expected_prefix):
+            return proposition[len(expected_prefix) :]
+        if "=" in proposition:
+            return proposition.split("=", 1)[1]
+        return ""
 
     def _load(self) -> None:
         if self._storage_path is None or not self._storage_path.exists():

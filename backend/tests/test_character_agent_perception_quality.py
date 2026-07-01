@@ -27,21 +27,21 @@ def test_character_agent_l1_routes_unknown_modalities_into_unresolved_signals() 
     service = CharacterAgentL1Service()
     perceived = CharacterPerceivedEvent(
         actor_id="char_a",
-        percept_channel="olfactory",
+        percept_channel="electromagnetic",
         producer_ts=511,
         room_id="room_demo",
         scene_id="scene_demo",
         zone_id="zone_focus",
-        perceived_summary="olfactory_fact/smoke_density_rise",
-        source_candidate_event_id="olfactory_fact:511:char_a",
+        perceived_summary="unknown_fact/signal_bleed",
+        source_candidate_event_id="unknown_fact:511:char_a",
         clarity_score=0.66,
         certainty_score=0.53,
     )
 
     snapshot = service.apply_character_perceived_event(perceived)
 
-    assert snapshot.unresolved_signals == ["olfactory_fact/smoke_density_rise"]
-    assert snapshot.active_anomalies == ["olfactory_fact/smoke_density_rise"]
+    assert snapshot.unresolved_signals == ["unknown_fact/signal_bleed"]
+    assert snapshot.active_anomalies == ["unknown_fact/signal_bleed"]
     assert snapshot.distraction_level == "elevated"
     assert snapshot.clarity_score == 0.66
     assert snapshot.certainty_score == 0.53

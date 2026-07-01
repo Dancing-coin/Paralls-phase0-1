@@ -53,6 +53,12 @@ def evaluate_release_gate(project_root: Path) -> dict[str, object]:
             [".github/workflows/harness.yml"],
         ),
         _result(
+            "ci_runs_mainline_unified_runtime_profile",
+            "CI workflow invokes the mainline unified runtime profile",
+            "python scripts/verification/harness.py --profile mainline-unified-runtime" in workflow_text,
+            [".github/workflows/harness.yml"],
+        ),
+        _result(
             "local_ci_gate_exists",
             "Local CI-equivalent gate exists",
             metadata.get("local_ci_gate") == ".harness/ci/local-ci-gate.ps1" and local_ci_gate_path.exists(),
@@ -63,6 +69,12 @@ def evaluate_release_gate(project_root: Path) -> dict[str, object]:
             "Local CI-equivalent gate invokes the same full harness profile",
             "python scripts\\verification\\harness.py --profile all" in local_ci_gate_text
             and "python -m pytest -q scripts\\verification\\tests" in local_ci_gate_text,
+            [".harness/ci/local-ci-gate.ps1"],
+        ),
+        _result(
+            "local_ci_gate_runs_mainline_unified_runtime_profile",
+            "Local CI-equivalent gate invokes the mainline unified runtime profile",
+            "python scripts\\verification\\harness.py --profile mainline-unified-runtime" in local_ci_gate_text,
             [".harness/ci/local-ci-gate.ps1"],
         ),
     ]

@@ -41,6 +41,7 @@ func _refresh() -> void:
 			"听的人当时感知到：%s" % str(selected_row.get("listener_perceived_summary", "") or ""),
 			"说话的人怎么理解局面：%s" % str(selected_row.get("speaker_interpreted_summary", "") or ""),
 			"听的人怎么理解局面：%s" % str(selected_row.get("listener_interpreted_summary", "") or ""),
+			"司命压力上下文：%s" % _resolve_siming_pressure_context(selected_row),
 			"说话的人实际说了：%s" % str(selected_row.get("speaker_said", "") or ""),
 			"听的人回出来的话：%s" % str(selected_row.get("listener_said", "") or ""),
 			"两边理解有没有对不上：%s" % ("有" if mismatch else "没有"),
@@ -53,6 +54,19 @@ func _refresh() -> void:
 
 func _get_state() -> Node:
 	return get_node_or_null("../CharacterDirectorState")
+
+
+func _resolve_siming_pressure_context(row: Dictionary) -> String:
+	var candidates: Array = [
+		row.get("siming_pressure_context", ""),
+		row.get("siming_context", ""),
+		row.get("siming_summary", ""),
+	]
+	for candidate: Variant in candidates:
+		var text := str(candidate)
+		if text != "":
+			return text
+	return "暂无"
 
 
 func _build_pair_rows(state: Node) -> Array[Dictionary]:

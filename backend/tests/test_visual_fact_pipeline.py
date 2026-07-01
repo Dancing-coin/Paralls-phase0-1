@@ -3,6 +3,9 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 import app.main as main
 
+from app.character_agent.gateway.model_gateway import CharacterModelGateway
+from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
 from app.main import (
     _handle_envelope,
     app,
@@ -15,9 +18,51 @@ from app.models.player_input import FocusTargetChange
 from app.models.raw_fact import RawFactEvent
 from app.models.runtime_state import CharacterRuntimeStateSnapshot
 from app.models.visual_fact import VisualFactEvent
+from app.services.character_agent_runtime import CharacterAgentRuntime
 from app.services.character_runtime_state_service import CharacterRuntimeStateService
 from app.services.conversation_relation_service import ConversationRelationService
 from app.ws_protocol import Envelope
+
+
+class _LocalGateway:
+    def __init__(self) -> None:
+        self._gateway = CharacterModelGateway()
+
+    def run_task(
+        self,
+        *,
+        task_kind: str,
+        context: dict[str, object],
+        route_override: str | None = None,
+    ) -> dict[str, object]:
+        return self._gateway.run_task(
+            task_kind=task_kind,
+            context=context,
+            route_override=route_override or "local_only",
+        )
+
+    def prepare_run_request(
+        self,
+        *,
+        task_kind: str,
+        context: dict[str, object],
+        route_override: str | None = None,
+    ) -> dict[str, object]:
+        return self._gateway.prepare_run_request(
+            task_kind=task_kind,
+            context=context,
+            route_override=route_override or "local_only",
+        )
+
+
+def _reset_runtime_state_with_local_character_model() -> None:
+    reset_runtime_state()
+    runtime = CharacterAgentRuntime()
+    local_gateway = _LocalGateway()
+    runtime._l2 = CharacterAgentL2Service(gateway=local_gateway, profile_registry=runtime._profile_registry)
+    runtime._l3 = CharacterAgentL3Service(gateway=local_gateway)
+    main.character_agent_runtime = runtime
+    main.siming_event_pipeline._character_dispatch_adapter._runtime = runtime
 
 
 def test_visual_fact_event_shape() -> None:
@@ -56,7 +101,7 @@ def test_visual_fact_event_model_dump_supports_environment_state_subject_key() -
 
 
 def test_fact_reveal_bridge_does_not_degrade_into_role_conclusion_payload() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     event = AuthorityEvent.model_validate(
         {
             "event_id": "siming:fact_reveal:702:cause:1",
@@ -128,7 +173,7 @@ def test_relation_service_projects_environment_visual_fact_to_runtime_state() ->
 
 
 def test_websocket_environment_visual_fact_emits_runtime_delta_without_candidate() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -210,7 +255,7 @@ def test_handle_envelope_raw_visual_fact_matches_legacy_visual_fact_runtime_mess
         target_environment_id="env_lamp",
     )
 
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     legacy_messages = _handle_envelope(
         Envelope(
             message_type="visual_fact_event",
@@ -218,7 +263,7 @@ def test_handle_envelope_raw_visual_fact_matches_legacy_visual_fact_runtime_mess
         )
     )
 
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     raw_messages = _handle_envelope(
         Envelope(
             message_type="raw_fact_event",
@@ -247,7 +292,7 @@ def test_handle_envelope_raw_visual_fact_still_routes_after_candidate_compilatio
         target_actor_id="char_a",
     )
 
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     messages = _handle_envelope(
         Envelope(
             message_type="raw_fact_event",
@@ -271,7 +316,7 @@ def test_raw_visual_fact_updates_character_perceived_input_path() -> None:
         target_actor_id="char_a",
     )
 
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     _handle_envelope(
         Envelope(
             message_type="raw_fact_event",
@@ -300,7 +345,7 @@ def test_raw_visual_fact_for_char_a_emits_character_agent_execution() -> None:
         target_actor_id="char_a",
     )
 
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     messages = _handle_envelope(
         Envelope(
             message_type="raw_fact_event",
@@ -318,8 +363,98 @@ def test_raw_visual_fact_for_char_a_emits_character_agent_execution() -> None:
     assert "presentation_plan" in execution_messages[0]["payload"]
 
 
+def test_raw_thermal_fact_for_char_a_emits_character_agent_execution() -> None:
+    _reset_runtime_state_with_local_character_model()
+    messages = _handle_envelope(
+        Envelope(
+            message_type="raw_fact_event",
+            payload={
+                "event_type": "raw_fact_event",
+                "fact_family": "thermal_fact",
+                "fact_type": "thermal_proximity_changed",
+                "relation_type": "thermal_proximity_changed",
+                "producer_ts": 603,
+                "room_id": "room_demo",
+                "scene_id": "scene_demo",
+                "zone_id": "zone_focus",
+                "source": {
+                    "layer": "L1",
+                    "system": "godot.raw_fact_emitter",
+                    "actor_id": "char_c",
+                    "object_id": "",
+                    "environment_id": "",
+                },
+                "targets": {
+                    "actor_id": "char_a",
+                    "object_id": "obj_letter",
+                    "environment_id": "",
+                },
+                "world": {},
+                "observability": {"visual": False, "auditory": False, "occluded": False},
+                "acoustics": {},
+                "effect_kind": "pulse",
+                "subject_key": "",
+                "causation_id": "therm:603",
+                "correlation_id": "therm:603",
+            },
+        )
+    )
+
+    execution_messages = [message for message in messages if message["message_type"] == "character_agent_execution"]
+    perceived = character_perceived_input_service.get_latest("char_a")
+
+    assert execution_messages
+    assert execution_messages[0]["payload"]["actor_id"] == "char_a"
+    assert perceived is not None
+    assert perceived.percept_channel == "thermal"
+    assert perceived.target_object_id == "obj_letter"
+
+
+def test_raw_tactile_fact_for_char_a_updates_character_perceived_input_path() -> None:
+    _reset_runtime_state_with_local_character_model()
+    _handle_envelope(
+        Envelope(
+            message_type="raw_fact_event",
+            payload={
+                "event_type": "raw_fact_event",
+                "fact_family": "tactile_fact",
+                "fact_type": "contact_started",
+                "relation_type": "contact_started",
+                "producer_ts": 604,
+                "room_id": "room_demo",
+                "scene_id": "scene_demo",
+                "zone_id": "zone_focus",
+                "source": {
+                    "layer": "L1",
+                    "system": "godot.raw_fact_emitter",
+                    "actor_id": "char_c",
+                    "object_id": "",
+                    "environment_id": "",
+                },
+                "targets": {
+                    "actor_id": "char_a",
+                    "object_id": "",
+                    "environment_id": "",
+                },
+                "world": {},
+                "observability": {"visual": False, "auditory": False, "occluded": False},
+                "acoustics": {},
+                "effect_kind": "pulse",
+                "subject_key": "",
+                "causation_id": "tact:604",
+                "correlation_id": "tact:604",
+            },
+        )
+    )
+
+    perceived = character_perceived_input_service.get_latest("char_a")
+
+    assert perceived is not None
+    assert perceived.percept_channel == "tactile"
+
+
 def test_interact_world_result_updates_self_body_perceived_input_path() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     _handle_envelope(
         Envelope(
             message_type="player_input",
@@ -356,7 +491,7 @@ def test_websocket_raw_visual_fact_event_emits_same_runtime_alignment_messages_a
         target_object_id="obj_letter",
     )
 
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -582,7 +717,7 @@ def test_runtime_state_service_suppresses_mirrored_visual_fact_after_focus() -> 
 
 
 def test_handle_envelope_visual_fact_mirror_after_focus_returns_ack_only() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     focus_messages = _handle_envelope(
         Envelope(
             message_type="player_input",
@@ -624,7 +759,7 @@ def test_handle_envelope_visual_fact_mirror_after_focus_returns_ack_only() -> No
 
 
 def test_handle_envelope_raw_visual_fact_mirror_after_focus_matches_legacy_ack_only() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     focus_messages = _handle_envelope(
         Envelope(
             message_type="player_input",
@@ -721,7 +856,7 @@ def test_handle_envelope_unsupported_raw_fact_family_returns_negative_ack_only()
 
 
 def test_websocket_visual_fact_event_emits_runtime_alignment_messages() -> None:
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -787,7 +922,7 @@ def test_raw_fact_event_debug_trace_exposes_l1_to_l2_transition_order_without_re
         target_actor_id="char_a",
     )
 
-    reset_runtime_state()
+    _reset_runtime_state_with_local_character_model()
     debug_stream.clear()
     messages = _handle_envelope(
         Envelope(
@@ -806,3 +941,58 @@ def test_raw_fact_event_debug_trace_exposes_l1_to_l2_transition_order_without_re
     assert "character_perceived_applied" in stages
     assert stages.index("l1_raw_fact_ingress") < stages.index("candidate_percept_compiled")
     assert stages.index("candidate_percept_compiled") < stages.index("character_perceived_applied")
+
+
+def test_actor_local_sampling_emits_standard_visual_fact_shape() -> None:
+    text = (Path(__file__).resolve().parents[2] / "scripts" / "character" / "CharacterReplica.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert "emit_fixed_gaze_on_target" in text
+    assert 'message_type": "visual_fact_event"' not in text
+
+
+def test_social_spatial_settlement_result_is_projected_back_into_runtime_outputs() -> None:
+    event = AuthorityEvent.model_validate(
+        {
+            "event_id": "esm_result:approach:1",
+            "event_type": "esm_result_event",
+            "producer_ts": 901,
+            "room_id": "room_demo",
+            "scene_id": "scene_demo",
+            "zone_id": "zone_focus",
+            "source": {"layer": "L1", "system": "esm", "actor_id": "char_a"},
+            "routing": {
+                "audience_mode": "room",
+                "routing_mode": "event_type",
+                "target_ids": ["presentation"],
+            },
+            "priority": "p1",
+            "ttl": None,
+            "durability": "replayable",
+            "causation_id": "character_agent:0:char_a",
+            "correlation_id": "character_agent:0:char_a",
+            "payload": {
+                "result_id": "action_resolution:character_agent:0:char_a:approach",
+                "result_type": "action_resolution_result",
+                "actor_id": "char_a",
+                "target_actor_id": "char_b",
+                "action_profile": "approach",
+                "settlement_status": "accepted",
+                "producer_ts": 1,
+            },
+        }
+    )
+
+    projector = main.FrontendAuthorityEventProjector()
+    projector.handle_event(event)
+    projected = projector.drain()
+
+    social_spatial_results = [
+        message for message in projected if message["message_type"] == "social_spatial_runtime_result"
+    ]
+
+    assert social_spatial_results
+    assert social_spatial_results[0]["payload"]["actor_id"] == "char_a"
+    assert social_spatial_results[0]["payload"]["target_actor_id"] == "char_b"
+    assert social_spatial_results[0]["payload"]["action_profile"] == "approach"
