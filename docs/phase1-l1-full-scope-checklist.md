@@ -47,7 +47,7 @@
 - `System L1` 主干
 - 八类事实上抛器的显式仓库内落位
 - `System L2` 感知入口所需的当前仓库桥接面
-- 一条已验证闭环的 `ESM` authority/runtime 链
+- 一条已验证闭环的 `ESM` authority settlement / runtime-facing writeback 链
 
 但如果按主项目 full-volume 终态来看，当前仍没有完成：
 

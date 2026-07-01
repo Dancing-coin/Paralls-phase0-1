@@ -24,6 +24,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "harness-lifecycle",
         "change-lifecycle",
         "harness-reference",
+        "harness-evolution",
         "phase0",
         "l1-world-fact-runtime",
         "phase1-slice",
@@ -37,6 +38,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["harness-lifecycle"]["script"] == "scripts/verification/check_harness_lifecycle.py"
     assert registry.profiles["change-lifecycle"]["script"] == "scripts/verification/check_change_lifecycle.py"
     assert registry.profiles["harness-reference"]["script"] == "scripts/verification/check_harness_reference.py"
+    assert registry.profiles["harness-evolution"]["script"] == "scripts/verification/check_harness_evolution.py"
     assert registry.profiles["phase0"]["requires_godot"] is True
     assert registry.profiles["mainline-unified-runtime"]["script"] == "scripts/verification/verify_mainline_unified_runtime.py"
     assert "not a product L1 runtime" in registry.profiles["l1-world-fact-runtime"]["description"]
@@ -55,6 +57,7 @@ def test_load_rule_registry_reads_versioned_rule_manifests() -> None:
         "docs-rules",
         "drift-rules",
         "godot-project-rules",
+        "harness-evolution-rules",
         "harness-lifecycle-rules",
         "harness-reference-rules",
         "release-gate-rules",
@@ -72,6 +75,7 @@ def test_rule_registry_exposes_rule_to_evidence_mapping() -> None:
     assert mapping["harness-lifecycle.lifecycle_retention_policy_exists"]["profile"] == "harness-lifecycle"
     assert mapping["change-lifecycle.workflow_doc_exists"]["profile"] == "change-lifecycle"
     assert mapping["harness-reference.reference_taxonomy_exists"]["profile"] == "harness-reference"
+    assert mapping["harness-evolution.evolution_config_valid"]["profile"] == "harness-evolution"
 
 
 def test_write_harness_report_creates_run_id_archive(tmp_path: Path) -> None:

@@ -12,8 +12,8 @@
 - Tasks `1-2` now have direct repository evidence.
 - Current proof chain covers:
   - explicit `execution_semantics` on downstream execution plans
-  - `CharacterReplica` / `CharacterRuntimeState` consuming semantics as a transitional local host
-  - current docs and static/runtime tests record the local host as realization consumer rather than semantics owner
+  - `CharacterReplica` consuming semantics through `CharacterRuntimeState` as a transitional local actor shell plus state object
+  - current docs and static/runtime tests record the local actor shell as realization consumer rather than semantics owner
 
 **Direct Evidence Audit (`2026-06-30`):**
 - Required outcome `1. stable downstream execution semantic vocabulary`

@@ -164,7 +164,7 @@ python -m pytest -q backend\tests\test_character_controller_port_static.py
 
 ---
 
-## Task 3: Extract Final `CharacterRuntimeState` Host From The Transitional `CharacterReplica` Shell
+## Task 3: Extract Final `CharacterRuntimeState` State Object From The Transitional `CharacterReplica` Shell
 
 **Files:**
 - Create:
@@ -180,11 +180,11 @@ The tests must prove:
 
 ```text
 - CharacterReplica no longer owns all actor-runtime state directly
-- CharacterRuntimeState exists as the extracted final host object
-- command status, focus/runtime state, and presentation aggregation are routed through that host
+- CharacterRuntimeState exists as the extracted final state object
+- command status, focus/runtime state, and presentation aggregation are routed through that state object
 ```
 
-- [ ] **Step 3.2: Implement the extracted runtime-state host**
+- [ ] **Step 3.2: Implement the extracted runtime-state object**
 
 First convergence target:
 

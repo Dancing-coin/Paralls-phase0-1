@@ -83,7 +83,7 @@ Historical/narrower references still preserved:
 - `CharacterModelGateway` now carries prompt policy and structured-output validation, `L2/L3` now consume model-backed runtime outputs with local fallback preserved, and dialogue generation is now also routed through the same gateway main path rather than a separate dialogue stub branch
 - `CharacterPresentationInput` is preserved at the actor-to-skin boundary while the near-term flat fallback remains available
 - `CharacterActorSchema` no longer defines the old flat presentation contract keys, and `CharacterRuntimeState` no longer writes or finalizes that flat motion bridge back into the formal presentation contract
-- `CharacterReplica` no longer re-normalizes player presentation input after `CharacterRuntimeState.build_player_presentation_input(...)`; the formal presentation contract now flows more directly from runtime-state host to skin
+- `CharacterReplica` no longer re-normalizes player presentation input after `CharacterRuntimeState.build_player_presentation_input(...)`; the formal presentation contract now flows more directly from runtime-state object to skin
 - `KnightRoleSkin` now builds modifier input and hands it to `KnightCombatModifier`
 - asset generalization entry contracts are frozen in code:
   - `CharacterAssetBindingProfile`
@@ -96,7 +96,7 @@ Historical/narrower references still preserved:
 
 - `Phase0PlayerBridge.gd` still carries demo sync and some autotest-oriented utility methods in addition to pure adaptation, but the program-forcing state, locomotion mode state, CharacterReplica shell-sync calls, and view/anchor resolution logic have now been split into dedicated helpers
 - `CharacterReplica.gd` still remains the actor runtime shell, but some of the focus/attention branch logic and player-shell pose staging that used to live inline are now routed through `CharacterRuntimeState`
-- `CharacterReplica.gd` still owns the actor runtime shell, but now does so around an extracted `CharacterRuntimeState` host instead of owning all shared runtime state directly
+- `CharacterReplica.gd` still owns the actor runtime shell, but now does so around an extracted `CharacterRuntimeState` state object instead of owning all shared runtime state directly
 - the new asset contract files are schema-only and are not yet consumed by runtime asset resolution
 - asset lookup remains contract-only in this near-term cleanup; do not add `CharacterAssetLibrary.gd` until multiple role skins require real lookup and fallback behavior
 - `CharacterPresentationInput` is frozen as a contract, but the current payload is still assembled as a near-term dictionary bridge rather than a typed resource pipeline
@@ -176,7 +176,7 @@ Actor Stage 2 first-batch items now landed in code:
 Current Stage 2 landing status after the first convergence batch:
 
 - `CharacterControllerPort` and the first adapter family are now present in code
-- `CharacterRuntimeState` now exists as an extracted runtime-state host for shared actor state
+- `CharacterRuntimeState` now exists as an extracted runtime-state object for shared actor state
 - human / agent / program paths now pass through the adapter family at the actor ingress seam
 - final host choice is frozen as: `CharacterReplica` lineage; `CharacterBase` is wrapper and player-shell surface, not long-term actor architecture truth
 - `character_agent_execution` has live-smoke verification through `BackendBridge -> LocalPresentationBus -> CharacterReplica`; the current runtime payload now carries agent-side shared-ingress fields (`controller_source`, `control_mode`, `action`) plus a stronger `CharacterPresentationInput`-shaped `presentation_plan` (`focus_state`, `action_state`, `speech_state`) without claiming full Stage B completion
@@ -263,7 +263,7 @@ As of `2026-06-17`, the repo now has enough actor-side planning truth and prereq
 
 - Stage A / actor-side final-convergence planning truth is present and linked in-repo
 - the first real shared actor ingress family is landed in code and machine-checked
-- `CharacterRuntimeState` extraction and wrapper-host narrowing are landed far enough that Stage B can keep converging against the shared actor substrate instead of treating it as undefined background work
+- `CharacterRuntimeState` extraction and wrapper-to-actor ownership narrowing are landed far enough that Stage B can keep converging against the shared actor substrate instead of treating it as undefined background work
 - `Phase 0` runtime proof remains green after the current Stage 2 seam-tightening passes
 
 This does **not** mean:

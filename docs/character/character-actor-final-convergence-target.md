@@ -88,7 +88,7 @@ Stage 2 work must move the repo toward:
 
 ## CharacterRuntimeState Role
 
-`CharacterRuntimeState` is the extracted shared local runtime host for actor-side execution state.
+`CharacterRuntimeState` is the extracted shared local state object for actor-side execution state.
 
 It owns the parts that are currently spread through `CharacterReplica.gd`, including:
 
@@ -98,7 +98,7 @@ It owns the parts that are currently spread through `CharacterReplica.gd`, inclu
 - current action/runtime status
 - presentation-input assembly state
 
-`CharacterReplica` may temporarily host or forward to this state object during migration, but it must stop being the unbounded owner of all actor-runtime state.
+`CharacterReplica` may temporarily own or forward to this state object during migration, but it must stop being the unbounded owner of all actor-runtime state.
 
 ## CharacterPresentationInput Role
 
