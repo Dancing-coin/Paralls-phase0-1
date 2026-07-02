@@ -61,6 +61,7 @@ from app.services.siming_audit_writer import SimingAuditWriter
 from app.world_runtime.projection import project_world_result_delta
 from app.world_runtime.l1_fact_projection import FactProjectionLayer
 from app.world_runtime.l1_occupancy import SpatialOccupancyService
+from app.world_runtime.l1_runtime_perception_bridge import L1RuntimePerceptionBridge
 from app.services.siming_character_dispatch_adapter import SimingCharacterDispatchAdapter, SimingCharacterDispatchResult
 from app.services.siming_event_consumer import SimingEventConsumer
 from app.services.siming_event_pipeline import SimingEventPipeline
@@ -112,6 +113,7 @@ def reset_runtime_state() -> None:
     global script_beat_projection
     global l1_occupancy_service
     global l1_projection_layer
+    global l1_perception_bridge
     global _pending_siming_character_dispatch_messages
 
     runtime = SessionInputRouter()
@@ -124,6 +126,7 @@ def reset_runtime_state() -> None:
     esm_service = ESMService()
     l1_occupancy_service = SpatialOccupancyService()
     l1_projection_layer = FactProjectionLayer()
+    l1_perception_bridge = L1RuntimePerceptionBridge()
     event_trace = EventTraceService()
     focus_state = FocusStateService()
     conversation_relation_service = ConversationRelationService()
@@ -261,7 +264,9 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         return _finalize_outbound_messages(messages)
 
     if envelope.message_type == "raw_fact_event":
-        event = RawFactEvent(**envelope.payload)
+        raw_payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+        provider_refs = _l1_provider_refs_from_payload(raw_payload)
+        event = RawFactEvent(**raw_payload)
         _publish_debug_event(
             build_debug_event(
                 producer_ts=event.producer_ts,
@@ -291,7 +296,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
             context=_build_visual_fact_handler_context(),
         )
         messages.extend(character_agent_messages)
-        messages.extend(_messages_from_projected_l1_facts(projected_facts))
+        messages.extend(_messages_from_projected_l1_facts(projected_facts, provider_refs=provider_refs))
         _publish_route_event(event, messages)
         return _finalize_outbound_messages(messages)
 
@@ -1243,11 +1248,29 @@ def _ingest_l1_world_fact_foundation(event: RawFactEvent) -> list[RawFactEvent]:
             producer_ts=event.producer_ts,
             source_ref=f"raw_fact_event:{event.fact_type}:{event.producer_ts}",
         )
+    elif event.fact_type == "actor_left_zone":
+        l1_occupancy_service.apply_actor_zone_update(
+            actor_id=event.source.actor_id,
+            previous_zone_id=event.zone_id,
+            next_zone_id="",
+            producer_ts=event.producer_ts,
+            source_ref=f"raw_fact_event:{event.fact_type}:{event.producer_ts}",
+        )
     elif event.fact_type == "actor_left_actor_range":
         l1_occupancy_service.apply_actor_proximity_update(
             actor_id=event.source.actor_id,
+            target_actor_id=event.targets.actor_id,
             producer_ts=event.producer_ts,
             source_ref=f"raw_fact_event:{event.fact_type}:{event.producer_ts}",
+            is_near=False,
+        )
+    elif event.fact_type == "actor_left_object_range":
+        l1_occupancy_service.apply_actor_proximity_update(
+            actor_id=event.source.actor_id,
+            target_object_id=event.targets.object_id,
+            producer_ts=event.producer_ts,
+            source_ref=f"raw_fact_event:{event.fact_type}:{event.producer_ts}",
+            is_near=False,
         )
     elif event.fact_type in {"actor_approached_actor", "actor_approached_object"}:
         l1_occupancy_service.apply_actor_proximity_update(
@@ -1291,8 +1314,103 @@ def _project_l1_facts_for_dirty_zones(producer_ts: int) -> list[RawFactEvent]:
     return facts
 
 
-def _messages_from_projected_l1_facts(projected_facts: list[RawFactEvent]) -> list[dict[str, object]]:
+def _l1_provider_refs_from_payload(payload: dict[str, object]) -> dict[str, list[dict[str, str]]] | None:
+    raw_refs = payload.get("l1_provider_refs") or payload.get("provider_refs")
+    if not isinstance(raw_refs, dict):
+        return None
+
+    normalized: dict[str, list[dict[str, str]]] = {}
+    direct_keys = {
+        "visual_inputs",
+        "spatial_inputs",
+        "auditory_inputs",
+        "embodied_inputs",
+        "environment_inputs",
+    }
+    artifact_key_map = {
+        "visual_ref": "visual_inputs",
+        "spatial_ref": "spatial_inputs",
+        "auditory_ref": "auditory_inputs",
+        "embodied_ref": "embodied_inputs",
+    }
+
+    for key in direct_keys:
+        entries = raw_refs.get(key)
+        if isinstance(entries, list):
+            normalized[key] = _normalize_l1_provider_ref_entries(entries)
+
+    for artifact_key, bridge_key in artifact_key_map.items():
+        entry = raw_refs.get(artifact_key)
+        if isinstance(entry, dict):
+            normalized.setdefault(bridge_key, []).extend(_normalize_l1_provider_ref_entries([entry]))
+
+    normalized = {key: entries for key, entries in normalized.items() if entries}
+    return normalized or None
+
+
+def _normalize_l1_provider_ref_entries(entries: list[object]) -> list[dict[str, str]]:
+    normalized: list[dict[str, str]] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        provider_kind = str(entry.get("provider_kind", "") or "")
+        if provider_kind == "":
+            provider_kind = _provider_kind_from_ref_entry(entry)
+        ref_id = _ref_id_from_ref_entry(entry) or str(entry.get("ref_id", "") or "")
+        if provider_kind == "" or ref_id == "":
+            continue
+        normalized.append(
+            {
+                "provider_kind": provider_kind,
+                "ref_id": ref_id,
+                "summary": str(entry.get("summary", "") or entry.get("semantic_summary", "") or "runtime provider ref"),
+                "retention": str(entry.get("retention", "") or "debug_artifact"),
+            }
+        )
+    return normalized
+
+
+def _provider_kind_from_ref_entry(entry: dict[str, object]) -> str:
+    ref_type = str(entry.get("ref_type", "") or entry.get("kind", "") or "")
+    if ref_type in {"visual_patch", "spatial_patch", "auditory_context", "embodied_state"}:
+        return ref_type
+    source = str(entry.get("source", "") or "")
+    if "visual" in source or "camera" in source or "viewport" in source:
+        return "visual_patch"
+    if "spatial" in source or "occupancy" in source:
+        return "spatial_patch"
+    if "auditory" in source:
+        return "auditory_context"
+    if "embodied" in source or "actor" in source:
+        return "embodied_state"
+    return ""
+
+
+def _ref_id_from_ref_entry(entry: dict[str, object]) -> str:
+    for key in ("artifact_ref", "runtime_source_ref", "viewport_capture_ref"):
+        value = entry.get(key)
+        if isinstance(value, str) and value:
+            return value
+    runtime_refs = entry.get("runtime_source_refs")
+    if isinstance(runtime_refs, list):
+        for value in runtime_refs:
+            if isinstance(value, str) and value:
+                return value
+    camera_pose = entry.get("camera_pose")
+    if isinstance(camera_pose, dict):
+        capture_ref = camera_pose.get("viewport_capture_ref") or camera_pose.get("artifact_ref")
+        if isinstance(capture_ref, str) and capture_ref:
+            return capture_ref
+    return ""
+
+
+def _messages_from_projected_l1_facts(
+    projected_facts: list[RawFactEvent],
+    *,
+    provider_refs: dict[str, list[dict[str, str]]] | None = None,
+) -> list[dict[str, object]]:
     messages: list[dict[str, object]] = []
+    projected_by_actor: dict[str, list[RawFactEvent]] = {}
     for fact in projected_facts:
         _publish_debug_event(
             build_debug_event(
@@ -1312,6 +1430,57 @@ def _messages_from_projected_l1_facts(projected_facts: list[RawFactEvent]) -> li
             )
         )
         messages.extend(_character_agent_messages_from_fact_candidates(fact))
+        actor_id = fact.source.actor_id or fact.targets.actor_id
+        if actor_id:
+            projected_by_actor.setdefault(actor_id, []).append(fact)
+    for actor_id, actor_facts in projected_by_actor.items():
+        try:
+            bridge_result = l1_perception_bridge.consume_projected_facts(
+                occupancy=l1_occupancy_service.snapshot(),
+                projected_facts=actor_facts,
+                character_runtime=character_agent_runtime,
+                siming_runtime=siming_event_pipeline,
+                actor_id=actor_id,
+                provider_refs=provider_refs,
+            )
+        except Exception as exc:
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=actor_facts[-1].producer_ts,
+                    domain="world",
+                    stage="l1_canonical_bundle_bridge_failed",
+                    actor_id=actor_id,
+                    summary=f"L1 canonical bundle bridge failed: {type(exc).__name__}",
+                    detail={"error": str(exc)},
+                )
+            )
+            continue
+        if bridge_result is None:
+            continue
+        _publish_debug_event(
+            build_debug_event(
+                producer_ts=actor_facts[-1].producer_ts,
+                domain="world",
+                stage="l1_perception_query_frame_assembled",
+                actor_id=actor_id,
+                summary="L1 projected facts assembled into character and Siming PQFs",
+                detail={
+                    "character_frame": bridge_result.character_frame,
+                    "siming_frame": bridge_result.siming_frame,
+                    "context_isolation": bridge_result.context_isolation,
+                },
+            )
+        )
+        _publish_debug_event(
+            build_debug_event(
+                producer_ts=actor_facts[-1].producer_ts,
+                domain="world",
+                stage="l1_canonical_percept_bundle_consumed",
+                actor_id=actor_id,
+                summary="L1 canonical percept bundles consumed by character and Siming runtimes",
+                detail=bridge_result.model_dump(),
+            )
+        )
     return messages
 
 

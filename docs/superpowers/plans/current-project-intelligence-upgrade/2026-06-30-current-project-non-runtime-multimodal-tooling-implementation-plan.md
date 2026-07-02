@@ -32,3 +32,9 @@
   - `python scripts/verification/verify_current_project_intelligence_upgrade.py`
 - 剩余风险：
   - 当前落地为工具链 manifest 和上下文隔离契约，未实现真实资产处理或数据集构建流水线。
+
+## 后续子计划
+
+真实 scene semantic extraction、spatial baking、review gate 和 replay/dataset 生产流水线由后续子计划继续推进：
+
+- [2026-07-02-current-project-non-runtime-production-pipeline-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-02-current-project-non-runtime-production-pipeline-implementation-plan.md)

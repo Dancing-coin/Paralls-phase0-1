@@ -29,3 +29,9 @@
   - `python scripts/verification/verify_current_project_intelligence_upgrade.py`
 - 剩余风险：
   - 当前未接入真实司命多模态模型，只固定司命上下文隔离、全局态势输入窗口和公平快照增强关系。
+
+## 后续子计划
+
+完整司命多角色全局 patch、fusion、situation lifecycle 和 intervention evidence 接线由后续子计划继续推进：
+
+- [2026-07-02-current-project-siming-global-situation-layer-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-02-current-project-siming-global-situation-layer-implementation-plan.md)

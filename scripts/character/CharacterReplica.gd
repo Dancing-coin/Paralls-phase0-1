@@ -808,6 +808,8 @@ func _move_toward_target(target: Vector3, delta: float, clear_on_arrival: bool) 
 
 	global_position += step
 	last_root_motion_world_delta = step
+	if not clear_on_arrival and use_root_motion_patrol and role_asset_scene != null and role_asset_scene.has_method("consume_root_motion_delta"):
+		_log_root_motion_step("patrol_root_motion_step", false)
 
 func _update_player_shell_locomotion() -> void:
 	var motion_fields: Dictionary = runtime_state.resolve_player_presentation_motion_fields()

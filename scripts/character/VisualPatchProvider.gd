@@ -41,6 +41,23 @@ func build_camera_pose_ref(camera: Camera3D, artifact_ref: String = "") -> Dicti
 		"viewport_artifact_ref": artifact_ref,
 	}
 
+
+func write_viewport_capture_artifact(viewport: Viewport, relative_path: String = ".harness/verification/l1-visual-capture-runtime.png") -> String:
+	if viewport == null:
+		return ""
+	var path := ProjectSettings.globalize_path("res://" + relative_path)
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var texture := viewport.get_texture()
+	if texture == null:
+		return ""
+	var image := texture.get_image()
+	if image == null:
+		return ""
+	var error := image.save_png(path)
+	if error != OK:
+		return ""
+	return "runtime://artifact/%s" % path
+
 func can_sample(now_msec: int, last_sample_msec: int) -> bool:
 	var min_interval := int(1000.0 / float(max_samples_per_second))
 	return now_msec - last_sample_msec >= min_interval

@@ -29,3 +29,9 @@
   - `python scripts/verification/verify_current_project_intelligence_upgrade.py`
 - 剩余风险：
   - 当前落地为双通道 manifest 和统一结果族约束，未实现连续物理接触 runtime。
+
+## 后续子计划
+
+完整 physical channel runtime、连续接触、推拉/携带和 mixed result 回流由后续子计划继续推进：
+
+- [2026-07-02-current-project-esm-physical-channel-world-actuation-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-02-current-project-esm-physical-channel-world-actuation-implementation-plan.md)

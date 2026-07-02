@@ -48,6 +48,10 @@
 
 本设计是在此基础上补厚，而不是废弃重来。
 
+后续 VLA provider backend 的具体接入边界、开源模型使用原则、调度/cache/trace 语义由子规格继续细化：
+
+- [2026-07-02-current-project-vla-provider-backend-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-vla-provider-backend-design.md)
+
 ### 2.3 运行时性能是硬约束
 
 以下约束必须成立：

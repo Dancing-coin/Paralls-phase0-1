@@ -67,6 +67,17 @@ def test_projection_emits_los_reachability_affordance_and_negative_raw_fact_even
     assert "expected_target_missing" in fact_types
     assert all(fact.event_type == "raw_fact_event" for fact in facts)
     assert all(fact.fact_family == "spatial_access_fact" for fact in facts)
+    object_target_fact_types = {
+        "line_of_sight_blocked",
+        "target_unreachable",
+        "interaction_affordance_changed",
+        "expected_target_missing",
+    }
+    for fact in [*facts, *missing_facts]:
+        if fact.fact_type in object_target_fact_types:
+            assert fact.source.actor_id == "char_b"
+            assert fact.targets.actor_id == ""
+            assert fact.targets.object_id.startswith("obj_")
 
 
 def test_projected_fact_enters_candidate_and_private_percept_path() -> None:
@@ -108,7 +119,10 @@ def test_projected_fact_enters_candidate_and_private_percept_path() -> None:
 
     assert candidates[0].percept_channel == "spatial"
     assert candidates[0].source_fact_type == "line_of_sight_blocked"
-    assert candidates[0].target_actor_id == "char_b"
+    assert candidates[0].source_actor_id == "char_b"
+    assert candidates[0].target_actor_id == "char_c"
+    assert filter_candidate_for_actor(candidates[0], actor_id="char_b") is None
+    perceived = filter_candidate_for_actor(candidates[0], actor_id="char_c")
     assert perceived is not None
     assert perceived.perceived_summary == "spatial_access_fact/line_of_sight_blocked"
 

@@ -1,9 +1,20 @@
 from __future__ import annotations
 
 from app.services.character_agent_runtime import CharacterAgentRuntime
+from app.services.authority_event_bus import InMemoryAuthorityEventBus
+from app.services.siming_audit_writer import SimingAuditWriter
+from app.services.siming_event_consumer import SimingEventConsumer
+from app.services.siming_event_pipeline import SimingEventPipeline
+from app.services.siming_event_producer import SimingEventProducer
 from app.services.siming_runtime import SimingRuntime
+from app.ws_protocol import Envelope
+from app.models.environment_field import EnvironmentFieldState
+from app.models.raw_fact import RawFactEvent, RawFactObservability, RawFactSource, RawFactTargets, RawFactWorld
+from app.world_runtime.l1_fact_projection import FactProjectionLayer
+from app.world_runtime.l1_occupancy import SpatialOccupancyService
 from app.world_runtime.intelligence_upgrade import SampleInputRef
 from app.world_runtime.l1_perception_frame import L1PerceptionFrameService
+from app.world_runtime.l1_runtime_perception_bridge import L1RuntimePerceptionBridge
 
 
 def test_perception_frame_uses_runtime_refs_and_builds_character_bundle() -> None:
@@ -112,3 +123,220 @@ def test_siming_runtime_consumes_global_bundle_without_sharing_character_context
     assert result.outputs[1].output_type == "intervention_candidate"
     assert result.read_model is not None
     assert result.read_model.current_state["source_bundle_id"] == bundle.bundle_id
+
+
+def test_l1_runtime_bridge_builds_pqf_and_consumes_bundles_from_projected_facts() -> None:
+    occupancy = SpatialOccupancyService()
+    occupancy.apply_actor_zone_update(
+        actor_id="char_b",
+        previous_zone_id="",
+        next_zone_id="zone_focus",
+        producer_ts=100,
+        source_ref="raw_fact_event:actor_entered_zone:100",
+    )
+    occupancy.apply_object_state_update(
+        object_id="obj_letter",
+        zone_id="zone_focus",
+        state="visible",
+        affordances=["inspect"],
+        occludes=True,
+        producer_ts=101,
+        source_ref="object_state_result:obj_letter:101",
+    )
+    occupancy.apply_environment_field(
+        EnvironmentFieldState(
+            field_id="field:room_demo:scene_demo:zone_focus",
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            visibility_level="reduced",
+            smoke_density="dense",
+            producer_ts=102,
+            updated_at=102,
+            source_environment_id="env_lamp",
+        )
+    )
+    projected_facts = FactProjectionLayer().project_actor_target_facts(
+        occupancy.snapshot(),
+        actor_id="char_b",
+        target_object_id="obj_letter",
+        producer_ts=110,
+    )
+
+    bridge_result = L1RuntimePerceptionBridge().consume_projected_facts(
+        occupancy=occupancy.snapshot(),
+        projected_facts=projected_facts,
+        character_runtime=CharacterAgentRuntime(),
+        siming_runtime=SimingRuntime(),
+        actor_id="char_b",
+    )
+
+    assert bridge_result is not None
+    assert bridge_result.character_frame["multimodal_context_id"] == "character_mm:char_b"
+    assert bridge_result.siming_frame["multimodal_context_id"].startswith("siming_mm:")
+    assert bridge_result.context_isolation["isolated"] is True
+    assert bridge_result.character_private_snapshot["current_attention_targets"] == ["obj_letter"]
+    assert bridge_result.character_private_snapshot["recent_world_changes"]
+    assert bridge_result.character_working_memory["private_snapshot"]["recent_world_changes"]
+    assert bridge_result.siming_result["outputs"][0]["output_type"] == "fairness_snapshot"
+    assert bridge_result.siming_result["read_model"]["current_state"]["source_bundle_id"].startswith("bundle:siming:")
+
+
+def test_l1_runtime_bridge_siming_pipeline_consumption_persists_read_model() -> None:
+    occupancy = SpatialOccupancyService()
+    occupancy.apply_actor_zone_update(
+        actor_id="char_b",
+        previous_zone_id="",
+        next_zone_id="zone_focus",
+        producer_ts=100,
+        source_ref="raw_fact_event:actor_entered_zone:100",
+    )
+    occupancy.apply_environment_field(
+        EnvironmentFieldState(
+            field_id="field:room_demo:scene_demo:zone_focus",
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            visibility_level="reduced",
+            smoke_density="dense",
+            producer_ts=101,
+            updated_at=101,
+            source_environment_id="env_lamp",
+        )
+    )
+    projected_facts = FactProjectionLayer().project_actor_target_facts(
+        occupancy.snapshot(),
+        actor_id="char_b",
+        target_actor_id="char_c",
+        producer_ts=110,
+    )
+    bus = InMemoryAuthorityEventBus()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=SimingRuntime(),
+        producer=SimingEventProducer(bus),
+        audit_writer=SimingAuditWriter(),
+    )
+
+    bridge_result = L1RuntimePerceptionBridge().consume_projected_facts(
+        occupancy=occupancy.snapshot(),
+        projected_facts=projected_facts,
+        character_runtime=CharacterAgentRuntime(),
+        siming_runtime=pipeline,
+        actor_id="char_b",
+    )
+
+    assert bridge_result is not None
+    read_models = pipeline.list_read_models(room_id="room_demo")
+    assert len(read_models) == 1
+    assert read_models[0].derived_from_snapshot_ref == bridge_result.siming_bundle["bundle_id"]
+
+
+def test_main_raw_fact_route_consumes_l1_projection_with_real_provider_refs() -> None:
+    from app.debug_stream import debug_stream
+    from app import main as backend_main
+
+    backend_main.reset_runtime_state()
+    provider_refs = {
+        "visual_inputs": [
+            {
+                "provider_kind": "visual_patch",
+                "ref_id": ".harness/verification/l1-visual-capture-runtime.png",
+                "summary": "Godot runtime viewport capture artifact",
+                "retention": "debug_artifact",
+            }
+        ],
+        "spatial_inputs": [
+            {
+                "provider_kind": "spatial_patch",
+                "ref_id": ".harness/verification/l1-occupancy-runtime.json",
+                "summary": "Godot runtime dirty-zone occupancy artifact",
+                "retention": "debug_artifact",
+            }
+        ],
+        "auditory_inputs": [
+            {
+                "provider_kind": "auditory_context",
+                "ref_id": "runtime://auditory/char_b/window/godot-probe",
+                "summary": "Godot auditory source refs",
+                "retention": "ref_only",
+            }
+        ],
+        "embodied_inputs": [
+            {
+                "provider_kind": "embodied_state",
+                "ref_id": "runtime://node/root/MainDemo/PlayerCharacter",
+                "summary": "Godot actor node ref",
+                "retention": "ref_only",
+            }
+        ],
+    }
+
+    backend_main.l1_occupancy_service.apply_object_state_update(
+        object_id="obj_letter",
+        zone_id="zone_focus",
+        state="visible",
+        affordances=["inspect", "read"],
+        occludes=True,
+        producer_ts=99,
+        source_ref="object_state_result:obj_letter:99",
+    )
+    backend_main.l1_occupancy_service.apply_environment_field(
+        EnvironmentFieldState(
+            field_id="field:room_demo:scene_demo:zone_focus",
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            visibility_level="reduced",
+            smoke_density="dense",
+            producer_ts=100,
+            updated_at=100,
+            source_environment_id="env_lamp",
+        )
+    )
+    raw_fact = RawFactEvent(
+        fact_family="spatial_access_fact",
+        fact_type="actor_approached_object",
+        relation_type="proximity",
+        producer_ts=101,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source=RawFactSource(layer="L1", system="godot.runtime_probe", actor_id="char_b"),
+        targets=RawFactTargets(object_id="obj_letter"),
+        world=RawFactWorld(distance_m=1.2, state_after="near"),
+        observability=RawFactObservability(visual=True),
+        subject_key="actor_approached_object",
+        causation_id="test:l1:provider_refs",
+        correlation_id="test:l1:provider_refs",
+    )
+    payload = raw_fact.model_dump()
+    payload["l1_provider_refs"] = provider_refs
+
+    messages = backend_main._handle_envelope(Envelope(message_type="raw_fact_event", payload=payload))
+    history = debug_stream.history()
+    consumed_events = [
+        event
+        for event in history
+        if event.get("stage") == "l1_canonical_percept_bundle_consumed"
+    ]
+    pqf_events = [
+        event
+        for event in history
+        if event.get("stage") == "l1_perception_query_frame_assembled"
+    ]
+
+    assert any(message.get("message_type") == "ack" for message in messages)
+    assert pqf_events
+    assert consumed_events
+    consumed_detail = consumed_events[-1]["detail"]
+    assert consumed_detail["character_private_snapshot"]["current_attention_targets"] == ["obj_letter"]
+    assert "obj_letter" in consumed_detail["character_bundle"]["attention_state"]["target_object_ids"]
+    assert consumed_detail["character_bundle"]["attention_state"]["target_actor_ids"] == []
+    assert consumed_detail["character_frame"]["visual_inputs"][0]["ref_id"] == ".harness/verification/l1-visual-capture-runtime.png"
+    assert consumed_detail["siming_result"]["read_model"]["derived_from_snapshot_ref"] == consumed_detail["siming_bundle"]["bundle_id"]
+    assert backend_main.character_agent_runtime.get_private_snapshot("char_b").current_attention_targets == ["obj_letter"]
+    read_models = backend_main.siming_event_pipeline.list_read_models(room_id="room_demo")
+    assert read_models
+    assert read_models[-1].derived_from_snapshot_ref == consumed_detail["siming_bundle"]["bundle_id"]

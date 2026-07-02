@@ -35,6 +35,16 @@
   - [2026-06-29-current-project-intelligence-upgrade-master-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-06-29-current-project-intelligence-upgrade-master-design.md)
 - 首份专题规格：
   - [2026-06-28-current-project-vla-multimodal-upgrade-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-06-28-current-project-vla-multimodal-upgrade-design.md)
+- VLA provider backend 子规格：
+  - [2026-07-02-current-project-vla-provider-backend-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-vla-provider-backend-design.md)
+- 2026-07-02 full-runtime / production-grade 子规格：
+  - [2026-07-02-current-project-actor-scene-knowledge-lifecycle-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-actor-scene-knowledge-lifecycle-design.md)
+  - [2026-07-02-current-project-siming-global-situation-layer-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-siming-global-situation-layer-design.md)
+  - [2026-07-02-current-project-interaction-orchestration-service-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-interaction-orchestration-service-design.md)
+  - [2026-07-02-current-project-esm-physical-channel-world-actuation-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-esm-physical-channel-world-actuation-design.md)
+  - [2026-07-02-current-project-embodied-skeletal-debug-replay-pipeline-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-embodied-skeletal-debug-replay-pipeline-design.md)
+  - [2026-07-02-current-project-non-runtime-production-pipeline-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-non-runtime-production-pipeline-design.md)
+  - [2026-07-02-current-project-godot-sampling-production-grade-providers-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-godot-sampling-production-grade-providers-design.md)
 
 ## 使用方式
 

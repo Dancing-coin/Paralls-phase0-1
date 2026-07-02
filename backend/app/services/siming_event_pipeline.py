@@ -8,6 +8,7 @@ from app.services.siming_character_dispatch_adapter import (
 from app.services.siming_event_consumer import SimingEventConsumer
 from app.services.siming_event_producer import SimingEventProducer
 from app.services.siming_runtime import SimingRuntime
+from app.world_runtime.intelligence_upgrade import CanonicalPerceptBundle
 
 
 class SimingEventPipeline:
@@ -51,3 +52,12 @@ class SimingEventPipeline:
 
     def drain_observatory_messages(self) -> list[dict[str, object]]:
         return self._runtime.drain_observatory_messages()
+
+    def ingest_canonical_percept_bundle(self, bundle: CanonicalPerceptBundle):
+        result = self._runtime.ingest_canonical_percept_bundle(bundle)
+        if result.read_model is not None:
+            self._audit_writer.record_read_model(result.read_model)
+        return result
+
+    def list_read_models(self, *, room_id: str):
+        return self._audit_writer.list_read_models(room_id=room_id)

@@ -30,3 +30,9 @@
   - `python scripts/verification/verify_current_project_intelligence_upgrade.py`
 - 剩余风险：
   - 当前编排层是协议与轻量选择 helper，未接入实时物理系统。
+
+## 后续子计划
+
+完整 runtime service、route、channel execution plan 和结果合并层由后续子计划继续推进：
+
+- [2026-07-02-current-project-interaction-orchestration-service-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-02-current-project-interaction-orchestration-service-implementation-plan.md)

@@ -37,7 +37,8 @@ func _run_probe() -> void:
 
 	var visual_provider = VISUAL_PROVIDER.new()
 	var camera := _find_first_camera(main_demo)
-	var camera_pose: Dictionary = visual_provider.build_camera_pose_ref(camera, "runtime://artifact/.harness/verification/l1-provider-runtime.json")
+	var viewport_capture_ref: String = visual_provider.write_viewport_capture_artifact(get_viewport())
+	var camera_pose: Dictionary = visual_provider.build_camera_pose_ref(camera, viewport_capture_ref)
 	var visual_ref: Dictionary = visual_provider.build_query_input_ref("char_b", camera_pose, "obj_letter")
 
 	var spatial_provider = SPATIAL_PROVIDER.new()
@@ -57,11 +58,10 @@ func _run_probe() -> void:
 	)
 
 	var embodied_provider = EMBODIED_PROVIDER.new()
-	var embodied_ref: Dictionary = embodied_provider.build_query_input_ref(
+	var actor_node := main_demo.get_node_or_null("PlayerCharacter")
+	var embodied_ref: Dictionary = embodied_provider.build_from_actor_node(
 		"char_b",
-		"standing",
-		"idle",
-		true,
+		actor_node,
 		true,
 		true
 	)
@@ -95,12 +95,14 @@ func _run_probe() -> void:
 		"auditory_ref": auditory_ref,
 		"embodied_ref": embodied_ref,
 		"perception_query_frame": pqf,
+		"viewport_capture_ref": viewport_capture_ref,
 	})
 
 	print("l1_world_fact_runtime_probe:space_artifact=%s" % space_artifact)
 	print("l1_world_fact_runtime_probe:occupancy_artifact=%s" % occupancy_artifact)
 	print("l1_world_fact_runtime_probe:projection_artifact=%s" % projection_artifact)
 	print("l1_world_fact_runtime_probe:provider_artifact=%s" % provider_artifact)
+	print("l1_world_fact_runtime_probe:viewport_capture_ref=%s" % viewport_capture_ref)
 	print("l1_world_fact_runtime_probe:projected_fact_count=%s" % projected_facts.size())
 	print("l1_world_fact_runtime_probe:runtime_source_refs=true")
 	get_tree().quit(0)

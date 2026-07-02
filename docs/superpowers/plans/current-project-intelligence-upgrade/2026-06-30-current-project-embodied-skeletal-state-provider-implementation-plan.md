@@ -30,3 +30,9 @@
   - `python scripts/verification/verify_current_project_intelligence_upgrade.py`
 - 剩余风险：
   - 当前未绑定真实 `Skeleton3D` runtime；低层骨骼快照只以 debug/replay ref 边界落地。
+
+## 后续子计划
+
+真实骨骼 runtime 绑定、中层参数导出和低层 debug replay pipeline 由后续子计划继续推进：
+
+- [2026-07-02-current-project-embodied-skeletal-debug-replay-pipeline-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-02-current-project-embodied-skeletal-debug-replay-pipeline-implementation-plan.md)

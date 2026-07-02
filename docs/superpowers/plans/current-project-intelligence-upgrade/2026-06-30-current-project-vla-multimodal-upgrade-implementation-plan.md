@@ -37,3 +37,9 @@
   - `python scripts/verification/verify_current_project_intelligence_upgrade.py`
 - 剩余风险：
   - 当前未接入真实 VLA provider；只固定 VLA 作为非阻塞空间视觉子链的结构化契约。
+
+## 后续子计划
+
+真实 VLA provider backend、开源模型接入边界、scheduler/cache/trace 和统一感知协议落点由后续子计划继续推进：
+
+- [2026-07-02-current-project-vla-provider-backend-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-02-current-project-vla-provider-backend-implementation-plan.md)

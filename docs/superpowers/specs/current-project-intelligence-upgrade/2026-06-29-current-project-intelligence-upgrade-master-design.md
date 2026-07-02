@@ -515,15 +515,47 @@
    - 已存在：
    - [2026-06-28-current-project-vla-multimodal-upgrade-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-06-28-current-project-vla-multimodal-upgrade-design.md)
 
-2. `L1 世界事实层与空间底座设计`
-3. `Perception Query Frame 与感知结果协议设计`
-4. `角色智能体多模态链与 Actor Scene Knowledge 设计`
-5. `司命多模态链与全局态势理解设计`
-6. `ESM 双通道世界作用层设计`
-7. `Interaction Orchestration Layer 设计`
-8. `Godot 取样前端与 Provider 设计`
-9. `Embodied Skeletal State Provider 设计`
-10. `非运行时工具链与生产工具链设计`
+2. `当前项目 VLA Provider Backend 子规格`
+   - 已存在：
+   - [2026-07-02-current-project-vla-provider-backend-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-vla-provider-backend-design.md)
+
+3. `Actor Scene Knowledge Lifecycle 子规格`
+   - 已存在：
+   - [2026-07-02-current-project-actor-scene-knowledge-lifecycle-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-actor-scene-knowledge-lifecycle-design.md)
+
+4. `Siming Global Situation Layer 子规格`
+   - 已存在：
+   - [2026-07-02-current-project-siming-global-situation-layer-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-siming-global-situation-layer-design.md)
+
+5. `Interaction Orchestration Service 子规格`
+   - 已存在：
+   - [2026-07-02-current-project-interaction-orchestration-service-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-interaction-orchestration-service-design.md)
+
+6. `ESM Physical Channel World Actuation 子规格`
+   - 已存在：
+   - [2026-07-02-current-project-esm-physical-channel-world-actuation-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-esm-physical-channel-world-actuation-design.md)
+
+7. `Embodied Skeletal Debug Replay Pipeline 子规格`
+   - 已存在：
+   - [2026-07-02-current-project-embodied-skeletal-debug-replay-pipeline-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-embodied-skeletal-debug-replay-pipeline-design.md)
+
+8. `Non-Runtime Production Pipeline 子规格`
+   - 已存在：
+   - [2026-07-02-current-project-non-runtime-production-pipeline-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-non-runtime-production-pipeline-design.md)
+
+9. `Godot Sampling Production-Grade Providers 子规格`
+   - 已存在：
+   - [2026-07-02-current-project-godot-sampling-production-grade-providers-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-godot-sampling-production-grade-providers-design.md)
+
+10. `L1 世界事实层与空间底座设计`
+11. `Perception Query Frame 与感知结果协议设计`
+12. `角色智能体多模态链与 Actor Scene Knowledge 设计`
+13. `司命多模态链与全局态势理解设计`
+14. `ESM 双通道世界作用层设计`
+15. `Interaction Orchestration Layer 设计`
+16. `Godot 取样前端与 Provider 设计`
+17. `Embodied Skeletal State Provider 设计`
+18. `非运行时工具链与生产工具链设计`
 
 说明：
 

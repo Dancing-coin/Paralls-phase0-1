@@ -6,11 +6,13 @@
 > 上游契约切片：
 > [2026-06-30-current-project-l1-world-fact-and-space-foundation-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-l1-world-fact-and-space-foundation-implementation-plan.md)
 
-**状态：** `implemented-runtime-facing-services-backend-contract-verified-godot-probe-added`
+**状态：** `runtime-facing-l1-world-fact-subsystem-implemented-and-verified`
 
 **目标：** 不再停留在协议、manifest、静态 provider 或 focused proof。把 `L1` 实现为当前运行链可用的 `System L1 world fact subsystem` / runtime-facing L1 services：从 Godot 场景抽取静态空间底稿，维护动态空间占据层，由统一 `Fact Projection Layer` 从空间/环境底座投影事实，并把这些事实接入现有 `raw_fact_event -> candidate percept -> character/siming runtime` 主链。
 
 **命名与边界回补（2026-07-01）：** 本计划中历史简称 `L1 runtime` 一律按实现收敛为 `System L1 world fact subsystem` 或 `runtime-facing L1 services`。实现落点复用 `backend/app/world_runtime/`、现有 ESM、现有 `raw_fact_event -> candidate -> private percept` 主链、现有 `CharacterAgentRuntime` / `SimingRuntime` 和 Godot runtime probes；不得解释为新增第二套 runtime 主循环、平行事实总线或绕过主链的新事实通道。
+
+**剩余风险收敛（2026-07-02）：** 当前主场景启动链会创建并标记真实 `NavigationRegion3D`（`L1NavigationRegion`）作为 `navigation_lane` 来源；`SceneSpaceModelExtractor` 在存在真实导航区时不再把 floor/walk 节点提升为导航事实证据。`verify_l1_world_fact_runtime.py` 必须检查空间模型 artifact 同时包含 node/runtime refs、collision shape refs 和非 `derived_from_runtime_walkable` 的真实 `navigation_region:` ref；派生 walkable 只保留为无导航区时的 fallback，不能单独满足完整完成口径。
 
 ## 0. 范围纠偏
 
@@ -23,11 +25,11 @@
 
 这些内容证明“边界可被描述且不会破坏现有主线”，但没有证明：
 
-- Godot runtime 已真实生成 `PerceptionQueryFrame`
-- `Scene3DSpaceModel` 已从场景、节点、碰撞体或导航区抽取
-- `SpatialOccupancyField` 已随角色、障碍、环境变化增量更新
-- `FactProjectionLayer` 已从底座投影新增事实
-- 角色或司命 runtime 已消费 `CanonicalPerceptBundle`
+- Godot runtime 已真实生成 `PerceptionQueryFrame` artifact，包含真实 camera pose、viewport capture artifact、space/occupancy refs、auditory refs、actor embodied refs。
+- `Scene3DSpaceModel` 已从场景、节点、碰撞体/碰撞聚合根、导航/可行走面抽取并落 `.harness/verification/l1-space-model-runtime.json`。
+- `SpatialOccupancyField` 已随 actor enter/leave、actor/object proximity enter/clear、temporary blockers、object affordance/rollback、environment field 变化做 dirty-zone 增量更新。
+- `FactProjectionLayer` 已从 occupancy / environment field 投影 LOS、reachability、affordance、negative facts。
+- 角色和司命 runtime 已通过 `L1RuntimePerceptionBridge` 消费由 projected facts/provider refs 组装的 `CanonicalPerceptBundle`，证据落 `.harness/verification/l1-perception-bridge-backend-contract.json`。
 
 本轮实现补充的 runtime-facing 证据面：
 
@@ -54,7 +56,7 @@
 - 当前 candidate 编译入口在 `backend/app/services/candidate_percept_service.py`，听觉仍是 targeted actor 白名单策略。
 - 当前 per-character filter 在 `backend/app/services/per_character_percept_filter.py`，视觉朝向和距离上下文仍是薄实现。
 - 当前角色 L1 私有快照入口在 `backend/app/character_agent/reasoning/l1_perception.py`。
-- 当前 ESM 语义结算入口在 `backend/app/services/esm_service.py`，环境场已经存在但空间底稿和 occupancy 仍未接入。
+- 当前 ESM 语义结算入口在 `backend/app/services/esm_service.py`，环境场结果已回流到 `SpatialOccupancyService` 并作为 `FactProjectionLayer` 输入。
 - 当前 runtime main route 在 `backend/app/main.py`。
 - 当前 Godot runtime probes 在 `scripts/verification/`，L1 edge probe 为 `scripts/verification/L1RuntimeProbe.gd` 和 `scripts/verification/verify_l1_runtime_edges.py`。
 
@@ -62,86 +64,86 @@
 
 ### 2.1 L1 空间底座
 
-- [ ] `Scene3DSpaceModel` 有运行时/离线生成入口，不再只是 Pydantic 对象。
-- [ ] 至少从当前主场景抽取以下对象族：
+- [x] `Scene3DSpaceModel` 有运行时/离线生成入口，不再只是 Pydantic 对象。
+- [x] 至少从当前主场景抽取以下对象族：
   - `zone`
   - `static_obstacle`
   - `occluder`
   - `environment_anchor`
   - `interaction_object`
   - `navigation_lane`
-- [ ] 抽取来源必须包含至少两类真实来源：
+- [x] 抽取来源必须包含至少两类真实来源：
   - Godot node path / group / metadata
   - collision shape 或 navigation region
-- [ ] 人工字段只允许作为 review override，不能成为主数据来源。
-- [ ] 生成结果必须落到可检查 artifact，例如 `.harness/verification/l1-space-model-*.json`。
+- [x] 人工字段只允许作为 review override，不能成为主数据来源。
+- [x] 生成结果必须落到可检查 artifact，例如 `.harness/verification/l1-space-model-*.json`。
 
 ### 2.2 Spatial Occupancy Field runtime state
 
-- [ ] `SpatialOccupancyField` 有服务对象，不再只是 data model，也不得成为 runtime host。
-- [ ] Occupancy field 同时承接：
+- [x] `SpatialOccupancyField` 有服务对象，不再只是 data model，也不得成为 runtime host。
+- [x] Occupancy field 同时承接：
   - 静态空间底稿引用
   - actor 当前占据
   - object 当前状态
   - 临时阻挡
   - 环境场影响
-- [ ] 至少实现以下增量更新：
+- [x] 至少实现以下增量更新：
   - actor 进入/离开 zone
   - actor 靠近/离开 object 或 actor
   - environment `smoke_density` / `visibility_level` 改变后影响 visibility/passability 标记
   - object state 改变后影响 affordance 或 occlusion 标记
-- [ ] 不允许每 tick full-scene rescan；必须有节流、dirty-zone 或 event-driven update 证明。
+- [x] 不允许每 tick full-scene rescan；必须有节流、dirty-zone 或 event-driven update 证明。
 
 ### 2.3 Environment Field Model 与空间底座合流
 
-- [ ] 保留 `backend/app/models/environment_field.py` 和 `ESMService.get_environment_field(...)` 现有环境场。
-- [ ] L1 subsystem 必须把环境场作为 Fact Projection 输入，不再只停留在 ESM workbench snapshot。
-- [ ] environment result 回流后必须能更新对应 zone 的 runtime field。
+- [x] 保留 `backend/app/models/environment_field.py` 和 `ESMService.get_environment_field(...)` 现有环境场。
+- [x] L1 subsystem 必须把环境场作为 Fact Projection 输入，不再只停留在 ESM workbench snapshot。
+- [x] environment result 回流后必须能更新对应 zone 的 runtime field。
 
 ### 2.4 Fact Projection Layer
 
-- [ ] `FactProjectionLayer` 有运行时代码，不再只是 manifest。
-- [ ] 事实来源必须依赖 `Scene3DSpaceModel` / `SpatialOccupancyField` / `EnvironmentFieldState` 中至少一个底座对象。
-- [ ] 至少新增并验证四类事实：
+- [x] `FactProjectionLayer` 有运行时代码，不再只是 manifest。
+- [x] 事实来源必须依赖 `Scene3DSpaceModel` / `SpatialOccupancyField` / `EnvironmentFieldState` 中至少一个底座对象。
+- [x] 至少新增并验证四类事实：
   - `line_of_sight_blocked`
   - `line_of_sight_restored`
   - `target_unreachable` 或 `path_detour_required`
   - `interaction_affordance_changed`
   - `expected_target_missing` 或 `expected_reachable_but_failed`
-- [ ] 新事实必须走现有 `raw_fact_event` 或兼容 route，不允许新开平行事实总线。
-- [ ] 新事实必须能进入 `CandidatePerceptEvent`，除非明确标记为 system-level only。
+- [x] 新事实必须走现有 `raw_fact_event` 或兼容 route，不允许新开平行事实总线。
+- [x] 新事实必须能进入 `CandidatePerceptEvent`，除非明确标记为 system-level only。
 
 ### 2.5 Godot Provider 真实采样
 
-- [ ] `VisualPatchProvider` 至少提供真实 camera pose、viewport/capture ref 或可验证 screenshot artifact ref。
-- [ ] `SpatialPatchProvider` 至少基于场景/碰撞/导航/zone 状态生成局部 obstacle/occlusion/passability refs。
-- [ ] `AuditoryContextProvider` 至少从现有 auditory fact 或 local source refs 形成时间窗。
-- [ ] `EmbodiedStateProvider` 至少从 `PlayerShell` / `CharacterReplica` / `CharacterRuntimeState` 形成姿态、locomotion、grounded、LOS/reachability failure 输入。
-- [ ] Provider 仍不得执行重推理、重体素化或 full-scene runtime scan。
+- [x] `VisualPatchProvider` 至少提供真实 camera pose、viewport/capture ref 或可验证 screenshot artifact ref。
+- [x] `SpatialPatchProvider` 至少基于场景/碰撞/导航/zone 状态生成局部 obstacle/occlusion/passability refs。
+- [x] `AuditoryContextProvider` 至少从现有 auditory fact 或 local source refs 形成时间窗。
+- [x] `EmbodiedStateProvider` 至少从 `PlayerShell` / `CharacterReplica` / `CharacterRuntimeState` 形成姿态、locomotion、grounded、LOS/reachability failure 输入。
+- [x] Provider 仍不得执行重推理、重体素化或 full-scene runtime scan。
 
 ### 2.6 Perception Query Frame 接线
 
-- [ ] Godot runtime 或 backend runtime 至少有一条真实 `PerceptionQueryFrame` 组装路径。
-- [ ] PQF 必须引用：
+- [x] Godot runtime 或 backend runtime 至少有一条真实 `PerceptionQueryFrame` 组装路径。
+- [x] PQF 必须引用：
   - subject actor
   - time window
   - room / scene / zone
   - provider input refs
   - structured fact refs
   - isolated `character_mm:*` 或 `siming_mm:*` context
-- [ ] PQF 必须落证据 artifact 或 debug event，不能只在单元测试里构造。
+- [x] PQF 必须落证据 artifact 或 debug event，不能只在单元测试里构造。
 
 ### 2.7 Canonical Percept Bundle 消费
 
-- [ ] 至少一条角色 runtime 路径消费 `CanonicalPerceptBundle` 并影响 `CharacterPrivateWorldSnapshot`、working memory 或 L2 structured context。
-- [ ] 至少一条司命 runtime 路径消费司命版 percept bundle 或等价 global situation bundle，并影响 `FairnessStateSnapshot`、intervention candidate 或 workbench explanation。
-- [ ] 角色和司命不得共享 patch context、cache namespace、inference history。
+- [x] 至少一条角色 runtime 路径消费 `CanonicalPerceptBundle` 并影响 `CharacterPrivateWorldSnapshot`、working memory 或 L2 structured context。
+- [x] 至少一条司命 runtime 路径消费司命版 percept bundle 或等价 global situation bundle，并影响 `FairnessStateSnapshot`、intervention candidate 或 workbench explanation。
+- [x] 角色和司命不得共享 patch context、cache namespace、inference history。
 
 ### 2.8 与现有主线兼容
 
-- [ ] 现有 `raw_fact_event -> candidate -> CharacterPerceivedEvent` 主链不能退化。
-- [ ] 现有 Phase 0 / mainline Godot runtime proof 不能退化。
-- [ ] L1 subsystem 可关闭或降级，降级时仍使用现有 structured fact slice。
+- [x] 现有 `raw_fact_event -> candidate -> CharacterPerceivedEvent` 主链不能退化。
+- [x] 现有 Phase 0 / mainline Godot runtime proof 不能退化。
+- [x] L1 subsystem 可关闭或降级，降级时仍使用现有 structured fact slice。
 
 ## 3. 实施阶段
 
@@ -310,6 +312,8 @@ python scripts/verification/harness.py --profile docs
   - 缓解：继续强制 `character_mm:*` / `siming_mm:*` namespace，新增 runtime-level isolation test。
 - 风险：一次实现全量空间系统过大。
   - 缓解：完整目标不降级，但分阶段提交；每阶段都必须产生 runtime proof，最终统一验收。
+- 风险：Godot 空间抽取停留在 probe 或 walkable/floor 派生证据，不能代表主场景真实导航底座。
+  - 缓解：主场景运行时补齐真实 `NavigationRegion3D`，抽取器优先真实导航区，verification 明确拒绝仅由 `derived_from_runtime_walkable` 导航证据通过。
 
 ## 7. 完成定义
 

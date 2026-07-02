@@ -4,13 +4,22 @@ class_name SceneSpaceModelExtractor
 
 var room_id := "room_demo"
 var scene_id := "scene_demo"
+var max_collision_shape_elements := 64
+var max_navigation_lane_elements := 32
+var _collision_shape_element_count := 0
+var _navigation_lane_element_count := 0
+var _real_navigation_region_available := false
 
 
 func extract(root: Node) -> Dictionary:
 	var elements: Array[Dictionary] = []
+	_collision_shape_element_count = 0
+	_navigation_lane_element_count = 0
+	_real_navigation_region_available = false
 	if root == null:
 		return _model(elements)
 	_add_element(elements, "zone_focus", "zone", root, ["runtime_main_scene"], [])
+	_real_navigation_region_available = _has_navigation_region(root)
 	_walk(root, elements)
 	return _model(elements)
 
@@ -41,18 +50,23 @@ func _maybe_add_node(node: Node, elements: Array[Dictionary]) -> void:
 		_add_element(elements, "env_lamp", "environment_anchor", node, ["environment_state_node"], [])
 	if lower_name.contains("interactiveobject") or lower_name.contains("letter"):
 		_add_element(elements, "obj_letter", "interaction_object", node, ["interaction_object"], _geometry_refs(node))
-	if node is CollisionShape3D:
+	if _is_collision_aggregate_root(node):
+		var aggregate_id := "collision_root_%s" % _safe_id(str(node.get_path()))
+		_add_element(elements, aggregate_id, "static_obstacle", node, ["collision_shape_aggregate"], _geometry_refs_limited(node, 12))
+	if node is CollisionShape3D and _collision_shape_element_count < max_collision_shape_elements:
 		var element_id := "collision_%s" % _safe_id(str(node.get_path()))
 		_add_element(elements, element_id, "static_obstacle", node, ["collision_shape"], _geometry_refs(node))
+		_collision_shape_element_count += 1
 	if node is StaticBody3D or lower_name.contains("pillar") or lower_name.contains("wall"):
 		var obstacle_id := "obstacle_%s" % _safe_id(str(node.get_path()))
 		_add_element(elements, obstacle_id, "occluder", node, ["occluder_candidate"], _geometry_refs(node))
 	if node is NavigationRegion3D:
 		var lane_id := "navigation_%s" % _safe_id(str(node.get_path()))
 		_add_element(elements, lane_id, "navigation_lane", node, ["navigation_region"], ["navigation_region:%s" % str(node.get_path())])
-	if lower_name.contains("walk") or lower_name.contains("floor"):
+	if not _real_navigation_region_available and (lower_name.contains("walk") or lower_name.contains("floor")) and _navigation_lane_element_count < max_navigation_lane_elements:
 		var lane_from_floor := "navigation_lane_%s" % _safe_id(str(node.get_path()))
-		_add_element(elements, lane_from_floor, "navigation_lane", node, ["navigation_from_walkable_surface"], ["navigation_region:derived_from_runtime_walkable:%s" % str(node.get_path())])
+		_add_element(elements, lane_from_floor, "navigation_lane", node, ["navigation_from_walkable_surface"], ["walkable_surface:derived_from_runtime_walkable:%s" % str(node.get_path())])
+		_navigation_lane_element_count += 1
 
 
 func _add_element(
@@ -96,6 +110,37 @@ func _geometry_refs(node: Node) -> Array[String]:
 	return refs
 
 
+func _geometry_refs_limited(node: Node, limit: int) -> Array[String]:
+	var refs: Array[String] = []
+	_collect_collision_refs(node, refs, limit)
+	return refs
+
+
+func _collect_collision_refs(node: Node, refs: Array[String], limit: int) -> void:
+	if refs.size() >= limit:
+		return
+	if node is CollisionShape3D:
+		refs.append("collision_shape:%s" % str(node.get_path()))
+	for child: Node in node.get_children():
+		if refs.size() >= limit:
+			return
+		_collect_collision_refs(child, refs, limit)
+
+
+func _is_collision_aggregate_root(node: Node) -> bool:
+	var lower_name := node.name.to_lower()
+	return lower_name.contains("collisionroot") or lower_name.contains("collision_root") or lower_name.contains("greybox")
+
+
+func _has_navigation_region(node: Node) -> bool:
+	if node is NavigationRegion3D:
+		return true
+	for child: Node in node.get_children():
+		if _has_navigation_region(child):
+			return true
+	return false
+
+
 func _model(elements: Array[Dictionary]) -> Dictionary:
 	return {
 		"model_id": "scene_space:%s:%s" % [room_id, scene_id],
@@ -106,7 +151,8 @@ func _model(elements: Array[Dictionary]) -> Dictionary:
 			"godot_group",
 			"godot_metadata",
 			"collision_shape",
-			"navigation_region_or_walkable_surface",
+			"navigation_region",
+			"walkable_surface_fallback",
 		],
 		"manual_role": "review_only",
 		"elements": elements,

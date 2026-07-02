@@ -6,9 +6,13 @@
 
 **架构定位：** 本计划不重做 `world-character-siming-authority-mainline` 已闭合范围，而是把专题树里的能力拆成有依赖关系的增量任务组。
 
-**状态纠偏：** 2026-06-30 本计划已完成的是协议、manifest、静态 provider 和 focused proof 切片。它不满足完整规格的运行时能力完成口径。`System L1 world fact subsystem` 集成必须继续执行：
+**状态纠偏：** 2026-06-30 本计划已完成的是协议、manifest、静态 provider 和 focused proof 切片。它不满足完整规格的运行时能力完成口径。
+
+原 C2 未完成项已迁移到并由以下完整计划收口：
 
 - [2026-07-01-current-project-l1-world-fact-runtime-full-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-01-current-project-l1-world-fact-runtime-full-implementation-plan.md)
+
+2026-07-02 拆出的后续完整能力计划继续承接 VLA、ASK、司命态势、交互编排、物理世界作用、骨骼回放、生产工具链和 Godot production-grade provider 等非 L1 能力。
 
 **建议执行顺序：**
 
@@ -64,16 +68,18 @@
 - [x] 明确 `Spatial Occupancy Field runtime state` 的静态/动态分层
 - [x] 明确结构化事实上抛从底座导出的边界
 
-### 任务组 C2：`System L1 world fact subsystem` 集成
+### 任务组 C2：`System L1 world fact subsystem` 集成迁移记录
 
-- [ ] 从当前 Godot 主场景真实抽取 `Scene3DSpaceModel`
-- [ ] 维护 `SpatialOccupancyField` 并支持 dirty-zone/event-driven 增量更新
-- [ ] 将 `EnvironmentFieldState` 合流进 L1 projection 输入
-- [ ] 实现runtime-facing `FactProjectionLayer`
-- [ ] 从空间/环境底座投影 LOS、可达性、affordance、失败/负事实
-- [ ] 组装真实 `PerceptionQueryFrame`
-- [ ] 让角色或司命 runtime 消费 `CanonicalPerceptBundle`
-- [ ] 保留并通过兼容验证入口 `l1-world-fact-runtime`
+以下原未完成项不再在本总计划中直接执行，已迁移到并由 `2026-07-01-current-project-l1-world-fact-runtime-full-implementation-plan.md` 收口：
+
+- [x] 从当前 Godot 主场景真实抽取 `Scene3DSpaceModel`
+- [x] 维护 `SpatialOccupancyField` 并支持 dirty-zone/event-driven 增量更新
+- [x] 将 `EnvironmentFieldState` 合流进 L1 projection 输入
+- [x] 实现 runtime-facing `FactProjectionLayer`
+- [x] 从空间/环境底座投影 LOS、可达性、affordance、失败/负事实
+- [x] 组装真实 `PerceptionQueryFrame`
+- [x] 让角色或司命 runtime 消费 `CanonicalPerceptBundle`
+- [x] 保留并通过兼容验证入口 `l1-world-fact-runtime`
 
 ### 任务组 D：角色侧多模态增强
 
@@ -129,8 +135,9 @@
   - `.harness/verification/current-project-intelligence-upgrade-report.json`
   - `.harness/verification/current-project-intelligence-upgrade-report.md`
 - 剩余风险：
-  - 当前计划树闭合在协议、manifest、静态 provider 和 focused proof 层；真实 VLA provider、Godot runtime 截图/音频采集、离线空间烘焙、连续物理作用 runtime 和生产工具流水线仍是后续非目标。
-  - `L1` subsystem integration 不是后续可选项，而是当前用户指定的下一优先级；必须按 `2026-07-01-current-project-l1-world-fact-runtime-full-implementation-plan.md` 执行后才能称为完整规格实现。
+  - 当前计划树的 2026-06-30 切片闭合在协议、manifest、静态 provider 和 focused proof 层。
+  - `L1` subsystem integration 已由 `2026-07-01-current-project-l1-world-fact-runtime-full-implementation-plan.md` 承接并收口。
+  - 真实 VLA provider、production-grade Godot provider、连续物理作用、骨骼 debug replay 和生产工具流水线等能力已拆入 2026-07-02 子计划，不能用本总计划宣称完成。
 
 ## 一句话收束
 

@@ -80,6 +80,7 @@ var autotest_run_started := false
 var autotest_shutdown_in_progress := false
 var scene_load_probe_only := false
 var perception_debug_enabled := false
+var npc_patrol_root_motion_seen: Dictionary = {}
 var _perception_sampler = ACTOR_PERCEPTION_SAMPLER.new()
 var _perception_target_resolver = ACTOR_PERCEPTION_TARGET_RESOLVER.new()
 
@@ -110,6 +111,7 @@ func _ready() -> void:
 	backend_health_request.request_completed.connect(_on_backend_health_request_completed)
 	LIGHTING_TUNER.apply_blender_approx(get_node_or_null("ThroneRoomImported"))
 	_bootstrap_throne_room_collision()
+	_ensure_l1_navigation_region()
 	_configure_open_field_camera()
 	_setup_focus_hint_label()
 	_bus_log("phase0_main_ready")
@@ -146,6 +148,33 @@ func _bootstrap_throne_room_collision() -> void:
 		_count_static_bodies(collision_root),
 		_count_collision_shapes(collision_root),
 	])
+
+func _ensure_l1_navigation_region() -> void:
+	var existing := get_node_or_null("L1NavigationRegion")
+	if existing is NavigationRegion3D:
+		_configure_l1_navigation_region(existing as NavigationRegion3D)
+		return
+	var nav_region := NavigationRegion3D.new()
+	nav_region.name = "L1NavigationRegion"
+	add_child(nav_region)
+	_configure_l1_navigation_region(nav_region)
+	_bus_log("l1_navigation_region_ready:%s" % str(nav_region.get_path()))
+
+func _configure_l1_navigation_region(nav_region: NavigationRegion3D) -> void:
+	nav_region.add_to_group("l1_navigation_lane")
+	nav_region.set_meta("l1_space_type", "navigation_lane")
+	nav_region.set_meta("element_id", "lane_focus")
+	if nav_region.navigation_mesh != null:
+		return
+	var navigation_mesh := NavigationMesh.new()
+	navigation_mesh.set_vertices(PackedVector3Array([
+		Vector3(-9.0, 0.05, 16.0),
+		Vector3(9.0, 0.05, 16.0),
+		Vector3(9.0, 0.05, -12.0),
+		Vector3(-9.0, 0.05, -12.0),
+	]))
+	navigation_mesh.add_polygon(PackedInt32Array([0, 1, 2, 3]))
+	nav_region.navigation_mesh = navigation_mesh
 
 func _ensure_preview_collision_shapes(root: Node, mesh_lookup: Dictionary) -> void:
 	for child in root.get_children():
@@ -458,15 +487,38 @@ func _run_locomotion_probe() -> void:
 
 func _run_npc_patrol_root_motion_probe() -> void:
 	_bus_log("phase0_autotest_stage:npc_patrol_probe_begin")
+	npc_patrol_root_motion_seen.clear()
+	var bus := _get_bus()
+	var debug_callable := Callable(self, "_on_npc_patrol_probe_debug_event")
+	var connected_debug_signal := false
+	if bus != null and bus.has_signal("debug_event_logged") and not bus.debug_event_logged.is_connected(debug_callable):
+		bus.debug_event_logged.connect(debug_callable)
+		connected_debug_signal = true
 	for actor in [character_a, character_b]:
 		if actor == null:
 			continue
+		actor.set("action_override_state", "")
+		actor.set("action_override_timer", 0.0)
+		actor.set("patrol_index", 1)
+		actor.set("hold_timer", 0.0)
+		if actor.has_method("_set_role_asset_motion_profile"):
+			actor.call("_set_role_asset_motion_profile", "walk", "walk")
 		actor.set("patrol_enabled", true)
-	await get_tree().create_timer(1.0).timeout
+	var deadline: int = Time.get_ticks_msec() + 2500
+	while Time.get_ticks_msec() < deadline and npc_patrol_root_motion_seen.size() < 2:
+		await get_tree().process_frame
 	for actor in [character_a, character_b]:
 		if actor == null:
 			continue
 		actor.set("patrol_enabled", false)
+	if connected_debug_signal:
+		bus.debug_event_logged.disconnect(debug_callable)
+
+func _on_npc_patrol_probe_debug_event(message: String) -> void:
+	if message == "patrol_root_motion_step:char_a":
+		npc_patrol_root_motion_seen["char_a"] = true
+	elif message == "patrol_root_motion_step:char_b":
+		npc_patrol_root_motion_seen["char_b"] = true
 
 func _probe_gait_segment(gait_name: String, wants_run: bool, crouch_enabled: bool, duration: float) -> void:
 	if player_input_bridge.has_method("set_crouch_enabled"):

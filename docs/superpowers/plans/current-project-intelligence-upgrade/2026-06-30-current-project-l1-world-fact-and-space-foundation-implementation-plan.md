@@ -5,7 +5,9 @@
 
 **目标：** 把当前 `L1` 从 emitter 集合提升为真正的世界事实层，并引入静态空间底稿与动态空间占据层。
 
-**状态纠偏：** 本文件当前实际完成的是对象族、边界、manifest 与 focused proof 的契约切片；它不足以完成完整规格要求。完整运行时实现必须继续执行：
+**状态纠偏：** 本文件当前实际完成的是对象族、边界、manifest 与 focused proof 的契约切片；它不足以完成完整规格要求。
+
+原“仍未完成的规格能力”已迁移到并由以下完整计划收口：
 
 - [2026-07-01-current-project-l1-world-fact-runtime-full-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-01-current-project-l1-world-fact-runtime-full-implementation-plan.md)
 
@@ -23,17 +25,19 @@
 - 新事实上抛器族清单
 - 静态离线 + 动态增量更新策略
 
-## 仍未完成的规格能力
+## 已迁移并收口的规格能力
 
-- [ ] 从 Godot 主场景真实抽取 `Scene3DSpaceModel`
-- [ ] 维护 `SpatialOccupancyField` / `SpatialOccupancyService`
-- [ ] 将 `EnvironmentFieldState` 作为 L1 projection 输入
-- [ ] 实现runtime-facing `FactProjectionLayer`
-- [ ] 从底座投影 LOS、可达性、affordance、失败/负事实
-- [ ] 让新增 fact 进入现有 `raw_fact_event -> candidate/private percept` 主链
-- [ ] 生成并落证据 `PerceptionQueryFrame`
-- [ ] 让角色或司命 runtime 消费 `CanonicalPerceptBundle`
-- [ ] 通过兼容验证入口 `l1-world-fact-runtime`
+以下原未完成项不再在本 contract 切片中直接执行，已迁移到并由 `2026-07-01-current-project-l1-world-fact-runtime-full-implementation-plan.md` 收口：
+
+- [x] 从 Godot 主场景真实抽取 `Scene3DSpaceModel`
+- [x] 维护 `SpatialOccupancyField` / `SpatialOccupancyService`
+- [x] 将 `EnvironmentFieldState` 作为 L1 projection 输入
+- [x] 实现 runtime-facing `FactProjectionLayer`
+- [x] 从底座投影 LOS、可达性、affordance、失败/负事实
+- [x] 让新增 fact 进入现有 `raw_fact_event -> candidate/private percept` 主链
+- [x] 生成并落证据 `PerceptionQueryFrame`
+- [x] 让角色或司命 runtime 消费 `CanonicalPerceptBundle`
+- [x] 通过兼容验证入口 `l1-world-fact-runtime`
 
 ## 执行证据
 
@@ -45,4 +49,4 @@
   - `python scripts/verification/verify_current_project_intelligence_upgrade.py`
 - 剩余风险：
   - 当前未实现离线空间烘焙器，只固定可计算对象族、抽取来源和运行时禁做重扫描边界。
-  - 当前也未实现运行时空间抽取、occupancy 增量更新、事实投影、PQF 组装和角色/司命消费链；不得据此文件宣称`System L1 world fact subsystem` 集成已完成。
+  - 本文件自身仍只是 contract/focused proof 切片；`System L1 world fact subsystem` 集成完成口径以 `2026-07-01-current-project-l1-world-fact-runtime-full-implementation-plan.md` 为准。

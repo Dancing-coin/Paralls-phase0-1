@@ -107,6 +107,8 @@ class SpatialOccupancyService:
             previous.actor_ids = [entry for entry in previous.actor_ids if entry != actor_id]
             previous.updated_at = producer_ts
             self._mark_dirty(previous_zone_id, "actor_left_zone", producer_ts, source_ref)
+        if not next_zone_id:
+            return
         zone = self._ensure_zone(next_zone_id)
         if actor_id not in zone.actor_ids:
             zone.actor_ids.append(actor_id)
@@ -123,19 +125,27 @@ class SpatialOccupancyService:
         target_actor_id: str = "",
         target_object_id: str = "",
         distance_m: float | None = None,
+        is_near: bool = True,
     ) -> None:
         zone_id = self.zone_for_actor(actor_id) or self._first_zone_id(default="zone_focus")
         zone = self._ensure_zone(zone_id)
         refs = zone.nearby_refs.setdefault(actor_id, [])
         target_ref = target_actor_id or target_object_id
-        if target_ref and target_ref not in refs:
+        if is_near and target_ref and target_ref not in refs:
             refs.append(target_ref)
             refs.sort()
-        if target_object_id and distance_m is not None and distance_m <= 3.0 and target_object_id not in zone.object_ids:
+        if not is_near and target_ref:
+            zone.nearby_refs[actor_id] = [entry for entry in refs if entry != target_ref]
+        if is_near and target_object_id and distance_m is not None and distance_m <= 3.0 and target_object_id not in zone.object_ids:
             zone.object_ids.append(target_object_id)
             zone.object_ids.sort()
         zone.updated_at = producer_ts
-        self._mark_dirty(zone_id, "actor_proximity_changed", producer_ts, source_ref)
+        self._mark_dirty(
+            zone_id,
+            "actor_proximity_changed" if is_near else "actor_proximity_cleared",
+            producer_ts,
+            source_ref,
+        )
 
     def apply_environment_result(self, result: EnvironmentStateResult) -> None:
         field = EnvironmentFieldState(
@@ -197,9 +207,44 @@ class SpatialOccupancyService:
         )
         if occludes:
             zone.visibility = "reduced"
+        elif not any(
+            state.zone_id == zone_id and state.occludes
+            for state in self._snapshot.object_states.values()
+            if state.object_id != object_id
+        ):
+            field = self._snapshot.environment_fields.get(zone_id)
+            zone.visibility = self._visibility_from_environment(field) if field is not None else "clear"
         zone.updated_at = producer_ts
         if mark_dirty:
             self._mark_dirty(zone_id, "object_state_changed", producer_ts, source_ref)
+
+    def apply_temporary_blocker_update(
+        self,
+        *,
+        zone_id: str,
+        blocker_id: str,
+        active: bool,
+        producer_ts: int,
+        source_ref: str,
+    ) -> None:
+        zone = self._ensure_zone(zone_id)
+        if active and blocker_id not in zone.temporary_blockers:
+            zone.temporary_blockers.append(blocker_id)
+            zone.temporary_blockers.sort()
+        if not active:
+            zone.temporary_blockers = [entry for entry in zone.temporary_blockers if entry != blocker_id]
+        if zone.temporary_blockers:
+            zone.passability = "blocked"
+        else:
+            field = self._snapshot.environment_fields.get(zone_id)
+            zone.passability = self._passability_from_environment(field) if field is not None else "passable"
+        zone.updated_at = producer_ts
+        self._mark_dirty(
+            zone_id,
+            "temporary_blocker_added" if active else "temporary_blocker_removed",
+            producer_ts,
+            source_ref,
+        )
 
     def snapshot(self) -> SpatialOccupancySnapshot:
         return self._snapshot.model_copy(deep=True)

@@ -33,3 +33,9 @@
   - `python scripts/verification/verify_current_project_intelligence_upgrade.py`
 - 剩余风险：
   - 当前 provider 是采样协议前端，未做 Godot runtime 截图或音频采集实跑。
+
+## 后续子计划
+
+production-grade provider 体系、完整 runtime sample、failure/freshness/throttle 和 PQF harness 接线由后续子计划继续推进：
+
+- [2026-07-02-current-project-godot-sampling-production-grade-providers-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-02-current-project-godot-sampling-production-grade-providers-implementation-plan.md)
