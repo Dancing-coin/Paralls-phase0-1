@@ -542,6 +542,62 @@ def test_harness_runner_does_not_retry_when_report_artifact_exists_after_failure
     assert report["profiles"][0]["max_attempts"] == 2
 
 
+def test_harness_runner_fails_fast_when_godot_is_required_but_unavailable(monkeypatch, tmp_path: Path) -> None:
+    calls = {"count": 0}
+
+    def fake_repo_root() -> Path:
+        return tmp_path
+
+    def fake_resolve_python_exe(_explicit: str | None) -> str:
+        return "python"
+
+    def fake_resolve_godot_exe(_explicit: str | None) -> None:
+        return None
+
+    def fake_load_profile_registry(_project_root: Path):
+        return SimpleNamespace(
+            profiles={
+                "phase0": {
+                    "name": "phase0",
+                    "script": "scripts/verification/verify_phase0.py",
+                    "requires_godot": True,
+                }
+            },
+            profile_order=["phase0"],
+        )
+
+    def fake_run(_args: list[str], _cwd: Path) -> int:
+        calls["count"] += 1
+        return 0
+
+    monkeypatch.setattr(harness, "repo_root", fake_repo_root)
+    monkeypatch.setattr(harness, "resolve_python_exe", fake_resolve_python_exe)
+    monkeypatch.setattr(harness, "_resolve_godot_exe", fake_resolve_godot_exe)
+    monkeypatch.setattr(harness, "load_profile_registry", fake_load_profile_registry)
+    monkeypatch.setattr(harness, "_run", fake_run)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["harness.py", "--profile", "phase0"],
+    )
+
+    exit_code = harness.main()
+    report = json.loads((tmp_path / ".harness" / "verification" / "harness-run-report.json").read_text(encoding="utf-8"))
+
+    assert exit_code == 1
+    assert calls["count"] == 0
+    assert report["profiles"][0]["profile"] == "phase0"
+    assert report["profiles"][0]["exit_code"] == 1
+    assert report["profiles"][0]["attempts"] == 0
+    assert report["profiles"][0]["max_attempts"] == 1
+    assert report["profiles"][0]["command"] == [
+        "python",
+        str(tmp_path / "scripts/verification/verify_phase0.py"),
+        "--python-exe",
+        "python",
+    ]
+
+
 def test_get_health_treats_connection_reset_as_unhealthy(monkeypatch) -> None:
     def fake_urlopen(_url: str, timeout: float = 1.0):
         raise ConnectionResetError(10054, "connection reset")

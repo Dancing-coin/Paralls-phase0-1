@@ -20,6 +20,7 @@ python scripts/verification/harness.py --profile harness-reference
 python scripts/verification/harness.py --profile harness-evolution
 python scripts/verification/harness.py --profile phase0
 python scripts/verification/harness.py --profile phase1-slice
+python scripts/verification/harness.py --profile siming-backend-chain
 python scripts/verification/harness.py --profile l1-world-fact-runtime
 python scripts/verification/harness.py --profile mainline-unified-runtime
 python scripts/verification/harness.py --profile all
@@ -281,6 +282,7 @@ Current mechanical invariants include:
 - `.harness/evolution/config.json` exists and validates
 - `.harness/evolution/replay-sets/default.json` exists and validates
 - candidate manifests under `.harness/evolution/candidates/` are schema-valid, harness-scoped, and approval-gated
+- candidate lifecycle stages are governed; `promotion-ready` and `promoted` candidates require non-empty `qa_review_artifacts`
 - `.harness/verification/harness-evolution-report.json` exists after analyzer execution
 
 Analyzer commands:
@@ -363,9 +365,37 @@ Output:
 - `.harness/verification/harness-run-report.json`
 - `.harness/verification/harness-run-report.md`
 
+### `siming-backend-chain`
+
+Explicit-only backend architecture proof for Siming. This profile does not start Godot and does not rely on frontend `siming_output` projection. It proves deterministic component-chain scenarios and a real app-wiring DeepSeek path through `backend/app/main.py`.
+
+This profile is intentionally excluded from `all` by `include_in_all=false` because it requires a real `SIMING_LLM_API_KEY` and a live DeepSeek request:
+
+```powershell
+python scripts/verification/harness.py --profile siming-backend-chain
+```
+
+Required configuration:
+
+```env
+SIMING_LLM_MODE=http
+SIMING_LLM_PROVIDER_ORDER=deepseek_chat
+SIMING_LLM_API_KEY=<real DeepSeek key>
+SIMING_LLM_ENDPOINT=https://api.deepseek.com/chat/completions
+SIMING_LLM_MODEL=deepseek-chat
+SIMING_LLM_TIMEOUT_SECONDS=8.0
+```
+
+Output:
+
+- `.harness/verification/siming-backend-chain-report.json`
+- `.harness/verification/siming-backend-chain-report.md`
+
 ### `all`
 
 Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, `phase1-slice`, `l1-world-fact-runtime`, and `mainline-unified-runtime` in order. It stops on the first failed profile.
+
+`siming-backend-chain` is excluded from `all` because it requires live DeepSeek credentials.
 
 ### `mainline-unified-runtime`
 
@@ -397,6 +427,8 @@ The Harness Evolution Agent is a governed proposal lane. It reads existing harne
 
 It does not apply patches or promote its own proposals. A candidate must be converted into a normal implementation plan, implemented through the repository workflow, and verified through its promotion profiles before it can become operational harness behavior.
 
+Candidate manifests may carry lifecycle metadata: `proposed`, `qa-review`, `promotion-ready`, `promoted`, or `rejected`. Generated candidates start as `proposed` with `qa_review_required=true` and empty `qa_review_artifacts`; moving a candidate to `promotion-ready` or `promoted` requires at least one QA/replay artifact reference so promotion is attributable and reviewable.
+
 First-version candidates may target harness-owned surfaces such as `.harness/`, `scripts/verification/`, `docs/harness.md`, `docs/ai-engineering-workflow.md`, and `.github/workflows/harness.yml`. Product runtime paths such as `backend/`, `scenes/`, character scripts, or Siming runtime modules are outside the mutation scope.
 
 ## Decision Observability
@@ -412,6 +444,7 @@ When a profile fails, the runner writes a deterministic failure digest such as `
 - Static checks prove only static wiring.
 - Runtime claims require `phase0`, `phase1-slice`, or `mainline-unified-runtime`, depending on the scope being claimed.
 - L1 subsystem integration claims may use `l1-world-fact-runtime`; this is a runtime-verification profile, not a product runtime.
+- Backend-only live Siming/DeepSeek architecture claims require explicit `siming-backend-chain`.
 - Godot claims require scene execution or Godot MCP/editor inspection.
 - Generated evidence should stay under `.harness/verification/`.
 - Profile and rule manifests stay under `.harness/profiles/` and `.harness/rules/`.

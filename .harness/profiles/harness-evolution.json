@@ -4,5 +4,5 @@
   "order": 45,
   "script": "scripts/verification/check_harness_evolution.py",
   "requires_godot": false,
-  "description": "Governed Harness Evolution Agent config, replay set, candidate, and report checks"
+  "description": "Governed Harness Evolution Agent config, replay set, candidate lifecycle, and report checks"
 }

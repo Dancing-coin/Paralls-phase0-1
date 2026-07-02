@@ -117,6 +117,42 @@ def test_provider_factory_builds_distinct_openai_response_routes() -> None:
     assert second.timeout_seconds == 8.0
 
 
+def test_provider_factory_builds_distinct_deepseek_routes() -> None:
+    provider = build_siming_llm_provider(
+        Settings(
+            siming_llm_mode="http",
+            siming_llm_api_key="test-key",
+            siming_llm_routes=[
+                SimingLlmRouteSettings(
+                    route_id="fast",
+                    provider="deepseek_chat",
+                    model="deepseek-chat",
+                    endpoint="https://api.deepseek.com/chat/completions",
+                    timeout_seconds=1.0,
+                ),
+                SimingLlmRouteSettings(
+                    route_id="deep",
+                    provider="deepseek_chat",
+                    model="deepseek-reasoner",
+                    endpoint="https://api.deepseek.com/chat/completions",
+                    timeout_seconds=8.0,
+                ),
+            ],
+        )
+    )
+
+    assert isinstance(provider, SimingLlmProviderRouter)
+    first, second = provider.providers
+    assert isinstance(first, HttpSimingLlmCandidateProvider)
+    assert isinstance(second, HttpSimingLlmCandidateProvider)
+    assert first.route_id == "fast"
+    assert second.route_id == "deep"
+    assert first.model == "deepseek-chat"
+    assert second.model == "deepseek-reasoner"
+    assert first.timeout_seconds == 1.0
+    assert second.timeout_seconds == 8.0
+
+
 def test_provider_factory_uses_legacy_order_as_route_fallback() -> None:
     provider = build_siming_llm_provider(
         Settings(
@@ -136,6 +172,22 @@ def test_provider_factory_uses_legacy_order_as_route_fallback() -> None:
     assert isinstance(second, HttpSimingLlmCandidateProvider)
     assert second.route_id == "openai_responses"
     assert second.model == "legacy-model"
+
+
+def test_provider_factory_builds_deepseek_provider_when_configured() -> None:
+    provider = build_siming_llm_provider(
+        Settings(
+            siming_llm_mode="http",
+            siming_llm_api_key="deepseek-key",
+            siming_llm_endpoint="https://api.deepseek.com/chat/completions",
+            siming_llm_model="deepseek-chat",
+            siming_llm_provider_order=["deepseek_chat"],
+        )
+    )
+
+    assert isinstance(provider, SimingLlmProviderRouter)
+    assert isinstance(provider.providers[0], HttpSimingLlmCandidateProvider)
+    assert provider.providers[0].route_id == "deepseek_chat"
 
 
 def test_route_level_openai_response_config_is_used_for_http_request(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -179,6 +231,60 @@ def test_route_level_openai_response_config_is_used_for_http_request(monkeypatch
     assert captured["timeout"] == 1.0
 
 
+def test_route_level_deepseek_config_is_used_for_http_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    router = build_siming_llm_provider(
+        Settings(
+            siming_llm_mode="http",
+            siming_llm_api_key="global-key",
+            siming_llm_endpoint="https://global.invalid/v1/responses",
+            siming_llm_model="global-model",
+            siming_llm_timeout_seconds=9.0,
+            siming_llm_routes=[
+                SimingLlmRouteSettings(
+                    route_id="deepseek-fast",
+                    provider="deepseek_chat",
+                    api_key="route-key",
+                    model="deepseek-chat",
+                    endpoint="https://api.deepseek.com/chat/completions",
+                    timeout_seconds=1.0,
+                )
+            ],
+        )
+    )
+    assert isinstance(router, SimingLlmProviderRouter)
+    provider = router.providers[0]
+    assert isinstance(provider, HttpSimingLlmCandidateProvider)
+    captured: dict[str, object] = {}
+
+    def fake_post(url: str, *, headers: dict[str, str], json: dict[str, object], timeout: float) -> FakeResponse:
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["json"] = json
+        captured["timeout"] = timeout
+        return FakeResponse(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"candidates":[]}'
+                        }
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr("app.services.siming_llm_provider.httpx.post", fake_post)
+
+    assert provider.generate_candidates(snapshot=make_snapshot(), recent_events=[make_event()], recent_audit=[]) == []
+    assert captured["url"] == "https://api.deepseek.com/chat/completions"
+    assert captured["headers"] == {"Authorization": "Bearer route-key"}
+    assert captured["json"]["model"] == "deepseek-chat"
+    assert captured["timeout"] == 1.0
+    assert captured["json"]["response_format"]["type"] == "json_object"
+    assert captured["json"]["messages"][0]["role"] == "system"
+    assert captured["json"]["messages"][1]["role"] == "user"
+
+
 class FakeResponse:
     def __init__(self, payload: object, *, raise_http_error: Exception | None = None) -> None:
         self._payload = payload
@@ -215,6 +321,9 @@ def make_candidate_payload(**overrides: object) -> dict[str, object]:
         "target_actor_id": "char_b",
         "target_environment_id": "env_lamp",
         "established_fact_ids": ["visual_fact:300:char_c:light_level_drop"],
+        "explanation": "Reveal the established light drop to a nearby actor.",
+        "confidence": 0.72,
+        "reason_tags": ["visibility_imbalance"],
         "source": "llm",
     }
     payload.update(overrides)
@@ -311,6 +420,99 @@ def test_http_provider_returns_validated_candidates(monkeypatch: pytest.MonkeyPa
     assert text_format["strict"] is True
     assert text_format["schema"]["required"] == ["candidates"]
     assert "candidates" not in request_payload
+
+
+def test_http_provider_parses_deepseek_chat_completion_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
+    provider = HttpSimingLlmCandidateProvider(
+        api_key="test-key",
+        endpoint="https://api.deepseek.com/chat/completions",
+        model="deepseek-chat",
+        timeout_seconds=1.5,
+        route_id="deepseek_chat",
+        provider_name="deepseek_chat",
+    )
+    captured: dict[str, object] = {}
+
+    def fake_post(url: str, *, headers: dict[str, str], json: dict[str, object], timeout: float) -> FakeResponse:
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["json"] = json
+        captured["timeout"] = timeout
+        return FakeResponse(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"candidates":[%s]}' % json_module.dumps(make_candidate_payload())
+                        }
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr("app.services.siming_llm_provider.httpx.post", fake_post)
+
+    candidates = provider.generate_candidates(
+        snapshot=make_snapshot(),
+        recent_events=[make_event()],
+        recent_audit=[],
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].candidate_id == "cand:http:1"
+    assert captured["url"] == "https://api.deepseek.com/chat/completions"
+    assert captured["headers"] == {"Authorization": "Bearer test-key"}
+    assert captured["timeout"] == 1.5
+    request_payload = captured["json"]
+    assert request_payload["model"] == "deepseek-chat"
+    assert request_payload["response_format"] == {"type": "json_object"}
+    assert request_payload["messages"][0]["role"] == "system"
+    assert request_payload["messages"][1]["role"] == "user"
+    assert "snapshot" in request_payload["messages"][1]["content"]
+    system_prompt = request_payload["messages"][0]["content"]
+    assert "candidate_id" in system_prompt
+    assert "target_object_id" in system_prompt
+    assert "established_fact_ids" in system_prompt
+    assert 'source="llm"' in system_prompt
+    assert "Do not omit keys" in system_prompt
+    assert "Use null" in system_prompt
+    assert "snapshot.eligible_actor_ids" in system_prompt
+    assert "recent_events" in system_prompt
+
+
+@pytest.mark.parametrize("missing_field", ["source", "explanation", "confidence", "reason_tags"])
+def test_deepseek_provider_rejects_candidates_missing_explicit_llm_fields(
+    monkeypatch: pytest.MonkeyPatch,
+    missing_field: str,
+) -> None:
+    provider = HttpSimingLlmCandidateProvider(
+        api_key="test-key",
+        endpoint="https://api.deepseek.com/chat/completions",
+        model="deepseek-chat",
+        timeout_seconds=1.5,
+        route_id="deepseek_chat",
+        provider_name="deepseek_chat",
+    )
+    candidate_payload = make_candidate_payload()
+    candidate_payload.pop(missing_field)
+
+    def fake_post(*args: object, **kwargs: object) -> FakeResponse:
+        return FakeResponse(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": '{"candidates":[%s]}' % json_module.dumps(candidate_payload)
+                        }
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr("app.services.siming_llm_provider.httpx.post", fake_post)
+
+    with pytest.raises(SimingLlmProviderInvalidOutput, match=missing_field):
+        provider.generate_candidates(snapshot=make_snapshot(), recent_events=[make_event()], recent_audit=[])
 
 
 def test_http_provider_maps_timeout_to_provider_timeout(monkeypatch: pytest.MonkeyPatch) -> None:

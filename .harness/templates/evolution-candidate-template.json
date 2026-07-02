@@ -2,6 +2,7 @@
   "schema_version": 1,
   "id": "evo-20260625-example-failure-digest",
   "status": "proposed",
+  "lifecycle_stage": "proposed",
   "mutation_type": "failure_digest",
   "risk_tier": "sandbox-edit",
   "source_failures": [
@@ -21,5 +22,7 @@
     "harness-lifecycle",
     "harness-evolution"
   ],
-  "requires_human_approval": false
+  "requires_human_approval": false,
+  "qa_review_required": true,
+  "qa_review_artifacts": []
 }

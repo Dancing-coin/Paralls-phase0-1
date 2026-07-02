@@ -7,6 +7,7 @@ from pathlib import Path
 
 SUPPORTED_SCHEMA_VERSION = 1
 KNOWN_CANDIDATE_STATUSES = {"proposed", "evaluated", "rejected", "promoted"}
+KNOWN_CANDIDATE_LIFECYCLE_STAGES = {"proposed", "qa-review", "promotion-ready", "promoted", "rejected"}
 KNOWN_RISK_TIERS = {"read-only", "sandbox-edit", "full-access"}
 HARNESS_MUTATION_PREFIXES = (
     ".harness/",
@@ -50,6 +51,10 @@ def _project_relative_read_json(project_root: Path, path: Path) -> tuple[dict[st
 
 def _is_non_empty_string_list(value: object) -> bool:
     return isinstance(value, list) and len(value) > 0 and all(isinstance(entry, str) and entry != "" for entry in value)
+
+
+def _is_string_list(value: object) -> bool:
+    return isinstance(value, list) and all(isinstance(entry, str) and entry != "" for entry in value)
 
 
 def load_evolution_config(project_root: Path) -> tuple[dict[str, object], list[str]]:
@@ -115,6 +120,12 @@ def _candidate_errors(relative: str, payload: dict[str, object], allowed_mutatio
             errors.append(f"{relative}: {field} must be a non-empty string")
     if payload.get("status") not in KNOWN_CANDIDATE_STATUSES:
         errors.append(f"{relative}: invalid status {payload.get('status')}")
+    lifecycle_stage = payload.get("lifecycle_stage")
+    if lifecycle_stage is not None:
+        if not isinstance(lifecycle_stage, str) or lifecycle_stage == "":
+            errors.append(f"{relative}: lifecycle_stage must be a non-empty string")
+        elif lifecycle_stage not in KNOWN_CANDIDATE_LIFECYCLE_STAGES:
+            errors.append(f"{relative}: invalid lifecycle_stage {lifecycle_stage}")
     if payload.get("risk_tier") not in KNOWN_RISK_TIERS:
         errors.append(f"{relative}: invalid risk_tier {payload.get('risk_tier')}")
     if payload.get("mutation_type") not in allowed_mutation_types:
@@ -127,6 +138,14 @@ def _candidate_errors(relative: str, payload: dict[str, object], allowed_mutatio
         errors.append(f"{relative}: requires_human_approval must be boolean")
     if payload.get("risk_tier") == "full-access" and payload.get("requires_human_approval") is not True:
         errors.append(f"{relative}: full-access candidates require human approval")
+    if payload.get("qa_review_required") is not None and not isinstance(payload.get("qa_review_required"), bool):
+        errors.append(f"{relative}: qa_review_required must be boolean")
+    qa_review_artifacts = payload.get("qa_review_artifacts")
+    if qa_review_artifacts is not None and not _is_string_list(qa_review_artifacts):
+        errors.append(f"{relative}: qa_review_artifacts must be a list of strings")
+    promotion_stage = lifecycle_stage if isinstance(lifecycle_stage, str) else str(payload.get("status", ""))
+    if promotion_stage in {"promotion-ready", "promoted"} and not _is_non_empty_string_list(qa_review_artifacts):
+        errors.append(f"{relative}: {promotion_stage} candidates require qa_review_artifacts")
 
     proposed_changes = payload.get("proposed_changes")
     if not isinstance(proposed_changes, list) or not proposed_changes:
@@ -306,6 +325,7 @@ def build_candidate_from_analysis(
         "schema_version": 1,
         "id": candidate_id,
         "status": "proposed",
+        "lifecycle_stage": "proposed",
         "mutation_type": mutation_type,
         "risk_tier": "sandbox-edit",
         "source_failures": [*list(pattern.get("run_ids", [])), profile],
@@ -319,6 +339,8 @@ def build_candidate_from_analysis(
         "replay_set": replay_set_id,
         "promotion_checks": list(config.get("promotion_requires_profiles", [])),
         "requires_human_approval": False,
+        "qa_review_required": True,
+        "qa_review_artifacts": [],
     }
 
 
@@ -370,6 +392,13 @@ def evaluate_harness_evolution(project_root: Path) -> dict[str, object]:
         _result(
             "evolution_candidates_governed",
             "Candidate manifests are schema-valid, scoped, and approval-gated",
+            not candidate_errors,
+            [".harness/evolution/candidates/"],
+            "\n".join(candidate_errors),
+        ),
+        _result(
+            "evolution_candidate_lifecycle_governed",
+            "Candidate lifecycle stages require QA/replay evidence before promotion",
             not candidate_errors,
             [".harness/evolution/candidates/"],
             "\n".join(candidate_errors),
