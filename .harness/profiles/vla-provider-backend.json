@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "vla-provider-backend",
+  "order": 65,
+  "script": "scripts/verification/verify_vla_provider_backend.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/vla-provider-backend-report.json",
+  "description": "Backend proof for advisory-only VLA provider request/result contracts, model registry, scheduler, cache isolation, percept bridge, runtime consumption, and real-provider readiness status"
+}

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "embodied-skeletal-debug-replay",
+  "order": 64,
+  "script": "scripts/verification/verify_embodied_skeletal_debug_replay_pipeline.py",
+  "requires_godot": true,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/embodied-skeletal-debug-replay-report.json",
+  "description": "Runtime and backend proof that embodied skeletal state binds CharacterReplica/Skeleton3D, exports high and mid-level refs to PQF, and keeps full bone snapshots debug replay only"
+}

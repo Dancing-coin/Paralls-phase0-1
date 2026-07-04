@@ -46,6 +46,45 @@ def test_settings_repr_and_dump_hide_route_level_siming_llm_api_key() -> None:
     assert "route-secret" not in str(settings.model_dump())
 
 
+def test_env_siming_llm_routes_json_supports_multi_provider_routes(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app import config
+
+    monkeypatch.setenv(
+        "SIMING_LLM_ROUTES_JSON",
+        json_module.dumps(
+            [
+                {
+                    "route_id": "deepseek-live",
+                    "provider": "deepseek_chat",
+                    "model": "deepseek-chat",
+                    "endpoint": "https://api.deepseek.com/chat/completions",
+                    "api_key": "deepseek-secret",
+                },
+                {
+                    "route_id": "qwen-live",
+                    "provider": "qwen",
+                    "model": "qwen3.7-plus",
+                    "endpoint": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+                    "api_key": "qwen-secret",
+                },
+                {
+                    "route_id": "seed-live",
+                    "provider": "seed_doubao",
+                    "model": "doubao-seed-2.0-pro",
+                    "endpoint": "https://seed.example.invalid/chat/completions",
+                    "api_key": "seed-secret",
+                },
+            ]
+        ),
+    )
+
+    routes = config._env_siming_llm_routes()
+
+    assert [route.provider for route in routes] == ["deepseek_chat", "qwen", "seed_doubao"]
+    assert [route.route_id for route in routes] == ["deepseek-live", "qwen-live", "seed-live"]
+    assert "qwen-secret" not in str(routes[1].model_dump())
+
+
 def test_provider_factory_returns_disabled_without_api_key() -> None:
     provider = build_siming_llm_provider(Settings(siming_llm_mode="http", siming_llm_api_key=None))
 
@@ -188,6 +227,23 @@ def test_provider_factory_builds_deepseek_provider_when_configured() -> None:
     assert isinstance(provider, SimingLlmProviderRouter)
     assert isinstance(provider.providers[0], HttpSimingLlmCandidateProvider)
     assert provider.providers[0].route_id == "deepseek_chat"
+
+
+@pytest.mark.parametrize("provider_name", ["seed_doubao", "qwen"])
+def test_provider_factory_builds_recommended_chat_completion_providers(provider_name: str) -> None:
+    provider = build_siming_llm_provider(
+        Settings(
+            siming_llm_mode="http",
+            siming_llm_api_key="test-key",
+            siming_llm_endpoint="https://example.invalid/api/v3/chat/completions",
+            siming_llm_model="recommended-model",
+            siming_llm_provider_order=[provider_name],
+        )
+    )
+
+    assert isinstance(provider, SimingLlmProviderRouter)
+    assert isinstance(provider.providers[0], HttpSimingLlmCandidateProvider)
+    assert provider.providers[0].route_id == provider_name
 
 
 def test_route_level_openai_response_config_is_used_for_http_request(monkeypatch: pytest.MonkeyPatch) -> None:

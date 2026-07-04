@@ -95,6 +95,7 @@ def run_command_until_markers(
     success_markers: list[str],
     timeout_seconds: float,
     env: dict[str, str] | None = None,
+    require_all_markers: bool = False,
 ) -> SimpleNamespace:
     merged_env = os.environ.copy()
     if env:
@@ -140,6 +141,7 @@ def run_command_until_markers(
     reader_thread = threading.Thread(target=_reader, daemon=True)
     reader_thread.start()
     marker_found = False
+    found_markers: set[str] = set()
     deadline = time.time() + timeout_seconds
     try:
         while time.time() < deadline:
@@ -151,7 +153,14 @@ def run_command_until_markers(
                 continue
             if item is None:
                 break
-            if any(marker in item for marker in success_markers):
+            for marker in success_markers:
+                if marker in item:
+                    found_markers.add(marker)
+            if require_all_markers:
+                if all(marker in found_markers for marker in success_markers):
+                    marker_found = True
+                    break
+            elif found_markers:
                 marker_found = True
                 break
         if marker_found and process.poll() is None:
@@ -165,8 +174,11 @@ def run_command_until_markers(
             pass
         reader_thread.join(timeout=5.0)
     output = "".join(output_lines)
-    if not marker_found and any(marker in output for marker in success_markers):
-        marker_found = True
+    if not marker_found:
+        if require_all_markers:
+            marker_found = all(marker in output for marker in success_markers)
+        else:
+            marker_found = any(marker in output for marker in success_markers)
     return SimpleNamespace(
         returncode=0 if marker_found else (process.returncode if process.returncode is not None else 1),
         stdout=output,

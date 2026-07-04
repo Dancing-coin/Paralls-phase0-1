@@ -54,6 +54,7 @@ from app.services.frontend_authority_event_projection import (
     FRONTEND_AUTHORITY_EVENT_TYPES,
     FrontendAuthorityEventProjector,
 )
+from app.services.interaction_orchestration_service import InteractionOrchestrationService, StructuredInteractionRequest
 from app.services.per_character_percept_filter import filter_candidate_for_actor
 from app.services.phase0_authority_event_adapter import Phase0AuthorityEventAdapter
 from app.services.session_input_router import SessionInputRouter
@@ -114,6 +115,7 @@ def reset_runtime_state() -> None:
     global l1_occupancy_service
     global l1_projection_layer
     global l1_perception_bridge
+    global interaction_orchestration_service
     global _pending_siming_character_dispatch_messages
 
     runtime = SessionInputRouter()
@@ -124,6 +126,7 @@ def reset_runtime_state() -> None:
         character_perceived_input_service.clear()
     character_agent_runtime = CharacterAgentRuntime()
     esm_service = ESMService()
+    interaction_orchestration_service = InteractionOrchestrationService(esm_service=esm_service)
     l1_occupancy_service = SpatialOccupancyService()
     l1_projection_layer = FactProjectionLayer()
     l1_perception_bridge = L1RuntimePerceptionBridge()
@@ -180,6 +183,11 @@ def debug_panel_js() -> Response:
         content=(STATIC_DIR / "debug-panel.js").read_text(encoding="utf-8"),
         media_type="application/javascript",
     )
+
+
+@app.post("/interaction/orchestrate")
+def orchestrate_structured_interaction(payload: StructuredInteractionRequest) -> dict[str, object]:
+    return interaction_orchestration_service.execute(payload).model_dump()
 
 
 @app.websocket("/ws")

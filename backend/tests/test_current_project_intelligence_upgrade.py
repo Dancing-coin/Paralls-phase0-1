@@ -74,11 +74,18 @@ def test_perception_query_frame_and_percept_protocol_enforce_context_isolation()
         )
 
 
-def test_godot_sampling_frontend_declares_four_sampling_only_providers() -> None:
+def test_godot_sampling_frontend_declares_six_sampling_only_providers() -> None:
     manifests = default_sampling_provider_manifests()
     provider_kinds = {manifest.provider_kind for manifest in manifests}
 
-    assert provider_kinds == {"visual_patch", "spatial_patch", "auditory_context", "embodied_state"}
+    assert provider_kinds == {
+        "visual_patch",
+        "spatial_patch",
+        "auditory_context",
+        "embodied_state",
+        "skeletal_state",
+        "environment_field",
+    }
     for manifest in manifests:
         text = (ROOT / manifest.godot_script).read_text(encoding="utf-8")
         assert "sampling_only" in text

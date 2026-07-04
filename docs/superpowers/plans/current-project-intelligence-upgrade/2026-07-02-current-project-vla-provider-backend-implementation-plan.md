@@ -104,6 +104,8 @@
 
 - 每个候选 backend 都有 license 和 runtime boundary 结论
 - 没有任何候选被允许直接写 authority 或控制 actor
+- 本阶段只完成模型选择门和 registry，不等于真实模型 runtime 接入
+- 真实模型接入必须另有 provider adapter 验证、artifact 验证和 timeout/degrade 证据
 
 ## 5. 阶段 D：Slow Path Scheduler
 
@@ -249,6 +251,7 @@ python scripts/verification/harness.py --profile docs
 - `mock-provider-verified`
 - `real-provider-unverified`
 - `godot-runtime-artifact-unverified`
+- `real-provider-verified` 只有在真实开源模型 adapter 被调用、消费真实或等价 runtime artifact refs、产生 schema-valid advisory result、并通过 timeout/degrade 验证后才允许出现
 
 不能把 mock provider proof 写成真实 VLA provider 完整接入。
 

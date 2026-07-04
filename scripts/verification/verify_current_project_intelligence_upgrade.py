@@ -14,8 +14,8 @@ PLAN_TESTS = [
     ),
     (
         "godot_sampling_frontend_and_providers",
-        "Godot sampling frontend exposes four sampling-only providers that feed query frames",
-        "backend/tests/test_current_project_intelligence_upgrade.py::test_godot_sampling_frontend_declares_four_sampling_only_providers",
+        "Godot sampling frontend exposes six sampling-only providers that feed query frames",
+        "backend/tests/test_current_project_intelligence_upgrade.py::test_godot_sampling_frontend_declares_six_sampling_only_providers",
     ),
     (
         "l1_world_fact_and_space_foundation",

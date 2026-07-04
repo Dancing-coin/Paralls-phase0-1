@@ -6,5 +6,5 @@
   "requires_godot": false,
   "include_in_all": false,
   "result_artifact": ".harness/verification/siming-backend-chain-report.json",
-  "description": "Explicit-only backend Siming authority-event chain proof with mandatory live DeepSeek app-wiring verification"
+  "description": "Explicit-only backend Siming authority-event chain proof with mandatory live app-wiring verification for DeepSeek and optional Qwen/Seed-Doubao provider matrix"
 }

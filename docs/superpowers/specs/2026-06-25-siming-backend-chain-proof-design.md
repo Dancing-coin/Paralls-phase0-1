@@ -16,6 +16,7 @@ Add a backend-only Siming verification surface that proves both:
 
 - the Siming backend component chain behaves correctly when assembled directly
 - the real `backend/app/main.py` app wiring can call real DeepSeek and complete the same backend authority-event chain
+- additive live provider proofs for Qwen and Seed/Doubao can run through the same app-wiring chain without replacing the DeepSeek proof
 
 The proof chain is:
 
@@ -23,7 +24,7 @@ The proof chain is:
 AuthorityEvent
 -> SimingEventConsumer
 -> SimingRuntime.tick()
--> DeepSeek or deterministic LLM candidate provider
+-> DeepSeek, Qwen, Seed/Doubao, or deterministic LLM candidate provider
 -> policy / feasibility
 -> SimingEventProducer
 -> InMemoryAuthorityEventBus
@@ -41,6 +42,7 @@ Console output is bilingual Chinese / English. JSON report keys stay stable Engl
 - Do not print API keys, full prompts, full responses, or full candidate explanations.
 - Do not include this live proof in `harness.py --profile all`.
 - Do not let the verification script create an alternate Siming runtime path for the app-wiring proof.
+- Do not replace the DeepSeek live proof when adding Qwen or Seed/Doubao; multi-provider proof is additive.
 
 ## Existing Context
 

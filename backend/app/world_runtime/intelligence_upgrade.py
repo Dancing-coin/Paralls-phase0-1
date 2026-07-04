@@ -6,9 +6,19 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 ConsumerKind = Literal["character", "siming", "non_runtime_tool", "non_runtime_production"]
-ProviderKind = Literal["visual_patch", "spatial_patch", "auditory_context", "embodied_state"]
+ProviderKind = Literal[
+    "visual_patch",
+    "spatial_patch",
+    "auditory_context",
+    "embodied_state",
+    "skeletal_state",
+    "environment_field",
+]
 ModalityKind = Literal["visual_spatial", "auditory", "embodied", "environmental"]
 InteractionChannel = Literal["semantic", "physical"]
+ProviderSampleStatus = Literal["ok", "stub_artifact", "throttled", "stale", "failed"]
+ProviderFreshness = Literal["fresh", "stale", "expired", "unknown"]
+ProviderThrottleState = Literal["allowed", "throttled", "not_applicable"]
 
 
 class TimeWindow(BaseModel):
@@ -52,7 +62,15 @@ class SampleInputRef(BaseModel):
     provider_kind: ProviderKind
     ref_id: str
     summary: str = ""
-    retention: Literal["ref_only", "debug_artifact"] = "ref_only"
+    retention: Literal["ref_only", "debug_artifact", "debug_replay_only"] = "ref_only"
+    sample_status: ProviderSampleStatus = "ok"
+    freshness: ProviderFreshness = "fresh"
+    throttle_state: ProviderThrottleState = "allowed"
+    stable_source_ref: str = ""
+    runtime_source_refs: list[str] = Field(default_factory=list)
+    error: str = ""
+    failure_status: str = ""
+    expires_at: int | None = None
 
 
 class PerceptionQueryFrame(BaseModel):
@@ -68,6 +86,7 @@ class PerceptionQueryFrame(BaseModel):
     spatial_inputs: list[SampleInputRef] = Field(default_factory=list)
     auditory_inputs: list[SampleInputRef] = Field(default_factory=list)
     embodied_inputs: list[SampleInputRef] = Field(default_factory=list)
+    skeletal_inputs: list[SampleInputRef] = Field(default_factory=list)
     environment_inputs: list[SampleInputRef] = Field(default_factory=list)
     structured_fact_refs: list[str] = Field(default_factory=list)
     multimodal_context_id: str
@@ -172,6 +191,16 @@ def default_sampling_provider_manifests() -> list[SamplingProviderManifest]:
             provider_kind="embodied_state",
             godot_script="scripts/character/EmbodiedStateProvider.gd",
             output_fields=["pose", "locomotion_state", "grounded", "los_failure", "reachability_failure"],
+        ),
+        SamplingProviderManifest(
+            provider_kind="skeletal_state",
+            godot_script="scripts/character/SkeletalStateProviderRefEmitter.gd",
+            output_fields=["high_level_state_ref", "mid_level_parameters_ref", "debug_snapshot_ref"],
+        ),
+        SamplingProviderManifest(
+            provider_kind="environment_field",
+            godot_script="scripts/character/EnvironmentFieldProvider.gd",
+            output_fields=["light_refs", "occlusion_refs", "hazard_refs", "passability_refs", "local_field_refs"],
         ),
     ]
 
@@ -489,6 +518,10 @@ class MidLevelSkeletalParameters(BaseModel):
     anchor_refs: dict[str, str] = Field(default_factory=dict)
     facing_vectors: dict[str, list[float]] = Field(default_factory=dict)
     reach_envelope: str = ""
+    balance_hints: list[str] = Field(default_factory=list)
+    strain_hints: list[str] = Field(default_factory=list)
+    hand_readiness: dict[str, str] = Field(default_factory=dict)
+    contact_candidate_refs: list[str] = Field(default_factory=list)
     pose_features: list[str] = Field(default_factory=list)
 
 
@@ -551,6 +584,8 @@ def default_non_runtime_tooling_manifest() -> list[NonRuntimeStackManifest]:
                 "SpatialStructureBaker",
                 "MultimodalSemanticClassifier",
                 "SceneKnowledgeGenerator",
+                "ReviewWorkbench",
+                "DatasetAndReplayBuilder",
             ],
         ),
     ]

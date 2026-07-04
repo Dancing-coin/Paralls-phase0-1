@@ -2,6 +2,8 @@ extends RefCounted
 
 class_name VisualPatchProvider
 
+const ProviderSampleBaseRef = preload("res://scripts/character/ProviderSampleBase.gd")
+
 var provider_kind := "visual_patch"
 var provider_role := "sampling_only"
 var heavy_inference_allowed := false
@@ -11,7 +13,7 @@ var max_samples_per_second := 8
 func build_query_input_ref(subject_id: String, camera_pose: Dictionary, target_ref: String = "") -> Dictionary:
 	var camera_path := str(camera_pose.get("node_path", ""))
 	var runtime_source_ref := "runtime://camera%s/frame/%s" % [camera_path, Time.get_ticks_msec()] if camera_path != "" else "runtime://camera/unresolved/frame/%s" % Time.get_ticks_msec()
-	return {
+	return ProviderSampleBaseRef.attach_sample_metadata({
 		"provider_kind": provider_kind,
 		"ref_id": runtime_source_ref,
 		"summary": "actor-local visual patch sample",
@@ -22,7 +24,7 @@ func build_query_input_ref(subject_id: String, camera_pose: Dictionary, target_r
 		"artifact_ref": str(camera_pose.get("viewport_artifact_ref", "")),
 		"feeds_query_frame": true,
 		"provider_role": provider_role,
-	}
+	}, "runtime://camera%s" % camera_path if camera_path != "" else "runtime://camera/unresolved", "ok", "", max_samples_per_second)
 
 
 func build_camera_pose_ref(camera: Camera3D, artifact_ref: String = "") -> Dictionary:

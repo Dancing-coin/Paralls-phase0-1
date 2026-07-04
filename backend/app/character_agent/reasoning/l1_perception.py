@@ -1,15 +1,20 @@
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
 from app.models.character_perceived import CharacterPerceivedEvent
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
+from app.character_agent.reasoning.actor_scene_knowledge import ActorSceneKnowledgeStore
 from app.world_runtime.intelligence_upgrade import CanonicalPerceptBundle
 
 
 class CharacterAgentL1Service:
     def __init__(self) -> None:
         self._snapshots: dict[str, CharacterPrivateWorldSnapshot] = {}
+        self._ask_store = ActorSceneKnowledgeStore()
 
     def get_snapshot(self, actor_id: str) -> CharacterPrivateWorldSnapshot | None:
         return self._snapshots.get(actor_id)
+
+    def get_actor_scene_knowledge_store(self) -> ActorSceneKnowledgeStore:
+        return self._ask_store
 
     def apply_character_perceived_event(self, event: CharacterPerceivedEvent) -> CharacterPrivateWorldSnapshot:
         snapshot = self._get_or_create_snapshot(
@@ -160,6 +165,11 @@ class CharacterAgentL1Service:
         visibility = str(bundle.environment_state.get("visibility_level", "") or "")
         if visibility in {"reduced", "blocked"}:
             snapshot.salience_tags = self._append_unique(snapshot.salience_tags, f"environment_visibility:{visibility}")
+        self._ask_store.apply_canonical_percept_bundle(
+            bundle,
+            session_id=str(bundle.local_spatial_state.get("session_id", "") or "default"),
+            producer_ts=producer_ts,
+        )
         snapshot.updated_at = producer_ts
         snapshot.producer_ts = producer_ts
         return snapshot

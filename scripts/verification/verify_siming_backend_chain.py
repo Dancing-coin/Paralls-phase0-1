@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import os
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +37,58 @@ SIMING_NON_DISPATCH_EVENT_TYPES = {
     "siming.intervention_decision",
     "siming.audit_recorded",
     "siming.no_action_recorded",
+}
+
+
+@dataclass(frozen=True)
+class LiveProviderProofConfig:
+    provider: str
+    display_name: str
+    scenario: str
+    title: str
+    default_endpoint: str
+    default_model: str
+    api_key_envs: tuple[str, ...]
+    endpoint_envs: tuple[str, ...]
+    model_envs: tuple[str, ...]
+    required_endpoint_marker: str | None = None
+
+
+LIVE_PROVIDER_CONFIGS: dict[str, LiveProviderProofConfig] = {
+    "deepseek_chat": LiveProviderProofConfig(
+        provider="deepseek_chat",
+        display_name="DeepSeek",
+        scenario="app_wiring_live_deepseek_chain",
+        title="App wiring live DeepSeek backend chain",
+        default_endpoint="https://api.deepseek.com/chat/completions",
+        default_model="deepseek-chat",
+        api_key_envs=("SIMING_LLM_DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY"),
+        endpoint_envs=("SIMING_LLM_DEEPSEEK_ENDPOINT", "DEEPSEEK_CHAT_COMPLETIONS_ENDPOINT"),
+        model_envs=("SIMING_LLM_DEEPSEEK_MODEL", "DEEPSEEK_MODEL"),
+        required_endpoint_marker="deepseek.com",
+    ),
+    "qwen": LiveProviderProofConfig(
+        provider="qwen",
+        display_name="Qwen",
+        scenario="app_wiring_live_qwen_chain",
+        title="App wiring live Qwen backend chain",
+        default_endpoint="https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+        default_model="qwen3.7-plus",
+        api_key_envs=("SIMING_LLM_QWEN_API_KEY", "QWEN_API_KEY"),
+        endpoint_envs=("SIMING_LLM_QWEN_ENDPOINT", "QWEN_CHAT_COMPLETIONS_ENDPOINT", "QWEN_BASE_URL"),
+        model_envs=("SIMING_LLM_QWEN_MODEL", "QWEN_MODEL"),
+    ),
+    "seed_doubao": LiveProviderProofConfig(
+        provider="seed_doubao",
+        display_name="Seed/Doubao",
+        scenario="app_wiring_live_seed_doubao_chain",
+        title="App wiring live Seed/Doubao backend chain",
+        default_endpoint="",
+        default_model="doubao-seed-2.0-pro",
+        api_key_envs=("SIMING_LLM_SEED_DOUBAO_API_KEY", "SEED_DOUBAO_API_KEY"),
+        endpoint_envs=("SIMING_LLM_SEED_DOUBAO_ENDPOINT", "SEED_DOUBAO_CHAT_COMPLETIONS_ENDPOINT", "SEED_DOUBAO_BASE_URL"),
+        model_envs=("SIMING_LLM_SEED_DOUBAO_MODEL", "SEED_DOUBAO_MODEL"),
+    ),
 }
 
 
@@ -472,15 +526,61 @@ def _prove_input_family_guard() -> dict[str, object]:
     )
 
 
-def _settings_failure(settings: Settings) -> tuple[str, str] | None:
+def _first_env(*names: str) -> str | None:
+    for name in names:
+        value = os.getenv(name)
+        if value:
+            return value.strip()
+    return None
+
+
+def _matching_route(settings: Settings, provider: str) -> Any | None:
+    for route in settings.siming_llm_routes:
+        if route.enabled and route.provider == provider:
+            return route
+    return None
+
+
+def _live_settings_for_provider(base_settings: Settings, config: LiveProviderProofConfig) -> Settings:
+    route = _matching_route(base_settings, config.provider)
+    uses_legacy_global = (
+        bool(base_settings.siming_llm_provider_order)
+        and base_settings.siming_llm_provider_order[0] == config.provider
+    )
+    api_key = _first_env(*config.api_key_envs)
+    endpoint = _first_env(*config.endpoint_envs)
+    model = _first_env(*config.model_envs)
+    if route is not None:
+        api_key = api_key or route.api_key
+        endpoint = endpoint or route.endpoint
+        model = model or route.model
+    if uses_legacy_global:
+        api_key = api_key or base_settings.siming_llm_api_key
+        endpoint = endpoint or base_settings.siming_llm_endpoint
+        model = model or base_settings.siming_llm_model
+    return base_settings.model_copy(
+        update={
+            "siming_llm_mode": "http",
+            "siming_llm_api_key": api_key,
+            "siming_llm_endpoint": endpoint or config.default_endpoint,
+            "siming_llm_model": model or config.default_model,
+            "siming_llm_provider_order": [config.provider],
+            "siming_llm_routes": [],
+        }
+    )
+
+
+def _settings_failure(settings: Settings, config: LiveProviderProofConfig) -> tuple[str, str] | None:
     if settings.siming_llm_mode != "http":
         return "credential_check", f"SIMING_LLM_MODE={settings.siming_llm_mode}"
     if not settings.siming_llm_api_key:
-        return "credential_check", "missing SIMING_LLM_API_KEY"
+        return "credential_check", f"missing API key for {config.provider}"
     provider_order = list(settings.siming_llm_provider_order)
-    if not provider_order or provider_order[0] != "deepseek_chat":
+    if not provider_order or provider_order[0] != config.provider:
         return "credential_check", f"provider_order={','.join(provider_order) or '<empty>'}"
-    if "deepseek.com" not in settings.siming_llm_endpoint:
+    if not settings.siming_llm_endpoint:
+        return "credential_check", f"missing endpoint for {config.provider}"
+    if config.required_endpoint_marker and config.required_endpoint_marker not in settings.siming_llm_endpoint:
         return "credential_check", f"endpoint={settings.siming_llm_endpoint}"
     return None
 
@@ -489,21 +589,23 @@ def _import_app_main() -> Any:
     return importlib.import_module("app.main")
 
 
-def _prove_app_wiring_live_deepseek_chain() -> dict[str, object]:
-    scenario = "app_wiring_live_deepseek_chain"
-    title = "App wiring live DeepSeek backend chain"
+def _prove_app_wiring_live_provider_chain(config: LiveProviderProofConfig) -> dict[str, object]:
+    scenario = config.scenario
+    title = config.title
     app_main = _import_app_main()
-    settings: Settings = app_main.settings
-    _header(scenario, provider="deepseek_chat", model=settings.siming_llm_model)
+    original_settings: Settings = app_main.settings
+    settings = _live_settings_for_provider(original_settings, config)
+    _header(scenario, provider=config.provider, model=settings.siming_llm_model)
 
-    config_failure = _settings_failure(settings)
+    config_failure = _settings_failure(settings, config)
     if config_failure is not None:
         stage, actual = config_failure
-        expected = "SIMING_LLM_API_KEY is set and provider_order starts with deepseek_chat"
-        hint = "This architecture proof requires a real DeepSeek call through app wiring"
+        expected = f"API key, endpoint, and provider_order are configured for {config.provider}"
+        hint = f"This architecture proof requires a real {config.display_name} call through app wiring"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
         return _fail_entry(scenario, title, stage, expected, actual, hint)
 
+    app_main.settings = settings
     app_main.reset_runtime_state()
     event = _make_visual_fact_event()
     _print("[1/8] 权威事件已接收 / authority event accepted")
@@ -513,19 +615,21 @@ def _prove_app_wiring_live_deepseek_chain() -> dict[str, object]:
         "provider_order=%s endpoint=%s"
         % (",".join(settings.siming_llm_provider_order), settings.siming_llm_endpoint)
     )
-    _print("[3/8] DeepSeek 请求已发送 / DeepSeek request sent")
+    _print(f"[3/8] {config.display_name} 请求已发送 / {config.display_name} request sent")
     _print(f"endpoint={settings.siming_llm_endpoint} timeout={settings.siming_llm_timeout_seconds}")
 
     started = time.perf_counter()
     try:
         app_main.authority_event_bus.publish(event)
     except Exception as exc:
-        stage = "deepseek_request"
-        expected = "DeepSeek request completes through app-wired SimingRuntime"
+        stage = f"{config.provider}_request"
+        expected = f"{config.display_name} request completes through app-wired SimingRuntime"
         message = " ".join(str(exc).split())
         actual = exc.__class__.__name__ + (f": {message[:180]}" if message else "")
-        hint = "Check DeepSeek endpoint, key validity, network, and provider error handling"
+        hint = f"Check {config.display_name} endpoint, key validity, network, and provider error handling"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
+        app_main.settings = original_settings
+        app_main.reset_runtime_state()
         return _fail_entry(scenario, title, stage, expected, actual, hint)
 
     latency_ms = int((time.perf_counter() - started) * 1000)
@@ -543,20 +647,24 @@ def _prove_app_wiring_live_deepseek_chain() -> dict[str, object]:
     read_models = list(evidence["read_models"])  # type: ignore[arg-type]
 
     if "llm_timeout" in audit_statuses:
-        stage = "deepseek_request_timeout"
-        expected = "DeepSeek returns before timeout"
+        stage = f"{config.provider}_request_timeout"
+        expected = f"{config.display_name} returns before timeout"
         reason = _audit_reason(evidence, "llm_timeout")
         actual = "audit_status=llm_timeout" + (f" reason={reason}" if reason else "")
         hint = "The live proof has no retry; increase timeout only if the model path is otherwise healthy"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
+        app_main.settings = original_settings
+        app_main.reset_runtime_state()
         return _fail_entry(scenario, title, stage, expected, actual, hint)
     if "llm_invalid_output" in audit_statuses:
-        stage = "deepseek_response_validation"
+        stage = f"{config.provider}_response_validation"
         expected = "JSON object with explicit LLM candidates array"
         reason = _audit_reason(evidence, "llm_invalid_output")
         actual = "audit_status=llm_invalid_output" + (f" reason={reason}" if reason else "")
-        hint = "DeepSeek returned a non-candidate shape or did not follow the Siming candidate contract"
+        hint = f"{config.display_name} returned a non-candidate shape or did not follow the Siming candidate contract"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
+        app_main.settings = original_settings
+        app_main.reset_runtime_state()
         return _fail_entry(scenario, title, stage, expected, actual, hint)
     if "policy_rejected" in audit_statuses or "feasibility_rejected" in audit_statuses:
         stage = "policy_feasibility"
@@ -565,26 +673,32 @@ def _prove_app_wiring_live_deepseek_chain() -> dict[str, object]:
         actual = f"audit_statuses={audit_statuses}" + (f" reason={reason}" if reason else "")
         hint = "The live candidate reached SimingRuntime but was not executable"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
+        app_main.settings = original_settings
+        app_main.reset_runtime_state()
         return _fail_entry(scenario, title, stage, expected, actual, hint)
     if not candidate_events:
-        stage = "deepseek_response_validation"
+        stage = f"{config.provider}_response_validation"
         expected = "at least one validated LLM candidate event"
         actual = "candidate_count=0"
-        hint = "DeepSeek did not produce a candidate that entered SimingRuntime"
+        hint = f"{config.display_name} did not produce a candidate that entered SimingRuntime"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
+        app_main.settings = original_settings
+        app_main.reset_runtime_state()
         return _fail_entry(scenario, title, stage, expected, actual, hint)
 
     candidate_payload = candidate_events[0].payload
     source = str(candidate_payload.get("source", ""))
     if source != "llm":
-        stage = "deepseek_response_validation"
+        stage = f"{config.provider}_response_validation"
         expected = 'candidate source="llm"'
         actual = f"source={source or '<missing>'}"
-        hint = "DeepSeek candidates must not rely on Pydantic defaults"
+        hint = f"{config.display_name} candidates must not rely on Pydantic defaults"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
+        app_main.settings = original_settings
+        app_main.reset_runtime_state()
         return _fail_entry(scenario, title, stage, expected, actual, hint)
 
-    _print("[4/8] DeepSeek 响应已通过结构校验 / DeepSeek response validated")
+    _print(f"[4/8] {config.display_name} 响应已通过结构校验 / {config.display_name} response validated")
     _print(
         "candidate_count=%s candidate_id=%s source=%s confidence=%s established_fact_ids_count=%s latency_ms=%s"
         % (
@@ -602,6 +716,8 @@ def _prove_app_wiring_live_deepseek_chain() -> dict[str, object]:
         actual = "decision_count=0"
         hint = "Candidate validation passed but runtime did not emit a decision"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
+        app_main.settings = original_settings
+        app_main.reset_runtime_state()
         return _fail_entry(scenario, title, stage, expected, actual, hint)
 
     _print("[5/8] 司命决策已生成 / Siming decision emitted")
@@ -612,6 +728,8 @@ def _prove_app_wiring_live_deepseek_chain() -> dict[str, object]:
         actual = "dispatch_count=0"
         hint = "Producer did not publish the accepted candidate downstream"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
+        app_main.settings = original_settings
+        app_main.reset_runtime_state()
         return _fail_entry(scenario, title, stage, expected, actual, hint)
 
     _print("[6/8] 事件生产者已发布 / producer published authority event")
@@ -622,17 +740,32 @@ def _prove_app_wiring_live_deepseek_chain() -> dict[str, object]:
         actual = f"audit_count={len(audit_records)} read_model_count={len(read_models)}"
         hint = "SimingEventPipeline did not persist live proof evidence"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
+        app_main.settings = original_settings
+        app_main.reset_runtime_state()
         return _fail_entry(scenario, title, stage, expected, actual, hint)
 
     _print("[7/8] 审计与读模型已生成 / audit and read model present")
     _print(f"audit_status={audit_records[0].status} read_model=present")
     _print("[8/8] 结果=通过 / result=PASS")
+    app_main.settings = original_settings
+    app_main.reset_runtime_state()
     return _pass_entry(
         scenario,
         title,
         f"candidate_count={len(candidate_events)}; dispatch_event_type={dispatch_events[0].event_type}; "
         f"audit_count={len(audit_records)}; read_model_count={len(read_models)}; latency_ms={latency_ms}",
     )
+
+
+def _parse_live_providers(raw_values: list[str]) -> list[str]:
+    values = raw_values or [os.getenv("SIMING_BACKEND_CHAIN_LIVE_PROVIDERS", "deepseek_chat")]
+    providers: list[str] = []
+    for raw_value in values:
+        for provider in raw_value.split(","):
+            normalized = provider.strip()
+            if normalized:
+                providers.append(normalized)
+    return providers or ["deepseek_chat"]
 
 
 def _write_report(entries: list[dict[str, object]]) -> dict[str, object]:
@@ -664,6 +797,15 @@ def main() -> int:
         help="Run deterministic component-chain scenarios only; this is not the full live architecture proof.",
     )
     parser.add_argument("--live-deepseek", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--live-provider",
+        action="append",
+        default=[],
+        help=(
+            "Require a live app-wiring proof for a provider. May be repeated or comma-separated. "
+            "Supported: deepseek_chat, qwen, seed_doubao. Defaults to deepseek_chat."
+        ),
+    )
     args = parser.parse_args()
 
     entries = [
@@ -683,8 +825,24 @@ def main() -> int:
         _prove_timeout_scenario(),
         _prove_input_family_guard(),
     ]
-    if not args.component_only or args.live_deepseek:
-        entries.append(_prove_app_wiring_live_deepseek_chain())
+    if args.live_deepseek and "deepseek_chat" not in args.live_provider:
+        args.live_provider.append("deepseek_chat")
+    if not args.component_only or args.live_provider:
+        for provider in _parse_live_providers(args.live_provider):
+            config = LIVE_PROVIDER_CONFIGS.get(provider)
+            if config is None:
+                entries.append(
+                    _fail_entry(
+                        f"app_wiring_live_{provider}_chain",
+                        f"App wiring live {provider} backend chain",
+                        "provider_selection",
+                        "provider is one of deepseek_chat,qwen,seed_doubao",
+                        f"provider={provider}",
+                        "Use --live-provider with a registered Siming live provider",
+                    )
+                )
+                continue
+            entries.append(_prove_app_wiring_live_provider_chain(config))
 
     report = _write_report(entries)
     _print(f"siming_backend_chain_report_json={report['artifacts']['json']}")  # type: ignore[index]

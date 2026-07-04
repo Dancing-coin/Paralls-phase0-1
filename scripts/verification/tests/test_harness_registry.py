@@ -30,6 +30,15 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "l1-world-fact-runtime",
         "phase1-slice",
         "mainline-unified-runtime",
+        "model-provider-readiness",
+        "godot-sampling-production-grade-providers",
+        "embodied-skeletal-debug-replay",
+        "vla-provider-backend",
+        "actor-scene-knowledge-lifecycle",
+        "siming-global-situation-layer",
+        "interaction-orchestration-service",
+        "esm-physical-channel-world-actuation",
+        "non-runtime-production-pipeline",
     ]
     assert registry.profiles["docs"]["script"] == "scripts/verification/check_docs.py"
     assert registry.profiles["backend-contract"]["script"] == "scripts/verification/check_backend_contract.py"
@@ -42,6 +51,13 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["harness-evolution"]["script"] == "scripts/verification/check_harness_evolution.py"
     assert registry.profiles["siming-backend-chain"]["script"] == "scripts/verification/verify_siming_backend_chain.py"
     assert registry.profiles["siming-backend-chain"]["include_in_all"] is False
+    assert registry.profiles["model-provider-readiness"]["script"] == "scripts/verification/verify_model_provider_readiness.py"
+    assert registry.profiles["vla-provider-backend"]["script"] == "scripts/verification/verify_vla_provider_backend.py"
+    assert registry.profiles["actor-scene-knowledge-lifecycle"]["script"] == "scripts/verification/verify_actor_scene_knowledge_runtime.py"
+    assert registry.profiles["siming-global-situation-layer"]["script"] == "scripts/verification/verify_siming_global_situation_runtime.py"
+    assert registry.profiles["interaction-orchestration-service"]["script"] == "scripts/verification/verify_interaction_orchestration_runtime_service.py"
+    assert registry.profiles["esm-physical-channel-world-actuation"]["script"] == "scripts/verification/verify_esm_physical_channel_runtime.py"
+    assert registry.profiles["non-runtime-production-pipeline"]["script"] == "scripts/verification/verify_non_runtime_production_pipeline.py"
     assert registry.profiles["phase0"]["requires_godot"] is True
     assert registry.profiles["mainline-unified-runtime"]["script"] == "scripts/verification/verify_mainline_unified_runtime.py"
     assert "not a product L1 runtime" in registry.profiles["l1-world-fact-runtime"]["description"]

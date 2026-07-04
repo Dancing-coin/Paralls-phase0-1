@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "interaction-orchestration-service",
+  "order": 68,
+  "script": "scripts/verification/verify_interaction_orchestration_runtime_service.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/interaction-orchestration-service-report.json",
+  "description": "Backend proof for structured interaction orchestration policies, semantic ESM path, physical seam, degrade paths, and unified result merge"
+}

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "actor-scene-knowledge-lifecycle",
+  "order": 66,
+  "script": "scripts/verification/verify_actor_scene_knowledge_runtime.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/actor-scene-knowledge-lifecycle-report.json",
+  "description": "Backend proof for actor-private Actor Scene Knowledge lifecycle, freshness/conflict/revision handling, and active perception returning to PQF/provider refs"
+}

@@ -668,3 +668,31 @@ def test_run_command_until_markers_terminates_once_marker_is_seen(tmp_path: Path
     assert result.returncode == 0
     assert result.marker_found is True
     assert "MARKER_OK" in log_path.read_text(encoding="utf-8")
+
+
+def test_run_command_until_markers_can_wait_for_all_markers(tmp_path: Path) -> None:
+    script = tmp_path / "emit_markers.py"
+    script.write_text(
+        "import time\n"
+        "print('FIRST_OK', flush=True)\n"
+        "time.sleep(0.2)\n"
+        "print('SECOND_OK', flush=True)\n"
+        "time.sleep(30)\n",
+        encoding="utf-8",
+    )
+    log_path = tmp_path / "markers.log"
+
+    result = common.run_command_until_markers(
+        [sys.executable, str(script)],
+        tmp_path,
+        log_path,
+        success_markers=["FIRST_OK", "SECOND_OK"],
+        timeout_seconds=5.0,
+        require_all_markers=True,
+    )
+
+    log_text = log_path.read_text(encoding="utf-8")
+    assert result.returncode == 0
+    assert result.marker_found is True
+    assert "FIRST_OK" in log_text
+    assert "SECOND_OK" in log_text

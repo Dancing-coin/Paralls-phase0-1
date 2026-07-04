@@ -16,22 +16,9 @@ class CharacterModelProvider:
         timeout_seconds: float = 20.0,
     ) -> None:
         self._provider_kind = (provider_kind or os.getenv("CHARACTER_MODEL_PROVIDER_KIND", "deepseek")).strip() or "deepseek"
-        self._endpoint_url = (
-            endpoint_url
-            or os.getenv("DEEPSEEK_BASE_URL", "")
-            or os.getenv("CHARACTER_MODEL_ENDPOINT", "")
-            or "https://api.deepseek.com"
-        ).strip()
-        self._api_key = (
-            api_key
-            or os.getenv("DEEPSEEK_API_KEY", "")
-            or os.getenv("CHARACTER_MODEL_API_KEY", "")
-        ).strip()
-        self._model_name = (
-            model_name
-            or os.getenv("DEEPSEEK_MODEL", "")
-            or "deepseek-v4-flash"
-        ).strip()
+        self._endpoint_url = self._default_endpoint(endpoint_url)
+        self._api_key = self._default_api_key(api_key)
+        self._model_name = self._default_model(model_name)
         self._timeout_seconds = timeout_seconds
 
     def complete(self, request: dict[str, object]) -> dict[str, object]:
@@ -43,6 +30,11 @@ class CharacterModelProvider:
         if provider_kind == "local":
             return self._offline_complete(request)
         if provider_kind == "deepseek":
+            return self._coerce_output_for_task(
+                str(request.get("task_kind", "") or ""),
+                self._complete_via_deepseek(request),
+            )
+        if provider_kind in {"qwen", "seed_doubao", "openai_compatible"}:
             return self._coerce_output_for_task(
                 str(request.get("task_kind", "") or ""),
                 self._complete_via_deepseek(request),
@@ -60,6 +52,65 @@ class CharacterModelProvider:
         if self._requires_model_semantic_ownership(task_kind):
             raise ValueError(f"unsupported provider_kind for model-led task: {provider_kind or 'unknown'}")
         return self._offline_complete(request)
+
+    def _default_endpoint(self, endpoint_url: str | None) -> str:
+        if endpoint_url:
+            return endpoint_url.strip()
+        if self._provider_kind == "qwen":
+            return (
+                os.getenv("CHARACTER_MODEL_ENDPOINT", "")
+                or os.getenv("QWEN_BASE_URL", "")
+                or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+            ).strip()
+        if self._provider_kind == "seed_doubao":
+            return (
+                os.getenv("CHARACTER_MODEL_ENDPOINT", "")
+                or os.getenv("SEED_DOUBAO_BASE_URL", "")
+            ).strip()
+        return (
+            os.getenv("DEEPSEEK_BASE_URL", "")
+            or os.getenv("CHARACTER_MODEL_ENDPOINT", "")
+            or "https://api.deepseek.com"
+        ).strip()
+
+    def _default_api_key(self, api_key: str | None) -> str:
+        if api_key:
+            return api_key.strip()
+        if self._provider_kind == "qwen":
+            return (
+                os.getenv("CHARACTER_MODEL_API_KEY", "")
+                or os.getenv("QWEN_API_KEY", "")
+            ).strip()
+        if self._provider_kind == "seed_doubao":
+            return (
+                os.getenv("CHARACTER_MODEL_API_KEY", "")
+                or os.getenv("SEED_DOUBAO_API_KEY", "")
+            ).strip()
+        return (
+            os.getenv("DEEPSEEK_API_KEY", "")
+            or os.getenv("CHARACTER_MODEL_API_KEY", "")
+        ).strip()
+
+    def _default_model(self, model_name: str | None) -> str:
+        if model_name:
+            return model_name.strip()
+        if self._provider_kind == "qwen":
+            return (
+                os.getenv("CHARACTER_MODEL_MODEL", "")
+                or os.getenv("QWEN_MODEL", "")
+                or "qwen3.7-plus"
+            ).strip()
+        if self._provider_kind == "seed_doubao":
+            return (
+                os.getenv("CHARACTER_MODEL_MODEL", "")
+                or os.getenv("SEED_DOUBAO_MODEL", "")
+                or "doubao-seed-2.0-pro"
+            ).strip()
+        return (
+            os.getenv("DEEPSEEK_MODEL", "")
+            or os.getenv("CHARACTER_MODEL_MODEL", "")
+            or "deepseek-v4-flash"
+        ).strip()
 
     def _requires_model_semantic_ownership(self, task_kind: str) -> bool:
         return task_kind in {"l2_reasoning", "l3_planning"}

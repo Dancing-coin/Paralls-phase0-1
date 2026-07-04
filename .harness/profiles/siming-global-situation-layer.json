@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "siming-global-situation-layer",
+  "order": 67,
+  "script": "scripts/verification/verify_siming_global_situation_runtime.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/siming-global-situation-layer-report.json",
+  "description": "Backend proof for Siming global situation snapshots from public facts/results/advisory evidence with siming_mm context isolation"
+}

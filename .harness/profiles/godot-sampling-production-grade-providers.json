@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "godot-sampling-production-grade-providers",
+  "order": 63,
+  "script": "scripts/verification/verify_godot_sampling_production_grade_providers.py",
+  "requires_godot": true,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/godot-sampling-production-grade-providers-report.json",
+  "description": "Runtime and backend proof for production-grade Godot sampling provider refs covering visual, spatial, auditory, embodied, skeletal, and environment inputs"
+}

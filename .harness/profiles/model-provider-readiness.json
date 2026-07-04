@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "name": "model-provider-readiness",
+  "order": 62,
+  "script": "scripts/verification/verify_model_provider_readiness.py",
+  "requires_godot": false,
+  "description": "Model provider readiness ledger for character text, Siming candidate, VLA spatial, and non-runtime production model entry points"
+}

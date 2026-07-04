@@ -9,7 +9,7 @@ from app.models.siming_event import FairnessStateSnapshot, InterventionCandidate
 from app.config import Settings, SimingLlmRouteSettings
 
 
-DEEPSEEK_REQUIRED_CANDIDATE_FIELDS = {
+CHAT_COMPLETIONS_REQUIRED_CANDIDATE_FIELDS = {
     "candidate_id",
     "room_id",
     "scene_id",
@@ -147,8 +147,8 @@ class HttpSimingLlmCandidateProvider:
                 raise TypeError("provider response candidates must be a list")
             candidates: list[InterventionCandidate] = []
             for index, item in enumerate(raw_candidates):
-                if self._provider_name == "deepseek_chat":
-                    self._validate_deepseek_candidate(item, index)
+                if self._provider_name in {"deepseek_chat", "seed_doubao", "qwen"}:
+                    self._validate_chat_completions_candidate(item, index)
                 candidates.append(InterventionCandidate.model_validate(item))
             return candidates
         except (KeyError, TypeError, ValueError, ValidationError, AttributeError) as exc:
@@ -161,8 +161,8 @@ class HttpSimingLlmCandidateProvider:
         recent_events: list[AuthorityEvent],
         recent_audit: list[SimingAuditRecord],
     ) -> dict[str, object]:
-        if self._provider_name == "deepseek_chat":
-            return self._deepseek_payload(
+        if self._provider_name in {"deepseek_chat", "seed_doubao", "qwen"}:
+            return self._chat_completions_payload(
                 snapshot=snapshot,
                 recent_events=recent_events,
                 recent_audit=recent_audit,
@@ -263,7 +263,7 @@ class HttpSimingLlmCandidateProvider:
             },
         }
 
-    def _deepseek_payload(
+    def _chat_completions_payload(
         self,
         *,
         snapshot: FairnessStateSnapshot,
@@ -309,7 +309,7 @@ class HttpSimingLlmCandidateProvider:
     def _candidate_data_from_response(self, data: object) -> dict[str, object]:
         if not isinstance(data, dict):
             raise TypeError("provider response JSON must be an object")
-        if self._provider_name == "deepseek_chat":
+        if self._provider_name in {"deepseek_chat", "seed_doubao", "qwen"}:
             return self._candidate_data_from_deepseek_response(data)
         if isinstance(data.get("output_text"), str):
             parsed = json.loads(str(data["output_text"]))
@@ -354,20 +354,20 @@ class HttpSimingLlmCandidateProvider:
                 return parsed
         raise KeyError("provider response missing message content")
 
-    def _validate_deepseek_candidate(self, item: object, index: int) -> None:
+    def _validate_chat_completions_candidate(self, item: object, index: int) -> None:
         if not isinstance(item, dict):
-            raise TypeError(f"deepseek candidate {index} must be an object")
-        missing = sorted(DEEPSEEK_REQUIRED_CANDIDATE_FIELDS.difference(item.keys()))
+            raise TypeError(f"chat-completions candidate {index} must be an object")
+        missing = sorted(CHAT_COMPLETIONS_REQUIRED_CANDIDATE_FIELDS.difference(item.keys()))
         if missing:
-            raise ValueError(f"deepseek candidate {index} missing explicit field(s): {', '.join(missing)}")
+            raise ValueError(f"chat-completions candidate {index} missing explicit field(s): {', '.join(missing)}")
         target_actor_id = str(item.get("target_actor_id", "") or "").strip()
         target_environment_id = str(item.get("target_environment_id", "") or "").strip()
         if target_actor_id == "" and target_environment_id == "":
             raise ValueError(
-                f"deepseek candidate {index} missing explicit target_actor_id or target_environment_id"
+                f"chat-completions candidate {index} missing explicit target_actor_id or target_environment_id"
             )
         if item.get("source") != "llm":
-            raise ValueError(f"deepseek candidate {index} source must be llm")
+            raise ValueError(f"chat-completions candidate {index} source must be llm")
 
 
 class FakeSimingLlmCandidateProvider:
@@ -397,7 +397,7 @@ def build_siming_llm_provider(settings: Settings) -> SimingLlmCandidateProvider:
         for provider_name in settings.siming_llm_provider_order:
             if provider_name == "disabled":
                 providers.append(DisabledSimingLlmCandidateProvider())
-            elif provider_name in {"openai_responses", "deepseek_chat"}:
+            elif provider_name in {"openai_responses", "deepseek_chat", "seed_doubao", "qwen"}:
                 providers.append(_build_openai_responses_provider(settings))
     return SimingLlmProviderRouter(providers or [DisabledSimingLlmCandidateProvider()])
 
@@ -405,7 +405,7 @@ def build_siming_llm_provider(settings: Settings) -> SimingLlmCandidateProvider:
 def _build_route_provider(settings: Settings, route: SimingLlmRouteSettings) -> SimingLlmCandidateProvider:
     if not route.enabled or route.provider == "disabled":
         return DisabledSimingLlmCandidateProvider()
-    if route.provider in {"openai_responses", "deepseek_chat"}:
+    if route.provider in {"openai_responses", "deepseek_chat", "seed_doubao", "qwen"}:
         return _build_openai_responses_provider(settings, route=route)
     return DisabledSimingLlmCandidateProvider()
 
@@ -418,12 +418,8 @@ def _build_openai_responses_provider(
     api_key = route.api_key if route is not None and route.api_key is not None else settings.siming_llm_api_key
     if settings.siming_llm_mode != "http" or not api_key:
         return DisabledSimingLlmCandidateProvider()
-    provider_name = route.provider if route is not None else (
-        "deepseek_chat" if settings.siming_llm_provider_order[:1] == ["deepseek_chat"] else "openai_responses"
-    )
-    route_id = route.route_id if route is not None else (
-        "deepseek_chat" if settings.siming_llm_provider_order[:1] == ["deepseek_chat"] else "openai_responses"
-    )
+    provider_name = route.provider if route is not None else settings.siming_llm_provider_order[0]
+    route_id = route.route_id if route is not None else settings.siming_llm_provider_order[0]
     return HttpSimingLlmCandidateProvider(
         api_key=api_key,
         endpoint=route.endpoint if route is not None and route.endpoint is not None else settings.siming_llm_endpoint,

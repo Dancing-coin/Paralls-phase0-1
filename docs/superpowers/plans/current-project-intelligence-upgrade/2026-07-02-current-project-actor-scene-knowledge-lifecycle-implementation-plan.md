@@ -56,15 +56,19 @@
 任务：
 
 - [ ] 定义 `ActivePerceptionRequest`
+- [ ] 定义 `ActivePerceptionResult`
 - [ ] 从 stale/conflict/failure 生成 request
 - [ ] request 输出到 PQF 构造入口
-- [ ] result 回写 ASK store
+- [ ] `ActivePerceptionResult` 携带 source refs、freshness、confidence、conflict refs 和 failure reason
+- [ ] result 回写 ASK store，并生成 revision/conflict/resolve 记录
 
 验收：
 
 - expected target missing 可触发 recheck
 - repeated reachability failure 可触发 new PQF
 - request 不绕过 Godot/L1 provider refs
+- `ActivePerceptionResult` 可证明来自 PQF/provider 链路，而不是手工旁路输入
+- result 回写后可观察到 ASK entry revision 或 conflict resolution
 
 ## 阶段 D：Trace 与 Harness
 

@@ -103,10 +103,11 @@ def test_phase0_verify_script_reads_character_agent_execution_probe_report() -> 
 def test_phase0_verify_script_runs_backend_pytest_before_starting_runtime_backend() -> None:
     source = (Path(__file__).resolve().parents[1] / "verify_phase0.py").read_text(encoding="utf-8")
 
-    pytest_index = source.index('pytest_result = run_command([python_exe, "-m", "pytest", "-v"], project_root / "backend", pytest_log)')
+    pytest_index = source.index("pytest_result = run_command(")
     ensure_backend_index = source.index("health, backend_process = ensure_backend(")
 
     assert pytest_index < ensure_backend_index
+    assert '"PYTHONPATH": pytest_pythonpath' in source
 
 
 def test_phase0_main_demo_ignores_preopen_disconnect_before_first_backend_connected() -> None:

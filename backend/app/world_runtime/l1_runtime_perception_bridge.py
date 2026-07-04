@@ -74,6 +74,8 @@ class L1RuntimePerceptionBridge:
             spatial_inputs=self._sample_refs(refs.get("spatial_inputs", [])),
             auditory_inputs=self._sample_refs(refs.get("auditory_inputs", [])),
             embodied_inputs=self._sample_refs(refs.get("embodied_inputs", [])),
+            skeletal_inputs=self._sample_refs(refs.get("skeletal_inputs", [])),
+            environment_inputs=self._sample_refs(refs.get("environment_inputs", [])),
             structured_fact_refs=fact_refs,
             attention_target_actor_ids=target_actor_ids,
             attention_target_object_ids=target_object_ids,
@@ -182,6 +184,22 @@ class L1RuntimePerceptionBridge:
                     "retention": "ref_only",
                 }
             ],
+            "skeletal_inputs": [
+                {
+                    "provider_kind": "skeletal_state",
+                    "ref_id": f"runtime://embodied_skeletal/{actor_id}/high_mid/{ended_at}",
+                    "summary": "high and mid-level skeletal refs; full bones stay debug replay only",
+                    "retention": "ref_only",
+                }
+            ],
+            "environment_inputs": [
+                {
+                    "provider_kind": "environment_field",
+                    "ref_id": f"runtime://environment/{zone_id}/field/{ended_at}",
+                    "summary": "local light, occlusion, hazard and passability field refs",
+                    "retention": "ref_only",
+                }
+            ],
         }
 
     @staticmethod
@@ -242,6 +260,9 @@ class L1RuntimePerceptionBridge:
         refs = provider_refs.get("embodied_inputs", [])
         return {
             "provider_input_refs": [entry.get("ref_id", "") for entry in refs],
+            "skeletal_input_refs": [
+                entry.get("ref_id", "") for entry in provider_refs.get("skeletal_inputs", [])
+            ],
             "source": "runtime_provider_refs",
         }
 

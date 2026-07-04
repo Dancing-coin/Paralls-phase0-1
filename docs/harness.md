@@ -23,6 +23,11 @@ python scripts/verification/harness.py --profile phase1-slice
 python scripts/verification/harness.py --profile siming-backend-chain
 python scripts/verification/harness.py --profile l1-world-fact-runtime
 python scripts/verification/harness.py --profile mainline-unified-runtime
+python scripts/verification/harness.py --profile model-provider-readiness
+python scripts/verification/harness.py --profile godot-sampling-production-grade-providers
+python scripts/verification/harness.py --profile embodied-skeletal-debug-replay
+python scripts/verification/harness.py --profile vla-provider-backend
+python scripts/verification/harness.py --profile non-runtime-production-pipeline
 python scripts/verification/harness.py --profile all
 ```
 
@@ -367,9 +372,9 @@ Output:
 
 ### `siming-backend-chain`
 
-Explicit-only backend architecture proof for Siming. This profile does not start Godot and does not rely on frontend `siming_output` projection. It proves deterministic component-chain scenarios and a real app-wiring DeepSeek path through `backend/app/main.py`.
+Explicit-only backend architecture proof for Siming. This profile does not start Godot and does not rely on frontend `siming_output` projection. It proves deterministic component-chain scenarios and real app-wiring model-provider paths through `backend/app/main.py`.
 
-This profile is intentionally excluded from `all` by `include_in_all=false` because it requires a real `SIMING_LLM_API_KEY` and a live DeepSeek request:
+This profile is intentionally excluded from `all` by `include_in_all=false` because live provider proof requires real model credentials and network calls. By default it still requires the legacy DeepSeek live proof:
 
 ```powershell
 python scripts/verification/harness.py --profile siming-backend-chain
@@ -386,16 +391,198 @@ SIMING_LLM_MODEL=deepseek-chat
 SIMING_LLM_TIMEOUT_SECONDS=8.0
 ```
 
+Qwen and Seed/Doubao live proofs are additive, not replacements for DeepSeek. Require them explicitly with `--live-provider` or `SIMING_BACKEND_CHAIN_LIVE_PROVIDERS`:
+
+```powershell
+python scripts/verification/verify_siming_backend_chain.py --live-provider deepseek_chat --live-provider qwen --live-provider seed_doubao
+```
+
+Provider-specific environment variables are preferred for the additive matrix:
+
+```env
+SIMING_LLM_QWEN_API_KEY=<real Qwen key>
+SIMING_LLM_QWEN_ENDPOINT=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+SIMING_LLM_QWEN_MODEL=qwen3.7-plus
+
+SIMING_LLM_SEED_DOUBAO_API_KEY=<real Seed/Doubao key>
+SIMING_LLM_SEED_DOUBAO_ENDPOINT=<real Seed/Doubao chat-completions endpoint>
+SIMING_LLM_SEED_DOUBAO_MODEL=doubao-seed-2.0-pro
+```
+
+For actual runtime multi-route configuration, set `SIMING_LLM_ROUTES_JSON` to a JSON array of route objects using providers `deepseek_chat`, `qwen`, and `seed_doubao`. Route-level keys are excluded from settings dumps.
+
 Output:
 
 - `.harness/verification/siming-backend-chain-report.json`
 - `.harness/verification/siming-backend-chain-report.md`
 
+### `model-provider-readiness`
+
+Static/readiness verification for current project model provider entry points. This profile does not start Godot and does not use mock providers as completion evidence.
+
+Current proof includes:
+
+- a redacted model provider ledger for `character_text`, `siming_candidate`, `vla_spatial`, and `production_multimodal`
+- clear status separation between `disabled`, `blocked_missing_credentials`, `blocked_missing_artifacts`, `http_configured_unverified`, `contract_ready`, and `real_provider_verified`
+- Qwen/Seed/Doubao preferred configuration examples without API key leakage
+- boundary evidence that model outputs cannot directly write world truth, ESM authority, object/environment state, body state, or shared private context/cache/history
+
+Output:
+
+- `.harness/verification/model-provider-readiness-report.json`
+- `.harness/verification/model-provider-readiness-report.md`
+
+### `godot-sampling-production-grade-providers`
+
+Runtime and backend verification for production-grade Godot sampling provider refs.
+
+Current proof includes:
+
+- visual, spatial, auditory, embodied, skeletal, and environment provider refs from a Godot runtime probe
+- provider sample status, freshness, throttle, retention, stable source refs, and structured failure fields
+- schema-valid `PerceptionQueryFrame` assembly from provider refs
+- no heavy inference, heavy voxelization, or full-scene runtime rescan in providers
+- debug replay retention for skeletal snapshot refs
+
+Output:
+
+- `.harness/verification/godot-sampling-production-grade-providers-report.json`
+- `.harness/verification/godot-sampling-production-grade-providers-report.md`
+- `.harness/verification/godot-sampling-production-grade-providers-runtime.json`
+
+### `embodied-skeletal-debug-replay`
+
+Runtime and backend verification for the embodied skeletal debug replay pipeline.
+
+Current proof includes:
+
+- Godot runtime binding from `PlayerCharacter` to `CharacterReplica` and a real `Skeleton3D`
+- high-level embodied state and mid-level skeletal parameters entering the main perception payload
+- anchor refs, facing vectors, reach envelope, balance/strain hints, hand readiness, contact candidates, and pose feature tags
+- full bone snapshot exclusion from the main chain
+- `.harness/verification/skeletal-replay-*.json` debug replay artifacts with `debug_replay_only` retention and failure trace refs
+
+Output:
+
+- `.harness/verification/embodied-skeletal-debug-replay-report.json`
+- `.harness/verification/embodied-skeletal-debug-replay-report.md`
+- `.harness/verification/embodied-skeletal-debug-replay-runtime.json`
+
+### `vla-provider-backend`
+
+Backend verification for the advisory-only VLA provider slow path. This profile does not claim real Qwen3-VL or Seed provider verification without credentials and a successful adapter call.
+
+Current proof includes:
+
+- `PerceptionQueryFrame` to `VLAProviderRequest` conversion using artifact refs and structured fact refs only
+- advisory-only `VLAProviderResult` validation
+- Qwen3-VL and Seed model registry entries with license/deployment/runtime boundary metadata
+- per-owner slow-path scheduler queues with character/Siming separation, timeout/degrade traces, dedupe, stale discard, and max queue behavior
+- cache keys with context namespace, artifact refs hash, structured fact refs hash, model version, and freshness checks
+- `VLAProviderResult -> ModalityInterpretationResult -> CrossModalUnderstandingResult -> CanonicalPerceptBundle` advisory bridge
+- explicit real-provider readiness states such as `blocked_missing_credentials`, `configured_unverified`, or `real_provider_verified`
+
+Output:
+
+- `.harness/verification/vla-provider-backend-report.json`
+- `.harness/verification/vla-provider-backend-report.md`
+- `.harness/verification/vla-provider-backend-trace.json`
+
+### `actor-scene-knowledge-lifecycle`
+
+Backend verification for actor-private Actor Scene Knowledge lifecycle and active perception.
+
+Current proof includes:
+
+- actor/session/scene-isolated ASK entries
+- revision, conflict, stale, and expiry lifecycle behavior
+- VLA advisory conflict recording without overwriting L1 projected fact truth
+- active perception requests returning to `PerceptionQueryFrame` and provider refs
+
+Output:
+
+- `.harness/verification/actor-scene-knowledge-lifecycle-report.json`
+- `.harness/verification/actor-scene-knowledge-lifecycle-report.md`
+- `.harness/verification/actor-scene-knowledge-lifecycle-trace.json`
+
+### `siming-global-situation-layer`
+
+Backend verification for Siming's global situation layer.
+
+Current proof includes:
+
+- global situation snapshots assembled from public L1 facts, authority events, world results, environment/evidence events, VLA global advisory findings, and multi-actor patches
+- `siming_mm:*` context isolation and character private cache rejection
+- visibility imbalance, fairness pressure, evidence chain, and intervention candidate evidence
+- advisory findings enhancing pressure/conflict metadata without overriding world truth
+
+Output:
+
+- `.harness/verification/siming-global-situation-layer-report.json`
+- `.harness/verification/siming-global-situation-layer-report.md`
+- `.harness/verification/siming-global-situation-layer-trace.json`
+
+### `interaction-orchestration-service`
+
+Backend verification for structured interaction orchestration.
+
+Current proof includes:
+
+- semantic-only, physical-only, mixed, denied-by-constraint, requires-active-perception, and requires-authority-confirmation policies
+- semantic-only path using existing ESM settlement
+- structured intent boundary that rejects raw keyboard/mouse/camera noise
+- mixed semantic/physical merge into one unified result family
+- degrade paths that do not apply physical effects
+
+Output:
+
+- `.harness/verification/interaction-orchestration-service-report.json`
+- `.harness/verification/interaction-orchestration-service-report.md`
+- `.harness/verification/interaction-orchestration-service-trace.json`
+
+### `esm-physical-channel-world-actuation`
+
+Backend and Godot runtime verification for the ESM physical channel.
+
+Current proof includes:
+
+- contact, push, pull, carry, grab, and blocking physical effect kinds
+- Godot runtime adapter/probe scene that emits structured contact/body/object/environment refs only
+- constraint failures preventing physical effect application
+- object/environment/body state observation refs visible in the unified result family
+- mixed physical effects entering through Interaction Orchestration Service
+
+Output:
+
+- `.harness/verification/esm-physical-channel-world-actuation-report.json`
+- `.harness/verification/esm-physical-channel-world-actuation-report.md`
+- `.harness/verification/esm-physical-channel-world-actuation-trace.json`
+- `.harness/verification/esm-physical-channel-godot-runtime.json`
+
+### `non-runtime-production-pipeline`
+
+Backend/offline verification for the non-runtime production pipeline. This profile does not start Godot and does not claim runtime completion.
+
+Current proof includes:
+
+- scene semantic draft, spatial bake, multimodal classification, affordance annotation, review report, and replay dataset artifact contracts
+- `draft` / `review` / `approved` / `rejected` review gate states
+- approved artifacts can become reviewed L1 seed inputs or verification replay datasets
+- rejected drafts are blocked from runtime, L1 seed, and replay dataset consumption
+- runtime private context, private cache, and inference history markers are rejected
+- production multimodal model status follows `model-provider-readiness`; mock providers are not accepted as completion evidence
+
+Output:
+
+- `.harness/verification/non-runtime-production-pipeline-report.json`
+- `.harness/verification/non-runtime-production-pipeline-report.md`
+- `.harness/verification/non-runtime-production-pipeline-trace.json`
+
 ### `all`
 
-Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, `phase1-slice`, `l1-world-fact-runtime`, and `mainline-unified-runtime` in order. It stops on the first failed profile.
+Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, `phase1-slice`, `l1-world-fact-runtime`, `mainline-unified-runtime`, `model-provider-readiness`, `godot-sampling-production-grade-providers`, `embodied-skeletal-debug-replay`, `vla-provider-backend`, `actor-scene-knowledge-lifecycle`, `siming-global-situation-layer`, `interaction-orchestration-service`, `esm-physical-channel-world-actuation`, and `non-runtime-production-pipeline` in order. It stops on the first failed profile.
 
-`siming-backend-chain` is excluded from `all` because it requires live DeepSeek credentials.
+`siming-backend-chain` is excluded from `all` because it requires live model-provider credentials.
 
 ### `mainline-unified-runtime`
 
@@ -444,7 +631,7 @@ When a profile fails, the runner writes a deterministic failure digest such as `
 - Static checks prove only static wiring.
 - Runtime claims require `phase0`, `phase1-slice`, or `mainline-unified-runtime`, depending on the scope being claimed.
 - L1 subsystem integration claims may use `l1-world-fact-runtime`; this is a runtime-verification profile, not a product runtime.
-- Backend-only live Siming/DeepSeek architecture claims require explicit `siming-backend-chain`.
+- Backend-only live Siming model-provider architecture claims require explicit `siming-backend-chain`.
 - Godot claims require scene execution or Godot MCP/editor inspection.
 - Generated evidence should stay under `.harness/verification/`.
 - Profile and rule manifests stay under `.harness/profiles/` and `.harness/rules/`.

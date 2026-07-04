@@ -80,6 +80,7 @@ def main() -> int:
             main_log,
             success_markers=REQUIRED_MARKERS,
             timeout_seconds=OBSERVATORY_PROBE_MARKER_TIMEOUT_SECONDS,
+            require_all_markers=True,
             env={
                 "PHASE0_AUTOTEST_SCREENSHOT": str(main_screenshot),
                 "PHASE0_DEBUG_LOGGING": "1",

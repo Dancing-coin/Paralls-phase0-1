@@ -37,7 +37,30 @@
 - [ ] embodied locomotion/grounded/failure refs
 - [ ] structured failure output
 
-## 阶段 C：PQF 与 Harness
+## 阶段 C：Skeletal/Environment refs 完整化
+
+目标文件建议：
+
+- `scripts/character/SkeletalStateProviderRefEmitter.gd`
+- `scripts/character/EnvironmentFieldProvider.gd`
+
+任务：
+
+- [ ] skeletal state provider refs 接入 `EmbodiedSkeletalStateProvider` / debug replay refs
+- [ ] environment field refs 输出 light/occlusion/hazard/passability/local field refs
+- [ ] skeletal refs 只暴露 high/mid-level refs 或 debug snapshot refs，不把 full bone payload 送入主链
+- [ ] environment refs 只表达局部环境场采样，不执行 heavy voxelization 或 full-scene runtime rescan
+- [ ] 两类 refs 均带 freshness/throttle/retention/failure status
+- [ ] 两类 refs 均可进入 `PerceptionQueryFrame`，不能直接写角色/司命 runtime
+
+验收：
+
+- spec 中 6 类 provider/ref 范围均有对应任务：visual、spatial、auditory、embodied、skeletal refs、environment refs
+- skeletal/environment refs 可在 provider artifact report 中被单独观察
+- skeletal full snapshot 只以 debug replay ref 形式出现
+- environment field failure 可结构化表达，不阻塞 PQF 组装
+
+## 阶段 D：PQF 与 Harness
 
 目标文件建议：
 
@@ -50,6 +73,7 @@
 - [ ] 生成 provider artifact report
 - [ ] backend 消费 provider refs 组装 PQF
 - [ ] 证明 throttle 与 no-heavy-work
+- [ ] 证明 visual/spatial/auditory/embodied/skeletal/environment 六类输出均有 sample 或可验证 stub artifact
 - [ ] 接入 harness
 
 验证命令：
@@ -64,4 +88,4 @@ python scripts/verification/harness.py --profile godot-sampling-production-grade
 
 完成后应能说：
 
-> Godot sampling frontend 已从 contract/stub 变成 production-grade provider 体系，能稳定输出可追踪 artifact refs 并进入 PQF，同时不承担重理解或重建模。
+> Godot sampling frontend 已从 contract/stub 变成 production-grade provider 体系，能稳定输出 visual、spatial、auditory、embodied、skeletal refs 和 environment refs，并进入 PQF，同时不承担重理解或重建模。

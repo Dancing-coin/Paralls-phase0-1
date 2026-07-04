@@ -28,12 +28,14 @@
 - [ ] 从 L1 projected facts 组装 multi-actor patch
 - [ ] 合入 authority events/world results
 - [ ] 合入 environment/evidence events
+- [ ] 合入 VLA advisory global findings，但保留 advisory/conflict/source refs
 - [ ] 禁止读取 character private cache
 
 验收：
 
 - 多角色公共 patch 可生成
 - context id 必须为 `siming_mm:*`
+- VLA advisory global findings 可增强态势判断，但不能覆盖 authority/world truth
 
 ## 阶段 C：Fusion 与 Candidate 接线
 
@@ -48,6 +50,7 @@
 - [ ] intervention candidate 携带 situation evidence refs
 - [ ] minimal catalyst path 可引用 situation pressure
 - [ ] workbench explanation 展示 source/conflict/freshness
+- [ ] VLA/L1/authority 冲突时保留 conflict refs，并产生 review/active perception 线索而不是直接改写态势真相
 
 ## 阶段 D：Trace/Harness
 
@@ -68,4 +71,4 @@ python scripts/verification/harness.py --profile siming-global-situation-layer
 
 完成后应能说：
 
-> 司命具备独立 global situation layer，能从公共世界事实和 authority 事件形成多角色态势，并把态势证据用于公平判断和干预候选，而不污染角色私有上下文。
+> 司命具备独立 global situation layer，能从公共世界事实、authority 事件和 VLA advisory global findings 形成多角色态势，并把态势证据用于公平判断和干预候选，而不污染角色私有上下文、不覆盖 world truth。

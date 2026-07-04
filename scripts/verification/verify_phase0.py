@@ -96,7 +96,21 @@ def main() -> int:
     health: dict[str, object] = {}
     try:
         pytest_log = log_dir / "phase0-pytest.log"
-        pytest_result = run_command([python_exe, "-m", "pytest", "-v"], project_root / "backend", pytest_log)
+        pytest_pythonpath = os.pathsep.join(
+            path
+            for path in [
+                str(project_root),
+                str(project_root / "backend"),
+                os.environ.get("PYTHONPATH", ""),
+            ]
+            if path
+        )
+        pytest_result = run_command(
+            [python_exe, "-m", "pytest", "-v"],
+            project_root / "backend",
+            pytest_log,
+            env={"PYTHONPATH": pytest_pythonpath},
+        )
 
         health, backend_process = ensure_backend(
             project_root,
