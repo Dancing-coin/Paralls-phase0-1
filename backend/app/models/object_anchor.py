@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import re
 from typing import Any
+
+
+_CANONICAL_REF_PATTERN = re.compile(r"(obj_[A-Za-z0-9_]+|char_[A-Za-z0-9_]+|env_[A-Za-z0-9_]+)")
 
 
 def object_ref_kind(ref: str) -> str:
@@ -13,12 +17,59 @@ def object_ref_kind(ref: str) -> str:
     return "entity"
 
 
-def derive_world_anchor_id(*, target_ref: str = "", world_anchor_id: str = "") -> str:
+def _extract_canonical_ref(value: str) -> str:
+    if value.startswith(("obj_", "char_", "env_")):
+        return value
+    match = _CANONICAL_REF_PATTERN.search(value)
+    return match.group(1) if match is not None else ""
+
+
+def resolve_target_ref(
+    *,
+    target_ref: str = "",
+    stable_source_ref: str = "",
+    source_ref_lineage: list[str] | None = None,
+    candidate_object_ids: list[str] | None = None,
+    candidate_actor_ids: list[str] | None = None,
+    candidate_environment_ids: list[str] | None = None,
+) -> str:
+    for value in (
+        target_ref,
+        *(candidate_object_ids or []),
+        *(candidate_actor_ids or []),
+        *(candidate_environment_ids or []),
+        stable_source_ref,
+        *(source_ref_lineage or []),
+    ):
+        canonical = _extract_canonical_ref(str(value or ""))
+        if canonical:
+            return canonical
+    return target_ref
+
+
+def derive_world_anchor_id(
+    *,
+    target_ref: str = "",
+    world_anchor_id: str = "",
+    stable_source_ref: str = "",
+    source_ref_lineage: list[str] | None = None,
+    candidate_object_ids: list[str] | None = None,
+    candidate_actor_ids: list[str] | None = None,
+    candidate_environment_ids: list[str] | None = None,
+) -> str:
     if world_anchor_id:
         return world_anchor_id
-    if target_ref == "":
+    resolved_ref = resolve_target_ref(
+        target_ref=target_ref,
+        stable_source_ref=stable_source_ref,
+        source_ref_lineage=source_ref_lineage,
+        candidate_object_ids=candidate_object_ids,
+        candidate_actor_ids=candidate_actor_ids,
+        candidate_environment_ids=candidate_environment_ids,
+    )
+    if resolved_ref == "":
         return ""
-    return f"world_anchor:{object_ref_kind(target_ref)}:{target_ref}"
+    return f"world_anchor:{object_ref_kind(resolved_ref)}:{resolved_ref}"
 
 
 def first_target_ref(

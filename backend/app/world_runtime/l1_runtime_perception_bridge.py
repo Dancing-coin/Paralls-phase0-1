@@ -6,8 +6,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.raw_fact import RawFactEvent
 from app.models.capture_clock import derive_capture_id, derive_capture_root_id
-from app.models.object_anchor import append_unique_lineage, derive_world_anchor_id, first_target_ref
-from app.world_runtime.intelligence_upgrade import SampleInputRef
+from app.models.object_anchor import (
+    append_unique_lineage,
+    derive_world_anchor_id,
+    first_target_ref,
+    resolve_target_ref,
+)
+from app.world_runtime.intelligence_upgrade import PerceptionInputFrame, SampleInputRef
 from app.world_runtime.l1_occupancy import SpatialOccupancySnapshot
 from app.world_runtime.l1_perception_frame import L1PerceptionFrameService
 
@@ -42,6 +47,10 @@ class L1ActorProjectionInput(BaseModel):
     actor_frame_ref: str = ""
     camera_frame_ref: str = ""
     listener_frame_ref: str = ""
+
+
+class MixedPerceptionCaptureError(ValueError):
+    pass
 
 
 class L1MultiActorPerceptionBridgeResult(BaseModel):
@@ -105,9 +114,15 @@ class L1RuntimePerceptionBridge:
             target_object_ids=target_object_ids,
             target_environment_ids=[],
         )
+        target_ref = resolve_target_ref(
+            target_ref=target_ref,
+            source_ref_lineage=self._source_ref_lineage(projected_facts),
+            candidate_object_ids=target_object_ids,
+            candidate_actor_ids=target_actor_ids,
+        )
         world_anchor_id = self._world_anchor_from_facts(projected_facts, target_ref=target_ref)
 
-        character_frame = self._frame_service.build_character_frame(
+        character_input = self._frame_service.build_character_input_frame(
             subject_id=actor_id,
             room_id=first_fact.room_id,
             scene_id=first_fact.scene_id,
@@ -141,6 +156,7 @@ class L1RuntimePerceptionBridge:
             attention_target_actor_ids=target_actor_ids,
             attention_target_object_ids=target_object_ids,
         )
+        character_frame = self._frame_service.build_frame_from_input(character_input)
         character_bundle = self._frame_service.build_canonical_bundle(
             character_frame,
             local_spatial_state=self._local_spatial_state(occupancy, zone_id),
@@ -161,7 +177,7 @@ class L1RuntimePerceptionBridge:
         if callable(get_working_memory):
             working_memory = get_working_memory(actor_id, character_snapshot.model_dump())
 
-        siming_frame = self._frame_service.build_siming_frame(
+        siming_input = self._frame_service.build_siming_input_frame(
             room_id=first_fact.room_id,
             scene_id=first_fact.scene_id,
             zone_id=zone_id,
@@ -184,6 +200,7 @@ class L1RuntimePerceptionBridge:
             environment_inputs=self._sample_refs(refs.get("environment_inputs", refs.get("spatial_inputs", []))),
             structured_fact_refs=fact_refs,
         )
+        siming_frame = self._frame_service.build_frame_from_input(siming_input)
         siming_bundle = self._frame_service.build_canonical_bundle(
             siming_frame,
             local_spatial_state={
@@ -247,16 +264,22 @@ class L1RuntimePerceptionBridge:
         ended_at = max(fact.producer_ts for fact in all_facts)
         target_actor_ids = sorted({fact.targets.actor_id for fact in all_facts if fact.targets.actor_id})
         target_object_ids = sorted({fact.targets.object_id for fact in all_facts if fact.targets.object_id})
+        source_lineage = self._source_ref_lineage(all_facts)
         target_ref = first_target_ref(
             target_actor_ids=target_actor_ids,
             target_object_ids=target_object_ids,
             target_environment_ids=[],
         )
+        target_ref = resolve_target_ref(
+            target_ref=target_ref,
+            source_ref_lineage=source_lineage,
+            candidate_object_ids=target_object_ids,
+            candidate_actor_ids=target_actor_ids,
+        )
         world_anchor_ids = sorted({fact.world_anchor_id for fact in all_facts if fact.world_anchor_id})
         world_anchor_id = world_anchor_ids[0] if len(world_anchor_ids) == 1 else derive_world_anchor_id(target_ref=target_ref)
         public_target_ref = target_ref if len(world_anchor_ids) <= 1 else ""
         public_world_anchor_id = world_anchor_id if len(world_anchor_ids) <= 1 else ""
-        source_lineage = self._source_ref_lineage(all_facts)
         actor_results: dict[str, dict[str, Any]] = {}
         actor_capture_ids: dict[str, str] = {}
         actor_contexts: dict[str, str] = {}
@@ -273,19 +296,25 @@ class L1RuntimePerceptionBridge:
             zone_id = self._zone_for_actor(occupancy, actor_id) or actor_facts[0].zone_id
             actor_target_actor_ids = sorted({fact.targets.actor_id for fact in actor_facts if fact.targets.actor_id})
             actor_target_object_ids = sorted({fact.targets.object_id for fact in actor_facts if fact.targets.object_id})
+            actor_source_lineage = self._source_ref_lineage(actor_facts)
             actor_target_ref = first_target_ref(
                 target_actor_ids=actor_target_actor_ids,
                 target_object_ids=actor_target_object_ids,
                 target_environment_ids=[],
             )
+            actor_target_ref = resolve_target_ref(
+                target_ref=actor_target_ref,
+                source_ref_lineage=actor_source_lineage,
+                candidate_object_ids=actor_target_object_ids,
+                candidate_actor_ids=actor_target_actor_ids,
+            )
             actor_world_anchor_id = self._world_anchor_from_facts(actor_facts, target_ref=actor_target_ref)
-            actor_source_lineage = self._source_ref_lineage(actor_facts)
             actor_capture_id = derive_capture_id(
                 capture_root_id=capture_root_id,
                 consumer_scope="character",
                 subject_id=actor_id,
             )
-            character_frame = self._frame_service.build_character_frame(
+            actor_input = self._frame_service.build_character_input_frame(
                 subject_id=actor_id,
                 room_id=actor_facts[0].room_id,
                 scene_id=actor_facts[0].scene_id,
@@ -315,6 +344,7 @@ class L1RuntimePerceptionBridge:
                 attention_target_actor_ids=actor_target_actor_ids,
                 attention_target_object_ids=actor_target_object_ids,
             )
+            character_frame = self._frame_service.build_frame_from_input(actor_input)
             character_bundle = self._frame_service.build_canonical_bundle(
                 character_frame,
                 local_spatial_state=self._local_spatial_state(occupancy, zone_id),
@@ -370,7 +400,7 @@ class L1RuntimePerceptionBridge:
             "source_ref_lineage": source_lineage,
             "patch_refs": [f"multi_actor_patch:{capture_root_id}"],
         }
-        siming_frame = self._frame_service.build_siming_frame(
+        siming_input = self._frame_service.build_siming_input_frame(
             room_id=first_fact.room_id,
             scene_id=first_fact.scene_id,
             zone_id=first_fact.zone_id,
@@ -393,6 +423,7 @@ class L1RuntimePerceptionBridge:
             environment_inputs=[],
             structured_fact_refs=[self._structured_fact_ref(fact) for fact in all_facts],
         )
+        siming_frame = self._frame_service.build_frame_from_input(siming_input)
         siming_bundle = self._frame_service.build_canonical_bundle(
             siming_frame,
             local_spatial_state={
@@ -523,7 +554,16 @@ class L1RuntimePerceptionBridge:
         anchors = {fact.world_anchor_id for fact in facts if fact.world_anchor_id}
         if len(anchors) == 1:
             return next(iter(anchors))
-        return derive_world_anchor_id(target_ref=target_ref)
+        lineage: list[str] = []
+        for fact in facts:
+            lineage = append_unique_lineage(lineage, [fact.sample_ref_id, *fact.source_ref_lineage])
+        return derive_world_anchor_id(
+            target_ref=target_ref,
+            source_ref_lineage=lineage,
+            candidate_object_ids=[fact.targets.object_id for fact in facts if fact.targets.object_id],
+            candidate_actor_ids=[fact.targets.actor_id for fact in facts if fact.targets.actor_id],
+            candidate_environment_ids=[fact.targets.environment_id for fact in facts if fact.targets.environment_id],
+        )
 
     @staticmethod
     def _capture_clock_from_facts(
@@ -537,17 +577,28 @@ class L1RuntimePerceptionBridge:
         frame_indexes = [fact.source_frame_index for fact in facts if fact.source_frame_index is not None]
         wall_clock_timestamps = [fact.wall_clock_ts for fact in facts if fact.wall_clock_ts is not None]
         first_fact = facts[0]
-        clock_domain = next(iter(clock_domains)) if len(clock_domains) == 1 else "mixed_capture_clock"
-        monotonic_tick = max(monotonic_ticks) if monotonic_ticks else max(fact.producer_ts for fact in facts)
-        capture_root_id = next(iter(roots)) if len(roots) == 1 else ""
-        if capture_root_id == "":
-            capture_root_id = derive_capture_root_id(
-                clock_domain=clock_domain,
-                room_id=first_fact.room_id,
-                scene_id=first_fact.scene_id,
-                zone_id=zone_id_hint,
-                monotonic_tick=monotonic_tick,
+        if len(clock_domains) > 1:
+            raise MixedPerceptionCaptureError(
+                "projected facts from multiple clock domains must be split before perception assembly"
             )
+        if len(roots) > 1:
+            raise MixedPerceptionCaptureError(
+                "projected facts from multiple capture roots must be split before perception assembly"
+            )
+        tick_values = sorted({int(tick) for tick in monotonic_ticks})
+        if len(tick_values) > 1:
+            raise MixedPerceptionCaptureError(
+                "projected facts from multiple monotonic ticks must be split before perception assembly"
+            )
+        clock_domain = next(iter(clock_domains)) if clock_domains else "backend_monotonic"
+        monotonic_tick = tick_values[0] if tick_values else max(fact.producer_ts for fact in facts)
+        capture_root_id = next(iter(roots)) if roots else derive_capture_root_id(
+            clock_domain=clock_domain,
+            room_id=first_fact.room_id,
+            scene_id=first_fact.scene_id,
+            zone_id=zone_id_hint,
+            monotonic_tick=monotonic_tick,
+        )
         return {
             "capture_root_id": capture_root_id,
             "clock_domain": clock_domain,
@@ -597,11 +648,23 @@ class L1RuntimePerceptionBridge:
             target_object_ids=target_object_ids,
             target_environment_ids=[],
         )
+        target_ref = resolve_target_ref(
+            target_ref=target_ref,
+            source_ref_lineage=source_ref_lineage,
+            candidate_object_ids=target_object_ids,
+            candidate_actor_ids=target_actor_ids,
+        )
         return {
             "target_actor_ids": target_actor_ids,
             "target_object_ids": target_object_ids,
             "target_ref": target_ref,
-            "world_anchor_id": derive_world_anchor_id(target_ref=target_ref, world_anchor_id=world_anchor_id),
+            "world_anchor_id": derive_world_anchor_id(
+                target_ref=target_ref,
+                world_anchor_id=world_anchor_id,
+                source_ref_lineage=source_ref_lineage,
+                candidate_object_ids=target_object_ids,
+                candidate_actor_ids=target_actor_ids,
+            ),
             "source_ref_lineage": list(source_ref_lineage or []),
             "object_states": object_states,
         }

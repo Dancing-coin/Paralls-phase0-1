@@ -248,7 +248,13 @@ class SimingGlobalSituationLayer:
             SituationEvidenceRef(
                 ref_id=self._ref_for_event(event),
                 source_kind=source_kind,
-                world_anchor_id=str(event.get("world_anchor_id", "") or derive_world_anchor_id(target_ref=str(event.get("target_ref", "") or ""))),
+                world_anchor_id=str(
+                    event.get("world_anchor_id", "")
+                    or derive_world_anchor_id(
+                        target_ref=str(event.get("target_ref", "") or ""),
+                        source_ref_lineage=[str(ref) for ref in event.get("source_ref_lineage", []) if isinstance(ref, str)],
+                    )
+                ),
                 subject_ref=str(event.get("subject_ref", "") or ""),
                 target_ref=str(event.get("target_ref", "") or ""),
                 source_ref_lineage=append_unique_lineage(
@@ -282,7 +288,18 @@ class SimingGlobalSituationLayer:
         return SituationEvidenceRef(
             ref_id=ref_id,
             source_kind="multi_actor_patch",
-            world_anchor_id=str(patch.get("world_anchor_id", "") or derive_world_anchor_id(target_ref=target_ref)),
+            world_anchor_id=str(
+                patch.get("world_anchor_id", "")
+                or derive_world_anchor_id(
+                    target_ref=target_ref,
+                    source_ref_lineage=[str(ref) for ref in patch.get("source_ref_lineage", []) if isinstance(ref, str)],
+                    candidate_object_ids=[
+                        str(anchor).split(":")[-1]
+                        for anchor in patch.get("world_anchor_ids", [])
+                        if isinstance(anchor, str) and anchor.startswith("world_anchor:object:")
+                    ],
+                )
+            ),
             subject_ref="siming",
             target_ref=target_ref,
             source_ref_lineage=append_unique_lineage(

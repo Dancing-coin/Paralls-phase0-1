@@ -105,6 +105,113 @@ class SampleInputRef(BaseModel):
         return self
 
 
+class PerceptionInputFrame(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    capture_root_id: str = ""
+    capture_id: str = ""
+    consumer_kind: ConsumerKind
+    subject_id: str
+    subject_ref: str = ""
+    target_ref: str = ""
+    world_anchor_id: str = ""
+    source_ref_lineage: list[str] = Field(default_factory=list)
+    clock_domain: str = ""
+    monotonic_tick: int | None = None
+    source_frame_index: int | None = None
+    wall_clock_ts: int | None = None
+    started_at: int
+    ended_at: int
+    room_id: str
+    scene_id: str
+    zone_id: str
+    actor_frame_ref: str = ""
+    camera_frame_ref: str = ""
+    listener_frame_ref: str = ""
+    visual_inputs: list[SampleInputRef] = Field(default_factory=list)
+    spatial_inputs: list[SampleInputRef] = Field(default_factory=list)
+    auditory_inputs: list[SampleInputRef] = Field(default_factory=list)
+    embodied_inputs: list[SampleInputRef] = Field(default_factory=list)
+    skeletal_inputs: list[SampleInputRef] = Field(default_factory=list)
+    environment_inputs: list[SampleInputRef] = Field(default_factory=list)
+    structured_fact_refs: list[str] = Field(default_factory=list)
+    target_actor_ids: list[str] = Field(default_factory=list)
+    target_object_ids: list[str] = Field(default_factory=list)
+    target_environment_ids: list[str] = Field(default_factory=list)
+    reason_tags: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def populate_alignment_identity(self) -> "PerceptionInputFrame":
+        if self.ended_at < self.started_at:
+            raise ValueError("PerceptionInputFrame ended_at must be >= started_at")
+        if self.monotonic_tick is None:
+            self.monotonic_tick = self.ended_at
+        if self.wall_clock_ts is None:
+            self.wall_clock_ts = self.ended_at
+        if self.clock_domain == "":
+            self.clock_domain = DEFAULT_CLOCK_DOMAIN
+        else:
+            self.clock_domain = normalize_clock_domain(self.clock_domain)
+        if self.capture_root_id == "":
+            self.capture_root_id = derive_capture_root_id(
+                clock_domain=self.clock_domain,
+                room_id=self.room_id,
+                scene_id=self.scene_id,
+                zone_id=self.zone_id,
+                monotonic_tick=self.monotonic_tick,
+            )
+        if self.capture_id == "":
+            self.capture_id = derive_capture_id(
+                capture_root_id=self.capture_root_id,
+                consumer_scope=self.consumer_kind,
+                subject_id=self.subject_id,
+            )
+        if self.subject_ref == "":
+            self.subject_ref = self.subject_id
+        if self.target_ref == "":
+            self.target_ref = first_target_ref(
+                target_actor_ids=self.target_actor_ids,
+                target_object_ids=self.target_object_ids,
+                target_environment_ids=self.target_environment_ids,
+            )
+        if self.world_anchor_id == "":
+            self.world_anchor_id = derive_world_anchor_id(
+                target_ref=self.target_ref,
+                source_ref_lineage=self.source_ref_lineage,
+                candidate_object_ids=self.target_object_ids,
+                candidate_actor_ids=self.target_actor_ids,
+                candidate_environment_ids=self.target_environment_ids,
+            )
+        sample_ref_values = [
+            ref.sample_ref_id or ref.ref_id
+            for ref in [
+                *self.visual_inputs,
+                *self.spatial_inputs,
+                *self.auditory_inputs,
+                *self.embodied_inputs,
+                *self.skeletal_inputs,
+                *self.environment_inputs,
+            ]
+        ]
+        stable_source_values = [
+            ref.stable_source_ref
+            for ref in [
+                *self.visual_inputs,
+                *self.spatial_inputs,
+                *self.auditory_inputs,
+                *self.embodied_inputs,
+                *self.skeletal_inputs,
+                *self.environment_inputs,
+            ]
+            if ref.stable_source_ref
+        ]
+        self.source_ref_lineage = append_unique_lineage(
+            self.source_ref_lineage,
+            [*self.structured_fact_refs, *sample_ref_values, *stable_source_values],
+        )
+        return self
+
+
 class PerceptionQueryFrame(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -168,7 +275,13 @@ class PerceptionQueryFrame(BaseModel):
                 target_environment_ids=self.attention_context.target_environment_ids,
             )
         if self.world_anchor_id == "":
-            self.world_anchor_id = derive_world_anchor_id(target_ref=self.target_ref)
+            self.world_anchor_id = derive_world_anchor_id(
+                target_ref=self.target_ref,
+                source_ref_lineage=self.source_ref_lineage,
+                candidate_object_ids=self.attention_context.target_object_ids,
+                candidate_actor_ids=self.attention_context.target_actor_ids,
+                candidate_environment_ids=self.attention_context.target_environment_ids,
+            )
         self.source_ref_lineage = append_unique_lineage(
             self.source_ref_lineage,
             [
@@ -180,6 +293,12 @@ class PerceptionQueryFrame(BaseModel):
                 *[ref.sample_ref_id or ref.ref_id for ref in self.embodied_inputs],
                 *[ref.sample_ref_id or ref.ref_id for ref in self.skeletal_inputs],
                 *[ref.sample_ref_id or ref.ref_id for ref in self.environment_inputs],
+                *[ref.stable_source_ref for ref in self.visual_inputs if ref.stable_source_ref],
+                *[ref.stable_source_ref for ref in self.spatial_inputs if ref.stable_source_ref],
+                *[ref.stable_source_ref for ref in self.auditory_inputs if ref.stable_source_ref],
+                *[ref.stable_source_ref for ref in self.embodied_inputs if ref.stable_source_ref],
+                *[ref.stable_source_ref for ref in self.skeletal_inputs if ref.stable_source_ref],
+                *[ref.stable_source_ref for ref in self.environment_inputs if ref.stable_source_ref],
             ],
         )
         if self.consumer_kind == "character" and not self.multimodal_context_id.startswith("character_mm:"):
@@ -254,7 +373,25 @@ class CanonicalPerceptBundle(BaseModel):
         if self.world_anchor_id == "":
             self.world_anchor_id = str(self.target_state.get("world_anchor_id", "") or "")
         if self.world_anchor_id == "":
-            self.world_anchor_id = derive_world_anchor_id(target_ref=self.target_ref)
+            self.world_anchor_id = derive_world_anchor_id(
+                target_ref=self.target_ref,
+                source_ref_lineage=self.source_ref_lineage,
+                candidate_object_ids=[
+                    str(item)
+                    for item in self.target_state.get("target_object_ids", [])
+                    if isinstance(item, str) and item
+                ],
+                candidate_actor_ids=[
+                    str(item)
+                    for item in self.target_state.get("target_actor_ids", [])
+                    if isinstance(item, str) and item
+                ],
+                candidate_environment_ids=[
+                    str(item)
+                    for item in self.target_state.get("target_environment_ids", [])
+                    if isinstance(item, str) and item
+                ],
+            )
         self.source_ref_lineage = append_unique_lineage(
             self.source_ref_lineage,
             [

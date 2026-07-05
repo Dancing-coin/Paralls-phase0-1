@@ -12,7 +12,7 @@ from app.services.character_agent_runtime import CharacterAgentRuntime
 from app.services.siming_runtime import SimingRuntime
 from app.world_runtime.intelligence_upgrade import PerceptionQueryFrame
 from app.world_runtime.l1_occupancy import SpatialOccupancyService
-from app.world_runtime.l1_runtime_perception_bridge import L1RuntimePerceptionBridge
+from app.world_runtime.l1_runtime_perception_bridge import L1RuntimePerceptionBridge, MixedPerceptionCaptureError
 from app.world_runtime.vla_provider import VLAProviderRequest
 from app.world_runtime.vla_slow_path_scheduler import VLASlowPathScheduler
 from common import repo_root, verification_dir, write_json, write_markdown
@@ -89,6 +89,37 @@ def main() -> int:
     )
     late_result = VLASlowPathScheduler(timeout_seconds=0.01).timeout_result(request)
 
+    mixed_fact = RawFactEvent(
+        fact_family="spatial_access_fact",
+        fact_type="actor_approached_object",
+        relation_type="proximity",
+        producer_ts=901,
+        capture_root_id="capture_root:godot_main:room_demo:scene_demo:zone_focus:78",
+        clock_domain="godot_main",
+        monotonic_tick=78,
+        source_frame_index=13,
+        wall_clock_ts=901,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source=RawFactSource(layer="L1", system="verify.capture_clock", actor_id="char_b"),
+        targets=RawFactTargets(object_id="obj_letter"),
+        world=RawFactWorld(distance_m=1.2, state_after="near"),
+    )
+    mixed_rejected = False
+    mixed_error = ""
+    try:
+        L1RuntimePerceptionBridge().consume_projected_facts(
+            occupancy=occupancy.snapshot(),
+            projected_facts=[fact, mixed_fact],
+            character_runtime=CharacterAgentRuntime(),
+            siming_runtime=SimingRuntime(),
+            actor_id="char_b",
+        )
+    except MixedPerceptionCaptureError as exc:
+        mixed_rejected = True
+        mixed_error = str(exc)
+
     lineage = {
         "fact": fact.model_dump(),
         "character_frame": character_frame,
@@ -96,6 +127,8 @@ def main() -> int:
         "siming_frame": siming_frame,
         "vla_request": request.model_dump(),
         "vla_late_advisory_result": late_result.model_dump(),
+        "mixed_capture_fact": mixed_fact.model_dump(),
+        "mixed_capture_rejection": mixed_error,
     }
     lineage_path = log_dir / "perception-capture-clock-lineage.json"
     write_json(lineage_path, lineage)
@@ -122,6 +155,13 @@ def main() -> int:
             and late_result.capture_relation == "late_advisory"
             and late_result.advisory is True,
             [str(lineage_path)],
+        ),
+        _result(
+            "mixed_capture_batch_rejected",
+            "Mixed capture batches are rejected instead of being silently synthesized into a new capture",
+            mixed_rejected,
+            [str(lineage_path)],
+            mixed_error,
         ),
     ]
     overall_passed = all(entry["status"] == "proved" for entry in results)

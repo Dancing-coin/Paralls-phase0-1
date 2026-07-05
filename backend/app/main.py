@@ -62,7 +62,11 @@ from app.services.siming_audit_writer import SimingAuditWriter
 from app.world_runtime.projection import project_world_result_delta
 from app.world_runtime.l1_fact_projection import FactProjectionLayer
 from app.world_runtime.l1_occupancy import SpatialOccupancyService
-from app.world_runtime.l1_runtime_perception_bridge import L1RuntimePerceptionBridge
+from app.world_runtime.l1_runtime_perception_bridge import (
+    L1ActorProjectionInput,
+    L1RuntimePerceptionBridge,
+    MixedPerceptionCaptureError,
+)
 from app.services.siming_character_dispatch_adapter import SimingCharacterDispatchAdapter, SimingCharacterDispatchResult
 from app.services.siming_event_consumer import SimingEventConsumer
 from app.services.siming_event_pipeline import SimingEventPipeline
@@ -1374,6 +1378,18 @@ def _normalize_l1_provider_ref_entries(entries: list[object]) -> list[dict[str, 
                 "summary": str(entry.get("summary", "") or entry.get("semantic_summary", "") or "runtime provider ref"),
                 "retention": str(entry.get("retention", "") or "debug_artifact"),
         }
+        for passthrough_key in (
+            "runtime_source_refs",
+            "stable_source_ref",
+            "camera_pose",
+            "actor_node_path",
+            "target_ref",
+            "actor_frame_ref",
+            "camera_frame_ref",
+            "listener_frame_ref",
+        ):
+            if passthrough_key in entry:
+                normalized_entry[passthrough_key] = entry[passthrough_key]
         for capture_key in (
             "capture_root_id",
             "capture_id",
@@ -1426,7 +1442,7 @@ def _ref_id_from_ref_entry(entry: dict[str, object]) -> str:
 def _messages_from_projected_l1_facts(
     projected_facts: list[RawFactEvent],
     *,
-    provider_refs: dict[str, list[dict[str, str]]] | None = None,
+    provider_refs: dict[str, list[dict[str, object]]] | None = None,
 ) -> list[dict[str, object]]:
     messages: list[dict[str, object]] = []
     projected_by_actor: dict[str, list[RawFactEvent]] = {}
@@ -1452,39 +1468,60 @@ def _messages_from_projected_l1_facts(
         actor_id = fact.source.actor_id or fact.targets.actor_id
         if actor_id:
             projected_by_actor.setdefault(actor_id, []).append(fact)
-    for actor_id, actor_facts in projected_by_actor.items():
-        try:
-            bridge_result = l1_perception_bridge.consume_projected_facts(
-                occupancy=l1_occupancy_service.snapshot(),
-                projected_facts=actor_facts,
-                character_runtime=character_agent_runtime,
-                siming_runtime=siming_event_pipeline,
-                actor_id=actor_id,
-                provider_refs=provider_refs,
-            )
-        except Exception as exc:
-            _publish_debug_event(
-                build_debug_event(
-                    producer_ts=actor_facts[-1].producer_ts,
-                    domain="world",
-                    stage="l1_canonical_bundle_bridge_failed",
-                    actor_id=actor_id,
-                    summary=f"L1 canonical bundle bridge failed: {type(exc).__name__}",
-                    detail={"error": str(exc)},
-                )
-            )
-            continue
-        if bridge_result is None:
-            continue
+    if not projected_by_actor:
+        return messages
+    actor_projections = [
+        _projection_input_for_actor(actor_id, actor_facts, provider_refs)
+        for actor_id, actor_facts in projected_by_actor.items()
+    ]
+    latest_ts = max(fact.producer_ts for fact in projected_facts)
+    try:
+        bridge_result = l1_perception_bridge.consume_multi_actor_projected_facts(
+            occupancy=l1_occupancy_service.snapshot(),
+            actor_projections=actor_projections,
+            character_runtime=character_agent_runtime,
+            siming_runtime=siming_event_pipeline,
+        )
+    except MixedPerceptionCaptureError as exc:
         _publish_debug_event(
             build_debug_event(
-                producer_ts=actor_facts[-1].producer_ts,
+                producer_ts=latest_ts,
+                domain="world",
+                stage="l1_canonical_bundle_bridge_failed",
+                summary="L1 canonical bundle bridge rejected mixed capture batch",
+                detail={
+                    "error": str(exc),
+                    "actor_ids": list(projected_by_actor.keys()),
+                    "capture_roots": sorted({fact.capture_root_id for fact in projected_facts if fact.capture_root_id}),
+                    "clock_domains": sorted({fact.clock_domain for fact in projected_facts if fact.clock_domain}),
+                    "monotonic_ticks": sorted({int(fact.monotonic_tick) for fact in projected_facts if fact.monotonic_tick is not None}),
+                },
+            )
+        )
+        return messages
+    except Exception as exc:
+        _publish_debug_event(
+            build_debug_event(
+                producer_ts=latest_ts,
+                domain="world",
+                stage="l1_canonical_bundle_bridge_failed",
+                summary=f"L1 canonical bundle bridge failed: {type(exc).__name__}",
+                detail={"error": str(exc), "actor_ids": list(projected_by_actor.keys())},
+            )
+        )
+        return messages
+    if bridge_result is None:
+        return messages
+    for actor_id, actor_result in bridge_result.actor_results.items():
+        _publish_debug_event(
+            build_debug_event(
+                producer_ts=latest_ts,
                 domain="world",
                 stage="l1_perception_query_frame_assembled",
                 actor_id=actor_id,
                 summary="L1 projected facts assembled into character and Siming PQFs",
                 detail={
-                    "character_frame": bridge_result.character_frame,
+                    "character_frame": actor_result.get("character_frame", {}),
                     "siming_frame": bridge_result.siming_frame,
                     "context_isolation": bridge_result.context_isolation,
                 },
@@ -1492,15 +1529,119 @@ def _messages_from_projected_l1_facts(
         )
         _publish_debug_event(
             build_debug_event(
-                producer_ts=actor_facts[-1].producer_ts,
+                producer_ts=latest_ts,
                 domain="world",
                 stage="l1_canonical_percept_bundle_consumed",
                 actor_id=actor_id,
                 summary="L1 canonical percept bundles consumed by character and Siming runtimes",
-                detail=bridge_result.model_dump(),
+                detail={
+                    **actor_result,
+                    "siming_frame": bridge_result.siming_frame,
+                    "siming_bundle": bridge_result.siming_bundle,
+                    "siming_result": bridge_result.siming_result,
+                    "multi_actor_patch": bridge_result.multi_actor_patch,
+                    "context_isolation": bridge_result.context_isolation,
+                },
             )
         )
     return messages
+
+
+def _projection_input_for_actor(
+    actor_id: str,
+    actor_facts: list[RawFactEvent],
+    provider_refs: dict[str, list[dict[str, object]]] | None,
+) -> L1ActorProjectionInput:
+    scoped_refs = _provider_refs_for_actor(actor_id, provider_refs)
+    view_refs = _projection_view_refs(actor_id, scoped_refs)
+    return L1ActorProjectionInput(
+        actor_id=actor_id,
+        projected_facts=actor_facts,
+        provider_refs=scoped_refs,
+        actor_frame_ref=view_refs["actor_frame_ref"],
+        camera_frame_ref=view_refs["camera_frame_ref"],
+        listener_frame_ref=view_refs["listener_frame_ref"],
+    )
+
+
+def _provider_refs_for_actor(
+    actor_id: str,
+    provider_refs: dict[str, list[dict[str, object]]] | None,
+) -> dict[str, list[dict[str, object]]]:
+    if provider_refs is None:
+        return {}
+    scoped: dict[str, list[dict[str, object]]] = {}
+    actor_marker = actor_id
+    for key, entries in provider_refs.items():
+        filtered: list[dict[str, object]] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            runtime_refs = entry.get("runtime_source_refs")
+            ref_id = str(entry.get("ref_id", "") or "")
+            actor_node_path = str(entry.get("actor_node_path", "") or "")
+            target_ref = str(entry.get("target_ref", "") or "")
+            matches_actor = (
+                actor_marker in ref_id
+                or actor_marker in actor_node_path
+                or target_ref == actor_marker
+                or (
+                    isinstance(runtime_refs, list)
+                    and any(actor_marker in str(value) for value in runtime_refs)
+                )
+            )
+            if matches_actor or key in {"spatial_inputs", "environment_inputs", "visual_inputs"}:
+                filtered.append(dict(entry))
+        if filtered:
+            scoped[key] = filtered
+    return scoped
+
+
+def _projection_view_refs(
+    actor_id: str,
+    provider_refs: dict[str, list[dict[str, object]]],
+) -> dict[str, str]:
+    actor_frame_ref = ""
+    camera_frame_ref = ""
+    listener_frame_ref = ""
+
+    embodied_entries = provider_refs.get("embodied_inputs", [])
+    if embodied_entries:
+        first = embodied_entries[0]
+        actor_frame_ref = str(first.get("actor_frame_ref", "") or first.get("actor_node_path", "") or "")
+        if actor_frame_ref == "":
+            runtime_refs = first.get("runtime_source_refs")
+            if isinstance(runtime_refs, list):
+                actor_frame_ref = next((str(value) for value in runtime_refs if actor_id in str(value)), "")
+
+    visual_entries = provider_refs.get("visual_inputs", [])
+    if visual_entries:
+        first = visual_entries[0]
+        camera_pose = first.get("camera_pose")
+        if isinstance(camera_pose, dict):
+            camera_frame_ref = str(
+                camera_pose.get("runtime_source_ref", "")
+                or camera_pose.get("node_path", "")
+                or camera_pose.get("viewport_artifact_ref", "")
+                or ""
+            )
+        if camera_frame_ref == "":
+            camera_frame_ref = str(first.get("camera_frame_ref", "") or first.get("ref_id", "") or "")
+
+    auditory_entries = provider_refs.get("auditory_inputs", [])
+    if auditory_entries:
+        first = auditory_entries[0]
+        listener_frame_ref = str(first.get("listener_frame_ref", "") or first.get("ref_id", "") or "")
+        if listener_frame_ref == "":
+            runtime_refs = first.get("runtime_source_refs")
+            if isinstance(runtime_refs, list):
+                listener_frame_ref = next((str(value) for value in runtime_refs if actor_id in str(value)), "")
+
+    return {
+        "actor_frame_ref": actor_frame_ref,
+        "camera_frame_ref": camera_frame_ref,
+        "listener_frame_ref": listener_frame_ref,
+    }
 
 
 def _character_agent_messages_from_fact_candidates(event: RawFactEvent) -> list[dict[str, object]]:

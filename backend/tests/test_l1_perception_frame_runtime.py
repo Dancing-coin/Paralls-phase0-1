@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.services.character_agent_runtime import CharacterAgentRuntime
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.siming_audit_writer import SimingAuditWriter
@@ -13,9 +15,13 @@ from app.models.capture_clock import same_capture_tick
 from app.models.raw_fact import RawFactEvent, RawFactObservability, RawFactSource, RawFactTargets, RawFactWorld
 from app.world_runtime.l1_fact_projection import FactProjectionLayer
 from app.world_runtime.l1_occupancy import SpatialOccupancyService
-from app.world_runtime.intelligence_upgrade import SampleInputRef
+from app.world_runtime.intelligence_upgrade import PerceptionInputFrame, SampleInputRef
 from app.world_runtime.l1_perception_frame import L1PerceptionFrameService
-from app.world_runtime.l1_runtime_perception_bridge import L1ActorProjectionInput, L1RuntimePerceptionBridge
+from app.world_runtime.l1_runtime_perception_bridge import (
+    L1ActorProjectionInput,
+    L1RuntimePerceptionBridge,
+    MixedPerceptionCaptureError,
+)
 
 
 def test_perception_frame_uses_runtime_refs_and_builds_character_bundle() -> None:
@@ -58,6 +64,50 @@ def test_perception_frame_uses_runtime_refs_and_builds_character_bundle() -> Non
     assert frame.visual_inputs[0].ref_id.startswith("runtime://camera/")
     assert bundle.consumer_kind == "character"
     assert bundle.local_spatial_state["passability"] == "requires_detour"
+
+
+def test_perception_input_frame_is_explicit_runtime_input_boundary() -> None:
+    service = L1PerceptionFrameService()
+    input_frame = service.build_character_input_frame(
+        subject_id="char_b",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        started_at=1000,
+        ended_at=1010,
+        capture_root_id="capture_root:godot_main:room_demo:scene_demo:zone_focus:44",
+        clock_domain="godot_main",
+        monotonic_tick=44,
+        source_frame_index=9,
+        wall_clock_ts=1000,
+        visual_inputs=[SampleInputRef(provider_kind="visual_patch", ref_id="runtime://camera/MainCamera/frame/9")],
+        attention_target_object_ids=["obj_letter"],
+    )
+
+    frame = service.build_frame_from_input(input_frame)
+
+    assert isinstance(input_frame, PerceptionInputFrame)
+    assert input_frame.capture_root_id == "capture_root:godot_main:room_demo:scene_demo:zone_focus:44"
+    assert input_frame.capture_id.endswith(":character:char_b")
+    assert frame.capture_root_id == input_frame.capture_root_id
+    assert frame.capture_id == input_frame.capture_id
+    assert frame.world_anchor_id == "world_anchor:object:obj_letter"
+
+
+def test_perception_input_frame_can_resolve_world_anchor_from_source_lineage() -> None:
+    service = L1PerceptionFrameService()
+    input_frame = service.build_character_input_frame(
+        subject_id="char_b",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        started_at=1000,
+        ended_at=1010,
+        source_ref_lineage=["artifact://crop/obj_letter/view_001.png"],
+        visual_inputs=[SampleInputRef(provider_kind="visual_patch", ref_id="runtime://camera/MainCamera/frame/9")],
+    )
+
+    assert input_frame.world_anchor_id == "world_anchor:object:obj_letter"
 
 
 def test_perception_frame_propagates_capture_clock_to_samples_and_bundle() -> None:
@@ -581,3 +631,109 @@ def test_main_raw_fact_route_consumes_l1_projection_with_real_provider_refs() ->
     read_models = backend_main.siming_event_pipeline.list_read_models(room_id="room_demo")
     assert read_models
     assert read_models[-1].derived_from_snapshot_ref == consumed_detail["siming_bundle"]["bundle_id"]
+
+
+def test_l1_runtime_bridge_rejects_mixed_capture_batches() -> None:
+    bridge = L1RuntimePerceptionBridge()
+    occupancy = SpatialOccupancyService()
+    occupancy.apply_actor_zone_update(
+        actor_id="char_b",
+        previous_zone_id="",
+        next_zone_id="zone_focus",
+        producer_ts=100,
+        source_ref="raw_fact_event:actor_entered_zone:100",
+    )
+    facts = [
+        RawFactEvent(
+            fact_family="visual_fact",
+            fact_type="fixed_gaze_on_target",
+            relation_type="actor_looks_at_object",
+            producer_ts=1201,
+            capture_root_id="capture_root:godot_main:room_demo:scene_demo:zone_focus:201",
+            clock_domain="godot_main",
+            monotonic_tick=201,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            source=RawFactSource(layer="L1", system="test", actor_id="char_b"),
+            targets=RawFactTargets(object_id="obj_letter"),
+        ),
+        RawFactEvent(
+            fact_family="visual_fact",
+            fact_type="object_partly_occluded",
+            relation_type="actor_looks_at_object",
+            producer_ts=1202,
+            capture_root_id="capture_root:godot_main:room_demo:scene_demo:zone_focus:202",
+            clock_domain="godot_main",
+            monotonic_tick=202,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            source=RawFactSource(layer="L1", system="test", actor_id="char_b"),
+            targets=RawFactTargets(object_id="obj_letter"),
+        ),
+    ]
+
+    with pytest.raises(MixedPerceptionCaptureError):
+        bridge.consume_projected_facts(
+            occupancy=occupancy.snapshot(),
+            projected_facts=facts,
+            character_runtime=CharacterAgentRuntime(),
+            siming_runtime=SimingRuntime(),
+            actor_id="char_b",
+        )
+
+
+def test_main_projected_fact_path_uses_multi_actor_bridge(monkeypatch) -> None:
+    from app import main as backend_main
+
+    backend_main.reset_runtime_state()
+    called: dict[str, object] = {"multi": None, "single": False}
+
+    class StubBridge:
+        def consume_projected_facts(self, **_kwargs):
+            called["single"] = True
+            raise AssertionError("single-actor bridge path should not be used")
+
+        def consume_multi_actor_projected_facts(self, **kwargs):
+            called["multi"] = kwargs["actor_projections"]
+            return None
+
+    monkeypatch.setattr(backend_main, "l1_perception_bridge", StubBridge())
+    facts = [
+        RawFactEvent(
+            fact_family="visual_fact",
+            fact_type="fixed_gaze_on_target",
+            relation_type="actor_looks_at_object",
+            producer_ts=1300,
+            capture_root_id="capture_root:godot_main:room_demo:scene_demo:zone_focus:300",
+            clock_domain="godot_main",
+            monotonic_tick=300,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            source=RawFactSource(layer="L1", system="test", actor_id="char_a"),
+            targets=RawFactTargets(object_id="obj_letter"),
+        ),
+        RawFactEvent(
+            fact_family="visual_fact",
+            fact_type="object_partly_occluded",
+            relation_type="actor_looks_at_object",
+            producer_ts=1301,
+            capture_root_id="capture_root:godot_main:room_demo:scene_demo:zone_focus:300",
+            clock_domain="godot_main",
+            monotonic_tick=300,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            source=RawFactSource(layer="L1", system="test", actor_id="char_b"),
+            targets=RawFactTargets(object_id="obj_letter"),
+        ),
+    ]
+
+    backend_main._messages_from_projected_l1_facts(facts, provider_refs=None)
+
+    assert called["single"] is False
+    projections = called["multi"]
+    assert isinstance(projections, list)
+    assert {projection.actor_id for projection in projections} == {"char_a", "char_b"}

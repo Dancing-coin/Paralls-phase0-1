@@ -89,7 +89,10 @@ class ActorSceneKnowledgeEntry(BaseModel):
         if self.target_ref == "":
             self.target_ref = self.subject_ref
         if self.world_anchor_id == "":
-            self.world_anchor_id = derive_world_anchor_id(target_ref=self.target_ref or self.subject_ref)
+            self.world_anchor_id = derive_world_anchor_id(
+                target_ref=self.target_ref or self.subject_ref,
+                source_ref_lineage=self.source_ref_lineage,
+            )
         self.source_ref_lineage = append_unique_lineage(self.source_ref_lineage, self.source_refs)
         if self.source_kind == "vla_advisory":
             self.advisory = True
@@ -246,7 +249,21 @@ class ActorSceneKnowledgeStore:
         updates: list[ActorSceneKnowledgeUpdate] = []
         target_ref = self._bundle_target_ref(bundle)
         world_anchor_id = str(bundle.target_state.get("world_anchor_id", "") or bundle.world_anchor_id or "")
-        world_anchor_id = derive_world_anchor_id(target_ref=target_ref, world_anchor_id=world_anchor_id)
+        world_anchor_id = derive_world_anchor_id(
+            target_ref=target_ref,
+            world_anchor_id=world_anchor_id,
+            source_ref_lineage=bundle.source_ref_lineage,
+            candidate_object_ids=[
+                str(item)
+                for item in bundle.target_state.get("target_object_ids", [])
+                if isinstance(item, str) and item
+            ],
+            candidate_actor_ids=[
+                str(item)
+                for item in bundle.target_state.get("target_actor_ids", [])
+                if isinstance(item, str) and item
+            ],
+        )
         source_lineage = append_unique_lineage(bundle.source_ref_lineage, [bundle.bundle_id, bundle.query_id, *bundle.structured_fact_refs])
         if target_ref:
             updates.append(
@@ -278,7 +295,11 @@ class ActorSceneKnowledgeStore:
                         actor_id=bundle.subject_id,
                         session_id=session_id,
                         scene_id=scene_id,
-                        world_anchor_id=world_anchor_id or derive_world_anchor_id(target_ref=fact_target_ref),
+                        world_anchor_id=world_anchor_id
+                        or derive_world_anchor_id(
+                            target_ref=fact_target_ref,
+                            source_ref_lineage=append_unique_lineage(source_lineage, [fact_ref]),
+                        ),
                         subject_ref=fact_target_ref,
                         target_ref=fact_target_ref,
                         knowledge_type=self._knowledge_type_for_fact(fact_ref),
@@ -311,6 +332,7 @@ class ActorSceneKnowledgeStore:
                         world_anchor_id=derive_world_anchor_id(
                             target_ref=advisory_target_ref or advisory_subject_ref,
                             world_anchor_id=advisory_anchor,
+                            source_ref_lineage=advisory_lineage,
                         ),
                         subject_ref=advisory_subject_ref,
                         target_ref=advisory_target_ref or advisory_subject_ref,
