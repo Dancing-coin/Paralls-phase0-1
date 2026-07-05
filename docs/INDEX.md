@@ -16,6 +16,7 @@
 - `docs/harness.md`：可重复验证的 Harness Engineering 命令面。
 - `docs/架构/运行时/运行时命名边界审计.md`：运行时命名边界审计和迁移表。
 - `docs/架构/整体架构.md`：仓库级整体架构总纲，内含手绘式 Markdown 架构图，覆盖 Godot、后端、世界运行时、System L6 事件总线、角色智能体、ESM、Siming、模型服务、Harness 和非运行时支撑面。
+- `docs/架构/感知输入对齐层.md`：双感知链并存时的统一时空 envelope 设计，定义 fact 链和 provider/PQF 链如何在输入阶段对齐。
 - `docs/架构/VLA与多模态链.md`：VLA 在多模态主链中的位置、对角色与 Siming 的应用、当前缺陷和模型接入建议。
 - `docs/架构/运行时/运行时总览.md`：整体架构、整体运行时时序和整体数据流总入口。
 - `docs/架构/运行时/运行时覆盖矩阵.md`：当前运行时覆盖矩阵，包含领域、契约、代码负责人和 harness 证据。
