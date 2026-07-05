@@ -1,6 +1,6 @@
 # 当前项目智能体与世界交互增量专题计划树
 
-- 状态：`contract-slice-implemented-l1-subsystem-integration-planned`
+- 状态：`incremental-plan-tree-implemented-and-profile-verified`
 - 日期：`2026-06-30`
 
 这份计划树服务于：
@@ -55,9 +55,9 @@
 
 ## 状态口径
 
-当前 `implemented-and-verified` 只适用于 2026-06-30 落地的协议、manifest、静态 provider 和 focused proof 切片。
+当前 `implemented-and-verified` 覆盖 2026-06-30 协议/manifest/focused proof、2026-07-01 L1 runtime-facing subsystem、2026-07-02 增量能力计划、2026-07-03 provider readiness，以及 2026-07-05 perception identity 收口计划。
 
-它不等于完整实现了 `current-project-intelligence-upgrade` 规格树，也不等于 `L1` 已经成为新的 runtime 宿主。
+它仍不表示 `L1` 已成为新的 runtime 宿主，也不表示真实外部模型 provider 均已接入。真实 provider 状态以 `model-provider-readiness` 和各 provider report 为准。
 
 ## 待用户补齐：真实模型 key / endpoint
 
@@ -91,18 +91,31 @@ python scripts/verification/verify_siming_backend_chain.py --live-provider deeps
 
 运行时多路由配置可用 `SIMING_LLM_ROUTES_JSON` 声明 `deepseek_chat`、`qwen`、`seed_doubao` 多个 route；route-level API key 不应写入文档或提交到版本库。
 
-下一步只能推进 `System L1 world fact subsystem` / runtime-facing L1 services 集成：
+`System L1 world fact subsystem` / runtime-facing L1 services 集成已完成 focused/runtime 验证：
 
 - [2026-07-01-current-project-l1-world-fact-runtime-full-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-01-current-project-l1-world-fact-runtime-full-implementation-plan.md)
 
+当前核对过的专题 profile 证据包括：
+
+- `python scripts/verification/harness.py --profile godot-sampling-production-grade-providers`
+- `python scripts/verification/harness.py --profile embodied-skeletal-debug-replay`
+- `python scripts/verification/harness.py --profile vla-provider-backend`
+- `python scripts/verification/harness.py --profile actor-scene-knowledge-lifecycle`
+- `python scripts/verification/harness.py --profile siming-global-situation-layer`
+- `python scripts/verification/harness.py --profile interaction-orchestration-service`
+- `python scripts/verification/harness.py --profile esm-physical-channel-world-actuation`
+- `python scripts/verification/harness.py --profile non-runtime-production-pipeline`
+- `python scripts/verification/harness.py --profile model-provider-readiness`
+- `python scripts/verification/harness.py --profile perception-input-alignment`
+
 ## 后续风险记录
 
-2026-07-02 四个后续计划已完成 backend/harness/Godot runtime proof 后，仍保留两个不适合在同一执行切片内顺手解决的后续风险：
+2026-07-02 后续计划已完成 backend/harness/Godot runtime proof 后，仍保留两个不适合在同一执行切片内顺手解决的后续风险：
 
 1. `ActorSceneKnowledgeStore` 当前是第一阶段内存 store。后续若要落持久化，需要单独设计 actor/session/scene 分区、TTL、revision compaction、trace retention、迁移和隐私隔离验证；不应在 lifecycle contract 切片中直接引入存储层。
 2. `ESM Physical Channel World Actuation` 已验证受控 physical channel、Godot runtime contact/body/object/environment refs、constraint gating 和 orchestration unified merge。它仍不是完整生产级连续物理玩法 rollout；后续若要扩展，需要单独计划 Godot 局部物理执行、连续接触采样频率、权威回流、L1/ESM feedback 稳定性和可重复 runtime 验收。
 
-这两个风险不阻塞当前 2026-07-02 四计划交付；它们应作为后续增量计划拆分，而不是并入本次已验证切片。
+这两个风险不阻塞当前 2026-07-02 计划交付；它们应作为后续增量计划拆分，而不是并入本次已验证切片。
 
 ## 计划树
 

@@ -3,7 +3,9 @@
 > 对应规格：
 > [2026-07-02-current-project-embodied-skeletal-debug-replay-pipeline-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-embodied-skeletal-debug-replay-pipeline-design.md)
 
-**状态：** `planned`
+**状态：** `implemented-and-runtime-verified`
+
+**实际核对：** `embodied-skeletal-debug-replay` harness profile 已通过，报告为 `.harness/verification/embodied-skeletal-debug-replay-report.json`，Godot runtime 状态为 `godot-runtime-binding-verified`，并证明 full-bone 不进入主链。
 
 **目标：** 绑定真实 `Skeleton3D`/角色身体 runtime，补齐中层骨架参数导出和低层 debug replay artifact pipeline。
 
@@ -17,9 +19,9 @@
 
 任务：
 
-- [ ] 绑定 `Skeleton3D` / `CharacterReplica`
-- [ ] 生成 high-level embodied state
-- [ ] 生成 mid-level skeletal parameters：
+- [x] 绑定 `Skeleton3D` / `CharacterReplica`
+- [x] 生成 high-level embodied state
+- [x] 生成 mid-level skeletal parameters：
   - anchor refs
   - facing vectors
   - reach envelope
@@ -27,8 +29,8 @@
   - hand readiness
   - contact candidate refs
   - pose feature tags
-- [ ] 输出 main perception payload
-- [ ] Godot editor/runtime probe 验证目标场景中存在真实 `Skeleton3D` binding
+- [x] 输出 main perception payload
+- [x] Godot editor/runtime probe 验证目标场景中存在真实 `Skeleton3D` binding
 
 验收：
 
@@ -43,11 +45,11 @@
 
 任务：
 
-- [ ] 生成 low-level snapshot ref
-- [ ] 写 `.harness/verification/skeletal-replay-*.json`
-- [ ] 记录 retention `debug_replay_only`
-- [ ] 关联 PQF/bundle/failure trace
-- [ ] snapshot refs 可与 failure trace 对齐
+- [x] 生成 low-level snapshot ref
+- [x] 写 `.harness/verification/skeletal-replay-*.json`
+- [x] 记录 retention `debug_replay_only`
+- [x] 关联 PQF/bundle/failure trace
+- [x] snapshot refs 可与 failure trace 对齐
 
 验收：
 

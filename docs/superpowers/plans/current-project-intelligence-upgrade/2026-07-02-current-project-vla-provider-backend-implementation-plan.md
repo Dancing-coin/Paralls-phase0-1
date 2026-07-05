@@ -3,7 +3,9 @@
 > 对应规格：
 > [2026-07-02-current-project-vla-provider-backend-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-vla-provider-backend-design.md)
 
-**状态：** `planned`
+**状态：** `implemented-and-verified-contract-ready-real-provider-blocked`
+
+**实际核对：** `vla-provider-backend` harness profile 已通过，报告为 `.harness/verification/vla-provider-backend-report.json`。当前 `real_provider_status=blocked_missing_credentials`，因此完成口径是 backend contract/mock provider/scheduler/cache/trace/percept bridge 已验证，真实 VLA provider 仍未作为 real-provider 完成声明。
 
 **目标：** 在不新增 `VLA Runtime`、不重定义 `L1`、不改写 ESM authority 的前提下，把开源多模态/VLA 能力接为现有多模态慢通路的 provider backend，并让结果以 advisory 形式进入统一感知协议。
 
@@ -44,12 +46,12 @@
 
 任务：
 
-- [ ] 定义 `VLAProviderRequest`
-- [ ] 定义 `VLAProviderResult`
-- [ ] 定义 `VLAProviderStatus`
-- [ ] 定义 advisory、TTL、conflict、missing input、trace ref 字段
-- [ ] 建立 request 从 `PerceptionQueryFrame` 继承 context/cache namespace 的规则
-- [ ] 建立 result 不可表达 authority decision 的校验
+- [x] 定义 `VLAProviderRequest`
+- [x] 定义 `VLAProviderResult`
+- [x] 定义 `VLAProviderStatus`
+- [x] 定义 advisory、TTL、conflict、missing input、trace ref 字段
+- [x] 建立 request 从 `PerceptionQueryFrame` 继承 context/cache namespace 的规则
+- [x] 建立 result 不可表达 authority decision 的校验
 
 验收：
 
@@ -66,11 +68,11 @@
 
 任务：
 
-- [ ] 定义 provider protocol
-- [ ] 实现 deterministic/mock provider
-- [ ] 实现 request artifact refs 读取边界，不直接读取 Godot scene
-- [ ] 实现 result schema validation
-- [ ] 记录 provider id、model id、model version、schema version
+- [x] 定义 provider protocol
+- [x] 实现 deterministic/mock provider
+- [x] 实现 request artifact refs 读取边界，不直接读取 Godot scene
+- [x] 实现 result schema validation
+- [x] 记录 provider id、model id、model version、schema version
 
 验收：
 
@@ -87,11 +89,11 @@
 
 任务：
 
-- [ ] 建立候选 backend 清单
-- [ ] 记录 license、部署方式、硬件预算、结构化输出能力
-- [ ] 第一阶段优先评估 VLM / grounding model
-- [ ] depth model 只作为辅助，不替代 L1 occupancy
-- [ ] robotics VLA action head 标记为 forbidden for runtime control
+- [x] 建立候选 backend 清单
+- [x] 记录 license、部署方式、硬件预算、结构化输出能力
+- [x] 第一阶段优先评估 VLM / grounding model
+- [x] depth model 只作为辅助，不替代 L1 occupancy
+- [x] robotics VLA action head 标记为 forbidden for runtime control
 
 候选方向：
 
@@ -116,13 +118,13 @@
 
 任务：
 
-- [ ] 建立 per-owner queue
-- [ ] 分离 character queue 与 siming queue
-- [ ] 支持 priority、timeout、max queue size
-- [ ] 支持 artifact fingerprint 去重
-- [ ] 支持 stale request discard
-- [ ] 支持 fallback to structured facts
-- [ ] 保证 result 只影响 next tick 或后续 bundle
+- [x] 建立 per-owner queue
+- [x] 分离 character queue 与 siming queue
+- [x] 支持 priority、timeout、max queue size
+- [x] 支持 artifact fingerprint 去重
+- [x] 支持 stale request discard
+- [x] 支持 fallback to structured facts
+- [x] 保证 result 只影响 next tick 或后续 bundle
 
 触发条件：
 
@@ -150,11 +152,11 @@
 
 任务：
 
-- [ ] 建立 cache key
-- [ ] cache key 包含 context id、query window、artifact refs hash、fact refs hash、model version
-- [ ] 禁止 shared namespace
-- [ ] 禁止跨角色命中私有 patch cache
-- [ ] cache 命中结果仍需 freshness 检查
+- [x] 建立 cache key
+- [x] cache key 包含 context id、query window、artifact refs hash、fact refs hash、model version
+- [x] 禁止 shared namespace
+- [x] 禁止跨角色命中私有 patch cache
+- [x] cache 命中结果仍需 freshness 检查
 
 验收：
 
@@ -171,11 +173,11 @@
 
 任务：
 
-- [ ] `VLAProviderResult` -> `ModalityInterpretationResult`
-- [ ] `ModalityInterpretationResult` -> `CrossModalUnderstandingResult`
-- [ ] 把 advisory findings 合入 character `CanonicalPerceptBundle`
-- [ ] 把 advisory findings 合入 siming percept/global situation input
-- [ ] 保留 uncertainty、conflicts、missing modalities、expires_at
+- [x] `VLAProviderResult` -> `ModalityInterpretationResult`
+- [x] `ModalityInterpretationResult` -> `CrossModalUnderstandingResult`
+- [x] 把 advisory findings 合入 character `CanonicalPerceptBundle`
+- [x] 把 advisory findings 合入 siming percept/global situation input
+- [x] 保留 uncertainty、conflicts、missing modalities、expires_at
 
 验收：
 
@@ -194,11 +196,11 @@
 
 任务：
 
-- [ ] 在现有 bridge 周围接入可选 VLA slow path result
-- [ ] 保持 VLA disabled 时现有 L1 structured facts path 不变
-- [ ] 角色只消费 `character_mm:*` 结果
-- [ ] 司命只消费 `siming_mm:*` 结果
-- [ ] 结果标记为 advisory
+- [x] 在现有 bridge 周围接入可选 VLA slow path result
+- [x] 保持 VLA disabled 时现有 L1 structured facts path 不变
+- [x] 角色只消费 `character_mm:*` 结果
+- [x] 司命只消费 `siming_mm:*` 结果
+- [x] 结果标记为 advisory
 
 验收：
 
@@ -216,12 +218,12 @@
 
 任务：
 
-- [ ] 记录 request/result trace
-- [ ] 记录 cache hit/miss
-- [ ] 记录 timeout/degrade/drop
-- [ ] 记录 consumed bundle id
-- [ ] 写入 `.harness/verification/vla-provider-backend-report.json`
-- [ ] 接入 harness profile
+- [x] 记录 request/result trace
+- [x] 记录 cache hit/miss
+- [x] 记录 timeout/degrade/drop
+- [x] 记录 consumed bundle id
+- [x] 写入 `.harness/verification/vla-provider-backend-report.json`
+- [x] 接入 harness profile
 
 验收：
 

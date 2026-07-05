@@ -1,6 +1,6 @@
 # 当前项目感知 capture 时钟契约实施计划
 
-- 状态：`proposed`
+- 状态：`implemented-and-focused-verified`
 - 日期：`2026-07-05`
 
 上位设计：
@@ -31,8 +31,14 @@
 
 ## 4. 验收
 
-- [ ] `capture_root_id` 是同拍判定主身份
-- [ ] `monotonic_tick` 是顺序判定主时钟
-- [ ] wall clock 仅用于证据，不用于同拍判定
-- [ ] VLA 慢路径跨拍返回时不会伪装成原拍
-- [ ] 日志能回溯完整 identity lineage
+- [x] `capture_root_id` 是同拍判定主身份
+- [x] `monotonic_tick` 是顺序判定主时钟
+- [x] wall clock 仅用于证据，不用于同拍判定
+- [x] VLA 慢路径跨拍返回时不会伪装成原拍
+- [x] 日志能回溯完整 identity lineage
+
+## 5. 验证证据
+
+- `python scripts/verification/verify_perception_capture_clock_contract.py`
+- `.harness/verification/perception-capture-clock-contract-report.json`
+- `.harness/verification/perception-capture-clock-contract-report.md`

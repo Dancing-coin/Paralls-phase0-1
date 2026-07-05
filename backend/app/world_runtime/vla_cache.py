@@ -11,6 +11,10 @@ from app.world_runtime.vla_provider import VLAProviderRequest, VLAProviderResult
 class VLACacheKey:
     context_namespace: str
     cache_namespace: str
+    capture_root_id: str
+    capture_id: str
+    clock_domain: str
+    monotonic_tick: int | None
     query_window: tuple[int, int]
     artifact_refs_hash: str
     structured_fact_refs_hash: str
@@ -36,6 +40,10 @@ class VLACache:
         return VLACacheKey(
             context_namespace=request.context_namespace,
             cache_namespace=request.cache_namespace,
+            capture_root_id=request.capture_root_id,
+            capture_id=request.capture_id,
+            clock_domain=request.clock_domain,
+            monotonic_tick=request.monotonic_tick,
             query_window=(request.query_frame.time_window.started_at, request.query_frame.time_window.ended_at),
             artifact_refs_hash=self._hash_list(request.artifact_refs),
             structured_fact_refs_hash=self._hash_list(request.structured_fact_refs),

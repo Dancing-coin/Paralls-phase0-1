@@ -4,6 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.models.object_anchor import append_unique_lineage, derive_world_anchor_id
 from app.models.siming_event import FairnessStateSnapshot, InterventionCandidate
 from app.models.siming_runtime_state import FairnessDimensionSnapshot
 
@@ -25,6 +26,10 @@ class SituationEvidenceRef(BaseModel):
 
     ref_id: str
     source_kind: SituationSourceKind
+    world_anchor_id: str = ""
+    subject_ref: str = ""
+    target_ref: str = ""
+    source_ref_lineage: list[str] = Field(default_factory=list)
     summary: str = ""
     advisory: bool = False
     authoritative: bool = False
@@ -95,14 +100,14 @@ class SimingGlobalSituationLayer:
         multi_actor_patch = multi_actor_patch or {}
 
         evidence_chain: list[SituationEvidenceRef] = []
-        evidence_chain.extend(
-            SituationEvidenceRef(ref_id=ref, source_kind="l1_projected_fact", authoritative=True)
-            for ref in l1_projected_facts
-        )
+        evidence_chain.extend(self._l1_fact_evidence(l1_projected_facts))
         evidence_chain.extend(self._event_evidence(authority_events, "authority_event", authoritative=True))
         evidence_chain.extend(self._event_evidence(world_results, "world_result", authoritative=True))
         evidence_chain.extend(self._event_evidence(environment_events, "environment_event", authoritative=True))
         evidence_chain.extend(self._event_evidence(evidence_events, "evidence_event", authoritative=True))
+        patch_evidence = self._multi_actor_patch_evidence(multi_actor_patch)
+        if patch_evidence is not None:
+            evidence_chain.append(patch_evidence)
         evidence_chain.extend(self._event_evidence(vla_global_findings, "vla_global_advisory", advisory=True))
 
         actor_visibility = multi_actor_patch.get("actor_visibility", {})
@@ -138,6 +143,13 @@ class SimingGlobalSituationLayer:
             },
             workbench_explanation={
                 "source_refs": [evidence.ref_id for evidence in evidence_chain],
+                "object_anchors": sorted(
+                    {
+                        evidence.world_anchor_id
+                        for evidence in evidence_chain
+                        if evidence.world_anchor_id
+                    }
+                ),
                 "conflict_refs": conflict_refs,
                 "freshness": "contested" if conflict_refs else "fresh",
                 "context_id": context_id,
@@ -236,12 +248,51 @@ class SimingGlobalSituationLayer:
             SituationEvidenceRef(
                 ref_id=self._ref_for_event(event),
                 source_kind=source_kind,
+                world_anchor_id=str(event.get("world_anchor_id", "") or derive_world_anchor_id(target_ref=str(event.get("target_ref", "") or ""))),
+                subject_ref=str(event.get("subject_ref", "") or ""),
+                target_ref=str(event.get("target_ref", "") or ""),
+                source_ref_lineage=append_unique_lineage(
+                    [str(ref) for ref in event.get("source_ref_lineage", []) if isinstance(ref, str)],
+                    [self._ref_for_event(event)],
+                ),
                 summary=str(event.get("summary", "") or event.get("result_type", "") or event.get("event_type", "")),
                 advisory=advisory,
                 authoritative=authoritative,
             )
             for event in events
         ]
+
+    def _l1_fact_evidence(self, refs: list[str]) -> list[SituationEvidenceRef]:
+        return [
+            SituationEvidenceRef(
+                ref_id=ref,
+                source_kind="l1_projected_fact",
+                source_ref_lineage=[ref],
+                authoritative=True,
+            )
+            for ref in refs
+        ]
+
+    def _multi_actor_patch_evidence(self, patch: dict[str, object]) -> SituationEvidenceRef | None:
+        refs = patch.get("patch_refs", [])
+        if not isinstance(refs, list) or not refs:
+            return None
+        ref_id = str(refs[0])
+        target_ref = str(patch.get("target_ref", "") or "")
+        return SituationEvidenceRef(
+            ref_id=ref_id,
+            source_kind="multi_actor_patch",
+            world_anchor_id=str(patch.get("world_anchor_id", "") or derive_world_anchor_id(target_ref=target_ref)),
+            subject_ref="siming",
+            target_ref=target_ref,
+            source_ref_lineage=append_unique_lineage(
+                [str(ref) for ref in patch.get("source_ref_lineage", []) if isinstance(ref, str)],
+                [ref_id],
+            ),
+            summary="public multi-actor perception patch",
+            advisory=False,
+            authoritative=False,
+        )
 
     def _ref_for_event(self, event: dict[str, object]) -> str:
         for key in ("event_id", "result_id", "ref_id", "id", "causation_id"):

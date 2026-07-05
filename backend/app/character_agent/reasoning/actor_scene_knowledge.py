@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.models.object_anchor import append_unique_lineage, derive_world_anchor_id
 from app.world_runtime.intelligence_upgrade import CanonicalPerceptBundle
 
 
@@ -39,9 +40,12 @@ class ActorSceneKnowledgeConflict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     conflict_id: str
+    world_anchor_id: str = ""
     subject_ref: str
+    target_ref: str = ""
     reason: str
     source_refs: list[str] = Field(default_factory=list)
+    source_ref_lineage: list[str] = Field(default_factory=list)
     resolved: bool = False
     resolved_by_ref: str = ""
 
@@ -65,11 +69,14 @@ class ActorSceneKnowledgeEntry(BaseModel):
     actor_id: str
     session_id: str
     scene_id: str
+    world_anchor_id: str = ""
     subject_ref: str
+    target_ref: str = ""
     knowledge_type: KnowledgeType
     summary: str
     source_kind: KnowledgeSourceKind
     source_refs: list[str] = Field(default_factory=list)
+    source_ref_lineage: list[str] = Field(default_factory=list)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     freshness: ActorSceneKnowledgeFreshness = Field(default_factory=ActorSceneKnowledgeFreshness)
     conflicts: list[ActorSceneKnowledgeConflict] = Field(default_factory=list)
@@ -79,6 +86,11 @@ class ActorSceneKnowledgeEntry(BaseModel):
 
     @model_validator(mode="after")
     def validate_authority_boundary(self) -> "ActorSceneKnowledgeEntry":
+        if self.target_ref == "":
+            self.target_ref = self.subject_ref
+        if self.world_anchor_id == "":
+            self.world_anchor_id = derive_world_anchor_id(target_ref=self.target_ref or self.subject_ref)
+        self.source_ref_lineage = append_unique_lineage(self.source_ref_lineage, self.source_refs)
         if self.source_kind == "vla_advisory":
             self.advisory = True
         if self.advisory and self.world_truth_marker != "subjective_not_world_truth":
@@ -121,10 +133,13 @@ class ActorSceneKnowledgeStore:
         subject_ref: str,
         knowledge_type: KnowledgeType,
     ) -> ActorSceneKnowledgeEntry | None:
-        return self._entries.get((actor_id, session_id, scene_id, subject_ref, knowledge_type))
+        world_anchor_id = derive_world_anchor_id(target_ref=subject_ref)
+        return self._entries.get((actor_id, session_id, scene_id, world_anchor_id, knowledge_type)) or self._entries.get(
+            (actor_id, session_id, scene_id, subject_ref, knowledge_type)
+        )
 
     def upsert(self, incoming: ActorSceneKnowledgeEntry, *, producer_ts: int) -> ActorSceneKnowledgeUpdate:
-        key = (incoming.actor_id, incoming.session_id, incoming.scene_id, incoming.subject_ref, incoming.knowledge_type)
+        key = self._key(incoming)
         existing = self._entries.get(key)
         if existing is None:
             entry = incoming.model_copy(
@@ -149,10 +164,13 @@ class ActorSceneKnowledgeStore:
 
         if self._is_conflict(existing, incoming):
             conflict = ActorSceneKnowledgeConflict(
-                conflict_id=f"ask_conflict:{incoming.actor_id}:{incoming.subject_ref}:{producer_ts}:{len(existing.conflicts) + 1}",
+                conflict_id=f"ask_conflict:{incoming.actor_id}:{incoming.world_anchor_id}:{producer_ts}:{len(existing.conflicts) + 1}",
+                world_anchor_id=incoming.world_anchor_id,
                 subject_ref=incoming.subject_ref,
+                target_ref=incoming.target_ref,
                 reason=f"{existing.source_kind}_vs_{incoming.source_kind}",
                 source_refs=[*existing.source_refs, *incoming.source_refs],
+                source_ref_lineage=append_unique_lineage(existing.source_ref_lineage, incoming.source_ref_lineage),
             )
             entry = existing.model_copy(
                 update={
@@ -184,6 +202,7 @@ class ActorSceneKnowledgeStore:
             update={
                 "freshness": existing.freshness.model_copy(update={"state": "fresh", "last_confirmed_at": producer_ts}),
                 "source_refs": self._append_unique(existing.source_refs, incoming.source_refs),
+                "source_ref_lineage": self._append_unique(existing.source_ref_lineage, incoming.source_ref_lineage),
             }
         )
         if incoming.confidence > existing.confidence or incoming.summary != existing.summary:
@@ -226,6 +245,9 @@ class ActorSceneKnowledgeStore:
         scene_id = str(bundle.local_spatial_state.get("scene_id", "") or "scene_demo")
         updates: list[ActorSceneKnowledgeUpdate] = []
         target_ref = self._bundle_target_ref(bundle)
+        world_anchor_id = str(bundle.target_state.get("world_anchor_id", "") or bundle.world_anchor_id or "")
+        world_anchor_id = derive_world_anchor_id(target_ref=target_ref, world_anchor_id=world_anchor_id)
+        source_lineage = append_unique_lineage(bundle.source_ref_lineage, [bundle.bundle_id, bundle.query_id, *bundle.structured_fact_refs])
         if target_ref:
             updates.append(
                 self.upsert(
@@ -234,29 +256,36 @@ class ActorSceneKnowledgeStore:
                         actor_id=bundle.subject_id,
                         session_id=session_id,
                         scene_id=scene_id,
+                        world_anchor_id=world_anchor_id,
                         subject_ref=target_ref,
+                        target_ref=target_ref,
                         knowledge_type="target",
                         summary=str(bundle.target_state.get("summary", "") or f"target observed: {target_ref}"),
                         source_kind="canonical_percept_bundle",
                         source_refs=[bundle.bundle_id, bundle.query_id, *bundle.structured_fact_refs],
+                        source_ref_lineage=source_lineage,
                         confidence=float(bundle.target_state.get("confidence", 0.75) or 0.75),
                     ),
                     producer_ts=producer_ts,
                 )
             )
         for fact_ref in bundle.structured_fact_refs:
+            fact_target_ref = target_ref or fact_ref
             updates.append(
                 self.upsert(
                     ActorSceneKnowledgeEntry(
-                        entry_id=f"ask:{bundle.subject_id}:{fact_ref}:l1",
+                        entry_id=f"ask:{bundle.subject_id}:{fact_target_ref}:l1",
                         actor_id=bundle.subject_id,
                         session_id=session_id,
                         scene_id=scene_id,
-                        subject_ref=fact_ref,
+                        world_anchor_id=world_anchor_id or derive_world_anchor_id(target_ref=fact_target_ref),
+                        subject_ref=fact_target_ref,
+                        target_ref=fact_target_ref,
                         knowledge_type=self._knowledge_type_for_fact(fact_ref),
                         summary=f"L1 projected fact available: {fact_ref}",
                         source_kind="l1_projected_fact",
                         source_refs=[bundle.bundle_id, bundle.query_id, fact_ref],
+                        source_ref_lineage=append_unique_lineage(source_lineage, [fact_ref]),
                         confidence=0.95,
                         world_truth_marker="l1_projected_fact_ref",
                     ),
@@ -265,19 +294,31 @@ class ActorSceneKnowledgeStore:
             )
         advisory = bundle.uncertainty.get("vla_advisory") if isinstance(bundle.uncertainty, dict) else None
         if isinstance(advisory, dict):
-            subject_ref = str(advisory.get("subject_ref", "") or target_ref or f"vla:{bundle.bundle_id}")
+            advisory_target_ref = str(advisory.get("target_ref", "") or target_ref or "")
+            advisory_subject_ref = str(advisory.get("subject_ref", "") or advisory_target_ref or f"vla:{bundle.bundle_id}")
+            advisory_anchor = str(advisory.get("world_anchor_id", "") or world_anchor_id or "")
+            advisory_lineage = append_unique_lineage(
+                source_lineage,
+                [str(ref) for ref in advisory.get("source_ref_lineage", []) if isinstance(ref, str)],
+            )
             updates.append(
                 self.upsert(
                     ActorSceneKnowledgeEntry(
-                        entry_id=f"ask:{bundle.subject_id}:{subject_ref}:vla",
+                        entry_id=f"ask:{bundle.subject_id}:{advisory_subject_ref}:vla",
                         actor_id=bundle.subject_id,
                         session_id=session_id,
                         scene_id=scene_id,
-                        subject_ref=subject_ref,
-                        knowledge_type=self._knowledge_type_for_fact(subject_ref),
+                        world_anchor_id=derive_world_anchor_id(
+                            target_ref=advisory_target_ref or advisory_subject_ref,
+                            world_anchor_id=advisory_anchor,
+                        ),
+                        subject_ref=advisory_subject_ref,
+                        target_ref=advisory_target_ref or advisory_subject_ref,
+                        knowledge_type=self._knowledge_type_for_fact(advisory_subject_ref),
                         summary=str(advisory.get("summary", "") or "VLA advisory spatial finding"),
                         source_kind="vla_advisory",
                         source_refs=[bundle.bundle_id, bundle.query_id, *[str(ref) for ref in advisory.get("source_refs", [])]],
+                        source_ref_lineage=advisory_lineage,
                         confidence=float(advisory.get("confidence", 0.55) or 0.55),
                         advisory=True,
                     ),
@@ -304,11 +345,14 @@ class ActorSceneKnowledgeStore:
                 actor_id=actor_id,
                 session_id=session_id,
                 scene_id=scene_id,
+                world_anchor_id=derive_world_anchor_id(target_ref=subject_ref),
                 subject_ref=subject_ref,
+                target_ref=subject_ref,
                 knowledge_type="failure",
                 summary=reason,
                 source_kind=failure_kind,
                 source_refs=source_refs,
+                source_ref_lineage=list(source_refs),
                 confidence=0.8,
             ),
             producer_ts=producer_ts,
@@ -427,7 +471,9 @@ class ActorSceneKnowledgeStore:
                 "actor_id": update.entry.actor_id,
                 "session_id": update.entry.session_id,
                 "scene_id": update.entry.scene_id,
+                "world_anchor_id": update.entry.world_anchor_id,
                 "subject_ref": update.entry.subject_ref,
+                "target_ref": update.entry.target_ref,
                 "freshness": update.entry.freshness.state,
                 "conflict_state": update.entry.conflict_state,
                 "active_perception_reasons": list(update.active_perception_reasons),
@@ -435,7 +481,7 @@ class ActorSceneKnowledgeStore:
         )
 
     def _key(self, entry: ActorSceneKnowledgeEntry) -> tuple[str, str, str, str, KnowledgeType]:
-        return (entry.actor_id, entry.session_id, entry.scene_id, entry.subject_ref, entry.knowledge_type)
+        return (entry.actor_id, entry.session_id, entry.scene_id, entry.world_anchor_id or entry.subject_ref, entry.knowledge_type)
 
     def _append_unique(self, existing: list[str], incoming: list[str]) -> list[str]:
         merged = list(existing)

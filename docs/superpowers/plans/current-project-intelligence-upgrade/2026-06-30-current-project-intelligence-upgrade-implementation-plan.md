@@ -1,6 +1,10 @@
-﻿# 当前项目智能体与世界交互增量专题总实施计划
+# 当前项目智能体与世界交互增量专题总实施计划
 
 > 适用范围：`docs/superpowers/specs/current-project-intelligence-upgrade/`
+
+**状态：** `implemented-and-subsequent-topic-profiles-verified-parent-plan`
+
+**实际核对：** 本 parent plan 的后续 L1、VLA、ASK、Siming、interaction、ESM、skeletal、provider readiness、perception identity profiles 已核对通过；具体报告见各子计划。
 
 **目标：** 把已闭合 mainline 之外的增量感知、多模态、局部世界协议、双通道交互、具身身体状态和非运行时工具链能力组织成可执行路线图。
 

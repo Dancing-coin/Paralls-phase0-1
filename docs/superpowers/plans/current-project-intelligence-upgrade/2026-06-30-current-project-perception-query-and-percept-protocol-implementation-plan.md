@@ -3,6 +3,10 @@
 > 对应规格：
 > [2026-06-29-current-project-perception-query-and-percept-protocol-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-06-29-current-project-perception-query-and-percept-protocol-design.md)
 
+**状态：** `implemented-and-identity-alignment-verified`
+
+**实际核对：** PQF / percept protocol 已被后续 `perception-input-alignment` profile 覆盖验证，报告为 `.harness/verification/perception-input-alignment-report.json`。
+
 **目标：** 建立当前项目多模态链的统一取样协议与统一感知结果协议。
 
 ## 任务

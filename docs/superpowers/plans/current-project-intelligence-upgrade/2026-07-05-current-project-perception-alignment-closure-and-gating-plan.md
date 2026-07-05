@@ -1,6 +1,6 @@
 # 当前项目感知 identity 收口总控计划
 
-- 状态：`proposed`
+- 状态：`implemented-and-focused-verified`
 - 日期：`2026-07-05`
 
 上位母计划：
@@ -24,8 +24,9 @@
 2. `cross-modal-object-anchor-and-reference`
 3. `multi-actor-private-perspective-reconciliation`
 4. `capture-aware-bridge-and-downstream-propagation`
-   - 当前由母计划中的 bridge / downstream 接线责任承接
+   - [2026-07-05-current-project-capture-aware-bridge-and-downstream-propagation-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-05-current-project-capture-aware-bridge-and-downstream-propagation-implementation-plan.md)
 5. `perception-identity-verification-matrix`
+   - [2026-07-05-current-project-perception-identity-verification-matrix-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-05-current-project-perception-identity-verification-matrix-implementation-plan.md)
 
 ## 3. 执行顺序
 
@@ -88,6 +89,14 @@
 - 哪些模态优先走 fact-first
 - 哪些模态必须保留 provider-enhanced
 
+### 6.1 当前落地结论
+
+- runtime critical：结构化 L1 fact / projected fact、`RawFactEvent`、`CanonicalPerceptBundle`、`SampleInputRef` 的 ref identity。它们构成主感知链与同拍判定证据。
+- provider-enhanced：`visual_patch`、`spatial_patch`、`auditory_context`、`embodied_state`、`skeletal_state`、`environment_field`。这些 provider 保留为输入证据和私有/全局 percept bundle 的增强材料，不直接拥有 world truth。
+- advisory / optional：VLA slow path 与 VLA findings。它们必须保持 `advisory=True`，后补结果必须标记 `capture_relation="late_advisory"`，不得伪装原拍主事实。
+- fact-first 模态：空间可达、对象状态、环境状态、约束结果、world result / ESM result。下游 authority 与 world truth 继续以结构化 fact/result 为主。
+- provider-enhanced 模态：视觉 patch、空间 patch、听觉窗口、具身/骨架 ref、环境 field ref。它们可增强角色私有感知、Siming 全局情况与 VLA advisory，但不替代 fact anchor。
+
 ## 7. 完成定义
 
 只有同时满足下面 5 条，才能宣称 2026-07-05 这一组“完整实现 ready”：
@@ -97,6 +106,15 @@
 3. 多 actor 私有视角分发落地
 4. bridge / downstream identity 接线落地
 5. 行为矩阵 verifier 全绿
+
+当前 focused 证据：
+
+- `python scripts/verification/verify_perception_capture_clock_contract.py`
+- `python scripts/verification/verify_perception_object_anchor_contract.py`
+- `python scripts/verification/verify_perception_multi_actor_private_perspective.py`
+- `python scripts/verification/verify_perception_downstream_identity_propagation.py`
+- `python scripts/verification/verify_perception_input_alignment.py`
+- `python scripts/verification/harness.py --profile perception-input-alignment`
 
 ## 8. 禁止事项
 

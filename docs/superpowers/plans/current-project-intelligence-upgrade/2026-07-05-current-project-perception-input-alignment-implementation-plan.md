@@ -1,6 +1,6 @@
 # 当前项目感知输入对齐层母计划
 
-- 状态：`proposed-parent-plan`
+- 状态：`implemented-and-focused-verified-parent-plan`
 - 日期：`2026-07-05`
 
 上位设计：
@@ -43,13 +43,15 @@
 1. `2026-07-05-current-project-perception-capture-clock-contract-implementation-plan.md`
 2. `2026-07-05-current-project-cross-modal-object-anchor-and-reference-implementation-plan.md`
 3. `2026-07-05-current-project-multi-actor-private-perspective-reconciliation-implementation-plan.md`
-4. `2026-07-05-current-project-perception-identity-verification-matrix-implementation-plan.md`
+4. `2026-07-05-current-project-capture-aware-bridge-and-downstream-propagation-implementation-plan.md`
+5. `2026-07-05-current-project-perception-identity-verification-matrix-implementation-plan.md`
 
 它们分别承担：
 
 - 绝对时间与 capture 身份
 - 对象锚点与指代统一
 - 多角色私有视角分发
+- bridge / downstream identity 传播
 - 行为级验证矩阵
 
 本母计划只保留总控和门禁。
@@ -64,7 +66,9 @@
    - 再固定 `world_anchor_id / target_ref / source_ref_lineage`
 3. `multi-actor-private-perspective-reconciliation`
    - 再升级 bridge 和多 actor 视角投影
-4. `perception-identity-verification-matrix`
+4. `capture-aware-bridge-and-downstream-propagation`
+   - 再让角色 snapshot / working memory 与 Siming read model / output / debug payload 保留 identity
+5. `perception-identity-verification-matrix`
    - 最后补 focused verifier、矩阵验收和 harness profile
 
 禁止顺序：
@@ -105,4 +109,4 @@
 1. 先把本母计划视为 closure / gating 文档
 2. 每次只执行一个子计划
 3. 每完成一项子计划，就回写 README 顺序和验收状态
-4. 只有四个子计划都过行为矩阵验证，才能宣称“完整实现”
+4. 只有五个子计划都过行为矩阵验证，才能宣称“完整实现”

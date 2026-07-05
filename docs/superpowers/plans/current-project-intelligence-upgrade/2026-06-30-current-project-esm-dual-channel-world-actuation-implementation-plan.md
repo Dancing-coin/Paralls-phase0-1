@@ -3,6 +3,10 @@
 > 对应规格：
 > [2026-06-29-current-project-esm-dual-channel-world-actuation-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-06-29-current-project-esm-dual-channel-world-actuation-design.md)
 
+**状态：** `implemented-contract-slice-and-subsequent-physical-channel-runtime-verified`
+
+**实际核对：** 本 dual-channel contract slice 已落地；后续 `esm-physical-channel-world-actuation` profile 已通过，报告为 `.harness/verification/esm-physical-channel-world-actuation-report.json`。
+
 **目标：** 在保留当前语义结算能力的同时，为未来物理驱动交互预留并建立世界作用双通道。
 
 ## 任务

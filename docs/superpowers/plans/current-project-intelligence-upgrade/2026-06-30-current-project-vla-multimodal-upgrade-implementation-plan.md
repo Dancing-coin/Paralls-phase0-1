@@ -3,6 +3,10 @@
 > 对应规格：
 > [2026-06-28-current-project-vla-multimodal-upgrade-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-06-28-current-project-vla-multimodal-upgrade-design.md)
 
+**状态：** `implemented-contract-slice-and-subsequent-vla-provider-verified`
+
+**实际核对：** 本 contract slice 已落地；后续 `vla-provider-backend` profile 已通过，报告为 `.harness/verification/vla-provider-backend-report.json`。真实 provider 仍按 report 标记为 `blocked_missing_credentials`，不宣称 real-provider 完成。
+
 **目标：** 在不重做主线的前提下，为当前项目接入 VLA 空间视觉理解子链、多模态慢通路和角色/司命各自独立的多模态上下文。
 
 **边界：**

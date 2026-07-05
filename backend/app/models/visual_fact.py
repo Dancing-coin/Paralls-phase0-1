@@ -48,6 +48,21 @@ class VisualFactEvent(RawFactEvent):
             "causation_id": payload.get("causation_id", ""),
             "correlation_id": payload.get("correlation_id", ""),
         }
+        for capture_key in (
+            "capture_root_id",
+            "capture_id",
+            "clock_domain",
+            "monotonic_tick",
+            "source_frame_index",
+            "wall_clock_ts",
+            "sample_ref_id",
+            "world_anchor_id",
+            "subject_ref",
+            "target_ref",
+            "source_ref_lineage",
+        ):
+            if capture_key in payload:
+                normalized[capture_key] = payload[capture_key]
         if "source" in payload:
             normalized["source"] = cls._merge_nested_payload(legacy_source, payload["source"])
         if "targets" in payload:

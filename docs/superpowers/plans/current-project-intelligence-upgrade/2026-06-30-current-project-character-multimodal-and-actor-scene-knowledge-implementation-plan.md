@@ -3,6 +3,10 @@
 > 对应规格：
 > [2026-06-29-current-project-character-multimodal-and-actor-scene-knowledge-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-06-29-current-project-character-multimodal-and-actor-scene-knowledge-design.md)
 
+**状态：** `implemented-contract-slice-and-subsequent-ask-lifecycle-verified`
+
+**实际核对：** 本 character multimodal / ASK contract slice 已落地；后续 `actor-scene-knowledge-lifecycle` profile 已通过，报告为 `.harness/verification/actor-scene-knowledge-lifecycle-report.json`。
+
 **目标：** 在心智核心已完成前提下，为角色智能体补齐多模态输入链、局部世界感知和场景知识层。
 
 ## 任务

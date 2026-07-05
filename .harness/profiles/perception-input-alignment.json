@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "perception-input-alignment",
+  "order": 71,
+  "script": "scripts/verification/verify_perception_input_alignment.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/perception-input-alignment-report.json",
+  "description": "Focused behavior matrix proving perception capture/object/view/advisory/Siming identity alignment"
+}

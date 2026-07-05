@@ -3,6 +3,10 @@
 > 对应规格：
 > [2026-06-29-current-project-godot-sampling-frontend-and-providers-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-06-29-current-project-godot-sampling-frontend-and-providers-design.md)
 
+**状态：** `implemented-contract-slice-and-subsequent-godot-provider-runtime-verified`
+
+**实际核对：** 本 sampling frontend slice 已落地；后续 `godot-sampling-production-grade-providers` profile 已通过，报告为 `.harness/verification/godot-sampling-production-grade-providers-report.json`。
+
 **目标：** 把 `Godot` 明确升级为取样前端，而不是让它承担重理解。
 
 ## 任务

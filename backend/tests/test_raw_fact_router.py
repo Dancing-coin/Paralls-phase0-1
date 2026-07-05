@@ -1,6 +1,9 @@
 from app.models.raw_fact import RawFactEvent
 from app.models.visual_fact import VisualFactEvent
+from app.models.capture_clock import same_capture_tick
+from app.services.candidate_percept_service import compile_candidate_percepts
 from app.services.fact_handlers.spatial_access_fact_handler import SpatialAccessFactHandler
+from app.services.per_character_percept_filter import filter_candidate_for_actor
 from app.services.fact_router import route_raw_fact_event
 
 
@@ -73,6 +76,38 @@ def test_raw_fact_event_accepts_effect_semantics_fields() -> None:
     assert event.effect_kind == "set"
     assert event.subject_key == "current_zone_id"
     assert event.ttl_ms == 1500
+
+
+def test_raw_fact_event_preserves_capture_clock_identity_through_fact_chain() -> None:
+    event = RawFactEvent(
+        fact_family="visual_fact",
+        fact_type="fixed_gaze_on_target",
+        relation_type="actor_looks_at_object",
+        producer_ts=900,
+        capture_root_id="capture_root:godot_main:room_demo:scene_demo:zone_focus:77",
+        capture_id="capture:capture_root:godot_main:room_demo:scene_demo:zone_focus:77:fact:char_b",
+        clock_domain="godot_main",
+        monotonic_tick=77,
+        source_frame_index=12,
+        wall_clock_ts=900,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={"layer": "L1", "system": "godot.raw_fact_emitter", "actor_id": "char_b"},
+        targets={"object_id": "obj_letter"},
+    )
+
+    candidate = compile_candidate_percepts(event)[0]
+    perceived = filter_candidate_for_actor(candidate, actor_id="char_b")
+
+    assert event.capture_root_id == candidate.capture_root_id
+    assert perceived is not None
+    assert perceived.capture_root_id == event.capture_root_id
+    assert perceived.capture_id == event.capture_id
+    assert perceived.clock_domain == "godot_main"
+    assert perceived.monotonic_tick == 77
+    assert perceived.source_frame_index == 12
+    assert same_capture_tick(event, perceived)
 
 
 def test_raw_fact_event_accepts_auditory_fact_shape() -> None:
@@ -153,12 +188,28 @@ def test_visual_fact_event_model_dump_returns_canonical_nested_shape() -> None:
         target_actor_id="char_a",
     )
 
-    assert event.model_dump() == {
+    payload = event.model_dump()
+
+    assert payload == {
         "event_type": "raw_fact_event",
         "fact_family": "visual_fact",
         "fact_type": "fixed_gaze_on_target",
         "relation_type": "actor_looks_at_actor",
         "producer_ts": 123,
+        "capture_root_id": "capture_root:legacy_producer_ts:room_demo:scene_demo:zone_focus:123",
+        "capture_id": "capture:capture_root:legacy_producer_ts:room_demo:scene_demo:zone_focus:123:fact:char_c",
+        "clock_domain": "legacy_producer_ts",
+        "monotonic_tick": 123,
+        "source_frame_index": None,
+        "wall_clock_ts": 123,
+        "sample_ref_id": payload["sample_ref_id"],
+        "world_anchor_id": "world_anchor:actor:char_a",
+        "subject_ref": "char_c",
+        "target_ref": "char_a",
+        "source_ref_lineage": [
+            payload["sample_ref_id"],
+            "raw_fact_event:visual_fact:fixed_gaze_on_target:123",
+        ],
         "room_id": "room_demo",
         "scene_id": "scene_demo",
         "zone_id": "zone_focus",
@@ -197,6 +248,7 @@ def test_visual_fact_event_model_dump_returns_canonical_nested_shape() -> None:
         "causation_id": "",
         "correlation_id": "",
     }
+    assert payload["sample_ref_id"].startswith("sample_ref:visual_fact:")
 
 
 def test_visual_fact_event_to_legacy_payload_returns_flat_shape() -> None:
@@ -249,6 +301,31 @@ def test_visual_fact_event_mixed_shape_preserves_nested_values() -> None:
     assert event.model_dump()["targets"]["actor_id"] == "nested_target"
     assert event.to_legacy_payload()["actor_id"] == "nested_actor"
     assert event.to_legacy_payload()["target_actor_id"] == "nested_target"
+
+
+def test_visual_fact_event_preserves_explicit_capture_clock_fields() -> None:
+    event = VisualFactEvent(
+        actor_id="char_c",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        producer_ts=123,
+        capture_root_id="capture_root:godot_main:room_demo:scene_demo:zone_focus:77",
+        capture_id="capture:capture_root:godot_main:room_demo:scene_demo:zone_focus:77:fact:char_c",
+        clock_domain="godot_main",
+        monotonic_tick=77,
+        source_frame_index=12,
+        wall_clock_ts=123,
+        fact_type="fixed_gaze_on_target",
+        relation_type="actor_looks_at_actor",
+        target_actor_id="char_a",
+    )
+
+    assert event.capture_root_id == "capture_root:godot_main:room_demo:scene_demo:zone_focus:77"
+    assert event.capture_id.endswith(":fact:char_c")
+    assert event.clock_domain == "godot_main"
+    assert event.monotonic_tick == 77
+    assert event.source_frame_index == 12
 
 
 def test_visual_fact_event_model_dump_preserves_effect_semantics() -> None:

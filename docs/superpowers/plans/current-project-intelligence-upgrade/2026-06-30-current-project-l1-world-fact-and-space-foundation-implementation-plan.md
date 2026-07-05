@@ -1,7 +1,11 @@
-﻿# 当前项目 `L1` 世界事实层与空间底座实施计划
+# 当前项目 `L1` 世界事实层与空间底座实施计划
 
 > 对应规格：
 > [2026-06-29-current-project-l1-world-fact-and-space-foundation-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-06-29-current-project-l1-world-fact-and-space-foundation-design.md)
+
+**状态：** `implemented-contract-slice-and-subsequent-l1-runtime-verified`
+
+**实际核对：** 本 contract slice 已落地；后续 `l1-world-fact-runtime` profile 已通过，报告为 `.harness/verification/l1-world-fact-runtime-report.json`。
 
 **目标：** 把当前 `L1` 从 emitter 集合提升为真正的世界事实层，并引入静态空间底稿与动态空间占据层。
 

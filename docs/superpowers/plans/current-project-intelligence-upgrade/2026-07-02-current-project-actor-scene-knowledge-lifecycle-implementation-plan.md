@@ -3,7 +3,9 @@
 > 对应规格：
 > [2026-07-02-current-project-actor-scene-knowledge-lifecycle-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-actor-scene-knowledge-lifecycle-design.md)
 
-**状态：** `planned`
+**状态：** `implemented-and-verified`
+
+**实际核对：** `actor-scene-knowledge-lifecycle` harness profile 已通过，报告为 `.harness/verification/actor-scene-knowledge-lifecycle-report.json`，覆盖 ASK store 隔离、revision/conflict/freshness/expiry、VLA advisory 主观知识和 active perception 闭环。
 
 **目标：** 把现有角色 bundle ingestion 和 `ActorSceneKnowledgeEntry` 契约扩展为角色私有 knowledge store、主动感知闭环和冲突/新鲜度生命周期。
 
@@ -16,10 +18,10 @@
 
 任务：
 
-- [ ] 定义 `ActorSceneKnowledgeStore`
-- [ ] 定义 revision/conflict/freshness/expiry 模型
-- [ ] 按 actor/session/scene 隔离 store
-- [ ] 支持 add/hit/revise/conflict/stale/expire
+- [x] 定义 `ActorSceneKnowledgeStore`
+- [x] 定义 revision/conflict/freshness/expiry 模型
+- [x] 按 actor/session/scene 隔离 store
+- [x] 支持 add/hit/revise/conflict/stale/expire
 
 验收：
 
@@ -36,10 +38,10 @@
 
 任务：
 
-- [ ] 从 `CanonicalPerceptBundle` 生成 ASK update
-- [ ] 把 VLA advisory 写入主观知识
-- [ ] 把 L1 structured facts 作为高优先来源
-- [ ] 把 interaction failure / embodied failure 写入冲突或重查线索
+- [x] 从 `CanonicalPerceptBundle` 生成 ASK update
+- [x] 把 VLA advisory 写入主观知识
+- [x] 把 L1 structured facts 作为高优先来源
+- [x] 把 interaction failure / embodied failure 写入冲突或重查线索
 
 验收：
 
@@ -55,12 +57,12 @@
 
 任务：
 
-- [ ] 定义 `ActivePerceptionRequest`
-- [ ] 定义 `ActivePerceptionResult`
-- [ ] 从 stale/conflict/failure 生成 request
-- [ ] request 输出到 PQF 构造入口
-- [ ] `ActivePerceptionResult` 携带 source refs、freshness、confidence、conflict refs 和 failure reason
-- [ ] result 回写 ASK store，并生成 revision/conflict/resolve 记录
+- [x] 定义 `ActivePerceptionRequest`
+- [x] 定义 `ActivePerceptionResult`
+- [x] 从 stale/conflict/failure 生成 request
+- [x] request 输出到 PQF 构造入口
+- [x] `ActivePerceptionResult` 携带 source refs、freshness、confidence、conflict refs 和 failure reason
+- [x] result 回写 ASK store，并生成 revision/conflict/resolve 记录
 
 验收：
 
@@ -79,9 +81,9 @@
 
 任务：
 
-- [ ] 落 ASK store/update trace
-- [ ] 证明隔离、冲突、新鲜度、主动感知闭环
-- [ ] 接入 docs/harness
+- [x] 落 ASK store/update trace
+- [x] 证明隔离、冲突、新鲜度、主动感知闭环
+- [x] 接入 docs/harness
 
 验证命令：
 

@@ -1322,17 +1322,18 @@ def _project_l1_facts_for_dirty_zones(producer_ts: int) -> list[RawFactEvent]:
     return facts
 
 
-def _l1_provider_refs_from_payload(payload: dict[str, object]) -> dict[str, list[dict[str, str]]] | None:
+def _l1_provider_refs_from_payload(payload: dict[str, object]) -> dict[str, list[dict[str, object]]] | None:
     raw_refs = payload.get("l1_provider_refs") or payload.get("provider_refs")
     if not isinstance(raw_refs, dict):
         return None
 
-    normalized: dict[str, list[dict[str, str]]] = {}
+    normalized: dict[str, list[dict[str, object]]] = {}
     direct_keys = {
         "visual_inputs",
         "spatial_inputs",
         "auditory_inputs",
         "embodied_inputs",
+        "skeletal_inputs",
         "environment_inputs",
     }
     artifact_key_map = {
@@ -1356,8 +1357,8 @@ def _l1_provider_refs_from_payload(payload: dict[str, object]) -> dict[str, list
     return normalized or None
 
 
-def _normalize_l1_provider_ref_entries(entries: list[object]) -> list[dict[str, str]]:
-    normalized: list[dict[str, str]] = []
+def _normalize_l1_provider_ref_entries(entries: list[object]) -> list[dict[str, object]]:
+    normalized: list[dict[str, object]] = []
     for entry in entries:
         if not isinstance(entry, dict):
             continue
@@ -1367,14 +1368,24 @@ def _normalize_l1_provider_ref_entries(entries: list[object]) -> list[dict[str, 
         ref_id = _ref_id_from_ref_entry(entry) or str(entry.get("ref_id", "") or "")
         if provider_kind == "" or ref_id == "":
             continue
-        normalized.append(
-            {
+        normalized_entry: dict[str, object] = {
                 "provider_kind": provider_kind,
                 "ref_id": ref_id,
                 "summary": str(entry.get("summary", "") or entry.get("semantic_summary", "") or "runtime provider ref"),
                 "retention": str(entry.get("retention", "") or "debug_artifact"),
-            }
-        )
+        }
+        for capture_key in (
+            "capture_root_id",
+            "capture_id",
+            "clock_domain",
+            "monotonic_tick",
+            "source_frame_index",
+            "wall_clock_ts",
+            "sample_ref_id",
+        ):
+            if capture_key in entry:
+                normalized_entry[capture_key] = entry[capture_key]
+        normalized.append(normalized_entry)
     return normalized
 
 

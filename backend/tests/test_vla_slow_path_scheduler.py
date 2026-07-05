@@ -60,4 +60,7 @@ def test_scheduler_timeout_result_does_not_block_current_tick() -> None:
 
     assert result.status == VLAProviderStatus.TIMEOUT
     assert result.advisory is True
+    assert result.capture_root_id == request.capture_root_id
+    assert result.monotonic_tick == request.monotonic_tick
+    assert result.capture_relation == "late_advisory"
     assert result.fallback_reason == "timeout_use_structured_facts_next_tick"

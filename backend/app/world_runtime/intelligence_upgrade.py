@@ -4,6 +4,19 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.models.capture_clock import (
+    DEFAULT_CLOCK_DOMAIN,
+    derive_capture_id,
+    derive_capture_root_id,
+    derive_sample_ref_id,
+    normalize_clock_domain,
+)
+from app.models.object_anchor import (
+    append_unique_lineage,
+    derive_world_anchor_id,
+    first_target_ref,
+)
+
 
 ConsumerKind = Literal["character", "siming", "non_runtime_tool", "non_runtime_production"]
 ProviderKind = Literal[
@@ -61,6 +74,13 @@ class SampleInputRef(BaseModel):
 
     provider_kind: ProviderKind
     ref_id: str
+    capture_root_id: str = ""
+    capture_id: str = ""
+    clock_domain: str = ""
+    monotonic_tick: int | None = None
+    source_frame_index: int | None = None
+    wall_clock_ts: int | None = None
+    sample_ref_id: str = ""
     summary: str = ""
     retention: Literal["ref_only", "debug_artifact", "debug_replay_only"] = "ref_only"
     sample_status: ProviderSampleStatus = "ok"
@@ -72,6 +92,18 @@ class SampleInputRef(BaseModel):
     failure_status: str = ""
     expires_at: int | None = None
 
+    @model_validator(mode="after")
+    def populate_sample_ref_identity(self) -> "SampleInputRef":
+        if self.clock_domain:
+            self.clock_domain = normalize_clock_domain(self.clock_domain)
+        if self.capture_root_id and self.sample_ref_id == "":
+            self.sample_ref_id = derive_sample_ref_id(
+                capture_root_id=self.capture_root_id,
+                source_kind=self.provider_kind,
+                source_ref=self.ref_id,
+            )
+        return self
+
 
 class PerceptionQueryFrame(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -79,6 +111,16 @@ class PerceptionQueryFrame(BaseModel):
     query_id: str
     consumer_kind: ConsumerKind
     subject_id: str
+    subject_ref: str = ""
+    target_ref: str = ""
+    world_anchor_id: str = ""
+    source_ref_lineage: list[str] = Field(default_factory=list)
+    capture_root_id: str = ""
+    capture_id: str = ""
+    clock_domain: str = ""
+    monotonic_tick: int | None = None
+    source_frame_index: int | None = None
+    wall_clock_ts: int | None = None
     time_window: TimeWindow
     spatial_reference: SpatialReference
     attention_context: AttentionContext = Field(default_factory=AttentionContext)
@@ -95,6 +137,51 @@ class PerceptionQueryFrame(BaseModel):
 
     @model_validator(mode="after")
     def validate_runtime_context_boundary(self) -> "PerceptionQueryFrame":
+        if self.monotonic_tick is None:
+            self.monotonic_tick = self.time_window.ended_at
+        if self.wall_clock_ts is None:
+            self.wall_clock_ts = self.time_window.ended_at
+        if self.clock_domain == "":
+            self.clock_domain = DEFAULT_CLOCK_DOMAIN
+        else:
+            self.clock_domain = normalize_clock_domain(self.clock_domain)
+        if self.capture_root_id == "":
+            self.capture_root_id = derive_capture_root_id(
+                clock_domain=self.clock_domain,
+                room_id=self.spatial_reference.room_id,
+                scene_id=self.spatial_reference.scene_id,
+                zone_id=self.spatial_reference.zone_id,
+                monotonic_tick=self.monotonic_tick,
+            )
+        if self.capture_id == "":
+            self.capture_id = derive_capture_id(
+                capture_root_id=self.capture_root_id,
+                consumer_scope=self.consumer_kind,
+                subject_id=self.subject_id,
+            )
+        if self.subject_ref == "":
+            self.subject_ref = self.subject_id
+        if self.target_ref == "":
+            self.target_ref = first_target_ref(
+                target_actor_ids=self.attention_context.target_actor_ids,
+                target_object_ids=self.attention_context.target_object_ids,
+                target_environment_ids=self.attention_context.target_environment_ids,
+            )
+        if self.world_anchor_id == "":
+            self.world_anchor_id = derive_world_anchor_id(target_ref=self.target_ref)
+        self.source_ref_lineage = append_unique_lineage(
+            self.source_ref_lineage,
+            [
+                self.query_id,
+                *self.structured_fact_refs,
+                *[ref.sample_ref_id or ref.ref_id for ref in self.visual_inputs],
+                *[ref.sample_ref_id or ref.ref_id for ref in self.spatial_inputs],
+                *[ref.sample_ref_id or ref.ref_id for ref in self.auditory_inputs],
+                *[ref.sample_ref_id or ref.ref_id for ref in self.embodied_inputs],
+                *[ref.sample_ref_id or ref.ref_id for ref in self.skeletal_inputs],
+                *[ref.sample_ref_id or ref.ref_id for ref in self.environment_inputs],
+            ],
+        )
         if self.consumer_kind == "character" and not self.multimodal_context_id.startswith("character_mm:"):
             raise ValueError("character perception frames must use a character_mm context")
         if self.consumer_kind == "siming" and not self.multimodal_context_id.startswith("siming_mm:"):
@@ -137,6 +224,16 @@ class CanonicalPerceptBundle(BaseModel):
     consumer_kind: ConsumerKind
     subject_id: str
     query_id: str
+    subject_ref: str = ""
+    target_ref: str = ""
+    world_anchor_id: str = ""
+    source_ref_lineage: list[str] = Field(default_factory=list)
+    capture_root_id: str = ""
+    capture_id: str = ""
+    clock_domain: str = ""
+    monotonic_tick: int | None = None
+    source_frame_index: int | None = None
+    wall_clock_ts: int | None = None
     percept_context_id: str
     local_spatial_state: dict[str, Any] = Field(default_factory=dict)
     target_state: dict[str, Any] = Field(default_factory=dict)
@@ -150,6 +247,32 @@ class CanonicalPerceptBundle(BaseModel):
 
     @model_validator(mode="after")
     def validate_percept_context_boundary(self) -> "CanonicalPerceptBundle":
+        if self.subject_ref == "":
+            self.subject_ref = self.subject_id
+        if self.target_ref == "":
+            self.target_ref = str(self.target_state.get("target_ref", "") or "")
+        if self.world_anchor_id == "":
+            self.world_anchor_id = str(self.target_state.get("world_anchor_id", "") or "")
+        if self.world_anchor_id == "":
+            self.world_anchor_id = derive_world_anchor_id(target_ref=self.target_ref)
+        self.source_ref_lineage = append_unique_lineage(
+            self.source_ref_lineage,
+            [
+                self.query_id,
+                *self.structured_fact_refs,
+                *[str(ref) for ref in self.target_state.get("source_ref_lineage", []) if isinstance(ref, str)],
+            ],
+        )
+        target_state = dict(self.target_state)
+        if self.subject_ref:
+            target_state.setdefault("subject_ref", self.subject_ref)
+        if self.target_ref:
+            target_state.setdefault("target_ref", self.target_ref)
+        if self.world_anchor_id:
+            target_state.setdefault("world_anchor_id", self.world_anchor_id)
+        if self.source_ref_lineage:
+            target_state.setdefault("source_ref_lineage", list(self.source_ref_lineage))
+        self.target_state = target_state
         if self.consumer_kind == "character" and not self.percept_context_id.startswith("character_mm:"):
             raise ValueError("character percept bundles must stay in character_mm context")
         if self.consumer_kind == "siming" and not self.percept_context_id.startswith("siming_mm:"):
@@ -350,9 +473,12 @@ class ActorSceneKnowledgeEntry(BaseModel):
     entry_id: str
     actor_id: str
     knowledge_type: Literal["space", "obstacle", "occlusion", "path", "environment", "affordance"]
+    world_anchor_id: str = ""
+    target_ref: str = ""
     subject_ref: str
     summary: str
     source_refs: list[str]
+    source_ref_lineage: list[str] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0)
     freshness: Literal["fresh", "stale", "contested"] = "fresh"
     conflict_refs: list[str] = Field(default_factory=list)
@@ -378,7 +504,9 @@ def plan_actor_scene_knowledge_update(
 ) -> ActorSceneKnowledgeUpdate:
     if existing_entry is None:
         return ActorSceneKnowledgeUpdate(operation="add_new", entry=incoming_entry)
-    if existing_entry.subject_ref != incoming_entry.subject_ref:
+    existing_anchor = existing_entry.world_anchor_id or derive_world_anchor_id(target_ref=existing_entry.subject_ref)
+    incoming_anchor = incoming_entry.world_anchor_id or derive_world_anchor_id(target_ref=incoming_entry.subject_ref)
+    if existing_anchor != incoming_anchor:
         return ActorSceneKnowledgeUpdate(operation="record_conflict", entry=incoming_entry)
     if abs(existing_entry.confidence - incoming_entry.confidence) >= confidence_delta_threshold:
         return ActorSceneKnowledgeUpdate(operation="revise_existing", entry=incoming_entry)

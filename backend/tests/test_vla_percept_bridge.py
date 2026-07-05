@@ -18,6 +18,9 @@ def _result() -> VLAProviderResult:
         model_id="mock",
         model_version="1",
         findings=[{"finding_type": "visual_spatial_advisory", "summary": "target likely occluded", "advisory": True}],
+        target_ref="obj_letter",
+        world_anchor_id="world_anchor:object:obj_letter",
+        source_ref_lineage=["sample_ref:visual_patch:1"],
         confidence=0.61,
         conflict_refs=["raw_fact_event:los_conflict:1"],
         missing_inputs=["depth_ref"],
@@ -34,6 +37,9 @@ def test_vla_result_converts_to_visual_spatial_modality_result() -> None:
     assert modality.findings[0]["advisory"] is True
     assert modality.findings[0]["freshness"] == "fresh"
     assert modality.findings[0]["expires_at"] == 10
+    assert modality.findings[0]["target_ref"] == "obj_letter"
+    assert modality.findings[0]["world_anchor_id"] == "world_anchor:object:obj_letter"
+    assert modality.findings[0]["world_truth_marker"] == "subjective_not_world_truth"
     assert modality.conflict_refs == ["raw_fact_event:los_conflict:1"]
     assert modality.missing_inputs == ["depth_ref"]
 
@@ -64,5 +70,6 @@ def test_vla_advisory_merges_into_bundle_uncertainty_without_overwriting_l1_trut
     assert merged.local_spatial_state == bundle.local_spatial_state
     assert merged.structured_fact_refs == bundle.structured_fact_refs
     assert merged.uncertainty["vla_advisory"]["advisory"] is True
+    assert merged.uncertainty["vla_advisory"]["world_anchor_id"] == "world_anchor:object:obj_letter"
     assert merged.uncertainty["vla_advisory"]["conflict_refs"] == ["raw_fact_event:los_conflict:1"]
     assert merged.world_hypotheses[0]["hypothesis_type"] == "vla_visual_spatial_advisory"

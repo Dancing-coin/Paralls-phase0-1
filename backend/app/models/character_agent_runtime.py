@@ -54,6 +54,8 @@ class CharacterPrivateWorldSnapshot(BaseModel):
     local_spatial_confidence_map: dict[str, float] = Field(default_factory=dict)
     recent_world_changes: list[str] = Field(default_factory=list)
     recent_constraint_results: list[str] = Field(default_factory=list)
+    recent_perception_identity: dict[str, object] = Field(default_factory=dict)
+    recent_perception_source_lineage: list[str] = Field(default_factory=list)
     body_state_hints: list[str] = Field(default_factory=list)
     last_siming_catalyst: str | None = None
     vigilance_level: str = "baseline"

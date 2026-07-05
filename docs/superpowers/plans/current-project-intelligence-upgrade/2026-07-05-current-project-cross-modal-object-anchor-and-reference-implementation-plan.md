@@ -1,6 +1,6 @@
 # 当前项目跨感知对象锚点与指代统一实施计划
 
-- 状态：`proposed`
+- 状态：`implemented-and-focused-verified`
 - 日期：`2026-07-05`
 
 上位设计：
@@ -30,7 +30,13 @@
 
 ## 4. 验收
 
-- [ ] 同物跨链统一到同一 `world_anchor_id`
-- [ ] 同名/近邻对象不会误合并
-- [ ] advisory 不能越权写 world truth anchor
-- [ ] ASK / Siming / VLA 的对象身份可追溯
+- [x] 同物跨链统一到同一 `world_anchor_id`
+- [x] 同名/近邻对象不会误合并
+- [x] advisory 不能越权写 world truth anchor
+- [x] ASK / Siming / VLA 的对象身份可追溯
+
+## 5. 验证证据
+
+- `python scripts/verification/verify_perception_object_anchor_contract.py`
+- `.harness/verification/perception-object-anchor-contract-report.json`
+- `.harness/verification/perception-object-anchor-contract-report.md`

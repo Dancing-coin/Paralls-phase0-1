@@ -26,7 +26,7 @@ from app.services.siming_projection import (
     StubGroupSimulationBridge,
     StubStorylineProjection,
 )
-from app.services.siming_read_model import SimingReadModelBuilder
+from app.services.siming_read_model import SimingReadModelBuilder, perception_identity_from_bundle
 from app.services.siming_state_tree import InMemorySimingStateTree
 from app.services.siming_storyline import InMemoryNarrativeObligationLedger, InMemoryStorylineState
 from app.models.siming_event import SimingAuditRecord, SimingInput, SimingOutput, SimingTickResult
@@ -396,6 +396,7 @@ class SimingRuntime:
             "causation_id": bundle.bundle_id,
             "correlation_id": bundle.query_id,
         }
+        perception_identity = perception_identity_from_bundle(bundle)
         result = SimingTickResult()
         result.outputs.append(
             SimingOutput(
@@ -405,6 +406,7 @@ class SimingRuntime:
                     "source_bundle_id": bundle.bundle_id,
                     "known_fact_ids": list(bundle.structured_fact_refs),
                     "environment_state": dict(bundle.environment_state),
+                    "perception_identity": perception_identity,
                 },
                 **output_base,
             )
@@ -419,6 +421,7 @@ class SimingRuntime:
                     "candidate_id": f"candidate:{bundle.bundle_id}",
                     "source_bundle_id": bundle.bundle_id,
                     "target_state": dict(bundle.target_state),
+                    "perception_identity": perception_identity,
                 },
                 **output_base,
             )
@@ -431,6 +434,7 @@ class SimingRuntime:
                     "stage": "canonical_percept_bundle_consumed",
                     "summary": "Siming consumed L1 global situation bundle",
                     "bundle_id": bundle.bundle_id,
+                    "perception_identity": perception_identity,
                     "producer_ts": producer_ts + 2,
                 },
             }

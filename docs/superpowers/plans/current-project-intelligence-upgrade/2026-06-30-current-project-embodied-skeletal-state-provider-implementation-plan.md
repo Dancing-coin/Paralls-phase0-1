@@ -3,6 +3,10 @@
 > 对应规格：
 > [2026-06-29-current-project-embodied-skeletal-state-provider-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-06-29-current-project-embodied-skeletal-state-provider-design.md)
 
+**状态：** `implemented-contract-slice-and-subsequent-skeletal-runtime-verified`
+
+**实际核对：** 本 provider contract slice 已落地；后续 `embodied-skeletal-debug-replay` profile 已通过，报告为 `.harness/verification/embodied-skeletal-debug-replay-report.json`。
+
 **目标：** 把本地身体/骨骼链掌握的骨骼空间真相抽象成稳定 Provider 层。
 
 ## 任务

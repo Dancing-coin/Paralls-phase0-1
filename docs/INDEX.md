@@ -120,6 +120,7 @@
 - `interaction-orchestration-service`：后端证明，覆盖 structured interaction policies、semantic ESM path、physical seam、degrade paths 和 unified result merge。
 - `esm-physical-channel-world-actuation`：后端与 Godot 运行时证明，覆盖 physical effect refs、contact/body/object/environment observations、constraint gating 和 orchestration merge。
 - `non-runtime-production-pipeline`：离线生产证明，覆盖 scene semantic extraction、spatial baking、multimodal classification readiness、review gating 和 approved replay dataset artifacts。
+- `perception-input-alignment`：后端证明，覆盖感知 identity 行为矩阵，包括同拍/跨拍、同物/异物、多 actor 私有视角、VLA late advisory 和 Siming 汇总 identity。
 - `all`：按顺序运行全部 profile。
 
 运行时验证脚本和聚合证明脚本：
@@ -133,6 +134,7 @@
 - `python scripts/verification/verify_godot_sampling_production_grade_providers.py`
 - `python scripts/verification/verify_embodied_skeletal_debug_replay_pipeline.py`
 - `python scripts/verification/verify_vla_provider_backend.py`
+- `python scripts/verification/verify_perception_input_alignment.py`
 - `python scripts/verification/verify_actor_scene_knowledge_runtime.py`
 - `python scripts/verification/verify_siming_global_situation_runtime.py`
 - `python scripts/verification/verify_interaction_orchestration_runtime_service.py`

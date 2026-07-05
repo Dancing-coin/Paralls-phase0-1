@@ -3,7 +3,9 @@
 > 对应规格：
 > [2026-07-02-current-project-esm-physical-channel-world-actuation-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-esm-physical-channel-world-actuation-design.md)
 
-**状态：** `planned`
+**状态：** `implemented-and-runtime-verified`
+
+**实际核对：** `esm-physical-channel-world-actuation` harness profile 已通过，报告为 `.harness/verification/esm-physical-channel-world-actuation-report.json`，Godot runtime 状态为 `godot-runtime-physical-interaction-verified`。
 
 **目标：** 在现有 ESM 语义结算和统一结果协议之上，补齐 physical interaction channel、连续接触、推拉/携带和 mixed result 回流。
 
@@ -21,12 +23,12 @@
 
 任务：
 
-- [ ] 定义 physical request/result
-- [ ] 定义 contact/push/pull/carry/blocking effect kinds
-- [ ] 定义 constraint gate
-- [ ] 映射统一 result family
-- [ ] 定义 object/environment/body state observation refs
-- [ ] 定义 L1/ESM 回流观察字段
+- [x] 定义 physical request/result
+- [x] 定义 contact/push/pull/carry/blocking effect kinds
+- [x] 定义 constraint gate
+- [x] 映射统一 result family
+- [x] 定义 object/environment/body state observation refs
+- [x] 定义 L1/ESM 回流观察字段
 
 ## 阶段 B：Godot Adapter
 
@@ -37,20 +39,20 @@
 
 任务：
 
-- [ ] 采样 contact/body/object refs
-- [ ] 输出结构化 physical effect refs
-- [ ] 输出 object/environment/body state observation refs
-- [ ] 禁止 raw physics stream 直入业务层
+- [x] 采样 contact/body/object refs
+- [x] 输出结构化 physical effect refs
+- [x] 输出 object/environment/body state observation refs
+- [x] 禁止 raw physics stream 直入业务层
 
 ## 阶段 C：Mixed Merge
 
 任务：
 
-- [ ] 接入 Interaction Orchestration Service
-- [ ] semantic approves goal/constraint
-- [ ] physical reports effect
-- [ ] merge 为统一 result
-- [ ] failed constraint prevents effect application
+- [x] 接入 Interaction Orchestration Service
+- [x] semantic approves goal/constraint
+- [x] physical reports effect
+- [x] merge 为统一 result
+- [x] failed constraint prevents effect application
 
 验收：
 

@@ -66,6 +66,20 @@ class CharacterAgentL1Service:
                 snapshot.short_horizon_social_presence = [event.target_actor_id]
         else:
             snapshot.current_attention_targets = snapshot.attention_targets.copy()
+        snapshot.recent_perception_identity = {
+            "source_kind": "character_perceived_event",
+            "capture_root_id": event.capture_root_id,
+            "capture_id": event.capture_id,
+            "clock_domain": event.clock_domain,
+            "monotonic_tick": event.monotonic_tick,
+            "source_frame_index": event.source_frame_index,
+            "sample_ref_id": event.sample_ref_id,
+            "world_anchor_id": event.world_anchor_id,
+            "subject_ref": event.subject_ref or event.actor_id,
+            "target_ref": event.target_ref or attention_target,
+            "wall_clock_ts": event.wall_clock_ts,
+        }
+        snapshot.recent_perception_source_lineage = list(event.source_ref_lineage)
         snapshot.clarity_score = event.clarity_score
         snapshot.certainty_score = event.certainty_score
         snapshot.attention_pressure = max(snapshot.attention_pressure, min(1.0, max(event.clarity_score, event.certainty_score)))
@@ -156,6 +170,21 @@ class CharacterAgentL1Service:
             snapshot.recent_world_changes = self._append_unique(snapshot.recent_world_changes, fact_ref)
             if "target_unreachable" in fact_ref or "expected_target_missing" in fact_ref:
                 snapshot.recent_constraint_results = self._append_unique(snapshot.recent_constraint_results, fact_ref)
+        snapshot.recent_perception_identity = {
+            "source_kind": "canonical_percept_bundle",
+            "bundle_id": bundle.bundle_id,
+            "query_id": bundle.query_id,
+            "capture_root_id": bundle.capture_root_id,
+            "capture_id": bundle.capture_id,
+            "clock_domain": bundle.clock_domain,
+            "monotonic_tick": bundle.monotonic_tick,
+            "source_frame_index": bundle.source_frame_index,
+            "world_anchor_id": bundle.world_anchor_id,
+            "subject_ref": bundle.subject_ref,
+            "target_ref": bundle.target_ref or target_ref,
+            "wall_clock_ts": bundle.wall_clock_ts,
+        }
+        snapshot.recent_perception_source_lineage = list(bundle.source_ref_lineage)
         if bundle.uncertainty:
             snapshot.active_anomalies = self._append_unique(
                 snapshot.active_anomalies,

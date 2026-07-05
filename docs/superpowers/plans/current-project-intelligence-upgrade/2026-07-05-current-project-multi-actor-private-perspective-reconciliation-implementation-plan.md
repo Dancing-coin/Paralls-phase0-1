@@ -1,6 +1,6 @@
 # 当前项目多角色私有视角分发与协调实施计划
 
-- 状态：`proposed`
+- 状态：`implemented-and-focused-verified`
 - 日期：`2026-07-05`
 
 上位设计：
@@ -29,7 +29,13 @@
 
 ## 4. 验收
 
-- [ ] actor A/B 同拍私有 bundle 可同时构造
-- [ ] actor A/B 拥有不同视角 ref
-- [ ] actor A/B 可对同物产生不同感知属性但不混淆对象
-- [ ] Siming 不读取 actor-private context
+- [x] actor A/B 同拍私有 bundle 可同时构造
+- [x] actor A/B 拥有不同视角 ref
+- [x] actor A/B 可对同物产生不同感知属性但不混淆对象
+- [x] Siming 不读取 actor-private context
+
+## 5. 验证证据
+
+- `python scripts/verification/verify_perception_multi_actor_private_perspective.py`
+- `.harness/verification/perception-multi-actor-private-perspective-report.json`
+- `.harness/verification/perception-multi-actor-private-perspective-report.md`

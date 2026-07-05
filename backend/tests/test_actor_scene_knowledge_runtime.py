@@ -69,6 +69,7 @@ def test_l1_and_vla_conflict_records_conflict_without_overwriting_world_truth() 
     update = store.upsert(advisory, producer_ts=11)
 
     assert update.operation == "conflict"
+    assert update.entry.world_anchor_id == "world_anchor:object:obj_box"
     assert update.entry.summary == "L1 says obj_box is reachable"
     assert update.entry.world_truth_marker == "l1_projected_fact_ref"
     assert update.entry.freshness.state == "contested"
@@ -88,6 +89,86 @@ def test_l1_and_vla_conflict_records_conflict_without_overwriting_world_truth() 
             advisory=True,
             world_truth_marker="l1_projected_fact_ref",
         )
+
+
+def test_ask_uses_world_anchor_to_conflict_same_object_even_with_different_subject_refs() -> None:
+    store = ActorSceneKnowledgeStore()
+
+    store.upsert(
+        ActorSceneKnowledgeEntry(
+            entry_id="ask:char_a:obj_box:l1",
+            actor_id="char_a",
+            session_id="session_a",
+            scene_id="scene_demo",
+            world_anchor_id="world_anchor:object:obj_box",
+            subject_ref="obj_box",
+            target_ref="obj_box",
+            knowledge_type="space",
+            summary="L1 says object is reachable",
+            source_kind="l1_projected_fact",
+            source_refs=["sample_ref:l1:obj_box"],
+            confidence=0.95,
+            world_truth_marker="l1_projected_fact_ref",
+        ),
+        producer_ts=10,
+    )
+    update = store.upsert(
+        ActorSceneKnowledgeEntry(
+            entry_id="ask:char_a:vla_artifact:vla",
+            actor_id="char_a",
+            session_id="session_a",
+            scene_id="scene_demo",
+            world_anchor_id="world_anchor:object:obj_box",
+            subject_ref="runtime://artifact/patch-a.png",
+            target_ref="obj_box",
+            knowledge_type="space",
+            summary="VLA says object is blocked",
+            source_kind="vla_advisory",
+            source_refs=["vla_result:obj_box"],
+            confidence=0.65,
+            advisory=True,
+        ),
+        producer_ts=11,
+    )
+
+    assert update.operation == "conflict"
+    assert len(store.entries_for_actor("char_a")) == 1
+    assert update.conflict is not None
+    assert update.conflict.world_anchor_id == "world_anchor:object:obj_box"
+
+
+def test_ask_does_not_merge_nearby_or_named_targets_without_same_world_anchor() -> None:
+    store = ActorSceneKnowledgeStore()
+    first = ActorSceneKnowledgeEntry(
+        entry_id="ask:char_a:box_a:l1",
+        actor_id="char_a",
+        session_id="session_a",
+        scene_id="scene_demo",
+        world_anchor_id="world_anchor:object:obj_box_a",
+        subject_ref="box",
+        target_ref="obj_box_a",
+        knowledge_type="space",
+        summary="left box reachable",
+        source_kind="l1_projected_fact",
+        source_refs=["sample_ref:l1:box_a"],
+        confidence=0.9,
+        world_truth_marker="l1_projected_fact_ref",
+    )
+    second = first.model_copy(
+        update={
+            "entry_id": "ask:char_a:box_b:l1",
+            "world_anchor_id": "world_anchor:object:obj_box_b",
+            "target_ref": "obj_box_b",
+            "summary": "right box reachable",
+            "source_refs": ["sample_ref:l1:box_b"],
+        }
+    )
+
+    store.upsert(first, producer_ts=10)
+    store.upsert(second, producer_ts=11)
+
+    anchors = {entry.world_anchor_id for entry in store.entries_for_actor("char_a")}
+    assert anchors == {"world_anchor:object:obj_box_a", "world_anchor:object:obj_box_b"}
 
 
 def test_store_marks_stale_expires_and_resolves_conflict() -> None:

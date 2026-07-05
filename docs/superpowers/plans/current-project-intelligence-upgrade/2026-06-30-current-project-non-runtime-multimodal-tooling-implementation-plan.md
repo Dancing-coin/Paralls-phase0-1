@@ -3,6 +3,10 @@
 > 对应规格：
 > [2026-06-29-current-project-non-runtime-multimodal-tooling-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-06-29-current-project-non-runtime-multimodal-tooling-design.md)
 
+**状态：** `implemented-contract-slice-and-subsequent-production-pipeline-verified`
+
+**实际核对：** 本 tooling contract slice 已落地；后续 `non-runtime-production-pipeline` profile 已通过，报告为 `.harness/verification/non-runtime-production-pipeline-report.json`。
+
 **目标：** 把多模态能力从角色智能体私有能力扩展成也能服务审核、回放、建模注入和数据构建的工具链能力。
 
 ## 任务

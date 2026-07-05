@@ -48,6 +48,32 @@ def test_cache_key_changes_when_l1_fact_refs_change() -> None:
     assert cache.key_for_request(old_request).structured_fact_refs_hash != cache.key_for_request(new_request).structured_fact_refs_hash
 
 
+def test_cache_key_changes_when_capture_clock_changes_even_for_same_refs() -> None:
+    cache = VLACache(ttl_seconds=30.0)
+    first = _request("character", "char_b", "raw_fact_event:1", ended_at=1)
+    second_frame = first.query_frame.model_copy(
+        update={
+            "capture_root_id": "capture_root:godot_main:room_demo:scene_demo:zone_focus:2",
+            "capture_id": "capture:capture_root:godot_main:room_demo:scene_demo:zone_focus:2:character:char_b",
+            "clock_domain": "godot_main",
+            "monotonic_tick": 2,
+        }
+    )
+    second = VLAProviderRequest.from_pqf(
+        second_frame,
+        owner_kind="character",
+        owner_id="char_b",
+        model_id="qwen3-vl-plus",
+        model_version="qwen3-vl-plus:2026-07-02",
+    )
+    result = DeterministicMockVLAProvider().interpret(first)
+
+    cache.put(first, result, now=1.0)
+
+    assert cache.get(second, now=2.0) is None
+    assert cache.key_for_request(first).capture_root_id != cache.key_for_request(second).capture_root_id
+
+
 def test_cache_rejects_stale_result_and_shared_namespace() -> None:
     cache = VLACache(ttl_seconds=1.0)
     request = _request("character", "char_b", "raw_fact_event:1")

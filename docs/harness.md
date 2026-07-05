@@ -28,6 +28,7 @@ python scripts/verification/harness.py --profile godot-sampling-production-grade
 python scripts/verification/harness.py --profile embodied-skeletal-debug-replay
 python scripts/verification/harness.py --profile vla-provider-backend
 python scripts/verification/harness.py --profile non-runtime-production-pipeline
+python scripts/verification/harness.py --profile perception-input-alignment
 python scripts/verification/harness.py --profile all
 ```
 
@@ -578,9 +579,28 @@ Output:
 - `.harness/verification/non-runtime-production-pipeline-report.md`
 - `.harness/verification/non-runtime-production-pipeline-trace.json`
 
+### `perception-input-alignment`
+
+Backend verification for the perception identity alignment behavior matrix. This profile does not start Godot and does not claim visual model quality; it proves capture/object/view/advisory/Siming identity behavior from structured facts, provider refs, PQFs, canonical bundles, and downstream read models.
+
+Current proof includes:
+
+- fact chain and provider chain same capture/same object resolve to one `world_anchor_id`
+- fact chain and provider chain across captures are not treated as same tick
+- actor A/B same capture can share an object anchor while retaining different private attributes
+- actor A/B same capture looking at nearby different objects retain separate object anchors
+- VLA slow-path timeout keeps capture identity but marks itself `late_advisory`
+- Siming multi-actor summary retains object and time identity
+
+Output:
+
+- `.harness/verification/perception-input-alignment-report.json`
+- `.harness/verification/perception-input-alignment-report.md`
+- `.harness/verification/perception-input-alignment-matrix-trace.json`
+
 ### `all`
 
-Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, `phase1-slice`, `l1-world-fact-runtime`, `mainline-unified-runtime`, `model-provider-readiness`, `godot-sampling-production-grade-providers`, `embodied-skeletal-debug-replay`, `vla-provider-backend`, `actor-scene-knowledge-lifecycle`, `siming-global-situation-layer`, `interaction-orchestration-service`, `esm-physical-channel-world-actuation`, and `non-runtime-production-pipeline` in order. It stops on the first failed profile.
+Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, `phase1-slice`, `l1-world-fact-runtime`, `mainline-unified-runtime`, `model-provider-readiness`, `godot-sampling-production-grade-providers`, `embodied-skeletal-debug-replay`, `vla-provider-backend`, `actor-scene-knowledge-lifecycle`, `siming-global-situation-layer`, `interaction-orchestration-service`, `esm-physical-channel-world-actuation`, `non-runtime-production-pipeline`, and `perception-input-alignment` in order. It stops on the first failed profile.
 
 `siming-backend-chain` is excluded from `all` because it requires live model-provider credentials.
 

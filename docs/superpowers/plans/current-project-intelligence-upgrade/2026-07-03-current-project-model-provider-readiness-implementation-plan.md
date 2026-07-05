@@ -10,7 +10,9 @@
 > - [2026-07-02-current-project-siming-global-situation-layer-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-02-current-project-siming-global-situation-layer-implementation-plan.md)
 > - [2026-07-02-current-project-non-runtime-production-pipeline-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-02-current-project-non-runtime-production-pipeline-implementation-plan.md)
 
-**状态：** `planned`
+**状态：** `implemented-and-verified-readiness-layer`
+
+**实际核对：** `model-provider-readiness` harness profile 已通过，报告为 `.harness/verification/model-provider-readiness-report.json`。当前 provider 状态为 character_text `blocked_missing_credentials`、siming_candidate `disabled`、vla_spatial `blocked_missing_artifacts`、production_multimodal `disabled`；因此完成口径是 readiness layer 已验证，不是所有真实模型 provider 已接入。
 
 **目标：** 把当前项目里不同用途的大模型接入点整理成可执行、可验证、可降级的 provider readiness 层。完成后应能清楚回答：哪些模型入口已经能真实接入，哪些还缺凭据或 runtime artifact，哪些绝不能直接控制 world truth。
 
@@ -214,17 +216,17 @@
 
 任务：
 
-- [ ] 定义 `ModelProviderKind`
+- [x] 定义 `ModelProviderKind`
   - `character_text`
   - `siming_candidate`
   - `vla_spatial`
   - `production_multimodal`
-- [ ] 定义 `ModelProviderMode`
+- [x] 定义 `ModelProviderMode`
   - `disabled`
   - `http`
   - `local`
   - `blocked`
-- [ ] 定义 `ModelProviderReadinessStatus`
+- [x] 定义 `ModelProviderReadinessStatus`
   - `not_configured`
   - `contract_ready`
   - `http_configured_unverified`
@@ -232,7 +234,7 @@
   - `blocked_missing_artifacts`
   - `blocked_missing_credentials`
   - `blocked_model_unavailable`
-- [ ] 定义 readiness evidence 字段：
+- [x] 定义 readiness evidence 字段：
   - provider kind
   - mode
   - provider id
@@ -245,8 +247,8 @@
   - context isolation status
   - world-truth-write status
   - verification commands
-- [ ] 输出 `.harness/verification/model-provider-readiness-report.json`
-- [ ] 输出 `.harness/verification/model-provider-readiness-report.md`
+- [x] 输出 `.harness/verification/model-provider-readiness-report.json`
+- [x] 输出 `.harness/verification/model-provider-readiness-report.md`
 
 验收：
 
@@ -266,17 +268,17 @@
 
 任务：
 
-- [ ] 将 `CHARACTER_MODEL_*` / `DEEPSEEK_*` 配置纳入 readiness report。
-- [ ] 新增 `QWEN_*` 或通用 OpenAI-compatible 配置入口：
+- [x] 将 `CHARACTER_MODEL_*` / `DEEPSEEK_*` 配置纳入 readiness report。
+- [x] 新增 `QWEN_*` 或通用 OpenAI-compatible 配置入口：
   - `CHARACTER_MODEL_PROVIDER_KIND=qwen`
   - `CHARACTER_MODEL_ENDPOINT`
   - `CHARACTER_MODEL_API_KEY`
   - `CHARACTER_MODEL_MODEL=qwen3.7-plus`
-- [ ] 保留 DeepSeek 兼容，但本计划推荐 Qwen 作为新默认文本 provider。
-- [ ] 增加不泄露 API key 的 endpoint/model 配置摘要。
-- [ ] 增加 local/qwen/deepseek/hybrid 四种 route 的 readiness 判定。
-- [ ] 验证 L2/L3 model-led task 在 provider 不可用时不会被错误标记为 real verified。
-- [ ] 保持 local fallback 只作为 fallback，不宣称真实模型语义完成。
+- [x] 保留 DeepSeek 兼容，但本计划推荐 Qwen 作为新默认文本 provider。
+- [x] 增加不泄露 API key 的 endpoint/model 配置摘要。
+- [x] 增加 local/qwen/deepseek/hybrid 四种 route 的 readiness 判定。
+- [x] 验证 L2/L3 model-led task 在 provider 不可用时不会被错误标记为 real verified。
+- [x] 保持 local fallback 只作为 fallback，不宣称真实模型语义完成。
 
 验收：
 
@@ -296,16 +298,16 @@
 
 任务：
 
-- [ ] 将 `SIMING_LLM_*` 配置纳入 readiness report。
-- [ ] 新增 Seed / Doubao 推荐配置：
+- [x] 将 `SIMING_LLM_*` 配置纳入 readiness report。
+- [x] 新增 Seed / Doubao 推荐配置：
   - `SIMING_LLM_PROVIDER_ORDER=seed_doubao,qwen`
   - `SIMING_LLM_ENDPOINT`
   - `SIMING_LLM_API_KEY`
   - `SIMING_LLM_MODEL=doubao-seed-2.0-pro`
-- [ ] 记录 route order、provider type、model、timeout。
-- [ ] 增加 global situation context 输入是否已接线的 readiness flag。
-- [ ] 验证 disabled provider、HTTP provider 的状态区分。
-- [ ] 验证 provider 输出只允许 candidate-level intervention suggestions。
+- [x] 记录 route order、provider type、model、timeout。
+- [x] 增加 global situation context 输入是否已接线的 readiness flag。
+- [x] 验证 disabled provider、HTTP provider 的状态区分。
+- [x] 验证 provider 输出只允许 candidate-level intervention suggestions。
 
 验收：
 
@@ -331,17 +333,17 @@
 
 任务：
 
-- [ ] 定义 HTTP/local VLA adapter contract。
-- [ ] 定义 model registry，记录 license/deployment/schema/runtime boundary。
-- [ ] 在 registry 中登记推荐模型：
+- [x] 定义 HTTP/local VLA adapter contract。
+- [x] 定义 model registry，记录 license/deployment/schema/runtime boundary。
+- [x] 在 registry 中登记推荐模型：
   - `qwen3-vl-plus`
   - `qwen3-vl-flash`
   - `doubao-seed-2.0-pro`
   - `doubao-seed-2.0-lite`
-- [ ] 定义 slow path scheduler：per-owner queue、timeout、degrade、drop trace。
-- [ ] 定义 cache：context namespace、artifact hash、freshness、no cross-owner hit。
-- [ ] 定义 VLA result -> modality/cross-modal/percept bridge。
-- [ ] 定义 `VLA_PROVIDER_*` env config：
+- [x] 定义 slow path scheduler：per-owner queue、timeout、degrade、drop trace。
+- [x] 定义 cache：context namespace、artifact hash、freshness、no cross-owner hit。
+- [x] 定义 VLA result -> modality/cross-modal/percept bridge。
+- [x] 定义 `VLA_PROVIDER_*` env config：
   - `VLA_PROVIDER_MODE`
   - `VLA_PROVIDER_ENDPOINT`
   - `VLA_PROVIDER_API_KEY`
@@ -349,7 +351,7 @@
   - `VLA_PROVIDER_TIMEOUT_SECONDS`
   - `VLA_PROVIDER_MAX_QUEUE_SIZE`
   - `VLA_PROVIDER_CACHE_TTL_SECONDS`
-- [ ] readiness report 区分 `contract_ready`、`http_configured_unverified`、`blocked_missing_artifacts`、`real_provider_verified`。
+- [x] readiness report 区分 `contract_ready`、`http_configured_unverified`、`blocked_missing_artifacts`、`real_provider_verified`。
 
 验收：
 
@@ -375,24 +377,24 @@
 
 任务：
 
-- [ ] 定义 production model provider adapter contract。
-- [ ] 定义 disabled/http/local/offline-batch 模式。
-- [ ] 在 registry 中登记推荐模型：
+- [x] 定义 production model provider adapter contract。
+- [x] 定义 disabled/http/local/offline-batch 模式。
+- [x] 在 registry 中登记推荐模型：
   - `doubao-seed-2.0-lite`
   - `doubao-seed-2.0-mini`
   - `doubao-seed-2.0-pro`
   - `qwen3.7-plus`
   - `qwen3-vl-plus`
-- [ ] 定义 `NON_RUNTIME_MODEL_*` env config：
+- [x] 定义 `NON_RUNTIME_MODEL_*` env config：
   - `NON_RUNTIME_MODEL_MODE`
   - `NON_RUNTIME_MODEL_ENDPOINT`
   - `NON_RUNTIME_MODEL_API_KEY`
   - `NON_RUNTIME_MODEL_MODEL`
   - `NON_RUNTIME_MODEL_TIMEOUT_SECONDS`
-- [ ] classifier 输出只能进入 draft artifact。
-- [ ] scene semantic extraction 输出必须进入 review gate。
-- [ ] review approved 前不得作为 L1 seed。
-- [ ] dataset/replay builder 记录 model id、prompt/schema version、source artifact refs。
+- [x] classifier 输出只能进入 draft artifact。
+- [x] scene semantic extraction 输出必须进入 review gate。
+- [x] review approved 前不得作为 L1 seed。
+- [x] dataset/replay builder 记录 model id、prompt/schema version、source artifact refs。
 
 验收：
 
@@ -412,16 +414,16 @@
 
 任务：
 
-- [ ] 补齐 `CHARACTER_MODEL_*` 示例配置。
-- [ ] 补齐 `QWEN_*` / OpenAI-compatible endpoint 示例配置。
-- [ ] 补齐 Seed / Doubao endpoint 示例配置。
-- [ ] 补齐 `VLA_PROVIDER_*` 示例配置。
-- [ ] 补齐 `NON_RUNTIME_MODEL_*` 示例配置。
-- [ ] 所有 readiness report 必须 redact API key。
-- [ ] 所有 HTTP provider 记录 endpoint host 而不是完整 secret URL。
-- [ ] 所有 provider 都有 timeout。
-- [ ] 所有 provider 都有 disabled mode。
-- [ ] 所有 provider 都有 invalid-output handling。
+- [x] 补齐 `CHARACTER_MODEL_*` 示例配置。
+- [x] 补齐 `QWEN_*` / OpenAI-compatible endpoint 示例配置。
+- [x] 补齐 Seed / Doubao endpoint 示例配置。
+- [x] 补齐 `VLA_PROVIDER_*` 示例配置。
+- [x] 补齐 `NON_RUNTIME_MODEL_*` 示例配置。
+- [x] 所有 readiness report 必须 redact API key。
+- [x] 所有 HTTP provider 记录 endpoint host 而不是完整 secret URL。
+- [x] 所有 provider 都有 timeout。
+- [x] 所有 provider 都有 disabled mode。
+- [x] 所有 provider 都有 invalid-output handling。
 
 验收：
 

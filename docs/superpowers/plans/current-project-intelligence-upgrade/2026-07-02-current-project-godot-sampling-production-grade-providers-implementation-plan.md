@@ -3,7 +3,9 @@
 > 对应规格：
 > [2026-07-02-current-project-godot-sampling-production-grade-providers-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-godot-sampling-production-grade-providers-design.md)
 
-**状态：** `planned`
+**状态：** `implemented-and-runtime-verified`
+
+**实际核对：** `godot-sampling-production-grade-providers` harness profile 已通过，报告为 `.harness/verification/godot-sampling-production-grade-providers-report.json`，覆盖六类 provider refs、status fields、PQF 消费和 no-heavy-work boundary。
 
 **目标：** 将已有 sampling provider contract 和 L1 capture/ref 证明扩展为 production-grade Godot provider 体系，覆盖视觉、空间、听觉、身体、骨骼和环境 refs。
 
@@ -16,9 +18,9 @@
 
 任务：
 
-- [ ] 定义 provider sample status
-- [ ] 定义 retention/freshness/throttle/error fields
-- [ ] 定义 stable source refs
+- [x] 定义 provider sample status
+- [x] 定义 retention/freshness/throttle/error fields
+- [x] 定义 stable source refs
 
 ## 阶段 B：Visual/Spatial/Auditory/Embodied 完整化
 
@@ -31,11 +33,11 @@
 
 任务：
 
-- [ ] visual capture artifact + camera pose
-- [ ] spatial obstacle/occlusion/passability refs
-- [ ] auditory source/window refs
-- [ ] embodied locomotion/grounded/failure refs
-- [ ] structured failure output
+- [x] visual capture artifact + camera pose
+- [x] spatial obstacle/occlusion/passability refs
+- [x] auditory source/window refs
+- [x] embodied locomotion/grounded/failure refs
+- [x] structured failure output
 
 ## 阶段 C：Skeletal/Environment refs 完整化
 
@@ -46,12 +48,12 @@
 
 任务：
 
-- [ ] skeletal state provider refs 接入 `EmbodiedSkeletalStateProvider` / debug replay refs
-- [ ] environment field refs 输出 light/occlusion/hazard/passability/local field refs
-- [ ] skeletal refs 只暴露 high/mid-level refs 或 debug snapshot refs，不把 full bone payload 送入主链
-- [ ] environment refs 只表达局部环境场采样，不执行 heavy voxelization 或 full-scene runtime rescan
-- [ ] 两类 refs 均带 freshness/throttle/retention/failure status
-- [ ] 两类 refs 均可进入 `PerceptionQueryFrame`，不能直接写角色/司命 runtime
+- [x] skeletal state provider refs 接入 `EmbodiedSkeletalStateProvider` / debug replay refs
+- [x] environment field refs 输出 light/occlusion/hazard/passability/local field refs
+- [x] skeletal refs 只暴露 high/mid-level refs 或 debug snapshot refs，不把 full bone payload 送入主链
+- [x] environment refs 只表达局部环境场采样，不执行 heavy voxelization 或 full-scene runtime rescan
+- [x] 两类 refs 均带 freshness/throttle/retention/failure status
+- [x] 两类 refs 均可进入 `PerceptionQueryFrame`，不能直接写角色/司命 runtime
 
 验收：
 
@@ -70,11 +72,11 @@
 
 任务：
 
-- [ ] 生成 provider artifact report
-- [ ] backend 消费 provider refs 组装 PQF
-- [ ] 证明 throttle 与 no-heavy-work
-- [ ] 证明 visual/spatial/auditory/embodied/skeletal/environment 六类输出均有 sample 或可验证 stub artifact
-- [ ] 接入 harness
+- [x] 生成 provider artifact report
+- [x] backend 消费 provider refs 组装 PQF
+- [x] 证明 throttle 与 no-heavy-work
+- [x] 证明 visual/spatial/auditory/embodied/skeletal/environment 六类输出均有 sample 或可验证 stub artifact
+- [x] 接入 harness
 
 验证命令：
 

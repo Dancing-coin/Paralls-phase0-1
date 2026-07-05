@@ -3,7 +3,9 @@
 > 对应规格：
 > [2026-07-02-current-project-interaction-orchestration-service-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-interaction-orchestration-service-design.md)
 
-**状态：** `planned`
+**状态：** `implemented-and-verified`
+
+**实际核对：** `interaction-orchestration-service` harness profile 已通过，报告为 `.harness/verification/interaction-orchestration-service-report.json`，覆盖 semantic-only、physical-only、mixed、constraint denied、active perception 和 authority confirmation paths。
 
 **目标：** 将轻量 `orchestrate_interaction(...)` 扩展为 backend service/route/policy executor，连接 ESM semantic channel 与未来 physical channel。
 
@@ -22,15 +24,15 @@
 
 任务：
 
-- [ ] 定义 `InteractionOrchestrationPlan`
-- [ ] 定义 channel request/result envelopes
-- [ ] 实现 semantic-only 策略
-- [ ] 实现 physical-only 策略
-- [ ] 实现 semantic goal + physical effect mixed 策略
-- [ ] 实现 denied-by-constraint 策略
-- [ ] 实现 requires-active-perception 策略
-- [ ] 实现 requires-authority-confirmation 策略
-- [ ] 保留现有 helper 兼容层
+- [x] 定义 `InteractionOrchestrationPlan`
+- [x] 定义 channel request/result envelopes
+- [x] 实现 semantic-only 策略
+- [x] 实现 physical-only 策略
+- [x] 实现 semantic goal + physical effect mixed 策略
+- [x] 实现 denied-by-constraint 策略
+- [x] 实现 requires-active-perception 策略
+- [x] 实现 requires-authority-confirmation 策略
+- [x] 保留现有 helper 兼容层
 
 验收：
 
@@ -46,21 +48,21 @@
 
 任务：
 
-- [ ] 新增 structured interaction route 或 service entry
-- [ ] validate actor/target refs
-- [ ] 禁止 raw input 直入业务层
-- [ ] 返回 unified result family
+- [x] 新增 structured interaction route 或 service entry
+- [x] validate actor/target refs
+- [x] 禁止 raw input 直入业务层
+- [x] 返回 unified result family
 
 ## 阶段 C：Channel 调用与 Merge
 
 任务：
 
-- [ ] semantic path 调用现有 ESM
-- [ ] physical path 调用 physical channel adapter stub
-- [ ] mixed path 合并 semantic goal 与 physical effect
-- [ ] requires-active-perception path 生成 active perception request/degrade reason
-- [ ] requires-authority-confirmation path 生成 authority confirmation request/degrade reason
-- [ ] constraint failure 结构化回传
+- [x] semantic path 调用现有 ESM
+- [x] physical path 调用 physical channel adapter stub
+- [x] mixed path 合并 semantic goal 与 physical effect
+- [x] requires-active-perception path 生成 active perception request/degrade reason
+- [x] requires-authority-confirmation path 生成 authority confirmation request/degrade reason
+- [x] constraint failure 结构化回传
 
 验收：
 
