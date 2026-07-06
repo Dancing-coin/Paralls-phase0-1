@@ -88,6 +88,52 @@ def test_settings_read_project_dotenv_before_process_env(monkeypatch) -> None:
         importlib.reload(config_module)
 
 
+def test_settings_read_repo_root_dotenv_when_backend_dotenv_is_missing(monkeypatch) -> None:
+    backend_env_path = Path(config_module.__file__).resolve().parents[2] / ".env"
+    repo_env_path = Path(config_module.__file__).resolve().parents[3] / ".env"
+    original_backend = backend_env_path.read_text(encoding="utf-8") if backend_env_path.exists() else None
+    original_repo = repo_env_path.read_text(encoding="utf-8") if repo_env_path.exists() else None
+    backend_env_path.unlink(missing_ok=True)
+    repo_env_path.write_text(
+        "\n".join(
+            [
+                "SIMING_LLM_MODE=http",
+                "SIMING_LLM_API_KEY=repo-dotenv-key",
+                "SIMING_LLM_ENDPOINT=https://api.deepseek.com/chat/completions",
+                "SIMING_LLM_MODEL=deepseek-chat",
+                "SIMING_LLM_TIMEOUT_SECONDS=12.5",
+                "SIMING_LLM_PROVIDER_ORDER=deepseek_chat",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("SIMING_LLM_MODE", raising=False)
+    monkeypatch.delenv("SIMING_LLM_API_KEY", raising=False)
+    monkeypatch.delenv("SIMING_LLM_ENDPOINT", raising=False)
+    monkeypatch.delenv("SIMING_LLM_MODEL", raising=False)
+    monkeypatch.delenv("SIMING_LLM_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("SIMING_LLM_PROVIDER_ORDER", raising=False)
+
+    try:
+        reloaded = importlib.reload(config_module)
+        assert reloaded.settings.siming_llm_mode == "http"
+        assert reloaded.settings.siming_llm_api_key == "repo-dotenv-key"
+        assert reloaded.settings.siming_llm_endpoint == "https://api.deepseek.com/chat/completions"
+        assert reloaded.settings.siming_llm_model == "deepseek-chat"
+        assert reloaded.settings.siming_llm_timeout_seconds == 12.5
+        assert reloaded.settings.siming_llm_provider_order == ["deepseek_chat"]
+    finally:
+        if original_backend is None:
+            backend_env_path.unlink(missing_ok=True)
+        else:
+            backend_env_path.write_text(original_backend, encoding="utf-8")
+        if original_repo is None:
+            repo_env_path.unlink(missing_ok=True)
+        else:
+            repo_env_path.write_text(original_repo, encoding="utf-8")
+        importlib.reload(config_module)
+
+
 def test_process_env_overrides_project_dotenv(monkeypatch) -> None:
     env_path = Path(config_module.__file__).resolve().parents[2] / ".env"
     original = env_path.read_text(encoding="utf-8") if env_path.exists() else None
