@@ -1129,6 +1129,86 @@ def test_live_baseline_normalization_canonicalizes_backend_contract_shape() -> N
     ]
 
 
+def test_chapter_baseline_promotes_actor_deviation_targets_to_narrative_objects() -> None:
+    module = load_module()
+    baseline = module.canonicalize_chapter_baseline(
+        {
+            "script_id": "actor_target_chapter",
+            "mainline_summary": "关兴是否执行诏令会改变北伐主线。",
+            "actors": [
+                {
+                    "actor_id": "guan_xing",
+                    "summary": "关兴在执行诏令前犹豫。",
+                    "state": "hesitant",
+                }
+            ],
+            "objects": [
+                {
+                    "object_id": "imperial_order",
+                    "summary": "刘世民写给朝臣的诏令。",
+                    "state": {"delivered": False},
+                }
+            ],
+            "locked_facts": [],
+            "allowed_deviations": [
+                {
+                    "deviation_id": "guan_xing_obeys",
+                    "trigger_family": "player_choice",
+                    "target_object_id": "guan_xing",
+                    "interaction_type": "player_choice",
+                    "may_change": [
+                        {
+                            "path": "objects.guan_xing.state.action",
+                            "from": "hesitant",
+                            "to": "obeys_and_delivers_order",
+                        },
+                        {
+                            "path": "objects.imperial_order.state.delivered",
+                            "from": False,
+                            "to": True,
+                        },
+                    ],
+                    "must_preserve_locked_facts": [],
+                }
+            ],
+            "prior_event_requirements": [],
+        }
+    )
+
+    assert "guan_xing" in {item["object_id"] for item in baseline["objects"]}
+    assert module._lookup_state_path(baseline, "objects.guan_xing.state.action") == "hesitant"
+
+    result = module.run_choice_pipeline(
+        baseline,
+        {
+            "choice_id": "A",
+            "source_text": "玩家命令关兴立刻执行诏令。",
+            "event_type": "player_choice",
+            "actor_ref": "guan_xing",
+            "intent_type": "interact_intent",
+            "target_ref": "guan_xing",
+            "interaction_type": "player_choice",
+            "confidence": 0.9,
+            "evidence": ["关兴", "诏令"],
+            "normalization_notes": "actor target is a narrative state node",
+        },
+    )
+
+    assert result.classification in {"MAINLINE_IMPACT_DETECTED", "SIMING_INTERVENTION_PROPOSED"}
+    assert result.branch_diff == [
+        {
+            "path": "objects.guan_xing.state.action",
+            "from": "hesitant",
+            "to": "obeys_and_delivers_order",
+        },
+        {
+            "path": "objects.imperial_order.state.delivered",
+            "from": False,
+            "to": True,
+        },
+    ]
+
+
 def test_normalize_with_deepseek_rejects_partial_or_reordered_choice_lists(monkeypatch) -> None:
     module = load_module()
     script_text = SCRIPT_FIXTURE_PATH.read_text(encoding="utf-8")

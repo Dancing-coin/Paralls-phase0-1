@@ -1405,6 +1405,42 @@ def canonicalize_chapter_baseline(baseline: dict[str, object]) -> dict[str, obje
     def _list_of_dicts(value: object) -> list[dict[str, object]]:
         return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
 
+    def _assign_nested_state(target: dict[str, object], segments: list[str], value: object) -> None:
+        current = target
+        for segment in segments[:-1]:
+            next_value = current.get(segment)
+            if not isinstance(next_value, dict):
+                next_value = {}
+                current[segment] = next_value
+            current = next_value
+        if segments:
+            current[segments[-1]] = value
+
+    def _inferred_object_state(target_id: str, actor: dict[str, object], deviations: list[dict[str, object]]) -> dict[str, object]:
+        state: dict[str, object] = {}
+        for deviation in deviations:
+            if str(deviation.get("target_object_id", "")) != target_id:
+                continue
+            changes = deviation.get("may_change", [])
+            if not isinstance(changes, list):
+                continue
+            for change in changes:
+                if not isinstance(change, dict):
+                    continue
+                path_segments = str(change.get("path", "")).split(".")
+                if len(path_segments) < 3 or path_segments[0] != "objects" or path_segments[1] != target_id:
+                    continue
+                state_segments = path_segments[2:]
+                if state_segments and state_segments[0] == "state":
+                    state_segments = state_segments[1:]
+                _assign_nested_state(state, state_segments, change.get("from"))
+        actor_state = actor.get("state")
+        if not state and isinstance(actor_state, dict):
+            return dict(actor_state)
+        if not state and actor_state not in (None, ""):
+            return {"value": actor_state}
+        return state or {"status": "unknown"}
+
     script_id = str(baseline.get("script_id", "chapter_evolution")).strip() or "chapter_evolution"
     mainline_summary = str(baseline.get("mainline_summary", "")).strip()
     raw_actors = _list_of_dicts(baseline.get("actors", []))
@@ -1443,6 +1479,21 @@ def canonicalize_chapter_baseline(baseline: dict[str, object]) -> dict[str, obje
         next_fact["summary"] = str(fact.get("summary") or fact.get("description") or fact_id)
         locked_facts.append(next_fact)
     allowed_deviations = _list_of_dicts(baseline.get("allowed_deviations", []))
+    actors_by_id = {str(actor.get("actor_id", "")): actor for actor in actors}
+    object_ids = {str(item.get("object_id", "")) for item in objects}
+    for deviation in allowed_deviations:
+        target_id = str(deviation.get("target_object_id", "")).strip()
+        if not target_id or target_id in object_ids:
+            continue
+        actor = actors_by_id.get(target_id, {})
+        objects.append(
+            {
+                "object_id": target_id,
+                "summary": str(actor.get("summary") or f"Narrative state node for {target_id}"),
+                "state": _inferred_object_state(target_id, actor, allowed_deviations),
+            }
+        )
+        object_ids.add(target_id)
     prior_event_requirements = _list_of_dicts(baseline.get("prior_event_requirements", []))
     if not actors:
         raise RuntimeError("CHAPTER_NORMALIZE_FAILED: normalized chapter missing actors")
