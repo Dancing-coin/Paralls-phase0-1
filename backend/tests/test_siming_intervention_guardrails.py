@@ -54,6 +54,26 @@ def test_guardrails_reject_unknown_fact_reference() -> None:
     assert "unknown_fact_reference" in result.reasons
 
 
+def test_guardrails_reject_ineligible_actor_target() -> None:
+    result = SimingInterventionGuardrails().evaluate_seed(
+        make_seed(target_refs=["char_c"]),
+        snapshot=make_snapshot(),
+    )
+
+    assert result.accepted is False
+    assert "actor_not_eligible" in result.reasons
+
+
+def test_guardrails_reject_environment_request_without_esm_validation() -> None:
+    result = SimingInterventionGuardrails().evaluate_seed(
+        make_seed(suggested_band="environment_request"),
+        snapshot=make_snapshot(),
+    )
+
+    assert result.accepted is False
+    assert "environment_request_requires_esm_path" in result.reasons
+
+
 def test_guardrails_accept_seed_and_convert_to_candidate() -> None:
     result = SimingInterventionGuardrails().evaluate_seed(make_seed(), snapshot=make_snapshot())
 
