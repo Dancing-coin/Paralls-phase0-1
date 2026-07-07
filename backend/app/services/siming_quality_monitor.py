@@ -151,7 +151,7 @@ class SimingQualityMonitor:
                     dimension="evidence_visibility_distribution",
                     severity="medium",
                     target_refs=narrative.seeds[0].target_refs,
-                    evidence_refs=narrative.seeds[0].basis_obligation_refs,
+                    evidence_refs=narrative.seeds[0].basis_fact_refs,
                     suggested_action_band=narrative.seeds[0].suggested_band,
                     reason="narrative seed requires evidence visibility surface",
                 )

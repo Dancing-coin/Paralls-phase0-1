@@ -7,6 +7,7 @@ from app.models.siming_event import (
     SimingOutput,
     SimingTickResult,
 )
+from app.models.siming_narrative import NarrativeCoreResult
 from app.models.siming_runtime_state import ProjectionRunSnapshot, StateTreeSnapshot, StorylineStateSnapshot
 from app.services.siming_fact_core import SimingFactCore
 from app.services.siming_fairness_audit import SimingFairnessAuditEngine
@@ -154,8 +155,48 @@ class SimingRuntime:
             narrative_summary = self._narrative_summary_for(narrative)
             quality_summary = self._quality_summary_for(quality)
             guardrail_summary = self._guardrail_summary_for(guardrail_results)
+            guardrail_rejection_reason = self._guardrail_rejection_reason(guardrail_results)
 
             if self._is_light_drop(event):
+                if guardrail_rejection_reason is not None:
+                    result.outputs.append(self._no_action(event, reason=guardrail_rejection_reason))
+                    result.audit_records.append(
+                        self._audit(event, status="no_action", reason=guardrail_rejection_reason)
+                    )
+                    self._queue_snapshot(
+                        source_event=event,
+                        fairness_summary=self._fairness_summary_for(event),
+                        intervention_candidate="",
+                        intervention_decision="no_action",
+                        selected_path="no_action",
+                        intervention_band="none",
+                        target_ref=self._target_ref_for(event),
+                        reason_summary=guardrail_rejection_reason,
+                        downstream_status="guardrail_rejected",
+                        no_action_reason=guardrail_rejection_reason,
+                    )
+                    self._queue_event(
+                        source_event=event,
+                        stage="no_action",
+                        summary="siming guardrails rejected narrative seed",
+                        selected_path="no_action",
+                        intervention_band="none",
+                        target_ref=self._target_ref_for(event),
+                        reason_summary=guardrail_rejection_reason,
+                        downstream_status="guardrail_rejected",
+                        no_action_reason=guardrail_rejection_reason,
+                    )
+                    self._finalize_tick_state(
+                        result,
+                        state_tree=state_tree,
+                        fairness_snapshot=fairness_snapshot,
+                        storyline=storyline,
+                        projection=projection,
+                        narrative_summary=narrative_summary,
+                        quality_summary=quality_summary,
+                        guardrail_summary=guardrail_summary,
+                    )
+                    continue
                 policy_snapshot = self._policy_snapshot_for_event(event, fairness_snapshot)
                 llm_candidates, llm_audit = self._llm_candidates_for(event, policy_snapshot)
                 if llm_candidates:
@@ -459,21 +500,6 @@ class SimingRuntime:
                 **output_base,
             )
         )
-        result.outputs.append(
-            SimingOutput(
-                output_type="intervention_candidate",
-                producer_ts=producer_ts + 2,
-                selected_path="character_input_path",
-                intervention_band="fact_reveal",
-                payload={
-                    "candidate_id": f"candidate:{bundle.bundle_id}",
-                    "source_bundle_id": bundle.bundle_id,
-                    "target_state": dict(bundle.target_state),
-                    "perception_identity": perception_identity,
-                },
-                **output_base,
-            )
-        )
         result.read_model = self._read_model_builder.build_bundle_read_model(bundle, producer_ts=producer_ts + 2)
         self._pending_observatory_messages.append(
             {
@@ -763,7 +789,7 @@ class SimingRuntime:
             payload=payload,
         )
 
-    def _no_action(self, event: AuthorityEvent) -> SimingOutput:
+    def _no_action(self, event: AuthorityEvent, *, reason: str = "no eligible intervention") -> SimingOutput:
         return SimingOutput(
             output_type="no_action",
             room_id=event.room_id,
@@ -774,7 +800,7 @@ class SimingRuntime:
             producer_ts=event.producer_ts + 1,
             selected_path="no_action",
             intervention_band="none",
-            payload={"reason": "no eligible intervention"},
+            payload={"reason": reason},
         )
 
     def _audit(self, event: AuthorityEvent, *, status: str, reason: str) -> SimingAuditRecord:
@@ -829,13 +855,34 @@ class SimingRuntime:
             checkpoint_summary=checkpoint_summary,
         )
 
-    def _narrative_summary_for(self, narrative) -> dict[str, object]:  # type: ignore[no-untyped-def]
+    def _narrative_summary_for(self, narrative: NarrativeCoreResult) -> dict[str, object]:
+        obligations = [
+            {
+                "obligation_type": obligation.obligation_type,
+                "source_event_id": obligation.source_event_id,
+                "target_refs": list(obligation.target_refs[:4]),
+                "status": obligation.status,
+            }
+            for obligation in narrative.ledger.obligations[:5]
+        ]
+        intervention_seeds = [
+            {
+                "seed_type": seed.seed_type,
+                "basis_obligation_refs": list(seed.basis_obligation_refs[:4]),
+                "basis_fact_refs": list(seed.basis_fact_refs[:4]),
+                "target_refs": list(seed.target_refs[:4]),
+                "suggested_band": seed.suggested_band,
+            }
+            for seed in narrative.seeds[:5]
+        ]
         return {
             "active_phase": narrative.state.active_phase,
             "pressure_level": narrative.state.pressure_level,
             "open_obligation_count": len(narrative.ledger.obligations),
             "intervention_seed_count": len(narrative.seeds),
             "seed_types": [seed.seed_type for seed in narrative.seeds],
+            "obligations": obligations,
+            "intervention_seeds": intervention_seeds,
         }
 
     def _quality_summary_for(self, quality: QualityMonitorResult) -> dict[str, object]:
@@ -857,6 +904,17 @@ class SimingRuntime:
                 for reason in guardrail_result.reasons
             ],
         }
+
+    def _guardrail_rejection_reason(self, guardrail_results: list[GuardrailResult]) -> str | None:
+        reasons = [
+            reason
+            for guardrail_result in guardrail_results
+            if not guardrail_result.accepted
+            for reason in guardrail_result.reasons
+        ]
+        if not reasons:
+            return None
+        return "guardrail_rejected:" + ",".join(sorted(set(reasons)))
 
     def _policy_snapshot_for_event(
         self,

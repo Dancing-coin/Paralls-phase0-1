@@ -47,7 +47,7 @@ class GuardrailResult(BaseModel):
             target_actor_id=target_actor_id,
             target_object_id=target_object_id,
             target_environment_id=target_environment_id,
-            established_fact_ids=list(self.seed.basis_obligation_refs),
+            established_fact_ids=list(self.seed.basis_fact_refs),
             explanation=self.seed.explanation,
             confidence=0.75,
             reason_tags=["guardrail_checked", *self.reasons],
@@ -61,7 +61,7 @@ class SimingInterventionGuardrails:
         for tag in seed.risk_tags:
             if tag in BLOCKED_RISK_TAGS:
                 reasons.append(tag)
-        unknown_refs = [ref for ref in seed.basis_obligation_refs if ref not in snapshot.known_fact_ids]
+        unknown_refs = [ref for ref in seed.basis_fact_refs if ref not in snapshot.known_fact_ids]
         if unknown_refs:
             reasons.append("unknown_fact_reference")
         target_actor_refs = [ref for ref in seed.target_refs if ref.startswith("char_")]

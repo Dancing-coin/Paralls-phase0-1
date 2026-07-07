@@ -131,11 +131,13 @@ class SimingNarrativeCore:
 
     def _seed_for(self, state: NarrativeStateSnapshot, obligation: NarrativeObligation) -> InterventionSeed:
         suggested_band = "fact_reveal" if obligation.obligation_type == "unresolved_reveal" else "opportunity"
+        fact_refs = [obligation.source_event_id] if obligation.obligation_type == "unresolved_reveal" else []
         return InterventionSeed(
             seed_id=f"seed:{obligation.obligation_id}",
             seed_type=suggested_band,
             basis_snapshot_ref=state.snapshot_id,
             basis_obligation_refs=[obligation.obligation_id],
+            basis_fact_refs=fact_refs,
             target_refs=obligation.target_refs,
             suggested_band=suggested_band,
             explanation=obligation.reason,

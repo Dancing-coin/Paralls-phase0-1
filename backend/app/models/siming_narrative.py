@@ -80,6 +80,7 @@ class InterventionSeed(BaseModel):
     seed_type: str
     basis_snapshot_ref: str
     basis_obligation_refs: list[str] = Field(default_factory=list)
+    basis_fact_refs: list[str] = Field(default_factory=list)
     target_refs: list[str] = Field(default_factory=list)
     suggested_band: str
     risk_tags: list[str] = Field(default_factory=list)

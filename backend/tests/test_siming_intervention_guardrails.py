@@ -24,7 +24,8 @@ def make_seed(**overrides: object) -> InterventionSeed:
         "seed_id": "seed:1",
         "seed_type": "unresolved_reveal",
         "basis_snapshot_ref": "narrative:1",
-        "basis_obligation_refs": ["fact:1"],
+        "basis_obligation_refs": ["obligation:1"],
+        "basis_fact_refs": ["fact:1"],
         "target_refs": ["char_b"],
         "suggested_band": "fact_reveal",
         "risk_tags": [],
@@ -46,12 +47,30 @@ def test_guardrails_reject_phase2_projection_seed() -> None:
 
 def test_guardrails_reject_unknown_fact_reference() -> None:
     result = SimingInterventionGuardrails().evaluate_seed(
-        make_seed(basis_obligation_refs=["unknown_fact"]),
+        make_seed(basis_fact_refs=["unknown_fact"]),
         snapshot=make_snapshot(),
     )
 
     assert result.accepted is False
     assert "unknown_fact_reference" in result.reasons
+
+
+def test_guardrails_do_not_confuse_obligation_refs_with_fact_refs() -> None:
+    result = SimingInterventionGuardrails().evaluate_seed(
+        make_seed(basis_obligation_refs=["obligation:unresolved_reveal:1"]),
+        snapshot=make_snapshot(),
+    )
+
+    candidate = result.to_candidate(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        causation_id="cause",
+        correlation_id="corr",
+    )
+
+    assert result.accepted is True
+    assert candidate.established_fact_ids == ["fact:1"]
 
 
 def test_guardrails_reject_ineligible_actor_target() -> None:

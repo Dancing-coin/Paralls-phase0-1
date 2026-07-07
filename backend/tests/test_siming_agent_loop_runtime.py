@@ -1,6 +1,7 @@
 from app.models.authority_event import AuthorityEvent
 from app.models.siming_event import SimingInput
 from app.models.siming_runtime_state import ProjectionRunSnapshot
+from app.services.siming_intervention_guardrails import GuardrailResult
 from app.services.siming_runtime import SimingRuntime
 
 
@@ -53,6 +54,11 @@ class StubProjection:
             candidate_hints=[],
             summary={"mode": "stubbed"},
         )
+
+
+class RejectingGuardrails:
+    def evaluate_seed(self, seed, *, snapshot):  # type: ignore[no-untyped-def]
+        return GuardrailResult(seed=seed, accepted=False, reasons=["phase2_projection_required"])
 
 
 def test_tick_returns_state_tree_storyline_checkpoint_and_read_model() -> None:
@@ -123,10 +129,49 @@ def test_tick_places_narrative_seed_quality_and_guardrail_summaries_in_read_mode
     assert result.read_model is not None
     assert result.read_model.narrative_surface["active_phase"] == "rising"
     assert result.read_model.narrative_surface["intervention_seed_count"] >= 1
+    assert result.read_model.narrative_surface["obligations"] == [
+        {
+            "obligation_type": "unresolved_reveal",
+            "source_event_id": "visual_fact:300:char_c:light_level_drop",
+            "target_refs": ["char_b", "env_lamp"],
+            "status": "open",
+        }
+    ]
+    assert result.read_model.narrative_surface["intervention_seeds"] == [
+        {
+            "seed_type": "fact_reveal",
+            "basis_obligation_refs": [
+                "obligation:room_demo:r1:e1:visual_fact:300:char_c:light_level_drop:unresolved_reveal"
+            ],
+            "basis_fact_refs": ["visual_fact:300:char_c:light_level_drop"],
+            "target_refs": ["char_b", "env_lamp"],
+            "suggested_band": "fact_reveal",
+        }
+    ]
     assert result.read_model.intervention_surface["quality_signal_count"] >= 0
     assert isinstance(result.read_model.intervention_surface["guardrail_statuses"], list)
     assert "quality" not in result.read_model.intervention_surface
     assert "guardrails" not in result.read_model.intervention_surface
+
+
+def test_guardrail_rejection_blocks_narrative_dispatch_and_records_rejection() -> None:
+    runtime = SimingRuntime(intervention_guardrails=RejectingGuardrails())
+    event = make_visual_fact_event()
+
+    result = runtime.tick([SimingInput(input_type="visual_fact_event", source_event=event)])
+
+    output_types = [output.output_type for output in result.outputs]
+    assert "intervention_candidate" not in output_types
+    assert "intervention_decision" not in output_types
+    assert "dispatch_intent" not in output_types
+    assert "no_action" in output_types
+    assert any(
+        audit.status == "no_action" and "phase2_projection_required" in audit.reason
+        for audit in result.audit_records
+    )
+    assert result.read_model is not None
+    assert result.read_model.intervention_surface["guardrail_statuses"] == ["rejected"]
+    assert result.read_model.intervention_surface["guardrail_reasons"] == ["phase2_projection_required"]
 
 
 def test_tick_records_multi_stage_checkpoints() -> None:

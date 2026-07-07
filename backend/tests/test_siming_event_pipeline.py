@@ -12,6 +12,8 @@ from app.services.siming_event_pipeline import SimingEventPipeline
 from app.services.siming_event_producer import SimingEventProducer
 from app.services.siming_llm_provider import FakeSimingLlmCandidateProvider
 from app.services.siming_runtime import SimingRuntime
+from app.world_runtime.intelligence_upgrade import SampleInputRef
+from app.world_runtime.l1_perception_frame import L1PerceptionFrameService
 
 
 class _LocalGateway:
@@ -419,3 +421,37 @@ def test_pipeline_does_not_publish_internal_narrative_or_read_facade_events() ->
     assert "siming.checkpoint" not in event_types
     assert "siming.narrative_state" not in event_types
     assert "siming.intervention_seed" not in event_types
+
+
+def test_pipeline_canonical_bundle_ingestion_records_read_model_without_decision_outputs() -> None:
+    bus = InMemoryAuthorityEventBus()
+    audit_writer = SimingAuditWriter()
+    pipeline = make_pipeline(bus, audit_writer)
+    frame_service = L1PerceptionFrameService()
+    frame = frame_service.build_siming_frame(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        started_at=100,
+        ended_at=150,
+        environment_inputs=[
+            SampleInputRef(provider_kind="spatial_patch", ref_id="runtime://space/zone_focus/global/150")
+        ],
+        structured_fact_refs=["raw_fact_event:spatial_access_fact:line_of_sight_blocked:150"],
+    )
+    bundle = frame_service.build_canonical_bundle(
+        frame,
+        local_spatial_state={"zone_id": "zone_focus"},
+        target_state={"affected_actors": ["char_b"]},
+        environment_state={"visibility_level": "reduced"},
+    )
+
+    result = pipeline.ingest_canonical_percept_bundle(bundle)
+
+    assert result.read_model is not None
+    assert audit_writer.list_read_models(room_id="room_demo")
+    assert all(
+        output.output_type not in {"intervention_candidate", "intervention_decision", "dispatch_intent"}
+        for output in result.outputs
+    )
+    assert not any(event.event_type.startswith("siming.") for event in bus.list_events(room_id="room_demo"))
