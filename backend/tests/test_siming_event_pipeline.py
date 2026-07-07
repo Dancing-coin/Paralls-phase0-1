@@ -404,3 +404,18 @@ def test_pipeline_records_multi_stage_checkpoints_for_runtime_tick() -> None:
     }
     assert checkpoint_types == {"pre_decision", "post_decision", "post_dispatch"}
     assert "fairness_after" not in checkpoint_types
+
+
+def test_pipeline_does_not_publish_internal_narrative_or_read_facade_events() -> None:
+    bus = InMemoryAuthorityEventBus()
+    audit_writer = SimingAuditWriter()
+    pipeline = make_pipeline(bus, audit_writer)
+    bus.subscribe("visual_fact_event", pipeline.handle_event)
+
+    bus.publish(make_visual_fact_event())
+
+    event_types = {event.event_type for event in bus.list_events(room_id="room_demo")}
+    assert "siming.read_model" not in event_types
+    assert "siming.checkpoint" not in event_types
+    assert "siming.narrative_state" not in event_types
+    assert "siming.intervention_seed" not in event_types
