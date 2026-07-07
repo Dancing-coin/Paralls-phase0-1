@@ -32,6 +32,9 @@ SPEC_PLAN_COVERAGE: dict[str, tuple[str, ...]] = {
     "2026-06-08-system-l1-role-state-emitter-design.md": (
         "2026-06-08-system-l1-remaining-emitter-implementation-plan.md",
     ),
+    "2026-07-06-plotpilot-style-siming-narrative-core-design.md": (
+        "2026-07-07-plotpilot-style-siming-narrative-core.md",
+    ),
 }
 
 
