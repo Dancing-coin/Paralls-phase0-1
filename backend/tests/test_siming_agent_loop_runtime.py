@@ -111,3 +111,39 @@ def test_fact_veto_returns_no_action_audit_and_no_runtime_finalize() -> None:
     assert any(audit.reason == "fact_veto:locked_fact_conflict" for audit in result.audit_records)
     assert result.checkpoints == []
     assert result.read_model is None
+
+
+def test_tick_places_narrative_seed_quality_and_guardrail_summaries_in_read_model() -> None:
+    runtime = SimingRuntime()
+
+    result = runtime.tick(
+        [SimingInput(input_type="visual_fact_event", source_event=make_visual_fact_event())]
+    )
+
+    assert result.read_model is not None
+    assert result.read_model.narrative_surface["active_phase"] == "rising"
+    assert result.read_model.narrative_surface["intervention_seed_count"] >= 1
+    assert "quality_signal_count" in result.read_model.intervention_surface
+    assert "guardrail_statuses" in result.read_model.intervention_surface
+
+
+def test_tick_records_multi_stage_checkpoints() -> None:
+    runtime = SimingRuntime()
+
+    result = runtime.tick(
+        [SimingInput(input_type="visual_fact_event", source_event=make_visual_fact_event())]
+    )
+
+    checkpoint_types = {checkpoint.checkpoint_type for checkpoint in result.checkpoints}
+    assert {"pre_decision", "post_decision", "post_dispatch"}.issubset(checkpoint_types)
+
+
+def test_locked_fact_conflict_still_does_not_update_narrative_core() -> None:
+    runtime = SimingRuntime()
+    event = make_visual_fact_event(payload_overrides={"locked_fact_conflict": True})
+
+    result = runtime.tick([SimingInput(input_type="visual_fact_event", source_event=event)])
+
+    assert any(audit.reason == "fact_veto:locked_fact_conflict" for audit in result.audit_records)
+    assert result.checkpoints == []
+    assert result.read_model is None

@@ -12,12 +12,14 @@ from app.services.siming_fact_core import SimingFactCore
 from app.services.siming_fairness_audit import SimingFairnessAuditEngine
 from app.services.siming_feature_registry import SimingFeatureRegistry
 from app.services.siming_feasibility import SimingExecutionFeasibility
+from app.services.siming_intervention_guardrails import GuardrailResult, SimingInterventionGuardrails
 from app.services.siming_llm_provider import (
     DisabledSimingLlmCandidateProvider,
     SimingLlmCandidateProvider,
     SimingLlmProviderInvalidOutput,
     SimingLlmProviderTimeout,
 )
+from app.services.siming_narrative_core import SimingNarrativeCore
 from app.services.siming_observe import SimingObservePipeline
 from app.services.siming_policy import SimingInterventionPolicy
 from app.services.siming_projection import (
@@ -26,10 +28,10 @@ from app.services.siming_projection import (
     StubGroupSimulationBridge,
     StubStorylineProjection,
 )
+from app.services.siming_quality_monitor import QualityMonitorResult, SimingQualityMonitor
 from app.services.siming_read_model import SimingReadModelBuilder, perception_identity_from_bundle
 from app.services.siming_state_tree import InMemorySimingStateTree
 from app.services.siming_storyline import InMemoryNarrativeObligationLedger, InMemoryStorylineState
-from app.models.siming_event import SimingAuditRecord, SimingInput, SimingOutput, SimingTickResult
 from app.services.siming_debug_projection import SimingDebugProjection
 from app.world_runtime.intelligence_upgrade import CanonicalPerceptBundle
 
@@ -46,6 +48,9 @@ class SimingRuntime:
         fact_core: SimingFactCore | None = None,
         state_tree: InMemorySimingStateTree | None = None,
         fairness_audit: SimingFairnessAuditEngine | None = None,
+        narrative_core: SimingNarrativeCore | None = None,
+        quality_monitor: SimingQualityMonitor | None = None,
+        intervention_guardrails: SimingInterventionGuardrails | None = None,
         storyline_state: InMemoryStorylineState | None = None,
         obligation_ledger: InMemoryNarrativeObligationLedger | None = None,
         storyline_projection: StorylineProjectionPort | None = None,
@@ -60,6 +65,9 @@ class SimingRuntime:
         self._fact_core = fact_core or SimingFactCore()
         self._state_tree = state_tree or InMemorySimingStateTree()
         self._fairness_audit = fairness_audit or SimingFairnessAuditEngine(self._feature_registry)
+        self._narrative_core = narrative_core or SimingNarrativeCore()
+        self._quality_monitor = quality_monitor or SimingQualityMonitor()
+        self._intervention_guardrails = intervention_guardrails or SimingInterventionGuardrails()
         self._storyline_state = storyline_state or InMemoryStorylineState()
         self._obligation_ledger = obligation_ledger or InMemoryNarrativeObligationLedger()
         self._storyline_projection = storyline_projection or StubStorylineProjection()
@@ -118,7 +126,9 @@ class SimingRuntime:
                 sim_tick_ts=event.producer_ts + 1,
             )
             state_tree.group_simulation = self._group_bridge.summarize(room_id=event.room_id)
-            fairness_snapshot = self._fairness_audit.build_snapshot(state_tree)
+            narrative = self._narrative_core.update(observed)
+            quality = self._quality_monitor.evaluate(state_tree=state_tree, narrative=narrative)
+            fairness_snapshot = quality.snapshot
             storyline = self._storyline_state.update_from_state_tree(state_tree)
             ledger = self._obligation_ledger.update_from_storyline(storyline)
             projection = self._storyline_projection.project(
@@ -127,6 +137,21 @@ class SimingRuntime:
                 storyline=storyline,
                 ledger=ledger,
             )
+            guardrail_results = [
+                self._intervention_guardrails.evaluate_seed(seed, snapshot=fairness_snapshot)
+                for seed in narrative.seeds
+            ]
+            result.checkpoints.append(
+                self._read_model_builder.build_checkpoint(
+                    state_tree=state_tree,
+                    fairness=fairness_snapshot,
+                    storyline=storyline,
+                    checkpoint_type="pre_decision",
+                )
+            )
+            narrative_summary = self._narrative_summary_for(narrative)
+            quality_summary = self._quality_summary_for(quality)
+            guardrail_summary = self._guardrail_summary_for(guardrail_results)
 
             if self._is_light_drop(event):
                 policy_snapshot = self._policy_snapshot_for_event(event, fairness_snapshot)
@@ -145,6 +170,9 @@ class SimingRuntime:
                         fairness_snapshot=fairness_snapshot,
                         storyline=storyline,
                         projection=projection,
+                        narrative_summary=narrative_summary,
+                        quality_summary=quality_summary,
+                        guardrail_summary=guardrail_summary,
                     )
                     continue
                 if llm_audit:
@@ -156,6 +184,9 @@ class SimingRuntime:
                         fairness_snapshot=fairness_snapshot,
                         storyline=storyline,
                         projection=projection,
+                        narrative_summary=narrative_summary,
+                        quality_summary=quality_summary,
+                        guardrail_summary=guardrail_summary,
                     )
                     continue
                 candidate_summary = self._candidate_summary_for(event)
@@ -229,6 +260,9 @@ class SimingRuntime:
                     fairness_snapshot=fairness_snapshot,
                     storyline=storyline,
                     projection=projection,
+                    narrative_summary=narrative_summary,
+                    quality_summary=quality_summary,
+                    guardrail_summary=guardrail_summary,
                 )
                 continue
 
@@ -270,6 +304,9 @@ class SimingRuntime:
                     fairness_snapshot=fairness_snapshot,
                     storyline=storyline,
                     projection=projection,
+                    narrative_summary=narrative_summary,
+                    quality_summary=quality_summary,
+                    guardrail_summary=guardrail_summary,
                 )
                 continue
 
@@ -311,6 +348,9 @@ class SimingRuntime:
                     fairness_snapshot=fairness_snapshot,
                     storyline=storyline,
                     projection=projection,
+                    narrative_summary=narrative_summary,
+                    quality_summary=quality_summary,
+                    guardrail_summary=guardrail_summary,
                 )
                 continue
 
@@ -346,6 +386,9 @@ class SimingRuntime:
                     fairness_snapshot=fairness_snapshot,
                     storyline=storyline,
                     projection=projection,
+                    narrative_summary=narrative_summary,
+                    quality_summary=quality_summary,
+                    guardrail_summary=guardrail_summary,
                 )
                 continue
 
@@ -359,6 +402,9 @@ class SimingRuntime:
                 fairness_snapshot=fairness_snapshot,
                 storyline=storyline,
                 projection=projection,
+                narrative_summary=narrative_summary,
+                quality_summary=quality_summary,
+                guardrail_summary=guardrail_summary,
             )
             self._queue_snapshot(
                 source_event=event,
@@ -748,21 +794,72 @@ class SimingRuntime:
         fairness_snapshot: FairnessStateSnapshot,
         storyline: StorylineStateSnapshot,
         projection: ProjectionRunSnapshot,
+        narrative_summary: dict[str, object] | None = None,
+        quality_summary: dict[str, object] | None = None,
+        guardrail_summary: dict[str, object] | None = None,
     ) -> None:
-        result.checkpoints.append(
-            self._read_model_builder.build_checkpoint(
-                state_tree=state_tree,
-                fairness=fairness_snapshot,
-                storyline=storyline,
+        checkpoint_types = ("post_decision", "post_dispatch")
+        for checkpoint_type in checkpoint_types:
+            result.checkpoints.append(
+                self._read_model_builder.build_checkpoint(
+                    state_tree=state_tree,
+                    fairness=fairness_snapshot,
+                    storyline=storyline,
+                    checkpoint_type=checkpoint_type,
+                )
             )
-        )
+        checkpoint_summary = {
+            "checkpoint_types": [
+                checkpoint.checkpoint_type
+                for checkpoint in result.checkpoints
+                if checkpoint.correlation_id == state_tree.correlation_id
+            ]
+        }
         result.read_model = self._read_model_builder.build_read_model(
             state_tree=state_tree,
             fairness=fairness_snapshot,
             storyline=storyline,
             projection=projection,
             audit_records=result.audit_records,
+            narrative_summary=narrative_summary,
+            quality_summary=quality_summary,
+            guardrail_summary=guardrail_summary,
+            checkpoint_summary=checkpoint_summary,
         )
+        if result.read_model is not None:
+            if quality_summary:
+                result.read_model.intervention_surface.update(quality_summary)
+            if guardrail_summary:
+                result.read_model.intervention_surface.update(guardrail_summary)
+
+    def _narrative_summary_for(self, narrative) -> dict[str, object]:  # type: ignore[no-untyped-def]
+        return {
+            "active_phase": narrative.state.active_phase,
+            "pressure_level": narrative.state.pressure_level,
+            "open_obligation_count": len(narrative.ledger.obligations),
+            "intervention_seed_count": len(narrative.seeds),
+            "seed_types": [seed.seed_type for seed in narrative.seeds],
+        }
+
+    def _quality_summary_for(self, quality: QualityMonitorResult) -> dict[str, object]:
+        return {
+            "quality_signal_count": len(quality.signals),
+            "quality_risk_tags": list(quality.risk_tags),
+            "quality_dimensions": sorted(quality.snapshot.dimensions.keys()),
+        }
+
+    def _guardrail_summary_for(self, guardrail_results: list[GuardrailResult]) -> dict[str, object]:
+        return {
+            "guardrail_statuses": [
+                "accepted" if guardrail_result.accepted else "rejected"
+                for guardrail_result in guardrail_results
+            ],
+            "guardrail_reasons": [
+                reason
+                for guardrail_result in guardrail_results
+                for reason in guardrail_result.reasons
+            ],
+        }
 
     def _policy_snapshot_for_event(
         self,

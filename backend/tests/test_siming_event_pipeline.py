@@ -389,3 +389,17 @@ def test_pipeline_records_checkpoint_and_read_model_for_runtime_tick() -> None:
     event_types = [event.event_type for event in bus.list_events(room_id="room_demo")]
     assert "siming.read_model" not in event_types
     assert "siming.checkpoint" not in event_types
+
+
+def test_pipeline_records_multi_stage_checkpoints_for_runtime_tick() -> None:
+    bus = InMemoryAuthorityEventBus()
+    audit_writer = SimingAuditWriter()
+    pipeline = make_pipeline(bus, audit_writer)
+    bus.subscribe("visual_fact_event", pipeline.handle_event)
+
+    bus.publish(make_visual_fact_event())
+
+    checkpoint_types = {
+        checkpoint.checkpoint_type for checkpoint in audit_writer.list_checkpoints(room_id="room_demo")
+    }
+    assert {"pre_decision", "post_decision", "post_dispatch"}.issubset(checkpoint_types)
