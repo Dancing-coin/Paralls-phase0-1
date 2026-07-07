@@ -66,7 +66,9 @@ class SimingRuntime:
         self._state_tree = state_tree or InMemorySimingStateTree()
         self._fairness_audit = fairness_audit or SimingFairnessAuditEngine(self._feature_registry)
         self._narrative_core = narrative_core or SimingNarrativeCore()
-        self._quality_monitor = quality_monitor or SimingQualityMonitor()
+        self._quality_monitor = quality_monitor or SimingQualityMonitor(
+            feature_registry=self._feature_registry
+        )
         self._intervention_guardrails = intervention_guardrails or SimingInterventionGuardrails()
         self._storyline_state = storyline_state or InMemoryStorylineState()
         self._obligation_ledger = obligation_ledger or InMemoryNarrativeObligationLedger()

@@ -10,6 +10,7 @@ from app.models.siming_runtime_state import (
     StateTreeNode,
     StateTreeSnapshot,
 )
+from app.services.siming_feature_registry import SimingFeatureRegistry
 from app.services.siming_quality_monitor import SimingQualityMonitor
 
 
@@ -114,3 +115,23 @@ def test_quality_monitor_marks_failed_auditor_partial_without_interrupting_tick(
     assert result.snapshot.dimensions["conversation_access_fairness"].score == 0.0
     assert not any(signal.dimension == "conversation_access_fairness" for signal in result.signals)
     assert "quality_monitor_partial" in result.risk_tags
+
+
+def test_quality_monitor_includes_registered_dimensions_for_policy_mappings() -> None:
+    registry = SimingFeatureRegistry()
+    registry.register_fairness_dimension("resource_pressure", required=False)
+    registry.register_policy_mapping(
+        dimension_id="resource_pressure",
+        reject_reason_tag="resource_pressure_sensitive",
+        rejection_reason="resource_pressure_policy_rejected",
+    )
+
+    result = SimingQualityMonitor(
+        feature_registry=registry
+    ).evaluate(state_tree=make_state_tree(), narrative=make_narrative())
+
+    dimension = result.snapshot.dimensions["resource_pressure"]
+    assert dimension.status == "fresh"
+    assert dimension.score == 0.0
+    assert dimension.reason == "registered fairness dimension available"
+    assert dimension.mapped_to_policy is True

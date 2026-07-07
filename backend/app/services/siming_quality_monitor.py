@@ -3,6 +3,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models.siming_event import FairnessStateSnapshot
 from app.models.siming_narrative import NarrativeCoreResult, QualitySignal
 from app.models.siming_runtime_state import FairnessDimensionSnapshot, StateTreeSnapshot
+from app.services.siming_feature_registry import SimingFeatureRegistry
 
 
 REQUIRED_DIMENSIONS = (
@@ -23,7 +24,13 @@ class QualityMonitorResult(BaseModel):
 
 
 class SimingQualityMonitor:
-    def __init__(self, *, force_failed_dimensions: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        feature_registry: SimingFeatureRegistry | None = None,
+        force_failed_dimensions: set[str] | None = None,
+    ) -> None:
+        self._feature_registry = feature_registry or SimingFeatureRegistry()
         self._force_failed_dimensions = force_failed_dimensions or set()
 
     def evaluate(
@@ -54,6 +61,19 @@ class SimingQualityMonitor:
 
             dimension_signals = [signal for signal in signals if signal.dimension == dimension_id]
             dimensions[dimension_id] = self._dimension_from_signals(dimension_id, dimension_signals)
+
+        for registration in self._feature_registry.fairness_dimensions():
+            if registration.dimension_id in dimensions:
+                continue
+            dimensions[registration.dimension_id] = FairnessDimensionSnapshot(
+                dimension_id=registration.dimension_id,
+                status="fresh",
+                score=0.0,
+                reason="registered fairness dimension available",
+                mapped_to_policy=(
+                    self._feature_registry.policy_mapping_for(registration.dimension_id) is not None
+                ),
+            )
 
         established_fact_id = state_tree.environment.summary.get("established_fact_id")
         target_actor_id = state_tree.character.summary.get("target_actor_id")
