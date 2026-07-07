@@ -37,7 +37,7 @@ Verification:
 - `python -m pytest backend/tests/test_siming_intervention_guardrails.py -v` passed: 6 passed.
 
 Commit:
-- Pending at report write time.
+- `6b12b58` - `Fix Siming narrative core final review findings`
 
 Concerns:
 - Existing warnings remain unrelated to this change: Pydantic protected namespace warning for `Scene3DSpaceModel.model_id`, and the broader slice also reports a Starlette/FastAPI TestClient deprecation warning.
