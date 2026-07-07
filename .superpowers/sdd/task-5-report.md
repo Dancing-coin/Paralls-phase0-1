@@ -51,3 +51,25 @@
 
 ## Concerns
 - `SimingReadModelBuilder.build_read_model()` still nests `quality` and `guardrails` under `intervention_surface`; to satisfy the Task 5 brief without broadening scope, `SimingRuntime` also flattens the key summary fields onto `intervention_surface`. If later tasks want one canonical shape, that should be resolved at the builder/model contract level.
+
+## Fix Section
+- Findings addressed:
+  - Moved `intervention_surface` schema ownership for `quality_signal_count`, `quality_risk_tags`, `quality_dimensions`, `guardrail_statuses`, and `guardrail_reasons` into `SimingReadModelBuilder.build_read_model()`.
+  - Removed the runtime-side mutation that had been flattening those fields after the `NarrativeReadModel` was built.
+  - Strengthened checkpoint assertions so the Task 5 runtime/pipeline tests require exactly `pre_decision`, `post_decision`, and `post_dispatch`, and explicitly reject `fairness_after`.
+- Files changed:
+  - `backend/app/services/siming_read_model.py`
+  - `backend/app/services/siming_runtime.py`
+  - `backend/tests/test_siming_agent_loop_runtime.py`
+  - `backend/tests/test_siming_event_pipeline.py`
+- Exact commands and results:
+  - `python -m pytest backend/tests/test_siming_agent_loop_runtime.py -v`
+    - `7 passed, 1 warning`
+  - `python -m pytest backend/tests/test_siming_event_pipeline.py::test_pipeline_records_multi_stage_checkpoints_for_runtime_tick -v`
+    - `1 passed, 1 warning`
+  - `python -m pytest backend/tests/test_siming_read_facade.py -v`
+    - `2 passed, 2 warnings`
+- Commit:
+  - `Fix Siming runtime read model contract`
+- Concerns:
+  - `CheckpointType` still includes legacy `fairness_after` in `backend/app/models/siming_runtime_state.py`, and older model-layer tests still cover that default builder path. This fix keeps runtime Task 5 behavior strict without widening scope into those older compatibility surfaces.

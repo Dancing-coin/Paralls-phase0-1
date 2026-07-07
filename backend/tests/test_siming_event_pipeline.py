@@ -402,4 +402,5 @@ def test_pipeline_records_multi_stage_checkpoints_for_runtime_tick() -> None:
     checkpoint_types = {
         checkpoint.checkpoint_type for checkpoint in audit_writer.list_checkpoints(room_id="room_demo")
     }
-    assert {"pre_decision", "post_decision", "post_dispatch"}.issubset(checkpoint_types)
+    assert checkpoint_types == {"pre_decision", "post_decision", "post_dispatch"}
+    assert "fairness_after" not in checkpoint_types

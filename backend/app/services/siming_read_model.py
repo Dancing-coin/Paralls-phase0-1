@@ -116,9 +116,9 @@ class SimingReadModelBuilder:
             "audit_statuses": [audit.status for audit in audit_records],
         }
         if quality_summary:
-            intervention_surface["quality"] = dict(quality_summary)
+            intervention_surface.update(quality_summary)
         if guardrail_summary:
-            intervention_surface["guardrails"] = dict(guardrail_summary)
+            intervention_surface.update(guardrail_summary)
 
         current_state = {
             "imbalance_type": "information_visibility",

@@ -826,11 +826,6 @@ class SimingRuntime:
             guardrail_summary=guardrail_summary,
             checkpoint_summary=checkpoint_summary,
         )
-        if result.read_model is not None:
-            if quality_summary:
-                result.read_model.intervention_surface.update(quality_summary)
-            if guardrail_summary:
-                result.read_model.intervention_surface.update(guardrail_summary)
 
     def _narrative_summary_for(self, narrative) -> dict[str, object]:  # type: ignore[no-untyped-def]
         return {

@@ -123,8 +123,10 @@ def test_tick_places_narrative_seed_quality_and_guardrail_summaries_in_read_mode
     assert result.read_model is not None
     assert result.read_model.narrative_surface["active_phase"] == "rising"
     assert result.read_model.narrative_surface["intervention_seed_count"] >= 1
-    assert "quality_signal_count" in result.read_model.intervention_surface
-    assert "guardrail_statuses" in result.read_model.intervention_surface
+    assert result.read_model.intervention_surface["quality_signal_count"] >= 0
+    assert isinstance(result.read_model.intervention_surface["guardrail_statuses"], list)
+    assert "quality" not in result.read_model.intervention_surface
+    assert "guardrails" not in result.read_model.intervention_surface
 
 
 def test_tick_records_multi_stage_checkpoints() -> None:
@@ -135,7 +137,8 @@ def test_tick_records_multi_stage_checkpoints() -> None:
     )
 
     checkpoint_types = {checkpoint.checkpoint_type for checkpoint in result.checkpoints}
-    assert {"pre_decision", "post_decision", "post_dispatch"}.issubset(checkpoint_types)
+    assert checkpoint_types == {"pre_decision", "post_decision", "post_dispatch"}
+    assert "fairness_after" not in checkpoint_types
 
 
 def test_locked_fact_conflict_still_does_not_update_narrative_core() -> None:
