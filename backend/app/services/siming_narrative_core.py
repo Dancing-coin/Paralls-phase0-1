@@ -14,33 +14,37 @@ from app.models.siming_runtime_state import ObservedSimingEvent
 class SimingNarrativeCore:
     def __init__(self) -> None:
         self._open_counts_by_room: dict[str, int] = {}
+        self._revision_by_room: dict[str, int] = {}
 
     def update(self, observed_events: list[ObservedSimingEvent]) -> NarrativeCoreResult:
         if not observed_events:
             raise ValueError("observed_events must contain at least one event")
 
         event = observed_events[-1]
-        obligations = self._obligations_for(event)
-        open_count = self._open_counts_by_room.get(event.room_id, 0) + len(obligations)
-        self._open_counts_by_room[event.room_id] = open_count
+        room_id = event.room_id
+        revision = self._revision_by_room.get(room_id, 0) + 1
+        self._revision_by_room[room_id] = revision
+        obligations = self._obligations_for_batch(observed_events, revision)
+        open_count = self._open_counts_by_room.get(room_id, 0) + len(obligations)
+        self._open_counts_by_room[room_id] = open_count
         pressure = self._pressure_for(open_count)
         markers = [
             NarrativeMarker(
-                marker_id=f"marker:{event.source_event_id}:{item.obligation_type}",
+                marker_id=f"marker:{room_id}:r{revision}:{index}",
                 marker_type=item.obligation_type,
-                source_event_id=event.source_event_id,
+                source_event_id=item.source_event_id,
                 target_refs=item.target_refs,
                 reason=item.reason,
             )
-            for item in obligations
+            for index, item in enumerate(obligations, start=1)
         ]
         state = NarrativeStateSnapshot(
-            snapshot_id=f"narrative:{event.room_id}:{event.producer_ts + 1}",
-            room_id=event.room_id,
+            snapshot_id=f"narrative:{room_id}:ts{event.producer_ts}:r{revision}",
+            room_id=room_id,
             scene_id=event.scene_id,
             zone_id=event.zone_id,
             world_ts=event.producer_ts,
-            sim_tick_ts=event.producer_ts + 1,
+            sim_tick_ts=event.producer_ts + revision,
             active_phase="rising" if obligations else "setup",
             pressure_level=pressure,
             open_threads=[
@@ -56,11 +60,13 @@ class SimingNarrativeCore:
             causation_id=event.causation_id,
             correlation_id=event.correlation_id,
         )
+        for obligation in obligations:
+            obligation.pressure = pressure
         ledger = NarrativeObligationLedger(
-            ledger_id=f"ledger:{state.snapshot_id}",
-            room_id=event.room_id,
+            ledger_id=f"ledger:{room_id}:ts{event.producer_ts}:r{revision}",
+            room_id=room_id,
             world_ts=event.producer_ts,
-            sim_tick_ts=event.producer_ts + 1,
+            sim_tick_ts=event.producer_ts + revision,
             obligations=obligations,
             causation_id=event.causation_id,
             correlation_id=event.correlation_id,
@@ -71,12 +77,32 @@ class SimingNarrativeCore:
             seeds=[self._seed_for(state, item) for item in obligations],
         )
 
-    def _obligations_for(self, event: ObservedSimingEvent) -> list[NarrativeObligation]:
+    def _obligations_for_batch(
+        self,
+        observed_events: list[ObservedSimingEvent],
+        revision: int,
+    ) -> list[NarrativeObligation]:
+        obligations: list[NarrativeObligation] = []
+        for event in observed_events:
+            obligations.extend(self._obligations_for_event(event, revision, len(obligations)))
+        return obligations
+
+    def _obligations_for_event(
+        self,
+        event: ObservedSimingEvent,
+        revision: int,
+        existing_count: int,
+    ) -> list[NarrativeObligation]:
         if event.event_type == "visual_fact_event" and event.payload.get("established_fact_id"):
             refs = self._target_refs(event, "target_actor_id", "target_environment_id", "target_object_id")
             return [
                 NarrativeObligation(
-                    obligation_id=f"obligation:{event.source_event_id}:unresolved_reveal",
+                    obligation_id=self._obligation_id(
+                        event=event,
+                        obligation_type="unresolved_reveal",
+                        revision=revision,
+                        event_index=existing_count + 1,
+                    ),
                     obligation_type="unresolved_reveal",
                     source_event_id=event.source_event_id,
                     target_refs=refs,
@@ -88,7 +114,12 @@ class SimingNarrativeCore:
             refs = self._target_refs(event, "target_actor_id", "target_object_id", "target_environment_id")
             return [
                 NarrativeObligation(
-                    obligation_id=f"obligation:{event.source_event_id}:constraint_recovery",
+                    obligation_id=self._obligation_id(
+                        event=event,
+                        obligation_type="constraint_recovery",
+                        revision=revision,
+                        event_index=existing_count + 1,
+                    ),
                     obligation_type="constraint_recovery",
                     source_event_id=event.source_event_id,
                     target_refs=refs,
@@ -124,3 +155,13 @@ class SimingNarrativeCore:
             if value and value not in refs:
                 refs.append(value)
         return refs
+
+    def _obligation_id(
+        self,
+        *,
+        event: ObservedSimingEvent,
+        obligation_type: str,
+        revision: int,
+        event_index: int,
+    ) -> str:
+        return f"obligation:{event.room_id}:r{revision}:e{event_index}:{event.source_event_id}:{obligation_type}"

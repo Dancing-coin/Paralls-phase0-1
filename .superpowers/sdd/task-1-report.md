@@ -95,3 +95,54 @@ Planned commit message:
 ```text
 Add deterministic Siming narrative core
 ```
+
+---
+
+## Review Fix Follow-Up: 2026-07-07
+
+### Review Findings Addressed
+
+1. `SimingNarrativeCore.update()` now processes every observed event in the batch instead of only the last event.
+2. Snapshot and ledger IDs now include a room-local monotonic revision so repeated processing at the same timestamp produces distinct state identities.
+3. Obligation IDs now include the room-local revision and per-update event index so repeated processing of the same source event yields distinct obligation identities as pressure changes.
+
+### Test-First Evidence
+
+Updated `backend/tests/test_siming_narrative_core.py` first to cover:
+
+- one batch containing both a `visual_fact_event` and a `constraint_state_event`
+- repeated processing of the same event with identical timestamps
+
+Red run:
+
+```powershell
+python -m pytest backend/tests/test_siming_narrative_core.py -v
+```
+
+Observed failures:
+
+- `test_batch_update_processes_all_relevant_events` failed because pressure stayed `normal`, confirming only one event in the batch was being processed.
+- `test_repeated_processing_uses_new_snapshot_and_obligation_ids` failed because `snapshot_id` remained `narrative:room_demo:301`, confirming IDs were reused across repeated processing.
+
+### Fix Applied
+
+Adjusted `backend/app/services/siming_narrative_core.py` to:
+
+- allocate a monotonic per-room revision on each accepted `update(...)`
+- derive obligations for every observed event in the batch
+- generate snapshot, ledger, marker, and obligation identifiers from room, timestamp, revision, and per-update event order
+- apply the current room pressure level to all obligations emitted by the accepted update
+
+### Verification
+
+Green run:
+
+```powershell
+python -m pytest backend/tests/test_siming_narrative_core.py -v
+```
+
+Result summary:
+
+```text
+4 passed in 0.16s
+```
