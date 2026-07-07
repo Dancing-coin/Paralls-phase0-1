@@ -4,6 +4,9 @@ from app.models.siming_runtime_state import NarrativeReadModel, SimingCheckpoint
 
 class SimingAuditWriter:
     def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
         self._records_by_id: dict[str, SimingAuditRecord] = {}
         self._checkpoints_by_id: dict[str, SimingCheckpoint] = {}
         self._read_models_by_id: dict[str, NarrativeReadModel] = {}
@@ -34,6 +37,12 @@ class SimingAuditWriter:
             for read_model in self._read_models_by_id.values()
             if read_model.room_id == room_id
         ]
+
+    def latest_read_model(self, *, room_id: str) -> NarrativeReadModel | None:
+        models = self.list_read_models(room_id=room_id)
+        if not models:
+            return None
+        return max(models, key=lambda model: (model.sim_tick_ts, model.world_ts, model.read_model_id))
 
     def append_correction(self, audit_id: str, correction: SimingAuditCorrection) -> None:
         record = self._records_by_id[audit_id]

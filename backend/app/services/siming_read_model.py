@@ -1,5 +1,6 @@
 from app.models.siming_event import FairnessStateSnapshot, SimingAuditRecord
 from app.models.siming_runtime_state import (
+    CheckpointType,
     NarrativeReadModel,
     ProjectionRunSnapshot,
     SimingCheckpoint,
@@ -73,16 +74,17 @@ class SimingReadModelBuilder:
         state_tree: StateTreeSnapshot,
         fairness: FairnessStateSnapshot,
         storyline: StorylineStateSnapshot,
+        checkpoint_type: CheckpointType = "fairness_after",
     ) -> SimingCheckpoint:
         return SimingCheckpoint(
             checkpoint_id=(
-                f"checkpoint:{state_tree.room_id}:{state_tree.sim_tick_ts}:{fairness.snapshot_id}"
+                f"checkpoint:{checkpoint_type}:{state_tree.room_id}:{state_tree.sim_tick_ts}:{fairness.snapshot_id}"
             ),
             schema_version=1,
             room_id=state_tree.room_id,
             world_ts=state_tree.world_ts,
             sim_tick_ts=state_tree.sim_tick_ts,
-            checkpoint_type="fairness_after",
+            checkpoint_type=checkpoint_type,
             fairness_snapshot_ref=fairness.snapshot_id,
             state_tree_snapshot_ref=state_tree.snapshot_id,
             storyline_snapshot_ref=storyline.snapshot_id,
@@ -98,7 +100,34 @@ class SimingReadModelBuilder:
         storyline: StorylineStateSnapshot,
         projection: ProjectionRunSnapshot,
         audit_records: list[SimingAuditRecord],
+        narrative_summary: dict[str, object] | None = None,
+        quality_summary: dict[str, object] | None = None,
+        guardrail_summary: dict[str, object] | None = None,
+        checkpoint_summary: dict[str, object] | None = None,
     ) -> NarrativeReadModel:
+        narrative_surface = {
+            "projection_status": projection.status,
+            "candidate_hint_count": len(projection.candidate_hints),
+        }
+        if narrative_summary:
+            narrative_surface.update(narrative_summary)
+
+        intervention_surface = {
+            "audit_statuses": [audit.status for audit in audit_records],
+        }
+        if quality_summary:
+            intervention_surface["quality"] = dict(quality_summary)
+        if guardrail_summary:
+            intervention_surface["guardrails"] = dict(guardrail_summary)
+
+        current_state = {
+            "imbalance_type": "information_visibility",
+            "intervention_urgency": "normal",
+            "active_phase_marker": storyline.active_phase,
+        }
+        if checkpoint_summary:
+            current_state["checkpoint"] = dict(checkpoint_summary)
+
         return NarrativeReadModel(
             read_model_id=f"read:{state_tree.room_id}:{state_tree.sim_tick_ts}",
             schema_version=1,
@@ -107,18 +136,9 @@ class SimingReadModelBuilder:
             scene_scope=f"{state_tree.scene_id}/{state_tree.zone_id}",
             world_ts=state_tree.world_ts,
             sim_tick_ts=state_tree.sim_tick_ts,
-            current_state={
-                "imbalance_type": "information_visibility",
-                "intervention_urgency": "normal",
-                "active_phase_marker": storyline.active_phase,
-            },
+            current_state=current_state,
             focus_entities=[state_tree.environment.node_id, state_tree.character.node_id],
-            intervention_surface={
-                "audit_statuses": [audit.status for audit in audit_records],
-            },
-            narrative_surface={
-                "projection_status": projection.status,
-                "candidate_hint_count": len(projection.candidate_hints),
-            },
+            intervention_surface=intervention_surface,
+            narrative_surface=narrative_surface,
             derived_from_snapshot_ref=fairness.snapshot_id,
         )

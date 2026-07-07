@@ -9,7 +9,13 @@ StateAuthority = Literal["mirror", "editable", "read_only"]
 NodeStatus = Literal["fresh", "partial", "stale", "unavailable"]
 MarkerStatus = Literal["active", "stalled", "overheated", "resolved"]
 ObligationStatus = Literal["open", "closed", "reopened"]
-CheckpointType = Literal["fairness_before", "fairness_after"]
+CheckpointType = Literal[
+    "fairness_before",
+    "fairness_after",
+    "pre_decision",
+    "post_decision",
+    "post_dispatch",
+]
 
 
 class ObservedSimingEvent(BaseModel):

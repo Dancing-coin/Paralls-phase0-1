@@ -140,7 +140,10 @@ def reset_runtime_state() -> None:
     character_runtime_state_service = CharacterRuntimeStateService()
     authority_event_adapter = Phase0AuthorityEventAdapter()
     authority_event_bus = InMemoryAuthorityEventBus()
-    siming_audit_writer = SimingAuditWriter()
+    if "siming_audit_writer" not in globals():
+        siming_audit_writer = SimingAuditWriter()
+    else:
+        siming_audit_writer.reset()
     _pending_siming_character_dispatch_messages = {}
     siming_event_pipeline = SimingEventPipeline(
         bus=authority_event_bus,
@@ -187,6 +190,14 @@ def debug_panel_js() -> Response:
         content=(STATIC_DIR / "debug-panel.js").read_text(encoding="utf-8"),
         media_type="application/javascript",
     )
+
+
+@app.get("/debug/siming/read-model/{room_id}")
+def debug_siming_read_model(room_id: str) -> dict[str, object]:
+    read_model = siming_audit_writer.latest_read_model(room_id=room_id)
+    if read_model is None:
+        return {"room_id": room_id, "status": "missing"}
+    return read_model.model_dump(exclude_none=True)
 
 
 @app.post("/interaction/orchestrate")
