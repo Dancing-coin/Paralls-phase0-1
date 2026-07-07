@@ -30,3 +30,37 @@ Notes:
 
 Commit:
 - Created after staging only the Task 2 files listed above.
+
+---
+
+Fix follow-up for review findings:
+
+Status: DONE
+
+Summary:
+- Corrected snapshot status mapping so elevated imbalance no longer reports as healthy `fresh`; `high` now maps to `stale` and `medium` maps to `partial` within the existing `NodeStatus` surface.
+- Filtered ordinary emitted signals for forced-failed dimensions so `signals` and `snapshot` no longer report conflicting truths for the same dimension.
+- Normalized suspicion no-data handling to the snapshot-only `partial` path and removed the contradictory synthetic runtime signal.
+
+Files changed:
+- `backend/app/services/siming_quality_monitor.py`
+- `backend/tests/test_siming_quality_monitor.py`
+
+TDD evidence:
+1. Updated focused regression tests in `backend/tests/test_siming_quality_monitor.py` for review findings.
+2. Ran `python -m pytest backend/tests/test_siming_quality_monitor.py -v`.
+3. Observed expected red failures:
+   - `AssertionError: assert 'fresh' == 'stale'`
+   - forced failure still emitted `conversation_access_fairness` in `result.signals`
+4. Implemented the minimal monitor changes to align status/severity semantics and filter forced-failed signals.
+5. Re-ran `python -m pytest backend/tests/test_siming_quality_monitor.py -v`.
+6. Observed green:
+   - `2 passed`
+
+Additional verification:
+- `backend/app/services/siming_fairness_audit.py` was not changed, so `python -m pytest backend/tests/test_siming_fairness_registry.py -v` was not required for this fix pass.
+
+Command output summary:
+- `python -m pytest backend/tests/test_siming_quality_monitor.py -v`
+  - red: `2 failed` on status/severity mismatch and forced-failure signal leakage
+  - green: `2 passed`

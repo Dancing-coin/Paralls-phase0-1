@@ -32,7 +32,11 @@ class SimingQualityMonitor:
         state_tree: StateTreeSnapshot,
         narrative: NarrativeCoreResult,
     ) -> QualityMonitorResult:
-        signals = self._signals_for(state_tree=state_tree, narrative=narrative)
+        signals = [
+            signal
+            for signal in self._signals_for(state_tree=state_tree, narrative=narrative)
+            if signal.dimension not in self._force_failed_dimensions
+        ]
         dimensions: dict[str, FairnessDimensionSnapshot] = {}
         risk_tags: list[str] = []
 
@@ -120,16 +124,6 @@ class SimingQualityMonitor:
                 )
             )
 
-        signals.append(
-            QualitySignal(
-                signal_id=f"quality:{state_tree.snapshot_id}:suspicion_heat_distribution",
-                dimension="suspicion_heat_distribution",
-                severity="partial",
-                suggested_action_band="none",
-                reason="suspicion heat data is not available in this runtime slice",
-            )
-        )
-
         if narrative.seeds:
             signals.append(
                 QualitySignal(
@@ -150,7 +144,7 @@ class SimingQualityMonitor:
         dimension_id: str,
         signals: list[QualitySignal],
     ) -> FairnessDimensionSnapshot:
-        if not signals and dimension_id == "suspicion_heat_distribution":
+        if dimension_id == "suspicion_heat_distribution" and not signals:
             return FairnessDimensionSnapshot(
                 dimension_id=dimension_id,
                 status="partial",
@@ -177,7 +171,14 @@ class SimingQualityMonitor:
             "unavailable": 0.0,
         }
         score = max(severity_score[signal.severity] for signal in signals)
-        status = "partial" if any(signal.severity == "partial" for signal in signals) else "fresh"
+        if any(signal.severity == "high" for signal in signals):
+            status = "stale"
+        elif any(signal.severity == "medium" for signal in signals):
+            status = "partial"
+        elif any(signal.severity == "partial" for signal in signals):
+            status = "partial"
+        else:
+            status = "fresh"
 
         return FairnessDimensionSnapshot(
             dimension_id=dimension_id,

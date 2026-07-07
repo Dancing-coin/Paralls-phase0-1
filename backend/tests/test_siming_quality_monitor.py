@@ -97,8 +97,11 @@ def test_quality_monitor_runs_all_required_dimensions_without_placeholder_scores
         "evidence_visibility_distribution",
     }
     assert result.snapshot.dimensions["information_distribution"].score > 0.5
+    assert result.snapshot.dimensions["information_distribution"].status == "stale"
     assert result.snapshot.dimensions["participation_distribution"].score > 0.5
+    assert result.snapshot.dimensions["participation_distribution"].status == "partial"
     assert result.snapshot.dimensions["suspicion_heat_distribution"].status in {"partial", "unavailable"}
+    assert not any(signal.dimension == "suspicion_heat_distribution" for signal in result.signals)
     assert any(signal.dimension == "evidence_visibility_distribution" for signal in result.signals)
 
 
@@ -109,4 +112,5 @@ def test_quality_monitor_marks_failed_auditor_partial_without_interrupting_tick(
 
     assert result.snapshot.dimensions["conversation_access_fairness"].status == "unavailable"
     assert result.snapshot.dimensions["conversation_access_fairness"].score == 0.0
+    assert not any(signal.dimension == "conversation_access_fairness" for signal in result.signals)
     assert "quality_monitor_partial" in result.risk_tags
