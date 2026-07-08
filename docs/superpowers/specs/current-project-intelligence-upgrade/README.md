@@ -53,6 +53,8 @@
    - [2026-07-05-current-project-perception-identity-verification-matrix-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-05-current-project-perception-identity-verification-matrix-design.md)
 - 边界硬化专题规格：
   - [2026-07-07-current-project-siming-l6-boundary-hardening-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-07-current-project-siming-l6-boundary-hardening-design.md)
+- 司命视角图谱专题规格：
+  - [2026-07-08-current-project-siming-perspective-graph-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-08-current-project-siming-perspective-graph-design.md)
 
 ## 使用方式
 
