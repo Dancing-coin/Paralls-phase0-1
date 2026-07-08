@@ -65,5 +65,98 @@ conversation_personality_layer:
   deception_control: 0.62
   trust_threshold_for_private_talk: 0.38
 
+need_hierarchy_layer:
+  base_weights:
+    physiological: 0.41
+    safety: 0.39
+    belonging: 0.84
+    esteem: 0.67
+    self_actualization: 0.78
+  deprivation_sensitivity:
+    physiological: 0.45
+    safety: 0.48
+    belonging: 0.88
+    esteem: 0.74
+    self_actualization: 0.81
+  satisfaction_sensitivity:
+    physiological: 0.52
+    safety: 0.43
+    belonging: 0.91
+    esteem: 0.79
+    self_actualization: 0.86
+  dominant_drives:
+    - spark connection
+    - break stagnation
+  satisfaction_channels:
+    physiological:
+      - movement and rhythm
+    safety:
+      - an escape route
+    belonging:
+      - shared laughter
+      - quick alliance
+    esteem:
+      - room attention
+    self_actualization:
+      - novel social opening
+  frustration_channels:
+    physiological:
+      - forced stillness
+    safety:
+      - oppressive surveillance
+    belonging:
+      - cold exclusion
+    esteem:
+      - dismissive silence
+    self_actualization:
+      - ritualized stagnation
+
+temperament_response_layer:
+  baseline_temperament:
+    caution: 0.34
+    dominance: 0.52
+    attachment: 0.79
+    emotional_reactivity: 0.73
+    recovery_speed: 0.81
+    impulse_control: 0.49
+  conflict_style:
+    confrontation_tendency: 0.47
+    avoidance_tendency: 0.19
+    mediation_tendency: 0.76
+    escalation_threshold: 0.57
+  defense_patterns:
+    under_pressure:
+      - deflect with humor
+      - rapid reframing
+    under_shame:
+      - performative bravado
+    under_threat:
+      - darting improvisation
+    under_loss:
+      - restless distraction
+  trust_dynamics:
+    initial_trust_bias: 0.68
+    betrayal_memory_weight: 0.61
+    forgiveness_threshold: 0.72
+    loyalty_lock_in: 0.63
+  expression_bias:
+    outward_warmth: 0.84
+    emotional_transparency: 0.66
+    facial_control: 0.28
+    verbal_indirection: 0.58
+
+long_term_personality_drift_layer:
+  stable_shifts: []
+  reinforced_patterns: []
+  weakened_patterns: []
+  need_reweights: {}
+  trust_reweights: {}
+  expression_reweights: {}
+  drift_policy:
+    minimum_cross_scene_count: 3
+    minimum_confirming_events: 6
+    minimum_time_span: long_arc
+    require_non_transient_evidence: true
+
 runtime_defaults:
   default_control_mode: player_priority_assisted

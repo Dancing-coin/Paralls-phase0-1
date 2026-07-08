@@ -64,3 +64,94 @@ conversation_personality_layer:
   talk_initiative: 0.48
   deception_control: 0.87
   trust_threshold_for_private_talk: 0.66
+
+need_hierarchy_layer:
+  base_weights:
+    physiological: 0.26
+    safety: 0.74
+    belonging: 0.81
+    esteem: 0.52
+    self_actualization: 0.47
+  deprivation_sensitivity:
+    physiological: 0.34
+    safety: 0.78
+    belonging: 0.83
+    esteem: 0.58
+    self_actualization: 0.41
+  satisfaction_sensitivity:
+    physiological: 0.35
+    safety: 0.72
+    belonging: 0.86
+    esteem: 0.63
+    self_actualization: 0.56
+  dominant_drives:
+    - preserve trust
+    - maintain room order
+  satisfaction_channels:
+    physiological:
+      - steady rest
+    safety:
+      - predictable routine
+    belonging:
+      - trusted company
+    esteem:
+      - successful mediation
+    self_actualization:
+      - careful stewardship
+  frustration_channels:
+    physiological:
+      - accumulated fatigue
+    safety:
+      - public disorder
+    belonging:
+      - breach of confidence
+    esteem:
+      - avoidable procedural failure
+    self_actualization:
+      - being forced to ignore nuance
+
+temperament_response_layer:
+  baseline_temperament:
+    caution: 0.71
+    dominance: 0.29
+    attachment: 0.76
+    emotional_reactivity: 0.44
+    recovery_speed: 0.58
+    impulse_control: 0.83
+  conflict_style:
+    confrontation_tendency: 0.24
+    avoidance_tendency: 0.46
+    mediation_tendency: 0.88
+    escalation_threshold: 0.74
+  defense_patterns:
+    under_pressure:
+      - procedural control
+    under_shame:
+      - quiet withdrawal
+    under_threat:
+      - protective vigilance
+    under_loss:
+      - private grief
+  trust_dynamics:
+    initial_trust_bias: 0.56
+    betrayal_memory_weight: 0.72
+    forgiveness_threshold: 0.59
+    loyalty_lock_in: 0.81
+  expression_bias:
+    outward_warmth: 0.62
+    emotional_transparency: 0.49
+    facial_control: 0.71
+    verbal_indirection: 0.64
+
+long_term_personality_drift_layer:
+  stable_shifts: []
+  reinforced_patterns: []
+  weakened_patterns: []
+  need_reweights: {}
+  trust_reweights: {}
+  expression_reweights: {}
+  drift_policy:
+    minimum_cross_scene_count: 3
+    minimum_confirming_events: 6
+    minimum_time_span: long_arc
+    require_non_transient_evidence: true

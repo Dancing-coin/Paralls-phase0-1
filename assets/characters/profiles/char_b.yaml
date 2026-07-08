@@ -64,3 +64,97 @@ conversation_personality_layer:
   talk_initiative: 0.52
   deception_control: 0.91
   trust_threshold_for_private_talk: 0.77
+
+need_hierarchy_layer:
+  base_weights:
+    physiological: 0.33
+    safety: 0.93
+    belonging: 0.48
+    esteem: 0.68
+    self_actualization: 0.31
+  deprivation_sensitivity:
+    physiological: 0.46
+    safety: 0.94
+    belonging: 0.57
+    esteem: 0.71
+    self_actualization: 0.29
+  satisfaction_sensitivity:
+    physiological: 0.42
+    safety: 0.91
+    belonging: 0.44
+    esteem: 0.66
+    self_actualization: 0.37
+  dominant_drives:
+    - secure perimeter
+    - enforce clear boundaries
+  satisfaction_channels:
+    physiological:
+      - reliable recovery window
+    safety:
+      - confirmed access control
+      - visible readiness
+    belonging:
+      - disciplined unit cohesion
+    esteem:
+      - competent compliance
+    self_actualization:
+      - earned command trust
+  frustration_channels:
+    physiological:
+      - overextension in heavy gear
+    safety:
+      - ambiguous threat
+      - unsecured entry
+    belonging:
+      - rule breaking from allies
+    esteem:
+      - public second guessing
+    self_actualization:
+      - blocked protective action
+
+temperament_response_layer:
+  baseline_temperament:
+    caution: 0.88
+    dominance: 0.71
+    attachment: 0.42
+    emotional_reactivity: 0.55
+    recovery_speed: 0.61
+    impulse_control: 0.86
+  conflict_style:
+    confrontation_tendency: 0.69
+    avoidance_tendency: 0.18
+    mediation_tendency: 0.33
+    escalation_threshold: 0.43
+  defense_patterns:
+    under_pressure:
+      - command compression
+      - perimeter focus
+    under_shame:
+      - rigid justification
+    under_threat:
+      - preemptive control
+    under_loss:
+      - stoic overwork
+  trust_dynamics:
+    initial_trust_bias: 0.28
+    betrayal_memory_weight: 0.92
+    forgiveness_threshold: 0.24
+    loyalty_lock_in: 0.88
+  expression_bias:
+    outward_warmth: 0.23
+    emotional_transparency: 0.27
+    facial_control: 0.84
+    verbal_indirection: 0.31
+
+long_term_personality_drift_layer:
+  stable_shifts: []
+  reinforced_patterns: []
+  weakened_patterns: []
+  need_reweights: {}
+  trust_reweights: {}
+  expression_reweights: {}
+  drift_policy:
+    minimum_cross_scene_count: 3
+    minimum_confirming_events: 6
+    minimum_time_span: long_arc
+    require_non_transient_evidence: true
