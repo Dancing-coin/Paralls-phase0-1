@@ -1,3 +1,5 @@
+import pytest
+
 from app.character_agent.models.background_agenda import CharacterBackgroundAgendaEntry, CharacterBackgroundAgendaState
 from app.character_agent.models.cognition_update import CharacterCognitionUpdate
 from app.character_agent.models.cognition_delta import (
@@ -27,6 +29,22 @@ from app.character_agent.models.supervision import (
     CharacterSupervisionState,
     CharacterUnresolvedTension,
 )
+
+
+def test_dynamic_state_delta_as_mapping_includes_affect_valence() -> None:
+    delta = CharacterDynamicStateDelta(affect_valence=-0.8)
+
+    assert delta.as_mapping() == {"affect_valence": -0.8}
+
+
+def test_dynamic_state_delta_rejects_out_of_range_affect_valence() -> None:
+    with pytest.raises(ValueError):
+        CharacterDynamicStateDelta(affect_valence=-1.1)
+
+
+def test_dynamic_state_delta_rejects_bool_affect_valence() -> None:
+    with pytest.raises(ValueError):
+        CharacterDynamicStateDelta(affect_valence=True)
 
 
 def test_dynamic_state_tracks_live_subjective_pressure_fields() -> None:

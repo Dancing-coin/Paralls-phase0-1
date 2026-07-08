@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import math
+from typing import Any, cast
+
 from app.character_agent.models.cognition_delta import (
     CharacterBeliefDelta,
     CharacterDynamicStateDelta,
@@ -45,7 +48,7 @@ class CharacterStructuredOutputValidator:
         normalized = dict(output)
         normalized["interpreted_summary"] = str(normalized.get("interpreted_summary", "") or "")
         normalized["interpretation_type"] = str(normalized.get("interpretation_type", "") or "")
-        normalized["salience_score"] = float(normalized.get("salience_score", 0.0) or 0.0)
+        normalized["salience_score"] = self._coerce_float(normalized.get("salience_score", 0.0), default=0.0)
         normalized["ambiguity_level"] = str(normalized.get("ambiguity_level", "") or "")
         normalized["risk_level"] = str(normalized.get("risk_level", "") or "")
         normalized["opportunity_level"] = str(normalized.get("opportunity_level", "") or "")
@@ -121,7 +124,7 @@ class CharacterStructuredOutputValidator:
                     CharacterGoalHint(
                         goal=goal,
                         source=str(item.get("source", "") or "model"),
-                        strength=float(item.get("strength", 0.5) or 0.5),
+                        strength=self._coerce_float(item.get("strength", 0.5), default=0.5),
                         evidence_tags=self._as_string_list(item.get("evidence_tags", []))
                         if isinstance(item.get("evidence_tags", []), list)
                         else [],
@@ -140,7 +143,7 @@ class CharacterStructuredOutputValidator:
                 proposition_key=str(item.get("proposition_key", "") or ""),
                 proposition=str(item.get("proposition", "") or ""),
                 state=str(item.get("state", "suspected") or "suspected"),
-                confidence=float(item.get("confidence", 0.0) or 0.0),
+                confidence=self._coerce_float(item.get("confidence", 0.0), default=0.0),
             ).model_dump()
             for item in self._as_mapping_list(value)
             if str(item.get("proposition_key", "") or "")
@@ -150,11 +153,11 @@ class CharacterStructuredOutputValidator:
         return [
             CharacterSocialDelta(
                 entity_id=str(item.get("entity_id", "") or ""),
-                trust_baseline=float(item.get("trust_baseline", 0.5) or 0.5),
-                suspicion_baseline=float(item.get("suspicion_baseline", 0.0) or 0.0),
-                intimacy=float(item.get("intimacy", 0.0) or 0.0),
-                dependency=float(item.get("dependency", 0.0) or 0.0),
-                unresolved_tension=float(item.get("unresolved_tension", 0.0) or 0.0),
+                trust_baseline=self._coerce_float(item.get("trust_baseline", 0.5), default=0.5),
+                suspicion_baseline=self._coerce_float(item.get("suspicion_baseline", 0.0), default=0.0),
+                intimacy=self._coerce_float(item.get("intimacy", 0.0), default=0.0),
+                dependency=self._coerce_float(item.get("dependency", 0.0), default=0.0),
+                unresolved_tension=self._coerce_float(item.get("unresolved_tension", 0.0), default=0.0),
                 shared_secret_refs=self._as_string_list(item.get("shared_secret_refs", []))
                 if isinstance(item.get("shared_secret_refs", []), list)
                 else [],
@@ -169,7 +172,7 @@ class CharacterStructuredOutputValidator:
                 subject_actor_id=str(item.get("subject_actor_id", "") or ""),
                 proposition_key=str(item.get("proposition_key", "") or ""),
                 meta_belief=str(item.get("meta_belief", "") or ""),
-                confidence=float(item.get("confidence", 0.0) or 0.0),
+                confidence=self._coerce_float(item.get("confidence", 0.0), default=0.0),
             ).model_dump()
             for item in self._as_mapping_list(value)
             if str(item.get("subject_actor_id", "") or "") and str(item.get("meta_belief", "") or "")
@@ -178,12 +181,29 @@ class CharacterStructuredOutputValidator:
     def _as_dynamic_state_delta(self, value: object) -> dict[str, float]:
         if not isinstance(value, dict):
             return {}
-        filtered = {
-            str(key): float(item)
-            for key, item in value.items()
-            if isinstance(item, (int, float))
-        }
+        allowed_fields = set(CharacterDynamicStateDelta.model_fields)
+        filtered: dict[str, float] = {}
+        for key, item in value.items():
+            field_name = str(key)
+            if field_name not in allowed_fields:
+                raise ValueError(f"structured model output dynamic_state_delta field is unsupported: {field_name}")
+            if item is None:
+                continue
+            filtered[field_name] = self._coerce_float(item, default=0.0)
         return CharacterDynamicStateDelta(**filtered).as_mapping()
+
+    def _coerce_float(self, value: object, *, default: float) -> float:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            raise ValueError("structured model output numeric field must not be boolean")
+        try:
+            parsed = float(cast(Any, value))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("structured model output numeric field must be finite") from exc
+        if not math.isfinite(parsed):
+            raise ValueError("structured model output numeric field must be finite")
+        return parsed
 
     def _as_active_goal_frame_mapping(self, value: object) -> dict[str, object]:
         if not isinstance(value, dict):
@@ -235,7 +255,7 @@ class CharacterStructuredOutputValidator:
                     goal=goal,
                     horizon=str(item.get("horizon", "mid") or "mid"),
                     status=str(item.get("status", "active") or "active"),
-                    priority=float(item.get("priority", 0.5) or 0.5),
+                    priority=self._coerce_float(item.get("priority", 0.5), default=0.5),
                     urgency=str(item.get("urgency", "low") or "low"),
                     source=source,
                     target_ref=str(item.get("target_ref", "") or ""),

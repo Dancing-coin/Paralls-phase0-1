@@ -36,16 +36,17 @@ class CharacterHigherOrderDelta(BaseModel):
 class CharacterDynamicStateDelta(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    vigilance_level: float | None = Field(default=None, ge=0.0, le=1.0)
-    distraction_level: float | None = Field(default=None, ge=0.0, le=1.0)
-    stress_load: float | None = Field(default=None, ge=0.0, le=1.0)
-    social_pressure: float | None = Field(default=None, ge=0.0, le=1.0)
-    masking_pressure: float | None = Field(default=None, ge=0.0, le=1.0)
+    vigilance_level: float | None = Field(default=None, ge=0.0, le=1.0, strict=True)
+    distraction_level: float | None = Field(default=None, ge=0.0, le=1.0, strict=True)
+    stress_load: float | None = Field(default=None, ge=0.0, le=1.0, strict=True)
+    social_pressure: float | None = Field(default=None, ge=0.0, le=1.0, strict=True)
+    masking_pressure: float | None = Field(default=None, ge=0.0, le=1.0, strict=True)
+    affect_valence: float | None = Field(default=None, ge=-1.0, le=1.0, strict=True)
 
     def as_mapping(self) -> dict[str, float]:
         payload = self.model_dump()
         return {
             str(key): float(value)
             for key, value in payload.items()
-            if isinstance(value, (int, float))
+            if isinstance(value, (int, float)) and not isinstance(value, bool)
         }

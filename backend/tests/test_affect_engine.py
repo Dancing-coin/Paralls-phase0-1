@@ -1,3 +1,4 @@
+from app.character_agent.logic.affect_engine import AffectEngine
 from app.character_agent.models.dynamic_state import CharacterDynamicState, TensionState
 from app.character_agent.models.need_tension import NeedTensionDelta, NeedTensionState
 
@@ -89,3 +90,165 @@ def test_character_dynamic_state_model_dump_preserves_grouped_fields_for_round_t
     assert dumped["tension_state"]["chronic_safety_tension"] == 0.7
     assert reloaded.tension_state.chronic_safety_tension == 0.7
     assert reloaded.tension_state.relationship_fatigue == 0.2
+
+
+def test_affect_engine_derives_dynamic_state_delta_from_need_tension_delta() -> None:
+    engine = AffectEngine()
+    effective_profile = {
+        "temperament_response_layer": {
+            "baseline_temperament": {
+                "emotional_reactivity": 0.5,
+            }
+        }
+    }
+    need_delta = NeedTensionDelta(safety=0.6, esteem=0.2)
+
+    result = engine.evaluate(effective_profile=effective_profile, need_delta=need_delta)
+
+    assert result == {
+        "dynamic_state_delta": {
+            "vigilance_level": 0.3,
+            "stress_load": 0.4,
+            "affect_valence": -0.8,
+        }
+    }
+
+
+def test_affect_engine_preserves_zero_emotional_reactivity() -> None:
+    engine = AffectEngine()
+    effective_profile = {
+        "temperament_response_layer": {
+            "baseline_temperament": {
+                "emotional_reactivity": 0.0,
+            }
+        }
+    }
+    need_delta = NeedTensionDelta(safety=0.6, esteem=0.2)
+
+    result = engine.evaluate(effective_profile=effective_profile, need_delta=need_delta)
+
+    assert result == {
+        "dynamic_state_delta": {
+            "vigilance_level": 0.0,
+            "stress_load": 0.4,
+            "affect_valence": -0.8,
+        }
+    }
+
+
+def test_affect_engine_returns_empty_delta_without_active_pressures() -> None:
+    engine = AffectEngine()
+
+    result = engine.evaluate(effective_profile={}, need_delta=NeedTensionDelta())
+
+    assert result == {"dynamic_state_delta": {}}
+
+
+def test_affect_engine_falls_back_for_malformed_emotional_reactivity() -> None:
+    engine = AffectEngine()
+    effective_profile = {
+        "temperament_response_layer": {
+            "baseline_temperament": {
+                "emotional_reactivity": "bad-reactivity",
+            }
+        }
+    }
+    need_delta = NeedTensionDelta(safety=0.6, esteem=0.2)
+
+    result = engine.evaluate(effective_profile=effective_profile, need_delta=need_delta)
+
+    assert result == {
+        "dynamic_state_delta": {
+            "vigilance_level": 0.3,
+            "stress_load": 0.4,
+            "affect_valence": -0.8,
+        }
+    }
+
+
+def test_affect_engine_falls_back_for_non_finite_emotional_reactivity() -> None:
+    engine = AffectEngine()
+    effective_profile = {
+        "temperament_response_layer": {
+            "baseline_temperament": {
+                "emotional_reactivity": "nan",
+            }
+        }
+    }
+    need_delta = NeedTensionDelta(safety=0.6, esteem=0.2)
+
+    result = engine.evaluate(effective_profile=effective_profile, need_delta=need_delta)
+
+    assert result == {
+        "dynamic_state_delta": {
+            "vigilance_level": 0.3,
+            "stress_load": 0.4,
+            "affect_valence": -0.8,
+        }
+    }
+
+
+def test_affect_engine_rejects_bool_emotional_reactivity() -> None:
+    engine = AffectEngine()
+    effective_profile = {
+        "temperament_response_layer": {
+            "baseline_temperament": {
+                "emotional_reactivity": True,
+            }
+        }
+    }
+    need_delta = NeedTensionDelta(safety=0.6, esteem=0.2)
+
+    result = engine.evaluate(effective_profile=effective_profile, need_delta=need_delta)
+
+    assert result == {
+        "dynamic_state_delta": {
+            "vigilance_level": 0.3,
+            "stress_load": 0.4,
+            "affect_valence": -0.8,
+        }
+    }
+
+
+def test_affect_engine_clamps_negative_emotional_reactivity() -> None:
+    engine = AffectEngine()
+    effective_profile = {
+        "temperament_response_layer": {
+            "baseline_temperament": {
+                "emotional_reactivity": -0.5,
+            }
+        }
+    }
+    need_delta = NeedTensionDelta(safety=0.6, esteem=0.2)
+
+    result = engine.evaluate(effective_profile=effective_profile, need_delta=need_delta)
+
+    assert result == {
+        "dynamic_state_delta": {
+            "vigilance_level": 0.0,
+            "stress_load": 0.4,
+            "affect_valence": -0.8,
+        }
+    }
+
+
+def test_affect_engine_clamps_oversized_emotional_reactivity() -> None:
+    engine = AffectEngine()
+    effective_profile = {
+        "temperament_response_layer": {
+            "baseline_temperament": {
+                "emotional_reactivity": 2.0,
+            }
+        }
+    }
+    need_delta = NeedTensionDelta(safety=0.6, esteem=0.2)
+
+    result = engine.evaluate(effective_profile=effective_profile, need_delta=need_delta)
+
+    assert result == {
+        "dynamic_state_delta": {
+            "vigilance_level": 0.6,
+            "stress_load": 0.4,
+            "affect_valence": -0.8,
+        }
+    }
