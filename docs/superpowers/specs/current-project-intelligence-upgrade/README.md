@@ -51,6 +51,8 @@
    - [2026-07-05-current-project-cross-modal-object-anchor-and-reference-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-05-current-project-cross-modal-object-anchor-and-reference-design.md)
    - [2026-07-05-current-project-multi-actor-private-perspective-reconciliation-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-05-current-project-multi-actor-private-perspective-reconciliation-design.md)
    - [2026-07-05-current-project-perception-identity-verification-matrix-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-05-current-project-perception-identity-verification-matrix-design.md)
+- 边界硬化专题规格：
+  - [2026-07-07-current-project-siming-l6-boundary-hardening-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-07-current-project-siming-l6-boundary-hardening-design.md)
 
 ## 使用方式
 
