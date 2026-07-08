@@ -48,6 +48,61 @@ def test_producer_rejects_physical_success_claims() -> None:
         SimingEventProducer(InMemoryAuthorityEventBus()).publish_outputs([output])
 
 
+def test_producer_rejects_nested_forbidden_world_payload_fields_on_environment_request() -> None:
+    output = make_output(
+        payload={
+            "target_environment_id": "env_lamp",
+            "request": {
+                "reason": "ambient change",
+                "world_mutation": {"state": "mutated"},
+            },
+        }
+    )
+
+    with pytest.raises(ValueError, match="world_mutation"):
+        SimingEventProducer(InMemoryAuthorityEventBus()).publish_outputs([output])
+
+
+def test_producer_rejects_nested_forbidden_control_payload_fields_on_non_catalyst_output() -> None:
+    output = make_output(
+        output_type="fairness_snapshot",
+        selected_path=None,
+        intervention_band=None,
+        payload={
+            "snapshot_id": "snapshot:1",
+            "metadata": {
+                "public_note": "safe",
+                "character_agent_execution": {"frames": []},
+            },
+        },
+    )
+
+    with pytest.raises(ValueError, match="character_agent_execution"):
+        SimingEventProducer(InMemoryAuthorityEventBus()).publish_outputs([output])
+
+
+def test_producer_accepts_nested_public_metadata_without_forbidden_fields() -> None:
+    bus = InMemoryAuthorityEventBus()
+    output = make_output(
+        payload={
+            "target_environment_id": "env_lamp",
+            "request": {
+                "reason": "ambient change",
+                "metadata": {
+                    "public_label": "safe",
+                    "public_score": 3,
+                },
+            },
+        }
+    )
+
+    SimingEventProducer(bus).publish_outputs([output])
+
+    event = bus.list_events(event_type="siming.environment_request")[0]
+    assert event.payload["request"]["metadata"]["public_label"] == "safe"
+    assert event.payload["request"]["metadata"]["public_score"] == 3
+
+
 def test_producer_maps_character_input_path_to_target_actor_id() -> None:
     bus = InMemoryAuthorityEventBus()
     output = make_output(

@@ -3,6 +3,19 @@ from app.models.siming_event import SimingOutput
 from app.services.authority_event_bus import AuthorityEventBusPort
 
 
+FORBIDDEN_CATALYST_PAYLOAD_FIELDS = {
+    "actor_control_frames",
+    "action_request_bundle",
+    "character_agent_execution",
+    "physical_success",
+    "world_mutation",
+    "private_memory_patch",
+    "selected_intent",
+    "command_type",
+    "low_level_motion",
+}
+
+
 class SimingEventProducer:
     def __init__(self, bus: AuthorityEventBusPort) -> None:
         self._bus = bus
@@ -26,8 +39,9 @@ class SimingEventProducer:
         forbidden_event_type = output.payload.get("event_type")
         if forbidden_event_type == "siming.dispatch_requested":
             raise ValueError("forbidden Siming event family: siming.dispatch_requested")
-        if "physical_success" in output.payload:
-            raise ValueError("Siming outputs must not claim physical_success")
+        forbidden_payload_fields = self._forbidden_payload_fields(output.payload)
+        if forbidden_payload_fields:
+            raise ValueError(f"forbidden Siming payload field(s): {', '.join(forbidden_payload_fields)}")
 
         return AuthorityEvent(
             event_id=f"siming:{output.output_type}:{output.producer_ts}:{output.causation_id}",
@@ -49,6 +63,25 @@ class SimingEventProducer:
             correlation_id=output.correlation_id,
             payload=dict(output.payload),
         )
+
+    def _forbidden_payload_fields(self, value: object) -> list[str]:
+        found: set[str] = set()
+
+        def visit(current: object) -> None:
+            if isinstance(current, dict):
+                present = FORBIDDEN_CATALYST_PAYLOAD_FIELDS.intersection(current.keys())
+                found.update(str(field) for field in present)
+                for nested_value in current.values():
+                    visit(nested_value)
+            elif isinstance(current, list):
+                for nested_value in current:
+                    visit(nested_value)
+            elif isinstance(current, tuple):
+                for nested_value in current:
+                    visit(nested_value)
+
+        visit(value)
+        return sorted(found)
 
     def _event_type_for(self, output: SimingOutput) -> str:
         if output.output_type == "fairness_snapshot":
