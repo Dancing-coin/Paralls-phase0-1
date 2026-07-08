@@ -10,6 +10,7 @@
 Siming 拥有：
 
 - 公开 authority events 的消费
+- `siming_frame / siming_bundle` 的消费
 - 全局态势与公平性快照
 - 高层 catalyst candidate / policy / feasibility / audit
 - `siming.*` authority event 的生产
@@ -29,7 +30,8 @@ Siming 不拥有：
 ┌──────────────────────────────────── Siming ────────────────────────────────────┐
 │                                                                                 │
 │  输入                                                                           │
-│   System L6 公开 AuthorityEvents / public world refs / evidence refs / PQF scope │
+│   System L6 公开 AuthorityEvents / public world refs / evidence refs            │
+│   L1RuntimePerceptionBridge -> siming_frame / siming_bundle                     │
 │        │                                                                        │
 │        v                                                                        │
 │  ┌──────────────────────────────────┐                                          │
@@ -74,6 +76,8 @@ Siming 不拥有：
 | 契约 | 说明 |
 | --- | --- |
 | 公开 `AuthorityEvent` | Siming 可以消费的公开事件输入 |
+| `siming_frame` | 经 `L1RuntimePerceptionBridge` 组装的司命消费 frame |
+| `siming_bundle` | 经 `L1RuntimePerceptionBridge` 组装的司命消费 percept bundle |
 | `SimingGlobalSituationSnapshot` | 全局态势和公平性快照 |
 | catalyst candidate | 高层催化候选，不是低层动作命令 |
 | `siming.*` AuthorityEvent | 回写 L6 的高层事件 |
@@ -84,12 +88,14 @@ Siming 不拥有：
 ```mermaid
 sequenceDiagram
     participant L6 as System L6 AuthorityEventBus
+    participant L1Bridge as L1RuntimePerceptionBridge
     participant Situation as SimingGlobalSituationLayer
     participant Siming as SimingRuntime
     participant Character as CharacterAgentRuntime
     participant Projector as FrontendAuthorityEventProjector
     participant Godot as Godot 表现层
 
+    L1Bridge->>Siming: siming_frame / siming_bundle
     L6->>Situation: public AuthorityEvents / evidence refs
     Situation-->>Siming: global situation / fairness snapshot
     Siming->>Siming: candidate / policy / feasibility / audit
@@ -99,7 +105,8 @@ sequenceDiagram
     Projector-->>Godot: siming_output / debug event / script beat
 ```
 
-说明：`L6 -> Character` 只表示高层 catalyst input 适配。角色执行仍由
+说明：`L6 -> Character` 只表示高层 catalyst input 适配。`L1RuntimePerceptionBridge -> Siming`
+表示私有/全局感知桥送入司命 percept 消费面。角色执行仍由
 `CharacterAgentRuntime -> backend/app/main.py -> BackendBridge.gd -> LocalPresentationBus.gd -> CharacterReplica.gd`
 投递 `character_agent_execution`，不走 L6。
 

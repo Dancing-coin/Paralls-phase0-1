@@ -60,13 +60,13 @@ raw_fact_event -> candidate percept -> CharacterPerceivedEvent
 │  ┌────────────────────────────────────────────────────────────────────────────┐    │
 │  │ world_runtime L1 services                                                  │    │
 │  │ Scene3DSpaceModel / SpatialOccupancyField / FactProjectionLayer            │    │
-│  │ L1RuntimePerceptionBridge / PerceptionQueryFrame                           │    │
+│  │ PerceptionQueryFrame / CanonicalPerceptBundle                              │    │
 │  └──────────────┬───────────────────────────────┬─────────────────────────────┘    │
 │                 │                               │                                  │
 │                 v                               v                                  │
 │  ┌──────────────────────────────┐    ┌────────────────────────────────────────┐    │
-│  │ CandidatePerceptEvent         │    │ PQF / CanonicalPerceptBundle           │    │
-│  │ 角色私有过滤前候选事件        │    │ 统一感知 query frame                   │    │
+│  │ CandidatePerceptEvent         │    │ L1RuntimePerceptionBridge             │    │
+│  │ 角色私有过滤前候选事件        │    │ projected facts / refs -> frame/bundle │    │
 │  └──────────────┬───────────────┘    └──────────────┬─────────────────────────┘    │
 │                 │ per-character filter              │                              │
 │                 v                                   v                              │
@@ -114,6 +114,8 @@ backend/app/main.py
   |      backend/app/world_runtime/l1_space_model.py
   |      backend/app/world_runtime/l1_occupancy.py
   |      backend/app/world_runtime/l1_fact_projection.py
+  |
+  +--> L1 感知桥
   |      backend/app/world_runtime/l1_runtime_perception_bridge.py
   |
   +--> Perception protocol
@@ -137,6 +139,7 @@ backend/app/main.py
 | `FactProjectionLayer` | LOS/reachability/negative fact projection | `backend/app/world_runtime/l1_fact_projection.py` |
 | `PerceptionQueryFrame` | 面向角色或 Siming consumer 的统一 query frame | `backend/app/world_runtime/l1_perception_frame.py`, `backend/app/world_runtime/intelligence_upgrade.py` |
 | `CanonicalPerceptBundle` | consumer-facing percept bundle | `backend/app/world_runtime/intelligence_upgrade.py` |
+| `L1RuntimePerceptionBridge` | 把 projected facts / provider refs 装配成 character_frame / bundle 与 siming_frame / bundle 的主感知桥 | `backend/app/world_runtime/l1_runtime_perception_bridge.py` |
 | `CandidatePerceptEvent` | actor-private filtering 之前的候选 percept | `backend/app/models/candidate_percept.py`, `backend/app/services/candidate_percept_service.py` |
 | `CharacterPerceivedEvent` | actor-private perceived input | `backend/app/models/character_perceived.py`, `backend/app/services/per_character_percept_filter.py` |
 | authority context refs | 面向 ESM/L6 的事实引用、投影上下文和 evidence refs | `backend/app/world_runtime/l1_fact_projection.py`, `backend/app/world_runtime/intelligence_upgrade.py` |
