@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from app.character_agent.profile.registry import CharacterProfileRegistry
+from app.character_agent.profile.effective_profile import resolve_effective_profile
 from app.character_agent.models.cognition_delta import (
     CharacterBeliefDelta,
     CharacterHigherOrderDelta,
@@ -2762,6 +2763,9 @@ class CharacterAgentRuntime:
 
     def _profile_payload(self, actor_id: str) -> dict[str, object]:
         return self._profile_registry.get(actor_id).model_dump()
+
+    def _effective_profile_payload(self, actor_id: str) -> dict[str, object]:
+        return resolve_effective_profile(self._profile_payload(actor_id))
 
     def _rehydrate_runtime_state_from_timeline(self) -> None:
         for actor_id, events in self._session_store.list_all_events().items():
