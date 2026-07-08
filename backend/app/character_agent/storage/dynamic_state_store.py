@@ -11,23 +11,28 @@ class CharacterDynamicStateStore:
 
     def write(self, actor_id: str, state: dict[str, object]) -> None:
         payload = {"actor_id": actor_id, **deepcopy(state)}
-        self._by_actor[actor_id] = CharacterDynamicState(**payload).model_dump()
+        self._by_actor[actor_id] = CharacterDynamicState(**payload).storage_dump()
 
     def read(self, actor_id: str) -> dict[str, object]:
-        stored = self._by_actor.get(actor_id)
+        stored = self._stored_state(actor_id)
         if stored is None:
             return self._default_state(actor_id)
-        return deepcopy(stored)
+        return CharacterDynamicState(**stored).legacy_flat_dump()
 
     def read_record(self, actor_id: str) -> CharacterDynamicState:
-        return CharacterDynamicState(**self.read(actor_id))
+        stored = self._stored_state(actor_id)
+        if stored is None:
+            return CharacterDynamicState(**self._default_state(actor_id))
+        return CharacterDynamicState(**deepcopy(stored))
 
     def merge_delta(self, actor_id: str, delta: dict[str, object]) -> dict[str, object]:
-        current = self.read(actor_id)
-        payload = {**current, **deepcopy(delta), "actor_id": actor_id}
-        normalized = CharacterDynamicState(**payload).model_dump()
-        self._by_actor[actor_id] = normalized
-        return deepcopy(normalized)
+        current = self._stored_state(actor_id) or self._default_state(actor_id)
+        payload = self._merge_mapping(current, deepcopy(delta))
+        self._apply_grouped_legacy_overrides(payload, delta)
+        payload["actor_id"] = actor_id
+        normalized = CharacterDynamicState(**payload)
+        self._by_actor[actor_id] = normalized.storage_dump()
+        return normalized.legacy_flat_dump()
 
     def _default_state(self, actor_id: str) -> dict[str, object]:
         return CharacterDynamicState(
@@ -37,7 +42,44 @@ class CharacterDynamicStateStore:
             stress_load=0.0,
             social_pressure=0.0,
             masking_pressure=0.0,
-        ).model_dump()
+        ).legacy_flat_dump()
+
+    def _stored_state(self, actor_id: str) -> dict[str, object] | None:
+        stored = self._by_actor.get(actor_id)
+        return deepcopy(stored) if stored is not None else None
+
+    def _merge_mapping(self, current: dict[str, object], delta: dict[str, object]) -> dict[str, object]:
+        merged = deepcopy(current)
+        for key, value in delta.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = self._merge_mapping(
+                    merged.get(key, {}),
+                    value,
+                )
+                continue
+            merged[key] = value
+        return merged
+
+    def _apply_grouped_legacy_overrides(self, payload: dict[str, object], delta: dict[str, object]) -> None:
+        tension_delta = delta.get("tension_state")
+        if isinstance(tension_delta, dict):
+            tension_payload = payload.get("tension_state")
+            if isinstance(tension_payload, dict):
+                for key in ("stress_load", "social_pressure", "masking_pressure"):
+                    if key in delta:
+                        continue
+                    if key in tension_delta:
+                        payload[key] = tension_payload.get(key)
+
+        motivation_delta = delta.get("motivation_state")
+        if isinstance(motivation_delta, dict):
+            motivation_payload = payload.get("motivation_state")
+            if isinstance(motivation_payload, dict):
+                for key in ("motivation_stack", "unresolved_conflicts"):
+                    if key in delta:
+                        continue
+                    if key in motivation_delta:
+                        payload[key] = deepcopy(motivation_payload.get(key))
 
 
 __all__ = ["CharacterDynamicStateStore"]

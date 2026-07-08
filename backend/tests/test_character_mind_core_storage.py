@@ -80,6 +80,90 @@ def test_dynamic_state_store_exposes_typed_record_view() -> None:
     assert typed.vigilance_level == 0.7
 
 
+def test_dynamic_state_store_write_with_model_dump_preserves_group_only_fields() -> None:
+    store = CharacterDynamicStateStore()
+    state = CharacterDynamicState(
+        actor_id="char_a",
+        vigilance_level=0.7,
+        distraction_level=0.1,
+        tension_state={
+            "social_pressure": 0.5,
+            "chronic_safety_tension": 0.7,
+            "relationship_fatigue": 0.6,
+        },
+    )
+
+    store.write("char_a", state.model_dump())
+
+    typed = store.read_record("char_a")
+
+    assert typed.tension_state.social_pressure == 0.5
+    assert typed.tension_state.chronic_safety_tension == 0.7
+    assert typed.tension_state.relationship_fatigue == 0.6
+
+
+def test_dynamic_state_store_merges_partial_grouped_tension_updates_without_losing_group_only_fields() -> None:
+    store = CharacterDynamicStateStore()
+    store.write(
+        "char_a",
+        {
+            "actor_id": "char_a",
+            "vigilance_level": 0.7,
+            "distraction_level": 0.1,
+            "stress_load": 0.4,
+            "social_pressure": 0.5,
+            "masking_pressure": 0.2,
+            "tension_state": {
+                "stress_load": 0.4,
+                "social_pressure": 0.5,
+                "masking_pressure": 0.2,
+                "chronic_safety_tension": 0.7,
+                "relationship_fatigue": 0.6,
+            },
+        },
+    )
+
+    merged = store.merge_delta("char_a", {"tension_state": {"social_pressure": 0.9}})
+    typed = store.read_record("char_a")
+
+    assert merged["social_pressure"] == 0.9
+    assert typed.tension_state.social_pressure == 0.9
+    assert typed.tension_state.chronic_safety_tension == 0.7
+    assert typed.tension_state.relationship_fatigue == 0.6
+
+
+def test_dynamic_state_store_merges_partial_grouped_motivation_updates_without_losing_existing_group_fields() -> None:
+    store = CharacterDynamicStateStore()
+    store.write(
+        "char_a",
+        {
+            "actor_id": "char_a",
+            "vigilance_level": 0.7,
+            "distraction_level": 0.1,
+            "stress_load": 0.4,
+            "social_pressure": 0.5,
+            "masking_pressure": 0.2,
+            "motivation_state": {
+                "dominant_need": "safety",
+                "secondary_need": "belonging",
+                "motivation_stack": ["preserve_order"],
+                "active_need_pressures": {"safety": 0.8, "belonging": 0.4},
+                "unresolved_conflicts": ["duty_vs_belonging"],
+            },
+        },
+    )
+
+    merged = store.merge_delta("char_a", {"motivation_state": {"motivation_stack": ["withdraw"]}})
+    typed = store.read_record("char_a")
+
+    assert merged["motivation_stack"] == ["withdraw"]
+    assert typed.motivation_state.motivation_stack == ["withdraw"]
+    assert typed.motivation_state.dominant_need == "safety"
+    assert typed.motivation_state.secondary_need == "belonging"
+    assert typed.motivation_state.active_need_pressures == {"safety": 0.8, "belonging": 0.4}
+    assert typed.motivation_state.unresolved_conflicts == ["duty_vs_belonging"]
+
+
 def test_higher_order_memory_store_groups_records_by_actor() -> None:
     store = CharacterHigherOrderMemoryStore()
 
