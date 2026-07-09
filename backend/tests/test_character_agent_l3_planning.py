@@ -4,11 +4,9 @@ from app.character_agent.models.cognition_delta import (
     CharacterHigherOrderDelta,
     CharacterSocialDelta,
 )
-from app.character_agent.models.event_memory import CharacterEventMemoryRecord
 from app.character_agent.models.higher_order_memory import CharacterHigherOrderMemoryRecord
 from app.character_agent.models.knowledge_memory import CharacterKnowledgeMemoryRecord
 from app.character_agent.models.memory_record_bundle import CharacterMemoryRecordBundle
-from app.character_agent.models.observation_memory import CharacterObservationMemoryRecord
 from app.character_agent.models.social_memory import CharacterSocialMemoryRecord
 from app.models.character_agent_runtime import CharacterInterpretation
 from app.services.character_agent_l3 import CharacterAgentL3Service
@@ -391,6 +389,173 @@ def test_l3_planner_injects_current_goal_state_and_history_into_model_context() 
     assert request["context"]["current_goal_state"]["dominant_goal_id"] == "goal_protect_secret"
     assert request["context"]["current_goal_state"]["goal_portfolio"][0]["goal"] == "protect_secret"
     assert request["context"]["goal_state_history"][0]["transition_kind"] == "initial"
+
+
+def test_l3_planner_injects_effective_profile_need_tension_and_dynamic_state_into_model_context() -> None:
+    gateway = _recording_gateway_for_candidates(["self_protect", "observe"], selected_intent="self_protect")
+    planner = CharacterAgentL3Service(gateway=gateway)
+    working_memory_state = {
+        "recent_perceived_events": [],
+        "recent_esm_results": [],
+        "recent_siming_catalysts": [],
+        "private_snapshot": {"actor_id": "char_b"},
+        "dynamic_state": {
+            "actor_id": "char_b",
+            "stress_load": 0.72,
+            "social_pressure": 0.68,
+            "masking_pressure": 0.61,
+            "motivation_stack": ["preserve_order"],
+        },
+    }
+    effective_profile = {
+        **_profile_payload(),
+        "need_hierarchy_layer": {
+            "effective_weights": {
+                "safety": 0.9,
+                "esteem": 0.45,
+            }
+        },
+    }
+    need_tension_state = {
+        "actor_id": "char_b",
+        "dominant_need": "safety",
+        "secondary_need": "esteem",
+        "motivation_stack": ["safety", "esteem"],
+        "pressure_sources": ["public_dismissal"],
+        "safety_pressure": 0.86,
+        "esteem_pressure": 0.44,
+    }
+    dynamic_state = {
+        "actor_id": "char_b",
+        "stress_load": 0.72,
+        "social_pressure": 0.68,
+        "masking_pressure": 0.61,
+        "motivation_stack": ["preserve_order"],
+    }
+
+    planner.build_intent_plan(
+        interpretation=_interpretation(),
+        control_mode="agent_full_auto",
+        profile=_profile_payload(),
+        effective_profile=effective_profile,
+        working_memory_state=working_memory_state,
+        need_tension_state=need_tension_state,
+        dynamic_state=dynamic_state,
+    )
+
+    request = gateway.requests[0]
+    assert request["context"]["profile"]["identity_core"]["character_id"] == "char_b"
+    assert request["context"]["effective_profile"]["need_hierarchy_layer"]["effective_weights"]["safety"] == 0.9
+    assert request["context"]["need_tension_state"]["dominant_need"] == "safety"
+    assert request["context"]["dynamic_state"]["stress_load"] == 0.72
+    assert request["context"]["working_memory_state"]["dynamic_state"]["social_pressure"] == 0.68
+
+
+def test_l3_planner_raises_self_protect_over_observe_when_need_pressure_and_dynamic_stress_are_high() -> None:
+    planner = CharacterAgentL3Service(
+        gateway=_recording_gateway_for_candidates(["observe", "self_protect"], selected_intent="observe")
+    )
+    interpretation = _interpretation().model_copy(
+        update={
+            "risk_level": "medium",
+            "opportunity_level": "low",
+        }
+    )
+
+    pressured_plan = planner.build_intent_plan(
+        interpretation=interpretation,
+        control_mode="agent_full_auto",
+        effective_profile={
+            **_profile_payload(),
+            "need_hierarchy_layer": {"effective_weights": {"safety": 0.95}},
+        },
+        need_tension_state={
+            "dominant_need": "safety",
+            "secondary_need": "esteem",
+            "motivation_stack": ["safety", "esteem"],
+            "pressure_sources": ["public_dismissal"],
+            "safety_pressure": 0.92,
+            "esteem_pressure": 0.35,
+        },
+        dynamic_state={
+            "actor_id": "char_b",
+            "stress_load": 0.81,
+            "vigilance_level": 0.73,
+            "social_pressure": 0.64,
+            "masking_pressure": 0.58,
+        },
+    )
+    baseline_plan = planner.build_intent_plan(
+        interpretation=interpretation,
+        control_mode="agent_full_auto",
+    )
+
+    pressured_scores = {
+        result["candidate"]: result["gain_loss_score"] for result in pressured_plan["filter_results"]
+    }
+    baseline_scores = {
+        result["candidate"]: result["gain_loss_score"] for result in baseline_plan["filter_results"]
+    }
+
+    assert pressured_scores["self_protect"] > pressured_scores["observe"]
+    assert pressured_scores["self_protect"] > baseline_scores["self_protect"]
+    assert pressured_scores["observe"] < baseline_scores["observe"]
+
+
+def test_l3_planner_uses_dominant_need_weight_for_non_safety_pressure() -> None:
+    planner = CharacterAgentL3Service(
+        gateway=_recording_gateway_for_candidates(["observe", "self_protect"], selected_intent="observe")
+    )
+    interpretation = _interpretation().model_copy(
+        update={
+            "risk_level": "medium",
+            "opportunity_level": "low",
+        }
+    )
+    need_tension_state = {
+        "dominant_need": "esteem",
+        "secondary_need": "safety",
+        "motivation_stack": ["esteem", "safety"],
+        "pressure_sources": ["public_dismissal"],
+        "esteem_pressure": 0.9,
+        "safety_pressure": 0.2,
+    }
+    dynamic_state = {
+        "actor_id": "char_b",
+        "stress_load": 0.4,
+        "social_pressure": 0.5,
+    }
+
+    high_esteem_plan = planner.build_intent_plan(
+        interpretation=interpretation,
+        control_mode="agent_full_auto",
+        effective_profile={
+            **_profile_payload(),
+            "need_hierarchy_layer": {"effective_weights": {"esteem": 0.95, "safety": 0.05}},
+        },
+        need_tension_state=need_tension_state,
+        dynamic_state=dynamic_state,
+    )
+    low_esteem_plan = planner.build_intent_plan(
+        interpretation=interpretation,
+        control_mode="agent_full_auto",
+        effective_profile={
+            **_profile_payload(),
+            "need_hierarchy_layer": {"effective_weights": {"esteem": 0.1, "safety": 0.95}},
+        },
+        need_tension_state=need_tension_state,
+        dynamic_state=dynamic_state,
+    )
+
+    high_scores = {
+        result["candidate"]: result["gain_loss_score"] for result in high_esteem_plan["filter_results"]
+    }
+    low_scores = {
+        result["candidate"]: result["gain_loss_score"] for result in low_esteem_plan["filter_results"]
+    }
+
+    assert high_scores["self_protect"] > low_scores["self_protect"]
+    assert high_scores["observe"] < low_scores["observe"]
 
 
 def test_l3_suggestion_packet_surfaces_interpretation_cognition_cues() -> None:

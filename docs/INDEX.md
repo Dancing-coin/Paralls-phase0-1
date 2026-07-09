@@ -151,6 +151,7 @@
 - `pytest backend/tests/test_affect_engine.py -v`
 - `pytest backend/tests/test_character_runtime_needs_affect_flow.py -v`
 - `pytest backend/tests/test_personality_drift_gate.py -v`
+- `pytest backend/tests/test_character_agent_l3_planning.py -v`
 
 报告写入 `.harness/verification/`。
 

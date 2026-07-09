@@ -99,13 +99,14 @@ def test_runtime_writes_character_perceived_event_into_session_timeline() -> Non
     runtime.ingest_character_perceived_event(event)
     timeline = runtime.get_session_timeline("char_a")
 
-    assert len(timeline) == 5
+    assert len(timeline) == 6
     assert timeline[0]["event_type"] == "character_perceived_event"
     assert timeline[0]["payload"]["summary"] == "visual_fact/fixed_gaze_on_target"
-    assert timeline[1]["event_type"] == "l2_reasoning_request"
-    assert timeline[2]["event_type"] == "character_interpretation_event"
-    assert timeline[3]["event_type"] == "goal_state_event"
-    assert timeline[4]["event_type"] == "character_agent_execution_request"
+    assert timeline[1]["event_type"] == "need_tension_state_event"
+    assert timeline[2]["event_type"] == "l2_reasoning_request"
+    assert timeline[3]["event_type"] == "character_interpretation_event"
+    assert timeline[4]["event_type"] == "goal_state_event"
+    assert timeline[5]["event_type"] == "character_agent_execution_request"
 
 
 def test_runtime_writes_self_body_event_into_working_memory_bundle() -> None:

@@ -176,6 +176,11 @@ class CharacterAgentRuntime:
             event.actor_id,
             self._need_tension_delta_payload(need_delta),
         )
+        self._record_need_tension_state_event(
+            actor_id=event.actor_id,
+            producer_ts=event.producer_ts,
+            need_tension_state=need_tension_state,
+        )
         dynamic_delta: dict[str, object] = dict(
             self._affect_engine.evaluate(
                 effective_profile=effective_profile,
@@ -259,6 +264,7 @@ class CharacterAgentRuntime:
                 effective_profile=effective_profile,
                 interpretation=interpretation,
             )
+            working_memory_state = self.get_working_memory_state_record(event.actor_id, snapshot.model_dump())
         self._record_interpretation_event(event.actor_id, event.producer_ts, interpretation)
         self._set_observatory_context(event.actor_id, "interpretation_summary", interpretation.interpreted_summary)
         self._queue_observatory_stage_event(
@@ -288,6 +294,7 @@ class CharacterAgentRuntime:
                 interpretation,
                 snapshot=snapshot.model_dump(),
                 profile=self._profile_payload(event.actor_id),
+                effective_profile=effective_profile,
                 memory_bundle=memory_record_bundle,
                 control_mode=self.get_control_mode(event.actor_id),
                 working_memory_state=working_memory_state,
@@ -296,6 +303,8 @@ class CharacterAgentRuntime:
                 supervision_state=supervision_state,
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=self.get_background_agenda_state(event.actor_id),
+                need_tension_state=need_tension_state,
+                dynamic_state=self.get_dynamic_state(event.actor_id),
             ),
         )
         self._record_goal_state_event(event.actor_id, event.producer_ts, decision)
@@ -1721,6 +1730,21 @@ class CharacterAgentRuntime:
         )
         self._memory_store.write_event(stored)
 
+    def _record_need_tension_state_event(
+        self,
+        *,
+        actor_id: str,
+        producer_ts: int,
+        need_tension_state: dict[str, object],
+    ) -> None:
+        stored = self._session_store.append_event(
+            actor_id=actor_id,
+            event_type="need_tension_state_event",
+            producer_ts=producer_ts,
+            payload=need_tension_state,
+        )
+        self._memory_store.write_event(stored)
+
     def _goal_transition_kind(
         self,
         previous_goal_state: dict[str, object],
@@ -2934,6 +2958,8 @@ class CharacterAgentRuntime:
                     )
                 elif event_type == "dynamic_state_event":
                     self._dynamic_state_store.write(actor_id, payload)
+                elif event_type == "need_tension_state_event":
+                    self._need_tension_store.write(actor_id, payload)
                 elif event_type == "character_unresolved_tension_event":
                     self._unresolved_tension_store.upsert(actor_id, payload)
                 elif event_type == "character_supervision_authorization":

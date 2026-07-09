@@ -221,15 +221,36 @@ class CharacterPromptPolicy:
         if not state:
             return ""
         dominant_need = self._truncate(state.get("dominant_need", "") or "")
-        active_needs = self._join_list(state.get("active_needs"))
-        top_tensions = self._join_list(state.get("top_tensions"))
+        secondary_need = self._truncate(state.get("secondary_need", "") or "")
+        motivation_stack = self._join_list(state.get("motivation_stack"))
+        pressure_sources = self._join_list(state.get("pressure_sources"))
+        pressure_magnitudes = self._pressure_magnitude_summary(state)
         return "; ".join(
             [
                 f"dominant_need={dominant_need}",
-                f"active_needs={active_needs}",
-                f"top_tensions={top_tensions}",
+                f"secondary_need={secondary_need}",
+                f"motivation_stack={motivation_stack}",
+                f"pressure_sources={pressure_sources}",
+                f"pressure_magnitudes={pressure_magnitudes}",
             ]
         )
+
+    def _pressure_magnitude_summary(self, state: dict[str, object]) -> str:
+        ordered_keys = (
+            ("physiological", "physiological_pressure"),
+            ("safety", "safety_pressure"),
+            ("belonging", "belonging_pressure"),
+            ("esteem", "esteem_pressure"),
+            ("self_actualization", "self_actualization_pressure"),
+        )
+        pairs: list[str] = []
+        for label, key in ordered_keys:
+            value = state.get(key)
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, (int, float)) and float(value) > 0.0:
+                pairs.append(f"{label}={value}")
+        return self._truncate("|".join(pairs))
 
     def _trait_summary(self, trait_vector: dict[str, object]) -> str:
         if not trait_vector:

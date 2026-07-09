@@ -477,7 +477,8 @@ CharacterPerceivedEvent / SelfBodyPerceivedEvent / siming_output
 - `pytest backend/tests/test_affect_engine.py -v`
 - `pytest backend/tests/test_character_runtime_needs_affect_flow.py -v`
 - `pytest backend/tests/test_personality_drift_gate.py -v`
-- focused suite -> `34 passed`
+- `pytest backend/tests/test_character_agent_l3_planning.py -v`
+- focused suite with L3 planning coverage -> `83 passed`
 - `python scripts/verification/harness.py --profile docs` -> `overall_docs_passed=True`
 
 这意味着：

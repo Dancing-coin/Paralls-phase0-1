@@ -28,6 +28,7 @@ class CharacterAgentL3Service:
         control_mode: str,
         snapshot: dict[str, object] | None = None,
         profile: dict[str, object] | None = None,
+        effective_profile: dict[str, object] | None = None,
         memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None = None,
         working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None = None,
         current_goal_state: dict[str, object] | CharacterGoalStateRecord | None = None,
@@ -35,13 +36,21 @@ class CharacterAgentL3Service:
         supervision_state: dict[str, object] | None = None,
         unresolved_tensions: list[dict[str, object]] | None = None,
         background_agenda_state: dict[str, object] | None = None,
+        need_tension_state: dict[str, object] | None = None,
+        dynamic_state: dict[str, object] | None = None,
     ) -> dict[str, object]:
         interpretation = self._normalize_interpretation(interpretation)
         normalized_snapshot = self._normalize_snapshot(snapshot)
         normalized_profile = self._normalize_profile(profile)
+        normalized_effective_profile = self._normalize_profile(effective_profile) or normalized_profile
         typed_memory_bundle = self._memory_record_bundle_model(memory_bundle)
         normalized_memory_bundle = CharacterContextBuilder.normalize_memory_bundle(typed_memory_bundle)
         normalized_working_memory_state = self._working_memory_state_mapping(working_memory_state)
+        normalized_need_tension_state = self._normalize_mapping(need_tension_state)
+        normalized_dynamic_state = self._dynamic_state_mapping(
+            dynamic_state,
+            working_memory_state=normalized_working_memory_state,
+        )
         normalized_current_goal_state = self._goal_state_mapping(
             current_goal_state,
             actor_id=interpretation.actor_id,
@@ -79,6 +88,9 @@ class CharacterAgentL3Service:
                 "control_mode": control_mode,
                 "interpretation": interpretation.model_dump(),
                 "profile": normalized_profile,
+                "effective_profile": normalized_effective_profile,
+                "need_tension_state": normalized_need_tension_state,
+                "dynamic_state": normalized_dynamic_state,
                 "snapshot": normalized_snapshot,
                 "memory": normalized_memory_bundle,
                 "working_memory_state": normalized_working_memory_state,
@@ -110,8 +122,11 @@ class CharacterAgentL3Service:
                 snapshot=normalized_snapshot,
                 memory_bundle=typed_memory_bundle,
                 profile=normalized_profile,
+                effective_profile=normalized_effective_profile,
                 control_mode=control_mode,
                 working_memory_state=normalized_working_memory_state,
+                need_tension_state=normalized_need_tension_state,
+                dynamic_state=normalized_dynamic_state,
             )
             for candidate in candidates
         ]
@@ -131,6 +146,7 @@ class CharacterAgentL3Service:
         *,
         snapshot: dict[str, object] | None = None,
         profile: dict[str, object] | None = None,
+        effective_profile: dict[str, object] | None = None,
         memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None = None,
         control_mode: str = "agent_full_auto",
         working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None = None,
@@ -139,12 +155,15 @@ class CharacterAgentL3Service:
         supervision_state: dict[str, object] | None = None,
         unresolved_tensions: list[dict[str, object]] | None = None,
         background_agenda_state: dict[str, object] | None = None,
+        need_tension_state: dict[str, object] | None = None,
+        dynamic_state: dict[str, object] | None = None,
     ) -> CharacterIntentDecision:
         plan = self.build_intent_plan(
             interpretation=interpretation,
             control_mode=control_mode,
             snapshot=snapshot,
             profile=profile,
+            effective_profile=effective_profile,
             memory_bundle=memory_bundle,
             working_memory_state=working_memory_state,
             current_goal_state=current_goal_state,
@@ -152,6 +171,8 @@ class CharacterAgentL3Service:
             supervision_state=supervision_state,
             unresolved_tensions=unresolved_tensions,
             background_agenda_state=background_agenda_state,
+            need_tension_state=need_tension_state,
+            dynamic_state=dynamic_state,
         )
         model_selected_candidate = str(plan.get("model_output", {}).get("selected_intent", "") or "")
         model_recommended_candidates = self._as_string_list(plan.get("model_output", {}).get("recommended_intents", []))
@@ -212,6 +233,7 @@ class CharacterAgentL3Service:
         control_mode: str,
         snapshot: dict[str, object] | None = None,
         profile: dict[str, object] | None = None,
+        effective_profile: dict[str, object] | None = None,
         memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None = None,
         working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None = None,
         current_goal_state: dict[str, object] | CharacterGoalStateRecord | None = None,
@@ -219,6 +241,8 @@ class CharacterAgentL3Service:
         supervision_state: dict[str, object] | None = None,
         unresolved_tensions: list[dict[str, object]] | None = None,
         background_agenda_state: dict[str, object] | None = None,
+        need_tension_state: dict[str, object] | None = None,
+        dynamic_state: dict[str, object] | None = None,
     ) -> dict[str, object]:
         interpretation = self._normalize_interpretation(interpretation)
         normalized_snapshot = self._normalize_snapshot(snapshot)
@@ -231,6 +255,7 @@ class CharacterAgentL3Service:
             control_mode=control_mode,
             snapshot=normalized_snapshot,
             profile=normalized_profile,
+            effective_profile=effective_profile,
             memory_bundle=normalized_memory_bundle,
             working_memory_state=working_memory_state,
             current_goal_state=current_goal_state,
@@ -238,6 +263,8 @@ class CharacterAgentL3Service:
             supervision_state=supervision_state,
             unresolved_tensions=unresolved_tensions,
             background_agenda_state=background_agenda_state,
+            need_tension_state=need_tension_state,
+            dynamic_state=dynamic_state,
         )
         relational_memories = self._list_entries(normalized_memory_bundle.get("relational_memories"))
         guarded_relation_note = self._guarded_relational_note(
@@ -580,8 +607,11 @@ class CharacterAgentL3Service:
         snapshot: dict[str, object],
         memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle,
         profile: dict[str, object],
+        effective_profile: dict[str, object],
         control_mode: str,
         working_memory_state: dict[str, object],
+        need_tension_state: dict[str, object],
+        dynamic_state: dict[str, object],
     ) -> dict[str, object]:
         persona_ok = True
         persona_notes: list[str] = []
@@ -600,8 +630,11 @@ class CharacterAgentL3Service:
             snapshot=snapshot,
             memory_bundle=memory_bundle,
             profile=profile,
+            effective_profile=effective_profile,
             control_mode=control_mode,
             working_memory_state=working_memory_state,
+            need_tension_state=need_tension_state,
+            dynamic_state=dynamic_state,
         )
         return self._triple_filter.evaluate_candidate(
             candidate=candidate,
@@ -670,15 +703,17 @@ class CharacterAgentL3Service:
         snapshot: dict[str, object],
         memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle,
         profile: dict[str, object],
+        effective_profile: dict[str, object],
         control_mode: str,
         working_memory_state: dict[str, object] | None = None,
+        need_tension_state: dict[str, object] | None = None,
+        dynamic_state: dict[str, object] | None = None,
     ) -> tuple[float, list[str]]:
         _ = interpretation
         _ = snapshot
         _ = memory_bundle
         _ = profile
         _ = control_mode
-        _ = working_memory_state
         base_scores = {
             "observe": 0.6,
             "inspect_object": 0.42,
@@ -698,7 +733,32 @@ class CharacterAgentL3Service:
             "approach": 0.5,
         }
         score = base_scores.get(candidate, 0.3)
-        return self._clamp(score), []
+        notes: list[str] = []
+        dynamic_signal = self._dynamic_state_mapping(dynamic_state, working_memory_state=working_memory_state)
+        need_signal = self._normalize_mapping(need_tension_state)
+        dominant_need = str(need_signal.get("dominant_need", "") or "")
+        dominant_need_pressure = self._dominant_need_pressure(need_signal)
+        if dominant_need_pressure <= 0.0:
+            return self._clamp(score), []
+        dominant_need_weight = self._need_weight(effective_profile or profile, dominant_need)
+        stress_load = self._bounded_float(dynamic_signal.get("stress_load"))
+        vigilance_level = self._bounded_float(dynamic_signal.get("vigilance_level"))
+        social_pressure = self._bounded_float(dynamic_signal.get("social_pressure"))
+        masking_pressure = self._bounded_float(dynamic_signal.get("masking_pressure"))
+        protective_pressure = max(stress_load, vigilance_level, social_pressure, masking_pressure)
+
+        if candidate == "self_protect":
+            pressure_bias = (0.25 * dominant_need_pressure * dominant_need_weight) + (0.15 * protective_pressure)
+            if pressure_bias > 0.0:
+                score += pressure_bias
+                notes.append("pressure_bias=self_protect")
+        elif candidate in {"observe", "ask_probe", "share_info", "speak_public", "approach", "follow_target"}:
+            pressure_penalty = (0.12 * dominant_need_pressure * dominant_need_weight) + (0.08 * protective_pressure)
+            if pressure_penalty > 0.0:
+                score -= pressure_penalty
+                notes.append("pressure_penalty=exposure")
+
+        return self._clamp(score), notes
 
     def _map_candidate_to_intent(self, candidate: str) -> str:
         mapping = {
@@ -764,6 +824,20 @@ class CharacterAgentL3Service:
         if not isinstance(value, dict):
             return {}
         return dict(value)
+
+    def _dynamic_state_mapping(
+        self,
+        value: dict[str, object] | None,
+        *,
+        working_memory_state: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        if isinstance(value, dict) and value:
+            return dict(value)
+        if isinstance(working_memory_state, dict):
+            dynamic_state = working_memory_state.get("dynamic_state")
+            if isinstance(dynamic_state, dict):
+                return dict(dynamic_state)
+        return {}
 
     def _list_entries(self, value: object) -> list[dict[str, object]]:
         if not isinstance(value, list):
@@ -875,9 +949,14 @@ class CharacterAgentL3Service:
         return value
 
     def _as_float(self, value: object, default: float) -> float:
+        if isinstance(value, bool):
+            return default
         if isinstance(value, (int, float)):
             return float(value)
         return default
+
+    def _bounded_float(self, value: object) -> float:
+        return self._clamp(self._as_float(value, 0.0))
 
     def _clamp(self, value: float) -> float:
         if value < 0.0:
@@ -890,6 +969,21 @@ class CharacterAgentL3Service:
         if not isinstance(value, list):
             return []
         return [str(item) for item in value]
+
+    def _need_weight(self, profile: dict[str, object], need_key: str) -> float:
+        layer = profile.get("need_hierarchy_layer", {})
+        if not isinstance(layer, dict):
+            return 0.0
+        weights = layer.get("effective_weights", layer.get("base_weights", {}))
+        if not isinstance(weights, dict):
+            return 0.0
+        return self._bounded_float(weights.get(need_key))
+
+    def _dominant_need_pressure(self, need_tension_state: dict[str, object]) -> float:
+        dominant_need = str(need_tension_state.get("dominant_need", "") or "")
+        if dominant_need == "":
+            return 0.0
+        return self._bounded_float(need_tension_state.get(f"{dominant_need}_pressure"))
 
     def _recent_world_change_summary(self, snapshot: dict[str, object] | None) -> str:
         if not isinstance(snapshot, dict):
