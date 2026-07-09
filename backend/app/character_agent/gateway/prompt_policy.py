@@ -78,6 +78,8 @@ class CharacterPromptPolicy:
         context: dict[str, object],
     ) -> str:
         profile = context.get("profile", {})
+        effective_profile = context.get("effective_profile", profile)
+        need_tension_state = context.get("need_tension_state", {})
         snapshot = context.get("snapshot", {})
         memory = context.get("memory", {})
         working_memory_state = context.get("working_memory_state", {})
@@ -88,6 +90,12 @@ class CharacterPromptPolicy:
         unresolved_tensions = context.get("unresolved_tensions", {})
         background_agenda_state = context.get("background_agenda_state", {})
         profile_summary = self._profile_summary(profile if isinstance(profile, dict) else {})
+        effective_profile_summary = self._profile_summary(
+            effective_profile if isinstance(effective_profile, dict) else {}
+        )
+        need_tension_state_summary = self._need_tension_state_summary(
+            need_tension_state if isinstance(need_tension_state, dict) else {}
+        )
         snapshot_summary = self._snapshot_summary(snapshot if isinstance(snapshot, dict) else {})
         memory_summary = self._memory_summary(memory if isinstance(memory, dict) else {})
         working_memory_state_summary = self._working_memory_state_summary(
@@ -108,6 +116,8 @@ class CharacterPromptPolicy:
         return (
             f"actor_id={actor_id}; control_mode={control_mode}; "
             f"profile_summary={profile_summary}; "
+            f"effective_profile_summary={effective_profile_summary}; "
+            f"need_tension_state={need_tension_state_summary}; "
             f"snapshot={snapshot_summary}; memory={memory_summary}; "
             f"working_memory_state={working_memory_state_summary}; "
             f"current_goal_state={current_goal_state_summary}; "
@@ -170,11 +180,15 @@ class CharacterPromptPolicy:
         conversation_personality_layer = profile.get("conversation_personality_layer", {})
         if not isinstance(conversation_personality_layer, dict):
             conversation_personality_layer = {}
+        need_hierarchy_layer = profile.get("need_hierarchy_layer", {})
+        if not isinstance(need_hierarchy_layer, dict):
+            need_hierarchy_layer = {}
         return "; ".join(
             [
                 f"character_id={self._truncate(identity_core.get('character_id', ''))}",
                 f"canonical_name={self._truncate(identity_core.get('canonical_name', ''))}",
                 f"occupation_role={self._truncate(identity_core.get('occupation_role', ''))}",
+                f"need_weights={self._need_weight_summary(need_hierarchy_layer)}",
                 f"traits={self._trait_summary(trait_vector)}",
                 f"value_priorities={self._join_list(virtue_value_layer.get('value_priorities'))}",
                 f"red_lines={self._join_list(virtue_value_layer.get('red_lines'))}",
@@ -187,6 +201,33 @@ class CharacterPromptPolicy:
                 f"talk_initiative={self._scalar_summary(conversation_personality_layer.get('talk_initiative'))}",
                 f"deception_control={self._scalar_summary(conversation_personality_layer.get('deception_control'))}",
                 f"trust_threshold_for_private_talk={self._scalar_summary(conversation_personality_layer.get('trust_threshold_for_private_talk'))}",
+            ]
+        )
+
+    def _need_weight_summary(self, layer: dict[str, object]) -> str:
+        if not layer:
+            return ""
+        weights = layer.get("effective_weights", layer.get("base_weights", {}))
+        if not isinstance(weights, dict) or not weights:
+            return ""
+        return self._truncate(
+            "|".join(
+                f"{key}={weights[key]}"
+                for key in sorted(weights)
+            )
+        )
+
+    def _need_tension_state_summary(self, state: dict[str, object]) -> str:
+        if not state:
+            return ""
+        dominant_need = self._truncate(state.get("dominant_need", "") or "")
+        active_needs = self._join_list(state.get("active_needs"))
+        top_tensions = self._join_list(state.get("top_tensions"))
+        return "; ".join(
+            [
+                f"dominant_need={dominant_need}",
+                f"active_needs={active_needs}",
+                f"top_tensions={top_tensions}",
             ]
         )
 

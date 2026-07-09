@@ -1,4 +1,5 @@
 from copy import deepcopy
+from typing import Any, cast
 
 from app.character_agent.gateway.context_builder import CharacterContextBuilder
 from app.character_agent.models.cognition_delta import (
@@ -73,7 +74,7 @@ class CharacterAgentL2Service:
             actor_id=actor_id,
             interpreted_summary=str(output.get("interpreted_summary", "") or ""),
             interpretation_type=str(output.get("interpretation_type", "state_change") or "state_change"),
-            salience_score=float(output.get("salience_score", 0.0) or 0.0),
+            salience_score=float(cast(Any, output.get("salience_score", 0.0) or 0.0)),
             ambiguity_level=str(output.get("ambiguity_level", "low") or "low"),
             risk_level=str(output.get("risk_level", "low") or "low"),
             opportunity_level=str(output.get("opportunity_level", "low") or "low"),
@@ -86,26 +87,26 @@ class CharacterAgentL2Service:
                     state=str(item.get("state", "suspected") or "suspected"),
                     confidence=float(item.get("confidence", 0.0) or 0.0),
                 )
-                for item in output.get("belief_deltas", [])
+                for item in cast(list[object], output.get("belief_deltas", []))
                 if isinstance(item, dict) and str(item.get("proposition_key", "") or "")
             ],
             social_deltas=[
                 CharacterSocialDelta(
                     entity_id=str(item.get("entity_id", "") or ""),
-                    trust_baseline=float(item.get("trust_baseline", 0.5) or 0.5),
-                    suspicion_baseline=float(item.get("suspicion_baseline", 0.0) or 0.0),
-                    intimacy=float(item.get("intimacy", 0.0) or 0.0),
-                    dependency=float(item.get("dependency", 0.0) or 0.0),
-                    unresolved_tension=float(item.get("unresolved_tension", 0.0) or 0.0),
+                    trust_baseline=float(cast(Any, item.get("trust_baseline", 0.5) or 0.5)),
+                    suspicion_baseline=float(cast(Any, item.get("suspicion_baseline", 0.0) or 0.0)),
+                    intimacy=float(cast(Any, item.get("intimacy", 0.0) or 0.0)),
+                    dependency=float(cast(Any, item.get("dependency", 0.0) or 0.0)),
+                    unresolved_tension=float(cast(Any, item.get("unresolved_tension", 0.0) or 0.0)),
                     shared_secret_refs=[
                         str(ref)
-                        for ref in item.get("shared_secret_refs", [])
+                        for ref in cast(list[object], item.get("shared_secret_refs", []))
                         if str(ref)
                     ]
                     if isinstance(item.get("shared_secret_refs", []), list)
                     else [],
                 )
-                for item in output.get("social_deltas", [])
+                for item in cast(list[object], output.get("social_deltas", []))
                 if isinstance(item, dict) and str(item.get("entity_id", "") or "")
             ],
             higher_order_deltas=[
@@ -113,15 +114,15 @@ class CharacterAgentL2Service:
                     subject_actor_id=str(item.get("subject_actor_id", "") or ""),
                     proposition_key=str(item.get("proposition_key", "") or ""),
                     meta_belief=str(item.get("meta_belief", "") or ""),
-                    confidence=float(item.get("confidence", 0.0) or 0.0),
+                    confidence=float(cast(Any, item.get("confidence", 0.0) or 0.0)),
                 )
-                for item in output.get("higher_order_deltas", [])
+                for item in cast(list[object], output.get("higher_order_deltas", []))
                 if isinstance(item, dict) and str(item.get("subject_actor_id", "") or "") and str(item.get("meta_belief", "") or "")
             ],
             dynamic_state_delta=CharacterDynamicStateDelta(
                 **{
                     str(key): float(value)
-                    for key, value in dict(output.get("dynamic_state_delta", {})).items()
+                    for key, value in dict(cast(Any, output.get("dynamic_state_delta", {}))).items()
                     if isinstance(value, (int, float))
                 }
             )
@@ -131,16 +132,16 @@ class CharacterAgentL2Service:
                 CharacterGoalHint(
                     goal=str(item.get("goal", "") or ""),
                     source=str(item.get("source", "") or "model"),
-                    strength=float(item.get("strength", 0.5) or 0.5),
+                    strength=float(cast(Any, item.get("strength", 0.5) or 0.5)),
                     evidence_tags=[
                         str(tag)
-                        for tag in item.get("evidence_tags", [])
+                        for tag in cast(list[object], item.get("evidence_tags", []))
                         if str(tag)
                     ]
                     if isinstance(item.get("evidence_tags", []), list)
                     else [],
                 )
-                for item in output.get("goal_hints", [])
+                for item in cast(list[object], output.get("goal_hints", []))
                 if isinstance(item, dict) and str(item.get("goal", "") or "")
             ],
             reasoning_trace_summary=str(output.get("reasoning_trace_summary", "") or "") or None,
@@ -290,15 +291,25 @@ class CharacterAgentL2Service:
         supervision_state: dict[str, object] | None,
         unresolved_tensions: list[dict[str, object]] | None,
         background_agenda_state: dict[str, object] | None,
+        effective_profile: dict[str, object] | None = None,
+        need_tension_state: dict[str, object] | None = None,
     ) -> dict[str, object]:
+        authored_profile = self._profile_for_actor(actor_id)
+        active_effective_profile = (
+            deepcopy(effective_profile)
+            if isinstance(effective_profile, dict)
+            else deepcopy(authored_profile)
+        )
         context = self._context_builder.build_context(
             actor_id=actor_id,
             snapshot=snapshot,
             memory_bundle=memory_bundle or {},
             control_mode=control_mode,
             working_memory_state=working_memory_state or {},
-            profile=self._profile_for_actor(actor_id),
+            profile=authored_profile,
         )
+        context["effective_profile"] = active_effective_profile
+        context["need_tension_state"] = deepcopy(need_tension_state or {})
         context["event"] = dict(event)
         context["current_goal_state"] = dict(current_goal_state or {})
         context["goal_state_history"] = [dict(item) for item in goal_state_history or [] if isinstance(item, dict)]
