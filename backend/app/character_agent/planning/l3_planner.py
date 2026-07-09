@@ -735,11 +735,19 @@ class CharacterAgentL3Service:
         score = base_scores.get(candidate, 0.3)
         notes: list[str] = []
         dynamic_signal = self._dynamic_state_mapping(dynamic_state, working_memory_state=working_memory_state)
+        affect_signal = self._affect_state_mapping(dynamic_signal)
+        approach_bias = self._positive_approach_bias(affect_signal)
+        if candidate in {"share_info", "speak_private", "approach", "follow_target"} and approach_bias > 0.0:
+            score += approach_bias
+            notes.append("positive_affect_bias=approach")
+        elif candidate == "self_protect" and approach_bias > 0.0:
+            score -= min(0.12, approach_bias)
+            notes.append("positive_affect_penalty=self_protect")
         need_signal = self._normalize_mapping(need_tension_state)
         dominant_need = str(need_signal.get("dominant_need", "") or "")
         dominant_need_pressure = self._dominant_need_pressure(need_signal)
         if dominant_need_pressure <= 0.0:
-            return self._clamp(score), []
+            return self._clamp(score), notes
         dominant_need_weight = self._need_weight(effective_profile or profile, dominant_need)
         stress_load = self._bounded_float(dynamic_signal.get("stress_load"))
         vigilance_level = self._bounded_float(dynamic_signal.get("vigilance_level"))
@@ -838,6 +846,20 @@ class CharacterAgentL3Service:
             if isinstance(dynamic_state, dict):
                 return dict(dynamic_state)
         return {}
+
+    def _affect_state_mapping(self, dynamic_state: dict[str, object]) -> dict[str, object]:
+        affect_state = dynamic_state.get("affect_state")
+        if isinstance(affect_state, dict):
+            return dict(affect_state)
+        return {}
+
+    def _positive_approach_bias(self, affect_state: dict[str, object]) -> float:
+        trust = self._bounded_float(affect_state.get("trust"))
+        affection = self._bounded_float(affect_state.get("affection"))
+        gratitude = self._bounded_float(affect_state.get("gratitude"))
+        confidence = self._bounded_float(affect_state.get("confidence"))
+        calm = self._bounded_float(affect_state.get("calm"))
+        return min(0.18, (trust + affection + gratitude + confidence + calm) * 0.04)
 
     def _list_entries(self, value: object) -> list[dict[str, object]]:
         if not isinstance(value, list):

@@ -49,6 +49,37 @@ def test_output_validator_accepts_affect_valence_dynamic_state_delta() -> None:
     assert dynamic_state_delta == {"affect_valence": -0.8}
 
 
+def test_output_validator_accepts_positive_affect_dynamic_state_delta_fields() -> None:
+    validator = CharacterStructuredOutputValidator()
+
+    normalized = validator.validate(
+        task_kind="l2_reasoning",
+        output=_minimal_l2_output(
+            {
+                "joy": 0.7,
+                "calm": 0.6,
+                "trust": 0.5,
+                "gratitude": 0.4,
+                "pride": 0.3,
+                "confidence": 0.2,
+                "hope": 0.1,
+            }
+        ),
+    )
+
+    dynamic_state_delta = normalized["dynamic_state_delta"]
+    assert isinstance(dynamic_state_delta, dict)
+    assert dynamic_state_delta == {
+        "joy": 0.7,
+        "calm": 0.6,
+        "trust": 0.5,
+        "gratitude": 0.4,
+        "pride": 0.3,
+        "confidence": 0.2,
+        "hope": 0.1,
+    }
+
+
 def test_output_validator_rejects_out_of_range_affect_valence_dynamic_state_delta() -> None:
     validator = CharacterStructuredOutputValidator()
 
@@ -97,6 +128,17 @@ def test_output_validator_rejects_bool_and_non_finite_affect_valence_dynamic_sta
         validator.validate(
             task_kind="l2_reasoning",
             output=_minimal_l2_output({"affect_valence": affect_valence}),
+        )
+
+
+@pytest.mark.parametrize("value", [True, "nan", "inf", 1.1])
+def test_output_validator_rejects_invalid_positive_affect_delta_fields(value: object) -> None:
+    validator = CharacterStructuredOutputValidator()
+
+    with pytest.raises(ValueError):
+        validator.validate(
+            task_kind="l2_reasoning",
+            output=_minimal_l2_output({"trust": value}),
         )
 
 

@@ -304,7 +304,7 @@ class CharacterAgentRuntime:
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=self.get_background_agenda_state(event.actor_id),
                 need_tension_state=need_tension_state,
-                dynamic_state=self.get_dynamic_state(event.actor_id),
+                dynamic_state=self.get_dynamic_state_record(event.actor_id).model_dump(),
             ),
         )
         self._record_goal_state_event(event.actor_id, event.producer_ts, decision)

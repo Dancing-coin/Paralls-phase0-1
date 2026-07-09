@@ -41,6 +41,7 @@ class NeedTensionDelta(StrictRuntimeModel):
     secondary_need: str | None = None
     motivation_stack: list[str] | None = None
     pressure_sources: list[str] | None = None
+    recent_satisfaction: dict[str, float] | None = None
 
     @property
     def physiological(self) -> RuntimeScalar | None:
@@ -73,6 +74,9 @@ class NeedTensionDelta(StrictRuntimeModel):
                 continue
             if key == "pressure_sources":
                 mapping[key] = list(value)
+                continue
+            if key == "recent_satisfaction":
+                mapping[key] = dict(value)
                 continue
             mapping[key] = value
         return mapping

@@ -389,6 +389,13 @@ class AffectState(StrictRuntimeModel):
     relief: float = RuntimeScalar
     curiosity: float = RuntimeScalar
     affection: float = RuntimeScalar
+    joy: float = RuntimeScalar
+    calm: float = RuntimeScalar
+    trust: float = RuntimeScalar
+    gratitude: float = RuntimeScalar
+    pride: float = RuntimeScalar
+    confidence: float = RuntimeScalar
+    hope: float = RuntimeScalar
 
 
 class CharacterDynamicState(StrictRuntimeModel):
@@ -400,6 +407,12 @@ class CharacterDynamicState(StrictRuntimeModel):
     tension_state: TensionState = Field(default_factory=TensionState)
     motivation_state: MotivationState = Field(default_factory=MotivationState)
 ```
+
+Implementation note: `AffectState` is the immediate emotion group. Need pressure remains
+in `NeedTensionState`; runtime/chronic stress remains in `TensionState`. Positive need
+satisfaction is represented as `recent_satisfaction` on `NeedTensionDelta` and is mapped
+by `AffectEngine` into positive affect fields instead of directly modifying authored
+profile truth or long-term drift.
 
 - [ ] **Step 5: Add stores for reading, writing, and merging new state**
 

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from app.character_agent.models.dynamic_state import CharacterDynamicState
+from app.character_agent.models.dynamic_state import AffectState, CharacterDynamicState
+
+
+_AFFECT_DELTA_KEYS = frozenset(AffectState.model_fields)
 
 
 class CharacterDynamicStateStore:
@@ -27,7 +30,8 @@ class CharacterDynamicStateStore:
 
     def merge_delta(self, actor_id: str, delta: dict[str, object]) -> dict[str, object]:
         current = self._stored_state(actor_id) or self._default_state(actor_id)
-        payload = self._merge_mapping(current, deepcopy(delta))
+        normalized_delta = self._group_flat_affect_delta(deepcopy(delta))
+        payload = self._merge_mapping(current, normalized_delta)
         self._apply_grouped_legacy_overrides(payload, delta)
         payload["actor_id"] = actor_id
         normalized = CharacterDynamicState(**payload)
@@ -80,6 +84,20 @@ class CharacterDynamicStateStore:
                         continue
                     if key in motivation_delta:
                         payload[key] = deepcopy(motivation_payload.get(key))
+
+    def _group_flat_affect_delta(self, delta: dict[str, object]) -> dict[str, object]:
+        affect_delta: dict[str, object] = {}
+        for key in list(delta):
+            if key not in _AFFECT_DELTA_KEYS:
+                continue
+            affect_delta[key] = delta.pop(key)
+        if not affect_delta:
+            return delta
+        existing = delta.get("affect_state")
+        if not isinstance(existing, dict):
+            existing = {}
+        delta["affect_state"] = self._merge_mapping(existing, affect_delta)
+        return delta
 
 
 __all__ = ["CharacterDynamicStateStore"]

@@ -15,6 +15,13 @@ class AffectState(BaseModel):
     relief: float = Field(default=0.0, ge=0.0, le=1.0)
     curiosity: float = Field(default=0.0, ge=0.0, le=1.0)
     affection: float = Field(default=0.0, ge=0.0, le=1.0)
+    joy: float = Field(default=0.0, ge=0.0, le=1.0)
+    calm: float = Field(default=0.0, ge=0.0, le=1.0)
+    trust: float = Field(default=0.0, ge=0.0, le=1.0)
+    gratitude: float = Field(default=0.0, ge=0.0, le=1.0)
+    pride: float = Field(default=0.0, ge=0.0, le=1.0)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    hope: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 class TensionState(BaseModel):

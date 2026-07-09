@@ -164,6 +164,37 @@ def test_dynamic_state_store_merges_partial_grouped_motivation_updates_without_l
     assert typed.motivation_state.unresolved_conflicts == ["duty_vs_belonging"]
 
 
+def test_dynamic_state_store_maps_flat_positive_affect_delta_into_affect_state() -> None:
+    store = CharacterDynamicStateStore()
+    store.write(
+        "char_a",
+        {
+            "actor_id": "char_a",
+            "vigilance_level": 0.2,
+            "distraction_level": 0.1,
+            "affect_state": {
+                "trust": 0.2,
+                "affection": 0.3,
+            },
+        },
+    )
+
+    store.merge_delta(
+        "char_a",
+        {
+            "trust": 0.7,
+            "gratitude": 0.5,
+            "confidence": 0.4,
+        },
+    )
+    typed = store.read_record("char_a")
+
+    assert typed.affect_state.trust == 0.7
+    assert typed.affect_state.affection == 0.3
+    assert typed.affect_state.gratitude == 0.5
+    assert typed.affect_state.confidence == 0.4
+
+
 def test_higher_order_memory_store_groups_records_by_actor() -> None:
     store = CharacterHigherOrderMemoryStore()
 

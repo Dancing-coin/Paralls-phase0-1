@@ -339,10 +339,41 @@ class CharacterPromptPolicy:
         for key in ordered_keys:
             if key in value:
                 pairs.append(f"{key}={self._truncate(value.get(key, ''))}")
+        affect_state = value.get("affect_state")
+        if isinstance(affect_state, dict) and affect_state:
+            affect_summary = self._affect_state_summary(affect_state)
+            if affect_summary:
+                pairs.append(f"affect_state={affect_summary}")
         for key, item in value.items():
-            if key in ordered_keys:
+            if key in ordered_keys or key in {"affect_state", "tension_state", "motivation_state"}:
                 continue
             pairs.append(f"{key}={self._truncate(item)}")
+        return self._truncate("|".join(pairs))
+
+    def _affect_state_summary(self, state: dict[str, object]) -> str:
+        ordered_keys = (
+            "fear",
+            "anger",
+            "shame",
+            "sadness",
+            "relief",
+            "curiosity",
+            "affection",
+            "joy",
+            "calm",
+            "trust",
+            "gratitude",
+            "pride",
+            "confidence",
+            "hope",
+        )
+        pairs: list[str] = []
+        for key in ordered_keys:
+            value = state.get(key)
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, (int, float)) and float(value) > 0.0:
+                pairs.append(f"{key}={value}")
         return self._truncate("|".join(pairs))
 
     def _event_summary(self, event: dict[str, object]) -> str:

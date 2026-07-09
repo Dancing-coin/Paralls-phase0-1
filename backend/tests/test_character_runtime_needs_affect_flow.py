@@ -291,6 +291,40 @@ def test_l2_prompt_policy_includes_effective_profile_and_need_tension_state() ->
     assert "pressure_magnitudes=safety=0.9|esteem=0.4" in user_instruction
 
 
+def test_l2_prompt_policy_includes_positive_affect_state_summary() -> None:
+    prompt = CharacterPromptPolicy().build_prompt(
+        task_kind="l2_reasoning",
+        context={
+            "actor_id": "char_a",
+            "control_mode": "agent_full_auto",
+            "profile": {"identity_core": {"character_id": "char_a"}},
+            "snapshot": {"attention_targets": ["char_b"]},
+            "memory": {"working_memory": [], "episodic_memories": [], "relational_memories": []},
+            "working_memory_state": {
+                "dynamic_state": {
+                    "actor_id": "char_a",
+                    "affect_state": {
+                        "trust": 0.6,
+                        "gratitude": 0.5,
+                        "pride": 0.4,
+                        "hope": 0.3,
+                    },
+                }
+            },
+            "event": {
+                "actor_id": "char_a",
+                "event_type": "character_perceived_event",
+                "perceived_summary": "char_b thanks char_a",
+            },
+        },
+        route={"route_mode": "online_default", "provider_kind": "online"},
+    )
+
+    user_instruction = str(prompt["user_instruction"])
+
+    assert "affect_state=trust=0.6|gratitude=0.5|pride=0.4|hope=0.3" in user_instruction
+
+
 def test_runtime_ingest_character_perceived_event_updates_need_tension_and_dynamic_state() -> None:
     runtime = CharacterAgentRuntime()
 
@@ -430,13 +464,14 @@ def test_runtime_ingest_character_perceived_event_passes_effective_profile_need_
     )
 
     need_tension_state = runtime.get_need_tension_state("char_a")
-    dynamic_state = runtime.get_dynamic_state("char_a")
+    dynamic_state = runtime.get_dynamic_state_record("char_a").model_dump()
 
     assert recording_l3.select_context is not None
     assert recording_l3.select_context["profile"] == authored_profile
     assert recording_l3.select_context["effective_profile"] == effective_profile
     assert recording_l3.select_context["need_tension_state"] == need_tension_state
     assert recording_l3.select_context["dynamic_state"] == dynamic_state
+    assert "affect_state" in recording_l3.select_context["dynamic_state"]
     working_dynamic_state = recording_l3.select_context["working_memory_state"]["dynamic_state"]
     for key, value in dynamic_state.items():
         assert working_dynamic_state[key] == value

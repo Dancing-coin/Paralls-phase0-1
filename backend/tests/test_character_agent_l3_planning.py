@@ -558,6 +558,49 @@ def test_l3_planner_uses_dominant_need_weight_for_non_safety_pressure() -> None:
     assert high_scores["observe"] < low_scores["observe"]
 
 
+def test_l3_planner_uses_positive_affect_to_bias_approach_without_need_pressure() -> None:
+    planner = CharacterAgentL3Service(
+        gateway=_recording_gateway_for_candidates(["share_info", "speak_private", "self_protect"], selected_intent="share_info")
+    )
+    interpretation = _interpretation().model_copy(
+        update={
+            "attention_target": "char_a",
+            "risk_level": "low",
+            "opportunity_level": "medium",
+        }
+    )
+
+    positive_plan = planner.build_intent_plan(
+        interpretation=interpretation,
+        control_mode="agent_full_auto",
+        dynamic_state={
+            "actor_id": "char_b",
+            "affect_state": {
+                "trust": 0.8,
+                "affection": 0.5,
+                "gratitude": 0.4,
+                "calm": 0.7,
+                "confidence": 0.6,
+            },
+        },
+    )
+    baseline_plan = planner.build_intent_plan(
+        interpretation=interpretation,
+        control_mode="agent_full_auto",
+    )
+
+    positive_scores = {
+        result["candidate"]: result["gain_loss_score"] for result in positive_plan["filter_results"]
+    }
+    baseline_scores = {
+        result["candidate"]: result["gain_loss_score"] for result in baseline_plan["filter_results"]
+    }
+
+    assert positive_scores["share_info"] > baseline_scores["share_info"]
+    assert positive_scores["speak_private"] > baseline_scores["speak_private"]
+    assert positive_scores["self_protect"] < baseline_scores["self_protect"]
+
+
 def test_l3_suggestion_packet_surfaces_interpretation_cognition_cues() -> None:
     planner = CharacterAgentL3Service(gateway=_LocalGateway())
     interpretation = _interpretation().model_copy(

@@ -350,6 +350,8 @@ CharacterPerceivedEvent / SelfBodyPerceivedEvent / siming_output
 
 - `NeedTensionState` 保存需求压力、近期满足/受挫趋势与主导需求
 - `CharacterDynamicState` 拆为 affect / tension / motivation 三组
+- `affect_state` 当前覆盖 14 个即时情绪维度：`fear`、`anger`、`shame`、`sadness`、`relief`、`curiosity`、`affection`、`joy`、`calm`、`trust`、`gratitude`、`pride`、`confidence`、`hope`
+- 压力不是情绪字段：需求压力留在 `NeedTensionState`，运行时/慢性张力留在 `tension_state`
 - 长期 drift 不直接写回 authored profile truth
 
 ### `L2` 理解层
@@ -371,7 +373,7 @@ CharacterPerceivedEvent / SelfBodyPerceivedEvent / siming_output
 
 - `effective_profile = authored profile truth + long_term_personality_drift_layer`
 - `NeedTensionEngine` 先更新 `NeedTensionState`
-- `AffectEngine` 再导出 `dynamic_state_delta`
+- `AffectEngine` 再导出 `dynamic_state_delta`，其中需求满足会进入 `relief/calm/trust/gratitude/pride/confidence/hope/joy` 等正面 affect
 - `L2` 消费 `NeedTensionState` 与 `CharacterDynamicState`
 - 长期 drift 候选链只从 runtime evidence 累积，不直接把瞬时状态写回主档案
 

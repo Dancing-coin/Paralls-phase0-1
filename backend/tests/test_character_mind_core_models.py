@@ -37,6 +37,28 @@ def test_dynamic_state_delta_as_mapping_includes_affect_valence() -> None:
     assert delta.as_mapping() == {"affect_valence": -0.8}
 
 
+def test_dynamic_state_delta_as_mapping_includes_positive_affect_fields() -> None:
+    delta = CharacterDynamicStateDelta(
+        joy=0.7,
+        calm=0.6,
+        trust=0.5,
+        gratitude=0.4,
+        pride=0.3,
+        confidence=0.2,
+        hope=0.1,
+    )
+
+    assert delta.as_mapping() == {
+        "joy": 0.7,
+        "calm": 0.6,
+        "trust": 0.5,
+        "gratitude": 0.4,
+        "pride": 0.3,
+        "confidence": 0.2,
+        "hope": 0.1,
+    }
+
+
 def test_dynamic_state_delta_rejects_out_of_range_affect_valence() -> None:
     with pytest.raises(ValueError):
         CharacterDynamicStateDelta(affect_valence=-1.1)

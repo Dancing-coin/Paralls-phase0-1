@@ -176,6 +176,13 @@
   - `relief`
   - `curiosity`
   - `affection`
+  - `joy`
+  - `calm`
+  - `trust`
+  - `gratitude`
+  - `pride`
+  - `confidence`
+  - `hope`
 - `tension_state`
   - `stress_load`
   - `social_pressure`
@@ -190,6 +197,11 @@
   - `motivation_stack`
   - `active_need_pressures`
   - `unresolved_conflicts`
+
+`affect_state` 表示即时情绪，不承载压力本体。压力和长期张力仍分别留在
+`NeedTensionState` 与 `tension_state`；`recent_satisfaction` 只能通过
+`AffectEngine` 派生 `relief/calm/trust/gratitude/pride/confidence/hope/joy`
+等正面情绪 delta，再进入 runtime `CharacterDynamicState`。
 
 ### 6.3 长期候选层
 

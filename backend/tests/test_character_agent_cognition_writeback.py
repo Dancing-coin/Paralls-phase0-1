@@ -106,6 +106,21 @@ class _StubL2:
         )
 
 
+class _PositiveAffectStubL2(_StubL2):
+    def interpret_perceived_event(self, snapshot, event, **kwargs) -> CharacterInterpretation:
+        interpretation = super().interpret_perceived_event(snapshot, event, **kwargs)
+        return interpretation.model_copy(
+            update={
+                "dynamic_state_delta": CharacterDynamicStateDelta(
+                    trust=0.6,
+                    gratitude=0.5,
+                    pride=0.4,
+                    confidence=0.3,
+                )
+            }
+        )
+
+
 def test_runtime_applies_cognition_writeback_from_l2_output() -> None:
     runtime = CharacterAgentRuntime()
     runtime._l2 = _StubL2()
@@ -141,6 +156,35 @@ def test_runtime_applies_cognition_writeback_from_l2_output() -> None:
     assert any(item["subject_actor_id"] == "char_b" for item in memory_bundle["higher_order_memories"])
     assert dynamic_state["social_pressure"] == 0.7
     assert dynamic_state["masking_pressure"] == 0.55
+
+
+def test_runtime_applies_positive_affect_writeback_into_grouped_affect_state() -> None:
+    runtime = CharacterAgentRuntime()
+    runtime._l2 = _PositiveAffectStubL2()
+    runtime._l3 = CharacterAgentL3Service(gateway=_LocalGateway())
+    event = CharacterPerceivedEvent(
+        actor_id="char_a",
+        percept_channel="auditory",
+        producer_ts=504,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="auditory_fact/thanks_and_trust",
+        source_candidate_event_id="auditory_fact:504:char_a",
+        source_actor_id="char_b",
+        target_actor_id="char_a",
+        clarity_score=0.9,
+        certainty_score=0.9,
+    )
+
+    runtime.ingest_character_perceived_event(event)
+
+    typed_dynamic_state = runtime.get_dynamic_state_record("char_a")
+
+    assert typed_dynamic_state.affect_state.trust == 0.6
+    assert typed_dynamic_state.affect_state.gratitude == 0.5
+    assert typed_dynamic_state.affect_state.pride == 0.4
+    assert typed_dynamic_state.affect_state.confidence == 0.3
 
 
 def test_runtime_cognition_writeback_merges_dynamic_state_without_dropping_existing_fields() -> None:
