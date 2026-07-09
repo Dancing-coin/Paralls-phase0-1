@@ -1,7 +1,10 @@
 from pathlib import Path
 
 from app.character_agent.logic.affect_engine import AffectEngine
+from app.character_agent.logic.drift_accumulator import DriftAccumulator
+from app.character_agent.logic.drift_promotion_gate import DriftPromotionGate
 from app.character_agent.logic.need_tension_engine import NeedTensionEngine
+from app.character_agent.models.drift_candidate import DriftCandidateRecord
 from app.character_agent.models.need_tension import NeedTensionState
 from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.character_agent.profile.effective_profile import resolve_effective_profile
@@ -107,6 +110,8 @@ class CharacterAgentRuntime:
         self._unresolved_tension_store = CharacterUnresolvedTensionStore()
         self._need_tension_engine = NeedTensionEngine()
         self._affect_engine = AffectEngine()
+        self._drift_accumulator = DriftAccumulator()
+        self._drift_promotion_gate = DriftPromotionGate()
         self._rehydrate_runtime_state_from_timeline()
 
     def ingest_character_perceived_event(self, event: CharacterPerceivedEvent) -> list[CharacterGoalCommand]:
@@ -246,6 +251,12 @@ class CharacterAgentRuntime:
             self._apply_cognition_update(
                 actor_id=event.actor_id,
                 producer_ts=event.producer_ts,
+                interpretation=interpretation,
+            )
+            self._observe_and_record_drift_promotion(
+                actor_id=event.actor_id,
+                producer_ts=event.producer_ts,
+                effective_profile=effective_profile,
                 interpretation=interpretation,
             )
         self._record_interpretation_event(event.actor_id, event.producer_ts, interpretation)
@@ -2084,6 +2095,49 @@ class CharacterAgentRuntime:
                 payload=updated_state,
             )
             self._memory_store.write_event(stored)
+
+    def _observe_and_record_drift_promotion(
+        self,
+        *,
+        actor_id: str,
+        producer_ts: int,
+        effective_profile: dict[str, object],
+        interpretation: CharacterInterpretation,
+    ) -> None:
+        candidate = self._drift_accumulator.observe(
+            actor_id=actor_id,
+            effective_profile=effective_profile,
+            interpretation=interpretation,
+            dynamic_state=self.get_dynamic_state_record(actor_id),
+            need_tension_state=self.get_need_tension_state_record(actor_id),
+        )
+        if candidate is not None and self._drift_promotion_gate.should_promote(candidate):
+            self._record_drift_promotion(actor_id, producer_ts, candidate)
+
+    def _record_drift_promotion(
+        self,
+        actor_id: str,
+        producer_ts: int,
+        candidate: DriftCandidateRecord,
+    ) -> None:
+        for entry in self.get_session_timeline(actor_id):
+            if entry.get("event_type") != "character_personality_drift_promotion_event":
+                continue
+            payload = entry.get("payload", {})
+            if not isinstance(payload, dict):
+                continue
+            if (
+                str(payload.get("key", "") or "") == candidate.key
+                and str(payload.get("direction", "") or "") == candidate.direction
+            ):
+                return
+        stored = self._session_store.append_event(
+            actor_id=actor_id,
+            event_type="character_personality_drift_promotion_event",
+            producer_ts=producer_ts,
+            payload=candidate.model_dump(),
+        )
+        self._memory_store.write_event(stored)
 
     def _record_execution_plan(
         self,
