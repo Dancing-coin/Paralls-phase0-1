@@ -46,6 +46,8 @@ class CharacterAgentL2Service:
         supervision_state: dict[str, object] | None = None,
         unresolved_tensions: list[dict[str, object]] | None = None,
         background_agenda_state: dict[str, object] | None = None,
+        effective_profile: dict[str, object] | None = None,
+        need_tension_state: dict[str, object] | None = None,
     ) -> dict[str, object]:
         return self._gateway.prepare_run_request(
             task_kind="l2_reasoning",
@@ -61,6 +63,8 @@ class CharacterAgentL2Service:
                 supervision_state=supervision_state,
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=background_agenda_state,
+                effective_profile=effective_profile,
+                need_tension_state=need_tension_state,
             ),
         )
 
@@ -162,6 +166,8 @@ class CharacterAgentL2Service:
         supervision_state: dict[str, object] | None = None,
         unresolved_tensions: list[dict[str, object]] | None = None,
         background_agenda_state: dict[str, object] | None = None,
+        effective_profile: dict[str, object] | None = None,
+        need_tension_state: dict[str, object] | None = None,
     ) -> CharacterInterpretation:
         model_output = self._gateway.run_task(
             task_kind="l2_reasoning",
@@ -177,6 +183,8 @@ class CharacterAgentL2Service:
                 supervision_state=supervision_state,
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=background_agenda_state,
+                effective_profile=effective_profile,
+                need_tension_state=need_tension_state,
             ),
         )
         return self.map_reasoning_output(actor_id=event.actor_id, output=model_output)

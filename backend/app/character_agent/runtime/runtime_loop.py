@@ -1,5 +1,8 @@
 from pathlib import Path
 
+from app.character_agent.logic.affect_engine import AffectEngine
+from app.character_agent.logic.need_tension_engine import NeedTensionEngine
+from app.character_agent.models.need_tension import NeedTensionState
 from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.character_agent.profile.effective_profile import resolve_effective_profile
 from app.character_agent.models.cognition_delta import (
@@ -39,6 +42,7 @@ from app.character_agent.storage.session_store import CharacterAgentSessionStore
 from app.character_agent.storage.memory_store import CharacterAgentMemoryStore
 from app.character_agent.storage.dynamic_state_store import CharacterDynamicStateStore
 from app.character_agent.storage.goal_state_store import CharacterGoalStateStore
+from app.character_agent.storage.need_tension_store import CharacterNeedTensionStore
 from app.character_agent.storage.unresolved_tension_store import CharacterUnresolvedTensionStore
 from app.services.character_agent_debug_projection import CharacterAgentDebugProjection
 from app.models.siming_character_bridge import SimingCharacterCompatibilityInput
@@ -98,8 +102,11 @@ class CharacterAgentRuntime:
         self._session_store = CharacterAgentSessionStore(storage_root=storage_root)
         self._memory_store = CharacterAgentMemoryStore()
         self._dynamic_state_store = CharacterDynamicStateStore()
+        self._need_tension_store = CharacterNeedTensionStore()
         self._goal_state_store = CharacterGoalStateStore()
         self._unresolved_tension_store = CharacterUnresolvedTensionStore()
+        self._need_tension_engine = NeedTensionEngine()
+        self._affect_engine = AffectEngine()
         self._rehydrate_runtime_state_from_timeline()
 
     def ingest_character_perceived_event(self, event: CharacterPerceivedEvent) -> list[CharacterGoalCommand]:
@@ -154,7 +161,24 @@ class CharacterAgentRuntime:
             participants=self._participants_for_actor(event.actor_id, self._snapshot_focus_target(snapshot)),
             detail=event.model_dump(),
         )
-        memory_bundle = self.get_memory_bundle(event.actor_id)
+        effective_profile = self._effective_profile_payload(event.actor_id)
+        need_tension_event = self._need_tension_event_payload(event)
+        need_delta = self._need_tension_engine.evaluate(
+            effective_profile=effective_profile,
+            event=need_tension_event,
+        )
+        need_tension_state = self._need_tension_store.merge_delta(
+            event.actor_id,
+            self._need_tension_delta_payload(need_delta),
+        )
+        dynamic_delta: dict[str, object] = dict(
+            self._affect_engine.evaluate(
+                effective_profile=effective_profile,
+                need_delta=need_delta,
+            ).get("dynamic_state_delta", {})
+        )
+        if dynamic_delta:
+            self._dynamic_state_store.merge_delta(event.actor_id, dynamic_delta)
         memory_record_bundle = self.get_memory_record_bundle(event.actor_id)
         working_memory_state = self.get_working_memory_state_record(event.actor_id, snapshot.model_dump())
         self._queue_observatory_snapshot(
@@ -193,6 +217,8 @@ class CharacterAgentRuntime:
             supervision_state=supervision_state,
             unresolved_tensions=unresolved_tensions,
             background_agenda_state=self.get_background_agenda_state(event.actor_id),
+            effective_profile=effective_profile,
+            need_tension_state=need_tension_state,
         )
         self._record_reasoning_request(event.actor_id, event.producer_ts, reasoning_request)
         interpretation = self._interpret_with_continuity_floor(
@@ -212,6 +238,8 @@ class CharacterAgentRuntime:
                 supervision_state=supervision_state,
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=self.get_background_agenda_state(event.actor_id),
+                effective_profile=effective_profile,
+                need_tension_state=need_tension_state,
             ),
         )
         if interpretation.cognition_status == "model":
@@ -717,7 +745,6 @@ class CharacterAgentRuntime:
             participants=self._participants_for_actor(actor_id, self._snapshot_focus_target(snapshot)),
             detail=dict(normalized_payload),
         )
-        memory_bundle = self.get_memory_bundle(actor_id)
         memory_record_bundle = self.get_memory_record_bundle(actor_id)
         working_memory_state = self.get_working_memory_state_record(actor_id, snapshot.model_dump())
         current_goal_state = self.get_goal_state(actor_id)
@@ -962,6 +989,12 @@ class CharacterAgentRuntime:
 
     def get_dynamic_state_record(self, actor_id: str):
         return self._dynamic_state_store.read_record(actor_id)
+
+    def get_need_tension_state(self, actor_id: str) -> dict[str, object]:
+        return self._need_tension_store.read(actor_id)
+
+    def get_need_tension_state_record(self, actor_id: str) -> NeedTensionState:
+        return self._need_tension_store.read_record(actor_id)
 
     def get_goal_state(self, actor_id: str) -> dict[str, object]:
         return self._goal_state_store.read(actor_id)
@@ -1430,7 +1463,6 @@ class CharacterAgentRuntime:
             )
             return
         continuity = self._continuity_state_for(actor_id)
-        previous_target = continuity.ongoing_contact_target
         previous_transition = continuity.last_transition_kind
         continuity.interrupted_action = request_type
         continuity.last_transition_kind = "execution_requested"
@@ -2766,6 +2798,54 @@ class CharacterAgentRuntime:
 
     def _effective_profile_payload(self, actor_id: str) -> dict[str, object]:
         return resolve_effective_profile(self._profile_payload(actor_id))
+
+    def _need_tension_event_payload(self, event: CharacterPerceivedEvent) -> dict[str, object]:
+        payload = event.model_dump()
+        payload["event_tags"] = self._derived_need_tension_event_tags(event)
+        return payload
+
+    def _need_tension_delta_payload(self, need_delta) -> dict[str, object]:
+        payload = need_delta.as_mapping()
+        ranked_needs = self._ranked_need_pressures(payload)
+        if ranked_needs:
+            payload.setdefault("dominant_need", ranked_needs[0][0])
+            if len(ranked_needs) > 1:
+                payload.setdefault("secondary_need", ranked_needs[1][0])
+            payload.setdefault("motivation_stack", [need_key for need_key, _ in ranked_needs])
+        return payload
+
+    def _derived_need_tension_event_tags(self, event: CharacterPerceivedEvent) -> list[str]:
+        tag_sources = (
+            event.perceived_summary,
+            event.target_ref,
+            event.target_environment_id,
+            event.target_object_id,
+            event.target_actor_id,
+        )
+        normalized = " ".join(str(value).lower() for value in tag_sources if str(value).strip() != "")
+        tags: list[str] = []
+        if "spatial_uncertainty" in normalized or "unstable doorway" in normalized:
+            tags.append("spatial_uncertainty")
+        if "public_dismissal" in normalized or "public dismissal" in normalized:
+            tags.append("public_dismissal")
+        return tags
+
+    def _ranked_need_pressures(self, payload: dict[str, object]) -> list[tuple[str, float]]:
+        need_pressures: list[tuple[str, float]] = []
+        for need_key in (
+            "physiological",
+            "safety",
+            "belonging",
+            "esteem",
+            "self_actualization",
+        ):
+            value = payload.get(f"{need_key}_pressure")
+            if isinstance(value, bool) or not isinstance(value, int | float):
+                continue
+            if float(value) <= 0.0:
+                continue
+            need_pressures.append((need_key, float(value)))
+        return sorted(need_pressures, key=lambda item: (-item[1], item[0]))
 
     def _rehydrate_runtime_state_from_timeline(self) -> None:
         for actor_id, events in self._session_store.list_all_events().items():

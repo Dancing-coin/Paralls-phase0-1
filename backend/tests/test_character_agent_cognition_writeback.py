@@ -43,6 +43,8 @@ class _StubL2:
         supervision_state=None,
         unresolved_tensions=None,
         background_agenda_state=None,
+        effective_profile=None,
+        need_tension_state=None,
     ) -> dict[str, object]:
         return {
             "task_kind": "l2_reasoning",
@@ -58,6 +60,8 @@ class _StubL2:
                 "supervision_state": dict(supervision_state or {}),
                 "unresolved_tensions": list(unresolved_tensions or []),
                 "background_agenda_state": dict(background_agenda_state or {}),
+                "effective_profile": dict(effective_profile or {}),
+                "need_tension_state": dict(need_tension_state or {}),
             },
         }
 
@@ -74,6 +78,8 @@ class _StubL2:
         supervision_state=None,
         unresolved_tensions=None,
         background_agenda_state=None,
+        effective_profile=None,
+        need_tension_state=None,
     ) -> CharacterInterpretation:
         return CharacterInterpretation(
             actor_id=event.actor_id,
