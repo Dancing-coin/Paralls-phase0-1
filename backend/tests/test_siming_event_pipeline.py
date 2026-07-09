@@ -10,6 +10,7 @@ from app.services.siming_character_dispatch_adapter import SimingCharacterDispat
 from app.services.siming_event_consumer import SimingEventConsumer
 from app.services.siming_event_pipeline import SimingEventPipeline
 from app.services.siming_event_producer import SimingEventProducer
+from app.services.frontend_authority_event_projection import FrontendAuthorityEventProjector
 from app.services.siming_llm_provider import FakeSimingLlmCandidateProvider
 from app.services.siming_runtime import SimingRuntime
 from app.world_runtime.intelligence_upgrade import SampleInputRef
@@ -254,7 +255,7 @@ def test_pipeline_dispatches_new_character_input_outputs_through_adapter() -> No
     snapshot = character_runtime.get_private_snapshot("char_b")
     timeline = character_runtime.get_session_timeline("char_b")
 
-    assert dispatched.routing.target_ids == ["char_b"]
+    assert dispatched.routing.target_ids == ["char_b", "frontend_projector"]
     assert dispatched.correlation_id == "visual_fact:300"
     assert snapshot is not None
     assert snapshot.last_siming_catalyst == "surface established fact"
@@ -455,3 +456,46 @@ def test_pipeline_canonical_bundle_ingestion_records_read_model_without_decision
         for output in result.outputs
     )
     assert not any(event.event_type.startswith("siming.") for event in bus.list_events(room_id="room_demo"))
+
+
+def test_frontend_projector_projects_inner_prompt_as_presentation_only() -> None:
+    projector = FrontendAuthorityEventProjector()
+    event = AuthorityEvent.model_validate(
+        {
+            "event_id": "siming:inner_prompt:1",
+            "event_type": "siming.inner_prompt",
+            "producer_ts": 101,
+            "room_id": "room_demo",
+            "scene_id": "scene_demo",
+            "zone_id": "zone_focus",
+            "source": {"layer": "L2", "system": "siming.dispatcher", "actor_id": None},
+            "routing": {
+                "audience_mode": "targeted",
+                "routing_mode": "event_type",
+                "target_ids": ["frontend_projector"],
+            },
+            "priority": "p1",
+            "ttl": 5000,
+            "durability": "realtime",
+            "causation_id": "cause:1",
+            "correlation_id": "corr:1",
+            "payload": {
+                "target_actor_id": "player",
+                "prompt_text": "Something about the letter feels wrong.",
+                "intensity": 0.2,
+                "evidence_refs": ["public_fact:letter_seen"],
+                "player_facing": True,
+                "non_authoritative": True,
+                "presentation_effects": ["narration_text"],
+            },
+        }
+    )
+
+    projected = projector.handle_event(event)
+
+    assert projected is not None
+    assert projected["type"] == "siming_inner_prompt"
+    assert projected["target_actor_id"] == "player"
+    assert projected["non_authoritative"] is True
+    assert "backend_action_request" not in projected
+    assert "world_mutation" not in projected

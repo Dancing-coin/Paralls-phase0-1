@@ -47,7 +47,7 @@ def _local_runtime() -> CharacterAgentRuntime:
 
 def make_siming_event(
     *,
-    event_type: str = "siming.impulse",
+    event_type: str = "siming.fact_reveal",
     target_ids: list[str] | None = None,
 ) -> AuthorityEvent:
     return AuthorityEvent.model_validate(
@@ -154,3 +154,46 @@ def test_adapter_deduplicates_duplicate_target_ids_per_actor() -> None:
 
     assert [entry.actor_id for entry in result.delivery_inputs] == ["char_a", "char_b"]
     assert len(result.commands_by_actor) == 2
+
+
+def test_inner_prompt_is_not_dispatched_to_character_runtime() -> None:
+    runtime = _local_runtime()
+    adapter = SimingCharacterDispatchAdapter(runtime=runtime)
+    event = make_siming_event(event_type="siming.inner_prompt", target_ids=["frontend_projector"])
+    event.payload.update(
+        {
+            "target_actor_id": "player",
+            "prompt_text": "Something about the letter feels wrong.",
+            "intensity": 0.2,
+            "evidence_refs": ["public_fact:letter_seen"],
+            "player_facing": True,
+            "non_authoritative": True,
+            "presentation_effects": ["narration_text"],
+        }
+    )
+
+    result = adapter.dispatch(event)
+
+    assert result.delivery_inputs == []
+    assert result.commands_by_actor == {}
+
+
+def test_player_impulse_hint_is_rejected_by_dispatch_adapter() -> None:
+    runtime = _local_runtime()
+    adapter = SimingCharacterDispatchAdapter(runtime=runtime)
+    event = make_siming_event(event_type="siming.impulse", target_ids=["player"])
+    event.payload.update(
+        {
+            "target_actor_id": "player",
+            "target_actor_control": "player",
+            "impulse_axis": "narrative",
+            "intensity": 0.2,
+            "evidence_refs": ["public_fact:letter_seen"],
+        }
+    )
+
+    result = adapter.dispatch(event)
+
+    assert result.delivery_inputs == []
+    assert result.commands_by_actor == {}
+    assert result.audit_summaries
