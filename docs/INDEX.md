@@ -12,7 +12,7 @@
 - `docs/ai-engineering-workflow.md`：OpenSpec、Superpowers、Harness、Goal 和原生子智能体工作流。
 - `docs/STRUCTURE.md`：文档目录建设方案、命名规则、迁移阶段和维护规则。
 - `PHASE0_README.md`：工作区简要说明和验证入口。
-- `docs/character/character-mind-core-status.md`：用中文定义“完整 character mind core”在当前仓库中的含义。
+- `docs/character/character-mind-core-status.md`：用中文定义“完整 character mind core”在当前仓库中的含义，并区分 authored profile truth、runtime state 与 long-term drift。
 - `docs/harness.md`：可重复验证的 Harness Engineering 命令面。
 - `docs/架构/运行时/运行时命名边界审计.md`：运行时命名边界审计和迁移表。
 - `docs/架构/整体架构.md`：仓库级整体架构总纲，内含手绘式 Markdown 架构图，覆盖 Godot、后端、世界运行时、System L6 事件总线、角色智能体、ESM、Siming、模型服务、Harness 和非运行时支撑面。
@@ -26,7 +26,7 @@
 - `docs/架构/运行时/图表/整体运行时数据流图.md`：可渲染 Mermaid 数据流图，覆盖 L1/PQF、交互结果合并、角色智能体投递、Siming 投影、VLA 运行时和模型服务边界。
 - `docs/架构/运行时/模块/SystemL1.md`：System L1 模块文档，覆盖事实、provider、PQF 和结算边界。
 - `docs/架构/运行时/模块/SystemL6事件总线.md`：System L6 模块文档，覆盖 authority event bus、路由、投影、回放和审计辅助边界。
-- `docs/架构/运行时/模块/角色智能体.md`：角色智能体模块文档，覆盖 L1/L2/L3/L4、记忆、投递和兼容边界。
+- `docs/架构/运行时/模块/角色智能体.md`：角色智能体模块文档，覆盖 L1/L2/L3/L4、记忆、投递、needs/affect runtime 分层，以及 `L1RuntimePerceptionBridge` / `System L6` / `ESM` 的边界。
 - `docs/架构/运行时/模块/ESM与交互编排.md`：ESM、交互编排和物理通道模块文档。
 - `docs/架构/运行时/模块/Godot表现与角色入口.md`：Godot 表现、输入、provider 和角色入口模块文档。
 - `docs/架构/运行时/模块/VLA运行时通道.md`：已实现的 VLA 视觉/空间运行时慢路径和无直接 authority 写权限边界。
@@ -143,6 +143,14 @@
 - `python scripts/verification/verify_character_director_observatory.py`
 - `python scripts/verification/verify_phase1_slice.py`
 - `python scripts/verification/verify_phase0.py`
+
+角色 needs / affect / drift 聚焦验证：
+
+- `pytest backend/tests/test_character_profile_needs_schema.py -v`
+- `pytest backend/tests/test_need_tension_engine.py -v`
+- `pytest backend/tests/test_affect_engine.py -v`
+- `pytest backend/tests/test_character_runtime_needs_affect_flow.py -v`
+- `pytest backend/tests/test_personality_drift_gate.py -v`
 
 报告写入 `.harness/verification/`。
 

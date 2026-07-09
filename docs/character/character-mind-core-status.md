@@ -2,7 +2,7 @@
 
 状态: `current-truth`
 
-更新时间: `2026-06-29`
+更新时间: `2026-07-09`
 
 ## 这份文档回答什么
 
@@ -80,6 +80,14 @@
 - capability/constraint layer
 - style/expression bias layer
 - conversation personality layer
+- `need_hierarchy_layer`
+- `temperament_response_layer`
+
+并且继续明确分层：
+
+- authored profile truth 仍是长期角色主档案
+- `long_term_personality_drift_layer` 只是被系统承认的长期沉淀层
+- 运行时即时状态不能反向伪装成 authored profile truth
 
 ### 2. `L1` 是完整的角色私有感知入口
 
@@ -121,14 +129,25 @@
 
 dynamic state 不能被糊进别的层里。
 
-当前至少包括：
+当前至少包括两层运行态：
+
+- 独立的 `NeedTensionState`
+- 仍然独立存在的 `CharacterDynamicState`
+
+其中 `CharacterDynamicState` 当前按三组语义组织：
+
+- affect group
+- tension group
+- motivation group
+
+覆盖例如：
 
 - vigilance
 - distraction
-- stress
+- affect valence
+- stress load
 - social pressure
 - masking pressure
-- affect valence
 - motivation stack
 - unresolved conflicts
 
@@ -141,7 +160,7 @@ dynamic state 不能被糊进别的层里。
 - belief deltas
 - social deltas
 - higher-order deltas
-- dynamic-state delta
+- `dynamic_state_delta`
 - goal hints
 - reasoning trace summary
 
@@ -151,6 +170,13 @@ dynamic state 不能被糊进别的层里。
 - world evidence
 - body evidence
 - Siming pressure evidence
+
+并且现在这条链已经更明确：
+
+- `L2 -> dynamic_state_delta`
+- `dynamic_state_delta -> runtime dynamic state writeback`
+- `runtime state / outcome evidence -> long-term drift candidate chain`
+- 长期候选只有经过 gate 才能沉淀进 `long_term_personality_drift_layer`
 
 ### 6. 目标系统是正式一层
 
@@ -263,6 +289,17 @@ CharacterPerceivedEvent / SelfBodyPerceivedEvent / siming_output
 
 当前已进入 runtime 消费，不再只是静态摆设。
 
+当前已明确包含：
+
+- `need_hierarchy_layer`
+- `temperament_response_layer`
+
+并继续与下列层分开：
+
+- `NeedTensionState`
+- `CharacterDynamicState`
+- `long_term_personality_drift_layer`
+
 ### `L1` 感知层
 
 已完成为真实角色私有感知层。
@@ -302,11 +339,18 @@ CharacterPerceivedEvent / SelfBodyPerceivedEvent / siming_output
 当前有：
 
 - typed model
+- `NeedTensionState` typed model
 - store
 - merge semantics
 - runtime exposure
 - working-memory integration
 - observability carry-through
+
+当前语义也已经拆清：
+
+- `NeedTensionState` 保存需求压力、近期满足/受挫趋势与主导需求
+- `CharacterDynamicState` 拆为 affect / tension / motivation 三组
+- 长期 drift 不直接写回 authored profile truth
 
 ### `L2` 理解层
 
@@ -317,11 +361,19 @@ CharacterPerceivedEvent / SelfBodyPerceivedEvent / siming_output
 - belief deltas
 - social deltas
 - higher-order deltas
-- dynamic-state delta
+- `dynamic_state_delta`
 - goal hints
 - reasoning trace summary
 
 并且 local/offline cognition 已统一进 `CharacterCognitionEngine`。
+
+同时新增了明确的 needs/affect/drift 运行时链：
+
+- `effective_profile = authored profile truth + long_term_personality_drift_layer`
+- `NeedTensionEngine` 先更新 `NeedTensionState`
+- `AffectEngine` 再导出 `dynamic_state_delta`
+- `L2` 消费 `NeedTensionState` 与 `CharacterDynamicState`
+- 长期 drift 候选链只从 runtime evidence 累积，不直接把瞬时状态写回主档案
 
 ### 目标系统
 
@@ -412,19 +464,28 @@ CharacterPerceivedEvent / SelfBodyPerceivedEvent / siming_output
 
 ## 当前完成证据
 
-当前 fresh 证据：
+既有 harness 证据：
 
 - `.harness/verification/phase0-report.md` -> `Overall: True`
 - `.harness/verification/character-agent-execution-report.md` -> `overall_character_agent_execution_passed=True`
 - `.harness/verification/character-director-observatory-report.md` -> `overall_character_director_observatory_passed=True`
-- `python -m pytest -q` -> `934 passed`
+
+本次 needs/affect/drift 变更的聚焦验证入口和已执行证明：
+
+- `pytest backend/tests/test_character_profile_needs_schema.py -v`
+- `pytest backend/tests/test_need_tension_engine.py -v`
+- `pytest backend/tests/test_affect_engine.py -v`
+- `pytest backend/tests/test_character_runtime_needs_affect_flow.py -v`
+- `pytest backend/tests/test_personality_drift_gate.py -v`
+- focused suite -> `34 passed`
+- `python scripts/verification/harness.py --profile docs` -> `overall_docs_passed=True`
 
 这意味着：
 
 - 心智核心没有停留在设计层
-- 它已经通过了 fresh backend proof
-- 也通过了 fresh runtime smoke proof
-- 也通过了 fresh observability proof
+- 它已经通过了当前聚焦 backend proof
+- 既有 harness evidence 仍记录 runtime smoke proof
+- 既有 harness evidence 仍记录 observability proof
 
 ## 最准确的一句话
 
