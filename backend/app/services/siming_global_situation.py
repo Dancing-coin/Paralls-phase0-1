@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -19,6 +20,36 @@ SituationSourceKind = Literal[
     "vla_global_advisory",
     "multi_actor_patch",
 ]
+
+PRIVATE_REF_NAMESPACE_PREFIXES = (
+    "character_private_cache",
+    "character_private_context",
+    "character_private",
+    "character_mm",
+    "private_cache",
+    "private_patch",
+    "patch_session",
+    "patch_context",
+    "inference_history",
+)
+
+_PRIVATE_REF_NAMESPACE_PATTERN = re.compile(
+    r"(^|[:/])("
+    + "|".join(re.escape(prefix) for prefix in PRIVATE_REF_NAMESPACE_PREFIXES)
+    + r")(?=[:_]|$)"
+)
+
+_REF_FIELD_HINTS = {
+    "ref",
+    "refs",
+    "id",
+    "ids",
+    "lineage",
+    "context",
+    "conflict",
+    "conflicts",
+    "source",
+}
 
 
 class SituationEvidenceRef(BaseModel):
@@ -90,7 +121,6 @@ class SimingGlobalSituationLayer:
         multi_actor_patch: dict[str, object] | None = None,
         producer_ts: int = 0,
     ) -> SimingGlobalSituationSnapshot:
-        self._reject_private_inputs(context_id, multi_actor_patch or {}, vla_global_findings or [])
         l1_projected_facts = l1_projected_facts or []
         authority_events = authority_events or []
         world_results = world_results or []
@@ -98,6 +128,7 @@ class SimingGlobalSituationLayer:
         evidence_events = evidence_events or []
         vla_global_findings = vla_global_findings or []
         multi_actor_patch = multi_actor_patch or {}
+        self._reject_private_inputs(context_id, l1_projected_facts, multi_actor_patch, vla_global_findings)
 
         evidence_chain: list[SituationEvidenceRef] = []
         evidence_chain.extend(self._l1_fact_evidence(l1_projected_facts))
@@ -336,11 +367,45 @@ class SimingGlobalSituationLayer:
     def _reject_private_inputs(
         self,
         context_id: str,
+        l1_projected_facts: list[str],
         multi_actor_patch: dict[str, object],
         vla_global_findings: list[dict[str, object]],
     ) -> None:
         if not context_id.startswith("siming_mm:"):
             raise ValueError("Siming global situation context must use siming_mm namespace")
-        serialized = f"{multi_actor_patch} {vla_global_findings}"
-        if "character_mm:" in serialized or "character_private" in serialized:
-            raise ValueError("Siming global situation cannot read character private cache")
+        self._reject_private_ref_tree({"context_id": context_id})
+        self._reject_private_ref_tree({"l1_projected_fact_refs": l1_projected_facts})
+        self._reject_private_ref_tree(multi_actor_patch)
+        self._reject_private_ref_tree({"vla_global_findings": vla_global_findings})
+
+    def _reject_private_ref_tree(self, value: object, *, key: object = "") -> None:
+        if isinstance(value, dict):
+            for child_key, child_value in value.items():
+                if _should_scan_private_ref_field(child_key):
+                    self._reject_private_ref_value(child_value, key=child_key)
+                if isinstance(child_value, dict | list):
+                    self._reject_private_ref_tree(child_value, key=child_key)
+            return
+        if isinstance(value, list):
+            for item in value:
+                if _should_scan_private_ref_field(key):
+                    self._reject_private_ref_value(item, key=key)
+                if isinstance(item, dict | list):
+                    self._reject_private_ref_tree(item, key=key)
+
+    def _reject_private_ref_value(self, value: object, *, key: object) -> None:
+        if isinstance(value, str) and _contains_private_ref_marker(value):
+            raise ValueError(f"Siming global situation cannot read private ref in {key}")
+        if isinstance(value, list):
+            for item in value:
+                self._reject_private_ref_value(item, key=key)
+
+
+def _should_scan_private_ref_field(key: object) -> bool:
+    if not isinstance(key, str):
+        return False
+    return any(part in _REF_FIELD_HINTS for part in key.lower().split("_"))
+
+
+def _contains_private_ref_marker(value: str) -> bool:
+    return bool(_PRIVATE_REF_NAMESPACE_PATTERN.search(value.strip()))

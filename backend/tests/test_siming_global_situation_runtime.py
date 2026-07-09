@@ -85,6 +85,80 @@ def test_siming_global_situation_rejects_character_private_cache() -> None:
         )
 
 
+def test_runtime_dispatch_emits_global_fact_reveal_provenance_fields() -> None:
+    layer = SimingGlobalSituationLayer()
+    snapshot = layer.assemble_snapshot(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        context_id="siming_mm:room_demo:scene_demo",
+        l1_projected_facts=["authority_event:visual_fact:300"],
+        world_results=[{"result_id": "world_result:1", "result_type": "environment_state_result"}],
+        vla_global_findings=[
+            {
+                "ref_id": "vla_advisory:conflict:shadow_direction",
+                "conflicts_with": "authority_event:visual_fact:300",
+            }
+        ],
+        producer_ts=90,
+    )
+
+    assert snapshot.snapshot_id == "siming_situation:room_demo:scene_demo:90"
+    assert "authority_event:visual_fact:300" in snapshot.public_fact_refs
+    assert "world_result:1" in snapshot.world_result_refs
+    assert snapshot.conflict_refs
+
+
+@pytest.mark.parametrize(
+    "private_ref",
+    [
+        "character_mm:char_a:memory:1",
+        "character_mm_hidden",
+        "character_private:hidden_note",
+        "character_private_context",
+        "character_private_cache:char_a",
+        "private_cache:hidden_note",
+        "private_patch:hidden_note",
+        "patch_session:hidden_note",
+        "patch_context:hidden_note",
+        "inference_history:hidden_note",
+    ],
+)
+def test_global_situation_rejects_private_refs_in_ref_bearing_fields(private_ref: str) -> None:
+    layer = SimingGlobalSituationLayer()
+
+    with pytest.raises(ValueError, match="private"):
+        layer.assemble_snapshot(
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            context_id="siming_mm:room_demo:scene_demo",
+            l1_projected_facts=[private_ref],
+            producer_ts=91,
+        )
+
+
+def test_global_situation_does_not_scan_prose_fields_for_private_ref_markers() -> None:
+    layer = SimingGlobalSituationLayer()
+
+    snapshot = layer.assemble_snapshot(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        context_id="siming_mm:room_demo:scene_demo",
+        multi_actor_patch={"guidance": "private_cache:hidden_note"},
+        vla_global_findings=[
+            {
+                "ref_id": "vla_global:prose_keys:1",
+                "guidance": "character_mm_hidden",
+            }
+        ],
+        producer_ts=92,
+    )
+
+    assert snapshot.snapshot_id == "siming_situation:room_demo:scene_demo:92"
+
+
 def test_siming_global_situation_keeps_public_multi_actor_patch_anchor_without_private_context() -> None:
     layer = SimingGlobalSituationLayer()
     snapshot = layer.assemble_snapshot(

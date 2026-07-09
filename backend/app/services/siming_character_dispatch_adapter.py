@@ -6,6 +6,7 @@ from typing import cast
 
 from app.models.authority_event import AuthorityEvent
 from app.models.character_agent_runtime import CharacterGoalCommand
+from app.models.siming_catalyst import SimingCatalystInput
 from app.models.siming_character_bridge import (
     CharacterDeliveryAuditSummary,
     SimingCharacterCompatibilityInput,
@@ -42,6 +43,22 @@ class SimingCharacterDispatchAdapter:
             return SimingCharacterDispatchResult()
 
         message_id = str(event.payload.get("message_id", "") or event.event_id)
+        try:
+            catalyst = SimingCatalystInput.from_authority_event(event)
+        except ValueError:
+            return SimingCharacterDispatchResult(
+                audit_summaries=[
+                    CharacterDeliveryAuditSummary(
+                        message_id=message_id,
+                        delivery_id=f"delivery:{message_id}:rejected",
+                        actor_id=str(event.payload.get("target_actor_id", "") or event.routing.target_ids[0] if event.routing.target_ids else "*"),
+                        status="rejected_by_filter",
+                        producer_ts=event.producer_ts,
+                        causation_id=event.causation_id,
+                        correlation_id=event.correlation_id,
+                    )
+                ]
+            )
         if self._is_expired(event):
             return SimingCharacterDispatchResult(
                 audit_summaries=[
@@ -60,6 +77,8 @@ class SimingCharacterDispatchAdapter:
         result = SimingCharacterDispatchResult()
         seen_actor_ids: set[str] = set()
         for actor_id in event.routing.target_ids:
+            if actor_id == "frontend_projector":
+                continue
             if actor_id in seen_actor_ids:
                 continue
             seen_actor_ids.add(actor_id)
@@ -91,10 +110,13 @@ class SimingCharacterDispatchAdapter:
                 zone_id=event.zone_id,
                 causation_id=event.causation_id,
                 correlation_id=event.correlation_id,
-                presentation_hint=self._optional_str(event.payload.get("presentation_hint")),
+                presentation_hint=catalyst.presentation_hint,
+                pressure_hint=catalyst.pressure_hint,
+                salience_boost=catalyst.salience_boost,
+                reason_scope=catalyst.reason_scope,
                 target_actor_id=actor_id,
-                target_object_id=self._optional_str(event.payload.get("target_object_id")),
-                target_environment_id=self._optional_str(event.payload.get("target_environment_id")),
+                target_object_id=catalyst.target_object_id,
+                target_environment_id=catalyst.target_environment_id,
             )
             result.delivery_inputs.append(delivery_input)
             result.commands_by_actor[actor_id] = self._runtime.ingest_siming_output(delivery_input)
@@ -105,7 +127,3 @@ class SimingCharacterDispatchAdapter:
         if event.ttl is None:
             return False
         return self._now_ts_provider() > event.producer_ts + event.ttl
-
-    def _optional_str(self, value: object) -> str | None:
-        rendered = str(value or "").strip()
-        return rendered or None

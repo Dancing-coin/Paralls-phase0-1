@@ -154,7 +154,7 @@ def reset_runtime_state() -> None:
         character_dispatch_adapter=FrontendSimingCharacterDispatchAdapter(runtime=character_agent_runtime),
     )
     for event_type in SimingEventConsumer.ALLOWED_EVENT_TYPES:
-        authority_event_bus.subscribe(event_type, siming_event_pipeline.handle_event)
+        authority_event_bus.subscribe(event_type, siming_event_pipeline.handle_event, consumer_id="siming")
     frontend_authority_event_projector = FrontendAuthorityEventProjector()
     character_agent_l4_executor = CharacterAgentL4Executor()
     character_agent_l4_adapter = CharacterAgentL4Adapter(executor=character_agent_l4_executor)
@@ -163,7 +163,11 @@ def reset_runtime_state() -> None:
     world_outcome_debug_projection = WorldOutcomeDebugProjection()
     script_beat_projection = ScriptBeatProjection()
     for event_type in FRONTEND_AUTHORITY_EVENT_TYPES:
-        authority_event_bus.subscribe(event_type, frontend_authority_event_projector.handle_event)
+        authority_event_bus.subscribe(
+            event_type,
+            frontend_authority_event_projector.handle_event,
+            consumer_id="frontend_projector",
+        )
     debug_stream.clear()
 
 
