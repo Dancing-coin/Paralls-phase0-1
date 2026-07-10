@@ -1,7 +1,7 @@
 # 当前项目司命天道知识图谱与故事节点运行时设计
 
 - 日期：`2026-07-11`
-- 状态：`proposed`
+- 状态：`approved`
 - 设计范围：司命长期记忆、完整知识图谱、故事线/义务、玩家分支、美术资源能力复用、自适应桥接节点
 - 替代规格：
   - [2026-07-08-current-project-siming-perspective-graph-design.md](2026-07-08-current-project-siming-perspective-graph-design.md)
