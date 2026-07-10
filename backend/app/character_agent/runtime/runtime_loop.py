@@ -27,6 +27,7 @@ from app.character_agent.models.supervision import (
     CharacterSupervisionState,
     CharacterUnresolvedTension,
 )
+from app.character_agent.mind.frame_builder import CharacterMindFrameBuilder
 from app.models.character_agent_runtime import CharacterGoalCommand
 from app.models.character_agent_runtime import CHARACTER_AGENT_CONTROL_MODES
 from app.models.character_agent_runtime import CHARACTER_ACTOR_AUTONOMY_MODES
@@ -72,6 +73,7 @@ class CharacterAgentRuntime:
         self._l3 = CharacterAgentL3Service()
         self._l4 = CharacterAgentL4Adapter()
         self._l4_executor = CharacterAgentL4Executor()
+        self._mind_frame_builder = CharacterMindFrameBuilder()
         self._observatory_projection = CharacterAgentDebugProjection()
         self._control_modes = self._build_default_control_modes()
         self._pending_suggestions: list[CharacterSuggestionPacket] = []
@@ -1027,6 +1029,35 @@ class CharacterAgentRuntime:
 
     def get_goal_state_history_records(self, actor_id: str) -> list[CharacterGoalStateRecord]:
         return self._goal_state_store.history_records(actor_id)
+
+    def build_shadow_mind_frame(
+        self,
+        *,
+        actor_id: str,
+        producer_ts: int,
+        trigger_event: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        snapshot = self._l1.get_snapshot(actor_id)
+        snapshot_payload = snapshot.model_dump() if snapshot is not None else {}
+        if snapshot is not None:
+            focus_target = self._snapshot_focus_target(snapshot)
+            if focus_target:
+                snapshot_payload.setdefault("current_focus_target", focus_target)
+        frame = self._mind_frame_builder.build_frame(
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+            trigger_event=trigger_event or {},
+            snapshot=snapshot_payload,
+            effective_profile=self._effective_profile_payload(actor_id),
+            memory_bundle=self.get_memory_bundle(actor_id),
+            need_tension_state=self.get_need_tension_state(actor_id),
+            dynamic_state=self.get_dynamic_state(actor_id),
+            current_goal_state=self.get_goal_state(actor_id),
+            goal_state_history=self.get_goal_state_history(actor_id),
+            unresolved_tensions=self.get_unresolved_tensions(actor_id),
+            supervision_state=self.get_supervision_state(actor_id),
+        )
+        return frame.model_dump()
 
     def run_background_cognition_tick(
         self,
