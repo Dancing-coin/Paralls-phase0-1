@@ -1,0 +1,365 @@
+from __future__ import annotations
+
+from copy import deepcopy
+
+from app.character_agent.gateway.context_builder import CharacterContextBuilder
+from app.character_agent.models.mind_frame import (
+    CharacterMindFrame,
+    CharacterMindFrameTrigger,
+    MentalFactorProjectionCard,
+    MindFrameLayer,
+    MindFrameProvenance,
+)
+
+
+class CharacterMindFrameBuilder:
+    def build_frame(
+        self,
+        *,
+        actor_id: str,
+        producer_ts: int,
+        trigger_event: dict[str, object] | None = None,
+        snapshot: dict[str, object] | None = None,
+        effective_profile: dict[str, object] | None = None,
+        memory_bundle: dict[str, list[dict[str, object]]] | None = None,
+        need_tension_state: dict[str, object] | None = None,
+        dynamic_state: dict[str, object] | None = None,
+        current_goal_state: dict[str, object] | None = None,
+        goal_state_history: list[dict[str, object]] | None = None,
+        unresolved_tensions: list[dict[str, object]] | None = None,
+        supervision_state: dict[str, object] | None = None,
+        skill_affordance_summary: dict[str, object] | None = None,
+        action_affordance_summary: dict[str, object] | None = None,
+    ) -> CharacterMindFrame:
+        trigger_payload = trigger_event or {}
+        normalized_memory = self._snapshot_mapping(
+            CharacterContextBuilder.normalize_memory_bundle(memory_bundle)
+        )
+        effective_profile_payload = self._snapshot_mapping(effective_profile)
+        snapshot_payload = self._snapshot_mapping(snapshot)
+        need_payload = self._snapshot_mapping(need_tension_state)
+        dynamic_payload = self._snapshot_mapping(dynamic_state)
+        goal_payload = self._snapshot_mapping(current_goal_state)
+        goal_history_payload = self._snapshot_list(goal_state_history)
+        tensions_payload = self._snapshot_list(unresolved_tensions)
+        supervision_payload = self._snapshot_mapping(supervision_state)
+        skill_payload = self._snapshot_mapping(skill_affordance_summary)
+        action_payload = self._snapshot_mapping(action_affordance_summary)
+        mind_turn_id = f"mind_turn:{actor_id}:{producer_ts}"
+
+        return CharacterMindFrame(
+            actor_id=actor_id,
+            mind_turn_id=mind_turn_id,
+            producer_ts=producer_ts,
+            trigger=CharacterMindFrameTrigger(
+                event_id=str(
+                    trigger_payload.get("event_id", "")
+                    or trigger_payload.get("source_event_id", "")
+                    or ""
+                ),
+                event_type=str(
+                    trigger_payload.get("event_type", "")
+                    or trigger_payload.get("type", "")
+                    or ""
+                ),
+                source_stage=str(trigger_payload.get("source_stage", "") or ""),
+            ),
+            enduring_truth=self._enduring_truth_layer(actor_id, effective_profile_payload),
+            memory_evidence=self._memory_evidence_layer(actor_id, normalized_memory),
+            runtime_state=self._runtime_state_layer(
+                snapshot=snapshot_payload,
+                need_tension_state=need_payload,
+                dynamic_state=dynamic_payload,
+                current_goal_state=goal_payload,
+                goal_state_history=goal_history_payload,
+                unresolved_tensions=tensions_payload,
+                supervision_state=supervision_payload,
+            ),
+            affordances=self._affordance_layer(
+                skill_affordance_summary=skill_payload,
+                action_affordance_summary=action_payload,
+            ),
+            provenance=MindFrameProvenance(
+                source_refs=self._source_refs(actor_id, normalized_memory, goal_payload),
+            ),
+        )
+
+    def _enduring_truth_layer(
+        self,
+        actor_id: str,
+        effective_profile: dict[str, object],
+    ) -> MindFrameLayer:
+        identity = effective_profile.get("identity_core", {})
+        if not isinstance(identity, dict):
+            identity = {}
+        trait_vector = effective_profile.get("trait_vector_layer", {})
+        if not isinstance(trait_vector, dict):
+            trait_vector = {}
+        values = effective_profile.get("virtue_value_layer", {})
+        if not isinstance(values, dict):
+            values = {}
+        red_lines = values.get("red_lines", [])
+        if not isinstance(red_lines, list):
+            red_lines = []
+
+        card = MentalFactorProjectionCard(
+            factor_type="effective_profile",
+            layer="enduring_truth",
+            scope="actor_private",
+            horizon="long_term",
+            confidence=1.0,
+            freshness="current",
+            summary=str(identity.get("canonical_name", "") or actor_id),
+            payload={
+                "identity_core": identity,
+                "trait_vector_keys": sorted(trait_vector),
+                "red_lines": red_lines,
+            },
+            source_refs=[f"profile:{actor_id}"],
+        )
+        return MindFrameLayer(cards=[card], summary={"profile_actor_id": actor_id})
+
+    def _memory_evidence_layer(
+        self,
+        actor_id: str,
+        memory: dict[str, list[dict[str, object]]],
+    ) -> MindFrameLayer:
+        event_memories = memory.get("event_memories", [])
+        observation_memories = memory.get("observation_memories", [])
+        knowledge_memories = memory.get("knowledge_memories", [])
+        social_memories = memory.get("social_memories", [])
+        higher_order_memories = memory.get("higher_order_memories", [])
+        cards = [
+            MentalFactorProjectionCard(
+                factor_type="memory_activation",
+                layer="memory_evidence",
+                scope="actor_private",
+                horizon="scene",
+                confidence=0.8,
+                freshness="recent",
+                summary=self._first_summary(event_memories, "summary"),
+                payload={
+                    "event_memory_count": len(event_memories),
+                    "observation_memory_count": len(observation_memories),
+                    "knowledge_memory_count": len(knowledge_memories),
+                    "higher_order_memory_count": len(higher_order_memories),
+                },
+                source_refs=self._memory_refs(
+                    "memory",
+                    event_memories
+                    + observation_memories
+                    + knowledge_memories
+                    + higher_order_memories,
+                ),
+            ),
+            MentalFactorProjectionCard(
+                factor_type="relationship_context",
+                layer="memory_evidence",
+                scope="actor_private",
+                horizon="scene",
+                confidence=0.8,
+                freshness="recent",
+                summary=self._relationship_summary(social_memories),
+                payload={
+                    "target_count": len(social_memories),
+                    "top_target": str(social_memories[0].get("entity_id", "") or "")
+                    if social_memories
+                    else "",
+                },
+                source_refs=[
+                    f"social_memory:{actor_id}:{entry.get('entity_id', '')}"
+                    for entry in social_memories
+                    if str(entry.get("entity_id", "") or "")
+                ],
+            ),
+        ]
+        return MindFrameLayer(
+            cards=cards,
+            summary={
+                "event_memory_count": len(event_memories),
+                "observation_memory_count": len(observation_memories),
+                "knowledge_memory_count": len(knowledge_memories),
+                "social_memory_count": len(social_memories),
+                "higher_order_memory_count": len(higher_order_memories),
+            },
+        )
+
+    def _runtime_state_layer(
+        self,
+        *,
+        snapshot: dict[str, object],
+        need_tension_state: dict[str, object],
+        dynamic_state: dict[str, object],
+        current_goal_state: dict[str, object],
+        goal_state_history: list[dict[str, object]],
+        unresolved_tensions: list[dict[str, object]],
+        supervision_state: dict[str, object],
+    ) -> MindFrameLayer:
+        focus_target = str(
+            snapshot.get("current_focus_target", "") or snapshot.get("attention_target", "") or ""
+        )
+        perception_payload = deepcopy(snapshot)
+        perception_payload["focus_target"] = focus_target
+        cards = [
+            MentalFactorProjectionCard(
+                factor_type="perception_context",
+                layer="runtime_state",
+                summary=focus_target,
+                payload=perception_payload,
+                source_refs=[],
+            ),
+            MentalFactorProjectionCard(
+                factor_type="need_pressure",
+                layer="runtime_state",
+                summary=str(need_tension_state.get("dominant_need", "") or ""),
+                payload=need_tension_state,
+                source_refs=["need_tension_state:current"],
+            ),
+            MentalFactorProjectionCard(
+                factor_type="affective_body_state",
+                layer="runtime_state",
+                summary=f"stress_load={dynamic_state.get('stress_load', 0.0)}",
+                payload=dynamic_state,
+                source_refs=["dynamic_state:current"],
+            ),
+            MentalFactorProjectionCard(
+                factor_type="goal_context",
+                layer="runtime_state",
+                summary=str(current_goal_state.get("primary_goal", "") or ""),
+                payload={
+                    "current_goal_state": current_goal_state,
+                    "goal_state_history_count": len(goal_state_history),
+                },
+                source_refs=["goal_state:current"],
+            ),
+            MentalFactorProjectionCard(
+                factor_type="unresolved_tension",
+                layer="runtime_state",
+                summary=self._first_summary(unresolved_tensions, "summary"),
+                payload={"unresolved_tension_count": len(unresolved_tensions)},
+                source_refs=["unresolved_tensions:current"] if unresolved_tensions else [],
+            ),
+            MentalFactorProjectionCard(
+                factor_type="supervision",
+                layer="runtime_state",
+                summary=str(
+                    supervision_state.get("authorization_level", "")
+                    or supervision_state.get("mode", "")
+                    or ""
+                ),
+                payload=supervision_state,
+                source_refs=["supervision_state:current"] if supervision_state else [],
+            ),
+        ]
+        return MindFrameLayer(
+            cards=cards,
+            summary={
+                "focus_target": focus_target,
+                "dominant_need": str(need_tension_state.get("dominant_need", "") or ""),
+                "primary_goal": str(current_goal_state.get("primary_goal", "") or ""),
+                "unresolved_tension_count": len(unresolved_tensions),
+            },
+        )
+
+    def _affordance_layer(
+        self,
+        *,
+        skill_affordance_summary: dict[str, object],
+        action_affordance_summary: dict[str, object],
+    ) -> MindFrameLayer:
+        cards = [
+            MentalFactorProjectionCard(
+                factor_type="skill_affordance",
+                layer="affordance",
+                summary="skill affordance summary",
+                payload=skill_affordance_summary,
+                source_refs=["skill_affordance:shadow"] if skill_affordance_summary else [],
+            ),
+            MentalFactorProjectionCard(
+                factor_type="action_affordance",
+                layer="affordance",
+                summary="action affordance summary",
+                payload=action_affordance_summary,
+                source_refs=["action_affordance:shadow"] if action_affordance_summary else [],
+            ),
+        ]
+        return MindFrameLayer(
+            cards=cards,
+            summary={
+                "has_skill_affordance": bool(skill_affordance_summary),
+                "has_action_affordance": bool(action_affordance_summary),
+            },
+        )
+
+    def _source_refs(
+        self,
+        actor_id: str,
+        memory: dict[str, list[dict[str, object]]],
+        current_goal_state: dict[str, object],
+    ) -> list[str]:
+        refs = [f"profile:{actor_id}"]
+        refs.extend(self._memory_refs("event_memory", memory.get("event_memories", [])))
+        refs.extend(self._memory_refs("knowledge_memory", memory.get("knowledge_memories", [])))
+        refs.extend(
+            self._memory_refs("higher_order_memory", memory.get("higher_order_memories", []))
+        )
+        refs.extend(
+            [
+                f"social_memory:{actor_id}:{entry.get('entity_id', '')}"
+                for entry in memory.get("social_memories", [])
+                if str(entry.get("entity_id", "") or "")
+            ]
+        )
+        if current_goal_state:
+            refs.append(f"goal_state:{actor_id}:current")
+        return refs
+
+    @staticmethod
+    def _snapshot_mapping(value: object) -> dict[str, object]:
+        if not isinstance(value, dict):
+            return {}
+        return deepcopy(value)
+
+    @staticmethod
+    def _snapshot_list(value: object) -> list[dict[str, object]]:
+        if not isinstance(value, list):
+            return []
+        return [deepcopy(entry) for entry in value if isinstance(entry, dict)]
+
+    @staticmethod
+    def _memory_refs(prefix: str, entries: list[dict[str, object]]) -> list[str]:
+        refs: list[str] = []
+        for entry in entries:
+            value = str(
+                entry.get("memory_id", "")
+                or entry.get("source_event_id", "")
+                or entry.get("proposition_key", "")
+                or ""
+            )
+            if value:
+                refs.append(f"{prefix}:{value}")
+        return refs
+
+    @staticmethod
+    def _first_summary(entries: list[dict[str, object]], key: str) -> str:
+        if not entries:
+            return ""
+        first = entries[0]
+        return str(
+            first.get(key, "")
+            or first.get("observation_summary", "")
+            or first.get("proposition", "")
+            or first.get("meta_belief", "")
+            or ""
+        )
+
+    @staticmethod
+    def _relationship_summary(entries: list[dict[str, object]]) -> str:
+        if not entries:
+            return ""
+        first = entries[0]
+        return "target=%s trust=%s suspicion=%s" % (
+            str(first.get("entity_id", "") or ""),
+            str(first.get("trust_baseline", "") or ""),
+            str(first.get("suspicion_baseline", "") or ""),
+        )
