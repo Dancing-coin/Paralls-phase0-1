@@ -37,10 +37,11 @@ def test_registry_composes_core_and_scenario_definitions() -> None:
     )
 
     composed = CharacterSkillRegistry.compose(core, scenario)
+    binding_ids = {binding.binding_id for binding in composed.bindings_for_action("stabilize_injured_actor")}
 
     assert composed.skill("first_aid").display_name == "First Aid"
     assert composed.skill("healing_magic").display_name == "Healing Magic"
-    assert len(composed.bindings_for_action("stabilize_injured_actor")) == 2
+    assert binding_ids == {"first_aid_to_stabilize", "healing_magic_to_stabilize"}
 
 
 def test_registry_returns_empty_lists_for_unknown_actions() -> None:
