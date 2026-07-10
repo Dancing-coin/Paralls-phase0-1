@@ -42,6 +42,7 @@
 - `docs/superpowers/specs/2026-06-29-complete-character-mind-core-design.md`
 - `docs/superpowers/specs/2026-07-08-character-needs-personality-affect-runtime-design.md`
 - `docs/superpowers/plans/2026-07-08-character-needs-personality-affect-runtime-implementation-plan.md`
+- `docs/superpowers/specs/2026-07-10-character-skill-system-master-design.md`
 - `docs/superpowers/plans/2026-06-29-mind-core-foundation-implementation-plan.md`
 - `docs/superpowers/plans/2026-06-29-full-l1-and-memory-implementation-plan.md`
 - `docs/superpowers/plans/2026-06-29-full-l2-and-l3-implementation-plan.md`
