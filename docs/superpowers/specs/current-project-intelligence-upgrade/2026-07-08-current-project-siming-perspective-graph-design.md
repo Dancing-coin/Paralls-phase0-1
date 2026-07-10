@@ -1,13 +1,17 @@
 # 当前项目 Siming Perspective Graph v0.1 设计
 
 - 日期：`2026-07-08`
-- 状态：`proposed`
+- 状态：`superseded`
+- 替代规格：
+  - [2026-07-11-current-project-siming-heavenly-knowledge-graph-and-story-node-design.md](2026-07-11-current-project-siming-heavenly-knowledge-graph-and-story-node-design.md)
 - 上位规格：
   - [2026-06-29-current-project-siming-multimodal-and-global-situation-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-06-29-current-project-siming-multimodal-and-global-situation-design.md)
   - [2026-07-02-current-project-siming-global-situation-layer-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-siming-global-situation-layer-design.md)
   - [2026-07-05-current-project-multi-actor-private-perspective-reconciliation-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-05-current-project-multi-actor-private-perspective-reconciliation-design.md)
 
 ## 1. 目标
+
+> 本文保留为 v0.1 历史过渡设计。完整司命记忆、角色五池只读接入、时态故事图、玩家分支、资源能力图和 AdaptiveBridgeNode 以替代规格为准。
 
 `Siming Perspective Graph v0.1` 只解决两个近期问题：
 
