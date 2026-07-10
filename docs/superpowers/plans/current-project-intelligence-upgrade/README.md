@@ -1,7 +1,7 @@
 # 当前项目智能体与世界交互增量专题计划树
 
-- 状态：`incremental-plan-tree-implemented-and-profile-verified`
-- 日期：`2026-06-30`
+- 状态：`incremental-plan-tree-active-siming-heavenly-graph-planning`
+- 日期：`2026-07-11`
 
 这份计划树服务于：
 
@@ -117,6 +117,25 @@ python scripts/verification/verify_siming_backend_chain.py --live-provider deeps
 
 这两个风险不阻塞当前 2026-07-02 计划交付；它们应作为后续增量计划拆分，而不是并入本次已验证切片。
 
+## 2026-07-11 司命天道知识图谱计划
+
+已批准规格：
+
+- [2026-07-11-current-project-siming-heavenly-knowledge-graph-and-story-node-design.md](../../specs/current-project-intelligence-upgrade/2026-07-11-current-project-siming-heavenly-knowledge-graph-and-story-node-design.md)
+
+本次计划输出：
+
+1. [2026-07-11-current-project-siming-heavenly-knowledge-graph-program-plan.md](2026-07-11-current-project-siming-heavenly-knowledge-graph-program-plan.md)
+   - 冻结七阶段依赖、阶段门、单一决策 owner、生产图数据库选型门和最终验证梯。
+2. [2026-07-11-current-project-heavenly-graph-foundation-implementation-plan.md](2026-07-11-current-project-heavenly-graph-foundation-implementation-plan.md)
+   - 可直接执行的第一阶段 TDD 计划，覆盖 typed graph model、时态/分支语义、`HeavenlyGraphPort`、确定性内存适配器和独立 Harness profile。
+
+当前状态：
+
+- 设计与实施计划已完成。
+- 第一阶段实现尚未开始。
+- 第二至第七阶段只冻结依赖与交付边界；各阶段必须在第一阶段真实接口通过验证后分别完成 `spec -> plan -> implementation -> harness`。
+
 ## 计划树
 
 1. [2026-06-30-current-project-intelligence-upgrade-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-intelligence-upgrade-implementation-plan.md)
@@ -147,6 +166,8 @@ python scripts/verification/verify_siming_backend_chain.py --live-provider deeps
 26. [2026-06-30-current-project-godot-sampling-frontend-and-providers-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-godot-sampling-frontend-and-providers-implementation-plan.md)
 27. [2026-06-30-current-project-embodied-skeletal-state-provider-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-embodied-skeletal-state-provider-implementation-plan.md)
 28. [2026-06-30-current-project-non-runtime-multimodal-tooling-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-non-runtime-multimodal-tooling-implementation-plan.md)
+29. [2026-07-11-current-project-siming-heavenly-knowledge-graph-program-plan.md](2026-07-11-current-project-siming-heavenly-knowledge-graph-program-plan.md)
+30. [2026-07-11-current-project-heavenly-graph-foundation-implementation-plan.md](2026-07-11-current-project-heavenly-graph-foundation-implementation-plan.md)
 
 ## 一句话收束
 
