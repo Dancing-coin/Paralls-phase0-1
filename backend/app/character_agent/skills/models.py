@@ -66,8 +66,8 @@ class CharacterSkillState(StrictSkillModel):
     skill_id: str
     source: SkillSource
     rank: SkillRank = "none"
-    proficiency: float = Field(default=0.0, ge=0.0, le=1.0)
-    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    proficiency: float = Field(default=0.0, ge=0.0, le=1.0, strict=True)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0, strict=True)
     familiarity: dict[str, float] = Field(default_factory=dict)
     restrictions: list[str] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)

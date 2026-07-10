@@ -115,6 +115,26 @@ def test_character_skill_state_rejects_out_of_range_proficiency() -> None:
         )
 
 
+def test_character_skill_state_rejects_string_numeric_values() -> None:
+    with pytest.raises(ValidationError):
+        CharacterSkillState(
+            actor_id="char_a",
+            skill_id="first_aid",
+            source="authored",
+            rank="trained",
+            proficiency="0.5",
+        )
+
+    with pytest.raises(ValidationError):
+        CharacterSkillState(
+            actor_id="char_a",
+            skill_id="first_aid",
+            source="authored",
+            rank="trained",
+            confidence="0.5",
+        )
+
+
 def test_evaluation_result_carries_viable_and_blocked_paths() -> None:
     result = SkillEvaluationResult(
         actor_id="char_a",
