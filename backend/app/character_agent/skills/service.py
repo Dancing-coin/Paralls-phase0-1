@@ -1,0 +1,182 @@
+from __future__ import annotations
+
+from typing import Any
+
+from app.character_agent.skills.models import (
+    CharacterSkillState,
+    PrimitiveActionPlan,
+    SkillAffordanceSummary,
+    SkillEvaluationResult,
+    SkillLearningPolicy,
+)
+from app.character_agent.skills.registry import CharacterSkillRegistry
+
+
+_RANK_ORDER = {
+    "none": 0,
+    "novice": 1,
+    "basic": 2,
+    "trained": 3,
+    "expert": 4,
+    "master": 5,
+    "blocked": -1,
+}
+
+
+class CharacterSkillService:
+    def __init__(self, *, registry: CharacterSkillRegistry | None = None) -> None:
+        self._registry = registry or CharacterSkillRegistry()
+
+    def initial_skill_states(self, *, actor_id: str, profile: dict[str, Any]) -> list[CharacterSkillState]:
+        capability_layer = profile.get("capability_constraint_layer") or {}
+        skill_ids = capability_layer.get("skills") or []
+        states: list[CharacterSkillState] = []
+
+        for skill_id in skill_ids:
+            skill = self._registry.skill(skill_id)
+            states.append(
+                CharacterSkillState(
+                    actor_id=actor_id,
+                    skill_id=skill_id,
+                    source="authored",
+                    rank="basic",
+                    proficiency=0.5,
+                    confidence=0.5,
+                    visibility=dict(skill.visibility_default),
+                )
+            )
+
+        return states
+
+    def build_affordance_summary(
+        self,
+        *,
+        actor_id: str,
+        skill_states: list[CharacterSkillState],
+    ) -> SkillAffordanceSummary:
+        active_states = {state.skill_id: state for state in skill_states if self._rank_value(state.rank) > 0}
+        available: dict[str, dict[str, object]] = {}
+        blocked: dict[str, dict[str, object]] = {}
+
+        for skill in self._registry.skills():
+            family_keys = skill.domains or [skill.skill_id]
+            examples = sorted(
+                {
+                    binding.action_id
+                    for binding in self._registry.bindings()
+                    if binding.skill_id == skill.skill_id
+                }
+            )
+            state = active_states.get(skill.skill_id)
+            target = available if state is not None else blocked
+
+            for family_key in family_keys:
+                target[family_key] = {
+                    "level": state.rank if state is not None else "blocked",
+                    "skill_id": skill.skill_id,
+                    "examples": examples,
+                }
+                if state is None:
+                    target[family_key]["missing_skills"] = [skill.skill_id]
+
+        return SkillAffordanceSummary(
+            actor_id=actor_id,
+            available_action_families=available,
+            blocked_action_families=blocked,
+        )
+
+    def evaluate_action(
+        self,
+        *,
+        actor_id: str,
+        action_id: str,
+        skill_states: list[CharacterSkillState],
+        preferred_strategy_tags: list[str] | None = None,
+    ) -> SkillEvaluationResult:
+        preferred_strategy_tags = preferred_strategy_tags or []
+        state_by_skill = {state.skill_id: state for state in skill_states}
+        viable_paths: list[dict[str, object]] = []
+        blocked_paths: list[dict[str, object]] = []
+
+        for binding in self._registry.bindings_for_action(action_id):
+            state = state_by_skill.get(binding.skill_id)
+            required_rank = str(binding.eligibility.get("required_rank", "none"))
+            missing_requirements: list[str] = []
+
+            if state is None or not self._state_meets_rank(state, required_rank):
+                missing_requirements.append(f"{binding.skill_id}.{required_rank}")
+
+            path_record = {
+                "binding_id": binding.binding_id,
+                "skill_id": binding.skill_id,
+                "action_id": action_id,
+                "skill_path_tags": list(binding.skill_path_tags),
+            }
+
+            if missing_requirements:
+                blocked_paths.append(
+                    {
+                        **path_record,
+                        "eligibility_status": "blocked",
+                        "missing_requirements": missing_requirements,
+                    }
+                )
+                continue
+
+            viable_paths.append(
+                {
+                    **path_record,
+                    "eligibility_status": "eligible",
+                    "required_rank": required_rank,
+                    "current_rank": state.rank,
+                    "preference_score": self._preference_score(binding.skill_path_tags, preferred_strategy_tags),
+                }
+            )
+
+        viable_paths.sort(
+            key=lambda path: (
+                int(path["preference_score"]),
+                self._rank_value(str(path["current_rank"])),
+                str(path["binding_id"]),
+            ),
+            reverse=True,
+        )
+        selected_path = viable_paths[0] if viable_paths else {}
+
+        recommendation_reason: list[str] = []
+        if selected_path:
+            if int(selected_path.get("preference_score", 0)) > 0:
+                recommendation_reason.append("preferred_strategy_match")
+            recommendation_reason.append("eligible_skill_path_available")
+        elif blocked_paths:
+            recommendation_reason.append("no_eligible_skill_path")
+
+        learning_policy = SkillLearningPolicy()
+
+        return SkillEvaluationResult(
+            actor_id=actor_id,
+            action_id=action_id,
+            selected_path=selected_path,
+            viable_paths=viable_paths,
+            blocked_paths=blocked_paths,
+            recommendation_reason=recommendation_reason,
+            learning_policy_snapshot=learning_policy.model_dump(),
+        )
+
+    def expand_primitive_plan(self, *, action_id: str, skill_path_id: str) -> PrimitiveActionPlan:
+        action = self._registry.action(action_id)
+        return PrimitiveActionPlan(
+            composite_action_id=action_id,
+            skill_path_id=skill_path_id,
+            primitive_actions=list(action.primitive_sequence_templates.get(skill_path_id, [])),
+            realization_keys=list(action.realization_keys),
+        )
+
+    def _state_meets_rank(self, state: CharacterSkillState, required_rank: str) -> bool:
+        return self._rank_value(state.rank) >= self._rank_value(required_rank)
+
+    def _rank_value(self, rank: str) -> int:
+        return _RANK_ORDER.get(rank, -1)
+
+    def _preference_score(self, path_tags: list[str], preferred_strategy_tags: list[str]) -> int:
+        return sum(1 for tag in preferred_strategy_tags if tag in path_tags)
