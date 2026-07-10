@@ -354,6 +354,22 @@ CharacterPerceivedEvent / SelfBodyPerceivedEvent / siming_output
 - 压力不是情绪字段：需求压力留在 `NeedTensionState`，运行时/慢性张力留在 `tension_state`
 - 长期 drift 不直接写回 authored profile truth
 
+### 分层心智因子投影
+
+当前角色心智核心仍以 `L1 -> L2 -> L3 -> L4` 为主链。
+
+`CharacterMindFrame` 是新增的 shadow contract，用于把长期档案、记忆证据、
+运行态、可供性、认知工作区和回写候选分层表达。它不是新的心智中枢，也不替代
+`L2/L3`。
+
+边界：
+
+- authored profile truth 仍由 `CharacterProfile` 表达；长期 drift 保持为独立 drift overlay / effective-profile 路径。
+- memory evidence 仍由五池记忆表达。
+- social relationship network 仍属于 social memory，可在后续图谱化投影。
+- runtime state 仍由 `NeedTensionState`、`CharacterDynamicState`、goal state 和 unresolved tension 表达。
+- `CharacterMindFrame` 当前只作为 shadow read model，不改变既有决策行为。
+
 ### `L2` 理解层
 
 已完成为统一认知更新层。
