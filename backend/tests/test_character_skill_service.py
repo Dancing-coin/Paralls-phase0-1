@@ -91,6 +91,34 @@ def _registry_with_second_medical_skill() -> CharacterSkillRegistry:
     )
 
 
+def _registry_with_unbound_skill() -> CharacterSkillRegistry:
+    return CharacterSkillRegistry(
+        skills=[
+            SkillDefinition(skill_id="first_aid", display_name="First Aid", domains=["medical"]),
+            SkillDefinition(skill_id="silent_reading", display_name="Silent Reading", domains=["knowledge"]),
+        ],
+        actions=[
+            ActionDefinition(
+                action_id="stabilize_injured_actor",
+                kind="composite",
+                settlement_categories=["cognitive", "physical", "social", "tool"],
+                primitive_sequence_templates={
+                    "first_aid_to_stabilize": ["approach_target", "kneel_near_target", "apply_pressure"],
+                },
+            )
+        ],
+        bindings=[
+            SkillActionBinding(
+                binding_id="first_aid_to_stabilize",
+                skill_id="first_aid",
+                action_id="stabilize_injured_actor",
+                skill_path_tags=["medical", "nonviolent"],
+                eligibility={"required_rank": "basic"},
+            )
+        ],
+    )
+
+
 def test_service_projects_profile_capabilities_to_initial_skill_state() -> None:
     service = CharacterSkillService(registry=_registry())
     states = service.initial_skill_states(
@@ -231,6 +259,22 @@ def test_service_does_not_report_shared_family_as_both_available_and_blocked() -
         "assess_injury_severity",
         "stabilize_injured_actor",
     ]
+
+
+def test_service_omits_unbound_skill_domains_from_affordance_summary() -> None:
+    service = CharacterSkillService(registry=_registry_with_unbound_skill())
+    states = service.initial_skill_states(
+        actor_id="char_a",
+        profile={"capability_constraint_layer": {"skills": ["first_aid"]}},
+    )
+
+    summary = service.build_affordance_summary(
+        actor_id="char_a",
+        skill_states=states,
+    )
+
+    assert "knowledge" not in summary.available_action_families
+    assert "knowledge" not in summary.blocked_action_families
 
 
 def test_service_expands_primitive_plan_for_selected_skill_path() -> None:

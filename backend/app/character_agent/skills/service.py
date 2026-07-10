@@ -80,6 +80,8 @@ class CharacterSkillService:
                     if binding.skill_id == skill.skill_id
                 }
             )
+            if not examples:
+                continue
             state = active_states.get(skill.skill_id)
 
             for family_key in family_keys:
