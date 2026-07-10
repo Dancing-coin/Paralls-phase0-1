@@ -146,6 +146,32 @@ def test_evaluation_result_carries_viable_and_blocked_paths() -> None:
     assert result.blocked_paths[0]["missing_requirements"] == ["healing_magic.basic"]
 
 
+def test_composite_action_proposal_preserves_strategy_preferences() -> None:
+    proposal = CompositeActionProposal(
+        proposal_id="proposal:1",
+        actor_id="char_a",
+        source_intent="help_injured_actor",
+        action_id="stabilize_injured_actor",
+        target_refs={"patient": "char_b"},
+        preferred_strategy_tags=["medical", "nonviolent"],
+        forbidden_strategy_tags=["aggressive_force"],
+        desired_outcomes=["stabilize_patient", "avoid_panic"],
+    )
+
+    assert proposal.target_refs["patient"] == "char_b"
+    assert proposal.preferred_strategy_tags == ["medical", "nonviolent"]
+    assert proposal.forbidden_strategy_tags == ["aggressive_force"]
+
+
+def test_skill_models_reject_unexpected_fields() -> None:
+    with pytest.raises(ValidationError):
+        SkillDefinition(
+            skill_id="first_aid",
+            display_name="First Aid",
+            undocumented_runtime_hook=True,
+        )
+
+
 def test_primitive_action_plan_preserves_selected_skill_path() -> None:
     plan = PrimitiveActionPlan(
         composite_action_id="stabilize_injured_actor",
