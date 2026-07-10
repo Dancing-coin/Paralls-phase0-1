@@ -112,6 +112,21 @@ def test_service_projects_profile_capabilities_to_initial_skill_state() -> None:
     assert states[0].rank == "basic"
 
 
+def test_service_skips_unknown_authored_profile_skills() -> None:
+    service = CharacterSkillService(registry=_registry())
+
+    states = service.initial_skill_states(
+        actor_id="char_a",
+        profile={
+            "capability_constraint_layer": {
+                "skills": ["first_aid", "unknown_skill"],
+            }
+        },
+    )
+
+    assert [state.skill_id for state in states] == ["first_aid"]
+
+
 def test_service_builds_affordance_summary_without_full_registry_payload() -> None:
     service = CharacterSkillService(registry=_registry())
 

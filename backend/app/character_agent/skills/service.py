@@ -28,16 +28,24 @@ class CharacterSkillService:
         self._registry = registry or CharacterSkillRegistry()
 
     def initial_skill_states(self, *, actor_id: str, profile: dict[str, Any]) -> list[CharacterSkillState]:
-        capability_layer = profile.get("capability_constraint_layer") or {}
-        skill_ids = capability_layer.get("skills") or []
+        capability_layer = profile.get("capability_constraint_layer")
+        if not isinstance(capability_layer, dict):
+            capability_layer = {}
+        skill_ids = capability_layer.get("skills")
+        skill_id_list = skill_ids if isinstance(skill_ids, list) else []
+        authored_skill_names = {
+            str(skill_id)
+            for skill_id in skill_id_list
+        }
         states: list[CharacterSkillState] = []
 
-        for skill_id in skill_ids:
-            skill = self._registry.skill(skill_id)
+        for skill in self._registry.skills():
+            if skill.skill_id not in authored_skill_names:
+                continue
             states.append(
                 CharacterSkillState(
                     actor_id=actor_id,
-                    skill_id=skill_id,
+                    skill_id=skill.skill_id,
                     source="authored",
                     rank="basic",
                     proficiency=0.5,
