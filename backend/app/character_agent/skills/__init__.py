@@ -12,11 +12,13 @@ from app.character_agent.skills.models import (
     SkillEvidence,
     SkillLearningPolicy,
 )
+from app.character_agent.skills.registry import CharacterSkillRegistry
 
 __all__ = [
     "ActionDefinition",
     "ActionSettlementResult",
     "CharacterSkillState",
+    "CharacterSkillRegistry",
     "CompositeActionProposal",
     "PrimitiveActionPlan",
     "SkillActionBinding",
