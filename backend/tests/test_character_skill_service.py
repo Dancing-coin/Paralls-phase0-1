@@ -213,6 +213,26 @@ def test_service_merges_examples_for_shared_affordance_domain() -> None:
     ]
 
 
+def test_service_does_not_report_shared_family_as_both_available_and_blocked() -> None:
+    service = CharacterSkillService(registry=_registry_with_second_medical_skill())
+    states = service.initial_skill_states(
+        actor_id="char_a",
+        profile={"capability_constraint_layer": {"skills": ["first_aid"]}},
+    )
+
+    summary = service.build_affordance_summary(
+        actor_id="char_a",
+        skill_states=states,
+    )
+
+    assert "medical" in summary.available_action_families
+    assert "medical" not in summary.blocked_action_families
+    assert sorted(summary.available_action_families["medical"]["examples"]) == [
+        "assess_injury_severity",
+        "stabilize_injured_actor",
+    ]
+
+
 def test_service_expands_primitive_plan_for_selected_skill_path() -> None:
     service = CharacterSkillService(registry=_registry())
 

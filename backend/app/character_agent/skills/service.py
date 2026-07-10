@@ -67,6 +67,7 @@ class CharacterSkillService:
             for state in self._skill_states_for_actor(actor_id=actor_id, skill_states=skill_states)
             if self._rank_value(state.rank) > 0
         }
+        family_records: dict[str, dict[str, object]] = {}
         available: dict[str, dict[str, object]] = {}
         blocked: dict[str, dict[str, object]] = {}
 
@@ -80,32 +81,44 @@ class CharacterSkillService:
                 }
             )
             state = active_states.get(skill.skill_id)
-            target = available if state is not None else blocked
 
             for family_key in family_keys:
-                family = target.setdefault(
+                family = family_records.setdefault(
                     family_key,
                     {
-                        "level": state.rank if state is not None else "blocked",
+                        "level": "blocked",
                         "skill_ids": [],
                         "examples": [],
+                        "missing_skills": [],
+                        "has_usable_skill": False,
                     },
-                )
-                family["level"] = self._higher_rank(
-                    str(family["level"]),
-                    state.rank if state is not None else "blocked",
                 )
                 family["skill_ids"] = self._merge_strings(family["skill_ids"], [skill.skill_id])
                 family["examples"] = self._merge_strings(family["examples"], examples)
-                if len(family["skill_ids"]) == 1:
-                    family["skill_id"] = family["skill_ids"][0]
+                if state is not None:
+                    family["has_usable_skill"] = True
+                    family["level"] = self._higher_rank(str(family["level"]), state.rank)
                 else:
-                    family.pop("skill_id", None)
-                if state is None:
                     family["missing_skills"] = self._merge_strings(
                         family.get("missing_skills", []),
                         [skill.skill_id],
                     )
+
+        for family_key, family in family_records.items():
+            summary = {
+                "level": family["level"],
+                "skill_ids": family["skill_ids"],
+                "examples": family["examples"],
+            }
+            if len(summary["skill_ids"]) == 1:
+                summary["skill_id"] = summary["skill_ids"][0]
+            missing_skills = family["missing_skills"]
+            if missing_skills:
+                summary["missing_skills"] = missing_skills
+            if bool(family["has_usable_skill"]):
+                available[family_key] = summary
+            else:
+                blocked[family_key] = summary
 
         return SkillAffordanceSummary(
             actor_id=actor_id,
