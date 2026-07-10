@@ -54,7 +54,11 @@ class CharacterSkillService:
         actor_id: str,
         skill_states: list[CharacterSkillState],
     ) -> SkillAffordanceSummary:
-        active_states = {state.skill_id: state for state in skill_states if self._rank_value(state.rank) > 0}
+        active_states = {
+            state.skill_id: state
+            for state in self._skill_states_for_actor(actor_id=actor_id, skill_states=skill_states)
+            if self._rank_value(state.rank) > 0
+        }
         available: dict[str, dict[str, object]] = {}
         blocked: dict[str, dict[str, object]] = {}
 
@@ -71,13 +75,29 @@ class CharacterSkillService:
             target = available if state is not None else blocked
 
             for family_key in family_keys:
-                target[family_key] = {
-                    "level": state.rank if state is not None else "blocked",
-                    "skill_id": skill.skill_id,
-                    "examples": examples,
-                }
+                family = target.setdefault(
+                    family_key,
+                    {
+                        "level": state.rank if state is not None else "blocked",
+                        "skill_ids": [],
+                        "examples": [],
+                    },
+                )
+                family["level"] = self._higher_rank(
+                    str(family["level"]),
+                    state.rank if state is not None else "blocked",
+                )
+                family["skill_ids"] = self._merge_strings(family["skill_ids"], [skill.skill_id])
+                family["examples"] = self._merge_strings(family["examples"], examples)
+                if len(family["skill_ids"]) == 1:
+                    family["skill_id"] = family["skill_ids"][0]
+                else:
+                    family.pop("skill_id", None)
                 if state is None:
-                    target[family_key]["missing_skills"] = [skill.skill_id]
+                    family["missing_skills"] = self._merge_strings(
+                        family.get("missing_skills", []),
+                        [skill.skill_id],
+                    )
 
         return SkillAffordanceSummary(
             actor_id=actor_id,
@@ -94,7 +114,10 @@ class CharacterSkillService:
         preferred_strategy_tags: list[str] | None = None,
     ) -> SkillEvaluationResult:
         preferred_strategy_tags = preferred_strategy_tags or []
-        state_by_skill = {state.skill_id: state for state in skill_states}
+        state_by_skill = {
+            state.skill_id: state
+            for state in self._skill_states_for_actor(actor_id=actor_id, skill_states=skill_states)
+        }
         viable_paths: list[dict[str, object]] = []
         blocked_paths: list[dict[str, object]] = []
 
@@ -180,3 +203,23 @@ class CharacterSkillService:
 
     def _preference_score(self, path_tags: list[str], preferred_strategy_tags: list[str]) -> int:
         return sum(1 for tag in preferred_strategy_tags if tag in path_tags)
+
+    def _higher_rank(self, left: str, right: str) -> str:
+        if self._rank_value(right) > self._rank_value(left):
+            return right
+        return left
+
+    def _merge_strings(self, current: object, additions: list[str]) -> list[str]:
+        values = [str(item) for item in current] if isinstance(current, list) else []
+        for item in additions:
+            if item not in values:
+                values.append(item)
+        return values
+
+    def _skill_states_for_actor(
+        self,
+        *,
+        actor_id: str,
+        skill_states: list[CharacterSkillState],
+    ) -> list[CharacterSkillState]:
+        return [state for state in skill_states if state.actor_id == actor_id]
