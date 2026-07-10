@@ -3,6 +3,7 @@ from app.models.character_agent_runtime import (
     CharacterInterpretation,
 )
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
+from app.character_agent.skills.models import CompositeActionProposal
 
 
 class CharacterAgentL4Executor:
@@ -14,6 +15,13 @@ class CharacterAgentL4Executor:
         decision: CharacterIntentDecision,
     ) -> dict[str, object]:
         target = interpretation.attention_target or (snapshot.attention_targets[0] if snapshot.attention_targets else "")
+        composite_action_proposal = self._composite_action_proposal(
+            actor_id=decision.actor_id,
+            selected_intent=decision.selected_intent,
+            target=target,
+            interpretation=interpretation,
+            producer_ts=snapshot.updated_at,
+        )
         guarding_elevated = self._guarding_elevated(snapshot=snapshot, interpretation=interpretation, decision=decision)
         physiology_hint = self._physiology_hint(snapshot=snapshot, interpretation=interpretation, decision=decision, guarding_elevated=guarding_elevated)
         spacing_behavior = self._spacing_behavior(target=target, snapshot=snapshot, interpretation=interpretation, decision=decision)
@@ -155,7 +163,42 @@ class CharacterAgentL4Executor:
                     interpretation=interpretation,
                 ),
             },
+            "composite_action_proposal": composite_action_proposal.model_dump(),
         }
+
+    def _composite_action_proposal(
+        self,
+        *,
+        actor_id: str,
+        selected_intent: str,
+        target: str,
+        interpretation: CharacterInterpretation,
+        producer_ts: int,
+    ) -> CompositeActionProposal:
+        target_refs: dict[str, str] = {}
+        if target.startswith("char_"):
+            target_refs["actor"] = target
+        elif target.startswith("obj_"):
+            target_refs["object"] = target
+        elif target.startswith("env_"):
+            target_refs["environment"] = target
+        preferred_strategy_tags: list[str] = []
+        if selected_intent in {"share_info", "speak_public", "speak_private"}:
+            preferred_strategy_tags.append("social")
+        if selected_intent in {"withdraw", "break_contact", "self_protect"}:
+            preferred_strategy_tags.append("defensive")
+        if interpretation.risk_level in {"medium", "high"}:
+            preferred_strategy_tags.append("risk_aware")
+        return CompositeActionProposal(
+            proposal_id=f"composite_action:{producer_ts}:{actor_id}:{selected_intent}",
+            actor_id=actor_id,
+            source_intent=selected_intent,
+            action_id=selected_intent,
+            target_refs=target_refs,
+            preferred_strategy_tags=preferred_strategy_tags,
+            forbidden_strategy_tags=[],
+            desired_outcomes=[interpretation.interpreted_summary] if interpretation.interpreted_summary else [],
+        )
 
     def _contact_phase(
         self,
