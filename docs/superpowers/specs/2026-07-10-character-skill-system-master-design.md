@@ -1,6 +1,6 @@
 # Character Skill System Master Design
 
-Status: `awaiting-user-review`
+Status: `approved`
 
 Date: `2026-07-10`
 
@@ -688,4 +688,3 @@ Phase 1 does not include:
 - The design supports disabled skill learning and promotion-off-by-default.
 - The design provides a phased path that can start in shadow mode without
   replacing existing L4 behavior.
-
