@@ -55,6 +55,8 @@
   - [2026-07-07-current-project-siming-l6-boundary-hardening-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-07-current-project-siming-l6-boundary-hardening-design.md)
 - 司命天道知识图谱与故事节点运行时专题规格：
   - [2026-07-11-current-project-siming-heavenly-knowledge-graph-and-story-node-design.md](2026-07-11-current-project-siming-heavenly-knowledge-graph-and-story-node-design.md)
+- 司命当前与目标架构演化分析：
+  - [2026-07-11-current-vs-target-siming-architecture-evolution-analysis.md](2026-07-11-current-vs-target-siming-architecture-evolution-analysis.md)
 - 历史过渡规格：
   - [2026-07-08-current-project-siming-perspective-graph-design.md](2026-07-08-current-project-siming-perspective-graph-design.md)（已由 2026-07-11 规格替代）
 
