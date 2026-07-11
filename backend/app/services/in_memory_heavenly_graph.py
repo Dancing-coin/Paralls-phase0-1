@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import json
 from collections.abc import Sequence
@@ -23,6 +24,7 @@ from app.services.siming_heavenly_graph_port import (
 
 
 ScopeKey = tuple[str, str, str, str | None, str | None]
+CheckpointKey = tuple[ScopeKey, str]
 
 
 class InMemoryHeavenlyGraphAdapter:
@@ -39,7 +41,8 @@ class InMemoryHeavenlyGraphAdapter:
             tuple[ScopeKey, str],
             tuple[str, HeavenlyGraphWriteResult],
         ] = {}
-        self._checkpoints: dict[str, HeavenlyGraphSnapshot] = {}
+        self._checkpoints: dict[CheckpointKey, HeavenlyGraphSnapshot] = {}
+        self._checkpoint_refs: dict[str, CheckpointKey] = {}
 
     def write_batch(
         self,
@@ -211,6 +214,7 @@ class InMemoryHeavenlyGraphAdapter:
         valid_at: int,
         recorded_at: int,
     ) -> HeavenlyGraphCheckpointRef:
+        checkpoint_key = (self._scope_key(scope), checkpoint_id)
         checkpoint_ref = self._checkpoint_ref(checkpoint_id, scope)
         checkpoint = HeavenlyGraphCheckpointRef(
             checkpoint_ref=checkpoint_ref,
@@ -219,7 +223,7 @@ class InMemoryHeavenlyGraphAdapter:
             valid_at=valid_at,
             recorded_at=recorded_at,
         )
-        existing = self._checkpoints.get(checkpoint_ref)
+        existing = self._checkpoints.get(checkpoint_key)
         if existing is not None:
             if existing.checkpoint != checkpoint:
                 raise HeavenlyGraphCheckpointConflict(
@@ -247,14 +251,20 @@ class InMemoryHeavenlyGraphAdapter:
                 )
             ),
         )
-        self._checkpoints[checkpoint_ref] = snapshot.model_copy(deep=True)
+        self._checkpoints[checkpoint_key] = snapshot.model_copy(deep=True)
+        self._checkpoint_refs[checkpoint_ref] = checkpoint_key
         return checkpoint.model_copy(deep=True)
 
     def read_checkpoint(
         self,
         checkpoint_ref: str,
     ) -> HeavenlyGraphSnapshot:
-        snapshot = self._checkpoints.get(checkpoint_ref)
+        checkpoint_key = self._checkpoint_refs.get(checkpoint_ref)
+        snapshot = (
+            None
+            if checkpoint_key is None
+            else self._checkpoints.get(checkpoint_key)
+        )
         if snapshot is None:
             raise HeavenlyGraphCheckpointNotFound(
                 f"checkpoint ref {checkpoint_ref!r} was not found"
@@ -404,10 +414,19 @@ class InMemoryHeavenlyGraphAdapter:
         checkpoint_id: str,
         scope: HeavenlyGraphScope,
     ) -> str:
-        return (
-            f"heavenly_graph_checkpoint:{self._scope_ref(scope)}:"
-            f"{checkpoint_id}"
+        canonical_payload = json.dumps(
+            {
+                "checkpoint_id": checkpoint_id,
+                "scope": scope.model_dump(mode="json"),
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        encoded_payload = base64.urlsafe_b64encode(canonical_payload).decode(
+            "ascii"
         )
+        return f"heavenly_graph_checkpoint:{encoded_payload.rstrip('=')}"
 
     def _scope_ref(self, scope: HeavenlyGraphScope) -> str:
         return ":".join(

@@ -766,3 +766,159 @@ class HeavenlyGraphContract(ABC):
             match="was not found",
         ):
             graph.read_checkpoint("heavenly_graph_checkpoint:missing")
+
+    def test_checkpoint_refs_isolate_collision_prone_complete_scopes(
+        self,
+    ) -> None:
+        graph = self.make_graph()
+        scopes = [
+            HeavenlyGraphScope(
+                world_id="world:demo",
+                session_id="session:demo",
+                story_branch_id="branch:main",
+                room_id=None,
+                scene_id="scene:demo",
+            ),
+            HeavenlyGraphScope(
+                world_id="world:demo",
+                session_id="session:demo",
+                story_branch_id="branch:main",
+                room_id="_",
+                scene_id="scene:demo",
+            ),
+            HeavenlyGraphScope(
+                world_id="world:a:b",
+                session_id="session:c",
+                story_branch_id="branch:main",
+                room_id="room:demo",
+                scene_id="scene:demo",
+            ),
+            HeavenlyGraphScope(
+                world_id="world:a",
+                session_id="b:session:c",
+                story_branch_id="branch:main",
+                room_id="room:demo",
+                scene_id="scene:demo",
+            ),
+        ]
+        states = ["none", "underscore", "world-delimiter", "session-delimiter"]
+        checkpoint_refs: list[str] = []
+
+        for index, (scope, state) in enumerate(zip(scopes, states, strict=True)):
+            node = graph_node(
+                node_id="fact:scope-specific",
+                state=state,
+            ).model_copy(update={"scope": scope}, deep=True)
+            graph.write_batch(
+                HeavenlyGraphWriteBatch(
+                    transaction_id=f"graph_tx:checkpoint:scope:{index}",
+                    idempotency_key=f"authority:event:checkpoint:scope:{index}",
+                    scope=scope,
+                    nodes=[node],
+                )
+            )
+            checkpoint = graph.create_checkpoint(
+                checkpoint_id="checkpoint:scope:shared",
+                scope=scope,
+                valid_at=20,
+                recorded_at=20,
+            )
+            checkpoint_refs.append(checkpoint.checkpoint_ref)
+
+        assert len(set(checkpoint_refs)) == len(scopes)
+        for checkpoint_ref, scope, state in zip(
+            checkpoint_refs,
+            scopes,
+            states,
+            strict=True,
+        ):
+            snapshot = graph.read_checkpoint(checkpoint_ref)
+            assert snapshot.checkpoint.scope == scope
+            assert snapshot.nodes[0].attributes["state"] == state
+
+    def test_checkpoint_captures_all_entities_in_deterministic_order(
+        self,
+    ) -> None:
+        graph = self.make_graph()
+        scope = graph_scope()
+        node_ids = [f"fact:{index:03d}" for index in range(105)]
+        relation_ids = [f"relation:{index:03d}" for index in range(104)]
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:checkpoint:large",
+                idempotency_key="authority:event:checkpoint:large",
+                scope=scope,
+                nodes=[
+                    graph_node(node_id=node_id)
+                    for node_id in reversed(node_ids)
+                ],
+                relations=[
+                    graph_relation(
+                        relation_id=relation_id,
+                        source_node_id=node_ids[index],
+                        target_node_id=node_ids[index + 1],
+                    )
+                    for index, relation_id in reversed(
+                        list(enumerate(relation_ids))
+                    )
+                ],
+            )
+        )
+
+        checkpoint = graph.create_checkpoint(
+            checkpoint_id="checkpoint:large",
+            scope=scope,
+            valid_at=20,
+            recorded_at=20,
+        )
+        snapshot = graph.read_checkpoint(checkpoint.checkpoint_ref)
+
+        assert [node.node_id for node in snapshot.nodes] == node_ids
+        assert [relation.relation_id for relation in snapshot.relations] == (
+            relation_ids
+        )
+
+    def test_checkpoint_read_returns_deep_copies(self) -> None:
+        graph = self.make_graph()
+        scope = graph_scope()
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:checkpoint:deep-copy",
+                idempotency_key="authority:event:checkpoint:deep-copy",
+                scope=scope,
+                nodes=[graph_node(node_id="fact:lamp", state="dim")],
+            )
+        )
+        checkpoint = graph.create_checkpoint(
+            checkpoint_id="checkpoint:deep-copy",
+            scope=scope,
+            valid_at=20,
+            recorded_at=20,
+        )
+
+        first = graph.read_checkpoint(checkpoint.checkpoint_ref)
+        first.nodes[0].attributes["state"] = "mutated_by_caller"
+        second = graph.read_checkpoint(checkpoint.checkpoint_ref)
+
+        assert second.nodes[0].attributes["state"] == "dim"
+
+    def test_checkpoint_recorded_at_change_is_rejected(self) -> None:
+        graph = self.make_graph()
+        scope = graph_scope()
+        graph.create_checkpoint(
+            checkpoint_id="checkpoint:recorded-at-conflict",
+            scope=scope,
+            valid_at=20,
+            recorded_at=20,
+        )
+
+        with pytest.raises(
+            HeavenlyGraphCheckpointConflict,
+            match="different coordinates",
+        ):
+            graph.create_checkpoint(
+                checkpoint_id="checkpoint:recorded-at-conflict",
+                scope=scope,
+                valid_at=20,
+                recorded_at=21,
+            )
