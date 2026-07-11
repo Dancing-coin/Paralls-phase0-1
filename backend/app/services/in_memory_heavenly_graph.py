@@ -218,24 +218,20 @@ class InMemoryHeavenlyGraphAdapter:
                 relation.source_node_id,
                 relation.target_node_id,
             ]:
+                versions = list(
+                    self._nodes.get((scope_key, endpoint), [])
+                )
                 batch_node = batch_nodes.get(endpoint)
                 if batch_node is not None:
-                    exists = (
-                        batch_node.validity.contains(
-                            relation.validity.valid_from
-                        )
-                        and batch_node.recorded_at <= relation.recorded_at
+                    versions.append(batch_node)
+                exists = (
+                    self._effective_entity(
+                        versions,
+                        valid_at=relation.validity.valid_from,
+                        recorded_at=relation.recorded_at,
                     )
-                else:
-                    versions = self._nodes.get((scope_key, endpoint), [])
-                    exists = (
-                        self._effective_entity(
-                            versions,
-                            valid_at=relation.validity.valid_from,
-                            recorded_at=relation.recorded_at,
-                        )
-                        is not None
-                    )
+                    is not None
+                )
                 if not exists:
                     raise HeavenlyGraphReferentialIntegrityError(
                         f"relation endpoint {endpoint!r} is missing in batch scope "

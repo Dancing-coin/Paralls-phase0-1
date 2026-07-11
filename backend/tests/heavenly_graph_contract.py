@@ -421,3 +421,63 @@ class HeavenlyGraphContract(ABC):
                     ],
                 )
             )
+
+    def test_relation_endpoint_can_use_effective_stored_revision(self) -> None:
+        graph = self.make_graph()
+        scope = graph_scope()
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:endpoints:v1",
+                idempotency_key="authority:event:endpoints:v1",
+                scope=scope,
+                nodes=[
+                    graph_node(
+                        node_id="fact:source",
+                        valid_from=0,
+                        recorded_at=10,
+                    ),
+                    graph_node(
+                        node_id="fact:target",
+                        valid_from=0,
+                        recorded_at=10,
+                    ),
+                ],
+            )
+        )
+
+        result = graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:endpoints:v2",
+                idempotency_key="authority:event:endpoints:v2",
+                scope=scope,
+                nodes=[
+                    graph_node(
+                        node_id="fact:source",
+                        valid_from=50,
+                        recorded_at=60,
+                        revision=2,
+                        supersedes_revision=1,
+                    )
+                ],
+                relations=[
+                    graph_relation(
+                        relation_id="relation:stored-endpoint",
+                        source_node_id="fact:source",
+                        target_node_id="fact:target",
+                        valid_from=20,
+                        recorded_at=30,
+                    )
+                ],
+            )
+        )
+
+        loaded = graph.get_relation(
+            relation_id="relation:stored-endpoint",
+            scope=scope,
+            valid_at=20,
+            recorded_at=30,
+        )
+
+        assert result.applied is True
+        assert loaded is not None
+        assert loaded.relation_id == "relation:stored-endpoint"
