@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 
 from app.character_agent.gateway.context_builder import CharacterContextBuilder
+from app.character_agent.mind.affordances import CharacterMindAffordanceAdapter
 from app.character_agent.mind.projectors import (
     AffectiveBodyStateProjector,
     EffectiveProfileProjector,
@@ -32,6 +33,7 @@ class CharacterMindFrameBuilder:
         self._goal_context_projector = GoalContextProjector()
         self._unresolved_tension_projector = UnresolvedTensionProjector()
         self._supervision_projector = SupervisionProjector()
+        self._affordance_adapter = CharacterMindAffordanceAdapter()
 
     def build_frame(
         self,
@@ -50,6 +52,9 @@ class CharacterMindFrameBuilder:
         supervision_state: dict[str, object] | None = None,
         skill_affordance_summary: dict[str, object] | None = None,
         action_affordance_summary: dict[str, object] | None = None,
+        environment_affordance_summary: dict[str, object] | None = None,
+        equipment_affordance_summary: dict[str, object] | None = None,
+        physical_feasibility_summary: dict[str, object] | None = None,
     ) -> CharacterMindFrame:
         trigger_payload = trigger_event or {}
         normalized_memory = self._snapshot_mapping(
@@ -63,8 +68,6 @@ class CharacterMindFrameBuilder:
         goal_history_payload = self._snapshot_list(goal_state_history)
         tensions_payload = self._snapshot_list(unresolved_tensions)
         supervision_payload = self._snapshot_mapping(supervision_state)
-        skill_payload = self._snapshot_mapping(skill_affordance_summary)
-        action_payload = self._snapshot_mapping(action_affordance_summary)
         mind_turn_id = f"mind_turn:{actor_id}:{producer_ts}"
 
         return CharacterMindFrame(
@@ -96,8 +99,12 @@ class CharacterMindFrameBuilder:
                 supervision_state=supervision_payload,
             ),
             affordances=self._affordance_layer(
-                skill_affordance_summary=skill_payload,
-                action_affordance_summary=action_payload,
+                effective_profile=effective_profile_payload,
+                skill_affordance_summary=skill_affordance_summary,
+                action_affordance_summary=action_affordance_summary,
+                environment_affordance_summary=environment_affordance_summary,
+                equipment_affordance_summary=equipment_affordance_summary,
+                physical_feasibility_summary=physical_feasibility_summary,
             ),
             provenance=MindFrameProvenance(
                 source_refs=self._source_refs(actor_id, normalized_memory, goal_payload),
@@ -191,30 +198,30 @@ class CharacterMindFrameBuilder:
     def _affordance_layer(
         self,
         *,
+        effective_profile: dict[str, object],
         skill_affordance_summary: dict[str, object],
         action_affordance_summary: dict[str, object],
+        environment_affordance_summary: dict[str, object] | None = None,
+        equipment_affordance_summary: dict[str, object] | None = None,
+        physical_feasibility_summary: dict[str, object] | None = None,
     ) -> MindFrameLayer:
-        cards = [
-            MentalFactorProjectionCard(
-                factor_type="skill_affordance",
-                layer="affordance",
-                summary="skill affordance summary",
-                payload=skill_affordance_summary,
-                source_refs=["skill_affordance:shadow"] if skill_affordance_summary else [],
-            ),
-            MentalFactorProjectionCard(
-                factor_type="action_affordance",
-                layer="affordance",
-                summary="action affordance summary",
-                payload=action_affordance_summary,
-                source_refs=["action_affordance:shadow"] if action_affordance_summary else [],
-            ),
-        ]
+        summaries = self._affordance_adapter.build_summary(
+            effective_profile=effective_profile,
+            supplied_skill_affordance_summary=skill_affordance_summary,
+            supplied_action_affordance_summary=action_affordance_summary,
+            environment_affordance_summary=environment_affordance_summary,
+            equipment_affordance_summary=equipment_affordance_summary,
+            physical_feasibility_summary=physical_feasibility_summary,
+        )
+        cards = self._affordance_adapter.project_cards(summaries)
         return MindFrameLayer(
             cards=cards,
             summary={
-                "has_skill_affordance": bool(skill_affordance_summary),
-                "has_action_affordance": bool(action_affordance_summary),
+                "has_skill_affordance": bool(summaries["skill_affordance"]),
+                "has_action_affordance": bool(summaries["action_affordance"]),
+                "has_environment_affordance": bool(summaries["environment_affordance"]),
+                "has_equipment_affordance": bool(summaries["equipment_affordance"]),
+                "has_physical_feasibility": bool(summaries["physical_feasibility"]),
             },
         )
 

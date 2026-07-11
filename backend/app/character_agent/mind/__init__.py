@@ -1,3 +1,4 @@
+from app.character_agent.mind.affordances import CharacterMindAffordanceAdapter
 from app.character_agent.mind.frame_builder import CharacterMindFrameBuilder
 from app.character_agent.mind.projectors import (
     AffectiveBodyStateProjector,
@@ -13,6 +14,7 @@ from app.character_agent.mind.view_builder import LayerContextViewBuilder
 
 __all__ = [
     "AffectiveBodyStateProjector",
+    "CharacterMindAffordanceAdapter",
     "CharacterMindFrameBuilder",
     "EffectiveProfileProjector",
     "GoalContextProjector",

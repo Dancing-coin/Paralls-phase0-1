@@ -70,6 +70,9 @@ class LayerContextViewBuilder:
         selected_skill_path: dict[str, object] | None = None,
         target_refs: dict[str, str] | None = None,
     ) -> L4ExecutionView:
+        physical_feasibility_summary = self._payload_for(
+            frame.affordances.cards, "physical_feasibility"
+        )
         return L4ExecutionView(
             actor_id=frame.actor_id,
             mind_turn_id=frame.mind_turn_id,
@@ -79,7 +82,7 @@ class LayerContextViewBuilder:
             affective_body_summary=self._payload_for(frame.runtime_state.cards, "affective_body_state"),
             presentation_constraints=[],
             realization_hints=[],
-            physical_feasibility_summary={"status": "advisory"},
+            physical_feasibility_summary=physical_feasibility_summary or {"status": "advisory"},
         )
 
     def build_writeback_view(
