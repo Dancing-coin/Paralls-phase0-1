@@ -1,9 +1,11 @@
 from typing import Protocol
 
 from app.models.siming_heavenly_graph import (
+    HeavenlyGraphCheckpointRef,
     HeavenlyGraphNode,
     HeavenlyGraphRelation,
     HeavenlyGraphScope,
+    HeavenlyGraphSnapshot,
     HeavenlyGraphWriteBatch,
     HeavenlyGraphWriteResult,
     HeavenlyNodeQuery,
@@ -72,4 +74,20 @@ class HeavenlyGraphPort(Protocol):
         self,
         query: HeavenlyRelationQuery,
     ) -> list[HeavenlyGraphRelation]:
+        raise NotImplementedError
+
+    def create_checkpoint(
+        self,
+        *,
+        checkpoint_id: str,
+        scope: HeavenlyGraphScope,
+        valid_at: int,
+        recorded_at: int,
+    ) -> HeavenlyGraphCheckpointRef:
+        raise NotImplementedError
+
+    def read_checkpoint(
+        self,
+        checkpoint_ref: str,
+    ) -> HeavenlyGraphSnapshot:
         raise NotImplementedError

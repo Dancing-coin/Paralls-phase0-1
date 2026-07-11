@@ -3,15 +3,19 @@ import json
 from collections.abc import Sequence
 
 from app.models.siming_heavenly_graph import (
+    HeavenlyGraphCheckpointRef,
     HeavenlyGraphNode,
     HeavenlyGraphRelation,
     HeavenlyGraphScope,
+    HeavenlyGraphSnapshot,
     HeavenlyGraphWriteBatch,
     HeavenlyGraphWriteResult,
     HeavenlyNodeQuery,
     HeavenlyRelationQuery,
 )
 from app.services.siming_heavenly_graph_port import (
+    HeavenlyGraphCheckpointConflict,
+    HeavenlyGraphCheckpointNotFound,
     HeavenlyGraphIdempotencyConflict,
     HeavenlyGraphReferentialIntegrityError,
     HeavenlyGraphRevisionConflict,
@@ -35,6 +39,7 @@ class InMemoryHeavenlyGraphAdapter:
             tuple[ScopeKey, str],
             tuple[str, HeavenlyGraphWriteResult],
         ] = {}
+        self._checkpoints: dict[str, HeavenlyGraphSnapshot] = {}
 
     def write_batch(
         self,
@@ -198,6 +203,64 @@ class InMemoryHeavenlyGraphAdapter:
         )
         return ordered if query.limit is None else ordered[: query.limit]
 
+    def create_checkpoint(
+        self,
+        *,
+        checkpoint_id: str,
+        scope: HeavenlyGraphScope,
+        valid_at: int,
+        recorded_at: int,
+    ) -> HeavenlyGraphCheckpointRef:
+        checkpoint_ref = self._checkpoint_ref(checkpoint_id, scope)
+        checkpoint = HeavenlyGraphCheckpointRef(
+            checkpoint_ref=checkpoint_ref,
+            checkpoint_id=checkpoint_id,
+            scope=scope,
+            valid_at=valid_at,
+            recorded_at=recorded_at,
+        )
+        existing = self._checkpoints.get(checkpoint_ref)
+        if existing is not None:
+            if existing.checkpoint != checkpoint:
+                raise HeavenlyGraphCheckpointConflict(
+                    f"checkpoint {checkpoint_id!r} was reused "
+                    "with different coordinates"
+                )
+            return existing.checkpoint.model_copy(deep=True)
+
+        snapshot = HeavenlyGraphSnapshot(
+            checkpoint=checkpoint,
+            nodes=self.query_nodes(
+                HeavenlyNodeQuery(
+                    scope=scope,
+                    valid_at=valid_at,
+                    recorded_at=recorded_at,
+                    limit=None,
+                )
+            ),
+            relations=self.query_relations(
+                HeavenlyRelationQuery(
+                    scope=scope,
+                    valid_at=valid_at,
+                    recorded_at=recorded_at,
+                    limit=None,
+                )
+            ),
+        )
+        self._checkpoints[checkpoint_ref] = snapshot.model_copy(deep=True)
+        return checkpoint.model_copy(deep=True)
+
+    def read_checkpoint(
+        self,
+        checkpoint_ref: str,
+    ) -> HeavenlyGraphSnapshot:
+        snapshot = self._checkpoints.get(checkpoint_ref)
+        if snapshot is None:
+            raise HeavenlyGraphCheckpointNotFound(
+                f"checkpoint ref {checkpoint_ref!r} was not found"
+            )
+        return snapshot.model_copy(deep=True)
+
     def _validate_batch_scopes(
         self,
         batch: HeavenlyGraphWriteBatch,
@@ -335,6 +398,16 @@ class InMemoryHeavenlyGraphAdapter:
         revision: int,
     ) -> str:
         return f"{entity_kind}:{self._scope_ref(scope)}:{entity_id}@{revision}"
+
+    def _checkpoint_ref(
+        self,
+        checkpoint_id: str,
+        scope: HeavenlyGraphScope,
+    ) -> str:
+        return (
+            f"heavenly_graph_checkpoint:{self._scope_ref(scope)}:"
+            f"{checkpoint_id}"
+        )
 
     def _scope_ref(self, scope: HeavenlyGraphScope) -> str:
         return ":".join(
