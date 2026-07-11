@@ -59,3 +59,28 @@ def test_main_demo_timeout_path_cannot_log_failed_interaction_success() -> None:
     success_index = run_section.index('_bus_log("phase0_autotest_stage:failed_interaction_resolved")')
     assert "return" in run_section[failure_index:success_index]
     assert 'await _begin_autotest_shutdown("phase0_autotest_complete")' in run_section[success_index:]
+
+
+def test_main_demo_rejects_empty_result_correlations_and_resets_match_state() -> None:
+    source = (SCRIPTS_ROOT / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
+    world_result_section = source.split("func _on_world_result_received(payload: Dictionary) -> void:", 1)[1].split(
+        "func _on_debug_event_logged", 1
+    )[0]
+    run_section = source.split("func _run_autotest_inputs() -> void:", 1)[1].split(
+        "func _wait_for_request_ack", 1
+    )[0]
+
+    assert world_result_section.count('and pending_success_interaction_correlation_id != ""') == 3
+    assert 'and pending_failed_interaction_correlation_id != ""' in world_result_section
+    assert (
+        'var success_interaction_request := _emit_interaction_request("obj_letter", "inspect")\n'
+        '\tmatched_success_interaction_result = false\n'
+        '\tmatched_success_object_result = false\n'
+        '\tmatched_success_environment_result = false\n'
+        '\tpending_success_interaction_correlation_id = "interact:%s" % success_interaction_request.get("producer_ts", 0)'
+    ) in run_section
+    assert (
+        'var failed_interaction_request := _emit_interaction_request_without_near_object_fact("obj_letter", "inspect")\n'
+        '\tmatched_failed_interaction_result = false\n'
+        '\tpending_failed_interaction_correlation_id = "interact:%s" % failed_interaction_request.get("producer_ts", 0)'
+    ) in run_section
