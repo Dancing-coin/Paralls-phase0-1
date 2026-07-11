@@ -99,15 +99,16 @@ class HeavenlyGraphContract(ABC):
         graph = self.make_graph()
         scope = graph_scope()
         node = graph_node(node_id="fact:lamp")
-
-        result = graph.write_batch(
-            HeavenlyGraphWriteBatch(
-                transaction_id="graph_tx:basic",
-                idempotency_key="authority:event:basic",
-                scope=scope,
-                nodes=[node],
-            )
+        batch = HeavenlyGraphWriteBatch(
+            transaction_id="graph_tx:basic",
+            idempotency_key="authority:event:basic",
+            scope=scope,
+            nodes=[node],
         )
+
+        result = graph.write_batch(batch)
+        node.attributes["state"] = "mutated_original_node"
+        batch.nodes[0].attributes["state"] = "mutated_batch_node"
         loaded = graph.get_node(node_id="fact:lamp", scope=scope, valid_at=20)
 
         assert result.applied is True
@@ -119,6 +120,42 @@ class HeavenlyGraphContract(ABC):
         reloaded = graph.get_node(node_id="fact:lamp", scope=scope, valid_at=20)
         assert reloaded is not None
         assert reloaded.attributes["state"] == "dim"
+
+    def test_write_revalidates_mutated_entity_scopes_before_writing(self) -> None:
+        graph = self.make_graph()
+        main_scope = graph_scope()
+        other_scope = graph_scope(branch_id="branch:other")
+        source = graph_node(node_id="fact:cause")
+        target = graph_node(node_id="fact:effect")
+        relation = graph_relation(
+            relation_id="relation:cause-effect",
+            source_node_id=source.node_id,
+            target_node_id=target.node_id,
+        )
+        batch = HeavenlyGraphWriteBatch(
+            transaction_id="graph_tx:mutated-scope",
+            idempotency_key="authority:event:mutated-scope",
+            scope=main_scope,
+            nodes=[source, target],
+            relations=[relation],
+        )
+        target.scope = other_scope
+
+        with pytest.raises(
+            HeavenlyGraphReferentialIntegrityError,
+            match="every entity must match the batch scope",
+        ):
+            graph.write_batch(batch)
+
+        assert graph.query_nodes(
+            HeavenlyNodeQuery(scope=main_scope, valid_at=20)
+        ) == []
+        assert graph.query_nodes(
+            HeavenlyNodeQuery(scope=other_scope, valid_at=20)
+        ) == []
+        assert graph.query_relations(
+            HeavenlyRelationQuery(scope=main_scope, valid_at=20)
+        ) == []
 
     def test_same_node_id_is_isolated_by_story_branch(self) -> None:
         graph = self.make_graph()
