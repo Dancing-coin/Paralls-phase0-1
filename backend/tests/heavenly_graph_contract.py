@@ -13,6 +13,7 @@ from app.models.siming_heavenly_graph import (
     HeavenlyRelationQuery,
 )
 from app.services.siming_heavenly_graph_port import (
+    HeavenlyGraphIdempotencyConflict,
     HeavenlyGraphPort,
     HeavenlyGraphReferentialIntegrityError,
 )
@@ -481,3 +482,171 @@ class HeavenlyGraphContract(ABC):
         assert result.applied is True
         assert loaded is not None
         assert loaded.relation_id == "relation:stored-endpoint"
+
+    def test_identical_idempotency_replay_does_not_write_twice(self) -> None:
+        graph = self.make_graph()
+        scope = graph_scope()
+        batch = HeavenlyGraphWriteBatch(
+            transaction_id="graph_tx:idempotent",
+            idempotency_key="authority:event:idempotent",
+            scope=scope,
+            nodes=[graph_node(node_id="fact:lamp")],
+        )
+
+        first = graph.write_batch(batch)
+        second = graph.write_batch(batch.model_copy(deep=True))
+        loaded = graph.query_nodes(
+            HeavenlyNodeQuery(scope=scope, valid_at=20)
+        )
+
+        assert first.applied is True and first.replayed is False
+        assert second.applied is False and second.replayed is True
+        assert [node.revision for node in loaded] == [1]
+
+    def test_idempotency_key_reuse_with_different_payload_is_rejected(
+        self,
+    ) -> None:
+        graph = self.make_graph()
+        scope = graph_scope()
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:original",
+                idempotency_key="authority:event:shared",
+                scope=scope,
+                nodes=[graph_node(node_id="fact:lamp", state="dim")],
+            )
+        )
+
+        with pytest.raises(
+            HeavenlyGraphIdempotencyConflict,
+            match="different payload",
+        ):
+            graph.write_batch(
+                HeavenlyGraphWriteBatch(
+                    transaction_id="graph_tx:conflict",
+                    idempotency_key="authority:event:shared",
+                    scope=scope,
+                    nodes=[
+                        graph_node(
+                            node_id="fact:other",
+                            state="destroyed",
+                        )
+                    ],
+                )
+            )
+
+    def test_invalid_relation_rolls_back_entire_batch(self) -> None:
+        graph = self.make_graph()
+        scope = graph_scope()
+
+        with pytest.raises(
+            HeavenlyGraphReferentialIntegrityError,
+            match="missing in batch scope",
+        ):
+            graph.write_batch(
+                HeavenlyGraphWriteBatch(
+                    transaction_id="graph_tx:atomic",
+                    idempotency_key="authority:event:atomic",
+                    scope=scope,
+                    nodes=[graph_node(node_id="fact:new")],
+                    relations=[
+                        graph_relation(
+                            relation_id="relation:invalid",
+                            source_node_id="fact:new",
+                            target_node_id="fact:missing",
+                        )
+                    ],
+                )
+            )
+
+        assert graph.get_node(
+            node_id="fact:new",
+            scope=scope,
+            valid_at=20,
+        ) is None
+
+    def test_new_revision_does_not_mutate_old_provenance(self) -> None:
+        graph = self.make_graph()
+        scope = graph_scope()
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:provenance:v1",
+                idempotency_key="authority:event:provenance:v1",
+                scope=scope,
+                nodes=[
+                    graph_node(
+                        node_id="fact:lamp",
+                        valid_from=0,
+                        recorded_at=10,
+                        source_ref="authority:event:old",
+                    )
+                ],
+            )
+        )
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:provenance:v2",
+                idempotency_key="authority:event:provenance:v2",
+                scope=scope,
+                nodes=[
+                    graph_node(
+                        node_id="fact:lamp",
+                        state="destroyed",
+                        valid_from=50,
+                        recorded_at=60,
+                        revision=2,
+                        supersedes_revision=1,
+                        source_ref="authority:event:new",
+                    )
+                ],
+            )
+        )
+
+        old = graph.get_node(
+            node_id="fact:lamp",
+            scope=scope,
+            valid_at=20,
+            recorded_at=100,
+        )
+        new = graph.get_node(
+            node_id="fact:lamp",
+            scope=scope,
+            valid_at=70,
+            recorded_at=100,
+        )
+
+        assert old is not None
+        assert old.provenance.source_ref == "authority:event:old"
+        assert new is not None
+        assert new.provenance.source_ref == "authority:event:new"
+
+    def test_idempotency_keys_are_scoped_by_graph_scope(self) -> None:
+        graph = self.make_graph()
+        main_scope = graph_scope(branch_id="branch:main")
+        other_scope = graph_scope(branch_id="branch:other")
+
+        main = graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:scope:main",
+                idempotency_key="authority:event:shared-id",
+                scope=main_scope,
+                nodes=[graph_node(node_id="fact:lamp", state="dim")],
+            )
+        )
+        other = graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:scope:other",
+                idempotency_key="authority:event:shared-id",
+                scope=other_scope,
+                nodes=[
+                    graph_node(
+                        node_id="fact:lamp",
+                        branch_id="branch:other",
+                        state="destroyed",
+                    )
+                ],
+            )
+        )
+
+        assert main.applied is True
+        assert other.applied is True
