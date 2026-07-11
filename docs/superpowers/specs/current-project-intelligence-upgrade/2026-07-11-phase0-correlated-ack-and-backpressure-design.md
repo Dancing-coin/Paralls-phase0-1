@@ -116,6 +116,8 @@ last_backend_activity_ms: int
 autotest_transport_quiescent: bool
 ```
 
+The successful interaction additionally tracks its correlation ID plus the accepted action-resolution, visible object-state, and alerted environment-state results. Quiescence cannot begin until all three have been observed, so the successful interaction's derivative multimodal evidence is emitted before sampling is paused.
+
 `_on_backend_ack_received` records only non-empty `request_id` values. It does not infer request completion from `route`.
 
 `_on_world_result_received` updates `last_backend_activity_ms` and marks the failed-interaction result only when both result type and correlation ID match.
@@ -150,6 +152,9 @@ phase0_autotest_failure:<stage>:<request_id>
 
 Valid stages are:
 
+- `near_move_ack_timeout`
+- `success_interaction_ack_timeout`
+- `success_interaction_result_timeout`
 - `transport_not_quiet`
 - `far_move_ack_timeout`
 - `failed_interaction_ack_timeout`
