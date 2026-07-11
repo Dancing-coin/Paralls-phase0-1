@@ -95,34 +95,60 @@ def test_main_demo_wait_helpers_use_explicit_integer_deadlines() -> None:
     assert "var deadline :=" not in helper_block
 
 
-def test_main_demo_drains_periodic_sampling_before_near_move() -> None:
+def test_main_demo_uses_exact_barriers_before_near_and_far_moves() -> None:
     source = (SCRIPTS_ROOT / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
     run_section = source.split("func _run_autotest_inputs() -> void:", 1)[1].split(
-        "func _wait_for_request_ack", 1
+        "func _set_autotest_actor_local_perception_enabled", 1
     )[0]
 
     focus_index = run_section.index("_force_focus_target(interactive_object)")
-    sampling_pause_index = run_section.index("suspend_near_object_visual_fact = true")
-    spatial_pause_index = run_section.index("suspend_spatial_access_fact = true")
-    activity_reset_index = run_section.index("last_backend_activity_ms = Time.get_ticks_msec()", focus_index)
-    quiet_wait_index = run_section.index(
-        "await _wait_for_backend_quiet(autotest_transport_quiet_window_ms, autotest_transport_quiet_timeout_ms)",
-        focus_index,
+    pre_barrier_index = run_section.index(
+        'await _drain_backend_transport("pre_interaction_barrier_ack_timeout")'
     )
-    quiet_failure_index = run_section.index('await _fail_autotest("transport_not_quiet", {})', focus_index)
     near_move_index = run_section.index(
         'var near_move_request := _emit_move_intent_request(autotest_interact_position, "locomotion")'
     )
     success_wait_index = run_section.index(
         "await _wait_for_successful_interaction_result(autotest_request_timeout_ms)"
     )
-    full_quiescence_index = run_section.index("autotest_transport_quiescent = true")
+    quiescence_index = run_section.index("autotest_transport_quiescent = true")
+    post_barrier_index = run_section.index(
+        'await _drain_backend_transport("post_success_barrier_ack_timeout")'
+    )
+    far_move_index = run_section.index(
+        'var far_move_request := _emit_move_intent_request(autotest_failed_interact_position, "locomotion")'
+    )
 
-    assert sampling_pause_index < spatial_pause_index < focus_index < activity_reset_index
-    assert activity_reset_index < quiet_wait_index < quiet_failure_index < near_move_index
-    assert "return" in run_section[quiet_failure_index:near_move_index]
-    assert "autotest_transport_quiescent = true" not in run_section[:near_move_index]
-    assert near_move_index < success_wait_index < full_quiescence_index
+    assert focus_index < pre_barrier_index < near_move_index
+    assert near_move_index < success_wait_index < quiescence_index < post_barrier_index < far_move_index
+    assert "return" in run_section[pre_barrier_index:near_move_index]
+    assert "return" in run_section[post_barrier_index:far_move_index]
+    assert "await _wait_for_backend_quiet" not in run_section
+
+
+def test_main_demo_transport_drain_waits_for_exact_ack_then_quiet_window() -> None:
+    source = (SCRIPTS_ROOT / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
+    emit_section = source.split("func _emit_transport_barrier_request() -> Dictionary:", 1)[1].split(
+        "func _drain_backend_transport", 1
+    )[0]
+    drain_section = source.split(
+        "func _drain_backend_transport(barrier_failure_stage: String) -> bool:", 1
+    )[1].split("func _wait_for_request_ack", 1)[0]
+
+    assert 'bridge.has_method("send_transport_barrier")' in emit_section
+    assert "return bridge.send_transport_barrier()" in emit_section
+    assert "var barrier_request := _emit_transport_barrier_request()" in drain_section
+    assert (
+        'await _wait_for_request_ack(str(barrier_request.get("request_id", "")), autotest_request_timeout_ms)'
+        in drain_section
+    )
+    assert 'await _fail_autotest(barrier_failure_stage, barrier_request)' in drain_section
+    assert "last_backend_activity_ms = Time.get_ticks_msec()" in drain_section
+    assert (
+        "await _wait_for_backend_quiet(autotest_transport_quiet_window_ms, autotest_transport_quiet_timeout_ms)"
+        in drain_section
+    )
+    assert 'await _fail_autotest("transport_not_quiet", barrier_request)' in drain_section
 
 
 def test_main_demo_bounds_periodic_sampling_before_local_probes() -> None:
