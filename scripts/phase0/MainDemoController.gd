@@ -422,9 +422,7 @@ func _run_autotest_inputs() -> void:
 	_orient_player_toward(interactive_object.global_position)
 	_move_player_to_interact_position()
 	_force_focus_target(interactive_object)
-	last_backend_activity_ms = Time.get_ticks_msec()
-	if not (await _wait_for_backend_quiet(autotest_transport_quiet_window_ms, autotest_transport_quiet_timeout_ms)):
-		await _fail_autotest("transport_not_quiet", {})
+	if not (await _drain_backend_transport("pre_interaction_barrier_ack_timeout")):
 		return
 	var near_move_request := _emit_move_intent_request(autotest_interact_position, "locomotion")
 	if not (await _wait_for_request_ack(str(near_move_request.get("request_id", "")), autotest_request_timeout_ms)):
@@ -446,9 +444,7 @@ func _run_autotest_inputs() -> void:
 	autotest_transport_quiescent = true
 	suspend_near_object_visual_fact = true
 	suspend_spatial_access_fact = true
-	last_backend_activity_ms = Time.get_ticks_msec()
-	if not (await _wait_for_backend_quiet(autotest_transport_quiet_window_ms, autotest_transport_quiet_timeout_ms)):
-		await _fail_autotest("transport_not_quiet", {})
+	if not (await _drain_backend_transport("post_success_barrier_ack_timeout")):
 		return
 	var far_move_request := _emit_move_intent_request(autotest_failed_interact_position, "locomotion")
 	if not (await _wait_for_request_ack(str(far_move_request.get("request_id", "")), autotest_request_timeout_ms)):
@@ -473,6 +469,23 @@ func _set_autotest_actor_local_perception_enabled(is_enabled: bool) -> void:
 	for replica in [character_a, character_b, get_node_or_null("PlayerCharacter/CharacterReplica")]:
 		if replica != null and replica.has_method("set_actor_local_perception_enabled"):
 			replica.set_actor_local_perception_enabled(is_enabled)
+
+func _emit_transport_barrier_request() -> Dictionary:
+	var bridge := _get_bridge()
+	if bridge == null or not bridge.has_method("send_transport_barrier"):
+		return {}
+	return bridge.send_transport_barrier()
+
+func _drain_backend_transport(barrier_failure_stage: String) -> bool:
+	var barrier_request := _emit_transport_barrier_request()
+	if not (await _wait_for_request_ack(str(barrier_request.get("request_id", "")), autotest_request_timeout_ms)):
+		await _fail_autotest(barrier_failure_stage, barrier_request)
+		return false
+	last_backend_activity_ms = Time.get_ticks_msec()
+	if not (await _wait_for_backend_quiet(autotest_transport_quiet_window_ms, autotest_transport_quiet_timeout_ms)):
+		await _fail_autotest("transport_not_quiet", barrier_request)
+		return false
+	return true
 
 func _wait_for_request_ack(request_id: String, timeout_ms: int) -> bool:
 	if request_id == "":
