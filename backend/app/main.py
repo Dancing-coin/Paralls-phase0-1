@@ -634,6 +634,9 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 "accepted": route["accepted"],
                 "source_type": envelope.message_type,
                 "route": route["route"],
+                "request_id": event.request_id,
+                "intent_type": event.intent_type,
+                "producer_ts": event.producer_ts,
             },
         }
     ]
