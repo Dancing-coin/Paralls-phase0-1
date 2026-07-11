@@ -12,6 +12,7 @@ from app.character_agent.mind.projectors import (
     UnresolvedTensionProjector,
 )
 from app.character_agent.mind.view_builder import LayerContextViewBuilder
+from app.character_agent.mind.writeback_policy import MindWritebackPolicyRouter
 
 __all__ = [
     "AffectiveBodyStateProjector",
@@ -22,6 +23,7 @@ __all__ = [
     "GoalContextProjector",
     "LayerContextViewBuilder",
     "MemoryActivationProjector",
+    "MindWritebackPolicyRouter",
     "NeedPressureProjector",
     "RelationshipContextProjector",
     "SupervisionProjector",

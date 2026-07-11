@@ -28,6 +28,8 @@ from app.character_agent.models.supervision import (
     CharacterUnresolvedTension,
 )
 from app.character_agent.mind.frame_builder import CharacterMindFrameBuilder
+from app.character_agent.mind.writeback_policy import MindWritebackPolicyRouter
+from app.character_agent.models.mind_frame import MindDeltaLedger
 from app.models.character_agent_runtime import CharacterGoalCommand
 from app.models.character_agent_runtime import CHARACTER_AGENT_CONTROL_MODES
 from app.models.character_agent_runtime import CHARACTER_ACTOR_AUTONOMY_MODES
@@ -74,6 +76,7 @@ class CharacterAgentRuntime:
         self._l4 = CharacterAgentL4Adapter()
         self._l4_executor = CharacterAgentL4Executor()
         self._mind_frame_builder = CharacterMindFrameBuilder()
+        self._mind_writeback_policy = MindWritebackPolicyRouter()
         self._observatory_projection = CharacterAgentDebugProjection()
         self._control_modes = self._build_default_control_modes()
         self._pending_suggestions: list[CharacterSuggestionPacket] = []
@@ -982,6 +985,25 @@ class CharacterAgentRuntime:
 
     def get_session_timeline(self, actor_id: str) -> list[dict[str, object]]:
         return self._session_store.list_events(actor_id)
+
+    def apply_mind_delta_ledger(
+        self,
+        *,
+        actor_id: str,
+        producer_ts: int,
+        ledger: MindDeltaLedger | dict[str, object],
+    ) -> None:
+        if not self.supports_actor(actor_id):
+            raise ValueError(f"unsupported actor_id: {actor_id}")
+        typed_ledger = ledger if isinstance(ledger, MindDeltaLedger) else MindDeltaLedger(**ledger)
+        if typed_ledger.actor_id != actor_id:
+            raise ValueError("ledger actor_id mismatch")
+        self._mind_writeback_policy.apply(
+            runtime=self,
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+            ledger=typed_ledger,
+        )
 
     def get_memory_bundle(self, actor_id: str) -> dict[str, list[dict[str, object]]]:
         return self._memory_store.retrieval_bundle(actor_id)
@@ -2150,6 +2172,22 @@ class CharacterAgentRuntime:
                 payload=updated_state,
             )
             self._memory_store.write_event(stored)
+
+    def _session_append_event(
+        self,
+        *,
+        actor_id: str,
+        event_type: str,
+        producer_ts: int,
+        payload: dict[str, object],
+    ) -> None:
+        stored = self._session_store.append_event(
+            actor_id=actor_id,
+            event_type=event_type,
+            producer_ts=producer_ts,
+            payload=payload,
+        )
+        self._memory_store.write_event(stored)
 
     def _observe_and_record_drift_promotion(
         self,
