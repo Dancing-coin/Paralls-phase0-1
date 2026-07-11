@@ -9,6 +9,7 @@ class PlayerInputBase(BaseModel):
     actor_id: str
     intent_type: str
     producer_ts: int
+    request_id: str = ""
 
 
 class MoveIntent(PlayerInputBase):

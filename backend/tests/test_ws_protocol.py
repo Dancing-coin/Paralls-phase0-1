@@ -67,7 +67,7 @@ def _reset_runtime_state_with_local_character_model() -> None:
 
 
 def test_player_input_dialogue_submit_shape() -> None:
-    event = DialogueSubmit(
+    legacy_event = DialogueSubmit(
         player_id="p1",
         room_id="room_demo",
         actor_id="char_c",
@@ -76,8 +76,21 @@ def test_player_input_dialogue_submit_shape() -> None:
         target_actor_id="char_a",
         content="Hello",
     )
-    assert event.target_actor_id == "char_a"
-    assert event.content == "Hello"
+    correlated_event = DialogueSubmit(
+        player_id="p1",
+        room_id="room_demo",
+        actor_id="char_c",
+        intent_type="dialogue_submit",
+        producer_ts=124,
+        request_id="player_input:char_c:dialogue_submit:124:1",
+        target_actor_id="char_a",
+        content="Hello again",
+    )
+
+    assert legacy_event.request_id == ""
+    assert legacy_event.target_actor_id == "char_a"
+    assert legacy_event.content == "Hello"
+    assert correlated_event.request_id == "player_input:char_c:dialogue_submit:124:1"
 
 
 def test_ai_output_dialogue_response_shape() -> None:
@@ -463,6 +476,7 @@ def test_websocket_move_intent_emits_ack_and_runtime_snapshot() -> None:
                     "actor_id": "char_c",
                     "intent_type": "move_intent",
                     "producer_ts": 333,
+                    "request_id": "player_input:char_c:move_intent:333:7",
                     "move_mode": "locomotion",
                     "target_point": [1.0, 0.5, 2.0],
                 },
@@ -475,11 +489,47 @@ def test_websocket_move_intent_emits_ack_and_runtime_snapshot() -> None:
     assert ack["message_type"] == "ack"
     assert ack["payload"]["accepted"] is True
     assert ack["payload"]["route"] == "local_motion"
+    assert ack["payload"]["request_id"] == "player_input:char_c:move_intent:333:7"
+    assert ack["payload"]["intent_type"] == "move_intent"
+    assert ack["payload"]["producer_ts"] == 333
     assert runtime_snapshot["message_type"] == "character_runtime_state_snapshot"
     assert runtime_snapshot["payload"]["actor_id"] == "char_c"
     assert runtime_snapshot["payload"]["room_id"] == "room_demo"
     assert runtime_snapshot["payload"]["scene_id"] == "scene_demo"
     assert runtime_snapshot["payload"]["zone_id"] == "zone_focus"
+
+
+def test_websocket_legacy_move_intent_echoes_empty_request_id() -> None:
+    _reset_runtime_state_with_local_character_model()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "player_input",
+                "payload": {
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "scene_id": "scene_demo",
+                    "zone_id": "zone_focus",
+                    "actor_id": "char_c",
+                    "intent_type": "move_intent",
+                    "producer_ts": 334,
+                    "move_mode": "locomotion",
+                    "target_point": [1.0, 0.5, 2.0],
+                },
+            }
+        )
+
+        ack = websocket.receive_json()
+        runtime_snapshot = websocket.receive_json()
+
+    assert ack["message_type"] == "ack"
+    assert ack["payload"]["accepted"] is True
+    assert ack["payload"]["route"] == "local_motion"
+    assert ack["payload"]["request_id"] == ""
+    assert ack["payload"]["intent_type"] == "move_intent"
+    assert ack["payload"]["producer_ts"] == 334
+    assert runtime_snapshot["message_type"] == "character_runtime_state_snapshot"
 
 
 def test_websocket_dialogue_submit_emits_ack_and_dialogue_response() -> None:
