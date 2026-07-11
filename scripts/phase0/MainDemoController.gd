@@ -316,12 +316,14 @@ func _on_world_result_received(payload: Dictionary) -> void:
 	var correlation_id := str(payload.get("correlation_id", ""))
 	if (
 		result_type == "action_resolution_result"
+		and pending_success_interaction_correlation_id != ""
 		and correlation_id == pending_success_interaction_correlation_id
 		and str(payload.get("settlement_status", "")) == "accepted"
 	):
 		matched_success_interaction_result = true
 	if (
 		result_type == "object_state_result"
+		and pending_success_interaction_correlation_id != ""
 		and correlation_id == pending_success_interaction_correlation_id
 		and str(payload.get("target_object_id", "")) == "obj_letter"
 		and str(payload.get("current_state", "")) == "visible"
@@ -329,12 +331,17 @@ func _on_world_result_received(payload: Dictionary) -> void:
 		matched_success_object_result = true
 	if (
 		result_type == "environment_state_result"
+		and pending_success_interaction_correlation_id != ""
 		and correlation_id == pending_success_interaction_correlation_id
 		and str(payload.get("target_environment_id", "")) == "env_lamp"
 		and str(payload.get("current_state", "")) == "alerted"
 	):
 		matched_success_environment_result = true
-	if result_type == "constraint_state_result" and str(payload.get("correlation_id", "")) == pending_failed_interaction_correlation_id:
+	if (
+		result_type == "constraint_state_result"
+		and pending_failed_interaction_correlation_id != ""
+		and str(payload.get("correlation_id", "")) == pending_failed_interaction_correlation_id
+	):
 		matched_failed_interaction_result = true
 	if not autotest_transport_quiescent:
 		if result_type == "object_state_result" and str(payload.get("target_object_id", "")) == "obj_letter":
@@ -410,6 +417,9 @@ func _run_autotest_inputs() -> void:
 		await _fail_autotest("near_move_ack_timeout", near_move_request)
 		return
 	var success_interaction_request := _emit_interaction_request("obj_letter", "inspect")
+	matched_success_interaction_result = false
+	matched_success_object_result = false
+	matched_success_environment_result = false
 	pending_success_interaction_correlation_id = "interact:%s" % success_interaction_request.get("producer_ts", 0)
 	_bus_log("phase0_autotest_stage:success_interaction_submitted")
 	if not (await _wait_for_request_ack(str(success_interaction_request.get("request_id", "")), autotest_request_timeout_ms)):
@@ -433,6 +443,7 @@ func _run_autotest_inputs() -> void:
 	_orient_player_toward(interactive_object.global_position)
 	_bus_log("phase0_autotest_failed_interaction_attempt")
 	var failed_interaction_request := _emit_interaction_request_without_near_object_fact("obj_letter", "inspect")
+	matched_failed_interaction_result = false
 	pending_failed_interaction_correlation_id = "interact:%s" % failed_interaction_request.get("producer_ts", 0)
 	if not (await _wait_for_request_ack(str(failed_interaction_request.get("request_id", "")), autotest_request_timeout_ms)):
 		await _fail_autotest("failed_interaction_ack_timeout", failed_interaction_request)
