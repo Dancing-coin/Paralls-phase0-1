@@ -33,6 +33,7 @@ class InMemoryHeavenlyGraphAdapter:
         self,
         batch: HeavenlyGraphWriteBatch,
     ) -> HeavenlyGraphWriteResult:
+        self._validate_batch_scopes(batch)
         self._validate_batch_revisions(batch)
         self._validate_relation_endpoints(batch)
 
@@ -154,6 +155,16 @@ class InMemoryHeavenlyGraphAdapter:
             key=lambda relation: relation.relation_id,
         )
         return ordered if query.limit is None else ordered[: query.limit]
+
+    def _validate_batch_scopes(
+        self,
+        batch: HeavenlyGraphWriteBatch,
+    ) -> None:
+        for entity in [*batch.nodes, *batch.relations]:
+            if entity.scope != batch.scope:
+                raise HeavenlyGraphReferentialIntegrityError(
+                    "every entity must match the batch scope"
+                )
 
     def _validate_batch_revisions(
         self,
