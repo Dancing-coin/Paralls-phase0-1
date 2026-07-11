@@ -1,3 +1,5 @@
+import hashlib
+import json
 from collections.abc import Sequence
 
 from app.models.siming_heavenly_graph import (
@@ -10,6 +12,7 @@ from app.models.siming_heavenly_graph import (
     HeavenlyRelationQuery,
 )
 from app.services.siming_heavenly_graph_port import (
+    HeavenlyGraphIdempotencyConflict,
     HeavenlyGraphReferentialIntegrityError,
     HeavenlyGraphRevisionConflict,
 )
@@ -28,11 +31,33 @@ class InMemoryHeavenlyGraphAdapter:
             tuple[ScopeKey, str],
             list[HeavenlyGraphRelation],
         ] = {}
+        self._idempotency: dict[
+            tuple[ScopeKey, str],
+            tuple[str, HeavenlyGraphWriteResult],
+        ] = {}
 
     def write_batch(
         self,
         batch: HeavenlyGraphWriteBatch,
     ) -> HeavenlyGraphWriteResult:
+        payload_hash = self._batch_hash(batch)
+        scoped_idempotency_key = (
+            self._scope_key(batch.scope),
+            batch.idempotency_key,
+        )
+        prior = self._idempotency.get(scoped_idempotency_key)
+        if prior is not None:
+            prior_hash, prior_result = prior
+            if prior_hash != payload_hash:
+                raise HeavenlyGraphIdempotencyConflict(
+                    f"idempotency key {batch.idempotency_key!r} "
+                    "was reused with different payload"
+                )
+            return prior_result.model_copy(
+                update={"applied": False, "replayed": True},
+                deep=True,
+            )
+
         self._validate_batch_scopes(batch)
         self._validate_batch_revisions(batch)
         self._validate_relation_endpoints(batch)
@@ -46,7 +71,7 @@ class InMemoryHeavenlyGraphAdapter:
                 relation.model_copy(deep=True)
             )
 
-        return HeavenlyGraphWriteResult(
+        result = HeavenlyGraphWriteResult(
             transaction_id=batch.transaction_id,
             idempotency_key=batch.idempotency_key,
             applied=True,
@@ -65,6 +90,11 @@ class InMemoryHeavenlyGraphAdapter:
                 for relation in batch.relations
             ],
         )
+        self._idempotency[scoped_idempotency_key] = (
+            payload_hash,
+            result.model_copy(deep=True),
+        )
+        return result
 
     def get_node(
         self,
@@ -177,6 +207,15 @@ class InMemoryHeavenlyGraphAdapter:
                 raise HeavenlyGraphReferentialIntegrityError(
                     "every entity must match the batch scope"
                 )
+
+    def _batch_hash(self, batch: HeavenlyGraphWriteBatch) -> str:
+        canonical = json.dumps(
+            batch.model_dump(mode="json"),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     def _validate_batch_revisions(
         self,
