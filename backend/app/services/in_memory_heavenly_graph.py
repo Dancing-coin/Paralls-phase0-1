@@ -117,7 +117,13 @@ class InMemoryHeavenlyGraphAdapter:
                 continue
             if node_id_filter and node_id not in node_id_filter:
                 continue
-            node = self._latest_entity(versions)
+            node = self._effective_entity(
+                versions,
+                valid_at=query.valid_at,
+                recorded_at=query.recorded_at,
+            )
+            if node is None:
+                continue
             if node_type_filter and node.node_type not in node_type_filter:
                 continue
             selected.append(node.model_copy(deep=True))
@@ -139,7 +145,13 @@ class InMemoryHeavenlyGraphAdapter:
                 continue
             if relation_id_filter and relation_id not in relation_id_filter:
                 continue
-            relation = self._latest_entity(versions)
+            relation = self._effective_entity(
+                versions,
+                valid_at=query.valid_at,
+                recorded_at=query.recorded_at,
+            )
+            if relation is None:
+                continue
             if (
                 relation_type_filter
                 and relation.relation_type not in relation_type_filter
@@ -199,19 +211,35 @@ class InMemoryHeavenlyGraphAdapter:
         self,
         batch: HeavenlyGraphWriteBatch,
     ) -> None:
-        batch_node_ids = {node.node_id for node in batch.nodes}
+        batch_nodes = {node.node_id: node for node in batch.nodes}
         scope_key = self._scope_key(batch.scope)
         for relation in batch.relations:
             for endpoint in [
                 relation.source_node_id,
                 relation.target_node_id,
             ]:
-                exists = endpoint in batch_node_ids or bool(
-                    self._nodes.get((scope_key, endpoint))
-                )
+                batch_node = batch_nodes.get(endpoint)
+                if batch_node is not None:
+                    exists = (
+                        batch_node.validity.contains(
+                            relation.validity.valid_from
+                        )
+                        and batch_node.recorded_at <= relation.recorded_at
+                    )
+                else:
+                    versions = self._nodes.get((scope_key, endpoint), [])
+                    exists = (
+                        self._effective_entity(
+                            versions,
+                            valid_at=relation.validity.valid_from,
+                            recorded_at=relation.recorded_at,
+                        )
+                        is not None
+                    )
                 if not exists:
                     raise HeavenlyGraphReferentialIntegrityError(
-                        f"relation endpoint {endpoint!r} is missing in batch scope"
+                        f"relation endpoint {endpoint!r} is missing in batch scope "
+                        "at the relation valid/recorded time"
                     )
 
     def _validate_revision(
@@ -234,12 +262,26 @@ class InMemoryHeavenlyGraphAdapter:
                 f"superseding {expected_supersedes!r}"
             )
 
-    def _latest_entity(
+    def _effective_entity(
         self,
         versions: Sequence[HeavenlyGraphNode]
         | Sequence[HeavenlyGraphRelation],
-    ) -> HeavenlyGraphNode | HeavenlyGraphRelation:
-        return max(versions, key=lambda item: item.revision)
+        *,
+        valid_at: int,
+        recorded_at: int | None,
+    ) -> HeavenlyGraphNode | HeavenlyGraphRelation | None:
+        candidates = [
+            item
+            for item in versions
+            if item.validity.contains(valid_at)
+            and (recorded_at is None or item.recorded_at <= recorded_at)
+        ]
+        if not candidates:
+            return None
+        return max(
+            candidates,
+            key=lambda item: (item.recorded_at, item.revision),
+        )
 
     def _scope_key(self, scope: HeavenlyGraphScope) -> ScopeKey:
         return (
