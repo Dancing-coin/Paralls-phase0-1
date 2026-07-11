@@ -26,7 +26,6 @@ from common import (
 from runtime_trace import write_runtime_trace
 
 SCENE_LOAD_QUIT_AFTER = "120"
-MAIN_AUTOTEST_QUIT_AFTER = "900"
 FOCUS_AUTOTEST_QUIT_AFTER = "180"
 MAIN_AUTOTEST_MARKER_TIMEOUT_SECONDS = 900.0
 FOCUS_AUTOTEST_MARKER_TIMEOUT_SECONDS = 120.0
@@ -156,8 +155,6 @@ def main() -> int:
                 str(project_root),
                 "--scene",
                 "res://scenes/phase0/MainDemo.tscn",
-                "--quit-after",
-                MAIN_AUTOTEST_QUIT_AFTER,
                 "--verbose",
                 "--render-thread",
                 "safe",
