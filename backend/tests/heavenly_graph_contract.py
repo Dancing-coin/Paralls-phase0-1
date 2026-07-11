@@ -13,6 +13,8 @@ from app.models.siming_heavenly_graph import (
     HeavenlyRelationQuery,
 )
 from app.services.siming_heavenly_graph_port import (
+    HeavenlyGraphCheckpointConflict,
+    HeavenlyGraphCheckpointNotFound,
     HeavenlyGraphIdempotencyConflict,
     HeavenlyGraphPort,
     HeavenlyGraphReferentialIntegrityError,
@@ -650,3 +652,117 @@ class HeavenlyGraphContract(ABC):
 
         assert main.applied is True
         assert other.applied is True
+
+    def test_checkpoint_is_immutable_after_later_writes(self) -> None:
+        graph = self.make_graph()
+        scope = graph_scope()
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:checkpoint:v1",
+                idempotency_key="authority:event:checkpoint:v1",
+                scope=scope,
+                nodes=[
+                    graph_node(
+                        node_id="fact:lamp",
+                        state="dim",
+                        valid_from=0,
+                        recorded_at=10,
+                    )
+                ],
+            )
+        )
+        checkpoint = graph.create_checkpoint(
+            checkpoint_id="checkpoint:before-destruction",
+            scope=scope,
+            valid_at=20,
+            recorded_at=20,
+        )
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:checkpoint:v2",
+                idempotency_key="authority:event:checkpoint:v2",
+                scope=scope,
+                nodes=[
+                    graph_node(
+                        node_id="fact:lamp",
+                        state="destroyed",
+                        valid_from=0,
+                        recorded_at=30,
+                        revision=2,
+                        supersedes_revision=1,
+                        source_ref="authority:event:checkpoint:v2",
+                    )
+                ],
+            )
+        )
+
+        snapshot = graph.read_checkpoint(checkpoint.checkpoint_ref)
+        current = graph.get_node(
+            node_id="fact:lamp",
+            scope=scope,
+            valid_at=20,
+            recorded_at=40,
+        )
+
+        assert snapshot.nodes[0].revision == 1
+        assert snapshot.nodes[0].attributes["state"] == "dim"
+        assert current is not None and current.revision == 2
+
+    def test_checkpoint_creation_is_idempotent_for_same_coordinates(self) -> None:
+        graph = self.make_graph()
+        scope = graph_scope()
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:checkpoint:idempotent",
+                idempotency_key="authority:event:checkpoint:idempotent",
+                scope=scope,
+                nodes=[graph_node(node_id="fact:lamp")],
+            )
+        )
+
+        first = graph.create_checkpoint(
+            checkpoint_id="checkpoint:stable",
+            scope=scope,
+            valid_at=20,
+            recorded_at=20,
+        )
+        second = graph.create_checkpoint(
+            checkpoint_id="checkpoint:stable",
+            scope=scope,
+            valid_at=20,
+            recorded_at=20,
+        )
+
+        assert first == second
+
+    def test_checkpoint_id_reuse_with_different_coordinates_is_rejected(
+        self,
+    ) -> None:
+        graph = self.make_graph()
+        scope = graph_scope()
+        graph.create_checkpoint(
+            checkpoint_id="checkpoint:conflict",
+            scope=scope,
+            valid_at=20,
+            recorded_at=20,
+        )
+
+        with pytest.raises(
+            HeavenlyGraphCheckpointConflict,
+            match="different coordinates",
+        ):
+            graph.create_checkpoint(
+                checkpoint_id="checkpoint:conflict",
+                scope=scope,
+                valid_at=21,
+                recorded_at=20,
+            )
+
+    def test_unknown_checkpoint_ref_is_rejected(self) -> None:
+        graph = self.make_graph()
+
+        with pytest.raises(
+            HeavenlyGraphCheckpointNotFound,
+            match="was not found",
+        ):
+            graph.read_checkpoint("heavenly_graph_checkpoint:missing")
