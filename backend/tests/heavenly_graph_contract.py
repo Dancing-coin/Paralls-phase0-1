@@ -255,3 +255,169 @@ class HeavenlyGraphContract(ABC):
         )
 
         assert [node.node_id for node in loaded] == ["fact:a"]
+
+    def test_node_query_respects_valid_and_recorded_time(self) -> None:
+        graph = self.make_graph()
+        scope = graph_scope()
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:node:v1",
+                idempotency_key="authority:event:node:v1",
+                scope=scope,
+                nodes=[
+                    graph_node(
+                        node_id="fact:lamp",
+                        state="dim",
+                        valid_from=0,
+                        recorded_at=10,
+                    )
+                ],
+            )
+        )
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:node:v2",
+                idempotency_key="authority:event:node:v2",
+                scope=scope,
+                nodes=[
+                    graph_node(
+                        node_id="fact:lamp",
+                        state="destroyed",
+                        valid_from=50,
+                        recorded_at=60,
+                        revision=2,
+                        supersedes_revision=1,
+                        source_ref="authority:event:node:v2",
+                    )
+                ],
+            )
+        )
+
+        before_valid_change = graph.get_node(
+            node_id="fact:lamp",
+            scope=scope,
+            valid_at=40,
+            recorded_at=100,
+        )
+        before_recording = graph.get_node(
+            node_id="fact:lamp",
+            scope=scope,
+            valid_at=70,
+            recorded_at=59,
+        )
+        after_recording = graph.get_node(
+            node_id="fact:lamp",
+            scope=scope,
+            valid_at=70,
+            recorded_at=60,
+        )
+
+        assert before_valid_change is not None
+        assert before_valid_change.revision == 1
+        assert before_recording is not None
+        assert before_recording.revision == 1
+        assert after_recording is not None
+        assert after_recording.revision == 2
+
+    def test_relation_query_respects_valid_and_recorded_time(self) -> None:
+        graph = self.make_graph()
+        scope = graph_scope()
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:relation:v1",
+                idempotency_key="authority:event:relation:v1",
+                scope=scope,
+                nodes=[
+                    graph_node(
+                        node_id="fact:cause",
+                        valid_from=0,
+                        recorded_at=10,
+                    ),
+                    graph_node(
+                        node_id="fact:effect",
+                        valid_from=0,
+                        recorded_at=10,
+                    ),
+                ],
+                relations=[
+                    graph_relation(
+                        relation_id="relation:cause",
+                        source_node_id="fact:effect",
+                        target_node_id="fact:cause",
+                        valid_from=0,
+                        recorded_at=10,
+                    )
+                ],
+            )
+        )
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:relation:v2",
+                idempotency_key="authority:event:relation:v2",
+                scope=scope,
+                relations=[
+                    graph_relation(
+                        relation_id="relation:cause",
+                        source_node_id="fact:effect",
+                        target_node_id="fact:cause",
+                        valid_from=50,
+                        recorded_at=60,
+                        revision=2,
+                        supersedes_revision=1,
+                    )
+                ],
+            )
+        )
+
+        before = graph.get_relation(
+            relation_id="relation:cause",
+            scope=scope,
+            valid_at=70,
+            recorded_at=59,
+        )
+        after = graph.get_relation(
+            relation_id="relation:cause",
+            scope=scope,
+            valid_at=70,
+            recorded_at=60,
+        )
+
+        assert before is not None and before.revision == 1
+        assert after is not None and after.revision == 2
+
+    def test_relation_requires_endpoints_effective_at_relation_start(self) -> None:
+        graph = self.make_graph()
+        scope = graph_scope()
+
+        with pytest.raises(
+            HeavenlyGraphReferentialIntegrityError,
+            match="missing in batch scope",
+        ):
+            graph.write_batch(
+                HeavenlyGraphWriteBatch(
+                    transaction_id="graph_tx:future-endpoint",
+                    idempotency_key="authority:event:future-endpoint",
+                    scope=scope,
+                    nodes=[
+                        graph_node(
+                            node_id="fact:future",
+                            valid_from=50,
+                            recorded_at=10,
+                        ),
+                        graph_node(
+                            node_id="fact:present",
+                            valid_from=0,
+                            recorded_at=10,
+                        ),
+                    ],
+                    relations=[
+                        graph_relation(
+                            relation_id="relation:too-early",
+                            source_node_id="fact:future",
+                            target_node_id="fact:present",
+                            valid_from=10,
+                            recorded_at=12,
+                        )
+                    ],
+                )
+            )
