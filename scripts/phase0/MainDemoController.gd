@@ -392,6 +392,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _run_autotest_inputs() -> void:
 	_bus_log("phase0_autotest_begin")
 	focus_override_active = true
+	_set_autotest_actor_local_perception_enabled(false)
 	suspend_near_object_visual_fact = true
 	suspend_spatial_access_fact = true
 	_set_debug_overlay_visible(false)
@@ -460,6 +461,11 @@ func _run_autotest_inputs() -> void:
 	_bus_log("phase0_autotest_stage:failed_interaction_resolved")
 	await _capture_autotest_screenshot()
 	await _begin_autotest_shutdown("phase0_autotest_complete")
+
+func _set_autotest_actor_local_perception_enabled(is_enabled: bool) -> void:
+	for replica in [character_a, character_b, get_node_or_null("PlayerCharacter/CharacterReplica")]:
+		if replica != null and replica.has_method("set_actor_local_perception_enabled"):
+			replica.set_actor_local_perception_enabled(is_enabled)
 
 func _wait_for_request_ack(request_id: String, timeout_ms: int) -> bool:
 	if request_id == "":
