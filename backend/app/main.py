@@ -38,6 +38,7 @@ from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractI
 from app.models.raw_fact import RawFactEvent
 from app.models.runtime_state import ConversationCandidateEvent
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
+from app.models.transport import TransportBarrier
 from app.models.visual_fact import VisualFactEvent
 from app.models.world_result import WorldResultBase
 from app.services.candidate_percept_service import compile_candidate_percepts
@@ -278,6 +279,21 @@ async def debug_websocket_endpoint(websocket: WebSocket) -> None:
 
 
 def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
+    if envelope.message_type == "transport_barrier":
+        barrier = TransportBarrier(**envelope.payload)
+        return [
+            {
+                "message_type": "ack",
+                "payload": {
+                    "accepted": True,
+                    "source_type": "transport_barrier",
+                    "route": "transport_barrier",
+                    "request_id": barrier.request_id,
+                    "producer_ts": barrier.producer_ts,
+                },
+            }
+        ]
+
     if envelope.message_type == "visual_fact_event":
         event = VisualFactEvent(**envelope.payload)
         _publish_debug_event(

@@ -9,6 +9,7 @@ from app.models.environment_request import EnvironmentRequest
 from app.models.runtime_state import CharacterRuntimeStateDelta, CharacterRuntimeStateSnapshot
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
 from app.models.state_machine_transition import StateMachineTransitionEvent
+from app.models.transport import TransportBarrier
 from app.models.world_result import (
     ActionResolutionResult,
     BodyStateResult,
@@ -1592,3 +1593,108 @@ def test_websocket_unknown_mode_preserves_full_projection_and_records_debug(monk
         and event.get("detail", {}).get("raw_stream_mode") == "typo"
         for event in main.debug_stream.history()
     )
+
+
+def test_transport_barrier_requires_nonempty_request_identity() -> None:
+    barrier = TransportBarrier(request_id="transport_barrier:500:1", producer_ts=500)
+
+    assert barrier.request_id == "transport_barrier:500:1"
+    assert barrier.producer_ts == 500
+
+
+def test_transport_barrier_ack_has_no_runtime_side_effects() -> None:
+    _reset_runtime_state_with_local_character_model()
+    before = main.event_trace.summary()
+
+    messages = main._handle_envelope(
+        Envelope(
+            message_type="transport_barrier",
+            payload={"request_id": "transport_barrier:501:2", "producer_ts": 501},
+        )
+    )
+
+    assert messages == [
+        {
+            "message_type": "ack",
+            "payload": {
+                "accepted": True,
+                "source_type": "transport_barrier",
+                "route": "transport_barrier",
+                "request_id": "transport_barrier:501:2",
+                "producer_ts": 501,
+            },
+        }
+    ]
+    assert main.event_trace.summary() == before
+
+
+def test_websocket_transport_barrier_ack_follows_prior_request_responses() -> None:
+    _reset_runtime_state_with_local_character_model()
+    client = TestClient(app)
+    with client.websocket_connect("/ws?stream_mode=runtime_only") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "player_input",
+                "payload": {
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "scene_id": "scene_demo",
+                    "zone_id": "zone_focus",
+                    "actor_id": "char_c",
+                    "intent_type": "move_intent",
+                    "producer_ts": 502,
+                    "request_id": "player_input:char_c:move_intent:502:1",
+                    "move_mode": "locomotion",
+                    "target_point": [1.0, 0.5, 2.0],
+                },
+            }
+        )
+        websocket.send_json(
+            {
+                "message_type": "transport_barrier",
+                "payload": {"request_id": "transport_barrier:503:2", "producer_ts": 503},
+            }
+        )
+
+        move_ack = websocket.receive_json()
+        runtime_snapshot = websocket.receive_json()
+        barrier_ack = websocket.receive_json()
+
+    assert move_ack["payload"]["request_id"] == "player_input:char_c:move_intent:502:1"
+    assert runtime_snapshot["message_type"] == "character_runtime_state_snapshot"
+    assert barrier_ack == {
+        "message_type": "ack",
+        "payload": {
+            "accepted": True,
+            "source_type": "transport_barrier",
+            "route": "transport_barrier",
+            "request_id": "transport_barrier:503:2",
+            "producer_ts": 503,
+        },
+    }
+
+
+def test_websocket_invalid_transport_barrier_returns_negative_ack_and_stays_open() -> None:
+    client = TestClient(app)
+    with client.websocket_connect("/ws?stream_mode=runtime_only") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "transport_barrier",
+                "payload": {"request_id": "", "producer_ts": 504},
+            }
+        )
+        error_ack = websocket.receive_json()
+        websocket.send_json(
+            {
+                "message_type": "transport_barrier",
+                "payload": {"request_id": "transport_barrier:505:3", "producer_ts": 505},
+            }
+        )
+        success_ack = websocket.receive_json()
+
+    assert error_ack["message_type"] == "ack"
+    assert error_ack["payload"]["accepted"] is False
+    assert error_ack["payload"]["source_type"] == "transport_barrier"
+    assert error_ack["payload"]["route"] == "invalid_payload"
+    assert error_ack["payload"]["error_type"] == "ValidationError"
+    assert success_ack["payload"]["request_id"] == "transport_barrier:505:3"
