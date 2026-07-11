@@ -370,6 +370,13 @@ CharacterPerceivedEvent / SelfBodyPerceivedEvent / siming_output
 - runtime state 仍由 `NeedTensionState`、`CharacterDynamicState`、goal state 和 unresolved tension 表达。
 - `CharacterMindFrame` 当前只作为 shadow read model，不改变既有决策行为。
 
+后续补全阶段：
+
+- projection services 将 profile、memory、relationship、need、dynamic state、goal、tension 和 supervision 转成只读 cards。
+- affordance adapter 只暴露 skill/action/environment/equipment/physical feasibility summaries，不暴露 skill registry。
+- `MindDeltaLedger` 统一包裹 L2/L3/L4/settlement/writeback 候选，但 persistence 仍由 writeback policy 和原 store 边界决定。
+- graph-backed memory 只作为 memory-evidence projection，可增强 knowledge/social/higher-order reads，不成为 cognition owner。
+
 ### `L2` 理解层
 
 已完成为统一认知更新层。
