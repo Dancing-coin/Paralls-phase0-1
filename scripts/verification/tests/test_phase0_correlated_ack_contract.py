@@ -93,3 +93,33 @@ def test_main_demo_wait_helpers_use_explicit_integer_deadlines() -> None:
 
     assert helper_block.count(typed_deadline) == 4
     assert "var deadline :=" not in helper_block
+
+
+def test_main_demo_drains_periodic_sampling_before_near_move() -> None:
+    source = (SCRIPTS_ROOT / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
+    run_section = source.split("func _run_autotest_inputs() -> void:", 1)[1].split(
+        "func _wait_for_request_ack", 1
+    )[0]
+
+    focus_index = run_section.index("_force_focus_target(interactive_object)")
+    sampling_pause_index = run_section.index("suspend_near_object_visual_fact = true", focus_index)
+    spatial_pause_index = run_section.index("suspend_spatial_access_fact = true", focus_index)
+    activity_reset_index = run_section.index("last_backend_activity_ms = Time.get_ticks_msec()", focus_index)
+    quiet_wait_index = run_section.index(
+        "await _wait_for_backend_quiet(autotest_transport_quiet_window_ms, autotest_transport_quiet_timeout_ms)",
+        focus_index,
+    )
+    quiet_failure_index = run_section.index('await _fail_autotest("transport_not_quiet", {})', focus_index)
+    near_move_index = run_section.index(
+        'var near_move_request := _emit_move_intent_request(autotest_interact_position, "locomotion")'
+    )
+    success_wait_index = run_section.index(
+        "await _wait_for_successful_interaction_result(autotest_request_timeout_ms)"
+    )
+    full_quiescence_index = run_section.index("autotest_transport_quiescent = true")
+
+    assert focus_index < sampling_pause_index < spatial_pause_index < activity_reset_index
+    assert activity_reset_index < quiet_wait_index < quiet_failure_index < near_move_index
+    assert "return" in run_section[quiet_failure_index:near_move_index]
+    assert "autotest_transport_quiescent = true" not in run_section[focus_index:near_move_index]
+    assert near_move_index < success_wait_index < full_quiescence_index
