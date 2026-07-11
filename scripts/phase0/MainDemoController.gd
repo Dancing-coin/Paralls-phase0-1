@@ -412,6 +412,12 @@ func _run_autotest_inputs() -> void:
 	_orient_player_toward(interactive_object.global_position)
 	_move_player_to_interact_position()
 	_force_focus_target(interactive_object)
+	suspend_near_object_visual_fact = true
+	suspend_spatial_access_fact = true
+	last_backend_activity_ms = Time.get_ticks_msec()
+	if not (await _wait_for_backend_quiet(autotest_transport_quiet_window_ms, autotest_transport_quiet_timeout_ms)):
+		await _fail_autotest("transport_not_quiet", {})
+		return
 	var near_move_request := _emit_move_intent_request(autotest_interact_position, "locomotion")
 	if not (await _wait_for_request_ack(str(near_move_request.get("request_id", "")), autotest_request_timeout_ms)):
 		await _fail_autotest("near_move_ack_timeout", near_move_request)
