@@ -25,6 +25,11 @@ from app.debug_narration import (
     summarize_world_result,
 )
 from app.debug_stream import debug_stream
+from app.transport_projection import (
+    is_known_stream_mode,
+    normalize_stream_mode,
+    project_outbound_messages,
+)
 from app.models.authority_event import AuthorityEvent, AuthorityEventRouting, AuthorityEventSource
 from app.models.environment_request import EnvironmentRequest
 from app.models.character_agent_runtime import CharacterGoalCommand
@@ -212,6 +217,19 @@ def orchestrate_structured_interaction(payload: StructuredInteractionRequest) ->
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
+    raw_stream_mode = websocket.query_params.get("stream_mode")
+    stream_mode = normalize_stream_mode(raw_stream_mode)
+    if not is_known_stream_mode(raw_stream_mode):
+        _publish_debug_event(
+            build_debug_event(
+                producer_ts=0,
+                domain="transport",
+                stage="unknown_stream_mode",
+                actor_id=None,
+                summary=f"unknown stream mode {raw_stream_mode!r}; using full",
+                detail={"raw_stream_mode": raw_stream_mode, "resolved_stream_mode": stream_mode},
+            )
+        )
     try:
         while True:
             try:
@@ -223,7 +241,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 if isinstance(raw, dict):
                     source_type = str(raw.get("message_type", "unknown"))
                 outbound = [_as_error_ack(source_type=source_type, route="invalid_payload", error=exc)]
-            for message in outbound:
+            projected = project_outbound_messages(outbound, stream_mode=stream_mode)
+            for message in projected:
                 await websocket.send_json(message)
     except WebSocketDisconnect:
         return

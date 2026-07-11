@@ -1527,3 +1527,68 @@ def test_autonomous_approach_can_emit_arrival_fact_after_execution() -> None:
     assert "set_move_target(target_node.global_position)" in source
     assert 'if clear_on_arrival and _active_contact_target_actor_id != "":' in source
     assert "_emit_arrival_fact(_active_contact_target_actor_id, 0.0)" in source
+
+
+def _stub_projection_messages() -> list[dict[str, object]]:
+    return [
+        {"message_type": "ack", "payload": {"accepted": True}},
+        {"message_type": "character_agent_debug_event", "payload": {"stage": "debug"}},
+        {"message_type": "world_result", "payload": {"result_type": "object_state_result"}},
+    ]
+
+
+def test_websocket_runtime_only_filters_observatory_projection(monkeypatch) -> None:
+    main.debug_stream.clear()
+
+    def handle_with_debug_projection(_envelope) -> list[dict[str, object]]:
+        messages = _stub_projection_messages()
+        main._emit_debug_from_messages(messages)
+        return messages
+
+    monkeypatch.setattr(main, "_handle_envelope", handle_with_debug_projection)
+    client = TestClient(app)
+    with client.websocket_connect("/ws?stream_mode=runtime_only") as websocket:
+        websocket.send_json({"message_type": "projection_probe", "payload": {}})
+        first = websocket.receive_json()
+        second = websocket.receive_json()
+
+    assert [first["message_type"], second["message_type"]] == ["ack", "world_result"]
+    assert any(
+        event.get("stage") == "debug"
+        and event.get("detail", {}).get("stage") == "debug"
+        for event in main.debug_stream.history()
+    )
+
+
+def test_websocket_missing_mode_preserves_full_projection(monkeypatch) -> None:
+    monkeypatch.setattr(main, "_handle_envelope", lambda _envelope: _stub_projection_messages())
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json({"message_type": "projection_probe", "payload": {}})
+        messages = [websocket.receive_json() for _ in range(3)]
+
+    assert [message["message_type"] for message in messages] == [
+        "ack",
+        "character_agent_debug_event",
+        "world_result",
+    ]
+
+
+def test_websocket_unknown_mode_preserves_full_projection_and_records_debug(monkeypatch) -> None:
+    main.debug_stream.clear()
+    monkeypatch.setattr(main, "_handle_envelope", lambda _envelope: _stub_projection_messages())
+    client = TestClient(app)
+    with client.websocket_connect("/ws?stream_mode=typo") as websocket:
+        websocket.send_json({"message_type": "projection_probe", "payload": {}})
+        messages = [websocket.receive_json() for _ in range(3)]
+
+    assert [message["message_type"] for message in messages] == [
+        "ack",
+        "character_agent_debug_event",
+        "world_result",
+    ]
+    assert any(
+        event.get("stage") == "unknown_stream_mode"
+        and event.get("detail", {}).get("raw_stream_mode") == "typo"
+        for event in main.debug_stream.history()
+    )
