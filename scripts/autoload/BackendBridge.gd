@@ -3,6 +3,7 @@ extends Node
 var ws := WebSocketPeer.new()
 var last_ready_state := WebSocketPeer.STATE_CLOSED
 var last_requested_url := ""
+var transport_barrier_sequence := 0
 
 func _ready() -> void:
     var bus := _get_bus()
@@ -14,6 +15,7 @@ func is_backend_open() -> bool:
 
 func connect_to_backend(url: String) -> int:
     last_requested_url = url
+    transport_barrier_sequence = 0
     if ws.get_ready_state() != WebSocketPeer.STATE_CLOSED:
         ws.close()
         ws = WebSocketPeer.new()
@@ -40,6 +42,25 @@ func send_envelope(envelope: Dictionary) -> int:
     else:
         _bus_log("backend_send_failed:%s" % err)
     return err
+
+func send_transport_barrier() -> Dictionary:
+    if ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
+        return {}
+    transport_barrier_sequence += 1
+    var producer_ts: int = Time.get_ticks_msec()
+    var request_id: String = "transport_barrier:%s:%s" % [producer_ts, transport_barrier_sequence]
+    var err: int = send_envelope(
+        {
+            "message_type": "transport_barrier",
+            "payload": {
+                "request_id": request_id,
+                "producer_ts": producer_ts,
+            },
+        }
+    )
+    if err != OK:
+        return {}
+    return {"request_id": request_id, "producer_ts": producer_ts}
 
 func close_backend_connection() -> void:
     if ws.get_ready_state() == WebSocketPeer.STATE_CLOSED:

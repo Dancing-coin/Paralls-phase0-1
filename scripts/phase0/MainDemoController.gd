@@ -249,8 +249,15 @@ func _connect_backend() -> void:
 	if bridge == null:
 		_bus_log("phase0_backend_bridge_missing")
 		return
-	var err: int = bridge.connect_to_backend(backend_url)
+	var connection_url := _resolve_backend_url()
+	var err: int = bridge.connect_to_backend(connection_url)
 	_bus_log("phase0_backend_connect_err:%s" % err)
+
+func _resolve_backend_url() -> String:
+	if not autotest_enabled or focus_autotest_enabled:
+		return backend_url
+	var separator: String = "&" if backend_url.contains("?") else "?"
+	return "%s%sstream_mode=runtime_only" % [backend_url, separator]
 
 func submit_dialogue(content: String = "phase0 manual test") -> void:
 	var target_actor_id := _resolve_focused_actor_id()

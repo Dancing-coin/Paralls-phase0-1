@@ -176,3 +176,41 @@ def test_main_demo_disables_replica_local_perception_before_autotest_probes() ->
     assert 'has_method("set_actor_local_perception_enabled")' in helper_section
     assert "replica.set_actor_local_perception_enabled(is_enabled)" in helper_section
     assert "set_process(false)" not in helper_section
+
+
+def test_backend_bridge_generates_connection_local_transport_barriers() -> None:
+    source = (SCRIPTS_ROOT / "autoload" / "BackendBridge.gd").read_text(encoding="utf-8")
+    connect_section = source.split("func connect_to_backend(url: String) -> int:", 1)[1].split(
+        "func send_envelope", 1
+    )[0]
+    barrier_section = source.split("func send_transport_barrier() -> Dictionary:", 1)[1].split(
+        "func close_backend_connection", 1
+    )[0]
+
+    assert "var transport_barrier_sequence := 0" in source
+    assert "transport_barrier_sequence = 0" in connect_section
+    assert "transport_barrier_sequence += 1" in barrier_section
+    assert '"transport_barrier:%s:%s"' in barrier_section
+    assert "[producer_ts, transport_barrier_sequence]" in barrier_section
+    assert '"message_type": "transport_barrier"' in barrier_section
+    assert '"request_id": request_id' in barrier_section
+    assert '"producer_ts": producer_ts' in barrier_section
+    assert "return {}" in barrier_section
+    assert 'return {"request_id": request_id, "producer_ts": producer_ts}' in barrier_section
+
+
+def test_strict_phase0_selects_runtime_only_without_changing_normal_or_focus_urls() -> None:
+    source = (SCRIPTS_ROOT / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
+    connect_section = source.split("func _connect_backend() -> void:", 1)[1].split(
+        "func submit_dialogue", 1
+    )[0]
+    resolver_section = source.split("func _resolve_backend_url() -> String:", 1)[1].split(
+        "func submit_dialogue", 1
+    )[0]
+
+    assert "var connection_url := _resolve_backend_url()" in connect_section
+    assert "bridge.connect_to_backend(connection_url)" in connect_section
+    assert "if not autotest_enabled or focus_autotest_enabled:" in resolver_section
+    assert "return backend_url" in resolver_section
+    assert 'var separator: String = "&" if backend_url.contains("?") else "?"' in resolver_section
+    assert 'return "%s%sstream_mode=runtime_only" % [backend_url, separator]' in resolver_section
