@@ -38,6 +38,56 @@ def _memory_ref(prefix: str, entry: dict[str, object]) -> str:
     return f"{prefix}:{value}"
 
 
+def _graph_projection_entry(
+    graph_projection: dict[str, object] | None,
+    factor_type: str,
+) -> dict[str, object]:
+    if not isinstance(graph_projection, dict):
+        return {}
+    value = graph_projection.get(factor_type)
+    if not isinstance(value, dict):
+        return {}
+    return deepcopy(value)
+
+
+def _has_owned_memory_support(card: MentalFactorProjectionCard) -> bool:
+    count_key_by_factor_type = {
+        "knowledge_context": "knowledge_memory_count",
+        "higher_order_belief": "higher_order_memory_count",
+        "relationship_context": "target_count",
+    }
+    count_key = count_key_by_factor_type.get(card.factor_type, "")
+    count = card.payload.get(count_key, 0)
+    if isinstance(count, (int, float)) and count > 0:
+        return True
+    return bool(card.source_refs)
+
+
+def _merge_graph_projection(
+    card: MentalFactorProjectionCard,
+    *,
+    factor_type: str,
+    graph_projection: dict[str, object] | None,
+) -> MentalFactorProjectionCard:
+    projection_entry = _graph_projection_entry(graph_projection, factor_type)
+    if not projection_entry or not _has_owned_memory_support(card):
+        return card
+
+    source_refs = list(card.source_refs)
+    raw_source_refs = projection_entry.get("source_refs")
+    if isinstance(raw_source_refs, list):
+        source_refs.extend(str(ref) for ref in raw_source_refs if str(ref))
+
+    payload = deepcopy(card.payload)
+    payload["graph_projection"] = projection_entry
+    return card.model_copy(
+        update={
+            "payload": payload,
+            "source_refs": source_refs,
+        }
+    )
+
+
 class EffectiveProfileProjector:
     def project(
         self,
@@ -110,6 +160,8 @@ class MemoryActivationProjector:
     def project(
         self,
         memory_bundle: dict[str, list[dict[str, object]]] | None = None,
+        *,
+        graph_projection: dict[str, object] | None = None,
     ) -> list[MentalFactorProjectionCard]:
         memory = _mapping(memory_bundle)
         event_memories = _dict_list(memory.get("event_memories"))
@@ -138,7 +190,7 @@ class MemoryActivationProjector:
             if ref
         ]
 
-        return [
+        cards = [
             MentalFactorProjectionCard(
                 factor_type="memory_activation",
                 layer="memory_evidence",
@@ -206,6 +258,16 @@ class MemoryActivationProjector:
                 source_refs=higher_order_refs,
             ),
         ]
+        return [
+            _merge_graph_projection(
+                card,
+                factor_type=card.factor_type,
+                graph_projection=graph_projection,
+            )
+            if card.factor_type in {"knowledge_context", "higher_order_belief"}
+            else card
+            for card in cards
+        ]
 
 
 class RelationshipContextProjector:
@@ -214,6 +276,7 @@ class RelationshipContextProjector:
         *,
         actor_id: str,
         social_memories: list[dict[str, object]] | None = None,
+        graph_projection: dict[str, object] | None = None,
     ) -> list[MentalFactorProjectionCard]:
         entries = _dict_list(social_memories)
         top_target = str(entries[0].get("entity_id", "") or "") if entries else ""
@@ -230,20 +293,25 @@ class RelationshipContextProjector:
                 str(first.get("trust_baseline", "") or ""),
                 str(first.get("suspicion_baseline", "") or ""),
             )
+        card = MentalFactorProjectionCard(
+            factor_type="relationship_context",
+            layer="memory_evidence",
+            scope="actor_private",
+            horizon="scene",
+            confidence=0.8,
+            freshness="recent",
+            summary=summary,
+            payload={
+                "target_count": len(entries),
+                "top_target": top_target,
+            },
+            source_refs=source_refs,
+        )
         return [
-            MentalFactorProjectionCard(
+            _merge_graph_projection(
+                card,
                 factor_type="relationship_context",
-                layer="memory_evidence",
-                scope="actor_private",
-                horizon="scene",
-                confidence=0.8,
-                freshness="recent",
-                summary=summary,
-                payload={
-                    "target_count": len(entries),
-                    "top_target": top_target,
-                },
-                source_refs=source_refs,
+                graph_projection=graph_projection,
             )
         ]
 

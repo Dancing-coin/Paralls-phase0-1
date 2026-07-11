@@ -4,6 +4,10 @@ from copy import deepcopy
 
 from app.character_agent.gateway.context_builder import CharacterContextBuilder
 from app.character_agent.mind.affordances import CharacterMindAffordanceAdapter
+from app.character_agent.mind.graph_projection import (
+    GraphMemoryProjectionProvider,
+    NoopGraphMemoryProjectionProvider,
+)
 from app.character_agent.mind.projectors import (
     AffectiveBodyStateProjector,
     EffectiveProfileProjector,
@@ -24,7 +28,10 @@ from app.character_agent.models.mind_frame import (
 
 
 class CharacterMindFrameBuilder:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        graph_projection_provider: GraphMemoryProjectionProvider | None = None,
+    ) -> None:
         self._effective_profile_projector = EffectiveProfileProjector()
         self._memory_activation_projector = MemoryActivationProjector()
         self._relationship_context_projector = RelationshipContextProjector()
@@ -34,6 +41,11 @@ class CharacterMindFrameBuilder:
         self._unresolved_tension_projector = UnresolvedTensionProjector()
         self._supervision_projector = SupervisionProjector()
         self._affordance_adapter = CharacterMindAffordanceAdapter()
+        self._graph_projection_provider = (
+            graph_projection_provider
+            if graph_projection_provider is not None
+            else NoopGraphMemoryProjectionProvider()
+        )
 
     def build_frame(
         self,
@@ -59,6 +71,12 @@ class CharacterMindFrameBuilder:
         trigger_payload = trigger_event or {}
         normalized_memory = self._snapshot_mapping(
             CharacterContextBuilder.normalize_memory_bundle(memory_bundle)
+        )
+        graph_projection = self._snapshot_mapping(
+            self._graph_projection_provider.project_memory_context(
+                actor_id=actor_id,
+                memory_bundle=deepcopy(normalized_memory),
+            )
         )
         effective_profile_payload = self._snapshot_mapping(effective_profile)
         snapshot_payload = self._snapshot_mapping(snapshot)
@@ -88,7 +106,11 @@ class CharacterMindFrameBuilder:
                 source_stage=str(trigger_payload.get("source_stage", "") or ""),
             ),
             enduring_truth=self._enduring_truth_layer(actor_id, effective_profile_payload),
-            memory_evidence=self._memory_evidence_layer(actor_id, normalized_memory),
+            memory_evidence=self._memory_evidence_layer(
+                actor_id,
+                normalized_memory,
+                graph_projection,
+            ),
             runtime_state=self._runtime_state_layer(
                 snapshot=snapshot_payload,
                 need_tension_state=need_payload,
@@ -126,17 +148,22 @@ class CharacterMindFrameBuilder:
         self,
         actor_id: str,
         memory: dict[str, list[dict[str, object]]],
+        graph_projection: dict[str, object],
     ) -> MindFrameLayer:
         event_memories = memory.get("event_memories", [])
         observation_memories = memory.get("observation_memories", [])
         knowledge_memories = memory.get("knowledge_memories", [])
         social_memories = memory.get("social_memories", [])
         higher_order_memories = memory.get("higher_order_memories", [])
-        cards = self._memory_activation_projector.project(memory)
+        cards = self._memory_activation_projector.project(
+            memory,
+            graph_projection=graph_projection,
+        )
         cards.extend(
             self._relationship_context_projector.project(
                 actor_id=actor_id,
                 social_memories=social_memories,
+                graph_projection=graph_projection,
             )
         )
         return MindFrameLayer(

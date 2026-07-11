@@ -1,6 +1,10 @@
 from app.character_agent.mind.affordances import CharacterMindAffordanceAdapter
 from app.character_agent.mind.delta_ledger import MindDeltaLedgerBuilder
 from app.character_agent.mind.frame_builder import CharacterMindFrameBuilder
+from app.character_agent.mind.graph_projection import (
+    GraphMemoryProjectionProvider,
+    NoopGraphMemoryProjectionProvider,
+)
 from app.character_agent.mind.projectors import (
     AffectiveBodyStateProjector,
     EffectiveProfileProjector,
@@ -20,11 +24,13 @@ __all__ = [
     "MindDeltaLedgerBuilder",
     "CharacterMindFrameBuilder",
     "EffectiveProfileProjector",
+    "GraphMemoryProjectionProvider",
     "GoalContextProjector",
     "LayerContextViewBuilder",
     "MemoryActivationProjector",
     "MindWritebackPolicyRouter",
     "NeedPressureProjector",
+    "NoopGraphMemoryProjectionProvider",
     "RelationshipContextProjector",
     "SupervisionProjector",
     "UnresolvedTensionProjector",
