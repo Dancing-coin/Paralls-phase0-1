@@ -392,6 +392,8 @@ func _unhandled_input(event: InputEvent) -> void:
 func _run_autotest_inputs() -> void:
 	_bus_log("phase0_autotest_begin")
 	focus_override_active = true
+	suspend_near_object_visual_fact = true
+	suspend_spatial_access_fact = true
 	_set_debug_overlay_visible(false)
 	await _probe_floor_coverage()
 	_bus_log("phase0_autotest_stage:floor_coverage_complete")
@@ -412,8 +414,6 @@ func _run_autotest_inputs() -> void:
 	_orient_player_toward(interactive_object.global_position)
 	_move_player_to_interact_position()
 	_force_focus_target(interactive_object)
-	suspend_near_object_visual_fact = true
-	suspend_spatial_access_fact = true
 	last_backend_activity_ms = Time.get_ticks_msec()
 	if not (await _wait_for_backend_quiet(autotest_transport_quiet_window_ms, autotest_transport_quiet_timeout_ms)):
 		await _fail_autotest("transport_not_quiet", {})
