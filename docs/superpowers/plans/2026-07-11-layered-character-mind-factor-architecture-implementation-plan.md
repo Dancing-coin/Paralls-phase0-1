@@ -4,7 +4,7 @@
 
 **Goal:** Implement the first shadow-mode slice of the layered character mind factor architecture: typed `CharacterMindFrame` contracts, factor projection cards, L2/L3/L4 view models, a frame builder from existing runtime inputs, and a typed delta ledger without changing current character behavior.
 
-**Architecture:** Add contracts under `backend/app/character_agent/models/` and builder/view helpers under a new `backend/app/character_agent/mind/` package. The first slice is read-only and shadow-mode: existing `CharacterAgentRuntime`, `L2`, `L3`, and `L4` keep their current behavior while the new contracts prove the future layered interface. No graph store, skill registry execution, or settlement behavior is introduced in this plan.
+**Architecture:** Add contracts under `backend/app/character_agent/models/` and builder/view helpers under a new `backend/app/character_agent/mind/` package. The first slice is read-only and shadow-mode: existing `CharacterAgentRuntime`, `L2`, `L3`, and `L4` keep their current behavior while the new contracts prove the future layered interface. No graph store, skill registry execution, or settlement behavior is introduced in this foundation plan.
 
 **Tech Stack:** Python 3.13, Pydantic v2, pytest, existing `backend/app/character_agent` runtime models, no new dependencies.
 
@@ -1442,3 +1442,20 @@ Worktree: clean
 ```
 
 If a command fails, fix the defect in the smallest relevant task scope and rerun the same command before reporting completion.
+
+---
+
+## Follow-up Plan Series
+
+Tasks 1-6 are the Phase 1/2 shadow-mode foundation. The remaining spec phases are split into a separate plan series so each phase can be executed, verified, and committed independently without rewriting this completed foundation plan.
+
+Use the series index:
+
+- `docs/superpowers/plans/2026-07-11-layered-character-mind-factor-plan-series.md`
+
+The follow-up plans cover:
+
+- Phase 3 projection services.
+- Phase 4 skill/action affordance summaries.
+- Phase 5 delta ledger and writeback policy routing.
+- Phase 6 optional graph-backed memory projections.
