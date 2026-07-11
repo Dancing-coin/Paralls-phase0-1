@@ -41,6 +41,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "esm-physical-channel-world-actuation",
         "non-runtime-production-pipeline",
         "perception-input-alignment",
+        "siming-heavenly-graph-foundation",
     ]
     assert registry.profiles["docs"]["script"] == "scripts/verification/check_docs.py"
     assert registry.profiles["backend-contract"]["script"] == "scripts/verification/check_backend_contract.py"
@@ -63,6 +64,10 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["esm-physical-channel-world-actuation"]["script"] == "scripts/verification/verify_esm_physical_channel_runtime.py"
     assert registry.profiles["non-runtime-production-pipeline"]["script"] == "scripts/verification/verify_non_runtime_production_pipeline.py"
     assert registry.profiles["perception-input-alignment"]["script"] == "scripts/verification/verify_perception_input_alignment.py"
+    assert registry.profiles["siming-heavenly-graph-foundation"]["script"] == (
+        "scripts/verification/verify_siming_heavenly_graph_foundation.py"
+    )
+    assert registry.profiles["siming-heavenly-graph-foundation"]["requires_godot"] is False
     assert registry.profiles["phase0"]["requires_godot"] is True
     assert registry.profiles["mainline-unified-runtime"]["script"] == "scripts/verification/verify_mainline_unified_runtime.py"
     assert "not a product L1 runtime" in registry.profiles["l1-world-fact-runtime"]["description"]
