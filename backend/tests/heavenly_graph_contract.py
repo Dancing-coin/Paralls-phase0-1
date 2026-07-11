@@ -18,6 +18,7 @@ from app.services.siming_heavenly_graph_port import (
     HeavenlyGraphIdempotencyConflict,
     HeavenlyGraphPort,
     HeavenlyGraphReferentialIntegrityError,
+    HeavenlyGraphRevisionConflict,
 )
 
 
@@ -97,6 +98,250 @@ class HeavenlyGraphContract(ABC):
     @abstractmethod
     def make_graph(self) -> HeavenlyGraphPort:
         raise NotImplementedError
+
+    def test_node_refs_are_collision_safe_across_complete_scopes(self) -> None:
+        graph = self.make_graph()
+        scopes = [
+            HeavenlyGraphScope(
+                world_id="world:demo",
+                session_id="session:demo",
+                story_branch_id="branch:main",
+                room_id=None,
+                scene_id="scene:demo",
+            ),
+            HeavenlyGraphScope(
+                world_id="world:demo",
+                session_id="session:demo",
+                story_branch_id="branch:main",
+                room_id="_",
+                scene_id="scene:demo",
+            ),
+            HeavenlyGraphScope(
+                world_id="world:a:b",
+                session_id="session:c",
+                story_branch_id="branch:main",
+                room_id="room:demo",
+                scene_id="scene:demo",
+            ),
+            HeavenlyGraphScope(
+                world_id="world:a",
+                session_id="b:session:c",
+                story_branch_id="branch:main",
+                room_id="room:demo",
+                scene_id="scene:demo",
+            ),
+        ]
+        node_refs: list[str] = []
+
+        for index, scope in enumerate(scopes):
+            node = graph_node(node_id="fact:shared").model_copy(
+                update={"scope": scope},
+                deep=True,
+            )
+            result = graph.write_batch(
+                HeavenlyGraphWriteBatch(
+                    transaction_id=f"graph_tx:node-ref:{index}",
+                    idempotency_key=f"authority:event:node-ref:{index}",
+                    scope=scope,
+                    nodes=[node],
+                )
+            )
+            node_refs.append(result.node_refs[0])
+
+        assert all(
+            ref.startswith("heavenly_graph_node:") for ref in node_refs
+        )
+        assert len(set(node_refs)) == len(scopes)
+
+    def test_relation_refs_are_collision_safe_across_complete_scopes(
+        self,
+    ) -> None:
+        graph = self.make_graph()
+        scopes = [
+            HeavenlyGraphScope(
+                world_id="world:demo",
+                session_id="session:demo",
+                story_branch_id="branch:main",
+                room_id=None,
+                scene_id="scene:demo",
+            ),
+            HeavenlyGraphScope(
+                world_id="world:demo",
+                session_id="session:demo",
+                story_branch_id="branch:main",
+                room_id="_",
+                scene_id="scene:demo",
+            ),
+            HeavenlyGraphScope(
+                world_id="world:a:b",
+                session_id="session:c",
+                story_branch_id="branch:main",
+                room_id="room:demo",
+                scene_id="scene:demo",
+            ),
+            HeavenlyGraphScope(
+                world_id="world:a",
+                session_id="b:session:c",
+                story_branch_id="branch:main",
+                room_id="room:demo",
+                scene_id="scene:demo",
+            ),
+        ]
+        relation_refs: list[str] = []
+
+        for index, scope in enumerate(scopes):
+            source = graph_node(node_id="fact:source").model_copy(
+                update={"scope": scope},
+                deep=True,
+            )
+            target = graph_node(node_id="fact:target").model_copy(
+                update={"scope": scope},
+                deep=True,
+            )
+            relation = graph_relation(
+                relation_id="relation:shared",
+                source_node_id=source.node_id,
+                target_node_id=target.node_id,
+            ).model_copy(update={"scope": scope}, deep=True)
+            result = graph.write_batch(
+                HeavenlyGraphWriteBatch(
+                    transaction_id=f"graph_tx:relation-ref:{index}",
+                    idempotency_key=(
+                        f"authority:event:relation-ref:{index}"
+                    ),
+                    scope=scope,
+                    nodes=[source, target],
+                    relations=[relation],
+                )
+            )
+            relation_refs.append(result.relation_refs[0])
+
+        assert all(
+            ref.startswith("heavenly_graph_relation:")
+            for ref in relation_refs
+        )
+        assert len(set(relation_refs)) == len(scopes)
+
+    def test_node_revision_rejects_decreasing_recorded_at_atomically(
+        self,
+    ) -> None:
+        graph = self.make_graph()
+        scope = graph_scope()
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:node-recorded-at:v1",
+                idempotency_key="authority:event:node-recorded-at:v1",
+                scope=scope,
+                nodes=[
+                    graph_node(
+                        node_id="fact:lamp",
+                        valid_from=0,
+                        recorded_at=20,
+                    )
+                ],
+            )
+        )
+
+        with pytest.raises(
+            HeavenlyGraphRevisionConflict,
+            match="recorded_at .* lower than predecessor",
+        ):
+            graph.write_batch(
+                HeavenlyGraphWriteBatch(
+                    transaction_id="graph_tx:node-recorded-at:v2",
+                    idempotency_key="authority:event:node-recorded-at:v2",
+                    scope=scope,
+                    nodes=[
+                        graph_node(
+                            node_id="fact:lamp",
+                            state="destroyed",
+                            valid_from=0,
+                            recorded_at=10,
+                            revision=2,
+                            supersedes_revision=1,
+                        )
+                    ],
+                )
+            )
+
+        current = graph.get_node(
+            node_id="fact:lamp",
+            scope=scope,
+            valid_at=20,
+        )
+        stored = graph.query_nodes(HeavenlyNodeQuery(scope=scope, valid_at=20))
+
+        assert current is not None and current.revision == 1
+        assert [node.revision for node in stored] == [1]
+
+    def test_relation_revision_rejects_decreasing_recorded_at_atomically(
+        self,
+    ) -> None:
+        graph = self.make_graph()
+        scope = graph_scope()
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:relation-recorded-at:v1",
+                idempotency_key="authority:event:relation-recorded-at:v1",
+                scope=scope,
+                nodes=[
+                    graph_node(
+                        node_id="fact:source",
+                        valid_from=0,
+                        recorded_at=5,
+                    ),
+                    graph_node(
+                        node_id="fact:target",
+                        valid_from=0,
+                        recorded_at=5,
+                    ),
+                ],
+                relations=[
+                    graph_relation(
+                        relation_id="relation:cause",
+                        source_node_id="fact:source",
+                        target_node_id="fact:target",
+                        valid_from=0,
+                        recorded_at=20,
+                    )
+                ],
+            )
+        )
+
+        with pytest.raises(
+            HeavenlyGraphRevisionConflict,
+            match="recorded_at .* lower than predecessor",
+        ):
+            graph.write_batch(
+                HeavenlyGraphWriteBatch(
+                    transaction_id="graph_tx:relation-recorded-at:v2",
+                    idempotency_key="authority:event:relation-recorded-at:v2",
+                    scope=scope,
+                    relations=[
+                        graph_relation(
+                            relation_id="relation:cause",
+                            source_node_id="fact:source",
+                            target_node_id="fact:target",
+                            valid_from=0,
+                            recorded_at=10,
+                            revision=2,
+                            supersedes_revision=1,
+                        )
+                    ],
+                )
+            )
+
+        current = graph.get_relation(
+            relation_id="relation:cause",
+            scope=scope,
+            valid_at=20,
+        )
+        stored = graph.query_relations(
+            HeavenlyRelationQuery(scope=scope, valid_at=20)
+        )
+
+        assert current is not None and current.revision == 1
+        assert [relation.revision for relation in stored] == [1]
 
     def test_basic_write_read_returns_deep_copies(self) -> None:
         graph = self.make_graph()

@@ -305,6 +305,12 @@ class InMemoryHeavenlyGraphAdapter:
                 revision=node.revision,
                 supersedes_revision=node.supersedes_revision,
                 existing_revisions=[item.revision for item in versions],
+                recorded_at=node.recorded_at,
+                predecessor_recorded_at=(
+                    max(versions, key=lambda item: item.revision).recorded_at
+                    if versions
+                    else None
+                ),
             )
         for relation in batch.relations:
             versions = self._relations.get(
@@ -317,6 +323,12 @@ class InMemoryHeavenlyGraphAdapter:
                 revision=relation.revision,
                 supersedes_revision=relation.supersedes_revision,
                 existing_revisions=[item.revision for item in versions],
+                recorded_at=relation.recorded_at,
+                predecessor_recorded_at=(
+                    max(versions, key=lambda item: item.revision).recorded_at
+                    if versions
+                    else None
+                ),
             )
 
     def _validate_relation_endpoints(
@@ -358,6 +370,8 @@ class InMemoryHeavenlyGraphAdapter:
         revision: int,
         supersedes_revision: int | None,
         existing_revisions: list[int],
+        recorded_at: int,
+        predecessor_recorded_at: int | None,
     ) -> None:
         expected = max(existing_revisions, default=0) + 1
         expected_supersedes = expected - 1 if expected > 1 else None
@@ -368,6 +382,14 @@ class InMemoryHeavenlyGraphAdapter:
             raise HeavenlyGraphRevisionConflict(
                 f"{entity_kind} {entity_id!r} expected revision {expected} "
                 f"superseding {expected_supersedes!r}"
+            )
+        if (
+            predecessor_recorded_at is not None
+            and recorded_at < predecessor_recorded_at
+        ):
+            raise HeavenlyGraphRevisionConflict(
+                f"{entity_kind} {entity_id!r} recorded_at {recorded_at} is "
+                f"lower than predecessor {predecessor_recorded_at}"
             )
 
     def _effective_entity(
@@ -407,7 +429,24 @@ class InMemoryHeavenlyGraphAdapter:
         entity_id: str,
         revision: int,
     ) -> str:
-        return f"{entity_kind}:{self._scope_ref(scope)}:{entity_id}@{revision}"
+        canonical_payload = json.dumps(
+            {
+                "entity_kind": entity_kind,
+                "scope": scope.model_dump(mode="json"),
+                "entity_id": entity_id,
+                "revision": revision,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        encoded_payload = base64.urlsafe_b64encode(canonical_payload).decode(
+            "ascii"
+        )
+        return (
+            f"heavenly_graph_{entity_kind}:"
+            f"{encoded_payload.rstrip('=')}"
+        )
 
     def _checkpoint_ref(
         self,
@@ -427,14 +466,3 @@ class InMemoryHeavenlyGraphAdapter:
             "ascii"
         )
         return f"heavenly_graph_checkpoint:{encoded_payload.rstrip('=')}"
-
-    def _scope_ref(self, scope: HeavenlyGraphScope) -> str:
-        return ":".join(
-            [
-                scope.world_id,
-                scope.session_id,
-                scope.story_branch_id,
-                scope.room_id or "_",
-                scope.scene_id or "_",
-            ]
-        )
