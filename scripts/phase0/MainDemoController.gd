@@ -467,7 +467,7 @@ func _run_autotest_inputs() -> void:
 func _wait_for_request_ack(request_id: String, timeout_ms: int) -> bool:
 	if request_id == "":
 		return false
-	var deadline := Time.get_ticks_msec() + max(timeout_ms, 1)
+	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
 	while Time.get_ticks_msec() < deadline:
 		if acknowledged_request_ids.has(request_id):
 			return true
@@ -475,7 +475,7 @@ func _wait_for_request_ack(request_id: String, timeout_ms: int) -> bool:
 	return false
 
 func _wait_for_successful_interaction_result(timeout_ms: int) -> bool:
-	var deadline := Time.get_ticks_msec() + max(timeout_ms, 1)
+	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
 	while Time.get_ticks_msec() < deadline:
 		if matched_success_interaction_result and matched_success_object_result and matched_success_environment_result:
 			return true
@@ -483,7 +483,7 @@ func _wait_for_successful_interaction_result(timeout_ms: int) -> bool:
 	return false
 
 func _wait_for_failed_interaction_result(timeout_ms: int) -> bool:
-	var deadline := Time.get_ticks_msec() + max(timeout_ms, 1)
+	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
 	while Time.get_ticks_msec() < deadline:
 		if matched_failed_interaction_result:
 			return true
@@ -491,7 +491,7 @@ func _wait_for_failed_interaction_result(timeout_ms: int) -> bool:
 	return false
 
 func _wait_for_backend_quiet(quiet_window_ms: int, timeout_ms: int) -> bool:
-	var deadline := Time.get_ticks_msec() + max(timeout_ms, 1)
+	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
 	while Time.get_ticks_msec() < deadline:
 		if Time.get_ticks_msec() - last_backend_activity_ms >= max(quiet_window_ms, 1):
 			return true

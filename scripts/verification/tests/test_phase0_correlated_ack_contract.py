@@ -84,3 +84,12 @@ def test_main_demo_rejects_empty_result_correlations_and_resets_match_state() ->
         '\tmatched_failed_interaction_result = false\n'
         '\tpending_failed_interaction_correlation_id = "interact:%s" % failed_interaction_request.get("producer_ts", 0)'
     ) in run_section
+
+
+def test_main_demo_wait_helpers_use_explicit_integer_deadlines() -> None:
+    source = (SCRIPTS_ROOT / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
+    helper_block = source.split("func _wait_for_request_ack", 1)[1].split("func _fail_autotest", 1)[0]
+    typed_deadline = "var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)"
+
+    assert helper_block.count(typed_deadline) == 4
+    assert "var deadline :=" not in helper_block
