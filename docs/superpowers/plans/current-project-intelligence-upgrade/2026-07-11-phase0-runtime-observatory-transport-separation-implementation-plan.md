@@ -661,12 +661,21 @@ python -m pytest scripts/verification/tests/test_phase0_correlated_ack_contract.
 python scripts/verification/harness.py --profile godot-project
 ```
 
-Then run the repository's direct headless import command used in `.superpowers/sdd/phase0-task-3-report.md` and scan the complete output for:
+Run the marker-aware direct import and fail on either a non-zero exit or a parse/load marker:
 
-```text
-SCRIPT ERROR
-Parse Error
-Failed to load script
+```powershell
+$godotOutput = (& 'D:\godot\Godot_v4.6.3-stable_win64_console.exe' --headless --path . --import --quit --verbose --render-thread safe 2>&1 | Out-String)
+$godotExitCode = $LASTEXITCODE
+$godotOutput
+if ($godotExitCode -ne 0) {
+    throw "Godot import exited with code $godotExitCode"
+}
+$parseMarkers = $godotOutput | Select-String -Pattern 'SCRIPT ERROR|Parse Error|Failed to load script'
+if ($parseMarkers) {
+    $parseMarkers
+    throw 'Godot import emitted parse/load markers'
+}
+Write-Output 'godot_parse_markers=none'
 ```
 
 Expected: all source contracts pass, `overall_godot_project_passed=True`, and none of the three parse markers appears.
@@ -820,7 +829,22 @@ python -m pytest scripts/verification/tests/test_phase0_correlated_ack_contract.
 python scripts/verification/harness.py --profile godot-project
 ```
 
-Run the same marker-aware direct import scan from Task 3.
+Run the marker-aware direct import and fail on either a non-zero exit or a parse/load marker:
+
+```powershell
+$godotOutput = (& 'D:\godot\Godot_v4.6.3-stable_win64_console.exe' --headless --path . --import --quit --verbose --render-thread safe 2>&1 | Out-String)
+$godotExitCode = $LASTEXITCODE
+$godotOutput
+if ($godotExitCode -ne 0) {
+    throw "Godot import exited with code $godotExitCode"
+}
+$parseMarkers = $godotOutput | Select-String -Pattern 'SCRIPT ERROR|Parse Error|Failed to load script'
+if ($parseMarkers) {
+    $parseMarkers
+    throw 'Godot import emitted parse/load markers'
+}
+Write-Output 'godot_parse_markers=none'
+```
 
 Expected: all tests pass, `overall_godot_project_passed=True`, and no `SCRIPT ERROR`, `Parse Error`, or `Failed to load script` marker appears.
 
@@ -904,7 +928,22 @@ Run:
 python scripts/verification/harness.py --profile godot-project
 ```
 
-Also run the direct import scan from Tasks 3-4 and require no `SCRIPT ERROR`, `Parse Error`, or `Failed to load script` marker.
+Also run the marker-aware direct import:
+
+```powershell
+$godotOutput = (& 'D:\godot\Godot_v4.6.3-stable_win64_console.exe' --headless --path . --import --quit --verbose --render-thread safe 2>&1 | Out-String)
+$godotExitCode = $LASTEXITCODE
+$godotOutput
+if ($godotExitCode -ne 0) {
+    throw "Godot import exited with code $godotExitCode"
+}
+$parseMarkers = $godotOutput | Select-String -Pattern 'SCRIPT ERROR|Parse Error|Failed to load script'
+if ($parseMarkers) {
+    $parseMarkers
+    throw 'Godot import emitted parse/load markers'
+}
+Write-Output 'godot_parse_markers=none'
+```
 
 - [ ] **Step 7: Run strict Phase 0**
 
