@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Collection as CollectionABC
+from collections.abc import Mapping as MappingABC
 from dataclasses import dataclass
 from typing import Collection, Mapping
 
@@ -98,10 +100,9 @@ class SkillPromotionGate:
         reasons: list[str] = []
         granted_skill_lookup = {str(item) for item in granted_skill_ids or ()}
         granted_domain_lookup = {str(item) for item in granted_domains or ()}
-        explicit_grant = self._has_explicit_grant(
+        explicit_skill_grant = self._has_explicit_skill_grant(
             candidate=candidate,
             granted_skill_lookup=granted_skill_lookup,
-            granted_domain_lookup=granted_domain_lookup,
         )
 
         if not learning_policy.promotion_enabled:
@@ -126,10 +127,10 @@ class SkillPromotionGate:
 
         blocked_domains = set(learning_policy.blocked_domains).intersection(skill_domains)
         for domain in sorted(blocked_domains):
-            if not explicit_grant and domain not in granted_domain_lookup:
+            if not explicit_skill_grant and domain not in granted_domain_lookup:
                 reasons.append(f"blocked domain requires explicit grant: {domain}")
 
-        if skill_definition.learnability in {"granted", "locked"} and not explicit_grant:
+        if skill_definition.learnability in {"granted", "locked"} and not explicit_skill_grant:
             reasons.append(f"learnability requires explicit grant: {skill_definition.learnability}")
 
         return SkillPromotionDecision(
@@ -137,22 +138,21 @@ class SkillPromotionGate:
             reasons=tuple(reasons),
         )
 
-    def _has_explicit_grant(
+    def _has_explicit_skill_grant(
         self,
         *,
         candidate: SkillCandidate,
         granted_skill_lookup: set[str],
-        granted_domain_lookup: set[str],
     ) -> bool:
-        if candidate.skill_id in granted_skill_lookup:
-            return True
-        return any(domain in granted_domain_lookup for domain in candidate.domains)
+        return candidate.skill_id in granted_skill_lookup
 
     def _mapping(self, value: object) -> dict[str, object]:
-        return dict(value) if isinstance(value, dict) else {}
+        return dict(value) if isinstance(value, MappingABC) else {}
 
     def _string_set(self, value: object) -> set[str]:
-        if not isinstance(value, list):
+        if isinstance(value, (str, bytes, bytearray)) or isinstance(value, MappingABC):
+            return set()
+        if not isinstance(value, CollectionABC):
             return set()
         return {str(item).strip() for item in value if str(item).strip()}
 

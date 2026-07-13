@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from types import MappingProxyType
 
 import pytest
 
@@ -213,6 +214,92 @@ def test_promotion_gate_requires_explicit_grant_for_granted_or_locked_skills() -
 
     assert allowed.allowed is True
     assert allowed.reasons == ()
+
+
+def test_promotion_gate_domain_grant_does_not_bypass_other_blocked_domains() -> None:
+    evidence_store = SkillEvidenceStore()
+    evidence_store.append(
+        _build_evidence(
+            evidence_id="skill_evidence:1",
+            skill_id="decree_enforcement",
+            eligible_for_promotion=True,
+        )
+    )
+    evidence_store.append(
+        _build_evidence(
+            evidence_id="skill_evidence:2",
+            skill_id="decree_enforcement",
+            eligible_for_promotion=True,
+        )
+    )
+
+    registry = _build_registry(
+        skill_id="decree_enforcement",
+        domains=["authority", "special"],
+        learnability="trained",
+    )
+    candidate = SkillCandidateStore(registry=registry).rebuild_from_evidence(
+        actor_id="char_a",
+        evidence_store=evidence_store,
+    )[0]
+
+    decision = SkillPromotionGate().evaluate(
+        candidate=candidate,
+        skill_definition=registry.skill("decree_enforcement"),
+        learning_policy=SkillLearningPolicy(promotion_enabled=True, auto_promotion_enabled=True),
+        authored_profile=_build_authored_profile(knowledge_domains=["authority", "special"]),
+        granted_domains={"authority"},
+    )
+
+    assert decision.allowed is False
+    assert "blocked domain requires explicit grant: special" in decision.reasons
+    assert "blocked domain requires explicit grant: authority" not in decision.reasons
+
+
+def test_promotion_gate_supports_mapping_profiles_with_tuple_capability_collections() -> None:
+    evidence_store = SkillEvidenceStore()
+    evidence_store.append(
+        _build_evidence(
+            evidence_id="skill_evidence:1",
+            skill_id="field_surgery",
+            eligible_for_promotion=True,
+        )
+    )
+    evidence_store.append(
+        _build_evidence(
+            evidence_id="skill_evidence:2",
+            skill_id="field_surgery",
+            eligible_for_promotion=True,
+        )
+    )
+
+    registry = _build_registry(skill_id="field_surgery", domains=["medical"], learnability="natural")
+    candidate = SkillCandidateStore(registry=registry).rebuild_from_evidence(
+        actor_id="char_a",
+        evidence_store=evidence_store,
+    )[0]
+
+    authored_profile = MappingProxyType(
+        {
+            "capability_constraint_layer": MappingProxyType(
+                {
+                    "skills": ("field_surgery",),
+                    "knowledge_domains": ("court",),
+                }
+            )
+        }
+    )
+
+    decision = SkillPromotionGate().evaluate(
+        candidate=candidate,
+        skill_definition=registry.skill("field_surgery"),
+        learning_policy=SkillLearningPolicy(promotion_enabled=True, auto_promotion_enabled=True),
+        authored_profile=authored_profile,
+    )
+
+    assert decision.allowed is False
+    assert "skill already present in authored profile" in decision.reasons
+    assert "authored profile incompatible with skill domains" in decision.reasons
 
 
 def test_promotion_gate_rejects_authored_profile_incompatible_candidate_and_insufficient_evidence() -> None:
