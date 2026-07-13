@@ -113,6 +113,21 @@ def test_route_accepts_structured_intent_and_rejects_raw_input_noise() -> None:
             "player_id": "player",
             "target_object_id": "obj_box",
             "producer_ts": 1,
+            "skill_evaluation_result": {
+                "actor_id": "char_a",
+                "action_id": "inspect",
+                "selected_path": {},
+                "viable_paths": [],
+                "blocked_paths": [{"binding_id": "observe_to_inspect"}],
+                "recommendation_reason": ["advisory only"],
+                "learning_policy_snapshot": {"advisory": True},
+            },
+            "primitive_action_plan": {
+                "composite_action_id": "inspect",
+                "skill_path_id": "observe_to_inspect",
+                "primitive_actions": ["look_closer"],
+                "realization_keys": ["steady_gaze"],
+            },
         },
     )
     rejected = client.post(
@@ -129,6 +144,8 @@ def test_route_accepts_structured_intent_and_rejects_raw_input_noise() -> None:
 
     assert response.status_code == 200
     assert response.json()["plan"]["policy"] == "semantic-only"
+    assert response.json()["plan"]["advisory_metadata"]["skill_evaluation_result"]["action_id"] == "inspect"
+    assert response.json()["advisory_metadata"]["primitive_action_plan"]["primitive_actions"] == ["look_closer"]
     assert rejected.status_code == 422
     assert "raw input" in rejected.text
 

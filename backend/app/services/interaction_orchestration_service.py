@@ -45,6 +45,8 @@ class StructuredInteractionRequest(BaseModel):
     constraint_refs: list[str] = Field(default_factory=list)
     physical_effect_kind: PhysicalEffectKind | None = None
     physical_observation: PhysicalContactObservation | None = None
+    skill_evaluation_result: dict[str, object] | None = None
+    primitive_action_plan: dict[str, object] | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -95,6 +97,7 @@ class InteractionOrchestrationPlan(BaseModel):
     degrade_reason: str = ""
     active_perception_request_ref: str = ""
     authority_confirmation_request_ref: str = ""
+    advisory_metadata: dict[str, object] = Field(default_factory=dict)
     forbidden_ownership: list[str] = Field(
         default_factory=lambda: ["character_mind_core", "siming_main_brain", "esm_authority"]
     )
@@ -109,6 +112,7 @@ class InteractionOrchestrationResult(BaseModel):
     unified_result_family: list[dict[str, Any]] = Field(default_factory=list)
     status: Literal["completed", "denied", "degraded"] = "completed"
     trace_refs: list[str] = Field(default_factory=list)
+    advisory_metadata: dict[str, object] = Field(default_factory=dict)
 
 
 class InteractionOrchestrationService:
@@ -125,12 +129,14 @@ class InteractionOrchestrationService:
     def plan(self, request: StructuredInteractionRequest) -> InteractionOrchestrationPlan:
         plan_id = f"interaction_plan:{request.intent.intent_id}"
         physical_kind = request.physical_effect_kind or self._physical_kind_for(request.intent.physical_affordance)
+        advisory_metadata = self._advisory_metadata(request)
         if request.constraint_refs:
             return InteractionOrchestrationPlan(
                 plan_id=plan_id,
                 intent_id=request.intent.intent_id,
                 policy="denied-by-constraint",
                 degrade_reason="constraint refs block interaction before channel execution",
+                advisory_metadata=advisory_metadata,
             )
         if not request.perception_ready:
             return InteractionOrchestrationPlan(
@@ -139,6 +145,7 @@ class InteractionOrchestrationService:
                 policy="requires-active-perception",
                 degrade_reason="perception refs are insufficient for interaction",
                 active_perception_request_ref=f"active_perception:{request.intent.actor_id}:{request.target_object_id or 'target'}",
+                advisory_metadata=advisory_metadata,
             )
         if not request.authority_confirmed:
             return InteractionOrchestrationPlan(
@@ -147,6 +154,7 @@ class InteractionOrchestrationService:
                 policy="requires-authority-confirmation",
                 degrade_reason="semantic authority confirmation is required",
                 authority_confirmation_request_ref=f"authority_confirmation:{request.intent.intent_id}",
+                advisory_metadata=advisory_metadata,
             )
         if physical_kind is None:
             return InteractionOrchestrationPlan(
@@ -161,6 +169,7 @@ class InteractionOrchestrationService:
                         payload=request.intent.model_dump(),
                     )
                 ],
+                advisory_metadata=advisory_metadata,
             )
         if request.intent.semantic_intent in {"physical_only", "contact_only", "blocking_only"}:
             return InteractionOrchestrationPlan(
@@ -175,6 +184,7 @@ class InteractionOrchestrationService:
                         payload={"effect_kind": physical_kind, "target_object_id": request.target_object_id},
                     )
                 ],
+                advisory_metadata=advisory_metadata,
             )
         return InteractionOrchestrationPlan(
             plan_id=plan_id,
@@ -193,6 +203,7 @@ class InteractionOrchestrationService:
                     payload={"effect_kind": physical_kind, "target_object_id": request.target_object_id},
                 ),
             ],
+            advisory_metadata=advisory_metadata,
         )
 
     def execute(self, request: StructuredInteractionRequest) -> InteractionOrchestrationResult:
@@ -203,6 +214,7 @@ class InteractionOrchestrationService:
                 plan=plan,
                 status="degraded",
                 trace_refs=[plan.active_perception_request_ref or plan.authority_confirmation_request_ref],
+                advisory_metadata=dict(plan.advisory_metadata),
             )
             self._trace(result)
             return result
@@ -221,6 +233,7 @@ class InteractionOrchestrationService:
                         payload=constraint.model_dump(),
                     )
                 ],
+                advisory_metadata=dict(plan.advisory_metadata),
             )
             self._trace(result)
             return result
@@ -263,9 +276,18 @@ class InteractionOrchestrationService:
             unified_result_family=unified_results,
             status="completed" if all(result.status != "rejected" for result in channel_results) else "denied",
             trace_refs=[f"interaction_trace:{request.intent.intent_id}"],
+            advisory_metadata=dict(plan.advisory_metadata),
         )
         self._trace(result)
         return result
+
+    def _advisory_metadata(self, request: StructuredInteractionRequest) -> dict[str, object]:
+        advisory_metadata: dict[str, object] = {}
+        if request.skill_evaluation_result is not None:
+            advisory_metadata["skill_evaluation_result"] = dict(request.skill_evaluation_result)
+        if request.primitive_action_plan is not None:
+            advisory_metadata["primitive_action_plan"] = dict(request.primitive_action_plan)
+        return advisory_metadata
 
     def _execute_semantic(self, request: StructuredInteractionRequest):
         event = InteractIntent(
@@ -343,5 +365,6 @@ class InteractionOrchestrationService:
                 "selected_channels": list(result.plan.selected_channels),
                 "status": result.status,
                 "unified_result_count": len(result.unified_result_family),
+                "advisory_keys": sorted(result.advisory_metadata.keys()),
             }
         )
