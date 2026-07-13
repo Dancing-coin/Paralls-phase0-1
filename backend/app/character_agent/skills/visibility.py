@@ -5,6 +5,16 @@ from pydantic import Field, model_validator
 from app.character_agent.skills.models import CharacterSkillState, SkillDefinition, StrictSkillModel
 
 _HIDDEN_VISIBILITY_STATES = frozenset({"hidden", "locked", "private"})
+_PLACEHOLDER_BELIEF_STATES = frozenset({"unknown"})
+_RANK_ORDER = {
+    "none": 0,
+    "novice": 1,
+    "basic": 2,
+    "trained": 3,
+    "expert": 4,
+    "master": 5,
+    "blocked": -1,
+}
 
 
 class ObservedSkillBelief(StrictSkillModel):
@@ -17,8 +27,11 @@ class ObservedSkillBelief(StrictSkillModel):
 
     @model_validator(mode="after")
     def validate_confidence_evidence_refs(self) -> "ObservedSkillBelief":
+        normalized_belief_state = self.belief_state.strip().lower()
         if self.confidence > 0.0 and not self.evidence_refs:
             raise ValueError("observed skill belief confidence requires evidence_refs")
+        if normalized_belief_state not in _PLACEHOLDER_BELIEF_STATES and not self.evidence_refs:
+            raise ValueError("observed skill belief state requires evidence_refs")
         return self
 
 
@@ -64,9 +77,13 @@ def build_player_facing_capability_hints(
     skill_definitions: list[SkillDefinition],
 ) -> list[PlayerFacingCapabilityHint]:
     definitions_by_skill_id = {definition.skill_id: definition for definition in skill_definitions}
+    effective_rows_by_skill_id = _resolved_effective_rows_by_skill_id(
+        actor_id=subject_actor_id,
+        skill_states=skill_states,
+    )
     hints: list[PlayerFacingCapabilityHint] = []
     for state in skill_states:
-        if state.actor_id != subject_actor_id:
+        if effective_rows_by_skill_id.get(state.skill_id) is not state:
             continue
 
         definition = definitions_by_skill_id.get(state.skill_id)
@@ -85,6 +102,29 @@ def build_player_facing_capability_hints(
             )
         )
     return hints
+
+
+def _resolved_effective_rows_by_skill_id(
+    *,
+    actor_id: str,
+    skill_states: list[CharacterSkillState],
+) -> dict[str, CharacterSkillState]:
+    resolved: dict[str, tuple[tuple[int, str, int], CharacterSkillState]] = {}
+    for index, state in enumerate(skill_states):
+        if state.actor_id != actor_id:
+            continue
+        candidate_key = (
+            -_rank_value(state.rank),
+            state.source,
+            index,
+        )
+        current = resolved.get(state.skill_id)
+        if current is None or candidate_key < current[0]:
+            resolved[state.skill_id] = (candidate_key, state)
+    return {
+        skill_id: resolved_state
+        for skill_id, (_, resolved_state) in resolved.items()
+    }
 
 
 def _is_player_visible(*, state: CharacterSkillState, definition: SkillDefinition) -> bool:
@@ -110,6 +150,10 @@ def _is_player_visible(*, state: CharacterSkillState, definition: SkillDefinitio
         return default_player_visible
 
     return True
+
+
+def _rank_value(rank: str) -> int:
+    return _RANK_ORDER.get(rank, -1)
 
 
 def _visibility_state(*, state: CharacterSkillState, definition: SkillDefinition) -> str:

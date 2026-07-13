@@ -14,14 +14,16 @@ def _skill_state(
     *,
     actor_id: str = "char_a",
     skill_id: str,
+    source: str = "authored",
+    rank: str = "trained",
     confidence: float = 0.5,
     visibility: dict[str, object] | None = None,
 ) -> CharacterSkillState:
     return CharacterSkillState(
         actor_id=actor_id,
         skill_id=skill_id,
-        source="authored",
-        rank="trained",
+        source=source,
+        rank=rank,
         proficiency=0.65,
         confidence=confidence,
         visibility=visibility or {},
@@ -52,6 +54,16 @@ def test_observed_skill_belief_requires_evidence_refs_for_nonzero_confidence() -
             skill_id="deception",
             belief_state="suspected",
             confidence=0.42,
+            evidence_refs=[],
+        )
+
+    with pytest.raises(ValidationError):
+        ObservedSkillBelief(
+            observer_actor_id="char_b",
+            subject_actor_id="char_a",
+            skill_id="deception",
+            belief_state="suspected",
+            confidence=0.0,
             evidence_refs=[],
         )
 
@@ -194,3 +206,51 @@ def test_player_facing_hints_respect_definition_defaults_for_locked_or_hidden_sk
 
     assert [hint.skill_id for hint in hints] == ["streetwise"]
     assert hints[0].display_name == "Streetwise"
+
+
+def test_player_facing_hints_project_effective_skill_rows_once() -> None:
+    hints = build_player_facing_capability_hints(
+        subject_actor_id="char_a",
+        skill_states=[
+            _skill_state(skill_id="first_aid", source="authored", rank="basic", confidence=0.4),
+            _skill_state(skill_id="first_aid", source="learned", rank="trained", confidence=0.8),
+        ],
+        skill_definitions=[
+            _skill_definition(skill_id="first_aid", display_name="First Aid"),
+        ],
+    )
+
+    assert hints == [
+        PlayerFacingCapabilityHint(
+            subject_actor_id="char_a",
+            skill_id="first_aid",
+            display_name="First Aid",
+            confidence=0.8,
+            visibility_state="visible",
+        )
+    ]
+
+
+def test_player_facing_hints_do_not_leak_superseded_visible_rows() -> None:
+    hints = build_player_facing_capability_hints(
+        subject_actor_id="char_a",
+        skill_states=[
+            _skill_state(
+                skill_id="deception",
+                source="authored",
+                rank="basic",
+                visibility={"player_visible": True},
+            ),
+            _skill_state(
+                skill_id="deception",
+                source="learned",
+                rank="trained",
+                visibility={"player_visible": False},
+            ),
+        ],
+        skill_definitions=[
+            _skill_definition(skill_id="deception", display_name="Deception"),
+        ],
+    )
+
+    assert hints == []
