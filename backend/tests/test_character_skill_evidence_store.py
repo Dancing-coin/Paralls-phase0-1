@@ -100,6 +100,31 @@ def test_store_deduplicates_repeated_evidence_ids() -> None:
     assert matches[0].action_id == "stabilize_injured_actor"
 
 
+def test_store_can_query_exact_empty_binding_id() -> None:
+    store = SkillEvidenceStore()
+    unbound = _build_evidence(
+        evidence_id="skill_evidence:unbound",
+        actor_id="char_a",
+        binding_id="",
+    )
+    bound = _build_evidence(
+        evidence_id="skill_evidence:bound",
+        actor_id="char_a",
+        binding_id="first_aid_to_stabilize",
+    )
+
+    store.append(unbound)
+    store.append(bound)
+
+    assert [e.evidence_id for e in store.query(actor_id="char_a")] == [
+        "skill_evidence:unbound",
+        "skill_evidence:bound",
+    ]
+    assert [e.evidence_id for e in store.query(actor_id="char_a", binding_id="")] == [
+        "skill_evidence:unbound"
+    ]
+
+
 def test_store_keeps_appended_evidence_immutable() -> None:
     store = SkillEvidenceStore()
     evidence = _build_evidence(evidence_id="skill_evidence:immutable", actor_id="char_a")

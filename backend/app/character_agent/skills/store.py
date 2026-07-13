@@ -22,7 +22,7 @@ class SkillEvidenceStore:
         actor_id: str,
         skill_id: str = "",
         action_id: str = "",
-        binding_id: str = "",
+        binding_id: str | None = None,
         source_settlement_id: str = "",
     ) -> list[SkillEvidence]:
         matches: list[SkillEvidence] = []
@@ -31,7 +31,7 @@ class SkillEvidenceStore:
                 continue
             if action_id and evidence.action_id != action_id:
                 continue
-            if binding_id and evidence.binding_id != binding_id:
+            if binding_id is not None and evidence.binding_id != binding_id:
                 continue
             if source_settlement_id and evidence.source_settlement_id != source_settlement_id:
                 continue
