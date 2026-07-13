@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+import pytest
+
 from app.character_agent.skills.learning import SkillCandidateStore, SkillPromotionGate
 from app.character_agent.skills.models import SkillDefinition, SkillEvidence, SkillLearningPolicy
 from app.character_agent.skills.registry import CharacterSkillRegistry
@@ -133,7 +135,8 @@ def test_promotion_gate_rejects_when_promotion_policy_disabled() -> None:
     assert "promotion policy disabled" in decision.reasons
 
 
-def test_promotion_gate_rejects_blocked_authority_domain_without_explicit_grant() -> None:
+@pytest.mark.parametrize("blocked_domain", ["authority", "special"])
+def test_promotion_gate_rejects_blocked_domain_without_explicit_grant(blocked_domain: str) -> None:
     evidence_store = SkillEvidenceStore()
     evidence_store.append(
         _build_evidence(
@@ -150,7 +153,7 @@ def test_promotion_gate_rejects_blocked_authority_domain_without_explicit_grant(
         )
     )
 
-    registry = _build_registry(skill_id="command_voice", domains=["authority"], learnability="trained")
+    registry = _build_registry(skill_id="command_voice", domains=[blocked_domain], learnability="trained")
     candidate = SkillCandidateStore(registry=registry).rebuild_from_evidence(
         actor_id="char_a",
         evidence_store=evidence_store,
@@ -164,7 +167,7 @@ def test_promotion_gate_rejects_blocked_authority_domain_without_explicit_grant(
     )
 
     assert decision.allowed is False
-    assert "blocked domain requires explicit grant: authority" in decision.reasons
+    assert f"blocked domain requires explicit grant: {blocked_domain}" in decision.reasons
 
 
 def test_promotion_gate_requires_explicit_grant_for_granted_or_locked_skills() -> None:
