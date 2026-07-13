@@ -4,9 +4,22 @@ from app.models.character_agent_runtime import (
 )
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
 from app.character_agent.skills.models import CompositeActionProposal
+from copy import deepcopy
 
 
 class CharacterAgentL4Executor:
+    def attach_realization_hints(self, plan: dict[str, object]) -> dict[str, object]:
+        presentation_plan = plan.get("presentation_plan", {})
+        if not isinstance(presentation_plan, dict):
+            presentation_plan = {}
+            plan["presentation_plan"] = presentation_plan
+        presentation_plan["realization_hints"] = {
+            "selected_skill_path": self._realization_selected_skill_path(plan),
+            "primitive_action_tags": self._realization_primitive_action_tags(plan),
+            "settlement_outcome": self._realization_settlement_outcome(plan),
+        }
+        return plan
+
     def build_execution_plan(
         self,
         *,
@@ -71,7 +84,7 @@ class CharacterAgentL4Executor:
             decision=decision,
             guarding_elevated=guarding_elevated,
         )
-        return {
+        plan = {
             "actor_id": decision.actor_id,
             "execution_semantics": execution_semantics,
             "speech_channel": {
@@ -165,6 +178,7 @@ class CharacterAgentL4Executor:
             },
             "composite_action_proposal": composite_action_proposal.model_dump(),
         }
+        return self.attach_realization_hints(plan)
 
     def _composite_action_proposal(
         self,
@@ -585,3 +599,40 @@ class CharacterAgentL4Executor:
                 }
             ]
         return []
+
+    def _realization_selected_skill_path(self, plan: dict[str, object]) -> dict[str, object]:
+        skill_evaluation_result = plan.get("skill_evaluation_result", {})
+        if not isinstance(skill_evaluation_result, dict):
+            return {}
+        selected_path = skill_evaluation_result.get("selected_path", {})
+        if not isinstance(selected_path, dict):
+            return {}
+        return deepcopy(selected_path)
+
+    def _realization_primitive_action_tags(self, plan: dict[str, object]) -> list[str]:
+        primitive_action_plan = plan.get("primitive_action_plan", {})
+        if not isinstance(primitive_action_plan, dict):
+            return []
+        primitive_actions = primitive_action_plan.get("primitive_actions", [])
+        if not isinstance(primitive_actions, list):
+            return []
+        return [str(action) for action in primitive_actions if str(action or "") != ""]
+
+    def _realization_settlement_outcome(self, plan: dict[str, object]) -> dict[str, object]:
+        action_settlement_result = plan.get("action_settlement_result", {})
+        if not isinstance(action_settlement_result, dict):
+            return {}
+        settlement_outcome: dict[str, object] = {}
+        for key in (
+            "outcome_band",
+            "failure_domains",
+            "primary_failure_domain",
+            "realization_hints",
+        ):
+            value = action_settlement_result.get(key)
+            if isinstance(value, list):
+                settlement_outcome[key] = [str(entry) for entry in value if str(entry or "") != ""]
+            elif isinstance(value, str):
+                if value != "":
+                    settlement_outcome[key] = value
+        return settlement_outcome

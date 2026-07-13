@@ -280,6 +280,11 @@ def test_execution_plan_carries_contact_and_realization_semantic_keys() -> None:
     assert plan["execution_semantics"]["contact_phase"] == "greeting"
     assert plan["execution_semantics"]["speech_mode"] == "none"
     assert plan["execution_semantics"]["gesture_mode"] == "acknowledge"
+    assert plan["presentation_plan"]["realization_hints"] == {
+        "selected_skill_path": {},
+        "primitive_action_tags": [],
+        "settlement_outcome": {},
+    }
 
 
 def test_character_agent_runtime_accepts_char_c_into_the_shared_runtime_species() -> None:

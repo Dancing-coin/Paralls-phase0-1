@@ -64,6 +64,7 @@ class CharacterAgentL4Adapter:
         )
 
     def build_commands_from_execution_plan(self, plan: dict[str, object]) -> list[CharacterGoalCommand]:
+        plan = self._executor.attach_realization_hints(plan)
         requested_actions = []
         bundle = plan.get("action_request_bundle", {})
         if isinstance(bundle, dict):
