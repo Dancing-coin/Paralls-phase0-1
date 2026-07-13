@@ -150,6 +150,43 @@ def test_route_accepts_structured_intent_and_rejects_raw_input_noise() -> None:
     assert "raw input" in rejected.text
 
 
+def test_advisory_metadata_isolated_from_request_payload_mutations() -> None:
+    service = InteractionOrchestrationService()
+    skill_evaluation_result = {
+        "actor_id": "char_a",
+        "action_id": "inspect",
+        "selected_path": {"binding_id": "observe_to_inspect"},
+        "blocked_paths": [{"binding_id": "observe_to_inspect"}],
+        "recommendation_reason": ["advisory only"],
+    }
+    primitive_action_plan = {
+        "composite_action_id": "inspect",
+        "primitive_actions": ["look_closer"],
+        "realization_keys": ["steady_gaze"],
+    }
+    request = _request(
+        skill_evaluation_result=skill_evaluation_result,
+        primitive_action_plan=primitive_action_plan,
+    )
+
+    plan = service.plan(request)
+    result = service.execute(request)
+
+    skill_evaluation_result["selected_path"]["binding_id"] = "mutated_binding"
+    skill_evaluation_result["blocked_paths"][0]["binding_id"] = "mutated_blocked_path"
+    primitive_action_plan["primitive_actions"].append("mutated_action")
+    primitive_action_plan["realization_keys"][0] = "mutated_key"
+
+    assert plan.advisory_metadata["skill_evaluation_result"]["selected_path"]["binding_id"] == "observe_to_inspect"
+    assert plan.advisory_metadata["skill_evaluation_result"]["blocked_paths"][0]["binding_id"] == "observe_to_inspect"
+    assert plan.advisory_metadata["primitive_action_plan"]["primitive_actions"] == ["look_closer"]
+    assert plan.advisory_metadata["primitive_action_plan"]["realization_keys"] == ["steady_gaze"]
+    assert result.advisory_metadata["skill_evaluation_result"]["selected_path"]["binding_id"] == "observe_to_inspect"
+    assert result.advisory_metadata["skill_evaluation_result"]["blocked_paths"][0]["binding_id"] == "observe_to_inspect"
+    assert result.advisory_metadata["primitive_action_plan"]["primitive_actions"] == ["look_closer"]
+    assert result.advisory_metadata["primitive_action_plan"]["realization_keys"] == ["steady_gaze"]
+
+
 def test_structured_request_requires_physical_target_ref() -> None:
     with pytest.raises(ValueError, match="target_object_id"):
         StructuredInteractionRequest(

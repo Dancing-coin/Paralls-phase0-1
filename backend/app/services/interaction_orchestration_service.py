@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -214,7 +215,7 @@ class InteractionOrchestrationService:
                 plan=plan,
                 status="degraded",
                 trace_refs=[plan.active_perception_request_ref or plan.authority_confirmation_request_ref],
-                advisory_metadata=dict(plan.advisory_metadata),
+                advisory_metadata=self._copy_advisory_metadata(plan.advisory_metadata),
             )
             self._trace(result)
             return result
@@ -233,7 +234,7 @@ class InteractionOrchestrationService:
                         payload=constraint.model_dump(),
                     )
                 ],
-                advisory_metadata=dict(plan.advisory_metadata),
+                advisory_metadata=self._copy_advisory_metadata(plan.advisory_metadata),
             )
             self._trace(result)
             return result
@@ -276,7 +277,7 @@ class InteractionOrchestrationService:
             unified_result_family=unified_results,
             status="completed" if all(result.status != "rejected" for result in channel_results) else "denied",
             trace_refs=[f"interaction_trace:{request.intent.intent_id}"],
-            advisory_metadata=dict(plan.advisory_metadata),
+            advisory_metadata=self._copy_advisory_metadata(plan.advisory_metadata),
         )
         self._trace(result)
         return result
@@ -284,10 +285,13 @@ class InteractionOrchestrationService:
     def _advisory_metadata(self, request: StructuredInteractionRequest) -> dict[str, object]:
         advisory_metadata: dict[str, object] = {}
         if request.skill_evaluation_result is not None:
-            advisory_metadata["skill_evaluation_result"] = dict(request.skill_evaluation_result)
+            advisory_metadata["skill_evaluation_result"] = deepcopy(request.skill_evaluation_result)
         if request.primitive_action_plan is not None:
-            advisory_metadata["primitive_action_plan"] = dict(request.primitive_action_plan)
+            advisory_metadata["primitive_action_plan"] = deepcopy(request.primitive_action_plan)
         return advisory_metadata
+
+    def _copy_advisory_metadata(self, advisory_metadata: dict[str, object]) -> dict[str, object]:
+        return deepcopy(advisory_metadata)
 
     def _execute_semantic(self, request: StructuredInteractionRequest):
         event = InteractIntent(

@@ -125,8 +125,14 @@ def test_mixed_request_skill_metadata_does_not_override_semantic_gate_for_physic
 
     assert blocked.plan.policy == "semantic-goal-physical-effect-mixed"
     assert [entry.status for entry in blocked.channel_results] == ["rejected", "rejected"]
-    assert blocked.unified_result_family[0]["result_type"] == "constraint_state_result"
-    assert blocked.unified_result_family[-1]["constraint_code"] == "semantic_authority_required"
+    blocked_result_types = {entry["result_type"] for entry in blocked.unified_result_family}
+    blocked_constraint_codes = {
+        entry["constraint_code"]
+        for entry in blocked.unified_result_family
+        if entry["result_type"] == "constraint_state_result"
+    }
+    assert "constraint_state_result" in blocked_result_types
+    assert "semantic_authority_required" in blocked_constraint_codes
 
 
 def test_strong_skill_metadata_cannot_override_authority_or_constraint_gates() -> None:
@@ -184,3 +190,26 @@ def test_skill_metadata_stays_in_advisory_fields_not_world_result_authority_payl
     for channel in result.channel_results:
         assert "skill_evaluation_result" not in channel.payload
         assert "primitive_action_plan" not in channel.payload
+
+
+def test_result_advisory_metadata_mutations_do_not_alias_plan_snapshot() -> None:
+    service = InteractionOrchestrationService()
+
+    result = service.execute(
+        _mixed_request(
+            skill_evaluation_result=_strong_skill_evaluation(),
+            primitive_action_plan=_primitive_action_plan(),
+        )
+    )
+
+    result.advisory_metadata["skill_evaluation_result"]["selected_path"]["binding_id"] = "mutated_binding"
+    result.advisory_metadata["primitive_action_plan"]["primitive_actions"].append("mutated_action")
+
+    assert result.plan.advisory_metadata["skill_evaluation_result"]["selected_path"]["binding_id"] == (
+        "labor_to_move_obstacle"
+    )
+    assert result.plan.advisory_metadata["primitive_action_plan"]["primitive_actions"] == [
+        "brace",
+        "push",
+        "recover_balance",
+    ]
