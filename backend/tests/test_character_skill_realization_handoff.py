@@ -139,9 +139,9 @@ def test_kimodo_contracts_accept_realization_hints_without_authority_fields() ->
         },
     )
 
-    assert request.selected_skill_path["binding_id"] == "mediation_to_share_info"
+    assert request.selected_skill_path.binding_id == "mediation_to_share_info"
     assert request.primitive_action_tags == ["orient", "steady_voice"]
-    assert plan.settlement_outcome["outcome_band"] == "partial"
+    assert plan.settlement_outcome.outcome_band == "partial"
 
     with pytest.raises(ValidationError):
         KimodoActionRequest(
@@ -152,9 +152,25 @@ def test_kimodo_contracts_accept_realization_hints_without_authority_fields() ->
         )
 
     with pytest.raises(ValidationError):
+        KimodoActionRequest(
+            actor_id="char_a",
+            semantic_keys=["share_info"],
+            execution_mode="skeletal_animation",
+            settlement_outcome={"settlement_success": True},
+        )
+
+    with pytest.raises(ValidationError):
         KimodoRealizationPlan(
             actor_id="char_a",
             semantic_keys=["share_info"],
             execution_mode="skeletal_animation",
             world_state_patch={"lamp": "on"},
+        )
+
+    with pytest.raises(ValidationError):
+        KimodoRealizationPlan(
+            actor_id="char_a",
+            semantic_keys=["share_info"],
+            execution_mode="skeletal_animation",
+            settlement_outcome={"world_state_patch": {"lamp": "on"}},
         )
