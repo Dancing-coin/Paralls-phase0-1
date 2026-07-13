@@ -129,6 +129,10 @@ class ActionSettlementResult(StrictSkillModel):
     social_effects: list[str] = Field(default_factory=list)
     costs: list[str] = Field(default_factory=list)
     realization_hints: list[str] = Field(default_factory=list)
+    skill_path_id: str = ""
+    skill_contributions: list[str] = Field(default_factory=list)
+    risk_tags: list[str] = Field(default_factory=list)
+    missing_requirements: list[str] = Field(default_factory=list)
 
 
 class SkillLearningPolicy(StrictSkillModel):

@@ -1,3 +1,4 @@
+from copy import deepcopy
 from pathlib import Path
 
 from app.character_agent.logic.affect_engine import AffectEngine
@@ -31,6 +32,7 @@ from app.character_agent.mind.frame_builder import CharacterMindFrameBuilder
 from app.character_agent.mind.writeback_policy import MindWritebackPolicyRouter
 from app.character_agent.models.mind_frame import MindDeltaLedger
 from app.character_agent.skills.catalog import create_runtime_skill_registry
+from app.character_agent.skills.models import ActionSettlementResult
 from app.character_agent.skills.service import CharacterSkillService
 from app.models.character_agent_runtime import CharacterGoalCommand
 from app.models.character_agent_runtime import CHARACTER_AGENT_CONTROL_MODES
@@ -1649,14 +1651,16 @@ class CharacterAgentRuntime:
                     source_stage="settlement_result",
                     priority=0.55,
                 )
+        stored_payload = deepcopy(payload)
+        stored_payload["action_settlement_result"] = self._action_settlement_result_metadata(stored_payload)
         stored = self._session_store.append_event(
             actor_id=actor_id,
             event_type="character_agent_settlement_result",
             producer_ts=producer_ts,
-            payload=payload,
+            payload=stored_payload,
         )
         self._memory_store.write_event(stored)
-        outcome_summary = str(payload.get("constraint_summary", "") or payload.get("change_summary", "") or payload.get("stable_state_summary", "") or payload.get("result_type", "") or "")
+        outcome_summary = str(stored_payload.get("constraint_summary", "") or stored_payload.get("change_summary", "") or stored_payload.get("stable_state_summary", "") or stored_payload.get("result_type", "") or "")
         self._set_observatory_context(actor_id, "latest_outcome_summary", outcome_summary)
         self._queue_observatory_stage_event(
             actor_id=actor_id,
@@ -1664,9 +1668,9 @@ class CharacterAgentRuntime:
             stage="settlement_result",
             summary=outcome_summary,
             focus_target=self._snapshot_focus_target(self._get_snapshot_for_observatory(actor_id, producer_ts)),
-            intent_label=str(payload.get("result_type", "") or ""),
-            participants=self._participants_for_actor(actor_id, str(payload.get("target_actor_id", "") or str(payload.get("target_object_id", "") or str(payload.get("target_environment_id", "") or "")))),
-            detail=dict(payload),
+            intent_label=str(stored_payload.get("result_type", "") or ""),
+            participants=self._participants_for_actor(actor_id, str(stored_payload.get("target_actor_id", "") or str(stored_payload.get("target_object_id", "") or str(stored_payload.get("target_environment_id", "") or "")))),
+            detail=dict(stored_payload),
         )
         self._queue_observatory_snapshot(
             actor_id=actor_id,
@@ -1674,6 +1678,167 @@ class CharacterAgentRuntime:
             snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
             memory_bundle=self.get_memory_bundle(actor_id),
         )
+
+    def _action_settlement_result_metadata(self, payload: dict[str, object]) -> dict[str, object]:
+        advisory_metadata = self._settlement_advisory_metadata(payload)
+        outcome_band = self._settlement_outcome_band(payload)
+        failure_domains = self._settlement_failure_domains(
+            payload=payload,
+            advisory_metadata=advisory_metadata,
+            outcome_band=outcome_band,
+        )
+        skill_path_id = self._settlement_skill_path_id(advisory_metadata)
+        missing_requirements = self._settlement_missing_requirements(advisory_metadata)
+        change_summary = str(payload.get("change_summary", "") or "")
+        stable_state_summary = str(payload.get("stable_state_summary", "") or "")
+        constraint_summary = str(payload.get("constraint_summary", "") or "")
+        result_type = str(payload.get("result_type", "") or "")
+        skill_contributions = self._settlement_skill_contributions(advisory_metadata)
+        realization_hints = self._settlement_realization_hints(advisory_metadata)
+        risk_tags = self._settlement_risk_tags(advisory_metadata)
+        semantic_effects = [stable_state_summary] if stable_state_summary != "" else []
+        if result_type == "constraint_state_result" and constraint_summary != "":
+            semantic_effects.append(constraint_summary)
+        physical_effects = (
+            [change_summary]
+            if result_type in {"object_state_result", "body_state_result", "environment_state_result"} and change_summary != ""
+            else []
+        )
+        costs = [change_summary] if result_type == "body_state_result" and change_summary != "" else []
+        settlement_result = ActionSettlementResult(
+            outcome_band=outcome_band,
+            failure_domains=failure_domains,
+            primary_failure_domain=failure_domains[0] if failure_domains else "none",
+            semantic_effects=semantic_effects,
+            physical_effects=physical_effects,
+            social_effects=[],
+            costs=costs,
+            realization_hints=realization_hints,
+            skill_path_id=skill_path_id,
+            skill_contributions=skill_contributions,
+            risk_tags=risk_tags,
+            missing_requirements=missing_requirements,
+        )
+        return settlement_result.model_dump()
+
+    def _settlement_advisory_metadata(self, payload: dict[str, object]) -> dict[str, object]:
+        advisory_payload = payload.get("advisory_metadata")
+        advisory_metadata = deepcopy(advisory_payload) if isinstance(advisory_payload, dict) else {}
+        for key in ("skill_evaluation_result", "primitive_action_plan"):
+            value = payload.get(key)
+            if isinstance(value, dict) and key not in advisory_metadata:
+                advisory_metadata[key] = deepcopy(value)
+        return advisory_metadata
+
+    def _settlement_outcome_band(self, payload: dict[str, object]) -> str:
+        settlement_status = str(payload.get("settlement_status", "") or payload.get("resolution_status", "") or "")
+        result_type = str(payload.get("result_type", "") or "")
+        if settlement_status in {"accepted", "applied", "observed"}:
+            if result_type == "body_state_result":
+                return "success_with_cost"
+            return "clean_success"
+        if settlement_status in {"rejected", "blocked", "denied"}:
+            if result_type == "constraint_state_result":
+                return "blocked"
+            return "failed"
+        return "partial"
+
+    def _settlement_failure_domains(
+        self,
+        *,
+        payload: dict[str, object],
+        advisory_metadata: dict[str, object],
+        outcome_band: str,
+    ) -> list[str]:
+        failure_domains: list[str] = []
+        result_type = str(payload.get("result_type", "") or "")
+        if outcome_band in {"blocked", "failed", "misfire", "partial"}:
+            if result_type == "constraint_state_result":
+                failure_domains.append("world_constraint")
+            elif result_type in {"object_state_result", "body_state_result", "environment_state_result"}:
+                failure_domains.append("physical_failure")
+            missing_requirements = self._settlement_missing_requirements(advisory_metadata)
+            if missing_requirements:
+                failure_domains.append("missing_requirement")
+            elif self._settlement_has_blocked_skill_path(advisory_metadata):
+                failure_domains.append("skill_failure")
+        return list(dict.fromkeys(failure_domains))
+
+    def _settlement_skill_path_id(self, advisory_metadata: dict[str, object]) -> str:
+        skill_evaluation = advisory_metadata.get("skill_evaluation_result")
+        if not isinstance(skill_evaluation, dict):
+            return ""
+        selected_path = skill_evaluation.get("selected_path")
+        if not isinstance(selected_path, dict):
+            return ""
+        return str(selected_path.get("binding_id", "") or "")
+
+    def _settlement_skill_contributions(self, advisory_metadata: dict[str, object]) -> list[str]:
+        primitive_action_plan = advisory_metadata.get("primitive_action_plan")
+        if isinstance(primitive_action_plan, dict):
+            contributions = primitive_action_plan.get("primitive_actions")
+            if isinstance(contributions, list):
+                return [str(entry) for entry in contributions if str(entry or "") != ""]
+        skill_evaluation = advisory_metadata.get("skill_evaluation_result")
+        if not isinstance(skill_evaluation, dict):
+            return []
+        selected_path = skill_evaluation.get("selected_path")
+        if not isinstance(selected_path, dict):
+            return []
+        contributions = selected_path.get("skill_path_tags")
+        if not isinstance(contributions, list):
+            return []
+        return [str(entry) for entry in contributions if str(entry or "") != ""]
+
+    def _settlement_realization_hints(self, advisory_metadata: dict[str, object]) -> list[str]:
+        primitive_action_plan = advisory_metadata.get("primitive_action_plan")
+        if not isinstance(primitive_action_plan, dict):
+            return []
+        hints = primitive_action_plan.get("realization_keys")
+        if not isinstance(hints, list):
+            return []
+        return [str(entry) for entry in hints if str(entry or "") != ""]
+
+    def _settlement_risk_tags(self, advisory_metadata: dict[str, object]) -> list[str]:
+        skill_evaluation = advisory_metadata.get("skill_evaluation_result")
+        if not isinstance(skill_evaluation, dict):
+            return []
+        selected_path = skill_evaluation.get("selected_path")
+        if not isinstance(selected_path, dict):
+            return []
+        risk_tags = selected_path.get("risk_tags")
+        if not isinstance(risk_tags, list):
+            return []
+        return [str(entry) for entry in risk_tags if str(entry or "") != ""]
+
+    def _settlement_missing_requirements(self, advisory_metadata: dict[str, object]) -> list[str]:
+        skill_evaluation = advisory_metadata.get("skill_evaluation_result")
+        if not isinstance(skill_evaluation, dict):
+            return []
+        blocked_paths = skill_evaluation.get("blocked_paths")
+        if not isinstance(blocked_paths, list):
+            return []
+        missing_requirements: list[str] = []
+        for blocked_path in blocked_paths:
+            if not isinstance(blocked_path, dict):
+                continue
+            entries = blocked_path.get("missing_requirements")
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                requirement = str(entry or "")
+                if requirement != "":
+                    missing_requirements.append(requirement)
+        return list(dict.fromkeys(missing_requirements))
+
+    def _settlement_has_blocked_skill_path(self, advisory_metadata: dict[str, object]) -> bool:
+        skill_evaluation = advisory_metadata.get("skill_evaluation_result")
+        if not isinstance(skill_evaluation, dict):
+            return False
+        blocked_paths = skill_evaluation.get("blocked_paths")
+        if not isinstance(blocked_paths, list) or not blocked_paths:
+            return False
+        return self._settlement_skill_path_id(advisory_metadata) == ""
 
     def record_dialogue_response(
         self,
