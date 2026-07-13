@@ -131,6 +131,9 @@ class SkillPromotionGate:
 
         profile_domains = self._string_set(capability_layer.get("knowledge_domains"))
         skill_domains = tuple(dict.fromkeys(skill_definition.domains))
+        allowed_domains = self._string_set(learning_policy.allowed_domains)
+        if allowed_domains and not allowed_domains.intersection(skill_domains):
+            reasons.append(f"domain not allowed by learning policy: {', '.join(skill_domains)}")
         if profile_domains and skill_domains and not profile_domains.intersection(skill_domains):
             reasons.append("authored profile incompatible with skill domains")
 

@@ -136,6 +136,44 @@ def test_promotion_gate_rejects_when_promotion_policy_disabled() -> None:
     assert "promotion policy disabled" in decision.reasons
 
 
+def test_promotion_gate_rejects_candidate_outside_allowed_domains() -> None:
+    evidence_store = SkillEvidenceStore()
+    evidence_store.append(
+        _build_evidence(
+            evidence_id="skill_evidence:1",
+            skill_id="court_protocol",
+            eligible_for_promotion=True,
+        )
+    )
+    evidence_store.append(
+        _build_evidence(
+            evidence_id="skill_evidence:2",
+            skill_id="court_protocol",
+            eligible_for_promotion=True,
+        )
+    )
+
+    registry = _build_registry(skill_id="court_protocol", domains=["court"], learnability="natural")
+    candidate = SkillCandidateStore(registry=registry).rebuild_from_evidence(
+        actor_id="char_a",
+        evidence_store=evidence_store,
+    )[0]
+
+    decision = SkillPromotionGate().evaluate(
+        candidate=candidate,
+        skill_definition=registry.skill("court_protocol"),
+        learning_policy=SkillLearningPolicy(
+            allowed_domains=["medical"],
+            promotion_enabled=True,
+            auto_promotion_enabled=True,
+        ),
+        authored_profile=_build_authored_profile(knowledge_domains=["court"]),
+    )
+
+    assert decision.allowed is False
+    assert "domain not allowed by learning policy: court" in decision.reasons
+
+
 @pytest.mark.parametrize("blocked_domain", ["authority", "special"])
 def test_promotion_gate_rejects_blocked_domain_without_explicit_grant(blocked_domain: str) -> None:
     evidence_store = SkillEvidenceStore()
