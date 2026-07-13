@@ -85,9 +85,13 @@ class CharacterSkillService:
         actor_id: str,
         skill_states: list[CharacterSkillState],
     ) -> SkillAffordanceSummary:
+        effective_states = self._resolved_effective_rows_by_skill_id(
+            actor_id=actor_id,
+            skill_states=skill_states,
+        )
         active_states = {
-            state.skill_id: state
-            for state in self._skill_states_for_actor(actor_id=actor_id, skill_states=skill_states)
+            skill_id: state
+            for skill_id, state in effective_states.items()
             if self._rank_value(state.rank) > 0
         }
         family_records: dict[str, dict[str, object]] = {}
@@ -160,10 +164,10 @@ class CharacterSkillService:
         preferred_strategy_tags: list[str] | None = None,
     ) -> SkillEvaluationResult:
         preferred_strategy_tags = preferred_strategy_tags or []
-        state_by_skill = {
-            state.skill_id: state
-            for state in self._skill_states_for_actor(actor_id=actor_id, skill_states=skill_states)
-        }
+        state_by_skill = self._resolved_effective_rows_by_skill_id(
+            actor_id=actor_id,
+            skill_states=skill_states,
+        )
         viable_paths: list[dict[str, object]] = []
         blocked_paths: list[dict[str, object]] = []
 
@@ -262,6 +266,29 @@ class CharacterSkillService:
                 values.append(item)
         return values
 
+    def _resolved_effective_rows_by_skill_id(
+        self,
+        *,
+        actor_id: str,
+        skill_states: list[CharacterSkillState],
+    ) -> dict[str, CharacterSkillState]:
+        resolved: dict[str, tuple[tuple[int, str, int], CharacterSkillState]] = {}
+        for index, state in enumerate(
+            self._skill_states_for_actor(actor_id=actor_id, skill_states=skill_states)
+        ):
+            candidate_key = (
+                -self._rank_value(state.rank),
+                state.source,
+                index,
+            )
+            current = resolved.get(state.skill_id)
+            if current is None or candidate_key < current[0]:
+                resolved[state.skill_id] = (candidate_key, state)
+        return {
+            skill_id: resolved_state
+            for skill_id, (_, resolved_state) in resolved.items()
+        }
+
     def _skill_states_for_actor(
         self,
         *,
@@ -325,10 +352,15 @@ class CharacterSkillService:
                     "skill_id": state.skill_id,
                     "sources": sources,
                     "current_source": state.source,
-                    "ranks_by_source": {
-                        row.source: row.rank
+                    "rows": [
+                        {
+                            "source": row.source,
+                            "rank": row.rank,
+                            "evidence_refs": list(row.evidence_refs),
+                            "restrictions": list(row.restrictions),
+                        }
                         for row in skill_rows
-                    },
+                    ],
                 }
             resolved_states.append(copied_state)
         return resolved_states
