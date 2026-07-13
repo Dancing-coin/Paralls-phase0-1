@@ -1,6 +1,7 @@
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
 from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
 from app.character_agent.skills.catalog import create_runtime_skill_registry
+from app.character_agent.skills.models import SkillEvaluationResult
 from app.character_agent.skills.models import ActionDefinition, SkillActionBinding
 from app.character_agent.skills.registry import CharacterSkillRegistry
 from app.character_agent.skills.service import CharacterSkillService
@@ -170,8 +171,11 @@ def test_runtime_execution_plan_attaches_advisory_skill_shadow_without_rewriting
     assert skill_evaluation_result["selected_path"] == {}
     assert skill_evaluation_result["viable_paths"] == []
     assert skill_evaluation_result["blocked_paths"] == []
-    assert skill_evaluation_result["advisory"] is True
-    assert skill_evaluation_result["evaluation_mode"] == "shadow"
+    assert SkillEvaluationResult(**skill_evaluation_result)
+    assert payload["skill_evaluation_shadow"] == {
+        "advisory": True,
+        "evaluation_mode": "shadow",
+    }
     assert "primitive_action_plan" not in payload
 
 
@@ -229,8 +233,11 @@ def test_runtime_execution_plan_can_attach_advisory_primitive_plan_for_bound_sha
     ]
     assert skill_evaluation_result["selected_path"]["binding_id"] == "mediation_to_share_info"
     assert skill_evaluation_result["selected_path"]["action_id"] == "share_info"
-    assert skill_evaluation_result["advisory"] is True
-    assert skill_evaluation_result["evaluation_mode"] == "shadow"
+    assert SkillEvaluationResult(**skill_evaluation_result)
+    assert payload["skill_evaluation_shadow"] == {
+        "advisory": True,
+        "evaluation_mode": "shadow",
+    }
     assert primitive_action_plan["composite_action_id"] == "share_info"
     assert primitive_action_plan["skill_path_id"] == "mediation_to_share_info"
     assert primitive_action_plan["primitive_actions"] == [
@@ -238,3 +245,50 @@ def test_runtime_execution_plan_can_attach_advisory_primitive_plan_for_bound_sha
         "share_carefully",
     ]
     assert primitive_action_plan["realization_keys"] == ["steady_voice", "open_palms"]
+
+
+def test_runtime_execution_plan_omits_primitive_plan_when_binding_has_no_template() -> None:
+    overlay_registry = CharacterSkillRegistry(
+        actions=[
+            ActionDefinition(
+                action_id="share_info",
+                kind="composite",
+                settlement_categories=["social"],
+                primitive_sequence_templates={},
+                realization_keys=["steady_voice"],
+            )
+        ],
+        bindings=[
+            SkillActionBinding(
+                binding_id="mediation_to_share_info",
+                skill_id="mediation",
+                action_id="share_info",
+                skill_path_tags=["social", "careful_disclosure"],
+                eligibility={"required_rank": "basic"},
+            )
+        ],
+    )
+    runtime = CharacterAgentRuntime(
+        skill_service=CharacterSkillService(
+            registry=create_runtime_skill_registry(overlay_registry)
+        )
+    )
+
+    runtime._record_execution_plan(  # type: ignore[attr-defined]
+        "char_a",
+        200,
+        _execution_snapshot(),
+        _execution_interpretation(),
+        _execution_decision(),
+    )
+
+    payload = _latest_execution_payload(runtime)
+    skill_evaluation_result = payload["skill_evaluation_result"]
+
+    assert skill_evaluation_result["selected_path"]["binding_id"] == "mediation_to_share_info"
+    assert SkillEvaluationResult(**skill_evaluation_result)
+    assert payload["skill_evaluation_shadow"] == {
+        "advisory": True,
+        "evaluation_mode": "shadow",
+    }
+    assert "primitive_action_plan" not in payload

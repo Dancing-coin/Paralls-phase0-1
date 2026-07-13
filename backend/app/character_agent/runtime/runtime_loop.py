@@ -2308,6 +2308,9 @@ class CharacterAgentRuntime:
     ) -> None:
         shadow_payload = self._skill_evaluation_payload(actor_id=actor_id, plan=plan)
         plan["skill_evaluation_result"] = shadow_payload["skill_evaluation_result"]
+        shadow_metadata = shadow_payload.get("skill_evaluation_shadow")
+        if isinstance(shadow_metadata, dict):
+            plan["skill_evaluation_shadow"] = shadow_metadata
         primitive_action_plan = shadow_payload.get("primitive_action_plan")
         if isinstance(primitive_action_plan, dict):
             plan["primitive_action_plan"] = primitive_action_plan
@@ -2337,11 +2340,11 @@ class CharacterAgentRuntime:
             preferred_strategy_tags=preferred_strategy_tags if isinstance(preferred_strategy_tags, list) else [],
         )
         payload: dict[str, object] = {
-            "skill_evaluation_result": {
-                **evaluation_result.model_dump(),
+            "skill_evaluation_result": evaluation_result.model_dump(),
+            "skill_evaluation_shadow": {
                 "advisory": True,
                 "evaluation_mode": "shadow",
-            }
+            },
         }
         selected_path = evaluation_result.selected_path
         if not isinstance(selected_path, dict):
@@ -2350,12 +2353,15 @@ class CharacterAgentRuntime:
         if binding_id == "":
             return payload
         try:
-            payload["primitive_action_plan"] = self._skill_service.expand_primitive_plan(
+            primitive_action_plan = self._skill_service.expand_primitive_plan(
                 action_id=action_id,
                 skill_path_id=binding_id,
-            ).model_dump()
+            )
         except KeyError:
             pass
+        else:
+            if primitive_action_plan.primitive_actions:
+                payload["primitive_action_plan"] = primitive_action_plan.model_dump()
         return payload
 
     def _continuity_state_for(self, actor_id: str) -> RuntimeContinuityState:
