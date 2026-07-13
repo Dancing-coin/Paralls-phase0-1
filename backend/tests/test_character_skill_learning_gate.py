@@ -171,6 +171,47 @@ def test_promotion_gate_rejects_blocked_domain_without_explicit_grant(blocked_do
     assert f"blocked domain requires explicit grant: {blocked_domain}" in decision.reasons
 
 
+@pytest.mark.parametrize("blocked_domain", ["authority", "special"])
+def test_promotion_gate_hard_blocks_authority_and_special_when_policy_override_clears_blocked_domains(
+    blocked_domain: str,
+) -> None:
+    evidence_store = SkillEvidenceStore()
+    evidence_store.append(
+        _build_evidence(
+            evidence_id="skill_evidence:1",
+            skill_id="command_voice",
+            eligible_for_promotion=True,
+        )
+    )
+    evidence_store.append(
+        _build_evidence(
+            evidence_id="skill_evidence:2",
+            skill_id="command_voice",
+            eligible_for_promotion=True,
+        )
+    )
+
+    registry = _build_registry(skill_id="command_voice", domains=[blocked_domain], learnability="trained")
+    candidate = SkillCandidateStore(registry=registry).rebuild_from_evidence(
+        actor_id="char_a",
+        evidence_store=evidence_store,
+    )[0]
+
+    decision = SkillPromotionGate().evaluate(
+        candidate=candidate,
+        skill_definition=registry.skill("command_voice"),
+        learning_policy=SkillLearningPolicy(
+            promotion_enabled=True,
+            auto_promotion_enabled=True,
+            blocked_domains=[],
+        ),
+        authored_profile=_build_authored_profile(knowledge_domains=[blocked_domain]),
+    )
+
+    assert decision.allowed is False
+    assert f"blocked domain requires explicit grant: {blocked_domain}" in decision.reasons
+
+
 def test_promotion_gate_requires_explicit_grant_for_granted_or_locked_skills() -> None:
     evidence_store = SkillEvidenceStore()
     evidence_store.append(
@@ -253,7 +294,45 @@ def test_promotion_gate_domain_grant_does_not_bypass_other_blocked_domains() -> 
 
     assert decision.allowed is False
     assert "blocked domain requires explicit grant: special" in decision.reasons
-    assert "blocked domain requires explicit grant: authority" not in decision.reasons
+    assert "blocked domain requires explicit grant: authority" in decision.reasons
+
+
+@pytest.mark.parametrize("blocked_domain", ["authority", "special"])
+def test_promotion_gate_explicit_skill_grant_does_not_bypass_hard_blocked_trained_domains(
+    blocked_domain: str,
+) -> None:
+    evidence_store = SkillEvidenceStore()
+    evidence_store.append(
+        _build_evidence(
+            evidence_id="skill_evidence:1",
+            skill_id="command_voice",
+            eligible_for_promotion=True,
+        )
+    )
+    evidence_store.append(
+        _build_evidence(
+            evidence_id="skill_evidence:2",
+            skill_id="command_voice",
+            eligible_for_promotion=True,
+        )
+    )
+
+    registry = _build_registry(skill_id="command_voice", domains=[blocked_domain], learnability="trained")
+    candidate = SkillCandidateStore(registry=registry).rebuild_from_evidence(
+        actor_id="char_a",
+        evidence_store=evidence_store,
+    )[0]
+
+    decision = SkillPromotionGate().evaluate(
+        candidate=candidate,
+        skill_definition=registry.skill("command_voice"),
+        learning_policy=SkillLearningPolicy(promotion_enabled=True, auto_promotion_enabled=True),
+        authored_profile=_build_authored_profile(knowledge_domains=[blocked_domain]),
+        granted_skill_ids={"command_voice"},
+    )
+
+    assert decision.allowed is False
+    assert f"blocked domain requires explicit grant: {blocked_domain}" in decision.reasons
 
 
 def test_promotion_gate_supports_mapping_profiles_with_tuple_capability_collections() -> None:

@@ -13,6 +13,7 @@ from app.character_agent.skills.store import SkillEvidenceStore
 
 MINIMUM_CANDIDATE_EVIDENCE = 2
 MINIMUM_PROMOTION_EVIDENCE = 2
+NON_OVERRIDABLE_BLOCKED_DOMAINS = frozenset({"authority", "special"})
 
 
 @dataclass(frozen=True)
@@ -125,9 +126,15 @@ class SkillPromotionGate:
         if profile_domains and skill_domains and not profile_domains.intersection(skill_domains):
             reasons.append("authored profile incompatible with skill domains")
 
-        blocked_domains = set(learning_policy.blocked_domains).intersection(skill_domains)
+        blocked_domains = (
+            set(learning_policy.blocked_domains).union(NON_OVERRIDABLE_BLOCKED_DOMAINS)
+        ).intersection(skill_domains)
+        blocked_domain_grants_allowed = skill_definition.learnability in {"granted", "locked"}
         for domain in sorted(blocked_domains):
-            if not explicit_skill_grant and domain not in granted_domain_lookup:
+            domain_granted = blocked_domain_grants_allowed and (
+                explicit_skill_grant or domain in granted_domain_lookup
+            )
+            if not domain_granted:
                 reasons.append(f"blocked domain requires explicit grant: {domain}")
 
         if skill_definition.learnability in {"granted", "locked"} and not explicit_skill_grant:
