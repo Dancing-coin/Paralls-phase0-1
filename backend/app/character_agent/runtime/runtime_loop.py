@@ -2275,6 +2275,7 @@ class CharacterAgentRuntime:
             interpretation=interpretation,
             decision=decision,
         )
+        self._attach_skill_shadow_fields(actor_id=actor_id, plan=plan)
         self._set_observatory_context(actor_id, "execution_summary", str(plan.get("social_spatial_channel", {}).get("spacing_behavior", "") if isinstance(plan.get("social_spatial_channel"), dict) else ""))
         self.record_execution_request(
             actor_id=actor_id,
@@ -2298,6 +2299,64 @@ class CharacterAgentRuntime:
             memory_bundle=self.get_memory_bundle(actor_id),
         )
         return plan
+
+    def _attach_skill_shadow_fields(
+        self,
+        *,
+        actor_id: str,
+        plan: dict[str, object],
+    ) -> None:
+        shadow_payload = self._skill_evaluation_payload(actor_id=actor_id, plan=plan)
+        plan["skill_evaluation_result"] = shadow_payload["skill_evaluation_result"]
+        primitive_action_plan = shadow_payload.get("primitive_action_plan")
+        if isinstance(primitive_action_plan, dict):
+            plan["primitive_action_plan"] = primitive_action_plan
+        else:
+            plan.pop("primitive_action_plan", None)
+
+    def _skill_evaluation_payload(
+        self,
+        *,
+        actor_id: str,
+        plan: dict[str, object],
+    ) -> dict[str, object]:
+        proposal = plan.get("composite_action_proposal", {})
+        if not isinstance(proposal, dict):
+            proposal = {}
+        action_id = str(proposal.get("action_id", "") or "")
+        preferred_strategy_tags = proposal.get("preferred_strategy_tags", [])
+        profile = self._effective_profile_payload(actor_id)
+        skill_states = self._skill_service.initial_skill_states(
+            actor_id=actor_id,
+            profile=profile,
+        )
+        evaluation_result = self._skill_service.evaluate_action(
+            actor_id=actor_id,
+            action_id=action_id,
+            skill_states=skill_states,
+            preferred_strategy_tags=preferred_strategy_tags if isinstance(preferred_strategy_tags, list) else [],
+        )
+        payload: dict[str, object] = {
+            "skill_evaluation_result": {
+                **evaluation_result.model_dump(),
+                "advisory": True,
+                "evaluation_mode": "shadow",
+            }
+        }
+        selected_path = evaluation_result.selected_path
+        if not isinstance(selected_path, dict):
+            return payload
+        binding_id = str(selected_path.get("binding_id", "") or "")
+        if binding_id == "":
+            return payload
+        try:
+            payload["primitive_action_plan"] = self._skill_service.expand_primitive_plan(
+                action_id=action_id,
+                skill_path_id=binding_id,
+            ).model_dump()
+        except KeyError:
+            pass
+        return payload
 
     def _continuity_state_for(self, actor_id: str) -> RuntimeContinuityState:
         if actor_id not in self._continuity_state:

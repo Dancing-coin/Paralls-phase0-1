@@ -57,3 +57,5 @@ def test_l4_execution_plan_includes_composite_action_proposal_without_changing_e
     assert proposal["target_refs"] == {"actor": "char_b"}
     assert "action_request_bundle" in plan
     assert plan["action_request_bundle"]["requested_actions"][0]["request_type"] == "share_info"
+    assert "skill_evaluation_result" not in plan
+    assert "primitive_action_plan" not in plan
