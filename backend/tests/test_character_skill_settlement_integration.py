@@ -386,6 +386,62 @@ def test_skill_advisory_metadata_contributes_descriptive_fields_without_overwrit
     assert blocked_metadata["skill_path_id"] == ""
 
 
+def test_record_settlement_result_preserves_failed_world_payloads_while_tagging_skill_failure_metadata() -> None:
+    runtime = CharacterAgentRuntime()
+    payload = {
+        "request_ref": "interact:skill_failure",
+        "result_id": "constraint:skill_failure",
+        "room_id": "room_demo",
+        "scene_id": "scene_demo",
+        "zone_id": "zone_focus",
+        "actor_id": "char_a",
+        "source_type": "player",
+        "entity_id": "obj_letter",
+        "result_type": "constraint_state_result",
+        "causation_id": "interact:skill_failure",
+        "correlation_id": "interact:skill_failure",
+        "producer_ts": 9,
+        "target_object_id": "obj_letter",
+        "settlement_status": "rejected",
+        "constraint_type": "interaction_orchestration_policy",
+        "constraint_code": "denied_by_constraint",
+        "constraint_summary": "interaction denied because no skill path can complete the action",
+        "blocking_entity_refs": ["obj_letter"],
+        "advisory_metadata": {
+            "skill_evaluation_result": {
+                "actor_id": "char_a",
+                "action_id": "move_obstacle",
+                "selected_path": {},
+                "viable_paths": [],
+                "blocked_paths": [
+                    {
+                        "binding_id": "labor_to_move_obstacle",
+                        "action_id": "move_obstacle",
+                        "skill_id": "labor",
+                        "eligibility_status": "blocked",
+                        "reason": "terrain prevents a viable movement skill path",
+                    }
+                ],
+                "recommendation_reason": ["no viable skill path"],
+                "learning_policy_snapshot": {"advisory": True},
+            }
+        },
+    }
+
+    runtime.record_settlement_result(
+        actor_id="char_a",
+        producer_ts=int(payload["producer_ts"]),
+        payload=payload,
+    )
+
+    stored = runtime.get_session_timeline("char_a")[-1]["payload"]
+
+    assert stored["action_settlement_result"]["failure_domains"] == ["world_constraint", "skill_failure"]
+    assert stored["action_settlement_result"]["missing_requirements"] == []
+    assert stored["result_type"] == "constraint_state_result"
+    assert stored["settlement_status"] == "rejected"
+
+
 def test_record_settlement_result_adds_structured_metadata_without_breaking_existing_payload_shape() -> None:
     service = InteractionOrchestrationService()
     runtime = CharacterAgentRuntime()
