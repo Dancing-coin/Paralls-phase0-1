@@ -71,6 +71,10 @@ def test_l3_view_contains_workspace_goals_state_and_affordance_summaries() -> No
         view.skill_affordance_summary["available_action_families"]["social_deescalation"]["level"]
         == "trained"
     )
+    assert "registry" not in view.skill_affordance_summary
+    assert "skills" not in view.skill_affordance_summary
+    assert "actions" not in view.skill_affordance_summary
+    assert "bindings" not in view.skill_affordance_summary
     assert view.hard_constraints == ["cannot_falsify_authority_report"]
 
 

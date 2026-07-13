@@ -30,6 +30,8 @@ from app.character_agent.models.supervision import (
 from app.character_agent.mind.frame_builder import CharacterMindFrameBuilder
 from app.character_agent.mind.writeback_policy import MindWritebackPolicyRouter
 from app.character_agent.models.mind_frame import MindDeltaLedger
+from app.character_agent.skills.catalog import create_runtime_skill_registry
+from app.character_agent.skills.service import CharacterSkillService
 from app.models.character_agent_runtime import CharacterGoalCommand
 from app.models.character_agent_runtime import CHARACTER_AGENT_CONTROL_MODES
 from app.models.character_agent_runtime import CHARACTER_ACTOR_AUTONOMY_MODES
@@ -67,7 +69,12 @@ class CharacterAgentRuntime:
     _RECENT_HISTORY_LIMIT = 4
     _PROFILE_DIRECTORY = Path(__file__).resolve().parents[4] / "assets" / "characters" / "profiles"
 
-    def __init__(self, storage_root: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        storage_root: str | Path | None = None,
+        *,
+        skill_service: CharacterSkillService | None = None,
+    ) -> None:
         self._profile_registry = CharacterProfileRegistry.from_directory(self._PROFILE_DIRECTORY)
         self._supported_actor_ids = set(self._profile_registry.actor_ids())
         self._l1 = CharacterAgentL1Service()
@@ -75,6 +82,9 @@ class CharacterAgentRuntime:
         self._l3 = CharacterAgentL3Service()
         self._l4 = CharacterAgentL4Adapter()
         self._l4_executor = CharacterAgentL4Executor()
+        self._skill_service = skill_service or CharacterSkillService(
+            registry=create_runtime_skill_registry()
+        )
         self._mind_frame_builder = CharacterMindFrameBuilder()
         self._mind_writeback_policy = MindWritebackPolicyRouter()
         self._observatory_projection = CharacterAgentDebugProjection()
@@ -1065,12 +1075,13 @@ class CharacterAgentRuntime:
             focus_target = self._snapshot_focus_target(snapshot)
             if focus_target:
                 snapshot_payload.setdefault("current_focus_target", focus_target)
+        effective_profile = self._effective_profile_payload(actor_id)
         frame = self._mind_frame_builder.build_frame(
             actor_id=actor_id,
             producer_ts=producer_ts,
             trigger_event=trigger_event or {},
             snapshot=snapshot_payload,
-            effective_profile=self._effective_profile_payload(actor_id),
+            effective_profile=effective_profile,
             memory_bundle=self.get_memory_bundle(actor_id),
             need_tension_state=self.get_need_tension_state(actor_id),
             dynamic_state=self.get_dynamic_state(actor_id),
@@ -1078,8 +1089,27 @@ class CharacterAgentRuntime:
             goal_state_history=self.get_goal_state_history(actor_id),
             unresolved_tensions=self.get_unresolved_tensions(actor_id),
             supervision_state=self.get_supervision_state(actor_id),
+            skill_affordance_summary=self._skill_affordance_summary_payload(
+                actor_id=actor_id,
+                effective_profile=effective_profile,
+            ),
         )
         return frame.model_dump()
+
+    def _skill_affordance_summary_payload(
+        self,
+        *,
+        actor_id: str,
+        effective_profile: dict[str, object],
+    ) -> dict[str, object]:
+        skill_states = self._skill_service.initial_skill_states(
+            actor_id=actor_id,
+            profile=effective_profile,
+        )
+        return self._skill_service.build_affordance_summary(
+            actor_id=actor_id,
+            skill_states=skill_states,
+        ).model_dump()
 
     def run_background_cognition_tick(
         self,

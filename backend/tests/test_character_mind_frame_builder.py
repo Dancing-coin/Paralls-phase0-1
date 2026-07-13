@@ -196,3 +196,50 @@ def test_builder_copies_nested_inputs_into_stable_frame_snapshot() -> None:
     assert supervision_card.payload["watchers"] == ["system"]
     assert skill_card.payload["available_action_families"]["social_deescalation"]["level"] == "trained"
     assert action_card.payload["available_actions"] == ["speak_private"]
+
+
+def test_builder_preserves_manual_skill_affordance_summary_without_leaking_registry_or_mutation() -> None:
+    skill_affordance_summary = {
+        "available_action_families": {
+            "social_deescalation": {
+                "level": "trained",
+                "examples": ["speak_private"],
+            }
+        },
+        "blocked_action_families": {
+            "crowd_control": {
+                "level": "blocked",
+                "missing_skills": ["command_presence"],
+            }
+        },
+        "registry": {"skills": ["should_not_survive"]},
+        "notable_constraints": ["stay_calm"],
+    }
+
+    frame = CharacterMindFrameBuilder().build_frame(
+        actor_id="char_a",
+        producer_ts=123,
+        effective_profile={
+            "capability_constraint_layer": {
+                "skills": ["mediation"],
+                "limits": ["cannot_escalate"],
+            }
+        },
+        skill_affordance_summary=skill_affordance_summary,
+    )
+
+    skill_card = next(card for card in frame.affordances.cards if card.factor_type == "skill_affordance")
+    payload = skill_card.payload
+
+    skill_affordance_summary["available_action_families"]["social_deescalation"]["level"] = "novice"
+    skill_affordance_summary["notable_constraints"].append("mutated")
+    skill_affordance_summary["registry"]["skills"].append("leaked")
+
+    assert payload["available_action_families"]["social_deescalation"]["level"] == "trained"
+    assert payload["blocked_action_families"]["crowd_control"]["missing_skills"] == [
+        "command_presence"
+    ]
+    assert payload["notable_constraints"] == ["stay_calm"]
+    assert payload["profile_skill_ids"] == ["mediation"]
+    assert payload["profile_limits"] == ["cannot_escalate"]
+    assert "registry" not in payload
