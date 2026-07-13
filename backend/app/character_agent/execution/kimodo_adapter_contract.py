@@ -8,6 +8,10 @@ class KimodoSelectedSkillPathHint(BaseModel):
     skill_id: str = ""
     action_id: str = ""
     skill_path_tags: list[str] = Field(default_factory=list)
+    eligibility_status: str = ""
+    required_rank: str = ""
+    current_rank: str = ""
+    preference_score: int = 0
 
 
 class KimodoSettlementOutcomeHint(BaseModel):

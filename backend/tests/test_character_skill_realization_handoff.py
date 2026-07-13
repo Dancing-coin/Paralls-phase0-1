@@ -67,6 +67,10 @@ def test_l4_adapter_threads_skill_path_and_settlement_outcome_into_realization_h
             "skill_id": "mediation",
             "action_id": "share_info",
             "skill_path_tags": ["social", "deescalation"],
+            "eligibility_status": "eligible",
+            "required_rank": "basic",
+            "current_rank": "trained",
+            "preference_score": 2,
         },
         "viable_paths": [],
         "blocked_paths": [],
@@ -95,6 +99,10 @@ def test_l4_adapter_threads_skill_path_and_settlement_outcome_into_realization_h
         "skill_id": "mediation",
         "action_id": "share_info",
         "skill_path_tags": ["social", "deescalation"],
+        "eligibility_status": "eligible",
+        "required_rank": "basic",
+        "current_rank": "trained",
+        "preference_score": 2,
     }
     assert realization_hints["primitive_action_tags"] == ["orient", "steady_voice", "offer_context"]
     assert realization_hints["settlement_outcome"] == {
@@ -116,6 +124,10 @@ def test_kimodo_contracts_accept_realization_hints_without_authority_fields() ->
             "binding_id": "mediation_to_share_info",
             "skill_id": "mediation",
             "skill_path_tags": ["social"],
+            "eligibility_status": "eligible",
+            "required_rank": "basic",
+            "current_rank": "trained",
+            "preference_score": 1,
         },
         primitive_action_tags=["orient", "steady_voice"],
         settlement_outcome={
@@ -131,6 +143,10 @@ def test_kimodo_contracts_accept_realization_hints_without_authority_fields() ->
             "binding_id": "mediation_to_share_info",
             "skill_id": "mediation",
             "skill_path_tags": ["social"],
+            "eligibility_status": "eligible",
+            "required_rank": "basic",
+            "current_rank": "trained",
+            "preference_score": 1,
         },
         primitive_action_tags=["orient", "steady_voice"],
         settlement_outcome={
@@ -140,6 +156,8 @@ def test_kimodo_contracts_accept_realization_hints_without_authority_fields() ->
     )
 
     assert request.selected_skill_path.binding_id == "mediation_to_share_info"
+    assert request.selected_skill_path.current_rank == "trained"
+    assert request.selected_skill_path.preference_score == 1
     assert request.primitive_action_tags == ["orient", "steady_voice"]
     assert plan.settlement_outcome.outcome_band == "partial"
 
