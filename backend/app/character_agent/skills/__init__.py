@@ -1,3 +1,4 @@
+from app.character_agent.skills.catalog import create_core_skill_registry, create_runtime_skill_registry
 from app.character_agent.skills.models import (
     ActionDefinition,
     ActionSettlementResult,
@@ -30,4 +31,6 @@ __all__ = [
     "SkillEvaluationResult",
     "SkillEvidence",
     "SkillLearningPolicy",
+    "create_core_skill_registry",
+    "create_runtime_skill_registry",
 ]
