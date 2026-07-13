@@ -99,6 +99,14 @@ class SkillPromotionGate:
         granted_domains: Collection[str] | None = None,
     ) -> SkillPromotionDecision:
         reasons: list[str] = []
+        if skill_definition.skill_id != candidate.skill_id:
+            return SkillPromotionDecision(
+                allowed=False,
+                reasons=(
+                    f"skill definition mismatch: expected {candidate.skill_id}, got {skill_definition.skill_id}",
+                ),
+            )
+
         granted_skill_lookup = {str(item) for item in granted_skill_ids or ()}
         granted_domain_lookup = {str(item) for item in granted_domains or ()}
         explicit_skill_grant = self._has_explicit_skill_grant(

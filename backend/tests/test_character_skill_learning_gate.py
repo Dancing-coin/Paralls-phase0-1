@@ -212,7 +212,48 @@ def test_promotion_gate_hard_blocks_authority_and_special_when_policy_override_c
     assert f"blocked domain requires explicit grant: {blocked_domain}" in decision.reasons
 
 
-def test_promotion_gate_requires_explicit_grant_for_granted_or_locked_skills() -> None:
+def test_promotion_gate_rejects_mismatched_skill_definition_even_when_supplied_definition_is_benign() -> None:
+    evidence_store = SkillEvidenceStore()
+    evidence_store.append(
+        _build_evidence(
+            evidence_id="skill_evidence:1",
+            skill_id="command_voice",
+            eligible_for_promotion=True,
+        )
+    )
+    evidence_store.append(
+        _build_evidence(
+            evidence_id="skill_evidence:2",
+            skill_id="command_voice",
+            eligible_for_promotion=True,
+        )
+    )
+
+    blocked_registry = _build_registry(
+        skill_id="command_voice",
+        domains=["authority"],
+        learnability="trained",
+    )
+    candidate = SkillCandidateStore(registry=blocked_registry).rebuild_from_evidence(
+        actor_id="char_a",
+        evidence_store=evidence_store,
+    )[0]
+
+    decision = SkillPromotionGate().evaluate(
+        candidate=candidate,
+        skill_definition=_build_registry(skill_id="first_aid", domains=["medical"], learnability="natural").skill(
+            "first_aid"
+        ),
+        learning_policy=SkillLearningPolicy(promotion_enabled=True, auto_promotion_enabled=True),
+        authored_profile=_build_authored_profile(knowledge_domains=["medical"]),
+    )
+
+    assert decision.allowed is False
+    assert decision.reasons == ("skill definition mismatch: expected command_voice, got first_aid",)
+
+
+@pytest.mark.parametrize("learnability", ["granted", "locked"])
+def test_promotion_gate_requires_explicit_grant_for_granted_or_locked_skills(learnability: str) -> None:
     evidence_store = SkillEvidenceStore()
     evidence_store.append(
         _build_evidence(
@@ -229,7 +270,7 @@ def test_promotion_gate_requires_explicit_grant_for_granted_or_locked_skills() -
         )
     )
 
-    registry = _build_registry(skill_id="seal_access", domains=["ritual"], learnability="granted")
+    registry = _build_registry(skill_id="seal_access", domains=["ritual"], learnability=learnability)
     candidate = SkillCandidateStore(registry=registry).rebuild_from_evidence(
         actor_id="char_a",
         evidence_store=evidence_store,
@@ -243,7 +284,7 @@ def test_promotion_gate_requires_explicit_grant_for_granted_or_locked_skills() -
     )
 
     assert rejected.allowed is False
-    assert "learnability requires explicit grant: granted" in rejected.reasons
+    assert f"learnability requires explicit grant: {learnability}" in rejected.reasons
 
     allowed = SkillPromotionGate().evaluate(
         candidate=candidate,
