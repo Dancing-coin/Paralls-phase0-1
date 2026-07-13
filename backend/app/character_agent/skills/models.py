@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 SettlementCategory = Literal["cognitive", "social", "physical", "tool", "authority", "special"]
@@ -77,6 +77,13 @@ class CharacterSkillState(StrictSkillModel):
 class LearnedSkillLayer(StrictSkillModel):
     enabled: bool = True
     skill_states: list[CharacterSkillState] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_learned_skill_sources(self) -> "LearnedSkillLayer":
+        for state in self.skill_states:
+            if state.source != "learned":
+                raise ValueError("learned overlay skill_states must use source='learned'")
+        return self
 
 
 class SkillAffordanceSummary(StrictSkillModel):

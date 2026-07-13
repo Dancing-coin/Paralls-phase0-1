@@ -1,5 +1,8 @@
 from copy import deepcopy
 
+import pytest
+from pydantic import ValidationError
+
 from app.character_agent.skills.models import CharacterSkillState, LearnedSkillLayer, SkillDefinition
 from app.character_agent.skills.registry import CharacterSkillRegistry
 from app.character_agent.skills.service import CharacterSkillService
@@ -89,6 +92,23 @@ def test_effective_skill_states_can_disable_learned_overlay() -> None:
         ("first_aid", "authored", "basic")
     ]
     assert "conflict" not in states[0].visibility
+
+
+def test_learned_overlay_rejects_non_learned_skill_rows() -> None:
+    with pytest.raises(ValidationError, match="learned overlay skill_states must use source='learned'"):
+        LearnedSkillLayer(
+            enabled=True,
+            skill_states=[
+                CharacterSkillState(
+                    actor_id="char_a",
+                    skill_id="first_aid",
+                    source="equipment",
+                    rank="expert",
+                    proficiency=0.95,
+                    confidence=0.9,
+                )
+            ],
+        )
 
 
 def test_effective_skill_states_preserve_runtime_sources_without_merging_into_learned() -> None:
