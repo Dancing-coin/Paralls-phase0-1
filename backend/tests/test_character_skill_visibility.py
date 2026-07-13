@@ -134,6 +134,41 @@ def test_player_facing_hints_hide_private_skills_from_state_visibility() -> None
     ]
 
 
+def test_player_facing_hints_hide_private_visibility_state_without_player_visible_override() -> None:
+    hints = build_player_facing_capability_hints(
+        subject_actor_id="char_a",
+        skill_states=[
+            _skill_state(
+                skill_id="deception",
+                visibility={"visibility_state": "private"},
+            ),
+        ],
+        skill_definitions=[
+            _skill_definition(skill_id="deception", display_name="Deception"),
+        ],
+    )
+
+    assert hints == []
+
+
+def test_player_facing_hints_hide_private_definition_visibility_without_player_visible_override() -> None:
+    hints = build_player_facing_capability_hints(
+        subject_actor_id="char_a",
+        skill_states=[
+            _skill_state(skill_id="deception"),
+        ],
+        skill_definitions=[
+            _skill_definition(
+                skill_id="deception",
+                display_name="Deception",
+                visibility_default={"visibility_state": "private"},
+            ),
+        ],
+    )
+
+    assert hints == []
+
+
 def test_player_facing_hints_respect_definition_defaults_for_locked_or_hidden_skills() -> None:
     hints = build_player_facing_capability_hints(
         subject_actor_id="char_a",

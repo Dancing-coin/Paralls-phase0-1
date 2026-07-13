@@ -4,6 +4,8 @@ from pydantic import Field, model_validator
 
 from app.character_agent.skills.models import CharacterSkillState, SkillDefinition, StrictSkillModel
 
+_HIDDEN_VISIBILITY_STATES = frozenset({"hidden", "locked", "private"})
+
 
 class ObservedSkillBelief(StrictSkillModel):
     observer_actor_id: str
@@ -95,6 +97,8 @@ def _is_player_visible(*, state: CharacterSkillState, definition: SkillDefinitio
     if state_visibility.get("locked") is True:
         return False
     if default_visibility.get("locked") is True:
+        return False
+    if _visibility_state(state=state, definition=definition) in _HIDDEN_VISIBILITY_STATES:
         return False
 
     player_visible = state_visibility.get("player_visible")
