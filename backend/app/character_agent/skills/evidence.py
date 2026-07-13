@@ -89,14 +89,19 @@ class SkillEvidenceExtractor:
         channel_names = self._string_list(learning_config.get("evidence_channels"))
         path_tags = self._string_list(selected_skill_path.get("skill_path_tags"))
         tools_used = self._string_list(selected_skill_path.get("tools_used"))
+        has_positive_progress_signal = settlement_result.outcome_band in {
+            "partial",
+            "success_with_cost",
+            "clean_success",
+        }
 
         channels: dict[str, object] = {}
         if "acquisition" in channel_names:
             channels["acquisition"] = 0.0
         if "improvement" in channel_names:
-            channels["improvement"] = 0.12 if settlement_result.outcome_band != "blocked" else 0.0
+            channels["improvement"] = 0.12 if has_positive_progress_signal else 0.0
         if "confidence" in channel_names:
-            channels["confidence"] = 0.03 if settlement_result.outcome_band != "blocked" else 0.0
+            channels["confidence"] = 0.03 if has_positive_progress_signal else 0.0
         if "specialization" in channel_names:
             channels["specialization"] = {tag: 0.08 for tag in path_tags}
         if "tool_familiarity" in channel_names:

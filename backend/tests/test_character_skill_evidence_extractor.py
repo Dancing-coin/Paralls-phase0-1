@@ -64,6 +64,44 @@ def test_extractor_creates_directional_context_specific_evidence_from_successful
     assert evidence.eligible_for_promotion is False
 
 
+def test_extractor_keeps_positive_progress_channels_zero_for_failed_settlement() -> None:
+    extractor = SkillEvidenceExtractor()
+    evaluation_result = SkillEvaluationResult(
+        actor_id="char_a",
+        action_id="stabilize_injured_actor",
+        selected_path={
+            "binding_id": "first_aid_to_stabilize",
+            "skill_id": "first_aid",
+            "action_id": "stabilize_injured_actor",
+            "learning": {
+                "evidence_on_attempt": True,
+                "evidence_on_blocked": False,
+                "evidence_channels": ["improvement", "confidence"],
+            },
+        },
+    )
+    settlement_result = ActionSettlementResult(
+        outcome_band="failed",
+        primary_failure_domain="skill_failure",
+        failure_domains=["skill_failure"],
+        skill_path_id="first_aid_to_stabilize",
+    )
+
+    evidence = extractor.extract(
+        actor_id="char_a",
+        selected_skill_path=evaluation_result.selected_path,
+        skill_evaluation_result=evaluation_result,
+        settlement_result=settlement_result,
+        learning_policy=SkillLearningPolicy(),
+        source_settlement_id="settlement:failed",
+    )
+
+    assert evidence is not None
+    assert evidence.outcome_band == "failed"
+    assert evidence.evidence_channels["improvement"] == 0.0
+    assert evidence.evidence_channels["confidence"] == 0.0
+
+
 def test_extractor_returns_none_when_policy_disables_evidence_collection() -> None:
     extractor = SkillEvidenceExtractor()
     evaluation_result = SkillEvaluationResult(
