@@ -74,6 +74,11 @@ class CharacterSkillState(StrictSkillModel):
     visibility: dict[str, object] = Field(default_factory=dict)
 
 
+class LearnedSkillLayer(StrictSkillModel):
+    enabled: bool = True
+    skill_states: list[CharacterSkillState] = Field(default_factory=list)
+
+
 class SkillAffordanceSummary(StrictSkillModel):
     actor_id: str
     available_action_families: dict[str, dict[str, object]] = Field(default_factory=dict)

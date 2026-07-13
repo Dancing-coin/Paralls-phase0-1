@@ -4,6 +4,7 @@ from typing import Any
 
 from app.character_agent.skills.models import (
     CharacterSkillState,
+    LearnedSkillLayer,
     PrimitiveActionPlan,
     SkillAffordanceSummary,
     SkillEvaluationResult,
@@ -55,6 +56,28 @@ class CharacterSkillService:
             )
 
         return states
+
+    def effective_skill_states(
+        self,
+        *,
+        actor_id: str,
+        profile: dict[str, Any],
+        learned_overlay: LearnedSkillLayer | None = None,
+        runtime_states: list[CharacterSkillState] | None = None,
+    ) -> list[CharacterSkillState]:
+        authored_states = self.initial_skill_states(actor_id=actor_id, profile=profile)
+        learned_states = self._overlay_skill_states(
+            actor_id=actor_id,
+            learned_overlay=learned_overlay,
+        )
+        passthrough_runtime_states = self._runtime_skill_states(
+            actor_id=actor_id,
+            runtime_states=runtime_states or [],
+        )
+
+        return self._annotate_conflicts(
+            authored_states + learned_states + passthrough_runtime_states
+        )
 
     def build_affordance_summary(
         self,
@@ -246,3 +269,66 @@ class CharacterSkillService:
         skill_states: list[CharacterSkillState],
     ) -> list[CharacterSkillState]:
         return [state for state in skill_states if state.actor_id == actor_id]
+
+    def _overlay_skill_states(
+        self,
+        *,
+        actor_id: str,
+        learned_overlay: LearnedSkillLayer | None,
+    ) -> list[CharacterSkillState]:
+        if learned_overlay is None or not learned_overlay.enabled:
+            return []
+        return self._skill_states_for_actor(
+            actor_id=actor_id,
+            skill_states=list(learned_overlay.skill_states),
+        )
+
+    def _runtime_skill_states(
+        self,
+        *,
+        actor_id: str,
+        runtime_states: list[CharacterSkillState],
+    ) -> list[CharacterSkillState]:
+        states = self._skill_states_for_actor(actor_id=actor_id, skill_states=runtime_states)
+        source_order = {
+            "temporary": 0,
+            "equipment": 1,
+            "authority": 2,
+            "scripted": 3,
+            "constrained": 4,
+            "authored": 5,
+            "learned": 6,
+        }
+        return sorted(
+            states,
+            key=lambda state: (
+                state.skill_id,
+                source_order.get(state.source, 99),
+            ),
+        )
+
+    def _annotate_conflicts(
+        self,
+        states: list[CharacterSkillState],
+    ) -> list[CharacterSkillState]:
+        rows_by_skill: dict[str, list[CharacterSkillState]] = {}
+        for state in states:
+            rows_by_skill.setdefault(state.skill_id, []).append(state)
+
+        resolved_states: list[CharacterSkillState] = []
+        for state in states:
+            skill_rows = rows_by_skill.get(state.skill_id, [])
+            copied_state = state.model_copy(deep=True)
+            if len(skill_rows) > 1:
+                sources = [row.source for row in skill_rows]
+                copied_state.visibility["conflict"] = {
+                    "skill_id": state.skill_id,
+                    "sources": sources,
+                    "current_source": state.source,
+                    "ranks_by_source": {
+                        row.source: row.rank
+                        for row in skill_rows
+                    },
+                }
+            resolved_states.append(copied_state)
+        return resolved_states
