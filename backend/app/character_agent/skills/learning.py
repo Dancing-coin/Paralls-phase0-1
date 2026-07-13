@@ -106,6 +106,13 @@ class SkillPromotionGate:
                     f"skill definition mismatch: expected {candidate.skill_id}, got {skill_definition.skill_id}",
                 ),
             )
+        supplied_domains = tuple(dict.fromkeys(skill_definition.domains))
+        reasons.extend(self._skill_definition_consistency_reasons(candidate=candidate, skill_definition=skill_definition))
+        if reasons:
+            return SkillPromotionDecision(
+                allowed=False,
+                reasons=tuple(reasons),
+            )
 
         granted_skill_lookup = {str(item) for item in granted_skill_ids or ()}
         granted_domain_lookup = {str(item) for item in granted_domains or ()}
@@ -130,7 +137,7 @@ class SkillPromotionGate:
             reasons.append("skill already present in authored profile")
 
         profile_domains = self._string_set(capability_layer.get("knowledge_domains"))
-        skill_domains = tuple(dict.fromkeys(skill_definition.domains))
+        skill_domains = supplied_domains
         allowed_domains = self._string_set(learning_policy.allowed_domains)
         disallowed_domains = tuple(domain for domain in skill_domains if domain not in allowed_domains)
         if allowed_domains and disallowed_domains:
@@ -166,6 +173,26 @@ class SkillPromotionGate:
         granted_skill_lookup: set[str],
     ) -> bool:
         return candidate.skill_id in granted_skill_lookup
+
+    def _skill_definition_consistency_reasons(
+        self,
+        *,
+        candidate: SkillCandidate,
+        skill_definition: SkillDefinition,
+    ) -> list[str]:
+        reasons: list[str] = []
+        supplied_domains = tuple(dict.fromkeys(skill_definition.domains))
+        if supplied_domains != candidate.domains:
+            reasons.append(
+                "skill definition domains mismatch: "
+                f"expected {', '.join(candidate.domains)}, got {', '.join(supplied_domains)}"
+            )
+        if skill_definition.learnability != candidate.learnability:
+            reasons.append(
+                "skill definition learnability mismatch: "
+                f"expected {candidate.learnability}, got {skill_definition.learnability}"
+            )
+        return reasons
 
     def _mapping(self, value: object) -> dict[str, object]:
         return dict(value) if isinstance(value, MappingABC) else {}

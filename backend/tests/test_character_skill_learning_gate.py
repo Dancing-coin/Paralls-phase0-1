@@ -377,6 +377,52 @@ def test_promotion_gate_rejects_mismatched_skill_definition_even_when_supplied_d
     assert decision.reasons == ("skill definition mismatch: expected command_voice, got first_aid",)
 
 
+def test_promotion_gate_rejects_same_id_skill_definition_with_mismatched_domains_and_learnability() -> None:
+    evidence_store = SkillEvidenceStore()
+    evidence_store.append(
+        _build_evidence(
+            evidence_id="skill_evidence:1",
+            skill_id="command_voice",
+            eligible_for_promotion=True,
+        )
+    )
+    evidence_store.append(
+        _build_evidence(
+            evidence_id="skill_evidence:2",
+            skill_id="command_voice",
+            eligible_for_promotion=True,
+        )
+    )
+
+    blocked_registry = _build_registry(
+        skill_id="command_voice",
+        domains=["authority"],
+        learnability="trained",
+    )
+    candidate = SkillCandidateStore(registry=blocked_registry).rebuild_from_evidence(
+        actor_id="char_a",
+        evidence_store=evidence_store,
+    )[0]
+    spoofed_definition = SkillDefinition(
+        skill_id="command_voice",
+        display_name="Command Voice",
+        settlement_categories=["cognitive", "tool"],
+        domains=["medical"],
+        learnability="natural",
+    )
+
+    decision = SkillPromotionGate().evaluate(
+        candidate=candidate,
+        skill_definition=spoofed_definition,
+        learning_policy=SkillLearningPolicy(promotion_enabled=True, auto_promotion_enabled=True),
+        authored_profile=_build_authored_profile(knowledge_domains=["medical"]),
+    )
+
+    assert decision.allowed is False
+    assert "skill definition domains mismatch: expected authority, got medical" in decision.reasons
+    assert "skill definition learnability mismatch: expected trained, got natural" in decision.reasons
+
+
 @pytest.mark.parametrize("learnability", ["granted", "locked"])
 def test_promotion_gate_requires_explicit_grant_for_granted_or_locked_skills(learnability: str) -> None:
     evidence_store = SkillEvidenceStore()
