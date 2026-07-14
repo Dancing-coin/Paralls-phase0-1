@@ -246,6 +246,53 @@ def test_l2_reasoner_prompt_includes_profile_behavioral_fields_for_model_routes(
     assert "trust_threshold_for_private_talk=0.66" in prompt
 
 
+def test_l2_reasoner_prompt_includes_compact_personality_projection_summary() -> None:
+    service, _ = _service()
+    event = CharacterPerceivedEvent(
+        actor_id="char_a",
+        percept_channel="auditory",
+        producer_ts=1301,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="auditory_fact/speaker_active",
+        source_candidate_event_id="auditory_fact:1301:char_a",
+        clarity_score=0.82,
+        certainty_score=0.61,
+    )
+
+    run_request = service.prepare_reasoning_request(
+        snapshot=_snapshot(),
+        event=event,
+        memory_bundle={
+            "working_memory": [],
+            "event_memories": [],
+            "observation_memories": [],
+            "knowledge_memories": [],
+            "social_memories": [],
+        },
+        control_mode="player_priority_assisted",
+        effective_profile={
+            **_profile_payload(),
+            "personality_projection": {
+                "conflict_deescalation_bias": 0.83,
+                "procedural_discipline": 0.84,
+                "stress_vulnerability": 0.31,
+                "empathic_attunement": 0.81,
+            },
+        },
+    )
+
+    prompt = run_request["prompt"]["user_instruction"]
+
+    assert (
+        "personality_projection=conflict_deescalation_bias=0.83|"
+        "procedural_discipline=0.84|stress_vulnerability=0.31"
+    ) in prompt
+    assert "empathic_attunement=0.81" not in prompt
+    assert "agreeableness" not in prompt
+
+
 def test_l2_reasoner_accepts_typed_working_memory_state_in_reasoning_request() -> None:
     service, _ = _service()
     event = CharacterPerceivedEvent(

@@ -1,6 +1,27 @@
 from app.character_agent.mind.frame_builder import CharacterMindFrameBuilder
 
 
+def _dossier_projection() -> dict[str, object]:
+    return {
+        "actor_id": "char_a",
+        "identity": {"canonical_name": "Lin Yue", "self_concept": ["careful_steward"]},
+        "embodiment": {"motor_baseline": {"sprint_capacity": "low"}},
+        "authority": {"forbidden_actions": ["grant_sealed_access_alone"]},
+        "private_truth": {"self_known_secret_count": 1, "projection_mode": "summarized"},
+        "relationship_seeds": {
+            "candidate_only": True,
+            "relationship_seed_count": 1,
+            "targets": ["char_b"],
+        },
+        "capability_seeds": {
+            "candidate_only": True,
+            "skill_seed_count": 1,
+            "skill_ids": ["social.mediation"],
+        },
+        "source_refs": ["dossier:char_a"],
+    }
+
+
 def test_builder_places_profile_memory_state_goal_and_affordance_cards_in_separate_layers() -> None:
     frame = CharacterMindFrameBuilder().build_frame(
         actor_id="char_a",
@@ -56,6 +77,98 @@ def test_builder_places_profile_memory_state_goal_and_affordance_cards_in_separa
     assert frame.runtime_state.summary["dominant_need"] == "esteem"
     assert frame.affordances.summary["has_skill_affordance"] is True
     assert "profile:char_a" in frame.provenance.source_refs
+
+
+def test_builder_accepts_dossier_projection_as_shadow_cards() -> None:
+    frame = CharacterMindFrameBuilder().build_frame(
+        actor_id="char_a",
+        producer_ts=123,
+        trigger_event={"event_id": "event:1", "event_type": "character_perceived_event"},
+        snapshot={},
+        effective_profile={},
+        memory_bundle={},
+        dossier_projection=_dossier_projection(),
+    )
+
+    enduring_types = [card.factor_type for card in frame.enduring_truth.cards]
+    memory_types = [card.factor_type for card in frame.memory_evidence.cards]
+    affordance_types = [card.factor_type for card in frame.affordances.cards]
+
+    assert "identity_context" in enduring_types
+    assert "embodiment_context" in enduring_types
+    assert "authority_context" in enduring_types
+    assert "private_truth_context" in enduring_types
+    assert "relationship_seed_context" in memory_types
+    assert "capability_seed_affordance" in affordance_types
+    capability_card = next(
+        card for card in frame.affordances.cards if card.factor_type == "capability_seed_affordance"
+    )
+    assert capability_card.payload["candidate_only"] is True
+    assert "ability_graph" not in capability_card.payload
+    assert "dossier:char_a" in frame.provenance.source_refs
+
+
+def test_builder_exposes_personality_projection_in_shadow_personality_bias_card() -> None:
+    frame = CharacterMindFrameBuilder().build_frame(
+        actor_id="char_a",
+        producer_ts=123,
+        trigger_event={"event_id": "event:1", "event_type": "character_perceived_event"},
+        snapshot={},
+        effective_profile={
+            "identity_core": {"canonical_name": "A"},
+            "trait_vector_layer": {
+                "courage": 0.64,
+                "scheming": 0.31,
+                "empathy": 0.82,
+                "rationality": 0.74,
+                "sociability": 0.58,
+            },
+            "virtue_value_layer": {"red_lines": ["do_not_falsify_authority_report"]},
+            "conversation_personality_layer": {
+                "social_openness": 0.57,
+                "privacy_sensitivity": 0.63,
+                "talk_initiative": 0.48,
+                "deception_control": 0.87,
+                "trust_threshold_for_private_talk": 0.66,
+            },
+            "temperament_response_layer": {
+                "baseline_temperament": {
+                    "dominance": 0.29,
+                    "attachment": 0.76,
+                    "emotional_reactivity": 0.44,
+                    "recovery_speed": 0.58,
+                    "impulse_control": 0.83,
+                },
+                "conflict_style": {
+                    "avoidance_tendency": 0.46,
+                    "mediation_tendency": 0.88,
+                },
+                "trust_dynamics": {"forgiveness_threshold": 0.59},
+                "expression_bias": {"facial_control": 0.71},
+            },
+        },
+        memory_bundle={},
+    )
+
+    effective_profile_card = next(
+        card for card in frame.enduring_truth.cards if card.factor_type == "effective_profile"
+    )
+    personality_card = next(
+        card for card in frame.enduring_truth.cards if card.factor_type == "personality_bias"
+    )
+
+    projection = personality_card.payload["personality_projection"]
+    assert projection["empathic_attunement"] > 0.5
+    assert projection["conflict_deescalation_bias"] > 0.5
+    assert "empathy" not in projection
+    assert effective_profile_card.payload["trait_vector_keys"] == [
+        "courage",
+        "empathy",
+        "rationality",
+        "scheming",
+        "sociability",
+    ]
+    assert effective_profile_card.payload["red_lines"] == ["do_not_falsify_authority_report"]
 
 
 def test_builder_summarizes_relationship_as_memory_owned_actor_private_projection() -> None:

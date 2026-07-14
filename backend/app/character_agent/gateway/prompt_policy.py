@@ -180,6 +180,9 @@ class CharacterPromptPolicy:
         conversation_personality_layer = profile.get("conversation_personality_layer", {})
         if not isinstance(conversation_personality_layer, dict):
             conversation_personality_layer = {}
+        personality_projection = profile.get("personality_projection", {})
+        if not isinstance(personality_projection, dict):
+            personality_projection = {}
         need_hierarchy_layer = profile.get("need_hierarchy_layer", {})
         if not isinstance(need_hierarchy_layer, dict):
             need_hierarchy_layer = {}
@@ -190,6 +193,7 @@ class CharacterPromptPolicy:
                 f"occupation_role={self._truncate(identity_core.get('occupation_role', ''))}",
                 f"need_weights={self._need_weight_summary(need_hierarchy_layer)}",
                 f"traits={self._trait_summary(trait_vector)}",
+                f"personality_projection={self._personality_projection_summary(personality_projection)}",
                 f"value_priorities={self._join_list(virtue_value_layer.get('value_priorities'))}",
                 f"red_lines={self._join_list(virtue_value_layer.get('red_lines'))}",
                 f"forbidden_behaviors={self._join_list(virtue_value_layer.get('forbidden_behaviors'))}",
@@ -266,6 +270,20 @@ class CharacterPromptPolicy:
             f"{name}={self._scalar_summary(trait_vector.get(name))}"
             for name in trait_order
             if name in trait_vector
+        )
+
+    def _personality_projection_summary(self, projection: dict[str, object]) -> str:
+        if not projection:
+            return ""
+        projection_order = (
+            "conflict_deescalation_bias",
+            "procedural_discipline",
+            "stress_vulnerability",
+        )
+        return "|".join(
+            f"{name}={self._scalar_summary(projection.get(name))}"
+            for name in projection_order
+            if name in projection
         )
 
     def _join_list(self, value: object) -> str:

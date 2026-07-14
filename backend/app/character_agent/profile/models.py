@@ -27,6 +27,62 @@ class TraitVectorLayer(StrictProfileModel):
     sociability: float = ProfileScalar
 
 
+class BigFiveTraits(StrictProfileModel):
+    openness: float = ProfileScalar
+    conscientiousness: float = ProfileScalar
+    extraversion: float = ProfileScalar
+    agreeableness: float = ProfileScalar
+    neuroticism: float = ProfileScalar
+
+
+class OpennessFacets(StrictProfileModel):
+    curiosity: float = ProfileScalar
+    imagination: float = ProfileScalar
+    ambiguity_tolerance: float = ProfileScalar
+    novelty_seeking: float = ProfileScalar
+
+
+class ConscientiousnessFacets(StrictProfileModel):
+    orderliness: float = ProfileScalar
+    dutifulness: float = ProfileScalar
+    deliberation: float = ProfileScalar
+    persistence: float = ProfileScalar
+
+
+class ExtraversionFacets(StrictProfileModel):
+    social_energy: float = ProfileScalar
+    assertiveness: float = ProfileScalar
+    warmth: float = ProfileScalar
+    activity_level: float = ProfileScalar
+
+
+class AgreeablenessFacets(StrictProfileModel):
+    compassion: float = ProfileScalar
+    trust: float = ProfileScalar
+    cooperativeness: float = ProfileScalar
+    conflict_softening: float = ProfileScalar
+
+
+class NeuroticismFacets(StrictProfileModel):
+    anxiety: float = ProfileScalar
+    shame_sensitivity: float = ProfileScalar
+    volatility: float = ProfileScalar
+    vulnerability: float = ProfileScalar
+
+
+class BigFiveFacetLayer(StrictProfileModel):
+    openness: OpennessFacets
+    conscientiousness: ConscientiousnessFacets
+    extraversion: ExtraversionFacets
+    agreeableness: AgreeablenessFacets
+    neuroticism: NeuroticismFacets
+
+
+class PersonalityLayer(StrictProfileModel):
+    big_five: BigFiveTraits
+    facets: BigFiveFacetLayer
+
+
 class ConversationPersonalityLayer(StrictProfileModel):
     social_openness: float = ProfileScalar
     privacy_sensitivity: float = ProfileScalar
@@ -168,7 +224,8 @@ class CharacterProfile(StrictProfileModel):
     origin_seed: OriginSeed
     life_memory_backbone: LifeMemoryBackbone
     virtue_value_layer: VirtueValueLayer
-    trait_vector_layer: TraitVectorLayer
+    trait_vector_layer: TraitVectorLayer | None = None
+    personality_layer: PersonalityLayer | None = None
     capability_constraint_layer: CapabilityConstraintLayer
     style_expression_bias_layer: StyleExpressionBiasLayer
     conversation_personality_layer: ConversationPersonalityLayer

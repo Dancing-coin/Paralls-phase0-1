@@ -18,12 +18,18 @@ _FACTOR_LAYER_OWNERSHIP: dict[str, str] = {
     "effective_profile": "enduring_truth",
     "authored_constraint": "enduring_truth",
     "personality_bias": "enduring_truth",
+    "identity_context": "enduring_truth",
+    "embodiment_context": "enduring_truth",
+    "authority_context": "enduring_truth",
+    "private_truth_context": "enduring_truth",
+    "dossier_hot_reload": "enduring_truth",
     "memory_activation": "memory_evidence",
     "cognitive_anchor": "memory_evidence",
     "relationship": "memory_evidence",
     "relationship_context": "memory_evidence",
     "knowledge_context": "memory_evidence",
     "higher_order_belief": "memory_evidence",
+    "relationship_seed_context": "memory_evidence",
     "perception_context": "runtime_state",
     "need_pressure": "runtime_state",
     "affective_body_state": "runtime_state",
@@ -36,6 +42,7 @@ _FACTOR_LAYER_OWNERSHIP: dict[str, str] = {
     "environment_affordance": "affordance",
     "equipment_affordance": "affordance",
     "physical_feasibility": "affordance",
+    "capability_seed_affordance": "affordance",
 }
 
 
@@ -129,6 +136,7 @@ class L2InterpretationView(StrictMindFrameModel):
     mind_turn_id: str
     perception_context: dict[str, object] = Field(default_factory=dict)
     effective_profile_summary: dict[str, object] = Field(default_factory=dict)
+    personality_bias_summary: dict[str, object] = Field(default_factory=dict)
     memory_activation_summary: dict[str, object] = Field(default_factory=dict)
     cognitive_anchor_summary: dict[str, object] = Field(default_factory=dict)
     relationship_context_summary: dict[str, object] = Field(default_factory=dict)
@@ -137,6 +145,7 @@ class L2InterpretationView(StrictMindFrameModel):
     goal_context_summary: dict[str, object] = Field(default_factory=dict)
     unresolved_tension_summary: dict[str, object] = Field(default_factory=dict)
     supervision_summary: dict[str, object] = Field(default_factory=dict)
+    dossier_context_summary: dict[str, object] = Field(default_factory=dict)
 
 
 class L3PlanningView(StrictMindFrameModel):
@@ -153,6 +162,7 @@ class L3PlanningView(StrictMindFrameModel):
     hard_constraints: list[str] = Field(default_factory=list)
     unresolved_tension_summary: dict[str, object] = Field(default_factory=dict)
     supervision_summary: dict[str, object] = Field(default_factory=dict)
+    dossier_planning_summary: dict[str, object] = Field(default_factory=dict)
 
 
 class L4ExecutionView(StrictMindFrameModel):
@@ -165,6 +175,7 @@ class L4ExecutionView(StrictMindFrameModel):
     presentation_constraints: list[str] = Field(default_factory=list)
     realization_hints: list[str] = Field(default_factory=list)
     physical_feasibility_summary: dict[str, object] = Field(default_factory=dict)
+    dossier_execution_constraints: dict[str, object] = Field(default_factory=dict)
 
 
 class WritebackView(StrictMindFrameModel):

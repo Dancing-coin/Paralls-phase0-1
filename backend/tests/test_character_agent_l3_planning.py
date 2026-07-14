@@ -502,6 +502,78 @@ def test_l3_planner_raises_self_protect_over_observe_when_need_pressure_and_dyna
     assert pressured_scores["observe"] < baseline_scores["observe"]
 
 
+def test_l3_planner_uses_projection_not_raw_overlap_for_deescalation_scoring() -> None:
+    planner = CharacterAgentL3Service(
+        gateway=_recording_gateway_for_candidates(["defer", "observe"], selected_intent="observe")
+    )
+    effective_profile = {
+        **_profile_payload(),
+        "trait_vector_layer": {"empathy": 0.99},
+        "temperament_response_layer": {
+            "conflict_style": {"mediation_tendency": 0.99},
+        },
+        "personality_projection": {
+            "conflict_deescalation_bias": 0.1,
+            "procedural_discipline": 0.5,
+            "public_assertion_bias": 0.5,
+            "avoidance_bias": 0.5,
+        },
+    }
+
+    plan = planner.build_intent_plan(
+        interpretation=_interpretation(),
+        control_mode="agent_full_auto",
+        effective_profile=effective_profile,
+    )
+
+    defer = next(result for result in plan["filter_results"] if result["candidate"] == "defer")
+
+    assert defer["gain_loss_score"] == 0.5
+    assert all("raw_personality" not in note for note in defer["gain_loss_notes"])
+
+
+def test_l3_planner_raises_deescalation_candidate_from_personality_projection() -> None:
+    planner = CharacterAgentL3Service(
+        gateway=_recording_gateway_for_candidates(["defer", "observe"], selected_intent="observe")
+    )
+    low_projection_plan = planner.build_intent_plan(
+        interpretation=_interpretation(),
+        control_mode="agent_full_auto",
+        effective_profile={
+            **_profile_payload(),
+            "personality_projection": {
+                "conflict_deescalation_bias": 0.5,
+                "procedural_discipline": 0.5,
+                "public_assertion_bias": 0.5,
+                "avoidance_bias": 0.5,
+            },
+        },
+    )
+    high_projection_plan = planner.build_intent_plan(
+        interpretation=_interpretation(),
+        control_mode="agent_full_auto",
+        effective_profile={
+            **_profile_payload(),
+            "personality_projection": {
+                "conflict_deescalation_bias": 0.9,
+                "procedural_discipline": 0.5,
+                "public_assertion_bias": 0.5,
+                "avoidance_bias": 0.5,
+            },
+        },
+    )
+
+    low_defer = next(
+        result for result in low_projection_plan["filter_results"] if result["candidate"] == "defer"
+    )
+    high_defer = next(
+        result for result in high_projection_plan["filter_results"] if result["candidate"] == "defer"
+    )
+
+    assert high_defer["gain_loss_score"] > low_defer["gain_loss_score"]
+    assert "personality_projection=conflict_deescalation_bias" in high_defer["gain_loss_notes"]
+
+
 def test_l3_planner_uses_dominant_need_weight_for_non_safety_pressure() -> None:
     planner = CharacterAgentL3Service(
         gateway=_recording_gateway_for_candidates(["observe", "self_protect"], selected_intent="observe")

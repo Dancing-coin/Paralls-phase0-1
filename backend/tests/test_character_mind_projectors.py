@@ -1,5 +1,6 @@
 from app.character_agent.mind.projectors import (
     AffectiveBodyStateProjector,
+    DossierProjectionProjector,
     EffectiveProfileProjector,
     GoalContextProjector,
     MemoryActivationProjector,
@@ -9,6 +10,38 @@ from app.character_agent.mind.projectors import (
     UnresolvedTensionProjector,
 )
 from app.character_agent.models.mind_frame import MentalFactorProjectionCard
+
+
+def _dossier_projection() -> dict[str, object]:
+    return {
+        "actor_id": "char_a",
+        "identity": {"canonical_name": "Lin Yue", "self_concept": ["careful_steward"]},
+        "embodiment": {
+            "motor_baseline": {"sprint_capacity": "low"},
+            "realization_hints": {"motion_style_tags": ["contained"]},
+        },
+        "authority": {
+            "responsibilities": ["maintain_archive_order"],
+            "forbidden_actions": ["grant_sealed_access_alone"],
+        },
+        "private_truth": {
+            "self_known_secret_count": 1,
+            "visible_truth_ids": ["secret:char_a:omission_fear"],
+            "projection_mode": "summarized",
+        },
+        "relationship_seeds": {
+            "candidate_only": True,
+            "relationship_seed_count": 1,
+            "targets": ["char_b"],
+        },
+        "capability_seeds": {
+            "candidate_only": True,
+            "skill_seed_count": 1,
+            "skill_ids": ["social.mediation"],
+            "constraint_count": 2,
+        },
+        "source_refs": ["dossier:char_a", "dossier_layer:identity_profile:1"],
+    }
 
 
 def test_effective_profile_projector_emits_enduring_truth_cards() -> None:
@@ -34,10 +67,11 @@ def test_effective_profile_projector_emits_enduring_truth_cards() -> None:
     assert cards[1].payload == {"red_lines": ["do_not_falsify_authority_report"]}
     assert cards[2].source_refs == ["profile:char_a:personality_layers"]
     assert cards[2].confidence == 0.9
-    assert cards[2].payload == {
-        "conversation_personality_layer": {"tone": "formal"},
-        "temperament_response_layer": {"threat_response": "controlled"},
-    }
+    assert cards[2].payload["conversation_personality_layer"] == {"tone": "formal"}
+    assert cards[2].payload["temperament_response_layer"] == {"threat_response": "controlled"}
+    projection = cards[2].payload["personality_projection"]
+    assert projection["conflict_deescalation_bias"] == 0.5
+    assert "empathy" not in projection
 
 
 def test_memory_projectors_keep_memory_and_relationship_context_memory_owned() -> None:
@@ -133,3 +167,26 @@ def test_runtime_state_projectors_use_empty_source_refs_for_empty_need_affect_an
         "goal_state_history_count": 0,
     }
     assert goal_card.source_refs == []
+
+
+def test_dossier_projection_projector_emits_shadow_cards_without_raw_graphs() -> None:
+    projector = DossierProjectionProjector()
+
+    enduring_cards = projector.project_enduring_truth(_dossier_projection())
+    memory_cards = projector.project_memory_evidence(_dossier_projection())
+    affordance_cards = projector.project_affordances(_dossier_projection())
+
+    assert [card.factor_type for card in enduring_cards] == [
+        "identity_context",
+        "embodiment_context",
+        "authority_context",
+        "private_truth_context",
+    ]
+    assert all(card.layer == "enduring_truth" for card in enduring_cards)
+    assert memory_cards[0].factor_type == "relationship_seed_context"
+    assert memory_cards[0].payload["candidate_only"] is True
+    assert "not_live_relationship_truth" in memory_cards[0].risk_notes
+    assert affordance_cards[0].factor_type == "capability_seed_affordance"
+    assert affordance_cards[0].payload["candidate_only"] is True
+    assert "ability_graph" not in affordance_cards[0].payload
+    assert "skill_evaluation" not in affordance_cards[0].payload

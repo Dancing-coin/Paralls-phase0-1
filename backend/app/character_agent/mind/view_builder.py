@@ -20,6 +20,7 @@ class LayerContextViewBuilder:
             mind_turn_id=frame.mind_turn_id,
             perception_context=self._payload_for(frame.runtime_state.cards, "perception_context"),
             effective_profile_summary=self._payload_for(frame.enduring_truth.cards, "effective_profile"),
+            personality_bias_summary=self._payload_for(frame.enduring_truth.cards, "personality_bias"),
             memory_activation_summary=deepcopy(frame.memory_evidence.summary),
             cognitive_anchor_summary=self._payload_for(frame.memory_evidence.cards, "memory_activation"),
             relationship_context_summary=self._payload_for(
@@ -32,6 +33,7 @@ class LayerContextViewBuilder:
                 frame.runtime_state.cards, "unresolved_tension"
             ),
             supervision_summary=self._payload_for(frame.runtime_state.cards, "supervision"),
+            dossier_context_summary=self._l2_dossier_context_summary(frame),
         )
 
     def build_l3_view(
@@ -60,6 +62,7 @@ class LayerContextViewBuilder:
                 frame.runtime_state.cards, "unresolved_tension"
             ),
             supervision_summary=self._payload_for(frame.runtime_state.cards, "supervision"),
+            dossier_planning_summary=self._l3_dossier_planning_summary(frame),
         )
 
     def build_l4_view(
@@ -83,6 +86,7 @@ class LayerContextViewBuilder:
             presentation_constraints=[],
             realization_hints=[],
             physical_feasibility_summary=physical_feasibility_summary or {"status": "advisory"},
+            dossier_execution_constraints=self._l4_dossier_execution_constraints(frame),
         )
 
     def build_writeback_view(
@@ -123,3 +127,33 @@ class LayerContextViewBuilder:
         if isinstance(current, dict):
             return deepcopy(current)
         return {}
+
+    def _l2_dossier_context_summary(self, frame: CharacterMindFrame) -> dict[str, object]:
+        summary = {
+            "identity": self._payload_for(frame.enduring_truth.cards, "identity_context"),
+            "embodiment": self._payload_for(frame.enduring_truth.cards, "embodiment_context"),
+            "authority": self._payload_for(frame.enduring_truth.cards, "authority_context"),
+            "private_truth": self._payload_for(
+                frame.enduring_truth.cards, "private_truth_context"
+            ),
+        }
+        return {key: value for key, value in summary.items() if value}
+
+    def _l3_dossier_planning_summary(self, frame: CharacterMindFrame) -> dict[str, object]:
+        summary = {
+            "authority": self._payload_for(frame.enduring_truth.cards, "authority_context"),
+            "relationship_seed_context": self._payload_for(
+                frame.memory_evidence.cards, "relationship_seed_context"
+            ),
+            "capability_seed_affordance": self._payload_for(
+                frame.affordances.cards, "capability_seed_affordance"
+            ),
+        }
+        return {key: value for key, value in summary.items() if value}
+
+    def _l4_dossier_execution_constraints(self, frame: CharacterMindFrame) -> dict[str, object]:
+        summary = {
+            "embodiment": self._payload_for(frame.enduring_truth.cards, "embodiment_context"),
+            "authority": self._payload_for(frame.enduring_truth.cards, "authority_context"),
+        }
+        return {key: value for key, value in summary.items() if value}
