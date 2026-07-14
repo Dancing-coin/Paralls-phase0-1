@@ -3,11 +3,11 @@
 ## Status
 
 - Date: 2026-07-14
-- Status: awaiting-user-review
+- Status: approved
 - Scope: D:/Paralls-phase0-1
 - Extends: docs/superpowers/specs/2026-06-03-harness-engineering-design.md
 - Reference: https://lilianweng.github.io/posts/2026-07-04-harness/
-- Decision mode: design sections approved interactively; this written artifact awaits final user review before implementation planning
+- Decision mode: design sections and written artifact approved by the user
 
 ## Executive Summary
 
