@@ -16,7 +16,7 @@ High-level strategy, tradeoffs, and files expected to change.
 
 ## Workflow Gates
 
-- OpenSpec/design source: link the spec or approved design that defines what changes.
+- Design source: link the spec or approved design that defines what changes.
 - Goal: record whether this task needs a Goal for long-running execution state.
 - Superpowers: list the required skill gates, such as test-driven-development or verification-before-completion.
 - Harness: list the focused profile(s) and final profile that prove acceptance.

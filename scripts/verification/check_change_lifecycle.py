@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from check_change_state import evaluate_change_state
 from common import read_text, repo_root, verification_dir, write_json, write_markdown
 from registry import load_profile_registry, load_rule_registry, rule_evidence_map
 
@@ -11,11 +10,10 @@ from registry import load_profile_registry, load_rule_registry, rule_evidence_ma
 REQUIRED_RULE_IDS = {
     "workflow_doc_exists",
     "change_lifecycle_profile_registered",
-    "openspec_superpowers_harness_goal_chain_documented",
+    "design_superpowers_harness_goal_chain_documented",
     "goal_owns_project_workflow_state",
     "workflow_templates_gate_execution",
     "agents_entry_map_routes_goal_superpowers_native_subagents",
-    "archived_changes_have_state_closure",
 }
 
 
@@ -53,8 +51,6 @@ def evaluate_change_lifecycle(project_root: Path) -> dict[str, object]:
     rule_manifest = project_root / ".harness" / "rules" / "change-lifecycle-rules.json"
     design_spec = project_root / "docs" / "superpowers" / "specs" / "2026-06-10-ai-engineering-workflow-integration-design.md"
     implementation_plan = project_root / "docs" / "superpowers" / "plans" / "2026-06-10-ai-engineering-workflow-integration-implementation-plan.md"
-    change_state_report = evaluate_change_state(project_root)
-
     profile_registry = load_profile_registry(project_root)
     rule_registry = load_rule_registry(project_root)
     rule_mapping = rule_evidence_map(rule_registry)
@@ -73,7 +69,7 @@ def evaluate_change_lifecycle(project_root: Path) -> dict[str, object]:
             workflow_doc.exists()
             and design_spec.exists()
             and implementation_plan.exists()
-            and _contains(workflow_doc, ["OpenSpec", "Superpowers", "Harness", "Goal", "native subagents", "change-lifecycle"]),
+            and _contains(workflow_doc, ["Design", "Superpowers", "Harness", "Goal", "native subagents", "change-lifecycle"]),
             [
                 "docs/ai-engineering-workflow.md",
                 "docs/superpowers/specs/2026-06-10-ai-engineering-workflow-integration-design.md",
@@ -96,12 +92,12 @@ def evaluate_change_lifecycle(project_root: Path) -> dict[str, object]:
             "\n".join(sorted(REQUIRED_RULE_IDS - manifest_rule_ids)),
         ),
         _result(
-            "openspec_superpowers_harness_goal_chain_documented",
-            "OpenSpec, Superpowers, Harness, and Goal handoff chain is documented",
+            "design_superpowers_harness_goal_chain_documented",
+            "Design, Superpowers, Harness, and Goal handoff chain is documented",
             all(
                 marker in workflow_text
                 for marker in [
-                    "OpenSpec controls what changes",
+                    "Design controls what changes",
                     "Superpowers controls how changes are executed",
                     "Harness controls whether the result is accepted",
                     "Goal tracks long-running execution state",
@@ -128,10 +124,10 @@ def evaluate_change_lifecycle(project_root: Path) -> dict[str, object]:
         ),
         _result(
             "workflow_templates_gate_execution",
-            "Harness templates require the OpenSpec/Superpowers/Harness/Goal execution gates",
-            _contains(plan_template, ["OpenSpec", "Goal", "Superpowers", "Harness"])
+            "Harness templates require the Design/Superpowers/Harness/Goal execution gates",
+            _contains(plan_template, ["Design source", "Goal", "Superpowers", "Harness"])
             and _contains(implement_template, ["Goal status", "verification-before-completion", "change-lifecycle"])
-            and _contains(checklist_template, ["OpenSpec", "Goal", "Superpowers", "change-lifecycle"]),
+            and _contains(checklist_template, ["Design source", "Goal", "Superpowers", "change-lifecycle"]),
             [
                 ".harness/templates/PLAN.md",
                 ".harness/templates/IMPLEMENT.md",
@@ -143,22 +139,6 @@ def evaluate_change_lifecycle(project_root: Path) -> dict[str, object]:
             "AGENTS.md routes large work through Goal, Superpowers, Harness, and native subagents",
             _contains(agents_md, ["docs/ai-engineering-workflow.md", "Goal", "Superpowers", "native subagents", ".harness/verification/"]),
             ["AGENTS.md"],
-        ),
-        _result(
-            "archived_changes_have_state_closure",
-            "Archived OpenSpec changes retain required files, closed tasks, delta specs, and workflow evidence",
-            bool(change_state_report.get("overall_change_state_passed")),
-            [
-                "openspec/changes/archive/",
-                "docs/superpowers/specs/",
-                "docs/superpowers/plans/",
-                ".harness/verification/",
-            ],
-            "\n".join(
-                str(entry.get("notes", ""))
-                for entry in change_state_report.get("results", [])
-                if entry.get("status") != "proved" and entry.get("notes")
-            ),
         ),
     ]
     return {
