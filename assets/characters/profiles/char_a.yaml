@@ -37,6 +37,40 @@ trait_vector_layer:
   rationality: 0.74
   sociability: 0.58
 
+personality_layer:
+  big_five:
+    openness: 0.62
+    conscientiousness: 0.81
+    extraversion: 0.46
+    agreeableness: 0.78
+    neuroticism: 0.34
+  facets:
+    openness:
+      curiosity: 0.58
+      imagination: 0.44
+      ambiguity_tolerance: 0.61
+      novelty_seeking: 0.36
+    conscientiousness:
+      orderliness: 0.86
+      dutifulness: 0.82
+      deliberation: 0.79
+      persistence: 0.68
+    extraversion:
+      social_energy: 0.43
+      assertiveness: 0.35
+      warmth: 0.62
+      activity_level: 0.48
+    agreeableness:
+      compassion: 0.84
+      trust: 0.56
+      cooperativeness: 0.78
+      conflict_softening: 0.82
+    neuroticism:
+      anxiety: 0.36
+      shame_sensitivity: 0.42
+      volatility: 0.24
+      vulnerability: 0.38
+
 capability_constraint_layer:
   skills:
     - observation

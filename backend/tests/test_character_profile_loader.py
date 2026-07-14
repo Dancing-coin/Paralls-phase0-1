@@ -31,6 +31,8 @@ def test_character_profile_loader_reads_yaml_profile() -> None:
     assert profile.identity_core.character_id == "char_a"
     assert profile.identity_core.canonical_name == "Lin Yue"
     assert profile.trait_vector_layer.empathy == 0.82
+    assert profile.personality_layer is not None
+    assert profile.personality_layer.big_five.agreeableness == 0.78
 
 
 def test_character_profile_registry_lists_sorted_actor_ids_and_gets_profile() -> None:

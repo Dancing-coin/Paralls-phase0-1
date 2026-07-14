@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 
 from app.character_agent.models.mind_frame import MentalFactorProjectionCard
+from app.character_agent.profile.personality_projection import resolve_personality_projection
 
 
 def _mapping(value: object) -> dict[str, object]:
@@ -24,6 +25,26 @@ def _first_text(entries: list[dict[str, object]], *keys: str) -> str:
             if value:
                 return value
     return ""
+
+
+def _source_refs_from_projection(projection: dict[str, object]) -> list[str]:
+    refs = projection.get("source_refs")
+    if not isinstance(refs, list):
+        return []
+    return [str(ref) for ref in refs if str(ref)]
+
+
+def _private_truth_card_payload(private_truth: dict[str, object]) -> dict[str, object]:
+    allowed_keys = {
+        "self_known_secret_count",
+        "visible_truth_ids",
+        "constraint_secret_count",
+        "constraint_truth_ids",
+        "visible_secret_count",
+        "projection_mode",
+        "hidden",
+    }
+    return {key: deepcopy(value) for key, value in private_truth.items() if key in allowed_keys}
 
 
 def _memory_ref(prefix: str, entry: dict[str, object]) -> str:
@@ -101,6 +122,8 @@ class EffectiveProfileProjector:
         trait_vector = _mapping(profile.get("trait_vector_layer"))
         conversation = _mapping(profile.get("conversation_personality_layer"))
         temperament = _mapping(profile.get("temperament_response_layer"))
+        personality_layer = _mapping(profile.get("personality_layer"))
+        personality_projection = resolve_personality_projection(profile)
         red_lines_raw = values.get("red_lines", [])
         red_lines = list(red_lines_raw) if isinstance(red_lines_raw, list) else []
         profile_ref = f"profile:{actor_id}"
@@ -136,7 +159,7 @@ class EffectiveProfileProjector:
                     source_refs=[f"profile:{actor_id}:virtue_value_layer"],
                 )
             )
-        if trait_vector or conversation or temperament:
+        if trait_vector or conversation or temperament or personality_layer:
             cards.append(
                 MentalFactorProjectionCard(
                     factor_type="personality_bias",
@@ -149,11 +172,112 @@ class EffectiveProfileProjector:
                     payload={
                         "conversation_personality_layer": conversation,
                         "temperament_response_layer": temperament,
+                        "personality_projection": personality_projection,
                     },
                     source_refs=[f"profile:{actor_id}:personality_layers"],
                 )
             )
         return cards
+
+
+class DossierProjectionProjector:
+    def project_enduring_truth(
+        self,
+        projection: dict[str, object],
+    ) -> list[MentalFactorProjectionCard]:
+        source_refs = _source_refs_from_projection(projection)
+        identity = _mapping(projection.get("identity"))
+        embodiment = _mapping(projection.get("embodiment"))
+        authority = _mapping(projection.get("authority"))
+        private_truth = _mapping(projection.get("private_truth"))
+        return [
+            MentalFactorProjectionCard(
+                factor_type="identity_context",
+                layer="enduring_truth",
+                scope="actor_private",
+                horizon="long_term",
+                freshness="current",
+                summary=str(identity.get("canonical_name", "") or identity.get("actor_id", "") or ""),
+                payload=identity,
+                source_refs=source_refs,
+            ),
+            MentalFactorProjectionCard(
+                factor_type="embodiment_context",
+                layer="enduring_truth",
+                scope="actor_private",
+                horizon="long_term",
+                confidence=0.9,
+                freshness="current",
+                summary="static embodiment baseline",
+                payload=embodiment,
+                source_refs=source_refs,
+                risk_notes=["static_profile_not_body_runtime_state"],
+            ),
+            MentalFactorProjectionCard(
+                factor_type="authority_context",
+                layer="enduring_truth",
+                scope="actor_private",
+                horizon="scene",
+                confidence=0.9,
+                freshness="current",
+                summary="authored authority constraints",
+                payload=authority,
+                source_refs=source_refs,
+                risk_notes=["authority_profile_does_not_settle_world_truth"],
+            ),
+            MentalFactorProjectionCard(
+                factor_type="private_truth_context",
+                layer="enduring_truth",
+                scope="actor_private",
+                horizon="scene",
+                confidence=0.75,
+                freshness="current",
+                summary="visibility-filtered private truth summary",
+                payload=_private_truth_card_payload(private_truth),
+                source_refs=source_refs,
+                risk_notes=["filtered_projection_no_raw_secret_content"],
+            ),
+        ]
+
+    def project_memory_evidence(
+        self,
+        projection: dict[str, object],
+    ) -> list[MentalFactorProjectionCard]:
+        relationship_seeds = _mapping(projection.get("relationship_seeds"))
+        return [
+            MentalFactorProjectionCard(
+                factor_type="relationship_seed_context",
+                layer="memory_evidence",
+                scope="actor_private",
+                horizon="long_term",
+                confidence=0.8,
+                freshness="current",
+                summary="relationship seed initialization candidates",
+                payload=relationship_seeds,
+                source_refs=_source_refs_from_projection(projection),
+                risk_notes=["candidate_only", "not_live_relationship_truth"],
+            )
+        ]
+
+    def project_affordances(
+        self,
+        projection: dict[str, object],
+    ) -> list[MentalFactorProjectionCard]:
+        capability_seeds = _mapping(projection.get("capability_seeds"))
+        return [
+            MentalFactorProjectionCard(
+                factor_type="capability_seed_affordance",
+                layer="affordance",
+                scope="actor_private",
+                horizon="long_term",
+                confidence=0.75,
+                freshness="current",
+                summary="capability seed initialization summary",
+                payload=capability_seeds,
+                source_refs=_source_refs_from_projection(projection),
+                risk_notes=["candidate_only", "not_skill_evaluation"],
+            )
+        ]
 
 
 class MemoryActivationProjector:
@@ -409,6 +533,7 @@ class SupervisionProjector:
 
 __all__ = [
     "AffectiveBodyStateProjector",
+    "DossierProjectionProjector",
     "EffectiveProfileProjector",
     "GoalContextProjector",
     "MemoryActivationProjector",

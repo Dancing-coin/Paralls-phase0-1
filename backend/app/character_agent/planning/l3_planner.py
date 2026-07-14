@@ -743,6 +743,17 @@ class CharacterAgentL3Service:
         elif candidate == "self_protect" and approach_bias > 0.0:
             score -= min(0.12, approach_bias)
             notes.append("positive_affect_penalty=self_protect")
+        personality_projection = self._normalize_mapping(
+            effective_profile.get("personality_projection")
+        )
+        if candidate == "defer":
+            deescalation_bias = self._bounded_float(
+                personality_projection.get("conflict_deescalation_bias")
+            )
+            deescalation_bonus = max(0.0, deescalation_bias - 0.5) * 0.2
+            if deescalation_bonus > 0.0:
+                score += deescalation_bonus
+                notes.append("personality_projection=conflict_deescalation_bias")
         need_signal = self._normalize_mapping(need_tension_state)
         dominant_need = str(need_signal.get("dominant_need", "") or "")
         dominant_need_pressure = self._dominant_need_pressure(need_signal)

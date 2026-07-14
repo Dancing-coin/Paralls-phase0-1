@@ -10,6 +10,7 @@ from app.character_agent.mind.graph_projection import (
 )
 from app.character_agent.mind.projectors import (
     AffectiveBodyStateProjector,
+    DossierProjectionProjector,
     EffectiveProfileProjector,
     GoalContextProjector,
     MemoryActivationProjector,
@@ -33,6 +34,7 @@ class CharacterMindFrameBuilder:
         graph_projection_provider: GraphMemoryProjectionProvider | None = None,
     ) -> None:
         self._effective_profile_projector = EffectiveProfileProjector()
+        self._dossier_projection_projector = DossierProjectionProjector()
         self._memory_activation_projector = MemoryActivationProjector()
         self._relationship_context_projector = RelationshipContextProjector()
         self._need_pressure_projector = NeedPressureProjector()
@@ -67,6 +69,7 @@ class CharacterMindFrameBuilder:
         environment_affordance_summary: dict[str, object] | None = None,
         equipment_affordance_summary: dict[str, object] | None = None,
         physical_feasibility_summary: dict[str, object] | None = None,
+        dossier_projection: dict[str, object] | None = None,
     ) -> CharacterMindFrame:
         trigger_payload = trigger_event or {}
         normalized_memory = self._snapshot_mapping(
@@ -86,6 +89,7 @@ class CharacterMindFrameBuilder:
         goal_history_payload = self._snapshot_list(goal_state_history)
         tensions_payload = self._snapshot_list(unresolved_tensions)
         supervision_payload = self._snapshot_mapping(supervision_state)
+        dossier_projection_payload = self._snapshot_mapping(dossier_projection)
         mind_turn_id = f"mind_turn:{actor_id}:{producer_ts}"
 
         return CharacterMindFrame(
@@ -105,11 +109,16 @@ class CharacterMindFrameBuilder:
                 ),
                 source_stage=str(trigger_payload.get("source_stage", "") or ""),
             ),
-            enduring_truth=self._enduring_truth_layer(actor_id, effective_profile_payload),
+            enduring_truth=self._enduring_truth_layer(
+                actor_id,
+                effective_profile_payload,
+                dossier_projection_payload,
+            ),
             memory_evidence=self._memory_evidence_layer(
                 actor_id,
                 normalized_memory,
                 graph_projection,
+                dossier_projection_payload,
             ),
             runtime_state=self._runtime_state_layer(
                 snapshot=snapshot_payload,
@@ -127,9 +136,15 @@ class CharacterMindFrameBuilder:
                 environment_affordance_summary=environment_affordance_summary,
                 equipment_affordance_summary=equipment_affordance_summary,
                 physical_feasibility_summary=physical_feasibility_summary,
+                dossier_projection=dossier_projection_payload,
             ),
             provenance=MindFrameProvenance(
-                source_refs=self._source_refs(actor_id, normalized_memory, goal_payload),
+                source_refs=self._source_refs(
+                    actor_id,
+                    normalized_memory,
+                    goal_payload,
+                    dossier_projection_payload,
+                ),
             ),
         )
 
@@ -137,11 +152,16 @@ class CharacterMindFrameBuilder:
         self,
         actor_id: str,
         effective_profile: dict[str, object],
+        dossier_projection: dict[str, object],
     ) -> MindFrameLayer:
         cards = self._effective_profile_projector.project(
             actor_id=actor_id,
             effective_profile=effective_profile,
         )
+        if dossier_projection:
+            cards.extend(
+                self._dossier_projection_projector.project_enduring_truth(dossier_projection)
+            )
         return MindFrameLayer(cards=cards, summary={"profile_actor_id": actor_id})
 
     def _memory_evidence_layer(
@@ -149,6 +169,7 @@ class CharacterMindFrameBuilder:
         actor_id: str,
         memory: dict[str, list[dict[str, object]]],
         graph_projection: dict[str, object],
+        dossier_projection: dict[str, object],
     ) -> MindFrameLayer:
         event_memories = memory.get("event_memories", [])
         observation_memories = memory.get("observation_memories", [])
@@ -166,6 +187,12 @@ class CharacterMindFrameBuilder:
                 graph_projection=graph_projection,
             )
         )
+        if dossier_projection:
+            cards.extend(
+                self._dossier_projection_projector.project_memory_evidence(
+                    dossier_projection
+                )
+            )
         return MindFrameLayer(
             cards=cards,
             summary={
@@ -231,6 +258,7 @@ class CharacterMindFrameBuilder:
         environment_affordance_summary: dict[str, object] | None = None,
         equipment_affordance_summary: dict[str, object] | None = None,
         physical_feasibility_summary: dict[str, object] | None = None,
+        dossier_projection: dict[str, object] | None = None,
     ) -> MindFrameLayer:
         summaries = self._affordance_adapter.build_summary(
             effective_profile=effective_profile,
@@ -241,6 +269,10 @@ class CharacterMindFrameBuilder:
             physical_feasibility_summary=physical_feasibility_summary,
         )
         cards = self._affordance_adapter.project_cards(summaries)
+        if dossier_projection:
+            cards.extend(
+                self._dossier_projection_projector.project_affordances(dossier_projection)
+            )
         return MindFrameLayer(
             cards=cards,
             summary={
@@ -257,6 +289,7 @@ class CharacterMindFrameBuilder:
         actor_id: str,
         memory: dict[str, list[dict[str, object]]],
         current_goal_state: dict[str, object],
+        dossier_projection: dict[str, object],
     ) -> list[str]:
         refs = [f"profile:{actor_id}"]
         refs.extend(self._memory_refs("event_memory", memory.get("event_memories", [])))
@@ -273,6 +306,9 @@ class CharacterMindFrameBuilder:
         )
         if current_goal_state:
             refs.append(f"goal_state:{actor_id}:current")
+        raw_dossier_refs = dossier_projection.get("source_refs", [])
+        if isinstance(raw_dossier_refs, list):
+            refs.extend(str(ref) for ref in raw_dossier_refs if str(ref))
         return refs
 
     @staticmethod

@@ -2,7 +2,7 @@
 
 状态: `current-truth`
 
-更新时间: `2026-07-09`
+更新时间: `2026-07-13`
 
 ## 这份文档回答什么
 
@@ -76,7 +76,10 @@
 - origin seed
 - life memory backbone
 - virtue/value layer
-- trait vector layer
+- `personality_layer.big_five`
+- `personality_layer.facets`
+- legacy `trait_vector_layer` migration input
+- generated `personality_projection`
 - capability/constraint layer
 - style/expression bias layer
 - conversation personality layer
@@ -88,6 +91,8 @@
 - authored profile truth 仍是长期角色主档案
 - `long_term_personality_drift_layer` 只是被系统承认的长期沉淀层
 - 运行时即时状态不能反向伪装成 authored profile truth
+- 行为消费面使用 `personality_projection`，不把 Big Five、legacy traits 和
+  conversation/temperament raw overlap 并列加权
 
 ### 2. `L1` 是完整的角色私有感知入口
 
@@ -291,6 +296,10 @@ CharacterPerceivedEvent / SelfBodyPerceivedEvent / siming_output
 
 当前已明确包含：
 
+- `personality_layer.big_five`
+- `personality_layer.facets`
+- legacy `trait_vector_layer`，仅作为迁移/兼容输入
+- `personality_projection`，作为行为面对外的去重人格投影
 - `need_hierarchy_layer`
 - `temperament_response_layer`
 
@@ -299,6 +308,52 @@ CharacterPerceivedEvent / SelfBodyPerceivedEvent / siming_output
 - `NeedTensionState`
 - `CharacterDynamicState`
 - `long_term_personality_drift_layer`
+
+人格边界：
+
+- Big Five/facets 是新的低层人格基础。
+- 旧 `trait_vector_layer` 继续加载，以支持迁移期 profile 兼容，但不作为新
+  L2/L3/L4 scoring 的 raw behavior input。
+- `PersonalityProjectionResolver` 负责把人格、values、temperament、
+  conversation style、capability context 和 legacy hints 投影成
+  `social_approach_bias`、`empathic_attunement`、`conflict_deescalation_bias`
+  等去重偏置。
+- duplicate-weight guard 要求行为层不要把 `agreeableness`、`empathy`、
+  `mediation_tendency` 等重叠字段重复相加。
+- MBTI 不作为数值运行基础；当前不实现 MBTI 数值层。
+
+CharacterDossier runtime connection 状态：
+
+- `CharacterDossier` schema wrapper 已实现；它包住现有 `CharacterProfile`，
+  并保留 legacy `CharacterProfile` YAML loader 兼容路径。
+- 已实现 `identity_profile`、`embodiment_profile`、`authority_profile`、
+  `private_truth_profile`、`relationship_seed_profile`、
+  `capability_seed_profile` 的 first-pass runtime contracts。
+- 已实现 visibility-filtered dossier projection；`L2/L3/L4` 只消费过滤后
+  summaries / constraints，不消费 raw dossier、raw secret content 或
+  `author_only` truth。
+- 已实现 shadow `CharacterMindFrame` dossier cards：
+  `identity_context`、`embodiment_context`、`authority_context`、
+  `private_truth_context`、`relationship_seed_context`、
+  `capability_seed_affordance`。
+- 已实现 L2/L3/L4 view-level dossier summaries，保持 additive/shadow，不改
+  现有行为选择。
+- 已实现 relationship/capability seed candidate bundle；它只输出
+  initialization candidates，不写 runtime memory store、relationship graph
+  或 character skill state。
+- 已实现 dossier hot reload invalidation contract；它只返回 projection
+  invalidations 和 new dossier instance，不覆盖 `NeedTensionState`、
+  `CharacterDynamicState`、`BodyRuntimeState`、goal、memory、relationship
+  graph 或 skill state。
+
+仍留给后续独立 spec：
+
+- 完整 `BodyRuntimeState` 与身体运行态结算。
+- `RelationshipGraph` 存储、图算法与 read model。
+- `AbilityGraph` 与完整 `CharacterSkillSystem` 集成。
+- runtime hot reload service / file watcher / authoring tools。
+- subjective belief、other-actor belief 与 player-facing reveal policy。
+- authoring validation 与 legacy profile migration tooling。
 
 ### `L1` 感知层
 
@@ -364,15 +419,18 @@ CharacterPerceivedEvent / SelfBodyPerceivedEvent / siming_output
 
 边界：
 
-- authored profile truth 仍由 `CharacterProfile` 表达；长期 drift 保持为独立 drift overlay / effective-profile 路径。
+- authored dossier truth 由 `CharacterDossier` 表达；长期心理/行为 baseline
+  仍由 nested `CharacterProfile` 表达，长期 drift 保持为独立 drift overlay /
+  effective-profile 路径。
 - memory evidence 仍由五池记忆表达。
 - social relationship network 仍属于 social memory，可在后续图谱化投影。
 - runtime state 仍由 `NeedTensionState`、`CharacterDynamicState`、goal state 和 unresolved tension 表达。
-- `CharacterMindFrame` 当前只作为 shadow read model，不改变既有决策行为。
+- dossier projection、`CharacterMindFrame` 当前只作为 shadow read model，
+  不改变既有决策行为。
 
 后续补全阶段：
 
-- projection services 将 profile、memory、relationship、need、dynamic state、goal、tension 和 supervision 转成只读 cards。
+- projection services 将 dossier/profile、memory、relationship、need、dynamic state、goal、tension 和 supervision 转成只读 cards。
 - affordance adapter 只暴露 skill/action/environment/equipment/physical feasibility summaries，不暴露 skill registry。
 - `MindDeltaLedger` 统一包裹 L2/L3/L4/settlement/writeback 候选，但 persistence 仍由 writeback policy 和原 store 边界决定。
 - graph-backed memory 只作为 memory-evidence projection，可增强 knowledge/social/higher-order reads，不成为 cognition owner。
@@ -442,6 +500,7 @@ CharacterPerceivedEvent / SelfBodyPerceivedEvent / siming_output
 并且 `L3` 现在真实消费：
 
 - profile
+- `personality_projection` 中的去重人格偏置
 - knowledge state
 - higher-order memory
 - dynamic state

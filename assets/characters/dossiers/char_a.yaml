@@ -1,0 +1,332 @@
+character_dossier:
+  dossier_id: dossier:char_a
+  actor_id: char_a
+  schema_version: character_dossier.v1
+  dossier_metadata:
+    authoring_status: approved
+    layer_versions:
+      identity_profile: 1
+      embodiment_profile: 1
+      authority_profile: 1
+      private_truth_profile: 1
+      relationship_seed_profile: 1
+      capability_seed_profile: 1
+
+  identity_profile:
+    actor_id: char_a
+    canonical_name: Lin Yue
+    aliases:
+      - Yue
+      - Archivist Lin
+    demographic_identity:
+      age_band: young_adult
+      gender_identity: female
+    role_identities:
+      occupational_role: archive_attendant
+      scene_role: grounded_social_anchor
+      authority_role: archive_procedure_keeper
+    affiliation_identities:
+      organizations:
+        - south_archive_household
+      factions: []
+    social_identities:
+      social_rank: modest_staff
+      reputation_tags:
+        - discreet
+        - reliable
+    self_concept:
+      - careful_steward
+      - trusted_keeper
+    perceived_identities:
+      public:
+        - quiet_archive_attendant
+        - reliable_mediator
+    hidden_identities: []
+
+  embodiment_profile:
+    body_schema:
+      body_type: slight
+      height_band: average
+      dominant_hand: right
+      permanent_limitations: []
+    sensory_baseline:
+      vision: normal
+      hearing: attentive
+    motor_baseline:
+      sprint_capacity: low
+      fine_motor_control: high
+      load_bearing: low
+    chronic_conditions: []
+    voice_baseline:
+      volume: low
+      tone: soft
+    visual_markers:
+      - archive_uniform
+      - restrained_hand_motion
+    default_posture: reserved_upright
+    realization_hints:
+      motion_style_tags:
+        - contained
+        - careful
+
+  authority_profile:
+    responsibilities:
+      - maintain_archive_order
+      - protect_private_records
+    allowed_actions:
+      - explain_public_procedure
+      - mediate_low_risk_disputes
+    forbidden_actions:
+      - grant_sealed_access_alone
+    escalation_targets:
+      - senior_archivist
+
+  private_truth_profile:
+    secrets:
+      - truth_id: secret:char_a:omission_fear
+        content: fears one hidden omission could collapse trust
+        known_by:
+          - author
+          - char_a
+        unknown_to:
+          - public
+        disclosure_threshold:
+          trust: high
+          context:
+            - private_conversation
+        allowed_projection:
+          l2: summarized
+          l3: constraint_only
+          player: hidden
+
+  relationship_seed_profile:
+    relationships:
+      - target_actor_id: char_b
+        relation_tags:
+          - trusted_colleague
+        initial_trust: 0.68
+        initial_affinity: 0.56
+        initial_obligation: 0.34
+        initial_tension: 0.18
+        evidence_seeds:
+          - event_id: rel_seed:char_a:char_b:kept_confidence
+            summary: char_b once kept a sensitive archive matter private
+            effect:
+              trust: 0.18
+              affinity: 0.08
+
+  capability_seed_profile:
+    skill_seeds:
+      - skill_id: social.mediation
+        source: authored
+        rank: trained
+        proficiency: 0.74
+        confidence: 0.81
+        supports:
+          - action_family: social_deescalation
+        requires:
+          - condition: has_speaking_turn
+        blocked_by:
+          - public_humiliation
+          - extreme_fear
+    knowledge_domains:
+      - archive_routine
+      - room_etiquette
+    constraints:
+      physical:
+        - low_sprint_stamina
+      social:
+        - cannot_authorize_sealed_record_access_alone
+
+  character_profile:
+    identity_core:
+      character_id: char_a
+      canonical_name: Lin Yue
+      aliases:
+        - Yue
+        - Archivist Lin
+      occupation_role: archive attendant
+
+    origin_seed:
+      homeland: south reading quarter
+      formative_context: raised inside a disciplined archival household
+      current_scene_function: grounded social anchor
+
+    life_memory_backbone:
+      defining_memories:
+        - mediated a public argument without letting it become a scandal
+        - learned that care without procedure can still damage trust
+      unresolved_knots:
+        - worries that one hidden omission could collapse the room's calm
+
+    virtue_value_layer:
+      value_priorities:
+        - care
+        - order
+        - trustworthiness
+      red_lines:
+        - expose another person's private record casually
+        - inflame a tense room for spectacle
+      forbidden_behaviors:
+        - fabricate authority
+        - lie about procedural limits
+
+    trait_vector_layer:
+      courage: 0.64
+      scheming: 0.31
+      empathy: 0.82
+      rationality: 0.74
+      sociability: 0.58
+
+    personality_layer:
+      big_five:
+        openness: 0.62
+        conscientiousness: 0.81
+        extraversion: 0.46
+        agreeableness: 0.78
+        neuroticism: 0.34
+      facets:
+        openness:
+          curiosity: 0.58
+          imagination: 0.44
+          ambiguity_tolerance: 0.61
+          novelty_seeking: 0.36
+        conscientiousness:
+          orderliness: 0.86
+          dutifulness: 0.82
+          deliberation: 0.79
+          persistence: 0.68
+        extraversion:
+          social_energy: 0.43
+          assertiveness: 0.35
+          warmth: 0.62
+          activity_level: 0.48
+        agreeableness:
+          compassion: 0.84
+          trust: 0.56
+          cooperativeness: 0.78
+          conflict_softening: 0.82
+        neuroticism:
+          anxiety: 0.36
+          shame_sensitivity: 0.42
+          volatility: 0.24
+          vulnerability: 0.38
+
+    capability_constraint_layer:
+      skills:
+        - observation
+        - mediation
+        - procedural recall
+      knowledge_domains:
+        - archive routine
+        - room etiquette
+      physical_constraints:
+        - not built for prolonged sprinting across the whole compound
+      psychological_constraints:
+        - resists escalating conflict before evidence is clear
+      social_constraints:
+        - cannot authorize sealed object access alone
+
+    style_expression_bias_layer:
+      speech_style: soft and measured
+      silence_pattern: pauses before sensitive disclosures
+      gesture_bias: keeps hand movements contained near the body
+      posture_bias: attentive stillness with a reserved upright posture
+
+    conversation_personality_layer:
+      social_openness: 0.57
+      privacy_sensitivity: 0.63
+      talk_initiative: 0.48
+      deception_control: 0.87
+      trust_threshold_for_private_talk: 0.66
+
+    need_hierarchy_layer:
+      base_weights:
+        physiological: 0.26
+        safety: 0.74
+        belonging: 0.81
+        esteem: 0.52
+        self_actualization: 0.47
+      deprivation_sensitivity:
+        physiological: 0.34
+        safety: 0.78
+        belonging: 0.83
+        esteem: 0.58
+        self_actualization: 0.41
+      satisfaction_sensitivity:
+        physiological: 0.35
+        safety: 0.72
+        belonging: 0.86
+        esteem: 0.63
+        self_actualization: 0.56
+      dominant_drives:
+        - preserve trust
+        - maintain room order
+      satisfaction_channels:
+        physiological:
+          - steady rest
+        safety:
+          - predictable routine
+        belonging:
+          - trusted company
+        esteem:
+          - successful mediation
+        self_actualization:
+          - careful stewardship
+      frustration_channels:
+        physiological:
+          - accumulated fatigue
+        safety:
+          - public disorder
+        belonging:
+          - breach of confidence
+        esteem:
+          - avoidable procedural failure
+        self_actualization:
+          - being forced to ignore nuance
+
+    temperament_response_layer:
+      baseline_temperament:
+        caution: 0.71
+        dominance: 0.29
+        attachment: 0.76
+        emotional_reactivity: 0.44
+        recovery_speed: 0.58
+        impulse_control: 0.83
+      conflict_style:
+        confrontation_tendency: 0.24
+        avoidance_tendency: 0.46
+        mediation_tendency: 0.88
+        escalation_threshold: 0.74
+      defense_patterns:
+        under_pressure:
+          - procedural control
+        under_shame:
+          - quiet withdrawal
+        under_threat:
+          - protective vigilance
+        under_loss:
+          - private grief
+      trust_dynamics:
+        initial_trust_bias: 0.56
+        betrayal_memory_weight: 0.72
+        forgiveness_threshold: 0.59
+        loyalty_lock_in: 0.81
+      expression_bias:
+        outward_warmth: 0.62
+        emotional_transparency: 0.49
+        facial_control: 0.71
+        verbal_indirection: 0.64
+
+    long_term_personality_drift_layer:
+      stable_shifts: []
+      reinforced_patterns: []
+      weakened_patterns: []
+      need_reweights: {}
+      trust_reweights: {}
+      expression_reweights: {}
+      drift_policy:
+        minimum_cross_scene_count: 3
+        minimum_confirming_events: 6
+        minimum_time_span: long_arc
+        require_non_transient_evidence: true

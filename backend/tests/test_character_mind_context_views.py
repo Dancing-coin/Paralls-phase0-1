@@ -3,6 +3,38 @@ from app.character_agent.mind.view_builder import LayerContextViewBuilder
 from app.character_agent.models.mind_frame import CognitionWorkspace
 
 
+def _dossier_projection() -> dict[str, object]:
+    return {
+        "actor_id": "char_a",
+        "identity": {"canonical_name": "Lin Yue", "self_concept": ["careful_steward"]},
+        "embodiment": {
+            "motor_baseline": {"sprint_capacity": "low"},
+            "realization_hints": {"motion_style_tags": ["contained"]},
+        },
+        "authority": {
+            "responsibilities": ["maintain_archive_order"],
+            "forbidden_actions": ["grant_sealed_access_alone"],
+        },
+        "private_truth": {
+            "self_known_secret_count": 1,
+            "visible_truth_ids": ["secret:char_a:omission_fear"],
+            "projection_mode": "summarized",
+        },
+        "relationship_seeds": {
+            "candidate_only": True,
+            "relationship_seed_count": 1,
+            "targets": ["char_b"],
+        },
+        "capability_seeds": {
+            "candidate_only": True,
+            "skill_seed_count": 1,
+            "skill_ids": ["social.mediation"],
+            "constraint_count": 2,
+        },
+        "source_refs": ["dossier:char_a"],
+    }
+
+
 def _frame():
     return CharacterMindFrameBuilder().build_frame(
         actor_id="char_a",
@@ -89,6 +121,68 @@ def test_l2_view_mutation_does_not_mutate_frame_payloads_or_summaries() -> None:
     assert frame.memory_evidence.summary["event_memory_count"] == 1
 
 
+def test_l2_view_can_see_shadow_personality_projection_without_raw_duplicate_fields() -> None:
+    frame = CharacterMindFrameBuilder().build_frame(
+        actor_id="char_a",
+        producer_ts=123,
+        trigger_event={"event_id": "event:1", "event_type": "character_perceived_event"},
+        snapshot={},
+        effective_profile={
+            "identity_core": {"canonical_name": "A"},
+            "trait_vector_layer": {"empathy": 0.8, "scheming": 0.3},
+            "conversation_personality_layer": {"social_openness": 0.57},
+            "temperament_response_layer": {
+                "conflict_style": {"mediation_tendency": 0.88},
+            },
+        },
+        memory_bundle={},
+    )
+
+    view = LayerContextViewBuilder().build_l2_view(frame)
+    personality_summary = view.personality_bias_summary
+    projection = personality_summary["personality_projection"]
+    projection["conflict_deescalation_bias"] = 0.0
+
+    frame_personality_card = next(
+        card for card in frame.enduring_truth.cards if card.factor_type == "personality_bias"
+    )
+
+    assert "conflict_deescalation_bias" in personality_summary["personality_projection"]
+    assert "empathy" not in personality_summary["personality_projection"]
+    assert (
+        frame_personality_card.payload["personality_projection"]["conflict_deescalation_bias"]
+        != 0.0
+    )
+
+
+def test_l2_view_includes_visibility_filtered_dossier_context_summary() -> None:
+    frame = CharacterMindFrameBuilder().build_frame(
+        actor_id="char_a",
+        producer_ts=123,
+        trigger_event={"event_id": "event:1", "event_type": "character_perceived_event"},
+        snapshot={},
+        effective_profile={},
+        memory_bundle={},
+        dossier_projection=_dossier_projection(),
+    )
+
+    view = LayerContextViewBuilder().build_l2_view(frame)
+    summary = view.dossier_context_summary
+    summary["identity"]["canonical_name"] = "Mutated"
+
+    identity_card = next(
+        card for card in frame.enduring_truth.cards if card.factor_type == "identity_context"
+    )
+
+    assert summary["identity"]["canonical_name"] == "Mutated"
+    assert identity_card.payload["canonical_name"] == "Lin Yue"
+    assert summary["embodiment"]["motor_baseline"]["sprint_capacity"] == "low"
+    assert summary["authority"]["forbidden_actions"] == ["grant_sealed_access_alone"]
+    assert summary["private_truth"]["self_known_secret_count"] == 1
+    assert "character_profile" not in view.model_dump()
+    assert "fears one omission" not in str(view.model_dump())
+
+
 def test_l3_view_mutation_does_not_mutate_frame_payloads() -> None:
     frame = _frame()
     view = LayerContextViewBuilder().build_l3_view(
@@ -139,6 +233,32 @@ def test_l3_view_is_immune_to_caller_owned_input_mutation() -> None:
     assert workspace.hard_constraints == ["cannot_falsify_authority_report"]
 
 
+def test_l3_view_includes_dossier_planning_summaries_only() -> None:
+    frame = CharacterMindFrameBuilder().build_frame(
+        actor_id="char_a",
+        producer_ts=123,
+        trigger_event={"event_id": "event:1", "event_type": "character_perceived_event"},
+        snapshot={},
+        effective_profile={},
+        memory_bundle={},
+        dossier_projection=_dossier_projection(),
+    )
+
+    view = LayerContextViewBuilder().build_l3_view(
+        frame,
+        interpretation_summary={},
+        workspace=CognitionWorkspace(),
+    )
+
+    summary = view.dossier_planning_summary
+    assert summary["authority"]["forbidden_actions"] == ["grant_sealed_access_alone"]
+    assert summary["relationship_seed_context"]["candidate_only"] is True
+    assert summary["capability_seed_affordance"]["skill_seed_count"] == 1
+    assert "ability_graph" not in summary
+    assert "character_profile" not in view.model_dump()
+    assert "fears one omission" not in str(view.model_dump())
+
+
 def test_l4_view_is_small_and_execution_focused() -> None:
     view = LayerContextViewBuilder().build_l4_view(
         _frame(),
@@ -175,6 +295,30 @@ def test_l4_view_is_immune_to_caller_owned_input_mutation() -> None:
         "steps": [{"kind": "speak", "style": "private"}],
     }
     assert view.target_refs == {"actor": "char_b"}
+
+
+def test_l4_view_includes_action_relevant_dossier_execution_constraints() -> None:
+    frame = CharacterMindFrameBuilder().build_frame(
+        actor_id="char_a",
+        producer_ts=123,
+        trigger_event={"event_id": "event:1", "event_type": "character_perceived_event"},
+        snapshot={},
+        effective_profile={},
+        memory_bundle={},
+        dossier_projection=_dossier_projection(),
+    )
+
+    view = LayerContextViewBuilder().build_l4_view(
+        frame,
+        selected_intent="speak_private",
+    )
+
+    constraints = view.dossier_execution_constraints
+    assert constraints["embodiment"]["motor_baseline"]["sprint_capacity"] == "low"
+    assert constraints["authority"]["forbidden_actions"] == ["grant_sealed_access_alone"]
+    assert "private_truth" not in constraints
+    assert "relationship_seed_context" not in constraints
+    assert "character_profile" not in view.model_dump()
 
 
 def test_writeback_view_wraps_existing_outputs_without_persisting_them() -> None:
