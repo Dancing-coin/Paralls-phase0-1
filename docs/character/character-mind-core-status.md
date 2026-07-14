@@ -529,6 +529,24 @@ CharacterDossier runtime connection 状态：
 - shared actor ingress 没被破坏
 - 后续重具身实现不需要重做 `L1-L3`
 
+### skill/action binding contract
+
+Phase 1 of the Character Skill System is a shadow contract layer.
+
+Current scope:
+
+- `SkillDefinition`, `ActionDefinition`, and `SkillActionBinding` are separate contracts.
+- `CharacterSkillService` can evaluate action skill paths without owning world truth.
+- `L4` can emit a `CompositeActionProposal` while preserving the existing execution bundle.
+- `SkillLearningPolicy` and `SkillEvidence` are schema-level contracts only; promotion remains off by default.
+
+Boundary:
+
+- ESM remains semantic authority.
+- Physical channel remains embodied feasibility authority.
+- Kimodo/asset realization remains presentation-only.
+- Authored profile truth is not modified by skill evidence.
+
 ## 当前它不是什么
 
 它现在还不是：
