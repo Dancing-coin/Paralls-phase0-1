@@ -78,13 +78,16 @@ def test_change_lifecycle_profile_proves_ai_engineering_workflow() -> None:
     report = evaluate_change_lifecycle(repo_root())
     statuses = {entry["id"]: entry["status"] for entry in report["results"]}
 
-    assert statuses["workflow_doc_exists"] == "proved"
-    assert statuses["change_lifecycle_profile_registered"] == "proved"
-    assert statuses["openspec_superpowers_harness_goal_chain_documented"] == "proved"
-    assert statuses["goal_owns_project_workflow_state"] == "proved"
-    assert statuses["workflow_templates_gate_execution"] == "proved"
-    assert statuses["agents_entry_map_routes_goal_superpowers_native_subagents"] == "proved"
-    assert statuses["archived_changes_have_state_closure"] == "proved"
+    expected_result_ids = {
+        "workflow_doc_exists",
+        "change_lifecycle_profile_registered",
+        "design_superpowers_harness_goal_chain_documented",
+        "goal_owns_project_workflow_state",
+        "workflow_templates_gate_execution",
+        "agents_entry_map_routes_goal_superpowers_native_subagents",
+    }
+    assert set(statuses) == expected_result_ids
+    assert all(status == "proved" for status in statuses.values())
 
 
 def test_harness_reference_profile_proves_awesome_harness_coverage() -> None:
