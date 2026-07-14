@@ -9,7 +9,7 @@
 ## 从这里开始
 
 - `AGENTS.md`：运行契约、任务边界、验证规则和非目标。
-- `docs/ai-engineering-workflow.md`：OpenSpec、Superpowers、Harness、Goal 和原生子智能体工作流。
+- `docs/ai-engineering-workflow.md`：Design、Superpowers、Harness、Goal 和原生子智能体工作流。
 - `docs/STRUCTURE.md`：文档目录建设方案、命名规则、迁移阶段和维护规则。
 - `PHASE0_README.md`：工作区简要说明和验证入口。
 - `docs/character/character-mind-core-status.md`：用中文定义“完整 character mind core”在当前仓库中的含义，并区分 authored profile truth、runtime state 与 long-term drift。
@@ -110,7 +110,7 @@
 - `godot-project`：Godot 主场景、autoload 和 `res://` 静态完整性检查。
 - `release-gate`：CI 工作流和发布门禁元数据检查。
 - `harness-lifecycle`：生命周期台账、本地 CI、保留策略、模板、质量和交接检查。
-- `change-lifecycle`：OpenSpec、Superpowers、Harness、Goal 和原生子智能体工作流检查。
+- `change-lifecycle`：Design、Superpowers、Harness、Goal 和原生子智能体工作流检查。
 - `harness-reference`：适配外部 Harness Engineering 分类、模板和参考覆盖检查。
 - `phase0`：严格 Phase 0 后端加 Godot 运行时验证。
 - `phase1-slice`：当前 Phase1 形态运行时切片验证。
