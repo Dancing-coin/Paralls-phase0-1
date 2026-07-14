@@ -244,17 +244,16 @@ Output:
 
 ### `change-lifecycle`
 
-Static workflow checks for the OpenSpec, Superpowers, Harness, Goal, and native subagent development chain. Use this when changing `AGENTS.md`, workflow docs, Superpowers plan/spec policy, Goal usage, native subagent routing, or reusable harness templates.
+Static workflow checks for the Design, Superpowers, Harness, Goal, and native subagent development chain. Use this when changing `AGENTS.md`, workflow docs, Superpowers plan/spec policy, Goal usage, native subagent routing, or reusable harness templates.
 
 Current mechanical invariants include:
 
 - `docs/ai-engineering-workflow.md` exists with matching design and implementation plan artifacts
 - `.harness/profiles/change-lifecycle.json` and `.harness/rules/change-lifecycle-rules.json` are registered
-- OpenSpec/design, Superpowers, Harness, and Goal handoff rules are documented
+- Design, Superpowers, Harness, and Goal handoff rules are documented
 - Goal records active task continuity while `.harness` records durable acceptance evidence
 - templates require the relevant workflow gates before execution and handoff
 - `AGENTS.md` routes large work through Goal, Superpowers, Harness, and native subagents
-- archived OpenSpec changes keep required lifecycle files, completed tasks, delta specs, and a Superpowers/Harness evidence link
 
 Output:
 

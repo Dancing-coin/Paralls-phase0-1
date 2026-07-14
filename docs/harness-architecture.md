@@ -13,7 +13,7 @@ AGENTS.md / docs/INDEX.md / docs/harness.md
 .harness/profiles/*.json  -> profile order and dispatch scripts
 .harness/rules/*.json     -> stable rule ids and evidence paths
 .harness/references/*.json -> external reference taxonomy mapped to project artifacts
-docs/ai-engineering-workflow.md -> OpenSpec/Superpowers/Harness/Goal workflow
+docs/ai-engineering-workflow.md -> Design/Superpowers/Harness/Goal workflow
         |
         v
 scripts/verification/harness.py
@@ -36,7 +36,7 @@ The harness may inspect docs, manifests, Python source, Godot scene text, logs, 
 
 ## Change Lifecycle
 
-`docs/ai-engineering-workflow.md` defines the project workflow for AI-assisted changes: OpenSpec/design artifacts define intent, Superpowers skills enforce execution discipline, Harness profiles accept or reject results, and Goal tracks long-running task continuity. `.harness` records durable acceptance evidence.
+`docs/ai-engineering-workflow.md` defines the project workflow for AI-assisted changes: approved repository-local designs define intent, Superpowers skills enforce execution discipline, Harness profiles accept or reject results, and Goal tracks long-running task continuity. `.harness` records durable acceptance evidence.
 
 ## External Reference Coverage
 
@@ -44,4 +44,4 @@ The harness may inspect docs, manifests, Python source, Godot scene text, logs, 
 
 ## Future Profiles
 
-Use `.harness/templates/profile-template.json` and `.harness/templates/rule-template.json` when adding new formal product modules. Each new module should add one profile, one rule manifest, one focused test file, and one report-producing check script. Workflow-level changes should also update the `change-lifecycle` profile when they alter Goal, Superpowers, OpenSpec/design, or native subagent routing.
+Use `.harness/templates/profile-template.json` and `.harness/templates/rule-template.json` when adding new formal product modules. Each new module should add one profile, one rule manifest, one focused test file, and one report-producing check script. Workflow-level changes should also update the `change-lifecycle` profile when they alter design policy, Goal, Superpowers, or native subagent routing.

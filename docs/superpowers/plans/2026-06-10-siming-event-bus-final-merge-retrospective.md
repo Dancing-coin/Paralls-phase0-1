@@ -14,14 +14,14 @@ The final merge used the authority event bus as the Siming mainline. The old dir
 - Phase 0 authority event adapter.
 - Frontend authority event projector.
 - Provenance tests proving projected frontend output is derived from authority events.
-- Project harness and OpenSpec assets, merged later as a separate governance layer.
+- Project harness and workflow assets, merged later as a separate governance layer.
 
 ## Rejected Paths
 
 - Directly merging the long-lived `pjm_siming` branch.
 - Wholesale merging `codex/siming-bus-integration`.
 - Keeping permanent dual paths for Siming output generation.
-- Keeping harness, OpenSpec, and workflow assets mixed into the runtime merge commit.
+- Keeping harness and workflow governance assets mixed into the runtime merge commit.
 
 ## Final Runtime Chain
 
