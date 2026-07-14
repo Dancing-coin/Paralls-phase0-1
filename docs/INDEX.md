@@ -70,6 +70,7 @@
 - `docs/superpowers/plans/2026-06-12-character-actor-control-and-locomotion-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-11-character-agent-minimal-runtime-slice-design.md`
 - `docs/superpowers/plans/2026-06-11-character-agent-minimal-runtime-slice-implementation-plan.md`
+- `docs/superpowers/specs/2026-07-14-harness-engineering-optimization-design.md`
 - `docs/superpowers/specs/2026-06-03-harness-engineering-design.md`
 - `docs/superpowers/plans/2026-06-03-harness-engineering-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-10-ai-engineering-workflow-integration-design.md`
