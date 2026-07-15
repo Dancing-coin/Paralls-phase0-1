@@ -1,16 +1,11 @@
 from app.models.siming_event import FairnessStateSnapshot
 from app.models.siming_runtime_state import FairnessDimensionSnapshot, StateTreeSnapshot
 from app.services.siming_feature_registry import SimingFeatureRegistry
+from app.services.siming_quality_monitor import REQUIRED_DIMENSIONS
 
 
 class SimingFairnessAuditEngine:
-    DEFAULT_DIMENSIONS = (
-        "information_distribution",
-        "participation_distribution",
-        "conversation_access_fairness",
-        "suspicion_heat_distribution",
-        "evidence_visibility_distribution",
-    )
+    DEFAULT_DIMENSIONS = REQUIRED_DIMENSIONS
 
     def __init__(self, feature_registry: SimingFeatureRegistry | None = None) -> None:
         self._feature_registry = feature_registry or SimingFeatureRegistry()

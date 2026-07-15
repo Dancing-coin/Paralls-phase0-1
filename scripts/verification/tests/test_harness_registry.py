@@ -27,6 +27,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "harness-evolution",
         "phase0",
         "siming-backend-chain",
+        "script-evolution-proof",
         "l1-world-fact-runtime",
         "phase1-slice",
         "mainline-unified-runtime",
@@ -52,6 +53,8 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["harness-evolution"]["script"] == "scripts/verification/check_harness_evolution.py"
     assert registry.profiles["siming-backend-chain"]["script"] == "scripts/verification/verify_siming_backend_chain.py"
     assert registry.profiles["siming-backend-chain"]["include_in_all"] is False
+    assert registry.profiles["script-evolution-proof"]["script"] == "scripts/verification/verify_script_evolution.py"
+    assert registry.profiles["script-evolution-proof"]["include_in_all"] is False
     assert registry.profiles["model-provider-readiness"]["script"] == "scripts/verification/verify_model_provider_readiness.py"
     assert registry.profiles["vla-provider-backend"]["script"] == "scripts/verification/verify_vla_provider_backend.py"
     assert registry.profiles["actor-scene-knowledge-lifecycle"]["script"] == "scripts/verification/verify_actor_scene_knowledge_runtime.py"

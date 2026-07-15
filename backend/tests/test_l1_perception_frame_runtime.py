@@ -237,11 +237,13 @@ def test_siming_runtime_consumes_global_bundle_without_sharing_character_context
     assert bundle.percept_context_id.startswith("siming_mm:")
     assert "character_mm" not in bundle.percept_context_id
     assert result.outputs[0].output_type == "fairness_snapshot"
-    assert result.outputs[1].output_type == "intervention_candidate"
+    assert all(
+        output.output_type not in {"intervention_candidate", "intervention_decision", "dispatch_intent"}
+        for output in result.outputs
+    )
     assert result.read_model is not None
     assert result.read_model.current_state["source_bundle_id"] == bundle.bundle_id
     assert result.outputs[0].payload["perception_identity"]["capture_root_id"] == bundle.capture_root_id
-    assert result.outputs[1].payload["perception_identity"]["capture_id"] == bundle.capture_id
     assert result.read_model.current_state["perception_identity"]["capture_root_id"] == bundle.capture_root_id
     assert result.read_model.intervention_surface["perception_identity"]["capture_id"] == bundle.capture_id
     debug_payload = runtime.drain_observatory_messages()[-1]["payload"]
@@ -520,6 +522,9 @@ def test_l1_runtime_bridge_siming_pipeline_consumption_persists_read_model() -> 
     assert len(read_models) == 1
     assert read_models[0].derived_from_snapshot_ref == bridge_result.siming_bundle["bundle_id"]
     assert read_models[0].current_state["perception_identity"]["capture_root_id"] == bridge_result.siming_bundle["capture_root_id"]
+    assert not any(
+        event.event_type.startswith("siming.") for event in bus.list_events(room_id="room_demo")
+    )
 
 
 def test_main_raw_fact_route_consumes_l1_projection_with_real_provider_refs() -> None:

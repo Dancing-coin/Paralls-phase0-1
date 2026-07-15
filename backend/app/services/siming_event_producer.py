@@ -1,19 +1,63 @@
 from app.models.authority_event import AuthorityEvent, AuthorityEventRouting, AuthorityEventSource
+from app.models.siming_catalyst import validate_siming_authority_event
 from app.models.siming_event import SimingOutput
 from app.services.authority_event_bus import AuthorityEventBusPort
 
 
 class SimingEventProducer:
-    def __init__(self, bus: AuthorityEventBusPort) -> None:
-        self._bus = bus
+    def __init__(self, bus: AuthorityEventBusPort | None = None, *, authority_event_bus: AuthorityEventBusPort | None = None) -> None:
+        self._bus = bus or authority_event_bus
+        if self._bus is None:
+            raise ValueError("SimingEventProducer requires an authority event bus")
 
     def publish_outputs(self, outputs: list[SimingOutput]) -> list[AuthorityEvent]:
         published_events: list[AuthorityEvent] = []
         for output in outputs:
             event = self._to_authority_event(output)
+            validate_siming_authority_event(event)
             self._bus.publish(event)
             published_events.append(event)
         return published_events
+
+    def publish_siming_event(
+        self,
+        *,
+        event_type: str,
+        room_id: str,
+        scene_id: str,
+        zone_id: str,
+        target_ids: list[str],
+        payload: dict[str, object],
+        producer_ts: int = 0,
+        priority: str = "p1",
+        ttl: int | None = None,
+        durability: str = "replayable",
+        causation_id: str = "siming:manual",
+        correlation_id: str = "siming:manual",
+    ) -> AuthorityEvent:
+        event = AuthorityEvent(
+            event_id=f"{event_type}:{producer_ts}:{causation_id}",
+            event_type=event_type,
+            producer_ts=producer_ts,
+            room_id=room_id,
+            scene_id=scene_id,
+            zone_id=zone_id,
+            source=AuthorityEventSource(layer="L2", system="siming.dispatcher", actor_id=None),
+            routing=AuthorityEventRouting(
+                audience_mode="targeted",
+                routing_mode="event_type",
+                target_ids=target_ids,
+            ),
+            priority=priority,  # type: ignore[arg-type]
+            ttl=ttl,
+            durability=durability,  # type: ignore[arg-type]
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            payload=dict(payload),
+        )
+        validate_siming_authority_event(event)
+        self._bus.publish(event)
+        return event
 
     def _to_authority_event(self, output: SimingOutput) -> AuthorityEvent:
         event_type = self._event_type_for(output)
@@ -84,9 +128,9 @@ class SimingEventProducer:
         if output.selected_path == "environment_change_path":
             return ["esm"]
         if output.selected_path == "visual_fact_path":
-            return ["visual_fact"]
+            return ["frontend_projector"]
         if output.selected_path == "l3_highlight_path":
-            return ["presentation"]
+            return ["frontend_projector"]
         if output.selected_path == "character_input_path":
-            return [str(output.payload.get("target_actor_id", "") or "").strip()]
+            return [str(output.payload.get("target_actor_id", "") or "").strip(), "frontend_projector"]
         return ["audit"]

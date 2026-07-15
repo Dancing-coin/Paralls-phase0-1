@@ -48,8 +48,7 @@ class Settings(BaseModel):
     non_runtime_model_timeout_seconds: float = 30.0
 
 
-def _read_project_env() -> dict[str, str]:
-    env_path = Path(__file__).resolve().parents[2] / ".env"
+def _read_env_file(env_path: Path) -> dict[str, str]:
     if not env_path.exists():
         return {}
     values: dict[str, str] = {}
@@ -62,6 +61,14 @@ def _read_project_env() -> dict[str, str]:
         if not key:
             continue
         values[key] = value.strip().strip('"').strip("'")
+    return values
+
+
+def _read_project_env() -> dict[str, str]:
+    backend_root = Path(__file__).resolve().parents[2]
+    repo_root = backend_root.parent
+    values = _read_env_file(repo_root / ".env")
+    values.update(_read_env_file(backend_root / ".env"))
     return values
 
 

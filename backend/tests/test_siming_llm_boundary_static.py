@@ -26,6 +26,14 @@ def test_llm_provider_is_only_invoked_from_siming_runtime() -> None:
     assert offenders == []
 
 
+def test_narrative_core_does_not_import_or_call_llm_provider() -> None:
+    text = read("app/services/siming_narrative_core.py")
+
+    assert "siming_llm_provider" not in text
+    assert "generate_candidates(" not in text
+    assert "SimingLlm" not in text
+
+
 def test_consumer_producer_and_bus_do_not_import_llm_provider() -> None:
     for rel in [
         "app/services/siming_event_consumer.py",

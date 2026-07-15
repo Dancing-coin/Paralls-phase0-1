@@ -16,7 +16,7 @@ def make_authority_event(**overrides: object) -> AuthorityEvent:
         "source": {"layer": "L1", "system": "visual_fact", "actor_id": "char_c"},
         "routing": {"audience_mode": "room", "routing_mode": "event_type", "target_ids": ["siming"]},
         "priority": "p2",
-        "ttl": 5000,
+        "ttl": None,
         "durability": "replayable",
         "causation_id": "visual_fact:100",
         "correlation_id": "visual_fact:100",
@@ -61,3 +61,106 @@ def test_in_memory_bus_filters_events_by_room_and_type() -> None:
     filtered = bus.list_events(room_id="room_demo", event_type="visual_fact_event")
 
     assert [event.event_id for event in filtered] == ["evt:1"]
+
+
+def test_bus_routes_targeted_events_by_consumer_identity() -> None:
+    bus = InMemoryAuthorityEventBus()
+    siming_seen: list[AuthorityEvent] = []
+    projector_seen: list[AuthorityEvent] = []
+
+    bus.subscribe("visual_fact_event", siming_seen.append, consumer_id="siming")
+    bus.subscribe("visual_fact_event", projector_seen.append, consumer_id="frontend_projector")
+
+    bus.publish(
+        make_authority_event(
+            event_id="evt:siming",
+            routing={
+                "audience_mode": "targeted",
+                "routing_mode": "event_type",
+                "target_ids": ["siming"],
+            },
+        )
+    )
+
+    assert [event.event_id for event in siming_seen] == ["evt:siming"]
+    assert projector_seen == []
+
+
+def test_room_audience_does_not_bypass_target_ids() -> None:
+    bus = InMemoryAuthorityEventBus()
+    siming_seen: list[AuthorityEvent] = []
+    projector_seen: list[AuthorityEvent] = []
+
+    bus.subscribe("visual_fact_event", siming_seen.append, consumer_id="siming")
+    bus.subscribe("visual_fact_event", projector_seen.append, consumer_id="frontend_projector")
+
+    bus.publish(
+        make_authority_event(
+            event_id="evt:room-targeted",
+            room_id="room_demo",
+            routing={
+                "audience_mode": "room",
+                "routing_mode": "event_type",
+                "target_ids": ["siming"],
+            },
+        )
+    )
+
+    assert [event.event_id for event in siming_seen] == ["evt:room-targeted"]
+    assert projector_seen == []
+
+
+def test_realtime_event_delivers_but_is_not_in_current_replay() -> None:
+    bus = InMemoryAuthorityEventBus()
+    seen: list[AuthorityEvent] = []
+    bus.subscribe("visual_fact_event", seen.append, consumer_id="siming")
+
+    event = make_authority_event(
+        event_id="evt:realtime",
+        durability="realtime",
+        routing={
+            "audience_mode": "targeted",
+            "routing_mode": "event_type",
+            "target_ids": ["siming"],
+        },
+    )
+
+    bus.publish(event)
+
+    assert [item.event_id for item in seen] == ["evt:realtime"]
+    assert bus.list_events(event_type="visual_fact_event", consumer_id="siming") == []
+    assert [
+        item.event_id
+        for item in bus.list_events(
+            event_type="visual_fact_event",
+            consumer_id="siming",
+            include_realtime=True,
+        )
+    ] == ["evt:realtime"]
+
+
+def test_expired_ttl_event_is_excluded_from_current_replay() -> None:
+    bus = InMemoryAuthorityEventBus(now_ts_provider=lambda: 6000)
+
+    bus.publish(
+        make_authority_event(
+            event_id="evt:expired",
+            producer_ts=100,
+            ttl=500,
+            routing={
+                "audience_mode": "targeted",
+                "routing_mode": "event_type",
+                "target_ids": ["siming"],
+            },
+        )
+    )
+
+    assert bus.list_events(event_type="visual_fact_event", consumer_id="siming") == []
+    assert [
+        item.event_id
+        for item in bus.list_events(
+            event_type="visual_fact_event",
+            consumer_id="siming",
+            current_only=False,
+        )
+    ] == ["evt:expired"]

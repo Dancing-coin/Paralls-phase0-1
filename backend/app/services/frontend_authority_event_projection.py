@@ -1,9 +1,11 @@
 from app.models.authority_event import AuthorityEvent
+from app.models.siming_catalyst import InnerPrompt
 
 
 FRONTEND_AUTHORITY_EVENT_TYPES = {
     "siming.visual_observability_request",
     "siming.fact_reveal",
+    "siming.inner_prompt",
 }
 
 
@@ -126,8 +128,32 @@ def project_authority_event_for_frontend(event: AuthorityEvent) -> dict[str, obj
     return None
 
 
+def project_authority_event_as_inner_prompt(event: AuthorityEvent) -> dict[str, object] | None:
+    if event.event_type != "siming.inner_prompt":
+        return None
+
+    prompt = InnerPrompt.from_authority_event(event)
+    return {
+        "message_type": "siming_inner_prompt",
+        "type": "siming_inner_prompt",
+        "prompt_id": prompt.prompt_id,
+        "target_actor_id": prompt.target_actor_id,
+        "prompt_text": prompt.prompt_text,
+        "intensity": prompt.intensity,
+        "presentation_effects": list(prompt.presentation_effects),
+        "player_facing": prompt.player_facing,
+        "non_authoritative": prompt.non_authoritative,
+        "evidence_refs": list(prompt.evidence_refs),
+        "situation_snapshot_id": prompt.situation_snapshot_id,
+        "authority_event_id": event.event_id,
+        "causation_id": event.causation_id,
+        "correlation_id": event.correlation_id,
+        "producer_ts": event.producer_ts,
+    }
+
+
 def project_authority_event_as_siming_output(event: AuthorityEvent) -> dict[str, object] | None:
-    if event.event_type not in FRONTEND_AUTHORITY_EVENT_TYPES:
+    if event.event_type not in FRONTEND_AUTHORITY_EVENT_TYPES or event.event_type == "siming.inner_prompt":
         return None
 
     payload = {
@@ -153,11 +179,11 @@ class FrontendAuthorityEventProjector:
     def __init__(self) -> None:
         self._pending: list[dict[str, object]] = []
 
-    def handle_event(self, event: AuthorityEvent) -> None:
+    def handle_event(self, event: AuthorityEvent) -> dict[str, object] | None:
         envelope = project_authority_event_as_conversation_candidate(event)
         if envelope is not None:
             self._pending.append(envelope)
-            return
+            return envelope
 
         envelope = project_authority_event_as_world_result(event)
         if envelope is not None:
@@ -165,12 +191,17 @@ class FrontendAuthorityEventProjector:
             social_spatial = project_authority_event_as_social_spatial_runtime_result(event)
             if social_spatial is not None:
                 self._pending.append(social_spatial)
-            return
+            return envelope
 
         envelope = project_authority_event_as_state_machine_transition(event)
         if envelope is not None:
             self._pending.append(envelope)
-            return
+            return envelope
+
+        envelope = project_authority_event_as_inner_prompt(event)
+        if envelope is not None:
+            self._pending.append(envelope)
+            return envelope
 
         envelope = project_authority_event_as_siming_output(event)
         if envelope is not None:
@@ -178,6 +209,8 @@ class FrontendAuthorityEventProjector:
             authority_event = project_authority_event_for_frontend(event)
             if authority_event is not None:
                 self._pending.append(authority_event)
+            return envelope
+        return None
 
     def drain(self) -> list[dict[str, object]]:
         pending = self._pending

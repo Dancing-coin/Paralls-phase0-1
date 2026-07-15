@@ -59,7 +59,21 @@ def test_producer_maps_character_input_path_to_target_actor_id() -> None:
     SimingEventProducer(bus).publish_outputs([output])
 
     event = bus.list_events(event_type="siming.fact_reveal")[0]
-    assert event.routing.target_ids == ["char_b"]
+    assert event.routing.target_ids == ["char_b", "frontend_projector"]
+
+
+def test_producer_routes_visual_fact_path_to_frontend_projector_consumer() -> None:
+    bus = InMemoryAuthorityEventBus()
+    output = make_output(
+        selected_path="visual_fact_path",
+        intervention_band="fact_reveal",
+        payload={"target_actor_id": "char_b", "established_fact_id": "visual_fact:300"},
+    )
+
+    SimingEventProducer(bus).publish_outputs([output])
+
+    event = bus.list_events(event_type="siming.visual_observability_request", consumer_id="frontend_projector")[0]
+    assert event.routing.target_ids == ["frontend_projector"]
 
 
 def test_producer_rejects_character_input_path_without_target_actor_id() -> None:
@@ -82,3 +96,24 @@ def test_producer_rejects_character_input_path_with_blank_target_actor_id() -> N
 
     with pytest.raises(ValueError, match="character_input_path requires target_actor_id"):
         SimingEventProducer(InMemoryAuthorityEventBus()).publish_outputs([output])
+
+
+def test_siming_event_producer_rejects_forbidden_character_execution_payload() -> None:
+    bus = InMemoryAuthorityEventBus()
+    producer = SimingEventProducer(authority_event_bus=bus)
+
+    with pytest.raises(ValueError, match="forbidden"):
+        producer.publish_siming_event(
+            event_type="siming.impulse",
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            target_ids=["char_a"],
+            payload={
+                "target_actor_id": "char_a",
+                "impulse_axis": "action",
+                "intensity": 0.2,
+                "evidence_refs": ["public_fact:letter_seen"],
+                "character_agent_execution": {"actor_id": "char_a"},
+            },
+        )

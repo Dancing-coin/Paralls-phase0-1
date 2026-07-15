@@ -10,8 +10,11 @@ from app.services.siming_character_dispatch_adapter import SimingCharacterDispat
 from app.services.siming_event_consumer import SimingEventConsumer
 from app.services.siming_event_pipeline import SimingEventPipeline
 from app.services.siming_event_producer import SimingEventProducer
+from app.services.frontend_authority_event_projection import FrontendAuthorityEventProjector
 from app.services.siming_llm_provider import FakeSimingLlmCandidateProvider
 from app.services.siming_runtime import SimingRuntime
+from app.world_runtime.intelligence_upgrade import SampleInputRef
+from app.world_runtime.l1_perception_frame import L1PerceptionFrameService
 
 
 class _LocalGateway:
@@ -252,7 +255,7 @@ def test_pipeline_dispatches_new_character_input_outputs_through_adapter() -> No
     snapshot = character_runtime.get_private_snapshot("char_b")
     timeline = character_runtime.get_session_timeline("char_b")
 
-    assert dispatched.routing.target_ids == ["char_b"]
+    assert dispatched.routing.target_ids == ["char_b", "frontend_projector"]
     assert dispatched.correlation_id == "visual_fact:300"
     assert snapshot is not None
     assert snapshot.last_siming_catalyst == "surface established fact"
@@ -389,3 +392,110 @@ def test_pipeline_records_checkpoint_and_read_model_for_runtime_tick() -> None:
     event_types = [event.event_type for event in bus.list_events(room_id="room_demo")]
     assert "siming.read_model" not in event_types
     assert "siming.checkpoint" not in event_types
+
+
+def test_pipeline_records_multi_stage_checkpoints_for_runtime_tick() -> None:
+    bus = InMemoryAuthorityEventBus()
+    audit_writer = SimingAuditWriter()
+    pipeline = make_pipeline(bus, audit_writer)
+    bus.subscribe("visual_fact_event", pipeline.handle_event)
+
+    bus.publish(make_visual_fact_event())
+
+    checkpoint_types = {
+        checkpoint.checkpoint_type for checkpoint in audit_writer.list_checkpoints(room_id="room_demo")
+    }
+    assert checkpoint_types == {"pre_decision", "post_decision", "post_dispatch"}
+    assert "fairness_after" not in checkpoint_types
+
+
+def test_pipeline_does_not_publish_internal_narrative_or_read_facade_events() -> None:
+    bus = InMemoryAuthorityEventBus()
+    audit_writer = SimingAuditWriter()
+    pipeline = make_pipeline(bus, audit_writer)
+    bus.subscribe("visual_fact_event", pipeline.handle_event)
+
+    bus.publish(make_visual_fact_event())
+
+    event_types = {event.event_type for event in bus.list_events(room_id="room_demo")}
+    assert "siming.read_model" not in event_types
+    assert "siming.checkpoint" not in event_types
+    assert "siming.narrative_state" not in event_types
+    assert "siming.intervention_seed" not in event_types
+
+
+def test_pipeline_canonical_bundle_ingestion_records_read_model_without_decision_outputs() -> None:
+    bus = InMemoryAuthorityEventBus()
+    audit_writer = SimingAuditWriter()
+    pipeline = make_pipeline(bus, audit_writer)
+    frame_service = L1PerceptionFrameService()
+    frame = frame_service.build_siming_frame(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        started_at=100,
+        ended_at=150,
+        environment_inputs=[
+            SampleInputRef(provider_kind="spatial_patch", ref_id="runtime://space/zone_focus/global/150")
+        ],
+        structured_fact_refs=["raw_fact_event:spatial_access_fact:line_of_sight_blocked:150"],
+    )
+    bundle = frame_service.build_canonical_bundle(
+        frame,
+        local_spatial_state={"zone_id": "zone_focus"},
+        target_state={"affected_actors": ["char_b"]},
+        environment_state={"visibility_level": "reduced"},
+    )
+
+    result = pipeline.ingest_canonical_percept_bundle(bundle)
+
+    assert result.read_model is not None
+    assert audit_writer.list_read_models(room_id="room_demo")
+    assert all(
+        output.output_type not in {"intervention_candidate", "intervention_decision", "dispatch_intent"}
+        for output in result.outputs
+    )
+    assert not any(event.event_type.startswith("siming.") for event in bus.list_events(room_id="room_demo"))
+
+
+def test_frontend_projector_projects_inner_prompt_as_presentation_only() -> None:
+    projector = FrontendAuthorityEventProjector()
+    event = AuthorityEvent.model_validate(
+        {
+            "event_id": "siming:inner_prompt:1",
+            "event_type": "siming.inner_prompt",
+            "producer_ts": 101,
+            "room_id": "room_demo",
+            "scene_id": "scene_demo",
+            "zone_id": "zone_focus",
+            "source": {"layer": "L2", "system": "siming.dispatcher", "actor_id": None},
+            "routing": {
+                "audience_mode": "targeted",
+                "routing_mode": "event_type",
+                "target_ids": ["frontend_projector"],
+            },
+            "priority": "p1",
+            "ttl": 5000,
+            "durability": "realtime",
+            "causation_id": "cause:1",
+            "correlation_id": "corr:1",
+            "payload": {
+                "target_actor_id": "player",
+                "prompt_text": "Something about the letter feels wrong.",
+                "intensity": 0.2,
+                "evidence_refs": ["public_fact:letter_seen"],
+                "player_facing": True,
+                "non_authoritative": True,
+                "presentation_effects": ["narration_text"],
+            },
+        }
+    )
+
+    projected = projector.handle_event(event)
+
+    assert projected is not None
+    assert projected["type"] == "siming_inner_prompt"
+    assert projected["target_actor_id"] == "player"
+    assert projected["non_authoritative"] is True
+    assert "backend_action_request" not in projected
+    assert "world_mutation" not in projected

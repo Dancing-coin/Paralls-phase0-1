@@ -21,6 +21,7 @@ python scripts/verification/harness.py --profile harness-evolution
 python scripts/verification/harness.py --profile phase0
 python scripts/verification/harness.py --profile phase1-slice
 python scripts/verification/harness.py --profile siming-backend-chain
+python scripts/verification/harness.py --profile script-evolution-proof
 python scripts/verification/harness.py --profile l1-world-fact-runtime
 python scripts/verification/harness.py --profile mainline-unified-runtime
 python scripts/verification/harness.py --profile model-provider-readiness
@@ -417,6 +418,22 @@ Output:
 - `.harness/verification/siming-backend-chain-report.json`
 - `.harness/verification/siming-backend-chain-report.md`
 
+### `script-evolution-proof`
+
+Backend-only proof for natural-language script choice evolution. This profile does not start Godot or depend on frontend projection. It reads a natural-language script plus player-like choices, normalizes them through the configured model path when live mode is enabled, executes choices through backend authority/ESM, records Branch Diff, attaches Siming observation evidence, and writes Chinese-first proof reports.
+
+This profile is intentionally excluded from `all` by `include_in_all=false` because live DeepSeek normalization requires real model credentials and network calls. For deterministic local component verification, run the script directly with `--component-only`.
+
+```powershell
+python scripts/verification/harness.py --profile script-evolution-proof
+python scripts/verification/verify_script_evolution.py --component-only
+```
+
+Output:
+
+- `.harness/verification/script-evolution-proof-report.json`
+- `.harness/verification/script-evolution-proof-report.md`
+
 ### `model-provider-readiness`
 
 Static/readiness verification for current project model provider entry points. This profile does not start Godot and does not use mock providers as completion evidence.
@@ -602,7 +619,7 @@ Output:
 
 Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, `phase1-slice`, `l1-world-fact-runtime`, `mainline-unified-runtime`, `model-provider-readiness`, `godot-sampling-production-grade-providers`, `embodied-skeletal-debug-replay`, `vla-provider-backend`, `actor-scene-knowledge-lifecycle`, `siming-global-situation-layer`, `interaction-orchestration-service`, `esm-physical-channel-world-actuation`, `non-runtime-production-pipeline`, and `perception-input-alignment` in order. It stops on the first failed profile.
 
-`siming-backend-chain` is excluded from `all` because it requires live model-provider credentials.
+`siming-backend-chain` and `script-evolution-proof` are excluded from `all` because they require live model-provider credentials for their default proof path.
 
 ### `mainline-unified-runtime`
 
@@ -652,6 +669,7 @@ When a profile fails, the runner writes a deterministic failure digest such as `
 - Runtime claims require `phase0`, `phase1-slice`, or `mainline-unified-runtime`, depending on the scope being claimed.
 - L1 subsystem integration claims may use `l1-world-fact-runtime`; this is a runtime-verification profile, not a product runtime.
 - Backend-only live Siming model-provider architecture claims require explicit `siming-backend-chain`.
+- Backend-only natural-language script evolution claims require explicit `script-evolution-proof` or a direct `verify_script_evolution.py` run with the appropriate live/component mode.
 - Godot claims require scene execution or Godot MCP/editor inspection.
 - Generated evidence should stay under `.harness/verification/`.
 - Profile and rule manifests stay under `.harness/profiles/` and `.harness/rules/`.
