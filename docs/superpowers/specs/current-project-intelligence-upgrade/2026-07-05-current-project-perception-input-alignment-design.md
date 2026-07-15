@@ -1,6 +1,6 @@
 # 当前项目感知输入对齐层设计
 
-- 状态：`proposed`
+- 状态：`implemented-and-focused-verified-parent-spec`
 - 日期：`2026-07-05`
 
 ## 1. 背景

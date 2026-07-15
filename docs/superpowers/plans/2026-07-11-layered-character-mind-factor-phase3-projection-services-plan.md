@@ -10,6 +10,14 @@
 
 ---
 
+## Status Snapshot
+
+Status: `implemented-and-focused-verified`.
+
+Current main contains `backend/app/character_agent/mind/projectors.py`,
+frame-builder delegation, public exports, and
+`backend/tests/test_character_mind_projectors.py`.
+
 ## Scope Boundary
 
 Included:

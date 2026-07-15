@@ -10,6 +10,15 @@
 
 ---
 
+## Status Snapshot
+
+Status: `implemented-and-focused-verified-optional-port`.
+
+Current main contains `backend/app/character_agent/mind/graph_projection.py`
+and `backend/tests/test_character_mind_graph_projection.py`. Graph-backed
+memory remains an optional projection input and does not replace owned memory or
+social-relationship truth.
+
 ## Scope Boundary
 
 Included:

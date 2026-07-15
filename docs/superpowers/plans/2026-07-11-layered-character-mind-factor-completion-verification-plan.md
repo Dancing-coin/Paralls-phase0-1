@@ -10,6 +10,16 @@
 
 ---
 
+## Status Snapshot
+
+Status: `implemented-and-verified-documentation-closure`.
+
+The documentation updates described below are present in
+`docs/character/character-mind-core-status.md`,
+`docs/架构/运行时/模块/角色智能体.md`, and the plan series status. Current
+verification evidence is summarized in
+`docs/superpowers/plans/2026-07-completion-matrix.md`.
+
 ## Scope Boundary
 
 Included:

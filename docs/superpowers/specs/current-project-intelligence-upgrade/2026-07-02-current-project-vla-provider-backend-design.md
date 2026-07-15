@@ -1,7 +1,7 @@
 # 当前项目 VLA Provider Backend 子规格
 
 - 日期：`2026-07-02`
-- 状态：`planned`
+- 状态：`implemented-and-verified-contract-ready-real-provider-blocked`
 - 上位规格：
   - [2026-06-28-current-project-vla-multimodal-upgrade-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-06-28-current-project-vla-multimodal-upgrade-design.md)
   - [2026-06-29-current-project-intelligence-upgrade-master-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-06-29-current-project-intelligence-upgrade-master-design.md)

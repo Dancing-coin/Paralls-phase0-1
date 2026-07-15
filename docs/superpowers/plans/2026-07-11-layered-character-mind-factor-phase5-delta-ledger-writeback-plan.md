@@ -10,6 +10,16 @@
 
 ---
 
+## Status Snapshot
+
+Status: `implemented-and-focused-verified`.
+
+Current main contains `backend/app/character_agent/mind/delta_ledger.py`,
+`backend/app/character_agent/mind/writeback_policy.py`, runtime writeback
+boundary helpers, and coverage in
+`backend/tests/test_character_mind_delta_ledger.py` and
+`backend/tests/test_character_mind_writeback_policy.py`.
+
 ## Scope Boundary
 
 Included:

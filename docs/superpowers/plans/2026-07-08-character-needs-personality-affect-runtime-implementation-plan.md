@@ -10,6 +10,24 @@
 
 ---
 
+## Status Snapshot
+
+Status: `implemented-and-focused-verified`.
+
+The historical task checkboxes below predate the final code merge. Current main
+contains the profile schema, effective-profile resolver, need tension and affect
+engines, runtime store/writeback path, L2/L3 consumption, and conservative
+drift gate described by this plan. Focused verification is covered by:
+
+- `backend/tests/test_character_profile_needs_schema.py`
+- `backend/tests/test_need_tension_engine.py`
+- `backend/tests/test_affect_engine.py`
+- `backend/tests/test_character_runtime_needs_affect_flow.py`
+- `backend/tests/test_personality_drift_gate.py`
+
+Strict long-term personality mutation of authored truth remains guarded by the
+drift promotion gate and is not automatic runtime writeback.
+
 ## File Structure
 
 ### New files

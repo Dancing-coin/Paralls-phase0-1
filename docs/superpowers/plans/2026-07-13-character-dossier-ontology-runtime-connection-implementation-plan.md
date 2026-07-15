@@ -22,6 +22,15 @@ patterns. No new dependencies.
 
 ---
 
+## Status Snapshot
+
+Status: `implemented-and-focused-verified`.
+
+The task checklist below has been backfilled to `[x]`. Current main contains the
+`CharacterDossier` wrapper, legacy/wrapped loader compatibility, visibility
+projection, mind-frame/view integration, seed conversion helpers, hot reload
+contract, example dossier fixture, documentation updates, and focused tests.
+
 ## Scope Boundary
 
 This plan implements the design in:

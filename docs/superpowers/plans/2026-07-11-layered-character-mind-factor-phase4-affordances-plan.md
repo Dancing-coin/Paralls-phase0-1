@@ -10,6 +10,15 @@
 
 ---
 
+## Status Snapshot
+
+Status: `implemented-and-focused-verified`.
+
+Current main contains the read-only skill/action affordance adapter in
+`backend/app/character_agent/mind/affordances.py` with coverage in
+`backend/tests/test_character_mind_affordances.py`. The adapter remains a
+compressed advisory summary and does not expose the full skill registry to L2/L3.
+
 ## Scope Boundary
 
 Included:

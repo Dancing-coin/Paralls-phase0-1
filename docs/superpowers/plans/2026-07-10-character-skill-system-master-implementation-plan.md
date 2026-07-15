@@ -10,6 +10,26 @@
 
 ---
 
+## Status Snapshot
+
+Status: `implemented-and-verified-phase1-binding-contract`.
+
+The unchecked historical task boxes below describe the original execution plan,
+but current main has the Phase 1 binding contract implemented: skill/action
+models, registry lookup, effective state projection, affordance summaries,
+`CharacterSkillService`, and L4 shadow `CompositeActionProposal` compatibility.
+Focused verification is covered by:
+
+- `backend/tests/test_character_skill_models.py`
+- `backend/tests/test_skill_action_binding_registry.py`
+- `backend/tests/test_character_skill_service.py`
+- `backend/tests/test_character_agent_l4_skill_shadow.py`
+
+This plan remains the Phase 1 binding contract. Later runtime integration,
+settlement metadata, evidence, learning gates, visibility, and realization
+handoff are tracked by
+`docs/superpowers/plans/2026-07-13-character-skill-system-runtime-completion-plan.md`.
+
 ## Scope Boundary
 
 This plan implements Phase 1 from `docs/superpowers/specs/2026-07-10-character-skill-system-master-design.md`.
@@ -1292,4 +1312,3 @@ git commit -m "Verify character skill binding contract"
 ```
 
 If no files changed, do not create an empty commit.
-

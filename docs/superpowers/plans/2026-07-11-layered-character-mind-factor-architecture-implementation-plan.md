@@ -10,6 +10,16 @@
 
 ---
 
+## Status Snapshot
+
+Status: `implemented-and-verified-foundation`.
+
+The historical task checkboxes below are superseded by the current main branch:
+Phase 1/2 shadow `CharacterMindFrame`, layer context views, runtime shadow
+accessor, and delta-ledger foundation are implemented and covered by focused
+mind-frame/runtime tests. Phase 3-6 follow-up plans are complete and summarized
+in `docs/superpowers/plans/2026-07-11-layered-character-mind-factor-plan-series.md`.
+
 ## Scope Boundary
 
 This plan implements Phase 1 and Phase 2 foundations from `docs/superpowers/specs/2026-07-11-layered-character-mind-factor-architecture-design.md`.

@@ -19,6 +19,30 @@ Phase 2, Phase 3, and Phase 4 work.
 
 ---
 
+## Status Snapshot
+
+Status: `implemented-and-verified-runtime-completion`.
+
+Current main has completed the planned runtime shadow, settlement advisory
+metadata, evidence extraction/storage, conservative learning gate, learned
+overlay projection, visibility/player-hint surface, and presentation/realization
+handoff. Focused coverage includes:
+
+- `backend/tests/test_character_skill_catalog.py`
+- `backend/tests/test_character_skill_runtime_shadow.py`
+- `backend/tests/test_character_skill_settlement_integration.py`
+- `backend/tests/test_character_skill_evidence_extractor.py`
+- `backend/tests/test_character_skill_evidence_store.py`
+- `backend/tests/test_character_skill_learning_gate.py`
+- `backend/tests/test_character_skill_learned_overlay.py`
+- `backend/tests/test_character_skill_visibility.py`
+- `backend/tests/test_character_skill_realization_handoff.py`
+
+Deferred by design: large production skill/action libraries, default automatic
+promotion, persistent learned-skill storage, and a real Kimodo live success loop.
+The skill system remains advisory and does not replace ESM, physical channel, or
+world-truth settlement authority.
+
 ## Current Baseline
 
 The main runtime already has a character mind affordance/constraint layer:

@@ -1,6 +1,6 @@
 # 当前项目感知身份验证矩阵设计
 
-- 状态：`proposed`
+- 状态：`implemented-and-focused-verified`
 - 日期：`2026-07-05`
 
 ## 1. 目标

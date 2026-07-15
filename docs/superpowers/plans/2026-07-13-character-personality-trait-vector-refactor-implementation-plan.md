@@ -20,6 +20,23 @@ runtime/profile/mind-frame code. No new dependencies.
 
 ---
 
+## Status Snapshot
+
+Status: `implemented-and-focused-verified`.
+
+The historical task checkboxes below predate the final merge. Current main has
+the Big Five/facet-compatible personality layer, projection resolver, profile
+view exposure, mind-frame projection, optional profile YAML migration, and
+focused tests:
+
+- `backend/tests/test_character_personality_profile_models.py`
+- `backend/tests/test_character_personality_projection.py`
+- `backend/tests/test_character_mind_frame_builder.py`
+
+The first implementation pass still intentionally excludes behavior-changing
+NeedTension/Affect formula rewrites, MBTI, full skill-system replacement, and
+unapproved L3 scoring changes.
+
 ## Scope Boundary
 
 This plan implements the design in:
@@ -475,4 +492,3 @@ Use Lore-style commit messages. Suggested split:
 7. `Document personality projection boundaries`
 
 Keep Phase 6 separate from schema/projection work because it changes behavior.
-

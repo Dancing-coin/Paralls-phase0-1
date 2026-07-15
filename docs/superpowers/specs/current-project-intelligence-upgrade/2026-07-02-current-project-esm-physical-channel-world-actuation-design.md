@@ -1,7 +1,7 @@
 # 当前项目 ESM Physical Channel World Actuation 子规格
 
 - 日期：`2026-07-02`
-- 状态：`planned`
+- 状态：`implemented-and-runtime-verified`
 - 上位规格：[2026-06-29-current-project-esm-dual-channel-world-actuation-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-06-29-current-project-esm-dual-channel-world-actuation-design.md)
 
 ## 1. 目标

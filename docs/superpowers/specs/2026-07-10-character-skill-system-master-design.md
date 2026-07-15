@@ -1,6 +1,6 @@
 # Character Skill System Master Design
 
-Status: `approved`
+Status: `approved-phase1-binding-contract; runtime-completion-implemented-and-verified`
 
 Date: `2026-07-10`
 

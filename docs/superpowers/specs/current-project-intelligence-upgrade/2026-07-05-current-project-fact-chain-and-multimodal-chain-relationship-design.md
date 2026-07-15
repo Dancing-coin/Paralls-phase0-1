@@ -1,6 +1,6 @@
 # 当前项目事实上抛链路与多模态链路关系设计
 
-- 状态：`proposed`
+- 状态：`design-governance-accepted; covered-by-perception-input-alignment-verification`
 - 日期：`2026-07-05`
 
 ## 1. 目标
