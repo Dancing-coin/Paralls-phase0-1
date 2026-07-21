@@ -75,3 +75,20 @@ def test_character_dossier_loader_reads_example_char_a_dossier_fixture() -> None
     assert dossier.embodiment_profile.motor_baseline.sprint_capacity == "low"
     assert dossier.relationship_seed_profile.relationships[0].evidence_seeds
     assert dossier.capability_seed_profile.skill_seeds[0].skill_id == "social.mediation"
+
+
+def test_character_dossier_loader_reads_example_char_b_dossier_fixture() -> None:
+    dossier = CharacterDossierLoader(DOSSIER_DIR).load("char_b")
+
+    assert dossier.actor_id == "char_b"
+    assert dossier.character_profile.identity_core.character_id == "char_b"
+    assert dossier.character_profile.identity_core.canonical_name == "Qiao Ren"
+    assert dossier.identity_profile.role_identities.scene_role == "authoritative_boundary_enforcer"
+    assert dossier.authority_profile.responsibilities
+    assert dossier.capability_seed_profile.skill_seeds
+
+
+def test_char_c_dossier_is_out_of_scope_player_shell_boundary() -> None:
+    # char_c remains a player shell in this slice, so this plan does not require
+    # or validate a full authored dossier for it.
+    assert not (DOSSIER_DIR / "char_c.yaml").exists()

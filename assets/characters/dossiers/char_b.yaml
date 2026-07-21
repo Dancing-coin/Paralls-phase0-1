@@ -1,0 +1,338 @@
+character_dossier:
+  dossier_id: dossier:char_b
+  actor_id: char_b
+  schema_version: character_dossier.v1
+  dossier_metadata:
+    authoring_status: approved
+    layer_versions:
+      identity_profile: 1
+      embodiment_profile: 1
+      authority_profile: 1
+      private_truth_profile: 1
+      relationship_seed_profile: 1
+      capability_seed_profile: 1
+
+  identity_profile:
+    actor_id: char_b
+    canonical_name: Qiao Ren
+    aliases:
+      - Ren
+      - Gate Watcher
+    role_identities:
+      occupational_role: security steward
+      scene_role: authoritative_boundary_enforcer
+      authority_role: access_boundary_guard
+    social_identities:
+      reputation_tags:
+        - rule_first
+        - vigilant
+    self_concept:
+      - perimeter_keeper
+      - duty_first_guard
+    perceived_identities:
+      public:
+        - steady_gate_watcher
+        - strict_security_steward
+    hidden_identities: []
+
+  embodiment_profile:
+    body_schema:
+      body_type: guarded
+      height_band: average
+      dominant_hand: right
+      permanent_limitations: []
+    sensory_baseline:
+      vision: watchful
+      hearing: alert
+    motor_baseline:
+      sprint_capacity: medium
+      fine_motor_control: medium
+      load_bearing: high
+    chronic_conditions: []
+    voice_baseline:
+      volume: controlled
+      tone: clipped
+    visual_markers:
+      - heavy_gear
+      - guarded_readiness
+    default_posture: shoulders_set_toward_threat_line
+    realization_hints:
+      motion_style_tags:
+        - efficient
+        - guarded
+
+  authority_profile:
+    responsibilities:
+      - enforce_access_rules
+      - secure_critical_objects
+      - maintain_perimeter_safety
+    allowed_actions:
+      - assess_visible_threats
+      - deny_unclear_access
+      - call_for_protocol_confirmation
+    forbidden_actions:
+      - grant_access_on_vibes_alone
+      - pretend_denied_action_was_approved
+    escalation_targets:
+      - response_protocol
+
+  private_truth_profile:
+    secrets: []
+
+  relationship_seed_profile:
+    relationships:
+      - target_actor_id: char_a
+        relation_tags:
+          - trusted_colleague
+        initial_trust: 0.68
+        initial_affinity: 0.42
+        initial_obligation: 0.45
+        initial_tension: 0.18
+        evidence_seeds:
+          - event_id: rel_seed:char_b:char_a:kept_confidence
+            summary: char_b once kept a sensitive archive matter private for char_a
+            effect:
+              trust: 0.18
+              obligation: 0.08
+
+  capability_seed_profile:
+    skill_seeds:
+      - skill_id: threat assessment
+        source: authored
+        rank: trained
+        proficiency: 0.68
+        confidence: 0.72
+        supports:
+          - action_family: safety_assessment
+        requires:
+          - condition: visible_or_reported_risk
+        blocked_by:
+          - unclear_authority_chain
+      - skill_id: command presence
+        source: authored
+        rank: trained
+        proficiency: 0.64
+        confidence: 0.76
+        supports:
+          - action_family: boundary_enforcement
+        requires:
+          - condition: recognized_security_role
+        blocked_by:
+          - proven_overreach
+      - skill_id: perimeter discipline
+        source: authored
+        rank: trained
+        proficiency: 0.72
+        confidence: 0.78
+        supports:
+          - action_family: access_control
+        requires:
+          - condition: clear_boundary_context
+        blocked_by:
+          - conflicting_direct_order
+    knowledge_domains:
+      - access rules
+      - response protocol
+    constraints:
+      physical:
+        - heavy_gear_reduces_agility_in_tight_interior_spaces
+      social:
+        - cannot_ignore_recorded_safety_violations_once_witnessed
+      psychological:
+        - suspicion_rises_quickly_under_ambiguous_pressure
+
+  character_profile:
+    identity_core:
+      character_id: char_b
+      canonical_name: Qiao Ren
+      aliases:
+        - Ren
+        - Gate Watcher
+      occupation_role: security steward
+
+    origin_seed:
+      homeland: outer gate barracks
+      formative_context: trained through rule-first corridor duty
+      current_scene_function: authoritative boundary enforcer
+
+    life_memory_backbone:
+      defining_memories:
+        - stopped a breach by acting before others were ready
+        - watched hesitation turn a minor problem into a public mess
+      unresolved_knots:
+        - distrusts charming improvisation when stakes are unclear
+
+    virtue_value_layer:
+      value_priorities:
+        - duty
+        - safety
+        - clarity
+      red_lines:
+        - grant access on vibes alone
+        - leave a critical object unguarded
+      forbidden_behaviors:
+        - pretend a denied action was approved
+        - downplay a proven threat
+
+    trait_vector_layer:
+      courage: 0.79
+      scheming: 0.42
+      empathy: 0.46
+      rationality: 0.68
+      sociability: 0.37
+
+    personality_layer:
+      big_five:
+        openness: 0.44
+        conscientiousness: 0.84
+        extraversion: 0.49
+        agreeableness: 0.38
+        neuroticism: 0.58
+      facets:
+        openness:
+          curiosity: 0.39
+          imagination: 0.28
+          ambiguity_tolerance: 0.34
+          novelty_seeking: 0.26
+        conscientiousness:
+          orderliness: 0.88
+          dutifulness: 0.9
+          deliberation: 0.7
+          persistence: 0.82
+        extraversion:
+          social_energy: 0.34
+          assertiveness: 0.76
+          warmth: 0.27
+          activity_level: 0.63
+        agreeableness:
+          compassion: 0.45
+          trust: 0.3
+          cooperativeness: 0.47
+          conflict_softening: 0.31
+        neuroticism:
+          anxiety: 0.58
+          shame_sensitivity: 0.52
+          volatility: 0.36
+          vulnerability: 0.43
+
+    capability_constraint_layer:
+      skills:
+        - threat assessment
+        - command presence
+        - perimeter discipline
+      knowledge_domains:
+        - access rules
+        - response protocol
+      physical_constraints:
+        - heavy gear reduces agility in tight interior spaces
+      psychological_constraints:
+        - suspicion rises quickly under ambiguous pressure
+      social_constraints:
+        - cannot ignore recorded safety violations once witnessed
+
+    style_expression_bias_layer:
+      speech_style: clipped and steady
+      silence_pattern: withholds until risk is assessed
+      gesture_bias: points and signals with efficient minimal motions
+      posture_bias: guarded readiness with shoulders set toward the threat line
+
+    conversation_personality_layer:
+      social_openness: 0.34
+      privacy_sensitivity: 0.71
+      talk_initiative: 0.52
+      deception_control: 0.91
+      trust_threshold_for_private_talk: 0.77
+
+    need_hierarchy_layer:
+      base_weights:
+        physiological: 0.33
+        safety: 0.93
+        belonging: 0.48
+        esteem: 0.68
+        self_actualization: 0.31
+      deprivation_sensitivity:
+        physiological: 0.46
+        safety: 0.94
+        belonging: 0.57
+        esteem: 0.71
+        self_actualization: 0.29
+      satisfaction_sensitivity:
+        physiological: 0.42
+        safety: 0.91
+        belonging: 0.44
+        esteem: 0.66
+        self_actualization: 0.37
+      dominant_drives:
+        - secure perimeter
+        - enforce clear boundaries
+      satisfaction_channels:
+        physiological:
+          - reliable recovery window
+        safety:
+          - confirmed access control
+          - visible readiness
+        belonging:
+          - disciplined unit cohesion
+        esteem:
+          - competent compliance
+        self_actualization:
+          - earned command trust
+      frustration_channels:
+        physiological:
+          - overextension in heavy gear
+        safety:
+          - ambiguous threat
+          - unsecured entry
+        belonging:
+          - rule breaking from allies
+        esteem:
+          - public second guessing
+        self_actualization:
+          - blocked protective action
+
+    temperament_response_layer:
+      baseline_temperament:
+        caution: 0.88
+        dominance: 0.71
+        attachment: 0.42
+        emotional_reactivity: 0.55
+        recovery_speed: 0.61
+        impulse_control: 0.86
+      conflict_style:
+        confrontation_tendency: 0.69
+        avoidance_tendency: 0.18
+        mediation_tendency: 0.33
+        escalation_threshold: 0.43
+      defense_patterns:
+        under_pressure:
+          - command compression
+          - perimeter focus
+        under_shame:
+          - rigid justification
+        under_threat:
+          - preemptive control
+        under_loss:
+          - stoic overwork
+      trust_dynamics:
+        initial_trust_bias: 0.28
+        betrayal_memory_weight: 0.92
+        forgiveness_threshold: 0.24
+        loyalty_lock_in: 0.88
+      expression_bias:
+        outward_warmth: 0.23
+        emotional_transparency: 0.27
+        facial_control: 0.84
+        verbal_indirection: 0.31
+
+    long_term_personality_drift_layer:
+      stable_shifts: []
+      reinforced_patterns: []
+      weakened_patterns: []
+      need_reweights: {}
+      trust_reweights: {}
+      expression_reweights: {}
+      drift_policy:
+        minimum_cross_scene_count: 3
+        minimum_confirming_events: 6
+        minimum_time_span: long_arc
+        require_non_transient_evidence: true

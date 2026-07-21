@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" path="res://assets/artpacks/apartment_test/source/npc_ch22_animated.glb" id="1_model"]
+
+[node name="NpcCh22Skin" type="Node3D"]
+
+[node name="Model" parent="." instance=ExtResource("1_model")]

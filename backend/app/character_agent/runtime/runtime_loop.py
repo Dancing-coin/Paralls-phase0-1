@@ -44,6 +44,8 @@ from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
 from app.character_agent.planning.l3_planner import CharacterAgentL3Service
 from app.character_agent.execution.l4_adapter import CharacterAgentL4Adapter
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
+from app.character_agent.skills.catalog import create_runtime_skill_registry
+from app.character_agent.skills.service import CharacterSkillService
 from app.character_agent.storage.session_store import CharacterAgentSessionStore
 from app.character_agent.storage.memory_store import CharacterAgentMemoryStore
 from app.character_agent.storage.dynamic_state_store import CharacterDynamicStateStore
@@ -66,6 +68,7 @@ class CharacterAgentRuntime:
     AWAY_CONSERVATIVE_ALLOWED_COMMANDS = {"look_at", "observe", "speak"}
     _RECENT_HISTORY_LIMIT = 4
     _PROFILE_DIRECTORY = Path(__file__).resolve().parents[4] / "assets" / "characters" / "profiles"
+    _SOCIAL_ENGAGEMENT_CHANNELS = {"auditory", "dialogue", "social", "speech", "verbal"}
 
     def __init__(self, storage_root: str | Path | None = None) -> None:
         self._profile_registry = CharacterProfileRegistry.from_directory(self._PROFILE_DIRECTORY)
@@ -75,6 +78,7 @@ class CharacterAgentRuntime:
         self._l3 = CharacterAgentL3Service()
         self._l4 = CharacterAgentL4Adapter()
         self._l4_executor = CharacterAgentL4Executor()
+        self._skill_service = CharacterSkillService(registry=create_runtime_skill_registry())
         self._mind_frame_builder = CharacterMindFrameBuilder()
         self._mind_writeback_policy = MindWritebackPolicyRouter()
         self._observatory_projection = CharacterAgentDebugProjection()
@@ -107,6 +111,7 @@ class CharacterAgentRuntime:
         self._scheduling_round_started_at = 0
         self._last_scheduling_tick_ts = 0
         self._last_emitted_scheduling_round_id = 0
+        self._last_skill_affordance_summaries: dict[str, dict[str, object]] = {}
         self._session_store = CharacterAgentSessionStore(storage_root=storage_root)
         self._memory_store = CharacterAgentMemoryStore()
         self._dynamic_state_store = CharacterDynamicStateStore()
@@ -172,7 +177,7 @@ class CharacterAgentRuntime:
             detail=event.model_dump(),
         )
         effective_profile = self._effective_profile_payload(event.actor_id)
-        need_tension_event = self._need_tension_event_payload(event)
+        need_tension_event = self._need_tension_event_payload(event, snapshot)
         need_delta = self._need_tension_engine.evaluate(
             effective_profile=effective_profile,
             event=need_tension_event,
@@ -951,6 +956,12 @@ class CharacterAgentRuntime:
     def supports_actor(self, actor_id: str) -> bool:
         return actor_id in self._supported_actor_ids
 
+    def record_character_perceived_event_without_cognition(self, event: CharacterPerceivedEvent) -> None:
+        if not self.supports_actor(event.actor_id):
+            return
+        self._record_character_perceived_event(event)
+        self._record_relational_belief_from_perceived_event(event)
+
     def get_private_snapshot(self, actor_id: str):
         return self._l1.get_snapshot(actor_id)
 
@@ -1078,6 +1089,7 @@ class CharacterAgentRuntime:
             goal_state_history=self.get_goal_state_history(actor_id),
             unresolved_tensions=self.get_unresolved_tensions(actor_id),
             supervision_state=self.get_supervision_state(actor_id),
+            skill_affordance_summary=self._skill_affordance_summary_payload(actor_id),
         )
         return frame.model_dump()
 
@@ -1782,6 +1794,46 @@ class CharacterAgentRuntime:
             payload=event_payload,
         )
         self._memory_store.write_event(stored)
+        self._record_shadow_skill_affordance_summary(
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+        )
+
+    def _record_shadow_skill_affordance_summary(
+        self,
+        *,
+        actor_id: str,
+        producer_ts: int,
+    ) -> None:
+        summary = self._build_skill_affordance_summary(actor_id)
+        self._last_skill_affordance_summaries[actor_id] = summary
+        snapshot = self._get_snapshot_for_observatory(actor_id, producer_ts)
+        self._queue_observatory_stage_event(
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+            stage="skill_affordance_shadow",
+            summary="skill affordance summary observed",
+            focus_target=self._snapshot_focus_target(snapshot),
+            intent_label="shadow_only",
+            participants=self._participants_for_actor(actor_id, self._snapshot_focus_target(snapshot)),
+            detail={"skill_affordance_summary": summary},
+        )
+
+    def _skill_affordance_summary_payload(self, actor_id: str) -> dict[str, object]:
+        cached = self._last_skill_affordance_summaries.get(actor_id)
+        if cached is not None:
+            return dict(cached)
+        return self._build_skill_affordance_summary(actor_id)
+
+    def _build_skill_affordance_summary(self, actor_id: str) -> dict[str, object]:
+        skill_states = self._skill_service.initial_skill_states(
+            actor_id=actor_id,
+            profile=self._profile_payload(actor_id),
+        )
+        return self._skill_service.build_affordance_summary(
+            actor_id=actor_id,
+            skill_states=skill_states,
+        ).model_dump()
 
     def _record_need_tension_state_event(
         self,
@@ -2946,9 +2998,13 @@ class CharacterAgentRuntime:
     def _effective_profile_payload(self, actor_id: str) -> dict[str, object]:
         return resolve_effective_profile(self._profile_payload(actor_id))
 
-    def _need_tension_event_payload(self, event: CharacterPerceivedEvent) -> dict[str, object]:
+    def _need_tension_event_payload(
+        self,
+        event: CharacterPerceivedEvent,
+        snapshot: CharacterPrivateWorldSnapshot,
+    ) -> dict[str, object]:
         payload = event.model_dump()
-        payload["event_tags"] = self._derived_need_tension_event_tags(event)
+        payload["event_tags"] = self._derived_need_tension_event_tags(event, snapshot)
         return payload
 
     def _need_tension_delta_payload(self, need_delta) -> dict[str, object]:
@@ -2961,21 +3017,28 @@ class CharacterAgentRuntime:
             payload.setdefault("motivation_stack", [need_key for need_key, _ in ranked_needs])
         return payload
 
-    def _derived_need_tension_event_tags(self, event: CharacterPerceivedEvent) -> list[str]:
-        tag_sources = (
-            event.perceived_summary,
-            event.target_ref,
-            event.target_environment_id,
-            event.target_object_id,
-            event.target_actor_id,
-        )
-        normalized = " ".join(str(value).lower() for value in tag_sources if str(value).strip() != "")
+    def _derived_need_tension_event_tags(
+        self,
+        event: CharacterPerceivedEvent,
+        snapshot: CharacterPrivateWorldSnapshot,
+    ) -> list[str]:
         tags: list[str] = []
-        if "spatial_uncertainty" in normalized or "unstable doorway" in normalized:
+        if event.clarity_score < 0.85 or event.certainty_score < 0.85:
             tags.append("spatial_uncertainty")
-        if "public_dismissal" in normalized or "public dismissal" in normalized:
-            tags.append("public_dismissal")
-        return tags
+        if snapshot.recent_constraint_results:
+            tags.append("goal_blocked")
+        if any(self._is_siming_pressure_marker(signal) for signal in snapshot.unresolved_signals):
+            tags.append("supervision_pressure")
+        if event.percept_channel in self._SOCIAL_ENGAGEMENT_CHANNELS and (
+            event.source_actor_id or event.target_actor_id
+        ):
+            tags.append("social_engagement")
+        return list(dict.fromkeys(tags))
+
+    @staticmethod
+    def _is_siming_pressure_marker(signal: object) -> bool:
+        marker = str(signal)
+        return marker == "siming_pressure" or marker.startswith("siming_pressure:")
 
     def _ranked_need_pressures(self, payload: dict[str, object]) -> list[tuple[str, float]]:
         need_pressures: list[tuple[str, float]] = []

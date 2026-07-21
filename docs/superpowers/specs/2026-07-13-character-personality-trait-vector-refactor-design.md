@@ -1,6 +1,6 @@
 # Character Personality Trait Vector Refactor Design
 
-Status: `proposed`
+Status: `implemented-and-verified`
 
 Date: `2026-07-13`
 
@@ -415,4 +415,3 @@ Migration should be staged:
 - Later behavior-consuming phases include regression tests proving duplicate
   raw/projection scoring does not occur.
 - Documentation explains that MBTI is not the numeric runtime basis.
-

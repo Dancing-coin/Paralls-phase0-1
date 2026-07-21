@@ -4,6 +4,7 @@ from app.character_agent.models.working_memory_state import CharacterWorkingMemo
 from app.character_agent.gateway.output_validator import CharacterStructuredOutputValidator
 from app.character_agent.gateway.prompt_policy import CharacterPromptPolicy
 from app.character_agent.gateway.model_router import CharacterModelRouter
+from app.config import settings
 
 
 class _RecordingProvider:
@@ -29,7 +30,8 @@ def _run_local_task(
     )
 
 
-def test_model_gateway_prepares_structured_run_request() -> None:
+def test_model_gateway_prepares_structured_run_request(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "character_model_provider_kind", "qwen")
     gateway = CharacterModelGateway()
 
     request = gateway.prepare_run_request(
@@ -61,10 +63,10 @@ def test_model_gateway_prepares_structured_run_request() -> None:
 
     assert request["task_kind"] == "l2_reasoning"
     assert request["route"]["route_mode"] == "online_default"
-    assert request["route"]["provider_kind"] == "deepseek"
+    assert request["route"]["provider_kind"] == "qwen"
     assert request["context"]["actor_id"] == "char_a"
     assert request["policy"]["allow_model_call"] is True
-    assert request["policy"]["provider_kind"] == "deepseek"
+    assert request["policy"]["provider_kind"] == "qwen"
     assert "last_siming_catalyst=watch obj_letter" in str(request["prompt"]["user_instruction"])
     assert "vigilance_level=elevated" in str(request["prompt"]["user_instruction"])
     assert "body_state_hints_count=1" in str(request["prompt"]["user_instruction"])
@@ -1026,6 +1028,40 @@ def test_prompt_policy_and_output_validator_expose_task_specific_contracts() -> 
     assert "active_goal_frame" in prompt["required_output_keys"]
     assert output["selected_intent"] == "observe"
     assert output["active_goal_frame"]["primary_goal"] == "preserve_optionality"
+
+
+def test_prompt_policy_uses_personality_projection_as_primary_personality_surface() -> None:
+    prompt_policy = CharacterPromptPolicy()
+
+    prompt = prompt_policy.build_prompt(
+        task_kind="l2_reasoning",
+        context={
+            "actor_id": "char_a",
+            "control_mode": "agent_full_auto",
+            "profile": {
+                "identity_core": {
+                    "character_id": "char_a",
+                    "canonical_name": "Lin Yue",
+                    "occupation_role": "archive attendant",
+                },
+                "trait_vector_layer": {"empathy": 0.82, "rationality": 0.74},
+                "personality_projection": {
+                    "conflict_deescalation_bias": 0.82,
+                    "procedural_discipline": 0.79,
+                },
+            },
+            "snapshot": {},
+            "memory": {"working_memory": [], "episodic_memories": [], "relational_memories": []},
+        },
+        route={"route_mode": "online_default", "provider_kind": "online"},
+    )
+
+    user_instruction = str(prompt["user_instruction"])
+    summary_segments = user_instruction.split("; ")
+
+    assert any(segment.startswith("personality_projection=") for segment in summary_segments)
+    assert any(segment.startswith("legacy_traits=") for segment in summary_segments)
+    assert not any(segment.startswith("traits=") for segment in summary_segments)
 
 
 def test_prompt_policy_includes_supervision_and_unresolved_tensions_in_user_instruction() -> None:

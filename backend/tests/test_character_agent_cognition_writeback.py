@@ -214,8 +214,8 @@ def test_runtime_cognition_writeback_merges_dynamic_state_without_dropping_exist
         source_candidate_event_id="auditory_fact:502:char_a",
         source_actor_id="char_b",
         target_actor_id="char_a",
-        clarity_score=0.82,
-        certainty_score=0.63,
+        clarity_score=0.96,
+        certainty_score=0.94,
     )
 
     runtime.ingest_character_perceived_event(event)
