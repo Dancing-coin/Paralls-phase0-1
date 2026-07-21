@@ -30,6 +30,7 @@ python scripts/verification/harness.py --profile embodied-skeletal-debug-replay
 python scripts/verification/harness.py --profile vla-provider-backend
 python scripts/verification/harness.py --profile non-runtime-production-pipeline
 python scripts/verification/harness.py --profile perception-input-alignment
+python scripts/verification/harness.py --profile siming-heavenly-graph-foundation
 python scripts/verification/harness.py --profile all
 ```
 
@@ -243,17 +244,16 @@ Output:
 
 ### `change-lifecycle`
 
-Static workflow checks for the OpenSpec, Superpowers, Harness, Goal, and native subagent development chain. Use this when changing `AGENTS.md`, workflow docs, Superpowers plan/spec policy, Goal usage, native subagent routing, or reusable harness templates.
+Static workflow checks for the Design, Superpowers, Harness, Goal, and native subagent development chain. Use this when changing `AGENTS.md`, workflow docs, Superpowers plan/spec policy, Goal usage, native subagent routing, or reusable harness templates.
 
 Current mechanical invariants include:
 
 - `docs/ai-engineering-workflow.md` exists with matching design and implementation plan artifacts
 - `.harness/profiles/change-lifecycle.json` and `.harness/rules/change-lifecycle-rules.json` are registered
-- OpenSpec/design, Superpowers, Harness, and Goal handoff rules are documented
+- Design, Superpowers, Harness, and Goal handoff rules are documented
 - Goal records active task continuity while `.harness` records durable acceptance evidence
 - templates require the relevant workflow gates before execution and handoff
 - `AGENTS.md` routes large work through Goal, Superpowers, Harness, and native subagents
-- archived OpenSpec changes keep required lifecycle files, completed tasks, delta specs, and a Superpowers/Harness evidence link
 
 Output:
 
@@ -615,9 +615,30 @@ Output:
 - `.harness/verification/perception-input-alignment-report.md`
 - `.harness/verification/perception-input-alignment-matrix-trace.json`
 
+### `siming-heavenly-graph-foundation`
+
+Backend verification for the typed Siming heavenly graph storage foundation.
+
+Current proof includes:
+
+- bi-temporal node and relation revision queries
+- strict world/session/story-branch isolation
+- immutable provenance and sequential revisions
+- atomic relation endpoint validation
+- idempotency replay and conflict detection
+- immutable deterministic checkpoint snapshots
+
+This profile does not prove `SimingRuntime.tick(...)` integration, actor five-pool reads, story-node orchestration, resource staging, AdaptiveBridgeNode behavior, or a production graph database.
+
+Output:
+
+- `.harness/verification/siming-heavenly-graph-foundation-report.json`
+- `.harness/verification/siming-heavenly-graph-foundation-report.md`
+- `.harness/verification/siming-heavenly-graph-foundation-trace.json`
+
 ### `all`
 
-Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, `phase1-slice`, `l1-world-fact-runtime`, `mainline-unified-runtime`, `model-provider-readiness`, `godot-sampling-production-grade-providers`, `embodied-skeletal-debug-replay`, `vla-provider-backend`, `actor-scene-knowledge-lifecycle`, `siming-global-situation-layer`, `interaction-orchestration-service`, `esm-physical-channel-world-actuation`, `non-runtime-production-pipeline`, and `perception-input-alignment` in order. It stops on the first failed profile.
+Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, `phase1-slice`, `l1-world-fact-runtime`, `mainline-unified-runtime`, `model-provider-readiness`, `godot-sampling-production-grade-providers`, `embodied-skeletal-debug-replay`, `vla-provider-backend`, `actor-scene-knowledge-lifecycle`, `siming-global-situation-layer`, `interaction-orchestration-service`, `esm-physical-channel-world-actuation`, `non-runtime-production-pipeline`, `perception-input-alignment`, and `siming-heavenly-graph-foundation` in order. It stops on the first failed profile.
 
 `siming-backend-chain` and `script-evolution-proof` are excluded from `all` because they require live model-provider credentials for their default proof path.
 

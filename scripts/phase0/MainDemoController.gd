@@ -21,7 +21,9 @@ const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
 @export var focus_autotest_enabled := false
 @export var autotest_dialogue_delay := 0.25
 @export var autotest_interact_delay := 0.6
-@export var autotest_failed_interact_timeout_ms := 3000
+@export var autotest_request_timeout_ms := 10000
+@export var autotest_transport_quiet_window_ms := 500
+@export var autotest_transport_quiet_timeout_ms := 10000
 @export var autotest_final_position := Vector3(0.0, 0.5, 20.0)
 @export var autotest_interact_position := Vector3(0.0, 0.5, 0.6)
 @export var autotest_failed_interact_position := Vector3(0.0, 0.5, 16.0)
@@ -70,9 +72,15 @@ var current_privacy_band := "public"
 var spatial_zone_emitted := false
 var suspend_near_object_visual_fact := false
 var suspend_spatial_access_fact := false
-var pending_failed_move_ack_seen := false
-var pending_failed_interaction_result_seen := false
-var pending_failed_interaction_ack_seen := false
+var acknowledged_request_ids: Dictionary = {}
+var pending_success_interaction_correlation_id := ""
+var matched_success_interaction_result := false
+var matched_success_object_result := false
+var matched_success_environment_result := false
+var pending_failed_interaction_correlation_id := ""
+var matched_failed_interaction_result := false
+var last_backend_activity_ms := 0
+var autotest_transport_quiescent := false
 var pending_backend_reconnect := false
 var backend_connected_once := false
 var pending_dialogue_request: Dictionary = {}
@@ -254,8 +262,15 @@ func _connect_backend() -> void:
 	if bridge == null:
 		_bus_log("phase0_backend_bridge_missing")
 		return
-	var err: int = bridge.connect_to_backend(backend_url)
+	var connection_url := _resolve_backend_url()
+	var err: int = bridge.connect_to_backend(connection_url)
 	_bus_log("phase0_backend_connect_err:%s" % err)
+
+func _resolve_backend_url() -> String:
+	if not autotest_enabled or focus_autotest_enabled:
+		return backend_url
+	var separator: String = "&" if backend_url.contains("?") else "?"
+	return "%s%sstream_mode=runtime_only" % [backend_url, separator]
 
 func submit_dialogue(content: String = "phase0 manual test") -> void:
 	var target_actor_id := _resolve_focused_actor_id()
@@ -308,38 +323,70 @@ func _on_backend_disconnected(_code: int = 0) -> void:
 	_request_backend_reconnect()
 
 func _on_backend_ack_received(payload: Dictionary) -> void:
-	if str(payload.get("route", "")) == "local_motion":
-		pending_failed_move_ack_seen = true
-	if str(payload.get("route", "")) == "esm_service":
-		pending_failed_interaction_ack_seen = true
+	last_backend_activity_ms = Time.get_ticks_msec()
+	var request_id := str(payload.get("request_id", ""))
+	if request_id != "":
+		acknowledged_request_ids[request_id] = payload.duplicate(true)
 	_bus_log("phase0_ack:%s" % JSON.stringify(payload))
 
 func _on_world_result_received(payload: Dictionary) -> void:
+	last_backend_activity_ms = Time.get_ticks_msec()
 	var result_type := str(payload.get("result_type", ""))
 	var result_id := str(payload.get("result_id", ""))
-	if result_type == "constraint_state_result":
-		pending_failed_interaction_result_seen = true
-	if result_type == "object_state_result" and str(payload.get("target_object_id", "")) == "obj_letter":
-		if str(payload.get("current_state", "")) == "visible":
-			if evidence_projection_emitter and evidence_projection_emitter.has_method("emit_visual_evidence_projection"):
-				evidence_projection_emitter.emit_visual_evidence_projection("obj_letter")
-			if tactile_fact_emitter and tactile_fact_emitter.has_method("emit_contact_fact"):
-				tactile_fact_emitter.emit_contact_fact("", "obj_letter", "light")
-	elif result_type == "environment_state_result" and str(payload.get("target_environment_id", "")) == "env_lamp":
-		if str(payload.get("current_state", "")) == "alerted":
-			if thermal_fact_emitter and thermal_fact_emitter.has_method("emit_thermal_proximity_fact"):
-				thermal_fact_emitter.emit_thermal_proximity_fact("env_lamp", "warm")
-			if olfactory_fact_emitter and olfactory_fact_emitter.has_method("emit_odor_state_fact"):
-				olfactory_fact_emitter.emit_odor_state_fact("env_lamp", "noticeable")
+	var correlation_id := str(payload.get("correlation_id", ""))
+	if (
+		result_type == "action_resolution_result"
+		and pending_success_interaction_correlation_id != ""
+		and correlation_id == pending_success_interaction_correlation_id
+		and str(payload.get("settlement_status", "")) == "accepted"
+	):
+		matched_success_interaction_result = true
+	if (
+		result_type == "object_state_result"
+		and pending_success_interaction_correlation_id != ""
+		and correlation_id == pending_success_interaction_correlation_id
+		and str(payload.get("target_object_id", "")) == "obj_letter"
+		and str(payload.get("current_state", "")) == "visible"
+	):
+		matched_success_object_result = true
+	if (
+		result_type == "environment_state_result"
+		and pending_success_interaction_correlation_id != ""
+		and correlation_id == pending_success_interaction_correlation_id
+		and str(payload.get("target_environment_id", "")) == "env_lamp"
+		and str(payload.get("current_state", "")) == "alerted"
+	):
+		matched_success_environment_result = true
+	if (
+		result_type == "constraint_state_result"
+		and pending_failed_interaction_correlation_id != ""
+		and str(payload.get("correlation_id", "")) == pending_failed_interaction_correlation_id
+	):
+		matched_failed_interaction_result = true
+	if not autotest_transport_quiescent:
+		if result_type == "object_state_result" and str(payload.get("target_object_id", "")) == "obj_letter":
+			if str(payload.get("current_state", "")) == "visible":
+				if evidence_projection_emitter and evidence_projection_emitter.has_method("emit_visual_evidence_projection"):
+					evidence_projection_emitter.emit_visual_evidence_projection("obj_letter")
+				if tactile_fact_emitter and tactile_fact_emitter.has_method("emit_contact_fact"):
+					tactile_fact_emitter.emit_contact_fact("", "obj_letter", "light")
+		elif result_type == "environment_state_result" and str(payload.get("target_environment_id", "")) == "env_lamp":
+			if str(payload.get("current_state", "")) == "alerted":
+				if thermal_fact_emitter and thermal_fact_emitter.has_method("emit_thermal_proximity_fact"):
+					thermal_fact_emitter.emit_thermal_proximity_fact("env_lamp", "warm")
+				if olfactory_fact_emitter and olfactory_fact_emitter.has_method("emit_odor_state_fact"):
+					olfactory_fact_emitter.emit_odor_state_fact("env_lamp", "noticeable")
 	if result_id != "":
 		_bus_log("phase0_world_result_seen:%s:%s" % [result_type, result_id])
 
 func _on_debug_event_logged(message: String) -> void:
+	if message.begins_with("backend_message_"):
+		last_backend_activity_ms = Time.get_ticks_msec()
 	if message.contains("focus_state_applied:char_a") or message.contains("focus_attention:char_a"):
 		focus_response_seen = true
 
 func _process(_delta: float) -> void:
-	if autotest_shutdown_in_progress:
+	if autotest_shutdown_in_progress or autotest_transport_quiescent:
 		return
 	if focus_override_active:
 		if not suspend_spatial_access_fact:
@@ -365,6 +412,9 @@ func _unhandled_input(event: InputEvent) -> void:
 func _run_autotest_inputs() -> void:
 	_bus_log("phase0_autotest_begin")
 	focus_override_active = true
+	_set_autotest_actor_local_perception_enabled(false)
+	suspend_near_object_visual_fact = true
+	suspend_spatial_access_fact = true
 	_set_debug_overlay_visible(false)
 	await _probe_floor_coverage()
 	_bus_log("phase0_autotest_stage:floor_coverage_complete")
@@ -385,52 +435,110 @@ func _run_autotest_inputs() -> void:
 	_orient_player_toward(interactive_object.global_position)
 	_move_player_to_interact_position()
 	_force_focus_target(interactive_object)
-	_emit_move_intent_request(autotest_interact_position, "locomotion")
-	await get_tree().create_timer(autotest_interact_delay).timeout
-	player_input_bridge.trigger_interaction()
+	if not (await _drain_backend_transport("pre_interaction_barrier_ack_timeout")):
+		return
+	var near_move_request := _emit_move_intent_request(autotest_interact_position, "locomotion")
+	if not (await _wait_for_request_ack(str(near_move_request.get("request_id", "")), autotest_request_timeout_ms)):
+		await _fail_autotest("near_move_ack_timeout", near_move_request)
+		return
+	var success_interaction_request := _emit_interaction_request("obj_letter", "inspect")
+	matched_success_interaction_result = false
+	matched_success_object_result = false
+	matched_success_environment_result = false
+	pending_success_interaction_correlation_id = "interact:%s" % success_interaction_request.get("producer_ts", 0)
 	_bus_log("phase0_autotest_stage:success_interaction_submitted")
+	if not (await _wait_for_request_ack(str(success_interaction_request.get("request_id", "")), autotest_request_timeout_ms)):
+		await _fail_autotest("success_interaction_ack_timeout", success_interaction_request)
+		return
+	if not (await _wait_for_successful_interaction_result(autotest_request_timeout_ms)):
+		await _fail_autotest("success_interaction_result_timeout", success_interaction_request)
+		return
 	_move_player_to_demo_vantage()
-	_emit_move_intent_request(autotest_final_position, "locomotion")
-	await get_tree().create_timer(autotest_interact_delay).timeout
-	pending_failed_move_ack_seen = false
-	_emit_move_intent_request(autotest_failed_interact_position, "locomotion")
-	await _wait_for_failed_move_ack(1500)
-	await get_tree().create_timer(autotest_interact_delay).timeout
-	_orient_player_toward(interactive_object.global_position)
+	autotest_transport_quiescent = true
 	suspend_near_object_visual_fact = true
 	suspend_spatial_access_fact = true
-	pending_failed_interaction_ack_seen = false
-	pending_failed_interaction_result_seen = false
+	if not (await _drain_backend_transport("post_success_barrier_ack_timeout")):
+		return
+	var far_move_request := _emit_move_intent_request(autotest_failed_interact_position, "locomotion")
+	if not (await _wait_for_request_ack(str(far_move_request.get("request_id", "")), autotest_request_timeout_ms)):
+		await _fail_autotest("far_move_ack_timeout", far_move_request)
+		return
+	_orient_player_toward(interactive_object.global_position)
 	_bus_log("phase0_autotest_failed_interaction_attempt")
-	_emit_interaction_request_without_near_object_fact("obj_letter", "inspect")
-	await _wait_for_failed_interaction_ack(1000)
-	await _wait_for_failed_interaction_result(autotest_failed_interact_timeout_ms)
+	var failed_interaction_request := _emit_interaction_request_without_near_object_fact("obj_letter", "inspect")
+	matched_failed_interaction_result = false
+	pending_failed_interaction_correlation_id = "interact:%s" % failed_interaction_request.get("producer_ts", 0)
+	if not (await _wait_for_request_ack(str(failed_interaction_request.get("request_id", "")), autotest_request_timeout_ms)):
+		await _fail_autotest("failed_interaction_ack_timeout", failed_interaction_request)
+		return
+	if not (await _wait_for_failed_interaction_result(autotest_request_timeout_ms)):
+		await _fail_autotest("failed_interaction_result_timeout", failed_interaction_request)
+		return
 	_bus_log("phase0_autotest_stage:failed_interaction_resolved")
-	suspend_near_object_visual_fact = false
-	suspend_spatial_access_fact = false
 	await _capture_autotest_screenshot()
 	await _begin_autotest_shutdown("phase0_autotest_complete")
 
-func _wait_for_failed_interaction_result(timeout_ms: int) -> void:
-	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
-	while Time.get_ticks_msec() < deadline:
-		if pending_failed_interaction_result_seen:
-			return
-		await get_tree().process_frame
+func _set_autotest_actor_local_perception_enabled(is_enabled: bool) -> void:
+	for replica in [character_a, character_b, get_node_or_null("PlayerCharacter/CharacterReplica")]:
+		if replica != null and replica.has_method("set_actor_local_perception_enabled"):
+			replica.set_actor_local_perception_enabled(is_enabled)
 
-func _wait_for_failed_interaction_ack(timeout_ms: int) -> void:
-	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
-	while Time.get_ticks_msec() < deadline:
-		if pending_failed_interaction_ack_seen:
-			return
-		await get_tree().process_frame
+func _emit_transport_barrier_request() -> Dictionary:
+	var bridge := _get_bridge()
+	if bridge == null or not bridge.has_method("send_transport_barrier"):
+		return {}
+	return bridge.send_transport_barrier()
 
-func _wait_for_failed_move_ack(timeout_ms: int) -> void:
+func _drain_backend_transport(barrier_failure_stage: String) -> bool:
+	var barrier_request := _emit_transport_barrier_request()
+	if not (await _wait_for_request_ack(str(barrier_request.get("request_id", "")), autotest_request_timeout_ms)):
+		await _fail_autotest(barrier_failure_stage, barrier_request)
+		return false
+	last_backend_activity_ms = Time.get_ticks_msec()
+	if not (await _wait_for_backend_quiet(autotest_transport_quiet_window_ms, autotest_transport_quiet_timeout_ms)):
+		await _fail_autotest("transport_not_quiet", barrier_request)
+		return false
+	return true
+
+func _wait_for_request_ack(request_id: String, timeout_ms: int) -> bool:
+	if request_id == "":
+		return false
 	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
 	while Time.get_ticks_msec() < deadline:
-		if pending_failed_move_ack_seen:
-			return
+		if acknowledged_request_ids.has(request_id):
+			return true
 		await get_tree().process_frame
+	return false
+
+func _wait_for_successful_interaction_result(timeout_ms: int) -> bool:
+	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
+	while Time.get_ticks_msec() < deadline:
+		if matched_success_interaction_result and matched_success_object_result and matched_success_environment_result:
+			return true
+		await get_tree().process_frame
+	return false
+
+func _wait_for_failed_interaction_result(timeout_ms: int) -> bool:
+	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
+	while Time.get_ticks_msec() < deadline:
+		if matched_failed_interaction_result:
+			return true
+		await get_tree().process_frame
+	return false
+
+func _wait_for_backend_quiet(quiet_window_ms: int, timeout_ms: int) -> bool:
+	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
+	while Time.get_ticks_msec() < deadline:
+		if Time.get_ticks_msec() - last_backend_activity_ms >= max(quiet_window_ms, 1):
+			return true
+		await get_tree().process_frame
+	return false
+
+func _fail_autotest(stage: String, request: Dictionary) -> void:
+	var request_id := str(request.get("request_id", ""))
+	_bus_log("phase0_autotest_failure:%s:%s" % [stage, request_id])
+	await _capture_autotest_screenshot()
+	await _begin_autotest_shutdown("phase0_autotest_failed")
 
 func _probe_floor_coverage() -> void:
 	for checkpoint in FLOOR_CHECKPOINTS:
@@ -954,39 +1062,39 @@ func _emit_dialogue_request(target_actor_id: String, content: String) -> void:
 		return
 	bridge.send_envelope(intent_mapper.emit_dialogue_submit(target_actor_id, content))
 
-func _emit_interaction_request(target_object_id: String, interaction_type: String) -> void:
+func _emit_interaction_request(target_object_id: String, interaction_type: String) -> Dictionary:
 	var bridge := _get_bridge()
 	if bridge == null or intent_mapper == null:
-		return
+		return {}
 	if not intent_mapper.has_method("emit_interact_intent"):
-		return
+		return {}
 	_bus_log("phase0_interact_target:%s" % target_object_id)
 	_emit_near_object_visual_fact(target_object_id)
 	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
 		pending_interaction_request = {"target_object_id": target_object_id, "interaction_type": interaction_type}
 		_request_backend_reconnect()
-		return
-	bridge.send_envelope(intent_mapper.emit_interact_intent(target_object_id, interaction_type))
+		return {}
+	return _send_player_input_envelope(bridge, intent_mapper.emit_interact_intent(target_object_id, interaction_type))
 
-func _emit_interaction_request_without_near_object_fact(target_object_id: String, interaction_type: String) -> void:
+func _emit_interaction_request_without_near_object_fact(target_object_id: String, interaction_type: String) -> Dictionary:
 	var bridge := _get_bridge()
 	if bridge == null or intent_mapper == null:
-		return
+		return {}
 	if not intent_mapper.has_method("emit_interact_intent"):
-		return
+		return {}
 	_bus_log("phase0_interact_target:%s" % target_object_id)
 	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
 		pending_interaction_request = {"target_object_id": target_object_id, "interaction_type": interaction_type}
 		_request_backend_reconnect()
-		return
-	bridge.send_envelope(intent_mapper.emit_interact_intent(target_object_id, interaction_type))
+		return {}
+	return _send_player_input_envelope(bridge, intent_mapper.emit_interact_intent(target_object_id, interaction_type))
 
-func _emit_move_intent_request(target_point: Vector3, move_mode: String) -> void:
+func _emit_move_intent_request(target_point: Vector3, move_mode: String) -> Dictionary:
 	var bridge := _get_bridge()
 	if bridge == null or intent_mapper == null:
-		return
+		return {}
 	if not intent_mapper.has_method("emit_move_intent"):
-		return
+		return {}
 	_bus_log(
 		"phase0_move_target:%s:[%.3f,%.3f,%.3f]" % [
 			move_mode,
@@ -998,8 +1106,22 @@ func _emit_move_intent_request(target_point: Vector3, move_mode: String) -> void
 	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
 		pending_move_request = {"target_point": target_point, "move_mode": move_mode}
 		_request_backend_reconnect()
-		return
-	bridge.send_envelope(intent_mapper.emit_move_intent(move_mode, target_point))
+		return {}
+	return _send_player_input_envelope(bridge, intent_mapper.emit_move_intent(move_mode, target_point))
+
+func _send_player_input_envelope(bridge: Node, envelope: Dictionary) -> Dictionary:
+	var payload_value: Variant = envelope.get("payload", {})
+	if not (payload_value is Dictionary):
+		return {}
+	var payload := payload_value as Dictionary
+	var descriptor := {
+		"request_id": str(payload.get("request_id", "")),
+		"producer_ts": int(payload.get("producer_ts", 0)),
+	}
+	var err: int = bridge.send_envelope(envelope)
+	if err != OK:
+		return {}
+	return descriptor
 
 func _emit_move_intent_if_needed() -> void:
 	if autotest_enabled or focus_autotest_enabled:

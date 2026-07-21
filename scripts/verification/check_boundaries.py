@@ -49,7 +49,6 @@ def _scan_retired_state_references(project_root: Path) -> list[str]:
         project_root / ".github",
         project_root / ".harness",
         project_root / "docs",
-        project_root / "openspec",
         project_root / "scripts",
     ]
     references: list[str] = []

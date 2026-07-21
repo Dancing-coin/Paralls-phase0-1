@@ -161,25 +161,20 @@ def test_phase0_main_demo_failed_interaction_attempt_does_not_force_focus_target
     assert "_force_focus_target(interactive_object)" not in tail
 
 
-def test_phase0_main_demo_failed_interaction_attempt_waits_for_constraint_result() -> None:
+def test_phase0_main_demo_failed_interaction_attempt_waits_for_correlated_constraint_result() -> None:
     project_root = Path(__file__).resolve().parents[2]
     controller_source = (
         project_root / "scripts" / "phase0" / "MainDemoController.gd"
     ).read_text(encoding="utf-8")
 
-    assert "var pending_failed_move_ack_seen := false" in controller_source
-    assert "var pending_failed_interaction_result_seen := false" in controller_source
-    assert "var pending_failed_interaction_ack_seen := false" in controller_source
-    assert "@export var autotest_failed_interact_timeout_ms := 3000" in controller_source
-    assert "await _wait_for_failed_move_ack(" in controller_source
-    assert 'if str(payload.get("route", "")) == "local_motion":' in controller_source
-    assert "pending_failed_move_ack_seen = true" in controller_source
-    assert "await _wait_for_failed_interaction_ack(" in controller_source
-    assert 'if result_type == "constraint_state_result":' in controller_source
-    assert 'if str(payload.get("route", "")) == "esm_service":' in controller_source
-    assert "pending_failed_interaction_ack_seen = true" in controller_source
-    assert "pending_failed_interaction_result_seen = true" in controller_source
-    assert "await _wait_for_failed_interaction_result(autotest_failed_interact_timeout_ms)" in controller_source
+    assert "var acknowledged_request_ids: Dictionary = {}" in controller_source
+    assert "pending_failed_move_ack_seen" not in controller_source
+    assert "pending_failed_interaction_ack_seen" not in controller_source
+    assert "pending_failed_interaction_result_seen" not in controller_source
+    assert "await _wait_for_request_ack(" in controller_source
+    assert "pending_failed_interaction_correlation_id" in controller_source
+    assert "matched_failed_interaction_result" in controller_source
+    assert "await _wait_for_failed_interaction_result(autotest_request_timeout_ms)" in controller_source
 
 
 def test_phase0_main_demo_suppresses_free_move_intent_loop_during_focus_autotest() -> None:

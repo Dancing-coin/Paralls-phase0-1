@@ -18,7 +18,7 @@
 ## Planning Artifacts
 
 - [ ] Non-trivial tasks have a plan.
-- [ ] OpenSpec/design source is linked for behavior or workflow changes.
+- [ ] Design source is linked for behavior or workflow changes.
 - [ ] Goal is used for long-running execution state when the task spans multiple edits.
 - [ ] Superpowers skill gates are recorded for planning, TDD, debugging, review, or completion verification.
 - [ ] Milestones include verification commands.
@@ -28,7 +28,7 @@
 
 - [ ] Focused tests exist for new check scripts.
 - [ ] The agent can run the verification commands directly.
-- [ ] `change-lifecycle` passes when workflow, Goal, Superpowers, OpenSpec/design, or native subagent routing changes.
+- [ ] `change-lifecycle` passes when workflow, Goal, Superpowers, design, or native subagent routing changes.
 - [ ] Full harness evidence is archived under `.harness/verification/runs/<run-id>/`.
 
 ## Removal Criteria

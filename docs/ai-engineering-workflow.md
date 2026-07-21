@@ -1,8 +1,8 @@
 # AI Engineering Workflow
 
-This repository uses a four-layer workflow for non-trivial AI-assisted changes:
+This repository uses four explicit responsibilities for non-trivial AI-assisted changes:
 
-1. **OpenSpec controls what changes.**
+1. **Design controls what changes.**
    A change starts from a written design/spec under `docs/superpowers/specs/` or an explicitly approved equivalent design. The spec records scope, acceptance criteria, and constraints before implementation.
    A Superpowers brainstorming spec may pause at `Status: awaiting-user-review`; that state is a review gate, not approval to plan or implement.
 2. **Superpowers controls how changes are executed.**
@@ -24,12 +24,6 @@ This repository uses a four-layer workflow for non-trivial AI-assisted changes:
 - `.harness/verification/` is generated evidence.
 - Goal is transient execution state; it does not replace specs, plans, or harness reports.
 - Evolution Agent candidate manifests are proposals, not implementation approval. A candidate under `.harness/evolution/candidates/` must still be reviewed, converted into an implementation plan, implemented through normal edits, and verified by its promotion profiles before it changes operational harness behavior.
-
-## Change-State Closure
-
-Archived OpenSpec changes must retain enough machine-checkable evidence to prove the lifecycle did not lose intent, execution, or verification context. The `change-lifecycle` harness profile checks archived changes for required OpenSpec files, completed tasks, retained delta specs, and a connection to Superpowers or Harness evidence.
-
-This guard borrows Comet's phase-guard idea but keeps the project source of truth unchanged: OpenSpec records change intent, Superpowers records design and execution planning, Harness records durable acceptance evidence, and Goal records active execution continuity.
 
 ## Large Change Flow
 

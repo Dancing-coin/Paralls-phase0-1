@@ -106,6 +106,7 @@ var _perception_target_resolver = ActorPerceptionTargetResolverRef.new()
 var _last_notice_target := ""
 var _last_notice_ts := 0
 var _active_contact_target_actor_id := ""
+var actor_local_perception_enabled := true
 
 const ROOT_MOTION_LOG_COOLDOWN_MS := 250
 
@@ -186,6 +187,9 @@ func set_visual_shell_visible(is_visible: bool) -> void:
 func set_perception_debug_visible(is_visible: bool) -> void:
 	if perception_cone_debug and perception_cone_debug.has_method("set_debug_visible"):
 		perception_cone_debug.set_debug_visible(is_visible)
+
+func set_actor_local_perception_enabled(is_enabled: bool) -> void:
+	actor_local_perception_enabled = is_enabled
 
 func configure_perception_debug(range_m: float, half_fov_degrees: float) -> void:
 	if perception_cone_debug and perception_cone_debug.has_method("set_parameters"):
@@ -578,6 +582,8 @@ func _configure_actor_local_emitters() -> void:
 		spatial_access_fact_emitter.set("actor_id", actor_id)
 
 func _sample_actor_local_perception() -> void:
+	if not actor_local_perception_enabled:
+		return
 	var scene := get_tree().current_scene
 	if scene == null:
 		return

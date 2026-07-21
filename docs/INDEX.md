@@ -9,7 +9,7 @@
 ## 从这里开始
 
 - `AGENTS.md`：运行契约、任务边界、验证规则和非目标。
-- `docs/ai-engineering-workflow.md`：OpenSpec、Superpowers、Harness、Goal 和原生子智能体工作流。
+- `docs/ai-engineering-workflow.md`：Design、Superpowers、Harness、Goal 和原生子智能体工作流。
 - `docs/STRUCTURE.md`：文档目录建设方案、命名规则、迁移阶段和维护规则。
 - `PHASE0_README.md`：工作区简要说明和验证入口。
 - `docs/character/character-mind-core-status.md`：用中文定义“完整 character mind core”在当前仓库中的含义，并区分 authored profile truth、runtime state 与 long-term drift。
@@ -71,6 +71,8 @@
 - `docs/superpowers/plans/2026-06-12-character-actor-control-and-locomotion-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-11-character-agent-minimal-runtime-slice-design.md`
 - `docs/superpowers/plans/2026-06-11-character-agent-minimal-runtime-slice-implementation-plan.md`
+- `docs/superpowers/specs/2026-07-14-harness-engineering-optimization-design.md`
+- `docs/superpowers/plans/2026-07-14-harness-engineering-optimization-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-03-harness-engineering-design.md`
 - `docs/superpowers/plans/2026-06-03-harness-engineering-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-10-ai-engineering-workflow-integration-design.md`
@@ -113,7 +115,7 @@
 - `godot-project`：Godot 主场景、autoload 和 `res://` 静态完整性检查。
 - `release-gate`：CI 工作流和发布门禁元数据检查。
 - `harness-lifecycle`：生命周期台账、本地 CI、保留策略、模板、质量和交接检查。
-- `change-lifecycle`：OpenSpec、Superpowers、Harness、Goal 和原生子智能体工作流检查。
+- `change-lifecycle`：Design、Superpowers、Harness、Goal 和原生子智能体工作流检查。
 - `harness-reference`：适配外部 Harness Engineering 分类、模板和参考覆盖检查。
 - `phase0`：严格 Phase 0 后端加 Godot 运行时验证。
 - `phase1-slice`：当前 Phase1 形态运行时切片验证。
@@ -129,6 +131,7 @@
 - `esm-physical-channel-world-actuation`：后端与 Godot 运行时证明，覆盖 physical effect refs、contact/body/object/environment observations、constraint gating 和 orchestration merge。
 - `non-runtime-production-pipeline`：离线生产证明，覆盖 scene semantic extraction、spatial baking、multimodal classification readiness、review gating 和 approved replay dataset artifacts。
 - `perception-input-alignment`：后端证明，覆盖感知 identity 行为矩阵，包括同拍/跨拍、同物/异物、多 actor 私有视角、VLA late advisory 和 Siming 汇总 identity。
+- `siming-heavenly-graph-foundation`：后端证明，覆盖司命天道图谱基础的时态查询、分支隔离、不可变来源、幂等事务和 checkpoint；不代表已接入 `SimingRuntime.tick(...)`。
 - `all`：按顺序运行全部 profile。
 
 运行时验证脚本和聚合证明脚本：
@@ -143,6 +146,7 @@
 - `python scripts/verification/verify_embodied_skeletal_debug_replay_pipeline.py`
 - `python scripts/verification/verify_vla_provider_backend.py`
 - `python scripts/verification/verify_perception_input_alignment.py`
+- `python scripts/verification/verify_siming_heavenly_graph_foundation.py`
 - `python scripts/verification/verify_actor_scene_knowledge_runtime.py`
 - `python scripts/verification/verify_siming_global_situation_runtime.py`
 - `python scripts/verification/verify_interaction_orchestration_runtime_service.py`

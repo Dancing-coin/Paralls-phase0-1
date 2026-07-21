@@ -88,7 +88,7 @@ def test_phase0_verify_script_reads_character_agent_execution_probe_report() -> 
     assert "character_agent_execution_consumer" in source
     assert '"PHASE0_DEBUG_LOGGING": "1"' not in source
     assert "SCENE_LOAD_QUIT_AFTER" in source
-    assert "MAIN_AUTOTEST_QUIT_AFTER" in source
+    assert "MAIN_AUTOTEST_QUIT_AFTER" not in source
     assert "FOCUS_AUTOTEST_QUIT_AFTER" in source
     assert '"PHASE0_SCENE_LOAD_ONLY": "1"' in source
     assert "run_command_until_markers(" in source
@@ -98,6 +98,17 @@ def test_phase0_verify_script_reads_character_agent_execution_probe_report() -> 
     assert "verify_character_director_observatory.py" in source
     assert "character-agent-execution-from-phase0.log" in source
     assert "character-director-observatory-from-phase0.log" in source
+
+
+def test_phase0_main_autotest_is_marker_and_wall_clock_bounded_not_frame_bounded() -> None:
+    source = (Path(__file__).resolve().parents[1] / "verify_phase0.py").read_text(encoding="utf-8")
+    main_run = source.split(
+        "main_result = run_command_until_markers(", 1
+    )[1].split("focus_screenshot =", 1)[0]
+
+    assert '"--quit-after"' not in main_run
+    assert 'success_markers=["phase0_autotest_complete"]' in main_run
+    assert "timeout_seconds=MAIN_AUTOTEST_MARKER_TIMEOUT_SECONDS" in main_run
 
 
 def test_phase0_verify_script_runs_backend_pytest_before_starting_runtime_backend() -> None:

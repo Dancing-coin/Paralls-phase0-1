@@ -2,13 +2,13 @@
 
 ## Problem
 
-The project already has Harness profiles, Superpowers specs/plans, and Goal support, but the relationship between OpenSpec-style intent, Superpowers execution discipline, Harness verification, Goal state, and native subagent coordination is implicit.
+The project already has Harness profiles, Superpowers specs/plans, and Goal support, but the relationship between repository-local design intent, Superpowers execution discipline, Harness verification, Goal state, and native subagent coordination is implicit.
 
 ## Design
 
 Add a project-owned workflow document and a static `change-lifecycle` harness profile. The workflow document defines the four-layer contract:
 
-- OpenSpec/design artifacts define what changes.
+- Approved repository-local design artifacts define what changes.
 - Superpowers skills define how agents execute.
 - Harness profiles define whether results are accepted.
 - Goal tracks long-running execution state.

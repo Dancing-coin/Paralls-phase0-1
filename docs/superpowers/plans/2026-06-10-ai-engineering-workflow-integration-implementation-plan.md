@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a verifiable OpenSpec + Superpowers + Harness + Goal workflow layer to the Paralls repository.
+**Goal:** Add a verifiable Design + Superpowers + Harness + Goal workflow layer to the Paralls repository.
 
 **Architecture:** Keep the workflow in docs and `.harness` manifests. Add one static verification script that proves the workflow is discoverable, versioned, template-backed, and routed through `AGENTS.md`.
 
@@ -64,7 +64,7 @@ Add `change-lifecycle` after `harness-lifecycle` and before `harness-reference`,
 
 - [ ] **Step 1: Document the four-layer chain**
 
-Document OpenSpec/design artifacts, Superpowers skills, Harness evidence, and Goal execution state.
+Document approved design artifacts, Superpowers skills, Harness evidence, and Goal execution state.
 
 - [ ] **Step 2: Wire docs and templates**
 
@@ -92,4 +92,3 @@ python scripts\verification\harness.py --profile change-lifecycle
 ```powershell
 python scripts\verification\harness.py --profile all
 ```
-

@@ -25,6 +25,11 @@ from app.debug_narration import (
     summarize_world_result,
 )
 from app.debug_stream import debug_stream
+from app.transport_projection import (
+    is_known_stream_mode,
+    normalize_stream_mode,
+    project_outbound_messages,
+)
 from app.models.authority_event import AuthorityEvent, AuthorityEventRouting, AuthorityEventSource
 from app.models.ai_output import DialogueResponse
 from app.models.character_perceived import CharacterPerceivedEvent
@@ -35,6 +40,7 @@ from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractI
 from app.models.raw_fact import RawFactEvent
 from app.models.runtime_state import ConversationCandidateEvent
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
+from app.models.transport import TransportBarrier
 from app.models.visual_fact import VisualFactEvent
 from app.models.world_result import WorldResultBase
 from app.services.candidate_percept_service import compile_candidate_percepts
@@ -230,6 +236,19 @@ def orchestrate_structured_interaction(payload: StructuredInteractionRequest) ->
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
+    raw_stream_mode = websocket.query_params.get("stream_mode")
+    stream_mode = normalize_stream_mode(raw_stream_mode)
+    if not is_known_stream_mode(raw_stream_mode):
+        _publish_debug_event(
+            build_debug_event(
+                producer_ts=0,
+                domain="transport",
+                stage="unknown_stream_mode",
+                actor_id=None,
+                summary=f"unknown stream mode {raw_stream_mode!r}; using full",
+                detail={"raw_stream_mode": raw_stream_mode, "resolved_stream_mode": stream_mode},
+            )
+        )
     try:
         while True:
             try:
@@ -241,7 +260,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 if isinstance(raw, dict):
                     source_type = str(raw.get("message_type", "unknown"))
                 outbound = [_as_error_ack(source_type=source_type, route="invalid_payload", error=exc)]
-            for message in outbound:
+            projected = project_outbound_messages(outbound, stream_mode=stream_mode)
+            for message in projected:
                 await websocket.send_json(message)
     except WebSocketDisconnect:
         return
@@ -277,6 +297,21 @@ async def debug_websocket_endpoint(websocket: WebSocket) -> None:
 
 
 def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
+    if envelope.message_type == "transport_barrier":
+        barrier = TransportBarrier(**envelope.payload)
+        return [
+            {
+                "message_type": "ack",
+                "payload": {
+                    "accepted": True,
+                    "source_type": "transport_barrier",
+                    "route": "transport_barrier",
+                    "request_id": barrier.request_id,
+                    "producer_ts": barrier.producer_ts,
+                },
+            }
+        ]
+
     if envelope.message_type == "visual_fact_event":
         event = VisualFactEvent(**envelope.payload)
         _publish_debug_event(
@@ -640,6 +675,9 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 "accepted": route["accepted"],
                 "source_type": envelope.message_type,
                 "route": route["route"],
+                "request_id": event.request_id,
+                "intent_type": event.intent_type,
+                "producer_ts": event.producer_ts,
             },
         }
     ]
