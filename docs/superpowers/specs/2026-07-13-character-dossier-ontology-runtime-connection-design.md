@@ -1,6 +1,6 @@
 # Character Dossier Ontology Runtime Connection Design
 
-Status: `implemented-and-focused-verified`
+Status: `implemented-and-verified`
 
 Date: `2026-07-13`
 

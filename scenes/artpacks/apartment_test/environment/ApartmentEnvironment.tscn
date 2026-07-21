@@ -1,0 +1,20 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/phase0/SceneRuntimeAdapter.gd" id="1_adapter"]
+
+[node name="ApartmentEnvironment" type="Node3D"]
+
+[node name="ImportedRoot" type="Node3D" parent="."]
+
+[node name="CollisionRoot" type="Node3D" parent="."]
+
+[node name="SceneRuntimeAdapter" type="Node" parent="."]
+script = ExtResource("1_adapter")
+imported_root_path = NodePath("../ImportedRoot")
+collision_root_path = NodePath("../CollisionRoot")
+imported_root_name = "ImportedRoot"
+collision_root_name = "CollisionRoot"
+bootstrap_collision_enabled = false
+lighting_profile = "manual"
+source_scene_path = "res://assets/artpacks/apartment_test/source/apartment_auto_collision.scn"
+import_notes = "Source .scn currently has hardcoded dependencies on external test-project goblend scene textures and NPC wrappers. Re-export or repair those dependencies before instancing it here."

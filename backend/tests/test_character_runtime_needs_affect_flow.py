@@ -356,27 +356,154 @@ def test_runtime_ingest_character_perceived_event_updates_need_tension_and_dynam
     runtime.ingest_character_perceived_event(
         CharacterPerceivedEvent(
             actor_id="char_a",
-            percept_channel="visual",
+            percept_channel="auditory",
             producer_ts=410,
             room_id="room_demo",
             scene_id="scene_demo",
             zone_id="zone_focus",
-            perceived_summary="public_dismissal near spatial_uncertainty doorway",
-            source_candidate_event_id="visual_fact:410:char_a",
-            target_environment_id="env_unstable_doorway",
+            perceived_summary="char_c speaks from an unclear position",
+            source_candidate_event_id="auditory_fact:410:char_c:char_a",
+            source_actor_id="char_c",
+            target_actor_id="char_a",
+            clarity_score=0.72,
+            certainty_score=0.68,
         )
     )
 
     need_state = runtime.get_need_tension_state("char_a")
     dynamic_state = runtime.get_dynamic_state("char_a")
 
-    assert need_state["pressure_sources"] == ["public_dismissal", "spatial_uncertainty"]
+    assert need_state["pressure_sources"] == ["social_engagement", "spatial_uncertainty"]
     assert need_state["safety_pressure"] > 0.0
-    assert need_state["esteem_pressure"] > 0.0
     assert need_state["dominant_need"] == "safety"
     assert dynamic_state["vigilance_level"] > 0.0
     assert dynamic_state["stress_load"] > 0.0
     assert dynamic_state["affect_valence"] < 0.0
+
+
+def test_runtime_structured_constraint_snapshot_sets_goal_blocked_need_tension() -> None:
+    runtime = CharacterAgentRuntime()
+
+    def interpret_stub(*args, **kwargs) -> CharacterInterpretation:
+        return CharacterInterpretation(
+            actor_id="char_a",
+            interpreted_summary="constraint remains active",
+            interpretation_type="state_change",
+            salience_score=0.7,
+            ambiguity_level="low",
+            risk_level="medium",
+            opportunity_level="low",
+            attention_target="obj_letter",
+        )
+
+    def select_intent_stub(*args, **kwargs) -> CharacterIntentDecision:
+        return CharacterIntentDecision(
+            actor_id="char_a",
+            selected_intent="observe_target",
+            persona_passed=True,
+            logic_passed=True,
+            gain_loss_passed=True,
+            rationale="hold position after the blocked goal",
+        )
+
+    runtime._l2.interpret_perceived_event = interpret_stub
+    runtime._l3.select_intent = select_intent_stub
+    runtime.ingest_character_perceived_event(
+        CharacterPerceivedEvent(
+            actor_id="char_a",
+            percept_channel="visual",
+            producer_ts=408,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            perceived_summary="visual_fact/fixed_gaze_on_target",
+            source_candidate_event_id="visual_fact:408:char_a",
+            target_object_id="obj_letter",
+            clarity_score=1.0,
+            certainty_score=1.0,
+        )
+    )
+    runtime.record_settlement_result(
+        actor_id="char_a",
+        producer_ts=409,
+        payload={
+            "result_type": "constraint_state_result",
+            "constraint_summary": "target is too far away",
+            "target_object_id": "obj_letter",
+        },
+    )
+
+    runtime.ingest_character_perceived_event(
+        CharacterPerceivedEvent(
+            actor_id="char_a",
+            percept_channel="visual",
+            producer_ts=411,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            perceived_summary="visual_fact/fixed_gaze_on_target",
+            source_candidate_event_id="visual_fact:411:char_a",
+            target_object_id="obj_letter",
+            clarity_score=1.0,
+            certainty_score=1.0,
+        )
+    )
+
+    need_state = runtime.get_need_tension_state("char_a")
+
+    assert "goal_blocked" in need_state["pressure_sources"]
+    assert need_state["esteem_pressure"] > 0.0
+
+
+def test_runtime_need_tension_ignores_perceived_summary_trigger_phrases() -> None:
+    runtime = CharacterAgentRuntime()
+
+    def interpret_stub(*args, **kwargs) -> CharacterInterpretation:
+        return CharacterInterpretation(
+            actor_id="char_a",
+            interpreted_summary="semantic pressure remains model-owned",
+            interpretation_type="state_change",
+            salience_score=0.7,
+            ambiguity_level="low",
+            risk_level="low",
+            opportunity_level="low",
+            attention_target="env_unstable_doorway",
+        )
+
+    def select_intent_stub(*args, **kwargs) -> CharacterIntentDecision:
+        return CharacterIntentDecision(
+            actor_id="char_a",
+            selected_intent="observe_target",
+            persona_passed=True,
+            logic_passed=True,
+            gain_loss_passed=True,
+            rationale="observe without rule-derived semantic pressure",
+        )
+
+    runtime._l2.interpret_perceived_event = interpret_stub
+    runtime._l3.select_intent = select_intent_stub
+
+    runtime.ingest_character_perceived_event(
+        CharacterPerceivedEvent(
+            actor_id="char_a",
+            percept_channel="visual",
+            producer_ts=412,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            perceived_summary="public_dismissal near spatial_uncertainty unstable doorway",
+            source_candidate_event_id="visual_fact:412:char_a",
+            target_environment_id="env_unstable_doorway",
+            clarity_score=1.0,
+            certainty_score=1.0,
+        )
+    )
+
+    need_state = runtime.get_need_tension_state("char_a")
+
+    assert need_state["pressure_sources"] == []
+    assert need_state["safety_pressure"] == 0.0
+    assert need_state["esteem_pressure"] == 0.0
 
 
 def test_runtime_ingest_character_perceived_event_passes_effective_profile_and_need_tension_state_into_l2() -> None:
@@ -409,14 +536,17 @@ def test_runtime_ingest_character_perceived_event_passes_effective_profile_and_n
     runtime.ingest_character_perceived_event(
         CharacterPerceivedEvent(
             actor_id="char_a",
-            percept_channel="visual",
+            percept_channel="auditory",
             producer_ts=411,
             room_id="room_demo",
             scene_id="scene_demo",
             zone_id="zone_focus",
-            perceived_summary="public_dismissal near spatial_uncertainty doorway",
-            source_candidate_event_id="visual_fact:411:char_a",
-            target_environment_id="env_unstable_doorway",
+            perceived_summary="char_c speaks from an unclear position",
+            source_candidate_event_id="auditory_fact:411:char_c:char_a",
+            source_actor_id="char_c",
+            target_actor_id="char_a",
+            clarity_score=0.72,
+            certainty_score=0.68,
         )
     )
 
@@ -452,14 +582,17 @@ def test_runtime_ingest_character_perceived_event_passes_effective_profile_need_
     runtime.ingest_character_perceived_event(
         CharacterPerceivedEvent(
             actor_id="char_a",
-            percept_channel="visual",
+            percept_channel="auditory",
             producer_ts=412,
             room_id="room_demo",
             scene_id="scene_demo",
             zone_id="zone_focus",
-            perceived_summary="public_dismissal near spatial_uncertainty doorway",
-            source_candidate_event_id="visual_fact:412:char_a",
-            target_environment_id="env_unstable_doorway",
+            perceived_summary="char_c speaks from an unclear position",
+            source_candidate_event_id="auditory_fact:412:char_c:char_a",
+            source_actor_id="char_c",
+            target_actor_id="char_a",
+            clarity_score=0.72,
+            certainty_score=0.68,
         )
     )
 
@@ -499,14 +632,17 @@ def test_runtime_persists_and_rehydrates_need_tension_state_from_timeline(tmp_pa
     runtime.ingest_character_perceived_event(
         CharacterPerceivedEvent(
             actor_id="char_a",
-            percept_channel="visual",
+            percept_channel="auditory",
             producer_ts=413,
             room_id="room_demo",
             scene_id="scene_demo",
             zone_id="zone_focus",
-            perceived_summary="public_dismissal near spatial_uncertainty doorway",
-            source_candidate_event_id="visual_fact:413:char_a",
-            target_environment_id="env_unstable_doorway",
+            perceived_summary="char_c speaks from an unclear position",
+            source_candidate_event_id="auditory_fact:413:char_c:char_a",
+            source_actor_id="char_c",
+            target_actor_id="char_a",
+            clarity_score=0.72,
+            certainty_score=0.68,
         )
     )
 

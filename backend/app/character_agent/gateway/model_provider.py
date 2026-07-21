@@ -5,6 +5,9 @@ import os
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from app.config import settings
+
+
 class CharacterModelProvider:
     def __init__(
         self,
@@ -13,13 +16,18 @@ class CharacterModelProvider:
         endpoint_url: str | None = None,
         api_key: str | None = None,
         model_name: str | None = None,
-        timeout_seconds: float = 20.0,
+        timeout_seconds: float | None = None,
     ) -> None:
-        self._provider_kind = (provider_kind or os.getenv("CHARACTER_MODEL_PROVIDER_KIND", "deepseek")).strip() or "deepseek"
-        self._endpoint_url = self._default_endpoint(endpoint_url)
-        self._api_key = self._default_api_key(api_key)
-        self._model_name = self._default_model(model_name)
-        self._timeout_seconds = timeout_seconds
+        configured_provider_kind = provider_kind if provider_kind is not None else settings.character_model_provider_kind
+        self._provider_kind = str(configured_provider_kind or "").strip() or "qwen"
+        self._endpoint_url = self._default_endpoint(endpoint_url, use_settings=provider_kind is None)
+        self._api_key = self._default_api_key(api_key, use_settings=provider_kind is None)
+        self._model_name = self._default_model(model_name, use_settings=provider_kind is None)
+        self._timeout_seconds = (
+            float(timeout_seconds)
+            if timeout_seconds is not None
+            else float(settings.character_model_timeout_seconds)
+        )
 
     def complete(self, request: dict[str, object]) -> dict[str, object]:
         route = request.get("route", {})
@@ -53,9 +61,11 @@ class CharacterModelProvider:
             raise ValueError(f"unsupported provider_kind for model-led task: {provider_kind or 'unknown'}")
         return self._offline_complete(request)
 
-    def _default_endpoint(self, endpoint_url: str | None) -> str:
+    def _default_endpoint(self, endpoint_url: str | None, *, use_settings: bool = True) -> str:
         if endpoint_url:
             return endpoint_url.strip()
+        if use_settings and settings.character_model_endpoint:
+            return settings.character_model_endpoint.strip()
         if self._provider_kind == "qwen":
             return (
                 os.getenv("CHARACTER_MODEL_ENDPOINT", "")
@@ -73,9 +83,11 @@ class CharacterModelProvider:
             or "https://api.deepseek.com"
         ).strip()
 
-    def _default_api_key(self, api_key: str | None) -> str:
+    def _default_api_key(self, api_key: str | None, *, use_settings: bool = True) -> str:
         if api_key:
             return api_key.strip()
+        if use_settings and settings.character_model_api_key:
+            return settings.character_model_api_key.strip()
         if self._provider_kind == "qwen":
             return (
                 os.getenv("CHARACTER_MODEL_API_KEY", "")
@@ -91,9 +103,11 @@ class CharacterModelProvider:
             or os.getenv("CHARACTER_MODEL_API_KEY", "")
         ).strip()
 
-    def _default_model(self, model_name: str | None) -> str:
+    def _default_model(self, model_name: str | None, *, use_settings: bool = True) -> str:
         if model_name:
             return model_name.strip()
+        if use_settings and settings.character_model_model:
+            return settings.character_model_model.strip()
         if self._provider_kind == "qwen":
             return (
                 os.getenv("CHARACTER_MODEL_MODEL", "")

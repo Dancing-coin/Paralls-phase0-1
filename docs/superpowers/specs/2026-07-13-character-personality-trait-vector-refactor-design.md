@@ -1,6 +1,6 @@
 # Character Personality Trait Vector Refactor Design
 
-Status: `implemented-and-focused-verified`
+Status: `implemented-and-verified`
 
 Date: `2026-07-13`
 

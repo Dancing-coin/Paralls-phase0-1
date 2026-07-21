@@ -47,6 +47,7 @@ enum DriverMode {
 @export_node_path("Node") var spatial_access_fact_emitter_path := NodePath("VisualFactEmitter/SpatialAccessFactEmitter")
 @export_node_path("Node") var role_state_fact_emitter_path := NodePath("RoleStateFactEmitter")
 @export_node_path("Node") var physiology_state_fact_emitter_path := NodePath("PhysiologyStateFactEmitter")
+@export_node_path("Node") var role_asset_scene_path := NodePath("VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/KnightRoleSkin")
 @export var player_walk_speed_threshold := 0.08
 @export var player_run_speed_threshold := 6.4
 @export var use_root_motion_patrol := true
@@ -67,7 +68,7 @@ const FOCUS_ANCHOR_LOCAL_OFFSET := Vector3(0.0, 1.55, 0.0)
 
 @onready var visual_root: Node3D = $VisualRoot
 @onready var role_asset_root: Node3D = $VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot
-@onready var role_asset_scene: Node = $VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/KnightRoleSkin
+@onready var role_asset_scene: Node = _resolve_role_asset_scene()
 @onready var runtime_feedback: Node = $CharacterRuntimeFeedback
 @onready var perception_cone_debug: MeshInstance3D = $PerceptionConeDebug
 # Keep runtime_state constructed via the host ref rather than a typed onready binding.
@@ -131,6 +132,20 @@ func _ready() -> void:
 			bus.character_runtime_state_delta_received.connect(_on_character_runtime_state_delta_received)
 		if bus.has_signal("character_runtime_state_snapshot_received"):
 			bus.character_runtime_state_snapshot_received.connect(_on_character_runtime_state_snapshot_received)
+
+func _resolve_role_asset_scene() -> Node:
+	var configured := get_node_or_null(role_asset_scene_path)
+	if configured != null:
+		return configured
+	if role_asset_root == null:
+		return null
+	var legacy_skin := role_asset_root.get_node_or_null("KnightRoleSkin")
+	if legacy_skin != null:
+		return legacy_skin
+	for child in role_asset_root.get_children():
+		if child is Node:
+			return child as Node
+	return null
 
 func _process(delta: float) -> void:
 	sway_time += delta * sway_speed

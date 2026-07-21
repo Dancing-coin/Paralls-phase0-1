@@ -32,6 +32,29 @@ def test_need_tension_engine_raises_safety_and_esteem_pressure_for_public_threat
     assert "public_dismissal" in delta.pressure_sources
 
 
+def test_need_tension_engine_maps_goal_blocked_to_esteem_and_self_actualization() -> None:
+    engine = NeedTensionEngine()
+    effective_profile = {
+        "need_hierarchy_layer": {
+            "effective_weights": {
+                "esteem": 0.7,
+                "self_actualization": 0.8,
+            },
+            "deprivation_sensitivity": {
+                "esteem": 0.8,
+                "self_actualization": 0.6,
+            },
+        }
+    }
+    event = {"event_tags": ["goal_blocked"]}
+
+    delta = engine.evaluate(effective_profile=effective_profile, event=event)
+
+    assert delta.esteem > 0.0
+    assert delta.self_actualization > 0.0
+    assert delta.pressure_sources == ["goal_blocked"]
+
+
 def test_need_tension_engine_deduplicates_and_sorts_pressure_sources() -> None:
     engine = NeedTensionEngine()
     effective_profile = {

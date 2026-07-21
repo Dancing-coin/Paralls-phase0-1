@@ -1,6 +1,6 @@
 # 角色需求层、性格展开层与情绪状态运行时设计
 
-状态：`implemented-and-focused-verified`
+状态：implemented-and-verified
 
 本文定义当前项目中“完整的人”所需的三组新增能力：
 

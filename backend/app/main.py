@@ -26,6 +26,8 @@ from app.debug_narration import (
 )
 from app.debug_stream import debug_stream
 from app.models.authority_event import AuthorityEvent, AuthorityEventRouting, AuthorityEventSource
+from app.models.ai_output import DialogueResponse
+from app.models.character_perceived import CharacterPerceivedEvent
 from app.models.environment_request import EnvironmentRequest
 from app.models.character_agent_runtime import CharacterGoalCommand
 from app.models.character_agent_runtime import CharacterSuggestionPacket
@@ -86,6 +88,9 @@ BACKEND_BUILD = "paralls-phase0-backend-worktree-2026-06-02"
 WORKTREE_ROOT = str(Path(__file__).resolve().parents[2])
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 _pending_siming_character_dispatch_messages: dict[str, list[dict[str, object]]] = {}
+_DIALOGUE_CASCADE_LIMIT = 3
+_PLAYER_SHELL_ACTOR_IDS = {"char_c"}
+_SPEECH_REQUEST_TYPES = {"speak_public", "speak_private", "share_info", "withhold"}
 
 
 class FrontendSimingCharacterDispatchAdapter(SimingCharacterDispatchAdapter):
@@ -123,12 +128,25 @@ def reset_runtime_state() -> None:
     global _pending_siming_character_dispatch_messages
 
     runtime = SessionInputRouter()
-    character_service = CharacterService()
+    character_agent_runtime = CharacterAgentRuntime()
+
+    def dialogue_context_provider(actor_id: str) -> dict[str, object]:
+        if not character_agent_runtime.supports_actor(actor_id):
+            return {}
+        snapshot = character_agent_runtime.get_private_snapshot(actor_id)
+        return {
+            "profile": character_agent_runtime._profile_payload(actor_id),
+            "effective_profile": character_agent_runtime._effective_profile_payload(actor_id),
+            "snapshot": snapshot.model_dump() if snapshot is not None else {},
+            "memory": character_agent_runtime.get_memory_record_bundle(actor_id).model_dump(),
+            "need_tension_state": character_agent_runtime.get_need_tension_state(actor_id),
+        }
+
+    character_service = CharacterService(dialogue_context_provider=dialogue_context_provider)
     if "character_perceived_input_service" not in globals():
         character_perceived_input_service = CharacterPerceivedInputService()
     else:
         character_perceived_input_service.clear()
-    character_agent_runtime = CharacterAgentRuntime()
     esm_service = ESMService()
     interaction_orchestration_service = InteractionOrchestrationService(esm_service=esm_service)
     l1_occupancy_service = SpatialOccupancyService()
@@ -434,22 +452,10 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                     producer_ts=0,
                     payload=action,
                 )
-                dialogue_event = DialogueSubmit(
-                    player_id="character_agent",
-                    room_id="room_demo",
-                    scene_id="scene_demo",
-                    zone_id="zone_focus",
-                    actor_id=str(action.get("actor_id", "") or actor_id),
-                    intent_type="dialogue_submit",
+                response = _handle_character_agent_speech_action(
+                    actor_id=actor_id,
+                    action=action,
                     producer_ts=0,
-                    target_actor_id=str(action.get("target_actor_id", "") or ""),
-                    content=str(action.get("content", "") or ""),
-                )
-                response = character_service.handle_dialogue(dialogue_event)
-                character_agent_runtime.record_dialogue_response(
-                    actor_id=dialogue_event.actor_id,
-                    producer_ts=int(response.producer_ts or 0),
-                    payload=response.model_dump(),
                 )
                 messages.append(
                     {
@@ -661,7 +667,7 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 detail=event.model_dump(),
             )
         )
-        response = character_service.handle_dialogue(event)
+        response = _handle_player_dialogue_submit(event)
         event_trace.record(response.output_type)
         messages.append(_as_envelope("dialogue_response", response.model_dump()))
         return _finalize_outbound_messages(messages)
@@ -912,6 +918,256 @@ def _parse_player_input(payload: dict) -> MoveIntent | DialogueSubmit | Interact
     if intent_type == "focus_target_change":
         return FocusTargetChange(**payload)
     raise ValueError(f"unsupported intent_type: {intent_type}")
+
+
+def _handle_player_dialogue_submit(event: DialogueSubmit) -> DialogueResponse:
+    commands: list[CharacterGoalCommand] = []
+    if _is_agent_dialogue_target(event.target_actor_id):
+        perceived = _dialogue_submit_to_character_perceived_event(event)
+        commands = _ingest_dialogue_perception(perceived)
+
+    direct_content = _first_speech_command_content(commands)
+    if direct_content:
+        _audio = character_service.tts.synthesize(event.target_actor_id, direct_content)
+        response = DialogueResponse(
+            actor_id=event.target_actor_id,
+            room_id=event.room_id,
+            output_type="dialogue_response",
+            causation_id=f"dialogue:{event.producer_ts}",
+            producer_ts=event.producer_ts + 1,
+            target_actor_id=event.actor_id,
+            content=direct_content,
+            tone="neutral",
+            tts_required=True,
+        )
+    else:
+        response = character_service.handle_dialogue(event)
+
+    if _is_agent_dialogue_target(response.actor_id):
+        character_agent_runtime.record_dialogue_response(
+            actor_id=response.actor_id,
+            producer_ts=int(response.producer_ts or 0),
+            payload=response.model_dump(),
+        )
+    return response
+
+
+def _handle_character_agent_speech_action(
+    *,
+    actor_id: str,
+    action: dict[str, object],
+    producer_ts: int,
+) -> DialogueResponse:
+    request_type = str(action.get("request_type", "") or "")
+    speaking_actor_id = str(action.get("actor_id", "") or actor_id)
+    content = str(action.get("content", "") or "")
+    target_actor_id = str(action.get("target_actor_id", "") or "")
+    tone = str(action.get("tone", "") or "neutral")
+    room_id = str(action.get("room_id", "") or "room_demo")
+    _audio = character_service.tts.synthesize(speaking_actor_id, content)
+    response = DialogueResponse(
+        actor_id=speaking_actor_id,
+        room_id=room_id,
+        output_type="dialogue_response",
+        causation_id=f"dialogue:{producer_ts}",
+        producer_ts=producer_ts + 1,
+        target_actor_id=target_actor_id,
+        content=content,
+        tone=tone,
+        tts_required=True,
+    )
+    character_agent_runtime.record_dialogue_response(
+        actor_id=response.actor_id,
+        producer_ts=int(response.producer_ts or 0),
+        payload=response.model_dump(),
+    )
+    _backfill_character_agent_speech_perception(
+        action=action,
+        request_type=request_type,
+        response=response,
+    )
+    return response
+
+
+def _is_agent_dialogue_target(actor_id: str) -> bool:
+    return (
+        actor_id not in _PLAYER_SHELL_ACTOR_IDS
+        and actor_id != ""
+        and character_agent_runtime.supports_actor(actor_id)
+    )
+
+
+def _dialogue_submit_to_character_perceived_event(event: DialogueSubmit) -> CharacterPerceivedEvent:
+    source_event_id = f"dialogue_submit:{event.producer_ts}:{event.actor_id}:{event.target_actor_id}"
+    return CharacterPerceivedEvent(
+        actor_id=event.target_actor_id,
+        percept_channel="auditory",
+        producer_ts=event.producer_ts,
+        room_id=event.room_id,
+        scene_id=event.scene_id,
+        zone_id=event.zone_id,
+        perceived_summary=f'{event.actor_id}对你说："{event.content}"',
+        source_candidate_event_id=source_event_id,
+        source_actor_id=event.actor_id,
+        target_actor_id=event.target_actor_id,
+        subject_ref=event.actor_id,
+        target_ref=event.target_actor_id,
+        source_ref_lineage=[source_event_id],
+        clarity_score=1.0,
+        certainty_score=1.0,
+    )
+
+
+def _backfill_character_agent_speech_perception(
+    *,
+    action: dict[str, object],
+    request_type: str,
+    response: DialogueResponse,
+) -> None:
+    for perceived in _character_agent_speech_perceived_events(
+        action=action,
+        request_type=request_type,
+        response=response,
+    ):
+        _ingest_dialogue_perception(perceived)
+
+
+def _character_agent_speech_perceived_events(
+    *,
+    action: dict[str, object],
+    request_type: str,
+    response: DialogueResponse,
+) -> list[CharacterPerceivedEvent]:
+    room_id = str(action.get("room_id", "") or response.room_id or "room_demo")
+    scene_id = str(action.get("scene_id", "") or "scene_demo")
+    zone_id = str(action.get("zone_id", "") or "zone_focus")
+    lineage = _speech_source_ref_lineage(action)
+    events: list[CharacterPerceivedEvent] = []
+    for listener_id in _speech_perception_recipients(
+        action=action,
+        request_type=request_type,
+        speaker_actor_id=response.actor_id,
+        target_actor_id=str(response.target_actor_id or ""),
+        zone_id=zone_id,
+    ):
+        source_event_id = (
+            f"character_agent_speech:{response.producer_ts}:"
+            f"{request_type}:{response.actor_id}:{listener_id}"
+        )
+        perceived_summary = f'{response.actor_id}对你说："{response.content}"'
+        events.append(
+            CharacterPerceivedEvent(
+                actor_id=listener_id,
+                percept_channel="auditory",
+                producer_ts=int(response.producer_ts or 0),
+                room_id=room_id,
+                scene_id=scene_id,
+                zone_id=zone_id,
+                perceived_summary=perceived_summary,
+                source_candidate_event_id=source_event_id,
+                source_actor_id=response.actor_id,
+                target_actor_id=listener_id,
+                subject_ref=response.actor_id,
+                target_ref=listener_id,
+                source_ref_lineage=[*lineage, source_event_id],
+                clarity_score=1.0,
+                certainty_score=1.0,
+            )
+        )
+    return events
+
+
+def _speech_perception_recipients(
+    *,
+    action: dict[str, object],
+    request_type: str,
+    speaker_actor_id: str,
+    target_actor_id: str,
+    zone_id: str,
+) -> list[str]:
+    if request_type in {"speak_private", "share_info", "withhold"}:
+        candidates = [target_actor_id] if target_actor_id else []
+    elif request_type == "speak_public":
+        candidates = _same_room_agent_actor_ids(zone_id=zone_id)
+        if target_actor_id:
+            candidates.append(target_actor_id)
+    else:
+        candidates = []
+
+    recipients: list[str] = []
+    for candidate in candidates:
+        actor_id = str(candidate or "")
+        if actor_id == speaker_actor_id or not _is_agent_dialogue_target(actor_id):
+            continue
+        if actor_id not in recipients:
+            recipients.append(actor_id)
+    return recipients
+
+
+def _same_room_agent_actor_ids(*, zone_id: str) -> list[str]:
+    snapshot = l1_occupancy_service.snapshot()
+    if zone_id:
+        zone = snapshot.zone_states.get(zone_id)
+        if zone is not None and zone.actor_ids:
+            return list(zone.actor_ids)
+
+    actor_ids: list[str] = []
+    for zone in snapshot.zone_states.values():
+        actor_ids.extend(zone.actor_ids)
+    if actor_ids:
+        return sorted(set(actor_ids))
+
+    return sorted(str(actor_id) for actor_id in getattr(character_agent_runtime, "_supported_actor_ids", set()))
+
+
+def _speech_source_ref_lineage(action: dict[str, object]) -> list[str]:
+    raw_lineage = action.get("source_ref_lineage", [])
+    if not isinstance(raw_lineage, list):
+        return []
+    lineage: list[str] = []
+    for ref in raw_lineage:
+        text = str(ref or "")
+        if text:
+            lineage.append(text)
+    return lineage
+
+
+def _ingest_dialogue_perception(perceived: CharacterPerceivedEvent) -> list[CharacterGoalCommand]:
+    if not _is_agent_dialogue_target(perceived.actor_id):
+        return []
+    character_perceived_input_service.apply_character_perceived_event(perceived)
+    if _dialogue_cascade_depth(perceived) >= _DIALOGUE_CASCADE_LIMIT:
+        character_agent_runtime.record_character_perceived_event_without_cognition(perceived)
+        return []
+    return character_agent_runtime.ingest_character_perceived_event(perceived)
+
+
+def _dialogue_cascade_depth(perceived: CharacterPerceivedEvent) -> int:
+    return len(perceived.source_ref_lineage)
+
+
+def _first_speech_command_content(commands: list[CharacterGoalCommand]) -> str:
+    for command in commands:
+        if command.command_type != "speak":
+            continue
+        if command.dialogue_text:
+            return command.dialogue_text
+        payload = command.execution_payload or {}
+        bundle = payload.get("action_request_bundle", {})
+        if not isinstance(bundle, dict):
+            continue
+        requested_actions = bundle.get("requested_actions", [])
+        if not isinstance(requested_actions, list):
+            continue
+        for action in requested_actions:
+            if not isinstance(action, dict):
+                continue
+            if str(action.get("request_type", "") or "") not in _SPEECH_REQUEST_TYPES:
+                continue
+            content = str(action.get("content", "") or "")
+            if content:
+                return content
+    return ""
 
 
 def _as_envelope(message_type: str, payload: dict[str, object]) -> dict[str, object]:

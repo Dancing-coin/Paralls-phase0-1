@@ -7,6 +7,14 @@ from app.character_agent.models.need_tension import NeedTensionDelta
 
 ProfileMapping = Mapping[str, object]
 
+TAG_TO_NEEDS = {
+    "spatial_uncertainty": ["safety"],
+    "public_dismissal": ["esteem"],
+    "goal_blocked": ["esteem", "self_actualization"],
+    "social_isolation": ["belonging"],
+    "resource_scarcity": ["physiological"],
+}
+
 
 class NeedTensionEngine:
     def evaluate(
@@ -25,18 +33,18 @@ class NeedTensionEngine:
 
         sensitivity_map = self._mapping_or_empty(need_layer.get("deprivation_sensitivity"))
 
-        safety = None
-        esteem = None
-
-        if "spatial_uncertainty" in tags:
-            safety = self._pressure(weight_map, sensitivity_map, "safety")
-
-        if "public_dismissal" in tags:
-            esteem = self._pressure(weight_map, sensitivity_map, "esteem")
+        pressure_by_need: dict[str, float] = {}
+        for tag in tags:
+            for need_key in TAG_TO_NEEDS.get(tag, []):
+                pressure = self._pressure(weight_map, sensitivity_map, need_key)
+                pressure_by_need[need_key] = max(pressure_by_need.get(need_key, 0.0), pressure)
 
         return NeedTensionDelta(
-            safety=safety,
-            esteem=esteem,
+            physiological=pressure_by_need.get("physiological"),
+            safety=pressure_by_need.get("safety"),
+            belonging=pressure_by_need.get("belonging"),
+            esteem=pressure_by_need.get("esteem"),
+            self_actualization=pressure_by_need.get("self_actualization"),
             pressure_sources=tags,
         )
 
@@ -77,4 +85,4 @@ class NeedTensionEngine:
         return [str(raw_tags)]
 
 
-__all__ = ["NeedTensionEngine"]
+__all__ = ["NeedTensionEngine", "TAG_TO_NEEDS"]

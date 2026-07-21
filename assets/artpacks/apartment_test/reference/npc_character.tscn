@@ -1,0 +1,15 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/npc_animated.glb" id="1_xtrxv"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_5hyqr"]
+radius = 0.32
+height = 1.8
+
+[node name="NPC_Interactive" type="CharacterBody3D" unique_id=1299848854]
+
+[node name="NPC_Model" type="Node3D" parent="." unique_id=1121429361 instance=ExtResource("1_xtrxv")]
+
+[node name="NPC_CapsuleCollider" type="CollisionShape3D" parent="." unique_id=1221873377]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+shape = SubResource("CapsuleShape3D_5hyqr")

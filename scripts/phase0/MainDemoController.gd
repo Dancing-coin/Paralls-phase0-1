@@ -36,6 +36,7 @@ const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
 @export var near_actor_spatial_access_cooldown_ms := 650
 @export var privacy_private_distance := 4.0
 @export var privacy_local_distance := 10.0
+@export_node_path("Node") var scene_runtime_adapter_path := NodePath("SceneRuntimeAdapter")
 
 @onready var intent_mapper: Node = $IntentMapper
 @onready var player: CharacterBody3D = $PlayerCharacter
@@ -111,7 +112,8 @@ func _ready() -> void:
 	backend_health_request.name = "BackendHealthRequest"
 	add_child(backend_health_request)
 	backend_health_request.request_completed.connect(_on_backend_health_request_completed)
-	LIGHTING_TUNER.apply_blender_approx(get_node_or_null("ThroneRoomImported"))
+	if _should_apply_blender_approx_lighting():
+		LIGHTING_TUNER.apply_blender_approx(_get_scene_imported_root())
 	_bootstrap_throne_room_collision()
 	_ensure_l1_navigation_region()
 	_configure_open_field_camera()
@@ -130,9 +132,11 @@ func _ensure_siming_visual_observability_presenter() -> void:
 	add_child(presenter)
 
 func _bootstrap_throne_room_collision() -> void:
-	if get_node_or_null("ThroneRoomCollisionRoot") != null:
+	if not _should_bootstrap_scene_collision():
 		return
-	var imported_root := get_node_or_null("ThroneRoomImported")
+	if _get_scene_collision_root() != null:
+		return
+	var imported_root := _get_scene_imported_root()
 	if imported_root == null:
 		return
 	var mesh_lookup := {}
@@ -141,7 +145,7 @@ func _bootstrap_throne_room_collision() -> void:
 	if preview_scene == null:
 		return
 	var collision_root := Node3D.new()
-	collision_root.name = "ThroneRoomCollisionRoot"
+	collision_root.name = _get_scene_collision_root_name()
 	add_child(collision_root)
 
 	for source_path in ["PreviewFloor", "WalkStepLower", "WalkStepUpper", "PreviewCollisionRoot"]:
@@ -821,6 +825,52 @@ func _get_bus() -> Node:
 
 func _get_bridge() -> Node:
 	return get_node_or_null("/root/BackendBridge")
+
+func _get_scene_runtime_adapter() -> Node:
+	return get_node_or_null(scene_runtime_adapter_path)
+
+func _get_scene_imported_root() -> Node3D:
+	var adapter := _get_scene_runtime_adapter()
+	if adapter != null and adapter.has_method("get_imported_root"):
+		var imported_root: Variant = adapter.call("get_imported_root")
+		if imported_root is Node3D:
+			return imported_root as Node3D
+	var fallback_root := get_node_or_null("ThroneRoomImported")
+	if fallback_root is Node3D:
+		return fallback_root as Node3D
+	return null
+
+func _get_scene_collision_root() -> Node3D:
+	var adapter := _get_scene_runtime_adapter()
+	if adapter != null and adapter.has_method("get_collision_root"):
+		var collision_root: Variant = adapter.call("get_collision_root")
+		if collision_root is Node3D:
+			return collision_root as Node3D
+	var fallback_root := get_node_or_null("ThroneRoomCollisionRoot")
+	if fallback_root is Node3D:
+		return fallback_root as Node3D
+	return null
+
+func _get_scene_collision_root_name() -> String:
+	var adapter := _get_scene_runtime_adapter()
+	if adapter != null and adapter.has_method("get_collision_root_name"):
+		var root_name: Variant = adapter.call("get_collision_root_name")
+		var root_name_text := str(root_name)
+		if not root_name_text.is_empty():
+			return root_name_text
+	return "ThroneRoomCollisionRoot"
+
+func _should_bootstrap_scene_collision() -> bool:
+	var adapter := _get_scene_runtime_adapter()
+	if adapter != null and adapter.has_method("should_bootstrap_collision"):
+		return bool(adapter.call("should_bootstrap_collision"))
+	return true
+
+func _should_apply_blender_approx_lighting() -> bool:
+	var adapter := _get_scene_runtime_adapter()
+	if adapter != null and adapter.has_method("should_apply_blender_approx_lighting"):
+		return bool(adapter.call("should_apply_blender_approx_lighting"))
+	return true
 
 func _bus_log(message: String) -> void:
 	var bus := _get_bus()

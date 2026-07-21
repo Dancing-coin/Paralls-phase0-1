@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
-from app.character_agent.profile import CharacterDossier, build_dossier_projection
+from app.character_agent.profile import CharacterDossier, CharacterDossierLoader, build_dossier_projection
 from test_character_dossier_models import _minimal_dossier_payload
+
+
+DOSSIER_DIR = Path(__file__).resolve().parents[1].parent / "assets" / "characters" / "dossiers"
 
 
 def _dossier_with_author_only_secret() -> CharacterDossier:
@@ -88,6 +93,19 @@ def test_l4_projection_is_action_relevant_only() -> None:
     assert projection["identity"] == {"actor_id": "char_test"}
     assert projection["authority"]["forbidden_actions"] == ["grant_sealed_access_alone"]
     assert "character_profile" not in projection
+
+
+def test_char_b_fixture_projection_exposes_runtime_usable_context() -> None:
+    dossier = CharacterDossierLoader(DOSSIER_DIR).load("char_b")
+
+    projection = build_dossier_projection(dossier, audience="l2")
+
+    assert projection["actor_id"] == "char_b"
+    assert projection["identity"]["canonical_name"] == "Qiao Ren"
+    assert projection["authority"]["responsibilities"]
+    assert projection["capability_seeds"]["skill_seed_count"] > 0
+    assert projection["capability_seeds"]["skill_ids"]
+    assert projection["source_refs"]
 
 
 def test_dossier_projection_rejects_unknown_audience() -> None:

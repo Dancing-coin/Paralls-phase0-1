@@ -680,8 +680,8 @@ def test_character_agent_runtime_local_l2_stays_in_stub_mode_without_writing_cog
         source_candidate_event_id="auditory_fact:335:char_c",
         source_actor_id="char_a",
         target_actor_id="char_c",
-        clarity_score=0.81,
-        certainty_score=0.69,
+        clarity_score=0.96,
+        certainty_score=0.94,
     )
 
     runtime.ingest_character_perceived_event(event)

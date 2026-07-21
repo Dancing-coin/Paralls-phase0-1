@@ -1,6 +1,23 @@
 import pytest
 
 from app.character_agent.gateway.model_provider import CharacterModelProvider
+from app.config import settings
+
+
+def test_model_provider_defaults_to_character_model_settings(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "character_model_provider_kind", "qwen")
+    monkeypatch.setattr(settings, "character_model_endpoint", "https://example.invalid/qwen")
+    monkeypatch.setattr(settings, "character_model_api_key", "settings-key")
+    monkeypatch.setattr(settings, "character_model_model", "qwen-settings-model")
+    monkeypatch.setattr(settings, "character_model_timeout_seconds", 3.5)
+
+    provider = CharacterModelProvider()
+
+    assert provider._provider_kind == "qwen"
+    assert provider._endpoint_url == "https://example.invalid/qwen"
+    assert provider._api_key == "settings-key"
+    assert provider._model_name == "qwen-settings-model"
+    assert provider._timeout_seconds == 3.5
 
 
 def test_model_provider_deepseek_path_is_live_by_default_without_env_gate() -> None:

@@ -32,6 +32,7 @@
 - `docs/架构/运行时/模块/VLA运行时通道.md`：已实现的 VLA 视觉/空间运行时慢路径和无直接 authority 写权限边界。
 - `docs/架构/运行时/模块/模型服务通道.md`：模型 provider readiness、adapter 和真实调用证明边界。
 - `docs/架构/运行时/模块/Harness验证证据.md`：Harness profile 与证据产物模块文档。
+- `docs/art-resource-swap-workflow.md`：美术资源替换与更新工作流手册，定义 art pack、adapter scene、runtime shell 和 binding profile 的接入方式。
 - `docs/demo-script.md`：预期 demo 节拍和可观察证明路径。
 
 ## 活跃设计与计划
@@ -84,6 +85,8 @@
 - `docs/架构/`：仓库级和运行时级架构文档。
 - `docs/架构/运行时/`：运行时总纲、覆盖矩阵、图表和模块文档。
 - `docs/character/`：角色架构、控制链、资产集成和后续 action asset interface 文档。
+- `docs/kimi分析/`：Kimi 会话产生的问题分析与修复方案工作区（分析性质，不作为实现事实声明）。
+- `docs/art-resource-swap-workflow.md`：场景、角色、道具和环境状态资源的可替换化工作流与接入手册。
 - `scripts/autoload/`：Godot 后端桥接和本地表现总线。
 - `scripts/phase0/`：Phase 0 demo 编排。
 - `scripts/player/`：玩家意图和具身路径。
@@ -203,6 +206,7 @@ Latest run manifest、baseline 和 diff artifacts 写入 `.harness/verification/
 - `docs/superpowers/specs/world-character-siming-authority-mainline/README.md`
 - `docs/character/character-control-chain.md`
 - `docs/character/character-asset-integration.md`
+- `docs/art-resource-swap-workflow.md`
 - `docs/character/character-action-asset-interface.md`
 - `docs/character/character-actor-migration-status.md`
 - `docs/character/character-actor-final-convergence-target.md`
