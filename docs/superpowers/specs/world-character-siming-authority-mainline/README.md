@@ -60,3 +60,4 @@ Primary commands:
 - Remaining work should now prefer direct-evidence closure over re-framing the mainline.
 - Incremental follow-on design topics now live in:
   - [current-project-intelligence-upgrade/README.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/README.md)
+  - [character-gameplay-foundation/README.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/character-gameplay-foundation/README.md)

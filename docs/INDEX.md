@@ -39,6 +39,7 @@
 
 - `docs/superpowers/specs/world-character-siming-authority-mainline/README.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/character-gameplay-foundation/README.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/README.md`
 - `docs/superpowers/specs/2026-06-29-complete-character-mind-core-design.md`
 - `docs/superpowers/specs/2026-07-08-character-needs-personality-affect-runtime-design.md`
