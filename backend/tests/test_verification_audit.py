@@ -152,6 +152,32 @@ def test_phase0_main_demo_failed_interaction_attempt_waits_for_constraint_result
     assert "await _wait_for_failed_interaction_result(autotest_failed_interact_timeout_ms)" in controller_source
 
 
+def test_phase0_main_demo_serializes_autotest_requests_before_failed_interaction() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    controller_source = (
+        project_root / "scripts" / "phase0" / "MainDemoController.gd"
+    ).read_text(encoding="utf-8")
+    flow = controller_source.split(
+        '_bus_log("phase0_autotest_stage:success_interaction_submitted")', 1
+    )[1].split("await _capture_autotest_screenshot()", 1)[0]
+
+    assert "@export var autotest_backend_roundtrip_timeout_ms := 30000" in controller_source
+    assert flow.index("suspend_near_object_visual_fact = true") < flow.index(
+        '_emit_move_intent_request(autotest_final_position, "locomotion")'
+    )
+    assert flow.index("suspend_spatial_access_fact = true") < flow.index(
+        '_emit_move_intent_request(autotest_final_position, "locomotion")'
+    )
+    assert flow.count(
+        "await _wait_for_failed_move_ack(autotest_backend_roundtrip_timeout_ms)"
+    ) == 2
+    assert flow.count(
+        "await _wait_for_failed_interaction_ack(autotest_backend_roundtrip_timeout_ms)"
+    ) == 2
+    assert "if failed_interaction_ack_seen and failed_interaction_result_seen:" in flow
+    assert 'phase0_autotest_failed_interaction_timeout:ack=%s:result=%s' in flow
+
+
 def test_phase0_main_demo_suppresses_free_move_intent_loop_during_focus_autotest() -> None:
     project_root = Path(__file__).resolve().parents[2]
     controller_source = (

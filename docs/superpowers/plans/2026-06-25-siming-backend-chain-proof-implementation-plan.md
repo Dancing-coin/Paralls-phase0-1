@@ -225,3 +225,6 @@ python scripts/verification/harness.py --profile siming-backend-chain
 Expected with valid DeepSeek config: exit `0`, `overall_siming_backend_chain_passed=True`, and `app_wiring_live_deepseek_chain` status `passed`.
 
 Expected without `SIMING_LLM_API_KEY`: exit non-zero with `failed_stage=credential_check`.
+## 2026-07-23 Closure Status
+
+The active proof path is `scripts/verification/verify_siming_backend_chain.py` plus the explicit `siming-backend-chain` profile. The proof must not borrow Character credentials and must not mutate `app_main.settings`; live DeepSeek success is represented only by `app_wiring_live_deepseek_chain=passed`.

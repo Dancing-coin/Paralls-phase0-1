@@ -1,5 +1,10 @@
 # Full Character Agent Runtime With LLM Design
 
+Status note: this spec still defines the broad runtime target, but unresolved live-provider closure work is now tracked by:
+
+- `docs/superpowers/specs/2026-07-23-complete-llm-integration-closure-design.md`
+- `docs/superpowers/plans/2026-07-23-complete-llm-integration-closure-implementation-plan.md`
+
 ## Problem
 
 The repository has already proven a runnable Phase 0 dramatic loop with:
@@ -1019,3 +1024,6 @@ The first full character-agent implementation for this repository should:
 - prove itself inside the current Phase 0 scene before broader extraction
 
 This is the shortest path to a true character-agent runtime that is both architecture-correct and demo-real.
+## 2026-07-23 Closure Status
+
+The broad character-agent runtime remains larger than provider closure. For LLM live status, do not treat readiness, local continuity output, or partial dialogue success as proof. The approved provider closure requires the existing Character gateway and validator chain to pass dialogue, L2, and L3 live scenarios under one `LLM_CLOSURE_RUN_ID`.

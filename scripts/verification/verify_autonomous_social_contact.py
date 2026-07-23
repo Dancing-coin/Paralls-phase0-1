@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import os
 import sys
 from pathlib import Path
@@ -35,6 +36,26 @@ def _result(result_id: str, title: str, proved: bool, evidence: list[str], notes
         "evidence": evidence if proved else [],
         "notes": notes,
     }
+
+
+def _dialogue_source_preserves_agent_initiated_context(source: str) -> bool:
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not isinstance(node.func, ast.Attribute) or node.func.attr != "_context":
+            continue
+        keywords = {keyword.arg: keyword.value for keyword in node.keywords if keyword.arg is not None}
+        control_mode = keywords.get("control_mode")
+        intent_type = keywords.get("intent_type")
+        if (
+            isinstance(control_mode, ast.Constant)
+            and control_mode.value == "agent_initiated_utterance"
+            and isinstance(intent_type, ast.Constant)
+            and intent_type.value == "agent_initiated_utterance"
+        ):
+            return True
+    return False
 
 
 def main() -> int:
@@ -142,7 +163,7 @@ def main() -> int:
                     "self.dialogue.generate_utterance(",
                 )
             )
-            and 'control_mode": "agent_initiated_utterance"' in dialogue_source,
+            and _dialogue_source_preserves_agent_initiated_context(dialogue_source),
             [
                 "backend/app/services/character_service.py",
                 "backend/app/services/dialogue_service.py",

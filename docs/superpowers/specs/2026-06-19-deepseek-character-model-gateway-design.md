@@ -2,6 +2,13 @@
 
 Date: `2026-06-19`
 
+Status note: this design landed the first provider-aware character gateway slice, but it is no longer the sole closure source of truth for unresolved work.
+
+Open closure items now roll into:
+
+- `docs/superpowers/specs/2026-07-23-complete-llm-integration-closure-design.md`
+- `docs/superpowers/plans/2026-07-23-complete-llm-integration-closure-implementation-plan.md`
+
 ## Purpose
 
 This spec defines how the repository should connect the character-agent runtime to DeepSeek as the first live online model provider without freezing the current single-provider stopgap as long-term architecture truth.
@@ -391,3 +398,6 @@ It is:
 - router-ready provider-aware contracts
 - local fallback preserved
 - no change to the business-facing character-agent gateway surface
+## 2026-07-23 Closure Status
+
+Character live completion is now defined by the strict closure artifacts, not by readiness or stub behavior. The runtime Character model contract is `CHARACTER_MODEL_*` only, through `CharacterModelGateway -> CharacterModelProvider -> CharacterStructuredOutputValidator`. The required live evidence is `.harness/verification/character-model-live-report.json` with dialogue, L2, and L3 DeepSeek results all passed and `fallback_used=false`.

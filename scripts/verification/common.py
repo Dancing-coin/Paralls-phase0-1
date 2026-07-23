@@ -67,11 +67,19 @@ def write_markdown(path: Path, title: str, payload: dict[str, object], overall_k
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def run_command(args: list[str], cwd: Path, log_path: Path, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def run_command(
+    args: list[str],
+    cwd: Path,
+    log_path: Path,
+    env: dict[str, str] | None = None,
+    *,
+    timeout_seconds: float | None = None,
+) -> subprocess.CompletedProcess[str]:
     merged_env = os.environ.copy()
     if env:
         merged_env.update(env)
-    result = subprocess.run(
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    process = subprocess.Popen(
         args,
         cwd=str(cwd),
         env=merged_env,
@@ -80,11 +88,55 @@ def run_command(args: list[str], cwd: Path, log_path: Path, env: dict[str, str] 
         text=True,
         encoding="utf-8",
         errors="replace",
-        check=False,
+        bufsize=1,
     )
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    log_path.write_text(result.stdout, encoding="utf-8")
-    return result
+    output_lines: list[str] = []
+
+    def _reader() -> None:
+        if process.stdout is None:
+            return
+        with log_path.open("w", encoding="utf-8") as log_handle:
+            try:
+                for line in iter(process.stdout.readline, ""):
+                    output_lines.append(line)
+                    log_handle.write(line)
+                    log_handle.flush()
+            finally:
+                process.stdout.close()
+
+    reader_thread = threading.Thread(target=_reader, daemon=True)
+    reader_thread.start()
+    timed_out = False
+    try:
+        try:
+            process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            process.terminate()
+            try:
+                process.wait(timeout=2.0)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5.0)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5.0)
+        reader_thread.join(timeout=5.0)
+
+    if timed_out:
+        timeout_label = f"{timeout_seconds:g}" if timeout_seconds is not None else "unknown"
+        timeout_message = f"[harness] command timed out after {timeout_label} seconds\n"
+        output_lines.append(timeout_message)
+        with log_path.open("a", encoding="utf-8") as log_handle:
+            log_handle.write(timeout_message)
+            log_handle.flush()
+
+    return subprocess.CompletedProcess(
+        args=args,
+        returncode=124 if timed_out else int(process.returncode or 0),
+        stdout="".join(output_lines),
+    )
 
 
 def run_command_until_markers(

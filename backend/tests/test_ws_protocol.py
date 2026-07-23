@@ -64,6 +64,34 @@ def _reset_runtime_state_with_local_character_model() -> None:
     runtime._l3 = CharacterAgentL3Service(gateway=local_gateway)
     main.character_agent_runtime = runtime
     main.siming_event_pipeline._character_dispatch_adapter._runtime = runtime
+    main.character_service.dialogue._gateway = local_gateway
+
+
+def _receive_messages_by_type(
+    websocket: object,
+    expected_types: set[str],
+    *,
+    max_messages: int = 8,
+) -> dict[str, dict[str, object]]:
+    received: list[dict[str, object]] = []
+    matched: dict[str, dict[str, object]] = {}
+    for _ in range(max_messages):
+        try:
+            message = websocket.receive_json()  # type: ignore[attr-defined, no-any-return]
+        except AssertionError as exc:
+            raise AssertionError(
+                f"timed out waiting for {sorted(expected_types - matched.keys())}; received={received!r}"
+            ) from exc
+        received.append(message)
+        message_type = str(message.get("message_type", ""))
+        payload = message.get("payload", {})
+        if message_type == "ack" and isinstance(payload, dict) and payload.get("accepted") is False:
+            raise AssertionError(f"received negative ack while waiting for dialogue response: {message!r}")
+        if message_type in expected_types and message_type not in matched:
+            matched[message_type] = message
+        if expected_types.issubset(matched):
+            return matched
+    raise AssertionError(f"missing {sorted(expected_types - matched.keys())}; received={received!r}")
 
 
 def test_player_input_dialogue_submit_shape() -> None:
@@ -501,8 +529,9 @@ def test_websocket_dialogue_submit_emits_ack_and_dialogue_response() -> None:
             }
         )
 
-        ack = websocket.receive_json()
-        response = websocket.receive_json()
+        messages = _receive_messages_by_type(websocket, {"ack", "dialogue_response"})
+        ack = messages["ack"]
+        response = messages["dialogue_response"]
 
     assert ack["message_type"] == "ack"
     assert ack["payload"]["accepted"] is True
@@ -1348,15 +1377,20 @@ def test_websocket_interact_intent_emits_scheduling_round_trace_after_character_
             }
         )
 
-        received = [websocket.receive_json() for _ in range(70)]
+        round_two_trace = None
+        for _ in range(100):
+            message = websocket.receive_json()
+            if (
+                message["message_type"] == "scheduling_round_trace"
+                and message["payload"]["round_id"] == 2
+            ):
+                round_two_trace = message
+                break
 
-    traces = [message for message in received if message["message_type"] == "scheduling_round_trace"]
-
-    assert traces
-    assert traces[-1]["payload"]["round_id"] == 2
-    assert traces[-1]["payload"]["lead_actor_id"] == "char_a"
-    assert traces[-1]["payload"]["active_actor_ids"] == ["char_a", "char_b", "char_c"]
-    assert traces[-1]["payload"]["round_summary"] == "round 2 selects char_a, char_b, char_c because baseline_priority"
+    assert round_two_trace is not None
+    assert round_two_trace["payload"]["lead_actor_id"] == "char_a"
+    assert round_two_trace["payload"]["active_actor_ids"] == ["char_a", "char_b", "char_c"]
+    assert round_two_trace["payload"]["round_summary"] == "round 2 selects char_a, char_b, char_c because baseline_priority"
 
 
 def test_websocket_raw_visual_fact_event_emits_character_agent_execution_for_char_a() -> None:

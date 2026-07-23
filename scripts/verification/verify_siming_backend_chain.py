@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
@@ -48,9 +49,6 @@ class LiveProviderProofConfig:
     title: str
     default_endpoint: str
     default_model: str
-    api_key_envs: tuple[str, ...]
-    endpoint_envs: tuple[str, ...]
-    model_envs: tuple[str, ...]
     required_endpoint_marker: str | None = None
 
 
@@ -62,9 +60,6 @@ LIVE_PROVIDER_CONFIGS: dict[str, LiveProviderProofConfig] = {
         title="App wiring live DeepSeek backend chain",
         default_endpoint="https://api.deepseek.com/chat/completions",
         default_model="deepseek-chat",
-        api_key_envs=("SIMING_LLM_DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY"),
-        endpoint_envs=("SIMING_LLM_DEEPSEEK_ENDPOINT", "DEEPSEEK_CHAT_COMPLETIONS_ENDPOINT"),
-        model_envs=("SIMING_LLM_DEEPSEEK_MODEL", "DEEPSEEK_MODEL"),
         required_endpoint_marker="deepseek.com",
     ),
     "qwen": LiveProviderProofConfig(
@@ -74,9 +69,6 @@ LIVE_PROVIDER_CONFIGS: dict[str, LiveProviderProofConfig] = {
         title="App wiring live Qwen backend chain",
         default_endpoint="https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
         default_model="qwen3.7-plus",
-        api_key_envs=("SIMING_LLM_QWEN_API_KEY", "QWEN_API_KEY"),
-        endpoint_envs=("SIMING_LLM_QWEN_ENDPOINT", "QWEN_CHAT_COMPLETIONS_ENDPOINT", "QWEN_BASE_URL"),
-        model_envs=("SIMING_LLM_QWEN_MODEL", "QWEN_MODEL"),
     ),
     "seed_doubao": LiveProviderProofConfig(
         provider="seed_doubao",
@@ -85,9 +77,6 @@ LIVE_PROVIDER_CONFIGS: dict[str, LiveProviderProofConfig] = {
         title="App wiring live Seed/Doubao backend chain",
         default_endpoint="",
         default_model="doubao-seed-2.0-pro",
-        api_key_envs=("SIMING_LLM_SEED_DOUBAO_API_KEY", "SEED_DOUBAO_API_KEY"),
-        endpoint_envs=("SIMING_LLM_SEED_DOUBAO_ENDPOINT", "SEED_DOUBAO_CHAT_COMPLETIONS_ENDPOINT", "SEED_DOUBAO_BASE_URL"),
-        model_envs=("SIMING_LLM_SEED_DOUBAO_MODEL", "SEED_DOUBAO_MODEL"),
     ),
 }
 
@@ -526,14 +515,6 @@ def _prove_input_family_guard() -> dict[str, object]:
     )
 
 
-def _first_env(*names: str) -> str | None:
-    for name in names:
-        value = os.getenv(name)
-        if value:
-            return value.strip()
-    return None
-
-
 def _matching_route(settings: Settings, provider: str) -> Any | None:
     for route in settings.siming_llm_routes:
         if route.enabled and route.provider == provider:
@@ -541,47 +522,44 @@ def _matching_route(settings: Settings, provider: str) -> Any | None:
     return None
 
 
-def _live_settings_for_provider(base_settings: Settings, config: LiveProviderProofConfig) -> Settings:
-    route = _matching_route(base_settings, config.provider)
-    uses_legacy_global = (
-        bool(base_settings.siming_llm_provider_order)
-        and base_settings.siming_llm_provider_order[0] == config.provider
-    )
-    api_key = _first_env(*config.api_key_envs)
-    endpoint = _first_env(*config.endpoint_envs)
-    model = _first_env(*config.model_envs)
+def _selected_settings(settings: Settings, config: LiveProviderProofConfig) -> dict[str, object]:
+    route = _matching_route(settings, config.provider)
     if route is not None:
-        api_key = api_key or route.api_key
-        endpoint = endpoint or route.endpoint
-        model = model or route.model
-    if uses_legacy_global:
-        api_key = api_key or base_settings.siming_llm_api_key
-        endpoint = endpoint or base_settings.siming_llm_endpoint
-        model = model or base_settings.siming_llm_model
-    return base_settings.model_copy(
-        update={
-            "siming_llm_mode": "http",
-            "siming_llm_api_key": api_key,
-            "siming_llm_endpoint": endpoint or config.default_endpoint,
-            "siming_llm_model": model or config.default_model,
-            "siming_llm_provider_order": [config.provider],
-            "siming_llm_routes": [],
+        return {
+            "mode": settings.siming_llm_mode,
+            "provider": route.provider,
+            "api_key": route.api_key,
+            "endpoint": route.endpoint,
+            "model": route.model,
+            "timeout_seconds": route.timeout_seconds or settings.siming_llm_timeout_seconds,
+            "route_mode": "routes",
         }
-    )
+    return {
+        "mode": settings.siming_llm_mode,
+        "provider": settings.siming_llm_provider_order[0] if settings.siming_llm_provider_order else "",
+        "api_key": settings.siming_llm_api_key,
+        "endpoint": settings.siming_llm_endpoint,
+        "model": settings.siming_llm_model,
+        "timeout_seconds": settings.siming_llm_timeout_seconds,
+        "route_mode": "legacy",
+    }
 
 
 def _settings_failure(settings: Settings, config: LiveProviderProofConfig) -> tuple[str, str] | None:
     if settings.siming_llm_mode != "http":
         return "credential_check", f"SIMING_LLM_MODE={settings.siming_llm_mode}"
-    if not settings.siming_llm_api_key:
+    if settings.siming_llm_routes and settings.siming_llm_provider_order:
+        return "credential_check", "SIMING_LLM_ROUTES_JSON and SIMING_LLM_PROVIDER_ORDER are both configured"
+    selected = _selected_settings(settings, config)
+    if not selected["api_key"]:
         return "credential_check", f"missing API key for {config.provider}"
-    provider_order = list(settings.siming_llm_provider_order)
-    if not provider_order or provider_order[0] != config.provider:
-        return "credential_check", f"provider_order={','.join(provider_order) or '<empty>'}"
-    if not settings.siming_llm_endpoint:
+    if selected["provider"] != config.provider:
+        return "credential_check", f"provider={selected['provider'] or '<empty>'}"
+    if not selected["endpoint"]:
         return "credential_check", f"missing endpoint for {config.provider}"
-    if config.required_endpoint_marker and config.required_endpoint_marker not in settings.siming_llm_endpoint:
-        return "credential_check", f"endpoint={settings.siming_llm_endpoint}"
+    endpoint = str(selected["endpoint"])
+    if config.required_endpoint_marker and config.required_endpoint_marker not in endpoint:
+        return "credential_check", f"endpoint_host={_redacted_host(endpoint)}"
     return None
 
 
@@ -593,9 +571,9 @@ def _prove_app_wiring_live_provider_chain(config: LiveProviderProofConfig) -> di
     scenario = config.scenario
     title = config.title
     app_main = _import_app_main()
-    original_settings: Settings = app_main.settings
-    settings = _live_settings_for_provider(original_settings, config)
-    _header(scenario, provider=config.provider, model=settings.siming_llm_model)
+    settings: Settings = app_main.settings
+    selected = _selected_settings(settings, config)
+    _header(scenario, provider=config.provider, model=str(selected["model"] or ""))
 
     config_failure = _settings_failure(settings, config)
     if config_failure is not None:
@@ -605,18 +583,17 @@ def _prove_app_wiring_live_provider_chain(config: LiveProviderProofConfig) -> di
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
         return _fail_entry(scenario, title, stage, expected, actual, hint)
 
-    app_main.settings = settings
     app_main.reset_runtime_state()
     event = _make_visual_fact_event()
     _print("[1/8] 权威事件已接收 / authority event accepted")
     _print(f"event_type={event.event_type} correlation_id={event.correlation_id}")
     _print("[2/8] 真实应用装配已确认 / app wiring confirmed")
     _print(
-        "provider_order=%s endpoint=%s"
-        % (",".join(settings.siming_llm_provider_order), settings.siming_llm_endpoint)
+        "provider=%s endpoint_host=%s route_mode=%s"
+        % (selected["provider"], _redacted_host(str(selected["endpoint"] or "")), selected["route_mode"])
     )
     _print(f"[3/8] {config.display_name} 请求已发送 / {config.display_name} request sent")
-    _print(f"endpoint={settings.siming_llm_endpoint} timeout={settings.siming_llm_timeout_seconds}")
+    _print(f"endpoint_host={_redacted_host(str(selected['endpoint'] or ''))} timeout={selected['timeout_seconds']}")
 
     started = time.perf_counter()
     try:
@@ -628,7 +605,6 @@ def _prove_app_wiring_live_provider_chain(config: LiveProviderProofConfig) -> di
         actual = exc.__class__.__name__ + (f": {message[:180]}" if message else "")
         hint = f"Check {config.display_name} endpoint, key validity, network, and provider error handling"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
-        app_main.settings = original_settings
         app_main.reset_runtime_state()
         return _fail_entry(scenario, title, stage, expected, actual, hint)
 
@@ -653,7 +629,6 @@ def _prove_app_wiring_live_provider_chain(config: LiveProviderProofConfig) -> di
         actual = "audit_status=llm_timeout" + (f" reason={reason}" if reason else "")
         hint = "The live proof has no retry; increase timeout only if the model path is otherwise healthy"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
-        app_main.settings = original_settings
         app_main.reset_runtime_state()
         return _fail_entry(scenario, title, stage, expected, actual, hint)
     if "llm_invalid_output" in audit_statuses:
@@ -663,7 +638,6 @@ def _prove_app_wiring_live_provider_chain(config: LiveProviderProofConfig) -> di
         actual = "audit_status=llm_invalid_output" + (f" reason={reason}" if reason else "")
         hint = f"{config.display_name} returned a non-candidate shape or did not follow the Siming candidate contract"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
-        app_main.settings = original_settings
         app_main.reset_runtime_state()
         return _fail_entry(scenario, title, stage, expected, actual, hint)
     if "policy_rejected" in audit_statuses or "feasibility_rejected" in audit_statuses:
@@ -673,7 +647,6 @@ def _prove_app_wiring_live_provider_chain(config: LiveProviderProofConfig) -> di
         actual = f"audit_statuses={audit_statuses}" + (f" reason={reason}" if reason else "")
         hint = "The live candidate reached SimingRuntime but was not executable"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
-        app_main.settings = original_settings
         app_main.reset_runtime_state()
         return _fail_entry(scenario, title, stage, expected, actual, hint)
     if not candidate_events:
@@ -682,7 +655,6 @@ def _prove_app_wiring_live_provider_chain(config: LiveProviderProofConfig) -> di
         actual = "candidate_count=0"
         hint = f"{config.display_name} did not produce a candidate that entered SimingRuntime"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
-        app_main.settings = original_settings
         app_main.reset_runtime_state()
         return _fail_entry(scenario, title, stage, expected, actual, hint)
 
@@ -694,7 +666,6 @@ def _prove_app_wiring_live_provider_chain(config: LiveProviderProofConfig) -> di
         actual = f"source={source or '<missing>'}"
         hint = f"{config.display_name} candidates must not rely on Pydantic defaults"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
-        app_main.settings = original_settings
         app_main.reset_runtime_state()
         return _fail_entry(scenario, title, stage, expected, actual, hint)
 
@@ -716,7 +687,6 @@ def _prove_app_wiring_live_provider_chain(config: LiveProviderProofConfig) -> di
         actual = "decision_count=0"
         hint = "Candidate validation passed but runtime did not emit a decision"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
-        app_main.settings = original_settings
         app_main.reset_runtime_state()
         return _fail_entry(scenario, title, stage, expected, actual, hint)
 
@@ -728,7 +698,6 @@ def _prove_app_wiring_live_provider_chain(config: LiveProviderProofConfig) -> di
         actual = "dispatch_count=0"
         hint = "Producer did not publish the accepted candidate downstream"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
-        app_main.settings = original_settings
         app_main.reset_runtime_state()
         return _fail_entry(scenario, title, stage, expected, actual, hint)
 
@@ -740,21 +709,30 @@ def _prove_app_wiring_live_provider_chain(config: LiveProviderProofConfig) -> di
         actual = f"audit_count={len(audit_records)} read_model_count={len(read_models)}"
         hint = "SimingEventPipeline did not persist live proof evidence"
         _print_failure(scenario=scenario, stage=stage, expected=expected, actual=actual, hint=hint)
-        app_main.settings = original_settings
         app_main.reset_runtime_state()
         return _fail_entry(scenario, title, stage, expected, actual, hint)
 
     _print("[7/8] 审计与读模型已生成 / audit and read model present")
     _print(f"audit_status={audit_records[0].status} read_model=present")
     _print("[8/8] 结果=通过 / result=PASS")
-    app_main.settings = original_settings
     app_main.reset_runtime_state()
-    return _pass_entry(
+    entry = _pass_entry(
         scenario,
         title,
         f"candidate_count={len(candidate_events)}; dispatch_event_type={dispatch_events[0].event_type}; "
         f"audit_count={len(audit_records)}; read_model_count={len(read_models)}; latency_ms={latency_ms}",
     )
+    entry.update(
+        {
+            "provider": selected["provider"],
+            "model": selected["model"],
+            "endpoint_host": _redacted_host(str(selected["endpoint"] or "")),
+            "timeout_seconds": selected["timeout_seconds"],
+            "retry_count": 0,
+            "latency_ms": latency_ms,
+        }
+    )
+    return entry
 
 
 def _parse_live_providers(raw_values: list[str]) -> list[str]:
@@ -773,6 +751,8 @@ def _write_report(entries: list[dict[str, object]]) -> dict[str, object]:
     log_dir = verification_dir(project_root)
     overall = all(entry["status"] == "passed" for entry in entries)
     report: dict[str, object] = {
+        "schema_version": "siming-backend-chain.v1",
+        "verification_run_id": os.getenv("LLM_CLOSURE_RUN_ID", ""),
         "overall_siming_backend_chain_passed": overall,
         "results": entries,
         "artifacts": {
@@ -783,6 +763,13 @@ def _write_report(entries: list[dict[str, object]]) -> dict[str, object]:
     write_json(log_dir / REPORT_JSON, report)
     write_markdown(log_dir / REPORT_MD, "Siming Backend Chain Proof / 司命后端主链证明", report, "overall_siming_backend_chain_passed")
     return report
+
+
+def _redacted_host(endpoint: str) -> str:
+    if not endpoint:
+        return "not_configured"
+    parsed = urlparse(endpoint if "://" in endpoint else f"https://{endpoint}")
+    return parsed.hostname or "redacted_endpoint"
 
 
 def main() -> int:

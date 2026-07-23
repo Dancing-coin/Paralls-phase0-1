@@ -1,13 +1,17 @@
 import importlib
-import os
+import json
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 import app.config as config_module
+from app.config import Settings
 
 
 def test_settings_default_to_stub_modes_when_env_is_unset(monkeypatch) -> None:
-    monkeypatch.delenv("DIALOGUE_MODE", raising=False)
-    monkeypatch.delenv("TTS_MODE", raising=False)
+    monkeypatch.setenv("DIALOGUE_MODE", "")
+    monkeypatch.setenv("TTS_MODE", "")
 
     reloaded = importlib.reload(config_module)
 
@@ -103,3 +107,49 @@ def test_process_env_overrides_project_dotenv(monkeypatch) -> None:
         else:
             env_path.write_text(original, encoding="utf-8")
         importlib.reload(config_module)
+
+
+def test_deepseek_aliases_do_not_feed_character_settings(monkeypatch) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "legacy-key")
+    monkeypatch.setenv("DEEPSEEK_MODEL", "legacy-model")
+    monkeypatch.setenv("CHARACTER_MODEL_API_KEY", "")
+    monkeypatch.setenv("CHARACTER_MODEL_MODEL", "")
+
+    reloaded = importlib.reload(config_module)
+
+    assert reloaded.settings.character_model_api_key is None
+    assert reloaded.settings.character_model_model is None
+
+
+def test_character_timeout_must_be_positive() -> None:
+    with pytest.raises(ValidationError):
+        Settings(character_model_timeout_seconds=0)
+
+
+def test_siming_timeout_must_be_positive() -> None:
+    with pytest.raises(ValidationError):
+        Settings(siming_llm_timeout_seconds=0)
+
+
+def test_siming_routes_json_without_legacy_order_loads_empty_provider_order(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "SIMING_LLM_ROUTES_JSON",
+        json.dumps(
+            [
+                {
+                    "route_id": "deepseek-live",
+                    "provider": "deepseek_chat",
+                    "endpoint": "https://api.deepseek.com/chat/completions",
+                    "model": "deepseek-chat",
+                    "api_key": "route-key",
+                    "enabled": True,
+                }
+            ]
+        ),
+    )
+    monkeypatch.setenv("SIMING_LLM_PROVIDER_ORDER", "")
+
+    reloaded = importlib.reload(config_module)
+
+    assert reloaded.settings.siming_llm_provider_order == []
+    assert reloaded.settings.siming_llm_routes[0].provider == "deepseek_chat"

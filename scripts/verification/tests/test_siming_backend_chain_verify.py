@@ -94,6 +94,41 @@ def test_live_deepseek_without_key_fails_bilingually() -> None:
     assert "failed_stage=credential_check" in live_entry["notes"]
 
 
+def test_live_deepseek_does_not_accept_character_key() -> None:
+    env = {
+        **os.environ,
+        "PYTHONIOENCODING": "utf-8",
+        "DEEPSEEK_API_KEY": "character-only",
+        "SIMING_LLM_MODE": "http",
+        "SIMING_LLM_PROVIDER_ORDER": "deepseek_chat",
+        "SIMING_LLM_API_KEY": "",
+        "SIMING_LLM_ENDPOINT": "https://api.deepseek.com/chat/completions",
+        "SIMING_LLM_MODEL": "deepseek-chat",
+    }
+    result = subprocess.run(
+        [sys.executable, "scripts/verification/verify_siming_backend_chain.py", "--live-provider", "deepseek_chat"],
+        cwd=PROJECT_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 1
+    assert "failed_stage=credential_check" in result.stdout
+
+
+def test_live_deepseek_does_not_replace_app_settings() -> None:
+    source = (PROJECT_ROOT / "scripts/verification/verify_siming_backend_chain.py").read_text(encoding="utf-8")
+
+    assert "_live_settings_for_provider" not in source
+    assert "app_main.settings =" not in source
+    assert '"siming_llm_mode": "http"' not in source
+
+
 def test_live_provider_parser_preserves_deepseek_default_and_accepts_matrix() -> None:
     assert siming_backend_chain._parse_live_providers([]) == ["deepseek_chat"]
     assert siming_backend_chain._parse_live_providers(["deepseek_chat,qwen", "seed_doubao"]) == [
@@ -113,7 +148,18 @@ def test_live_qwen_without_key_is_reported_as_provider_specific_failure() -> Non
         encoding="utf-8",
         errors="replace",
         check=False,
-        env={**os.environ, "PYTHONIOENCODING": "utf-8", "SIMING_LLM_QWEN_API_KEY": "", "QWEN_API_KEY": ""},
+        env={
+            **os.environ,
+            "PYTHONIOENCODING": "utf-8",
+            "SIMING_LLM_MODE": "http",
+            "SIMING_LLM_PROVIDER_ORDER": "qwen",
+            "SIMING_LLM_API_KEY": "",
+            "SIMING_LLM_ENDPOINT": "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+            "SIMING_LLM_MODEL": "qwen3.7-plus",
+            "SIMING_LLM_ROUTES_JSON": "",
+            "SIMING_LLM_QWEN_API_KEY": "",
+            "QWEN_API_KEY": "",
+        },
     )
 
     assert result.returncode == 1

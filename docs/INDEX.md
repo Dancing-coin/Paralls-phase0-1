@@ -55,6 +55,8 @@
 - `docs/superpowers/specs/2026-06-21-character-director-observatory-design.md`
 - `docs/superpowers/plans/2026-06-21-character-director-observatory-implementation-plan.md`
 - `docs/superpowers/plans/2026-06-22-character-director-observatory-finalization-implementation-plan.md`
+- `docs/superpowers/specs/2026-07-23-complete-llm-integration-closure-design.md`
+- `docs/superpowers/plans/2026-07-23-complete-llm-integration-closure-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-19-deepseek-character-model-gateway-design.md`
 - `docs/superpowers/plans/2026-06-19-deepseek-character-model-gateway-implementation-plan.md`
 - `docs/superpowers/plans/2026-06-19-character-actor-stage2-closeout-implementation-plan.md`
@@ -121,6 +123,8 @@
 - `l1-world-fact-runtime`：System L1 world fact subsystem 的兼容运行时验证 profile。名称是历史遗留；它证明面向运行时的 L1 服务和集成，不代表产品级 L1 运行时。
 - `mainline-unified-runtime`：仓库主线聚合证明，覆盖 world runtime、actor-local perception、autonomous social contact、execution ingress、settlement writeback、asset-runtime/Kimodo contracts 和 scheduling/continuity evidence。
 - `model-provider-readiness`：character text、Siming candidate、VLA spatial 和非运行时 production model 入口的脱敏 model provider readiness 台账。
+- `character-model-live`：explicit-only Character 大模型 live proof，分别证明 dialogue、L2 reasoning 和 L3 planning 真实 provider 路径，且不能使用 fallback。
+- `llm-integration-closure`：explicit-only 聚合证明，要求 readiness、Character 三项 live proof 和 Siming DeepSeek live proof 共享同一个 `LLM_CLOSURE_RUN_ID`；readiness 不会被升级为 live proof。
 - `godot-sampling-production-grade-providers`：Godot 运行时与后端证明，证明 visual、spatial、auditory、embodied、skeletal 和 environment provider refs 进入 PQF。
 - `embodied-skeletal-debug-replay`：Godot 运行时与后端证明，证明 `CharacterReplica` / `Skeleton3D` binding、high/mid-level skeletal refs 和 debug-only full bone replay artifacts。
 - `vla-provider-backend`：后端证明，覆盖无直接 authority 写权限的 VLA provider request/result contracts、model registry、scheduler、cache isolation、percept bridge、运行时消费和 real-provider readiness status。
@@ -140,6 +144,8 @@
 - `python scripts/verification/verify_l1_world_fact_runtime.py`
 - `python scripts/verification/verify_mainline_unified_runtime.py`
 - `python scripts/verification/verify_model_provider_readiness.py`
+- `python scripts/verification/verify_character_model_live.py`
+- `python scripts/verification/verify_llm_integration_closure.py`
 - `python scripts/verification/verify_godot_sampling_production_grade_providers.py`
 - `python scripts/verification/verify_embodied_skeletal_debug_replay_pipeline.py`
 - `python scripts/verification/verify_vla_provider_backend.py`

@@ -34,6 +34,7 @@ PHASE0_VERIFY_ENV = {
     "CHARACTER_MODEL_PROVIDER_KIND": "local",
     "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
 }
+PHASE0_PYTEST_TIMEOUT_SECONDS = float(os.environ.get("PHASE0_PYTEST_TIMEOUT_SECONDS", "1200"))
 
 
 def _read_character_agent_execution_result(log_dir: Path, project_root: Path, python_exe: str, godot_exe: Path) -> dict[str, object]:
@@ -110,6 +111,7 @@ def main() -> int:
             project_root / "backend",
             pytest_log,
             env={"PYTHONPATH": pytest_pythonpath},
+            timeout_seconds=PHASE0_PYTEST_TIMEOUT_SECONDS,
         )
 
         health, backend_process = ensure_backend(

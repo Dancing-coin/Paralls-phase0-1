@@ -1,11 +1,38 @@
 from __future__ import annotations
 
 import json
-import os
+from dataclasses import replace, dataclass
+from urllib.parse import urlparse
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from app.config import settings
+
+
+_DEFAULT_ENDPOINTS = {
+    "deepseek": "https://api.deepseek.com",
+    "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "seed_doubao": "",
+    "openai_compatible": "",
+}
+_DEFAULT_MODELS = {
+    "deepseek": "deepseek-chat",
+    "qwen": "qwen3.7-plus",
+    "seed_doubao": "doubao-seed-2.0-pro",
+    "openai_compatible": "openai-compatible-chat",
+}
+
+
+@dataclass(frozen=True)
+class CharacterModelCallEvidence:
+    task_kind: str
+    provider_kind: str
+    model_name: str
+    endpoint_host: str
+    transport_attempted: bool
+    transport_succeeded: bool
+    fallback_used: bool
+    error_type: str | None = None
 
 
 class CharacterModelProvider:
@@ -28,6 +55,13 @@ class CharacterModelProvider:
             if timeout_seconds is not None
             else float(settings.character_model_timeout_seconds)
         )
+        self._last_call_evidence: CharacterModelCallEvidence | None = None
+
+    @property
+    def last_call_evidence(self) -> CharacterModelCallEvidence | None:
+        if self._last_call_evidence is None:
+            return None
+        return replace(self._last_call_evidence)
 
     def complete(self, request: dict[str, object]) -> dict[str, object]:
         route = request.get("route", {})
@@ -36,102 +70,93 @@ class CharacterModelProvider:
         if isinstance(route, dict):
             provider_kind = str(route.get("provider_kind", provider_kind) or provider_kind)
         if provider_kind == "local":
-            return self._offline_complete(request)
+            output = self._offline_complete(request)
+            self._record_evidence(task_kind=task_kind, provider_kind=provider_kind, fallback_used=True)
+            return output
         if provider_kind == "deepseek":
-            return self._coerce_output_for_task(
-                str(request.get("task_kind", "") or ""),
-                self._complete_via_deepseek(request),
-            )
+            return self._complete_strict(task_kind=task_kind, provider_kind=provider_kind, request=request)
         if provider_kind in {"qwen", "seed_doubao", "openai_compatible"}:
-            return self._coerce_output_for_task(
-                str(request.get("task_kind", "") or ""),
-                self._complete_via_deepseek(request),
-            )
+            if (not self._endpoint_url or not self._api_key) and not self._requires_model_semantic_ownership(task_kind):
+                output = self._offline_complete(request)
+                self._record_evidence(task_kind=task_kind, provider_kind=provider_kind, fallback_used=True)
+                return output
+            return self._complete_strict(task_kind=task_kind, provider_kind=provider_kind, request=request)
         if provider_kind == "hybrid":
             try:
-                return self._coerce_output_for_task(
-                    task_kind,
-                    self._complete_via_deepseek(request),
-                )
+                return self._complete_strict(task_kind=task_kind, provider_kind=provider_kind, request=request)
             except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError):
                 if self._requires_model_semantic_ownership(task_kind):
                     raise
-                return self._offline_complete(request)
+                output = self._offline_complete(request)
+                self._record_evidence(task_kind=task_kind, provider_kind=provider_kind, fallback_used=True)
+                return output
         if self._requires_model_semantic_ownership(task_kind):
+            self._record_evidence(
+                task_kind=task_kind,
+                provider_kind=provider_kind,
+                fallback_used=False,
+                error_type="ValueError",
+            )
             raise ValueError(f"unsupported provider_kind for model-led task: {provider_kind or 'unknown'}")
-        return self._offline_complete(request)
+        output = self._offline_complete(request)
+        self._record_evidence(task_kind=task_kind, provider_kind=provider_kind, fallback_used=True)
+        return output
+
+    def _complete_strict(
+        self,
+        *,
+        task_kind: str,
+        provider_kind: str,
+        request: dict[str, object],
+    ) -> dict[str, object]:
+        try:
+            output = self._complete_via_deepseek(request)
+            self._record_evidence(
+                task_kind=task_kind,
+                provider_kind=provider_kind,
+                transport_attempted=True,
+                transport_succeeded=True,
+                fallback_used=False,
+            )
+            return self._coerce_output_for_task(task_kind, output)
+        except Exception as exc:
+            self._record_evidence(
+                task_kind=task_kind,
+                provider_kind=provider_kind,
+                transport_attempted=bool(self._endpoint_url and self._api_key),
+                transport_succeeded=False,
+                fallback_used=False,
+                error_type=exc.__class__.__name__,
+            )
+            raise
 
     def _default_endpoint(self, endpoint_url: str | None, *, use_settings: bool = True) -> str:
         if endpoint_url:
             return endpoint_url.strip()
         if use_settings and settings.character_model_endpoint:
             return settings.character_model_endpoint.strip()
-        if self._provider_kind == "qwen":
-            return (
-                os.getenv("CHARACTER_MODEL_ENDPOINT", "")
-                or os.getenv("QWEN_BASE_URL", "")
-                or "https://dashscope.aliyuncs.com/compatible-mode/v1"
-            ).strip()
-        if self._provider_kind == "seed_doubao":
-            return (
-                os.getenv("CHARACTER_MODEL_ENDPOINT", "")
-                or os.getenv("SEED_DOUBAO_BASE_URL", "")
-            ).strip()
-        return (
-            os.getenv("DEEPSEEK_BASE_URL", "")
-            or os.getenv("CHARACTER_MODEL_ENDPOINT", "")
-            or "https://api.deepseek.com"
-        ).strip()
+        return _DEFAULT_ENDPOINTS.get(self._provider_kind, "").strip()
 
     def _default_api_key(self, api_key: str | None, *, use_settings: bool = True) -> str:
         if api_key:
             return api_key.strip()
         if use_settings and settings.character_model_api_key:
             return settings.character_model_api_key.strip()
-        if self._provider_kind == "qwen":
-            return (
-                os.getenv("CHARACTER_MODEL_API_KEY", "")
-                or os.getenv("QWEN_API_KEY", "")
-            ).strip()
-        if self._provider_kind == "seed_doubao":
-            return (
-                os.getenv("CHARACTER_MODEL_API_KEY", "")
-                or os.getenv("SEED_DOUBAO_API_KEY", "")
-            ).strip()
-        return (
-            os.getenv("DEEPSEEK_API_KEY", "")
-            or os.getenv("CHARACTER_MODEL_API_KEY", "")
-        ).strip()
+        return ""
 
     def _default_model(self, model_name: str | None, *, use_settings: bool = True) -> str:
         if model_name:
             return model_name.strip()
         if use_settings and settings.character_model_model:
             return settings.character_model_model.strip()
-        if self._provider_kind == "qwen":
-            return (
-                os.getenv("CHARACTER_MODEL_MODEL", "")
-                or os.getenv("QWEN_MODEL", "")
-                or "qwen3.7-plus"
-            ).strip()
-        if self._provider_kind == "seed_doubao":
-            return (
-                os.getenv("CHARACTER_MODEL_MODEL", "")
-                or os.getenv("SEED_DOUBAO_MODEL", "")
-                or "doubao-seed-2.0-pro"
-            ).strip()
-        return (
-            os.getenv("DEEPSEEK_MODEL", "")
-            or os.getenv("CHARACTER_MODEL_MODEL", "")
-            or "deepseek-v4-flash"
-        ).strip()
+        return _DEFAULT_MODELS.get(self._provider_kind, _DEFAULT_MODELS["qwen"]).strip()
 
     def _requires_model_semantic_ownership(self, task_kind: str) -> bool:
         return task_kind in {"l2_reasoning", "l3_planning"}
 
     def _complete_via_deepseek(self, request: dict[str, object]) -> dict[str, object]:
         if not self._endpoint_url or not self._api_key:
-            raise ValueError("deepseek provider requires endpoint and api key")
+            raise ValueError("character model provider requires endpoint and api key")
         body = json.dumps(self._build_deepseek_request(request)).encode("utf-8")
         headers = {
             "Content-Type": "application/json",
@@ -485,3 +510,31 @@ class CharacterModelProvider:
             if str(entry.get("value", "") or "") == "guarded":
                 return f"guarded relation with {attention_target}"
         return ""
+
+    def _record_evidence(
+        self,
+        *,
+        task_kind: str,
+        provider_kind: str,
+        transport_attempted: bool = False,
+        transport_succeeded: bool = False,
+        fallback_used: bool = False,
+        error_type: str | None = None,
+    ) -> None:
+        self._last_call_evidence = CharacterModelCallEvidence(
+            task_kind=task_kind,
+            provider_kind=provider_kind,
+            model_name=self._model_name,
+            endpoint_host=_endpoint_host(self._endpoint_url),
+            transport_attempted=transport_attempted,
+            transport_succeeded=transport_succeeded,
+            fallback_used=fallback_used,
+            error_type=error_type,
+        )
+
+
+def _endpoint_host(endpoint_url: str) -> str:
+    if not endpoint_url:
+        return "not_configured"
+    parsed = urlparse(endpoint_url if "://" in endpoint_url else f"https://{endpoint_url}")
+    return parsed.hostname or "redacted_endpoint"

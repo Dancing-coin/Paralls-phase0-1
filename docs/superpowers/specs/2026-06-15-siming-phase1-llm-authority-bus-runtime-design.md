@@ -2,6 +2,11 @@
 
 Status: approved
 
+Status note: the architectural boundary remains valid, but unresolved live-provider closure and verification work is now tracked by:
+
+- `docs/superpowers/specs/2026-07-23-complete-llm-integration-closure-design.md`
+- `docs/superpowers/plans/2026-07-23-complete-llm-integration-closure-implementation-plan.md`
+
 ## Problem
 
 `Phase 1` needs Siming to become a real runtime participant rather than a static catalyst stub, while still following the documented backend authority event bus design.
@@ -293,3 +298,6 @@ Phase 1 Siming with LLM assistance is acceptable only when:
 - Real provider configuration should be injected through settings and kept outside domain models.
 - Provider choice, API key storage, retry policy, and model selection should be implementation-plan topics, not part of the domain boundary. Model selection should be route-based so one Siming runtime can connect different provider/model routes without changing the authority-bus contract.
 - The legacy `SimingService` should remain out of the mainline authority-bus path unless explicitly retired by a later cleanup plan.
+## 2026-07-23 Closure Status
+
+Siming live provider proof must use the loaded app settings and the existing `SimingRuntime.tick() -> SimingEventProducer -> AuthorityEventBus` chain. A verifier-created settings object, Character credential reuse, or readiness-only evidence is not completion evidence.

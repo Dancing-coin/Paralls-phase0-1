@@ -429,3 +429,6 @@ python scripts/verification/harness.py --profile siming-backend-chain
 ## Review Notes
 
 This spec intentionally separates backend architecture proof from Godot runtime proof. The backend proof answers whether Siming is structurally alive in the backend authority-event chain and whether the real app wiring can call DeepSeek through that chain. It does not claim that Godot consumed or displayed the result.
+## 2026-07-23 Closure Status
+
+The backend-chain proof is strict: live DeepSeek evidence must come from unmodified `SIMING_LLM_*` or route settings loaded by `app.main`, pass through `SimingRuntime.tick()`, and publish a concrete downstream `siming.*` authority event. Timeout, fallback, policy rejection, feasibility rejection, and synthesized settings are failure states.

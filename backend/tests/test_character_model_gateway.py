@@ -5,6 +5,7 @@ from app.character_agent.gateway.output_validator import CharacterStructuredOutp
 from app.character_agent.gateway.prompt_policy import CharacterPromptPolicy
 from app.character_agent.gateway.model_router import CharacterModelRouter
 from app.config import settings
+import pytest
 
 
 class _RecordingProvider:
@@ -15,6 +16,60 @@ class _RecordingProvider:
     def complete(self, request: dict[str, object]) -> dict[str, object]:
         self.requests.append(request)
         return self.response
+
+
+def _complete_l2_output(overrides: dict[str, object] | None = None, **keyword_overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "interpreted_summary": "lamp changed",
+        "interpretation_type": "state_change",
+        "salience_score": 0.7,
+        "ambiguity_level": "low",
+        "risk_level": "low",
+        "opportunity_level": "medium",
+        "attention_target": "env_lamp",
+        "inner_prompt_candidate": "watch the lamp",
+        "belief_deltas": [],
+        "social_deltas": [],
+        "higher_order_deltas": [],
+        "dynamic_state_delta": {},
+        "goal_hints": [],
+        "reasoning_trace_summary": "model interpreted lamp change",
+    }
+    payload.update(overrides or {})
+    payload.update(keyword_overrides)
+    return payload
+
+
+def _complete_l3_output(overrides: dict[str, object] | None = None, **keyword_overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "candidate_intents": ["observe", "self_protect"],
+        "selected_intent": "observe",
+        "recommended_intents": ["observe"],
+        "risk_notes": [],
+        "why_this_now": "lamp changed",
+        "role_consistency_hint": "stay observant",
+        "active_goal_tags": ["preserve_continuity"],
+        "active_goal_frame": {
+            "primary_goal": "preserve_continuity",
+            "long_term_goal": "preserve_continuity",
+            "mid_term_strategy": "hold_position",
+            "immediate_goal": "preserve_continuity",
+            "supporting_goals": [],
+            "blockers": [],
+            "goal_sources": ["model"],
+            "urgency": "low",
+            "dominant_goal_id": "goal_preserve_continuity",
+            "preserved_goal_ids": [],
+            "suppressed_goal_ids": [],
+            "goal_arbitration_summary": "observe without changing world truth",
+            "goal_portfolio": [],
+        },
+        "planning_status": "model",
+        "fallback_mode": None,
+    }
+    payload.update(overrides or {})
+    payload.update(keyword_overrides)
+    return payload
 
 
 def _run_local_task(
@@ -119,7 +174,7 @@ def test_model_gateway_allows_route_override_without_changing_context_shape() ->
 
 def test_model_gateway_runs_task_through_provider_and_validator() -> None:
     provider = _RecordingProvider(
-        {
+        _complete_l2_output({
             "interpreted_summary": "char_a may be speaking nearby",
             "interpretation_type": "social_signal",
             "salience_score": 0.82,
@@ -128,7 +183,7 @@ def test_model_gateway_runs_task_through_provider_and_validator() -> None:
             "opportunity_level": "medium",
             "attention_target": "char_a",
             "inner_prompt_candidate": "listen before responding",
-        }
+        })
     )
     gateway = CharacterModelGateway(provider=provider)
 
@@ -1115,7 +1170,7 @@ def test_output_validator_enforces_typed_l2_delta_constraints() -> None:
 
     normalized = validator.validate(
         task_kind="l2_reasoning",
-        output={
+        output=_complete_l2_output({
             "interpreted_summary": "char_b is probing",
             "interpretation_type": "social_signal",
             "salience_score": 0.8,
@@ -1128,7 +1183,7 @@ def test_output_validator_enforces_typed_l2_delta_constraints() -> None:
             "dynamic_state_delta": {"social_pressure": 0.7, "masking_pressure": 0.55},
             "goal_hints": [{"goal": "protect_secret", "source": "social_signal", "strength": 0.85, "evidence_tags": ["guarded_attention"]}],
             "reasoning_trace_summary": "char_a:probing-read",
-        },
+        }),
     )
 
     assert normalized["dynamic_state_delta"]["social_pressure"] == 0.7
@@ -1137,7 +1192,7 @@ def test_output_validator_enforces_typed_l2_delta_constraints() -> None:
     try:
         validator.validate(
             task_kind="l2_reasoning",
-            output={
+            output=_complete_l2_output({
                 "interpreted_summary": "char_b is probing",
                 "interpretation_type": "social_signal",
                 "salience_score": 0.8,
@@ -1146,12 +1201,42 @@ def test_output_validator_enforces_typed_l2_delta_constraints() -> None:
                 "opportunity_level": "low",
                 "dynamic_state_delta": {"social_pressure": 1.7},
                 "goal_hints": [{"goal": "protect_secret", "source": "social_signal", "strength": 1.5}],
-            },
+            }),
         )
     except ValueError:
         pass
     else:
         raise AssertionError("expected invalid typed l2 delta payload to be rejected")
+
+
+def test_output_validator_rejects_empty_dialogue_content() -> None:
+    validator = CharacterStructuredOutputValidator()
+
+    with pytest.raises(ValueError, match="content must not be empty"):
+        validator.validate(
+            task_kind="dialogue_generation",
+            output={"content": "", "tone": "neutral"},
+        )
+
+
+def test_output_validator_rejects_l2_salience_out_of_range() -> None:
+    validator = CharacterStructuredOutputValidator()
+
+    with pytest.raises(ValueError, match="salience_score"):
+        validator.validate(
+            task_kind="l2_reasoning",
+            output=_complete_l2_output(salience_score=1.5),
+        )
+
+
+def test_output_validator_rejects_l3_selected_intent_outside_candidates() -> None:
+    validator = CharacterStructuredOutputValidator()
+
+    with pytest.raises(ValueError, match="selected_intent"):
+        validator.validate(
+            task_kind="l3_planning",
+            output=_complete_l3_output(candidate_intents=["observe"], selected_intent="share_info"),
+        )
 
 
 def test_prompt_policy_user_instruction_stays_bounded_for_large_context() -> None:

@@ -62,11 +62,13 @@ class ModelProviderReadinessReport:
     schema_version: str
     overall_passed: bool
     rows: list[ModelProviderReadinessRow]
+    verification_run_id: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
             "schema_version": self.schema_version,
             "overall_passed": self.overall_passed,
+            "verification_run_id": self.verification_run_id,
             "rows": [asdict(row) for row in self.rows],
         }
 
@@ -93,7 +95,12 @@ def build_model_provider_readiness_report(
         ModelProviderReadinessStatus.BLOCKED_MODEL_UNAVAILABLE,
     }
     overall_passed = all(ModelProviderReadinessStatus(row.readiness_status) in blocked_or_clear for row in rows)
-    return ModelProviderReadinessReport(schema_version=SCHEMA_VERSION, overall_passed=overall_passed, rows=rows)
+    return ModelProviderReadinessReport(
+        schema_version=SCHEMA_VERSION,
+        overall_passed=overall_passed,
+        rows=rows,
+        verification_run_id=_env(values, "LLM_CLOSURE_RUN_ID", "") or None,
+    )
 
 
 def write_model_provider_readiness_report(
@@ -117,21 +124,21 @@ def _character_text_row(
     provider_id = _env(env, "CHARACTER_MODEL_PROVIDER_KIND", "qwen")
     mode = ModelProviderMode.LOCAL if provider_id == "local" else ModelProviderMode.HTTP
     if provider_id == "deepseek":
-        endpoint = _first_env(env, "CHARACTER_MODEL_ENDPOINT", "DEEPSEEK_BASE_URL") or "https://api.deepseek.com"
-        api_key = _first_env(env, "CHARACTER_MODEL_API_KEY", "DEEPSEEK_API_KEY")
-        model = _first_env(env, "CHARACTER_MODEL_MODEL", "DEEPSEEK_MODEL") or "deepseek-v4-flash"
+        endpoint = _env(env, "CHARACTER_MODEL_ENDPOINT", "") or "https://api.deepseek.com"
+        api_key = _env(env, "CHARACTER_MODEL_API_KEY", "")
+        model = _env(env, "CHARACTER_MODEL_MODEL", "") or "deepseek-chat"
     elif provider_id == "seed_doubao":
-        endpoint = _first_env(env, "CHARACTER_MODEL_ENDPOINT", "SEED_DOUBAO_BASE_URL")
-        api_key = _first_env(env, "CHARACTER_MODEL_API_KEY", "SEED_DOUBAO_API_KEY")
-        model = _first_env(env, "CHARACTER_MODEL_MODEL", "SEED_DOUBAO_MODEL") or "doubao-seed-2.0-pro"
+        endpoint = _env(env, "CHARACTER_MODEL_ENDPOINT", "")
+        api_key = _env(env, "CHARACTER_MODEL_API_KEY", "")
+        model = _env(env, "CHARACTER_MODEL_MODEL", "") or "doubao-seed-2.0-pro"
     elif provider_id == "local":
         endpoint = ""
         api_key = ""
         model = "local-continuity-floor"
     else:
-        endpoint = _first_env(env, "CHARACTER_MODEL_ENDPOINT", "QWEN_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        api_key = _first_env(env, "CHARACTER_MODEL_API_KEY", "QWEN_API_KEY")
-        model = _first_env(env, "CHARACTER_MODEL_MODEL", "QWEN_MODEL") or "qwen3.7-plus"
+        endpoint = _env(env, "CHARACTER_MODEL_ENDPOINT", "") or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        api_key = _env(env, "CHARACTER_MODEL_API_KEY", "")
+        model = _env(env, "CHARACTER_MODEL_MODEL", "") or "qwen3.7-plus"
     status = ModelProviderReadinessStatus.CONTRACT_READY if mode == ModelProviderMode.LOCAL else _http_status(
         api_key=api_key,
         endpoint=endpoint,
@@ -156,7 +163,7 @@ def _character_text_row(
             "python -m pytest -q backend/tests/test_character_model_provider_readiness.py",
             "python scripts/verification/verify_model_provider_readiness.py",
         ],
-        notes=["Qwen/OpenAI-compatible chat route is preferred; DeepSeek remains legacy-compatible."],
+        notes=["CHARACTER_MODEL_* is the only Character runtime provider configuration surface."],
     )
 
 
@@ -166,11 +173,18 @@ def _siming_candidate_row(
 ) -> ModelProviderReadinessRow:
     mode_value = _env(env, "SIMING_LLM_MODE", "disabled")
     mode = ModelProviderMode.DISABLED if mode_value == "disabled" else ModelProviderMode.HTTP
+    route = _selected_siming_route(env)
     provider_order = _env(env, "SIMING_LLM_PROVIDER_ORDER", "seed_doubao,qwen")
-    provider_id = provider_order.split(",", 1)[0].strip() or "seed_doubao"
+    provider_id = str(route.get("provider", "")) if route else (provider_order.split(",", 1)[0].strip() or "seed_doubao")
     endpoint = _env(env, "SIMING_LLM_ENDPOINT", "")
     api_key = _env(env, "SIMING_LLM_API_KEY", "")
     model = _env(env, "SIMING_LLM_MODEL", "doubao-seed-2.0-pro")
+    timeout_seconds = _env(env, "SIMING_LLM_TIMEOUT_SECONDS", "8.0")
+    if route:
+        endpoint = str(route.get("endpoint", "") or "")
+        api_key = str(route.get("api_key", "") or "")
+        model = str(route.get("model", "") or model)
+        timeout_seconds = str(route.get("timeout_seconds", "") or timeout_seconds)
     status = ModelProviderReadinessStatus.DISABLED if mode == ModelProviderMode.DISABLED else _http_status(
         api_key=api_key,
         endpoint=endpoint,
@@ -188,14 +202,14 @@ def _siming_candidate_row(
         schema_version=SCHEMA_VERSION,
         required_input_refs=["fairness_state_snapshot", "recent_authority_events", "recent_siming_audit"],
         output_schema_status="InterventionCandidate list only; authority mutations rejected",
-        timeout_degrade_status=f"timeout_seconds={_env(env, 'SIMING_LLM_TIMEOUT_SECONDS', '8.0')}; router degrades to next provider/empty candidates",
+        timeout_degrade_status=f"timeout_seconds={timeout_seconds}; router degrades to next provider/empty candidates",
         context_isolation_status="siming_candidate_context_isolated_from_character_private_context",
         world_truth_write_status="forbidden: candidate-level suggestions only",
         verification_evidence=[
             "python -m pytest -q backend/tests/test_siming_llm_provider_config.py backend/tests/test_siming_llm_runtime.py",
             "python scripts/verification/verify_model_provider_readiness.py",
         ],
-        notes=["Seed/Doubao is preferred for Siming candidate generation; Qwen is a secondary route."],
+        notes=["Siming readiness tracks configured identity only; live proof is separate."],
     )
 
 
@@ -341,6 +355,25 @@ def _first_env(env: dict[str, str], *names: str) -> str:
     return ""
 
 
+def _selected_siming_route(env: dict[str, str]) -> dict[str, object] | None:
+    raw = _env(env, "SIMING_LLM_ROUTES_JSON", "")
+    if raw == "":
+        return None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, list):
+        return None
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        if item.get("enabled", True) is False:
+            continue
+        return dict(item)
+    return None
+
+
 def _env(env: dict[str, str], name: str, default: str) -> str:
     return str(env.get(name, default) or default).strip()
 
@@ -357,6 +390,7 @@ def _render_markdown(report: ModelProviderReadinessReport) -> str:
         "# Model Provider Readiness Report",
         "",
         f"- Schema: `{report.schema_version}`",
+        f"- Verification run ID: `{report.verification_run_id or ''}`",
         f"- Overall: `{report.overall_passed}`",
         "",
         "| Provider | Mode | Provider ID | Model | Endpoint Host | Status |",

@@ -21,6 +21,7 @@ const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
 @export var autotest_dialogue_delay := 0.25
 @export var autotest_interact_delay := 0.6
 @export var autotest_failed_interact_timeout_ms := 3000
+@export var autotest_backend_roundtrip_timeout_ms := 30000
 @export var autotest_final_position := Vector3(0.0, 0.5, 20.0)
 @export var autotest_interact_position := Vector3(0.0, 0.5, 0.6)
 @export var autotest_failed_interact_position := Vector3(0.0, 0.5, 16.0)
@@ -378,50 +379,64 @@ func _run_autotest_inputs() -> void:
 	_force_focus_target(interactive_object)
 	_emit_move_intent_request(autotest_interact_position, "locomotion")
 	await get_tree().create_timer(autotest_interact_delay).timeout
+	pending_failed_interaction_ack_seen = false
 	player_input_bridge.trigger_interaction()
 	_bus_log("phase0_autotest_stage:success_interaction_submitted")
-	_move_player_to_demo_vantage()
-	_emit_move_intent_request(autotest_final_position, "locomotion")
-	await get_tree().create_timer(autotest_interact_delay).timeout
-	pending_failed_move_ack_seen = false
-	_emit_move_intent_request(autotest_failed_interact_position, "locomotion")
-	await _wait_for_failed_move_ack(1500)
-	await get_tree().create_timer(autotest_interact_delay).timeout
-	_orient_player_toward(interactive_object.global_position)
 	suspend_near_object_visual_fact = true
 	suspend_spatial_access_fact = true
+	await _wait_for_failed_interaction_ack(autotest_backend_roundtrip_timeout_ms)
+	_move_player_to_demo_vantage()
+	pending_failed_move_ack_seen = false
+	_emit_move_intent_request(autotest_final_position, "locomotion")
+	await _wait_for_failed_move_ack(autotest_backend_roundtrip_timeout_ms)
+	pending_failed_move_ack_seen = false
+	_emit_move_intent_request(autotest_failed_interact_position, "locomotion")
+	await _wait_for_failed_move_ack(autotest_backend_roundtrip_timeout_ms)
+	await get_tree().create_timer(autotest_interact_delay).timeout
+	_orient_player_toward(interactive_object.global_position)
 	pending_failed_interaction_ack_seen = false
 	pending_failed_interaction_result_seen = false
 	_bus_log("phase0_autotest_failed_interaction_attempt")
 	_emit_interaction_request_without_near_object_fact("obj_letter", "inspect")
-	await _wait_for_failed_interaction_ack(1000)
-	await _wait_for_failed_interaction_result(autotest_failed_interact_timeout_ms)
-	_bus_log("phase0_autotest_stage:failed_interaction_resolved")
+	var failed_interaction_ack_seen := await _wait_for_failed_interaction_ack(autotest_backend_roundtrip_timeout_ms)
+	var failed_interaction_result_seen := await _wait_for_failed_interaction_result(autotest_failed_interact_timeout_ms)
+	if failed_interaction_ack_seen and failed_interaction_result_seen:
+		_bus_log("phase0_autotest_stage:failed_interaction_resolved")
+	else:
+		_bus_log(
+			"phase0_autotest_failed_interaction_timeout:ack=%s:result=%s" % [
+				failed_interaction_ack_seen,
+				failed_interaction_result_seen,
+			]
+		)
 	suspend_near_object_visual_fact = false
 	suspend_spatial_access_fact = false
 	await _capture_autotest_screenshot()
 	await _begin_autotest_shutdown("phase0_autotest_complete")
 
-func _wait_for_failed_interaction_result(timeout_ms: int) -> void:
+func _wait_for_failed_interaction_result(timeout_ms: int) -> bool:
 	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
 	while Time.get_ticks_msec() < deadline:
 		if pending_failed_interaction_result_seen:
-			return
+			return true
 		await get_tree().process_frame
+	return false
 
-func _wait_for_failed_interaction_ack(timeout_ms: int) -> void:
+func _wait_for_failed_interaction_ack(timeout_ms: int) -> bool:
 	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
 	while Time.get_ticks_msec() < deadline:
 		if pending_failed_interaction_ack_seen:
-			return
+			return true
 		await get_tree().process_frame
+	return false
 
-func _wait_for_failed_move_ack(timeout_ms: int) -> void:
+func _wait_for_failed_move_ack(timeout_ms: int) -> bool:
 	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
 	while Time.get_ticks_msec() < deadline:
 		if pending_failed_move_ack_seen:
-			return
+			return true
 		await get_tree().process_frame
+	return false
 
 func _probe_floor_coverage() -> void:
 	for checkpoint in FLOOR_CHECKPOINTS:

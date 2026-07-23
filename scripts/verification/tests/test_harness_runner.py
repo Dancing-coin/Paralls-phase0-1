@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
+import time
 import urllib.request
 from pathlib import Path
 from types import SimpleNamespace
@@ -668,6 +670,61 @@ def test_run_command_until_markers_terminates_once_marker_is_seen(tmp_path: Path
     assert result.returncode == 0
     assert result.marker_found is True
     assert "MARKER_OK" in log_path.read_text(encoding="utf-8")
+
+
+def test_run_command_times_out_and_preserves_streamed_output(tmp_path: Path) -> None:
+    script = tmp_path / "hang.py"
+    script.write_text(
+        "import time\n"
+        "print('before-timeout', flush=True)\n"
+        "time.sleep(30)\n",
+        encoding="utf-8",
+    )
+    log_path = tmp_path / "hang.log"
+
+    started_at = time.monotonic()
+    result = common.run_command(
+        [sys.executable, str(script)],
+        tmp_path,
+        log_path,
+        timeout_seconds=0.5,
+    )
+
+    assert time.monotonic() - started_at < 5.0
+    assert result.returncode == 124
+    assert "before-timeout" in result.stdout
+    assert "before-timeout" in log_path.read_text(encoding="utf-8")
+    assert "timed out after 0.5 seconds" in log_path.read_text(encoding="utf-8")
+
+
+def test_run_command_flushes_log_while_process_is_running(tmp_path: Path) -> None:
+    script = tmp_path / "stream.py"
+    script.write_text(
+        "import time\n"
+        "print('streamed-before-exit', flush=True)\n"
+        "time.sleep(1)\n",
+        encoding="utf-8",
+    )
+    log_path = tmp_path / "stream.log"
+    result_holder: list[object] = []
+    runner = threading.Thread(
+        target=lambda: result_holder.append(
+            common.run_command([sys.executable, str(script)], tmp_path, log_path)
+        ),
+        daemon=True,
+    )
+
+    runner.start()
+    deadline = time.monotonic() + 0.8
+    while time.monotonic() < deadline:
+        if log_path.exists() and "streamed-before-exit" in log_path.read_text(encoding="utf-8"):
+            break
+        time.sleep(0.02)
+
+    assert runner.is_alive()
+    assert "streamed-before-exit" in log_path.read_text(encoding="utf-8")
+    runner.join(timeout=3.0)
+    assert result_holder[0].returncode == 0
 
 
 def test_run_command_until_markers_can_wait_for_all_markers(tmp_path: Path) -> None:

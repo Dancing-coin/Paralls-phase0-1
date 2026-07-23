@@ -121,3 +121,32 @@ def test_report_writer_redacts_endpoint_and_omits_api_keys(tmp_path) -> None:
     assert "secret-key" not in written_markdown
     assert "api_key=secret" not in written_markdown
     assert "example.invalid" in written_json
+
+
+def test_readiness_report_carries_run_id_and_route_identity() -> None:
+    report = build_model_provider_readiness_report(
+        env={
+            "LLM_CLOSURE_RUN_ID": "fixture-run",
+            "SIMING_LLM_MODE": "http",
+            "SIMING_LLM_ROUTES_JSON": json.dumps(
+                [
+                    {
+                        "route_id": "deepseek-live",
+                        "provider": "deepseek_chat",
+                        "model": "deepseek-chat",
+                        "endpoint": "https://api.deepseek.com/chat/completions",
+                        "api_key": "route-secret",
+                        "timeout_seconds": 60.0,
+                        "enabled": True,
+                    }
+                ]
+            ),
+        }
+    )
+    rows = {row.provider_kind: row for row in report.rows}
+
+    assert report.verification_run_id == "fixture-run"
+    assert rows["siming_candidate"].provider_id == "deepseek_chat"
+    assert rows["siming_candidate"].model_id == "deepseek-chat"
+    assert rows["siming_candidate"].readiness_status == "http_configured_unverified"
+    assert "route-secret" not in json.dumps(report.to_dict())

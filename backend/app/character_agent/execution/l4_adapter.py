@@ -96,8 +96,9 @@ class CharacterAgentL4Adapter:
             target_actor_id = action.get("target_actor_id") if str(action.get("target_actor_id", "") or "") else None
             target_object_id = action.get("target_object_id") if str(action.get("target_object_id", "") or "") else None
             target_environment_id = action.get("target_environment_id") if str(action.get("target_environment_id", "") or "") else None
-            dialogue_text_value = str(action.get("content", "") or "")
-            dialogue_text = dialogue_text_value or None
+            if command_type == "speak":
+                dialogue_text_value = str(action.get("content", "") or "")
+                dialogue_text = dialogue_text_value or None
         else:
             target_ref = str(first_frame.get("target_ref", "") or "")
             command_type = self._map_command_type(str(first_frame.get("action", "") or "observe"))
@@ -119,7 +120,7 @@ class CharacterAgentL4Adapter:
                     physiology_hint = physiology_hint_value or None
             if role_state_hint is None:
                 role_state_hint = self._map_role_state_hint(str(presentation_plan.get("action_state", {}).get("requested_action", "") or ""))
-            if dialogue_text is None:
+            if command_type == "speak" and dialogue_text is None:
                 speech_state = presentation_plan.get("speech_state", {})
                 if isinstance(speech_state, dict):
                     dialogue_text_value = str(speech_state.get("utterance_request", "") or "")

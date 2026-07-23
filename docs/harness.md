@@ -21,6 +21,8 @@ python scripts/verification/harness.py --profile harness-evolution
 python scripts/verification/harness.py --profile phase0
 python scripts/verification/harness.py --profile phase1-slice
 python scripts/verification/harness.py --profile siming-backend-chain
+python scripts/verification/harness.py --profile character-model-live
+python scripts/verification/harness.py --profile llm-integration-closure
 python scripts/verification/harness.py --profile l1-world-fact-runtime
 python scripts/verification/harness.py --profile mainline-unified-runtime
 python scripts/verification/harness.py --profile model-provider-readiness
@@ -417,6 +419,45 @@ Output:
 - `.harness/verification/siming-backend-chain-report.json`
 - `.harness/verification/siming-backend-chain-report.md`
 
+### `character-model-live`
+
+Explicit-only real-provider proof for Character dialogue, L2 reasoning, and L3 planning. This profile is excluded from `all` because it requires live model credentials and network access.
+
+Required configuration uses only the canonical Character runtime surface:
+
+```env
+DIALOGUE_MODE=online
+CHARACTER_MODEL_PROVIDER_KIND=deepseek
+CHARACTER_MODEL_ENDPOINT=https://api.deepseek.com
+CHARACTER_MODEL_API_KEY=<real Character model key>
+CHARACTER_MODEL_MODEL=deepseek-chat
+CHARACTER_MODEL_TIMEOUT_SECONDS=30.0
+```
+
+Provider-specific aliases such as `DEEPSEEK_*` and `QWEN_*` are not consumed by the Character runtime. The verifier rejects `DIALOGUE_MODE=stub`, non-DeepSeek provider identity, missing `CHARACTER_MODEL_API_KEY`, and `CHARACTER_MODEL_ROUTE_OVERRIDE`.
+
+Output:
+
+- `.harness/verification/character-model-live-report.json`
+- `.harness/verification/character-model-live-report.md`
+
+### `llm-integration-closure`
+
+Explicit-only fresh-evidence aggregator for the approved LLM closure claims. It reads existing reports and does not make provider calls. It passes only when one `LLM_CLOSURE_RUN_ID` binds:
+
+- model-provider readiness identity
+- `dialogue_live_deepseek`
+- `l2_live_deepseek`
+- `l3_live_deepseek`
+- `app_wiring_live_deepseek_chain`
+
+Readiness remains non-live evidence; the closure report keeps `readiness_is_live_proof=false`.
+
+Output:
+
+- `.harness/verification/llm-integration-closure-report.json`
+- `.harness/verification/llm-integration-closure-report.md`
+
 ### `model-provider-readiness`
 
 Static/readiness verification for current project model provider entry points. This profile does not start Godot and does not use mock providers as completion evidence.
@@ -603,6 +644,7 @@ Output:
 Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, `phase1-slice`, `l1-world-fact-runtime`, `mainline-unified-runtime`, `model-provider-readiness`, `godot-sampling-production-grade-providers`, `embodied-skeletal-debug-replay`, `vla-provider-backend`, `actor-scene-knowledge-lifecycle`, `siming-global-situation-layer`, `interaction-orchestration-service`, `esm-physical-channel-world-actuation`, `non-runtime-production-pipeline`, and `perception-input-alignment` in order. It stops on the first failed profile.
 
 `siming-backend-chain` is excluded from `all` because it requires live model-provider credentials.
+`character-model-live` and `llm-integration-closure` are also excluded from `all`; they require fresh live provider artifacts and an explicit closure run ID.
 
 ### `mainline-unified-runtime`
 

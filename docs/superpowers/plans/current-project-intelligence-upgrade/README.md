@@ -59,6 +59,11 @@
 
 它仍不表示 `L1` 已成为新的 runtime 宿主，也不表示真实外部模型 provider 均已接入。真实 provider 状态以 `model-provider-readiness` 和各 provider report 为准。
 
+当前项目若要继续推进角色 / 司命真实大模型闭合，不再分散从旧 plan 中各自收尾；请优先使用：
+
+- `docs/superpowers/specs/2026-07-23-complete-llm-integration-closure-design.md`
+- `docs/superpowers/plans/2026-07-23-complete-llm-integration-closure-implementation-plan.md`
+
 ## 待用户补齐：真实模型 key / endpoint
 
 当前模型接入层已经准备好 provider 边界、配置入口和 live proof 验收位，但真实模型调用仍等待外部平台凭证。这里不要填写真实 secret，只记录需要准备的项。
@@ -163,3 +168,6 @@ python scripts/verification/verify_siming_backend_chain.py --live-provider deeps
   - `python scripts/verification/harness.py --profile mainline-unified-runtime`
 - L1 subsystem 集成尚需通过兼容验证入口：
   - `python scripts/verification/harness.py --profile l1-world-fact-runtime`
+## 2026-07-23 Closure Status
+
+Current model-provider readiness is only one input to LLM integration closure. The actual closure claim requires `model-provider-readiness`, `character-model-live`, `siming-backend-chain`, and `llm-integration-closure` artifacts from the same `LLM_CLOSURE_RUN_ID`.
