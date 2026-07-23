@@ -88,7 +88,6 @@ BACKEND_BUILD = "paralls-phase0-backend-worktree-2026-06-02"
 WORKTREE_ROOT = str(Path(__file__).resolve().parents[2])
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 _pending_siming_character_dispatch_messages: dict[str, list[dict[str, object]]] = {}
-_DIALOGUE_CASCADE_LIMIT = 3
 _PLAYER_SHELL_ACTOR_IDS = {"char_c"}
 _SPEECH_REQUEST_TYPES = {"speak_public", "speak_private", "share_info", "withhold"}
 
@@ -1121,7 +1120,7 @@ def _ingest_dialogue_perception(perceived: CharacterPerceivedEvent) -> list[Char
     if not _is_agent_dialogue_target(perceived.actor_id):
         return []
     character_perceived_input_service.apply_character_perceived_event(perceived)
-    if _dialogue_cascade_depth(perceived) >= _DIALOGUE_CASCADE_LIMIT:
+    if _dialogue_cascade_depth(perceived) >= settings.character_dialogue_cascade_limit:
         character_agent_runtime.record_character_perceived_event_without_cognition(perceived)
         return []
     return character_agent_runtime.ingest_character_perceived_event(perceived)

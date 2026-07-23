@@ -261,6 +261,7 @@ def test_share_info_and_withhold_backfill_target_by_visibility(monkeypatch) -> N
 
 def test_agent_speech_backfill_cascade_depth_records_without_cognition(monkeypatch) -> None:
     monkeypatch.setattr(settings, "dialogue_mode", "stub")
+    monkeypatch.setattr(settings, "character_dialogue_cascade_limit", 3)
     main.reset_runtime_state()
 
     main._handle_envelope(_agent_speech_envelope(
@@ -277,6 +278,7 @@ def test_agent_speech_backfill_cascade_depth_records_without_cognition(monkeypat
 
 def test_dialogue_cascade_depth_records_without_triggering_cognition(monkeypatch) -> None:
     monkeypatch.setattr(settings, "dialogue_mode", "stub")
+    monkeypatch.setattr(settings, "character_dialogue_cascade_limit", 3)
     main.reset_runtime_state()
     perceived = CharacterPerceivedEvent(
         actor_id="char_a",
@@ -299,3 +301,33 @@ def test_dialogue_cascade_depth_records_without_triggering_cognition(monkeypatch
     assert commands == []
     assert "character_perceived_event" in event_types
     assert "l2_reasoning_request" not in event_types
+
+
+def test_dialogue_cascade_default_supports_extended_agent_conversation(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "dialogue_mode", "stub")
+    monkeypatch.setattr(settings, "character_dialogue_cascade_limit", 180)
+    main.reset_runtime_state()
+    perceived = CharacterPerceivedEvent(
+        actor_id="char_a",
+        percept_channel="auditory",
+        producer_ts=2305,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary='char_b对你说："extended cascade"',
+        source_candidate_event_id="dialogue_submit:2305:char_b:char_a",
+        source_actor_id="char_b",
+        target_actor_id="char_a",
+        source_ref_lineage=[f"reply:{index}" for index in range(30)],
+    )
+    calls: list[CharacterPerceivedEvent] = []
+
+    def record_ingest(event: CharacterPerceivedEvent) -> list[object]:
+        calls.append(event)
+        return []
+
+    monkeypatch.setattr(main.character_agent_runtime, "ingest_character_perceived_event", record_ingest)
+
+    main._ingest_dialogue_perception(perceived)
+
+    assert calls == [perceived]

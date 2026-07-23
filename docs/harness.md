@@ -436,6 +436,8 @@ CHARACTER_MODEL_TIMEOUT_SECONDS=30.0
 
 Provider-specific aliases such as `DEEPSEEK_*` and `QWEN_*` are not consumed by the Character runtime. The verifier rejects `DIALOGUE_MODE=stub`, non-DeepSeek provider identity, missing `CHARACTER_MODEL_API_KEY`, and `CHARACTER_MODEL_ROUTE_OVERRIDE`.
 
+`CHARACTER_DIALOGUE_CASCADE_LIMIT` is an optional runtime safety fuse for autonomous character-to-character reply cascades. It defaults to `180`, which is intended to support extended room dialogue while still preventing unbounded recursive reply loops.
+
 Output:
 
 - `.harness/verification/character-model-live-report.json`

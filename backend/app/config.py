@@ -22,6 +22,7 @@ class SimingLlmRouteSettings(BaseModel):
 class Settings(BaseModel):
     dialogue_mode: str = "stub"
     tts_mode: str = "stub"
+    character_dialogue_cascade_limit: int = Field(default=180, ge=1)
     character_model_provider_kind: str = "qwen"
     character_model_endpoint: str | None = None
     character_model_api_key: str | None = Field(default=None, repr=False, exclude=True)
@@ -101,6 +102,7 @@ def _env_siming_llm_routes() -> list[SimingLlmRouteSettings]:
 settings = Settings(
     dialogue_mode=_env_value("DIALOGUE_MODE", "stub") or "stub",
     tts_mode=_env_value("TTS_MODE", "stub") or "stub",
+    character_dialogue_cascade_limit=int(_env_value("CHARACTER_DIALOGUE_CASCADE_LIMIT", "180") or "180"),
     character_model_provider_kind=_env_value("CHARACTER_MODEL_PROVIDER_KIND", "qwen") or "qwen",
     character_model_endpoint=_env_optional("CHARACTER_MODEL_ENDPOINT"),
     character_model_api_key=_env_optional("CHARACTER_MODEL_API_KEY"),

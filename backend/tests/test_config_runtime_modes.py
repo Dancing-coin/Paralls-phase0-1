@@ -22,11 +22,13 @@ def test_settings_default_to_stub_modes_when_env_is_unset(monkeypatch) -> None:
 def test_settings_read_dialogue_and_tts_modes_from_env(monkeypatch) -> None:
     monkeypatch.setenv("DIALOGUE_MODE", "online")
     monkeypatch.setenv("TTS_MODE", "stub")
+    monkeypatch.setenv("CHARACTER_DIALOGUE_CASCADE_LIMIT", "240")
 
     reloaded = importlib.reload(config_module)
 
     assert reloaded.settings.dialogue_mode == "online"
     assert reloaded.settings.tts_mode == "stub"
+    assert reloaded.settings.character_dialogue_cascade_limit == 240
 
 
 def test_settings_read_siming_llm_modes_from_env(monkeypatch) -> None:
@@ -124,6 +126,11 @@ def test_deepseek_aliases_do_not_feed_character_settings(monkeypatch) -> None:
 def test_character_timeout_must_be_positive() -> None:
     with pytest.raises(ValidationError):
         Settings(character_model_timeout_seconds=0)
+
+
+def test_character_dialogue_cascade_limit_must_be_positive() -> None:
+    with pytest.raises(ValidationError):
+        Settings(character_dialogue_cascade_limit=0)
 
 
 def test_siming_timeout_must_be_positive() -> None:
