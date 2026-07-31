@@ -173,6 +173,8 @@ def test_model_provider_coerces_l3_string_fields_to_current_structured_contract(
     assert output["candidate_intents"] == ["observe"]
     assert output["recommended_intents"] == ["observe"]
     assert output["risk_notes"] == ["No risks detected"]
+    assert output["active_goal_frame"]["primary_goal"] == "observe"
+    assert output["active_goal_frame"]["goal_sources"] == ["model_output_coercion"]
 
 
 def test_model_provider_offline_l2_returns_extended_cognition_contract_keys() -> None:

@@ -5,6 +5,7 @@ from app.character_agent.planning.l3_planner import CharacterAgentL3Service
 from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
 from app.models.player_input import DialogueSubmit
 from app.models.ai_output import DialogueResponse
+from app.models.dialogue_audio import DialogueAudio
 from app.models.environment_request import EnvironmentRequest
 from app.models.runtime_state import CharacterRuntimeStateDelta, CharacterRuntimeStateSnapshot
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
@@ -121,6 +122,37 @@ def test_ai_output_dialogue_response_shape() -> None:
         tts_required=True,
     )
     assert event.tts_required is True
+
+
+def test_dialogue_response_serializes_presentation_audio_without_changing_text_contract() -> None:
+    event = DialogueResponse(
+        actor_id="char_a",
+        room_id="room_demo",
+        causation_id="evt1",
+        producer_ts=456,
+        target_actor_id="char_c",
+        content="Hi there",
+        tone="neutral",
+        audio=DialogueAudio(
+            mode="clip",
+            status="ready",
+            provider="test",
+            voice_id="voice-a",
+            content_type="audio/wav",
+            encoding="base64",
+            payload="UklGRg==",
+            sample_rate_hz=24000,
+            channels=1,
+            sample_format="pcm_s16le",
+            duration_ms=10,
+        ),
+    )
+
+    payload = event.model_dump()
+
+    assert payload["content"] == "Hi there"
+    assert payload["audio"]["contract"] == "tts_audio.v1"
+    assert payload["audio"]["voice_id"] == "voice-a"
 
 
 def test_environment_request_shape() -> None:

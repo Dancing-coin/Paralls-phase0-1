@@ -51,6 +51,50 @@ class DialogueService:
             str(output.get("tone", "") or "neutral"),
         )
 
+    def stream_reply(self, actor_id: str, content: str, *, cancelled):
+        yield from self._stream_dialogue(
+            context=self._context(
+                actor_id=actor_id,
+                content=content,
+                target_actor_id=actor_id,
+                control_mode="dialogue_service",
+                intent_type="dialogue_submit",
+            ),
+            cancelled=cancelled,
+        )
+
+    def stream_utterance(self, actor_id: str, target_actor_id: str, content: str, *, cancelled):
+        yield from self._stream_dialogue(
+            context=self._context(
+                actor_id=actor_id,
+                content=content,
+                target_actor_id=target_actor_id,
+                control_mode="agent_initiated_utterance",
+                intent_type="agent_initiated_utterance",
+            ),
+            cancelled=cancelled,
+        )
+
+    def _stream_dialogue(self, *, context: dict[str, object], cancelled):
+        route_override = "local_only" if settings.dialogue_mode == "stub" else None
+        stream_task = getattr(self._gateway, "stream_dialogue_task", None)
+        if callable(stream_task):
+            yield from stream_task(context=context, route_override=route_override, cancelled=cancelled)
+            return
+        # Compatibility for constrained test/runtime gateway adapters. Their
+        # completed output still came through the same gateway validation path.
+        output = self._gateway.run_task(
+            task_kind="dialogue_generation",
+            context=context,
+            route_override=route_override,
+        )
+        if cancelled():
+            yield {"event": "cancelled"}
+            return
+        content = str(output.get("content", "") or "")
+        yield {"event": "delta", "delta": content}
+        yield {"event": "completed", "output": output, "fallback_used": False}
+
     def _context(
         self,
         *,

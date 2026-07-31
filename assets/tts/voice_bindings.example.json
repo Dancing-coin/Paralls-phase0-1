@@ -1,0 +1,16 @@
+{
+  "contract": "tts_voice_bindings.v1",
+  "bindings": [
+    {
+      "contract": "tts_voice_profile.v1",
+      "actor_id": "char_a",
+      "provider": "dashscope_http",
+      "model": "qwen-audio-3.0-tts-flash",
+      "voice_id": "qwen-audio-3.0-tts-flash-longlanghongmo",
+      "catalog_revision": "2026-07-23",
+      "selection_status": "candidate",
+      "approved_by": null,
+      "presentation_traits": ["soft", "measured", "warm"]
+    }
+  ]
+}

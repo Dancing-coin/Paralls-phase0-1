@@ -22,6 +22,7 @@ class DialogueSubmit(PlayerInputBase):
     target_actor_id: str
     content: str
     context_hint: str | None = None
+    request_id: str | None = None
 
 
 class InteractIntent(PlayerInputBase):
