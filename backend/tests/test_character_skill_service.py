@@ -192,6 +192,21 @@ def test_service_evaluates_viable_and_blocked_skill_paths() -> None:
     assert result.blocked_paths[0]["missing_requirements"] == ["healing_magic.basic"]
 
 
+def test_service_marks_an_unregistered_action_as_advisory_no_path() -> None:
+    service = CharacterSkillService(registry=_registry())
+
+    result = service.evaluate_action(
+        actor_id="char_a",
+        action_id="unregistered_action",
+        skill_states=[],
+    )
+
+    assert result.selected_path == {}
+    assert result.viable_paths == []
+    assert result.blocked_paths == []
+    assert result.recommendation_reason == ["no_registered_skill_path"]
+
+
 def test_service_ignores_other_actor_skill_states_when_summarizing_and_evaluating() -> None:
     service = CharacterSkillService(registry=_registry())
     mixed_states = [

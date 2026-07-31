@@ -1,6 +1,8 @@
 from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
+from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
 from app.character_agent.skills.models import SkillAffordanceSummary
 from app.character_agent.skills.service import CharacterSkillService
+from app.models.character_agent_runtime import CharacterIntentDecision, CharacterInterpretation
 from app.models.character_perceived import CharacterPerceivedEvent
 
 
@@ -80,7 +82,7 @@ def test_runtime_records_l3_skill_affordance_shadow_summary() -> None:
     assert frame["affordances"]["summary"]["has_skill_affordance"] is True
 
 
-def test_runtime_shadow_skill_affordance_does_not_change_command_output() -> None:
+def test_runtime_skill_consumption_preserves_legacy_command_surface() -> None:
     baseline = CharacterAgentRuntime()
     shadowed = CharacterAgentRuntime()
     shadowed._skill_service = _RecordingSkillService()
@@ -88,9 +90,100 @@ def test_runtime_shadow_skill_affordance_does_not_change_command_output() -> Non
     baseline_commands = baseline.ingest_character_perceived_event(_event())
     shadowed_commands = shadowed.ingest_character_perceived_event(_event())
 
-    assert [command.model_dump() for command in shadowed_commands] == [
-        command.model_dump() for command in baseline_commands
-    ]
+    baseline = baseline_commands[0]
+    shadowed = shadowed_commands[0]
+    assert shadowed.command_type == baseline.command_type
+    assert shadowed.actor_id == baseline.actor_id
+    assert shadowed.target_actor_id == baseline.target_actor_id
+    assert shadowed.producer_ts == baseline.producer_ts
+    assert shadowed.execution_payload["action_request_bundle"] == baseline.execution_payload["action_request_bundle"]
+    assert shadowed.execution_payload["skill_guardrail"]["advisory_only"] is True
+
+
+def test_runtime_attaches_selected_skill_binding_without_rewriting_legacy_action() -> None:
+    runtime = CharacterAgentRuntime()
+    snapshot = CharacterPrivateWorldSnapshot(
+        actor_id="char_a",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_demo",
+        producer_ts=101,
+        updated_at=101,
+        attention_targets=["obj_console"],
+    )
+    interpretation = CharacterInterpretation(
+        actor_id="char_a",
+        interpreted_summary="inspect the console",
+        interpretation_type="environment_change",
+        salience_score=0.8,
+        ambiguity_level="low",
+        risk_level="low",
+        opportunity_level="medium",
+        attention_target="obj_console",
+    )
+
+    plan = runtime._record_execution_plan(
+        "char_a",
+        101,
+        snapshot,
+        interpretation,
+        CharacterIntentDecision(
+            actor_id="char_a",
+            selected_intent="observe",
+            persona_passed=True,
+            logic_passed=True,
+            gain_loss_passed=True,
+            rationale="inspect the console",
+        ),
+    )
+
+    assert plan["action_request_bundle"]["requested_actions"] == []
+    assert runtime._l4.build_commands_from_execution_plan(plan)[0].command_type == "observe"
+    assert plan["skill_guardrail"]["status"] == "selected_path"
+    assert plan["skill_guardrail"]["selected_path"]["binding_id"] == "observation_to_survey_scene"
+    assert plan["primitive_action_plan"]["primitive_actions"]
+
+
+def test_runtime_records_blocked_skill_path_without_blocking_legacy_command() -> None:
+    runtime = CharacterAgentRuntime()
+    snapshot = CharacterPrivateWorldSnapshot(
+        actor_id="char_b",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_demo",
+        producer_ts=102,
+        updated_at=102,
+        attention_targets=["obj_console"],
+    )
+    interpretation = CharacterInterpretation(
+        actor_id="char_b",
+        interpreted_summary="inspect the console",
+        interpretation_type="environment_change",
+        salience_score=0.8,
+        ambiguity_level="low",
+        risk_level="low",
+        opportunity_level="medium",
+        attention_target="obj_console",
+    )
+    plan = runtime._record_execution_plan(
+        "char_b",
+        102,
+        snapshot,
+        interpretation,
+        CharacterIntentDecision(
+            actor_id="char_b",
+            selected_intent="observe",
+            persona_passed=True,
+            logic_passed=True,
+            gain_loss_passed=True,
+            rationale="inspect the console",
+        ),
+    )
+
+    assert plan["skill_guardrail"]["status"] == "no_eligible_path"
+    assert plan["skill_guardrail"]["advisory_only"] is True
+    assert "primitive_action_plan" not in plan
+    assert runtime._l4.build_commands_from_execution_plan(plan)[0].command_type == "observe"
 
 
 def test_runtime_shadow_mind_frame_is_read_only_snapshot() -> None:

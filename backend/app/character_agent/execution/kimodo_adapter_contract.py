@@ -9,6 +9,7 @@ class KimodoActionRequest(BaseModel):
     target_actor_id: str | None = None
     target_object_id: str | None = None
     execution_mode: str
+    realization_metadata: dict[str, object] = Field(default_factory=dict)
 
 
 class KimodoRealizationPlan(BaseModel):
@@ -20,3 +21,4 @@ class KimodoRealizationPlan(BaseModel):
     generated_motion_allowed: bool = False
     local_fallback_asset_refs: list[str] = Field(default_factory=list)
     missing_semantic_keys: list[str] = Field(default_factory=list)
+    realization_metadata: dict[str, object] = Field(default_factory=dict)

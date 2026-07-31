@@ -1,3 +1,4 @@
+import inspect
 from pathlib import Path
 
 from app.character_agent.logic.affect_engine import AffectEngine
@@ -315,6 +316,7 @@ class CharacterAgentRuntime:
                 background_agenda_state=self.get_background_agenda_state(event.actor_id),
                 need_tension_state=need_tension_state,
                 dynamic_state=self.get_dynamic_state_record(event.actor_id).model_dump(),
+                **self._l3_skill_affordance_kwargs(event.actor_id, self._l3.select_intent),
             ),
         )
         self._record_goal_state_event(event.actor_id, event.producer_ts, decision)
@@ -620,6 +622,7 @@ class CharacterAgentRuntime:
                 supervision_state=supervision_state,
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=self.get_background_agenda_state(event.actor_id),
+                **self._l3_skill_affordance_kwargs(event.actor_id, self._l2.interpret_self_body_event),
             ),
         )
         if interpretation.cognition_status == "model":
@@ -854,6 +857,7 @@ class CharacterAgentRuntime:
                 supervision_state=supervision_state,
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=self.get_background_agenda_state(actor_id),
+                **self._l3_skill_affordance_kwargs(actor_id, self._l2.interpret_siming_output),
             ),
         )
         if interpretation.cognition_status == "model":
@@ -1221,6 +1225,7 @@ class CharacterAgentRuntime:
                 supervision_state=supervision_state.model_dump(),
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=background_agenda_state,
+                **self._l3_skill_affordance_kwargs(actor_id, self._l3.select_intent),
             ),
         )
         self._record_goal_state_event(actor_id, producer_ts, decision)
@@ -1825,6 +1830,25 @@ class CharacterAgentRuntime:
             return dict(cached)
         return self._build_skill_affordance_summary(actor_id)
 
+    def _l3_skill_affordance_kwargs(
+        self,
+        actor_id: str,
+        method: object | None = None,
+    ) -> dict[str, object]:
+        """Keep injected legacy L3 ports usable while the concrete planner consumes the summary."""
+        try:
+            parameters = inspect.signature(method or self._l3.select_intent).parameters.values()
+        except (TypeError, ValueError):
+            return {}
+        accepts_summary = any(
+            parameter.name == "skill_affordance_summary"
+            or parameter.kind is inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters
+        )
+        if not accepts_summary:
+            return {}
+        return {"skill_affordance_summary": self._skill_affordance_summary_payload(actor_id)}
+
     def _build_skill_affordance_summary(self, actor_id: str) -> dict[str, object]:
         skill_states = self._skill_service.initial_skill_states(
             actor_id=actor_id,
@@ -2009,7 +2033,7 @@ class CharacterAgentRuntime:
         control_mode: str,
         error: Exception,
     ) -> CharacterInterpretation:
-        risk_level = "medium" if self._continuity_floor_requires_guarding(snapshot) else "low"
+        risk_level = "medium" if self._continuity_floor_requires_risk_escalation(snapshot) else "low"
         return CharacterInterpretation(
             actor_id=actor_id,
             interpreted_summary="model cognition unavailable; continuity floor active",
@@ -2082,6 +2106,13 @@ class CharacterAgentRuntime:
             or bool(snapshot.recent_constraint_results)
             or snapshot.vigilance_level == "elevated"
             or snapshot.distraction_level == "elevated"
+        )
+
+    def _continuity_floor_requires_risk_escalation(self, snapshot: CharacterPrivateWorldSnapshot) -> bool:
+        return (
+            bool(snapshot.body_state_hints)
+            or bool(snapshot.recent_constraint_results)
+            or snapshot.vigilance_level == "elevated"
         )
 
     def _continuity_floor_goal_frame(self, actor_id: str) -> CharacterActiveGoalFrame:
@@ -2297,6 +2328,7 @@ class CharacterAgentRuntime:
             interpretation=interpretation,
             decision=decision,
         )
+        self._attach_skill_behavior_guardrail(actor_id=actor_id, plan=plan)
         self._set_observatory_context(actor_id, "execution_summary", str(plan.get("social_spatial_channel", {}).get("spacing_behavior", "") if isinstance(plan.get("social_spatial_channel"), dict) else ""))
         self.record_execution_request(
             actor_id=actor_id,
@@ -2320,6 +2352,64 @@ class CharacterAgentRuntime:
             memory_bundle=self.get_memory_bundle(actor_id),
         )
         return plan
+
+    def _attach_skill_behavior_guardrail(
+        self,
+        *,
+        actor_id: str,
+        plan: dict[str, object],
+    ) -> None:
+        proposal = plan.get("composite_action_proposal", {})
+        if not isinstance(proposal, dict):
+            return
+        action_id = str(proposal.get("action_id", "") or "")
+        if action_id == "":
+            return
+
+        skill_states = self._skill_service.initial_skill_states(
+            actor_id=actor_id,
+            profile=self._profile_payload(actor_id),
+        )
+        strategy_tags = proposal.get("preferred_strategy_tags", [])
+        evaluation = self._skill_service.evaluate_action(
+            actor_id=actor_id,
+            action_id=action_id,
+            skill_states=skill_states,
+            preferred_strategy_tags=[str(tag) for tag in strategy_tags if str(tag)]
+            if isinstance(strategy_tags, list)
+            else [],
+        )
+        plan["skill_evaluation_result"] = evaluation.model_dump()
+
+        selected_path = evaluation.selected_path
+        primitive_action_plan = None
+        if selected_path:
+            status = "selected_path"
+            primitive_action_plan = self._skill_service.expand_primitive_plan(
+                action_id=action_id,
+                skill_path_id=str(selected_path.get("binding_id", "") or ""),
+            )
+            plan["primitive_action_plan"] = primitive_action_plan.model_dump()
+        elif evaluation.blocked_paths:
+            status = "no_eligible_path"
+        else:
+            status = "no_registered_path"
+
+        self._l4.attach_skill_realization_metadata(
+            plan=plan,
+            skill_evaluation_result=evaluation,
+            primitive_action_plan=primitive_action_plan,
+        )
+
+        # This records a feasibility advisory. It must not rewrite the L3 choice or the legacy command bundle.
+        plan["skill_guardrail"] = {
+            "status": status,
+            "advisory_only": True,
+            "execution_preserved": True,
+            "source_intent": str(proposal.get("source_intent", "") or ""),
+            "action_id": action_id,
+            "selected_path": dict(selected_path),
+        }
 
     def _continuity_state_for(self, actor_id: str) -> RuntimeContinuityState:
         if actor_id not in self._continuity_state:
@@ -2458,6 +2548,7 @@ class CharacterAgentRuntime:
             supervision_state=self.get_supervision_state(actor_id),
             unresolved_tensions=self.get_unresolved_tensions(actor_id),
             background_agenda_state=self.get_background_agenda_state(actor_id),
+            **self._l3_skill_affordance_kwargs(actor_id, self._l3.build_suggestion_packet),
         )
         latest_goal_state = self._latest_goal_state_payload(actor_id)
         packet["actor_id"] = actor_id

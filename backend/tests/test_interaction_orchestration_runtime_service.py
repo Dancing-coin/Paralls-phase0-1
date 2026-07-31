@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from app.character_agent.skills.models import PrimitiveActionPlan, SkillEvaluationResult
 from app.main import app
 from app.services.interaction_orchestration_service import InteractionOrchestrationService, StructuredInteractionRequest
 from app.world_runtime.intelligence_upgrade import InteractionIntentFrame
@@ -25,6 +26,37 @@ def _request(**overrides: object) -> StructuredInteractionRequest:
     }
     payload.update(overrides)
     return StructuredInteractionRequest(**payload)
+
+
+def _skill_evaluation_result(*, selected: bool = True) -> SkillEvaluationResult:
+    selected_path = {"binding_id": "first_aid_to_stabilize", "skill_id": "first_aid"} if selected else {}
+    blocked_paths = (
+        []
+        if selected
+        else [{"binding_id": "fallback_path", "missing_requirements": ["tool.bandage", "stance.stable"]}]
+    )
+    return SkillEvaluationResult(
+        actor_id="char_a",
+        action_id="stabilize_injured_actor",
+        selected_path=selected_path,
+        viable_paths=(
+            [{"binding_id": "first_aid_to_stabilize", "skill_id": "first_aid", "expected_quality": "clean_success"}]
+            if selected
+            else []
+        ),
+        blocked_paths=blocked_paths,
+        recommendation_reason=["prefer_low_risk_path"] if selected else ["fallback_blocked"],
+        learning_policy_snapshot={"promotion_enabled": False},
+    )
+
+
+def _primitive_action_plan() -> PrimitiveActionPlan:
+    return PrimitiveActionPlan(
+        composite_action_id="stabilize_injured_actor",
+        skill_path_id="first_aid_to_stabilize",
+        primitive_actions=["approach_target", "inspect_wound", "apply_pressure"],
+        realization_keys=["approach_careful", "apply_pressure"],
+    )
 
 
 def test_orchestration_covers_six_policy_shapes() -> None:
@@ -143,3 +175,43 @@ def test_structured_request_requires_physical_target_ref() -> None:
                 physical_affordance="push",
             )
         )
+
+
+def test_interaction_orchestration_carries_advisory_skill_metadata_without_changing_authority_status() -> None:
+    service = InteractionOrchestrationService()
+    base_result = service.execute(
+        _request(
+            intent=InteractionIntentFrame(
+                intent_id="intent:push",
+                actor_id="char_a",
+                target_refs={"object_ids": ["obj_box"]},
+                semantic_intent="move_obstacle",
+                physical_affordance="push",
+            )
+        )
+    )
+    metadata_request = _request(
+        intent=InteractionIntentFrame(
+            intent_id="intent:push",
+            actor_id="char_a",
+            target_refs={"object_ids": ["obj_box"]},
+            semantic_intent="move_obstacle",
+            physical_affordance="push",
+        ),
+        skill_evaluation_result=_skill_evaluation_result(),
+        primitive_action_plan=_primitive_action_plan(),
+    )
+
+    result = service.execute(metadata_request)
+
+    assert result.status == base_result.status == "completed"
+    assert result.unified_result_family == base_result.unified_result_family
+    assert [entry.payload for entry in result.channel_results] == [entry.payload for entry in base_result.channel_results]
+    assert result.plan.skill_evaluation_result == metadata_request.skill_evaluation_result
+    assert result.plan.primitive_action_plan == metadata_request.primitive_action_plan
+    assert result.skill_evaluation_result == metadata_request.skill_evaluation_result
+    assert result.primitive_action_plan == metadata_request.primitive_action_plan
+    assert result.action_settlement_result is not None
+    assert result.action_settlement_result.outcome_band == "success_with_cost"
+    assert result.action_settlement_result.primary_failure_domain == "none"
+    assert "missing_requirement" not in result.action_settlement_result.failure_domains

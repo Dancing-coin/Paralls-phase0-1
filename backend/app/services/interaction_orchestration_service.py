@@ -4,6 +4,15 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.character_agent.skills.evidence import SkillEvidenceExtractor
+from app.character_agent.skills.models import (
+    ActionSettlementResult,
+    PrimitiveActionPlan,
+    SkillEvaluationResult,
+    SkillEvidence,
+)
+from app.character_agent.skills.settlement import map_action_settlement_result
+from app.character_agent.skills.store import SkillEvidenceStore
 from app.models.player_input import InteractIntent
 from app.models.world_result import ConstraintStateResult
 from app.services.esm_service import ESMService
@@ -45,6 +54,8 @@ class StructuredInteractionRequest(BaseModel):
     constraint_refs: list[str] = Field(default_factory=list)
     physical_effect_kind: PhysicalEffectKind | None = None
     physical_observation: PhysicalContactObservation | None = None
+    skill_evaluation_result: SkillEvaluationResult | None = None
+    primitive_action_plan: PrimitiveActionPlan | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -95,6 +106,8 @@ class InteractionOrchestrationPlan(BaseModel):
     degrade_reason: str = ""
     active_perception_request_ref: str = ""
     authority_confirmation_request_ref: str = ""
+    skill_evaluation_result: SkillEvaluationResult | None = None
+    primitive_action_plan: PrimitiveActionPlan | None = None
     forbidden_ownership: list[str] = Field(
         default_factory=lambda: ["character_mind_core", "siming_main_brain", "esm_authority"]
     )
@@ -109,6 +122,10 @@ class InteractionOrchestrationResult(BaseModel):
     unified_result_family: list[dict[str, Any]] = Field(default_factory=list)
     status: Literal["completed", "denied", "degraded"] = "completed"
     trace_refs: list[str] = Field(default_factory=list)
+    skill_evaluation_result: SkillEvaluationResult | None = None
+    primitive_action_plan: PrimitiveActionPlan | None = None
+    action_settlement_result: ActionSettlementResult | None = None
+    skill_evidence: SkillEvidence | None = None
 
 
 class InteractionOrchestrationService:
@@ -117,9 +134,13 @@ class InteractionOrchestrationService:
         *,
         esm_service: ESMService | None = None,
         physical_channel: PhysicalInteractionChannel | None = None,
+        skill_evidence_extractor: SkillEvidenceExtractor | None = None,
+        skill_evidence_store: SkillEvidenceStore | None = None,
     ) -> None:
         self._esm = esm_service or ESMService()
         self._physical = physical_channel or PhysicalInteractionChannel()
+        self._skill_evidence_extractor = skill_evidence_extractor or SkillEvidenceExtractor()
+        self.skill_evidence_store = skill_evidence_store or SkillEvidenceStore()
         self.trace: list[dict[str, object]] = []
 
     def plan(self, request: StructuredInteractionRequest) -> InteractionOrchestrationPlan:
@@ -131,6 +152,8 @@ class InteractionOrchestrationService:
                 intent_id=request.intent.intent_id,
                 policy="denied-by-constraint",
                 degrade_reason="constraint refs block interaction before channel execution",
+                skill_evaluation_result=request.skill_evaluation_result,
+                primitive_action_plan=request.primitive_action_plan,
             )
         if not request.perception_ready:
             return InteractionOrchestrationPlan(
@@ -139,6 +162,8 @@ class InteractionOrchestrationService:
                 policy="requires-active-perception",
                 degrade_reason="perception refs are insufficient for interaction",
                 active_perception_request_ref=f"active_perception:{request.intent.actor_id}:{request.target_object_id or 'target'}",
+                skill_evaluation_result=request.skill_evaluation_result,
+                primitive_action_plan=request.primitive_action_plan,
             )
         if not request.authority_confirmed:
             return InteractionOrchestrationPlan(
@@ -147,6 +172,8 @@ class InteractionOrchestrationService:
                 policy="requires-authority-confirmation",
                 degrade_reason="semantic authority confirmation is required",
                 authority_confirmation_request_ref=f"authority_confirmation:{request.intent.intent_id}",
+                skill_evaluation_result=request.skill_evaluation_result,
+                primitive_action_plan=request.primitive_action_plan,
             )
         if physical_kind is None:
             return InteractionOrchestrationPlan(
@@ -161,6 +188,8 @@ class InteractionOrchestrationService:
                         payload=request.intent.model_dump(),
                     )
                 ],
+                skill_evaluation_result=request.skill_evaluation_result,
+                primitive_action_plan=request.primitive_action_plan,
             )
         if request.intent.semantic_intent in {"physical_only", "contact_only", "blocking_only"}:
             return InteractionOrchestrationPlan(
@@ -175,6 +204,8 @@ class InteractionOrchestrationService:
                         payload={"effect_kind": physical_kind, "target_object_id": request.target_object_id},
                     )
                 ],
+                skill_evaluation_result=request.skill_evaluation_result,
+                primitive_action_plan=request.primitive_action_plan,
             )
         return InteractionOrchestrationPlan(
             plan_id=plan_id,
@@ -193,35 +224,65 @@ class InteractionOrchestrationService:
                     payload={"effect_kind": physical_kind, "target_object_id": request.target_object_id},
                 ),
             ],
+            skill_evaluation_result=request.skill_evaluation_result,
+            primitive_action_plan=request.primitive_action_plan,
         )
 
     def execute(self, request: StructuredInteractionRequest) -> InteractionOrchestrationResult:
         plan = self.plan(request)
         if plan.policy in {"requires-active-perception", "requires-authority-confirmation"}:
+            action_settlement_result = map_action_settlement_result(
+                skill_evaluation_result=request.skill_evaluation_result,
+                primitive_action_plan=request.primitive_action_plan,
+                plan_policy=plan.policy,
+                selected_channels=plan.selected_channels,
+                channel_results=[],
+                unified_result_family=[],
+                orchestration_status="degraded",
+            )
             result = InteractionOrchestrationResult(
                 result_id=f"interaction_result:{request.intent.intent_id}",
                 plan=plan,
                 status="degraded",
                 trace_refs=[plan.active_perception_request_ref or plan.authority_confirmation_request_ref],
+                skill_evaluation_result=request.skill_evaluation_result,
+                primitive_action_plan=request.primitive_action_plan,
+                action_settlement_result=action_settlement_result,
             )
+            self._record_skill_evidence(result)
             self._trace(result)
             return result
         if plan.policy == "denied-by-constraint":
             constraint = self._constraint_result(request, "denied_by_constraint", plan.degrade_reason)
+            channel_results = [
+                ChannelResultEnvelope(
+                    channel="semantic",
+                    result_id=constraint.result_id,
+                    status="rejected",
+                    payload=constraint.model_dump(),
+                )
+            ]
+            unified_results = [constraint.model_dump()]
+            action_settlement_result = map_action_settlement_result(
+                skill_evaluation_result=request.skill_evaluation_result,
+                primitive_action_plan=request.primitive_action_plan,
+                plan_policy=plan.policy,
+                selected_channels=plan.selected_channels,
+                channel_results=[entry.model_dump() for entry in channel_results],
+                unified_result_family=unified_results,
+                orchestration_status="denied",
+            )
             result = InteractionOrchestrationResult(
                 result_id=f"interaction_result:{request.intent.intent_id}",
                 plan=plan,
                 status="denied",
-                unified_result_family=[constraint.model_dump()],
-                channel_results=[
-                    ChannelResultEnvelope(
-                        channel="semantic",
-                        result_id=constraint.result_id,
-                        status="rejected",
-                        payload=constraint.model_dump(),
-                    )
-                ],
+                unified_result_family=unified_results,
+                channel_results=channel_results,
+                skill_evaluation_result=request.skill_evaluation_result,
+                primitive_action_plan=request.primitive_action_plan,
+                action_settlement_result=action_settlement_result,
             )
+            self._record_skill_evidence(result)
             self._trace(result)
             return result
 
@@ -256,6 +317,15 @@ class InteractionOrchestrationService:
                     payload=physical_result.model_dump(),
                 )
             )
+        action_settlement_result = map_action_settlement_result(
+            skill_evaluation_result=request.skill_evaluation_result,
+            primitive_action_plan=request.primitive_action_plan,
+            plan_policy=plan.policy,
+            selected_channels=plan.selected_channels,
+            channel_results=[entry.model_dump() for entry in channel_results],
+            unified_result_family=unified_results,
+            orchestration_status="completed" if all(result.status != "rejected" for result in channel_results) else "denied",
+        )
         result = InteractionOrchestrationResult(
             result_id=f"interaction_result:{request.intent.intent_id}",
             plan=plan,
@@ -263,9 +333,26 @@ class InteractionOrchestrationService:
             unified_result_family=unified_results,
             status="completed" if all(result.status != "rejected" for result in channel_results) else "denied",
             trace_refs=[f"interaction_trace:{request.intent.intent_id}"],
+            skill_evaluation_result=request.skill_evaluation_result,
+            primitive_action_plan=request.primitive_action_plan,
+            action_settlement_result=action_settlement_result,
         )
+        self._record_skill_evidence(result)
         self._trace(result)
         return result
+
+    def _record_skill_evidence(self, result: InteractionOrchestrationResult) -> None:
+        if result.skill_evaluation_result is None or result.action_settlement_result is None:
+            return
+        evidence = self._skill_evidence_extractor.extract(
+            actor_id=result.skill_evaluation_result.actor_id,
+            selected_skill_path=result.skill_evaluation_result.selected_path,
+            skill_evaluation_result=result.skill_evaluation_result,
+            settlement_result=result.action_settlement_result,
+            source_settlement_id=result.result_id,
+        )
+        if evidence is not None:
+            result.skill_evidence = self.skill_evidence_store.append(evidence)
 
     def _execute_semantic(self, request: StructuredInteractionRequest):
         event = InteractIntent(
@@ -343,5 +430,9 @@ class InteractionOrchestrationService:
                 "selected_channels": list(result.plan.selected_channels),
                 "status": result.status,
                 "unified_result_count": len(result.unified_result_family),
+                "skill_metadata_present": bool(result.skill_evaluation_result or result.primitive_action_plan),
+                "skill_outcome_band": (
+                    result.action_settlement_result.outcome_band if result.action_settlement_result is not None else ""
+                ),
             }
         )

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 SettlementCategory = Literal["cognitive", "social", "physical", "tool", "authority", "special"]
@@ -11,6 +11,7 @@ Learnability = Literal["natural", "trained", "granted", "locked"]
 SkillSource = Literal["authored", "learned", "temporary", "equipment", "authority", "scripted", "constrained"]
 SkillRank = Literal["none", "novice", "basic", "trained", "expert", "master", "blocked"]
 OutcomeBand = Literal["blocked", "failed", "partial", "success_with_cost", "clean_success", "misfire"]
+BeliefState = Literal["unknown", "suspected", "credible", "confirmed", "disconfirmed"]
 FailureDomain = Literal[
     "none",
     "skill_failure",
@@ -153,3 +154,63 @@ class SkillEvidence(StrictSkillModel):
     evidence_channels: dict[str, object] = Field(default_factory=dict)
     eligible_for_candidate: bool = False
     eligible_for_promotion: bool = False
+
+
+class SkillCandidate(StrictSkillModel):
+    actor_id: str
+    skill_id: str
+    evidence_refs: list[str] = Field(default_factory=list)
+    action_ids: list[str] = Field(default_factory=list)
+    binding_ids: list[str] = Field(default_factory=list)
+    evidence_count: int = Field(default=0, ge=0)
+    improvement_score: float = 0.0
+    confidence_score: float = 0.0
+    specialization: dict[str, float] = Field(default_factory=dict)
+    domains: list[str] = Field(default_factory=list)
+    learnability: Learnability = "natural"
+    blocked_domains: list[str] = Field(default_factory=list)
+    required_grants: list[str] = Field(default_factory=list)
+    latest_evidence_id: str = ""
+
+
+class SkillPromotionDecision(StrictSkillModel):
+    actor_id: str
+    skill_id: str
+    approved: bool = False
+    status: Literal["rejected", "needs_grant", "approved"] = "rejected"
+    reasons: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+
+
+class EffectiveSkillStateProjection(StrictSkillModel):
+    actor_id: str
+    states: list[CharacterSkillState] = Field(default_factory=list)
+    primary_state_by_skill: dict[str, CharacterSkillState] = Field(default_factory=dict)
+    conflicts: list[dict[str, object]] = Field(default_factory=list)
+    overlays_applied: list[str] = Field(default_factory=list)
+
+
+class ObservedSkillBelief(StrictSkillModel):
+    observer_actor_id: str
+    subject_actor_id: str
+    skill_id: str
+    belief_state: BeliefState = "unknown"
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0, strict=True)
+    evidence_refs: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _require_evidence_for_confidence(self) -> "ObservedSkillBelief":
+        if self.confidence > 0.0 and not self.evidence_refs:
+            raise ValueError("observed skill belief confidence requires evidence_refs")
+        return self
+
+
+class PlayerFacingCapabilityHint(StrictSkillModel):
+    actor_id: str
+    skill_id: str
+    display_name: str = ""
+    hint_level: SkillRank = "none"
+    domains: list[str] = Field(default_factory=list)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0, strict=True)
+    source: Literal["actual", "belief"] = "actual"
+    evidence_refs: list[str] = Field(default_factory=list)

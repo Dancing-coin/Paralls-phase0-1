@@ -5,6 +5,11 @@ from app.models.character_agent_runtime import (
 )
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
+from app.character_agent.skills.models import (
+    ActionSettlementResult,
+    PrimitiveActionPlan,
+    SkillEvaluationResult,
+)
 
 
 class CharacterAgentL4Adapter:
@@ -143,6 +148,53 @@ class CharacterAgentL4Adapter:
                 execution_payload=plan,
             )
         ]
+
+    def realization_metadata_from_execution_plan(
+        self,
+        plan: dict[str, object],
+        *,
+        action_settlement_result: ActionSettlementResult | None = None,
+    ) -> dict[str, object]:
+        """Return presentation-only skill hints suitable for a realization adapter."""
+        metadata = plan.get("skill_realization_metadata", {})
+        source = metadata if isinstance(metadata, dict) else {}
+        settlement_outcome = source.get("settlement_outcome", {})
+        if not isinstance(settlement_outcome, dict):
+            settlement_outcome = {}
+        if action_settlement_result is not None:
+            settlement_outcome = {
+                "outcome_band": action_settlement_result.outcome_band,
+                "failure_domains": list(action_settlement_result.failure_domains),
+                "primary_failure_domain": action_settlement_result.primary_failure_domain,
+                "realization_hints": list(action_settlement_result.realization_hints),
+            }
+        return {
+            "selected_skill_path": dict(source.get("selected_skill_path", {}))
+            if isinstance(source.get("selected_skill_path"), dict)
+            else {},
+            "primitive_action_tags": list(source.get("primitive_action_tags", []))
+            if isinstance(source.get("primitive_action_tags"), list)
+            else [],
+            "primitive_realization_keys": list(source.get("primitive_realization_keys", []))
+            if isinstance(source.get("primitive_realization_keys"), list)
+            else [],
+            "settlement_outcome": settlement_outcome,
+        }
+
+    def attach_skill_realization_metadata(
+        self,
+        *,
+        plan: dict[str, object],
+        skill_evaluation_result: SkillEvaluationResult,
+        primitive_action_plan: PrimitiveActionPlan | None = None,
+        action_settlement_result: ActionSettlementResult | None = None,
+    ) -> None:
+        self._executor.attach_skill_realization_metadata(
+            plan=plan,
+            skill_evaluation_result=skill_evaluation_result,
+            primitive_action_plan=primitive_action_plan,
+            action_settlement_result=action_settlement_result,
+        )
 
     def _map_request_type_to_command_type(self, request_type: str) -> str:
         if request_type in {"speak_public", "speak_private", "share_info", "withhold"}:

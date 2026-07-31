@@ -38,6 +38,7 @@ class CharacterAgentL3Service:
         background_agenda_state: dict[str, object] | None = None,
         need_tension_state: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | None = None,
+        skill_affordance_summary: dict[str, object] | None = None,
     ) -> dict[str, object]:
         interpretation = self._normalize_interpretation(interpretation)
         normalized_snapshot = self._normalize_snapshot(snapshot)
@@ -62,6 +63,8 @@ class CharacterAgentL3Service:
         normalized_supervision_state = self._normalize_mapping(supervision_state)
         normalized_unresolved_tensions = self._list_entries(unresolved_tensions)
         normalized_background_agenda_state = self._normalize_mapping(background_agenda_state)
+        normalized_skill_affordance_summary = self._normalize_mapping(skill_affordance_summary)
+        normalized_skill_affordance_summary.pop("registry", None)
         context_goal_tags = self._model_context_goal_tags(current_goal_state=normalized_current_goal_state)
         context_goal_frame = self._model_context_goal_frame(current_goal_state=normalized_current_goal_state)
         local_active_goal_tags = self._active_goal_tags(
@@ -101,6 +104,7 @@ class CharacterAgentL3Service:
                 "supervision_state": normalized_supervision_state,
                 "unresolved_tensions": normalized_unresolved_tensions,
                 "background_agenda_state": normalized_background_agenda_state,
+                "skill_affordance_summary": normalized_skill_affordance_summary,
             },
         )
         candidates = self._model_owned_candidates(
@@ -157,6 +161,7 @@ class CharacterAgentL3Service:
         background_agenda_state: dict[str, object] | None = None,
         need_tension_state: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | None = None,
+        skill_affordance_summary: dict[str, object] | None = None,
     ) -> CharacterIntentDecision:
         plan = self.build_intent_plan(
             interpretation=interpretation,
@@ -173,6 +178,7 @@ class CharacterAgentL3Service:
             background_agenda_state=background_agenda_state,
             need_tension_state=need_tension_state,
             dynamic_state=dynamic_state,
+            skill_affordance_summary=skill_affordance_summary,
         )
         model_selected_candidate = str(plan.get("model_output", {}).get("selected_intent", "") or "")
         model_recommended_candidates = self._as_string_list(plan.get("model_output", {}).get("recommended_intents", []))
@@ -243,6 +249,7 @@ class CharacterAgentL3Service:
         background_agenda_state: dict[str, object] | None = None,
         need_tension_state: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | None = None,
+        skill_affordance_summary: dict[str, object] | None = None,
     ) -> dict[str, object]:
         interpretation = self._normalize_interpretation(interpretation)
         normalized_snapshot = self._normalize_snapshot(snapshot)
@@ -265,6 +272,7 @@ class CharacterAgentL3Service:
             background_agenda_state=background_agenda_state,
             need_tension_state=need_tension_state,
             dynamic_state=dynamic_state,
+            skill_affordance_summary=skill_affordance_summary,
         )
         relational_memories = self._list_entries(normalized_memory_bundle.get("relational_memories"))
         guarded_relation_note = self._guarded_relational_note(

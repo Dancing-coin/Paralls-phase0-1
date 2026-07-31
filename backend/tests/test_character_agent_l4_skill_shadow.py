@@ -1,4 +1,5 @@
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
+from app.character_agent.execution.l4_adapter import CharacterAgentL4Adapter
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
 from app.models.character_agent_runtime import CharacterIntentDecision, CharacterInterpretation
 
@@ -57,3 +58,16 @@ def test_l4_execution_plan_includes_composite_action_proposal_without_changing_e
     assert proposal["target_refs"] == {"actor": "char_b"}
     assert "action_request_bundle" in plan
     assert plan["action_request_bundle"]["requested_actions"][0]["request_type"] == "share_info"
+
+
+def test_l4_maps_only_bounded_intents_to_existing_skill_actions() -> None:
+    plan = CharacterAgentL4Executor().build_execution_plan(
+        snapshot=_snapshot(),
+        interpretation=_interpretation(),
+        decision=_decision().model_copy(update={"selected_intent": "observe"}),
+    )
+
+    assert plan["composite_action_proposal"]["source_intent"] == "observe"
+    assert plan["composite_action_proposal"]["action_id"] == "survey_scene"
+    assert plan["action_request_bundle"]["requested_actions"] == []
+    assert CharacterAgentL4Adapter().build_commands_from_execution_plan(plan)[0].command_type == "observe"
