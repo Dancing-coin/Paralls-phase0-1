@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "embodied-interaction-replay",
+  "order": 77,
+  "script": "scripts/verification/verify_embodied_interaction_replay.py",
+  "requires_godot": true,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/embodied-interaction-replay-report.json",
+  "description": "Phase 5 Godot and backend proof for kick-chair visible settlement, server-ledger replay validation, idempotent source sequencing, and public Observatory projection filtering"
+}

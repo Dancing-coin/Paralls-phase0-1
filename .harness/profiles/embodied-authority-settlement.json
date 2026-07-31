@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "embodied-authority-settlement",
+  "order": 76,
+  "script": "scripts/verification/verify_embodied_authority_settlement.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/embodied-authority-settlement-report.json",
+  "description": "Backend proof for attested local outcome validation, revision/policy checks, idempotent consume, esm_compatibility_adapter single-object settlement, and gameplay writer fail-closed behavior"
+}

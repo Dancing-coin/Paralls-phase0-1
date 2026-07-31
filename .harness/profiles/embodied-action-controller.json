@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "embodied-action-controller",
+  "order": 75,
+  "script": "scripts/verification/verify_embodied_action_controller.py",
+  "requires_godot": true,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/embodied-action-controller-report.json",
+  "description": "Godot runtime proof for EmbodiedActionController local state machine, grant-gated route ownership, terminal local observations, recovery, and raw physics/bone transport exclusion"
+}

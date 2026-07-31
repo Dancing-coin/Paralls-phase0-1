@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "embodied-interaction-contracts",
+  "order": 72,
+  "script": "scripts/verification/verify_embodied_interaction_contracts.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/embodied-interaction-contracts-report.json",
+  "description": "Backend Phase 0 proof for embodied request/outcome schemas, writer selection, realization route exclusivity, evidence sequence, and projection filtering"
+}
