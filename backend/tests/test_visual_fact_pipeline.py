@@ -943,6 +943,36 @@ def test_raw_fact_event_debug_trace_exposes_l1_to_l2_transition_order_without_re
     assert stages.index("candidate_percept_compiled") < stages.index("character_perceived_applied")
 
 
+def test_raw_fact_followup_filter_drops_duplicate_fast_authority_ack_only() -> None:
+    authority_ack = {
+        "message_type": "ack",
+        "payload": {
+            "accepted": True,
+            "source_type": "raw_fact_event",
+            "route": "authority_visual_fact",
+            "fact_family": "visual_fact",
+            "fact_type": "light_level_drop",
+            "relation_type": "environment_light_drop",
+            "fact_key": "environment_light_drop",
+        },
+    }
+    followups = [
+        authority_ack,
+        {"message_type": "character_runtime_state_delta", "payload": {"actor_id": "char_c"}},
+    ]
+
+    assert main._drop_matching_authority_ack(followups, authority_ack) == followups[1:]
+
+    different_ack = {
+        "message_type": "ack",
+        "payload": {
+            **authority_ack["payload"],
+            "fact_key": "actor_looks_at_object",
+        },
+    }
+    assert main._drop_matching_authority_ack([different_ack], authority_ack) == [different_ack]
+
+
 def test_actor_local_sampling_emits_standard_visual_fact_shape() -> None:
     text = (Path(__file__).resolve().parents[2] / "scripts" / "character" / "CharacterReplica.gd").read_text(
         encoding="utf-8"

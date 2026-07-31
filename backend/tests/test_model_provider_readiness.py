@@ -104,6 +104,79 @@ def test_vla_defaults_to_blocked_missing_artifacts() -> None:
     assert "PerceptionQueryFrame" in rows["vla_spatial"].required_input_refs
 
 
+def test_vla_real_provider_status_requires_matching_explicit_live_proof(tmp_path) -> None:
+    live_proof_path = tmp_path / "vla-provider-live-report.json"
+    live_proof_path.write_text(
+        json.dumps(
+            {
+                "run_id": "vla-live-20260729",
+                "real_provider_status": "real_provider_verified",
+                "provider_id": "openai_compatible_vla_provider",
+                "model_id": "qwen3.7-flash",
+                "endpoint_host": "dashscope.aliyuncs.com",
+                "live_call_opted_in": True,
+                "bridge_ok": True,
+                "proof": {
+                    "artifact_ref_ids": ["visual_artifact:live-proof"],
+                    "result": {"status": "real_provider_verified"},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = build_model_provider_readiness_report(
+        env={
+            "VLA_PROVIDER_MODE": "http",
+            "VLA_PROVIDER_KIND": "openai_compatible",
+            "VLA_PROVIDER_ENDPOINT": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "VLA_PROVIDER_API_KEY": "test-secret-key",
+            "VLA_ADVISORY_FAST_MODEL": "qwen3.7-flash",
+            "VLA_PROVIDER_REQUIRED_ARTIFACT_REFS": "visual_artifact:live-proof",
+            "VLA_PROVIDER_LIVE_PROOF_RUN_ID": "vla-live-20260729",
+            "VLA_PROVIDER_LIVE_PROOF_REPORT_PATH": str(live_proof_path),
+        }
+    )
+    rows = {row.provider_kind: row for row in report.rows}
+
+    assert rows["vla_spatial"].readiness_status == "real_provider_verified"
+
+
+def test_vla_live_proof_with_mismatched_model_does_not_promote_readiness(tmp_path) -> None:
+    live_proof_path = tmp_path / "vla-provider-live-report.json"
+    live_proof_path.write_text(
+        json.dumps(
+            {
+                "run_id": "vla-live-20260729",
+                "real_provider_status": "real_provider_verified",
+                "provider_id": "openai_compatible_vla_provider",
+                "model_id": "other-vl-model",
+                "endpoint_host": "dashscope.aliyuncs.com",
+                "live_call_opted_in": True,
+                "bridge_ok": True,
+                "proof": {"result": {"status": "real_provider_verified"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = build_model_provider_readiness_report(
+        env={
+            "VLA_PROVIDER_MODE": "http",
+            "VLA_PROVIDER_KIND": "openai_compatible",
+            "VLA_PROVIDER_ENDPOINT": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "VLA_PROVIDER_API_KEY": "test-secret-key",
+            "VLA_ADVISORY_FAST_MODEL": "qwen3.7-flash",
+            "VLA_PROVIDER_REQUIRED_ARTIFACT_REFS": "visual_artifact:live-proof",
+            "VLA_PROVIDER_LIVE_PROOF_RUN_ID": "vla-live-20260729",
+            "VLA_PROVIDER_LIVE_PROOF_REPORT_PATH": str(live_proof_path),
+        }
+    )
+    rows = {row.provider_kind: row for row in report.rows}
+
+    assert rows["vla_spatial"].readiness_status == "http_configured_unverified"
+
+
 def test_report_writer_redacts_endpoint_and_omits_api_keys(tmp_path) -> None:
     report = build_model_provider_readiness_report(
         env={

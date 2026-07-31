@@ -227,35 +227,51 @@ def _vla_spatial_row(
         status = ModelProviderReadinessStatus.BLOCKED_MISSING_ARTIFACTS
     elif mode == ModelProviderMode.LOCAL:
         status = ModelProviderReadinessStatus.CONTRACT_READY
+    elif not api_key:
+        status = ModelProviderReadinessStatus.BLOCKED_MISSING_CREDENTIALS
+    elif not endpoint:
+        status = ModelProviderReadinessStatus.NOT_CONFIGURED
+    elif _has_matching_vla_live_proof(
+        env,
+        provider_id=_env(env, "VLA_PROVIDER_KIND", "openai_compatible") + "_vla_provider",
+        model_id=_env(env, "VLA_ADVISORY_FAST_MODEL", "qwen3.7-flash"),
+        endpoint_host=_redacted_host(endpoint),
+    ):
+        status = ModelProviderReadinessStatus.REAL_PROVIDER_VERIFIED
     else:
-        status = _http_status(
-            api_key=api_key,
-            endpoint=endpoint,
-            kind=ModelProviderKind.VLA_SPATIAL,
-            env=env,
-            real_smoke_checker=real_smoke_checker,
-        )
+        status = ModelProviderReadinessStatus.HTTP_CONFIGURED_UNVERIFIED
     return ModelProviderReadinessRow(
         provider_kind=ModelProviderKind.VLA_SPATIAL.value,
         mode=mode.value,
-        provider_id="qwen_vl_spatial",
-        model_id=_env(env, "VLA_PROVIDER_MODEL", "qwen3-vl-plus"),
+        provider_id=_env(env, "VLA_PROVIDER_KIND", "openai_compatible") + "_vla_spatial",
+        model_id=_env(env, "VLA_ADVISORY_FAST_MODEL", "qwen3.7-flash"),
         endpoint_host_redacted=_redacted_host(endpoint),
         readiness_status=status.value,
         schema_version=SCHEMA_VERSION,
         required_input_refs=["PerceptionQueryFrame", "visual_artifact_ref", "l1_space_model_ref", "owner_namespace"],
         output_schema_status="advisory spatial findings only; ModalityInterpretationResult bridge required before use",
         timeout_degrade_status=(
-            f"timeout_seconds={_env(env, 'VLA_PROVIDER_TIMEOUT_SECONDS', '8.0')}; "
-            f"max_queue_size={_env(env, 'VLA_PROVIDER_MAX_QUEUE_SIZE', '8')}; timeout drops/degrades slow path"
+            f"fast_timeout_seconds={_env(env, 'VLA_ADVISORY_FAST_TIMEOUT_SECONDS', '12.0')}; "
+            f"deep_enabled={_env(env, 'VLA_ADVISORY_DEEP_ENABLED', 'false')}; "
+            f"deep_timeout_seconds={_env(env, 'VLA_ADVISORY_DEEP_TIMEOUT_SECONDS', '20.0')}; "
+            f"max_queue_size={_env(env, 'VLA_PROVIDER_MAX_QUEUE_SIZE', '8')}; timeout degrades slow path"
         ),
         context_isolation_status="per-owner queue/cache namespace required; no character/siming cache sharing",
         world_truth_write_status="forbidden: advisory findings cannot write L1/world truth/ESM authority",
         verification_evidence=[
             "python -m pytest -q backend/tests/test_model_provider_readiness.py",
             "python scripts/verification/verify_model_provider_readiness.py",
+            "python scripts/verification/verify_vla_provider_live.py --allow-live-call (explicit-only live proof)",
+            (
+                "real adapter call evidence: .harness/verification/vla-provider-live-report.json"
+                if status == ModelProviderReadinessStatus.REAL_PROVIDER_VERIFIED
+                else "real adapter call evidence pending explicit live proof"
+            ),
         ],
-        notes=["Real VLA verification requires Godot/PQF/L1 artifact refs and a schema-valid adapter call."],
+        notes=[
+            "Real VLA verification requires a PQF with an eligible https:// or data:image/ visual artifact and a schema-valid adapter call.",
+            "Production defaults to fast-only. Deep route/model state remains isolated for explicit experiments and stays advisory.",
+        ],
     )
 
 
@@ -332,18 +348,62 @@ def _has_vla_runtime_artifacts(env: dict[str, str]) -> bool:
     return bool(refs)
 
 
+def _has_matching_vla_live_proof(
+    env: dict[str, str],
+    *,
+    provider_id: str,
+    model_id: str,
+    endpoint_host: str,
+) -> bool:
+    expected_run_id = _env(env, "VLA_PROVIDER_LIVE_PROOF_RUN_ID", "")
+    report_path = Path(
+        _env(env, "VLA_PROVIDER_LIVE_PROOF_REPORT_PATH", ".harness/verification/vla-provider-live-report.json")
+    )
+    if expected_run_id == "" or not report_path.is_file():
+        return False
+    try:
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    proof = payload.get("proof")
+    result = proof.get("result") if isinstance(proof, dict) else None
+    required_artifact_refs = {
+        ref.strip() for ref in _env(env, "VLA_PROVIDER_REQUIRED_ARTIFACT_REFS", "").split(",") if ref.strip()
+    }
+    proof_artifact_refs = proof.get("artifact_ref_ids") if isinstance(proof, dict) else None
+    return (
+        payload.get("run_id") == expected_run_id
+        and payload.get("real_provider_status") == ModelProviderReadinessStatus.REAL_PROVIDER_VERIFIED.value
+        and payload.get("provider_id") == provider_id
+        and payload.get("model_id") == model_id
+        and payload.get("endpoint_host") == endpoint_host
+        and payload.get("live_call_opted_in") is True
+        and payload.get("bridge_ok") is True
+        and isinstance(result, dict)
+        and result.get("status") == ModelProviderReadinessStatus.REAL_PROVIDER_VERIFIED.value
+        and isinstance(proof_artifact_refs, list)
+        and required_artifact_refs.issubset({str(ref) for ref in proof_artifact_refs})
+    )
+
+
 def _merged_env(env: dict[str, str] | None) -> dict[str, str]:
     if env is not None:
         return dict(env)
     merged = dict(os.environ)
-    env_path = Path(".env")
-    if env_path.exists():
+    process_env_keys = set(merged)
+    for env_path in [Path(".env"), Path(".env.vla")]:
+        if not env_path.exists():
+            continue
         for raw_line in env_path.read_text(encoding="utf-8").splitlines():
             line = raw_line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
             key, value = line.split("=", 1)
-            merged.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+            normalized_key = key.strip()
+            if normalized_key not in process_env_keys:
+                merged[normalized_key] = value.strip().strip('"').strip("'")
     return merged
 
 

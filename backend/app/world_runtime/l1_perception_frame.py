@@ -8,8 +8,7 @@ from app.world_runtime.intelligence_upgrade import (
     SpatialReference,
     TimeWindow,
 )
-from app.models.capture_clock import derive_capture_id, derive_capture_root_id
-from app.models.object_anchor import append_unique_lineage, derive_world_anchor_id, first_target_ref
+from app.models.object_anchor import derive_world_anchor_id
 
 
 class L1PerceptionFrameService:
@@ -42,6 +41,10 @@ class L1PerceptionFrameService:
         skeletal_inputs: list[SampleInputRef] | None = None,
         environment_inputs: list[SampleInputRef] | None = None,
         structured_fact_refs: list[str] | None = None,
+        grounding_entity_refs: list[str] | None = None,
+        grounding_collider_refs: list[str] | None = None,
+        grounding_anchor_refs: list[str] | None = None,
+        grounding_affordance_refs: list[str] | None = None,
         attention_target_actor_ids: list[str] | None = None,
         attention_target_object_ids: list[str] | None = None,
         reason_tags: list[str] | None = None,
@@ -74,6 +77,10 @@ class L1PerceptionFrameService:
             skeletal_inputs=skeletal_inputs or [],
             environment_inputs=environment_inputs or [],
             structured_fact_refs=structured_fact_refs or [],
+            grounding_entity_refs=grounding_entity_refs or [],
+            grounding_collider_refs=grounding_collider_refs or [],
+            grounding_anchor_refs=grounding_anchor_refs or [],
+            grounding_affordance_refs=grounding_affordance_refs or [],
             target_actor_ids=attention_target_actor_ids or [],
             target_object_ids=attention_target_object_ids or [],
             target_environment_ids=[],
@@ -103,6 +110,10 @@ class L1PerceptionFrameService:
         listener_frame_ref: str = "",
         environment_inputs: list[SampleInputRef] | None = None,
         structured_fact_refs: list[str] | None = None,
+        grounding_entity_refs: list[str] | None = None,
+        grounding_collider_refs: list[str] | None = None,
+        grounding_anchor_refs: list[str] | None = None,
+        grounding_affordance_refs: list[str] | None = None,
         reason_tags: list[str] | None = None,
     ) -> PerceptionInputFrame:
         return PerceptionInputFrame(
@@ -128,6 +139,10 @@ class L1PerceptionFrameService:
             listener_frame_ref=listener_frame_ref,
             environment_inputs=environment_inputs or [],
             structured_fact_refs=structured_fact_refs or [],
+            grounding_entity_refs=grounding_entity_refs or [],
+            grounding_collider_refs=grounding_collider_refs or [],
+            grounding_anchor_refs=grounding_anchor_refs or [],
+            grounding_affordance_refs=grounding_affordance_refs or [],
             reason_tags=reason_tags or ["l1_world_fact_projection"],
         )
 
@@ -176,6 +191,10 @@ class L1PerceptionFrameService:
             skeletal_inputs=self._inherit_capture_clock(input_frame.skeletal_inputs, **self._capture_kwargs(input_frame)),
             environment_inputs=self._inherit_capture_clock(input_frame.environment_inputs, **self._capture_kwargs(input_frame)),
             structured_fact_refs=list(input_frame.structured_fact_refs),
+            grounding_entity_refs=list(input_frame.grounding_entity_refs),
+            grounding_collider_refs=list(input_frame.grounding_collider_refs),
+            grounding_anchor_refs=list(input_frame.grounding_anchor_refs),
+            grounding_affordance_refs=list(input_frame.grounding_affordance_refs),
             multimodal_context_id=(
                 f"character_mm:{input_frame.subject_id}"
                 if input_frame.consumer_kind == "character"

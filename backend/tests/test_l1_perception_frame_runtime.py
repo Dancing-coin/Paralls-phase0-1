@@ -94,6 +94,29 @@ def test_perception_input_frame_is_explicit_runtime_input_boundary() -> None:
     assert frame.world_anchor_id == "world_anchor:object:obj_letter"
 
 
+def test_perception_input_frame_preserves_known_grounding_catalog_into_pqf() -> None:
+    service = L1PerceptionFrameService()
+    input_frame = service.build_character_input_frame(
+        subject_id="char_b",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        started_at=1000,
+        ended_at=1010,
+        attention_target_object_ids=["obj_letter"],
+        grounding_collider_refs=["collider:obj_letter:body"],
+        grounding_anchor_refs=["world_anchor:object:obj_letter"],
+        grounding_affordance_refs=["inspect"],
+    )
+
+    frame = service.build_frame_from_input(input_frame)
+
+    assert {"char_b", "obj_letter"}.issubset(frame.grounding_entity_refs)
+    assert frame.grounding_collider_refs == ["collider:obj_letter:body"]
+    assert frame.grounding_anchor_refs == ["world_anchor:object:obj_letter"]
+    assert frame.grounding_affordance_refs == ["inspect"]
+
+
 def test_perception_input_frame_can_resolve_world_anchor_from_source_lineage() -> None:
     service = L1PerceptionFrameService()
     input_frame = service.build_character_input_frame(

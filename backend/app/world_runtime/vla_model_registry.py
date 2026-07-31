@@ -26,12 +26,28 @@ class VLAModelCandidate(BaseModel):
 def default_vla_model_registry() -> dict[str, VLAModelCandidate]:
     candidates = [
         VLAModelCandidate(
-            model_id="qwen3-vl-plus",
-            family="Qwen3-VL",
+            model_id="qwen3.7-flash",
+            family="Qwen3.7-VL",
             license_summary="Provider/license must be checked at deployment time; runtime use remains advisory only.",
             deployment_modes=["http", "local"],
             structured_output_schema="VLAProviderResult advisory visual_spatial findings",
-            runtime_boundary="Consumes PQF artifact refs and structured fact refs only; does not read Godot scene directly.",
+            runtime_boundary="Default advisory-fast route; consumes PQF refs and never writes authority.",
+        ),
+        VLAModelCandidate(
+            model_id="qwen3.7-plus",
+            family="Qwen3.7-VL",
+            license_summary="Provider/license must be checked at deployment time; runtime use remains advisory only.",
+            deployment_modes=["http", "local"],
+            structured_output_schema="VLAProviderResult advisory visual_spatial findings",
+            runtime_boundary="Escalated advisory-deep route; consumes PQF refs and never writes authority.",
+        ),
+        VLAModelCandidate(
+            model_id="qwen3-vl-plus",
+            family="Qwen3-VL",
+            license_summary="Compatibility-probe candidate only; it is not the configured Qwen3.7 route.",
+            deployment_modes=["http", "local"],
+            structured_output_schema="VLAProviderResult advisory visual_spatial findings",
+            runtime_boundary="May be used only after an explicit route/spec change; does not read Godot scene directly.",
         ),
         VLAModelCandidate(
             model_id="qwen3-vl-local",

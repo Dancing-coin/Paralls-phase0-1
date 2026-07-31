@@ -151,6 +151,8 @@ python scripts/verification/verify_siming_backend_chain.py --live-provider deeps
 25. [2026-06-30-current-project-godot-sampling-frontend-and-providers-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-godot-sampling-frontend-and-providers-implementation-plan.md)
 26. [2026-06-30-current-project-embodied-skeletal-state-provider-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-embodied-skeletal-state-provider-implementation-plan.md)
 27. [2026-06-30-current-project-non-runtime-multimodal-tooling-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-non-runtime-multimodal-tooling-implementation-plan.md)
+28. [2026-07-29-vla-real-provider-adapter-live-proof-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-29-vla-real-provider-adapter-live-proof-implementation-plan.md)
+29. [2026-07-30-advisory-vla-routing-and-tts-convergence-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-30-advisory-vla-routing-and-tts-convergence-implementation-plan.md)
 
 ## 一句话收束
 

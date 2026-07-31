@@ -41,6 +41,24 @@ def test_vla_provider_request_is_built_from_pqf_and_artifact_refs() -> None:
     assert request.monotonic_tick == 1
     assert request.target_ref == frame.target_ref
     assert request.world_anchor_id == frame.world_anchor_id
+    assert request.grounding_entity_refs == ["char_b", "obj_letter"]
+    assert request.grounding_anchor_refs == ["world_anchor:object:obj_letter"]
+
+
+def test_vla_request_rejects_grounding_catalog_injection() -> None:
+    frame = _frame()
+
+    with pytest.raises(ValueError, match="grounding_entity_refs"):
+        VLAProviderRequest(
+            request_id="bad-grounding",
+            owner_kind="character",
+            owner_id="char_b",
+            query_frame=frame,
+            grounding_entity_refs=["invented_object"],
+            context_namespace=frame.multimodal_context_id,
+            cache_namespace=frame.cache_namespace,
+            model_id="qwen3.7-flash",
+        )
 
 
 def test_vla_request_rejects_shared_context_and_wrong_owner_namespace() -> None:
