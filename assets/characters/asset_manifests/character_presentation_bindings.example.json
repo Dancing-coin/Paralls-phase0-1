@@ -1,0 +1,31 @@
+{
+  "contract": "character_presentation_bindings.v1",
+  "bindings": [
+    {
+      "actor_id": "char_a",
+      "binding_status": "candidate",
+      "visual_assets": {
+        "artpack_id": "archive_attendant_v1",
+        "role_asset_id": "role:archive_attendant:v1",
+        "role_scene_ref": "res://scenes/artpacks/archive_attendant/ArchiveAttendantRoleSkin.tscn",
+        "skeleton_profile_id": "skeleton:archive_attendant:humanoid_v1",
+        "compatibility_level": "full_action_ready"
+      },
+      "wardrobe_assets": {
+        "default_outfit_id": "outfit:archive_uniform:v1",
+        "slots": []
+      },
+      "equipment_and_props": {
+        "default_equipment_ids": [],
+        "slot_bindings": []
+      },
+      "action_assets": {
+        "supported_action_tags": ["speak", "inspect"],
+        "animation_descriptors": []
+      },
+      "voice_assets": {
+        "approved_tts_voice_binding_ref": "assets/tts/voice_bindings.json#char_a"
+      }
+    }
+  ]
+}

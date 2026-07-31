@@ -34,6 +34,50 @@ def _ack_known_raw_fact(event: RawFactEvent, *, source_type: str, route: str) ->
     ]
 
 
+def build_raw_fact_authority_ack(event: RawFactEvent, *, source_type: str) -> Message:
+    route_kind = _FACT_REGISTRY.route_for_family(event.fact_family)
+    if route_kind == "visual":
+        return {
+            "message_type": "ack",
+            "payload": {
+                "accepted": True,
+                "source_type": source_type,
+                "route": "authority_visual_fact",
+                "fact_family": event.fact_family,
+                "fact_type": event.fact_type,
+                "relation_type": event.relation_type,
+                "fact_key": event.relation_type,
+            },
+        }
+    if route_kind == "auditory":
+        return _ack_known_raw_fact(event, source_type=source_type, route="authority_auditory_fact")[0]
+    if route_kind == "spatial_access":
+        return {
+            "message_type": "ack",
+            "payload": {
+                "accepted": True,
+                "source_type": source_type,
+                "route": "authority_spatial_access_fact",
+            },
+        }
+    if route_kind in {
+        "authority_role_state_fact",
+        "authority_physiology_fact",
+        "authority_tactile_fact",
+        "authority_thermal_fact",
+        "authority_olfactory_fact",
+    }:
+        return _ack_known_raw_fact(event, source_type=source_type, route=route_kind)[0]
+    return {
+        "message_type": "ack",
+        "payload": {
+            "accepted": False,
+            "source_type": source_type,
+            "route": "unknown_raw_fact_family",
+        },
+    }
+
+
 def route_raw_fact_event(
     event: RawFactEvent,
     *,

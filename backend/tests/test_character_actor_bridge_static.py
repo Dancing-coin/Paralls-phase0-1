@@ -20,6 +20,23 @@ def test_backend_bridge_exposes_character_agent_output_signal_chain() -> None:
     assert 'func _on_character_agent_output_received(payload: Dictionary) -> void:' not in replica_source
 
 
+def test_backend_bridge_exposes_dialogue_stream_presentation_signals() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    bus_source = (project_root / "scripts" / "autoload" / "LocalPresentationBus.gd").read_text(
+        encoding="utf-8"
+    )
+    bridge_source = (project_root / "scripts" / "autoload" / "BackendBridge.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert "signal dialogue_stream_started(payload)" in bus_source
+    assert "signal dialogue_stream_delta_received(payload)" in bus_source
+    assert "signal dialogue_stream_ended(payload)" in bus_source
+    assert '"dialogue_stream_start":' in bridge_source
+    assert '"dialogue_stream_delta":' in bridge_source
+    assert '"dialogue_stream_end":' in bridge_source
+
+
 def test_backend_bridge_and_replica_accept_actor_execution_ingress_payload() -> None:
     project_root = Path(__file__).resolve().parents[2]
     bus_source = (project_root / "scripts" / "autoload" / "LocalPresentationBus.gd").read_text(

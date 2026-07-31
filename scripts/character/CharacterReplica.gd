@@ -106,12 +106,15 @@ var _perception_target_resolver = ActorPerceptionTargetResolverRef.new()
 var _last_notice_target := ""
 var _last_notice_ts := 0
 var _active_contact_target_actor_id := ""
+var _fallback_role_asset_scene: Node
+var _manifest_role_asset_scene: Node
 
 const ROOT_MOTION_LOG_COOLDOWN_MS := 250
 
 func _ready() -> void:
 	home_position = global_position
 	current_look_target = global_position - global_basis.z
+	_fallback_role_asset_scene = role_asset_scene
 	if perception_cone_debug:
 		perception_cone_debug.position = FOCUS_ANCHOR_LOCAL_OFFSET
 	_configure_actor_local_perception()
@@ -332,8 +335,8 @@ func get_embodied_forward_vector() -> Vector3:
 
 func apply_dialogue(payload: Dictionary) -> void:
 	var voice := get_node_or_null("SpatialVoiceController")
-	if voice:
-		voice.play_stub_voice(payload)
+	if voice and voice.has_method("play_voice"):
+		voice.play_voice(payload)
 	_pause_and_face(_resolve_player_position())
 	_set_dialogue_pose()
 	_trigger_role_state(dialogue_role_state, hold_duration)
@@ -1023,6 +1026,43 @@ func _normalize_patrol_points() -> void:
 
 func _apply_visual_config() -> void:
 	_apply_role_asset_config()
+
+func apply_presentation_asset_binding(binding: Dictionary) -> bool:
+	if str(binding.get("actor_id", "")) != actor_id:
+		return false
+	if str(binding.get("binding_status", "")) != "approved":
+		return false
+	var visual_assets: Variant = binding.get("visual_assets", {})
+	if not (visual_assets is Dictionary):
+		return false
+	var role_scene_ref := str((visual_assets as Dictionary).get("role_scene_ref", ""))
+	if not role_scene_ref.is_empty() and not _mount_manifest_role_scene(role_scene_ref):
+		return false
+	if role_asset_scene != null and role_asset_scene.has_method("apply_asset_binding"):
+		role_asset_scene.apply_asset_binding(binding)
+	_apply_role_asset_config()
+	_bus_log("presentation_asset_binding_applied:%s" % actor_id)
+	return true
+
+func _mount_manifest_role_scene(role_scene_ref: String) -> bool:
+	if not role_scene_ref.begins_with("res://") or role_asset_root == null:
+		return false
+	var resource := load(role_scene_ref)
+	if not (resource is PackedScene):
+		return false
+	var mounted := (resource as PackedScene).instantiate()
+	if not (mounted is Node):
+		return false
+	if _manifest_role_asset_scene != null:
+		_manifest_role_asset_scene.queue_free()
+	role_asset_root.add_child(mounted)
+	_manifest_role_asset_scene = mounted as Node
+	if _fallback_role_asset_scene is Node3D:
+		(_fallback_role_asset_scene as Node3D).visible = false
+	role_asset_scene = _manifest_role_asset_scene
+	if role_asset_scene is Node3D:
+		(role_asset_scene as Node3D).visible = true
+	return true
 
 func _set_dialogue_pose() -> void:
 	posture_target = Vector3(0.0, 0.0, -dialogue_lean_amount)

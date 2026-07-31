@@ -1,14 +1,14 @@
-# Character Profiles
+# 角色作者档案
 
-This directory stores Stage 2 structured-file-first profile truth for character agents.
+本目录保存角色智能体的结构化作者档案。每个 YAML 是角色长期、可编辑的
+作者事实来源，而不是单场景情绪、临时记忆或 TTS 运行时状态。
 
-Each YAML file is the editable source for authored profile truth before runtime wiring grows around it.
+现有档案包括：
 
-The shipped profile truth now includes the original authored core layers plus:
-- `need_hierarchy_layer`
-- `temperament_response_layer`
-- `long_term_personality_drift_layer`
+- 核心身份、经历、价值与能力约束
+- 性格与对话表达倾向
+- 需要层级与气质反应层
+- 长期人格漂移策略
 
-`need_hierarchy_layer` and `temperament_response_layer` are authored truth, not runtime state.
-`long_term_personality_drift_layer` stores only durable profile-drift authoring and policy
-for slow cross-scene change. It must not be used as per-scene runtime mood, temporary state, or drift history.
+声线、角色模型、服装、道具和动作等表现资产不直接写入这些档案；请在上级
+`asset_manifests/` 中建立资产关联。这样替换美术或音色不会意外改写角色真相。

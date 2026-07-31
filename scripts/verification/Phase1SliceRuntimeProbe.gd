@@ -151,31 +151,38 @@ func _configure_fact_context() -> void:
 
 
 func _emit_main_facts() -> bool:
-	var emitters: Array[Callable] = [
-		func() -> bool: return $VisualFactEmitter/CharacterVisualFactEmitter.emit_fixed_gaze_on_target("", "obj_letter"),
-		func() -> bool: return $VisualFactEmitter/CharacterVisualFactEmitter.emit_actor_near_object("obj_letter"),
-		func() -> bool: return $VisualFactEmitter/EnvironmentVisualFactEmitter.emit_environment_state_transition("env_lamp", "stable", "alerted"),
-		func() -> bool: return $VisualFactEmitter/EvidenceProjectionEmitter.emit_visual_evidence_projection("obj_letter", ""),
-		func() -> bool: return $VisualFactEmitter/AuditoryFactEmitter.emit_speaker_active("char_a", "char_c"),
-		func() -> bool: return $VisualFactEmitter/AuditoryFactEmitter.emit_auditory_reachability_changed("char_a", "char_c", "clear"),
-		func() -> bool: return $VisualFactEmitter/AuditoryFactEmitter.emit_ambient_noise_changed("char_a", "quiet"),
-		func() -> bool: return $VisualFactEmitter/RoleStateFactEmitter.emit_role_state_transition("observing"),
-		func() -> bool: return $VisualFactEmitter/PhysiologyStateFactEmitter.emit_breathing_strain_fact("elevated"),
-		func() -> bool: return $VisualFactEmitter/TactileFactEmitter.emit_contact_fact("", "obj_letter", "light"),
-		func() -> bool: return $VisualFactEmitter/ThermalFactEmitter.emit_thermal_proximity_fact("env_lamp", "warm"),
-		func() -> bool: return $VisualFactEmitter/OlfactoryFactEmitter.emit_odor_state_fact("env_lamp", "noticeable"),
+	var emitters: Array[Dictionary] = [
+		{"route": "authority_visual_fact", "emit": func() -> bool: return $VisualFactEmitter/CharacterVisualFactEmitter.emit_fixed_gaze_on_target("", "obj_letter")},
+		{"route": "authority_visual_fact", "emit": func() -> bool: return $VisualFactEmitter/CharacterVisualFactEmitter.emit_actor_near_object("obj_letter")},
+		{"route": "authority_visual_fact", "emit": func() -> bool: return $VisualFactEmitter/EnvironmentVisualFactEmitter.emit_environment_state_transition("env_lamp", "stable", "alerted")},
+		{"route": "authority_visual_fact", "emit": func() -> bool: return $VisualFactEmitter/EvidenceProjectionEmitter.emit_visual_evidence_projection("obj_letter", "")},
+		{"route": "authority_auditory_fact", "emit": func() -> bool: return $VisualFactEmitter/AuditoryFactEmitter.emit_speaker_active("char_a", "char_c")},
+		{"route": "authority_auditory_fact", "emit": func() -> bool: return $VisualFactEmitter/AuditoryFactEmitter.emit_auditory_reachability_changed("char_a", "char_c", "clear")},
+		{"route": "authority_auditory_fact", "emit": func() -> bool: return $VisualFactEmitter/AuditoryFactEmitter.emit_ambient_noise_changed("char_a", "quiet")},
+		{"route": "authority_role_state_fact", "emit": func() -> bool: return $VisualFactEmitter/RoleStateFactEmitter.emit_role_state_transition("observing")},
+		{"route": "authority_physiology_fact", "emit": func() -> bool: return $VisualFactEmitter/PhysiologyStateFactEmitter.emit_breathing_strain_fact("elevated")},
+		{"route": "authority_tactile_fact", "emit": func() -> bool: return $VisualFactEmitter/TactileFactEmitter.emit_contact_fact("", "obj_letter", "light")},
+		{"route": "authority_thermal_fact", "emit": func() -> bool: return $VisualFactEmitter/ThermalFactEmitter.emit_thermal_proximity_fact("env_lamp", "warm")},
+		{"route": "authority_olfactory_fact", "emit": func() -> bool: return $VisualFactEmitter/OlfactoryFactEmitter.emit_odor_state_fact("env_lamp", "noticeable")},
 	]
-	for emit: Callable in emitters:
+	for step: Dictionary in emitters:
+		var route := str(step.get("route", ""))
+		var minimum_count := int(_ack_counts_by_route.get(route, 0)) + 1
+		var emit: Callable = step["emit"]
 		if not bool(emit.call()):
 			return false
-		await get_tree().process_frame
+		if not await _wait_for_route_ack(route, minimum_count, 10000):
+			_bus_log("phase1_slice_runtime_probe:ack_gate_timeout:%s:%s" % [route, minimum_count])
+			return false
 	return true
 
 
 func _emit_focus_facts() -> bool:
+	var minimum_count := int(_ack_counts_by_route.get("authority_visual_fact", 0)) + 1
 	var emitted: bool = $VisualFactEmitter/CharacterVisualFactEmitter.emit_fixed_gaze_on_target("char_b", "")
-	await get_tree().process_frame
-	return emitted
+	if not emitted:
+		return false
+	return await _wait_for_route_ack("authority_visual_fact", minimum_count, 10000)
 
 
 func _on_backend_ack_received(payload: Dictionary) -> void:
@@ -298,6 +305,15 @@ func _wait_for_backend_observations(timeout_ms: int) -> bool:
 			and _candidate_count >= 1
 			and _siming_count >= 1
 		):
+			return true
+		await get_tree().process_frame
+	return false
+
+
+func _wait_for_route_ack(route: String, minimum_count: int, timeout_ms: int) -> bool:
+	var deadline := Time.get_ticks_msec() + timeout_ms
+	while Time.get_ticks_msec() < deadline:
+		if int(_ack_counts_by_route.get(route, 0)) >= minimum_count:
 			return true
 		await get_tree().process_frame
 	return false

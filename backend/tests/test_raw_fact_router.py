@@ -4,7 +4,7 @@ from app.models.capture_clock import same_capture_tick
 from app.services.candidate_percept_service import compile_candidate_percepts
 from app.services.fact_handlers.spatial_access_fact_handler import SpatialAccessFactHandler
 from app.services.per_character_percept_filter import filter_candidate_for_actor
-from app.services.fact_router import route_raw_fact_event
+from app.services.fact_router import build_raw_fact_authority_ack, route_raw_fact_event
 
 
 def test_raw_fact_event_accepts_visual_fact_nested_shape() -> None:
@@ -27,6 +27,32 @@ def test_raw_fact_event_accepts_visual_fact_nested_shape() -> None:
     assert event.fact_family == "visual_fact"
     assert event.source.actor_id == "char_c"
     assert event.targets.actor_id == "char_a"
+
+
+def test_raw_fact_fast_authority_ack_does_not_require_visual_handler_context() -> None:
+    event = RawFactEvent(
+        fact_family="visual_fact",
+        fact_type="light_level_drop",
+        relation_type="environment_light_drop",
+        producer_ts=123,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source={
+            "layer": "L1",
+            "system": "godot.raw_fact_emitter",
+            "actor_id": "char_c",
+        },
+        targets={"environment_id": "env_lamp"},
+    )
+
+    ack = build_raw_fact_authority_ack(event, source_type="raw_fact_event")
+
+    assert ack["message_type"] == "ack"
+    assert ack["payload"]["accepted"] is True
+    assert ack["payload"]["source_type"] == "raw_fact_event"
+    assert ack["payload"]["route"] == "authority_visual_fact"
+    assert ack["payload"]["fact_key"] == "environment_light_drop"
 
 
 def test_raw_fact_event_accepts_spatial_access_nested_shape() -> None:

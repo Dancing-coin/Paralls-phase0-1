@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse, Response
@@ -45,12 +46,14 @@ from app.services.character_runtime_state_service import CharacterRuntimeStateSe
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.conversation_relation_service import ConversationRelationService
 from app.services.esm_service import ESMService
+from app.services.embodied_controller_auth_service import EmbodiedControllerAuthService, EmbodiedControllerEnrollment
+from app.services.embodied_execution_ingress import EmbodiedExecutionIngress, EmbodiedRealizationRouteGate
 from app.services.event_trace_service import EventTraceService
 from app.services.fact_handlers.visual_fact_handler import (
     VisualFactHandlerContext,
     handle_visual_fact_event,
 )
-from app.services.fact_router import route_raw_fact_event
+from app.services.fact_router import build_raw_fact_authority_ack, route_raw_fact_event
 from app.services.focus_state_service import FocusStateService
 from app.services.frontend_authority_event_projection import (
     FRONTEND_AUTHORITY_EVENT_TYPES,
@@ -124,6 +127,9 @@ def reset_runtime_state() -> None:
     global l1_projection_layer
     global l1_perception_bridge
     global interaction_orchestration_service
+    global embodied_controller_auth_service
+    global embodied_execution_ingress
+    global embodied_realization_route_gate
     global _pending_siming_character_dispatch_messages
 
     runtime = SessionInputRouter()
@@ -148,6 +154,9 @@ def reset_runtime_state() -> None:
         character_perceived_input_service.clear()
     esm_service = ESMService()
     interaction_orchestration_service = InteractionOrchestrationService(esm_service=esm_service)
+    embodied_controller_auth_service = EmbodiedControllerAuthService()
+    embodied_execution_ingress = EmbodiedExecutionIngress(auth_service=embodied_controller_auth_service)
+    embodied_realization_route_gate = EmbodiedRealizationRouteGate()
     l1_occupancy_service = SpatialOccupancyService()
     l1_projection_layer = FactProjectionLayer()
     l1_perception_bridge = L1RuntimePerceptionBridge()
@@ -214,11 +223,164 @@ def orchestrate_structured_interaction(payload: StructuredInteractionRequest) ->
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
+    active_dialogue_streams: dict[str, tuple[asyncio.Event, asyncio.Task[None]]] = {}
+    raw_fact_followup_tasks: set[asyncio.Task[None]] = set()
+    send_lock = asyncio.Lock()
+
+    async def send(message: dict[str, object]) -> None:
+        async with send_lock:
+            await websocket.send_json(message)
+
+    async def run_dialogue_stream(event: DialogueSubmit, request_id: str, cancelled: asyncio.Event) -> None:
+        partial_chars = 0
+        sequence = 0
+        fallback_used = False
+        try:
+            await send(
+                _as_envelope(
+                    "dialogue_stream_start",
+                    {
+                        "request_id": request_id,
+                        "actor_id": event.target_actor_id if event.player_id != "character_agent" else event.actor_id,
+                        "target_actor_id": event.actor_id if event.player_id != "character_agent" else event.target_actor_id,
+                    },
+                )
+            )
+            direct_content = await asyncio.to_thread(_dialogue_direct_content, event)
+            if direct_content:
+                response = await asyncio.to_thread(_direct_dialogue_response, event, direct_content)
+                if cancelled.is_set():
+                    await send(_dialogue_stream_end(request_id, "cancelled", partial_chars, fallback_used))
+                    return
+                _record_completed_dialogue_response(response)
+                event_trace.record(response.output_type)
+                await send(_as_envelope("dialogue_response", response.model_dump()))
+                await send(_dialogue_stream_end(request_id, "completed", len(response.content), fallback_used))
+                return
+
+            stream = character_service.stream_dialogue(event, cancelled=cancelled.is_set)
+            while True:
+                has_event, stream_event = await asyncio.to_thread(_next_dialogue_stream_event, stream)
+                if not has_event:
+                    raise ValueError("character dialogue stream ended without a completion event")
+                if cancelled.is_set() or stream_event["event"] == "cancelled":
+                    await send(_dialogue_stream_end(request_id, "cancelled", partial_chars, fallback_used))
+                    return
+                if stream_event["event"] == "delta":
+                    delta = str(stream_event["delta"])
+                    partial_chars += len(delta)
+                    sequence += 1
+                    await send(
+                        _as_envelope(
+                            "dialogue_stream_delta",
+                            {
+                                "request_id": request_id,
+                                "sequence": sequence,
+                                "delta": delta,
+                                "accumulated_chars": partial_chars,
+                            },
+                        )
+                    )
+                    continue
+                if stream_event["event"] != "completed":
+                    raise ValueError("character dialogue stream emitted an unsupported event")
+                response = stream_event["response"]
+                if not isinstance(response, DialogueResponse):
+                    raise ValueError("character dialogue stream completed without DialogueResponse")
+                fallback_used = bool(stream_event.get("fallback_used", False))
+                if cancelled.is_set():
+                    await send(_dialogue_stream_end(request_id, "cancelled", partial_chars, fallback_used))
+                    return
+                audio = character_service.tts.synthesize(response.actor_id, response.content)
+                response = response.model_copy(update={"audio": audio})
+                _record_completed_dialogue_response(response)
+                event_trace.record(response.output_type)
+                await send(_as_envelope("dialogue_response", response.model_dump()))
+                await send(_dialogue_stream_end(request_id, "completed", partial_chars, fallback_used))
+                return
+        except Exception as exc:
+            if cancelled.is_set():
+                await send(_dialogue_stream_end(request_id, "cancelled", partial_chars, fallback_used))
+                return
+            status = "timed_out" if isinstance(exc, TimeoutError) else "failed"
+            await send(_dialogue_stream_end(request_id, status, partial_chars, fallback_used))
+        finally:
+            active_dialogue_streams.pop(request_id, None)
+
+    async def send_raw_fact_followups(envelope: Envelope, authority_ack: dict[str, object]) -> None:
+        try:
+            outbound = await asyncio.to_thread(_handle_envelope, envelope)
+            for message in _drop_matching_authority_ack(outbound, authority_ack):
+                await send(message)
+        except (ValidationError, ValueError, TypeError) as exc:
+            await send(_as_error_ack(source_type=envelope.message_type, route="raw_fact_followup_failed", error=exc))
+
     try:
         while True:
             try:
                 raw = await websocket.receive_json()
                 envelope = Envelope(**raw)
+                if envelope.message_type == "dialogue_stream_cancel":
+                    request_id = str(envelope.payload.get("request_id", "") or "")
+                    active = active_dialogue_streams.get(request_id)
+                    if active is None:
+                        await send(
+                            _as_envelope(
+                                "ack",
+                                {"accepted": False, "source_type": envelope.message_type, "route": "dialogue_stream_unknown"},
+                            )
+                        )
+                    else:
+                        active[0].set()
+                        await send(
+                            _as_envelope(
+                                "ack",
+                                {"accepted": True, "source_type": envelope.message_type, "route": "dialogue_stream_cancel"},
+                            )
+                        )
+                    continue
+                stream_event = _streamable_dialogue_submit(envelope)
+                if stream_event is not None:
+                    route = runtime.accept_player_input(stream_event)
+                    if route["route"] == "character_service":
+                        request_id = stream_event.request_id or f"dialogue:{uuid4()}"
+                        stream_event.request_id = request_id
+                        if request_id in active_dialogue_streams:
+                            await send(
+                                _as_envelope(
+                                    "ack",
+                                    {"accepted": False, "source_type": envelope.message_type, "route": "dialogue_stream_duplicate"},
+                                )
+                            )
+                            continue
+                        _publish_debug_event(
+                            build_debug_event(
+                                producer_ts=stream_event.producer_ts,
+                                domain="character",
+                                stage="character_input_received",
+                                actor_id=stream_event.target_actor_id,
+                                summary=summarize_character_input(stream_event.target_actor_id, "收到玩家对话输入"),
+                                detail=stream_event.model_dump(),
+                            )
+                        )
+                        event_trace.record(stream_event.intent_type)
+                        await send(
+                            _as_envelope(
+                                "ack",
+                                {"accepted": route["accepted"], "source_type": envelope.message_type, "route": route["route"]},
+                            )
+                        )
+                        cancelled = asyncio.Event()
+                        task = asyncio.create_task(run_dialogue_stream(stream_event, request_id, cancelled))
+                        active_dialogue_streams[request_id] = (cancelled, task)
+                        continue
+                if envelope.message_type == "raw_fact_event":
+                    authority_ack = _raw_fact_fast_authority_ack(envelope)
+                    await send(authority_ack)
+                    task = asyncio.create_task(send_raw_fact_followups(envelope, authority_ack))
+                    raw_fact_followup_tasks.add(task)
+                    task.add_done_callback(raw_fact_followup_tasks.discard)
+                    continue
                 outbound = _handle_envelope(envelope)
             except (ValidationError, ValueError, TypeError) as exc:
                 source_type = "unknown"
@@ -226,9 +388,21 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     source_type = str(raw.get("message_type", "unknown"))
                 outbound = [_as_error_ack(source_type=source_type, route="invalid_payload", error=exc)]
             for message in outbound:
-                await websocket.send_json(message)
+                await send(message)
     except WebSocketDisconnect:
         return
+    finally:
+        tasks = [task for cancelled, task in active_dialogue_streams.values()]
+        for cancelled, _task in active_dialogue_streams.values():
+            cancelled.set()
+        for task in tasks:
+            task.cancel()
+        for task in raw_fact_followup_tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        if raw_fact_followup_tasks:
+            await asyncio.gather(*raw_fact_followup_tasks, return_exceptions=True)
 
 
 @app.websocket("/debug/ws")
@@ -261,6 +435,67 @@ async def debug_websocket_endpoint(websocket: WebSocket) -> None:
 
 
 def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
+    if envelope.message_type == "embodied_controller_bind":
+        try:
+            enrollment = EmbodiedControllerEnrollment.model_validate(envelope.payload)
+        except ValidationError as exc:
+            return EmbodiedExecutionIngress.protocol_error(envelope.message_type, f"invalid_payload:{exc.errors()[0]['type']}")
+        result = embodied_controller_auth_service.bind_controller(
+            enrollment,
+            remote_host="127.0.0.1",
+            now=int(envelope.payload.get("producer_ts", 100) or 100),
+        )
+        if not result.accepted or result.binding is None:
+            return EmbodiedExecutionIngress.protocol_error(envelope.message_type, result.error_code)
+        return [
+            {
+                "message_type": "ack",
+                "payload": {
+                    "accepted": True,
+                    "source_type": envelope.message_type,
+                    "route": "embodied_controller_auth",
+                },
+            },
+            {
+                "message_type": "embodied_controller_bound",
+                "payload": result.binding.model_dump(mode="json"),
+            },
+        ]
+
+    if envelope.message_type == "embodied_phase_event":
+        result = embodied_execution_ingress.handle_phase_event(envelope.payload)
+        if not result.accepted:
+            return EmbodiedExecutionIngress.protocol_error(envelope.message_type, result.error_code)
+        return result.outbound
+
+    if envelope.message_type == "embodied_local_outcome":
+        result = embodied_execution_ingress.handle_local_outcome(
+            envelope.payload,
+            now=int(envelope.payload.get("observed_at", 0) or 0),
+        )
+        if not result.accepted:
+            return EmbodiedExecutionIngress.protocol_error(envelope.message_type, result.error_code)
+        return result.outbound
+
+    if envelope.message_type == "embodied_resync_request":
+        return [
+            {
+                "message_type": "ack",
+                "payload": {
+                    "accepted": True,
+                    "source_type": envelope.message_type,
+                    "route": "embodied_resync",
+                },
+            },
+            {
+                "message_type": "embodied_resync_projection",
+                "payload": {
+                    "resume_allowed": False,
+                    "reason": "authority_grant_required_after_resync",
+                },
+            },
+        ]
+
     if envelope.message_type == "visual_fact_event":
         event = VisualFactEvent(**envelope.payload)
         _publish_debug_event(
@@ -905,35 +1140,78 @@ def _parse_player_input(payload: dict) -> MoveIntent | DialogueSubmit | Interact
 
 
 def _handle_player_dialogue_submit(event: DialogueSubmit) -> DialogueResponse:
+    direct_content = _dialogue_direct_content(event)
+    if direct_content:
+        response = _direct_dialogue_response(event, direct_content)
+    else:
+        response = character_service.handle_dialogue(event)
+    _record_completed_dialogue_response(response)
+    return response
+
+
+def _dialogue_direct_content(event: DialogueSubmit) -> str:
     commands: list[CharacterGoalCommand] = []
     if _is_agent_dialogue_target(event.target_actor_id):
         perceived = _dialogue_submit_to_character_perceived_event(event)
         commands = _ingest_dialogue_perception(perceived)
+    return _first_speech_command_content(commands)
 
-    direct_content = _first_speech_command_content(commands)
-    if direct_content:
-        _audio = character_service.tts.synthesize(event.target_actor_id, direct_content)
-        response = DialogueResponse(
-            actor_id=event.target_actor_id,
-            room_id=event.room_id,
-            output_type="dialogue_response",
-            causation_id=f"dialogue:{event.producer_ts}",
-            producer_ts=event.producer_ts + 1,
-            target_actor_id=event.actor_id,
-            content=direct_content,
-            tone="neutral",
-            tts_required=True,
-        )
-    else:
-        response = character_service.handle_dialogue(event)
 
+def _direct_dialogue_response(event: DialogueSubmit, content: str) -> DialogueResponse:
+    audio = character_service.tts.synthesize(event.target_actor_id, content)
+    return DialogueResponse(
+        actor_id=event.target_actor_id,
+        room_id=event.room_id,
+        output_type="dialogue_response",
+        causation_id=f"dialogue:{event.producer_ts}",
+        producer_ts=event.producer_ts + 1,
+        target_actor_id=event.actor_id,
+        content=content,
+        tone="neutral",
+        tts_required=True,
+        audio=audio,
+        request_id=event.request_id,
+    )
+
+
+def _record_completed_dialogue_response(response: DialogueResponse) -> None:
     if _is_agent_dialogue_target(response.actor_id):
         character_agent_runtime.record_dialogue_response(
             actor_id=response.actor_id,
             producer_ts=int(response.producer_ts or 0),
             payload=response.model_dump(),
         )
-    return response
+
+
+def _streamable_dialogue_submit(envelope: Envelope) -> DialogueSubmit | None:
+    if envelope.message_type != "player_input":
+        return None
+    event = _parse_player_input(envelope.payload)
+    return event if isinstance(event, DialogueSubmit) else None
+
+
+def _next_dialogue_stream_event(stream) -> tuple[bool, dict[str, object] | None]:
+    try:
+        return True, next(stream)
+    except StopIteration:
+        return False, None
+
+
+def _dialogue_stream_end(
+    request_id: str,
+    status: str,
+    partial_chars: int,
+    fallback_used: bool,
+) -> dict[str, object]:
+    return _as_envelope(
+        "dialogue_stream_end",
+        {
+            "request_id": request_id,
+            "status": status,
+            "partial_chars": partial_chars,
+            "fallback_used": fallback_used,
+        },
+    )
 
 
 def _handle_character_agent_speech_action(
@@ -948,7 +1226,7 @@ def _handle_character_agent_speech_action(
     target_actor_id = str(action.get("target_actor_id", "") or "")
     tone = str(action.get("tone", "") or "neutral")
     room_id = str(action.get("room_id", "") or "room_demo")
-    _audio = character_service.tts.synthesize(speaking_actor_id, content)
+    audio = character_service.tts.synthesize(speaking_actor_id, content)
     response = DialogueResponse(
         actor_id=speaking_actor_id,
         room_id=room_id,
@@ -959,6 +1237,7 @@ def _handle_character_agent_speech_action(
         content=content,
         tone=tone,
         tts_required=True,
+        audio=audio,
     )
     character_agent_runtime.record_dialogue_response(
         actor_id=response.actor_id,
@@ -1951,6 +2230,31 @@ def _character_agent_messages_from_fact_candidates(event: RawFactEvent) -> list[
                 )
             )
     return character_agent_messages
+
+
+def _raw_fact_fast_authority_ack(envelope: Envelope) -> dict[str, object]:
+    raw_payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+    event = RawFactEvent(**raw_payload)
+    return build_raw_fact_authority_ack(event, source_type=envelope.message_type)
+
+
+def _drop_matching_authority_ack(
+    messages: list[dict[str, object]],
+    authority_ack: dict[str, object],
+) -> list[dict[str, object]]:
+    if not messages:
+        return messages
+    first = messages[0]
+    if first.get("message_type") == "ack" and _ack_payloads_match(first.get("payload", {}), authority_ack.get("payload", {})):
+        return messages[1:]
+    return messages
+
+
+def _ack_payloads_match(first_payload: object, second_payload: object) -> bool:
+    if not isinstance(first_payload, dict) or not isinstance(second_payload, dict):
+        return False
+    keys = ("accepted", "source_type", "route", "fact_family", "fact_type", "relation_type", "fact_key")
+    return all(first_payload.get(key) == second_payload.get(key) for key in keys)
 
 
 def _as_error_ack(*, source_type: str, route: str, error: Exception) -> dict[str, object]:
