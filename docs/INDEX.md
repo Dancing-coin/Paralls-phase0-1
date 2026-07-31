@@ -40,7 +40,14 @@
 - `docs/superpowers/specs/world-character-siming-authority-mainline/README.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/character-gameplay-foundation/README.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/embodied-interaction-product-foundation/README.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/README.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/2026-07-29-character-dialogue-streaming-design.md`
+- `docs/superpowers/plans/world-character-siming-authority-mainline/2026-07-29-character-dialogue-streaming-implementation-plan.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/2026-07-29-real-tts-provider-presentation-design.md`
+- `docs/superpowers/plans/world-character-siming-authority-mainline/2026-07-29-real-tts-provider-presentation-implementation-plan.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/2026-07-31-tts-voice-profile-adapter-design.md`
+- `docs/superpowers/plans/world-character-siming-authority-mainline/2026-07-31-tts-voice-profile-adapter-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-29-complete-character-mind-core-design.md`
 - `docs/superpowers/specs/2026-07-08-character-needs-personality-affect-runtime-design.md`
 - `docs/superpowers/plans/2026-07-08-character-needs-personality-affect-runtime-implementation-plan.md`
@@ -57,6 +64,10 @@
 - `docs/superpowers/plans/2026-06-22-character-director-observatory-finalization-implementation-plan.md`
 - `docs/superpowers/specs/2026-07-23-complete-llm-integration-closure-design.md`
 - `docs/superpowers/plans/2026-07-23-complete-llm-integration-closure-implementation-plan.md`
+- `docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-29-vla-real-provider-adapter-live-proof-design.md`
+- `docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-29-vla-real-provider-adapter-live-proof-implementation-plan.md`
+- `docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-30-advisory-vla-routing-and-tts-convergence-design.md`
+- `docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-30-advisory-vla-routing-and-tts-convergence-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-19-deepseek-character-model-gateway-design.md`
 - `docs/superpowers/plans/2026-06-19-deepseek-character-model-gateway-implementation-plan.md`
 - `docs/superpowers/plans/2026-06-19-character-actor-stage2-closeout-implementation-plan.md`
@@ -134,6 +145,13 @@
 - `esm-physical-channel-world-actuation`：后端与 Godot 运行时证明，覆盖 physical effect refs、contact/body/object/environment observations、constraint gating 和 orchestration merge。
 - `non-runtime-production-pipeline`：离线生产证明，覆盖 scene semantic extraction、spatial baking、multimodal classification readiness、review gating 和 approved replay dataset artifacts。
 - `perception-input-alignment`：后端证明，覆盖感知 identity 行为矩阵，包括同拍/跨拍、同物/异物、多 actor 私有视角、VLA late advisory 和 Siming 汇总 identity。
+- `embodied-interaction-contracts`：后端 Phase 0 契约证明，覆盖 embodied request/outcome schema、writer 选择、route 二选一、attestation 字段、evidence sequence 和字段级 projection 过滤；不声明 Godot runtime 完成。
+- `embodied-affordance-registry`：后端与 Godot runtime 证明，覆盖 `SceneAffordanceRegistry` 的 `chair_01` catalog-backed binding、revision pinning、occupancy freshness、filtered views 和 VLA conflict 记录。
+- `embodied-bridge-attestation`：后端与 Godot runtime 证明，覆盖 `trusted_local_launch`、controller binding、connection epoch、grant、nonce/sequence/revocation/idempotency、route gate 和 dedicated bridge routes。
+- `embodied-action-controller`：Godot runtime 证明，覆盖 `EmbodiedActionController` state machine、grant-gated route、terminal observations、failure recovery，以及 raw bone/physics transport 排除。
+- `embodied-authority-settlement`：后端证明，覆盖 attested local outcome validation、revision/policy checks、idempotent consume、`esm_compatibility_adapter` 单对象结算，以及 gameplay writer fail-closed。
+- `embodied-interaction-replay`：后端与 Godot runtime 证明，覆盖 `kick-chair` visible settlement、后台 `server_ledger_sequence` replay、source sequence idempotency/gap 拒绝，以及 public Observatory projection 过滤。
+- `embodied-interaction-foundation-all`：按 Phase 0-5 依赖顺序聚合 `embodied-interaction-*` focused profiles；Phase 6 在 Gameplay event store 和 atomic event-batch writer 验证前保持 blocked。
 - `all`：按顺序运行全部 profile。
 
 运行时验证脚本和聚合证明脚本：
@@ -149,6 +167,14 @@
 - `python scripts/verification/verify_godot_sampling_production_grade_providers.py`
 - `python scripts/verification/verify_embodied_skeletal_debug_replay_pipeline.py`
 - `python scripts/verification/verify_vla_provider_backend.py`
+- `python scripts/verification/verify_vla_provider_live.py --allow-live-call --run-id <run-id>`
+- `python scripts/verification/verify_vla_provider_live.py --allow-live-call --use-godot-runtime-capture --run-id <run-id>`
+- `python scripts/verification/benchmark_vla_advisory_routes.py --allow-live-call --samples 3`
+- `python scripts/verification/benchmark_vla_advisory_routes.py --allow-live-call --annotation-sample-id throne-hall-walk-preview-001 --samples 3`
+- `python scripts/verification/verify_vla_replay_annotations.py`
+- `python scripts/verification/verify_vla_replay_second_scene_capture.py --godot-exe <Godot-console-exe>`
+- `python scripts/verification/verify_tts_provider_live.py --allow-live-call`
+- `python scripts/verification/verify_tts_godot_playback.py --allow-live-call`
 - `python scripts/verification/verify_perception_input_alignment.py`
 - `python scripts/verification/verify_actor_scene_knowledge_runtime.py`
 - `python scripts/verification/verify_siming_global_situation_runtime.py`
@@ -156,6 +182,13 @@
 - `python scripts/verification/verify_esm_physical_channel_runtime.py`
 - `python scripts/verification/verify_non_runtime_production_pipeline.py`
 - `python scripts/verification/verify_character_director_observatory.py`
+- `python scripts/verification/verify_embodied_interaction_contracts.py`
+- `python scripts/verification/verify_embodied_affordance_registry.py`
+- `python scripts/verification/verify_embodied_bridge_attestation.py`
+- `python scripts/verification/verify_embodied_action_controller.py`
+- `python scripts/verification/verify_embodied_authority_settlement.py`
+- `python scripts/verification/verify_embodied_interaction_replay.py`
+- `python scripts/verification/verify_embodied_interaction_foundation_all.py`
 - `python scripts/verification/verify_phase1_slice.py`
 - `python scripts/verification/verify_phase0.py`
 

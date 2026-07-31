@@ -31,6 +31,13 @@ python scripts/verification/harness.py --profile embodied-skeletal-debug-replay
 python scripts/verification/harness.py --profile vla-provider-backend
 python scripts/verification/harness.py --profile non-runtime-production-pipeline
 python scripts/verification/harness.py --profile perception-input-alignment
+python scripts/verification/harness.py --profile embodied-interaction-contracts
+python scripts/verification/harness.py --profile embodied-affordance-registry
+python scripts/verification/harness.py --profile embodied-bridge-attestation
+python scripts/verification/harness.py --profile embodied-action-controller
+python scripts/verification/harness.py --profile embodied-authority-settlement
+python scripts/verification/harness.py --profile embodied-interaction-replay
+python scripts/verification/harness.py --profile embodied-interaction-foundation-all
 python scripts/verification/harness.py --profile all
 ```
 
@@ -514,7 +521,7 @@ Output:
 
 ### `vla-provider-backend`
 
-Backend verification for the advisory-only VLA provider slow path. This profile does not claim real Qwen3-VL or Seed provider verification without credentials and a successful adapter call.
+Backend verification for the advisory-only VLA provider slow path. It verifies the OpenAI-compatible adapter contract with a stubbed HTTP transport, but does not claim real Qwen3-VL or Seed provider verification without a credentialed, explicit live proof.
 
 Current proof includes:
 
@@ -524,6 +531,8 @@ Current proof includes:
 - per-owner slow-path scheduler queues with character/Siming separation, timeout/degrade traces, dedupe, stale discard, and max queue behavior
 - cache keys with context namespace, artifact refs hash, structured fact refs hash, model version, and freshness checks
 - `VLAProviderResult -> ModalityInterpretationResult -> CrossModalUnderstandingResult -> CanonicalPerceptBundle` advisory bridge
+- OpenAI-compatible non-streaming request formation from PQF plus eligible direct image artifact refs; opaque refs fail closed without a network call
+- provider response projection that discards action, authority, world-state, and actor-control fields
 - explicit real-provider readiness states such as `blocked_missing_credentials`, `configured_unverified`, or `real_provider_verified`
 
 Output:
@@ -531,6 +540,57 @@ Output:
 - `.harness/verification/vla-provider-backend-report.json`
 - `.harness/verification/vla-provider-backend-report.md`
 - `.harness/verification/vla-provider-backend-trace.json`
+
+The explicit-only external proof command is:
+
+```powershell
+python scripts/verification/verify_vla_provider_live.py --allow-live-call
+```
+
+It requires `VLA_PROVIDER_*` credentials, an eligible URL or repository-local
+image path, and a non-empty `VLA_PROVIDER_LIVE_PROOF_RUN_ID`. For actual Godot
+viewport evidence, first run `verify_godot_sampling_production_grade_providers.py`
+with a Godot console executable, then run
+`verify_vla_provider_live.py --allow-live-call --use-godot-runtime-capture`.
+That mode rejects missing, stale, or runtime-report-mismatched captures and
+redacts inline image data from its report. It writes
+`vla-provider-live-report.*`; readiness promotes only a matching provider/model/
+endpoint/run evidence record, and a blocked report is not a verified-provider claim.
+
+For explicit VLA route comparison, run:
+
+```powershell
+python scripts/verification/benchmark_vla_advisory_routes.py --allow-live-call --samples 3
+```
+
+It replays the fresh Godot capture through each route and archives only redacted
+per-attempt reports. Fewer than 20 samples are explicitly insufficient for
+latency-percentile or semantic-quality claims.
+
+To replay a reviewed scene with its own PQF scope instead of MainDemo defaults:
+
+```powershell
+python scripts/verification/benchmark_vla_advisory_routes.py --allow-live-call --route advisory-fast --annotation-sample-id throne-hall-walk-preview-001 --samples 3
+```
+
+The review-control baseline is verified with:
+
+```powershell
+python scripts/verification/verify_vla_replay_annotations.py
+```
+
+Its initial MainDemo annotation is intentionally bootstrap-only. It validates
+that scene truth is human-reviewed and that PQF/structured facts cannot receive
+model credit; it does not certify multi-scene coverage or semantic accuracy.
+
+The second reviewed capture is obtained with:
+
+```powershell
+python scripts/verification/verify_vla_replay_second_scene_capture.py --godot-exe <Godot-console-exe>
+```
+
+The verifier rejects nonempty but visually flat viewport files; successful output
+is only a candidate for human annotation, not provider-quality proof.
 
 ### `actor-scene-knowledge-lifecycle`
 
@@ -641,9 +701,148 @@ Output:
 - `.harness/verification/perception-input-alignment-report.md`
 - `.harness/verification/perception-input-alignment-matrix-trace.json`
 
+### `embodied-interaction-contracts`
+
+Backend-only Phase 0 verification for the embodied-interaction product foundation contract freeze. This profile does not start Godot and does not claim local controller/runtime completion.
+
+Current proof includes:
+
+- `EmbodiedActionRequest` rejects raw input, node-path, bone, rigid-body, and world-truth fields
+- `LocalExecutionOutcome` requires controller grant, connection epoch, terminal sequence, nonce, and digest attestation
+- `SceneAffordanceRecord` preserves reviewed grounding catalog entity/collider/anchor IDs
+- first-closure settlement selects only `esm_compatibility_adapter` for `kick-chair`
+- cross-domain writer requests fail closed until `gameplay_event_batch_writer` exists
+- public Observatory projection is field-level allowlist filtered
+
+Output:
+
+- `.harness/verification/embodied-interaction-contracts-report.json`
+- `.harness/verification/embodied-interaction-contracts-report.md`
+- `.harness/verification/embodied-interaction-contracts-trace.json`
+
+### `embodied-affordance-registry`
+
+Backend and Godot runtime verification for Phase 1 `SceneAffordanceRegistry`.
+
+Current proof includes:
+
+- reviewed `chair_01` record resolves through catalog-backed entity/collider/anchor IDs
+- registry resolution pins `scene_instance_id`, binding revision, required anchors, and affordance ID
+- stale revision, missing collider, stale occupancy, unknown affordance, and cross-scene binding fail before controller start
+- public and controller projections expose different field sets
+- Godot runtime probe uses `SceneSpaceModelExtractor` and `RuntimeOccupancySampler` to resolve the same `chair_01` binding
+- VLA advisory conflict is recorded without overwriting known registry truth
+
+Output:
+
+- `.harness/verification/embodied-affordance-registry-report.json`
+- `.harness/verification/embodied-affordance-registry-report.md`
+- `.harness/verification/embodied-affordance-registry-trace.json`
+- `.harness/verification/embodied-affordance-registry-godot-runtime.json`
+
+### `embodied-bridge-attestation`
+
+Backend and Godot runtime verification for Phase 2 embodied transport and controller attestation.
+
+Current proof includes:
+
+- `trusted_local_launch` is loopback-only, one-time, actor/controller scoped, and expires
+- `authenticated_session` remains fail-closed until a production verifier adapter is configured
+- controller binding issues monotonic connection epochs
+- execution grants require grant ID, controller binding, epoch, nonce, terminal sequence, payload digest, and revocation state
+- duplicate phase/outcome messages are idempotent only when the digest matches
+- reconnect/epoch revocation prevents old local motion from resuming
+- realization route gate prevents one attempt from starting both `legacy_character_replica` and `embodied_controller_v1`
+- Godot `BackendBridge` has dedicated embodied routes and does not use `character_actor_status` as the embodied outcome channel
+
+Output:
+
+- `.harness/verification/embodied-bridge-attestation-report.json`
+- `.harness/verification/embodied-bridge-attestation-report.md`
+- `.harness/verification/embodied-bridge-attestation-godot-runtime.json`
+
+### `embodied-action-controller`
+
+Godot runtime verification for Phase 3 `EmbodiedActionController` and local observation.
+
+Current proof includes:
+
+- local state machine phases from target acquisition through recover/terminal
+- grant, connection epoch, nonce, route, and terminal sequence fields retained in terminal observations
+- success emits bounded contact/object observation
+- miss, no-path, fixed-target, target-moved, cancelled, failed-alignment, and occupied-stance paths emit distinct terminal statuses
+- failure paths restore local ownership
+- runtime uses Godot `NavigationAgent3D` and `CollisionShape3D` classes in the probe
+- no `character_actor_status`, raw bone stream, raw rigid-body stream, or impulse transport is present in the controller script
+
+Output:
+
+- `.harness/verification/embodied-action-controller-report.json`
+- `.harness/verification/embodied-action-controller-report.md`
+- `.harness/verification/embodied-action-controller-godot-runtime.json`
+
+### `embodied-authority-settlement`
+
+Backend-only verification for Phase 4 authority settlement from an attested local physical observation.
+
+Current proof includes:
+
+- fabricated, stale-epoch, duplicate, missing-contact, target-mismatched, and revision-conflict observations produce zero unintended mutation
+- valid `kick-chair` contact settles exactly once through `esm_compatibility_adapter`
+- duplicate terminal observation returns the original receipt without a second physical-channel application
+- settlement writer kind is recorded and no dual-write path exists
+- cross-domain writer requests fail closed until `gameplay_event_batch_writer` exists
+
+Output:
+
+- `.harness/verification/embodied-authority-settlement-report.json`
+- `.harness/verification/embodied-authority-settlement-report.md`
+- `.harness/verification/embodied-authority-settlement-trace.json`
+
+### `embodied-interaction-replay`
+
+Backend and Godot runtime verification for Phase 5 `kick-chair` closure and evidence replay.
+
+Current proof includes:
+
+- backend-assigned `server_ledger_sequence` orders request, registry binding, controller phase, terminal observation, settlement, and presentation
+- source sequence duplicate-with-same-digest is idempotent, duplicate-with-different-digest rejects, and source gaps reject
+- public Observatory projection filters private participant terms and VLA prompt context
+- Godot runtime probe shows chair state changing only after backend settlement projection
+- failure path produces no visible world-state change
+- screenshot and JSON artifacts are written for runtime inspection
+
+Output:
+
+- `.harness/verification/embodied-interaction-replay-report.json`
+- `.harness/verification/embodied-interaction-replay-report.md`
+- `.harness/verification/embodied-interaction-replay-ledger-trace.json`
+- `.harness/verification/embodied-kick-chair-vertical-slice-godot-runtime.json`
+- `.harness/verification/embodied-kick-chair-vertical-slice.png`
+
+### `embodied-interaction-foundation-all`
+
+Dependency-ordered aggregate for embodied-interaction product foundation Phase 0 through Phase 5.
+
+It runs:
+
+- `embodied-interaction-contracts`
+- `embodied-affordance-registry`
+- `embodied-bridge-attestation`
+- `embodied-action-controller`
+- `embodied-authority-settlement`
+- `embodied-interaction-replay`
+
+Phase 6 remains blocked by design until the Gameplay Foundation event store and atomic event-batch writer are implemented and verified.
+
+Output:
+
+- `.harness/verification/embodied-interaction-foundation-all-report.json`
+- `.harness/verification/embodied-interaction-foundation-all-report.md`
+
 ### `all`
 
-Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, `phase1-slice`, `l1-world-fact-runtime`, `mainline-unified-runtime`, `model-provider-readiness`, `godot-sampling-production-grade-providers`, `embodied-skeletal-debug-replay`, `vla-provider-backend`, `actor-scene-knowledge-lifecycle`, `siming-global-situation-layer`, `interaction-orchestration-service`, `esm-physical-channel-world-actuation`, `non-runtime-production-pipeline`, and `perception-input-alignment` in order. It stops on the first failed profile.
+Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, `phase1-slice`, `l1-world-fact-runtime`, `mainline-unified-runtime`, `model-provider-readiness`, `godot-sampling-production-grade-providers`, `embodied-skeletal-debug-replay`, `vla-provider-backend`, `actor-scene-knowledge-lifecycle`, `siming-global-situation-layer`, `interaction-orchestration-service`, `esm-physical-channel-world-actuation`, `non-runtime-production-pipeline`, `perception-input-alignment`, `embodied-interaction-contracts`, `embodied-affordance-registry`, `embodied-bridge-attestation`, `embodied-action-controller`, `embodied-authority-settlement`, `embodied-interaction-replay`, and `embodied-interaction-foundation-all` in order. It stops on the first failed profile.
 
 `siming-backend-chain` is excluded from `all` because it requires live model-provider credentials.
 `character-model-live` and `llm-integration-closure` are also excluded from `all`; they require fresh live provider artifacts and an explicit closure run ID.

@@ -43,14 +43,19 @@ Primary commands:
 ## Spec Tree
 
 1. [2026-06-29-world-character-siming-authority-mainline-master-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md>)
-2. [2026-06-29-world-runtime-foundation-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-runtime-foundation-design.md>)
-3. [2026-06-29-actor-local-perception-and-fact-production-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-actor-local-perception-and-fact-production-design.md>)
-4. [2026-06-29-autonomous-social-contact-and-exchange-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-autonomous-social-contact-and-exchange-design.md>)
-5. [2026-06-29-authority-and-settlement-runtime-closure-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-authority-and-settlement-runtime-closure-design.md>)
-6. [2026-06-29-execution-semantics-and-realization-runtime-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-execution-semantics-and-realization-runtime-design.md>)
-7. [2026-06-29-asset-runtime-and-kimodo-adapter-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-asset-runtime-and-kimodo-adapter-design.md>)
-8. [2026-06-29-world-runtime-scheduling-and-continuity-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-runtime-scheduling-and-continuity-design.md>)
-9. [2026-06-29-mainline-docs-truth-rewrite-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-mainline-docs-truth-rewrite-design.md>)
+2. [character-gameplay-foundation/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/character-gameplay-foundation/README.md>)
+3. [embodied-interaction-product-foundation/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/embodied-interaction-product-foundation/README.md>)
+4. [2026-06-29-world-runtime-foundation-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-runtime-foundation-design.md>)
+5. [2026-06-29-actor-local-perception-and-fact-production-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-actor-local-perception-and-fact-production-design.md>)
+6. [2026-06-29-autonomous-social-contact-and-exchange-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-autonomous-social-contact-and-exchange-design.md>)
+7. [2026-06-29-authority-and-settlement-runtime-closure-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-authority-and-settlement-runtime-closure-design.md>)
+8. [2026-06-29-execution-semantics-and-realization-runtime-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-execution-semantics-and-realization-runtime-design.md>)
+9. [2026-06-29-asset-runtime-and-kimodo-adapter-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-asset-runtime-and-kimodo-adapter-design.md>)
+10. [2026-06-29-world-runtime-scheduling-and-continuity-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-runtime-scheduling-and-continuity-design.md>)
+11. [2026-06-29-mainline-docs-truth-rewrite-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-mainline-docs-truth-rewrite-design.md>)
+12. [2026-07-29-character-dialogue-streaming-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-07-29-character-dialogue-streaming-design.md>)
+13. [2026-07-29-real-tts-provider-presentation-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-07-29-real-tts-provider-presentation-design.md>)
+14. [2026-07-31-tts-voice-profile-adapter-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-07-31-tts-voice-profile-adapter-design.md>)
 
 ## Notes
 

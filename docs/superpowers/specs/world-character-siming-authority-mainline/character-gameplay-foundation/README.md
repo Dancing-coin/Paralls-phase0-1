@@ -67,6 +67,7 @@ rather than ad hoc cross-module writes.
 15. [Gameplay-domain extension catalog](2026-07-23-gameplay-domain-extension-catalog-design.md)
 16. [adventure-basic reference package](2026-07-23-adventure-basic-reference-pack-design.md)
 17. [Verification and acceptance matrix](2026-07-23-verification-and-acceptance-matrix-design.md)
+18. [Specification and runtime baseline](2026-07-29-gameplay-foundation-spec-and-runtime-baseline.md)
 
 ## Dependency Layers
 
@@ -119,7 +120,11 @@ are undefined.
 This tree remains `awaiting-user-review` until the user approves the written
 files. No implementation plan should treat it as approved before that review.
 
-After approval, create a dedicated implementation-plan tree. The first plan
-must preserve the dependency layers above and end with fresh evidence from the
-planned `gameplay-foundation-all` harness aggregate plus the repository-wide
+The dedicated draft implementation-plan tree is now available at:
+
+- `docs/superpowers/plans/world-character-siming-authority-mainline/character-gameplay-foundation/`
+
+It remains `drafted-for-spec-review` and does not authorize implementation.
+After approval, execute it in dependency order and end with fresh evidence from
+the planned `gameplay-foundation-all` harness aggregate plus the repository-wide
 `all` profile.
