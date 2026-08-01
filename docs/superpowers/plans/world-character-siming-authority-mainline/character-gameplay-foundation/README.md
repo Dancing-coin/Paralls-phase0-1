@@ -17,17 +17,20 @@ foundation spec tree is approved. The code baseline is recorded in
 
 1. [Master implementation plan](2026-07-29-character-gameplay-foundation-implementation-plan.md)
 2. [Contracts, event store, and harness](2026-07-29-gameplay-foundation-contracts-events-and-harness-plan.md)
-3. [State-group registry and runtime facade](2026-07-29-state-group-registry-and-runtime-facade-plan.md)
-4. [Resource, status, body, and effective stats](2026-07-29-resource-status-body-and-effective-stats-plan.md)
-5. [Inventory, containers, and encumbrance](2026-07-29-inventory-container-and-encumbrance-plan.md)
-6. [Equipment runtime](2026-07-29-equipment-runtime-plan.md)
-7. [Ownership, economy, and transactions](2026-07-29-ownership-economy-and-transaction-plan.md)
-8. [Skill ability graph and affordance](2026-07-29-skill-ability-graph-and-affordance-plan.md)
-9. [Patch Rule IR and capability runtime](2026-07-29-gameplay-patch-rule-ir-and-capabilities-plan.md)
-10. [Godot mirror, persistence, and migration](2026-07-29-godot-mirror-persistence-and-migration-plan.md)
-11. [Adventure-basic reference closure](2026-07-29-adventure-basic-reference-closure-plan.md)
+3. [Coupled event store and authority bus](2026-07-31-coupled-event-store-and-authority-bus-plan.md)
+4. [State-group registry and runtime facade](2026-07-29-state-group-registry-and-runtime-facade-plan.md)
+5. [Resource, status, body, and effective stats](2026-07-29-resource-status-body-and-effective-stats-plan.md)
+6. [Inventory, containers, and encumbrance](2026-07-29-inventory-container-and-encumbrance-plan.md)
+7. [Equipment runtime](2026-07-29-equipment-runtime-plan.md)
+8. [Ownership, economy, and transactions](2026-07-29-ownership-economy-and-transaction-plan.md)
+9. [Skill ability graph and affordance](2026-07-29-skill-ability-graph-and-affordance-plan.md)
+10. [Patch Rule IR and capability runtime](2026-07-29-gameplay-patch-rule-ir-and-capabilities-plan.md)
+11. [Godot mirror, persistence, and migration](2026-07-29-godot-mirror-persistence-and-migration-plan.md)
+12. [Adventure-basic reference closure](2026-07-29-adventure-basic-reference-closure-plan.md)
 
-Plans 2-4 are the first minimal closure. Plans 5-10 are prerequisite branches
+Plans 2-5 are the first minimal closure. Plan 3 is the explicit event-store,
+outbox, and authority-bus coupling prerequisite for embodied-interaction Phase
+6. Plans 6-11 are prerequisite branches
 for the `adventure-basic` pack and must follow their listed dependency order.
 
 ## Global Controls

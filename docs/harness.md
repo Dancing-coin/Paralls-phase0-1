@@ -37,6 +37,12 @@ python scripts/verification/harness.py --profile embodied-bridge-attestation
 python scripts/verification/harness.py --profile embodied-action-controller
 python scripts/verification/harness.py --profile embodied-authority-settlement
 python scripts/verification/harness.py --profile embodied-interaction-replay
+python scripts/verification/harness.py --profile gameplay-foundation-contract
+python scripts/verification/harness.py --profile gameplay-event-replay
+python scripts/verification/harness.py --profile gameplay-foundation-event-spine
+python scripts/verification/harness.py --profile embodied-interaction-session
+python scripts/verification/harness.py --profile embodied-handoff-authority
+python scripts/verification/harness.py --profile embodied-grab-carry-place-authority
 python scripts/verification/harness.py --profile embodied-interaction-foundation-all
 python scripts/verification/harness.py --profile all
 ```
@@ -820,9 +826,137 @@ Output:
 - `.harness/verification/embodied-kick-chair-vertical-slice-godot-runtime.json`
 - `.harness/verification/embodied-kick-chair-vertical-slice.png`
 
+### `gameplay-foundation-contract`
+
+Backend-only contract proof for the Gameplay Foundation authority event store and atomic event-batch writer.
+
+Current proof includes:
+
+- `append_batch` commits events, idempotency results, and outbox entries atomically
+- duplicate idempotency key plus same payload digest returns the original result without new events
+- duplicate idempotency key plus different payload digest rejects with zero mutation
+- stream revision conflicts reject the whole batch
+- invalid event schema and outbox projection construction failures are typed and non-mutating
+
+Output:
+
+- `.harness/verification/gameplay-foundation-contract-report.json`
+- `.harness/verification/gameplay-foundation-contract-report.md`
+- `.harness/verification/gameplay-foundation-contract-pytest.log`
+
+### `gameplay-event-replay`
+
+Backend-only replay proof for Gameplay committed events and projection recovery.
+
+Current proof includes:
+
+- full replay and checkpoint-plus-tail replay produce identical deterministic projection hashes
+- duplicate event delivery is idempotent for projectors
+- stream revision gaps block replay with a typed failure
+- unknown event versions without an upcaster chain block replay rather than being skipped
+
+Output:
+
+- `.harness/verification/gameplay-event-replay-report.json`
+- `.harness/verification/gameplay-event-replay-report.md`
+- `.harness/verification/gameplay-event-replay-pytest.log`
+
+### `gameplay-foundation-event-spine`
+
+Backend-only aggregate proof for the coupled Gameplay event store, committed outbox, and existing authority event bus delivery path.
+
+Current proof includes:
+
+- committed outbox entries are published only after `append_batch` commits
+- every bus payload carries `transaction_id`, `event_id`, `stream_revision`, and `global_sequence`
+- bus delivery failure keeps event truth committed and retries the same outbox entry identity
+- rejected batches create no publishable outbox
+- consumers can detect global sequence gaps and resync from store-backed events
+- Gameplay package authority bus publishing is scoped to the after-commit dispatcher
+
+Output:
+
+- `.harness/verification/gameplay-foundation-event-spine-report.json`
+- `.harness/verification/gameplay-foundation-event-spine-report.md`
+- `.harness/verification/gameplay-foundation-event-spine-pytest.log`
+
+### `embodied-interaction-session`
+
+Backend and Godot runtime proof for Phase 6 authority-owned `InteractionSession` handshake lifecycle over the Gameplay event spine, committed outbox/bus delivery, websocket projection, `BackendBridge`, and local slot consumer.
+
+Current proof includes:
+
+- proposal, acceptance, authorization, realizing, terminal participation observations, and committed session events write through `GameplayEventStore.append_batch`
+- committed session outbox entries are delivered through the existing authority event bus
+- committed outbox/bus session events are projected to `embodied_interaction_session_event` websocket envelopes with `transaction_id`, `event_id`, `stream_revision`, and `global_sequence`
+- Godot headless runtime connects to the live backend through `BackendBridge`, sends `embodied_interaction_session_probe`, receives the session events on `LocalPresentationBus`, and feeds a live `InteractionSessionSlotConsumer`
+- refusal prevents authorization and local realization
+- target departure and third-party interruption terminate the session and release reservations
+- two participants cannot commit a shared action until both valid terminal observations are recorded
+- session lifecycle and terminal observations use the embodied evidence ledger
+- public projection and bus delivery filter private participant terms
+- Godot `InteractionSessionSlotConsumer` accepts backend-safe session projections, tracks local slot/reservation state, emits one bounded terminal participation observation, rejects private participant terms, and releases reservations after interruption
+
+Output:
+
+- `.harness/verification/embodied-interaction-session-report.json`
+- `.harness/verification/embodied-interaction-session-report.md`
+- `.harness/verification/embodied-interaction-session-pytest.log`
+- `.harness/verification/embodied-interaction-session-trace.json`
+- `.harness/verification/embodied-interaction-session-websocket-trace.json`
+- `.harness/verification/embodied-interaction-session-godot.log`
+- `.harness/verification/embodied-interaction-session-godot-runtime.json`
+
+### `embodied-handoff-authority`
+
+Backend and Godot runtime proof for the Phase 7 narrow handoff authority slice. This is not the full inventory/economy package; it proves that handoff crosses the authority boundary through Gameplay `append_batch`, not Godot attachment.
+
+Current proof includes:
+
+- backend handoff settlement writes `embodied.interaction_session.participant_observed`, `inventory.custody_changed`, `ownership.right_transferred`, `embodied.handoff.settled`, and `embodied.interaction_session.committed` in one Gameplay transaction
+- local attachment hints are accepted only as `presentation_hint_only` and do not alter custody or ownership projection
+- duplicate idempotency replays the original transaction without a second mutation
+- revision conflict rejects without partial session/custody/ownership commit
+- committed handoff events are projected to `embodied_handoff_event` websocket envelopes without `world_truth_claim`, `character_actor_status`, or private participant terms
+- Godot headless runtime connects to the live backend through `BackendBridge`, sends `embodied_handoff_probe`, receives `embodied_handoff_event`, and feeds a live `HandoffMirrorConsumer`
+- Godot `HandoffMirrorConsumer` requires `attachment_directive.authority_only == true` before presentation attachment and rejects unsafe projections
+
+Output:
+
+- `.harness/verification/embodied-handoff-authority-report.json`
+- `.harness/verification/embodied-handoff-authority-report.md`
+- `.harness/verification/embodied-handoff-pytest.log`
+- `.harness/verification/embodied-handoff-websocket-trace.json`
+- `.harness/verification/embodied-handoff-godot.log`
+- `.harness/verification/embodied-handoff-godot-runtime.json`
+
+### `embodied-grab-carry-place-authority`
+
+Backend and Godot runtime proof for the Phase 7 `grab-carry-place` authority slice. It proves that local grab/carry/place attachment is only presentation until backend settlement commits custody and occupancy through Gameplay `append_batch`.
+
+Current proof includes:
+
+- backend carry-place settlement writes `embodied.interaction_session.participant_observed`, `inventory.custody_changed`, `embodied.carry.started`, `scene.occupancy.changed`, `embodied.place.settled`, and `embodied.interaction_session.committed` in one Gameplay transaction
+- local carry hints are accepted only as `presentation_hint_only` and do not alter custody or occupancy projection
+- occupied drop targets and invalid source custody reject before any cross-domain commit
+- duplicate idempotency replays the original transaction without a second mutation
+- revision conflict rejects without partial session/custody/occupancy commit
+- committed place events are projected to `embodied_carry_place_event` websocket envelopes without `world_truth_claim`, `character_actor_status`, or private participant terms
+- Godot headless runtime connects to the live backend through `BackendBridge`, sends `embodied_grab_carry_place_probe`, receives `embodied_carry_place_event`, and feeds a live `CarryPlaceMirrorConsumer`
+- Godot `CarryPlaceMirrorConsumer` requires `placement_directive.authority_only == true` before presentation placement and rejects unsafe projections
+
+Output:
+
+- `.harness/verification/embodied-grab-carry-place-authority-report.json`
+- `.harness/verification/embodied-grab-carry-place-authority-report.md`
+- `.harness/verification/embodied-carry-place-pytest.log`
+- `.harness/verification/embodied-carry-place-websocket-trace.json`
+- `.harness/verification/embodied-carry-place-godot.log`
+- `.harness/verification/embodied-carry-place-godot-runtime.json`
+
 ### `embodied-interaction-foundation-all`
 
-Dependency-ordered aggregate for embodied-interaction product foundation Phase 0 through Phase 5.
+Dependency-ordered aggregate for embodied-interaction product foundation Phase 0 through Phase 7 backend `InteractionSession`, narrow handoff authority, and `grab-carry-place` authority.
 
 It runs:
 
@@ -833,7 +967,18 @@ It runs:
 - `embodied-authority-settlement`
 - `embodied-interaction-replay`
 
-Phase 6 remains blocked by design until the Gameplay Foundation event store and atomic event-batch writer are implemented and verified.
+It then checks the Phase 6 gate:
+
+- `gameplay-foundation-event-spine`
+
+It then runs:
+
+- `embodied-interaction-session`
+- `embodied-handoff-authority`
+- `embodied-grab-carry-place-authority`
+
+Phase 6 session work starts only after that gate passes, proving the Gameplay event store, atomic event-batch writer, committed outbox, and after-commit authority bus dispatcher.
+Phase 7 object work then proves handoff and grab-carry-place settle through Gameplay atomic event batches before Godot mirrors attachment or placement.
 
 Output:
 
@@ -842,7 +987,7 @@ Output:
 
 ### `all`
 
-Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, `phase1-slice`, `l1-world-fact-runtime`, `mainline-unified-runtime`, `model-provider-readiness`, `godot-sampling-production-grade-providers`, `embodied-skeletal-debug-replay`, `vla-provider-backend`, `actor-scene-knowledge-lifecycle`, `siming-global-situation-layer`, `interaction-orchestration-service`, `esm-physical-channel-world-actuation`, `non-runtime-production-pipeline`, `perception-input-alignment`, `embodied-interaction-contracts`, `embodied-affordance-registry`, `embodied-bridge-attestation`, `embodied-action-controller`, `embodied-authority-settlement`, `embodied-interaction-replay`, and `embodied-interaction-foundation-all` in order. It stops on the first failed profile.
+Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, `phase1-slice`, `l1-world-fact-runtime`, `mainline-unified-runtime`, `model-provider-readiness`, `godot-sampling-production-grade-providers`, `embodied-skeletal-debug-replay`, `vla-provider-backend`, `actor-scene-knowledge-lifecycle`, `siming-global-situation-layer`, `interaction-orchestration-service`, `esm-physical-channel-world-actuation`, `non-runtime-production-pipeline`, `perception-input-alignment`, `embodied-interaction-contracts`, `embodied-affordance-registry`, `embodied-bridge-attestation`, `embodied-action-controller`, `embodied-authority-settlement`, `embodied-interaction-replay`, `gameplay-foundation-contract`, `gameplay-event-replay`, `gameplay-foundation-event-spine`, `embodied-interaction-session`, `embodied-handoff-authority`, `embodied-grab-carry-place-authority`, and `embodied-interaction-foundation-all` in order. It stops on the first failed profile.
 
 `siming-backend-chain` is excluded from `all` because it requires live model-provider credentials.
 `character-model-live` and `llm-integration-closure` are also excluded from `all`; they require fresh live provider artifacts and an explicit closure run ID.

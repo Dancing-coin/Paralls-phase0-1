@@ -48,6 +48,12 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "embodied-action-controller",
         "embodied-authority-settlement",
         "embodied-interaction-replay",
+        "gameplay-foundation-contract",
+        "gameplay-event-replay",
+        "gameplay-foundation-event-spine",
+        "embodied-interaction-session",
+        "embodied-handoff-authority",
+        "embodied-grab-carry-place-authority",
         "embodied-interaction-foundation-all",
     ]
     assert registry.profiles["docs"]["script"] == "scripts/verification/check_docs.py"
@@ -79,6 +85,12 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["embodied-action-controller"]["script"] == "scripts/verification/verify_embodied_action_controller.py"
     assert registry.profiles["embodied-authority-settlement"]["script"] == "scripts/verification/verify_embodied_authority_settlement.py"
     assert registry.profiles["embodied-interaction-replay"]["script"] == "scripts/verification/verify_embodied_interaction_replay.py"
+    assert registry.profiles["gameplay-foundation-contract"]["script"] == "scripts/verification/verify_gameplay_foundation_contract.py"
+    assert registry.profiles["gameplay-event-replay"]["script"] == "scripts/verification/verify_gameplay_event_replay.py"
+    assert registry.profiles["gameplay-foundation-event-spine"]["script"] == "scripts/verification/verify_gameplay_foundation_event_spine.py"
+    assert registry.profiles["embodied-interaction-session"]["script"] == "scripts/verification/verify_embodied_interaction_session.py"
+    assert registry.profiles["embodied-handoff-authority"]["script"] == "scripts/verification/verify_embodied_handoff_authority.py"
+    assert registry.profiles["embodied-grab-carry-place-authority"]["script"] == "scripts/verification/verify_embodied_grab_carry_place_authority.py"
     assert registry.profiles["embodied-interaction-foundation-all"]["script"] == "scripts/verification/verify_embodied_interaction_foundation_all.py"
     assert registry.profiles["phase0"]["requires_godot"] is True
     assert registry.profiles["mainline-unified-runtime"]["script"] == "scripts/verification/verify_mainline_unified_runtime.py"

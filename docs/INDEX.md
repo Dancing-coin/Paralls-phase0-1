@@ -40,8 +40,10 @@
 - `docs/superpowers/specs/world-character-siming-authority-mainline/README.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/character-gameplay-foundation/README.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/character-gameplay-foundation/2026-07-31-coupled-event-store-and-authority-bus-design.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/embodied-interaction-product-foundation/README.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/README.md`
+- `docs/superpowers/plans/world-character-siming-authority-mainline/character-gameplay-foundation/2026-07-31-coupled-event-store-and-authority-bus-plan.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/2026-07-29-character-dialogue-streaming-design.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/2026-07-29-character-dialogue-streaming-implementation-plan.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/2026-07-29-real-tts-provider-presentation-design.md`
@@ -151,7 +153,13 @@
 - `embodied-action-controller`：Godot runtime 证明，覆盖 `EmbodiedActionController` state machine、grant-gated route、terminal observations、failure recovery，以及 raw bone/physics transport 排除。
 - `embodied-authority-settlement`：后端证明，覆盖 attested local outcome validation、revision/policy checks、idempotent consume、`esm_compatibility_adapter` 单对象结算，以及 gameplay writer fail-closed。
 - `embodied-interaction-replay`：后端与 Godot runtime 证明，覆盖 `kick-chair` visible settlement、后台 `server_ledger_sequence` replay、source sequence idempotency/gap 拒绝，以及 public Observatory projection 过滤。
-- `embodied-interaction-foundation-all`：按 Phase 0-5 依赖顺序聚合 `embodied-interaction-*` focused profiles；Phase 6 在 Gameplay event store 和 atomic event-batch writer 验证前保持 blocked。
+- `gameplay-foundation-contract`：后端证明，覆盖 Gameplay authority event store、atomic `append_batch`、idempotency、expected stream revisions、typed failure 和 committed outbox 原子写入。
+- `gameplay-event-replay`：后端证明，覆盖 Gameplay full replay、checkpoint-plus-tail 等价、deterministic projection hash、stream gap 和 upcaster failure。
+- `gameplay-foundation-event-spine`：后端聚合证明，覆盖 store-first/bus-second settlement spine、committed outbox after-commit dispatcher、bus retry 和 store-backed gap resync。
+- `embodied-interaction-session`：后端与 Godot runtime Phase 6 证明，覆盖 `InteractionSession` handshake lifecycle、Gameplay `append_batch`/outbox/bus 路径、WebSocket `embodied_interaction_session_event` 投影、Godot `BackendBridge` live backend 接收、refusal/departure/third-party interruption、双参与者 terminal observation、同一 evidence ledger、privacy-filtered projection，以及 Godot local slot consumer 的 slot/reservation/terminal observation 处理。
+- `embodied-handoff-authority`：后端与 Godot runtime Phase 7 窄 handoff 证明，覆盖一个 Gameplay atomic batch 中同时提交 session terminal observations、`inventory.custody_changed`、`ownership.right_transferred`、`embodied.handoff.settled` 和 session commit，WebSocket `embodied_handoff_event` 投影，以及 Godot `BackendBridge` live backend 接收后由 `HandoffMirrorConsumer` 只做 authority-only presentation attachment。
+- `embodied-grab-carry-place-authority`：后端与 Godot runtime Phase 7 grab-carry-place 证明，覆盖一个 Gameplay atomic batch 中同时提交 session terminal observations、`inventory.custody_changed`、`embodied.carry.started`、`scene.occupancy.changed`、`embodied.place.settled` 和 session commit，WebSocket `embodied_carry_place_event` 投影，以及 Godot `BackendBridge` live backend 接收后由 `CarryPlaceMirrorConsumer` 只做 authority-only presentation placement。
+- `embodied-interaction-foundation-all`：按 Phase 0-7 依赖顺序聚合 `embodied-interaction-*` focused profiles；Phase 6 session 在 `gameplay-foundation-event-spine` gate 通过后运行，Phase 7 handoff 和 grab-carry-place 在 session profile 之后运行。
 - `all`：按顺序运行全部 profile。
 
 运行时验证脚本和聚合证明脚本：
@@ -188,6 +196,12 @@
 - `python scripts/verification/verify_embodied_action_controller.py`
 - `python scripts/verification/verify_embodied_authority_settlement.py`
 - `python scripts/verification/verify_embodied_interaction_replay.py`
+- `python scripts/verification/verify_gameplay_foundation_contract.py`
+- `python scripts/verification/verify_gameplay_event_replay.py`
+- `python scripts/verification/verify_gameplay_foundation_event_spine.py`
+- `python scripts/verification/verify_embodied_interaction_session.py`
+- `python scripts/verification/verify_embodied_handoff_authority.py`
+- `python scripts/verification/verify_embodied_grab_carry_place_authority.py`
 - `python scripts/verification/verify_embodied_interaction_foundation_all.py`
 - `python scripts/verification/verify_phase1_slice.py`
 - `python scripts/verification/verify_phase0.py`
