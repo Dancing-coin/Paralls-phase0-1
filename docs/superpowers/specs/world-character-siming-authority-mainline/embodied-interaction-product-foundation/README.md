@@ -40,6 +40,7 @@ start the first embodied vertical slice.
 5. [Interaction session and authority settlement](2026-07-29-interaction-session-and-authority-settlement-design.md)
 6. [Godot mirror, observatory, and replay evidence](2026-07-29-godot-mirror-observatory-and-replay-evidence-design.md)
 7. [Boundary and acceptance matrix](2026-07-29-boundary-and-acceptance-matrix-design.md)
+8. [Atomic action library and default scene coverage](2026-08-01-atomic-action-library-and-default-scene-coverage-design.md)
 
 ## Dependency Order
 

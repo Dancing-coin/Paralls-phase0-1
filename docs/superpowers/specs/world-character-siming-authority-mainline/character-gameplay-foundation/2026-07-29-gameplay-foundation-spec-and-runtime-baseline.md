@@ -1,13 +1,13 @@
 # Character Gameplay Foundation Specification And Runtime Baseline
 
-Status: `current-code-audit; design-awaiting-user-review`
+Status: `current-code-audit; minimum-runtime-state-core-implemented; broader-closure-planned`
 
-Date: `2026-07-29`
+Date: `2026-08-01`
 
 ## Purpose
 
 This document records the boundary between the approved design target and the
-repository implementation as inspected on 2026-07-29. It is a status record,
+repository implementation as inspected on 2026-08-01. It is a status record,
 not a replacement design and not an implementation authorization.
 
 The normative design remains this directory's existing 2026-07-23 documents.
@@ -32,8 +32,23 @@ It does not:
 
 ## `CharacterGameRuntimeState` Definition Status
 
-The facade is fully specified, but not implemented. The authoritative
-definition is `2026-07-23-state-group-registry-and-runtime-facade-design.md`:
+The facade remains fully specified by
+`2026-07-23-state-group-registry-and-runtime-facade-design.md`. A minimal,
+in-process, read-only core now exists in `backend/app/gameplay/runtime_state.py`:
+
+- immutable `StateGroupDefinition` metadata;
+- `StateGroupRegistry` duplicate/unknown dependency, dependency-cycle, and
+  enabled-conflict rejection plus deterministic load order;
+- `CharacterGameRuntimeStateBuilder`, which composes only enabled group
+  payloads into immutable envelopes with source revision vectors and a stable
+  checksum.
+
+This is deliberately not the complete runtime façade. It has no actor/world/
+patch eligibility policy, lifecycle event materialization, event-store replay
+integration, consumer-specific authority/Mind/Godot/debug views, delta
+transport, persistence, or Godot mirror. The current implementation therefore
+does not authorize a claim that the complete `CharacterGameRuntimeState` or
+`StateGroupRegistry` delivery is finished.
 
 ```text
 identity, mental, resources, status_tags, body_runtime, inventory, ownership,
@@ -45,17 +60,16 @@ It is a versioned read facade over independently owned domain projections. It
 is not an aggregate root, write API, replacement for `CharacterDynamicState`,
 or a renamed `CharacterRuntimeStateService`.
 
-No `CharacterGameRuntimeState`, `StateGroupDefinition`, `StateGroupRegistry`,
-projection revision vector, or gameplay snapshot/delta contract exists under
-`backend/app/` at this baseline.
+The implemented core is a composition utility, not a new gameplay truth owner.
+It accepts independently produced projections and exposes no write operation.
 
 ## Topic Status Matrix
 
 | Topic | Formal specification | Reusable implementation foundation | Not started / deliberately absent |
 | --- | --- | --- | --- |
 | Foundation invariants and identifiers | Complete in foundation-invariants, event-sourcing, and master designs | Existing structured intent, authority events, and world-result projections | Gameplay-specific identities, command envelopes, event taxonomy, atomic batch API |
-| Event sourcing and settlement | Complete | `services/authority_event_bus.py` is an in-memory publish/list bus; interaction services already produce typed success/constraint results | Durable event streams, idempotency ledger, batch transaction, checkpoint/replay/upcast, gameplay projection rebuilding |
-| State groups and runtime facade | Complete | Character mind has separate stores and read models, demonstrating separation rather than a shared game facade | Registry, eligibility resolution, materialization, lifecycle, facade, snapshots/deltas |
+| Event sourcing and settlement | Complete | `gameplay/` now has an in-memory event store, atomic batches, committed outbox dispatcher, and replay evidence | Durable storage, production checkpointing/upcasts, and gameplay-domain projection rebuilding |
+| State groups and runtime facade | Complete | `gameplay/runtime_state.py` now provides immutable definitions, deterministic dependency/conflict validation, and a read-only composed snapshot | Eligibility, lifecycle/materialization, committed-event rebuild, consumer-filtered views, deltas, persistence, and Godot mirror |
 | Resource/status/body/effective stats | Complete | `NeedTensionState`, `CharacterDynamicState`, dossier embodiment seed, and L1 self-body hints are implemented for cognition | Gameplay health/stamina/fatigue, status tags, body-function runtime, modifiers, explained effective stats |
 | Inventory/container/encumbrance | Complete | Interaction contracts name physical affordances only | Item identity, location/container projection, access/capacity policy, storage-ring propagation, encumbrance |
 | Equipment | Complete | Mind-frame accepts an `equipment_affordance` summary; presentation has a lightweight `equipment_state` field | Slot runtime, grants, modifier lifecycle, unequip safety, equipment-to-Godot binding contract |
@@ -79,6 +93,9 @@ projection revision vector, or gameplay snapshot/delta contract exists under
   summary cards and removes registry internals; it is not an ability graph.
 - `backend/app/services/authority_event_bus.py` is an in-memory authority event
   notification surface, not an event store and not an atomic settlement log.
+- `backend/app/gameplay/runtime_state.py` is an in-process read façade builder.
+  It cannot enable a group, mutate a projection, or replace gameplay event
+  settlement; completed event-store integration remains follow-on work.
 - `backend/app/services/character_runtime_state_service.py` is current
   character-runtime/cognition plumbing. It must remain separate from the new
   `CharacterGameRuntimeState` facade.
@@ -87,12 +104,10 @@ projection revision vector, or gameplay snapshot/delta contract exists under
 
 ## Planning Consequence
 
-The first plan must create the event/registry/facade spine before adding
-inventory or economy. The first executable vertical slice is deliberately
-smaller than `adventure-basic`: materialize resource, status, body, skill, and
-affordance groups; settle a stamina/body-gated action; rebuild its projection;
-and deliver a typed mirror delta. It proves the new substrate without creating
-a partial inventory or economy subsystem.
+The next plan increment connects the existing minimal registry/facade core to
+committed lifecycle events and a small resource/status/body vertical slice
+before adding inventory or economy. It must then rebuild a projection and
+deliver a typed mirror delta. The current core alone is not that vertical slice.
 
 The dedicated plan tree is:
 `docs/superpowers/plans/world-character-siming-authority-mainline/character-gameplay-foundation/`.

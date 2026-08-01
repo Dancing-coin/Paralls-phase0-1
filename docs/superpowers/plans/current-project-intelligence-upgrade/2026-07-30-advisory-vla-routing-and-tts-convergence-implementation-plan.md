@@ -1,7 +1,7 @@
 # Advisory VLA Routing And TTS Convergence Implementation Plan
 
 - Date: `2026-07-30`
-- Status: `production-fast-only; godot-runtime-capture-fast-proof-verified; deep-experiment-retained-disabled`
+- Status: `production-fast-only; godot-runtime-capture-fast-proof-verified; advisory-deep-parked-non-blocking`
 - Design: `2026-07-30-advisory-vla-routing-and-tts-convergence-design.md`
 
 ## Scope And Truth Relationship

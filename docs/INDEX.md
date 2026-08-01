@@ -42,8 +42,10 @@
 - `docs/superpowers/specs/world-character-siming-authority-mainline/character-gameplay-foundation/README.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/character-gameplay-foundation/2026-07-31-coupled-event-store-and-authority-bus-design.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/embodied-interaction-product-foundation/README.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/embodied-interaction-product-foundation/2026-08-01-atomic-action-library-and-default-scene-coverage-design.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/README.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/character-gameplay-foundation/2026-07-31-coupled-event-store-and-authority-bus-plan.md`
+- `docs/superpowers/plans/world-character-siming-authority-mainline/embodied-interaction-product-foundation/2026-08-01-atomic-action-library-and-default-scene-coverage-plan.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/2026-07-29-character-dialogue-streaming-design.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/2026-07-29-character-dialogue-streaming-implementation-plan.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/2026-07-29-real-tts-provider-presentation-design.md`

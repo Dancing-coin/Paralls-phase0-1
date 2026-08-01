@@ -11,6 +11,7 @@ TTS, streamed dialogue, visemes, and broad presentation-content work.
 ## Plan Order
 
 1. [Implementation plan](2026-07-29-embodied-interaction-product-foundation-implementation-plan.md)
+2. [Atomic action library and default scene coverage](2026-08-01-atomic-action-library-and-default-scene-coverage-plan.md)
 
 The plan's phases are sequential at their contract boundaries. Within a phase,
 backend tests and isolated Godot asset/controller work may be parallelized only

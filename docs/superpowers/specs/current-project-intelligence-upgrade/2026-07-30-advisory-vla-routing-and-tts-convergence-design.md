@@ -1,7 +1,7 @@
 # Advisory VLA Routing And TTS Convergence Design
 
 - Date: `2026-07-30`
-- Status: `production-fast-only; godot-capture-fast-live-proof-verified; deep-retained-for-explicit-experiments`
+- Status: `production-fast-only; godot-capture-fast-live-proof-verified; advisory-deep-parked-non-blocking`
 - Parent: `current-project-intelligence-upgrade`
 - Extends: `2026-07-29-vla-real-provider-adapter-live-proof-design.md`
 - Coordinates with: `world-character-siming-authority-mainline/2026-07-29-character-dialogue-streaming-design.md` and `2026-07-29-real-tts-provider-presentation-design.md`
@@ -41,7 +41,7 @@ sole Siming event path. Neither consumes a partial VLA/TTS result as authority.
 | Route | Default model | Timeout | Entry rule | Scheduler/cache rule |
 | --- | --- | --- | --- | --- |
 | `advisory-fast` | `qwen3.7-flash` | 12 seconds | every eligible production PQF, including conflict/high-uncertainty tags | sole production route; cache key includes route, model, version, owner scope, capture and refs |
-| `advisory-deep` | `qwen3.7-plus` | 20 seconds | disabled in production; explicit benchmark/re-admission experiment only | retained separate cache/fingerprint identity; never auto-enqueued while disabled |
+| `advisory-deep` | `qwen3.7-plus` | 20 seconds | parked, non-blocking, and disabled in production; explicit benchmark/re-admission experiment only | retained separate cache/fingerprint identity; never auto-enqueued while disabled |
 
 Production fast explicitly sends the documented non-standard
 `enable_thinking=false` capability. The retained deep experiment sends

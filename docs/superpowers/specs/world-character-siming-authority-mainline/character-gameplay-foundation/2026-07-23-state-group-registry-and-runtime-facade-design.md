@@ -1,6 +1,6 @@
 # State Group Registry And Character Game Runtime Façade Design
 
-Status: `awaiting-user-review`
+Status: `minimum-core-implemented; lifecycle-and-consumer-views-planned`
 
 Date: `2026-07-23`
 
@@ -9,6 +9,16 @@ Date: `2026-07-23`
 定义角色游戏状态组如何被注册、验证、动态装配、物化、禁用和投影，以及 `CharacterGameRuntimeState` 如何把独立领域读模型组合成稳定、带版本、可裁剪的 façade。
 
 目标不是建立一个永久增长的 `CharacterDynamicState` 或巨型角色对象，而是让角色只拥有当前世界、archetype 与玩法包真正适用的状态组，并为 Mind Frame、Godot、调试与 authority settlement 提供一致读取面。
+
+## 2026-08-01 Implementation Status
+
+`backend/app/gameplay/runtime_state.py` now implements only the lowest-risk
+read-composition core: immutable definitions, deterministic dependency and
+conflict validation, and immutable snapshot envelopes/checksums for already
+enabled projections. It does not implement eligibility, authority lifecycle
+commands/events, event-store rebuild, privacy-filtered consumer views, deltas,
+or Godot transport. The complete design below remains normative for those
+unimplemented stages.
 
 ## Scope
 
