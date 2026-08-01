@@ -23,6 +23,7 @@ current LLM closure.
 
 ```text
 contracts + event batches + harness
+  -> coupled event-store outbox + authority-bus delivery
   -> state-group registry + runtime facade
   -> resource/status/body/effective-stats minimum vertical slice
   -> inventory/containers -> equipment
@@ -45,8 +46,10 @@ authority-event bus as durable truth.
 ### Phase 1: Event And Projection Spine
 
 Implement append-only event streams, idempotency, expected-revision checks,
-atomic batch append, projection rebuilding, checkpoints, and typed failure.
-Prove replay and batch rollback before a domain command writes new truth.
+atomic batch append, committed outbox entries, authority-bus delivery,
+projection rebuilding, checkpoints, and typed failure. Prove replay, batch
+rollback, delivery retry, and store-backed resync before a domain command
+writes new truth.
 
 ### Phase 2: Dynamic State Composition
 

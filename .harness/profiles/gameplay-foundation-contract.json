@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "gameplay-foundation-contract",
+  "order": 78,
+  "script": "scripts/verification/verify_gameplay_foundation_contract.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/gameplay-foundation-contract-report.json",
+  "description": "Backend contract proof for the Gameplay authority event store, atomic append_batch writer, idempotency, revisions, and committed outbox"
+}

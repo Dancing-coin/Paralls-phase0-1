@@ -14,16 +14,20 @@ owns no inventory, economy, equipment, or Godot domain behavior.
    idempotency keys, visibility, schema versions, and typed failure/retry data.
 2. Implement event-stream append with expected-revision validation and atomic
    multi-stream batches; conflicting idempotency payloads must reject.
+   Commit authority-event-bus outbox entries in the same batch, then dispatch
+   only committed entries.
 3. Implement projection registration, rebuild-from-stream, checkpoint-plus-tail
    equivalence, health reporting, and upcast failure boundaries.
 4. Add `gameplay-foundation-contract` and `gameplay-event-replay` profiles with
-   duplicate, stale, partial-write, invalid-event, checkpoint, and upcast tests.
+   duplicate, stale, partial-write, invalid-event, checkpoint, upcast, outbox
+   retry, and bus sequence-resync tests.
 
 ## Exit Criteria
 
-No accepted batch partially mutates event truth. Full replay and
-checkpoint-plus-tail produce the same projection hash. Existing authority event
-publication may receive committed notifications, but cannot become the store.
+No accepted batch partially mutates event truth or outbox truth. Full replay
+and checkpoint-plus-tail produce the same projection hash. Existing authority
+event publication receives committed notifications through the outbox
+dispatcher, but cannot become the store.
 
 ## Evidence
 
