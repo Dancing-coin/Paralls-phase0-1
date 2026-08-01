@@ -16,6 +16,10 @@ PHASE_PROFILES = [
     "embodied-authority-settlement",
     "embodied-interaction-replay",
 ]
+PHASE_6_GATE_PROFILE = "gameplay-foundation-event-spine"
+PHASE_6_SESSION_PROFILE = "embodied-interaction-session"
+PHASE_7_HANDOFF_PROFILE = "embodied-handoff-authority"
+PHASE_7_CARRY_PLACE_PROFILE = "embodied-grab-carry-place-authority"
 
 
 def main() -> int:
@@ -28,7 +32,14 @@ def main() -> int:
     log_dir = verification_dir(project_root)
     python_exe = resolve_python_exe(args.python_exe)
     profile_results: list[dict[str, object]] = []
-    for profile in PHASE_PROFILES:
+    profiles_to_run = [
+        *PHASE_PROFILES,
+        PHASE_6_GATE_PROFILE,
+        PHASE_6_SESSION_PROFILE,
+        PHASE_7_HANDOFF_PROFILE,
+        PHASE_7_CARRY_PLACE_PROFILE,
+    ]
+    for profile in profiles_to_run:
         command = [
             python_exe,
             str(project_root / "scripts" / "verification" / "harness.py"),
@@ -63,11 +74,30 @@ def main() -> int:
         if result.returncode != 0:
             break
 
-    overall = len(profile_results) == len(PHASE_PROFILES) and all(entry["status"] == "proved" for entry in profile_results)
+    overall = len(profile_results) == len(profiles_to_run) and all(entry["status"] == "proved" for entry in profile_results)
+    phase_6_gate_satisfied = any(
+        entry["id"] == PHASE_6_GATE_PROFILE and entry["status"] == "proved" for entry in profile_results
+    )
+    phase_6_session_verified = any(
+        entry["id"] == PHASE_6_SESSION_PROFILE and entry["status"] == "proved" for entry in profile_results
+    )
+    phase_7_handoff_verified = any(
+        entry["id"] == PHASE_7_HANDOFF_PROFILE and entry["status"] == "proved" for entry in profile_results
+    )
+    phase_7_carry_place_verified = any(
+        entry["id"] == PHASE_7_CARRY_PLACE_PROFILE and entry["status"] == "proved" for entry in profile_results
+    )
     report = {
         "overall_embodied_interaction_foundation_all_passed": overall,
         "phase_profiles": PHASE_PROFILES,
-        "phase_6_status": "blocked_until_gameplay_event_store_and_atomic_event_batch_writer_verified",
+        "phase_6_gate_profile": PHASE_6_GATE_PROFILE,
+        "phase_6_session_profile": PHASE_6_SESSION_PROFILE,
+        "phase_7_handoff_profile": PHASE_7_HANDOFF_PROFILE,
+        "phase_7_carry_place_profile": PHASE_7_CARRY_PLACE_PROFILE,
+        "phase_6_status": "gate_satisfied" if phase_6_gate_satisfied else "blocked_until_gameplay_event_spine_verified",
+        "phase_6_interaction_session_status": "backend_websocket_and_godot_live_runtime_verified" if phase_6_session_verified else "not_verified",
+        "phase_7_handoff_status": "backend_websocket_and_godot_live_runtime_verified" if phase_7_handoff_verified else "not_verified",
+        "phase_7_carry_place_status": "backend_websocket_and_godot_live_runtime_verified" if phase_7_carry_place_verified else "not_verified",
         "results": profile_results,
     }
     json_path = log_dir / "embodied-interaction-foundation-all-report.json"

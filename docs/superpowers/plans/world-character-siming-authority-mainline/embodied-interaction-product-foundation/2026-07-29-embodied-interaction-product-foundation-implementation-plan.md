@@ -199,14 +199,34 @@ result, one authority settlement, and a replay-valid causal chain. Existing
 projection, local slot consumer, and focused backend/Godot probes.
 
 1. Before code edits, complete and verify the gameplay-foundation event-store
-   and atomic-event-batch prerequisite. This phase is blocked rather than
-   emulated through `esm_compatibility_adapter`.
+   and atomic-event-batch prerequisite, including the coupled outbox delivery
+   to the existing authority event bus defined in
+   `../character-gameplay-foundation/2026-07-31-coupled-event-store-and-authority-bus-plan.md`.
+   This phase is blocked rather than emulated through
+   `esm_compatibility_adapter` or direct authority-event-bus publishing.
 2. Implement proposed/accept/reject/authorized/realizing/cancelled/interrupted/
    committed lifecycle with participant/slot/reservation ownership.
 3. Prove handshake acceptance, refusal, target departure, third-party
    interruption, and privacy filtering.
 4. Integrate session terminal observations with the same settlement/evidence
    ledger, not a separate social trace.
+
+Implementation status:
+
+- `gameplay-foundation-event-spine` satisfies the event-store and
+  atomic-event-batch prerequisite for this phase.
+- `embodied-interaction-session` verifies the backend-authority handshake
+  lifecycle over Gameplay `append_batch`, committed outbox, and the existing
+  authority event bus.
+- The same profile verifies the websocket delivery path from committed
+  outbox/bus session events to `embodied_interaction_session_event` envelopes
+  with `transaction_id`, `event_id`, `stream_revision`, and
+  `global_sequence`.
+- The same profile verifies Godot live backend runtime delivery through
+  `BackendBridge` into `LocalPresentationBus` and a live
+  `InteractionSessionSlotConsumer`, including safe session projections,
+  slot/reservation tracking, bounded terminal participation observation,
+  private-term rejection, and interruption release.
 
 **Exit criteria:** two characters never complete a shared action without one
 authoritative session and both valid terminal participation observations.
@@ -223,6 +243,39 @@ authoritative session and both valid terminal participation observations.
 
 **Exit criteria:** attachment/local presentation cannot establish ownership;
 handoff settles through authority and VLA never directly starts motion.
+
+Implementation status:
+
+- `embodied-handoff-authority` verifies the first narrow handoff authority
+  slice. It does not claim the full inventory/economy package.
+- The backend handoff probe settles session terminal observations,
+  `inventory.custody_changed`, `ownership.right_transferred`,
+  `embodied.handoff.settled`, and `embodied.interaction_session.committed` in
+  one Gameplay atomic `append_batch`.
+- The same profile proves duplicate idempotency replay, revision-conflict
+  zero partial commit, and that a local Godot attachment hint remains
+  `presentation_hint_only` without changing custody or ownership projection.
+- The same profile verifies websocket delivery through
+  `embodied_handoff_event` and Godot live backend consumption through
+  `BackendBridge` into `HandoffMirrorConsumer`; the mirror requires
+  `attachment_directive.authority_only == true` and rejects unsafe world-truth
+  projection fields.
+- `embodied-grab-carry-place-authority` verifies the Phase 7
+  `grab-carry-place` authority slice over the Gameplay event spine. The backend
+  probe settles session terminal observations, `inventory.custody_changed`,
+  `embodied.carry.started`, `scene.occupancy.changed`,
+  `embodied.place.settled`, and `embodied.interaction_session.committed` in one
+  Gameplay atomic `append_batch`.
+- The same carry-place profile proves local carry hints are
+  `presentation_hint_only`, occupied drop targets and invalid source custody
+  reject before cross-domain commit, duplicate idempotency replays, revision
+  conflict leaves zero partial custody/occupancy mutation, websocket
+  `embodied_carry_place_event` delivery is privacy-filtered, and Godot live
+  backend consumption reaches `CarryPlaceMirrorConsumer` with
+  `placement_directive.authority_only == true`.
+- VLA candidate binding remains unimplemented and disabled for this phase
+  until known-registry paths remain green with VLA absent, stale, or
+  conflicting.
 
 ## Phase 8: Aggregate Evidence And Documentation Closure
 

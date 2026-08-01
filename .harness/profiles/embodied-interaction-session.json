@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "embodied-interaction-session",
+  "order": 81,
+  "script": "scripts/verification/verify_embodied_interaction_session.py",
+  "requires_godot": true,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/embodied-interaction-session-report.json",
+  "description": "Backend and Godot runtime proof for Phase 6 InteractionSession handshake lifecycle over the Gameplay append_batch/outbox/bus spine, websocket delivery through BackendBridge, local slot consumer, terminal participation observations, interruption/refusal handling, and privacy-filtered projections"
+}

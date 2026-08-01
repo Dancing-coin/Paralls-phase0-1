@@ -63,6 +63,7 @@ the physical path rather than blocking it.
 - Active mainline master: `../2026-06-29-world-character-siming-authority-mainline-master-design.md`
 - Existing semantics transition: `../../../../plans/world-character-siming-authority-mainline/2026-06-29-execution-semantics-and-realization-runtime-implementation-plan.md`
 - Gameplay state/settlement design: `../character-gameplay-foundation/2026-07-23-event-sourcing-and-authority-settlement-design.md`
+- Gameplay store/bus coupling design: `../character-gameplay-foundation/2026-07-31-coupled-event-store-and-authority-bus-design.md`
 - Gameplay Godot mirror design: `../character-gameplay-foundation/2026-07-23-godot-runtime-mirror-and-prediction-design.md`
 - Existing grounding truth: `../../../current-project-intelligence-upgrade/2026-07-30-advisory-vla-routing-and-tts-convergence-design.md`
 - Current runtime boundaries: `docs/架构/运行时/模块/ESM与交互编排.md` and `docs/架构/运行时/模块/VLA运行时通道.md`

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "embodied-handoff-authority",
+  "order": 82,
+  "script": "scripts/verification/verify_embodied_handoff_authority.py",
+  "requires_godot": true,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/embodied-handoff-authority-report.json",
+  "description": "Phase 7 narrow handoff authority proof over Gameplay append_batch/outbox/bus plus websocket delivery and Godot BackendBridge mirror consumption; local attachment remains presentation-only"
+}

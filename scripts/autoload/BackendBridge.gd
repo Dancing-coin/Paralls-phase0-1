@@ -174,6 +174,15 @@ func _dispatch_message(raw_text: String) -> void:
         "embodied_resync_projection":
             _bus_log("embodied_resync_projection:%s" % JSON.stringify(payload))
             _bus_emit("embodied_resync_projection_received", [payload])
+        "embodied_interaction_session_event":
+            _bus_log("embodied_interaction_session_event:%s" % JSON.stringify(payload))
+            _bus_emit("embodied_interaction_session_event_received", [payload])
+        "embodied_handoff_event":
+            _bus_log("embodied_handoff_event:%s" % JSON.stringify(payload))
+            _bus_emit("embodied_handoff_event_received", [payload])
+        "embodied_carry_place_event":
+            _bus_log("embodied_carry_place_event:%s" % JSON.stringify(payload))
+            _bus_emit("embodied_carry_place_event_received", [payload])
         _:
             _bus_log("backend_message:%s" % message_type)
 

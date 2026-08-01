@@ -29,6 +29,18 @@ TerminalStatus = Literal[
     "missed_contact",
     "observation_invalid",
 ]
+InteractionSessionState = Literal[
+    "proposed",
+    "awaiting_responses",
+    "authorized",
+    "realizing",
+    "settling",
+    "committed",
+    "rejected",
+    "cancelled",
+    "interrupted",
+    "expired",
+]
 
 FORBIDDEN_EMBODIED_REQUEST_FIELDS = {
     "raw_keyboard",
@@ -252,6 +264,62 @@ class EmbodiedSettlementResult(StrictEmbodiedModel):
     presentation_directive: dict[str, object] = Field(default_factory=dict)
 
 
+class InteractionSessionParticipantTerm(StrictEmbodiedModel):
+    participant_ref: str = Field(min_length=1)
+    slot_id: str = Field(min_length=1)
+    consent_state: Literal["pending", "accepted", "rejected", "cancelled"] = "pending"
+    response_ref: str = ""
+
+
+class InteractionSessionSlotAssignment(StrictEmbodiedModel):
+    slot_id: str = Field(min_length=1)
+    participant_ref: str = Field(min_length=1)
+    role: str = Field(min_length=1)
+    reservation_ref: str = Field(min_length=1)
+    reservation_state: Literal["reserved", "released"] = "reserved"
+
+
+class InteractionSessionTerminalObservation(StrictEmbodiedModel):
+    participant_ref: str = Field(min_length=1)
+    attempt_ref: str = Field(min_length=1)
+    terminal_status: Literal["completed", "refused", "cancelled", "interrupted", "failed"]
+    payload_digest: str = Field(min_length=1)
+
+
+class InteractionSession(StrictEmbodiedModel):
+    session_id: str = Field(min_length=1)
+    semantic_action: str = Field(min_length=1)
+    initiator_ref: str = Field(min_length=1)
+    participant_refs: list[str] = Field(min_length=2)
+    target_refs: list[str] = Field(default_factory=list)
+    state: InteractionSessionState
+    participant_terms: list[InteractionSessionParticipantTerm] = Field(min_length=1)
+    slot_assignments: list[InteractionSessionSlotAssignment] = Field(default_factory=list)
+    reservation_refs: list[str] = Field(default_factory=list)
+    authority_preflight_ref: str = Field(min_length=1)
+    policy_revision: int = Field(ge=1)
+    scene_revision: int = Field(ge=1)
+    causation_id: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+    attempt_refs: list[str] = Field(default_factory=list)
+    settlement_ref: str | None = None
+    visibility_policy: str = Field(min_length=1)
+    audit_refs: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_session_participants(self) -> "InteractionSession":
+        if self.initiator_ref not in self.participant_refs:
+            raise ValueError("initiator_ref must be one of participant_refs")
+        term_refs = [term.participant_ref for term in self.participant_terms]
+        if sorted(term_refs) != sorted(self.participant_refs):
+            raise ValueError("participant_terms must match participant_refs")
+        slot_refs = [slot.participant_ref for slot in self.slot_assignments]
+        unknown_slots = sorted(set(slot_refs).difference(self.participant_refs))
+        if unknown_slots:
+            raise ValueError("slot assignment participant is not in participant_refs")
+        return self
+
+
 class SettlementWriterSelection(StrictEmbodiedModel):
     writer_kind: SettlementWriterKind | None = None
     accepted: bool
@@ -331,6 +399,8 @@ class EmbodiedEvidenceEvent(StrictEmbodiedModel):
         "settlement",
         "presentation",
         "late_after_terminal",
+        "session_lifecycle",
+        "participant_terminal_observation",
     ]
     emitter_kind: Literal["backend", "controller", "godot_mirror", "observatory"]
     emitter_id: str = Field(min_length=1)

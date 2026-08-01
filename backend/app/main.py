@@ -38,6 +38,8 @@ from app.models.runtime_state import ConversationCandidateEvent
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
 from app.models.visual_fact import VisualFactEvent
 from app.models.world_result import WorldResultBase
+from app.gameplay.dispatcher import GameplayOutboxDispatcher
+from app.gameplay.event_store import GameplayEventStore
 from app.services.candidate_percept_service import compile_candidate_percepts
 from app.services.character_service import CharacterService
 from app.services.character_perceived_input_service import CharacterPerceivedInputService
@@ -48,6 +50,10 @@ from app.services.conversation_relation_service import ConversationRelationServi
 from app.services.esm_service import ESMService
 from app.services.embodied_controller_auth_service import EmbodiedControllerAuthService, EmbodiedControllerEnrollment
 from app.services.embodied_execution_ingress import EmbodiedExecutionIngress, EmbodiedRealizationRouteGate
+from app.services.embodied_carry_place_authority_service import EmbodiedCarryPlaceAuthorityService
+from app.services.embodied_evidence_ledger import EmbodiedEvidenceLedger
+from app.services.embodied_handoff_authority_service import EmbodiedHandoffAuthorityService
+from app.services.embodied_interaction_session_service import EmbodiedInteractionSessionService
 from app.services.event_trace_service import EventTraceService
 from app.services.fact_handlers.visual_fact_handler import (
     VisualFactHandlerContext,
@@ -130,6 +136,12 @@ def reset_runtime_state() -> None:
     global embodied_controller_auth_service
     global embodied_execution_ingress
     global embodied_realization_route_gate
+    global gameplay_event_store
+    global gameplay_outbox_dispatcher
+    global embodied_evidence_ledger
+    global embodied_interaction_session_service
+    global embodied_handoff_authority_service
+    global embodied_carry_place_authority_service
     global _pending_siming_character_dispatch_messages
 
     runtime = SessionInputRouter()
@@ -166,6 +178,44 @@ def reset_runtime_state() -> None:
     character_runtime_state_service = CharacterRuntimeStateService()
     authority_event_adapter = Phase0AuthorityEventAdapter()
     authority_event_bus = InMemoryAuthorityEventBus()
+    gameplay_event_store = GameplayEventStore()
+    gameplay_outbox_dispatcher = GameplayOutboxDispatcher(store=gameplay_event_store, bus=authority_event_bus)
+    embodied_evidence_ledger = EmbodiedEvidenceLedger()
+    embodied_interaction_session_service = EmbodiedInteractionSessionService(
+        store=gameplay_event_store,
+        dispatcher=gameplay_outbox_dispatcher,
+        evidence_ledger=embodied_evidence_ledger,
+    )
+    embodied_handoff_authority_service = EmbodiedHandoffAuthorityService(
+        store=gameplay_event_store,
+        dispatcher=gameplay_outbox_dispatcher,
+        evidence_ledger=embodied_evidence_ledger,
+    )
+    embodied_handoff_authority_service.seed_asset_possession(
+        asset_ref="item:letter_01",
+        custody_holder_ref="character:siming",
+        owner_ref="character:siming",
+    )
+    embodied_carry_place_authority_service = EmbodiedCarryPlaceAuthorityService(
+        store=gameplay_event_store,
+        dispatcher=gameplay_outbox_dispatcher,
+        evidence_ledger=embodied_evidence_ledger,
+    )
+    embodied_carry_place_authority_service.seed_asset_possession(
+        asset_ref="item:crate_01",
+        custody_holder_ref="world:anchor:table_01",
+        owner_ref="character:siming",
+    )
+    embodied_carry_place_authority_service.seed_drop_target(
+        target_ref="world:anchor:floor_slot_01",
+        occupied_by_ref="",
+        scene_revision=11,
+    )
+    embodied_carry_place_authority_service.seed_drop_target(
+        target_ref="world:anchor:occupied_slot_01",
+        occupied_by_ref="item:barrel_01",
+        scene_revision=11,
+    )
     siming_audit_writer = SimingAuditWriter()
     _pending_siming_character_dispatch_messages = {}
     siming_event_pipeline = SimingEventPipeline(
@@ -435,6 +485,15 @@ async def debug_websocket_endpoint(websocket: WebSocket) -> None:
 
 
 def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
+    if envelope.message_type == "embodied_interaction_session_probe":
+        return _handle_embodied_interaction_session_probe(envelope)
+
+    if envelope.message_type == "embodied_handoff_probe":
+        return _handle_embodied_handoff_probe(envelope)
+
+    if envelope.message_type == "embodied_grab_carry_place_probe":
+        return _handle_embodied_grab_carry_place_probe(envelope)
+
     if envelope.message_type == "embodied_controller_bind":
         try:
             enrollment = EmbodiedControllerEnrollment.model_validate(envelope.payload)
@@ -1124,6 +1183,288 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         return _finalize_outbound_messages(messages)
 
     return messages
+
+
+def _handle_embodied_interaction_session_probe(envelope: Envelope) -> list[dict[str, object]]:
+    payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+    session_id = str(payload.get("session_id", "") or "session:handshake:websocket")
+    semantic_action = str(payload.get("semantic_action", "") or "handshake")
+    initiator_ref = str(payload.get("initiator_ref", "") or "character:siming")
+    participant_refs = [str(item) for item in payload.get("participant_refs", [])] if isinstance(payload.get("participant_refs", []), list) else []
+    if not participant_refs:
+        participant_refs = [initiator_ref, "character:maya"]
+    target_refs = [str(item) for item in payload.get("target_refs", [])] if isinstance(payload.get("target_refs", []), list) else []
+    participant_private_terms = payload.get("participant_private_terms")
+    if participant_private_terms is not None and not isinstance(participant_private_terms, dict):
+        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, "invalid_participant_private_terms")
+
+    bus_start = len(authority_event_bus.list_events())
+    proposed = embodied_interaction_session_service.propose(
+        session_id=session_id,
+        semantic_action=semantic_action,
+        initiator_ref=initiator_ref,
+        participant_refs=participant_refs,
+        target_refs=target_refs,
+        authority_preflight_ref=str(payload.get("authority_preflight_ref", "") or f"preflight:{session_id}"),
+        policy_revision=int(payload.get("policy_revision", 3) or 3),
+        scene_revision=int(payload.get("scene_revision", 11) or 11),
+        causation_id=str(payload.get("causation_id", "") or f"cmd:{session_id}:propose"),
+        correlation_id=str(payload.get("correlation_id", "") or f"corr:{session_id}"),
+        participant_private_terms=participant_private_terms,
+    )
+    if not proposed.accepted:
+        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, proposed.error_code)
+
+    for participant_ref in participant_refs:
+        if participant_ref == initiator_ref:
+            continue
+        accepted = embodied_interaction_session_service.accept(
+            session_id=session_id,
+            participant_ref=participant_ref,
+            causation_id=f"cmd:{session_id}:accept:{participant_ref}",
+            payload_digest=f"digest:accept:{session_id}:{participant_ref}",
+        )
+        if not accepted.accepted:
+            return EmbodiedExecutionIngress.protocol_error(envelope.message_type, accepted.error_code)
+
+    realizing = embodied_interaction_session_service.start_realizing(
+        session_id=session_id,
+        causation_id=f"cmd:{session_id}:realize",
+    )
+    if not realizing.accepted:
+        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, realizing.error_code)
+
+    session_messages = [
+        outbound
+        for event in authority_event_bus.list_events()[bus_start:]
+        if (outbound := _embodied_session_event_envelope_from_authority_event(event)) is not None
+    ]
+    return [
+        _as_envelope(
+            "ack",
+            {
+                "accepted": True,
+                "source_type": "embodied_interaction_session_probe",
+                "route": "embodied_interaction_session",
+            },
+        ),
+        *session_messages,
+    ]
+
+
+def _embodied_session_event_envelope_from_authority_event(event: AuthorityEvent) -> dict[str, object] | None:
+    if not event.event_type.startswith("embodied.interaction_session."):
+        return None
+    payload = dict(event.payload)
+    committed_payload = payload.get("committed_payload", {})
+    if not isinstance(committed_payload, dict):
+        committed_payload = {}
+    state = str(payload.get("state", "") or committed_payload.get("state", "") or "")
+    safe_payload: dict[str, object] = {
+        "event_type": event.event_type,
+        "session_id": str(payload.get("session_id", "") or committed_payload.get("session_id", "") or ""),
+        "semantic_action": str(payload.get("semantic_action", "") or committed_payload.get("semantic_action", "") or ""),
+        "state": state,
+        "safe_phase": str(payload.get("safe_phase", "") or state),
+        "sync_status": str(payload.get("sync_status", "") or state),
+        "transaction_id": str(payload.get("transaction_id", "") or ""),
+        "event_id": str(payload.get("event_id", "") or event.event_id),
+        "stream_id": str(payload.get("stream_id", "") or ""),
+        "stream_revision": int(payload.get("stream_revision", 0) or 0),
+        "global_sequence": int(payload.get("global_sequence", 0) or 0),
+    }
+    allowed_projection_fields = {
+        "initiator_ref",
+        "participant_ref",
+        "participant_refs",
+        "target_refs",
+        "slot_assignments",
+        "reservation_refs",
+        "actor_ref",
+        "target_ref",
+        "reason_code",
+        "attempt_ref",
+        "attempt_refs",
+        "terminal_status",
+        "settlement_ref",
+        "policy_revision",
+        "scene_revision",
+        "visibility_policy",
+    }
+    for field_name in allowed_projection_fields:
+        if field_name in payload:
+            safe_payload[field_name] = payload[field_name]
+        elif field_name in committed_payload:
+            safe_payload[field_name] = committed_payload[field_name]
+    return _as_envelope("embodied_interaction_session_event", safe_payload)
+
+
+def _handle_embodied_handoff_probe(envelope: Envelope) -> list[dict[str, object]]:
+    payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+    session_id = str(payload.get("session_id", "") or "session:handoff:websocket:1")
+    asset_ref = str(payload.get("asset_ref", "") or "item:letter_01")
+    from_actor_ref = str(payload.get("from_actor_ref", "") or "character:siming")
+    to_actor_ref = str(payload.get("to_actor_ref", "") or "character:maya")
+    bus_start = len(authority_event_bus.list_events())
+    started = embodied_handoff_authority_service.start_handoff(
+        session_id=session_id,
+        asset_ref=asset_ref,
+        from_actor_ref=from_actor_ref,
+        to_actor_ref=to_actor_ref,
+        causation_id=f"cmd:{session_id}:start",
+        correlation_id=f"corr:{session_id}",
+    )
+    if not started.accepted:
+        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, started.error_code)
+    settled = embodied_handoff_authority_service.settle_handoff(
+        session_id=session_id,
+        asset_ref=asset_ref,
+        from_actor_ref=from_actor_ref,
+        to_actor_ref=to_actor_ref,
+        participant_observations={
+            from_actor_ref: f"digest:terminal:{session_id}:{from_actor_ref}",
+            to_actor_ref: f"digest:terminal:{session_id}:{to_actor_ref}",
+        },
+        idempotency_key=f"handoff:{session_id}:settle",
+        payload_digest=f"digest:handoff:{session_id}",
+    )
+    if not settled.accepted:
+        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, settled.error_code)
+    handoff_messages = [
+        outbound
+        for event in authority_event_bus.list_events()[bus_start:]
+        if (outbound := _embodied_handoff_event_envelope_from_authority_event(event)) is not None
+    ]
+    return [
+        _as_envelope(
+            "ack",
+            {
+                "accepted": True,
+                "source_type": "embodied_handoff_probe",
+                "route": "embodied_handoff_authority",
+            },
+        ),
+        *handoff_messages,
+    ]
+
+
+def _embodied_handoff_event_envelope_from_authority_event(event: AuthorityEvent) -> dict[str, object] | None:
+    if event.event_type != "embodied.handoff.settled":
+        return None
+    payload = dict(event.payload)
+    committed_payload = payload.get("committed_payload", {})
+    if not isinstance(committed_payload, dict):
+        committed_payload = {}
+    safe_payload: dict[str, object] = {
+        "event_type": event.event_type,
+        "transaction_id": str(payload.get("transaction_id", "") or ""),
+        "event_id": str(payload.get("event_id", "") or event.event_id),
+        "stream_id": str(payload.get("stream_id", "") or ""),
+        "stream_revision": int(payload.get("stream_revision", 0) or 0),
+        "global_sequence": int(payload.get("global_sequence", 0) or 0),
+    }
+    allowed_fields = {
+        "session_id",
+        "asset_ref",
+        "from_actor_ref",
+        "to_actor_ref",
+        "custody_holder_ref",
+        "owner_ref",
+        "settlement_ref",
+        "attachment_directive",
+    }
+    for field_name in allowed_fields:
+        if field_name in payload:
+            safe_payload[field_name] = payload[field_name]
+        elif field_name in committed_payload:
+            safe_payload[field_name] = committed_payload[field_name]
+    return _as_envelope("embodied_handoff_event", safe_payload)
+
+
+def _handle_embodied_grab_carry_place_probe(envelope: Envelope) -> list[dict[str, object]]:
+    payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+    session_id = str(payload.get("session_id", "") or "session:carry-place:websocket:1")
+    asset_ref = str(payload.get("asset_ref", "") or "item:crate_01")
+    actor_ref = str(payload.get("actor_ref", "") or "character:siming")
+    source_holder_ref = str(payload.get("source_holder_ref", "") or "world:anchor:table_01")
+    drop_target_ref = str(payload.get("drop_target_ref", "") or "world:anchor:floor_slot_01")
+    bus_start = len(authority_event_bus.list_events())
+    started = embodied_carry_place_authority_service.start_carry_place(
+        session_id=session_id,
+        asset_ref=asset_ref,
+        actor_ref=actor_ref,
+        source_holder_ref=source_holder_ref,
+        drop_target_ref=drop_target_ref,
+        causation_id=f"cmd:{session_id}:start",
+        correlation_id=f"corr:{session_id}",
+    )
+    if not started.accepted:
+        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, started.error_code)
+    settled = embodied_carry_place_authority_service.settle_carry_place(
+        session_id=session_id,
+        asset_ref=asset_ref,
+        actor_ref=actor_ref,
+        source_holder_ref=source_holder_ref,
+        drop_target_ref=drop_target_ref,
+        participant_observations={
+            actor_ref: f"digest:terminal:{session_id}:{actor_ref}",
+            drop_target_ref: f"digest:terminal:{session_id}:{drop_target_ref}",
+        },
+        idempotency_key=f"carry-place:{session_id}:settle",
+        payload_digest=f"digest:carry-place:{session_id}",
+    )
+    if not settled.accepted:
+        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, settled.error_code)
+    carry_place_messages = [
+        outbound
+        for event in authority_event_bus.list_events()[bus_start:]
+        if (outbound := _embodied_carry_place_event_envelope_from_authority_event(event)) is not None
+    ]
+    return [
+        _as_envelope(
+            "ack",
+            {
+                "accepted": True,
+                "source_type": "embodied_grab_carry_place_probe",
+                "route": "embodied_carry_place_authority",
+            },
+        ),
+        *carry_place_messages,
+    ]
+
+
+def _embodied_carry_place_event_envelope_from_authority_event(event: AuthorityEvent) -> dict[str, object] | None:
+    if event.event_type != "embodied.place.settled":
+        return None
+    payload = dict(event.payload)
+    committed_payload = payload.get("committed_payload", {})
+    if not isinstance(committed_payload, dict):
+        committed_payload = {}
+    safe_payload: dict[str, object] = {
+        "event_type": event.event_type,
+        "transaction_id": str(payload.get("transaction_id", "") or ""),
+        "event_id": str(payload.get("event_id", "") or event.event_id),
+        "stream_id": str(payload.get("stream_id", "") or ""),
+        "stream_revision": int(payload.get("stream_revision", 0) or 0),
+        "global_sequence": int(payload.get("global_sequence", 0) or 0),
+    }
+    allowed_fields = {
+        "session_id",
+        "asset_ref",
+        "actor_ref",
+        "source_holder_ref",
+        "drop_target_ref",
+        "custody_holder_ref",
+        "owner_ref",
+        "settlement_ref",
+        "placement_directive",
+    }
+    for field_name in allowed_fields:
+        if field_name in payload:
+            safe_payload[field_name] = payload[field_name]
+        elif field_name in committed_payload:
+            safe_payload[field_name] = committed_payload[field_name]
+    return _as_envelope("embodied_carry_place_event", safe_payload)
 
 
 def _parse_player_input(payload: dict) -> MoveIntent | DialogueSubmit | InteractIntent | FocusTargetChange:

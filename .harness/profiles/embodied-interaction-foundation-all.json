@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
   "name": "embodied-interaction-foundation-all",
-  "order": 78,
+  "order": 84,
   "script": "scripts/verification/verify_embodied_interaction_foundation_all.py",
   "requires_godot": true,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/embodied-interaction-foundation-all-report.json",
-  "description": "Dependency-ordered aggregate for embodied-interaction product foundation Phase 0 through Phase 5; Phase 6 remains blocked until gameplay event store and atomic event-batch writer verification exists"
+  "description": "Dependency-ordered aggregate for embodied-interaction product foundation Phase 0 through Phase 7 backend InteractionSession, handoff, and grab-carry-place websocket/Godot runtime delivery; Phase 6 starts only after the Gameplay event-spine gate passes"
 }
