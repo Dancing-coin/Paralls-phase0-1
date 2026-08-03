@@ -626,7 +626,7 @@ def test_ensure_backend_can_restart_same_worktree_backend_when_fresh_backend_req
         health_state["calls"] += 1
         if health_state["calls"] == 1:
             return {"status": "ok", "worktree_root": str(tmp_path)}
-        if health_state["calls"] == 2:
+        if health_state["calls"] in {2, 3}:
             return None
         return {"status": "ok", "worktree_root": str(tmp_path)}
 

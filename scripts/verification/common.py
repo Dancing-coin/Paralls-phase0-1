@@ -301,6 +301,26 @@ def _terminate_listener_pid(pid: int) -> None:
     )
 
 
+def wait_for_backend_release(
+    *,
+    port: int = 8000,
+    timeout_seconds: float = 15.0,
+    clear_observations_required: int = 2,
+) -> bool:
+    """Wait until the HTTP endpoint and its TCP listener are both stably gone."""
+    deadline = time.time() + timeout_seconds
+    clear_observations = 0
+    while time.time() < deadline:
+        if get_health() is None and _find_listener_pid(port) is None:
+            clear_observations += 1
+            if clear_observations >= clear_observations_required:
+                return True
+        else:
+            clear_observations = 0
+        time.sleep(0.1)
+    return False
+
+
 def ensure_backend(
     project_root: Path,
     python_exe: str,
@@ -317,11 +337,8 @@ def ensure_backend(
             listener_pid = _find_listener_pid(8000)
             if listener_pid is not None:
                 _terminate_listener_pid(listener_pid)
-                deadline = time.time() + 15.0
-                while time.time() < deadline:
-                    if get_health() is None and _find_listener_pid(8000) is None:
-                        break
-                    time.sleep(0.1)
+            if not wait_for_backend_release():
+                raise RuntimeError("Backend port 8000 did not fully release within 15 seconds.")
             health = None
         elif str(health.get("worktree_root", "")) == expected_root:
             return health, None

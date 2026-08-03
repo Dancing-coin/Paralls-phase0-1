@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 from pathlib import Path
 
 from common import repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
@@ -23,10 +24,24 @@ def _gameplay_bus_publish_is_dispatcher_scoped(project_root: Path) -> bool:
         return False
     offenders: list[str] = []
     for path in gameplay_dir.rglob("*.py"):
-        text = path.read_text(encoding="utf-8", errors="replace")
-        if ".publish(" in text and path.name != "dispatcher.py":
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"), filename=str(path))
+        if path.name != "dispatcher.py" and any(
+            _is_authority_bus_publish(call) for call in ast.walk(tree) if isinstance(call, ast.Call)
+        ):
             offenders.append(str(path.relative_to(project_root)))
     return offenders == []
+
+
+def _is_authority_bus_publish(call: ast.Call) -> bool:
+    """Recognize the authority bus without conflating other local repositories."""
+    if not isinstance(call.func, ast.Attribute) or call.func.attr != "publish":
+        return False
+    receiver = call.func.value
+    if isinstance(receiver, ast.Attribute):
+        return receiver.attr in {"_bus", "_authority_event_bus"}
+    if isinstance(receiver, ast.Name):
+        return receiver.id in {"bus", "authority_event_bus"}
+    return False
 
 
 def main() -> int:

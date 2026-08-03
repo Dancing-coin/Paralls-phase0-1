@@ -14,6 +14,7 @@ const FLOOR_CHECKPOINTS := [
 ]
 const FLOOR_GRID_X := [-9.0, -6.0, -3.0, 0.0, 3.0, 6.0, 9.0]
 const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
+const BACKEND_RECONNECT_RETRY_DELAY_SECONDS := 0.5
 
 @export var backend_url := "ws://127.0.0.1:8000/ws"
 @export var autotest_enabled := false
@@ -320,14 +321,14 @@ func _on_backend_disconnected(_code: int = 0) -> void:
 	if autotest_shutdown_in_progress:
 		return
 	if not backend_connected_once and _code == -1:
-		_request_backend_reconnect()
+		_schedule_backend_reconnect_retry()
 		return
 	spatial_zone_emitted = false
 	pending_focus_sync = true
 	last_spatial_access_actor_target = ""
 	last_spatial_access_actor_ts = 0
 	current_privacy_band = "public"
-	_request_backend_reconnect()
+	_schedule_backend_reconnect_retry()
 
 func _on_backend_ack_received(payload: Dictionary) -> void:
 	if str(payload.get("route", "")) == "local_motion":
@@ -935,10 +936,30 @@ func _perform_backend_reconnect() -> void:
 	if bridge.has_method("is_backend_open") and bridge.is_backend_open():
 		pending_backend_reconnect = false
 		return
+	# This flag covers only a queued attempt. Clear it before the asynchronous
+	# handshake so a refused connection can queue the next retry.
+	pending_backend_reconnect = false
 	var err: int = bridge.connect_to_backend(backend_url)
 	_bus_log("phase0_backend_reconnect_err:%s" % err)
 	if err != OK:
+		_schedule_backend_reconnect_retry()
+
+func _schedule_backend_reconnect_retry() -> void:
+	var bridge := _get_bridge()
+	if bridge == null:
+		return
+	if bridge.has_method("is_backend_open") and bridge.is_backend_open():
 		pending_backend_reconnect = false
+		return
+	if pending_backend_reconnect:
+		return
+	pending_backend_reconnect = true
+	call_deferred("_retry_backend_after_delay")
+
+func _retry_backend_after_delay() -> void:
+	await get_tree().create_timer(BACKEND_RECONNECT_RETRY_DELAY_SECONDS).timeout
+	pending_backend_reconnect = false
+	_request_backend_reconnect()
 
 func _flush_pending_backend_requests() -> void:
 	if not pending_dialogue_request.is_empty():

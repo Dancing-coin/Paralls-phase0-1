@@ -121,7 +121,7 @@ def test_phase0_main_demo_ignores_preopen_disconnect_before_first_backend_connec
 
     assert "backend_connected_once" in source
     assert "if not backend_connected_once and _code == -1:" in disconnect_section
-    assert "_request_backend_reconnect()" in disconnect_section.split(
+    assert "_schedule_backend_reconnect_retry()" in disconnect_section.split(
         "if not backend_connected_once and _code == -1:", 1
     )[1].split("return", 1)[0]
 

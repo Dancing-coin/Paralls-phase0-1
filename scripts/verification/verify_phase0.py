@@ -19,6 +19,7 @@ from common import (
     run_command,
     run_command_until_markers,
     stop_backend,
+    wait_for_backend_release,
     verification_dir,
     write_json,
     write_markdown,
@@ -223,6 +224,10 @@ def main() -> int:
         if backend_process is not None:
             stop_backend(backend_process)
             backend_process = None
+        if not wait_for_backend_release():
+            raise RuntimeError(
+                "Phase 0 backend port 8000 did not fully release before fresh-start child probes."
+            )
         execution_probe_report = _read_character_agent_execution_result(log_dir, project_root, python_exe, godot_exe)
         execution_probe_results = execution_probe_report.get("results", []) if isinstance(execution_probe_report, dict) else []
         execution_ids = {
