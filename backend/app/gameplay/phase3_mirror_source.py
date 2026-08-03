@@ -106,8 +106,13 @@ class Phase3MirrorSource:
         )
 
     def godot_view(self):
-        events = self.store.read_events()
         actor_ref = self.configuration.actor_ref
+        # Each configured source rebuilds only its own committed actor stream.
+        events = tuple(
+            event
+            for event in self.store.read_events()
+            if str(event.payload.get("actor_ref", "")) == actor_ref
+        )
         lifecycle = self._lifecycle_projector.rebuild(actor_ref, events)
         unsupported_enabled = set(lifecycle.enabled_group_ids).difference(_SUPPORTED_GROUP_IDS)
         if unsupported_enabled:

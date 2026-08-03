@@ -19,6 +19,13 @@ class SimingLlmRouteSettings(BaseModel):
     enabled: bool = True
 
 
+class GameplayMirrorTrustedLocalLaunchProfileSettings(BaseModel):
+    profile_ref: str
+    principal_ref: str
+    allowed_actor_refs: tuple[str, ...]
+    credential_ttl_seconds: int = Field(ge=1, le=300)
+
+
 class Settings(BaseModel):
     dialogue_mode: str = "stub"
     tts_mode: Literal["stub", "openai_compatible", "dashscope_http"] = "stub"
@@ -76,6 +83,13 @@ class Settings(BaseModel):
     vla_live_proof_artifact_ref: str = "visual_artifact:vla-live-proof"
     vla_provider_live_proof_run_id: str = ""
     gameplay_mirror_phase3_actor_configs: list[dict[str, object]] = Field(default_factory=list)
+    gameplay_mirror_trusted_local_launch_profiles: list[GameplayMirrorTrustedLocalLaunchProfileSettings] = Field(default_factory=list)
+    gameplay_mirror_launcher_bootstrap_secret: str | None = Field(default=None, repr=False, exclude=True)
+    gameplay_mirror_projection_queue_capacity: int = Field(default=128, ge=1, le=1024)
+    gameplay_mirror_control_queue_capacity: int = Field(default=8, ge=1, le=128)
+    gameplay_mirror_dirty_actor_limit: int = Field(default=16, ge=1, le=128)
+    gameplay_mirror_live_probe_drop_first_delivery: bool = False
+    gameplay_mirror_live_probe_delivery_delay_seconds: float = Field(default=0, ge=0, le=1)
     non_runtime_model_mode: Literal["disabled", "http", "local", "blocked"] = "disabled"
     non_runtime_model_endpoint: str | None = None
     non_runtime_model_api_key: str | None = Field(default=None, repr=False, exclude=True)
@@ -234,6 +248,16 @@ settings = Settings(
     or "visual_artifact:vla-live-proof",
     vla_provider_live_proof_run_id=_env_value("VLA_PROVIDER_LIVE_PROOF_RUN_ID", "") or "",
     gameplay_mirror_phase3_actor_configs=_env_object_list("GAMEPLAY_MIRROR_PHASE3_ACTORS_JSON"),
+    gameplay_mirror_trusted_local_launch_profiles=[
+        GameplayMirrorTrustedLocalLaunchProfileSettings.model_validate(item)
+        for item in _env_object_list("GAMEPLAY_MIRROR_TRUSTED_LOCAL_LAUNCH_PROFILES_JSON")
+    ],
+    gameplay_mirror_launcher_bootstrap_secret=_env_optional("GAMEPLAY_MIRROR_LAUNCHER_BOOTSTRAP_SECRET"),
+    gameplay_mirror_projection_queue_capacity=int(_env_value("GAMEPLAY_MIRROR_PROJECTION_QUEUE_CAPACITY", "128") or "128"),
+    gameplay_mirror_control_queue_capacity=int(_env_value("GAMEPLAY_MIRROR_CONTROL_QUEUE_CAPACITY", "8") or "8"),
+    gameplay_mirror_dirty_actor_limit=int(_env_value("GAMEPLAY_MIRROR_DIRTY_ACTOR_LIMIT", "16") or "16"),
+    gameplay_mirror_live_probe_drop_first_delivery=_env_bool("GAMEPLAY_MIRROR_LIVE_PROBE_DROP_FIRST_DELIVERY", False),
+    gameplay_mirror_live_probe_delivery_delay_seconds=float(_env_value("GAMEPLAY_MIRROR_LIVE_PROBE_DELIVERY_DELAY_SECONDS", "0") or "0"),
     non_runtime_model_mode=_env_value("NON_RUNTIME_MODEL_MODE", "disabled") or "disabled",
     non_runtime_model_endpoint=_env_value("NON_RUNTIME_MODEL_ENDPOINT"),
     non_runtime_model_api_key=_env_value("NON_RUNTIME_MODEL_API_KEY"),

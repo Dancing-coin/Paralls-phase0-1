@@ -21,6 +21,7 @@ from common import (
     repo_root,
     resolve_python_exe,
     run_command,
+    run_command_until_markers,
     verification_dir,
     write_json,
     write_markdown,
@@ -462,7 +463,7 @@ def main() -> int:
     godot_probe_ok = False
     runtime_space_model_path = log_dir / "l1-space-model-runtime.json"
     if godot_exe is not None:
-        godot_result = run_command(
+        godot_result = run_command_until_markers(
             [
                 str(godot_exe),
                 "--path",
@@ -476,6 +477,8 @@ def main() -> int:
             ],
             project_root,
             godot_log,
+            success_markers=["l1_world_fact_runtime_probe:runtime_source_refs=true"],
+            timeout_seconds=60,
         )
         godot_text = read_text(godot_log)
         godot_probe_ok = (

@@ -105,7 +105,17 @@ def test_gameplay_mirror_websocket_routes_use_backend_published_view_and_bound_s
     _handle_envelope(
         Envelope(
             message_type="websocket_session_bind",
-            payload={"credential_kind": "trusted_local_launch", "credential": credential, "protocol_version": 1},
+            payload={
+                "credential_kind": "trusted_local_launch",
+                "credential": credential,
+                "protocol_version": 1,
+                "capability_offer": {
+                    "protocol_version": 2,
+                    "supports_snapshot": True,
+                    "supports_receipt": True,
+                    "projection_schemas": ["gameplay_runtime_state.godot.v1"],
+                },
+            },
         ),
         connection_context=context,
     )
@@ -168,6 +178,126 @@ def test_gameplay_mirror_subscription_fails_closed_without_backend_projection() 
 
     assert messages[0]["payload"]["accepted"] is False
     assert messages[0]["payload"]["error_code"] == "mirror_projection_unavailable"
+
+
+def test_gameplay_mirror_resync_requires_an_existing_authorized_subscription() -> None:
+    import app.main as main
+
+    reset_runtime_state()
+    credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
+        principal_ref="principal:player:1",
+        allowed_actor_refs=("actor:visible",),
+        issued_at=10,
+        expires_at=20,
+    )
+    context = WebSocketConnectionContext(remote_host="127.0.0.1", observed_at=11)
+    _handle_envelope(
+        Envelope(
+            message_type="websocket_session_bind",
+            payload={"credential_kind": "trusted_local_launch", "credential": credential, "protocol_version": 1},
+        ),
+        connection_context=context,
+    )
+    main.gameplay_godot_projection_repository.publish(_godot_view("actor:visible"))
+
+    unsubscribed = _handle_envelope(
+        Envelope(message_type="gameplay_mirror_resync_request", payload={"actor_ref": "actor:visible"}),
+        connection_context=context,
+    )
+    unauthorized = _handle_envelope(
+        Envelope(message_type="gameplay_mirror_resync_request", payload={"actor_ref": "actor:hidden"}),
+        connection_context=context,
+    )
+
+    assert unsubscribed[0]["payload"]["error_code"] == "mirror_subscription_required"
+    assert unauthorized[0]["payload"]["error_code"] == "mirror_scope_unauthorized"
+
+
+def test_gameplay_mirror_receipt_is_connection_local_and_does_not_mutate_authority_store() -> None:
+    import app.main as main
+
+    reset_runtime_state()
+    credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
+        principal_ref="principal:player:1",
+        allowed_actor_refs=("actor:visible",),
+        issued_at=10,
+        expires_at=20,
+    )
+    context = WebSocketConnectionContext(remote_host="127.0.0.1", observed_at=11, connection_ref="connection:receipt")
+    _handle_envelope(
+        Envelope(
+            message_type="websocket_session_bind",
+            payload={
+                "credential_kind": "trusted_local_launch",
+                "credential": credential,
+                "protocol_version": 1,
+                "capability_offer": {
+                    "protocol_version": 2,
+                    "supports_snapshot": True,
+                    "supports_receipt": True,
+                    "projection_schemas": ["gameplay_runtime_state.godot.v1"],
+                },
+            },
+        ),
+        connection_context=context,
+    )
+    assert context.binding is not None
+    main.gameplay_mirror_connection_registry.register(
+        session_ref=context.binding.session_ref,
+        connection_ref=context.connection_ref,
+        connection_epoch=context.binding.connection_epoch,
+        deliver=lambda _payload: None,
+    )
+    main.gameplay_mirror_connection_registry.deliver(
+        context.binding.session_ref,
+        {"actor_ref": "actor:visible", "projection_kind": "gameplay_runtime_state.godot.v1", "facade_revision": "facade:1"},
+    )
+    authority_snapshot = main.gameplay_event_store.export_snapshot()
+
+    receipt = _handle_envelope(
+        Envelope(
+            message_type="gameplay_mirror_receipt",
+            payload={"connection_epoch": context.binding.connection_epoch, "delivery_sequence": 1},
+        ),
+        connection_context=context,
+    )
+
+    assert receipt[0]["payload"]["accepted"] is True
+    assert receipt[0]["payload"]["route"] == "gameplay_mirror_receipt"
+    assert main.gameplay_event_store.export_snapshot() == authority_snapshot
+
+
+def test_websocket_bind_rejects_capability_offer_without_snapshot_support_before_connection_registration() -> None:
+    import app.main as main
+
+    reset_runtime_state()
+    credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
+        principal_ref="principal:player:1",
+        allowed_actor_refs=("actor:visible",),
+        issued_at=10,
+        expires_at=20,
+    )
+    context = WebSocketConnectionContext(remote_host="127.0.0.1", observed_at=11)
+
+    messages = _handle_envelope(
+        Envelope(
+            message_type="websocket_session_bind",
+            payload={
+                "credential_kind": "trusted_local_launch",
+                "credential": credential,
+                "protocol_version": 1,
+                "capability_offer": {
+                    "protocol_version": 2,
+                    "supports_snapshot": False,
+                    "projection_schemas": ["gameplay_runtime_state.godot.v1"],
+                },
+            },
+        ),
+        connection_context=context,
+    )
+
+    assert messages[0]["payload"]["error_code"] == "mirror_capability_incompatible"
+    assert context.binding is None
 
 
 def _godot_view(actor_ref: str):

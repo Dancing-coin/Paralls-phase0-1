@@ -132,3 +132,22 @@ disconnect. It deliberately does not retry a consumed credential or infer a
 new session; reconnect requires a new backend-issued binding. The focused
 Godot headless probe now proves those local routing and disconnect semantics;
 it remains distinct from an end-to-end live mirror proof.
+
+## 2026-08-04 Phase 4 Contract Boundary
+
+The reconnect extension now has a typed fail-closed contract before transport
+behavior is enabled. Bindings expose backend-owned lifecycle, lease, and epoch
+fields; renewal requests carry no subject, actor scope, or credential material;
+capability offers cannot request fields or scope; and receipts carry only a
+server epoch and sent delivery sequence. Delta wrappers require exact facade
+base, checksums, and source revision metadata.
+
+The receipt ledger is bounded connection-local telemetry. It rejects stale,
+unknown, and expired-window receipts and cannot write Gameplay truth, alter an
+outbox entry, or expand a binding. The local Godot consumer rejects duplicate,
+old-epoch, gap, and base-less-delta delivery without changing confirmed state;
+it enters presentation-only `resync_required` instead.
+
+This is contract and local-probe evidence only. It does not enable renewal,
+delta application, queue recovery, reconnect, or live WebSocket mirror
+delivery. Those remain subject to the Phase 1 through Phase 6 gates.

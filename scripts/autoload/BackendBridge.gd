@@ -223,6 +223,12 @@ func _dispatch_message(raw_text: String) -> void:
             projection.erase("message_type")
             _bus_log("gameplay_runtime_state_projection:%s" % JSON.stringify(projection))
             _bus_emit("gameplay_runtime_state_projection_received", [projection])
+        "gameplay_mirror_delivery":
+            _bus_log("gameplay_mirror_delivery")
+            _bus_emit("gameplay_mirror_delivery_received", [payload])
+        "gameplay_mirror_resync_required":
+            _bus_log("gameplay_mirror_resync_required")
+            _bus_emit("gameplay_mirror_resync_required_received", [payload])
         _:
             _bus_log("backend_message:%s" % message_type)
 

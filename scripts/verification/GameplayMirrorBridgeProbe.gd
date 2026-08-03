@@ -15,7 +15,7 @@ func _run_probe() -> void:
 	add_child(consumer)
 	bridge.register_consumer("actor:visible", consumer)
 	var bus := get_node_or_null("/root/LocalPresentationBus")
-	var ok := bus != null
+	var ok := bus != null and bridge.bind_session() == ERR_UNCONFIGURED
 	if bus:
 		bus.emit_signal("websocket_session_bound_received", {
 			"session_ref": "ws_session:probe",
@@ -30,6 +30,51 @@ func _run_probe() -> void:
 		bus.emit_signal("backend_disconnected", 1006)
 		ok = ok and consumer.actor_ref.is_empty()
 		ok = ok and consumer.visible_groups.is_empty()
+		ok = ok and not bridge.has_pending_enrollment()
+		ok = ok and bridge.bind_session() == ERR_UNCONFIGURED
+	var delivery_consumer = MIRROR_CONSUMER.new()
+	var first_delivery := delivery_consumer.consume_delivery(_delivery(2, 1, "snapshot", "facade:delivery:1"))
+	var duplicate_delivery := delivery_consumer.consume_delivery(_delivery(2, 1, "snapshot", "facade:delivery:1"))
+	var next_epoch := delivery_consumer.consume_delivery(_delivery(3, 1, "snapshot", "facade:delivery:2"))
+	var stale_epoch := delivery_consumer.consume_delivery(_delivery(2, 2, "snapshot", "facade:delivery:stale"))
+	var forward_gap := delivery_consumer.consume_delivery(_delivery(3, 3, "snapshot", "facade:delivery:gap"))
+	var delta_consumer = MIRROR_CONSUMER.new()
+	var base_less_delta := delta_consumer.consume_delivery(_delivery(1, 1, "delta", "facade:delta"))
+	var applied_delta_consumer = MIRROR_CONSUMER.new()
+	var base_projection := _projection("actor:visible", "facade:delta:base")
+	base_projection["snapshot_checksum"] = "sha256:base"
+	base_projection["schema_capabilities"] = ["gameplay_runtime_state.godot.v1"]
+	var base_snapshot := applied_delta_consumer.consume_delivery({
+		"delivery_kind": "snapshot",
+		"connection_epoch": 1,
+		"delivery_sequence": 1,
+		"payload": base_projection,
+	})
+	var changed_projection := _projection("actor:visible", "facade:delta:target")
+	changed_projection["schema_capabilities"] = ["gameplay_runtime_state.godot.v1"]
+	changed_projection["enabled_state_groups"] = ["core.status"]
+	changed_projection["removed_group_ids"] = ["core.resources"]
+	changed_projection["groups"] = {"core.status": {"payload": {"current": 2}}}
+	var applied_delta := applied_delta_consumer.consume_delivery({
+		"delivery_kind": "delta",
+		"connection_epoch": 1,
+		"delivery_sequence": 2,
+		"base_facade_revision": "facade:delta:base",
+		"base_snapshot_checksum": "sha256:base",
+		"target_snapshot_checksum": "sha256:target",
+		"payload": changed_projection,
+	})
+	ok = ok and bool(first_delivery.get("accepted", false))
+	ok = ok and duplicate_delivery.get("error_code", "") == "mirror_sequence_duplicate"
+	ok = ok and bool(next_epoch.get("accepted", false))
+	ok = ok and stale_epoch.get("error_code", "") == "mirror_sequence_stale"
+	ok = ok and forward_gap.get("error_code", "") == "mirror_sequence_gap"
+	ok = ok and delivery_consumer.resync_required
+	ok = ok and base_less_delta.get("error_code", "") == "mirror_delta_base_required"
+	ok = ok and bool(base_snapshot.get("accepted", false))
+	ok = ok and bool(applied_delta.get("accepted", false))
+	ok = ok and applied_delta_consumer.facade_revision == "facade:delta:target"
+	ok = ok and applied_delta_consumer.visible_groups.has("core.status") and not applied_delta_consumer.visible_groups.has("core.resources")
 	var report := {
 		"status": "godot-runtime-gameplay-mirror-bridge-verified" if ok else "godot-runtime-gameplay-mirror-bridge-failed",
 		"accepted_projection_count": consumer.accepted_projection_count,
@@ -48,6 +93,15 @@ func _projection(actor_ref: String, facade_revision: String) -> Dictionary:
 		"actor_ref": actor_ref,
 		"facade_revision": facade_revision,
 		"groups": {"core.resources": {"payload": {"current": 7}}},
+	}
+
+
+func _delivery(epoch: int, sequence: int, delivery_kind: String, facade_revision: String) -> Dictionary:
+	return {
+		"delivery_kind": delivery_kind,
+		"connection_epoch": epoch,
+		"delivery_sequence": sequence,
+		"payload": _projection("actor:visible", facade_revision),
 	}
 
 

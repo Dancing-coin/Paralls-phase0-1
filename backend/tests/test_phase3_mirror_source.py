@@ -204,6 +204,21 @@ def test_installer_rejects_duplicate_actor_configuration() -> None:
         )
 
 
+def test_configured_actor_sources_ignore_other_actors_lifecycle_events() -> None:
+    store = GameplayEventStore()
+    first = _configuration("actor:configured-first")
+    second = _configuration("actor:configured-second")
+    repository = GameplayGodotProjectionRepository()
+    publisher = GameplayGodotProjectionPublisher(repository=repository)
+    install_phase3_mirror_sources(configurations=(first, second), store=store, publisher=publisher)
+
+    _append_resource_state(store, actor_ref=first.actor_ref, command_id="first")
+    _append_resource_state(store, actor_ref=second.actor_ref, command_id="second")
+
+    assert publisher.refresh_actor(actor_ref=first.actor_ref).actor_ref == first.actor_ref
+    assert publisher.refresh_actor(actor_ref=second.actor_ref).actor_ref == second.actor_ref
+
+
 def test_websocket_reads_a_configured_phase3_source_through_backend_session_scope(monkeypatch) -> None:
     import app.main as main
 
