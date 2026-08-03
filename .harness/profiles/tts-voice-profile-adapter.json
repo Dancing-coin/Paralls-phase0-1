@@ -6,5 +6,5 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/tts-voice-profile-adapter-report.json",
-  "description": "Backend proof for presentation-only TTS voice profiles, controlled XLSX catalog normalization, advisory candidate ranking, binding/provider-model validation, and enrollment boundary tests; it does not make a live provider call or approve production voices"
+  "description": "Credential-free backend proof for presentation-only TTS voice profile capabilities, controlled XLSX catalog normalization, advisory ranking, binding/provider-model/catalog-revision validation, legacy/stub fallback, and enrollment boundaries; it does not make a live provider call, approve production voices, or prove Godot playback"
 }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -13,6 +14,20 @@ from app.config import Settings
 
 class TTSVoiceProfileError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class TTSProviderCapabilities:
+    """Static presentation capabilities declared by one existing TTS adapter."""
+
+    provider_name: str
+    supported_models: frozenset[str]
+    supported_catalog_contracts: frozenset[str]
+    catalog_revision_policy: Literal["configuration_pinned"]
+    supports_presentation_instruction: bool
+    output_content_type: Literal["audio/wav"] = "audio/wav"
+    output_sample_format: Literal["pcm_s16le"] = "pcm_s16le"
+    requires_mono_output: bool = True
 
 
 class _VoiceProfileModel(BaseModel):
@@ -78,17 +93,36 @@ class TTSVoiceProfileResolver:
         self._catalog: TTSVoiceCatalog | None = None
         self._bindings_by_actor_id: dict[str, TTSVoiceBinding] | None = None
 
-    def resolve(self, actor_id: str) -> str | None:
-        binding = self._binding_for_actor(actor_id)
+    def resolve(
+        self,
+        actor_id: str,
+        *,
+        provider_capabilities: TTSProviderCapabilities | None = None,
+    ) -> str | None:
+        binding = self.resolve_binding(actor_id, provider_capabilities=provider_capabilities)
         if binding is None:
             return None
         return binding.voice_id
 
-    def resolve_presentation_instruction(self, actor_id: str) -> str | None:
+    def resolve_binding(
+        self,
+        actor_id: str,
+        *,
+        provider_capabilities: TTSProviderCapabilities | None = None,
+    ) -> TTSVoiceBinding | None:
+        """Return a validated existing presentation binding for controlled verification."""
+        return self._binding_for_actor(actor_id, provider_capabilities=provider_capabilities)
+
+    def resolve_presentation_instruction(
+        self,
+        actor_id: str,
+        *,
+        provider_capabilities: TTSProviderCapabilities | None = None,
+    ) -> str | None:
         """Resolve only an authored, catalog-allowed instruction behind its feature flag."""
         if not self._configuration.tts_presentation_instructions_enabled:
             return None
-        binding = self._binding_for_actor(actor_id)
+        binding = self._binding_for_actor(actor_id, provider_capabilities=provider_capabilities)
         if binding is None or not binding.presentation_instruction:
             return None
         assert self._catalog is not None
@@ -96,14 +130,19 @@ class TTSVoiceProfileResolver:
             raise TTSVoiceProfileError("TTS voice presentation instruction is not catalog-allowed")
         return binding.presentation_instruction
 
-    def _binding_for_actor(self, actor_id: str) -> TTSVoiceBinding | None:
+    def _binding_for_actor(
+        self,
+        actor_id: str,
+        *,
+        provider_capabilities: TTSProviderCapabilities | None,
+    ) -> TTSVoiceBinding | None:
         if not self._configuration.tts_voice_profiles_enabled:
             return None
         self._load_assets()
         assert self._bindings_by_actor_id is not None
         binding = self._bindings_by_actor_id.get(actor_id)
         if binding is not None:
-            self._validate_binding(binding)
+            self._validate_binding(binding, provider_capabilities=provider_capabilities)
         return binding
 
     def _load_assets(self) -> None:
@@ -132,15 +171,26 @@ class TTSVoiceProfileResolver:
             return candidate
         return Path(__file__).resolve().parents[3] / candidate
 
-    def _validate_binding(self, binding: TTSVoiceBinding) -> None:
+    def _validate_binding(
+        self,
+        binding: TTSVoiceBinding,
+        *,
+        provider_capabilities: TTSProviderCapabilities | None,
+    ) -> None:
         assert self._catalog is not None
         catalog = self._catalog
         if binding.selection_status != "approved":
             raise TTSVoiceProfileError("TTS voice binding is not approved")
+        if not binding.approved_by or not binding.approved_by.strip():
+            raise TTSVoiceProfileError("TTS voice binding is missing an operator approval reference")
         if binding.provider != catalog.provider or binding.model != catalog.model:
             raise TTSVoiceProfileError("TTS voice binding does not match its catalog")
         if binding.catalog_revision != catalog.catalog_revision:
             raise TTSVoiceProfileError("TTS voice binding references a different catalog revision")
+        if not self._configuration.tts_voice_catalog_revision:
+            raise TTSVoiceProfileError("TTS voice catalog revision is not configured")
+        if catalog.catalog_revision != self._configuration.tts_voice_catalog_revision:
+            raise TTSVoiceProfileError("TTS voice catalog does not match the configured revision")
         if binding.provider != self._configuration.tts_mode or binding.model != self._configuration.tts_provider_model:
             raise TTSVoiceProfileError("TTS voice binding does not match the configured provider model")
         voice = next((entry for entry in catalog.voices if entry.voice_id == binding.voice_id), None)
@@ -149,12 +199,29 @@ class TTSVoiceProfileResolver:
         required_language = self._configuration.tts_voice_required_language
         if required_language and required_language not in voice.language_tags:
             raise TTSVoiceProfileError("TTS voice binding does not support the required language")
+        if provider_capabilities is None:
+            raise TTSVoiceProfileError("configured TTS provider does not declare voice-profile capabilities")
+        if provider_capabilities.provider_name != binding.provider:
+            raise TTSVoiceProfileError("TTS provider capability does not match the binding provider")
+        if binding.model not in provider_capabilities.supported_models:
+            raise TTSVoiceProfileError("TTS provider capability does not support the binding model")
+        if catalog.contract not in provider_capabilities.supported_catalog_contracts:
+            raise TTSVoiceProfileError("TTS provider capability does not support the catalog contract")
+        if provider_capabilities.catalog_revision_policy != "configuration_pinned":
+            raise TTSVoiceProfileError("TTS provider capability does not pin the catalog revision")
+        if (
+            provider_capabilities.output_content_type != "audio/wav"
+            or provider_capabilities.output_sample_format != "pcm_s16le"
+            or not provider_capabilities.requires_mono_output
+        ):
+            raise TTSVoiceProfileError("TTS provider capability does not support the required complete WAV contract")
 
 
 __all__ = [
     "TTSVoiceBinding",
     "TTSVoiceBindings",
     "TTSVoiceCatalog",
+    "TTSProviderCapabilities",
     "VoiceCatalogEntry",
     "TTSVoiceProfileError",
     "TTSVoiceProfileResolver",

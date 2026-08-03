@@ -96,10 +96,11 @@ subtitle/lip state. It should be considered only after dialogue text itself has
 an ordered streaming contract. It must still terminate in the same complete
 `dialogue_response` for audit and memory.
 
-The explicit provider proof command is
-`python scripts/verification/verify_tts_provider_live.py --allow-live-call`.
-The separate Godot consumption proof is
-`python scripts/verification/verify_tts_godot_playback.py --allow-live-call`.
+The explicit provider proof command requires an operator-approved opaque run ID
+and one `--actor-id` for each final binding, for example
+`python scripts/verification/verify_tts_provider_live.py --allow-live-call --evidence-run-id <opaque-run-id> --actor-id <approved-actor-id>`.
+The separate Godot consumption proof uses the same run ID and actor set:
+`python scripts/verification/verify_tts_godot_playback.py --allow-live-call --evidence-run-id <opaque-run-id> --actor-id <approved-actor-id>`.
 The first proves a ready complete provider clip; the second proves that the real
 dialogue payload becomes `AudioStreamWAV` and starts the spatial player. Neither
 configuration, a unit-test fake, a stub fallback, nor physical speaker output is

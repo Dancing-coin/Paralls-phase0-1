@@ -10,7 +10,7 @@ from app.services.tts_voice_catalog_importer import (
     import_xlsx_voice_catalog,
     rank_voice_catalog_candidates,
 )
-from app.services.tts_service import TTSService
+from app.services.tts_service import TTSProviderCapabilities, TTSService
 
 
 def _catalog_payload(
@@ -39,6 +39,7 @@ def _bindings_payload(
     *,
     status: str = "approved",
     voice_id: str = "qwen-audio-3.0-tts-flash-longlanghongmo",
+    approved_by: str | None = "human-listening-review",
     presentation_instruction: str | None = None,
 ) -> dict[str, object]:
     return {
@@ -52,7 +53,7 @@ def _bindings_payload(
                 "voice_id": voice_id,
                 "catalog_revision": "2026-07-23",
                 "selection_status": status,
-                "approved_by": "human-listening-review",
+                "approved_by": approved_by,
                 "presentation_instruction": presentation_instruction,
             }
         ],
@@ -71,13 +72,21 @@ def _settings(*, catalog_path: str, bindings_path: str, **overrides: object) -> 
         "tts_presentation_instructions_enabled": False,
         "tts_voice_catalog_path": catalog_path,
         "tts_voice_bindings_path": bindings_path,
+        "tts_voice_catalog_revision": "2026-07-23",
     }
     values.update(overrides)
     return Settings(**values)
 
 
 class _Provider:
-    provider_name = "test_provider"
+    provider_name = "dashscope_http"
+    capabilities = TTSProviderCapabilities(
+        provider_name="dashscope_http",
+        supported_models=frozenset({"qwen-audio-3.0-tts-flash"}),
+        supported_catalog_contracts=frozenset({"tts_voice_catalog.v1"}),
+        catalog_revision_policy="configuration_pinned",
+        supports_presentation_instruction=False,
+    )
 
     def __init__(self) -> None:
         self.calls: list[dict[str, str]] = []
@@ -88,6 +97,13 @@ class _Provider:
 
 
 class _InstructionCapableProvider(_Provider):
+    capabilities = TTSProviderCapabilities(
+        provider_name="dashscope_http",
+        supported_models=frozenset({"qwen-audio-3.0-tts-flash"}),
+        supported_catalog_contracts=frozenset({"tts_voice_catalog.v1"}),
+        catalog_revision_policy="configuration_pinned",
+        supports_presentation_instruction=True,
+    )
     supports_presentation_instruction = True
 
     def synthesize(self, *, content: str, voice_id: str, presentation_instruction: str | None = None) -> bytes:
@@ -236,11 +252,151 @@ def test_unapproved_profile_binding_falls_back_without_calling_the_provider(tmp_
     assert audio.status == "fallback"
 
 
+@pytest.mark.parametrize("status", ["candidate", "retired"])
+def test_non_active_profile_binding_falls_back_without_calling_the_provider(tmp_path, status: str) -> None:
+    catalog_path = tmp_path / "catalog.json"
+    bindings_path = tmp_path / "bindings.json"
+    catalog_path.write_text(json.dumps(_catalog_payload()), encoding="utf-8")
+    bindings_path.write_text(json.dumps(_bindings_payload(status=status)), encoding="utf-8")
+    provider = _Provider()
+
+    audio = TTSService(
+        configuration=_settings(catalog_path=str(catalog_path), bindings_path=str(bindings_path)),
+        provider=provider,
+    ).synthesize("char_a", "hello")
+
+    assert provider.calls == []
+    assert audio.mode == "stub"
+    assert audio.status == "fallback"
+
+
 def test_provider_or_model_mismatch_falls_back_without_calling_the_provider(tmp_path) -> None:
     catalog_path = tmp_path / "catalog.json"
     bindings_path = tmp_path / "bindings.json"
     catalog_path.write_text(json.dumps(_catalog_payload(model="qwen-audio-3.0-tts-plus")), encoding="utf-8")
     bindings_path.write_text(json.dumps(_bindings_payload()), encoding="utf-8")
+    provider = _Provider()
+
+    audio = TTSService(
+        configuration=_settings(catalog_path=str(catalog_path), bindings_path=str(bindings_path)),
+        provider=provider,
+    ).synthesize("char_a", "hello")
+
+    assert provider.calls == []
+    assert audio.mode == "stub"
+    assert audio.status == "fallback"
+
+
+def test_capability_mismatch_falls_back_without_calling_the_provider(tmp_path) -> None:
+    catalog_path = tmp_path / "catalog.json"
+    bindings_path = tmp_path / "bindings.json"
+    catalog_path.write_text(json.dumps(_catalog_payload()), encoding="utf-8")
+    bindings_path.write_text(json.dumps(_bindings_payload()), encoding="utf-8")
+
+    class _IncompatibleProvider(_Provider):
+        capabilities = TTSProviderCapabilities(
+            provider_name="openai_compatible",
+            supported_models=frozenset({"speech-model"}),
+            supported_catalog_contracts=frozenset({"tts_voice_catalog.v1"}),
+            catalog_revision_policy="configuration_pinned",
+            supports_presentation_instruction=False,
+        )
+
+    provider = _IncompatibleProvider()
+    audio = TTSService(
+        configuration=_settings(catalog_path=str(catalog_path), bindings_path=str(bindings_path)),
+        provider=provider,
+    ).synthesize("char_a", "hello")
+
+    assert provider.calls == []
+    assert audio.mode == "stub"
+    assert audio.status == "fallback"
+
+
+@pytest.mark.parametrize(
+    ("supported_models", "supported_catalog_contracts"),
+    [
+        (frozenset({"qwen-audio-3.0-tts-plus"}), frozenset({"tts_voice_catalog.v1"})),
+        (frozenset({"qwen-audio-3.0-tts-flash"}), frozenset()),
+    ],
+)
+def test_unsupported_model_or_catalog_contract_falls_back_before_provider_call(
+    tmp_path,
+    supported_models: frozenset[str],
+    supported_catalog_contracts: frozenset[str],
+) -> None:
+    catalog_path = tmp_path / "catalog.json"
+    bindings_path = tmp_path / "bindings.json"
+    catalog_path.write_text(json.dumps(_catalog_payload()), encoding="utf-8")
+    bindings_path.write_text(json.dumps(_bindings_payload()), encoding="utf-8")
+
+    class _IncompatibleProvider(_Provider):
+        capabilities = TTSProviderCapabilities(
+            provider_name="dashscope_http",
+            supported_models=supported_models,
+            supported_catalog_contracts=supported_catalog_contracts,
+            catalog_revision_policy="configuration_pinned",
+            supports_presentation_instruction=False,
+        )
+
+    provider = _IncompatibleProvider()
+    audio = TTSService(
+        configuration=_settings(catalog_path=str(catalog_path), bindings_path=str(bindings_path)),
+        provider=provider,
+    ).synthesize("char_a", "hello")
+
+    assert provider.calls == []
+    assert audio.mode == "stub"
+    assert audio.status == "fallback"
+
+
+def test_catalog_revision_must_match_the_non_secret_configuration_pin(tmp_path) -> None:
+    catalog_path = tmp_path / "catalog.json"
+    bindings_path = tmp_path / "bindings.json"
+    catalog_path.write_text(json.dumps(_catalog_payload()), encoding="utf-8")
+    bindings_path.write_text(json.dumps(_bindings_payload()), encoding="utf-8")
+    provider = _Provider()
+
+    audio = TTSService(
+        configuration=_settings(
+            catalog_path=str(catalog_path),
+            bindings_path=str(bindings_path),
+            tts_voice_catalog_revision="2026-08-03",
+        ),
+        provider=provider,
+    ).synthesize("char_a", "hello")
+
+    assert provider.calls == []
+    assert audio.mode == "stub"
+    assert audio.status == "fallback"
+
+
+def test_profile_binding_requires_a_configured_catalog_revision_pin(tmp_path) -> None:
+    catalog_path = tmp_path / "catalog.json"
+    bindings_path = tmp_path / "bindings.json"
+    catalog_path.write_text(json.dumps(_catalog_payload()), encoding="utf-8")
+    bindings_path.write_text(json.dumps(_bindings_payload()), encoding="utf-8")
+    provider = _Provider()
+
+    audio = TTSService(
+        configuration=_settings(
+            catalog_path=str(catalog_path),
+            bindings_path=str(bindings_path),
+            tts_voice_catalog_revision=None,
+        ),
+        provider=provider,
+    ).synthesize("char_a", "hello")
+
+    assert provider.calls == []
+    assert audio.mode == "stub"
+    assert audio.status == "fallback"
+
+
+def test_approved_binding_requires_a_nonblank_operator_reference(tmp_path) -> None:
+    catalog_path = tmp_path / "catalog.json"
+    bindings_path = tmp_path / "bindings.json"
+    catalog_path.write_text(json.dumps(_catalog_payload()), encoding="utf-8")
+    bindings_path.write_text(json.dumps(_bindings_payload(approved_by="   ")), encoding="utf-8")
     provider = _Provider()
 
     audio = TTSService(
