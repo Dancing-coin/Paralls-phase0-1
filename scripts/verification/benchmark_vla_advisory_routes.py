@@ -32,7 +32,9 @@ def main() -> int:
 
     root = repo_root()
     evidence_dir = verification_dir(root)
-    routes = args.routes or ["advisory-fast", "advisory-deep"]
+    # Online policy is fast-only. Deep remains an explicit offline comparison
+    # route and must never be selected merely because a benchmark omitted it.
+    routes = args.routes or ["advisory-fast"]
     annotation_sample_ids = args.annotation_sample_ids or [""]
     run_dir = evidence_dir / "vla-advisory-replay-benchmark"
     run_dir.mkdir(parents=True, exist_ok=True)

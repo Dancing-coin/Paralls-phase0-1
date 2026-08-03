@@ -167,9 +167,12 @@ func _run_backend_bridge_probe(backend_url: String) -> Dictionary:
 	)
 	var sequence_ok := _backend_session_events.size() >= 4
 	if sequence_ok:
+		var first_sequence := int(_backend_session_events[0].get("global_sequence", 0))
+		if first_sequence < 1:
+			sequence_ok = false
 		for index: int in range(4):
 			var event_payload: Dictionary = _backend_session_events[index]
-			if int(event_payload.get("global_sequence", 0)) != index + 1:
+			if int(event_payload.get("global_sequence", 0)) != first_sequence + index:
 				sequence_ok = false
 	var accepted: bool = (
 		ack_ok

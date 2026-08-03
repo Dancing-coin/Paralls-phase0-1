@@ -183,6 +183,23 @@ func _dispatch_message(raw_text: String) -> void:
         "embodied_carry_place_event":
             _bus_log("embodied_carry_place_event:%s" % JSON.stringify(payload))
             _bus_emit("embodied_carry_place_event_received", [payload])
+        "embodied_pickup_result":
+            _bus_log("embodied_pickup_result:%s" % JSON.stringify(payload))
+            _bus_emit("embodied_pickup_result_received", [payload])
+        "embodied_inventory_stow_result":
+            _bus_log("embodied_inventory_stow_result:%s" % JSON.stringify(payload))
+            _bus_emit("embodied_inventory_stow_result_received", [payload])
+        "embodied_inventory_retrieve_result":
+            _bus_log("embodied_inventory_retrieve_result:%s" % JSON.stringify(payload))
+            _bus_emit("embodied_inventory_retrieve_result_received", [payload])
+        "websocket_session_bound":
+            _bus_log("websocket_session_bound:%s" % JSON.stringify(payload))
+            _bus_emit("websocket_session_bound_received", [payload])
+        "gameplay_runtime_state_projection":
+            var projection := parsed_dict.duplicate(true)
+            projection.erase("message_type")
+            _bus_log("gameplay_runtime_state_projection:%s" % JSON.stringify(projection))
+            _bus_emit("gameplay_runtime_state_projection_received", [projection])
         _:
             _bus_log("backend_message:%s" % message_type)
 

@@ -17,6 +17,8 @@ from common import ensure_backend, repo_root, resolve_godot_exe, resolve_python_
 TEST_FILES = [
     "backend/tests/test_embodied_grab_carry_place_authority.py",
     "backend/tests/test_embodied_grab_carry_place_godot_static.py",
+    "backend/tests/test_embodied_custody_inventory_authority.py",
+    "backend/tests/test_default_scene_pickup_authority.py",
 ]
 GODOT_PROBE_SCENE = "res://scenes/phase0/EmbodiedCarryPlaceProbe.tscn"
 

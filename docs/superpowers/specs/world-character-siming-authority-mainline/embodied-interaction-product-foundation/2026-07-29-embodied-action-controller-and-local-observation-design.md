@@ -1,6 +1,6 @@
 # Embodied Action Controller And Local Observation Design
 
-Status: `awaiting-user-review`
+Status: `implemented-foundation; broader-atom-and-runtime-coverage-planned`
 
 Date: `2026-07-29`
 
@@ -12,6 +12,12 @@ Define `EmbodiedActionController` as the Godot-local realization owner for an
 already authorized semantic action. It consumes stable registry IDs and an
 `EmbodiedActionRequest`, executes at frame rate, and reports bounded terminal
 observations without owning semantic settlement.
+
+The bounded controller route is now implemented and Godot-runtime-verified for
+the current slices: typed phase transitions, terminal observations, safe
+recovery, the legacy/controller route gate, and reviewed action-asset phase
+binding. This does not claim a production clip graph, full CharacterMotor/IK
+integration coverage, or broad scene-family closure.
 
 ## State Machine
 

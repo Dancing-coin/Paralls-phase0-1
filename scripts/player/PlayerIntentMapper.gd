@@ -38,6 +38,51 @@ func emit_interact_intent(target_object_id: String, interaction_type: String) ->
         }
     }
 
+func emit_pickup_intent(target_object_id: String) -> Dictionary:
+    return {
+        "message_type": "player_input",
+        "payload": {
+            "player_id": player_id,
+            "room_id": room_id,
+            "scene_id": scene_id,
+            "zone_id": zone_id,
+            "actor_id": player_actor_id,
+            "intent_type": "pickup_intent",
+            "producer_ts": Time.get_ticks_msec(),
+            "target_object_id": target_object_id,
+        }
+    }
+
+func emit_stow_intent(target_object_id: String) -> Dictionary:
+    return {
+        "message_type": "player_input",
+        "payload": {
+            "player_id": player_id,
+            "room_id": room_id,
+            "scene_id": scene_id,
+            "zone_id": zone_id,
+            "actor_id": player_actor_id,
+            "intent_type": "stow_intent",
+            "producer_ts": Time.get_ticks_msec(),
+            "target_object_id": target_object_id,
+        }
+    }
+
+func emit_retrieve_intent(target_object_id: String) -> Dictionary:
+    return {
+        "message_type": "player_input",
+        "payload": {
+            "player_id": player_id,
+            "room_id": room_id,
+            "scene_id": scene_id,
+            "zone_id": zone_id,
+            "actor_id": player_actor_id,
+            "intent_type": "retrieve_intent",
+            "producer_ts": Time.get_ticks_msec(),
+            "target_object_id": target_object_id,
+        }
+    }
+
 func emit_focus_target_change(target_actor_id: String = "", target_object_id: String = "") -> Dictionary:
     var payload := {
         "player_id": player_id,

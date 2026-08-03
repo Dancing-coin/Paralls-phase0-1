@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "embodied-handoff-authority",
-  "order": 82,
+  "order": 83,
   "script": "scripts/verification/verify_embodied_handoff_authority.py",
   "requires_godot": true,
   "max_attempts": 1,

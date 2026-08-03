@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "godot-gameplay-mirror",
+  "order": 85,
+  "script": "scripts/verification/verify_godot_gameplay_mirror.py",
+  "requires_godot": true,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/godot-gameplay-mirror-report.json",
+  "description": "Backend/Godot proof for gameplay mirror foundations: filtered envelope, backend-configured Phase 3 committed-event source, session-binding/read scope, live /ws trusted-local bind/subscribe snapshot proof, bounded after-commit connection-fanout plumbing, plus a local Godot bridge scope/disconnect probe; it excludes a production identity adapter, live WebSocket-to-Godot deployment proof, reconnect/resync, prediction, persistence, and migration closure"
+}

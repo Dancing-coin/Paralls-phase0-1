@@ -1,10 +1,10 @@
 # Embodied Interaction Product Foundation Master Design
 
-Status: `awaiting-user-review`
+Status: `partially-implemented; coverage-expansion-planned`
 
 Date: `2026-07-29`
 
-Revision: `2026-07-31` (review remediation)
+Revision: `2026-08-01` (implementation status reconciliation)
 
 ## Purpose
 
@@ -35,38 +35,60 @@ These statements are evidence-bound to the named current profiles and source
 contracts. A future implementation must run fresh evidence before restating
 them as a new milestone.
 
-### Existing contracts not yet productized
+### Implemented And Verified Foundations
 
-- `backend/app/character_agent/mind/affordances.py` summarizes affordance
-  inputs for the mind, but it is not a scene-entity registry with colliders,
-  anchors, occupancy, and realization policies.
-- `backend/app/character_agent/skills/` separates skill/action advisory from
-  settlement, but has no registered local realization path.
-- `backend/app/services/physical_interaction_channel.py` produces structured
-  results after semantic approval. Its current data model does not carry an
-  observed contact window, impulse/final-pose evidence, local execution phase,
-  or a two-phase settlement lifecycle.
-- `scripts/character/CharacterReplica.gd` supports direct approach/look-at and
-  short range/visibility checks, but is a transitional semantic realization
-  host, not `EmbodiedActionController`.
-- `scripts/object/InteractiveObject.gd` reacts to authoritative visual state;
-  it is not a dynamic affordance-bearing physical object.
-- Current Observatory and skeletal replay surfaces expose debug evidence, but
-  do not share a typed interaction-attempt ledger with authority settlement.
+- `SceneAffordanceRegistry` has reviewed stable IDs, scene-instance binding
+  scope, anchors/colliders, revision pinning, occupancy freshness, and a real
+  `chair_01` binding. `embodied-affordance-registry` proves its backend and
+  Godot runtime boundary.
+- `EmbodiedActionController` implements the bounded local lifecycle:
+  acquire target, reserve stance, navigation, alignment, prepare, contact
+  observation, recovery, cancellation, and typed terminal outcomes.
+  `embodied-action-controller` proves its Godot runtime paths.
+- Controller attestation, one selected realization route, observed-outcome
+  validation, authority settlement, and replay ledger are implemented for the
+  narrow object-interaction path. The corresponding bridge, settlement, and
+  replay profiles prove that local observations do not write world truth.
+- `InteractionSession`, narrow handoff, and grab-carry-place are implemented
+  over the Gameplay atomic event spine. Their profiles prove session lifecycle,
+  privacy filtering, idempotency, authority-only Godot presentation, and the
+  relevant bounded success/failure cases.
 
-### Not started
+### Implemented But Limited Slices
 
-- `SceneAffordanceRegistry` with stable scene bindings, anchors, state,
-  realization policy, and authority policy refs.
-- `EmbodiedActionController` lifecycle, navigation/stance reservation,
-  contact-window verification, cancellation, and recovery state machine.
-- Production local contact/physics observation transport and evidence contract.
-- `InteractionSession` negotiation/synchronization lifecycle for multiple
-  actors or handoff actions.
-- Authority settlement that consumes a local observation as evidence rather
-  than synthetically declaring a physical effect applied.
-- An interaction-focused Godot mirror/Observatory/replay ledger joining intent,
-  local attempt, observation, settlement, and downstream mind/Siming effects.
+- `kick-chair`, the default-main-scene `obj_letter` and `obj_plaque`
+  `inspect/read` fixtures, and the `obj_lamp_switch` semantic `press` fixture
+  and `obj_archive_door` semantic `open_close` fixture, plus the
+  `obj_worktable` semantic `use` / `finish_use` fixture, are verified object
+  references. The switch proves an ESM-owned `switch: idle -> activated`
+  result, the door proves `door: closed -> open -> closed`, and the worktable
+  proves `work_surface: ready -> engaged -> ready`. `obj_observation_bench`
+  proves authority-scoped `available -> occupied -> available`, owner-only
+  release, and posture body results. None proves controller-owned action
+  outcomes, seated animation, shared occupancy allocation, or table animation.
+  This is not a claim that all default-main-scene objects have reviewed
+  bindings or interaction assets.
+- Carry/place and handoff prove constrained authority slices, not the complete
+  inventory, ownership, economy, or equipment runtime.
+- The controller currently proves its bounded state machine, observations, and
+  descriptor-driven phase-to-atom bindings. Broad atomic-action coverage and
+  the full local IK/motion-warp integration remain follow-on work.
+- VLA is available only as an advisory input. Candidate-to-registry binding is
+  still disabled; VLA neither controls motion nor activates an affordance.
+- Godot mirror and Observatory outputs are evidence/presentation for the
+  implemented slices, not a comprehensive scene-wide interaction UI.
+
+### Still Not Started
+
+- Comprehensive default-main-scene coverage by object family. The Wave 1
+  route for pickup props, seated animation, shared seat/table occupancy, and door occlusion is planned in
+  `2026-08-01-atomic-action-library-and-default-scene-coverage-design.md`.
+- A broad, reviewed atomic-action library wired into controller phases for all
+  semantic actions, equipment variants, and expressive overlays.
+- General unknown-object interaction or automatic affordance activation from
+  VLA output.
+- High-precision synchronized social clips beyond the implemented session and
+  bounded handoff slices.
 
 ### Analysis treated as historical or advisory
 
@@ -76,8 +98,8 @@ them as a new milestone.
 - `docs/kimi分析/2026-07-23-智能体具身交互全景评估与实施路线.md` remains a route
   reference. Its LLM-readiness conclusion is explicitly marked partially
   outdated; its productization route is not implementation truth.
-- Neither analysis is evidence that a Godot controller, a physical object, or
-  an interaction session already exists.
+- Neither analysis upgrades or replaces the current code and harness evidence;
+  the implemented status above is grounded only in the named profiles.
 
 ## Architecture
 
@@ -231,12 +253,12 @@ authoritative scene mutation and mind/Siming writeback.
    principal, grant, nonce, connection epoch, sequence, request fingerprint,
    and revocation state all match. Reconnect, cancellation, and expiry revoke
    the old grant and cannot turn delayed traffic into a settlement.
-10. Focused backend tests, Godot runtime probe, planned profile, predecessor
+10. Focused backend tests, Godot runtime probe, registered focused profile, predecessor
    profiles, and repository documentation profile pass with fresh evidence.
 
-## Planned Harness Mapping
+## Harness Mapping
 
-| Planned profile | Required proof |
+| Registered profile | Required proof |
 | --- | --- |
 | `embodied-affordance-registry` | registry schema, binding lifecycle, query isolation, and stale-binding failures |
 | `embodied-action-controller` | Godot controller phases, navigation/alignment/contact/abort/recovery runtime proof |
@@ -245,4 +267,7 @@ authoritative scene mutation and mind/Siming writeback.
 | `embodied-interaction-replay` | complete correlated ledger, deterministic replay validation, Observatory filtering |
 | `embodied-interaction-foundation-all` | dependency-ordered aggregate for this tree |
 
-Until implemented, these profile names are planned acceptance contracts only.
+These profiles are registered and have evidence for the bounded slices described
+above. They remain acceptance contracts for any expanded object/action coverage;
+a green existing report must not be used to infer that the still-not-started
+scope is complete.

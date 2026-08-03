@@ -271,7 +271,9 @@ def test_websocket_session_probe_delivers_committed_session_events_from_gameplay
     ]
     assert [event.event_type for event in bus_events] == [event.event_type for event in store_events]
     assert [payload["event_type"] for payload in session_payloads] == [event.event_type for event in store_events]
-    assert [payload["global_sequence"] for payload in session_payloads] == [1, 2, 3, 4]
+    assert [payload["global_sequence"] for payload in session_payloads] == [
+        event.global_sequence for event in store_events
+    ]
     assert [payload["stream_revision"] for payload in session_payloads] == [1, 2, 3, 4]
     assert all(payload["session_id"] == "session:handshake:websocket" for payload in session_payloads)
     assert all(payload["semantic_action"] == "handshake" for payload in session_payloads)

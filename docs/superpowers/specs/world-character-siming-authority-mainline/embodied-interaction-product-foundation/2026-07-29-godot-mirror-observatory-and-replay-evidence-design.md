@@ -1,6 +1,6 @@
 # Godot Mirror, Observatory, And Replay Evidence Design
 
-Status: `awaiting-user-review`
+Status: `implemented-foundation; broader-mirror-and-replay-coverage-planned`
 
 Date: `2026-07-29`
 
@@ -12,6 +12,11 @@ Define the evidence/read-model boundary for embodied actions. It extends the
 existing BackendBridge, LocalPresentationBus, Observatory, AuthorityEvent, and
 skeletal debug replay surfaces with a correlated, privacy-filtered interaction
 attempt ledger. It does not replace the planned generic gameplay mirror.
+
+The correlated attempt ledger, filtered observatory rows, replay validation,
+and bounded Godot presentation paths are now implemented for the verified
+embodied slices. This does not replace the broader gameplay mirror or prove
+scene-wide live delivery beyond those reviewed slices.
 
 ## Evidence Ledger
 

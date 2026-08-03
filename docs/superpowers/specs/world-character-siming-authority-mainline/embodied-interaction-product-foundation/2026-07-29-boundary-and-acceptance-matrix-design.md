@@ -1,6 +1,6 @@
 # Embodied Interaction Boundary And Acceptance Matrix
 
-Status: `awaiting-user-review`
+Status: `implemented-foundation; broader-coverage-planned`
 
 Date: `2026-07-29`
 
@@ -47,3 +47,8 @@ The first closure may be called complete only after all planned focused profiles
 and `embodied-interaction-foundation-all` exist and pass, all predecessor
 profiles remain green, `python scripts/verification/harness.py --profile all`
 passes, and fresh artifacts are retained under `.harness/verification/`.
+
+The current bounded foundation slices now satisfy the registered focused
+profiles through session, handoff, and grab-carry-place. This matrix remains
+the expansion contract for broader object-family, social-session, and default-
+scene coverage work.

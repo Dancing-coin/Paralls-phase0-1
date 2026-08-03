@@ -1,6 +1,6 @@
 # Execution Transport And Controller Attestation Design
 
-Status: `awaiting-user-review`
+Status: `implemented-foundation; production-credential-and-resync-closure-planned`
 
 Date: `2026-07-31`
 
@@ -12,6 +12,13 @@ current gap where the generic WebSocket accepts a basic envelope and
 `CharacterReplica` status is acknowledgement-only. It adds no new authority to
 Godot: the bridge authenticates a controller report so backend authority can
 decide whether its bounded observation is admissible evidence.
+
+The trusted-local bridge foundation is now implemented: `/ws` routes the
+allowlisted embodied bind/request/phase/outcome/settlement/cancel/resync
+messages, loopback-only `trusted_local_launch` credentials are enforced, and
+grant/epoch/nonce/sequence validation is part of the ingress path. The
+production `authenticated_session` credential path and end-to-end reconnect
+resume closure remain deferred.
 
 ## Controller Authentication Ownership
 

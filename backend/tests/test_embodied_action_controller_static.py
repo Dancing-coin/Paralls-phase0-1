@@ -37,6 +37,14 @@ def test_embodied_action_controller_script_declares_local_state_machine_and_boun
     assert "realization_route" in source
     assert "NavigationAgent3D" in source
     assert "CollisionShape3D" in source
+    assert "select_action_atoms" in source
+    assert "action_assets_unavailable" in source
+    assert "primitive_action_tags" in source
+    assert "PHASE_ACTION_TAGS" in source
+    assert "LOCAL_ROOT_MOTION_WINDOW_PHASES" in source
+    assert "phase_action_tags" in source
+    assert "local_root_motion_phase_refs" in source
+    assert "local_execution_only" in source
     assert "character_actor_status" not in source
     assert "bone_stream" not in source
     assert "rigid_body_stream" not in source

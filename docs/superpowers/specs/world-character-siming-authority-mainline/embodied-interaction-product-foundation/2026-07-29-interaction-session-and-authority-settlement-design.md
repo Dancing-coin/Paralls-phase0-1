@@ -1,6 +1,6 @@
 # Interaction Session And Authority Settlement Design
 
-Status: `awaiting-user-review`
+Status: `implemented-foundation; broader-social-and-cross-domain-closure-planned`
 
 Date: `2026-07-29`
 
@@ -12,6 +12,12 @@ Define the authority-owned `InteractionSession` lifecycle and the observed
 physical settlement protocol. This prevents two actors from treating a shared
 interaction as unrelated animation requests and prevents a Godot observation
 from becoming world truth without validation.
+
+The Gameplay-event-spine-backed session foundation is now implemented for the
+current bounded slices: handshake/session lifecycle, privacy-filtered
+projections, and the first handoff plus grab-carry-place closures. This does
+not claim generalized social clips, relationship settlement, or arbitrary
+cross-domain session coverage.
 
 ## Session Model
 

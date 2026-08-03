@@ -35,6 +35,7 @@ func apply_environment_field(zone_id: String, visibility_level: String, smoke_de
 
 
 func apply_object_state(object_id: String, zone_id: String, state: String, affordances: Array[String], occludes: bool, source_ref: String) -> void:
+	var updated_at := Time.get_ticks_msec()
 	object_states[object_id] = {
 		"object_id": object_id,
 		"zone_id": zone_id,
@@ -42,6 +43,7 @@ func apply_object_state(object_id: String, zone_id: String, state: String, affor
 		"affordances": affordances,
 		"occludes": occludes,
 		"source_refs": [source_ref],
+		"updated_at": updated_at,
 	}
 	var zone := _ensure_zone(zone_id)
 	var object_ids: Array = zone.get("object_ids", [])

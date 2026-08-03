@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "embodied-interaction-session",
-  "order": 81,
+  "order": 82,
   "script": "scripts/verification/verify_embodied_interaction_session.py",
   "requires_godot": true,
   "max_attempts": 1,

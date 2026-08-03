@@ -54,6 +54,7 @@ def test_settings_read_tts_voice_profile_asset_configuration(monkeypatch) -> Non
     monkeypatch.setenv("TTS_VOICE_CATALOG_PATH", "assets/tts/voice_catalog.json")
     monkeypatch.setenv("TTS_VOICE_BINDINGS_PATH", "assets/tts/voice_bindings.json")
     monkeypatch.setenv("TTS_VOICE_REQUIRED_LANGUAGE", "zh-CN")
+    monkeypatch.setenv("TTS_PRESENTATION_INSTRUCTIONS_ENABLED", "true")
     monkeypatch.setenv(
         "TTS_VOICE_ENROLLMENT_ENDPOINT",
         "https://workspace.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/customization",
@@ -65,6 +66,7 @@ def test_settings_read_tts_voice_profile_asset_configuration(monkeypatch) -> Non
     assert reloaded.settings.tts_voice_catalog_path == "assets/tts/voice_catalog.json"
     assert reloaded.settings.tts_voice_bindings_path == "assets/tts/voice_bindings.json"
     assert reloaded.settings.tts_voice_required_language == "zh-CN"
+    assert reloaded.settings.tts_presentation_instructions_enabled is True
     assert reloaded.settings.tts_voice_enrollment_endpoint == (
         "https://workspace.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/customization"
     )
@@ -118,6 +120,40 @@ def test_settings_read_vla_live_proof_values_from_env(monkeypatch) -> None:
     assert reloaded.settings.vla_provider_required_artifact_refs == "visual_artifact:proof"
     assert reloaded.settings.vla_live_proof_image_url == "data:image/png;base64,aGVsbG8="
     assert reloaded.settings.vla_provider_live_proof_run_id == "qwen-vla-live-test"
+
+
+def test_settings_read_backend_owned_phase3_mirror_configuration(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "GAMEPLAY_MIRROR_PHASE3_ACTORS_JSON",
+        json.dumps(
+            [
+                {
+                    "actor_ref": "actor:configured",
+                    "state_group_definitions": [
+                        {"group_id": "core.resources", "definition_version": "1", "projection_schema_version": 1}
+                    ],
+                    "godot_view_policies": [
+                        {"group_id": "core.resources", "godot_allowed_fields": ["entries"]}
+                    ],
+                    "godot_allowed_group_ids": ["core.resources"],
+                    "registry_revision": "registry:phase3:v1",
+                    "world_config_revision": "world:phase3:v1",
+                    "active_patch_set_revision": "patch:phase3:v1",
+                }
+            ]
+        ),
+    )
+
+    reloaded = importlib.reload(config_module)
+
+    assert reloaded.settings.gameplay_mirror_phase3_actor_configs[0]["actor_ref"] == "actor:configured"
+
+
+def test_phase3_mirror_configuration_requires_json_object_array(monkeypatch) -> None:
+    monkeypatch.setenv("GAMEPLAY_MIRROR_PHASE3_ACTORS_JSON", "{\"actor_ref\":\"actor:bad\"}")
+
+    with pytest.raises(ValueError, match="GAMEPLAY_MIRROR_PHASE3_ACTORS_JSON"):
+        importlib.reload(config_module)
 
 
 def test_settings_read_siming_llm_modes_from_env(monkeypatch) -> None:

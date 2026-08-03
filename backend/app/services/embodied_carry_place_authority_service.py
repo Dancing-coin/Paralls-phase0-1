@@ -82,6 +82,57 @@ class EmbodiedCarryPlaceAuthorityService:
     def drop_target_projection(self, target_ref: str) -> dict[str, object]:
         return self._drop_target_by_ref[target_ref].model_dump()
 
+    def tracked_drop_target_projection(self, target_ref: str) -> dict[str, object] | None:
+        projection = self._drop_target_by_ref.get(target_ref)
+        return projection.model_dump() if projection is not None else None
+
+    def apply_committed_custody_transfer(
+        self,
+        *,
+        asset_ref: str,
+        expected_holder_ref: str,
+        custody_holder_ref: str,
+        authority_transaction_id: str,
+        released_drop_target_ref: str = "",
+        occupied_drop_target_ref: str = "",
+    ) -> bool:
+        """Refresh the in-memory custody read model after an external atomic batch."""
+
+        projection = self._projection_by_asset.get(asset_ref)
+        released_target = self._drop_target_by_ref.get(released_drop_target_ref)
+        occupied_target = self._drop_target_by_ref.get(occupied_drop_target_ref)
+        if projection is None or projection.custody_holder_ref != expected_holder_ref:
+            return False
+        if released_drop_target_ref and (
+            released_target is None or released_target.occupied_by_ref != asset_ref
+        ):
+            return False
+        if occupied_drop_target_ref and (
+            occupied_target is None or occupied_target.occupied_by_ref
+        ):
+            return False
+        self._projection_by_asset[asset_ref] = _PossessionProjection(
+            asset_ref=asset_ref,
+            custody_holder_ref=custody_holder_ref,
+            owner_ref=projection.owner_ref,
+            authority_transaction_id=authority_transaction_id,
+        )
+        if released_target is not None:
+            self._drop_target_by_ref[released_drop_target_ref] = _DropTargetProjection(
+                target_ref=released_drop_target_ref,
+                occupied_by_ref="",
+                scene_revision=released_target.scene_revision + 1,
+                authority_transaction_id=authority_transaction_id,
+            )
+        if occupied_target is not None:
+            self._drop_target_by_ref[occupied_drop_target_ref] = _DropTargetProjection(
+                target_ref=occupied_drop_target_ref,
+                occupied_by_ref=asset_ref,
+                scene_revision=occupied_target.scene_revision + 1,
+                authority_transaction_id=authority_transaction_id,
+            )
+        return True
+
     def apply_local_carry_hint(
         self,
         *,

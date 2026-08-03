@@ -1,6 +1,6 @@
 # Scene Affordance Registry Design
 
-Status: `awaiting-user-review`
+Status: `implemented-foundation; broader-family-coverage-planned`
 
 Date: `2026-07-29`
 
@@ -12,6 +12,12 @@ Define `SceneAffordanceRegistry` as the authoritative-compatible scene binding
 and query layer used by embodied realization. It makes known Godot entities
 addressable as constrained, revisioned action targets without converting the
 engine scene itself into backend world authority.
+
+The reviewed registry foundation is now implemented for the current bounded
+fixtures, including the first physical chair path and the default-main-scene
+read/press/open/use/sit/pickup references. This does not claim comprehensive
+default-scene coverage, generic family rollout, or VLA-driven affordance
+activation.
 
 ## Ownership
 

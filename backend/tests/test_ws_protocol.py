@@ -1198,6 +1198,245 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
     assert candidate_siming_output["payload"]["target_object_id"] == "obj_letter"
 
 
+def test_websocket_press_intent_uses_registered_switch_authority_policy() -> None:
+    _reset_runtime_state_with_local_character_model()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "player_input",
+                "payload": {
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "actor_id": "char_c",
+                    "intent_type": "interact_intent",
+                    "producer_ts": 457,
+                    "target_object_id": "obj_lamp_switch",
+                    "interaction_type": "press",
+                },
+            }
+        )
+
+        ack = websocket.receive_json()
+        action_request = websocket.receive_json()
+        action_resolution = websocket.receive_json()
+        transition = websocket.receive_json()
+        object_state_result = websocket.receive_json()
+        _ = websocket.receive_json()  # body_state_result
+        _ = websocket.receive_json()  # self_body_perceived_event
+        environment_result = websocket.receive_json()
+
+    assert ack["payload"]["route"] == "esm_service"
+    assert action_request["payload"]["request_id"] == "interact:457:obj_lamp_switch"
+    assert action_resolution["payload"]["target_object_id"] == "obj_lamp_switch"
+    assert action_resolution["payload"]["resolution_status"] == "accepted"
+    assert transition["message_type"] == "state_machine_transition"
+    assert transition["entity_id"] == "obj_lamp_switch"
+    assert transition["machine_id"] == "switch"
+    assert transition["from_state"] == "idle"
+    assert transition["to_state"] == "activated"
+    assert transition["trigger_type"] == "interact.press"
+    assert object_state_result["event_type"] == "object_state_result"
+    assert object_state_result["payload"]["target_object_id"] == "obj_lamp_switch"
+    assert object_state_result["payload"]["machine_id"] == "switch"
+    assert object_state_result["payload"]["previous_state"] == "idle"
+    assert object_state_result["payload"]["current_state"] == "activated"
+    assert environment_result["event_type"] == "environment_state_result"
+    assert environment_result["payload"]["target_environment_id"] == "env_lamp"
+    assert environment_result["payload"]["current_state"] == "alerted"
+
+
+def test_websocket_open_intent_uses_registered_archive_door_authority_policy() -> None:
+    _reset_runtime_state_with_local_character_model()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "player_input",
+                "payload": {
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "actor_id": "char_c",
+                    "intent_type": "interact_intent",
+                    "producer_ts": 458,
+                    "target_object_id": "obj_archive_door",
+                    "interaction_type": "open",
+                },
+            }
+        )
+
+        ack = websocket.receive_json()
+        action_request = websocket.receive_json()
+        action_resolution = websocket.receive_json()
+        transition = websocket.receive_json()
+        object_state_result = websocket.receive_json()
+
+    assert ack["payload"]["route"] == "esm_service"
+    assert action_request["payload"]["request_id"] == "interact:458:obj_archive_door"
+    assert action_resolution["payload"]["target_object_id"] == "obj_archive_door"
+    assert action_resolution["payload"]["resolution_status"] == "accepted"
+    assert transition["message_type"] == "state_machine_transition"
+    assert transition["entity_id"] == "obj_archive_door"
+    assert transition["machine_id"] == "door"
+    assert transition["from_state"] == "closed"
+    assert transition["to_state"] == "open"
+    assert transition["trigger_type"] == "interact.open"
+    assert object_state_result["event_type"] == "object_state_result"
+    assert object_state_result["payload"]["target_object_id"] == "obj_archive_door"
+    assert object_state_result["payload"]["machine_id"] == "door"
+    assert object_state_result["payload"]["previous_state"] == "closed"
+    assert object_state_result["payload"]["current_state"] == "open"
+
+
+def test_door_close_requires_the_authority_committed_open_state() -> None:
+    _reset_runtime_state_with_local_character_model()
+
+    def interact(producer_ts: int, interaction_type: str) -> list[dict[str, object]]:
+        return main._handle_envelope(
+            Envelope(
+                message_type="player_input",
+                payload={
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "actor_id": "char_c",
+                    "intent_type": "interact_intent",
+                    "producer_ts": producer_ts,
+                    "target_object_id": "obj_archive_door",
+                    "interaction_type": interaction_type,
+                },
+            )
+        )
+
+    opened = interact(459, "open")
+    closed = interact(460, "close")
+    rejected = interact(461, "close")
+
+    opened_transition = next(message for message in opened if message.get("message_type") == "state_machine_transition")
+    closed_transition = next(message for message in closed if message.get("message_type") == "state_machine_transition")
+    closed_object_result = next(
+        message
+        for message in closed
+        if message.get("message_type") == "world_result" and message.get("event_type") == "object_state_result"
+    )
+    state_constraint = next(
+        message
+        for message in rejected
+        if message.get("message_type") == "world_result" and message.get("event_type") == "constraint_state_result"
+    )
+
+    assert opened_transition["from_state"] == "closed"
+    assert opened_transition["to_state"] == "open"
+    assert closed_transition["from_state"] == "open"
+    assert closed_transition["to_state"] == "closed"
+    assert closed_object_result["payload"]["current_state"] == "closed"
+    assert state_constraint["payload"]["constraint_type"] == "interaction_state_constraint"
+    assert state_constraint["payload"]["constraint_code"] == "invalid_interaction_state"
+
+
+def test_worktable_finish_use_requires_the_authority_committed_engaged_state() -> None:
+    _reset_runtime_state_with_local_character_model()
+
+    def interact(producer_ts: int, interaction_type: str) -> list[dict[str, object]]:
+        return main._handle_envelope(
+            Envelope(
+                message_type="player_input",
+                payload={
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "actor_id": "char_c",
+                    "intent_type": "interact_intent",
+                    "producer_ts": producer_ts,
+                    "target_object_id": "obj_worktable",
+                    "interaction_type": interaction_type,
+                },
+            )
+        )
+
+    engaged = interact(462, "use")
+    released = interact(463, "finish_use")
+    rejected = interact(464, "finish_use")
+
+    engaged_transition = next(message for message in engaged if message.get("message_type") == "state_machine_transition")
+    released_transition = next(message for message in released if message.get("message_type") == "state_machine_transition")
+    released_object_result = next(
+        message
+        for message in released
+        if message.get("message_type") == "world_result" and message.get("event_type") == "object_state_result"
+    )
+    state_constraint = next(
+        message
+        for message in rejected
+        if message.get("message_type") == "world_result" and message.get("event_type") == "constraint_state_result"
+    )
+
+    assert engaged_transition["machine_id"] == "work_surface"
+    assert engaged_transition["from_state"] == "ready"
+    assert engaged_transition["to_state"] == "engaged"
+    assert released_transition["from_state"] == "engaged"
+    assert released_transition["to_state"] == "ready"
+    assert released_object_result["payload"]["current_state"] == "ready"
+    assert state_constraint["payload"]["constraint_type"] == "interaction_state_constraint"
+    assert state_constraint["payload"]["constraint_code"] == "invalid_interaction_state"
+
+
+def test_observation_bench_stand_requires_the_authority_scoped_occupant_and_emits_posture() -> None:
+    _reset_runtime_state_with_local_character_model()
+    main.runtime._actor_positions["char_c"] = (15.4, 0.7, -6.6)
+    main.runtime._actor_positions["char_a"] = (15.4, 0.7, -6.6)
+
+    def interact(actor_id: str, producer_ts: int, interaction_type: str) -> list[dict[str, object]]:
+        return main._handle_envelope(
+            Envelope(
+                message_type="player_input",
+                payload={
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "actor_id": actor_id,
+                    "intent_type": "interact_intent",
+                    "producer_ts": producer_ts,
+                    "target_object_id": "obj_observation_bench",
+                    "interaction_type": interaction_type,
+                },
+            )
+        )
+
+    seated = interact("char_c", 465, "sit")
+    rejected = interact("char_a", 466, "stand")
+    stood = interact("char_c", 467, "stand")
+
+    seated_transition = next(message for message in seated if message.get("message_type") == "state_machine_transition")
+    seated_body_result = next(
+        message
+        for message in seated
+        if message.get("message_type") == "world_result" and message.get("event_type") == "body_state_result"
+    )
+    owner_constraint = next(
+        message
+        for message in rejected
+        if message.get("message_type") == "world_result" and message.get("event_type") == "constraint_state_result"
+    )
+    stood_transition = next(message for message in stood if message.get("message_type") == "state_machine_transition")
+    stood_body_result = next(
+        message
+        for message in stood
+        if message.get("message_type") == "world_result" and message.get("event_type") == "body_state_result"
+    )
+
+    assert seated_transition["machine_id"] == "seat_occupancy"
+    assert seated_transition["from_state"] == "available"
+    assert seated_transition["to_state"] == "occupied"
+    assert seated_body_result["payload"]["body_state_class"] == "posture"
+    assert seated_body_result["payload"]["previous_state"] == "standing"
+    assert seated_body_result["payload"]["current_state"] == "seated"
+    assert owner_constraint["payload"]["constraint_type"] == "interaction_owner_constraint"
+    assert owner_constraint["payload"]["constraint_code"] == "interaction_owner_mismatch"
+    assert stood_transition["from_state"] == "occupied"
+    assert stood_transition["to_state"] == "available"
+    assert stood_body_result["payload"]["body_state_class"] == "posture"
+    assert stood_body_result["payload"]["previous_state"] == "seated"
+    assert stood_body_result["payload"]["current_state"] == "standing"
+
+
 def test_websocket_interact_intent_emits_constraint_when_player_is_far() -> None:
     _reset_runtime_state_with_local_character_model()
     client = TestClient(app)

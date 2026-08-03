@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "name": "embodied-interaction-foundation-all",
-  "order": 84,
+  "order": 85,
   "script": "scripts/verification/verify_embodied_interaction_foundation_all.py",
   "requires_godot": true,
   "max_attempts": 1,

@@ -195,7 +195,19 @@ def main() -> int:
     trace = json.loads(trace_path.read_text(encoding="utf-8"))
     websocket_trace_path = _websocket_trace(log_dir)
     websocket_trace = json.loads(websocket_trace_path.read_text(encoding="utf-8"))
-    expected_sequence = list(range(1, len(trace["global_sequences"]) + 1))
+    expected_sequence = list(
+        range(
+            trace["global_sequences"][0],
+            trace["global_sequences"][0] + len(trace["global_sequences"]),
+        )
+    )
+    expected_websocket_sequence = list(
+        range(
+            websocket_trace["session_global_sequences"][0],
+            websocket_trace["session_global_sequences"][0]
+            + len(websocket_trace["session_global_sequences"]),
+        )
+    )
     results = [
         _result(
             "focused-pytest-pass",
@@ -234,7 +246,7 @@ def main() -> int:
                 "embodied.interaction_session.authorized",
                 "embodied.interaction_session.realizing",
             ]
-            and websocket_trace["session_global_sequences"] == [1, 2, 3, 4]
+            and websocket_trace["session_global_sequences"] == expected_websocket_sequence
             and websocket_trace["store_event_types"] == websocket_trace["bus_event_types"]
             and websocket_trace["privacy_scan"]
             == {

@@ -15,6 +15,7 @@ func _run_probe() -> void:
 	add_child(fixture_root)
 	var chair := StaticBody3D.new()
 	chair.name = "InteractiveObjectChair01"
+	chair.set_meta("entity_ref", "entity:scene_demo:chair_01")
 	fixture_root.add_child(chair)
 	var collider := CollisionShape3D.new()
 	collider.name = "ChairCollider"
@@ -116,7 +117,7 @@ func _run_probe() -> void:
 func _patch_space_model_for_chair(space_model: Dictionary) -> void:
 	var patched_elements: Array = []
 	for element: Dictionary in space_model.get("elements", []):
-		if str(element.get("element_id", "")) == "obj_letter":
+		if str(element.get("element_id", "")) == "entity:scene_demo:chair_01":
 			element["element_id"] = "entity:scene_demo:chair_01"
 			element["semantic_tags"] = ["chair", "kickable"]
 			var refs: Array = element.get("source_refs", [])

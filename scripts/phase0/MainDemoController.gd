@@ -45,6 +45,18 @@ const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
 @onready var character_a: Node3D = $CharacterA
 @onready var character_b: Node3D = $CharacterB
 @onready var interactive_object: Node3D = $InteractiveObject
+@onready var default_scene_affordance_bridges: Array[Node] = [
+	$DefaultSceneLetterAffordanceBridge,
+	$DefaultScenePlaqueAffordanceBridge,
+	$DefaultSceneLampSwitchAffordanceBridge,
+	$DefaultSceneArchiveDoorAffordanceBridge,
+	$DefaultSceneWorktableAffordanceBridge,
+	$DefaultSceneObservationBenchAffordanceBridge,
+	$DefaultSceneArchiveTokenAffordanceBridge,
+]
+@onready var default_scene_inventory_presentation_bridges: Array[Node] = [
+	$DefaultSceneArchiveTokenPresentationBridge,
+]
 @onready var character_visual_fact_emitter: Node = $VisualFactEmitter/CharacterVisualFactEmitter
 @onready var evidence_projection_emitter: Node = $VisualFactEmitter/EvidenceProjectionEmitter
 @onready var spatial_access_fact_emitter: Node = $VisualFactEmitter/SpatialAccessFactEmitter
@@ -261,7 +273,25 @@ func submit_interaction() -> void:
 	if target_object_id == "":
 		_bus_log("phase0_interact_no_focus_target")
 		return
-	_emit_interaction_request(target_object_id, "inspect")
+	var interaction_type := _default_reviewed_interaction_type(target_object_id)
+	if interaction_type == "":
+		_bus_log("phase0_interact_no_reviewed_action:%s" % target_object_id)
+		return
+	var interaction_route := _reviewed_interaction_route(target_object_id, interaction_type)
+	if interaction_route == "pickup":
+		_emit_pickup_intent_request(target_object_id, interaction_type)
+		return
+	if interaction_route == "retrieve":
+		_emit_retrieve_intent_request(target_object_id, interaction_type)
+		return
+	_emit_interaction_request(target_object_id, interaction_type)
+
+func submit_stow() -> void:
+	var target_object_id := _resolve_focused_object_id()
+	if target_object_id == "":
+		_bus_log("phase0_stow_no_focus_target")
+		return
+	_emit_stow_intent_request(target_object_id)
 
 func _on_backend_connected(_payload: String) -> void:
 	if autotest_shutdown_in_progress:
@@ -927,10 +957,14 @@ func _flush_pending_backend_requests() -> void:
 	if not pending_interaction_request.is_empty():
 		var interaction_request := pending_interaction_request.duplicate(true)
 		pending_interaction_request = {}
-		_emit_interaction_request(
-			str(interaction_request.get("target_object_id", "")),
-			str(interaction_request.get("interaction_type", "inspect")),
-		)
+		var target_object_id := str(interaction_request.get("target_object_id", ""))
+		var interaction_type := str(interaction_request.get("interaction_type", "inspect"))
+		if str(interaction_request.get("intent_route", "interact")) == "pickup":
+			_emit_pickup_intent_request(target_object_id, interaction_type)
+		elif str(interaction_request.get("intent_route", "interact")) == "retrieve":
+			_emit_retrieve_intent_request(target_object_id, interaction_type)
+		else:
+			_emit_interaction_request(target_object_id, interaction_type)
 
 func _emit_focus_target_change() -> void:
 	var bridge := _get_bridge()
@@ -966,6 +1000,8 @@ func _emit_interaction_request(target_object_id: String, interaction_type: Strin
 		return
 	if not intent_mapper.has_method("emit_interact_intent"):
 		return
+	if not _has_reviewed_default_scene_affordance(target_object_id, interaction_type):
+		return
 	_bus_log("phase0_interact_target:%s" % target_object_id)
 	_emit_near_object_visual_fact(target_object_id)
 	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
@@ -980,12 +1016,111 @@ func _emit_interaction_request_without_near_object_fact(target_object_id: String
 		return
 	if not intent_mapper.has_method("emit_interact_intent"):
 		return
+	if not _has_reviewed_default_scene_affordance(target_object_id, interaction_type):
+		return
 	_bus_log("phase0_interact_target:%s" % target_object_id)
 	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
 		pending_interaction_request = {"target_object_id": target_object_id, "interaction_type": interaction_type}
 		_request_backend_reconnect()
 		return
 	bridge.send_envelope(intent_mapper.emit_interact_intent(target_object_id, interaction_type))
+
+
+func _emit_pickup_intent_request(target_object_id: String, interaction_type: String) -> void:
+	var bridge := _get_bridge()
+	if bridge == null or intent_mapper == null:
+		return
+	if not intent_mapper.has_method("emit_pickup_intent"):
+		return
+	if not _has_reviewed_default_scene_affordance(target_object_id, interaction_type):
+		return
+	_bus_log("phase0_pickup_target:%s" % target_object_id)
+	_emit_near_object_visual_fact(target_object_id)
+	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
+		pending_interaction_request = {
+			"target_object_id": target_object_id,
+			"interaction_type": interaction_type,
+			"intent_route": "pickup",
+		}
+		_request_backend_reconnect()
+		return
+	bridge.send_envelope(intent_mapper.emit_pickup_intent(target_object_id))
+
+
+func _emit_stow_intent_request(target_object_id: String) -> void:
+	var bridge := _get_bridge()
+	if bridge == null or intent_mapper == null:
+		return
+	if not intent_mapper.has_method("emit_stow_intent"):
+		return
+	if not _has_authority_confirmed_stow_source(target_object_id):
+		_bus_log("phase0_stow_source_not_confirmed:%s" % target_object_id)
+		return
+	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
+		_bus_log("phase0_stow_backend_not_open")
+		return
+	bridge.send_envelope(intent_mapper.emit_stow_intent(target_object_id))
+
+
+func _emit_retrieve_intent_request(target_object_id: String, interaction_type: String) -> void:
+	var bridge := _get_bridge()
+	if bridge == null or intent_mapper == null:
+		return
+	if not intent_mapper.has_method("emit_retrieve_intent"):
+		return
+	if not _has_reviewed_default_scene_affordance(target_object_id, interaction_type):
+		return
+	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
+		_bus_log("phase0_retrieve_backend_not_open")
+		return
+	bridge.send_envelope(intent_mapper.emit_retrieve_intent(target_object_id))
+
+
+func _has_authority_confirmed_stow_source(target_object_id: String) -> bool:
+	for presentation_bridge in default_scene_inventory_presentation_bridges:
+		if presentation_bridge == null or not presentation_bridge.has_method("can_request_stow"):
+			continue
+		if bool(presentation_bridge.call("can_request_stow", target_object_id)):
+			return true
+	return false
+
+
+func _has_reviewed_default_scene_affordance(target_object_id: String, interaction_type: String) -> bool:
+	for affordance_bridge in default_scene_affordance_bridges:
+		if affordance_bridge == null or not affordance_bridge.has_method("handles_interaction"):
+			continue
+		if not bool(affordance_bridge.call("handles_interaction", target_object_id, interaction_type)):
+			continue
+		if not affordance_bridge.has_method("resolve_interaction"):
+			_bus_log("phase0_interact_registry_unavailable:%s" % target_object_id)
+			return false
+		var resolution: Dictionary = affordance_bridge.call("resolve_interaction", target_object_id, interaction_type)
+		if str(resolution.get("status", "")) == "available":
+			return true
+		_bus_log("phase0_interact_registry_rejected:%s:%s" % [target_object_id, str(resolution.get("status", ""))])
+		return false
+	_bus_log("phase0_interact_registry_unavailable:%s" % target_object_id)
+	return false
+
+
+func _default_reviewed_interaction_type(target_object_id: String) -> String:
+	for affordance_bridge in default_scene_affordance_bridges:
+		if affordance_bridge == null or not affordance_bridge.has_method("default_interaction_type"):
+			continue
+		var interaction_type := str(affordance_bridge.call("default_interaction_type", target_object_id))
+		if not interaction_type.is_empty():
+			return interaction_type
+	return ""
+
+
+func _reviewed_interaction_route(target_object_id: String, interaction_type: String) -> String:
+	for affordance_bridge in default_scene_affordance_bridges:
+		if affordance_bridge == null or not affordance_bridge.has_method("route_for_interaction"):
+			continue
+		var route := str(affordance_bridge.call("route_for_interaction", target_object_id, interaction_type))
+		if not route.is_empty():
+			return route
+	return "interact"
 
 func _emit_move_intent_request(target_point: Vector3, move_mode: String) -> void:
 	var bridge := _get_bridge()

@@ -1,12 +1,39 @@
 # Embodied Interaction Product Foundation Plan Tree
 
-Status: `drafted-for-spec-review`
+Status: `execution-active-for-foundation-slices`
 
 Date: `2026-07-29`
 
-This plan tree implements the matching embodied-interaction specification only
-after its `awaiting-user-review` gate is approved. It intentionally excludes
-TTS, streamed dialogue, visemes, and broad presentation-content work.
+This plan tree advances the matching embodied-interaction specification through
+focused, evidence-backed foundation slices. Registry, controller, authority
+settlement, replay, interaction-session, carry/handoff, and action-asset
+selection already have limited implementation evidence. It intentionally
+excludes TTS, streamed dialogue, visemes, and broad presentation-content work.
+
+It authorizes continued work only within reviewed contracts: local controllers
+do not settle authority, VLA remains `fast-only` advisory with deep parked and
+non-blocking, and root motion never owns world-space truth. Wave 1 has one
+Godot-runtime-verified `obj_letter` and `obj_plaque` authority-owned
+`inspect/read` fixtures, plus the authority-gated `obj_lamp_switch` `press`
+fixture with `switch: idle -> activated` evidence, and the stateful
+`obj_archive_door` `open_close` fixture with `door: closed -> open -> closed`
+and state-constraint evidence. `obj_worktable` adds the stateful single-actor
+`use` / `finish_use` fixture with `work_surface: ready -> engaged -> ready`.
+`obj_observation_bench` adds actor-scoped `sit` / `stand`, owner-only release,
+and posture-result evidence. Door occupancy, seated animation, shared
+seat/table occupancy, and physical animation remain planned. `obj_archive_token`
+adds the first backend-resolved, custody-only `grab` reference: no client world
+refs are accepted and presentation changes only after the carry/place authority
+event. It does not close inventory, ownership, hand attachment, or generic
+pickup/place semantics. The next custody-to-inventory reference is a restricted
+backend `stow_intent`: it resolves item and backpack server-side, atomically
+commits custody/location/evidence, and gives Godot only an accepted authority
+presentation marker. It is not a reviewed container/retrieve family, inventory
+UI, or general stow flow. Its internal inverse `retrieve_to_custody` is
+backend-verified but deliberately has no default-scene transport, scene
+container, or client-selected receiver. Every
+further family still needs stable bindings, an authority policy, and visible
+success/constraint evidence.
 
 ## Plan Order
 

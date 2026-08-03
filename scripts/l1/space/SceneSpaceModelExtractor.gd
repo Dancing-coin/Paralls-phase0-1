@@ -48,8 +48,17 @@ func _maybe_add_node(node: Node, elements: Array[Dictionary]) -> void:
 	var lower_name := node.name.to_lower()
 	if lower_name.contains("environmentstatenode"):
 		_add_element(elements, "env_lamp", "environment_anchor", node, ["environment_state_node"], [])
-	if lower_name.contains("interactiveobject") or lower_name.contains("letter"):
-		_add_element(elements, "obj_letter", "interaction_object", node, ["interaction_object"], _geometry_refs(node))
+	if lower_name.contains("interactiveobject") or node.has_meta("grounding_refs"):
+		# Reviewed scene objects supply their stable ID explicitly. The legacy
+		# fallback keeps the original single-letter fixture readable.
+		var interaction_object_id := str(node.get_meta("entity_ref", "")).strip_edges()
+		if interaction_object_id.is_empty():
+			var object_id_value: Variant = node.get("object_id")
+			if object_id_value != null:
+				interaction_object_id = str(object_id_value).strip_edges()
+		if interaction_object_id.is_empty():
+			interaction_object_id = "obj_letter"
+		_add_element(elements, interaction_object_id, "interaction_object", node, ["interaction_object"], _geometry_refs(node))
 	if _is_collision_aggregate_root(node):
 		var aggregate_id := "collision_root_%s" % _safe_id(str(node.get_path()))
 		_add_element(elements, aggregate_id, "static_obstacle", node, ["collision_shape_aggregate"], _geometry_refs_limited(node, 12))
@@ -88,6 +97,11 @@ func _add_element(
 		refs.append("group:%s" % str(group_name))
 	if node.has_meta("l1_space_type") or node.has_meta("element_id") or node.has_meta("zone_id"):
 		refs.append("metadata:%s" % str(node.get_path()))
+	if node.has_meta("grounding_refs"):
+		for grounding_ref: Variant in node.get_meta("grounding_refs"):
+			var normalized_ref := str(grounding_ref)
+			if not normalized_ref.is_empty():
+				refs.append(normalized_ref)
 	for ref: String in extra_refs:
 		if ref != "":
 			refs.append(ref)
@@ -150,6 +164,7 @@ func _model(elements: Array[Dictionary]) -> Dictionary:
 			"godot_node_path",
 			"godot_group",
 			"godot_metadata",
+			"reviewed_grounding_metadata",
 			"collision_shape",
 			"navigation_region",
 			"walkable_surface_fallback",

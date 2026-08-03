@@ -1,6 +1,6 @@
 # Embodied Interaction Product Foundation Spec Tree
 
-Status: `awaiting-user-review`
+Status: `partially-implemented; coverage-expansion-planned`
 
 Date: `2026-07-29`
 
@@ -24,7 +24,8 @@ start the first embodied vertical slice.
   world truth.
 - Character mind and LLM select semantic intent, strategy, retry, or abort;
   they do not output per-frame bone or rigid-body control.
-- VLA remains an advisory slow path. It can propose bindings or uncertainty,
+- VLA remains a `fast-only` online advisory provider. Its deeper path is
+  deferred, parked, and non-blocking. It can propose bindings or uncertainty,
   but cannot control motion, apply impulses, or write ESM/world truth.
 - Siming consumes public settlement/evidence projections and emits high-level
   catalysts only. It cannot enter a local controller or overwrite a session.
@@ -71,7 +72,35 @@ the physical path rather than blocking it.
 
 ## Planning Gate
 
-The matching plan is drafted at
+The matching execution plan is available at
 `docs/superpowers/plans/world-character-siming-authority-mainline/embodied-interaction-product-foundation/`.
-It is a no-implementation plan until this design tree is approved. Planned
-profile names are contracts, not claims that those profiles already exist.
+The verified controller, registry, settlement, replay, session, carry/handoff,
+and action-asset-selection foundations are already implemented as focused
+slices. This tree authorizes only incremental work that preserves those
+boundaries and adds focused evidence. `obj_letter` is the first Godot-runtime-
+verified default-main-scene `inspect/read` fixture. `obj_plaque` is the second
+Godot-runtime-verified readable fixed-prop fixture, and `obj_lamp_switch` is
+the first authority-gated semantic `press` fixture with `switch: idle ->
+activated` evidence. `obj_archive_door` is the stateful authority-gated
+`open_close` fixture with `door: closed -> open -> closed` and state-constraint
+evidence. `obj_worktable` is the stateful single-actor `use` / `finish_use`
+fixture with `work_surface: ready -> engaged -> ready` and state-constraint
+evidence. `obj_observation_bench` is the actor-scoped `sit` / `stand` fixture
+with owner-only release and `posture: standing -> seated -> standing` evidence;
+seated animation, shared occupancy allocation, and session semantics remain
+planned. `obj_archive_token` is the first custody-only `grab` fixture: backend
+policy resolves the asset/source/actor-hand target and Godot changes the prop
+only after an authority-only placement directive. It does not establish
+inventory placement or ownership. A subsequent restricted `stow_intent`
+reference atomically moves that backend-confirmed custody into a policy-resolved
+backpack location and emits an accepted-only presentation marker; it is not a
+scene container/retrieve, inventory UI, ownership, or generic pickup/store
+closure. The inverse backend-only `retrieve_to_custody` foundation preserves
+the item identity while removing its actor-inventory location and occupying a
+registered receiver; it has no default-scene transport or client-selected
+receiver. Table seating, shared occupancy, ownership, hand animation, and
+generic pickup/place coverage remain planned. Broader family coverage remains planned. Every
+further family requires
+reviewed registry bindings, authority policy, and
+success/constraint evidence. Existing legacy documents retain their individual review status; a tree-level partial
+implementation status does not claim every specified feature is complete.

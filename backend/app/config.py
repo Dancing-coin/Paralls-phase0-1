@@ -74,6 +74,7 @@ class Settings(BaseModel):
     vla_live_proof_image_path: str | None = None
     vla_live_proof_artifact_ref: str = "visual_artifact:vla-live-proof"
     vla_provider_live_proof_run_id: str = ""
+    gameplay_mirror_phase3_actor_configs: list[dict[str, object]] = Field(default_factory=list)
     non_runtime_model_mode: Literal["disabled", "http", "local", "blocked"] = "disabled"
     non_runtime_model_endpoint: str | None = None
     non_runtime_model_api_key: str | None = Field(default=None, repr=False, exclude=True)
@@ -154,6 +155,16 @@ def _env_tts_voice_map() -> dict[str, str]:
     return parsed
 
 
+def _env_object_list(name: str) -> list[dict[str, object]]:
+    value = _env_value(name)
+    if not value:
+        return []
+    parsed = json.loads(value)
+    if not isinstance(parsed, list) or not all(isinstance(item, dict) for item in parsed):
+        raise ValueError(f"{name} must be a JSON array of objects")
+    return [dict(item) for item in parsed]
+
+
 settings = Settings(
     dialogue_mode=_env_value("DIALOGUE_MODE", "stub") or "stub",
     tts_mode=_env_value("TTS_MODE", "stub") or "stub",
@@ -214,6 +225,7 @@ settings = Settings(
     vla_live_proof_artifact_ref=_env_value("VLA_LIVE_PROOF_ARTIFACT_REF", "visual_artifact:vla-live-proof")
     or "visual_artifact:vla-live-proof",
     vla_provider_live_proof_run_id=_env_value("VLA_PROVIDER_LIVE_PROOF_RUN_ID", "") or "",
+    gameplay_mirror_phase3_actor_configs=_env_object_list("GAMEPLAY_MIRROR_PHASE3_ACTORS_JSON"),
     non_runtime_model_mode=_env_value("NON_RUNTIME_MODEL_MODE", "disabled") or "disabled",
     non_runtime_model_endpoint=_env_value("NON_RUNTIME_MODEL_ENDPOINT"),
     non_runtime_model_api_key=_env_value("NON_RUNTIME_MODEL_API_KEY"),

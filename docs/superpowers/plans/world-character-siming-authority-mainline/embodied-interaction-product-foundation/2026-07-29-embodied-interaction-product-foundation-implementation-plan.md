@@ -1,6 +1,6 @@
 # Embodied Interaction Product Foundation Implementation Plan
 
-Status: `drafted-for-spec-review`
+Status: `execution-active-for-implemented-foundation-slices`
 
 Date: `2026-07-29`
 
@@ -10,8 +10,10 @@ Revision: `2026-07-31` (review remediation)
 
 Implement a reusable, backend-authoritative embodied interaction foundation,
 starting with a verifiable `kick-chair` closure and then extending the same
-contracts to object transfer and multi-actor sessions. This plan does not
-authorize implementation until the matching spec tree is approved.
+contracts to object transfer and multi-actor sessions. This plan is now
+execution-active for the implemented foundation slices and their bounded
+follow-on work; it does not authorize broad embodied closure outside the
+matching spec/plan boundaries.
 
 ## Preconditions
 

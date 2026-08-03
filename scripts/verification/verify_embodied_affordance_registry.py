@@ -14,7 +14,18 @@ from app.world_runtime.l1_space_model import SceneSpaceModelExtractor
 from common import read_text, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
-TEST_FILES = ["backend/tests/test_scene_affordance_registry.py"]
+TEST_FILES = [
+    "backend/tests/test_scene_affordance_registry.py",
+    "backend/tests/test_default_scene_letter_affordance_static.py",
+    "backend/tests/test_default_scene_pickup_authority.py",
+    "backend/tests/test_ws_protocol.py::test_websocket_interact_intent_emits_ack_action_resolution_transition_object_state_body_state_environment_shift_and_siming_output",
+    "backend/tests/test_ws_protocol.py::test_websocket_press_intent_uses_registered_switch_authority_policy",
+    "backend/tests/test_ws_protocol.py::test_websocket_open_intent_uses_registered_archive_door_authority_policy",
+    "backend/tests/test_ws_protocol.py::test_door_close_requires_the_authority_committed_open_state",
+    "backend/tests/test_ws_protocol.py::test_worktable_finish_use_requires_the_authority_committed_engaged_state",
+    "backend/tests/test_ws_protocol.py::test_observation_bench_stand_requires_the_authority_scoped_occupant_and_emits_posture",
+    "backend/tests/test_ws_protocol.py::test_websocket_interact_intent_emits_constraint_when_player_is_far",
+]
 
 
 def _result(check_id: str, title: str, proved: bool, evidence: list[str], notes: str = "") -> dict[str, object]:
@@ -198,6 +209,37 @@ def main() -> int:
     except (OSError, json.JSONDecodeError):
         trace_payload = {}
 
+    letter_godot_log = log_dir / "default-scene-letter-affordance-godot.log"
+    letter_godot_artifact = log_dir / "default-scene-letter-affordance-godot-runtime.json"
+    letter_godot_ok = False
+    if args.godot_exe:
+        letter_godot_result = run_command(
+            [
+                args.godot_exe,
+                "--headless",
+                "--path",
+                str(project_root),
+                "--scene",
+                "res://scenes/phase0/DefaultSceneLetterAffordanceProbe.tscn",
+                "--quit-after",
+                "300",
+                "--render-thread",
+                "safe",
+            ],
+            project_root,
+            letter_godot_log,
+        )
+        letter_godot_text = read_text(letter_godot_log)
+        letter_godot_ok = (
+            letter_godot_result.returncode == 0
+            and "default_scene_letter_affordance_probe:verified=true" in letter_godot_text
+            and letter_godot_artifact.exists()
+        )
+    try:
+        letter_godot_payload = json.loads(letter_godot_artifact.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        letter_godot_payload = {}
+
     available = trace_payload.get("available", {}) if isinstance(trace_payload, dict) else {}
     stale = trace_payload.get("stale", {}) if isinstance(trace_payload, dict) else {}
     vla_conflict = trace_payload.get("vla_conflict", {}) if isinstance(trace_payload, dict) else {}
@@ -231,6 +273,134 @@ def main() -> int:
             and identity_refs.get("collider_refs") == ["collider:chair_01:body"],
             [str(godot_log), str(godot_artifact)],
         ),
+        _result(
+            "default-main-scene-letter-binding",
+            "Default MainDemo letter resolves through reviewed grounding refs and changes presentation only after an authority object result",
+            letter_godot_ok
+            and isinstance(letter_godot_payload, dict)
+            and letter_godot_payload.get("initial_state") == "partially_visible"
+            and isinstance(letter_godot_payload.get("stale_refresh_resolution"), dict)
+            and letter_godot_payload["stale_refresh_resolution"].get("status") == "available"
+            and letter_godot_payload.get("state_after_authority") == "visible"
+            and letter_godot_payload.get("state_after_constraint") == "visible"
+            and letter_godot_payload.get("authority_owned_presentation") is True,
+            [str(letter_godot_log), str(letter_godot_artifact)],
+        ),
+        _result(
+            "default-main-scene-plaque-binding",
+            "Default MainDemo plaque resolves through reviewed grounding refs and changes presentation only after an authority object result",
+            letter_godot_ok
+            and isinstance(letter_godot_payload, dict)
+            and isinstance(letter_godot_payload.get("plaque_initial_resolution"), dict)
+            and letter_godot_payload["plaque_initial_resolution"].get("status") == "available"
+            and letter_godot_payload.get("plaque_initial_state") == "partially_visible"
+            and letter_godot_payload.get("plaque_state_after_authority") == "visible"
+            and letter_godot_payload.get("plaque_state_after_constraint") == "visible"
+            and letter_godot_payload.get("plaque_authority_owned_presentation") is True,
+            [str(letter_godot_log), str(letter_godot_artifact)],
+        ),
+        _result(
+            "default-main-scene-lamp-switch-binding",
+            "Default MainDemo lamp switch resolves the explicit press affordance and changes presentation only after an authority switch result",
+            letter_godot_ok
+            and isinstance(letter_godot_payload, dict)
+            and isinstance(letter_godot_payload.get("lamp_switch_initial_resolution"), dict)
+            and letter_godot_payload["lamp_switch_initial_resolution"].get("status") == "available"
+            and letter_godot_payload.get("lamp_switch_default_interaction") == "press"
+            and letter_godot_payload.get("lamp_switch_initial_state") == "idle"
+            and letter_godot_payload.get("lamp_switch_state_after_authority") == "activated"
+            and letter_godot_payload.get("lamp_switch_state_after_constraint") == "activated"
+            and letter_godot_payload.get("lamp_switch_authority_owned_presentation") is True,
+            [str(letter_godot_log), str(letter_godot_artifact)],
+        ),
+        _result(
+            "default-main-scene-archive-door-binding",
+            "Default MainDemo archive door resolves open then close from authority-presented state and ignores a later state constraint",
+            letter_godot_ok
+            and isinstance(letter_godot_payload, dict)
+            and isinstance(letter_godot_payload.get("archive_door_initial_resolution"), dict)
+            and letter_godot_payload["archive_door_initial_resolution"].get("status") == "available"
+            and letter_godot_payload.get("archive_door_default_interaction") == "open"
+            and letter_godot_payload.get("archive_door_initial_state") == "closed"
+            and letter_godot_payload.get("archive_door_state_after_authority") == "open"
+            and isinstance(letter_godot_payload.get("archive_door_close_resolution"), dict)
+            and letter_godot_payload["archive_door_close_resolution"].get("status") == "available"
+            and letter_godot_payload.get("archive_door_close_interaction") == "close"
+            and letter_godot_payload.get("archive_door_state_after_close") == "closed"
+            and letter_godot_payload.get("archive_door_reopened_interaction") == "open"
+            and letter_godot_payload.get("archive_door_state_after_constraint") == "closed"
+            and letter_godot_payload.get("archive_door_authority_owned_presentation") is True,
+            [str(letter_godot_log), str(letter_godot_artifact)],
+        ),
+        _result(
+            "default-main-scene-worktable-binding",
+            "Default MainDemo worktable resolves use then finish_use from authority-presented state and ignores a later state constraint",
+            letter_godot_ok
+            and isinstance(letter_godot_payload, dict)
+            and isinstance(letter_godot_payload.get("worktable_initial_resolution"), dict)
+            and letter_godot_payload["worktable_initial_resolution"].get("status") == "available"
+            and letter_godot_payload.get("worktable_default_interaction") == "use"
+            and letter_godot_payload.get("worktable_initial_state") == "ready"
+            and letter_godot_payload.get("worktable_state_after_authority") == "engaged"
+            and isinstance(letter_godot_payload.get("worktable_finish_resolution"), dict)
+            and letter_godot_payload["worktable_finish_resolution"].get("status") == "available"
+            and letter_godot_payload.get("worktable_finish_interaction") == "finish_use"
+            and letter_godot_payload.get("worktable_state_after_finish") == "ready"
+            and letter_godot_payload.get("worktable_reused_interaction") == "use"
+            and letter_godot_payload.get("worktable_state_after_constraint") == "ready"
+            and letter_godot_payload.get("worktable_authority_owned_presentation") is True,
+            [str(letter_godot_log), str(letter_godot_artifact)],
+        ),
+        _result(
+            "default-main-scene-observation-bench-binding",
+            "Default MainDemo observation bench resolves sit then stand from authority-presented state and ignores a later owner constraint",
+            letter_godot_ok
+            and isinstance(letter_godot_payload, dict)
+            and isinstance(letter_godot_payload.get("observation_bench_initial_resolution"), dict)
+            and letter_godot_payload["observation_bench_initial_resolution"].get("status") == "available"
+            and letter_godot_payload.get("observation_bench_default_interaction") == "sit"
+            and letter_godot_payload.get("observation_bench_initial_state") == "available"
+            and letter_godot_payload.get("observation_bench_state_after_authority") == "occupied"
+            and isinstance(letter_godot_payload.get("observation_bench_stand_resolution"), dict)
+            and letter_godot_payload["observation_bench_stand_resolution"].get("status") == "available"
+            and letter_godot_payload.get("observation_bench_stand_interaction") == "stand"
+            and letter_godot_payload.get("observation_bench_state_after_stand") == "available"
+            and letter_godot_payload.get("observation_bench_resit_interaction") == "sit"
+            and letter_godot_payload.get("observation_bench_state_after_constraint") == "available"
+            and letter_godot_payload.get("observation_bench_authority_owned_presentation") is True,
+            [str(letter_godot_log), str(letter_godot_artifact)],
+        ),
+        _result(
+            "default-main-scene-archive-token-pickup-binding",
+            "Default MainDemo archive token resolves a reviewed grab affordance and changes its local presentation only after an authority-only placement directive",
+            letter_godot_ok
+            and isinstance(letter_godot_payload, dict)
+            and isinstance(letter_godot_payload.get("archive_token_initial_resolution"), dict)
+            and letter_godot_payload["archive_token_initial_resolution"].get("status") == "available"
+            and letter_godot_payload.get("archive_token_default_interaction") == "grab"
+            and letter_godot_payload.get("archive_token_initial_visible") is True
+            and letter_godot_payload.get("archive_token_visible_after_unsafe_directive") is True
+            and letter_godot_payload.get("archive_token_visible_after_authority") is False
+            and letter_godot_payload.get("archive_token_presentation_state") == "carried"
+            and letter_godot_payload.get("archive_token_stow_allowed_after_pickup") is True
+            and letter_godot_payload.get("archive_token_presentation_state_after_unsafe_stow") == "carried"
+            and letter_godot_payload.get("archive_token_presentation_state_after_authority_stow") == "stowed"
+            and letter_godot_payload.get("archive_token_stow_allowed_after_authority_stow") is False
+            and letter_godot_payload.get("archive_token_authority_owned_presentation") is True,
+            [str(letter_godot_log), str(letter_godot_artifact)],
+        ),
+        _result(
+            "default-main-scene-archive-storage-chest-retrieve-binding",
+            "Default MainDemo archive storage chest resolves only its reviewed retrieve affordance and restores the local carried marker only from an authority-only directive",
+            letter_godot_ok
+            and isinstance(letter_godot_payload, dict)
+            and isinstance(letter_godot_payload.get("archive_storage_chest_initial_resolution"), dict)
+            and letter_godot_payload["archive_storage_chest_initial_resolution"].get("status") == "available"
+            and letter_godot_payload.get("archive_storage_chest_default_interaction") == "retrieve"
+            and letter_godot_payload.get("archive_token_presentation_state_after_unsafe_retrieve") == "stowed"
+            and letter_godot_payload.get("archive_token_presentation_state_after_authority_retrieve") == "carried",
+            [str(letter_godot_log), str(letter_godot_artifact)],
+        ),
     ]
     overall = all(entry["status"] == "proved" for entry in results)
     report = {
@@ -241,6 +411,8 @@ def main() -> int:
             "trace": str(trace_path),
             "godot_log": str(godot_log),
             "godot_runtime": str(godot_artifact),
+            "default_scene_letter_godot_log": str(letter_godot_log),
+            "default_scene_letter_godot_runtime": str(letter_godot_artifact),
         },
     }
     json_path = log_dir / "embodied-affordance-registry-report.json"
