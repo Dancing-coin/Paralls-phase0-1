@@ -109,6 +109,8 @@
 | `2026-07-23-智能体具身交互全景评估与实施路线.md` | `已部分落地` | LLM readiness 部分已过时；具身交互与玩法底座部分仍开放 | 主线 gameplay foundation 与后续实施计划 |
 | `2026-07-24-大模型流式接入与VLA-TTS方案分析.md` | `已部分落地` | VLA real HTTP adapter 已有正式 spec/plan 和实现；live proof、流式与 TTS 仍开放 | `2026-07-29` VLA provider spec/plan 与后续流式/TTS 规格 |
 | `2026-07-20-游戏角色与世界玩法底座需求分析.md` | `待转化为正式主线玩法底座 spec` | 对应的正式玩法规格树已起草，但代码尚未落地 | `world-character-siming-authority-mainline/character-gameplay-foundation` |
+| `2026-08-01-后续spec-plan输入记录.md` | `已复核更新` | 已同步 gameplay foundation、WebSocket mirror、Patch migration、默认场景覆盖和 LLM closure 证据新鲜度 | 活跃主线 spec/plan 与最新 Harness 证据 |
+| `2026-08-03-活跃plan与spec进度分析.md` | `已复核更新` | 汇总当前活跃 plan/spec 的实现切片、未完成 closure、验证证据和下一步顺序 | 活跃正式 spec/plan；本文不替代正式真值 |
 
 ## 7. 当前文档清单
 
@@ -119,3 +121,5 @@
 - `2026-07-23-智能体具身交互全景评估与实施路线.md`
 - `2026-07-24-大模型流式接入与VLA-TTS方案分析.md`
 - `2026-07-20-游戏角色与世界玩法底座需求分析.md`
+- `2026-08-01-后续spec-plan输入记录.md`
+- `2026-08-03-活跃plan与spec进度分析.md`
