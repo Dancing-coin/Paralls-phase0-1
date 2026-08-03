@@ -29,6 +29,7 @@ class Settings(BaseModel):
     tts_default_voice: str = "default"
     tts_voice_map: dict[str, str] = Field(default_factory=dict)
     tts_voice_profiles_enabled: bool = False
+    tts_presentation_instructions_enabled: bool = False
     tts_voice_catalog_path: str | None = None
     tts_voice_bindings_path: str | None = None
     tts_voice_required_language: str | None = None
@@ -163,6 +164,7 @@ settings = Settings(
     tts_default_voice=_env_value("TTS_DEFAULT_VOICE", "default") or "default",
     tts_voice_map=_env_tts_voice_map(),
     tts_voice_profiles_enabled=_env_bool("TTS_VOICE_PROFILES_ENABLED", False),
+    tts_presentation_instructions_enabled=_env_bool("TTS_PRESENTATION_INSTRUCTIONS_ENABLED", False),
     tts_voice_catalog_path=_env_optional("TTS_VOICE_CATALOG_PATH"),
     tts_voice_bindings_path=_env_optional("TTS_VOICE_BINDINGS_PATH"),
     tts_voice_required_language=_env_optional("TTS_VOICE_REQUIRED_LANGUAGE"),

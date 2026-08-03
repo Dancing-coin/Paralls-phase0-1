@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "tts-voice-profile-adapter",
+  "order": 65,
+  "script": "scripts/verification/verify_tts_voice_profile_adapter.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/tts-voice-profile-adapter-report.json",
+  "description": "Backend proof for presentation-only TTS voice profiles, controlled XLSX catalog normalization, advisory candidate ranking, binding/provider-model validation, and enrollment boundary tests; it does not make a live provider call or approve production voices"
+}

@@ -3,6 +3,7 @@
   "provider": "dashscope_http",
   "model": "qwen-audio-3.0-tts-flash",
   "catalog_revision": "2026-07-23",
+  "allowed_presentation_instructions": [],
   "voices": [
     {
       "voice_id": "qwen-audio-3.0-tts-flash-longlanghongmo",

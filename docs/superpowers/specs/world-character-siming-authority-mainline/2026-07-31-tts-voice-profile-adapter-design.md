@@ -4,6 +4,25 @@ Status: `implementation-active`
 
 Date: `2026-07-31`
 
+## 2026-08-02 Implementation Status
+
+The presentation boundary now includes a controlled standard-library XLSX
+normalizer and deterministic candidate-ranking helper. The importer requires
+the provider, model, and catalog revision explicitly, rejects malformed or
+duplicate voice IDs, and produces the existing `tts_voice_catalog.v1` shape.
+Ranking accepts only explicit presentation criteria, returns an advisory
+short-list, and cannot create or approve a `VoiceBinding`. The focused
+`tts-voice-profile-adapter` profile proves this boundary alongside existing
+binding and enrollment tests; it does not prove a live provider call or human
+audition/approval.
+
+An approved binding may now carry one authored `presentation_instruction`, but
+only when `TTS_PRESENTATION_INSTRUCTIONS_ENABLED=true`, the exact preset is in
+the catalog allowlist, and the selected adapter declares support. The current
+DashScope and generic OpenAI-compatible adapters declare support as false, so
+an enabled preset is rejected before a network request rather than silently
+dropped or synthesized from dialogue/affect/Siming data.
+
 ## Purpose
 
 The existing TTS path correctly maps an `actor_id` to one provider voice ID, but

@@ -20,8 +20,9 @@ class TTSProvider(Protocol):
     """Adapter boundary for a provider that returns one complete PCM WAV clip."""
 
     provider_name: str
+    supports_presentation_instruction: bool
 
-    def synthesize(self, *, content: str, voice_id: str) -> bytes: ...
+    def synthesize(self, *, content: str, voice_id: str, presentation_instruction: str | None = None) -> bytes: ...
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,7 @@ class OpenAICompatibleTTSProvider:
     """HTTP slot for providers accepting OpenAI's /audio/speech request shape."""
 
     provider_name = "openai_compatible"
+    supports_presentation_instruction = False
 
     def __init__(self, configuration: Settings) -> None:
         if not configuration.tts_provider_endpoint or not configuration.tts_provider_api_key or not configuration.tts_provider_model:
@@ -45,7 +47,9 @@ class OpenAICompatibleTTSProvider:
         self._sample_rate_hz = configuration.tts_output_sample_rate_hz
         self._timeout_seconds = configuration.tts_provider_timeout_seconds
 
-    def synthesize(self, *, content: str, voice_id: str) -> bytes:
+    def synthesize(self, *, content: str, voice_id: str, presentation_instruction: str | None = None) -> bytes:
+        if presentation_instruction is not None:
+            raise TTSProviderError("openai_compatible TTS does not declare presentation-instruction support")
         body = json.dumps(
             {
                 "model": self._model,
@@ -76,6 +80,7 @@ class DashScopeHttpTTSProvider:
     """DashScope non-realtime TTS adapter returning the downloaded complete WAV clip."""
 
     provider_name = "dashscope_http"
+    supports_presentation_instruction = False
 
     def __init__(self, configuration: Settings) -> None:
         if not configuration.tts_provider_endpoint or not configuration.tts_provider_api_key or not configuration.tts_provider_model:
@@ -94,7 +99,9 @@ class DashScopeHttpTTSProvider:
         self._sample_rate_hz = configuration.tts_output_sample_rate_hz
         self._timeout_seconds = configuration.tts_provider_timeout_seconds
 
-    def synthesize(self, *, content: str, voice_id: str) -> bytes:
+    def synthesize(self, *, content: str, voice_id: str, presentation_instruction: str | None = None) -> bytes:
+        if presentation_instruction is not None:
+            raise TTSProviderError("dashscope_http TTS does not declare presentation-instruction support")
         body = json.dumps(
             {
                 "model": self._model,
@@ -163,8 +170,14 @@ class TTSService:
 
         try:
             voice_id = self.resolve_voice_id(actor_id)
+            presentation_instruction = self.resolve_presentation_instruction(actor_id)
             provider = self._provider or self._build_provider()
-            wav_bytes = provider.synthesize(content=content, voice_id=voice_id)
+            wav_bytes = self._synthesize_provider(
+                provider,
+                content=content,
+                voice_id=voice_id,
+                presentation_instruction=presentation_instruction,
+            )
             wav = _inspect_pcm_wav(wav_bytes, expected_sample_rate_hz=self._configuration.tts_output_sample_rate_hz)
             encoded_payload = base64.b64encode(wav_bytes).decode("ascii")
             if len(encoded_payload) > self._configuration.tts_max_encoded_payload_bytes:
@@ -190,6 +203,28 @@ class TTSService:
         """Resolve an approved presentation binding or retain the legacy map."""
         resolved = self._voice_profile_resolver.resolve(actor_id)
         return resolved if resolved is not None else self._legacy_voice_id(actor_id)
+
+    def resolve_presentation_instruction(self, actor_id: str) -> str | None:
+        """Return an authored profile preset only; it has no dialogue or authority inputs."""
+        return self._voice_profile_resolver.resolve_presentation_instruction(actor_id)
+
+    @staticmethod
+    def _synthesize_provider(
+        provider: TTSProvider,
+        *,
+        content: str,
+        voice_id: str,
+        presentation_instruction: str | None,
+    ) -> bytes:
+        if presentation_instruction is None:
+            return provider.synthesize(content=content, voice_id=voice_id)
+        if not getattr(provider, "supports_presentation_instruction", False):
+            raise TTSProviderError("configured TTS provider does not declare presentation-instruction support")
+        return provider.synthesize(
+            content=content,
+            voice_id=voice_id,
+            presentation_instruction=presentation_instruction,
+        )
 
     def _legacy_voice_id(self, actor_id: str) -> str:
         return self._configuration.tts_voice_map.get(actor_id, self._configuration.tts_default_voice)

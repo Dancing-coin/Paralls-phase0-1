@@ -34,6 +34,7 @@ class TTSVoiceCatalog(_VoiceProfileModel):
     provider: str = Field(min_length=1)
     model: str = Field(min_length=1)
     catalog_revision: str = Field(min_length=1)
+    allowed_presentation_instructions: list[str] = Field(default_factory=list)
     voices: list[VoiceCatalogEntry] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -54,6 +55,7 @@ class TTSVoiceBinding(_VoiceProfileModel):
     selection_status: Literal["candidate", "approved", "retired"]
     approved_by: str | None = None
     presentation_traits: list[str] = Field(default_factory=list)
+    presentation_instruction: str | None = None
 
 
 class TTSVoiceBindings(_VoiceProfileModel):
@@ -77,17 +79,32 @@ class TTSVoiceProfileResolver:
         self._bindings_by_actor_id: dict[str, TTSVoiceBinding] | None = None
 
     def resolve(self, actor_id: str) -> str | None:
+        binding = self._binding_for_actor(actor_id)
+        if binding is None:
+            return None
+        return binding.voice_id
+
+    def resolve_presentation_instruction(self, actor_id: str) -> str | None:
+        """Resolve only an authored, catalog-allowed instruction behind its feature flag."""
+        if not self._configuration.tts_presentation_instructions_enabled:
+            return None
+        binding = self._binding_for_actor(actor_id)
+        if binding is None or not binding.presentation_instruction:
+            return None
+        assert self._catalog is not None
+        if binding.presentation_instruction not in self._catalog.allowed_presentation_instructions:
+            raise TTSVoiceProfileError("TTS voice presentation instruction is not catalog-allowed")
+        return binding.presentation_instruction
+
+    def _binding_for_actor(self, actor_id: str) -> TTSVoiceBinding | None:
         if not self._configuration.tts_voice_profiles_enabled:
             return None
-
         self._load_assets()
         assert self._bindings_by_actor_id is not None
         binding = self._bindings_by_actor_id.get(actor_id)
-        if binding is None:
-            return None
-
-        self._validate_binding(binding)
-        return binding.voice_id
+        if binding is not None:
+            self._validate_binding(binding)
+        return binding
 
     def _load_assets(self) -> None:
         if self._catalog is not None and self._bindings_by_actor_id is not None:
@@ -138,7 +155,7 @@ __all__ = [
     "TTSVoiceBinding",
     "TTSVoiceBindings",
     "TTSVoiceCatalog",
-    "TTSVoiceCatalogEntry",
+    "VoiceCatalogEntry",
     "TTSVoiceProfileError",
     "TTSVoiceProfileResolver",
 ]

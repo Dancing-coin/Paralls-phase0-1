@@ -19,3 +19,17 @@ request.
 
 These files are presentation configuration. They do not alter character dossier
 identity, dialogue generation, authority, world truth, or Siming.
+
+For a provider Excel export, a controlled authoring or release tool may call
+`import_xlsx_voice_catalog(...)` from
+`backend/app/services/tts_voice_catalog_importer.py`. It reads the first XLSX
+worksheet, requires explicit provider/model/catalog-revision inputs, and emits
+the same catalog schema. Its candidate ranking helper only produces a
+deterministic review short-list; it cannot create or approve bindings. Exported
+catalogs still need a human audition record before an approved binding is used.
+
+`presentation_instruction` is optional authored presentation metadata on a
+binding. It is disabled by default and must exactly match the catalog's
+`allowed_presentation_instructions`; it reaches a provider only when that
+adapter explicitly declares support. Do not populate it from generated dialogue,
+affect, Siming, player input, or world state.

@@ -20,18 +20,21 @@ Date: `2026-07-31`
 2. [x] Add versioned, non-secret template assets for an imported Flash catalog and
    approved actor bindings. Do not add API credentials, signed preview URLs, or
    raw provider audio to source control.
-3. Implement a catalog importer/normalizer for the official Excel schema and a
-   deterministic candidate-ranking helper. Treat ranking as advisory; require
-   an explicit approval record before runtime use.
+3. [x] Implement a controlled XLSX catalog importer/normalizer and a
+   deterministic candidate-ranking helper. It accepts explicit provider/model/
+   revision inputs, treats ranking as advisory, and cannot create or approve a
+   runtime binding.
 4. [x] Extend configuration so the profile-binding resolver takes precedence over
    `TTS_VOICE_MAP_JSON` when enabled. Retain the JSON map as the legacy fallback
    and retain `TTS_MODE=stub` unchanged.
 5. [x] Validate provider, model, voice ID, catalog revision, and approval
    before calling `TTSProvider`. On validation failure use the existing stub
    fallback and expose only a non-sensitive presentation failure reason.
-6. Add the optional authored `presentation_instruction` transport only behind a
-   disabled feature flag and provider capability declaration. Do not source it
-   from dialogue generation, affect, or Siming.
+6. [x] Add the optional authored `presentation_instruction` transport behind a
+   disabled-by-default feature flag, catalog allowlist, and provider capability
+   declaration. It is not sourced from dialogue generation, affect, or Siming.
+   Current production adapters declare this capability unsupported, so enabling
+   a preset falls back before any provider request until an adapter is verified.
 7. Add a provider-catalog capability surface for later DashScope Plus, voice
    cloning/design, or a second provider. Each adapter owns its model-to-catalog
    compatibility rules.
