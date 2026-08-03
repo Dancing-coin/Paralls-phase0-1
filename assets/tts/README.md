@@ -14,8 +14,9 @@ the repository root.
 Do not put API keys, provider temporary URLs, raw audio, or unlicensed voice
 samples in these assets. `selection_status` must be `approved` before a binding
 is used for synthesis. The resolver validates the binding against the catalog
-and the configured `TTS_MODE`/`TTS_PROVIDER_MODEL` before it makes a provider
-request.
+and the configured `TTS_MODE`/`TTS_PROVIDER_MODEL`/
+`TTS_VOICE_CATALOG_REVISION` plus the adapter capability declaration before it
+makes a provider request.
 
 These files are presentation configuration. They do not alter character dossier
 identity, dialogue generation, authority, world truth, or Siming.

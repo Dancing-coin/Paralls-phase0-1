@@ -42,8 +42,8 @@ the existing dialogue, character execution, ESM, and Siming contracts stable.
 The explicit verification commands are:
 
 ```powershell
-python scripts/verification/verify_tts_provider_live.py --allow-live-call
-python scripts/verification/verify_tts_godot_playback.py --allow-live-call
+python scripts/verification/verify_tts_provider_live.py --allow-live-call --evidence-run-id <opaque-run-id> --actor-id <approved-actor-id>
+python scripts/verification/verify_tts_godot_playback.py --allow-live-call --evidence-run-id <opaque-run-id> --actor-id <approved-actor-id>
 ```
 
 They are not normal harness profiles. On 2026-07-31 both passed: the selected

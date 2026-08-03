@@ -9,9 +9,18 @@ var voice: AudioStreamPlayer3D
 var submitted := false
 var deadline_ms := 0
 var last_socket_state := -1
+var expected_actor_id := ""
+var expected_voice_id := ""
+var evidence_run_id := ""
 
 
 func _initialize() -> void:
+	expected_actor_id = _argument_value("--actor-id")
+	expected_voice_id = _argument_value("--expected-voice-id")
+	evidence_run_id = _argument_value("--evidence-run-id")
+	if expected_actor_id.is_empty() or expected_voice_id.is_empty() or evidence_run_id.is_empty():
+		_finish_failure("missing_probe_arguments")
+		return
 	voice = SpatialVoiceControllerRef.new()
 	root.add_child(voice)
 	socket.inbound_buffer_size = 1024 * 1024
@@ -48,10 +57,10 @@ func _submit_dialogue() -> void:
 			"room_id": "room_demo",
 			"scene_id": "scene_demo",
 			"zone_id": "zone_focus",
-			"actor_id": "char_c",
+		"actor_id": "char_c",
 			"intent_type": "dialogue_submit",
 			"producer_ts": Time.get_ticks_msec(),
-			"target_actor_id": "char_a",
+			"target_actor_id": expected_actor_id,
 			"content": "Please confirm the voice link.",
 		},
 	}
@@ -72,12 +81,19 @@ func _handle_message(raw: String) -> void:
 		_finish_failure("missing_dialogue_payload")
 		return
 	var payload := raw_payload as Dictionary
+	if str(payload.get("actor_id", "")) != expected_actor_id:
+		_finish_failure("unexpected_response_actor")
+		return
 	var raw_audio: Variant = payload.get("audio", {})
 	if not (raw_audio is Dictionary):
 		_finish_failure("missing_audio_payload")
 		return
 	var audio := raw_audio as Dictionary
-	if str(audio.get("mode", "")) != "clip" or str(audio.get("provider", "")) != "dashscope_http":
+	if (
+		str(audio.get("mode", "")) != "clip"
+		or str(audio.get("provider", "")) != "dashscope_http"
+		or str(audio.get("voice_id", "")) != expected_voice_id
+	):
 		_finish_failure("expected_dashscope_clip")
 		return
 	voice.play_voice(payload)
@@ -87,7 +103,8 @@ func _handle_message(raw: String) -> void:
 		return
 	var wav := stream as AudioStreamWAV
 	print(
-		"tts_godot_playback_verified:provider=%s:sample_rate_hz=%s:channels=%s:playing=%s" % [
+		"tts_godot_playback_verified:actor=%s:provider=%s:sample_rate_hz=%s:channels=%s:playing=%s" % [
+			expected_actor_id,
 			str(audio.get("provider", "")),
 			wav.mix_rate,
 			1 if not wav.stereo else 2,
@@ -100,3 +117,11 @@ func _handle_message(raw: String) -> void:
 func _finish_failure(reason: String) -> void:
 	print("tts_godot_playback_failed:%s" % reason)
 	quit(1)
+
+
+func _argument_value(flag: String) -> String:
+	var arguments := OS.get_cmdline_user_args()
+	for index in range(arguments.size() - 1):
+		if str(arguments[index]) == flag:
+			return str(arguments[index + 1])
+	return ""

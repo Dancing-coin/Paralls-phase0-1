@@ -53,6 +53,7 @@ def test_settings_read_tts_voice_profile_asset_configuration(monkeypatch) -> Non
     monkeypatch.setenv("TTS_VOICE_PROFILES_ENABLED", "true")
     monkeypatch.setenv("TTS_VOICE_CATALOG_PATH", "assets/tts/voice_catalog.json")
     monkeypatch.setenv("TTS_VOICE_BINDINGS_PATH", "assets/tts/voice_bindings.json")
+    monkeypatch.setenv("TTS_VOICE_CATALOG_REVISION", "2026-08-03")
     monkeypatch.setenv("TTS_VOICE_REQUIRED_LANGUAGE", "zh-CN")
     monkeypatch.setenv("TTS_PRESENTATION_INSTRUCTIONS_ENABLED", "true")
     monkeypatch.setenv(
@@ -65,6 +66,7 @@ def test_settings_read_tts_voice_profile_asset_configuration(monkeypatch) -> Non
     assert reloaded.settings.tts_voice_profiles_enabled is True
     assert reloaded.settings.tts_voice_catalog_path == "assets/tts/voice_catalog.json"
     assert reloaded.settings.tts_voice_bindings_path == "assets/tts/voice_bindings.json"
+    assert reloaded.settings.tts_voice_catalog_revision == "2026-08-03"
     assert reloaded.settings.tts_voice_required_language == "zh-CN"
     assert reloaded.settings.tts_presentation_instructions_enabled is True
     assert reloaded.settings.tts_voice_enrollment_endpoint == (

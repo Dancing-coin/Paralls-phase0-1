@@ -55,6 +55,7 @@
 - `docs/superpowers/plans/world-character-siming-authority-mainline/2026-07-29-real-tts-provider-presentation-implementation-plan.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/2026-07-31-tts-voice-profile-adapter-design.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/2026-07-31-tts-voice-profile-adapter-implementation-plan.md`
+- `docs/superpowers/plans/world-character-siming-authority-mainline/2026-08-03-tts-voice-profile-adapter-closure-implementation-plan.md`
 - `scripts/verification/verify_tts_voice_profile_adapter.py` (presentation-only voice-profile/catalog verification)
 - `docs/superpowers/specs/2026-06-29-complete-character-mind-core-design.md`
 - `docs/superpowers/specs/2026-07-08-character-needs-personality-affect-runtime-design.md`
@@ -199,8 +200,8 @@
 - `python scripts/verification/benchmark_vla_advisory_routes.py --allow-live-call --annotation-sample-id throne-hall-walk-preview-001 --samples 3`
 - `python scripts/verification/verify_vla_replay_annotations.py`
 - `python scripts/verification/verify_vla_replay_second_scene_capture.py --godot-exe <Godot-console-exe>`
-- `python scripts/verification/verify_tts_provider_live.py --allow-live-call`
-- `python scripts/verification/verify_tts_godot_playback.py --allow-live-call`
+- `python scripts/verification/verify_tts_provider_live.py --allow-live-call --evidence-run-id <opaque-run-id> --actor-id <approved-actor-id>`
+- `python scripts/verification/verify_tts_godot_playback.py --allow-live-call --evidence-run-id <same-opaque-run-id> --actor-id <approved-actor-id>`
 - `python scripts/verification/verify_perception_input_alignment.py`
 - `python scripts/verification/verify_actor_scene_knowledge_runtime.py`
 - `python scripts/verification/verify_siming_global_situation_runtime.py`

@@ -1,6 +1,8 @@
 import base64
+import importlib.util
 import json
 import struct
+import sys
 from pathlib import Path
 
 import pytest
@@ -237,6 +239,11 @@ def test_dashscope_http_provider_requires_complete_configuration() -> None:
         DashScopeHttpTTSProvider(Settings(tts_mode="dashscope_http"))
 
 
+def test_dashscope_http_provider_rejects_an_undeclared_voice_profile_model() -> None:
+    with pytest.raises(TTSProviderError, match="does not declare voice-profile support"):
+        DashScopeHttpTTSProvider(_dashscope_settings(tts_provider_model="qwen-audio-3.0-tts-plus"))
+
+
 def test_dashscope_http_provider_rejects_an_unexpanded_workspace_endpoint() -> None:
     with pytest.raises(TTSProviderError, match="configured Workspace ID"):
         DashScopeHttpTTSProvider(
@@ -274,3 +281,62 @@ def test_godot_voice_controller_consumes_the_complete_wav_contract() -> None:
     assert "tts_godot_playback_verified" in live_probe_source
     assert "voice.play_voice(payload)" in live_probe_source
     assert "ws.inbound_buffer_size = 1024 * 1024" in bridge_source
+
+
+def test_live_tts_verifiers_require_final_binding_preflight_and_safe_probe_arguments() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    provider_verifier = (project_root / "scripts" / "verification" / "verify_tts_provider_live.py").read_text(
+        encoding="utf-8"
+    )
+    godot_verifier = (project_root / "scripts" / "verification" / "verify_tts_godot_playback.py").read_text(
+        encoding="utf-8"
+    )
+    live_probe = (project_root / "scripts" / "verification" / "TTSGodotLivePlaybackProbe.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'parser.add_argument("--evidence-run-id"' in provider_verifier
+    assert "blocked_profile_disabled" in provider_verifier
+    assert "resolve_voice_binding" in provider_verifier
+    assert '"payload": audio.payload' not in provider_verifier
+    assert '"approved_by": binding.approved_by' not in provider_verifier
+    assert "--expected-voice-id" in godot_verifier
+    assert "voice_clip_rejected" in godot_verifier
+    assert "voice_stub_played" in godot_verifier
+    assert "expected_voice_id" in live_probe
+    assert "unexpected_response_actor" in live_probe
+
+
+def test_live_provider_report_binding_metadata_excludes_operator_approval_content() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    verifier_path = project_root / "scripts" / "verification" / "verify_tts_provider_live.py"
+    sys.path.insert(0, str(verifier_path.parent))
+    try:
+        spec = importlib.util.spec_from_file_location("tts_provider_live_verifier_for_test", verifier_path)
+        assert spec is not None and spec.loader is not None
+        verifier = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(verifier)
+    finally:
+        sys.path.pop(0)
+
+    from app.services.tts_voice_profiles import TTSVoiceBinding
+
+    metadata = verifier._binding_metadata(
+        TTSVoiceBinding(
+            contract="tts_voice_profile.v1",
+            actor_id="char_a",
+            provider="dashscope_http",
+            model="qwen-audio-3.0-tts-flash",
+            voice_id="voice-a",
+            catalog_revision="2026-08-03",
+            selection_status="approved",
+            approved_by="operator-review:private-reference",
+        )
+    )
+
+    assert metadata["actor_id"] == "char_a"
+    assert metadata["approval_reference_present"] is True
+    assert "approved_by" not in metadata
+    assert "operator-review:private-reference" not in json.dumps(metadata)
+    assert verifier._preflight(True, "https://not-an-opaque-id", ["char_a"])[0] == "blocked_invalid_evidence_run_id"
+    assert verifier._preflight(True, "tts-closeout-20260803", ["char_a", "char_a"])[0] == "blocked_invalid_actor_set"

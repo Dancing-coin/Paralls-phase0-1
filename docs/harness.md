@@ -554,7 +554,8 @@ Backend-only proof for the presentation-only TTS voice-profile adapter.
 
 Current proof includes:
 
-- `tts_voice_profile.v1` catalog/binding parsing, provider-model compatibility,
+- `tts_voice_profile.v1` catalog/binding parsing, adapter provider-model-catalog
+  capability compatibility, configured catalog-revision pinning,
   required-language rejection, legacy-map fallback, and provider-call blocking
   on invalid bindings
 - controlled first-worksheet XLSX catalog normalization with explicit provider,

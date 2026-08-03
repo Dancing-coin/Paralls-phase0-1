@@ -40,6 +40,14 @@ const ONE_SHOT_CLIPS := {
 	"jump_command": true,
 }
 
+const REVIEWED_ACTION_ATOM_STATES := {
+	"start_move": {"animation_clip_ref": "walk_guard", "state": "walk", "motion_profile": "walk", "phase": "plan_approach"},
+	"turn_to_target": {"animation_clip_ref": "observe_watch", "state": "observe", "motion_profile": "default", "phase": "align"},
+	"raise_hand": {"animation_clip_ref": "inspect_relic", "state": "inspect", "motion_profile": "default", "phase": "prepare"},
+	"tap_contact": {"animation_clip_ref": "inspect_relic", "state": "inspect", "motion_profile": "default", "phase": "execute_contact"},
+	"recover_balance": {"animation_clip_ref": "idle_guard", "state": "idle", "motion_profile": "default", "phase": "recover"},
+}
+
 const MOTION_PROFILE := {
 	"default": {
 		"playback_speed": 1.0,
@@ -332,6 +340,24 @@ func set_state(state_name: String) -> void:
 func set_motion_profile(state_name: String, profile_name: String) -> void:
 	set_state(state_name)
 	_apply_motion_profile(profile_name)
+
+
+func play_reviewed_action_atom(action_tag: String, animation_clip_ref: String, phase: String) -> Dictionary:
+	var mapping: Variant = REVIEWED_ACTION_ATOM_STATES.get(action_tag, {})
+	if not (mapping is Dictionary):
+		return {"accepted": false, "played_clip": ""}
+	var profile: Dictionary = mapping
+	if str(profile.get("animation_clip_ref", "")) != animation_clip_ref:
+		return {"accepted": false, "played_clip": ""}
+	if str(profile.get("phase", "")) != phase:
+		return {"accepted": false, "played_clip": ""}
+	set_motion_profile(str(profile.get("state", "idle")), str(profile.get("motion_profile", "default")))
+	return {"accepted": current_clip == animation_clip_ref, "played_clip": current_clip}
+
+
+func restore_reviewed_action_playback() -> void:
+	reset_root_motion()
+	set_motion_profile("idle", "default")
 
 func set_focus_highlight(is_focused: bool) -> void:
 	if knight_scene == null:

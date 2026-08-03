@@ -32,6 +32,7 @@ class Settings(BaseModel):
     tts_presentation_instructions_enabled: bool = False
     tts_voice_catalog_path: str | None = None
     tts_voice_bindings_path: str | None = None
+    tts_voice_catalog_revision: str | None = None
     tts_voice_required_language: str | None = None
     tts_voice_enrollment_endpoint: str | None = None
     tts_output_sample_rate_hz: int = Field(default=24000, ge=8000, le=48000)
@@ -184,6 +185,7 @@ settings = Settings(
     tts_presentation_instructions_enabled=_env_bool("TTS_PRESENTATION_INSTRUCTIONS_ENABLED", False),
     tts_voice_catalog_path=_env_optional("TTS_VOICE_CATALOG_PATH"),
     tts_voice_bindings_path=_env_optional("TTS_VOICE_BINDINGS_PATH"),
+    tts_voice_catalog_revision=_env_optional("TTS_VOICE_CATALOG_REVISION"),
     tts_voice_required_language=_env_optional("TTS_VOICE_REQUIRED_LANGUAGE"),
     tts_voice_enrollment_endpoint=_env_optional("TTS_VOICE_ENROLLMENT_ENDPOINT"),
     tts_output_sample_rate_hz=int(_env_value("TTS_OUTPUT_SAMPLE_RATE_HZ", "24000") or "24000"),

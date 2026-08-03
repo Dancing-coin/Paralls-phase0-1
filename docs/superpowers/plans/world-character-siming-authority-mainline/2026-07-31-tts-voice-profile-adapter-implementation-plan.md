@@ -35,9 +35,13 @@ Date: `2026-07-31`
    declaration. It is not sourced from dialogue generation, affect, or Siming.
    Current production adapters declare this capability unsupported, so enabling
    a preset falls back before any provider request until an adapter is verified.
-7. Add a provider-catalog capability surface for later DashScope Plus, voice
-   cloning/design, or a second provider. Each adapter owns its model-to-catalog
-   compatibility rules.
+7. [x] Add a provider-catalog capability surface. The current DashScope adapter
+   declares its supported Flash model, catalog contract, configuration-pinned
+   catalog revision policy, complete WAV output, and instruction capability;
+   the generic OpenAI-compatible adapter declares only its configured model.
+   DashScope Plus, cloning/design, or a second provider require their own
+   explicit capability declaration and tests before an approved binding can use
+   them.
 8. [x] Add focused tests for catalogue parsing, model mismatch rejection, profile
    isolation from dossiers, legacy map fallback, approved binding resolution,
    and no-regression `tts_audio.v1` clips.
@@ -68,8 +72,8 @@ Date: `2026-07-31`
 ```powershell
 python -m pytest -v backend/tests/test_tts_service.py backend/tests/test_config_runtime_modes.py
 python -m pytest -v
-python scripts/verification/verify_tts_provider_live.py --allow-live-call
-python scripts/verification/verify_tts_godot_playback.py --allow-live-call
+python scripts/verification/verify_tts_provider_live.py --allow-live-call --evidence-run-id <opaque-run-id> --actor-id <approved-actor-id>
+python scripts/verification/verify_tts_godot_playback.py --allow-live-call --evidence-run-id <opaque-run-id> --actor-id <approved-actor-id>
 python scripts/verification/harness.py --profile all
 ```
 
