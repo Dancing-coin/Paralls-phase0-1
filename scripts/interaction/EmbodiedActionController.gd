@@ -34,6 +34,7 @@ var selected_realization_route := ""
 var selected_action_atoms: Array[Dictionary] = []
 var phase_action_atoms: Dictionary = {}
 var trace_events: Array[Dictionary] = []
+var active_playback_adapter: Node
 
 
 func can_start_attempt(request: Dictionary, grant: Dictionary) -> Dictionary:
@@ -53,8 +54,11 @@ func run_attempt(
 	grant: Dictionary,
 	registry_binding: Dictionary,
 	scenario: String = "success",
-	action_asset_registry: CharacterEmbodimentAssetRegistry = null
+	action_asset_registry: CharacterEmbodimentAssetRegistry = null,
+	playback_adapter: Node = null
 ) -> Dictionary:
+	# Every request owns its local playback binding, including failed preflight.
+	active_playback_adapter = playback_adapter
 	var allowed := can_start_attempt(request, grant)
 	if not bool(allowed.get("accepted", false)):
 		return _terminal_outcome(request, grant, registry_binding, "failed_precondition", str(allowed.get("error_code", "")), false)
@@ -91,7 +95,16 @@ func run_attempt(
 	for phase: String in ORDERED_PHASES:
 		if phase == "terminal":
 			break
-		_enter_phase(phase)
+		var playback := _enter_phase(phase)
+		if not bool(playback.get("accepted", false)):
+			return _terminal_outcome(
+				request,
+				grant,
+				registry_binding,
+				"failed_precondition",
+				"local_playback_unavailable",
+				false
+			)
 		var terminal := _terminal_for_scenario(scenario, phase)
 		if terminal != "":
 			return _terminal_outcome(request, grant, registry_binding, terminal, _failure_for_terminal(terminal, scenario), terminal == "contact_observed")
@@ -134,13 +147,20 @@ func cancel_attempt(reason: String = "authority_cancelled") -> Dictionary:
 	return _terminal_outcome(request, grant, {}, "aborted", reason, false)
 
 
-func _enter_phase(phase: String) -> void:
+func _enter_phase(phase: String) -> Dictionary:
 	current_phase = phase
 	var local_atoms := _select_phase_action_atoms(phase)
 	if local_atoms.is_empty():
 		phase_action_atoms.erase(phase)
 	else:
 		phase_action_atoms[phase] = local_atoms
+	var playback_result := {"accepted": true, "status": "not_configured"}
+	if active_playback_adapter != null:
+		if not active_playback_adapter.has_method("begin_phase"):
+			return {"accepted": false, "status": "local_playback_unavailable"}
+		playback_result = active_playback_adapter.call("begin_phase", phase, local_atoms)
+		if not bool(playback_result.get("accepted", false)):
+			return {"accepted": false, "status": "local_playback_unavailable"}
 	trace_events.append({
 		"interaction_attempt_id": active_attempt_id,
 		"phase": phase,
@@ -149,6 +169,7 @@ func _enter_phase(phase: String) -> void:
 		"local_root_motion_profiles": _local_root_motion_profiles(phase, local_atoms),
 		"local_execution_only": true,
 	})
+	return playback_result
 
 
 func _terminal_for_scenario(scenario: String, phase: String) -> String:
@@ -195,7 +216,10 @@ func _terminal_outcome(
 	failure_code: String,
 	contact_observed: bool
 ) -> Dictionary:
-	_enter_phase("recover")
+	if current_phase != "recover":
+		_enter_phase("recover")
+	if active_playback_adapter != null and active_playback_adapter.has_method("restore_local_ownership"):
+		active_playback_adapter.call("restore_local_ownership")
 	current_phase = "terminal"
 	local_ownership_restored = true
 	var attempt_id := str(request.get("interaction_attempt_id", active_attempt_id))

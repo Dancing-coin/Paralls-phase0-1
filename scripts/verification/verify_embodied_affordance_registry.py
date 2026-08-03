@@ -17,6 +17,7 @@ from common import read_text, repo_root, resolve_python_exe, run_command, verifi
 TEST_FILES = [
     "backend/tests/test_scene_affordance_registry.py",
     "backend/tests/test_default_scene_letter_affordance_static.py",
+    "backend/tests/test_default_scene_wave1_coverage.py",
     "backend/tests/test_default_scene_pickup_authority.py",
     "backend/tests/test_ws_protocol.py::test_websocket_interact_intent_emits_ack_action_resolution_transition_object_state_body_state_environment_shift_and_siming_output",
     "backend/tests/test_ws_protocol.py::test_websocket_press_intent_uses_registered_switch_authority_policy",

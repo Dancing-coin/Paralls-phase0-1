@@ -10,7 +10,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 from common import read_text, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
-TEST_FILES = ["backend/tests/test_embodied_action_controller_static.py"]
+TEST_FILES = [
+    "backend/tests/test_embodied_action_controller_static.py",
+    "backend/tests/test_default_scene_action_atom_catalog_static.py",
+    "backend/tests/test_embodied_action_playback_static.py",
+]
 
 
 def _result(check_id: str, title: str, proved: bool, evidence: list[str], notes: str = "") -> dict[str, object]:
@@ -70,6 +74,46 @@ def main() -> int:
     success = outcomes.get("success", {}) if isinstance(outcomes, dict) else {}
     miss = outcomes.get("miss", {}) if isinstance(outcomes, dict) else {}
     no_path = outcomes.get("no_path", {}) if isinstance(outcomes, dict) else {}
+
+    playback_log = log_dir / "embodied-action-playback-godot.log"
+    playback_artifact = log_dir / "embodied-action-playback-godot-runtime.json"
+    playback_ok = False
+    playback_payload: dict[str, object] = {}
+    if args.godot_exe:
+        playback_result = run_command(
+            [
+                args.godot_exe,
+                "--headless",
+                "--path",
+                str(project_root),
+                "--scene",
+                "res://scenes/phase0/EmbodiedActionPlaybackProbe.tscn",
+                "--quit-after",
+                "300",
+                "--render-thread",
+                "safe",
+            ],
+            project_root,
+            playback_log,
+        )
+        playback_text = read_text(playback_log)
+        playback_ok = (
+            playback_result.returncode == 0
+            and "embodied_action_playback_probe:verified=true" in playback_text
+            and playback_artifact.exists()
+        )
+    try:
+        parsed_playback = json.loads(playback_artifact.read_text(encoding="utf-8"))
+        if isinstance(parsed_playback, dict):
+            playback_payload = parsed_playback
+    except (OSError, json.JSONDecodeError):
+        pass
+    phase_playback = playback_payload.get("phase_playback", [])
+    played_phases = [
+        entry.get("phase", "")
+        for entry in phase_playback
+        if isinstance(entry, dict) and entry.get("action_tags")
+    ] if isinstance(phase_playback, list) else []
     results = [
         _result("focused-pytest-pass", "EmbodiedActionController static contract pytest passes", pytest_result.returncode == 0, [str(pytest_log)]),
         _result(
@@ -99,6 +143,18 @@ def main() -> int:
             and bool(no_path.get("outcome_nonce")),
             [str(godot_artifact)],
         ),
+        _result(
+            "phase-specific-local-playback",
+            "Reviewed action atoms play through the local skin host by phase and recover without an authority result",
+            playback_ok
+            and played_phases == ["plan_approach", "align", "prepare", "execute_contact", "recover"]
+            and playback_payload.get("skin_clip_after_recovery") == "idle_guard"
+            and playback_payload.get("local_ownership_restored") is True
+            and playback_payload.get("adapter_not_reused_after_route_rejection") is True
+            and isinstance(playback_payload.get("outcome"), dict)
+            and "settlement_ref" not in playback_payload["outcome"],
+            [str(playback_log), str(playback_artifact)],
+        ),
     ]
     overall = all(entry["status"] == "proved" for entry in results)
     report = {
@@ -108,6 +164,8 @@ def main() -> int:
             "pytest_log": str(pytest_log),
             "godot_log": str(godot_log),
             "godot_runtime": str(godot_artifact),
+            "playback_log": str(playback_log),
+            "playback_runtime": str(playback_artifact),
         },
     }
     json_path = log_dir / "embodied-action-controller-report.json"
