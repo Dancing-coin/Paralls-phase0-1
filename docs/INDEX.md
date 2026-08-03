@@ -41,10 +41,13 @@
 - `docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/character-gameplay-foundation/README.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/character-gameplay-foundation/2026-07-31-coupled-event-store-and-authority-bus-design.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/character-gameplay-foundation/2026-08-03-websocket-session-identity-and-mirror-scope-design.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/embodied-interaction-product-foundation/README.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/embodied-interaction-product-foundation/2026-08-01-atomic-action-library-and-default-scene-coverage-design.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/README.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/character-gameplay-foundation/2026-07-31-coupled-event-store-and-authority-bus-plan.md`
+- `docs/superpowers/plans/world-character-siming-authority-mainline/character-gameplay-foundation/2026-08-02-stateful-patch-data-migration-plan.md`
+- `docs/superpowers/plans/world-character-siming-authority-mainline/character-gameplay-foundation/2026-08-03-websocket-session-identity-and-mirror-scope-plan.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/embodied-interaction-product-foundation/2026-08-01-atomic-action-library-and-default-scene-coverage-plan.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/2026-07-29-character-dialogue-streaming-design.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/2026-07-29-character-dialogue-streaming-implementation-plan.md`
@@ -52,6 +55,7 @@
 - `docs/superpowers/plans/world-character-siming-authority-mainline/2026-07-29-real-tts-provider-presentation-implementation-plan.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/2026-07-31-tts-voice-profile-adapter-design.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/2026-07-31-tts-voice-profile-adapter-implementation-plan.md`
+- `scripts/verification/verify_tts_voice_profile_adapter.py` (presentation-only voice-profile/catalog verification)
 - `docs/superpowers/specs/2026-06-29-complete-character-mind-core-design.md`
 - `docs/superpowers/specs/2026-07-08-character-needs-personality-affect-runtime-design.md`
 - `docs/superpowers/plans/2026-07-08-character-needs-personality-affect-runtime-implementation-plan.md`
@@ -150,17 +154,29 @@
 - `non-runtime-production-pipeline`：离线生产证明，覆盖 scene semantic extraction、spatial baking、multimodal classification readiness、review gating 和 approved replay dataset artifacts。
 - `perception-input-alignment`：后端证明，覆盖感知 identity 行为矩阵，包括同拍/跨拍、同物/异物、多 actor 私有视角、VLA late advisory 和 Siming 汇总 identity。
 - `embodied-interaction-contracts`：后端 Phase 0 契约证明，覆盖 embodied request/outcome schema、writer 选择、route 二选一、attestation 字段、evidence sequence 和字段级 projection 过滤；不声明 Godot runtime 完成。
-- `embodied-affordance-registry`：后端与 Godot runtime 证明，覆盖 `SceneAffordanceRegistry` 的 `chair_01` catalog-backed binding、revision pinning、occupancy freshness、filtered views 和 VLA conflict 记录。
+- `embodied-affordance-registry`：后端与 Godot runtime 证明，覆盖 `chair_01` catalog-backed binding、revision pinning、occupancy freshness、filtered views 和 VLA conflict；也覆盖默认主场景 Godot-runtime-verified `obj_letter` 与 `obj_plaque` 的 reviewed `inspect/read` binding、`obj_lamp_switch` 的 `press` binding 与 `switch: idle -> activated` settlement、`obj_archive_door` 的 stateful `open_close` binding 与 `door: closed -> open -> closed` settlement、`obj_worktable` 的 single-actor `use` / `finish_use` binding 与 `work_surface: ready -> engaged -> ready` settlement、`obj_observation_bench` 的 actor-scoped `sit` / `stand` binding、owner-only release 与 `posture: standing -> seated -> standing` result，以及 `obj_archive_token` 的 backend-resolved custody-only `grab` 和受限 `stow_intent` 表现消费；该 stow 路径只在后端 policy 解析后以原子事件提交 location，并由 Godot 接受 `authority_only` 指令后标记本地 `carried -> stowed`。它不宣称 scene container/retrieve、inventory UI、ownership、hand animation 或泛化存取已完成。
 - `embodied-bridge-attestation`：后端与 Godot runtime 证明，覆盖 `trusted_local_launch`、controller binding、connection epoch、grant、nonce/sequence/revocation/idempotency、route gate 和 dedicated bridge routes。
 - `embodied-action-controller`：Godot runtime 证明，覆盖 `EmbodiedActionController` state machine、grant-gated route、terminal observations、failure recovery，以及 raw bone/physics transport 排除。
 - `embodied-authority-settlement`：后端证明，覆盖 attested local outcome validation、revision/policy checks、idempotent consume、`esm_compatibility_adapter` 单对象结算，以及 gameplay writer fail-closed。
 - `embodied-interaction-replay`：后端与 Godot runtime 证明，覆盖 `kick-chair` visible settlement、后台 `server_ledger_sequence` replay、source sequence idempotency/gap 拒绝，以及 public Observatory projection 过滤。
 - `gameplay-foundation-contract`：后端证明，覆盖 Gameplay authority event store、atomic `append_batch`、idempotency、expected stream revisions、typed failure 和 committed outbox 原子写入。
-- `gameplay-event-replay`：后端证明，覆盖 Gameplay full replay、checkpoint-plus-tail 等价、deterministic projection hash、stream gap 和 upcaster failure。
+- `gameplay-state-groups`：后端证明，覆盖 `StateGroupRegistry` 的依赖/冲突校验、版本化 eligibility catalog 到 explicit-context authority lifecycle batch、lifecycle event 只读投影、仅 enabled groups 的 `CharacterGameRuntimeState` 组合快照、policy-filtered authority/Godot/mind/debug views，以及 checksummed full snapshot / exact-base delta reconstruction；不声明 policy catalog activation loading、persistent replay rebuild、consumer capability negotiation、transport delivery、client prediction 或 Godot mirror delivery 已完成。
+- `gameplay-resource-body`：后端证明，覆盖既有 skill path 的只读 gate、事件重建的整数资源、reservation 和伤势派生身体功能、skill/右臂功能/耐力不足时的零事件拒绝、恢复后重试，以及资源消耗与动作结算的原子 batch；不声明 reservation timeout、status tag、effective stats、skill-state write/grant、传输或 Godot mirror 已完成。
+- `gameplay-effective-stats`：后端证明，覆盖 Decimal baseline 和 modifier 的确定性解析、条件拒绝、stacking policy、冲突 fail-closed、explanation digest，以及 registered equipment modifier source 的 event-derived activation/deactivation replay；不声明 generic environment source lifecycle、状态组投影、传输或 Godot mirror 已完成。
+- `gameplay-status-tags`：后端证明，覆盖 status tag registry、显式 apply/remove/expire event、stack-count 上限、exclusivity 拒绝、backend principal / receipt replay 保护、active declarative modifier source 移除与确定性 replay；不声明 refresh/duration/dispel、传输或 Godot mirror 已完成。
+- `gameplay-ability-affordance`：后端证明，覆盖 event-derived learned skill truth、版本化 definition/path、与身体和资源投影组合的只读当前 affordance；不声明 promotion、装备/库存/环境/权限 predicates、持久化、传输或 Godot mirror 已完成。
+- `gameplay-inventory`：后端证明，覆盖物品定义、容器创建、event-derived 单一位置、sealed/capacity 拒绝、原子移动与平坦携带容器的负重读投影；不声明嵌套、递归负重、ownership、equipment、传输或 Godot mirror 已完成。
+- `gameplay-possession-equipment`：后端证明，覆盖一个物品从已验证 inventory placement 到兼容且可用的 equipment slot、以及卸装返回合法容器时，inventory placement、equipment activation/deactivation、activation-scoped ability path grant 和 registered modifier source 的单一原子 batch；也覆盖一个 activation 的多槽占用和次要槽冲突零提交，以及旧 activation 撤销、旧物回收与新物多槽激活的原子 swap；grant 与 modifier 都只进入各自 projection，不创建 learned skill truth；不声明 generic modifier source、container access/propagation、ownership/control、Godot presentation 或 replay/checkpoint 已完成。
+- `gameplay-ownership-authority`：后端证明，覆盖 exclusive full-title right 的 event-derived 初始授予、独立 transfer、holder 拒绝和 idempotent replay，以及 credential link 的 issue/revoke/supersede；issue/supersede 会验证声明 holder 当前 inventory 中的 item、pin revision，并把 holder/revision 作为不可变签发留痕；credential 仍只保留 right reference，不能改变 holder，签发留痕也不是当前 custody/title 真相；read-only presentation 需同时满足当前 item presence 与 right-holder identity；不声明 custody write、account/ledger、offer、debt、contract、privacy、checkpoint 或 Godot delivery 已完成。
+- `gameplay-economy-authority`：后端证明，覆盖 event-derived account balance、同币种原子 debit/credit transfer、固定报价购买、零对价 gift，以及 simple-debt 的本金交付、部分/完全偿付、policy cancellation、claim/contract lifecycle 和 transaction record 单一原子 batch；单笔 payment record 可由 policy authority 通过追加式、幂等的反向资金结算与 outstanding 恢复进行一次纠正。若原付款已使 debt/contract 完全结清，纠正会在同一批中明确重开 satisfied claim 与 fulfilled simple-debt contract；取消后的债务只能经独立 policy cancellation reversal 依据原 cancellation record 固定的 outstanding 重开，且不产生账户变动；registered `simple_service` term 的 completion evidence kind 与提交证据匹配时，可在同一批中记录证据并 fulfill contract，但不结算其他 domain；backend query 仅允许 account owner、debt party 或 configured authority principal 读取对应投影，第三方 fail closed，并可按配置的 audience allowlist 输出字段裁剪 payload；不声明 credential settlement、任意或跨域 contract terms execution、transport authorization、persistence、checkpoint 或 Godot delivery 已完成。
+- `godot-gameplay-mirror`：后端与本地 Godot 证明，覆盖 policy-filtered Godot envelope、backend-configured Phase3 committed-event source、backend-granted session/actor subscription scope、`/ws` trusted-local bind/subscribe snapshot、bounded after-commit fanout，以及 presentation-only consumer 的断连清理；不声明 production identity adapter、live WebSocket-to-Godot deployment、reconnect/resync、prediction、persistence 或 migration 已完成。
+- `adventure-basic`：受治理参考玩法包，覆盖严格 schema/content digest 校验，以及复用既有 fixed-offer/equipment authority 的 Scenario 1 后端购买/装备原子批次和余额不足零写入；不声明 Patch activation、replay、mirror、Godot、身体资源、储物戒、产权或债务场景闭环已完成。
+- `gameplay-event-replay`：后端证明，覆盖 Gameplay full replay、checkpoint-plus-tail 等价、deterministic projection hash、stream gap、opt-in schema registry snapshot recovery、已注册连续单步 trusted upcaster 的历史事件 replay，以及 checkpoint 持久化、按 projector/schema/patch/registry/world-config 兼容性与 event-prefix/revision-vector 选择最新 cache、无效 cache 回退 full replay、单 store startup 期间 write gate；同时覆盖首个有界资源 Patch 迁移在 full 与 checkpoint-plus-tail 重放中形成相同的 versioned `CharacterGameRuntimeState` façade；不声明通用 patch migration、可持久化 executable upcaster manifest、全局 multi-projector readiness 或 production startup control plane 已完成。
 - `gameplay-foundation-event-spine`：后端聚合证明，覆盖 store-first/bus-second settlement spine、committed outbox after-commit dispatcher、bus retry 和 store-backed gap resync。
+- `gameplay-patch-runtime`：后端证明，覆盖受信任 immutable manifest 的 digest、依赖/cycle/schema 冲突 gate、显式 active set、candidate/active-set JSON snapshot recovery 的篡改拒绝、deterministic proposal-only Rule IR、无 I/O capability 的 manifest/call-site/effect 授权和预算/handler failure 的 pre-settlement 拒绝、authority-ledger 的 candidate install / complete-active-set enable/disable、显式可信 actor context 的 patch-owned state-group enable/disable 与 active-set cutover 同一原子 batch（disable 仅允许当前 source revision、唯一所有权并只改变 lifecycle state）、同 patch compatible identity-rebind revision 的 upgrade/rollback 与 fail-closed lifecycle replay、唯一允许的 `resource.consume` proposal 到资源扣减/`gameplay.patch.rule_settled` 原子 batch 映射，以及首个受限 `core.resources` maximum-reduction data-transform upgrade：typed domain fact、state-group definition/source transition 与 Patch cutover 同批原子提交，reserved/stale/digest/schema 异常 fail closed，且有损策略 rollback 明确拒绝；不声明 database-backed registry/handler artifact、完整 Rule IR、其他 effect 的通用 settlement、state-group domain-effect revocation、grant/modifier lifecycle、其他 data-transform、跨版本 reader/rollback compatibility、privacy view 或 Godot delivery 已完成。
 - `embodied-interaction-session`：后端与 Godot runtime Phase 6 证明，覆盖 `InteractionSession` handshake lifecycle、Gameplay `append_batch`/outbox/bus 路径、WebSocket `embodied_interaction_session_event` 投影、Godot `BackendBridge` live backend 接收、refusal/departure/third-party interruption、双参与者 terminal observation、同一 evidence ledger、privacy-filtered projection，以及 Godot local slot consumer 的 slot/reservation/terminal observation 处理。
 - `embodied-handoff-authority`：后端与 Godot runtime Phase 7 窄 handoff 证明，覆盖一个 Gameplay atomic batch 中同时提交 session terminal observations、`inventory.custody_changed`、`ownership.right_transferred`、`embodied.handoff.settled` 和 session commit，WebSocket `embodied_handoff_event` 投影，以及 Godot `BackendBridge` live backend 接收后由 `HandoffMirrorConsumer` 只做 authority-only presentation attachment。
-- `embodied-grab-carry-place-authority`：后端与 Godot runtime Phase 7 grab-carry-place 证明，覆盖一个 Gameplay atomic batch 中同时提交 session terminal observations、`inventory.custody_changed`、`embodied.carry.started`、`scene.occupancy.changed`、`embodied.place.settled` 和 session commit，WebSocket `embodied_carry_place_event` 投影，以及 Godot `BackendBridge` live backend 接收后由 `CarryPlaceMirrorConsumer` 只做 authority-only presentation placement。
+- `embodied-grab-carry-place-authority`：后端与 Godot runtime Phase 7 grab-carry-place 证明，覆盖一个 Gameplay atomic batch 中同时提交 session terminal observations、`inventory.custody_changed`、`embodied.carry.started`、`scene.occupancy.changed`、`embodied.place.settled` 和 session commit，WebSocket `embodied_carry_place_event` 投影，以及 Godot `BackendBridge` live backend 接收后由 `CarryPlaceMirrorConsumer` 只做 authority-only presentation placement；同一 profile 还覆盖默认场景受限 `stow_intent`，以及一个 policy-resolved `obj_archive_storage_chest` `retrieve_intent`：服务端决定 asset/definition/backpack/hand receiver，分别以原子 custody/inventory/occupancy evidence 结算，Godot 只消费 authority-only marker。它不证明通用场景容器、inventory UI、ownership 或泛化存取已完成。
 - `embodied-interaction-foundation-all`：按 Phase 0-7 依赖顺序聚合 `embodied-interaction-*` focused profiles；Phase 6 session 在 `gameplay-foundation-event-spine` gate 通过后运行，Phase 7 handoff 和 grab-carry-place 在 session profile 之后运行。
 - `all`：按顺序运行全部 profile。
 
@@ -179,7 +195,7 @@
 - `python scripts/verification/verify_vla_provider_backend.py`
 - `python scripts/verification/verify_vla_provider_live.py --allow-live-call --run-id <run-id>`
 - `python scripts/verification/verify_vla_provider_live.py --allow-live-call --use-godot-runtime-capture --run-id <run-id>`
-- `python scripts/verification/benchmark_vla_advisory_routes.py --allow-live-call --samples 3`
+- `python scripts/verification/benchmark_vla_advisory_routes.py --allow-live-call --samples 3`（默认仅 `advisory-fast`；深度路线只在显式 `--route advisory-deep` 比较时运行）
 - `python scripts/verification/benchmark_vla_advisory_routes.py --allow-live-call --annotation-sample-id throne-hall-walk-preview-001 --samples 3`
 - `python scripts/verification/verify_vla_replay_annotations.py`
 - `python scripts/verification/verify_vla_replay_second_scene_capture.py --godot-exe <Godot-console-exe>`
@@ -201,6 +217,12 @@
 - `python scripts/verification/verify_gameplay_foundation_contract.py`
 - `python scripts/verification/verify_gameplay_event_replay.py`
 - `python scripts/verification/verify_gameplay_foundation_event_spine.py`
+- `python scripts/verification/verify_gameplay_state_groups.py`
+- `python scripts/verification/verify_gameplay_resource_body.py`
+- `python scripts/verification/verify_gameplay_effective_stats.py`
+- `python scripts/verification/verify_gameplay_status_tags.py`
+- `python scripts/verification/verify_gameplay_ability_affordance.py`
+- `python scripts/verification/verify_godot_gameplay_mirror.py`
 - `python scripts/verification/verify_embodied_interaction_session.py`
 - `python scripts/verification/verify_embodied_handoff_authority.py`
 - `python scripts/verification/verify_embodied_grab_carry_place_authority.py`

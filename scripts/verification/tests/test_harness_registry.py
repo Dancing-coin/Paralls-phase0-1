@@ -67,6 +67,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "gameplay-ownership-authority",
         "gameplay-economy-authority",
         "gameplay-patch-runtime",
+        "adventure-basic",
     ]
     assert registry.profiles["docs"]["script"] == "scripts/verification/check_docs.py"
     assert registry.profiles["backend-contract"]["script"] == "scripts/verification/check_backend_contract.py"
@@ -101,6 +102,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["gameplay-foundation-contract"]["script"] == "scripts/verification/verify_gameplay_foundation_contract.py"
     assert registry.profiles["gameplay-event-replay"]["script"] == "scripts/verification/verify_gameplay_event_replay.py"
     assert registry.profiles["gameplay-foundation-event-spine"]["script"] == "scripts/verification/verify_gameplay_foundation_event_spine.py"
+    assert registry.profiles["adventure-basic"]["script"] == "scripts/verification/verify_adventure_basic.py"
     assert registry.profiles["gameplay-state-groups"]["script"] == "scripts/verification/verify_gameplay_state_groups.py"
     assert registry.profiles["gameplay-possession-equipment"]["script"] == "scripts/verification/verify_gameplay_possession_equipment.py"
     assert registry.profiles["gameplay-ownership-authority"]["script"] == "scripts/verification/verify_gameplay_ownership_authority.py"
