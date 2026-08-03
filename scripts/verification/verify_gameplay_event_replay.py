@@ -5,7 +5,13 @@ import argparse
 from common import repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
-TEST_FILES = ["backend/tests/test_gameplay_event_replay.py"]
+TEST_FILES = [
+    "backend/tests/test_gameplay_event_replay.py",
+    "backend/tests/test_phase3_state_composer.py",
+    "backend/tests/test_gameplay_event_store_persistence.py",
+    "backend/tests/test_gameplay_event_schema_registry.py",
+    "backend/tests/test_gameplay_projection_startup.py",
+]
 
 
 def _result(check_id: str, title: str, proved: bool, evidence: list[str], notes: str = "") -> dict[str, object]:

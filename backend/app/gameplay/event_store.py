@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import json
+import os
+from pathlib import Path
+import tempfile
 from typing import Any
 
 from pydantic import ValidationError
@@ -12,7 +16,20 @@ from app.gameplay.models import (
     GameplayFailure,
     GameplayOutboxEntry,
     IdempotencyRecord,
+    ProjectionCheckpoint,
 )
+from app.gameplay.event_schema_registry import EventSchemaRegistry, EventSchemaRegistryError
+
+
+class GameplayEventStoreSnapshotError(ValueError):
+    pass
+
+
+def _snapshot_list(snapshot: dict[str, Any], key: str) -> list[object]:
+    value = snapshot.get(key)
+    if not isinstance(value, list):
+        raise GameplayEventStoreSnapshotError("gameplay_snapshot_invalid")
+    return value
 
 
 def _failure(
@@ -68,7 +85,8 @@ def _empty_result(
 class GameplayEventStore:
     """In-memory authority ledger for the first Gameplay Foundation closure."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, event_schema_registry: EventSchemaRegistry | None = None) -> None:
+        self._event_schema_registry = event_schema_registry
         self._events: list[GameplayEvent] = []
         self._events_by_id: dict[str, GameplayEvent] = {}
         self._transactions: list[AtomicEventBatch] = []
@@ -78,9 +96,20 @@ class GameplayEventStore:
         self._idempotency_results: dict[tuple[str, str], AppendBatchResult] = {}
         self._outbox: list[GameplayOutboxEntry] = []
         self._outbox_by_id: dict[str, GameplayOutboxEntry] = {}
+        self._projection_checkpoints: dict[str, ProjectionCheckpoint] = {}
+        self._write_ready = True
 
     def append_batch(self, payload: AtomicEventBatch | dict[str, Any]) -> AppendBatchResult:
         transaction_id, command_id = self._extract_identity(payload)
+        if not self._write_ready:
+            return _empty_result(
+                transaction_id=transaction_id,
+                command_id=command_id,
+                error_code="projection_not_ready",
+                message="authority projections are not ready for writes",
+                failed_stage="projection_readiness",
+                retriable=True,
+            )
         if self._contains_outbox_projection_failure(payload):
             return _empty_result(
                 transaction_id=transaction_id,
@@ -99,6 +128,12 @@ class GameplayEventStore:
                 message=str(exc.errors()[0].get("msg", "batch schema invalid")),
                 failed_stage="batch_validation",
             )
+        if self._event_schema_registry is not None:
+            try:
+                for event in batch.events:
+                    self._event_schema_registry.require(event.event_type, event.schema_version)
+            except EventSchemaRegistryError:
+                return _empty_result(transaction_id=batch.transaction_id, command_id=batch.command_id, error_code="event_schema_unregistered", message="event type/version is not registered", failed_stage="event_schema")
 
         idempotency_key = (
             batch.idempotency_record.principal_ref,
@@ -247,11 +282,35 @@ class GameplayEventStore:
         result = self._idempotency_results.get((principal_ref, idempotency_key))
         return result.model_copy(deep=True) if result is not None else None
 
+    def get_idempotency_record(self, principal_ref: str, idempotency_key: str) -> IdempotencyRecord | None:
+        record = self._idempotency_records.get((principal_ref, idempotency_key))
+        return record.model_copy(deep=True) if record is not None else None
+
     def list_outbox(self, *, include_delivered: bool = True) -> list[GameplayOutboxEntry]:
         entries = self._outbox
         if not include_delivered:
             entries = [entry for entry in entries if entry.delivery_state in {"pending", "retryable"}]
         return [entry.model_copy(deep=True) for entry in entries]
+
+    def save_projection_checkpoint(self, checkpoint: ProjectionCheckpoint) -> None:
+        self._projection_checkpoints[checkpoint.checkpoint_id] = checkpoint.model_copy(deep=True)
+
+    def list_projection_checkpoints(self, *, projector_id: str | None = None) -> list[ProjectionCheckpoint]:
+        checkpoints = self._projection_checkpoints.values()
+        if projector_id is not None:
+            checkpoints = [checkpoint for checkpoint in checkpoints if checkpoint.projector_id == projector_id]
+        return sorted(
+            (checkpoint.model_copy(deep=True) for checkpoint in checkpoints),
+            key=lambda checkpoint: (checkpoint.last_global_sequence, checkpoint.checkpoint_id),
+            reverse=True,
+        )
+
+    def set_write_readiness(self, ready: bool) -> None:
+        self._write_ready = ready
+
+    @property
+    def write_ready(self) -> bool:
+        return self._write_ready
 
     def mark_outbox_delivered(self, outbox_id: str) -> None:
         entry = self._outbox_by_id[outbox_id]
@@ -270,6 +329,136 @@ class GameplayEventStore:
             )
         )
 
+    def export_snapshot(self) -> dict[str, Any]:
+        """Return a versioned, JSON-safe durable checkpoint of authority truth."""
+        return {
+            "snapshot_schema_version": 2,
+            "events": [event.model_dump(mode="json") for event in self._events],
+            "transactions": [batch.model_dump(mode="json") for batch in self._transactions],
+            "transaction_results": [result.model_dump(mode="json") for result in self._transaction_results.values()],
+            "idempotency": [
+                {
+                    "principal_ref": principal_ref,
+                    "idempotency_key": key,
+                    "record": record.model_dump(mode="json"),
+                    "result": self._idempotency_results[(principal_ref, key)].model_dump(mode="json"),
+                }
+                for (principal_ref, key), record in sorted(self._idempotency_records.items())
+            ],
+            "outbox": [entry.model_dump(mode="json") for entry in self._outbox],
+            "projection_checkpoints": [
+                checkpoint.model_dump(mode="json")
+                for checkpoint in self.list_projection_checkpoints()
+            ],
+            "event_schema_registry": (
+                self._event_schema_registry.export_snapshot() if self._event_schema_registry is not None else None
+            ),
+        }
+
+    def save_snapshot(self, path: str | Path) -> None:
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        handle, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
+        try:
+            with os.fdopen(handle, "w", encoding="utf-8") as stream:
+                json.dump(self.export_snapshot(), stream, sort_keys=True, separators=(",", ":"))
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary_name, target)
+        except OSError as exc:
+            try:
+                os.unlink(temporary_name)
+            except FileNotFoundError:
+                pass
+            raise GameplayEventStoreSnapshotError("gameplay_snapshot_write_failed") from exc
+
+    @classmethod
+    def load_snapshot(
+        cls,
+        path: str | Path,
+        *,
+        event_schema_registry: EventSchemaRegistry | None = None,
+    ) -> "GameplayEventStore":
+        try:
+            with Path(path).open("r", encoding="utf-8") as stream:
+                snapshot = json.load(stream)
+        except (OSError, json.JSONDecodeError) as exc:
+            raise GameplayEventStoreSnapshotError("gameplay_snapshot_load_failed") from exc
+        return cls.from_snapshot(snapshot, event_schema_registry=event_schema_registry)
+
+    @classmethod
+    def from_snapshot(
+        cls,
+        snapshot: object,
+        *,
+        event_schema_registry: EventSchemaRegistry | None = None,
+    ) -> "GameplayEventStore":
+        if not isinstance(snapshot, dict) or snapshot.get("snapshot_schema_version") not in {1, 2}:
+            raise GameplayEventStoreSnapshotError("gameplay_snapshot_schema_unsupported")
+        try:
+            events = [GameplayEvent.model_validate(value) for value in _snapshot_list(snapshot, "events")]
+            transactions = [AtomicEventBatch.model_validate(value) for value in _snapshot_list(snapshot, "transactions")]
+            results = [AppendBatchResult.model_validate(value) for value in _snapshot_list(snapshot, "transaction_results")]
+            outbox = [GameplayOutboxEntry.model_validate(value) for value in _snapshot_list(snapshot, "outbox")]
+            idempotency = _snapshot_list(snapshot, "idempotency")
+            checkpoint_values = snapshot.get("projection_checkpoints", [])
+            if not isinstance(checkpoint_values, list):
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_projection_checkpoint_invalid")
+            checkpoints = [ProjectionCheckpoint.model_validate(value) for value in checkpoint_values]
+        except (ValidationError, TypeError) as exc:
+            raise GameplayEventStoreSnapshotError("gameplay_snapshot_invalid") from exc
+        if [event.global_sequence for event in events] != list(range(1, len(events) + 1)) or len({event.event_id for event in events}) != len(events):
+            raise GameplayEventStoreSnapshotError("gameplay_snapshot_event_order_invalid")
+        stream_heads: dict[str, int] = defaultdict(int)
+        for event in events:
+            expected = stream_heads[event.stream_id] + 1
+            if event.stream_revision != expected:
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_stream_revision_invalid")
+            stream_heads[event.stream_id] = expected
+        if {event.event_id for batch in transactions for event in batch.events} != {event.event_id for event in events}:
+            raise GameplayEventStoreSnapshotError("gameplay_snapshot_transaction_invalid")
+        snapshot_registry: EventSchemaRegistry | None = None
+        if snapshot.get("snapshot_schema_version") == 2:
+            registry_snapshot = snapshot.get("event_schema_registry")
+            if registry_snapshot is not None:
+                try:
+                    snapshot_registry = EventSchemaRegistry.from_snapshot(registry_snapshot)
+                except EventSchemaRegistryError as exc:
+                    raise GameplayEventStoreSnapshotError("gameplay_snapshot_event_schema_registry_invalid") from exc
+        if event_schema_registry is not None and snapshot_registry is not None:
+            if event_schema_registry.export_snapshot() != snapshot_registry.export_snapshot():
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_event_schema_registry_mismatch")
+        if snapshot_registry is not None:
+            try:
+                for event in events:
+                    snapshot_registry.require(event.event_type, event.schema_version)
+            except EventSchemaRegistryError as exc:
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_event_schema_registry_invalid") from exc
+        store = cls(event_schema_registry=snapshot_registry or event_schema_registry)
+        store._events = events
+        store._events_by_id = {event.event_id: event for event in events}
+        store._transactions = transactions
+        store._stream_heads = defaultdict(int, stream_heads)
+        store._transaction_results = {result.transaction_id: result for result in results}
+        store._outbox = outbox
+        store._outbox_by_id = {entry.outbox_id: entry for entry in outbox}
+        if len(store._outbox_by_id) != len(outbox) or any(entry.event_id not in store._events_by_id for entry in outbox):
+            raise GameplayEventStoreSnapshotError("gameplay_snapshot_outbox_invalid")
+        store._projection_checkpoints = {checkpoint.checkpoint_id: checkpoint for checkpoint in checkpoints}
+        if len(store._projection_checkpoints) != len(checkpoints):
+            raise GameplayEventStoreSnapshotError("gameplay_snapshot_projection_checkpoint_invalid")
+        for value in idempotency:
+            if not isinstance(value, dict):
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_idempotency_invalid")
+            record = IdempotencyRecord.model_validate(value.get("record"))
+            result = AppendBatchResult.model_validate(value.get("result"))
+            key = (str(value.get("principal_ref", "")), str(value.get("idempotency_key", "")))
+            if not all(key) or key != (record.principal_ref, record.idempotency_key) or not result.committed:
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_idempotency_invalid")
+            store._idempotency_records[key] = record
+            store._idempotency_results[key] = result
+        return store
+
     def _replace_outbox(self, updated: GameplayOutboxEntry) -> None:
         self._outbox_by_id[updated.outbox_id] = updated
         for index, entry in enumerate(self._outbox):
@@ -285,20 +474,10 @@ class GameplayEventStore:
 
     @staticmethod
     def _contains_outbox_projection_failure(payload: AtomicEventBatch | dict[str, Any]) -> bool:
-        entries: object
-        if isinstance(payload, AtomicEventBatch):
-            entries = [entry.payload_projection for entry in payload.outbox_entries]
-        else:
-            entries = payload.get("outbox_entries", [])
+        entries = [entry.payload_projection for entry in payload.outbox_entries] if isinstance(payload, AtomicEventBatch) else payload.get("outbox_entries", [])
         if not isinstance(entries, list):
             return False
-        for entry in entries:
-            projection = entry if isinstance(entry, dict) and "payload_projection" not in entry else {}
-            if isinstance(entry, dict):
-                projection = entry.get("payload_projection", projection)
-            if isinstance(projection, dict) and "_projection_error" in projection:
-                return True
-        return False
+        return any(isinstance((entry.get("payload_projection", entry) if isinstance(entry, dict) else entry), dict) and "_projection_error" in (entry.get("payload_projection", entry) if isinstance(entry, dict) else entry) for entry in entries)
 
     @staticmethod
     def _validation_error_code(exc: ValidationError) -> str:
@@ -308,3 +487,57 @@ class GameplayEventStore:
         if any(location and location[0] == "outbox_entries" for location in locations):
             return "invalid_outbox_schema"
         return "invalid_batch_schema"
+
+
+class DurableGameplayEventStore(GameplayEventStore):
+    """JSON-snapshot-backed store that rolls back in-memory state on write failure."""
+
+    def __init__(
+        self,
+        snapshot_path: str | Path,
+        *,
+        event_schema_registry: EventSchemaRegistry | None = None,
+    ) -> None:
+        self._snapshot_path = Path(snapshot_path)
+        if self._snapshot_path.exists():
+            restored = GameplayEventStore.load_snapshot(
+                self._snapshot_path,
+                event_schema_registry=event_schema_registry,
+            )
+            self.__dict__.update(restored.__dict__)
+        else:
+            super().__init__(event_schema_registry=event_schema_registry)
+
+    def append_batch(self, payload: AtomicEventBatch | dict[str, Any]) -> AppendBatchResult:
+        before = self.export_snapshot()
+        result = super().append_batch(payload)
+        if not result.committed:
+            return result
+        try:
+            self.save_snapshot(self._snapshot_path)
+        except GameplayEventStoreSnapshotError:
+            self.__dict__.update(GameplayEventStore.from_snapshot(before).__dict__)
+            return _empty_result(
+                transaction_id=result.transaction_id,
+                command_id=result.command_id,
+                error_code="durable_persistence_failed",
+                message="authority batch was not durably persisted",
+                failed_stage="durable_persistence",
+                retriable=True,
+            )
+        return result
+
+    def mark_outbox_delivered(self, outbox_id: str) -> None:
+        self._persist_outbox_update(lambda: super(DurableGameplayEventStore, self).mark_outbox_delivered(outbox_id))
+
+    def mark_outbox_retryable(self, outbox_id: str, error: str) -> None:
+        self._persist_outbox_update(lambda: super(DurableGameplayEventStore, self).mark_outbox_retryable(outbox_id, error))
+
+    def _persist_outbox_update(self, update: Any) -> None:
+        before = self.export_snapshot()
+        update()
+        try:
+            self.save_snapshot(self._snapshot_path)
+        except GameplayEventStoreSnapshotError:
+            self.__dict__.update(GameplayEventStore.from_snapshot(before).__dict__)
+            raise

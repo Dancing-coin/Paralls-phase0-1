@@ -6,5 +6,5 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/gameplay-event-replay-report.json",
-  "description": "Backend replay proof for Gameplay full replay, checkpoint-plus-tail equivalence, deterministic projection hashes, stream gaps, and upcast failures"
+  "description": "Backend replay proof for Gameplay full replay, checkpoint-plus-tail equivalence, deterministic projection hashes, stream gaps, opt-in schema identity persistence, trusted one-step upcasting, versioned JSON snapshot recovery, compatible checkpoint selection, and single-store startup write readiness"
 }

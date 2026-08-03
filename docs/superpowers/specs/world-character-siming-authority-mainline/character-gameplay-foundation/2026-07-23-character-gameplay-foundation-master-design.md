@@ -1,6 +1,6 @@
 # Character Gameplay Foundation Master Design
 
-Status: `awaiting-user-review`
+Status: `partially-implemented; broader-closure-planned`
 
 Date: `2026-07-23`
 
@@ -14,6 +14,12 @@ The design preserves the completed mind core and supplies the missing game
 body: resources, bodily condition, possessions, equipment, ownership,
 transactional economy, actionable abilities, rule extension, persistence, and
 Godot projection.
+
+The target architecture is no longer purely aspirational. The Gameplay event
+store/replay/outbox spine, minimum runtime-state composition core, first
+state-group/resource/inventory/equipment/ownership/economy/patch slices, and
+the safe Godot-mirror foundation now have focused evidence. This document
+still does not claim `adventure-basic` or full gameplay-domain closure.
 
 ## Input Analysis
 

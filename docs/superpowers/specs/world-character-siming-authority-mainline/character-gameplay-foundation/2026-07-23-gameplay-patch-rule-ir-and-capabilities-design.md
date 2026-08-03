@@ -1,8 +1,97 @@
 # Gameplay Patch Rule IR And Capabilities Design
 
-Status: `awaiting-user-review`
+Status: `minimum-governed-runtime-and-lifecycle-slice-implemented; broader-lifecycle-planned`
 
 Date: `2026-07-23`
+
+## 2026-08-02 Implementation Status
+
+The first governed runtime slice is implemented and focused-test verified.
+`GameplayPatchManifest` is immutable at the registry boundary and carries a
+canonical content digest; only configured trusted authors can install it.
+Candidate installation rejects digest tampering, missing or cyclic patch
+dependencies, ambiguous dependency resolution, and incompatible event-schema
+identities without mutating the candidate registry. Installation does not
+activate behavior; a separate in-memory active patch-set selection is required.
+Candidate manifests and the selected active-set identity can now be saved in a
+versioned JSON snapshot with atomic replacement and restored only after their
+trusted-author, digest, dependency, schema, and recomputed active-set revisions
+all validate. Registered capability handlers remain process-owned code, so no
+callable is serialized or restored from a patch snapshot.
+
+The initial `GameplayRuleEvaluator` consumes only explicit frozen projection
+inputs and returns typed `EffectProposal` values. It has no event-store,
+settlement, Godot, network, filesystem, or service-locator parameter. Its
+limited initial IR supports deterministic trigger matching, equality/existence
+conditions, effect templates, declared capability calls, condition/proposal/
+capability-call budgets, and canonical input/output digests. Capability
+registration rejects non-deterministic or side-effectful/I/O handlers; a
+handler must be requested by the manifest and its call site, and can return
+only intersection-authorized effect types. Handler error, unauthorized effect,
+or exceeded budget fails before any settlement path exists.
+
+`GameplayPatchLifecycleAuthorityService` is the implemented minimal
+control-plane authority slice. It validates the immutable candidate before it
+appends `gameplay.patch.candidate_installed`; it then supports a complete
+active-set `enable` or `disable` command only after the corresponding
+authority-only Gameplay event batch commits. The in-memory registry changes
+only after that append succeeds. Commands pin the expected registry and active
+patch-set revisions, validate a canonical command digest and authority
+principal, and use event-store idempotency. A stale revision, storage rejection
+or unsupported disable fails before registry cutover.
+
+A bounded stateful enable/disable closure is now implemented for a patch's declared
+state groups. The caller supplies an explicit, trusted, unique actor-context
+set. Enable contexts are pinned to the target active-patch-set revision;
+disable contexts are pinned to the current source revision. Disable is allowed
+only when every affected group is uniquely removed from the active set and its
+existing lifecycle record has that current source revision.
+The non-mutating state-group planner validates each actor and returns the
+required lifecycle event specifications; the Patch authority binds all of those
+events and the active-set lifecycle events into one `append_batch` before
+registry cutover. Missing, duplicate, mismatched-target, ineligible, or
+policy-expanded contexts reject before any state-group or Patch event is
+written. Disable appends only the state-group `disabled` lifecycle event and
+does not revoke historical facts or persistent domain effects. Actor discovery,
+policy-catalog loading, shared ownership, grant/modifier compensation, and
+data-transform stateful migration are intentionally outside this closure.
+
+Rule-only same-patch revision cutover is also implemented. In addition, a
+compatible stateful same-patch revision may atomically upgrade or rollback when
+both manifests declare the same state-group set and the target declares an
+`identity_rebind` for every group at its unchanged definition version. Every
+explicit actor then appends `gameplay.state_group.rebound` with the Patch
+lifecycle event and new active-set revision in one batch. This preserves state
+and changes only its source revision.
+
+The first bounded data-transform upgrade is now also implemented: a target
+manifest may declare `resource_bounds_clamp` for the single `core.resources`
+group. It pins old/new state-group and resource definition versions, named
+input/output event schema identities, migration digest, trusted migrator code
+digest and `forward_fix_only` rollback mode. The coordinator rebuilds the
+pinned resource projection, then atomically appends the typed
+`gameplay.resource.bounds_migrated` domain fact,
+`gameplay.state_group.migrated`, Patch upgrade lifecycle event and active-set
+cutover. The sole policy lowers a resource maximum with explicit loss and
+rejects outstanding reservations. Historical registry lookup is by group ID
+plus exact definition version. This slice is not generic migration: it has no
+arbitrary payload operation, does not support multi-Patch replacement, and
+explicitly rejects rollback because lost value cannot be recovered safely.
+
+The implemented lifecycle projector deterministically rebuilds installed
+candidates and the active patch set from committed control-plane events against
+the trusted registry. It rejects a missing/tampered candidate, out-of-order
+activation, or mismatched active-set revision; it never re-evaluates Rule IR.
+
+This is not yet a complete Rule IR language, trusted capability handler-artifact
+loading, general effect-proposal-to-domain settlement conversion, state-group
+revocation beyond its direct lifecycle transition, grant/modifier lifecycle effects, data-transform stateful migration beyond the bounded resource clamp,
+cross-version reader compatibility, replay artifact retention, privacy projection, or live Godot
+delivery. The implemented settlement mapping is deliberately one
+effect only: `resource.consume` is revalidated against the actor's current
+resource projection and appended with `gameplay.patch.rule_settled` in one
+authority batch. Inventory, ownership, equipment, economy and arbitrary effect
+types remain outside this adapter and fail before any write.
 
 ## Purpose
 
@@ -647,12 +736,16 @@ event-observed reaction 必须有深度/causation budget 和重复检测，避�
 
 ## Harness Mapping
 
-### Current review gate
+### Implemented evidence
 
-- `python scripts/verification/harness.py --profile docs`
-- `python scripts/verification/harness.py --profile all`
+- `python scripts/verification/harness.py --profile gameplay-patch-runtime`
+  - immutable candidate and active-set validation;
+  - deterministic proposal-only Rule IR and capability gates;
+  - authority-ledger candidate install and the limited complete-active-set
+    enable/disable cutover;
+  - the constrained `resource.consume` proposal-to-event settlement mapping.
 
-在 `awaiting-user-review` 阶段，以上不构成 patch runtime 的实现证据。
+This evidence does not prove the broader lifecycle requirements below.
 
 ### Required implementation profiles
 
@@ -667,7 +760,8 @@ event-observed reaction 必须有深度/causation budget 和重复检测，避�
   - deterministic Rule IR；
   - all budget fault injections；
   - capability authorization、timeout、exception、invalid output；
-  - install/enable/disable/upgrade/rollback；
+  - expand the implemented install/enable/disable slice to patch-owned
+    materialization/revocation, upgrade/rollback, and durable recovery；
   - active transaction revision pinning；
   - loading-order permutation tests。
 - `gameplay-possession-equipment`

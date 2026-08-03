@@ -1,8 +1,64 @@
 # Resource, Status, Body Runtime And Effective Stats Design
 
-Status: `awaiting-user-review`
+Status: `partially-implemented; broader-domain-closure-planned`
 
 Date: `2026-07-23`
+
+## 2026-08-02 Implementation Status
+
+The first backend-only resource/body action gate is implemented and verified.
+`ResourceBodyRuntimeProjector` rebuilds integer resource entries and derived
+functional capacity from committed resource and injury events. The trusted
+`ResourceBodyActionSettlementService` rejects a disabled required state group,
+a stale projection, insufficient stamina, or an unavailable required function
+without appending events. On success it atomically appends the stamina debit and
+action settlement through `GameplayEventStore.append_batch`.
+The resource projector also handles explicit reservation-created,
+reservation-consumed, and reservation-released events: `available` is derived
+as `current - reserved`; consume/release clears the same reservation source.
+A configured backend-only reservation authority service validates the current
+projection and appends reserve/consume/release events through the Gameplay event
+store. There is no public transport route or durable timeout scheduler.
+The thin `SkillPathGameplayGate` reuses the existing `CharacterSkillService`
+evaluation as a read-only precondition: an ineligible selected path rejects
+before resource or action events are written, while eligible paths delegate to
+the same authority settlement service. It does not own grants, overlays, skill
+evidence, or a skill event store.
+`EffectiveStatResolver` now provides a separate backend-only pure resolution
+slice for Decimal baselines and typed modifiers. It canonicalizes modifier
+ordering, rejects inactive conditions with stable reason codes, applies the
+declared stacking policy, and fails closed on unresolved exclusive/override
+conflicts. The modifier domain now replays registered equipment-source
+activation/deactivation into typed active modifiers for this resolver; it does
+not yet own generic source lifecycle or build a runtime state-group projection.
+`StatusTagAuthorityService` now supplies the initial backend-only tag lifecycle:
+registered definitions, explicit apply/remove/expire events, deterministic
+replay, stack-count limits, and exclusivity rejection. It does not use local
+time to expire tags or expose a client route. Active tags now materialize only
+their registered declarative modifier templates as typed effective-stat sources;
+remove/expire drops that source. Templates still cannot execute arbitrary code.
+The service accepts only its configured backend authority principal; a repeated
+idempotency key returns the original event-store receipt only when its digest
+matches, before lifecycle policy is evaluated again.
+
+This does not implement reservation timeouts, status-tag refresh
+or duration policies, needs, posture, skill grants, consumer views, transport,
+or Godot mirror delivery. An absent function entry in this narrow slice means
+no known body blocker; it must not be treated as evidence of a full body model.
+
+The first domain-owned Patch data-transform migration is also implemented and
+focused-test verified. `ResourceDefinitionRegistry` retains immutable
+resource-ID-plus-definition-version entries for historical replay. The only
+currently authorized migrator is `resource.bounds.clamp_maximum.v1`: it pins
+old/new definitions and the authority projection revision, rejects nonzero
+reservations, requires the same minimum and a strictly lower maximum, and
+appends `gameplay.resource.bounds_migrated` with explicit old/new bounds,
+current values and loss amount. A projector with the definition registry
+replays that event fail-closed. Patch lifecycle coordinates this fact with the
+matching state-group version/source transition and Patch cutover in one batch;
+the policy is forward-fix-only, so rollback is explicitly rejected rather than
+inventing lost-value recovery. This does not authorize generic resource
+assignment, arbitrary payload migration, or other resource migration policies.
 
 ## Purpose
 
@@ -105,6 +161,7 @@ ReleaseReservation(reservation_ref)
 
 ResourceMaterialized
 ResourceAdjusted
+ResourceBoundsMigrated
 ResourceReservationCreated
 ResourceReservationConsumed
 ResourceReservationReleased
@@ -112,6 +169,22 @@ ResourceBoundaryReached
 ```
 
 普通玩法效果应使用 `AdjustResource`，不能使用无来源绝对赋值。`SetResourceByPolicy` 只用于初始化、迁移、管理员修复等明确 authority scope，并仍产生事件。
+
+### Bounded Patch Migration Slice
+
+`resource.bounds.clamp_maximum.v1` 是唯一已实现的 data-transform policy。它只
+能在 `core.resources` 同 Patch 单 revision upgrade 中将同一 `resource_id` 从已
+注册旧 definition 切到同 minimum、较低 maximum 的已注册新 definition。迁移
+planner 是纯后端领域代码：只读取 caller 提供且 Patch coordinator 重建/校验的
+authority projection，不能访问 store、Godot、网络、文件系统或通用 Patch write
+接口。输出必须是带 `migration_digest` 与 `migrator_code_digest` 的
+`ResourceBoundsMigrated` 事实；若 `current > target_maximum`，显式记录
+`lost_amount`，而不是静默截断。
+
+存在任何 reservation、definition/version/bounds/projection revision 不匹配、未知
+migrator/schema/digest 或 resource stream revision 冲突时，迁移在 batch 之前
+拒绝，且不写 domain/state-group/Patch 事件。这个有损策略不支持 rollback；系统
+必须走另一个显式 forward-fix policy，不能把旧 Patch 当作可读回滚器。
 
 ## Status Tag Model
 
@@ -427,3 +500,20 @@ EffectiveStatsProjection
 - `godot-gameplay-mirror`
   - resource bar、visible tags、body presentation delta 与预测回滚。
 - `gameplay-foundation-all`
+
+### Current implementation profile
+
+- `gameplay-resource-body`
+  - event-derived integer stamina projection and injury-derived functional
+    capacity;
+  - ineligible skill path, right-arm function unavailable, and insufficient
+    stamina reject with zero new events;
+  - recovery restores the function without changing the action requirement;
+  - success atomically appends resource cost plus action settlement, and stale
+    projections fail closed.
+- `gameplay-effective-stats`
+  - canonical modifier ordering, conditional rejection, stacking, and stable
+    explanation digest for a pure backend-only resolver;
+  - status tags and registered equipment modifiers provide the currently
+    implemented source lifecycles; no generic environment source lifecycle or
+    Godot view.

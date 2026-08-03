@@ -1,6 +1,6 @@
 # Adventure Basic Reference Pack Design
 
-Status: `awaiting-user-review`
+Status: `partially-implemented; scenario-1-backend-verified; broader-closure-planned`
 
 Date: `2026-07-23`
 
@@ -9,6 +9,16 @@ Date: `2026-07-23`
 定义首批 `adventure-basic` 参考玩法包，用一个连贯但刻意收窄的冒险流程证明 Character Gameplay Foundation 可以承载资源、身体、状态、技能约束、背包容器、储物戒、装备、交易、经济和物权，而不是只通过合成 schema fixture 自证。
 
 该包是纵向参考实现，不是完整 RPG、战斗系统或经济模拟。
+
+## Current Implementation Status
+
+The strict, digest-checked `assets/gameplay/adventure-basic/manifest.json`
+baseline and `adventure-basic` harness profile are implemented. Scenario 1 now
+has a backend-only, explicit-seed composition that reuses the existing fixed
+offer and equipment authority services to purchase and equip the iron sword.
+It proves its two separate atomic settlement batches and insufficient-funds
+zero-write rejection. It does not activate the Patch, prove replay or mirror
+delivery, or provide Godot UI/equipment presentation evidence.
 
 ## Scope
 
@@ -427,11 +437,13 @@ recovery_action
 
 ## Harness Mapping
 
-主要 profile：`adventure-basic`。
+主要 profile：`adventure-basic`。The current profile proves the manifest
+baseline only; it must expand scenario-by-scenario as each authority slice is
+implemented and verified.
 
 | Scenario | Required evidence |
 |---|---|
-| buy/equip sword | command, atomic event batch, projections, Godot mirror |
+| buy/equip sword | backend command, atomic event batches, and projections proved; mirror/Godot planned |
 | body/resource block | stable ability plus blocked affordance and zero cost |
 | storage ring | container move, weight explanation, invalid move and unload rejection |
 | property/deed | independent item location and ownership right revisions |

@@ -1,6 +1,6 @@
 # Character Gameplay Foundation Invariants And Domain Boundaries Design
 
-Status: `awaiting-user-review`
+Status: `implemented-foundation-boundaries; broader-domain-closure-planned`
 
 Date: `2026-07-23`
 
@@ -9,6 +9,11 @@ Date: `2026-07-23`
 定义 `Character Gameplay Foundation` 的共同边界、术语和不可破坏的不变量。后续状态组、事件存储、物品、经济、装备、能力与玩法 patch 规格都必须服从本文件，不能各自创造新的真相源或跨域直写路径。
 
 本规格是既有 `world-character-Siming-authority unified runtime` 的子规格，不替换已经完成的 character mind core，也不把历史 `Phase 0` smoke path 重新提升为仓库主线。
+
+这些边界现在已经被当前实现中的 gameplay contract、event spine、
+state-group、patch、inventory/equipment、ownership/economy 和 mirror
+foundation slice 共同约束。它们仍然是治理边界，不代表所有玩法域或镜像/
+prediction 闭环已经完成。
 
 ## Scope
 
@@ -237,7 +242,8 @@ recovery_action
 - `python scripts/verification/harness.py --profile docs`
 - `python scripts/verification/harness.py --profile all`
 
-在 `awaiting-user-review` 阶段，`docs` profile 只证明文档结构和链接纪律，不证明本规格已实现。
+当前 `docs` profile 只证明文档结构和链接纪律；实现状态仍以上述 focused
+gameplay profiles 为准，且它们不自动代表所有后续 domain closure 已完成。
 
 ### Required implementation profiles
 

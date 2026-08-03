@@ -1,6 +1,6 @@
 # Character Gameplay Foundation Verification And Acceptance Matrix
 
-Status: `awaiting-user-review`
+Status: `implemented-foundation; broader-closure-planned`
 
 Date: `2026-07-23`
 
@@ -9,8 +9,10 @@ Date: `2026-07-23`
 Define the machine-checkable evidence required before any implementation phase
 of the character gameplay foundation may be described as complete.
 
-The profile names in this document are planned contracts. Their implementation
-belongs to the later implementation-plan tree.
+The profile names in this document are now a mix of implemented foundation
+proofs and planned closure gates. Implemented profiles record the bounded
+slices described by the current gameplay README/baseline docs; deferred rows
+remain non-executable targets until their own code and harness evidence exist.
 
 ## Verification Principles
 
@@ -27,13 +29,13 @@ belongs to the later implementation-plan tree.
 |---|---|
 | `gameplay-foundation-contract` | Commands, events, errors, manifests, snapshots, deltas, IDs, versions, and privacy scopes validate. |
 | `gameplay-event-replay` | Empty-stream replay, checkpoint recovery, upcasting, idempotency, revision conflicts, and atomic event batches are deterministic. |
-| `gameplay-state-groups` | Dynamic registration, materialization, enable/disable, resource, status, body, and effective-stat projections work. |
+| `gameplay-state-groups` | Current profile proves the versioned registry, explicit-context lifecycle batches, lifecycle read projection, read-only facade composition, consumer-filtered views, and exact-base snapshot/delta reconstruction. Policy-activation loading, persistent rebuild, transport delivery, and Godot mirror delivery remain deferred. |
 | `gameplay-possession-equipment` | Item location, container capacity, storage-ring weight rules, equipment grants, grant removal, and presentation refs work. |
-| `gameplay-economy-authority` | Currency, purchase, gift, ownership transfer, debt/contract primitives, audit records, and rollback remain atomic. |
+| `gameplay-economy-authority` | The implemented account, fixed-purchase, gift, ownership transfer, simple-debt, payment-record correction, cancellation-record reversal, registered-terms contract record, registered service-completion fulfillment, backend privacy-query primitives, and configured audience field redaction remain atomic or fail closed. Payment correction is append-only and idempotent; it restores an active claim or explicitly reopens a satisfied claim/fulfilled simple-debt contract in the same batch. Cancellation reversal is a separate append-only and idempotent path that restores only the cancellation record's pinned outstanding amount without account movement. Service completion accepts only a matching registered evidence kind and fulfills without cross-domain settlement. Redacted payloads are backend-only and do not authenticate transport principals or grant sessions. Broader contract execution, transport authorization, persistence, and Godot delivery remain deferred. |
 | `gameplay-patch-runtime` | Manifest validation, Rule IR limits, capability authorization, conflicts, upgrades, disable, and replay work. |
-| `godot-gameplay-mirror` | Actor routing, snapshot/delta, prediction confirmation/rejection, revision gaps, rollback, and resync work in Godot. |
-| `adventure-basic` | The five approved end-to-end reference scenarios pass with backend and Godot evidence. |
-| `gameplay-foundation-all` | Runs all profiles above in dependency order and emits one aggregate report. |
+| `godot-gameplay-mirror` | Current profile proves the filtered Godot envelope, backend-issued session scope, bounded `/ws` read commands, after-commit fanout plumbing, and a local Godot bridge scope/disconnect probe. It does not prove production identity adapters, end-to-end live reconnect/resync, prediction/rollback, or broad scene coverage. |
+| `adventure-basic` | Deferred closure gate only. The five approved end-to-end reference scenarios remain required before execution-ready status; current code and harness evidence do not satisfy this row. |
+| `gameplay-foundation-all` | Planned aggregate after the remaining closure gates exist. Broad repository completion still uses the top-level `all` profile rather than a finished gameplay-only aggregate. |
 
 ## Contract Matrix
 

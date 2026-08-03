@@ -1,6 +1,6 @@
 # Coupled Event Store And Authority Bus Design
 
-Status: `drafted-for-spec-review`
+Status: `implemented-foundation; broader-delivery-and-domain-closure-planned`
 
 Date: `2026-07-31`
 
@@ -12,6 +12,11 @@ one operational rule:
 ```text
 store first, bus second, one backend commit pipeline
 ```
+
+The foundation described here is now implemented and verified by
+`gameplay-foundation-contract`, `gameplay-event-replay`, and
+`gameplay-foundation-event-spine`. It still does not prove full live Godot
+mirror delivery, external durability, or every downstream gameplay domain.
 
 The gameplay event store is the durable authority ledger. The existing
 authority event bus remains the committed-event distribution surface for Godot
@@ -185,6 +190,10 @@ Rules:
    `stream_revision`, and `global_sequence`.
 6. Consumers that detect sequence gaps request resync from the store-backed
    projection surface instead of guessing.
+7. A Godot mirror refresh can run only after every outbox entry for its atomic
+   transaction is delivered. Its affected actor refs must be explicit
+   `godot_mirror` projection-refresh metadata, not inferred from an event
+   payload, room, scene, node path, or client request.
 
 ## Reuse Of Existing Authority Event Bus
 

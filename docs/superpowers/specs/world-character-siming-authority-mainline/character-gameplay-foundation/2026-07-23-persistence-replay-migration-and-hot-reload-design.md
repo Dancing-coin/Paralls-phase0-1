@@ -1,8 +1,40 @@
 # Persistence, Replay, Migration And Hot Reload Design
 
-Status: `awaiting-user-review`
+Status: `partially-implemented; broader-closure-planned`
 
 Date: `2026-07-23`
+
+## 2026-08-02 Implementation Status
+
+`GameplayEventStore` now supports a versioned JSON snapshot export/import and
+atomic file replacement. Recovery validates event/global ordering, per-stream
+revisions, transaction coverage, idempotency outcomes, outbox references, and,
+when enabled, the immutable event-schema registry identities required by the
+stored history. `DurableGameplayEventStore` can additionally persist every
+successful batch and outbox state update, rolling memory back on
+snapshot-write failure.
+
+The first migration seam is also implemented: an opt-in `EventSchemaRegistry`
+gates writes and is included in the durable snapshot; an in-process trusted
+`EventUpcasterRegistry` admits only digest-matched, continuous `vN -> vN+1`
+steps. `GameplayProjectionReplay` can use that registry to replay the fixed
+`gameplay.session_reserved` v1 fixture as the v2 reader view without mutating
+the historical event. Unknown schemas and missing chains fail closed.
+
+The implemented minimum recovery slice also retains projection checkpoints in
+the JSON snapshot and, per projector, selects the newest compatible checkpoint
+by projector/schema identity plus patch, registry, and world-config revisions.
+It validates the checksum, committed-event prefix, and source revision vector;
+an invalid or incompatible cache falls back to full replay. The opt-in
+`GameplayProjectionStartup` closes its one store's write gate while it rebuilds
+that required projection, and reopens it only after successful replay; writes
+during a failed bootstrap receive retriable `projection_not_ready`. The first
+bounded Patch/state-group data migration is now replay-covered: the typed
+resource maximum-reduction fact and exact state-group definition transition
+rebuild to the same Phase 3 façade through full and checkpoint-plus-tail
+replay. This is not a persistent executable-upcaster manifest, a complete
+event-family registration rollout, general patch/state-group migration, global
+multi-projector readiness orchestration, or a production startup control plane.
 
 ## Purpose
 

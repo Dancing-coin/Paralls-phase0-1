@@ -1,12 +1,17 @@
 # Gameplay Foundation Contracts, Events, And Harness Plan
 
-Status: `drafted-for-spec-review`
+Status: `execution-active-for-implemented-foundation`
 
 ## Scope
 
 Create the shared backend-owned gameplay command/event/result vocabulary and
 the durable event/projection spine. This is the first implementation plan and
 owns no inventory, economy, equipment, or Godot domain behavior.
+
+The shared contract/event/outbox/replay foundation and its focused profiles now
+exist and pass. This plan remains the execution record for maintaining and
+extending that backend spine without promoting downstream domain or
+`adventure-basic` closure.
 
 ## Work
 

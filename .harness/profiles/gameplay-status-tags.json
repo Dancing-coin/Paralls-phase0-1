@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "gameplay-status-tags",
+  "order": 84,
+  "script": "scripts/verification/verify_gameplay_status_tags.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/gameplay-status-tags-report.json",
+  "description": "Backend proof for registered status-tag lifecycle through Gameplay events: explicit apply/remove/expire, stack-count limits, exclusivity rejection, deterministic replay, active declarative modifier source removal, backend-principal rejection, and idempotent receipt replay; it excludes refresh policies, durations, transport, and Godot mirror delivery"
+}

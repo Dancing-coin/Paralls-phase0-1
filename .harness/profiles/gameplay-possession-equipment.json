@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "gameplay-possession-equipment",
+  "order": 87,
+  "script": "scripts/verification/verify_gameplay_possession_equipment.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/gameplay-possession-equipment-report.json",
+  "description": "Backend proof that inventory placement, multi-slot equipment activation, atomic swap, activation-scoped ability-path grants, and modifier sources commit together or not at all; it excludes container-access propagation and Godot presentation binding"
+}

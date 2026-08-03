@@ -12,13 +12,43 @@ Date: `2026-07-23`
 
 ## 2026-08-01 Implementation Status
 
-`backend/app/gameplay/runtime_state.py` now implements only the lowest-risk
-read-composition core: immutable definitions, deterministic dependency and
-conflict validation, and immutable snapshot envelopes/checksums for already
-enabled projections. It does not implement eligibility, authority lifecycle
-commands/events, event-store rebuild, privacy-filtered consumer views, deltas,
-or Godot transport. The complete design below remains normative for those
-unimplemented stages.
+`backend/app/gameplay/runtime_state.py` now implements the lowest-risk
+read-composition core: immutable version-addressable definitions, deterministic dependency and
+conflict validation, immutable snapshot envelopes/checksums, and an
+event-derived lifecycle read projection for materialized/enabled/dormant/
+disabled groups. A trusted backend-only service can validate an explicit
+assembly context and append materialize/enable/dormant/disable events through
+the existing atomic Gameplay batch writer; the facade composes only enabled
+groups. A versioned declarative catalog can compile actor archetype, world
+revision, and patch revision inputs into that trusted context without reading
+Godot or cognition state. It does not yet persist/load policy from world or
+patch activation, rebuild projections across process lifetime, provide
+privacy-policy persistence/loading, view transport/consumer capability
+negotiation, client prediction, or Godot transport. A backend-only sync service
+can create checksummed full snapshots and exact-base deltas, but it owns no
+transport or consumer resnapshot workflow. The current immutable view projector
+can only delete existing top-level payload fields for non-authority consumers,
+requires debug-principal allowlisting, and fails closed for an allowed group
+lacking a policy. `Phase3StateComposer` can now compose already-owned resource,
+body, status-tag, and effective-stat read projections into enabled facade
+groups only; it has no event-store or command dependency. `Phase3CheckpointReplay`
+can rebuild its lifecycle/resource/body/tag checkpoint plus tail to the same
+read-only façade checksum as a full rebuild. It is in-memory only and does not
+claim checkpoint persistence, migration, or delivery. The complete design below
+remains normative for those unimplemented stages.
+`project_godot_runtime_state` now serializes only an already policy-filtered
+Godot view into a `gameplay_runtime_state.godot.v1` envelope. The local consumer
+and bus plumbing reject authority/private/physics fields, but no backend route
+or live Godot delivery proof exists yet. Any future route must authorize the
+actor/session scope, use an after-commit source, and resnapshot on exact-base
+delta or checksum failure; it may not expose the authority façade.
+
+When more than one definition is registered for a group, an assembly caller
+must pin its selected version; history replay resolves the exact version carried
+by each lifecycle event. The first Patch resource migration also records a
+separate `gameplay.state_group.migrated` lifecycle transition only after its
+typed resource-domain fact is planned for the same authority batch. That
+metadata transition is not a generic group-payload write API.
 
 ## Scope
 
@@ -171,6 +201,7 @@ MaterializeStateGroup
 EnableStateGroup
 DisableStateGroup
 RebuildStateGroupProjection
+RebindStateGroupSource
 ```
 
 Godot、debug tooling 或玩法系统只能发送前两个 request。后四个命令由 backend authority 在校验装配计划后发起。
@@ -184,9 +215,19 @@ StateGroupDisabled
 StateGroupEnteredDormancy
 StateGroupProjectionRebuilt
 StateAssemblyRevisionAdvanced
+StateGroupSourceRebound
 ```
 
 `StateGroupMaterialized` 必须记录 initialization policy、source patch revision 与初始事件引用；不能直接插入一份无来源 snapshot。
+
+`StateGroupSourceRebound` 是受限的 stateful Patch identity migration event。
+它记录 `actor_ref`、`group_id`、`definition_version`、前后
+`source_patch_revision`、`migration_kind=identity_rebind` 和 manifest-pinned
+`migration_digest`。它只能在 group 已 materialized 且未 disabled、definition
+version 不变、previous source 与当前 record 一致时保持现有 lifecycle state 并
+转移 source revision。它不改写历史 event、不变换 projection payload、不撤销
+grant/modifier。任何数据变换、definition version 变化或持续效果处理必须通过
+独立 migration/revoke/compensation command，不得伪装为 rebind。
 
 ## CharacterGameRuntimeState Façade
 
@@ -282,13 +323,22 @@ CharacterGameRuntimeDelta
   actor_ref
   base_facade_revision
   target_facade_revision
+  target_source_revision_vector
+  target_schema_capabilities
+  target_enabled_state_groups
   changed_group_envelopes[]
   removed_group_ids[]
   confirmed_prediction_ids[]
   rejected_predictions[]
+  target_snapshot_checksum
 ```
 
-delta 只可应用于精确匹配的 `base_facade_revision`。客户端遇到乱序、缺口、未知 schema 或 checksum 错误必须请求完整 snapshot，不能尽力拼接。
+当前实现的后端只读同步切片生成稳定的完整 snapshot，并只接受 checksum 完整且
+`base_facade_revision` 精确匹配的 delta。delta 携带 target 的 revision vector、
+capability、enabled-group set 与 checksum，因此应用端可以重建后验证完整 target；
+变更组与移除组不得重叠。该切片没有 transport、WebSocket/Godot mirror、客户端
+prediction 或 resnapshot 请求实现。未来 consumer 遇到乱序、缺口、未知 schema 或
+checksum 错误时必须请求完整 snapshot，不能尽力拼接。
 
 ## Disable And Rematerialization
 
@@ -354,9 +404,13 @@ delta 只可应用于精确匹配的 `base_facade_revision`。客户端遇到乱
   - command/snapshot/delta envelope；
   - consumer capability negotiation。
 - `gameplay-state-groups`
-  - archetype/world/patch 动态装配；
-  - lifecycle、依赖、冲突、disable policy；
-  - façade revision 与 view filtering。
+  - 当前验证不可变 definitions、依赖/冲突拒绝、确定性加载顺序、lifecycle event
+    read projection、explicit-context authority batch、最小只读 façade 与
+    policy-filtered consumer views；
+  - 当前也证明后端只读完整 snapshot、exact-base delta、capability 拒绝、移除组
+    重建和 target checksum 验证；
+  - 后续扩展到 archetype/world/patch 动态装配、persistent rebuild、consumer
+    view transport/capability negotiation、prediction 与 Godot mirror。
 - `gameplay-event-replay`
   - materialization event replay；
   - checkpoint 与完整重放等价。
@@ -366,4 +420,4 @@ delta 只可应用于精确匹配的 `base_facade_revision`。客户端遇到乱
   - prediction confirm/reject。
 - `gameplay-foundation-all`
 
-目标 profile 必须在实现阶段注册后才可作为完成证据；本规格当前只建立验收映射。
+`gameplay-state-groups` 已注册并仅证明上述 read-only 核心。其余验收项仍须在实现后扩展该 profile，不能由当前绿报告推断完成。

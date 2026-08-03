@@ -1,6 +1,6 @@
 # Character Gameplay Foundation Spec Tree
 
-Status: `awaiting-user-review`
+Status: `partially-implemented; broader-closure-planned`
 
 Date: `2026-07-23`
 
@@ -22,6 +22,45 @@ The target is a character that can participate in resources, bodily state,
 inventory, equipment, ownership, economy, skills, relationships, and future
 gameplay domains while new gameplay is added through versioned rule packages
 rather than ad hoc cross-module writes.
+
+The foundation core is now executable: the Gameplay event store, replay,
+committed outbox/authority-bus spine, and the minimum read-only
+`CharacterGameRuntimeState` composition core have code and focused evidence.
+This does not claim the complete gameplay facade, state-group lifecycle,
+inventory/equipment/economy domains, persistence, or Godot mirror is finished.
+The first inventory and equipment placement/activation authority slices have
+focused backend evidence; their broader domain closures remain planned.
+The economy slice now additionally proves account transfer, one fixed-offer
+purchase, one zero-consideration item/title gift, and simple-debt
+issue/repayment settlement. Credential links are also replayable evidence-only
+records: their issue/supersede events retain the declared holder and pinned
+inventory revision as issuance evidence, while a read-only item-presence/holder
+presentation check remains current-state based. This is not generic commerce
+closure. Account/debt privacy is currently backend-only query filtering,
+including configured audience field redaction, not a Godot or transport privacy
+closure. Registered `simple_service` contract
+terms with a pinned completion evidence kind can atomically record matching
+evidence and fulfill; arbitrary or cross-domain execution remains deferred.
+The first governed patch-runtime slice now additionally proves immutable
+trusted manifests, dependency/schema conflict rejection, deterministic
+proposal-only rules, side-effect-free capability gates, and a minimal
+authority-ledger install/enable/disable lifecycle slice, rule-only same-patch
+upgrade/rollback, and fail-closed lifecycle replay. It does not yet
+convert arbitrary proposals into domain settlement (only `resource.consume` is
+currently revalidated and settled), persist handler artifacts,
+or implement patch-owned data-transform lifecycle migration beyond the first
+bounded resource-bounds upgrade and Godot delivery. That upgrade pins old/new
+resource and state-group definitions, emits a typed resource fact plus a
+state-group definition/source transition in the Patch cutover batch, requires
+deterministic replay evidence, and explicitly rejects its lossy rollback. A
+bounded explicit-actor Patch enable/disable can now atomically materialize or
+disable its uniquely owned declared state groups with the active-set cutover;
+compatible same-patch revisions can identity-rebind those groups during
+explicit actor upgrade/rollback. It does not provide actor discovery,
+domain-effect revocation, compensation, generic or additional data-transform
+migration. Candidate manifests and
+active-set identity have durable JSON snapshot recovery; this
+does not constitute a production patch registry.
 
 ## Approved Design Decisions
 
@@ -69,6 +108,7 @@ rather than ad hoc cross-module writes.
 17. [adventure-basic reference package](2026-07-23-adventure-basic-reference-pack-design.md)
 18. [Verification and acceptance matrix](2026-07-23-verification-and-acceptance-matrix-design.md)
 19. [Specification and runtime baseline](2026-07-29-gameplay-foundation-spec-and-runtime-baseline.md)
+20. [WebSocket session identity and mirror scope](2026-08-03-websocket-session-identity-and-mirror-scope-design.md)
 
 ## Dependency Layers
 
@@ -118,14 +158,16 @@ are undefined.
 
 ## Review And Planning Gate
 
-This tree remains `awaiting-user-review` until the user approves the written
-files. No implementation plan should treat it as approved before that review.
+This tree is partially implemented. It authorizes continued work on the
+existing foundation core only when each change follows the plans, preserves the
+listed boundaries, and adds focused evidence. Broader domain closure still
+requires the relevant specification and plan gates; it must not be inferred
+from the implemented core.
 
 The dedicated draft implementation-plan tree is now available at:
 
 - `docs/superpowers/plans/world-character-siming-authority-mainline/character-gameplay-foundation/`
 
-It remains `drafted-for-spec-review` and does not authorize implementation.
-After approval, execute it in dependency order and end with fresh evidence from
-the planned `gameplay-foundation-all` harness aggregate plus the repository-wide
-`all` profile.
+It is execution-active for the foundation core. Execute remaining work in
+dependency order and end with fresh focused evidence plus the repository-wide
+`all` profile when the environment permits it.

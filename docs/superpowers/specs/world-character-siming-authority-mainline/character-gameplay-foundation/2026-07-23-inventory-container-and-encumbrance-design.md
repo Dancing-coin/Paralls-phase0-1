@@ -1,8 +1,28 @@
 # 库存、容器与负重设计
 
-Status: `awaiting-user-review`
+Status: `minimum-core-implemented; broader-possession-planned`
 
 Date: `2026-07-23`
+
+## 2026-08-02 Implementation Status
+
+The first backend-only inventory core is implemented and profile-verified: item
+definitions, container creation, event-derived single-location projection,
+sealed/capacity rejection, atomic move, and a flat carried-container
+encumbrance read projection. It does not implement nesting, recursive weight
+propagation, storage-ring policy, stack operations, access grants, ownership,
+equipment, persistence, transport, or Godot mirror delivery.
+
+The embodied custody bridge now has a bounded implementation continuation:
+`stow_from_custody` moves a verified custody holder into a policy-resolved
+actor container, and `retrieve_to_custody` is the inverse backend authority
+foundation. It validates an item is in the declared actor container, that its
+custody projection still names that container, that the container is not
+sealed, and that a backend-registered custody receiver is empty. It writes
+custody, inventory transfer-out, receiver occupancy, and retrieve evidence in
+one batch. This does not establish a generic player command, client-selected
+container/receiver refs, a scene container, UI, ownership transfer, or Godot
+inventory delivery.
 
 ## Purpose
 
@@ -81,6 +101,24 @@ QueryAccessibleInventory(actor_ref, access_context, revision_vector)
 QueryEncumbrance(carrier_ref, revision_vector)
 ```
 
+The embodied bridge's internal counterpart is deliberately narrower than a
+general inventory command:
+
+```text
+RetrieveToCustody(command_id, actor_ref, asset_ref, item_id,
+                  source_container_id, destination_receiver_ref,
+                  expected_definition_id?, idempotency_key)
+```
+
+It is callable only after a policy/settlement layer has resolved its arguments.
+The client never sends these references. `destination_receiver_ref` must be a
+registered, currently empty physical custody receiver; it is not an inferred
+node or a display attachment. An accepted command atomically appends
+`inventory.custody_changed`, `gameplay.inventory.item_transferred_out`,
+`scene.occupancy.changed`, and `embodied.inventory.retrieved`, then refreshes
+the custody/receiver read models after commit. Repeating the same key replays
+the prior transaction before checking mutable source state.
+
 命令只表达意图。`OpenContainer` 的成功只授予本次读模型访问，不能绕过后续 `MoveItem` 的 authority 校验。所有写命令必须包含相关容器的预期 revision；跨领域命令还必须携带 settlement 生成的 transaction context。
 
 ## 事件与命令流
@@ -144,6 +182,10 @@ MoveItem
 4. 储物戒验证自身计重、内容不向佩戴者传播重量、卸装非空策略和重放一致性。
 5. 物品位置变化不会改变 `OwnershipRight`；丢失地契物品不会删除土地权利。
 6. Godot 只能消费带 revision 的镜像，预测拒绝后能够恢复到权威快照。
+7. A custody-to-inventory stow followed by internal retrieve preserves the same
+   `item_id`, does not transfer ownership, leaves no stale tracked receiver
+   occupancy, and has no partial event batch on source/container/receiver
+   rejection.
 
 ## Harness Mapping
 

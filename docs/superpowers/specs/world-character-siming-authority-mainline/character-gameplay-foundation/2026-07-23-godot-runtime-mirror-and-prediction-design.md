@@ -1,6 +1,6 @@
 # Godot Runtime Mirror And Prediction Design
 
-Status: `awaiting-user-review`
+Status: `partially-implemented; live-delivery-and-prediction-planned`
 
 Date: `2026-07-23`
 
@@ -17,6 +17,27 @@ Backend authority projections
 -> per-character CharacterGameplayStateMirrorComponent
 -> UI / animation / audio / interaction / debug
 ```
+
+## Generalization Rule
+
+默认主场景只能提供可替换的验证 fixture，不能成为 actor 授权、状态组、
+container、对象 identity 或镜像路由模型的隐式来源。镜像 scope 必须由后端
+按 session/actor 授予；Godot 只能请求读取，不能用场景节点、对象名或本地
+持有状态证明权限。任何实现都必须支持多个 actor 和任意已注册状态组，而不
+绑定 `MainDemo`、`char_c` 或单一物件流程。
+
+## 2026-08-03 Implemented Foundation
+
+`StateGroupViewProjector.godot_view(...)` 已实现字段白名单投影，
+`project_godot_runtime_state(...)` 只接受该视图并拒绝任意嵌套层级的
+authority/private/physics 字段。`GameplayMirrorSubscriptionRegistry` 只保存
+后端授予的 session/actor scope；`GameplayMirrorAfterCommitDelivery` 仅按
+authority 明确给出的 affected actor refs 向已订阅 scope fanout，单一 transport
+失败不会影响已提交 authority batch。`GameplayOutboxDispatcher` 仅在同一 atomic
+transaction 的所有 outbox entry 都已 delivered 后才调用该消费端；
+`GameplayRuntimeStateMirrorConsumer` 是本地只读消费者。它们均未接入
+FastAPI/WebSocket、真实授权源或应用装配；因此不构成在线镜像、状态同步或 Godot
+runtime 完成声明。
 
 ## Scope
 

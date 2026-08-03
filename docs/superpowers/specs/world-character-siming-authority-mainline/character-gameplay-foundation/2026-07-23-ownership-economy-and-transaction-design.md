@@ -1,6 +1,6 @@
 # Ownership, Economy And Transaction Design
 
-Status: `awaiting-user-review`
+Status: `partially-implemented; credential-simple-debt-and-contract-foundations-implemented`
 
 Date: `2026-07-23`
 
@@ -22,6 +22,79 @@ Date: `2026-07-23`
 - inventory/custody 与 ownership 的跨域原子 settlement；
 - 权限、幂等、optimistic concurrency、审计和 privacy；
 - economy/ownership projection、解释查询和 Godot 可见裁剪。
+
+## Current Implementation Boundary
+
+The repository has one narrow embodied-handoff authority slice that appends
+`inventory.custody_changed` and `ownership.right_transferred` within its
+session settlement transaction. It is verified as a handoff fact boundary, not
+as the ownership/economy foundation defined here. It has no general right
+registry or projector, account/ledger projection, offer, transfer command,
+credential link, debt, contract, privacy query, replay/checkpoint proof, or
+economy harness profile.
+
+In particular, the handoff service must not be treated as an implementation of
+`ownership.transfer_right`: it does not establish title policy, asset-wide
+right exclusivity, holder authorization, account consideration, or a reusable
+ownership domain API. Custody and title remain distinct facts even where that
+narrow interaction emits both events.
+
+The first reusable ownership/economy core is now implemented separately:
+
+- exclusive full-title can be granted once and transferred through the
+  dedicated ownership stream, with idempotent replay;
+- credential links can be issued, revoked, and superseded through a dedicated
+  stream; they retain their referenced right but never change its holder; a
+  issue/supersede command pins a current inventory location for the linked
+  item and records the declared holder plus that inventory stream revision as
+  immutable issuance evidence. A read-only presentation check still requires
+  both current
+  credential-item presence and current right-holder identity;
+- same-currency accounts and integer balances are event-derived, and ordinary
+  debit/credit transfer is one atomic batch;
+- a fixed offer for one item plus its exclusive full-title can settle an exact
+  pinned price, seller-to-buyer inventory transfer, title transfer, offer
+  consumption, and a `purchase_settled` transaction record in one backend
+  batch or not at all.
+- a zero-consideration gift can transfer one normal item, its exclusive
+  full-title, and a `gift_settled` record in one backend batch or not at all.
+- `simple_debt` can issue a fixed principal by atomically delivering funds,
+  creating an active simple contract and debt claim, and recording the issue;
+  partial repayment reduces the event-derived outstanding amount, while final
+  repayment satisfies the claim and contract in the same batch; an explicit
+  backend policy cancellation writes a reasoned cancellation record and zeroes
+  the remaining claim without deleting history or moving account balances. A
+  policy correction can reverse one original payment record exactly once. It
+  restores the outstanding amount and, when that payment had fulfilled the
+  simple-debt pair, reopens the satisfied claim and fulfilled contract in the
+  same append-only batch. A separate policy cancellation reversal can reopen a
+  cancelled simple-debt pair from the cancellation record's pinned outstanding
+  amount without moving funds. Ordinary payment correction continues to reject
+  cancelled debt.
+- backend-only account and debt views require the account owner, debt party, or
+  an explicitly configured authority principal; third parties receive a stable
+  denial code without values or private party fields. Their additional
+  backend-only redacted payload view applies configured audience field
+  allowlists after that visibility check.
+- registered typed `simple_transfer` and `simple_service` terms can create an
+  active contract record and receive policy-authorized fulfill/terminate events;
+  registered `simple_service` terms with a pinned completion evidence kind can
+  additionally record matching evidence and fulfill in one batch. They do not
+  execute arbitrary terms or settle other domains.
+
+The implemented purchase is intentionally a narrow authority slice. It checks
+the offer revision and accepted price, account ownership/currency/balance,
+seller title, source location, and destination capacity before append. Its
+inventory transfer events make the seller and buyer actor-scoped projections
+explicit; they do not turn inventory placement into ownership truth. The
+credential issuance attestation is not a current-holder fact; generic contracts,
+interest, due-date/default handling,
+generic right kinds, arbitrary or cross-domain term execution,
+authorization-source integration, checkpoint replay, persistence, and Godot
+delivery remain unimplemented. The gift slice does not support partial gift,
+land-only title gift, or any implicit currency movement. The debt slice does
+not support debt without principal funding, assets as principal, or arbitrary
+contract terms.
 
 ## Non-goals
 
@@ -214,6 +287,20 @@ apply_economy_event(state, event) -> state
 
 所有 query 受 privacy scope 约束。公开可观察的 item holder 不等于可读取其账户余额或私人债务。
 
+### Backend field redaction
+
+The economy query boundary exposes an additional backend-only redacted
+payload view. Its configured allowlists distinguish account owner, debt party,
+and authority audiences. Authorization is evaluated before projection; the
+payload contains only explicitly allowed fields, with no hidden fields set to
+placeholder values. The default narrow policy omits account `owner_ref` for an
+owner view and omits debt `contract_id`, creditor, debtor, and principal for a
+party view, while a configured authority may receive the full domain view.
+
+This policy consumes an already-authenticated `principal_ref`; it does not
+authenticate transport requests, create a session grant, or authorize a Godot
+subscription.
+
 ## Commands And Event Flows
 
 ### Commands
@@ -299,6 +386,33 @@ economy.transaction_recorded
 
 超额偿付首批固定拒绝，不自动退款或创建负 outstanding。部分偿付允许，但 amount 必须大于零且不超过 pinned outstanding。
 
+### Cancellation reversal
+
+`economy.reverse_debt_cancellation_by_policy` is an implemented distinct
+authority command, not a payment correction. It references exactly one committed cancellation
+record, restores that record's pinned pre-cancellation outstanding amount, and
+reopens the paired cancelled claim and simple-debt contract in one append-only
+batch. The batch contains no account debit/credit event because cancellation
+did not move funds. It records the original-to-reversal link and rejects a
+second reversal of the same cancellation record. Ordinary payment correction
+must continue to reject cancelled debt.
+
+### Registered service completion
+
+The implemented first automatic-terms slice is limited to registered `simple_service`
+terms with one declared `completion_evidence_kind`. A configured policy
+authority may submit a non-empty evidence reference only when its kind exactly
+matches the registered term. The authority batch records
+`service_completion_recorded` and follows it with `record_fulfilled`; replay
+therefore proves that fulfillment was caused by the typed evidence, not by an
+unstructured status overwrite.
+
+This slice does not execute arbitrary code, parse natural-language terms,
+transfer funds or assets, change ownership/inventory, or authorize an external
+transport request. `simple_transfer` records and service terms without a
+declared completion evidence kind retain their current explicit policy
+fulfill/terminate lifecycle.
+
 ## Authority Invariants
 
 1. ownership、account、transaction、debt 和 contract 的权威状态只能由 immutable event stream 重放得到。
@@ -315,6 +429,8 @@ economy.transaction_recorded
 12. Godot、本地预测、关系 belief 和持有凭证都不能创建经济或产权真相。
 13. 敏感 balance、contract terms 和 debt 只能进入授权 projection；审计 trace 也必须按 privacy scope 脱敏。
 14. 修正和撤销通过新事件引用原交易，绝不删除历史 ledger/right/debt event。
+15. 取消纠正只能恢复原 cancellation event 固定的 remaining outstanding；不得把取消纠正伪装成付款、重新发行本金或创建账户资金变动。
+16. 自动条款执行只能来自注册 terms 的确定性 evidence-kind 匹配；completion evidence 不是 world truth 写入口，也不能自行结算其他 domain。
 
 ## Failure Semantics
 

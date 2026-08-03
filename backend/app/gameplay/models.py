@@ -27,6 +27,7 @@ class ProjectionRefreshHint(StrictGameplayModel):
     projection_id: str = Field(min_length=1)
     stream_id: str = Field(min_length=1)
     reason: str = Field(min_length=1)
+    actor_refs: tuple[str, ...] = ()
 
 
 class IdempotencyRecord(StrictGameplayModel):
@@ -125,6 +126,9 @@ class ProjectionCheckpoint(StrictGameplayModel):
     state: dict[str, Any] = Field(default_factory=dict)
     applied_event_ids: list[str] = Field(default_factory=list)
     projection_hash: str = Field(min_length=1)
+    active_patch_set_revision: str | None = None
+    registry_revision: str | None = None
+    world_config_revision: str | None = None
 
 
 class ReplayResult(StrictGameplayModel):

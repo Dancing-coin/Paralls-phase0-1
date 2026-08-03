@@ -1,6 +1,6 @@
 # Equipment Runtime Design
 
-Status: `awaiting-user-review`
+Status: `partially-implemented; broader-closure-planned`
 
 Date: `2026-07-23`
 
@@ -20,6 +20,30 @@ Date: `2026-07-23`
 - 装备提供的容器访问与传播 policy activation/deactivation；
 - Godot presentation refs 的权威绑定状态与本地表现应用；
 - revision、幂等、失败恢复、replay 和解释查询。
+
+## Current Implementation Boundary
+
+The repository implements only the first backend authority slice: one item can
+move from a validated inventory container into one compatible equipment slot,
+and later return to a validated destination container. Inventory placement,
+equipment activation/deactivation, activation-scoped ability-path grant
+activate/revoke events, and registered modifier-source activate/deactivate
+events are appended in one atomic batch. The grant and modifier each have the
+activation as their source and are projected by their owning ability/modifier
+domains; neither creates a learned-skill fact. Source-placement, body-function,
+slot-conflict, revision, and idempotency checks occur before commit. The slice
+also supports one multi-slot activation: every occupied slot is recorded under
+the same activation, and a conflict in any required slot rejects the complete
+batch. It also implements the minimum swap: old activation effects are revoked,
+the outgoing item returns to a validated destination, and the incoming item
+activates only if all its slots validate in the same batch. The focused
+`gameplay-possession-equipment` profile proves this slice.
+
+Equipment action/skill grants beyond the implemented path grant form, generic
+modifier authoring and non-equipment sources, container access/propagation,
+ownership/control policy, presentation bindings,
+checkpoint replay equivalence, and Godot mirror delivery remain specified but
+unimplemented.
 
 ## Non-goals
 

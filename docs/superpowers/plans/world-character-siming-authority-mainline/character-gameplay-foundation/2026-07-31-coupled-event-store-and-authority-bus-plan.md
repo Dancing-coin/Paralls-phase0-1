@@ -1,6 +1,6 @@
 # Coupled Event Store And Authority Bus Implementation Plan
 
-Status: `drafted-for-spec-review`
+Status: `execution-active-for-implemented-foundation`
 
 Date: `2026-07-31`
 
@@ -10,6 +10,12 @@ Implement the Gameplay Foundation prerequisite that unblocks embodied
 `InteractionSession` work: a backend authority event store, atomic event-batch
 writer, committed outbox, and existing authority event-bus delivery path that
 operate as one settlement pipeline.
+
+The shared spine is now implemented and verified by
+`gameplay-foundation-contract`, `gameplay-event-replay`, and
+`gameplay-foundation-event-spine`. Follow-on work here is limited to
+maintaining or extending that committed pipeline without promoting downstream
+domain closure.
 
 This plan implements only the shared spine. It does not implement inventory,
 equipment, ownership transfer, economy, relationship graph, or Godot gameplay

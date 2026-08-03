@@ -1,11 +1,20 @@
 # Skill Ability Graph And Affordance Plan
 
-Status: `drafted-for-spec-review`
+Status: `minimum-core-implemented; broader-graph-planned`
 
 ## Dependencies
 
 State-group facade and resource/status/body. Equipment, inventory, ownership,
 and world/relationship policy feed later affordance predicates as available.
+
+## 2026-08-02 Implementation Status
+
+The first backend-only core is implemented and verified by
+`gameplay-ability-affordance`: a small definition registry, event-derived
+learned skill/grant projection, and body/resource affordance query. The slice
+does not authorize promotion, equipment/inventory predicates, transport, or
+Godot delivery. Existing `character_agent/skills/` remains advisory; no model
+or evaluator writes stable ability state.
 
 ## Work
 

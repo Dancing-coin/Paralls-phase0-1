@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "gameplay-ownership-authority",
+  "order": 88,
+  "script": "scripts/verification/verify_gameplay_ownership_authority.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/gameplay-ownership-authority-report.json",
+  "description": "Backend proof for event-derived exclusive full-title grant/transfer, credential issue/revoke/supersede with immutable issuance-holder attestation and current inventory validation, and read-only presentation requiring item presence plus right-holder identity; it excludes custody writes, accounts, offers, debt, contracts, privacy views, replay checkpoints, and Godot delivery"
+}

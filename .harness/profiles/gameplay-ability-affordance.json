@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "gameplay-ability-affordance",
+  "order": 85,
+  "script": "scripts/verification/verify_gameplay_ability_affordance.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/gameplay-ability-affordance-report.json",
+  "description": "Backend proof for event-derived stable ability state and read-only body/resource affordance resolution; it excludes promotion, equipment/inventory predicates, transport, and Godot mirror delivery"
+}

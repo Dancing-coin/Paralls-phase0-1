@@ -1,6 +1,6 @@
 # Event Sourcing And Authority Settlement Design
 
-Status: `awaiting-user-review`
+Status: `implemented-foundation; broader-domain-closure-planned`
 
 Date: `2026-07-23`
 
@@ -9,6 +9,11 @@ Date: `2026-07-23`
 定义 Character Gameplay Foundation 的权威写入协议：所有 gameplay 真相以不可变领域事件表达，所有跨域变化由一次 authority settlement 形成原子事件批次，所有当前状态、façade、Godot mirror 和图谱输入均为可重建投影。
 
 本规格深化既有 authority/settlement 主线，不建立平行 authority service。
+
+首批 authority event spine 已实现：atomic `append_batch`、幂等、replay、
+committed outbox、after-commit authority-bus dispatch，以及若干 backend
+domain slice 都已通过该路径结算。它仍不代表外部持久化、完整 projector
+catalog 或全部 gameplay 领域都已完成。
 
 ## Scope
 

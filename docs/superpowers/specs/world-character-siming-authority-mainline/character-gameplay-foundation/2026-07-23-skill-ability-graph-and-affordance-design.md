@@ -1,8 +1,18 @@
 # Skill, Ability Graph, And Affordance Design
 
-Status: `awaiting-user-review`
+Status: `minimum-core-implemented; broader-graph-planned`
 
 Date: `2026-07-23`
+
+## 2026-08-02 Implementation Status
+
+The initial backend-only core is implemented and profile-verified. It has a
+small versioned definition registry, event-derived learned-skill and grant
+projection, and a read-only affordance resolver that combines stable skill
+state with current resource/body projections. It proves that injury blocks an
+action without deleting learned skill truth. It does not implement promotion,
+restrictions command APIs, equipment/inventory/environment/permission
+predicates, persistence, transport, or Godot mirror delivery.
 
 ## Purpose
 
