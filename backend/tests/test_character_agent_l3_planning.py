@@ -198,6 +198,25 @@ def test_l3_planner_uses_model_gateway_for_candidate_generation() -> None:
     assert decision.selected_intent == "ask_probe"
 
 
+def test_l3_planner_passes_bounded_skill_affordance_to_model_without_overriding_selection() -> None:
+    gateway = _recording_gateway_for_candidates(["observe"], selected_intent="observe")
+    planner = CharacterAgentL3Service(gateway=gateway)
+
+    decision = planner.select_intent(
+        _interpretation(),
+        skill_affordance_summary={
+            "available_action_families": {"observation": {"level": "basic"}},
+            "registry": {"must_not": "reach_the_model"},
+        },
+    )
+
+    context = gateway.requests[0]["context"]
+    assert context["skill_affordance_summary"] == {
+        "available_action_families": {"observation": {"level": "basic"}}
+    }
+    assert decision.selected_intent == "observe"
+
+
 def test_l3_planner_preserves_model_owned_selection_when_candidate_is_locally_valid() -> None:
     gateway = _RecordingGateway(
         {

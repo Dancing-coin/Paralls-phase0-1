@@ -219,6 +219,34 @@ def test_l4_adapter_preserves_dialogue_text_for_speech_requests() -> None:
     assert commands[0].dialogue_text == "Look at the letter."
 
 
+def test_l4_adapter_does_not_expose_presentation_utterance_as_observe_dialogue() -> None:
+    adapter = CharacterAgentL4Adapter()
+    plan = {
+        "actor_id": "char_b",
+        "actor_control_frames": [
+            {
+                "actor_id": "char_b",
+                "producer_ts": 1401,
+                "causation_id": "character_agent:1401:char_b",
+                "correlation_id": "character_agent:1401:char_b",
+                "action": "observe",
+                "target_ref": "char_a",
+            }
+        ],
+        "presentation_plan": {
+            "speech_state": {
+                "utterance_request": "observe and mutter something",
+            },
+        },
+        "action_request_bundle": {"requested_actions": []},
+    }
+
+    commands = adapter.build_commands_from_execution_plan(plan)
+
+    assert commands[0].command_type == "observe"
+    assert commands[0].dialogue_text is None
+
+
 def test_l4_adapter_preserves_nested_visible_semantics_inside_execution_payload() -> None:
     executor = CharacterAgentL4Executor()
     adapter = CharacterAgentL4Adapter()

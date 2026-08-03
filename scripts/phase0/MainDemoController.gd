@@ -4,7 +4,6 @@ const LIGHTING_TUNER := preload("res://scripts/visual/ThroneRoomLightingTuner.gd
 const THRONE_HALL_WALK_PREVIEW := preload("res://scenes/phase0/ThroneHallWalkPreview.tscn")
 const ACTOR_PERCEPTION_SAMPLER := preload("res://scripts/character/ActorPerceptionSampler.gd")
 const ACTOR_PERCEPTION_TARGET_RESOLVER := preload("res://scripts/character/ActorPerceptionTargetResolver.gd")
-const SIMING_VISUAL_OBSERVABILITY_PRESENTER := preload("res://scripts/phase0/SimingVisualObservabilityPresenter.gd")
 const FLOOR_CHECKPOINTS := [
 	{"name": "entry_carpet", "position": Vector3(0.0, 0.5, 16.0)},
 	{"name": "center_carpet", "position": Vector3(0.0, 0.5, 4.0)},
@@ -15,6 +14,7 @@ const FLOOR_CHECKPOINTS := [
 ]
 const FLOOR_GRID_X := [-9.0, -6.0, -3.0, 0.0, 3.0, 6.0, 9.0]
 const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
+const BACKEND_RECONNECT_RETRY_DELAY_SECONDS := 0.5
 
 @export var backend_url := "ws://127.0.0.1:8000/ws"
 @export var autotest_enabled := false
@@ -47,6 +47,18 @@ const FLOOR_GRID_Z := [16.0, 12.0, 8.0, 4.0, 0.0, -4.0, -8.0, -12.0]
 @onready var character_a: Node3D = $CharacterA
 @onready var character_b: Node3D = $CharacterB
 @onready var interactive_object: Node3D = $InteractiveObject
+@onready var default_scene_affordance_bridges: Array[Node] = [
+	$DefaultSceneLetterAffordanceBridge,
+	$DefaultScenePlaqueAffordanceBridge,
+	$DefaultSceneLampSwitchAffordanceBridge,
+	$DefaultSceneArchiveDoorAffordanceBridge,
+	$DefaultSceneWorktableAffordanceBridge,
+	$DefaultSceneObservationBenchAffordanceBridge,
+	$DefaultSceneArchiveTokenAffordanceBridge,
+]
+@onready var default_scene_inventory_presentation_bridges: Array[Node] = [
+	$DefaultSceneArchiveTokenPresentationBridge,
+]
 @onready var character_visual_fact_emitter: Node = $VisualFactEmitter/CharacterVisualFactEmitter
 @onready var evidence_projection_emitter: Node = $VisualFactEmitter/EvidenceProjectionEmitter
 @onready var spatial_access_fact_emitter: Node = $VisualFactEmitter/SpatialAccessFactEmitter
@@ -115,7 +127,6 @@ func _ready() -> void:
 			bus.world_result_received.connect(_on_world_result_received)
 		if bus.has_signal("debug_event_logged"):
 			bus.debug_event_logged.connect(_on_debug_event_logged)
-	_ensure_siming_visual_observability_presenter()
 	backend_health_request = HTTPRequest.new()
 	backend_health_request.name = "BackendHealthRequest"
 	add_child(backend_health_request)
@@ -131,13 +142,6 @@ func _ready() -> void:
 		call_deferred("_finish_scene_load_probe")
 		return
 	call_deferred("_connect_backend")
-
-func _ensure_siming_visual_observability_presenter() -> void:
-	if get_node_or_null("SimingVisualObservabilityPresenter") != null:
-		return
-	var presenter: Node = SIMING_VISUAL_OBSERVABILITY_PRESENTER.new()
-	presenter.name = "SimingVisualObservabilityPresenter"
-	add_child(presenter)
 
 func _bootstrap_throne_room_collision() -> void:
 	if not _should_bootstrap_scene_collision():
@@ -284,7 +288,25 @@ func submit_interaction() -> void:
 	if target_object_id == "":
 		_bus_log("phase0_interact_no_focus_target")
 		return
-	_emit_interaction_request(target_object_id, "inspect")
+	var interaction_type := _default_reviewed_interaction_type(target_object_id)
+	if interaction_type == "":
+		_bus_log("phase0_interact_no_reviewed_action:%s" % target_object_id)
+		return
+	var interaction_route := _reviewed_interaction_route(target_object_id, interaction_type)
+	if interaction_route == "pickup":
+		_emit_pickup_intent_request(target_object_id, interaction_type)
+		return
+	if interaction_route == "retrieve":
+		_emit_retrieve_intent_request(target_object_id, interaction_type)
+		return
+	_emit_interaction_request(target_object_id, interaction_type)
+
+func submit_stow() -> void:
+	var target_object_id := _resolve_focused_object_id()
+	if target_object_id == "":
+		_bus_log("phase0_stow_no_focus_target")
+		return
+	_emit_stow_intent_request(target_object_id)
 
 func _on_backend_connected(_payload: String) -> void:
 	if autotest_shutdown_in_progress:
@@ -313,14 +335,14 @@ func _on_backend_disconnected(_code: int = 0) -> void:
 	if autotest_shutdown_in_progress:
 		return
 	if not backend_connected_once and _code == -1:
-		_request_backend_reconnect()
+		_schedule_backend_reconnect_retry()
 		return
 	spatial_zone_emitted = false
 	pending_focus_sync = true
 	last_spatial_access_actor_target = ""
 	last_spatial_access_actor_ts = 0
 	current_privacy_band = "public"
-	_request_backend_reconnect()
+	_schedule_backend_reconnect_retry()
 
 func _on_backend_ack_received(payload: Dictionary) -> void:
 	last_backend_activity_ms = Time.get_ticks_msec()
@@ -363,19 +385,18 @@ func _on_world_result_received(payload: Dictionary) -> void:
 		and str(payload.get("correlation_id", "")) == pending_failed_interaction_correlation_id
 	):
 		matched_failed_interaction_result = true
-	if not autotest_transport_quiescent:
-		if result_type == "object_state_result" and str(payload.get("target_object_id", "")) == "obj_letter":
-			if str(payload.get("current_state", "")) == "visible":
-				if evidence_projection_emitter and evidence_projection_emitter.has_method("emit_visual_evidence_projection"):
-					evidence_projection_emitter.emit_visual_evidence_projection("obj_letter")
-				if tactile_fact_emitter and tactile_fact_emitter.has_method("emit_contact_fact"):
-					tactile_fact_emitter.emit_contact_fact("", "obj_letter", "light")
-		elif result_type == "environment_state_result" and str(payload.get("target_environment_id", "")) == "env_lamp":
-			if str(payload.get("current_state", "")) == "alerted":
-				if thermal_fact_emitter and thermal_fact_emitter.has_method("emit_thermal_proximity_fact"):
-					thermal_fact_emitter.emit_thermal_proximity_fact("env_lamp", "warm")
-				if olfactory_fact_emitter and olfactory_fact_emitter.has_method("emit_odor_state_fact"):
-					olfactory_fact_emitter.emit_odor_state_fact("env_lamp", "noticeable")
+	if not autotest_transport_quiescent and result_type == "object_state_result" and str(payload.get("target_object_id", "")) == "obj_letter":
+		if str(payload.get("current_state", "")) == "visible":
+			if evidence_projection_emitter and evidence_projection_emitter.has_method("emit_visual_evidence_projection"):
+				evidence_projection_emitter.emit_visual_evidence_projection("obj_letter")
+			if tactile_fact_emitter and tactile_fact_emitter.has_method("emit_contact_fact"):
+				tactile_fact_emitter.emit_contact_fact("", "obj_letter", "light")
+	elif not autotest_transport_quiescent and result_type == "environment_state_result" and str(payload.get("target_environment_id", "")) == "env_lamp":
+		if str(payload.get("current_state", "")) == "alerted":
+			if thermal_fact_emitter and thermal_fact_emitter.has_method("emit_thermal_proximity_fact"):
+				thermal_fact_emitter.emit_thermal_proximity_fact("env_lamp", "warm")
+			if olfactory_fact_emitter and olfactory_fact_emitter.has_method("emit_odor_state_fact"):
+				olfactory_fact_emitter.emit_odor_state_fact("env_lamp", "noticeable")
 	if result_id != "":
 		_bus_log("phase0_world_result_seen:%s:%s" % [result_type, result_id])
 
@@ -1007,10 +1028,30 @@ func _perform_backend_reconnect() -> void:
 	if bridge.has_method("is_backend_open") and bridge.is_backend_open():
 		pending_backend_reconnect = false
 		return
+	# This flag covers only a queued attempt. Clear it before the asynchronous
+	# handshake so a refused connection can queue the next retry.
+	pending_backend_reconnect = false
 	var err: int = bridge.connect_to_backend(backend_url)
 	_bus_log("phase0_backend_reconnect_err:%s" % err)
 	if err != OK:
+		_schedule_backend_reconnect_retry()
+
+func _schedule_backend_reconnect_retry() -> void:
+	var bridge := _get_bridge()
+	if bridge == null:
+		return
+	if bridge.has_method("is_backend_open") and bridge.is_backend_open():
 		pending_backend_reconnect = false
+		return
+	if pending_backend_reconnect:
+		return
+	pending_backend_reconnect = true
+	call_deferred("_retry_backend_after_delay")
+
+func _retry_backend_after_delay() -> void:
+	await get_tree().create_timer(BACKEND_RECONNECT_RETRY_DELAY_SECONDS).timeout
+	pending_backend_reconnect = false
+	_request_backend_reconnect()
 
 func _flush_pending_backend_requests() -> void:
 	if not pending_dialogue_request.is_empty():
@@ -1029,10 +1070,14 @@ func _flush_pending_backend_requests() -> void:
 	if not pending_interaction_request.is_empty():
 		var interaction_request := pending_interaction_request.duplicate(true)
 		pending_interaction_request = {}
-		_emit_interaction_request(
-			str(interaction_request.get("target_object_id", "")),
-			str(interaction_request.get("interaction_type", "inspect")),
-		)
+		var target_object_id := str(interaction_request.get("target_object_id", ""))
+		var interaction_type := str(interaction_request.get("interaction_type", "inspect"))
+		if str(interaction_request.get("intent_route", "interact")) == "pickup":
+			_emit_pickup_intent_request(target_object_id, interaction_type)
+		elif str(interaction_request.get("intent_route", "interact")) == "retrieve":
+			_emit_retrieve_intent_request(target_object_id, interaction_type)
+		else:
+			_emit_interaction_request(target_object_id, interaction_type)
 
 func _emit_focus_target_change() -> void:
 	var bridge := _get_bridge()
@@ -1068,6 +1113,8 @@ func _emit_interaction_request(target_object_id: String, interaction_type: Strin
 		return {}
 	if not intent_mapper.has_method("emit_interact_intent"):
 		return {}
+	if not _has_reviewed_default_scene_affordance(target_object_id, interaction_type):
+		return {}
 	_bus_log("phase0_interact_target:%s" % target_object_id)
 	_emit_near_object_visual_fact(target_object_id)
 	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
@@ -1082,12 +1129,111 @@ func _emit_interaction_request_without_near_object_fact(target_object_id: String
 		return {}
 	if not intent_mapper.has_method("emit_interact_intent"):
 		return {}
+	if not _has_reviewed_default_scene_affordance(target_object_id, interaction_type):
+		return {}
 	_bus_log("phase0_interact_target:%s" % target_object_id)
 	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
 		pending_interaction_request = {"target_object_id": target_object_id, "interaction_type": interaction_type}
 		_request_backend_reconnect()
 		return {}
 	return _send_player_input_envelope(bridge, intent_mapper.emit_interact_intent(target_object_id, interaction_type))
+
+
+func _emit_pickup_intent_request(target_object_id: String, interaction_type: String) -> void:
+	var bridge := _get_bridge()
+	if bridge == null or intent_mapper == null:
+		return
+	if not intent_mapper.has_method("emit_pickup_intent"):
+		return
+	if not _has_reviewed_default_scene_affordance(target_object_id, interaction_type):
+		return
+	_bus_log("phase0_pickup_target:%s" % target_object_id)
+	_emit_near_object_visual_fact(target_object_id)
+	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
+		pending_interaction_request = {
+			"target_object_id": target_object_id,
+			"interaction_type": interaction_type,
+			"intent_route": "pickup",
+		}
+		_request_backend_reconnect()
+		return
+	bridge.send_envelope(intent_mapper.emit_pickup_intent(target_object_id))
+
+
+func _emit_stow_intent_request(target_object_id: String) -> void:
+	var bridge := _get_bridge()
+	if bridge == null or intent_mapper == null:
+		return
+	if not intent_mapper.has_method("emit_stow_intent"):
+		return
+	if not _has_authority_confirmed_stow_source(target_object_id):
+		_bus_log("phase0_stow_source_not_confirmed:%s" % target_object_id)
+		return
+	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
+		_bus_log("phase0_stow_backend_not_open")
+		return
+	bridge.send_envelope(intent_mapper.emit_stow_intent(target_object_id))
+
+
+func _emit_retrieve_intent_request(target_object_id: String, interaction_type: String) -> void:
+	var bridge := _get_bridge()
+	if bridge == null or intent_mapper == null:
+		return
+	if not intent_mapper.has_method("emit_retrieve_intent"):
+		return
+	if not _has_reviewed_default_scene_affordance(target_object_id, interaction_type):
+		return
+	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
+		_bus_log("phase0_retrieve_backend_not_open")
+		return
+	bridge.send_envelope(intent_mapper.emit_retrieve_intent(target_object_id))
+
+
+func _has_authority_confirmed_stow_source(target_object_id: String) -> bool:
+	for presentation_bridge in default_scene_inventory_presentation_bridges:
+		if presentation_bridge == null or not presentation_bridge.has_method("can_request_stow"):
+			continue
+		if bool(presentation_bridge.call("can_request_stow", target_object_id)):
+			return true
+	return false
+
+
+func _has_reviewed_default_scene_affordance(target_object_id: String, interaction_type: String) -> bool:
+	for affordance_bridge in default_scene_affordance_bridges:
+		if affordance_bridge == null or not affordance_bridge.has_method("handles_interaction"):
+			continue
+		if not bool(affordance_bridge.call("handles_interaction", target_object_id, interaction_type)):
+			continue
+		if not affordance_bridge.has_method("resolve_interaction"):
+			_bus_log("phase0_interact_registry_unavailable:%s" % target_object_id)
+			return false
+		var resolution: Dictionary = affordance_bridge.call("resolve_interaction", target_object_id, interaction_type)
+		if str(resolution.get("status", "")) == "available":
+			return true
+		_bus_log("phase0_interact_registry_rejected:%s:%s" % [target_object_id, str(resolution.get("status", ""))])
+		return false
+	_bus_log("phase0_interact_registry_unavailable:%s" % target_object_id)
+	return false
+
+
+func _default_reviewed_interaction_type(target_object_id: String) -> String:
+	for affordance_bridge in default_scene_affordance_bridges:
+		if affordance_bridge == null or not affordance_bridge.has_method("default_interaction_type"):
+			continue
+		var interaction_type := str(affordance_bridge.call("default_interaction_type", target_object_id))
+		if not interaction_type.is_empty():
+			return interaction_type
+	return ""
+
+
+func _reviewed_interaction_route(target_object_id: String, interaction_type: String) -> String:
+	for affordance_bridge in default_scene_affordance_bridges:
+		if affordance_bridge == null or not affordance_bridge.has_method("route_for_interaction"):
+			continue
+		var route := str(affordance_bridge.call("route_for_interaction", target_object_id, interaction_type))
+		if not route.is_empty():
+			return route
+	return "interact"
 
 func _emit_move_intent_request(target_point: Vector3, move_mode: String) -> Dictionary:
 	var bridge := _get_bridge()

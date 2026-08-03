@@ -19,6 +19,99 @@ class ESMService:
     UNSUPPORTED_ENVIRONMENT_CHANGE_TYPES = {"thermal_spike"}
     OBJECT_POSITIONS: dict[str, tuple[float, float, float]] = {
         "obj_letter": (0.0, 0.95, -2.0),
+        "obj_plaque": (-2.2, 1.2, -2.0),
+        "obj_lamp_switch": (2.2, 1.2, -2.0),
+        "obj_archive_door": (0.0, 1.2, -4.0),
+        "obj_worktable": (-0.9, 0.85, -2.0),
+        "obj_observation_bench": (15.4, 0.7, -6.6),
+    }
+    # An interaction target is not authoritative merely because a Godot node
+    # names it. The main demo's small policy catalog keeps the authority
+    # boundary explicit while broader object-family ownership is still pending.
+    INTERACTION_POLICIES: dict[str, dict[str, object]] = {
+        "obj_letter": {
+            "allowed_interactions": {"inspect", "read"},
+            "machine_id": "visibility",
+            "previous_state": "partially_visible",
+            "current_state": "visible",
+            "affordances": ["inspect", "read"],
+            "occludes": False,
+            "environment_transition": "alert_lamp",
+        },
+        "obj_plaque": {
+            "allowed_interactions": {"inspect", "read"},
+            "machine_id": "visibility",
+            "previous_state": "partially_visible",
+            "current_state": "visible",
+            "affordances": ["inspect", "read"],
+            "occludes": False,
+            "environment_transition": "none",
+        },
+        "obj_lamp_switch": {
+            "allowed_interactions": {"press"},
+            "machine_id": "switch",
+            "previous_state": "idle",
+            "current_state": "activated",
+            "affordances": ["press"],
+            "occludes": False,
+            "environment_transition": "alert_lamp",
+        },
+        "obj_archive_door": {
+            "allowed_interactions": {"open", "close"},
+            "machine_id": "door",
+            "affordances": ["open", "close"],
+            "occludes": False,
+            "environment_transition": "none",
+            "initial_state": "closed",
+            "stateful": True,
+            "transitions": {
+                "open": {"previous_state": "closed", "current_state": "open"},
+                "close": {"previous_state": "open", "current_state": "closed"},
+            },
+        },
+        "obj_worktable": {
+            "allowed_interactions": {"use", "finish_use"},
+            "machine_id": "work_surface",
+            "affordances": ["use", "finish_use"],
+            "occludes": False,
+            "environment_transition": "none",
+            "initial_state": "ready",
+            "stateful": True,
+            "transitions": {
+                "use": {"previous_state": "ready", "current_state": "engaged"},
+                "finish_use": {"previous_state": "engaged", "current_state": "ready"},
+            },
+        },
+        "obj_observation_bench": {
+            "allowed_interactions": {"sit", "stand"},
+            "machine_id": "seat_occupancy",
+            "affordances": ["sit", "stand"],
+            "occludes": False,
+            "environment_transition": "none",
+            "initial_state": "available",
+            "stateful": True,
+            "actor_scoped": True,
+            "transitions": {
+                "sit": {
+                    "previous_state": "available",
+                    "current_state": "occupied",
+                    "owner_requirement": "unclaimed",
+                    "owner_effect": "claim",
+                    "body_state_class": "posture",
+                    "body_previous_state": "standing",
+                    "body_current_state": "seated",
+                },
+                "stand": {
+                    "previous_state": "occupied",
+                    "current_state": "available",
+                    "owner_requirement": "actor_is_owner",
+                    "owner_effect": "release",
+                    "body_state_class": "posture",
+                    "body_previous_state": "seated",
+                    "body_current_state": "standing",
+                },
+            },
+        },
     }
     STATE_MACHINE_TEMPLATES: dict[str, dict[str, object]] = {
         "burning": {
@@ -458,6 +551,8 @@ class ESMService:
         self._recent_environment_resolutions: list[ActionResolutionResult | ConstraintStateResult] = []
         self._recent_environment_results: list[EnvironmentStateResult] = []
         self._recent_state_machine_transitions: list[StateMachineTransitionEvent] = []
+        self._registered_interaction_states: dict[tuple[str, str, str, str], str] = {}
+        self._registered_interaction_owners: dict[tuple[str, str, str, str], str] = {}
 
     def build_action_request(self, event: InteractIntent, *, source_system: str = "player_input_bridge") -> ActionRequest:
         request_id = f"interact:{event.producer_ts}:{event.target_object_id}"
@@ -585,6 +680,197 @@ class ESMService:
             ],
             stable_state_summary="interaction accepted",
             settlement_status="accepted",
+        )
+
+    def interaction_policy_for(
+        self,
+        target_object_id: str,
+        interaction_type: str,
+        *,
+        room_id: str = "",
+        scene_id: str = "",
+        zone_id: str = "",
+        actor_id: str = "",
+    ) -> dict[str, object] | None:
+        policy = self.INTERACTION_POLICIES.get(target_object_id)
+        if policy is None:
+            return None
+        allowed_interactions = policy.get("allowed_interactions", set())
+        if interaction_type not in allowed_interactions:
+            return None
+        if not bool(policy.get("stateful", False)):
+            return policy
+        transitions = policy.get("transitions", {})
+        transition = transitions.get(interaction_type) if isinstance(transitions, dict) else None
+        if not isinstance(transition, dict):
+            return None
+        initial_state = str(policy.get("initial_state", ""))
+        actual_state = self.interaction_state_for(
+            room_id=room_id,
+            scene_id=scene_id,
+            zone_id=zone_id,
+            target_object_id=target_object_id,
+            initial_state=initial_state,
+        )
+        resolved_policy = {key: value for key, value in policy.items() if key != "transitions"}
+        resolved_policy.update(transition)
+        resolved_policy["state_match"] = actual_state == str(transition["previous_state"])
+        owner_requirement = str(transition.get("owner_requirement", ""))
+        if owner_requirement:
+            actual_owner = self.interaction_owner_for(
+                room_id=room_id,
+                scene_id=scene_id,
+                zone_id=zone_id,
+                target_object_id=target_object_id,
+            )
+            resolved_policy["owner_match"] = (
+                actual_owner == ""
+                if owner_requirement == "unclaimed"
+                else bool(actor_id) and actual_owner == actor_id
+                if owner_requirement == "actor_is_owner"
+                else False
+            )
+        return resolved_policy
+
+    def interaction_state_for(
+        self,
+        *,
+        room_id: str,
+        scene_id: str,
+        zone_id: str,
+        target_object_id: str,
+        initial_state: str | None = None,
+    ) -> str:
+        policy = self.INTERACTION_POLICIES.get(target_object_id, {})
+        fallback = initial_state if initial_state is not None else str(policy.get("initial_state", ""))
+        return self._registered_interaction_states.get(
+            (room_id, scene_id, zone_id, target_object_id),
+            fallback,
+        )
+
+    def interaction_owner_for(
+        self,
+        *,
+        room_id: str,
+        scene_id: str,
+        zone_id: str,
+        target_object_id: str,
+    ) -> str:
+        return self._registered_interaction_owners.get(
+            (room_id, scene_id, zone_id, target_object_id),
+            "",
+        )
+
+    def commit_interaction_state(
+        self,
+        *,
+        room_id: str,
+        scene_id: str,
+        zone_id: str,
+        target_object_id: str,
+        current_state: str,
+        actor_id: str = "",
+        interaction_type: str = "",
+    ) -> None:
+        policy = self.INTERACTION_POLICIES.get(target_object_id)
+        if policy is None or not bool(policy.get("stateful", False)):
+            return
+        state_key = (room_id, scene_id, zone_id, target_object_id)
+        self._registered_interaction_states[state_key] = current_state
+        if not bool(policy.get("actor_scoped", False)):
+            return
+        transitions = policy.get("transitions", {})
+        transition = transitions.get(interaction_type) if isinstance(transitions, dict) else None
+        owner_effect = str(transition.get("owner_effect", "")) if isinstance(transition, dict) else ""
+        if owner_effect == "claim" and actor_id:
+            self._registered_interaction_owners[state_key] = actor_id
+        elif owner_effect == "release":
+            self._registered_interaction_owners.pop(state_key, None)
+
+    def reject_unsupported_interaction(self, event: InteractIntent) -> ConstraintStateResult:
+        request = self.build_action_request(event)
+        object_known = event.target_object_id in self.INTERACTION_POLICIES
+        return ConstraintStateResult(
+            request_ref=request.request_id,
+            result_id=f"constraint:{request.request_id}",
+            room_id=event.room_id,
+            scene_id=event.scene_id,
+            zone_id=event.zone_id,
+            actor_id=event.actor_id,
+            source_type="player",
+            entity_id=event.target_object_id,
+            target_object_id=event.target_object_id,
+            result_type="constraint_state_result",
+            causation_id=f"interact:{event.producer_ts}",
+            correlation_id=f"interact:{event.producer_ts}",
+            producer_ts=event.producer_ts + 1,
+            constraint_type="interaction_policy_constraint",
+            constraint_code="unsupported_interaction" if object_known else "unsupported_object",
+            constraint_summary=(
+                "interaction is not allowed for this target"
+                if object_known
+                else "target is not registered by the authority interaction policy"
+            ),
+            blocking_entity_refs=[event.target_object_id],
+            settlement_status="rejected",
+        )
+
+    def reject_interaction_state(
+        self,
+        event: InteractIntent,
+        *,
+        expected_state: str,
+        actual_state: str,
+    ) -> ConstraintStateResult:
+        request = self.build_action_request(event)
+        return ConstraintStateResult(
+            request_ref=request.request_id,
+            result_id=f"constraint:{request.request_id}",
+            room_id=event.room_id,
+            scene_id=event.scene_id,
+            zone_id=event.zone_id,
+            actor_id=event.actor_id,
+            source_type="player",
+            entity_id=event.target_object_id,
+            target_object_id=event.target_object_id,
+            result_type="constraint_state_result",
+            causation_id=f"interact:{event.producer_ts}",
+            correlation_id=f"interact:{event.producer_ts}",
+            producer_ts=event.producer_ts + 1,
+            constraint_type="interaction_state_constraint",
+            constraint_code="invalid_interaction_state",
+            constraint_summary=f"interaction requires {expected_state}; current state is {actual_state}",
+            blocking_entity_refs=[event.target_object_id],
+            settlement_status="rejected",
+        )
+
+    def reject_interaction_owner(
+        self,
+        event: InteractIntent,
+        *,
+        expected_owner: str,
+        actual_owner: str,
+    ) -> ConstraintStateResult:
+        request = self.build_action_request(event)
+        return ConstraintStateResult(
+            request_ref=request.request_id,
+            result_id=f"constraint:{request.request_id}",
+            room_id=event.room_id,
+            scene_id=event.scene_id,
+            zone_id=event.zone_id,
+            actor_id=event.actor_id,
+            source_type="player",
+            entity_id=event.target_object_id,
+            target_object_id=event.target_object_id,
+            result_type="constraint_state_result",
+            causation_id=f"interact:{event.producer_ts}",
+            correlation_id=f"interact:{event.producer_ts}",
+            producer_ts=event.producer_ts + 1,
+            constraint_type="interaction_owner_constraint",
+            constraint_code="interaction_owner_mismatch",
+            constraint_summary=f"interaction requires owner {expected_owner}; current owner is {actual_owner or 'none'}",
+            blocking_entity_refs=[event.target_object_id],
+            settlement_status="rejected",
         )
 
     def _is_in_range(self, target_object_id: str, actor_position: tuple[float, float, float] | None) -> bool:
@@ -816,6 +1102,7 @@ class ESMService:
         target_object_id: str,
         previous_state: str,
         current_state: str,
+        machine_id: str = "visibility",
         producer_ts: int,
         request_ref: str | None = None,
         causation_id: str | None = None,
@@ -831,7 +1118,7 @@ class ESMService:
             source_type="system",
             entity_id=target_object_id,
             target_object_id=target_object_id,
-            machine_id="visibility",
+            machine_id=machine_id,
             causation_id=causation_id or f"object:{target_object_id}:{producer_ts}",
             correlation_id=correlation_id or f"object:{target_object_id}:{producer_ts}",
             producer_ts=producer_ts,

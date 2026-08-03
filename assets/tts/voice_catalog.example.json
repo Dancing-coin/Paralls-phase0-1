@@ -1,0 +1,36 @@
+{
+  "contract": "tts_voice_catalog.v1",
+  "provider": "dashscope_http",
+  "model": "qwen-audio-3.0-tts-flash",
+  "catalog_revision": "2026-07-23",
+  "allowed_presentation_instructions": [],
+  "voices": [
+    {
+      "voice_id": "qwen-audio-3.0-tts-flash-longlanghongmo",
+      "language_tags": ["zh-CN"],
+      "trait_tags": ["warm", "soft", "measured"],
+      "usage_tags": ["dialogue"],
+      "age_impression": "young_adult",
+      "voice_gender_presentation": "female",
+      "review_ref": "operator-audition:flash:longlanghongmo"
+    },
+    {
+      "voice_id": "qwen-audio-3.0-tts-flash-longyuzhihe",
+      "language_tags": ["zh-CN"],
+      "trait_tags": ["objective", "calm", "controlled"],
+      "usage_tags": ["dialogue", "guard"],
+      "age_impression": "mature_adult",
+      "voice_gender_presentation": "male",
+      "review_ref": "operator-audition:flash:longyuzhihe"
+    },
+    {
+      "voice_id": "qwen-audio-3.0-tts-flash-longtongxuxian",
+      "language_tags": ["zh-CN"],
+      "trait_tags": ["lively", "agile", "bright"],
+      "usage_tags": ["dialogue", "social"],
+      "age_impression": "young_adult",
+      "voice_gender_presentation": "female",
+      "review_ref": "operator-audition:flash:longtongxuxian"
+    }
+  ]
+}

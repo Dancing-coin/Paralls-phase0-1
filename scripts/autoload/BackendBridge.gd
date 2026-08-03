@@ -6,9 +6,16 @@ var last_requested_url := ""
 var transport_barrier_sequence := 0
 
 func _ready() -> void:
+    ws.inbound_buffer_size = 1024 * 1024
     var bus := _get_bus()
     if bus and bus.has_signal("character_actor_status_emitted"):
         bus.character_actor_status_emitted.connect(_on_character_actor_status_emitted)
+    if bus and bus.has_signal("embodied_phase_event_emitted"):
+        bus.embodied_phase_event_emitted.connect(_on_embodied_phase_event_emitted)
+    if bus and bus.has_signal("embodied_local_outcome_emitted"):
+        bus.embodied_local_outcome_emitted.connect(_on_embodied_local_outcome_emitted)
+    if bus and bus.has_signal("embodied_resync_request_emitted"):
+        bus.embodied_resync_request_emitted.connect(_on_embodied_resync_request_emitted)
 
 func is_backend_open() -> bool:
     return ws.get_ready_state() == WebSocketPeer.STATE_OPEN
@@ -19,6 +26,7 @@ func connect_to_backend(url: String) -> int:
     if ws.get_ready_state() != WebSocketPeer.STATE_CLOSED:
         ws.close()
         ws = WebSocketPeer.new()
+        ws.inbound_buffer_size = 1024 * 1024
 
     var err := ws.connect_to_url(url)
     if err == OK:
@@ -117,6 +125,12 @@ func _dispatch_message(raw_text: String) -> void:
             _bus_log("backend_ack")
         "dialogue_response":
             _bus_emit("dialogue_received", [payload])
+        "dialogue_stream_start":
+            _bus_emit("dialogue_stream_started", [payload])
+        "dialogue_stream_delta":
+            _bus_emit("dialogue_stream_delta_received", [payload])
+        "dialogue_stream_end":
+            _bus_emit("dialogue_stream_ended", [payload])
         "action_request":
             _bus_log("action_request:%s" % JSON.stringify(payload))
             _bus_emit("action_request_received", [payload])
@@ -168,6 +182,47 @@ func _dispatch_message(raw_text: String) -> void:
             _bus_emit("siming_output_received", [payload])
         "authority_event":
             _dispatch_authority_event(payload)
+        "embodied_controller_bound":
+            _bus_log("embodied_controller_bound:%s" % JSON.stringify(payload))
+            _bus_emit("embodied_controller_bound_received", [payload])
+        "embodied_action_request":
+            _bus_log("embodied_action_request:%s" % JSON.stringify(payload))
+            _bus_emit("embodied_action_request_received", [payload])
+        "embodied_settlement_result":
+            _bus_log("embodied_settlement_result:%s" % JSON.stringify(payload))
+            _bus_emit("embodied_settlement_result_received", [payload])
+        "embodied_cancel_directive":
+            _bus_log("embodied_cancel_directive:%s" % JSON.stringify(payload))
+            _bus_emit("embodied_cancel_directive_received", [payload])
+        "embodied_resync_projection":
+            _bus_log("embodied_resync_projection:%s" % JSON.stringify(payload))
+            _bus_emit("embodied_resync_projection_received", [payload])
+        "embodied_interaction_session_event":
+            _bus_log("embodied_interaction_session_event:%s" % JSON.stringify(payload))
+            _bus_emit("embodied_interaction_session_event_received", [payload])
+        "embodied_handoff_event":
+            _bus_log("embodied_handoff_event:%s" % JSON.stringify(payload))
+            _bus_emit("embodied_handoff_event_received", [payload])
+        "embodied_carry_place_event":
+            _bus_log("embodied_carry_place_event:%s" % JSON.stringify(payload))
+            _bus_emit("embodied_carry_place_event_received", [payload])
+        "embodied_pickup_result":
+            _bus_log("embodied_pickup_result:%s" % JSON.stringify(payload))
+            _bus_emit("embodied_pickup_result_received", [payload])
+        "embodied_inventory_stow_result":
+            _bus_log("embodied_inventory_stow_result:%s" % JSON.stringify(payload))
+            _bus_emit("embodied_inventory_stow_result_received", [payload])
+        "embodied_inventory_retrieve_result":
+            _bus_log("embodied_inventory_retrieve_result:%s" % JSON.stringify(payload))
+            _bus_emit("embodied_inventory_retrieve_result_received", [payload])
+        "websocket_session_bound":
+            _bus_log("websocket_session_bound:%s" % JSON.stringify(payload))
+            _bus_emit("websocket_session_bound_received", [payload])
+        "gameplay_runtime_state_projection":
+            var projection := parsed_dict.duplicate(true)
+            projection.erase("message_type")
+            _bus_log("gameplay_runtime_state_projection:%s" % JSON.stringify(projection))
+            _bus_emit("gameplay_runtime_state_projection_received", [projection])
         _:
             _bus_log("backend_message:%s" % message_type)
 
@@ -188,6 +243,36 @@ func _on_character_actor_status_emitted(payload: Dictionary) -> void:
     send_envelope(
         {
             "message_type": "character_actor_status",
+            "payload": payload,
+        }
+    )
+
+func _on_embodied_phase_event_emitted(payload: Dictionary) -> void:
+    if ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
+        return
+    send_envelope(
+        {
+            "message_type": "embodied_phase_event",
+            "payload": payload,
+        }
+    )
+
+func _on_embodied_local_outcome_emitted(payload: Dictionary) -> void:
+    if ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
+        return
+    send_envelope(
+        {
+            "message_type": "embodied_local_outcome",
+            "payload": payload,
+        }
+    )
+
+func _on_embodied_resync_request_emitted(payload: Dictionary) -> void:
+    if ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
+        return
+    send_envelope(
+        {
+            "message_type": "embodied_resync_request",
             "payload": payload,
         }
     )

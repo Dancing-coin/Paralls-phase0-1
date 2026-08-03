@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 
+from app.models.dialogue_audio import DialogueAudio
+
 
 class AIOutputBase(BaseModel):
     actor_id: str
@@ -15,6 +17,8 @@ class DialogueResponse(AIOutputBase):
     content: str
     tone: str
     tts_required: bool = True
+    audio: DialogueAudio | None = None
+    request_id: str | None = None
 
 
 class AttentionShift(AIOutputBase):

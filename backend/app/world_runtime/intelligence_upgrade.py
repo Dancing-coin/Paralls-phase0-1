@@ -135,6 +135,10 @@ class PerceptionInputFrame(BaseModel):
     skeletal_inputs: list[SampleInputRef] = Field(default_factory=list)
     environment_inputs: list[SampleInputRef] = Field(default_factory=list)
     structured_fact_refs: list[str] = Field(default_factory=list)
+    grounding_entity_refs: list[str] = Field(default_factory=list)
+    grounding_collider_refs: list[str] = Field(default_factory=list)
+    grounding_anchor_refs: list[str] = Field(default_factory=list)
+    grounding_affordance_refs: list[str] = Field(default_factory=list)
     target_actor_ids: list[str] = Field(default_factory=list)
     target_object_ids: list[str] = Field(default_factory=list)
     target_environment_ids: list[str] = Field(default_factory=list)
@@ -182,6 +186,13 @@ class PerceptionInputFrame(BaseModel):
                 candidate_actor_ids=self.target_actor_ids,
                 candidate_environment_ids=self.target_environment_ids,
             )
+        self.grounding_entity_refs = append_unique_lineage(
+            self.grounding_entity_refs,
+            [self.subject_ref, self.target_ref, *self.target_actor_ids, *self.target_object_ids, *self.target_environment_ids],
+        )
+        self.grounding_collider_refs = append_unique_lineage(self.grounding_collider_refs, [])
+        self.grounding_anchor_refs = append_unique_lineage(self.grounding_anchor_refs, [self.world_anchor_id])
+        self.grounding_affordance_refs = append_unique_lineage(self.grounding_affordance_refs, [])
         sample_ref_values = [
             ref.sample_ref_id or ref.ref_id
             for ref in [
@@ -238,6 +249,10 @@ class PerceptionQueryFrame(BaseModel):
     skeletal_inputs: list[SampleInputRef] = Field(default_factory=list)
     environment_inputs: list[SampleInputRef] = Field(default_factory=list)
     structured_fact_refs: list[str] = Field(default_factory=list)
+    grounding_entity_refs: list[str] = Field(default_factory=list)
+    grounding_collider_refs: list[str] = Field(default_factory=list)
+    grounding_anchor_refs: list[str] = Field(default_factory=list)
+    grounding_affordance_refs: list[str] = Field(default_factory=list)
     multimodal_context_id: str
     cache_namespace: str
     inference_history_ref: str = ""
@@ -282,6 +297,19 @@ class PerceptionQueryFrame(BaseModel):
                 candidate_actor_ids=self.attention_context.target_actor_ids,
                 candidate_environment_ids=self.attention_context.target_environment_ids,
             )
+        self.grounding_entity_refs = append_unique_lineage(
+            self.grounding_entity_refs,
+            [
+                self.subject_ref,
+                self.target_ref,
+                *self.attention_context.target_actor_ids,
+                *self.attention_context.target_object_ids,
+                *self.attention_context.target_environment_ids,
+            ],
+        )
+        self.grounding_collider_refs = append_unique_lineage(self.grounding_collider_refs, [])
+        self.grounding_anchor_refs = append_unique_lineage(self.grounding_anchor_refs, [self.world_anchor_id])
+        self.grounding_affordance_refs = append_unique_lineage(self.grounding_affordance_refs, [])
         self.source_ref_lineage = append_unique_lineage(
             self.source_ref_lineage,
             [

@@ -2490,6 +2490,7 @@ class CharacterAgentRuntime:
             decision=decision,
         )
         self._attach_skill_shadow_fields(actor_id=actor_id, plan=plan)
+        self._attach_skill_behavior_guardrail(actor_id=actor_id, plan=plan)
         self._set_observatory_context(actor_id, "execution_summary", str(plan.get("social_spatial_channel", {}).get("spacing_behavior", "") if isinstance(plan.get("social_spatial_channel"), dict) else ""))
         self.record_execution_request(
             actor_id=actor_id,
@@ -2577,6 +2578,53 @@ class CharacterAgentRuntime:
             if primitive_action_plan.primitive_actions:
                 payload["primitive_action_plan"] = primitive_action_plan.model_dump()
         return payload
+
+    def _attach_skill_behavior_guardrail(self, *, actor_id: str, plan: dict[str, object]) -> None:
+        proposal = plan.get("composite_action_proposal", {})
+        if not isinstance(proposal, dict):
+            return
+        action_id = str(proposal.get("action_id", "") or "")
+        action_id = {"observe": "survey_scene", "inspect_object": "survey_scene", "self_protect": "assess_visible_threat"}.get(action_id, action_id)
+        if not action_id:
+            return
+        skill_states = self._skill_service.initial_skill_states(actor_id=actor_id, profile=self._profile_payload(actor_id))
+        strategy_tags = proposal.get("preferred_strategy_tags", [])
+        evaluation = self._skill_service.evaluate_action(
+            actor_id=actor_id,
+            action_id=action_id,
+            skill_states=skill_states,
+            preferred_strategy_tags=[str(tag) for tag in strategy_tags if str(tag)] if isinstance(strategy_tags, list) else [],
+        )
+        selected_path = evaluation.selected_path
+        primitive_action_plan = None
+        if selected_path:
+            status = "selected_path"
+            candidate = self._skill_service.expand_primitive_plan(
+                action_id=action_id,
+                skill_path_id=str(selected_path.get("binding_id", "") or ""),
+            )
+            if candidate.primitive_actions:
+                primitive_action_plan = candidate
+                plan["primitive_action_plan"] = candidate.model_dump()
+            else:
+                plan.pop("primitive_action_plan", None)
+        elif evaluation.blocked_paths:
+            status = "no_eligible_path"
+        else:
+            status = "no_registered_path"
+        self._l4.attach_skill_realization_metadata(
+            plan=plan,
+            skill_evaluation_result=evaluation,
+            primitive_action_plan=primitive_action_plan,
+        )
+        plan["skill_guardrail"] = {
+            "status": status,
+            "advisory_only": True,
+            "execution_preserved": True,
+            "source_intent": str(proposal.get("source_intent", "") or ""),
+            "action_id": action_id,
+            "selected_path": dict(selected_path),
+        }
 
     def _continuity_state_for(self, actor_id: str) -> RuntimeContinuityState:
         if actor_id not in self._continuity_state:

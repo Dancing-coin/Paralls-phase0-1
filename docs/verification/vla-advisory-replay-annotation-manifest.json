@@ -1,0 +1,116 @@
+{
+  "schema_version": "vla-advisory-replay-annotations.v1",
+  "status": "bootstrap_valid_not_coverage_ready",
+  "annotation_policy": {
+    "truth_precedence": "Godot scene/entity/collider/anchor truth precedes VLA output",
+    "annotation_review": "human_review_required",
+    "semantic_scoring": "manual_review_required",
+    "prohibited_sources_for_model_credit": [
+      "pqf_subject_id",
+      "pqf_target_ref",
+      "structured_fact_refs",
+      "advisory_grounding_catalog",
+      "provider_prompt_labels"
+    ]
+  },
+  "samples": [
+    {
+      "sample_id": "main-demo-player-view-001",
+      "scene_asset": "res://scenes/phase0/MainDemo.tscn",
+      "room_id": "room_demo",
+      "scene_id": "scene_demo",
+      "zone_id": "zone_focus",
+      "subject_id": "char_c",
+      "target_ref": "",
+      "capture_source": "godot_runtime_capture",
+      "runtime_capture": {
+        "report_path": ".harness/verification/godot-sampling-production-grade-providers-runtime.json",
+        "capture_path": ".harness/verification/godot-sampling-visual-capture.png",
+        "expected_status": "godot-runtime-sampling-verified"
+      },
+      "visible_scene_truth": {
+        "visual_markers": [
+          "red_carpet_runner",
+          "candle_lanterns",
+          "scattered_shields_and_weapons"
+        ],
+        "visible_character_labels": [
+          "char_c"
+        ],
+        "known_scene_refs_not_visual_credit": [
+          "obj_letter",
+          "world_anchor:object:obj_letter"
+        ]
+      },
+      "advisory_grounding": {
+        "entity_refs": [
+          "char_c"
+        ],
+        "collider_refs": [
+          "collision_shape:/root/MainDemo/ThroneRoomCollisionRoot"
+        ],
+        "anchor_refs": [
+          "world_anchor:actor:char_c"
+        ],
+        "affordance_refs": [
+          "inspect",
+          "read"
+        ]
+      },
+      "score_policy": {
+        "semantic_scoring": "manual_review_required",
+        "must_not_award_credit_for": [
+          "pqf_subject_id",
+          "pqf_target_ref",
+          "structured_fact_refs",
+          "advisory_grounding_catalog",
+          "provider_prompt_labels"
+        ],
+        "identity_claims_require_visible_label_or_scene_anchor": true
+      }
+    },
+    {
+      "sample_id": "throne-hall-walk-preview-001",
+      "scene_asset": "res://scenes/phase0/ThroneHallWalkPreview.tscn",
+      "room_id": "room_throne_hall",
+      "scene_id": "throne_hall_walk_preview",
+      "zone_id": "central_hall",
+      "subject_id": "char_c",
+      "target_ref": "",
+      "capture_source": "godot_runtime_capture",
+      "runtime_capture": {
+        "report_path": ".harness/verification/vla-replay-thronehall-walk-preview.json",
+        "capture_path": ".harness/verification/vla-replay-thronehall-walk-preview.png",
+        "expected_status": "godot-runtime-replay-capture-verified"
+      },
+      "visible_scene_truth": {
+        "visual_markers": [
+          "red_carpet_runner",
+          "candle_lanterns",
+          "armored_statues",
+          "rows_of_chairs",
+          "scattered_shields_and_debris"
+        ],
+        "visible_character_labels": [],
+        "known_scene_refs_not_visual_credit": []
+      },
+      "advisory_grounding": {
+        "entity_refs": [],
+        "collider_refs": [],
+        "anchor_refs": [],
+        "affordance_refs": []
+      },
+      "score_policy": {
+        "semantic_scoring": "manual_review_required",
+        "must_not_award_credit_for": [
+          "pqf_subject_id",
+          "pqf_target_ref",
+          "structured_fact_refs",
+          "advisory_grounding_catalog",
+          "provider_prompt_labels"
+        ],
+        "identity_claims_require_visible_label_or_scene_anchor": true
+      }
+    }
+  ]
+}

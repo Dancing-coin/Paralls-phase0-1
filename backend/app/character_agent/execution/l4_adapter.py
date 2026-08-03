@@ -5,6 +5,11 @@ from app.models.character_agent_runtime import (
 )
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
+from app.character_agent.skills.models import (
+    ActionSettlementResult,
+    PrimitiveActionPlan,
+    SkillEvaluationResult,
+)
 
 
 class CharacterAgentL4Adapter:
@@ -97,8 +102,9 @@ class CharacterAgentL4Adapter:
             target_actor_id = action.get("target_actor_id") if str(action.get("target_actor_id", "") or "") else None
             target_object_id = action.get("target_object_id") if str(action.get("target_object_id", "") or "") else None
             target_environment_id = action.get("target_environment_id") if str(action.get("target_environment_id", "") or "") else None
-            dialogue_text_value = str(action.get("content", "") or "")
-            dialogue_text = dialogue_text_value or None
+            if command_type == "speak":
+                dialogue_text_value = str(action.get("content", "") or "")
+                dialogue_text = dialogue_text_value or None
         else:
             target_ref = str(first_frame.get("target_ref", "") or "")
             command_type = self._map_command_type(str(first_frame.get("action", "") or "observe"))
@@ -120,7 +126,7 @@ class CharacterAgentL4Adapter:
                     physiology_hint = physiology_hint_value or None
             if role_state_hint is None:
                 role_state_hint = self._map_role_state_hint(str(presentation_plan.get("action_state", {}).get("requested_action", "") or ""))
-            if dialogue_text is None:
+            if command_type == "speak" and dialogue_text is None:
                 speech_state = presentation_plan.get("speech_state", {})
                 if isinstance(speech_state, dict):
                     dialogue_text_value = str(speech_state.get("utterance_request", "") or "")
@@ -143,6 +149,53 @@ class CharacterAgentL4Adapter:
                 execution_payload=plan,
             )
         ]
+
+    def realization_metadata_from_execution_plan(
+        self,
+        plan: dict[str, object],
+        *,
+        action_settlement_result: ActionSettlementResult | None = None,
+    ) -> dict[str, object]:
+        """Return presentation-only skill hints suitable for a realization adapter."""
+        metadata = plan.get("skill_realization_metadata", {})
+        source = metadata if isinstance(metadata, dict) else {}
+        settlement_outcome = source.get("settlement_outcome", {})
+        if not isinstance(settlement_outcome, dict):
+            settlement_outcome = {}
+        if action_settlement_result is not None:
+            settlement_outcome = {
+                "outcome_band": action_settlement_result.outcome_band,
+                "failure_domains": list(action_settlement_result.failure_domains),
+                "primary_failure_domain": action_settlement_result.primary_failure_domain,
+                "realization_hints": list(action_settlement_result.realization_hints),
+            }
+        return {
+            "selected_skill_path": dict(source.get("selected_skill_path", {}))
+            if isinstance(source.get("selected_skill_path"), dict)
+            else {},
+            "primitive_action_tags": list(source.get("primitive_action_tags", []))
+            if isinstance(source.get("primitive_action_tags"), list)
+            else [],
+            "primitive_realization_keys": list(source.get("primitive_realization_keys", []))
+            if isinstance(source.get("primitive_realization_keys"), list)
+            else [],
+            "settlement_outcome": settlement_outcome,
+        }
+
+    def attach_skill_realization_metadata(
+        self,
+        *,
+        plan: dict[str, object],
+        skill_evaluation_result: SkillEvaluationResult,
+        primitive_action_plan: PrimitiveActionPlan | None = None,
+        action_settlement_result: ActionSettlementResult | None = None,
+    ) -> None:
+        self._executor.attach_skill_realization_metadata(
+            plan=plan,
+            skill_evaluation_result=skill_evaluation_result,
+            primitive_action_plan=primitive_action_plan,
+            action_settlement_result=action_settlement_result,
+        )
 
     def _map_request_type_to_command_type(self, request_type: str) -> str:
         if request_type in {"speak_public", "speak_private", "share_info", "withhold"}:

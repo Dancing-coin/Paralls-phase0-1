@@ -20,12 +20,15 @@ from app.world_runtime.vla_provider import (
     VLAProviderStatus,
 )
 from app.world_runtime.vla_slow_path_scheduler import VLASlowPathScheduler
+from app.world_runtime.vla_routing import VLAAdvisoryRouteConfig, VLAAdvisoryRouter
 from common import repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
 TEST_FILES = [
     "backend/tests/test_vla_provider_backend_contract.py",
     "backend/tests/test_vla_provider_backend_adapter.py",
+    "backend/tests/test_vla_advisory_routing.py",
+    "backend/tests/test_vla_advisory_slow_path.py",
     "backend/tests/test_vla_slow_path_scheduler.py",
     "backend/tests/test_vla_provider_cache_isolation.py",
     "backend/tests/test_vla_percept_bridge.py",
@@ -126,12 +129,12 @@ def main() -> int:
 
     if isinstance(frame_payload, dict) and frame_payload:
         frame = PerceptionQueryFrame(**frame_payload)
-        request = VLAProviderRequest.from_pqf(
+        from app.config import settings
+
+        request = VLAAdvisoryRouter(VLAAdvisoryRouteConfig.from_settings(settings)).request_for_frame(
             frame,
             owner_kind="character",
             owner_id=frame.subject_id,
-            model_id=os.environ.get("VLA_PROVIDER_MODEL", "qwen3-vl-plus"),
-            timeout_seconds=float(os.environ.get("VLA_PROVIDER_TIMEOUT_SECONDS", "8.0")),
         )
         siming_request = _build_siming_request(frame)
         request_ok = bool(request.artifact_refs) and request.context_namespace.startswith("character_mm:")
@@ -182,6 +185,8 @@ def main() -> int:
 
     registry = default_vla_model_registry()
     registry_ok = {
+        "qwen3.7-flash",
+        "qwen3.7-plus",
         "qwen3-vl-plus",
         "qwen3-vl-local",
         "seed-vl-advisor",
@@ -189,6 +194,7 @@ def main() -> int:
     }.issubset(set(registry))
     real_provider_acceptable = real_status in {
         VLAProviderStatus.BLOCKED_MISSING_CREDENTIALS,
+        VLAProviderStatus.BLOCKED_MISSING_ARTIFACTS,
         VLAProviderStatus.CONFIGURED_UNVERIFIED,
         VLAProviderStatus.REAL_PROVIDER_VERIFIED,
         VLAProviderStatus.DISABLED,

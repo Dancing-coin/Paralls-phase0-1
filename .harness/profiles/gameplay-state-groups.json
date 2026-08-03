@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "gameplay-state-groups",
+  "order": 81,
+  "script": "scripts/verification/verify_gameplay_state_groups.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/gameplay-state-groups-report.json",
+  "description": "Backend proof for StateGroupRegistry, versioned eligibility catalog compilation, explicit-context authority lifecycle batches, event-derived lifecycle read projection, Phase 3 read-only CharacterGameRuntimeState composition, policy-filtered consumer views, and backend-only exact-base snapshot/delta reconstruction; it excludes policy activation loading, persistent replay rebuild, transport delivery, and Godot mirror delivery"
+}

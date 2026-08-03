@@ -11,7 +11,14 @@ def _minimal_l2_output(dynamic_state_delta: dict[str, object]) -> dict[str, obje
         "ambiguity_level": "medium",
         "risk_level": "medium",
         "opportunity_level": "low",
+        "attention_target": "char_b",
+        "inner_prompt_candidate": "stay guarded",
+        "belief_deltas": [],
+        "social_deltas": [],
+        "higher_order_deltas": [],
         "dynamic_state_delta": dynamic_state_delta,
+        "goal_hints": [],
+        "reasoning_trace_summary": "test fixture",
     }
 
 

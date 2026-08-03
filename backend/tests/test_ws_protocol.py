@@ -5,6 +5,7 @@ from app.character_agent.planning.l3_planner import CharacterAgentL3Service
 from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
 from app.models.player_input import DialogueSubmit
 from app.models.ai_output import DialogueResponse
+from app.models.dialogue_audio import DialogueAudio
 from app.models.environment_request import EnvironmentRequest
 from app.models.runtime_state import CharacterRuntimeStateDelta, CharacterRuntimeStateSnapshot
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
@@ -65,6 +66,34 @@ def _reset_runtime_state_with_local_character_model() -> None:
     runtime._l3 = CharacterAgentL3Service(gateway=local_gateway)
     main.character_agent_runtime = runtime
     main.siming_event_pipeline._character_dispatch_adapter._runtime = runtime
+    main.character_service.dialogue._gateway = local_gateway
+
+
+def _receive_messages_by_type(
+    websocket: object,
+    expected_types: set[str],
+    *,
+    max_messages: int = 8,
+) -> dict[str, dict[str, object]]:
+    received: list[dict[str, object]] = []
+    matched: dict[str, dict[str, object]] = {}
+    for _ in range(max_messages):
+        try:
+            message = websocket.receive_json()  # type: ignore[attr-defined, no-any-return]
+        except AssertionError as exc:
+            raise AssertionError(
+                f"timed out waiting for {sorted(expected_types - matched.keys())}; received={received!r}"
+            ) from exc
+        received.append(message)
+        message_type = str(message.get("message_type", ""))
+        payload = message.get("payload", {})
+        if message_type == "ack" and isinstance(payload, dict) and payload.get("accepted") is False:
+            raise AssertionError(f"received negative ack while waiting for dialogue response: {message!r}")
+        if message_type in expected_types and message_type not in matched:
+            matched[message_type] = message
+        if expected_types.issubset(matched):
+            return matched
+    raise AssertionError(f"missing {sorted(expected_types - matched.keys())}; received={received!r}")
 
 
 def test_player_input_dialogue_submit_shape() -> None:
@@ -107,6 +136,37 @@ def test_ai_output_dialogue_response_shape() -> None:
         tts_required=True,
     )
     assert event.tts_required is True
+
+
+def test_dialogue_response_serializes_presentation_audio_without_changing_text_contract() -> None:
+    event = DialogueResponse(
+        actor_id="char_a",
+        room_id="room_demo",
+        causation_id="evt1",
+        producer_ts=456,
+        target_actor_id="char_c",
+        content="Hi there",
+        tone="neutral",
+        audio=DialogueAudio(
+            mode="clip",
+            status="ready",
+            provider="test",
+            voice_id="voice-a",
+            content_type="audio/wav",
+            encoding="base64",
+            payload="UklGRg==",
+            sample_rate_hz=24000,
+            channels=1,
+            sample_format="pcm_s16le",
+            duration_ms=10,
+        ),
+    )
+
+    payload = event.model_dump()
+
+    assert payload["content"] == "Hi there"
+    assert payload["audio"]["contract"] == "tts_audio.v1"
+    assert payload["audio"]["voice_id"] == "voice-a"
 
 
 def test_environment_request_shape() -> None:
@@ -552,8 +612,9 @@ def test_websocket_dialogue_submit_emits_ack_and_dialogue_response() -> None:
             }
         )
 
-        ack = websocket.receive_json()
-        response = websocket.receive_json()
+        messages = _receive_messages_by_type(websocket, {"ack", "dialogue_response"})
+        ack = messages["ack"]
+        response = messages["dialogue_response"]
 
     assert ack["message_type"] == "ack"
     assert ack["payload"]["accepted"] is True
@@ -1188,6 +1249,245 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
     assert candidate_siming_output["payload"]["target_object_id"] == "obj_letter"
 
 
+def test_websocket_press_intent_uses_registered_switch_authority_policy() -> None:
+    _reset_runtime_state_with_local_character_model()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "player_input",
+                "payload": {
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "actor_id": "char_c",
+                    "intent_type": "interact_intent",
+                    "producer_ts": 457,
+                    "target_object_id": "obj_lamp_switch",
+                    "interaction_type": "press",
+                },
+            }
+        )
+
+        ack = websocket.receive_json()
+        action_request = websocket.receive_json()
+        action_resolution = websocket.receive_json()
+        transition = websocket.receive_json()
+        object_state_result = websocket.receive_json()
+        _ = websocket.receive_json()  # body_state_result
+        _ = websocket.receive_json()  # self_body_perceived_event
+        environment_result = websocket.receive_json()
+
+    assert ack["payload"]["route"] == "esm_service"
+    assert action_request["payload"]["request_id"] == "interact:457:obj_lamp_switch"
+    assert action_resolution["payload"]["target_object_id"] == "obj_lamp_switch"
+    assert action_resolution["payload"]["resolution_status"] == "accepted"
+    assert transition["message_type"] == "state_machine_transition"
+    assert transition["entity_id"] == "obj_lamp_switch"
+    assert transition["machine_id"] == "switch"
+    assert transition["from_state"] == "idle"
+    assert transition["to_state"] == "activated"
+    assert transition["trigger_type"] == "interact.press"
+    assert object_state_result["event_type"] == "object_state_result"
+    assert object_state_result["payload"]["target_object_id"] == "obj_lamp_switch"
+    assert object_state_result["payload"]["machine_id"] == "switch"
+    assert object_state_result["payload"]["previous_state"] == "idle"
+    assert object_state_result["payload"]["current_state"] == "activated"
+    assert environment_result["event_type"] == "environment_state_result"
+    assert environment_result["payload"]["target_environment_id"] == "env_lamp"
+    assert environment_result["payload"]["current_state"] == "alerted"
+
+
+def test_websocket_open_intent_uses_registered_archive_door_authority_policy() -> None:
+    _reset_runtime_state_with_local_character_model()
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "player_input",
+                "payload": {
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "actor_id": "char_c",
+                    "intent_type": "interact_intent",
+                    "producer_ts": 458,
+                    "target_object_id": "obj_archive_door",
+                    "interaction_type": "open",
+                },
+            }
+        )
+
+        ack = websocket.receive_json()
+        action_request = websocket.receive_json()
+        action_resolution = websocket.receive_json()
+        transition = websocket.receive_json()
+        object_state_result = websocket.receive_json()
+
+    assert ack["payload"]["route"] == "esm_service"
+    assert action_request["payload"]["request_id"] == "interact:458:obj_archive_door"
+    assert action_resolution["payload"]["target_object_id"] == "obj_archive_door"
+    assert action_resolution["payload"]["resolution_status"] == "accepted"
+    assert transition["message_type"] == "state_machine_transition"
+    assert transition["entity_id"] == "obj_archive_door"
+    assert transition["machine_id"] == "door"
+    assert transition["from_state"] == "closed"
+    assert transition["to_state"] == "open"
+    assert transition["trigger_type"] == "interact.open"
+    assert object_state_result["event_type"] == "object_state_result"
+    assert object_state_result["payload"]["target_object_id"] == "obj_archive_door"
+    assert object_state_result["payload"]["machine_id"] == "door"
+    assert object_state_result["payload"]["previous_state"] == "closed"
+    assert object_state_result["payload"]["current_state"] == "open"
+
+
+def test_door_close_requires_the_authority_committed_open_state() -> None:
+    _reset_runtime_state_with_local_character_model()
+
+    def interact(producer_ts: int, interaction_type: str) -> list[dict[str, object]]:
+        return main._handle_envelope(
+            Envelope(
+                message_type="player_input",
+                payload={
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "actor_id": "char_c",
+                    "intent_type": "interact_intent",
+                    "producer_ts": producer_ts,
+                    "target_object_id": "obj_archive_door",
+                    "interaction_type": interaction_type,
+                },
+            )
+        )
+
+    opened = interact(459, "open")
+    closed = interact(460, "close")
+    rejected = interact(461, "close")
+
+    opened_transition = next(message for message in opened if message.get("message_type") == "state_machine_transition")
+    closed_transition = next(message for message in closed if message.get("message_type") == "state_machine_transition")
+    closed_object_result = next(
+        message
+        for message in closed
+        if message.get("message_type") == "world_result" and message.get("event_type") == "object_state_result"
+    )
+    state_constraint = next(
+        message
+        for message in rejected
+        if message.get("message_type") == "world_result" and message.get("event_type") == "constraint_state_result"
+    )
+
+    assert opened_transition["from_state"] == "closed"
+    assert opened_transition["to_state"] == "open"
+    assert closed_transition["from_state"] == "open"
+    assert closed_transition["to_state"] == "closed"
+    assert closed_object_result["payload"]["current_state"] == "closed"
+    assert state_constraint["payload"]["constraint_type"] == "interaction_state_constraint"
+    assert state_constraint["payload"]["constraint_code"] == "invalid_interaction_state"
+
+
+def test_worktable_finish_use_requires_the_authority_committed_engaged_state() -> None:
+    _reset_runtime_state_with_local_character_model()
+
+    def interact(producer_ts: int, interaction_type: str) -> list[dict[str, object]]:
+        return main._handle_envelope(
+            Envelope(
+                message_type="player_input",
+                payload={
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "actor_id": "char_c",
+                    "intent_type": "interact_intent",
+                    "producer_ts": producer_ts,
+                    "target_object_id": "obj_worktable",
+                    "interaction_type": interaction_type,
+                },
+            )
+        )
+
+    engaged = interact(462, "use")
+    released = interact(463, "finish_use")
+    rejected = interact(464, "finish_use")
+
+    engaged_transition = next(message for message in engaged if message.get("message_type") == "state_machine_transition")
+    released_transition = next(message for message in released if message.get("message_type") == "state_machine_transition")
+    released_object_result = next(
+        message
+        for message in released
+        if message.get("message_type") == "world_result" and message.get("event_type") == "object_state_result"
+    )
+    state_constraint = next(
+        message
+        for message in rejected
+        if message.get("message_type") == "world_result" and message.get("event_type") == "constraint_state_result"
+    )
+
+    assert engaged_transition["machine_id"] == "work_surface"
+    assert engaged_transition["from_state"] == "ready"
+    assert engaged_transition["to_state"] == "engaged"
+    assert released_transition["from_state"] == "engaged"
+    assert released_transition["to_state"] == "ready"
+    assert released_object_result["payload"]["current_state"] == "ready"
+    assert state_constraint["payload"]["constraint_type"] == "interaction_state_constraint"
+    assert state_constraint["payload"]["constraint_code"] == "invalid_interaction_state"
+
+
+def test_observation_bench_stand_requires_the_authority_scoped_occupant_and_emits_posture() -> None:
+    _reset_runtime_state_with_local_character_model()
+    main.runtime._actor_positions["char_c"] = (15.4, 0.7, -6.6)
+    main.runtime._actor_positions["char_a"] = (15.4, 0.7, -6.6)
+
+    def interact(actor_id: str, producer_ts: int, interaction_type: str) -> list[dict[str, object]]:
+        return main._handle_envelope(
+            Envelope(
+                message_type="player_input",
+                payload={
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "actor_id": actor_id,
+                    "intent_type": "interact_intent",
+                    "producer_ts": producer_ts,
+                    "target_object_id": "obj_observation_bench",
+                    "interaction_type": interaction_type,
+                },
+            )
+        )
+
+    seated = interact("char_c", 465, "sit")
+    rejected = interact("char_a", 466, "stand")
+    stood = interact("char_c", 467, "stand")
+
+    seated_transition = next(message for message in seated if message.get("message_type") == "state_machine_transition")
+    seated_body_result = next(
+        message
+        for message in seated
+        if message.get("message_type") == "world_result" and message.get("event_type") == "body_state_result"
+    )
+    owner_constraint = next(
+        message
+        for message in rejected
+        if message.get("message_type") == "world_result" and message.get("event_type") == "constraint_state_result"
+    )
+    stood_transition = next(message for message in stood if message.get("message_type") == "state_machine_transition")
+    stood_body_result = next(
+        message
+        for message in stood
+        if message.get("message_type") == "world_result" and message.get("event_type") == "body_state_result"
+    )
+
+    assert seated_transition["machine_id"] == "seat_occupancy"
+    assert seated_transition["from_state"] == "available"
+    assert seated_transition["to_state"] == "occupied"
+    assert seated_body_result["payload"]["body_state_class"] == "posture"
+    assert seated_body_result["payload"]["previous_state"] == "standing"
+    assert seated_body_result["payload"]["current_state"] == "seated"
+    assert owner_constraint["payload"]["constraint_type"] == "interaction_owner_constraint"
+    assert owner_constraint["payload"]["constraint_code"] == "interaction_owner_mismatch"
+    assert stood_transition["from_state"] == "occupied"
+    assert stood_transition["to_state"] == "available"
+    assert stood_body_result["payload"]["body_state_class"] == "posture"
+    assert stood_body_result["payload"]["previous_state"] == "seated"
+    assert stood_body_result["payload"]["current_state"] == "standing"
+
+
 def test_websocket_interact_intent_emits_constraint_when_player_is_far() -> None:
     _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
@@ -1399,15 +1699,20 @@ def test_websocket_interact_intent_emits_scheduling_round_trace_after_character_
             }
         )
 
-        received = [websocket.receive_json() for _ in range(70)]
+        round_two_trace = None
+        for _ in range(100):
+            message = websocket.receive_json()
+            if (
+                message["message_type"] == "scheduling_round_trace"
+                and message["payload"]["round_id"] == 2
+            ):
+                round_two_trace = message
+                break
 
-    traces = [message for message in received if message["message_type"] == "scheduling_round_trace"]
-
-    assert traces
-    assert traces[-1]["payload"]["round_id"] == 2
-    assert traces[-1]["payload"]["lead_actor_id"] == "char_a"
-    assert traces[-1]["payload"]["active_actor_ids"] == ["char_a", "char_b", "char_c"]
-    assert traces[-1]["payload"]["round_summary"] == "round 2 selects char_a, char_b, char_c because baseline_priority"
+    assert round_two_trace is not None
+    assert round_two_trace["payload"]["lead_actor_id"] == "char_a"
+    assert round_two_trace["payload"]["active_actor_ids"] == ["char_a", "char_b", "char_c"]
+    assert round_two_trace["payload"]["round_summary"] == "round 2 selects char_a, char_b, char_c because baseline_priority"
 
 
 def test_websocket_raw_visual_fact_event_emits_character_agent_execution_for_char_a() -> None:

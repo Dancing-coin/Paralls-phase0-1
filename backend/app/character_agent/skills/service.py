@@ -4,7 +4,7 @@ from typing import Any
 
 from app.character_agent.skills.models import (
     CharacterSkillState,
-    LearnedSkillLayer,
+    EffectiveSkillStateProjection,
     PrimitiveActionPlan,
     SkillAffordanceSummary,
     SkillEvaluationResult,
@@ -21,6 +21,16 @@ _RANK_ORDER = {
     "expert": 4,
     "master": 5,
     "blocked": -1,
+}
+
+_SOURCE_PRIORITY = {
+    "constrained": 7,
+    "authority": 6,
+    "scripted": 5,
+    "equipment": 4,
+    "temporary": 3,
+    "learned": 2,
+    "authored": 1,
 }
 
 
@@ -57,41 +67,29 @@ class CharacterSkillService:
 
         return states
 
-    def effective_skill_states(
-        self,
-        *,
-        actor_id: str,
-        profile: dict[str, Any],
-        learned_overlay: LearnedSkillLayer | None = None,
-        runtime_states: list[CharacterSkillState] | None = None,
-    ) -> list[CharacterSkillState]:
-        authored_states = self.initial_skill_states(actor_id=actor_id, profile=profile)
-        learned_states = self._overlay_skill_states(
-            actor_id=actor_id,
-            learned_overlay=learned_overlay,
-        )
-        passthrough_runtime_states = self._runtime_skill_states(
-            actor_id=actor_id,
-            runtime_states=runtime_states or [],
-        )
-
-        return self._annotate_conflicts(
-            authored_states + learned_states + passthrough_runtime_states
-        )
-
     def build_affordance_summary(
         self,
         *,
         actor_id: str,
         skill_states: list[CharacterSkillState],
+        learned_skill_states: list[CharacterSkillState] | None = None,
+        temporary_skill_states: list[CharacterSkillState] | None = None,
+        equipment_skill_states: list[CharacterSkillState] | None = None,
+        scripted_skill_states: list[CharacterSkillState] | None = None,
+        learned_overlay_enabled: bool = True,
     ) -> SkillAffordanceSummary:
-        effective_states = self._resolved_effective_rows_by_skill_id(
+        projection = self.resolve_effective_skill_states(
             actor_id=actor_id,
             skill_states=skill_states,
+            learned_skill_states=learned_skill_states,
+            temporary_skill_states=temporary_skill_states,
+            equipment_skill_states=equipment_skill_states,
+            scripted_skill_states=scripted_skill_states,
+            learned_overlay_enabled=learned_overlay_enabled,
         )
         active_states = {
             skill_id: state
-            for skill_id, state in effective_states.items()
+            for skill_id, state in projection.primary_state_by_skill.items()
             if self._rank_value(state.rank) > 0
         }
         family_records: dict[str, dict[str, object]] = {}
@@ -162,16 +160,28 @@ class CharacterSkillService:
         action_id: str,
         skill_states: list[CharacterSkillState],
         preferred_strategy_tags: list[str] | None = None,
+        learned_skill_states: list[CharacterSkillState] | None = None,
+        temporary_skill_states: list[CharacterSkillState] | None = None,
+        equipment_skill_states: list[CharacterSkillState] | None = None,
+        scripted_skill_states: list[CharacterSkillState] | None = None,
+        learned_overlay_enabled: bool = True,
     ) -> SkillEvaluationResult:
         preferred_strategy_tags = preferred_strategy_tags or []
-        state_by_skill = self._resolved_effective_rows_by_skill_id(
+        projection = self.resolve_effective_skill_states(
             actor_id=actor_id,
             skill_states=skill_states,
+            learned_skill_states=learned_skill_states,
+            temporary_skill_states=temporary_skill_states,
+            equipment_skill_states=equipment_skill_states,
+            scripted_skill_states=scripted_skill_states,
+            learned_overlay_enabled=learned_overlay_enabled,
         )
+        state_by_skill = dict(projection.primary_state_by_skill)
         viable_paths: list[dict[str, object]] = []
         blocked_paths: list[dict[str, object]] = []
 
-        for binding in self._registry.bindings_for_action(action_id):
+        bindings = self._registry.bindings_for_action(action_id)
+        for binding in bindings:
             state = state_by_skill.get(binding.skill_id)
             required_rank = str(binding.eligibility.get("required_rank", "none"))
             missing_requirements: list[str] = []
@@ -223,6 +233,8 @@ class CharacterSkillService:
             recommendation_reason.append("eligible_skill_path_available")
         elif blocked_paths:
             recommendation_reason.append("no_eligible_skill_path")
+        elif not bindings:
+            recommendation_reason.append("no_registered_skill_path")
 
         learning_policy = SkillLearningPolicy()
 
@@ -245,6 +257,77 @@ class CharacterSkillService:
             realization_keys=list(action.realization_keys),
         )
 
+    def resolve_effective_skill_states(
+        self,
+        *,
+        actor_id: str,
+        skill_states: list[CharacterSkillState],
+        learned_skill_states: list[CharacterSkillState] | None = None,
+        temporary_skill_states: list[CharacterSkillState] | None = None,
+        equipment_skill_states: list[CharacterSkillState] | None = None,
+        scripted_skill_states: list[CharacterSkillState] | None = None,
+        learned_overlay_enabled: bool = True,
+    ) -> EffectiveSkillStateProjection:
+        collected: list[CharacterSkillState] = []
+        overlays_applied: list[str] = []
+        collected.extend(self._skill_states_for_actor(actor_id=actor_id, skill_states=skill_states))
+
+        if learned_overlay_enabled:
+            overlays_applied.append("learned")
+            collected.extend(self._skill_states_for_actor(actor_id=actor_id, skill_states=learned_skill_states or []))
+        if temporary_skill_states:
+            overlays_applied.append("temporary")
+            collected.extend(self._skill_states_for_actor(actor_id=actor_id, skill_states=temporary_skill_states))
+        if equipment_skill_states:
+            overlays_applied.append("equipment")
+            collected.extend(self._skill_states_for_actor(actor_id=actor_id, skill_states=equipment_skill_states))
+        if scripted_skill_states:
+            overlays_applied.append("scripted")
+            collected.extend(self._skill_states_for_actor(actor_id=actor_id, skill_states=scripted_skill_states))
+
+        ordered_states = sorted(
+            collected,
+            key=lambda state: (
+                state.skill_id,
+                -self._source_priority(state.source),
+                -self._rank_value(state.rank),
+                -state.proficiency,
+                -state.confidence,
+            ),
+        )
+
+        primary_state_by_skill: dict[str, CharacterSkillState] = {}
+        conflicts: list[dict[str, object]] = []
+        states_by_skill: dict[str, list[CharacterSkillState]] = {}
+        for state in ordered_states:
+            states_by_skill.setdefault(state.skill_id, []).append(state)
+            primary_state_by_skill.setdefault(state.skill_id, state)
+
+        for skill_id, states_for_skill in states_by_skill.items():
+            if len(states_for_skill) <= 1:
+                continue
+            primary = states_for_skill[0]
+            conflicts.append(
+                {
+                    "skill_id": skill_id,
+                    "selected_source": primary.source,
+                    "selected_rank": primary.rank,
+                    "sources": [state.source for state in states_for_skill],
+                    "suppressed_sources": [state.source for state in states_for_skill[1:]],
+                }
+            )
+
+        return EffectiveSkillStateProjection(
+            actor_id=actor_id,
+            states=[state.model_copy(deep=True) for state in ordered_states],
+            primary_state_by_skill={
+                skill_id: state.model_copy(deep=True)
+                for skill_id, state in primary_state_by_skill.items()
+            },
+            conflicts=conflicts,
+            overlays_applied=overlays_applied,
+        )
+
     def _state_meets_rank(self, state: CharacterSkillState, required_rank: str) -> bool:
         return self._rank_value(state.rank) >= self._rank_value(required_rank)
 
@@ -253,6 +336,9 @@ class CharacterSkillService:
 
     def _preference_score(self, path_tags: list[str], preferred_strategy_tags: list[str]) -> int:
         return sum(1 for tag in preferred_strategy_tags if tag in path_tags)
+
+    def _source_priority(self, source: str) -> int:
+        return _SOURCE_PRIORITY.get(source, 0)
 
     def _higher_rank(self, left: str, right: str) -> str:
         if self._rank_value(right) > self._rank_value(left):
@@ -266,29 +352,6 @@ class CharacterSkillService:
                 values.append(item)
         return values
 
-    def _resolved_effective_rows_by_skill_id(
-        self,
-        *,
-        actor_id: str,
-        skill_states: list[CharacterSkillState],
-    ) -> dict[str, CharacterSkillState]:
-        resolved: dict[str, tuple[tuple[int, str, int], CharacterSkillState]] = {}
-        for index, state in enumerate(
-            self._skill_states_for_actor(actor_id=actor_id, skill_states=skill_states)
-        ):
-            candidate_key = (
-                -self._rank_value(state.rank),
-                state.source,
-                index,
-            )
-            current = resolved.get(state.skill_id)
-            if current is None or candidate_key < current[0]:
-                resolved[state.skill_id] = (candidate_key, state)
-        return {
-            skill_id: resolved_state
-            for skill_id, (_, resolved_state) in resolved.items()
-        }
-
     def _skill_states_for_actor(
         self,
         *,
@@ -296,71 +359,3 @@ class CharacterSkillService:
         skill_states: list[CharacterSkillState],
     ) -> list[CharacterSkillState]:
         return [state for state in skill_states if state.actor_id == actor_id]
-
-    def _overlay_skill_states(
-        self,
-        *,
-        actor_id: str,
-        learned_overlay: LearnedSkillLayer | None,
-    ) -> list[CharacterSkillState]:
-        if learned_overlay is None or not learned_overlay.enabled:
-            return []
-        return self._skill_states_for_actor(
-            actor_id=actor_id,
-            skill_states=list(learned_overlay.skill_states),
-        )
-
-    def _runtime_skill_states(
-        self,
-        *,
-        actor_id: str,
-        runtime_states: list[CharacterSkillState],
-    ) -> list[CharacterSkillState]:
-        states = self._skill_states_for_actor(actor_id=actor_id, skill_states=runtime_states)
-        source_order = {
-            "temporary": 0,
-            "equipment": 1,
-            "authority": 2,
-            "scripted": 3,
-            "constrained": 4,
-            "authored": 5,
-            "learned": 6,
-        }
-        return sorted(
-            states,
-            key=lambda state: (
-                state.skill_id,
-                source_order.get(state.source, 99),
-            ),
-        )
-
-    def _annotate_conflicts(
-        self,
-        states: list[CharacterSkillState],
-    ) -> list[CharacterSkillState]:
-        rows_by_skill: dict[str, list[CharacterSkillState]] = {}
-        for state in states:
-            rows_by_skill.setdefault(state.skill_id, []).append(state)
-
-        resolved_states: list[CharacterSkillState] = []
-        for state in states:
-            skill_rows = rows_by_skill.get(state.skill_id, [])
-            copied_state = state.model_copy(deep=True)
-            if len(skill_rows) > 1:
-                sources = [row.source for row in skill_rows]
-                copied_state.visibility["conflict"] = {
-                    "skill_id": state.skill_id,
-                    "sources": sources,
-                    "current_source": state.source,
-                    "rows": [
-                        {
-                            "source": row.source,
-                            "rank": row.rank,
-                            "evidence_refs": list(row.evidence_refs),
-                            "restrictions": list(row.restrictions),
-                        }
-                        for row in skill_rows
-                    ],
-                }
-            resolved_states.append(copied_state)
-        return resolved_states

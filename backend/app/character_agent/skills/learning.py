@@ -1,215 +1,176 @@
 from __future__ import annotations
 
-from collections.abc import Collection as CollectionABC
-from collections.abc import Mapping as MappingABC
-from dataclasses import dataclass
-from typing import Collection, Mapping
+from typing import Any
 
-from app.character_agent.skills.catalog import create_core_skill_registry
-from app.character_agent.skills.models import Learnability, SkillDefinition, SkillLearningPolicy
+from app.character_agent.skills.models import (
+    SkillCandidate,
+    SkillDefinition,
+    SkillEvidence,
+    SkillLearningPolicy,
+    SkillPromotionDecision,
+)
 from app.character_agent.skills.registry import CharacterSkillRegistry
-from app.character_agent.skills.store import SkillEvidenceStore
-
-
-MINIMUM_CANDIDATE_EVIDENCE = 2
-MINIMUM_PROMOTION_EVIDENCE = 2
-NON_OVERRIDABLE_BLOCKED_DOMAINS = frozenset({"authority", "special"})
-
-
-@dataclass(frozen=True)
-class SkillCandidate:
-    actor_id: str
-    skill_id: str
-    learnability: Learnability
-    domains: tuple[str, ...]
-    action_ids: tuple[str, ...]
-    binding_ids: tuple[str, ...]
-    evidence_ids: tuple[str, ...]
-    total_evidence_count: int
-    promotion_evidence_count: int
-
-
-@dataclass(frozen=True)
-class SkillPromotionDecision:
-    allowed: bool
-    reasons: tuple[str, ...]
 
 
 class SkillCandidateStore:
     def __init__(self, *, registry: CharacterSkillRegistry | None = None) -> None:
-        self._registry = registry or create_core_skill_registry()
-        self._by_actor: dict[str, dict[str, SkillCandidate]] = {}
+        self._registry = registry or CharacterSkillRegistry()
+        self._candidates: dict[tuple[str, str], SkillCandidate] = {}
 
-    def rebuild_from_evidence(
-        self,
-        *,
-        actor_id: str,
-        evidence_store: SkillEvidenceStore,
-    ) -> list[SkillCandidate]:
-        grouped: dict[str, list[object]] = {}
-        for evidence in evidence_store.query(actor_id=actor_id):
-            if not (evidence.eligible_for_candidate or evidence.eligible_for_promotion):
-                continue
-            try:
-                self._registry.skill(evidence.skill_id)
-            except KeyError:
-                continue
-            grouped.setdefault(evidence.skill_id, []).append(evidence)
+    def observe(self, evidence: SkillEvidence) -> SkillCandidate | None:
+        if not evidence.eligible_for_candidate:
+            return None
 
-        candidates: dict[str, SkillCandidate] = {}
-        for skill_id, entries in grouped.items():
-            skill = self._registry.skill(skill_id)
-            evidence_ids = tuple(sorted({entry.evidence_id for entry in entries}))
-            action_ids = tuple(sorted({entry.action_id for entry in entries if entry.action_id}))
-            binding_ids = tuple(sorted({entry.binding_id for entry in entries if entry.binding_id}))
-            promotion_evidence_count = sum(1 for entry in entries if entry.eligible_for_promotion)
-
-            candidates[skill_id] = SkillCandidate(
-                actor_id=actor_id,
-                skill_id=skill_id,
-                learnability=skill.learnability,
-                domains=tuple(skill.domains),
-                action_ids=action_ids,
-                binding_ids=binding_ids,
-                evidence_ids=evidence_ids,
-                total_evidence_count=len(evidence_ids),
-                promotion_evidence_count=promotion_evidence_count,
+        skill_definition = self._safe_skill(evidence.skill_id)
+        key = (evidence.actor_id, evidence.skill_id)
+        current = self._candidates.get(key)
+        if current is None:
+            current = SkillCandidate(
+                actor_id=evidence.actor_id,
+                skill_id=evidence.skill_id,
+                domains=self._candidate_domains(skill_definition),
+                learnability=skill_definition.learnability if skill_definition is not None else "natural",
+                blocked_domains=self._candidate_blocked_domains(skill_definition),
+                required_grants=self._required_grants(skill_definition),
             )
 
-        self._by_actor[actor_id] = candidates
-        return self.query(actor_id=actor_id)
+        if evidence.evidence_id in current.evidence_refs:
+            return current.model_copy(deep=True)
 
-    def query(self, *, actor_id: str, skill_id: str = "") -> list[SkillCandidate]:
-        actor_candidates = self._by_actor.get(actor_id, {})
-        if skill_id:
-            candidate = actor_candidates.get(skill_id)
-            return [candidate] if candidate is not None else []
-        return [actor_candidates[key] for key in sorted(actor_candidates)]
+        evidence_refs = self._merge(current.evidence_refs, [evidence.evidence_id])
+        action_ids = self._merge(current.action_ids, [evidence.action_id])
+        binding_ids = self._merge(current.binding_ids, [evidence.binding_id] if evidence.binding_id else [])
+        specialization = dict(current.specialization)
+        for key_name, value in evidence.evidence_channels.get("specialization", {}).items():
+            specialization[str(key_name)] = specialization.get(str(key_name), 0.0) + float(value)
+
+        updated = current.model_copy(
+            update={
+                "evidence_refs": evidence_refs,
+                "action_ids": action_ids,
+                "binding_ids": binding_ids,
+                "evidence_count": len(evidence_refs),
+                "improvement_score": current.improvement_score + float(evidence.evidence_channels.get("improvement", 0.0)),
+                "confidence_score": current.confidence_score + float(evidence.evidence_channels.get("confidence", 0.0)),
+                "specialization": specialization,
+                "latest_evidence_id": evidence.evidence_id,
+            },
+            deep=True,
+        )
+        self._candidates[key] = updated
+        return updated.model_copy(deep=True)
+
+    def candidate(self, *, actor_id: str, skill_id: str) -> SkillCandidate | None:
+        candidate = self._candidates.get((actor_id, skill_id))
+        return candidate.model_copy(deep=True) if candidate is not None else None
+
+    def all_for_actor(self, *, actor_id: str) -> list[SkillCandidate]:
+        return [
+            candidate.model_copy(deep=True)
+            for (candidate_actor_id, _), candidate in self._candidates.items()
+            if candidate_actor_id == actor_id
+        ]
+
+    def _safe_skill(self, skill_id: str) -> SkillDefinition | None:
+        try:
+            return self._registry.skill(skill_id)
+        except KeyError:
+            return None
+
+    def _candidate_domains(self, skill_definition: SkillDefinition | None) -> list[str]:
+        if skill_definition is None:
+            return []
+        return self._merge(skill_definition.domains, list(skill_definition.settlement_categories))
+
+    def _candidate_blocked_domains(self, skill_definition: SkillDefinition | None) -> list[str]:
+        if skill_definition is None:
+            return []
+        blocked = []
+        for domain in self._candidate_domains(skill_definition):
+            if domain in {"authority", "special"} and domain not in blocked:
+                blocked.append(domain)
+        return blocked
+
+    def _required_grants(self, skill_definition: SkillDefinition | None) -> list[str]:
+        if skill_definition is None or skill_definition.learnability not in {"granted", "locked"}:
+            return []
+        return [skill_definition.skill_id]
+
+    def _merge(self, current: list[str], additions: list[str]) -> list[str]:
+        merged = list(current)
+        for item in additions:
+            if item and item not in merged:
+                merged.append(item)
+        return merged
 
 
 class SkillPromotionGate:
+    def __init__(self, *, policy: SkillLearningPolicy | None = None) -> None:
+        self._policy = policy or SkillLearningPolicy()
+
     def evaluate(
         self,
-        *,
         candidate: SkillCandidate,
-        skill_definition: SkillDefinition,
-        learning_policy: SkillLearningPolicy,
-        authored_profile: Mapping[str, object],
-        granted_skill_ids: Collection[str] | None = None,
-        granted_domains: Collection[str] | None = None,
+        *,
+        authored_profile: dict[str, Any] | None = None,
+        human_grants: set[str] | None = None,
+        scripted_grants: set[str] | None = None,
+        minimum_evidence_count: int = 3,
     ) -> SkillPromotionDecision:
         reasons: list[str] = []
-        if skill_definition.skill_id != candidate.skill_id:
-            return SkillPromotionDecision(
-                allowed=False,
-                reasons=(
-                    f"skill definition mismatch: expected {candidate.skill_id}, got {skill_definition.skill_id}",
-                ),
-            )
-        supplied_domains = tuple(dict.fromkeys(skill_definition.domains))
-        reasons.extend(self._skill_definition_consistency_reasons(candidate=candidate, skill_definition=skill_definition))
-        if reasons:
-            return SkillPromotionDecision(
-                allowed=False,
-                reasons=tuple(reasons),
-            )
+        status = "approved"
+        grants = set(human_grants or set()) | set(scripted_grants or set())
+        authored_profile = dict(authored_profile or {})
+        capability_layer = authored_profile.get("capability_constraint_layer")
+        if not isinstance(capability_layer, dict):
+            capability_layer = {}
 
-        granted_skill_lookup = {str(item) for item in granted_skill_ids or ()}
-        granted_domain_lookup = {str(item) for item in granted_domains or ()}
-        explicit_skill_grant = self._has_explicit_skill_grant(
-            candidate=candidate,
-            granted_skill_lookup=granted_skill_lookup,
-        )
+        if not self._policy.promotion_enabled:
+            reasons.append("promotion_disabled")
+        if candidate.learnability not in {"natural", "trained", "granted", "locked"}:
+            reasons.append("unsupported_learnability")
+        if candidate.learnability == "locked":
+            reasons.append("locked_skill_requires_explicit_grant")
+            status = "needs_grant"
+        if candidate.learnability == "granted" and candidate.skill_id not in grants:
+            reasons.append("granted_skill_requires_explicit_grant")
+            status = "needs_grant"
+        if candidate.evidence_count < minimum_evidence_count:
+            reasons.append("insufficient_evidence")
+        if candidate.improvement_score <= 0.0:
+            reasons.append("non_positive_improvement_signal")
 
-        if not learning_policy.promotion_enabled:
-            reasons.append("promotion policy disabled")
-        if not learning_policy.auto_promotion_enabled:
-            reasons.append("auto promotion disabled")
+        blocked_domains = set(self._policy.blocked_domains)
+        if self._policy.allowed_domains:
+            allowed_domains = set(self._policy.allowed_domains)
+            if not any(domain in allowed_domains for domain in candidate.domains):
+                reasons.append("domain_not_allowed")
+        if any(domain in blocked_domains for domain in candidate.domains + candidate.blocked_domains):
+            reasons.append("blocked_domain")
 
-        if candidate.total_evidence_count < MINIMUM_CANDIDATE_EVIDENCE:
-            reasons.append("insufficient candidate evidence")
-        if candidate.promotion_evidence_count < MINIMUM_PROMOTION_EVIDENCE:
-            reasons.append("insufficient promotion evidence")
+        whitelist = capability_layer.get("skill_learning_whitelist")
+        if isinstance(whitelist, list) and whitelist and candidate.skill_id not in {str(item) for item in whitelist}:
+            reasons.append("authored_profile_incompatible")
+        blacklist = capability_layer.get("skill_learning_blacklist")
+        if isinstance(blacklist, list) and candidate.skill_id in {str(item) for item in blacklist}:
+            reasons.append("authored_profile_incompatible")
 
-        capability_layer = self._mapping(authored_profile.get("capability_constraint_layer"))
-        authored_skill_ids = self._string_set(capability_layer.get("skills"))
-        if candidate.skill_id in authored_skill_ids:
-            reasons.append("skill already present in authored profile")
+        required_grants = set(candidate.required_grants)
+        if required_grants and not required_grants.issubset(grants):
+            reasons.append("missing_required_grant")
+            status = "needs_grant"
 
-        profile_domains = self._string_set(capability_layer.get("knowledge_domains"))
-        skill_domains = supplied_domains
-        allowed_domains = self._string_set(learning_policy.allowed_domains)
-        disallowed_domains = tuple(domain for domain in skill_domains if domain not in allowed_domains)
-        if allowed_domains and disallowed_domains:
-            reasons.append(
-                f"domain not allowed by learning policy: {', '.join(disallowed_domains)}"
-            )
-        if profile_domains and skill_domains and not profile_domains.intersection(skill_domains):
-            reasons.append("authored profile incompatible with skill domains")
-
-        blocked_domains = (
-            set(learning_policy.blocked_domains).union(NON_OVERRIDABLE_BLOCKED_DOMAINS)
-        ).intersection(skill_domains)
-        blocked_domain_grants_allowed = skill_definition.learnability in {"granted", "locked"}
-        for domain in sorted(blocked_domains):
-            domain_granted = blocked_domain_grants_allowed and (
-                explicit_skill_grant or domain in granted_domain_lookup
-            )
-            if not domain_granted:
-                reasons.append(f"blocked domain requires explicit grant: {domain}")
-
-        if skill_definition.learnability in {"granted", "locked"} and not explicit_skill_grant:
-            reasons.append(f"learnability requires explicit grant: {skill_definition.learnability}")
+        approved = not reasons and self._policy.promotion_enabled
+        if not approved and status == "approved":
+            status = "rejected"
+        if approved:
+            status = "approved"
 
         return SkillPromotionDecision(
-            allowed=not reasons,
-            reasons=tuple(reasons),
+            actor_id=candidate.actor_id,
+            skill_id=candidate.skill_id,
+            approved=approved,
+            status=status,
+            reasons=reasons,
+            evidence_refs=list(candidate.evidence_refs),
         )
-
-    def _has_explicit_skill_grant(
-        self,
-        *,
-        candidate: SkillCandidate,
-        granted_skill_lookup: set[str],
-    ) -> bool:
-        return candidate.skill_id in granted_skill_lookup
-
-    def _skill_definition_consistency_reasons(
-        self,
-        *,
-        candidate: SkillCandidate,
-        skill_definition: SkillDefinition,
-    ) -> list[str]:
-        reasons: list[str] = []
-        supplied_domains = tuple(dict.fromkeys(skill_definition.domains))
-        if supplied_domains != candidate.domains:
-            reasons.append(
-                "skill definition domains mismatch: "
-                f"expected {', '.join(candidate.domains)}, got {', '.join(supplied_domains)}"
-            )
-        if skill_definition.learnability != candidate.learnability:
-            reasons.append(
-                "skill definition learnability mismatch: "
-                f"expected {candidate.learnability}, got {skill_definition.learnability}"
-            )
-        return reasons
-
-    def _mapping(self, value: object) -> dict[str, object]:
-        return dict(value) if isinstance(value, MappingABC) else {}
-
-    def _string_set(self, value: object) -> set[str]:
-        if isinstance(value, (str, bytes, bytearray)) or isinstance(value, MappingABC):
-            return set()
-        if not isinstance(value, CollectionABC):
-            return set()
-        return {str(item).strip() for item in value if str(item).strip()}
-
-
-__all__ = [
-    "MINIMUM_CANDIDATE_EVIDENCE",
-    "MINIMUM_PROMOTION_EVIDENCE",
-    "SkillCandidate",
-    "SkillCandidateStore",
-    "SkillPromotionDecision",
-    "SkillPromotionGate",
-]

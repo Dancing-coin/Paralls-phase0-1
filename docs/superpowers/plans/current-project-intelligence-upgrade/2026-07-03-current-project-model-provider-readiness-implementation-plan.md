@@ -1,5 +1,10 @@
 # 当前项目大模型 Provider 接入就绪实施计划
 
+状态补充：本计划已完成 readiness layer，但它不是当前项目 LLM 全量闭合计划。readiness 之后仍未完成的 live-provider / contract / default-runtime closure 项统一转入：
+
+- `docs/superpowers/specs/2026-07-23-complete-llm-integration-closure-design.md`
+- `docs/superpowers/plans/2026-07-23-complete-llm-integration-closure-implementation-plan.md`
+
 > 上位母规格：
 > [2026-06-29-current-project-intelligence-upgrade-master-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-06-29-current-project-intelligence-upgrade-master-design.md)
 
@@ -489,3 +494,6 @@ python scripts/verification/harness.py --profile non-runtime-production-pipeline
 如果 VLA 或生产链真实模型尚未接入，只能说：
 
 > 角色文本/司命 LLM 接入口已具备真实 provider readiness；VLA 或生产链模型仍处于 contract/configured-unverified/blocked 状态，等待 Godot/PQF/L1 artifact 或真实模型 adapter 验证。
+## 2026-07-23 Closure Status
+
+Model provider readiness remains a non-live evidence class. It records provider/model identity and configuration readiness, including `verification_run_id`, but it is intentionally not promoted to live proof. The live closure aggregator requires separate Character and Siming live artifacts.

@@ -110,7 +110,8 @@ def test_runtime_shadow_frame_projects_compressed_skill_affordance_summary() -> 
         "defuse_social_tension"
     ]
     assert payload["available_action_families"]["procedure"]["examples"] == [
-        "follow_room_protocol"
+        "follow_room_protocol",
+        "secure_perimeter",
     ]
     assert "registry" not in payload
     assert "skills" not in payload

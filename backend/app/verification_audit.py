@@ -326,18 +326,29 @@ def evaluate_phase0_audit(
         )
     )
 
-    voice_observed = "play_stub_voice" in main_log or "voice_stub_played" in main_log
+    voice_stub_observed = "play_stub_voice" in main_log or "voice_stub_played" in main_log
+    voice_clip_observed = (
+        "voice_clip_played" in main_log
+        or ('"mode":"clip"' in main_log and '"status":"ready"' in main_log)
+        or ('"mode": "clip"' in main_log and '"status": "ready"' in main_log)
+    )
+    voice_observed = voice_stub_observed or voice_clip_observed
     voice_path_exists = "func play_stub_voice" in voice_controller_source
     voice_status = "proved" if voice_observed else ("weak" if voice_path_exists and dialogue_ok else "missing")
     voice_notes = ""
     if voice_status == "weak":
         voice_notes = "Stub voice code path exists and dialogue is observed, but no runtime log proves audible stub playback."
+    voice_evidence = []
+    if voice_stub_observed:
+        voice_evidence.append("play_stub_voice")
+    if voice_clip_observed:
+        voice_evidence.append("voice_clip_played")
     results.append(
         _result(
             "voice_stub_path",
             "Voice playback or approved stub voice path is observable",
             voice_status,
-            ["play_stub_voice"] if voice_status != "missing" else [],
+            voice_evidence if voice_status == "proved" else (["play_stub_voice"] if voice_status == "weak" else []),
             voice_notes,
         )
     )

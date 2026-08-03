@@ -28,6 +28,8 @@ def vla_result_to_modality_result(result: VLAProviderResult) -> ModalityInterpre
                 "monotonic_tick": result.monotonic_tick,
                 "source_frame_index": result.source_frame_index,
                 "capture_relation": result.capture_relation,
+                "advisory_route": result.advisory_route.value,
+                "route_reason": result.route_reason,
                 "freshness": result.freshness,
                 "expires_at": result.expires_at,
             }
@@ -70,6 +72,9 @@ def merge_vla_advisory_into_bundle(
     advisory_state = {
         "vla_result_id": result.result_id,
         "status": result.status.value,
+        "advisory_route": result.advisory_route.value,
+        "route_reason": result.route_reason,
+        "escalation_from_request_id": result.escalation_from_request_id,
         "advisory": True,
         "subject_ref": result.subject_ref,
         "target_ref": result.target_ref,

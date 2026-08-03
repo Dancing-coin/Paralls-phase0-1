@@ -38,7 +38,11 @@ class CharacterPromptPolicy:
             "provider_kind": provider_kind,
             "task_kind": task_kind,
             "temperature": 0.2 if task_kind == "dialogue_generation" else 0.1,
-            "max_tokens": 800,
+            "max_tokens": {
+                "dialogue_generation": 400,
+                "l2_reasoning": 1200,
+                "l3_planning": 1800,
+            }[task_kind],
         }
 
     def _system_instruction(self, *, task_kind: str, route: dict[str, str]) -> str:
@@ -54,12 +58,17 @@ class CharacterPromptPolicy:
                 '["candidate_intents", "selected_intent", "recommended_intents", "risk_notes", '
                 '"why_this_now", "role_consistency_hint", "active_goal_tags", "active_goal_frame", '
                 '"planning_status", "fallback_mode"] and no extra text. '
+                'candidate_intents must be a non-empty list of strings. selected_intent must be one of candidate_intents. '
+                'recommended_intents must be a non-empty list of strings and must include selected_intent. '
                 'active_goal_tags must be a list of strings. '
                 'active_goal_frame must be an object with keys '
                 '["primary_goal", "long_term_goal", "mid_term_strategy", "immediate_goal", '
                 '"supporting_goals", "blockers", "goal_sources", "urgency", "dominant_goal_id", '
                 '"preserved_goal_ids", "suppressed_goal_ids", "goal_arbitration_summary", "goal_portfolio"]. '
-                'goal_portfolio must be a list of goal objects and should preserve multiple concurrent motives, not only the dominant goal.'
+                'goal_portfolio must be a list of goal objects and should preserve multiple concurrent motives, not only the dominant goal. '
+                'planning_status must be "model" on live success. fallback_mode must be JSON null on live success. '
+                'active_goal_frame.primary_goal cannot be empty. '
+                'active_goal_frame.urgency and each goal_portfolio urgency must be exactly one of "low", "medium", or "high"; do not use numbers.'
             )
         return (
             f"CharacterAgent {task_kind} on {route_mode}: return one JSON object with keys "
@@ -67,6 +76,9 @@ class CharacterPromptPolicy:
             '"ambiguity_level", "risk_level", "opportunity_level", "attention_target", '
             '"inner_prompt_candidate", "belief_deltas", "social_deltas", '
             '"higher_order_deltas", "dynamic_state_delta", "goal_hints", "reasoning_trace_summary"] and no extra text. '
+            'salience_score must be a JSON number from 0.0 to 1.0. '
+            'ambiguity_level, risk_level, and opportunity_level must each be exactly one of "low", "medium", or "high"; do not use "moderate" or numbers. '
+            'All confidence, strength, trust, suspicion, intimacy, dependency, unresolved_tension, and dynamic_state_delta values must be JSON numbers from 0.0 to 1.0, not words. '
             'goal_hints must be a list of objects with keys ["goal", "source", "strength", "evidence_tags"].'
         )
 

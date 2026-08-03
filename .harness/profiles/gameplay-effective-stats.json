@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "gameplay-effective-stats",
+  "order": 83,
+  "script": "scripts/verification/verify_gameplay_effective_stats.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/gameplay-effective-stats-report.json",
+  "description": "Backend proof for deterministic effective-stat resolution plus registered equipment modifier-source replay, with canonical modifier ordering, conditional rejection, stacking policies, explanation digest, and unresolved-conflict rejection; it excludes generic source lifecycle, transport, and Godot mirror delivery"
+}

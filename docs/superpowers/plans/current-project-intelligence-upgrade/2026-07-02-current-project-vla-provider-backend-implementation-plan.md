@@ -3,9 +3,9 @@
 > 对应规格：
 > [2026-07-02-current-project-vla-provider-backend-design.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/current-project-intelligence-upgrade/2026-07-02-current-project-vla-provider-backend-design.md)
 
-**状态：** `implemented-and-verified-contract-ready-real-provider-blocked`
+**状态：** `implemented-real-http-adapter-live-provider-proof-blocked`
 
-**实际核对：** `vla-provider-backend` harness profile 已通过，报告为 `.harness/verification/vla-provider-backend-report.json`。当前 `real_provider_status=blocked_missing_credentials`，因此完成口径是 backend contract/mock provider/scheduler/cache/trace/percept bridge 已验证，真实 VLA provider 仍未作为 real-provider 完成声明。
+**实际核对：** `vla-provider-backend` harness profile 已通过，报告为 `.harness/verification/vla-provider-backend-report.json`。OpenAI-compatible real HTTP adapter、PQF direct-image artifact mapping、advisory output projection 和 explicit live-proof command 已实现并经过 stubbed transport 测试。当前 `real_provider_status=blocked_missing_credentials`，因此仍不能作真实外部 provider 完成声明；需要凭证与 `VLA_LIVE_PROOF_IMAGE_URL` 运行 `verify_vla_provider_live.py --allow-live-call`。
 
 **目标：** 在不新增 `VLA Runtime`、不重定义 `L1`、不改写 ESM authority 的前提下，把开源多模态/VLA 能力接为现有多模态慢通路的 provider backend，并让结果以 advisory 形式进入统一感知协议。
 

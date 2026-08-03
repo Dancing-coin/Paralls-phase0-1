@@ -17,6 +17,41 @@ That earlier plan intentionally implemented only Phase 1: contracts, registry,
 service shadow evaluation, and L4 shadow proposal. This plan covers the missing
 Phase 2, Phase 3, and Phase 4 work.
 
+## Implementation Status: 2026-07-31
+
+The original Phase 2 tasks are closed at the bounded behavior-consumption
+level. The implementation:
+
+- keeps the existing runtime shadow summary and mind-frame projection;
+- passes only the compressed `SkillAffordanceSummary` into L3 model context;
+- maps a small, explicit set of existing L3 intents to catalog composite
+  actions, then evaluates the resulting proposal in the runtime;
+- records advisory selected/blocked/unregistered path metadata and expands
+  primitive steps only for an eligible binding; and
+- preserves the legacy L4 command bundle and adapter behavior for every status.
+
+Phase 3, Phase 4, and the realization handoff are complete at this plan's
+bounded contract level:
+
+- interaction orchestration carries advisory evaluation/primitive-plan metadata
+  and derives a wrapper-only `ActionSettlementResult`; ESM and physical result
+  payloads and statuses remain authoritative;
+- policy-allowed evidence is extracted and recorded in an in-memory,
+  actor-scoped `SkillEvidenceStore` without promoting or mutating authored
+  profile truth;
+- candidate aggregation, promotion review, learned overlays, observed beliefs,
+  and player-facing hints are available as separate, conservative projections;
+  promotion remains disabled by default and `authority`/`special` domains do
+  not auto-promote; and
+- L4/adapter/Kimodo contracts carry presentation-only selected-path, primitive,
+  and settlement-outcome metadata. Kimodo contracts still reject world
+  authority fields.
+
+This completion does not expand the intent map, turn guardrails into execution
+gates, add persistent storage, auto-promote skills, replace the action library,
+or implement an AbilityGraph. Those changes require a new bounded plan and
+authority-boundary tests.
+
 ---
 
 ## Status Snapshot
@@ -177,7 +212,7 @@ python -m ruff check backend/app/character_agent/skills backend/tests/test_chara
 - Modify: `backend/app/character_agent/runtime/runtime_loop.py`
 - Test: `backend/tests/test_character_mind_frame_builder.py`
 - Test: `backend/tests/test_character_mind_context_views.py`
-- Test: `backend/tests/test_character_skill_runtime_shadow.py`
+- Test: `backend/tests/test_character_runtime_shadow_mind_frame.py`
 
 **Implementation:**
 
@@ -198,8 +233,8 @@ python -m ruff check backend/app/character_agent/skills backend/tests/test_chara
 **Verification:**
 
 ```bash
-pytest backend/tests/test_character_mind_frame_builder.py backend/tests/test_character_mind_context_views.py backend/tests/test_character_skill_runtime_shadow.py -v
-python -m ruff check backend/app/character_agent/mind backend/app/character_agent/runtime/runtime_loop.py backend/tests/test_character_skill_runtime_shadow.py
+pytest backend/tests/test_character_mind_frame_builder.py backend/tests/test_character_mind_context_views.py backend/tests/test_character_runtime_shadow_mind_frame.py -v
+python -m ruff check backend/app/character_agent/mind backend/app/character_agent/runtime/runtime_loop.py backend/tests/test_character_runtime_shadow_mind_frame.py
 ```
 
 ### Task 3: Run L4 Skill Evaluation In Shadow Mode
@@ -209,7 +244,7 @@ python -m ruff check backend/app/character_agent/mind backend/app/character_agen
 - Modify: `backend/app/character_agent/execution/l4_executor.py`
 - Modify: `backend/app/character_agent/runtime/runtime_loop.py`
 - Test: `backend/tests/test_character_agent_l4_skill_shadow.py`
-- Test: `backend/tests/test_character_skill_runtime_shadow.py`
+- Test: `backend/tests/test_character_runtime_shadow_mind_frame.py`
 
 **Implementation:**
 
@@ -232,7 +267,7 @@ python -m ruff check backend/app/character_agent/mind backend/app/character_agen
 **Verification:**
 
 ```bash
-pytest backend/tests/test_character_agent_l4_skill_shadow.py backend/tests/test_character_agent_runtime.py backend/tests/test_character_skill_runtime_shadow.py -v
+pytest backend/tests/test_character_agent_l4_skill_shadow.py backend/tests/test_character_agent_runtime.py backend/tests/test_character_runtime_shadow_mind_frame.py -v
 ```
 
 ---
@@ -505,7 +540,7 @@ pytest backend/tests/test_character_skill_models.py \
   backend/tests/test_character_skill_service.py \
   backend/tests/test_character_agent_l4_skill_shadow.py \
   backend/tests/test_character_skill_catalog.py \
-  backend/tests/test_character_skill_runtime_shadow.py \
+  backend/tests/test_character_runtime_shadow_mind_frame.py \
   backend/tests/test_character_skill_settlement_integration.py \
   backend/tests/test_character_skill_evidence_extractor.py \
   backend/tests/test_character_skill_evidence_store.py \

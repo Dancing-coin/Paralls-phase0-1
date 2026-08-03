@@ -30,6 +30,12 @@ REQUIRED_SAMPLE_FIELDS = {
     "runtime_source_refs",
     "failure_status",
 }
+REQUIRED_GROUNDING_KEYS = {
+    "grounding_entity_refs",
+    "grounding_collider_refs",
+    "grounding_anchor_refs",
+    "grounding_affordance_refs",
+}
 
 
 def _result(result_id: str, title: str, proved: bool, evidence: list[str], notes: str = "") -> dict[str, object]:
@@ -91,6 +97,14 @@ def _pqf_schema_valid(payload: dict[str, object]) -> bool:
     except Exception:
         return False
     return all(isinstance(frame.get(key), list) and frame.get(key) for key in REQUIRED_KEYS)
+
+
+def _pqf_has_grounding_catalog(payload: dict[str, object]) -> bool:
+    frame = payload.get("perception_query_frame")
+    return isinstance(frame, dict) and all(
+        isinstance(frame.get(key), list) and frame[key] and all(isinstance(ref, str) and ref for ref in frame[key])
+        for key in REQUIRED_GROUNDING_KEYS
+    )
 
 
 def _no_heavy_work(payload: dict[str, object]) -> bool:
@@ -165,6 +179,7 @@ def main() -> int:
     runtime_payload = _load_json(runtime_artifact)
     provider_refs_ok = _provider_refs_have_required_fields(runtime_payload.get("provider_refs"))
     pqf_ok = _pqf_schema_valid(runtime_payload)
+    grounding_catalog_ok = _pqf_has_grounding_catalog(runtime_payload)
     no_heavy_work_ok = _no_heavy_work(runtime_payload)
     boundary_ok = _scripts_have_boundary_markers(project_root)
     backend_ok = pytest_result.returncode == 0
@@ -195,6 +210,12 @@ def main() -> int:
             [str(runtime_artifact)],
         ),
         _result(
+            "godot_runtime_grounding_catalog_present",
+            "Godot runtime PQF carries known entity, collider, anchor, and affordance refs",
+            grounding_catalog_ok,
+            [str(runtime_artifact)],
+        ),
+        _result(
             "no_heavy_work_boundary_verified",
             "Providers do not declare heavy inference, heavy voxelization, or full-scene runtime rescan",
             no_heavy_work_ok and boundary_ok,
@@ -212,7 +233,7 @@ def main() -> int:
             "notes": "" if godot_ok else "Godot unavailable or sampling probe did not produce a schema-valid runtime artifact.",
         },
     ]
-    overall = backend_ok and provider_refs_ok and pqf_ok and no_heavy_work_ok and boundary_ok and godot_ok
+    overall = backend_ok and provider_refs_ok and pqf_ok and grounding_catalog_ok and no_heavy_work_ok and boundary_ok and godot_ok
     report = {
         "overall_godot_sampling_production_grade_providers_passed": overall,
         "godot_runtime_status": godot_status,

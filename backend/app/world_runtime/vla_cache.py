@@ -18,6 +18,8 @@ class VLACacheKey:
     query_window: tuple[int, int]
     artifact_refs_hash: str
     structured_fact_refs_hash: str
+    advisory_route: str
+    model_id: str
     model_version: str
 
 
@@ -47,6 +49,8 @@ class VLACache:
             query_window=(request.query_frame.time_window.started_at, request.query_frame.time_window.ended_at),
             artifact_refs_hash=self._hash_list(request.artifact_refs),
             structured_fact_refs_hash=self._hash_list(request.structured_fact_refs),
+            advisory_route=request.advisory_route.value,
+            model_id=request.model_id,
             model_version=request.model_version,
         )
 

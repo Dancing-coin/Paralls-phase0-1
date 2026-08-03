@@ -27,13 +27,16 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "harness-evolution",
         "phase0",
         "siming-backend-chain",
+        "character-model-live",
         "script-evolution-proof",
         "l1-world-fact-runtime",
+        "llm-integration-closure",
         "phase1-slice",
         "mainline-unified-runtime",
         "model-provider-readiness",
         "godot-sampling-production-grade-providers",
         "embodied-skeletal-debug-replay",
+        "tts-voice-profile-adapter",
         "vla-provider-backend",
         "actor-scene-knowledge-lifecycle",
         "siming-global-situation-layer",
@@ -41,7 +44,32 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "esm-physical-channel-world-actuation",
         "non-runtime-production-pipeline",
         "perception-input-alignment",
+        "embodied-interaction-contracts",
         "siming-heavenly-graph-foundation",
+        "embodied-affordance-registry",
+        "embodied-bridge-attestation",
+        "embodied-action-controller",
+        "embodied-authority-settlement",
+        "embodied-interaction-replay",
+        "gameplay-foundation-contract",
+        "gameplay-event-replay",
+        "gameplay-foundation-event-spine",
+        "gameplay-state-groups",
+        "embodied-interaction-session",
+        "gameplay-resource-body",
+        "embodied-handoff-authority",
+        "gameplay-effective-stats",
+        "embodied-grab-carry-place-authority",
+        "gameplay-status-tags",
+        "embodied-interaction-foundation-all",
+        "gameplay-ability-affordance",
+        "godot-gameplay-mirror",
+        "gameplay-inventory",
+        "gameplay-possession-equipment",
+        "gameplay-ownership-authority",
+        "gameplay-economy-authority",
+        "gameplay-patch-runtime",
+        "adventure-basic",
     ]
     assert registry.profiles["docs"]["script"] == "scripts/verification/check_docs.py"
     assert registry.profiles["backend-contract"]["script"] == "scripts/verification/check_backend_contract.py"
@@ -54,9 +82,12 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["harness-evolution"]["script"] == "scripts/verification/check_harness_evolution.py"
     assert registry.profiles["siming-backend-chain"]["script"] == "scripts/verification/verify_siming_backend_chain.py"
     assert registry.profiles["siming-backend-chain"]["include_in_all"] is False
-    assert registry.profiles["script-evolution-proof"]["script"] == "scripts/verification/verify_script_evolution.py"
-    assert registry.profiles["script-evolution-proof"]["include_in_all"] is False
+    assert registry.profiles["character-model-live"]["script"] == "scripts/verification/verify_character_model_live.py"
+    assert registry.profiles["character-model-live"]["include_in_all"] is False
+    assert registry.profiles["llm-integration-closure"]["script"] == "scripts/verification/verify_llm_integration_closure.py"
+    assert registry.profiles["llm-integration-closure"]["include_in_all"] is False
     assert registry.profiles["model-provider-readiness"]["script"] == "scripts/verification/verify_model_provider_readiness.py"
+    assert registry.profiles["tts-voice-profile-adapter"]["script"] == "scripts/verification/verify_tts_voice_profile_adapter.py"
     assert registry.profiles["vla-provider-backend"]["script"] == "scripts/verification/verify_vla_provider_backend.py"
     assert registry.profiles["actor-scene-knowledge-lifecycle"]["script"] == "scripts/verification/verify_actor_scene_knowledge_runtime.py"
     assert registry.profiles["siming-global-situation-layer"]["script"] == "scripts/verification/verify_siming_global_situation_runtime.py"
@@ -64,10 +95,23 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["esm-physical-channel-world-actuation"]["script"] == "scripts/verification/verify_esm_physical_channel_runtime.py"
     assert registry.profiles["non-runtime-production-pipeline"]["script"] == "scripts/verification/verify_non_runtime_production_pipeline.py"
     assert registry.profiles["perception-input-alignment"]["script"] == "scripts/verification/verify_perception_input_alignment.py"
-    assert registry.profiles["siming-heavenly-graph-foundation"]["script"] == (
-        "scripts/verification/verify_siming_heavenly_graph_foundation.py"
-    )
-    assert registry.profiles["siming-heavenly-graph-foundation"]["requires_godot"] is False
+    assert registry.profiles["embodied-interaction-contracts"]["script"] == "scripts/verification/verify_embodied_interaction_contracts.py"
+    assert registry.profiles["embodied-affordance-registry"]["script"] == "scripts/verification/verify_embodied_affordance_registry.py"
+    assert registry.profiles["embodied-bridge-attestation"]["script"] == "scripts/verification/verify_embodied_bridge_attestation.py"
+    assert registry.profiles["embodied-action-controller"]["script"] == "scripts/verification/verify_embodied_action_controller.py"
+    assert registry.profiles["embodied-authority-settlement"]["script"] == "scripts/verification/verify_embodied_authority_settlement.py"
+    assert registry.profiles["embodied-interaction-replay"]["script"] == "scripts/verification/verify_embodied_interaction_replay.py"
+    assert registry.profiles["gameplay-foundation-contract"]["script"] == "scripts/verification/verify_gameplay_foundation_contract.py"
+    assert registry.profiles["gameplay-event-replay"]["script"] == "scripts/verification/verify_gameplay_event_replay.py"
+    assert registry.profiles["gameplay-foundation-event-spine"]["script"] == "scripts/verification/verify_gameplay_foundation_event_spine.py"
+    assert registry.profiles["adventure-basic"]["script"] == "scripts/verification/verify_adventure_basic.py"
+    assert registry.profiles["gameplay-state-groups"]["script"] == "scripts/verification/verify_gameplay_state_groups.py"
+    assert registry.profiles["gameplay-possession-equipment"]["script"] == "scripts/verification/verify_gameplay_possession_equipment.py"
+    assert registry.profiles["gameplay-ownership-authority"]["script"] == "scripts/verification/verify_gameplay_ownership_authority.py"
+    assert registry.profiles["embodied-interaction-session"]["script"] == "scripts/verification/verify_embodied_interaction_session.py"
+    assert registry.profiles["embodied-handoff-authority"]["script"] == "scripts/verification/verify_embodied_handoff_authority.py"
+    assert registry.profiles["embodied-grab-carry-place-authority"]["script"] == "scripts/verification/verify_embodied_grab_carry_place_authority.py"
+    assert registry.profiles["embodied-interaction-foundation-all"]["script"] == "scripts/verification/verify_embodied_interaction_foundation_all.py"
     assert registry.profiles["phase0"]["requires_godot"] is True
     assert registry.profiles["mainline-unified-runtime"]["script"] == "scripts/verification/verify_mainline_unified_runtime.py"
     assert "not a product L1 runtime" in registry.profiles["l1-world-fact-runtime"]["description"]

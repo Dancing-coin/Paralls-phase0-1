@@ -3,7 +3,12 @@ from app.models.character_agent_runtime import (
     CharacterInterpretation,
 )
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
-from app.character_agent.skills.models import CompositeActionProposal
+from app.character_agent.skills.models import (
+    ActionSettlementResult,
+    CompositeActionProposal,
+    PrimitiveActionPlan,
+    SkillEvaluationResult,
+)
 from copy import deepcopy
 
 
@@ -19,6 +24,33 @@ class CharacterAgentL4Executor:
             "settlement_outcome": self._realization_settlement_outcome(plan),
         }
         return plan
+
+    def attach_skill_realization_metadata(
+        self,
+        *,
+        plan: dict[str, object],
+        skill_evaluation_result: SkillEvaluationResult,
+        primitive_action_plan: PrimitiveActionPlan | None = None,
+        action_settlement_result: ActionSettlementResult | None = None,
+    ) -> None:
+        settlement_outcome: dict[str, object] = {}
+        if action_settlement_result is not None:
+            settlement_outcome = {
+                "outcome_band": action_settlement_result.outcome_band,
+                "failure_domains": list(action_settlement_result.failure_domains),
+                "primary_failure_domain": action_settlement_result.primary_failure_domain,
+                "realization_hints": list(action_settlement_result.realization_hints),
+            }
+        metadata = {
+            "selected_skill_path": dict(skill_evaluation_result.selected_path),
+            "primitive_action_tags": list(primitive_action_plan.primitive_actions) if primitive_action_plan else [],
+            "primitive_realization_keys": list(primitive_action_plan.realization_keys) if primitive_action_plan else [],
+            "settlement_outcome": settlement_outcome,
+        }
+        plan["skill_realization_metadata"] = metadata
+        presentation_plan = plan.get("presentation_plan")
+        if isinstance(presentation_plan, dict):
+            presentation_plan["skill_realization_metadata"] = dict(metadata)
 
     def build_execution_plan(
         self,
@@ -207,7 +239,13 @@ class CharacterAgentL4Executor:
             proposal_id=f"composite_action:{producer_ts}:{actor_id}:{selected_intent}",
             actor_id=actor_id,
             source_intent=selected_intent,
-            action_id=selected_intent,
+            action_id={
+                "observe": "survey_scene",
+                "observe_target": "survey_scene",
+                "attention_shift": "survey_scene",
+                "inspect_object": "survey_scene",
+                "self_protect": "assess_visible_threat",
+            }.get(selected_intent, selected_intent),
             target_refs=target_refs,
             preferred_strategy_tags=preferred_strategy_tags,
             forbidden_strategy_tags=[],

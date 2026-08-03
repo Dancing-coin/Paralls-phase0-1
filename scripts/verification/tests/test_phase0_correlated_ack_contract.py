@@ -12,8 +12,8 @@ def test_player_intent_mapper_generates_collision_safe_request_ids() -> None:
     assert "request_sequence += 1" in source
     assert '"player_input:%s:%s:%s:%s"' in source
     assert "[player_actor_id, intent_type, producer_ts, request_sequence]" in source
-    assert player_input_source.count('"request_id": request_id') == 4
-    assert player_input_source.count('"producer_ts": producer_ts') == 4
+    assert player_input_source.count('"request_id": request_id') == 7
+    assert player_input_source.count('"producer_ts": producer_ts') == 7
     assert "\"producer_ts\": Time.get_ticks_msec()" not in player_input_source
 
 

@@ -19,6 +19,7 @@ from common import (
     run_command,
     run_command_until_markers,
     stop_backend,
+    wait_for_backend_release,
     verification_dir,
     write_json,
     write_markdown,
@@ -33,6 +34,7 @@ PHASE0_VERIFY_ENV = {
     "CHARACTER_MODEL_PROVIDER_KIND": "local",
     "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
 }
+PHASE0_PYTEST_TIMEOUT_SECONDS = float(os.environ.get("PHASE0_PYTEST_TIMEOUT_SECONDS", "1200"))
 
 
 def _read_character_agent_execution_result(log_dir: Path, project_root: Path, python_exe: str, godot_exe: Path) -> dict[str, object]:
@@ -109,6 +111,7 @@ def main() -> int:
             project_root / "backend",
             pytest_log,
             env={"PYTHONPATH": pytest_pythonpath},
+            timeout_seconds=PHASE0_PYTEST_TIMEOUT_SECONDS,
         )
 
         health, backend_process = ensure_backend(
@@ -218,6 +221,10 @@ def main() -> int:
         if backend_process is not None:
             stop_backend(backend_process)
             backend_process = None
+        if not wait_for_backend_release():
+            raise RuntimeError(
+                "Phase 0 backend port 8000 did not fully release before fresh-start child probes."
+            )
         execution_probe_report = _read_character_agent_execution_result(log_dir, project_root, python_exe, godot_exe)
         execution_probe_results = execution_probe_report.get("results", []) if isinstance(execution_probe_report, dict) else []
         execution_ids = {

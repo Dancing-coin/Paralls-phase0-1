@@ -1,7 +1,7 @@
 # 当前项目智能体与世界交互增量专题计划树
 
-- 状态：`incremental-plan-tree-active-siming-heavenly-graph-planning`
-- 日期：`2026-07-11`
+- 状态：`incremental-plan-tree-implemented-and-profile-verified`
+- 日期：`2026-06-30`
 
 这份计划树服务于：
 
@@ -58,6 +58,11 @@
 当前 `implemented-and-verified` 覆盖 2026-06-30 协议/manifest/focused proof、2026-07-01 L1 runtime-facing subsystem、2026-07-02 增量能力计划、2026-07-03 provider readiness，以及 2026-07-05 perception identity 收口计划。
 
 它仍不表示 `L1` 已成为新的 runtime 宿主，也不表示真实外部模型 provider 均已接入。真实 provider 状态以 `model-provider-readiness` 和各 provider report 为准。
+
+当前项目若要继续推进角色 / 司命真实大模型闭合，不再分散从旧 plan 中各自收尾；请优先使用：
+
+- `docs/superpowers/specs/2026-07-23-complete-llm-integration-closure-design.md`
+- `docs/superpowers/plans/2026-07-23-complete-llm-integration-closure-implementation-plan.md`
 
 ## 待用户补齐：真实模型 key / endpoint
 
@@ -117,25 +122,6 @@ python scripts/verification/verify_siming_backend_chain.py --live-provider deeps
 
 这两个风险不阻塞当前 2026-07-02 计划交付；它们应作为后续增量计划拆分，而不是并入本次已验证切片。
 
-## 2026-07-11 司命天道知识图谱计划
-
-已批准规格：
-
-- [2026-07-11-current-project-siming-heavenly-knowledge-graph-and-story-node-design.md](../../specs/current-project-intelligence-upgrade/2026-07-11-current-project-siming-heavenly-knowledge-graph-and-story-node-design.md)
-
-本次计划输出：
-
-1. [2026-07-11-current-project-siming-heavenly-knowledge-graph-program-plan.md](2026-07-11-current-project-siming-heavenly-knowledge-graph-program-plan.md)
-   - 冻结七阶段依赖、阶段门、单一决策 owner、生产图数据库选型门和最终验证梯。
-2. [2026-07-11-current-project-heavenly-graph-foundation-implementation-plan.md](2026-07-11-current-project-heavenly-graph-foundation-implementation-plan.md)
-   - 可直接执行的第一阶段 TDD 计划，覆盖 typed graph model、时态/分支语义、`HeavenlyGraphPort`、确定性内存适配器和独立 Harness profile。
-
-当前状态：
-
-- 设计与实施计划已完成。
-- 第一阶段实现尚未开始。
-- 第二至第七阶段只冻结依赖与交付边界；各阶段必须在第一阶段真实接口通过验证后分别完成 `spec -> plan -> implementation -> harness`。
-
 ## 计划树
 
 1. [2026-06-30-current-project-intelligence-upgrade-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-intelligence-upgrade-implementation-plan.md)
@@ -157,17 +143,16 @@ python scripts/verification/verify_siming_backend_chain.py --live-provider deeps
 17. [2026-07-05-current-project-cross-modal-object-anchor-and-reference-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-05-current-project-cross-modal-object-anchor-and-reference-implementation-plan.md)
 18. [2026-07-05-current-project-multi-actor-private-perspective-reconciliation-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-05-current-project-multi-actor-private-perspective-reconciliation-implementation-plan.md)
 19. [2026-07-05-current-project-perception-identity-verification-matrix-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-05-current-project-perception-identity-verification-matrix-implementation-plan.md)
-20. [2026-07-07-current-project-siming-l6-boundary-hardening-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-07-current-project-siming-l6-boundary-hardening-implementation-plan.md)
-21. [2026-06-30-current-project-perception-query-and-percept-protocol-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-perception-query-and-percept-protocol-implementation-plan.md)
-22. [2026-06-30-current-project-character-multimodal-and-actor-scene-knowledge-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-character-multimodal-and-actor-scene-knowledge-implementation-plan.md)
-23. [2026-06-30-current-project-siming-multimodal-and-global-situation-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-siming-multimodal-and-global-situation-implementation-plan.md)
-24. [2026-06-30-current-project-esm-dual-channel-world-actuation-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-esm-dual-channel-world-actuation-implementation-plan.md)
-25. [2026-06-30-current-project-interaction-orchestration-layer-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-interaction-orchestration-layer-implementation-plan.md)
-26. [2026-06-30-current-project-godot-sampling-frontend-and-providers-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-godot-sampling-frontend-and-providers-implementation-plan.md)
-27. [2026-06-30-current-project-embodied-skeletal-state-provider-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-embodied-skeletal-state-provider-implementation-plan.md)
-28. [2026-06-30-current-project-non-runtime-multimodal-tooling-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-non-runtime-multimodal-tooling-implementation-plan.md)
-29. [2026-07-11-current-project-siming-heavenly-knowledge-graph-program-plan.md](2026-07-11-current-project-siming-heavenly-knowledge-graph-program-plan.md)
-30. [2026-07-11-current-project-heavenly-graph-foundation-implementation-plan.md](2026-07-11-current-project-heavenly-graph-foundation-implementation-plan.md)
+20. [2026-06-30-current-project-perception-query-and-percept-protocol-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-perception-query-and-percept-protocol-implementation-plan.md)
+21. [2026-06-30-current-project-character-multimodal-and-actor-scene-knowledge-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-character-multimodal-and-actor-scene-knowledge-implementation-plan.md)
+22. [2026-06-30-current-project-siming-multimodal-and-global-situation-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-siming-multimodal-and-global-situation-implementation-plan.md)
+23. [2026-06-30-current-project-esm-dual-channel-world-actuation-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-esm-dual-channel-world-actuation-implementation-plan.md)
+24. [2026-06-30-current-project-interaction-orchestration-layer-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-interaction-orchestration-layer-implementation-plan.md)
+25. [2026-06-30-current-project-godot-sampling-frontend-and-providers-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-godot-sampling-frontend-and-providers-implementation-plan.md)
+26. [2026-06-30-current-project-embodied-skeletal-state-provider-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-embodied-skeletal-state-provider-implementation-plan.md)
+27. [2026-06-30-current-project-non-runtime-multimodal-tooling-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-06-30-current-project-non-runtime-multimodal-tooling-implementation-plan.md)
+28. [2026-07-29-vla-real-provider-adapter-live-proof-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-29-vla-real-provider-adapter-live-proof-implementation-plan.md)
+29. [2026-07-30-advisory-vla-routing-and-tts-convergence-implementation-plan.md](D:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-30-advisory-vla-routing-and-tts-convergence-implementation-plan.md)
 
 ## 一句话收束
 
@@ -185,3 +170,6 @@ python scripts/verification/verify_siming_backend_chain.py --live-provider deeps
   - `python scripts/verification/harness.py --profile mainline-unified-runtime`
 - L1 subsystem 集成尚需通过兼容验证入口：
   - `python scripts/verification/harness.py --profile l1-world-fact-runtime`
+## 2026-07-23 Closure Status
+
+Current model-provider readiness is only one input to LLM integration closure. The actual closure claim requires `model-provider-readiness`, `character-model-live`, `siming-backend-chain`, and `llm-integration-closure` artifacts from the same `LLM_CLOSURE_RUN_ID`.

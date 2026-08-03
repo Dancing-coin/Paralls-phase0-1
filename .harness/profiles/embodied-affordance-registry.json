@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "embodied-affordance-registry",
+  "order": 73,
+  "script": "scripts/verification/verify_embodied_affordance_registry.py",
+  "requires_godot": true,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/embodied-affordance-registry-report.json",
+  "description": "Backend and Godot runtime proof for SceneAffordanceRegistry chair_01 binding, revision pinning, occupancy freshness, PQF grounding identity, filtered views, and VLA conflict handling"
+}

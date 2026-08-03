@@ -1,0 +1,10 @@
+# 仅为格式示例；原始录音必须保存在受控资产存储中。
+contract: character_voice_source_asset.v1
+asset_id: character_voice_source:char_a:take_01
+actor_id: char_a
+asset_kind: voice_reference
+source_ref: secure_asset://characters/char_a/voice/take_01.wav
+sha256: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+rights_status: pending
+consent_ref: rights:voice-performer:agreement-id
+retention_policy: revocable

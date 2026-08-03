@@ -1,5 +1,9 @@
 # Full Character Agent Runtime With LLM Implementation Plan
 
+Status note: this remains the broad character-runtime execution plan. Remaining current-project LLM closure work is now consolidated in:
+
+- `docs/superpowers/plans/2026-07-23-complete-llm-integration-closure-implementation-plan.md`
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver the full character-agent runtime defined in `docs/superpowers/specs/2026-06-15-full-character-agent-runtime-with-llm-design.md` while keeping the repository aligned with the shared `CharacterActor` architecture and preserving the proven `Phase 0` loop.
@@ -464,3 +468,6 @@ Stage B is complete only when:
 - Stage A may partially overlap with Stage B for scaffolding, but Stage B must not claim final-state convergence until Stage A has created the actor-side final convergence truth.
 - Transitional bridge files may be used tactically, but every Stage B task must move toward final-state convergence rather than thickening the transition.
 - If Stage A reveals that existing actor-side plans are sufficient after explicit linking and status sync, Stage A may close with a lightweight new convergence plan plus dependency report instead of a large code change batch.
+## 2026-07-23 Closure Status
+
+Provider closure is tracked separately from the broader character-agent runtime. Dialogue, L2, and L3 require fresh live Character artifacts with no fallback; unchecked historical tasks here must not be marked complete without code/test/harness evidence.

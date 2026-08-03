@@ -72,3 +72,39 @@ class CharacterModelGateway:
         )
         output = self._provider.complete(request)
         return self._validator.validate(task_kind=task_kind, output=output)
+
+    def stream_dialogue_task(
+        self,
+        *,
+        context: dict[str, object],
+        route_override: str | None = None,
+        cancelled,
+    ):
+        """Yield display deltas and then one completed, validated dialogue output."""
+        request = self.prepare_run_request(
+            task_kind="dialogue_generation",
+            context=context,
+            route_override=route_override,
+        )
+        for provider_event in self._provider.stream_dialogue(request, cancelled=cancelled):
+            event_type = str(provider_event.get("event", "") or "")
+            if event_type == "cancelled" or cancelled():
+                yield {"event": "cancelled"}
+                return
+            if event_type == "delta":
+                delta = str(provider_event.get("delta", "") or "")
+                if delta:
+                    yield {"event": "delta", "delta": delta}
+                continue
+            if event_type != "completed":
+                raise ValueError("character dialogue stream emitted an unsupported event")
+            output = provider_event.get("output", {})
+            if not isinstance(output, dict):
+                raise ValueError("character dialogue stream completed without an output object")
+            yield {
+                "event": "completed",
+                "output": self._validator.validate(task_kind="dialogue_generation", output=output),
+                "fallback_used": bool(provider_event.get("fallback_used", False)),
+            }
+            return
+        raise ValueError("character dialogue stream ended without a completed output")

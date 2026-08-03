@@ -4,5 +4,6 @@
   "order": 60,
   "script": "scripts/verification/verify_phase1_slice.py",
   "requires_godot": true,
+  "max_attempts": 2,
   "description": "Phase1-shaped visual fact, authority, runtime projection, and Siming validation"
 }

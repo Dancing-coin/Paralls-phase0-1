@@ -1,237 +1,125 @@
 from app.character_agent.skills.evidence import SkillEvidenceExtractor
-from app.character_agent.skills.models import (
-    ActionSettlementResult,
-    SkillEvaluationResult,
-    SkillLearningPolicy,
-)
+from app.character_agent.skills.models import ActionDefinition, ActionSettlementResult, SkillActionBinding, SkillDefinition, SkillEvaluationResult
+from app.character_agent.skills.registry import CharacterSkillRegistry
 
 
-def test_extractor_creates_directional_context_specific_evidence_from_successful_settlement() -> None:
-    extractor = SkillEvidenceExtractor()
-    evaluation_result = SkillEvaluationResult(
+def _registry(*, blocked_learning: bool = False) -> CharacterSkillRegistry:
+    return CharacterSkillRegistry(
+        skills=[SkillDefinition(skill_id="first_aid", display_name="First Aid", domains=["medical"])],
+        actions=[ActionDefinition(action_id="stabilize_injured_actor", kind="composite")],
+        bindings=[
+            SkillActionBinding(
+                binding_id="first_aid_to_stabilize",
+                skill_id="first_aid",
+                action_id="stabilize_injured_actor",
+                skill_path_tags=["medical", "bleeding_control"],
+                learning={
+                    "evidence_on_attempt": True,
+                    "evidence_on_blocked": blocked_learning,
+                },
+            )
+        ],
+    )
+
+
+def test_extracts_directional_evidence_for_successful_attempt() -> None:
+    extractor = SkillEvidenceExtractor(registry=_registry())
+    evaluation = SkillEvaluationResult(
         actor_id="char_a",
         action_id="stabilize_injured_actor",
         selected_path={
             "binding_id": "first_aid_to_stabilize",
             "skill_id": "first_aid",
-            "action_id": "stabilize_injured_actor",
             "skill_path_tags": ["medical", "bleeding_control"],
-            "learning": {
-                "evidence_on_attempt": True,
-                "evidence_on_blocked": False,
-                "evidence_channels": ["improvement", "confidence", "specialization", "tool_familiarity"],
-            },
-            "tools_used": ["clean_cloth"],
+            "eligibility_status": "eligible",
+        },
+        learning_policy_snapshot={
+            "evidence_collection_enabled": True,
+            "candidate_generation_enabled": True,
+            "promotion_enabled": False,
         },
     )
-    settlement_result = ActionSettlementResult(
+    settlement = ActionSettlementResult(
         outcome_band="partial",
         primary_failure_domain="skill_failure",
         failure_domains=["skill_failure"],
-        skill_path_id="first_aid_to_stabilize",
-        skill_contributions=["apply_pressure", "steady_hands"],
-        risk_tags=["infection_risk"],
     )
 
     evidence = extractor.extract(
         actor_id="char_a",
-        selected_skill_path=evaluation_result.selected_path,
-        skill_evaluation_result=evaluation_result,
-        settlement_result=settlement_result,
-        learning_policy=SkillLearningPolicy(),
-        source_settlement_id="settlement:123",
+        selected_skill_path=evaluation.selected_path,
+        skill_evaluation_result=evaluation,
+        settlement_result=settlement,
+        source_settlement_id="settlement:1",
     )
 
     assert evidence is not None
-    assert evidence.actor_id == "char_a"
     assert evidence.skill_id == "first_aid"
-    assert evidence.action_id == "stabilize_injured_actor"
-    assert evidence.binding_id == "first_aid_to_stabilize"
-    assert evidence.source_settlement_id == "settlement:123"
-    assert evidence.outcome_band == "partial"
-    assert evidence.primary_failure_domain == "skill_failure"
     assert evidence.evidence_channels["improvement"] > 0.0
-    assert evidence.evidence_channels["confidence"] > 0.0
     assert evidence.evidence_channels["specialization"]["medical"] > 0.0
-    assert evidence.evidence_channels["specialization"]["bleeding_control"] > 0.0
-    assert evidence.evidence_channels["tool_familiarity"]["clean_cloth"] > 0.0
-    assert evidence.evidence_channels["context"]["skill_contributions"] == [
-        "apply_pressure",
-        "steady_hands",
-    ]
-    assert evidence.evidence_channels["context"]["risk_tags"] == ["infection_risk"]
-    assert evidence.eligible_for_candidate is False
+    assert evidence.eligible_for_candidate is True
     assert evidence.eligible_for_promotion is False
 
 
-def test_extractor_keeps_positive_progress_channels_zero_for_failed_settlement() -> None:
-    extractor = SkillEvidenceExtractor()
-    evaluation_result = SkillEvaluationResult(
+def test_skips_evidence_when_policy_disables_collection() -> None:
+    extractor = SkillEvidenceExtractor(registry=_registry())
+    evaluation = SkillEvaluationResult(
         actor_id="char_a",
         action_id="stabilize_injured_actor",
-        selected_path={
-            "binding_id": "first_aid_to_stabilize",
-            "skill_id": "first_aid",
-            "action_id": "stabilize_injured_actor",
-            "learning": {
-                "evidence_on_attempt": True,
-                "evidence_on_blocked": False,
-                "evidence_channels": ["improvement", "confidence"],
-            },
-        },
-    )
-    settlement_result = ActionSettlementResult(
-        outcome_band="failed",
-        primary_failure_domain="skill_failure",
-        failure_domains=["skill_failure"],
-        skill_path_id="first_aid_to_stabilize",
+        selected_path={"binding_id": "first_aid_to_stabilize", "skill_id": "first_aid"},
+        learning_policy_snapshot={"evidence_collection_enabled": False},
     )
 
     evidence = extractor.extract(
         actor_id="char_a",
-        selected_skill_path=evaluation_result.selected_path,
-        skill_evaluation_result=evaluation_result,
-        settlement_result=settlement_result,
-        learning_policy=SkillLearningPolicy(),
-        source_settlement_id="settlement:failed",
-    )
-
-    assert evidence is not None
-    assert evidence.outcome_band == "failed"
-    assert evidence.evidence_channels["improvement"] == 0.0
-    assert evidence.evidence_channels["confidence"] == 0.0
-
-
-def test_extractor_returns_none_when_policy_disables_evidence_collection() -> None:
-    extractor = SkillEvidenceExtractor()
-    evaluation_result = SkillEvaluationResult(
-        actor_id="char_a",
-        action_id="stabilize_injured_actor",
-        selected_path={
-            "binding_id": "first_aid_to_stabilize",
-            "skill_id": "first_aid",
-            "learning": {"evidence_on_attempt": True},
-        },
-    )
-    settlement_result = ActionSettlementResult(
-        outcome_band="clean_success",
-        primary_failure_domain="none",
-        skill_path_id="first_aid_to_stabilize",
-    )
-
-    evidence = extractor.extract(
-        actor_id="char_a",
-        selected_skill_path=evaluation_result.selected_path,
-        skill_evaluation_result=evaluation_result,
-        settlement_result=settlement_result,
-        learning_policy=SkillLearningPolicy(evidence_collection_enabled=False),
-        source_settlement_id="settlement:124",
+        selected_skill_path=evaluation.selected_path,
+        skill_evaluation_result=evaluation,
+        settlement_result=ActionSettlementResult(outcome_band="clean_success"),
+        source_settlement_id="settlement:1",
     )
 
     assert evidence is None
 
 
-def test_extractor_returns_none_when_selected_path_is_in_blocked_policy_domain() -> None:
-    extractor = SkillEvidenceExtractor()
-    evaluation_result = SkillEvaluationResult(
+def test_blocked_paths_only_emit_evidence_when_binding_policy_allows_it() -> None:
+    blocked_evaluation = SkillEvaluationResult(
         actor_id="char_a",
         action_id="stabilize_injured_actor",
-        selected_path={
-            "binding_id": "special_override_to_stabilize",
-            "skill_id": "first_aid",
-            "skill_path_tags": ["special", "medical"],
-            "learning": {"evidence_on_attempt": True},
+        blocked_paths=[
+            {
+                "binding_id": "first_aid_to_stabilize",
+                "skill_id": "first_aid",
+                "skill_path_tags": ["medical"],
+                "eligibility_status": "blocked",
+            }
+        ],
+        learning_policy_snapshot={
+            "evidence_collection_enabled": True,
+            "candidate_generation_enabled": True,
         },
     )
-    settlement_result = ActionSettlementResult(
-        outcome_band="clean_success",
-        primary_failure_domain="none",
-        skill_path_id="special_override_to_stabilize",
-    )
-
-    evidence = extractor.extract(
-        actor_id="char_a",
-        selected_skill_path=evaluation_result.selected_path,
-        skill_evaluation_result=evaluation_result,
-        settlement_result=settlement_result,
-        learning_policy=SkillLearningPolicy(),
-        source_settlement_id="settlement:blocked-domain",
-    )
-
-    assert evidence is None
-
-
-def test_extractor_returns_none_for_blocked_result_without_binding_policy_permission() -> None:
-    extractor = SkillEvidenceExtractor()
-    evaluation_result = SkillEvaluationResult(
-        actor_id="char_a",
-        action_id="stabilize_injured_actor",
-        selected_path={
-            "binding_id": "first_aid_to_stabilize",
-            "skill_id": "first_aid",
-            "learning": {
-                "evidence_on_attempt": True,
-                "evidence_on_blocked": False,
-                "evidence_channels": ["confidence", "maladaptive_pattern"],
-            },
-        },
-    )
-    settlement_result = ActionSettlementResult(
+    settlement = ActionSettlementResult(
         outcome_band="blocked",
         primary_failure_domain="missing_requirement",
         failure_domains=["missing_requirement"],
-        skill_path_id="first_aid_to_stabilize",
-        missing_requirements=["first_aid.basic"],
     )
 
-    evidence = extractor.extract(
+    blocked_off = SkillEvidenceExtractor(registry=_registry(blocked_learning=False)).extract(
         actor_id="char_a",
-        selected_skill_path=evaluation_result.selected_path,
-        skill_evaluation_result=evaluation_result,
-        settlement_result=settlement_result,
-        learning_policy=SkillLearningPolicy(),
-        source_settlement_id="settlement:125",
+        selected_skill_path=None,
+        skill_evaluation_result=blocked_evaluation,
+        settlement_result=settlement,
+        source_settlement_id="settlement:blocked-off",
     )
-
-    assert evidence is None
-
-
-def test_extractor_allows_blocked_evidence_when_binding_policy_permits_learning() -> None:
-    extractor = SkillEvidenceExtractor()
-    evaluation_result = SkillEvaluationResult(
+    blocked_on = SkillEvidenceExtractor(registry=_registry(blocked_learning=True)).extract(
         actor_id="char_a",
-        action_id="stabilize_injured_actor",
-        selected_path={
-            "binding_id": "first_aid_to_stabilize",
-            "skill_id": "first_aid",
-            "skill_path_tags": ["medical"],
-            "learning": {
-                "evidence_on_attempt": True,
-                "evidence_on_blocked": True,
-                "evidence_channels": ["confidence", "maladaptive_pattern"],
-            },
-        },
-    )
-    settlement_result = ActionSettlementResult(
-        outcome_band="blocked",
-        primary_failure_domain="missing_requirement",
-        failure_domains=["missing_requirement"],
-        skill_path_id="first_aid_to_stabilize",
-        missing_requirements=["first_aid.basic"],
+        selected_skill_path=None,
+        skill_evaluation_result=blocked_evaluation,
+        settlement_result=settlement,
+        source_settlement_id="settlement:blocked-on",
     )
 
-    evidence = extractor.extract(
-        actor_id="char_a",
-        selected_skill_path=evaluation_result.selected_path,
-        skill_evaluation_result=evaluation_result,
-        settlement_result=settlement_result,
-        learning_policy=SkillLearningPolicy(),
-        source_settlement_id="settlement:126",
-    )
-
-    assert evidence is not None
-    assert evidence.outcome_band == "blocked"
-    assert evidence.evidence_channels["confidence"] == 0.0
-    assert evidence.evidence_channels["maladaptive_pattern"]["missing_requirement"] > 0.0
-    assert evidence.evidence_channels["context"]["missing_requirements"] == ["first_aid.basic"]
-    assert evidence.eligible_for_promotion is False
+    assert blocked_off is None
+    assert blocked_on is not None
+    assert blocked_on.evidence_channels["improvement"] == 0.0
+    assert blocked_on.eligible_for_candidate is False

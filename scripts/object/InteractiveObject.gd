@@ -1,6 +1,8 @@
 extends Node3D
 
 @export var object_id := "obj_letter"
+@export var display_name := "Letter"
+@export var initial_state := "partially_visible"
 @export_node_path("Node") var object_visual_fact_emitter_path := NodePath("../VisualFactEmitter/ObjectVisualFactEmitter")
 var current_state := "partially_visible"
 var focused := false
@@ -9,6 +11,7 @@ var focused := false
 @onready var label_3d: Label3D = $Label3D
 
 func _ready() -> void:
+    current_state = initial_state
     var bus := _get_bus()
     if bus:
         bus.world_result_received.connect(_on_world_result_received)
@@ -21,12 +24,16 @@ func apply_result(payload: Dictionary) -> void:
     _emit_object_visual_fact()
 
 func _on_world_result_received(payload: Dictionary) -> void:
+    if str(payload.get("result_type", "")) != "object_state_result":
+        return
+    if str(payload.get("settlement_status", "")) != "applied":
+        return
     if payload.get("target_object_id", "") == object_id:
         apply_result(payload)
 
 func _apply_visual_state() -> void:
     if label_3d:
-        label_3d.text = "Letter%s: %s" % [" <" if focused else "", current_state]
+        label_3d.text = "%s%s: %s" % [display_name, " <" if focused else "", current_state]
 
     if mesh_instance:
         var material := StandardMaterial3D.new()

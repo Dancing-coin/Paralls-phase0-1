@@ -1,5 +1,8 @@
 import asyncio
+from queue import Empty, Queue
 from pathlib import Path
+from time import time
+from uuid import uuid4
 
 from fastapi import FastAPI, WebSocket
 from fastapi.responses import HTMLResponse, Response
@@ -12,7 +15,6 @@ from app.debug_narration import (
     summarize_backend_route,
     summarize_character_input_from_candidate,
     summarize_character_input_from_character_perceived,
-    summarize_character_input_from_self_body_perceived,
     summarize_character_candidate,
     summarize_character_input,
     summarize_character_input_from_fact,
@@ -25,24 +27,36 @@ from app.debug_narration import (
     summarize_world_result,
 )
 from app.debug_stream import debug_stream
-from app.transport_projection import (
-    is_known_stream_mode,
-    normalize_stream_mode,
-    project_outbound_messages,
-)
+from app.transport_projection import is_known_stream_mode, normalize_stream_mode, project_outbound_messages
 from app.models.authority_event import AuthorityEvent, AuthorityEventRouting, AuthorityEventSource
 from app.models.ai_output import DialogueResponse
 from app.models.character_perceived import CharacterPerceivedEvent
 from app.models.environment_request import EnvironmentRequest
 from app.models.character_agent_runtime import CharacterGoalCommand
 from app.models.character_agent_runtime import CharacterSuggestionPacket
-from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent
+from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent, PickupIntent, RetrieveIntent, StowIntent
 from app.models.raw_fact import RawFactEvent
 from app.models.runtime_state import ConversationCandidateEvent
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
 from app.models.transport import TransportBarrier
 from app.models.visual_fact import VisualFactEvent
 from app.models.world_result import WorldResultBase
+from app.gameplay.dispatcher import GameplayOutboxDispatcher
+from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.godot_mirror_delivery import (
+    GameplayGodotProjectionRepository,
+    GameplayGodotProjectionPublisher,
+    GameplayMirrorAfterCommitDelivery,
+    GameplayMirrorConnectionRegistry,
+    GameplayMirrorDeliveryError,
+    GameplayMirrorOutboxRefreshConsumer,
+    GameplayMirrorSubscriptionRegistry,
+)
+from app.gameplay.phase3_mirror_source import (
+    Phase3MirrorActorConfiguration,
+    install_phase3_mirror_sources,
+)
+from app.gameplay.inventory_runtime import ContainerSpec, InventoryAuthorityService, InventoryDefinitionRegistry, ItemDefinition
 from app.services.candidate_percept_service import compile_candidate_percepts
 from app.services.character_service import CharacterService
 from app.services.character_perceived_input_service import CharacterPerceivedInputService
@@ -51,12 +65,20 @@ from app.services.character_runtime_state_service import CharacterRuntimeStateSe
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.conversation_relation_service import ConversationRelationService
 from app.services.esm_service import ESMService
+from app.services.embodied_controller_auth_service import EmbodiedControllerAuthService, EmbodiedControllerEnrollment
+from app.services.embodied_execution_ingress import EmbodiedExecutionIngress, EmbodiedRealizationRouteGate
+from app.services.embodied_carry_place_authority_service import EmbodiedCarryPlaceAuthorityService
+from app.services.embodied_custody_inventory_authority_service import EmbodiedCustodyInventoryAuthorityService
+from app.services.default_scene_pickup_policy import DefaultScenePickupPolicyService
+from app.services.embodied_evidence_ledger import EmbodiedEvidenceLedger
+from app.services.embodied_handoff_authority_service import EmbodiedHandoffAuthorityService
+from app.services.embodied_interaction_session_service import EmbodiedInteractionSessionService
 from app.services.event_trace_service import EventTraceService
 from app.services.fact_handlers.visual_fact_handler import (
     VisualFactHandlerContext,
     handle_visual_fact_event,
 )
-from app.services.fact_router import route_raw_fact_event
+from app.services.fact_router import build_raw_fact_authority_ack, route_raw_fact_event
 from app.services.focus_state_service import FocusStateService
 from app.services.frontend_authority_event_projection import (
     FRONTEND_AUTHORITY_EVENT_TYPES,
@@ -66,6 +88,17 @@ from app.services.interaction_orchestration_service import InteractionOrchestrat
 from app.services.per_character_percept_filter import filter_candidate_for_actor
 from app.services.phase0_authority_event_adapter import Phase0AuthorityEventAdapter
 from app.services.session_input_router import SessionInputRouter
+from app.services.gameplay_mirror_session_access_service import (
+    GameplayMirrorActorRequest,
+    GameplayMirrorSessionAccessError,
+    GameplayMirrorSessionAccessService,
+    GameplayMirrorSubscriptionRequest,
+)
+from app.services.websocket_session_auth_service import (
+    WebSocketConnectionContext,
+    WebSocketSessionAuthService,
+    WebSocketSessionEnrollment,
+)
 from app.services.siming_audit_writer import SimingAuditWriter
 from app.world_runtime.projection import project_world_result_delta
 from app.world_runtime.l1_fact_projection import FactProjectionLayer
@@ -94,7 +127,6 @@ BACKEND_BUILD = "paralls-phase0-backend-worktree-2026-06-02"
 WORKTREE_ROOT = str(Path(__file__).resolve().parents[2])
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 _pending_siming_character_dispatch_messages: dict[str, list[dict[str, object]]] = {}
-_DIALOGUE_CASCADE_LIMIT = 3
 _PLAYER_SHELL_ACTOR_IDS = {"char_c"}
 _SPEECH_REQUEST_TYPES = {"speak_public", "speak_private", "share_info", "withhold"}
 
@@ -131,6 +163,26 @@ def reset_runtime_state() -> None:
     global l1_projection_layer
     global l1_perception_bridge
     global interaction_orchestration_service
+    global embodied_controller_auth_service
+    global websocket_session_auth_service
+    global gameplay_godot_projection_repository
+    global gameplay_mirror_subscription_registry
+    global gameplay_mirror_session_access_service
+    global gameplay_mirror_connection_registry
+    global gameplay_mirror_outbox_refresh_consumer
+    global gameplay_godot_projection_publisher
+    global embodied_execution_ingress
+    global embodied_realization_route_gate
+    global gameplay_event_store
+    global gameplay_outbox_dispatcher
+    global embodied_evidence_ledger
+    global embodied_interaction_session_service
+    global embodied_handoff_authority_service
+    global embodied_carry_place_authority_service
+    global default_scene_pickup_policy_service
+    global inventory_definition_registry
+    global inventory_authority_service
+    global embodied_custody_inventory_authority_service
     global _pending_siming_character_dispatch_messages
 
     runtime = SessionInputRouter()
@@ -155,6 +207,28 @@ def reset_runtime_state() -> None:
         character_perceived_input_service.clear()
     esm_service = ESMService()
     interaction_orchestration_service = InteractionOrchestrationService(esm_service=esm_service)
+    embodied_controller_auth_service = EmbodiedControllerAuthService()
+    websocket_session_auth_service = WebSocketSessionAuthService()
+    gameplay_godot_projection_repository = GameplayGodotProjectionRepository()
+    gameplay_mirror_subscription_registry = GameplayMirrorSubscriptionRegistry(
+        projection_source=gameplay_godot_projection_repository.view_for,
+    )
+    gameplay_godot_projection_publisher = GameplayGodotProjectionPublisher(
+        repository=gameplay_godot_projection_repository,
+    )
+    gameplay_mirror_session_access_service = GameplayMirrorSessionAccessService(
+        registry=gameplay_mirror_subscription_registry,
+        projection_publisher=gameplay_godot_projection_publisher,
+    )
+    gameplay_mirror_connection_registry = GameplayMirrorConnectionRegistry()
+    gameplay_mirror_outbox_refresh_consumer = GameplayMirrorOutboxRefreshConsumer(
+        delivery=GameplayMirrorAfterCommitDelivery(
+            registry=gameplay_mirror_subscription_registry,
+            deliver=gameplay_mirror_connection_registry.deliver,
+        )
+    )
+    embodied_execution_ingress = EmbodiedExecutionIngress(auth_service=embodied_controller_auth_service)
+    embodied_realization_route_gate = EmbodiedRealizationRouteGate()
     l1_occupancy_service = SpatialOccupancyService()
     l1_projection_layer = FactProjectionLayer()
     l1_perception_bridge = L1RuntimePerceptionBridge()
@@ -164,6 +238,107 @@ def reset_runtime_state() -> None:
     character_runtime_state_service = CharacterRuntimeStateService()
     authority_event_adapter = Phase0AuthorityEventAdapter()
     authority_event_bus = InMemoryAuthorityEventBus()
+    gameplay_event_store = GameplayEventStore()
+    install_phase3_mirror_sources(
+        configurations=tuple(
+            Phase3MirrorActorConfiguration.model_validate(item)
+            for item in settings.gameplay_mirror_phase3_actor_configs
+        ),
+        store=gameplay_event_store,
+        publisher=gameplay_godot_projection_publisher,
+    )
+    def refresh_then_fanout(transaction) -> None:
+        gameplay_godot_projection_publisher.after_transaction_dispatched(transaction)
+        gameplay_mirror_outbox_refresh_consumer.after_transaction_dispatched(transaction)
+
+    gameplay_outbox_dispatcher = GameplayOutboxDispatcher(
+        store=gameplay_event_store,
+        bus=authority_event_bus,
+        after_transaction_dispatched=refresh_then_fanout,
+    )
+    embodied_evidence_ledger = EmbodiedEvidenceLedger()
+    embodied_interaction_session_service = EmbodiedInteractionSessionService(
+        store=gameplay_event_store,
+        dispatcher=gameplay_outbox_dispatcher,
+        evidence_ledger=embodied_evidence_ledger,
+    )
+    embodied_handoff_authority_service = EmbodiedHandoffAuthorityService(
+        store=gameplay_event_store,
+        dispatcher=gameplay_outbox_dispatcher,
+        evidence_ledger=embodied_evidence_ledger,
+    )
+    embodied_handoff_authority_service.seed_asset_possession(
+        asset_ref="item:letter_01",
+        custody_holder_ref="character:siming",
+        owner_ref="character:siming",
+    )
+    embodied_carry_place_authority_service = EmbodiedCarryPlaceAuthorityService(
+        store=gameplay_event_store,
+        dispatcher=gameplay_outbox_dispatcher,
+        evidence_ledger=embodied_evidence_ledger,
+    )
+    embodied_carry_place_authority_service.seed_asset_possession(
+        asset_ref="item:crate_01",
+        custody_holder_ref="world:anchor:table_01",
+        owner_ref="character:siming",
+    )
+    embodied_carry_place_authority_service.seed_drop_target(
+        target_ref="world:anchor:floor_slot_01",
+        occupied_by_ref="",
+        scene_revision=11,
+    )
+    default_scene_pickup_policy_service = DefaultScenePickupPolicyService.demo_defaults()
+    inventory_definition_registry = InventoryDefinitionRegistry()
+    inventory_definition_registry.register_item(ItemDefinition("archive_token", "v1", 1, 1))
+    inventory_authority_service = InventoryAuthorityService(
+        store=gameplay_event_store,
+        registry=inventory_definition_registry,
+    )
+    created_inventory_containers: set[tuple[str, str]] = set()
+    for pickup_policy in default_scene_pickup_policy_service.policies():
+        embodied_carry_place_authority_service.seed_asset_possession(
+            asset_ref=pickup_policy.asset_ref,
+            custody_holder_ref=pickup_policy.source_holder_ref,
+            owner_ref="world:archive",
+        )
+        for actor_id in pickup_policy.allowed_actor_ids:
+            actor_ref = f"character:{actor_id}"
+            container_id = DefaultScenePickupPolicyService.inventory_destination_for(
+                pickup_policy,
+                actor_id,
+            )
+            if not container_id:
+                raise ValueError("default_scene_inventory_destination_missing")
+            if (actor_ref, container_id) not in created_inventory_containers:
+                inventory_authority_service.create_container(
+                    command_id=f"bootstrap:inventory:{actor_id}:{container_id}",
+                    actor_ref=actor_ref,
+                    spec=ContainerSpec(
+                        container_id=container_id,
+                        capacity_weight=12,
+                        capacity_volume=12,
+                        capacity_slots=8,
+                    ),
+                    idempotency_key=f"bootstrap:inventory:{actor_id}:{container_id}",
+                    causation_id="runtime_reset",
+                    correlation_id="runtime_reset",
+                )
+                created_inventory_containers.add((actor_ref, container_id))
+            embodied_carry_place_authority_service.seed_drop_target(
+                target_ref=f"character:{actor_id}:hand",
+                occupied_by_ref="",
+                scene_revision=11,
+            )
+    embodied_custody_inventory_authority_service = EmbodiedCustodyInventoryAuthorityService(
+        store=gameplay_event_store,
+        inventory_registry=inventory_definition_registry,
+        custody_service=embodied_carry_place_authority_service,
+    )
+    embodied_carry_place_authority_service.seed_drop_target(
+        target_ref="world:anchor:occupied_slot_01",
+        occupied_by_ref="item:barrel_01",
+        scene_revision=11,
+    )
     if "siming_audit_writer" not in globals():
         siming_audit_writer = SimingAuditWriter()
     else:
@@ -178,7 +353,7 @@ def reset_runtime_state() -> None:
         character_dispatch_adapter=FrontendSimingCharacterDispatchAdapter(runtime=character_agent_runtime),
     )
     for event_type in SimingEventConsumer.ALLOWED_EVENT_TYPES:
-        authority_event_bus.subscribe(event_type, siming_event_pipeline.handle_event, consumer_id="siming")
+        authority_event_bus.subscribe(event_type, siming_event_pipeline.handle_event)
     frontend_authority_event_projector = FrontendAuthorityEventProjector()
     character_agent_l4_executor = CharacterAgentL4Executor()
     character_agent_l4_adapter = CharacterAgentL4Adapter(executor=character_agent_l4_executor)
@@ -187,11 +362,7 @@ def reset_runtime_state() -> None:
     world_outcome_debug_projection = WorldOutcomeDebugProjection()
     script_beat_projection = ScriptBeatProjection()
     for event_type in FRONTEND_AUTHORITY_EVENT_TYPES:
-        authority_event_bus.subscribe(
-            event_type,
-            frontend_authority_event_projector.handle_event,
-            consumer_id="frontend_projector",
-        )
+        authority_event_bus.subscribe(event_type, frontend_authority_event_projector.handle_event)
     debug_stream.clear()
 
 
@@ -242,29 +413,223 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         _publish_debug_event(
             build_debug_event(
                 producer_ts=0,
-                domain="transport",
+                domain="backend",
                 stage="unknown_stream_mode",
-                actor_id=None,
-                summary=f"unknown stream mode {raw_stream_mode!r}; using full",
-                detail={"raw_stream_mode": raw_stream_mode, "resolved_stream_mode": stream_mode},
+                summary="Unknown websocket stream mode; using full projection.",
+                detail={"raw_stream_mode": raw_stream_mode},
             )
         )
+    connection_context = WebSocketConnectionContext(
+        remote_host=websocket.client.host if websocket.client is not None else "",
+        observed_at=int(time()),
+        connection_ref=f"ws_connection:{uuid4()}",
+    )
+    active_dialogue_streams: dict[str, tuple[asyncio.Event, asyncio.Task[None]]] = {}
+    raw_fact_followup_tasks: set[asyncio.Task[None]] = set()
+    send_lock = asyncio.Lock()
+    mirror_delivery_inbox: Queue[dict[str, object]] = Queue(maxsize=128)
+
+    async def send(message: dict[str, object]) -> None:
+        async with send_lock:
+            await websocket.send_json(message)
+
+    async def send_batch(messages: list[dict[str, object]]) -> None:
+        for message in project_outbound_messages(messages, stream_mode=stream_mode):
+            await send(message)
+
+    async def send_mirror_deliveries() -> None:
+        while True:
+            try:
+                payload = mirror_delivery_inbox.get_nowait()
+            except Empty:
+                await asyncio.sleep(0.01)
+                continue
+            await send(payload)
+
+    async def run_dialogue_stream(event: DialogueSubmit, request_id: str, cancelled: asyncio.Event) -> None:
+        partial_chars = 0
+        sequence = 0
+        fallback_used = False
+        try:
+            await send(
+                _as_envelope(
+                    "dialogue_stream_start",
+                    {
+                        "request_id": request_id,
+                        "actor_id": event.target_actor_id if event.player_id != "character_agent" else event.actor_id,
+                        "target_actor_id": event.actor_id if event.player_id != "character_agent" else event.target_actor_id,
+                    },
+                )
+            )
+            direct_content = await asyncio.to_thread(_dialogue_direct_content, event)
+            if direct_content:
+                response = await asyncio.to_thread(_direct_dialogue_response, event, direct_content)
+                if cancelled.is_set():
+                    await send(_dialogue_stream_end(request_id, "cancelled", partial_chars, fallback_used))
+                    return
+                _record_completed_dialogue_response(response)
+                event_trace.record(response.output_type)
+                await send(_as_envelope("dialogue_response", response.model_dump()))
+                await send(_dialogue_stream_end(request_id, "completed", len(response.content), fallback_used))
+                return
+
+            stream = character_service.stream_dialogue(event, cancelled=cancelled.is_set)
+            while True:
+                has_event, stream_event = await asyncio.to_thread(_next_dialogue_stream_event, stream)
+                if not has_event:
+                    raise ValueError("character dialogue stream ended without a completion event")
+                if cancelled.is_set() or stream_event["event"] == "cancelled":
+                    await send(_dialogue_stream_end(request_id, "cancelled", partial_chars, fallback_used))
+                    return
+                if stream_event["event"] == "delta":
+                    delta = str(stream_event["delta"])
+                    partial_chars += len(delta)
+                    sequence += 1
+                    await send(
+                        _as_envelope(
+                            "dialogue_stream_delta",
+                            {
+                                "request_id": request_id,
+                                "sequence": sequence,
+                                "delta": delta,
+                                "accumulated_chars": partial_chars,
+                            },
+                        )
+                    )
+                    continue
+                if stream_event["event"] != "completed":
+                    raise ValueError("character dialogue stream emitted an unsupported event")
+                response = stream_event["response"]
+                if not isinstance(response, DialogueResponse):
+                    raise ValueError("character dialogue stream completed without DialogueResponse")
+                fallback_used = bool(stream_event.get("fallback_used", False))
+                if cancelled.is_set():
+                    await send(_dialogue_stream_end(request_id, "cancelled", partial_chars, fallback_used))
+                    return
+                audio = character_service.tts.synthesize(response.actor_id, response.content)
+                response = response.model_copy(update={"audio": audio})
+                _record_completed_dialogue_response(response)
+                event_trace.record(response.output_type)
+                await send(_as_envelope("dialogue_response", response.model_dump()))
+                await send(_dialogue_stream_end(request_id, "completed", partial_chars, fallback_used))
+                return
+        except Exception as exc:
+            if cancelled.is_set():
+                await send(_dialogue_stream_end(request_id, "cancelled", partial_chars, fallback_used))
+                return
+            status = "timed_out" if isinstance(exc, TimeoutError) else "failed"
+            await send(_dialogue_stream_end(request_id, status, partial_chars, fallback_used))
+        finally:
+            active_dialogue_streams.pop(request_id, None)
+
+    async def send_raw_fact_followups(envelope: Envelope, authority_ack: dict[str, object]) -> None:
+        try:
+            outbound = await asyncio.to_thread(_handle_envelope, envelope, connection_context=connection_context)
+            await send_batch(_drop_matching_authority_ack(outbound, authority_ack))
+        except (ValidationError, ValueError, TypeError) as exc:
+            await send(_as_error_ack(source_type=envelope.message_type, route="raw_fact_followup_failed", error=exc))
+
+    mirror_delivery_task = asyncio.create_task(send_mirror_deliveries())
     try:
         while True:
             try:
                 raw = await websocket.receive_json()
                 envelope = Envelope(**raw)
-                outbound = _handle_envelope(envelope)
+                if envelope.message_type == "dialogue_stream_cancel":
+                    request_id = str(envelope.payload.get("request_id", "") or "")
+                    active = active_dialogue_streams.get(request_id)
+                    if active is None:
+                        await send(
+                            _as_envelope(
+                                "ack",
+                                {"accepted": False, "source_type": envelope.message_type, "route": "dialogue_stream_unknown"},
+                            )
+                        )
+                    else:
+                        active[0].set()
+                        await send(
+                            _as_envelope(
+                                "ack",
+                                {"accepted": True, "source_type": envelope.message_type, "route": "dialogue_stream_cancel"},
+                            )
+                        )
+                    continue
+                stream_event = _streamable_dialogue_submit(envelope)
+                if stream_event is not None:
+                    route = runtime.accept_player_input(stream_event)
+                    if route["route"] == "character_service":
+                        request_id = stream_event.request_id or f"dialogue:{uuid4()}"
+                        stream_event.request_id = request_id
+                        if request_id in active_dialogue_streams:
+                            await send(
+                                _as_envelope(
+                                    "ack",
+                                    {"accepted": False, "source_type": envelope.message_type, "route": "dialogue_stream_duplicate"},
+                                )
+                            )
+                            continue
+                        _publish_debug_event(
+                            build_debug_event(
+                                producer_ts=stream_event.producer_ts,
+                                domain="character",
+                                stage="character_input_received",
+                                actor_id=stream_event.target_actor_id,
+                                summary=summarize_character_input(stream_event.target_actor_id, "收到玩家对话输入"),
+                                detail=stream_event.model_dump(),
+                            )
+                        )
+                        event_trace.record(stream_event.intent_type)
+                        await send(
+                            _as_envelope(
+                                "ack",
+                                {"accepted": route["accepted"], "source_type": envelope.message_type, "route": route["route"]},
+                            )
+                        )
+                        cancelled = asyncio.Event()
+                        task = asyncio.create_task(run_dialogue_stream(stream_event, request_id, cancelled))
+                        active_dialogue_streams[request_id] = (cancelled, task)
+                        continue
+                if envelope.message_type == "raw_fact_event":
+                    authority_ack = _raw_fact_fast_authority_ack(envelope)
+                    await send(authority_ack)
+                    task = asyncio.create_task(send_raw_fact_followups(envelope, authority_ack))
+                    raw_fact_followup_tasks.add(task)
+                    task.add_done_callback(raw_fact_followup_tasks.discard)
+                    continue
+                outbound = _handle_websocket_envelope(envelope, connection_context)
+                if _session_bound_by(outbound, envelope.message_type, connection_context):
+                    gameplay_mirror_connection_registry.register(
+                        session_ref=connection_context.binding.session_ref,
+                        connection_ref=connection_context.connection_ref,
+                        deliver=mirror_delivery_inbox.put_nowait,
+                    )
             except (ValidationError, ValueError, TypeError) as exc:
                 source_type = "unknown"
                 if isinstance(raw, dict):
                     source_type = str(raw.get("message_type", "unknown"))
                 outbound = [_as_error_ack(source_type=source_type, route="invalid_payload", error=exc)]
-            projected = project_outbound_messages(outbound, stream_mode=stream_mode)
-            for message in projected:
-                await websocket.send_json(message)
+            await send_batch(outbound)
     except WebSocketDisconnect:
         return
+    finally:
+        if connection_context.binding is not None:
+            gameplay_mirror_connection_registry.unregister(
+                session_ref=connection_context.binding.session_ref,
+                connection_ref=connection_context.connection_ref,
+            )
+        mirror_delivery_task.cancel()
+        tasks = [task for cancelled, task in active_dialogue_streams.values()]
+        for cancelled, _task in active_dialogue_streams.values():
+            cancelled.set()
+        for task in tasks:
+            task.cancel()
+        for task in raw_fact_followup_tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        if raw_fact_followup_tasks:
+            await asyncio.gather(*raw_fact_followup_tasks, return_exceptions=True)
+        await asyncio.gather(mirror_delivery_task, return_exceptions=True)
 
 
 @app.websocket("/debug/ws")
@@ -296,7 +661,24 @@ async def debug_websocket_endpoint(websocket: WebSocket) -> None:
         debug_stream.unsubscribe(queue)
 
 
-def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
+def _handle_websocket_envelope(
+    envelope: Envelope,
+    connection_context: WebSocketConnectionContext,
+) -> list[dict[str, object]]:
+    try:
+        return _handle_envelope(envelope, connection_context=connection_context)
+    except TypeError as exc:
+        if "unexpected keyword argument 'connection_context'" not in str(exc):
+            raise
+        return _handle_envelope(envelope)
+
+
+def _handle_envelope(
+    envelope: Envelope,
+    *,
+    connection_context: WebSocketConnectionContext | None = None,
+) -> list[dict[str, object]]:
+    connection_context = connection_context or WebSocketConnectionContext.direct_handler_compatibility()
     if envelope.message_type == "transport_barrier":
         barrier = TransportBarrier(**envelope.payload)
         return [
@@ -310,6 +692,168 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                     "producer_ts": barrier.producer_ts,
                 },
             }
+        ]
+    if envelope.message_type == "embodied_interaction_session_probe":
+        return _handle_embodied_interaction_session_probe(envelope)
+
+    if envelope.message_type == "embodied_handoff_probe":
+        return _handle_embodied_handoff_probe(envelope)
+
+    if envelope.message_type == "embodied_grab_carry_place_probe":
+        return _handle_embodied_grab_carry_place_probe(envelope)
+
+    if envelope.message_type == "embodied_controller_bind":
+        try:
+            enrollment = EmbodiedControllerEnrollment.model_validate(envelope.payload)
+        except ValidationError as exc:
+            return EmbodiedExecutionIngress.protocol_error(envelope.message_type, f"invalid_payload:{exc.errors()[0]['type']}")
+        result = embodied_controller_auth_service.bind_controller(
+            enrollment,
+            remote_host=connection_context.remote_host,
+            now=int(envelope.payload.get("producer_ts", 100) or 100),
+        )
+        if not result.accepted or result.binding is None:
+            return EmbodiedExecutionIngress.protocol_error(envelope.message_type, result.error_code)
+        return [
+            {
+                "message_type": "ack",
+                "payload": {
+                    "accepted": True,
+                    "source_type": envelope.message_type,
+                    "route": "embodied_controller_auth",
+                },
+            },
+            {
+                "message_type": "embodied_controller_bound",
+                "payload": result.binding.model_dump(mode="json"),
+            },
+        ]
+
+    if envelope.message_type == "websocket_session_bind":
+        if connection_context.binding is not None:
+            return _websocket_session_bind_error(envelope.message_type, "websocket_session_already_bound")
+        try:
+            enrollment = WebSocketSessionEnrollment.model_validate(envelope.payload)
+        except ValidationError as exc:
+            return _websocket_session_bind_error(envelope.message_type, f"invalid_payload:{exc.errors()[0]['type']}")
+        result = websocket_session_auth_service.bind_session(
+            enrollment,
+            remote_host=connection_context.remote_host,
+            now=connection_context.observed_at,
+        )
+        if not result.accepted or result.binding is None:
+            return _websocket_session_bind_error(envelope.message_type, result.error_code)
+        connection_context.binding = result.binding
+        return [
+            {
+                "message_type": "ack",
+                "payload": {
+                    "accepted": True,
+                    "source_type": envelope.message_type,
+                    "route": "websocket_session_auth",
+                },
+            },
+            {
+                "message_type": "websocket_session_bound",
+                "payload": result.binding.model_dump(mode="json"),
+            },
+        ]
+
+    if envelope.message_type == "gameplay_mirror_subscribe":
+        try:
+            request = GameplayMirrorSubscriptionRequest.model_validate(envelope.payload)
+            projection = gameplay_mirror_session_access_service.subscribe(
+                context=connection_context,
+                request=request,
+            )
+        except (GameplayMirrorSessionAccessError, GameplayMirrorDeliveryError, ValidationError) as exc:
+            return _gameplay_mirror_error(envelope.message_type, _error_code(exc))
+        return [
+            _as_envelope(
+                "ack",
+                {
+                    "accepted": True,
+                    "source_type": envelope.message_type,
+                    "route": "gameplay_mirror_subscribe",
+                },
+            ),
+            projection,
+        ]
+
+    if envelope.message_type == "gameplay_mirror_snapshot_request":
+        try:
+            request = GameplayMirrorActorRequest.model_validate(envelope.payload)
+            projection = gameplay_mirror_session_access_service.snapshot(
+                context=connection_context,
+                actor_ref=request.actor_ref,
+            )
+        except (GameplayMirrorSessionAccessError, GameplayMirrorDeliveryError, ValidationError) as exc:
+            return _gameplay_mirror_error(envelope.message_type, _error_code(exc))
+        return [
+            _as_envelope(
+                "ack",
+                {
+                    "accepted": True,
+                    "source_type": envelope.message_type,
+                    "route": "gameplay_mirror_snapshot",
+                },
+            ),
+            projection,
+        ]
+
+    if envelope.message_type == "gameplay_mirror_unsubscribe":
+        try:
+            request = GameplayMirrorActorRequest.model_validate(envelope.payload)
+            removed = gameplay_mirror_session_access_service.unsubscribe(
+                context=connection_context,
+                actor_ref=request.actor_ref,
+            )
+        except (GameplayMirrorSessionAccessError, GameplayMirrorDeliveryError, ValidationError) as exc:
+            return _gameplay_mirror_error(envelope.message_type, _error_code(exc))
+        return [
+            _as_envelope(
+                "ack",
+                {
+                    "accepted": True,
+                    "source_type": envelope.message_type,
+                    "route": "gameplay_mirror_unsubscribe",
+                    "subscription_removed": removed,
+                },
+            )
+        ]
+
+    if envelope.message_type == "embodied_phase_event":
+        result = embodied_execution_ingress.handle_phase_event(envelope.payload)
+        if not result.accepted:
+            return EmbodiedExecutionIngress.protocol_error(envelope.message_type, result.error_code)
+        return result.outbound
+
+    if envelope.message_type == "embodied_local_outcome":
+        result = embodied_execution_ingress.handle_local_outcome(
+            envelope.payload,
+            now=int(envelope.payload.get("observed_at", 0) or 0),
+        )
+        if not result.accepted:
+            return EmbodiedExecutionIngress.protocol_error(envelope.message_type, result.error_code)
+        return result.outbound
+
+    if envelope.message_type == "embodied_resync_request":
+        return [
+            {
+                "message_type": "ack",
+                "payload": {
+                    "accepted": True,
+                    "source_type": envelope.message_type,
+                    "route": "embodied_resync",
+                },
+            },
+            {
+                "message_type": "embodied_resync_projection",
+                "payload": {
+                    "resume_allowed": False,
+                    "reason": "authority_grant_required_after_resync",
+                },
+            },
         ]
 
     if envelope.message_type == "visual_fact_event":
@@ -773,6 +1317,13 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         )
         return _finalize_outbound_messages(messages)
 
+    if route["route"] == "default_scene_pickup_authority" and isinstance(event, PickupIntent):
+        return _finalize_outbound_messages(_handle_default_scene_pickup(event))
+    if route["route"] == "default_scene_inventory_authority" and isinstance(event, StowIntent):
+        return _finalize_outbound_messages(_handle_default_scene_stow(event))
+    if route["route"] == "default_scene_inventory_authority" and isinstance(event, RetrieveIntent):
+        return _finalize_outbound_messages(_handle_default_scene_retrieve(event))
+
     if route["route"] == "esm_service" and isinstance(event, InteractIntent):
         action_request = esm_service.build_action_request(event)
         _publish_debug_event(
@@ -788,7 +1339,40 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         event_trace.record("action_request")
         messages.append(_as_action_request_envelope(action_request.model_dump()))
         actor_position = runtime.get_actor_position(event.actor_id)
-        world_result = esm_service.resolve_interaction(event, actor_position=actor_position)
+        interaction_policy = esm_service.interaction_policy_for(
+            event.target_object_id,
+            event.interaction_type,
+            room_id=event.room_id,
+            scene_id=event.scene_id,
+            zone_id=event.zone_id,
+            actor_id=event.actor_id,
+        )
+        if interaction_policy is None:
+            world_result = esm_service.reject_unsupported_interaction(event)
+        elif not bool(interaction_policy.get("state_match", True)):
+            world_result = esm_service.reject_interaction_state(
+                event,
+                expected_state=str(interaction_policy["previous_state"]),
+                actual_state=esm_service.interaction_state_for(
+                    room_id=event.room_id,
+                    scene_id=event.scene_id,
+                    zone_id=event.zone_id,
+                    target_object_id=event.target_object_id,
+                ),
+            )
+        elif not bool(interaction_policy.get("owner_match", True)):
+            world_result = esm_service.reject_interaction_owner(
+                event,
+                expected_owner=event.actor_id,
+                actual_owner=esm_service.interaction_owner_for(
+                    room_id=event.room_id,
+                    scene_id=event.scene_id,
+                    zone_id=event.zone_id,
+                    target_object_id=event.target_object_id,
+                ),
+            )
+        else:
+            world_result = esm_service.resolve_interaction(event, actor_position=actor_position)
         print(
             "phase0_failed_interaction_diag actor_id=%s target_object_id=%s actor_position=%s result_type=%s"
             % (
@@ -801,6 +1385,11 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
         event_trace.record(world_result.result_type)
 
         if world_result.result_type == "action_resolution_result":
+            if interaction_policy is None:
+                raise RuntimeError("accepted interaction must have a registered ESM policy")
+            previous_object_state = str(interaction_policy["previous_state"])
+            current_object_state = str(interaction_policy["current_state"])
+            object_affordances = [str(value) for value in interaction_policy["affordances"]]
             messages.extend(_publish_world_result_authority_event(world_result, source_event=event))
             _publish_debug_event(
                 build_debug_event(
@@ -817,11 +1406,11 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 scene_id=event.scene_id,
                 zone_id=event.zone_id,
                 entity_id=event.target_object_id,
-                machine_id="visibility",
-                from_state="partially_visible",
-                to_state="visible",
-                trigger_type="interact.inspect",
-                transition_reason="player inspect interaction accepted",
+                machine_id=str(interaction_policy["machine_id"]),
+                from_state=previous_object_state,
+                to_state=current_object_state,
+                trigger_type="interact.%s" % event.interaction_type,
+                transition_reason="player interaction accepted by registered ESM policy",
                 producer_ts=world_result.producer_ts + 1,
                 causation_id=world_result.causation_id,
                 correlation_id=world_result.correlation_id,
@@ -835,8 +1424,9 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 zone_id=event.zone_id,
                 actor_id=event.actor_id,
                 target_object_id=event.target_object_id,
-                previous_state="partially_visible",
-                current_state="visible",
+                previous_state=previous_object_state,
+                current_state=current_object_state,
+                machine_id=str(interaction_policy["machine_id"]),
                 producer_ts=world_result.producer_ts + 2,
                 request_ref=world_result.request_ref,
                 causation_id=world_result.causation_id,
@@ -846,22 +1436,31 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                 object_id=object_state_result.target_object_id,
                 zone_id=object_state_result.zone_id,
                 state=object_state_result.current_state,
-                affordances=["inspect", "read"],
-                occludes=False,
+                affordances=object_affordances,
+                occludes=bool(interaction_policy["occludes"]),
                 producer_ts=object_state_result.producer_ts,
                 source_ref=object_state_result.result_id,
             )
             event_trace.record(object_state_result.result_type)
             messages.extend(_publish_world_result_authority_event(object_state_result, source_event=event))
+            esm_service.commit_interaction_state(
+                room_id=event.room_id,
+                scene_id=event.scene_id,
+                zone_id=event.zone_id,
+                target_object_id=event.target_object_id,
+                current_state=object_state_result.current_state,
+                actor_id=event.actor_id,
+                interaction_type=event.interaction_type,
+            )
 
             body_state_result = esm_service.emit_body_state_result(
                 room_id=event.room_id,
                 scene_id=event.scene_id,
                 zone_id=event.zone_id,
                 actor_id=event.actor_id,
-                body_state_class="interaction_strain",
-                previous_state="steady",
-                current_state="engaged",
+                body_state_class=str(interaction_policy.get("body_state_class", "interaction_strain")),
+                previous_state=str(interaction_policy.get("body_previous_state", "steady")),
+                current_state=str(interaction_policy.get("body_current_state", "engaged")),
                 producer_ts=world_result.producer_ts + 3,
                 request_ref=world_result.request_ref,
                 causation_id=world_result.causation_id,
@@ -891,23 +1490,24 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
                     )
                 )
 
-            environment_result = esm_service.emit_environment_shift(
-                room_id=event.room_id,
-                scene_id=event.scene_id,
-                zone_id=event.zone_id,
-                actor_id=event.actor_id,
-                target_environment_id="env_lamp",
-                previous_state="stable",
-                current_state="alerted",
-                producer_ts=world_result.producer_ts + 4,
-                request_ref=world_result.request_ref,
-                causation_id=world_result.causation_id,
-                correlation_id=world_result.correlation_id,
-            )
-            l1_occupancy_service.apply_environment_result(environment_result)
-            messages.extend(_messages_from_projected_l1_facts(_project_l1_facts_for_dirty_zones(environment_result.producer_ts)))
-            event_trace.record(environment_result.result_type)
-            messages.extend(_publish_world_result_authority_event(environment_result, source_event=event))
+            if str(interaction_policy["environment_transition"]) == "alert_lamp":
+                environment_result = esm_service.emit_environment_shift(
+                    room_id=event.room_id,
+                    scene_id=event.scene_id,
+                    zone_id=event.zone_id,
+                    actor_id=event.actor_id,
+                    target_environment_id="env_lamp",
+                    previous_state="stable",
+                    current_state="alerted",
+                    producer_ts=world_result.producer_ts + 4,
+                    request_ref=world_result.request_ref,
+                    causation_id=world_result.causation_id,
+                    correlation_id=world_result.correlation_id,
+                )
+                l1_occupancy_service.apply_environment_result(environment_result)
+                messages.extend(_messages_from_projected_l1_facts(_project_l1_facts_for_dirty_zones(environment_result.producer_ts)))
+                event_trace.record(environment_result.result_type)
+                messages.extend(_publish_world_result_authority_event(environment_result, source_event=event))
 
             conversation_relation_service.apply_world_result(
                 actor_id=event.actor_id,
@@ -945,12 +1545,590 @@ def _handle_envelope(envelope: Envelope) -> list[dict[str, object]]:
     return messages
 
 
-def _parse_player_input(payload: dict) -> MoveIntent | DialogueSubmit | InteractIntent | FocusTargetChange:
+def _websocket_session_bind_error(source_type: str, error_code: str) -> list[dict[str, object]]:
+    return [
+        {
+            "message_type": "ack",
+            "payload": {
+                "accepted": False,
+                "source_type": source_type,
+                "route": "websocket_session_auth",
+                "error_code": error_code,
+            },
+        }
+    ]
+
+
+def _gameplay_mirror_error(source_type: str, error_code: str) -> list[dict[str, object]]:
+    return [
+        _as_envelope(
+            "ack",
+            {
+                "accepted": False,
+                "source_type": source_type,
+                "route": "gameplay_mirror",
+                "error_code": error_code,
+            },
+        )
+    ]
+
+
+def _session_bound_by(
+    messages: list[dict[str, object]],
+    source_type: str,
+    connection_context: WebSocketConnectionContext,
+) -> bool:
+    if source_type != "websocket_session_bind" or connection_context.binding is None:
+        return False
+    return any(
+        message.get("message_type") == "ack"
+        and isinstance(message.get("payload"), dict)
+        and message["payload"].get("accepted") is True
+        and message["payload"].get("route") == "websocket_session_auth"
+        for message in messages
+    )
+
+
+def _error_code(exc: Exception) -> str:
+    if isinstance(exc, ValidationError):
+        return f"invalid_payload:{exc.errors()[0]['type']}"
+    return str(exc)
+
+
+def _handle_embodied_interaction_session_probe(envelope: Envelope) -> list[dict[str, object]]:
+    payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+    session_id = str(payload.get("session_id", "") or "session:handshake:websocket")
+    semantic_action = str(payload.get("semantic_action", "") or "handshake")
+    initiator_ref = str(payload.get("initiator_ref", "") or "character:siming")
+    participant_refs = [str(item) for item in payload.get("participant_refs", [])] if isinstance(payload.get("participant_refs", []), list) else []
+    if not participant_refs:
+        participant_refs = [initiator_ref, "character:maya"]
+    target_refs = [str(item) for item in payload.get("target_refs", [])] if isinstance(payload.get("target_refs", []), list) else []
+    participant_private_terms = payload.get("participant_private_terms")
+    if participant_private_terms is not None and not isinstance(participant_private_terms, dict):
+        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, "invalid_participant_private_terms")
+
+    bus_start = len(authority_event_bus.list_events())
+    proposed = embodied_interaction_session_service.propose(
+        session_id=session_id,
+        semantic_action=semantic_action,
+        initiator_ref=initiator_ref,
+        participant_refs=participant_refs,
+        target_refs=target_refs,
+        authority_preflight_ref=str(payload.get("authority_preflight_ref", "") or f"preflight:{session_id}"),
+        policy_revision=int(payload.get("policy_revision", 3) or 3),
+        scene_revision=int(payload.get("scene_revision", 11) or 11),
+        causation_id=str(payload.get("causation_id", "") or f"cmd:{session_id}:propose"),
+        correlation_id=str(payload.get("correlation_id", "") or f"corr:{session_id}"),
+        participant_private_terms=participant_private_terms,
+    )
+    if not proposed.accepted:
+        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, proposed.error_code)
+
+    for participant_ref in participant_refs:
+        if participant_ref == initiator_ref:
+            continue
+        accepted = embodied_interaction_session_service.accept(
+            session_id=session_id,
+            participant_ref=participant_ref,
+            causation_id=f"cmd:{session_id}:accept:{participant_ref}",
+            payload_digest=f"digest:accept:{session_id}:{participant_ref}",
+        )
+        if not accepted.accepted:
+            return EmbodiedExecutionIngress.protocol_error(envelope.message_type, accepted.error_code)
+
+    realizing = embodied_interaction_session_service.start_realizing(
+        session_id=session_id,
+        causation_id=f"cmd:{session_id}:realize",
+    )
+    if not realizing.accepted:
+        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, realizing.error_code)
+
+    session_messages = [
+        outbound
+        for event in authority_event_bus.list_events()[bus_start:]
+        if (outbound := _embodied_session_event_envelope_from_authority_event(event)) is not None
+    ]
+    return [
+        _as_envelope(
+            "ack",
+            {
+                "accepted": True,
+                "source_type": "embodied_interaction_session_probe",
+                "route": "embodied_interaction_session",
+            },
+        ),
+        *session_messages,
+    ]
+
+
+def _embodied_session_event_envelope_from_authority_event(event: AuthorityEvent) -> dict[str, object] | None:
+    if not event.event_type.startswith("embodied.interaction_session."):
+        return None
+    payload = dict(event.payload)
+    committed_payload = payload.get("committed_payload", {})
+    if not isinstance(committed_payload, dict):
+        committed_payload = {}
+    state = str(payload.get("state", "") or committed_payload.get("state", "") or "")
+    safe_payload: dict[str, object] = {
+        "event_type": event.event_type,
+        "session_id": str(payload.get("session_id", "") or committed_payload.get("session_id", "") or ""),
+        "semantic_action": str(payload.get("semantic_action", "") or committed_payload.get("semantic_action", "") or ""),
+        "state": state,
+        "safe_phase": str(payload.get("safe_phase", "") or state),
+        "sync_status": str(payload.get("sync_status", "") or state),
+        "transaction_id": str(payload.get("transaction_id", "") or ""),
+        "event_id": str(payload.get("event_id", "") or event.event_id),
+        "stream_id": str(payload.get("stream_id", "") or ""),
+        "stream_revision": int(payload.get("stream_revision", 0) or 0),
+        "global_sequence": int(payload.get("global_sequence", 0) or 0),
+    }
+    allowed_projection_fields = {
+        "initiator_ref",
+        "participant_ref",
+        "participant_refs",
+        "target_refs",
+        "slot_assignments",
+        "reservation_refs",
+        "actor_ref",
+        "target_ref",
+        "reason_code",
+        "attempt_ref",
+        "attempt_refs",
+        "terminal_status",
+        "settlement_ref",
+        "policy_revision",
+        "scene_revision",
+        "visibility_policy",
+    }
+    for field_name in allowed_projection_fields:
+        if field_name in payload:
+            safe_payload[field_name] = payload[field_name]
+        elif field_name in committed_payload:
+            safe_payload[field_name] = committed_payload[field_name]
+    return _as_envelope("embodied_interaction_session_event", safe_payload)
+
+
+def _handle_embodied_handoff_probe(envelope: Envelope) -> list[dict[str, object]]:
+    payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+    session_id = str(payload.get("session_id", "") or "session:handoff:websocket:1")
+    asset_ref = str(payload.get("asset_ref", "") or "item:letter_01")
+    from_actor_ref = str(payload.get("from_actor_ref", "") or "character:siming")
+    to_actor_ref = str(payload.get("to_actor_ref", "") or "character:maya")
+    bus_start = len(authority_event_bus.list_events())
+    started = embodied_handoff_authority_service.start_handoff(
+        session_id=session_id,
+        asset_ref=asset_ref,
+        from_actor_ref=from_actor_ref,
+        to_actor_ref=to_actor_ref,
+        causation_id=f"cmd:{session_id}:start",
+        correlation_id=f"corr:{session_id}",
+    )
+    if not started.accepted:
+        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, started.error_code)
+    settled = embodied_handoff_authority_service.settle_handoff(
+        session_id=session_id,
+        asset_ref=asset_ref,
+        from_actor_ref=from_actor_ref,
+        to_actor_ref=to_actor_ref,
+        participant_observations={
+            from_actor_ref: f"digest:terminal:{session_id}:{from_actor_ref}",
+            to_actor_ref: f"digest:terminal:{session_id}:{to_actor_ref}",
+        },
+        idempotency_key=f"handoff:{session_id}:settle",
+        payload_digest=f"digest:handoff:{session_id}",
+    )
+    if not settled.accepted:
+        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, settled.error_code)
+    handoff_messages = [
+        outbound
+        for event in authority_event_bus.list_events()[bus_start:]
+        if (outbound := _embodied_handoff_event_envelope_from_authority_event(event)) is not None
+    ]
+    return [
+        _as_envelope(
+            "ack",
+            {
+                "accepted": True,
+                "source_type": "embodied_handoff_probe",
+                "route": "embodied_handoff_authority",
+            },
+        ),
+        *handoff_messages,
+    ]
+
+
+def _embodied_handoff_event_envelope_from_authority_event(event: AuthorityEvent) -> dict[str, object] | None:
+    if event.event_type != "embodied.handoff.settled":
+        return None
+    payload = dict(event.payload)
+    committed_payload = payload.get("committed_payload", {})
+    if not isinstance(committed_payload, dict):
+        committed_payload = {}
+    safe_payload: dict[str, object] = {
+        "event_type": event.event_type,
+        "transaction_id": str(payload.get("transaction_id", "") or ""),
+        "event_id": str(payload.get("event_id", "") or event.event_id),
+        "stream_id": str(payload.get("stream_id", "") or ""),
+        "stream_revision": int(payload.get("stream_revision", 0) or 0),
+        "global_sequence": int(payload.get("global_sequence", 0) or 0),
+    }
+    allowed_fields = {
+        "session_id",
+        "asset_ref",
+        "from_actor_ref",
+        "to_actor_ref",
+        "custody_holder_ref",
+        "owner_ref",
+        "settlement_ref",
+        "attachment_directive",
+    }
+    for field_name in allowed_fields:
+        if field_name in payload:
+            safe_payload[field_name] = payload[field_name]
+        elif field_name in committed_payload:
+            safe_payload[field_name] = committed_payload[field_name]
+    return _as_envelope("embodied_handoff_event", safe_payload)
+
+
+def _handle_embodied_grab_carry_place_probe(envelope: Envelope) -> list[dict[str, object]]:
+    payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+    session_id = str(payload.get("session_id", "") or "session:carry-place:websocket:1")
+    asset_ref = str(payload.get("asset_ref", "") or "item:crate_01")
+    actor_ref = str(payload.get("actor_ref", "") or "character:siming")
+    source_holder_ref = str(payload.get("source_holder_ref", "") or "world:anchor:table_01")
+    drop_target_ref = str(payload.get("drop_target_ref", "") or "world:anchor:floor_slot_01")
+    bus_start = len(authority_event_bus.list_events())
+    started = embodied_carry_place_authority_service.start_carry_place(
+        session_id=session_id,
+        asset_ref=asset_ref,
+        actor_ref=actor_ref,
+        source_holder_ref=source_holder_ref,
+        drop_target_ref=drop_target_ref,
+        causation_id=f"cmd:{session_id}:start",
+        correlation_id=f"corr:{session_id}",
+    )
+    if not started.accepted:
+        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, started.error_code)
+    settled = embodied_carry_place_authority_service.settle_carry_place(
+        session_id=session_id,
+        asset_ref=asset_ref,
+        actor_ref=actor_ref,
+        source_holder_ref=source_holder_ref,
+        drop_target_ref=drop_target_ref,
+        participant_observations={
+            actor_ref: f"digest:terminal:{session_id}:{actor_ref}",
+            drop_target_ref: f"digest:terminal:{session_id}:{drop_target_ref}",
+        },
+        idempotency_key=f"carry-place:{session_id}:settle",
+        payload_digest=f"digest:carry-place:{session_id}",
+    )
+    if not settled.accepted:
+        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, settled.error_code)
+    carry_place_messages = [
+        outbound
+        for event in authority_event_bus.list_events()[bus_start:]
+        if (outbound := _embodied_carry_place_event_envelope_from_authority_event(event)) is not None
+    ]
+    return [
+        _as_envelope(
+            "ack",
+            {
+                "accepted": True,
+                "source_type": "embodied_grab_carry_place_probe",
+                "route": "embodied_carry_place_authority",
+            },
+        ),
+        *carry_place_messages,
+    ]
+
+
+def _handle_default_scene_pickup(event: PickupIntent) -> list[dict[str, object]]:
+    """Settles a reviewed pickup without accepting client-controlled world refs."""
+
+    resolution = default_scene_pickup_policy_service.resolve(
+        target_object_id=event.target_object_id,
+        interaction_type=event.interaction_type,
+        actor_id=event.actor_id,
+        room_id=event.room_id,
+        scene_id=event.scene_id,
+        zone_id=event.zone_id,
+        actor_position=runtime.get_actor_position(event.actor_id),
+    )
+    if not resolution.accepted or resolution.policy is None:
+        return _default_scene_pickup_rejection(event, resolution.error_code)
+
+    policy = resolution.policy
+    session_id = f"session:default-scene-pickup:{event.actor_id}:{event.target_object_id}:{event.producer_ts}"
+    bus_start = len(authority_event_bus.list_events())
+    started = embodied_carry_place_authority_service.start_carry_place(
+        session_id=session_id,
+        asset_ref=policy.asset_ref,
+        actor_ref=resolution.actor_ref,
+        source_holder_ref=policy.source_holder_ref,
+        drop_target_ref=resolution.drop_target_ref,
+        causation_id=f"cmd:{session_id}:start",
+        correlation_id=f"corr:{session_id}",
+    )
+    if not started.accepted:
+        return _default_scene_pickup_rejection(event, started.error_code)
+
+    settled = embodied_carry_place_authority_service.settle_carry_place(
+        session_id=session_id,
+        asset_ref=policy.asset_ref,
+        actor_ref=resolution.actor_ref,
+        source_holder_ref=policy.source_holder_ref,
+        drop_target_ref=resolution.drop_target_ref,
+        participant_observations={
+            resolution.actor_ref: f"digest:terminal:{session_id}:{resolution.actor_ref}",
+            resolution.drop_target_ref: f"digest:terminal:{session_id}:{resolution.drop_target_ref}",
+        },
+        idempotency_key=f"default-scene-pickup:{session_id}:settle",
+        payload_digest=f"digest:default-scene-pickup:{session_id}",
+    )
+    if not settled.accepted:
+        return _default_scene_pickup_rejection(event, settled.error_code)
+
+    carry_place_messages = [
+        outbound
+        for authority_event in authority_event_bus.list_events()[bus_start:]
+        if (outbound := _embodied_carry_place_event_envelope_from_authority_event(authority_event)) is not None
+    ]
+    return [
+        _as_envelope(
+            "ack",
+            {
+                "accepted": True,
+                "source_type": "player_input",
+                "route": "default_scene_pickup_authority",
+            },
+        ),
+        _as_envelope(
+            "embodied_pickup_result",
+            {
+                "accepted": True,
+                "target_object_id": event.target_object_id,
+                "interaction_type": event.interaction_type,
+                "policy_revision": policy.policy_revision,
+                "possession_semantics": "custody_only",
+            },
+        ),
+        *carry_place_messages,
+    ]
+
+
+def _default_scene_pickup_rejection(event: PickupIntent, error_code: str) -> list[dict[str, object]]:
+    return [
+        _as_envelope(
+            "ack",
+            {
+                "accepted": False,
+                "source_type": "player_input",
+                "route": "default_scene_pickup_authority",
+            },
+        ),
+        _as_envelope(
+            "embodied_pickup_result",
+            {
+                "accepted": False,
+                "target_object_id": event.target_object_id,
+                "interaction_type": event.interaction_type,
+                "constraint_type": "pickup_authority_constraint",
+                "constraint_code": error_code or "pickup_rejected",
+            },
+        ),
+    ]
+
+
+def _handle_default_scene_stow(event: StowIntent) -> list[dict[str, object]]:
+    resolution = default_scene_pickup_policy_service.resolve_stow(
+        target_object_id=event.target_object_id,
+        actor_id=event.actor_id,
+        room_id=event.room_id,
+        scene_id=event.scene_id,
+        zone_id=event.zone_id,
+    )
+    if not resolution.accepted or resolution.policy is None:
+        return _as_default_scene_stow_result(event, False, resolution.error_code)
+
+    policy = resolution.policy
+    destination_container_id = DefaultScenePickupPolicyService.inventory_destination_for(
+        policy,
+        event.actor_id,
+    )
+    if not destination_container_id:
+        return _as_default_scene_stow_result(event, False, "inventory_destination_unavailable")
+    command_id = f"stow:{event.actor_id}:{event.target_object_id}:{event.producer_ts}"
+    result = embodied_custody_inventory_authority_service.stow_from_custody(
+        command_id=command_id,
+        actor_ref=resolution.actor_ref,
+        asset_ref=policy.asset_ref,
+        item_id=policy.asset_ref,
+        definition_id=policy.inventory_definition_id,
+        quantity=policy.inventory_quantity,
+        source_holder_ref=resolution.drop_target_ref,
+        destination_container_id=destination_container_id,
+        idempotency_key=command_id,
+        causation_id=f"stow:{event.producer_ts}",
+        correlation_id=f"stow:{event.producer_ts}",
+    )
+    return _as_default_scene_stow_result(
+        event,
+        result.accepted,
+        result.error_code,
+        result.transaction_id,
+    )
+
+
+def _as_default_scene_stow_result(event: StowIntent, accepted: bool, error_code: str = "", transaction_id: str = "") -> list[dict[str, object]]:
+    payload: dict[str, object] = {
+        "accepted": accepted,
+        "target_object_id": event.target_object_id,
+        "constraint_code": error_code,
+        "transaction_id": transaction_id,
+        "possession_semantics": "inventory_location" if accepted else "",
+    }
+    if accepted:
+        payload["presentation_directive"] = {
+            "mode": "inventory_stowed_for_presentation",
+            "authority_only": True,
+        }
+    return [
+        _as_envelope(
+            "ack",
+            {
+                "accepted": accepted,
+                "source_type": "player_input",
+                "route": "default_scene_inventory_authority",
+                "request_id": event.request_id,
+                "intent_type": event.intent_type,
+                "producer_ts": event.producer_ts,
+            },
+        ),
+        _as_envelope(
+            "embodied_inventory_stow_result",
+            payload,
+        ),
+    ]
+
+
+def _handle_default_scene_retrieve(event: RetrieveIntent) -> list[dict[str, object]]:
+    resolution = default_scene_pickup_policy_service.resolve_retrieve(
+        target_object_id=event.target_object_id,
+        actor_id=event.actor_id,
+        room_id=event.room_id,
+        scene_id=event.scene_id,
+        zone_id=event.zone_id,
+        actor_position=runtime.get_actor_position(event.actor_id),
+    )
+    if not resolution.accepted or resolution.policy is None:
+        return _as_default_scene_retrieve_result(event, False, resolution.error_code)
+
+    policy = resolution.policy
+    command_id = f"retrieve:{event.actor_id}:{event.target_object_id}:{event.producer_ts}"
+    result = embodied_custody_inventory_authority_service.retrieve_to_custody(
+        command_id=command_id,
+        actor_ref=resolution.actor_ref,
+        asset_ref=policy.asset_ref,
+        item_id=policy.item_id,
+        source_container_id=resolution.source_container_id,
+        destination_receiver_ref=resolution.destination_receiver_ref,
+        expected_definition_id=policy.expected_definition_id,
+        idempotency_key=command_id,
+        causation_id=f"retrieve:{event.producer_ts}",
+        correlation_id=f"retrieve:{event.producer_ts}",
+    )
+    return _as_default_scene_retrieve_result(
+        event,
+        result.accepted,
+        result.error_code,
+        result.transaction_id,
+        policy.asset_ref,
+    )
+
+
+def _as_default_scene_retrieve_result(
+    event: RetrieveIntent,
+    accepted: bool,
+    error_code: str = "",
+    transaction_id: str = "",
+    asset_ref: str = "",
+) -> list[dict[str, object]]:
+    payload: dict[str, object] = {
+        "accepted": accepted,
+        "target_object_id": event.target_object_id,
+        "constraint_code": error_code,
+        "transaction_id": transaction_id,
+        "possession_semantics": "custody_only" if accepted else "",
+        "asset_ref": asset_ref if accepted else "",
+    }
+    if accepted:
+        payload["presentation_directive"] = {
+            "mode": "inventory_retrieved_for_presentation",
+            "authority_only": True,
+        }
+    return [
+        _as_envelope(
+            "ack",
+            {
+                "accepted": accepted,
+                "source_type": "player_input",
+                "route": "default_scene_inventory_authority",
+                "request_id": event.request_id,
+                "intent_type": event.intent_type,
+                "producer_ts": event.producer_ts,
+            },
+        ),
+        _as_envelope("embodied_inventory_retrieve_result", payload),
+    ]
+
+
+def _embodied_carry_place_event_envelope_from_authority_event(event: AuthorityEvent) -> dict[str, object] | None:
+    if event.event_type != "embodied.place.settled":
+        return None
+    payload = dict(event.payload)
+    committed_payload = payload.get("committed_payload", {})
+    if not isinstance(committed_payload, dict):
+        committed_payload = {}
+    safe_payload: dict[str, object] = {
+        "event_type": event.event_type,
+        "transaction_id": str(payload.get("transaction_id", "") or ""),
+        "event_id": str(payload.get("event_id", "") or event.event_id),
+        "stream_id": str(payload.get("stream_id", "") or ""),
+        "stream_revision": int(payload.get("stream_revision", 0) or 0),
+        "global_sequence": int(payload.get("global_sequence", 0) or 0),
+    }
+    allowed_fields = {
+        "session_id",
+        "asset_ref",
+        "actor_ref",
+        "source_holder_ref",
+        "drop_target_ref",
+        "custody_holder_ref",
+        "owner_ref",
+        "settlement_ref",
+        "placement_directive",
+    }
+    for field_name in allowed_fields:
+        if field_name in payload:
+            safe_payload[field_name] = payload[field_name]
+        elif field_name in committed_payload:
+            safe_payload[field_name] = committed_payload[field_name]
+    return _as_envelope("embodied_carry_place_event", safe_payload)
+
+
+def _parse_player_input(payload: dict) -> MoveIntent | DialogueSubmit | InteractIntent | PickupIntent | StowIntent | RetrieveIntent | FocusTargetChange:
     intent_type = payload.get("intent_type", "")
     if intent_type == "dialogue_submit":
         return DialogueSubmit(**payload)
     if intent_type == "interact_intent":
         return InteractIntent(**payload)
+    if intent_type == "pickup_intent":
+        return PickupIntent(**payload)
+    if intent_type == "stow_intent":
+        return StowIntent(**payload)
+    if intent_type == "retrieve_intent":
+        return RetrieveIntent(**payload)
     if intent_type == "move_intent":
         return MoveIntent(**payload)
     if intent_type == "focus_target_change":
@@ -959,35 +2137,78 @@ def _parse_player_input(payload: dict) -> MoveIntent | DialogueSubmit | Interact
 
 
 def _handle_player_dialogue_submit(event: DialogueSubmit) -> DialogueResponse:
+    direct_content = _dialogue_direct_content(event)
+    if direct_content:
+        response = _direct_dialogue_response(event, direct_content)
+    else:
+        response = character_service.handle_dialogue(event)
+    _record_completed_dialogue_response(response)
+    return response
+
+
+def _dialogue_direct_content(event: DialogueSubmit) -> str:
     commands: list[CharacterGoalCommand] = []
     if _is_agent_dialogue_target(event.target_actor_id):
         perceived = _dialogue_submit_to_character_perceived_event(event)
         commands = _ingest_dialogue_perception(perceived)
+    return _first_speech_command_content(commands)
 
-    direct_content = _first_speech_command_content(commands)
-    if direct_content:
-        _audio = character_service.tts.synthesize(event.target_actor_id, direct_content)
-        response = DialogueResponse(
-            actor_id=event.target_actor_id,
-            room_id=event.room_id,
-            output_type="dialogue_response",
-            causation_id=f"dialogue:{event.producer_ts}",
-            producer_ts=event.producer_ts + 1,
-            target_actor_id=event.actor_id,
-            content=direct_content,
-            tone="neutral",
-            tts_required=True,
-        )
-    else:
-        response = character_service.handle_dialogue(event)
 
+def _direct_dialogue_response(event: DialogueSubmit, content: str) -> DialogueResponse:
+    audio = character_service.tts.synthesize(event.target_actor_id, content)
+    return DialogueResponse(
+        actor_id=event.target_actor_id,
+        room_id=event.room_id,
+        output_type="dialogue_response",
+        causation_id=f"dialogue:{event.producer_ts}",
+        producer_ts=event.producer_ts + 1,
+        target_actor_id=event.actor_id,
+        content=content,
+        tone="neutral",
+        tts_required=True,
+        audio=audio,
+        request_id=event.request_id,
+    )
+
+
+def _record_completed_dialogue_response(response: DialogueResponse) -> None:
     if _is_agent_dialogue_target(response.actor_id):
         character_agent_runtime.record_dialogue_response(
             actor_id=response.actor_id,
             producer_ts=int(response.producer_ts or 0),
             payload=response.model_dump(),
         )
-    return response
+
+
+def _streamable_dialogue_submit(envelope: Envelope) -> DialogueSubmit | None:
+    if envelope.message_type != "player_input":
+        return None
+    event = _parse_player_input(envelope.payload)
+    return event if isinstance(event, DialogueSubmit) else None
+
+
+def _next_dialogue_stream_event(stream) -> tuple[bool, dict[str, object] | None]:
+    try:
+        return True, next(stream)
+    except StopIteration:
+        return False, None
+
+
+def _dialogue_stream_end(
+    request_id: str,
+    status: str,
+    partial_chars: int,
+    fallback_used: bool,
+) -> dict[str, object]:
+    return _as_envelope(
+        "dialogue_stream_end",
+        {
+            "request_id": request_id,
+            "status": status,
+            "partial_chars": partial_chars,
+            "fallback_used": fallback_used,
+        },
+    )
 
 
 def _handle_character_agent_speech_action(
@@ -1002,7 +2223,7 @@ def _handle_character_agent_speech_action(
     target_actor_id = str(action.get("target_actor_id", "") or "")
     tone = str(action.get("tone", "") or "neutral")
     room_id = str(action.get("room_id", "") or "room_demo")
-    _audio = character_service.tts.synthesize(speaking_actor_id, content)
+    audio = character_service.tts.synthesize(speaking_actor_id, content)
     response = DialogueResponse(
         actor_id=speaking_actor_id,
         room_id=room_id,
@@ -1013,6 +2234,7 @@ def _handle_character_agent_speech_action(
         content=content,
         tone=tone,
         tts_required=True,
+        audio=audio,
     )
     character_agent_runtime.record_dialogue_response(
         actor_id=response.actor_id,
@@ -1174,7 +2396,7 @@ def _ingest_dialogue_perception(perceived: CharacterPerceivedEvent) -> list[Char
     if not _is_agent_dialogue_target(perceived.actor_id):
         return []
     character_perceived_input_service.apply_character_perceived_event(perceived)
-    if _dialogue_cascade_depth(perceived) >= _DIALOGUE_CASCADE_LIMIT:
+    if _dialogue_cascade_depth(perceived) >= settings.character_dialogue_cascade_limit:
         character_agent_runtime.record_character_perceived_event_without_cognition(perceived)
         return []
     return character_agent_runtime.ingest_character_perceived_event(perceived)
@@ -2005,6 +3227,31 @@ def _character_agent_messages_from_fact_candidates(event: RawFactEvent) -> list[
                 )
             )
     return character_agent_messages
+
+
+def _raw_fact_fast_authority_ack(envelope: Envelope) -> dict[str, object]:
+    raw_payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+    event = RawFactEvent(**raw_payload)
+    return build_raw_fact_authority_ack(event, source_type=envelope.message_type)
+
+
+def _drop_matching_authority_ack(
+    messages: list[dict[str, object]],
+    authority_ack: dict[str, object],
+) -> list[dict[str, object]]:
+    if not messages:
+        return messages
+    first = messages[0]
+    if first.get("message_type") == "ack" and _ack_payloads_match(first.get("payload", {}), authority_ack.get("payload", {})):
+        return messages[1:]
+    return messages
+
+
+def _ack_payloads_match(first_payload: object, second_payload: object) -> bool:
+    if not isinstance(first_payload, dict) or not isinstance(second_payload, dict):
+        return False
+    keys = ("accepted", "source_type", "route", "fact_family", "fact_type", "relation_type", "fact_key")
+    return all(first_payload.get(key) == second_payload.get(key) for key in keys)
 
 
 def _as_error_ack(*, source_type: str, route: str, error: Exception) -> dict[str, object]:

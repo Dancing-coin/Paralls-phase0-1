@@ -15,6 +15,24 @@ from app.character_agent.models.goal_runtime import CharacterGoalPortfolioEntry
 
 
 class CharacterStructuredOutputValidator:
+    _L2_REQUIRED_KEYS = [
+        "interpreted_summary",
+        "interpretation_type",
+        "salience_score",
+        "ambiguity_level",
+        "risk_level",
+        "opportunity_level",
+        "attention_target",
+        "inner_prompt_candidate",
+        "belief_deltas",
+        "social_deltas",
+        "higher_order_deltas",
+        "dynamic_state_delta",
+        "goal_hints",
+        "reasoning_trace_summary",
+    ]
+    _LEVELS = {"low", "medium", "high"}
+
     def validate(self, *, task_kind: str, output: dict[str, object]) -> dict[str, object]:
         if not isinstance(output, dict):
             raise ValueError("structured model output must be a dictionary")
@@ -31,27 +49,32 @@ class CharacterStructuredOutputValidator:
         ]
         self._require_keys(output, required, task_kind="dialogue_generation")
         normalized = dict(output)
-        normalized["content"] = str(normalized.get("content", "") or "")
-        normalized["tone"] = str(normalized.get("tone", "") or "")
+        normalized["content"] = str(normalized.get("content", "") or "").strip()
+        normalized["tone"] = str(normalized.get("tone", "") or "").strip()
+        if normalized["content"] == "":
+            raise ValueError("dialogue_generation content must not be empty")
+        if normalized["tone"] == "":
+            raise ValueError("dialogue_generation tone must not be empty")
         return normalized
 
     def _validate_l2_output(self, output: dict[str, object]) -> dict[str, object]:
-        required = [
-            "interpreted_summary",
-            "interpretation_type",
-            "salience_score",
-            "ambiguity_level",
-            "risk_level",
-            "opportunity_level",
-        ]
-        self._require_keys(output, required, task_kind="l2_reasoning")
+        self._require_keys(output, self._L2_REQUIRED_KEYS, task_kind="l2_reasoning")
         normalized = dict(output)
-        normalized["interpreted_summary"] = str(normalized.get("interpreted_summary", "") or "")
-        normalized["interpretation_type"] = str(normalized.get("interpretation_type", "") or "")
+        normalized["interpreted_summary"] = str(normalized.get("interpreted_summary", "") or "").strip()
+        normalized["interpretation_type"] = str(normalized.get("interpretation_type", "") or "").strip()
+        if normalized["interpreted_summary"] == "":
+            raise ValueError("l2_reasoning interpreted_summary must not be empty")
+        if normalized["interpretation_type"] == "":
+            raise ValueError("l2_reasoning interpretation_type must not be empty")
         normalized["salience_score"] = self._coerce_float(normalized.get("salience_score", 0.0), default=0.0)
-        normalized["ambiguity_level"] = str(normalized.get("ambiguity_level", "") or "")
-        normalized["risk_level"] = str(normalized.get("risk_level", "") or "")
-        normalized["opportunity_level"] = str(normalized.get("opportunity_level", "") or "")
+        if normalized["salience_score"] < 0.0 or normalized["salience_score"] > 1.0:
+            raise ValueError("l2_reasoning salience_score must be within 0.0..1.0")
+        normalized["ambiguity_level"] = str(normalized.get("ambiguity_level", "") or "").strip()
+        normalized["risk_level"] = str(normalized.get("risk_level", "") or "").strip()
+        normalized["opportunity_level"] = str(normalized.get("opportunity_level", "") or "").strip()
+        for key in ("ambiguity_level", "risk_level", "opportunity_level"):
+            if normalized[key] not in self._LEVELS:
+                raise ValueError(f"l2_reasoning {key} must be one of low, medium, high")
         attention_target = str(normalized.get("attention_target", "") or "")
         normalized["attention_target"] = attention_target or None
         inner_prompt_candidate = str(normalized.get("inner_prompt_candidate", "") or "")
@@ -81,11 +104,21 @@ class CharacterStructuredOutputValidator:
         self._require_keys(output, required, task_kind="l3_planning")
         normalized = dict(output)
         normalized["candidate_intents"] = self._as_string_list(normalized.get("candidate_intents", []))
-        normalized["selected_intent"] = str(normalized.get("selected_intent", "") or "")
+        if not normalized["candidate_intents"]:
+            raise ValueError("l3_planning candidate_intents must not be empty")
+        normalized["selected_intent"] = str(normalized.get("selected_intent", "") or "").strip()
+        if normalized["selected_intent"] == "":
+            raise ValueError("l3_planning selected_intent must not be empty")
+        if normalized["selected_intent"] not in normalized["candidate_intents"]:
+            raise ValueError("l3_planning selected_intent must belong to candidate_intents")
         normalized["recommended_intents"] = self._as_string_list(normalized.get("recommended_intents", []))
+        if not normalized["recommended_intents"]:
+            raise ValueError("l3_planning recommended_intents must not be empty")
         normalized["risk_notes"] = self._as_string_list(normalized.get("risk_notes", []))
-        normalized["why_this_now"] = str(normalized.get("why_this_now", "") or "")
-        normalized["role_consistency_hint"] = str(normalized.get("role_consistency_hint", "") or "")
+        normalized["why_this_now"] = str(normalized.get("why_this_now", "") or "").strip()
+        if normalized["why_this_now"] == "":
+            raise ValueError("l3_planning why_this_now must not be empty")
+        normalized["role_consistency_hint"] = str(normalized.get("role_consistency_hint", "") or "").strip()
         normalized["active_goal_tags"] = self._as_string_list(normalized.get("active_goal_tags", []))
         normalized["active_goal_frame"] = self._as_active_goal_frame_mapping(normalized.get("active_goal_frame", {}))
         planning_status = str(normalized.get("planning_status", "") or "")
@@ -211,6 +244,9 @@ class CharacterStructuredOutputValidator:
         primary_goal = str(value.get("primary_goal", "") or "")
         if primary_goal == "":
             raise ValueError("structured model output active_goal_frame.primary_goal must not be empty")
+        urgency = str(value.get("urgency", "low") or "low")
+        if urgency not in self._LEVELS:
+            raise ValueError("structured model output active_goal_frame.urgency must be one of low, medium, high")
         return CharacterActiveGoalFrame(
             primary_goal=primary_goal,
             long_term_goal=str(value.get("long_term_goal", "") or ""),
@@ -225,7 +261,7 @@ class CharacterStructuredOutputValidator:
             goal_sources=self._as_string_list(value.get("goal_sources", []))
             if isinstance(value.get("goal_sources", []), list)
             else [],
-            urgency=str(value.get("urgency", "low") or "low"),
+            urgency=urgency,
             dominant_goal_id=str(value.get("dominant_goal_id", "") or ""),
             preserved_goal_ids=self._as_string_list(value.get("preserved_goal_ids", []))
             if isinstance(value.get("preserved_goal_ids", []), list)
@@ -247,6 +283,9 @@ class CharacterStructuredOutputValidator:
             goal_id = str(item.get("goal_id", "") or "")
             goal = str(item.get("goal", "") or "")
             source = str(item.get("source", "") or "model")
+            urgency = str(item.get("urgency", "low") or "low")
+            if urgency not in self._LEVELS:
+                raise ValueError("structured model output goal_portfolio urgency must be one of low, medium, high")
             if goal_id == "" or goal == "":
                 continue
             entries.append(
@@ -256,7 +295,7 @@ class CharacterStructuredOutputValidator:
                     horizon=str(item.get("horizon", "mid") or "mid"),
                     status=str(item.get("status", "active") or "active"),
                     priority=self._coerce_float(item.get("priority", 0.5), default=0.5),
-                    urgency=str(item.get("urgency", "low") or "low"),
+                    urgency=urgency,
                     source=source,
                     target_ref=str(item.get("target_ref", "") or ""),
                     blockers=self._as_string_list(item.get("blockers", []))

@@ -1,5 +1,9 @@
 # Siming Phase 1 LLM Authority Bus Runtime Implementation Plan
 
+Status note: this plan landed the Siming LLM architecture slice and deterministic proof surfaces. Remaining live-provider closure work is now consolidated in:
+
+- `docs/superpowers/plans/2026-07-23-complete-llm-integration-closure-implementation-plan.md`
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add LLM-assisted Siming reasoning as an internal `SimingRuntime` collaborator while preserving `AuthorityEventBus` as the only cross-system runtime channel.
@@ -1810,3 +1814,6 @@ Evidence:
 - Intentional deferral: Full narrative projection, multi-step dramatic chain search, persistent world simulation, new private Siming bus, and direct Godot/ESM mutation are excluded because the spec marks them non-goals.
 - Plan hygiene scan: No task contains unresolved placeholder markers or undefined execution steps. Later tasks reference types introduced in earlier tasks.
 - Type consistency: The plan consistently uses `FairnessStateSnapshot`, `InterventionCandidate`, `InterventionDecision`, `SimingLlmCandidateProvider`, `SimingInterventionPolicy`, and `SimingExecutionFeasibility`.
+## 2026-07-23 Closure Status
+
+Siming LLM completion requires live app-wiring proof through loaded Siming settings and the authority-event chain. Readiness rows, fake providers, and verifier-synthesized settings are not live proof.

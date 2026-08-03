@@ -86,7 +86,7 @@ def test_phase0_audit_accepts_siming_output_runtime_evidence_without_attention_a
     assert results["siming_reaction"]["status"] == "proved"
 
 
-def test_phase0_audit_accepts_failed_interaction_resolved_marker() -> None:
+def test_phase0_audit_accepts_ready_voice_clip_as_voice_path_runtime_evidence() -> None:
     report = evaluate_phase0_audit(
         pytest_passed=True,
         scene_load_ok=True,
@@ -94,26 +94,22 @@ def test_phase0_audit_accepts_failed_interaction_resolved_marker() -> None:
         [LocalPresentationBus] backend_connected:ws://127.0.0.1:8000/ws
         [LocalPresentationBus] phase0_dialogue_target:char_a
         [LocalPresentationBus] dialogue_applied:char_a
-        [LocalPresentationBus] phase0_interact_target:obj_letter
-        [LocalPresentationBus] object_state:obj_letter:visible
-        [LocalPresentationBus] phase0_autotest_stage:failed_interaction_resolved
-        [LocalPresentationBus] environment_state:alerted
-        [LocalPresentationBus] backend_message_type:siming_output
-        [LocalPresentationBus] phase0_screenshot_saved:D:\\demo-main.png:0
+        [LocalPresentationBus] backend_message_raw:{"message_type":"dialogue_response","payload":{"audio":{"mode":"clip","status":"ready"}}}
         """,
-        focus_log="[LocalPresentationBus] phase0_screenshot_saved:D:\\demo-focus.png:0",
-        main_screenshot_exists=True,
-        focus_screenshot_exists=True,
-        interaction_source="world_result = esm_service.resolve_interaction(event, is_in_range=False)",
-        esm_service_source='thermal_level=field_state.thermal_level\n"thermal_level"',
+        focus_log="",
+        main_screenshot_exists=False,
+        focus_screenshot_exists=False,
+        interaction_source="",
+        esm_service_source="",
         voice_controller_source='func play_stub_voice(_payload: Dictionary) -> void:\n    _bus_log("voice_stub_played")',
-        player_bridge_source='func before_player_shell_move(delta: float) -> void:\n    _apply_player_root_motion_drive(delta)',
-        character_replica_source='func consume_player_root_motion_request(delta: float) -> Vector3:\n    return _consume_role_root_motion_world_delta()',
+        player_bridge_source="",
+        character_replica_source="",
     )
 
     results = _index_by_id(report["results"])
 
-    assert results["failed_interaction"]["status"] == "proved"
+    assert results["voice_stub_path"]["status"] == "proved"
+    assert results["voice_stub_path"]["evidence"] == ["voice_clip_played"]
 
 
 def test_phase0_main_demo_autotest_failed_interaction_attempt_moves_to_far_position() -> None:
@@ -906,6 +902,18 @@ def test_phase1_slice_audit_accepts_probe_summary_lines() -> None:
     assert results["authority_ack_observed"]["status"] == "proved"
     assert results["runtime_projection_observed"]["status"] == "proved"
     assert results["candidate_and_siming_observed"]["status"] == "proved"
+
+
+def test_phase1_slice_probe_ack_gates_multimodal_raw_fact_emission() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    probe_source = (project_root / "scripts" / "verification" / "Phase1SliceRuntimeProbe.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert "func _wait_for_route_ack(" in probe_source
+    assert 'route": "authority_auditory_fact"' in probe_source
+    assert 'route": "authority_olfactory_fact"' in probe_source
+    assert "await _wait_for_route_ack(route, minimum_count, 10000)" in probe_source
 
 
 def test_phase1_slice_audit_rejects_aggregate_probe_summary_without_fact_details() -> None:

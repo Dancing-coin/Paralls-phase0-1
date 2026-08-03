@@ -31,6 +31,8 @@ def test_character_service_returns_dialogue_response() -> None:
     assert result.target_actor_id == "char_c"
     assert result.tts_required is True
     assert result.tone == "alert"
+    assert result.audio is not None
+    assert result.audio.mode == "stub"
 
 
 def test_character_service_routes_dialogue_generation_through_character_model_gateway() -> None:

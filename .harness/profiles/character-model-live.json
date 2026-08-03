@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "character-model-live",
+  "order": 59,
+  "script": "scripts/verification/verify_character_model_live.py",
+  "requires_godot": false,
+  "include_in_all": false,
+  "result_artifact": ".harness/verification/character-model-live-report.json",
+  "description": "Explicit-only real-provider proof for character dialogue, L2, and L3"
+}

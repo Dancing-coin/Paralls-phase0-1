@@ -1,0 +1,41 @@
+{
+  "manifest_schema_version": 1,
+  "patch_id": "adventure-basic",
+  "patch_version": "0.1.0",
+  "patch_revision_id": "adventure-basic@0.1.0",
+  "content_digest": "sha256:1bb59c3451ee6c7115017aff6980c89d77c48ab0e95026ba4bddc17a38282bc8",
+  "author_id": "author:paralls-reference-content",
+  "trust_policy_ref": "trust:gameplay-reference-package:v1",
+  "dependencies": [
+    {
+      "dependency_kind": "contract",
+      "target_ref": "gameplay-foundation",
+      "version_range": ">=0.1.0",
+      "required": true,
+      "reason": "reference package consumes the governed foundation contracts"
+    },
+    {
+      "dependency_kind": "capability",
+      "target_ref": "authority.resource_effect_proposal",
+      "version_range": ">=1.0.0",
+      "required": true,
+      "reason": "resource effects remain authority-settled"
+    }
+  ],
+  "state_group_ids": [
+    "core.resources",
+    "core.body_runtime",
+    "core.status_tags",
+    "core.effective_stats",
+    "core.inventory",
+    "core.encumbrance",
+    "core.skills"
+  ],
+  "event_schemas": [],
+  "rules": [],
+  "requested_capabilities": [],
+  "granted_effect_types": [],
+  "verification_profiles": [
+    "adventure-basic"
+  ]
+}

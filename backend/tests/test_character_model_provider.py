@@ -44,6 +44,62 @@ def test_model_provider_deepseek_path_is_live_by_default_without_env_gate() -> N
     assert calls
     assert output["content"] == "Live response"
     assert output["tone"] == "focused"
+    assert provider.last_call_evidence is not None
+    assert provider.last_call_evidence.provider_kind == "deepseek"
+    assert provider.last_call_evidence.transport_succeeded is True
+    assert provider.last_call_evidence.fallback_used is False
+
+
+def test_model_provider_uses_provider_correlated_model_defaults(monkeypatch) -> None:
+    monkeypatch.setenv("DEEPSEEK_MODEL", "legacy-model")
+
+    deepseek = CharacterModelProvider(provider_kind="deepseek")
+    qwen = CharacterModelProvider(provider_kind="qwen")
+
+    assert deepseek._model_name == "deepseek-chat"
+    assert qwen._model_name == "qwen3.7-plus"
+
+
+def test_blank_character_key_fails_strict_deepseek_before_transport() -> None:
+    provider = CharacterModelProvider(provider_kind="deepseek", api_key="")
+
+    with pytest.raises(ValueError, match="requires endpoint and api key"):
+        provider.complete(
+            {
+                "task_kind": "dialogue_generation",
+                "route": {"route_mode": "online_default", "provider_kind": "deepseek"},
+                "context": {"actor_id": "char_a", "event": {"content": "Hello"}},
+            }
+        )
+
+    assert provider.last_call_evidence is not None
+    assert provider.last_call_evidence.transport_attempted is False
+    assert provider.last_call_evidence.error_type == "ValueError"
+
+
+@pytest.mark.parametrize("provider_kind", ["qwen", "seed_doubao", "openai_compatible"])
+def test_unconfigured_online_provider_falls_back_for_dialogue_generation(provider_kind: str) -> None:
+    provider = CharacterModelProvider(
+        provider_kind=provider_kind,
+        endpoint_url="https://example.invalid",
+        api_key=" ",
+    )
+
+    output = provider.complete(
+        {
+            "task_kind": "dialogue_generation",
+            "route": {"route_mode": "online_default", "provider_kind": provider_kind},
+            "context": {
+                "actor_id": "char_a",
+                "event": {"content": "Hello"},
+            },
+        }
+    )
+
+    assert output == {
+        "content": "I am here. What do you need?",
+        "tone": "neutral",
+    }
 
 
 def test_model_provider_builds_deepseek_chat_completion_request() -> None:
@@ -117,6 +173,8 @@ def test_model_provider_coerces_l3_string_fields_to_current_structured_contract(
     assert output["candidate_intents"] == ["observe"]
     assert output["recommended_intents"] == ["observe"]
     assert output["risk_notes"] == ["No risks detected"]
+    assert output["active_goal_frame"]["primary_goal"] == "observe"
+    assert output["active_goal_frame"]["goal_sources"] == ["model_output_coercion"]
 
 
 def test_model_provider_offline_l2_returns_extended_cognition_contract_keys() -> None:

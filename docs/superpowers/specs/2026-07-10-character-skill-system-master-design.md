@@ -15,6 +15,54 @@ This is a master design. It defines the complete target architecture plus
 phased adoption boundaries. The first implementation phase must not claim full
 skill learning, full action-library replacement, or live Kimodo integration.
 
+## Bounded Phase 2 Completion Standard
+
+As of 2026-07-29, the repository has completed the bounded behavior-consumption
+slice of Phase 2. This is deliberately narrower than the later settlement and
+learning phases.
+
+Shadow is complete when the runtime derives authored `CharacterSkillState`,
+records a compressed `SkillAffordanceSummary`, and projects it into the
+observatory and mind-frame affordance view without changing command behavior.
+
+Bounded behavior consumption is complete only when all of the following hold:
+
+- L3 receives the compressed affordance summary as model context; it never
+  receives a skill/action registry and local skill code does not replace its
+  selected intent.
+- L4 preserves `source_intent` and the existing action request bundle, while
+  mapping only established semantics to a registered composite action path.
+- The runtime evaluates that proposal, records `selected_path`, viable or
+  blocked paths, and emits a primitive plan only for an eligible path.
+- An unregistered or blocked path is an explicit advisory guardrail result;
+  it does not block, rewrite, or settle the legacy command.
+- ESM and the physical channel remain the only world-truth authorities.
+
+## Phase 3/4 And Realization Completion Standard
+
+As of 2026-07-31, the bounded Phase 3/4 and realization contracts are also
+implemented. Completion means all of the following are true:
+
+- `InteractionOrchestrationService` carries optional advisory evaluation and
+  primitive-plan metadata, then derives `ActionSettlementResult` on its result
+  wrapper. It never changes ESM/physical channel payloads or their status.
+- A policy-allowed `SkillEvidence` is extracted and appended to an actor-scoped
+  in-memory store. It remains ineligible for promotion at extraction time.
+- Candidate aggregation and `SkillPromotionGate` are explainable and disabled
+  by default. Authored profile truth is read only; `authority` and `special`
+  are blocked from automatic promotion, and granted/locked skills require an
+  explicit grant.
+- Learned, temporary, equipment, scripted, authored, and observed-belief
+  surfaces remain separate. Player capability hints honor visibility and locked
+  state filtering.
+- L4 presentation metadata and Kimodo contract fields may carry selected skill
+  paths, primitive tags, and settlement outcomes only as realization hints.
+  They contain no settlement writer or success authority.
+
+This completion still excludes broad action-library coverage, persistent skill
+storage, automatic promotion, full AbilityGraph replacement, and Kimodo world
+truth authority.
+
 ## Source Context
 
 Current repository facts:
@@ -657,6 +705,8 @@ Phase 1 does not include:
 - Let L4 emit CompositeActionProposal.
 - Run CharacterSkillService evaluation.
 - Preserve old L4 fallback.
+- Keep the initial intent-to-action binding table deliberately bounded; unknown
+  intents remain on the legacy path with an advisory `no_registered_path`.
 
 ### Phase 3: Settlement Integration
 

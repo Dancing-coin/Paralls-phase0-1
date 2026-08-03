@@ -62,11 +62,13 @@ class ModelProviderReadinessReport:
     schema_version: str
     overall_passed: bool
     rows: list[ModelProviderReadinessRow]
+    verification_run_id: str | None = None
 
     def to_dict(self) -> dict[str, object]:
         return {
             "schema_version": self.schema_version,
             "overall_passed": self.overall_passed,
+            "verification_run_id": self.verification_run_id,
             "rows": [asdict(row) for row in self.rows],
         }
 
@@ -93,7 +95,12 @@ def build_model_provider_readiness_report(
         ModelProviderReadinessStatus.BLOCKED_MODEL_UNAVAILABLE,
     }
     overall_passed = all(ModelProviderReadinessStatus(row.readiness_status) in blocked_or_clear for row in rows)
-    return ModelProviderReadinessReport(schema_version=SCHEMA_VERSION, overall_passed=overall_passed, rows=rows)
+    return ModelProviderReadinessReport(
+        schema_version=SCHEMA_VERSION,
+        overall_passed=overall_passed,
+        rows=rows,
+        verification_run_id=_env(values, "LLM_CLOSURE_RUN_ID", "") or None,
+    )
 
 
 def write_model_provider_readiness_report(
@@ -117,21 +124,21 @@ def _character_text_row(
     provider_id = _env(env, "CHARACTER_MODEL_PROVIDER_KIND", "qwen")
     mode = ModelProviderMode.LOCAL if provider_id == "local" else ModelProviderMode.HTTP
     if provider_id == "deepseek":
-        endpoint = _first_env(env, "CHARACTER_MODEL_ENDPOINT", "DEEPSEEK_BASE_URL") or "https://api.deepseek.com"
-        api_key = _first_env(env, "CHARACTER_MODEL_API_KEY", "DEEPSEEK_API_KEY")
-        model = _first_env(env, "CHARACTER_MODEL_MODEL", "DEEPSEEK_MODEL") or "deepseek-v4-flash"
+        endpoint = _env(env, "CHARACTER_MODEL_ENDPOINT", "") or "https://api.deepseek.com"
+        api_key = _env(env, "CHARACTER_MODEL_API_KEY", "")
+        model = _env(env, "CHARACTER_MODEL_MODEL", "") or "deepseek-chat"
     elif provider_id == "seed_doubao":
-        endpoint = _first_env(env, "CHARACTER_MODEL_ENDPOINT", "SEED_DOUBAO_BASE_URL")
-        api_key = _first_env(env, "CHARACTER_MODEL_API_KEY", "SEED_DOUBAO_API_KEY")
-        model = _first_env(env, "CHARACTER_MODEL_MODEL", "SEED_DOUBAO_MODEL") or "doubao-seed-2.0-pro"
+        endpoint = _env(env, "CHARACTER_MODEL_ENDPOINT", "")
+        api_key = _env(env, "CHARACTER_MODEL_API_KEY", "")
+        model = _env(env, "CHARACTER_MODEL_MODEL", "") or "doubao-seed-2.0-pro"
     elif provider_id == "local":
         endpoint = ""
         api_key = ""
         model = "local-continuity-floor"
     else:
-        endpoint = _first_env(env, "CHARACTER_MODEL_ENDPOINT", "QWEN_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        api_key = _first_env(env, "CHARACTER_MODEL_API_KEY", "QWEN_API_KEY")
-        model = _first_env(env, "CHARACTER_MODEL_MODEL", "QWEN_MODEL") or "qwen3.7-plus"
+        endpoint = _env(env, "CHARACTER_MODEL_ENDPOINT", "") or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        api_key = _env(env, "CHARACTER_MODEL_API_KEY", "")
+        model = _env(env, "CHARACTER_MODEL_MODEL", "") or "qwen3.7-plus"
     status = ModelProviderReadinessStatus.CONTRACT_READY if mode == ModelProviderMode.LOCAL else _http_status(
         api_key=api_key,
         endpoint=endpoint,
@@ -156,7 +163,7 @@ def _character_text_row(
             "python -m pytest -q backend/tests/test_character_model_provider_readiness.py",
             "python scripts/verification/verify_model_provider_readiness.py",
         ],
-        notes=["Qwen/OpenAI-compatible chat route is preferred; DeepSeek remains legacy-compatible."],
+        notes=["CHARACTER_MODEL_* is the only Character runtime provider configuration surface."],
     )
 
 
@@ -166,11 +173,18 @@ def _siming_candidate_row(
 ) -> ModelProviderReadinessRow:
     mode_value = _env(env, "SIMING_LLM_MODE", "disabled")
     mode = ModelProviderMode.DISABLED if mode_value == "disabled" else ModelProviderMode.HTTP
+    route = _selected_siming_route(env)
     provider_order = _env(env, "SIMING_LLM_PROVIDER_ORDER", "seed_doubao,qwen")
-    provider_id = provider_order.split(",", 1)[0].strip() or "seed_doubao"
+    provider_id = str(route.get("provider", "")) if route else (provider_order.split(",", 1)[0].strip() or "seed_doubao")
     endpoint = _env(env, "SIMING_LLM_ENDPOINT", "")
     api_key = _env(env, "SIMING_LLM_API_KEY", "")
     model = _env(env, "SIMING_LLM_MODEL", "doubao-seed-2.0-pro")
+    timeout_seconds = _env(env, "SIMING_LLM_TIMEOUT_SECONDS", "8.0")
+    if route:
+        endpoint = str(route.get("endpoint", "") or "")
+        api_key = str(route.get("api_key", "") or "")
+        model = str(route.get("model", "") or model)
+        timeout_seconds = str(route.get("timeout_seconds", "") or timeout_seconds)
     status = ModelProviderReadinessStatus.DISABLED if mode == ModelProviderMode.DISABLED else _http_status(
         api_key=api_key,
         endpoint=endpoint,
@@ -188,14 +202,14 @@ def _siming_candidate_row(
         schema_version=SCHEMA_VERSION,
         required_input_refs=["fairness_state_snapshot", "recent_authority_events", "recent_siming_audit"],
         output_schema_status="InterventionCandidate list only; authority mutations rejected",
-        timeout_degrade_status=f"timeout_seconds={_env(env, 'SIMING_LLM_TIMEOUT_SECONDS', '8.0')}; router degrades to next provider/empty candidates",
+        timeout_degrade_status=f"timeout_seconds={timeout_seconds}; router degrades to next provider/empty candidates",
         context_isolation_status="siming_candidate_context_isolated_from_character_private_context",
         world_truth_write_status="forbidden: candidate-level suggestions only",
         verification_evidence=[
             "python -m pytest -q backend/tests/test_siming_llm_provider_config.py backend/tests/test_siming_llm_runtime.py",
             "python scripts/verification/verify_model_provider_readiness.py",
         ],
-        notes=["Seed/Doubao is preferred for Siming candidate generation; Qwen is a secondary route."],
+        notes=["Siming readiness tracks configured identity only; live proof is separate."],
     )
 
 
@@ -213,35 +227,51 @@ def _vla_spatial_row(
         status = ModelProviderReadinessStatus.BLOCKED_MISSING_ARTIFACTS
     elif mode == ModelProviderMode.LOCAL:
         status = ModelProviderReadinessStatus.CONTRACT_READY
+    elif not api_key:
+        status = ModelProviderReadinessStatus.BLOCKED_MISSING_CREDENTIALS
+    elif not endpoint:
+        status = ModelProviderReadinessStatus.NOT_CONFIGURED
+    elif _has_matching_vla_live_proof(
+        env,
+        provider_id=_env(env, "VLA_PROVIDER_KIND", "openai_compatible") + "_vla_provider",
+        model_id=_env(env, "VLA_ADVISORY_FAST_MODEL", "qwen3.7-flash"),
+        endpoint_host=_redacted_host(endpoint),
+    ):
+        status = ModelProviderReadinessStatus.REAL_PROVIDER_VERIFIED
     else:
-        status = _http_status(
-            api_key=api_key,
-            endpoint=endpoint,
-            kind=ModelProviderKind.VLA_SPATIAL,
-            env=env,
-            real_smoke_checker=real_smoke_checker,
-        )
+        status = ModelProviderReadinessStatus.HTTP_CONFIGURED_UNVERIFIED
     return ModelProviderReadinessRow(
         provider_kind=ModelProviderKind.VLA_SPATIAL.value,
         mode=mode.value,
-        provider_id="qwen_vl_spatial",
-        model_id=_env(env, "VLA_PROVIDER_MODEL", "qwen3-vl-plus"),
+        provider_id=_env(env, "VLA_PROVIDER_KIND", "openai_compatible") + "_vla_spatial",
+        model_id=_env(env, "VLA_ADVISORY_FAST_MODEL", "qwen3.7-flash"),
         endpoint_host_redacted=_redacted_host(endpoint),
         readiness_status=status.value,
         schema_version=SCHEMA_VERSION,
         required_input_refs=["PerceptionQueryFrame", "visual_artifact_ref", "l1_space_model_ref", "owner_namespace"],
         output_schema_status="advisory spatial findings only; ModalityInterpretationResult bridge required before use",
         timeout_degrade_status=(
-            f"timeout_seconds={_env(env, 'VLA_PROVIDER_TIMEOUT_SECONDS', '8.0')}; "
-            f"max_queue_size={_env(env, 'VLA_PROVIDER_MAX_QUEUE_SIZE', '8')}; timeout drops/degrades slow path"
+            f"fast_timeout_seconds={_env(env, 'VLA_ADVISORY_FAST_TIMEOUT_SECONDS', '12.0')}; "
+            f"deep_enabled={_env(env, 'VLA_ADVISORY_DEEP_ENABLED', 'false')}; "
+            f"deep_timeout_seconds={_env(env, 'VLA_ADVISORY_DEEP_TIMEOUT_SECONDS', '20.0')}; "
+            f"max_queue_size={_env(env, 'VLA_PROVIDER_MAX_QUEUE_SIZE', '8')}; timeout degrades slow path"
         ),
         context_isolation_status="per-owner queue/cache namespace required; no character/siming cache sharing",
         world_truth_write_status="forbidden: advisory findings cannot write L1/world truth/ESM authority",
         verification_evidence=[
             "python -m pytest -q backend/tests/test_model_provider_readiness.py",
             "python scripts/verification/verify_model_provider_readiness.py",
+            "python scripts/verification/verify_vla_provider_live.py --allow-live-call (explicit-only live proof)",
+            (
+                "real adapter call evidence: .harness/verification/vla-provider-live-report.json"
+                if status == ModelProviderReadinessStatus.REAL_PROVIDER_VERIFIED
+                else "real adapter call evidence pending explicit live proof"
+            ),
         ],
-        notes=["Real VLA verification requires Godot/PQF/L1 artifact refs and a schema-valid adapter call."],
+        notes=[
+            "Real VLA verification requires a PQF with an eligible https:// or data:image/ visual artifact and a schema-valid adapter call.",
+            "Production defaults to fast-only. Deep route/model state remains isolated for explicit experiments and stays advisory.",
+        ],
     )
 
 
@@ -318,18 +348,62 @@ def _has_vla_runtime_artifacts(env: dict[str, str]) -> bool:
     return bool(refs)
 
 
+def _has_matching_vla_live_proof(
+    env: dict[str, str],
+    *,
+    provider_id: str,
+    model_id: str,
+    endpoint_host: str,
+) -> bool:
+    expected_run_id = _env(env, "VLA_PROVIDER_LIVE_PROOF_RUN_ID", "")
+    report_path = Path(
+        _env(env, "VLA_PROVIDER_LIVE_PROOF_REPORT_PATH", ".harness/verification/vla-provider-live-report.json")
+    )
+    if expected_run_id == "" or not report_path.is_file():
+        return False
+    try:
+        payload = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(payload, dict):
+        return False
+    proof = payload.get("proof")
+    result = proof.get("result") if isinstance(proof, dict) else None
+    required_artifact_refs = {
+        ref.strip() for ref in _env(env, "VLA_PROVIDER_REQUIRED_ARTIFACT_REFS", "").split(",") if ref.strip()
+    }
+    proof_artifact_refs = proof.get("artifact_ref_ids") if isinstance(proof, dict) else None
+    return (
+        payload.get("run_id") == expected_run_id
+        and payload.get("real_provider_status") == ModelProviderReadinessStatus.REAL_PROVIDER_VERIFIED.value
+        and payload.get("provider_id") == provider_id
+        and payload.get("model_id") == model_id
+        and payload.get("endpoint_host") == endpoint_host
+        and payload.get("live_call_opted_in") is True
+        and payload.get("bridge_ok") is True
+        and isinstance(result, dict)
+        and result.get("status") == ModelProviderReadinessStatus.REAL_PROVIDER_VERIFIED.value
+        and isinstance(proof_artifact_refs, list)
+        and required_artifact_refs.issubset({str(ref) for ref in proof_artifact_refs})
+    )
+
+
 def _merged_env(env: dict[str, str] | None) -> dict[str, str]:
     if env is not None:
         return dict(env)
     merged = dict(os.environ)
-    env_path = Path(".env")
-    if env_path.exists():
+    process_env_keys = set(merged)
+    for env_path in [Path(".env"), Path(".env.vla")]:
+        if not env_path.exists():
+            continue
         for raw_line in env_path.read_text(encoding="utf-8").splitlines():
             line = raw_line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
             key, value = line.split("=", 1)
-            merged.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+            normalized_key = key.strip()
+            if normalized_key not in process_env_keys:
+                merged[normalized_key] = value.strip().strip('"').strip("'")
     return merged
 
 
@@ -339,6 +413,25 @@ def _first_env(env: dict[str, str], *names: str) -> str:
         if value:
             return value
     return ""
+
+
+def _selected_siming_route(env: dict[str, str]) -> dict[str, object] | None:
+    raw = _env(env, "SIMING_LLM_ROUTES_JSON", "")
+    if raw == "":
+        return None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, list):
+        return None
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        if item.get("enabled", True) is False:
+            continue
+        return dict(item)
+    return None
 
 
 def _env(env: dict[str, str], name: str, default: str) -> str:
@@ -357,6 +450,7 @@ def _render_markdown(report: ModelProviderReadinessReport) -> str:
         "# Model Provider Readiness Report",
         "",
         f"- Schema: `{report.schema_version}`",
+        f"- Verification run ID: `{report.verification_run_id or ''}`",
         f"- Overall: `{report.overall_passed}`",
         "",
         "| Provider | Mode | Provider ID | Model | Endpoint Host | Status |",

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "gameplay-patch-runtime",
+  "order": 90,
+  "script": "scripts/verification/verify_gameplay_patch_runtime.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/gameplay-patch-runtime-report.json",
+  "description": "Backend proof for immutable trusted Gameplay patch manifests, deterministic proposal-only Rule IR/capability gates, authority-ledger lifecycle control, explicit-actor state-group lifecycle/identity-rebind cutover, and the bounded typed resource-bounds data-migration upgrade"
+}

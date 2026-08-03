@@ -20,6 +20,14 @@ __pycache__/
 *.egg-info/
 .idea
 .env
+.env.vla
+.env.tts
+
+# 角色声线参考录音属于受控资产，不得提交到 Git。
+/assets/characters/voice_sources/**/*.wav
+/assets/characters/voice_sources/**/*.mp3
+/assets/characters/voice_sources/**/*.m4a
+/assets/characters/voice_sources/**/*.flac
 
 docs/architecture
 docs/上下文不够用/

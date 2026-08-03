@@ -78,6 +78,27 @@ def test_pqf_accepts_skeletal_and_environment_refs_without_sharing_context() -> 
     assert "shared" not in frame.cache_namespace
 
 
+def test_pqf_preserves_known_godot_grounding_catalog() -> None:
+    frame = PerceptionQueryFrame(
+        query_id="pqf:char_b:grounding",
+        consumer_kind="character",
+        subject_id="char_b",
+        target_ref="obj_letter",
+        world_anchor_id="world_anchor:object:obj_letter",
+        time_window=TimeWindow(started_at=0, ended_at=1),
+        spatial_reference=SpatialReference(room_id="room_demo", scene_id="scene_demo", zone_id="zone_focus"),
+        grounding_collider_refs=["collision_shape:/root/MainDemo/ThroneRoomCollisionRoot"],
+        grounding_affordance_refs=["inspect", "read"],
+        multimodal_context_id="character_mm:char_b",
+        cache_namespace="character_mm:char_b:godot_sampling_cache",
+    )
+
+    assert {"char_b", "obj_letter"}.issubset(frame.grounding_entity_refs)
+    assert frame.grounding_collider_refs == ["collision_shape:/root/MainDemo/ThroneRoomCollisionRoot"]
+    assert frame.grounding_anchor_refs == ["world_anchor:object:obj_letter"]
+    assert frame.grounding_affordance_refs == ["inspect", "read"]
+
+
 def test_provider_refs_are_consumed_by_l1_bridge_and_kept_refs_only(tmp_path: Path) -> None:
     extractor = SceneSpaceModelExtractor(artifact_dir=tmp_path)
     space_model = extractor.extract_from_runtime_scene(

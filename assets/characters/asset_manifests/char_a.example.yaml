@@ -1,0 +1,31 @@
+contract: character_asset_manifest.v1
+manifest_status: draft
+actor_id: char_a
+profile_ref: assets/characters/profiles/char_a.yaml
+dossier_ref: assets/characters/dossiers/char_a.yaml
+
+# 可运行美术资源放在 assets/artpacks/<资源包ID>/，这里仅保存关联信息。
+visual_assets:
+  artpack_id: 待确定
+  role_asset_id: 待确定
+  role_scene_ref: 待确定
+  skeleton_profile_id: 待确定
+  compatibility_level: locomotion_only
+
+wardrobe_assets:
+  default_outfit_id: 待确定
+  slots: []
+
+equipment_and_props:
+  default_equipment_ids: []
+  slot_bindings: []
+
+action_assets:
+  supported_action_tags: []
+  animation_descriptors: []
+
+voice_assets:
+  # 原始参考音频位于受控存储；不得写入公开 URL 或仓库路径。
+  source_asset_ref: secure_asset://characters/char_a/voice/take_01.wav
+  enrollment_record_ref: 待复刻
+  approved_tts_voice_binding_ref: 待试听审批

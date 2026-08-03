@@ -5,11 +5,14 @@
 [sub_resource type="BoxMesh" id="BoxMesh_1"]
 size = Vector3(0.7, 0.2, 0.5)
 
+[sub_resource type="BoxShape3D" id="BoxShape3D_1"]
+size = Vector3(0.7, 0.2, 0.5)
+
 [node name="InteractiveObject" type="Node3D"]
 script = ExtResource("1_object")
+metadata/grounding_refs = PackedStringArray("collider:obj_letter:body", "anchor:obj_letter:stance", "anchor:obj_letter:observation", "affordance:obj_letter:inspect", "nav:obj_letter:approach_footprint")
 
 [node name="VisualRoot" type="Node3D" parent="."]
-visible = false
 
 [node name="AssetMount" type="Node3D" parent="VisualRoot"]
 
@@ -29,4 +32,14 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
 text = "Letter"
 font_size = 24
 billboard = 1
-visible = false
+
+[node name="InteractionCollider" type="StaticBody3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="InteractionCollider"]
+shape = SubResource("BoxShape3D_1")
+
+[node name="ApproachStance" type="Marker3D" parent="."]
+position = Vector3(0, 0, 0.8)
+
+[node name="ObservationAnchor" type="Marker3D" parent="."]
+position = Vector3(0, 0.5, 0.45)

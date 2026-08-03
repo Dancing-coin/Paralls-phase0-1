@@ -1,5 +1,9 @@
 # DeepSeek Character Model Gateway Implementation Plan
 
+Status note: this plan landed the initial DeepSeek-aware gateway slice, but remaining runtime-default, `L2/L3` contract, and live-proof closure items have been consolidated into:
+
+- `docs/superpowers/plans/2026-07-23-complete-llm-integration-closure-implementation-plan.md`
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Connect the character-agent runtime to DeepSeek as the first live online provider while upgrading the gateway/provider/router seam into a router-ready provider-aware boundary with local fallback preserved.
@@ -281,3 +285,6 @@ rg -n "sk-[a-zA-Z0-9]+" .
 ```
 
 Expected: no matches in tracked repo files for the live secret.
+## 2026-07-23 Closure Status
+
+Historical gateway work is superseded for completion claims by `docs/superpowers/plans/2026-07-23-complete-llm-integration-closure-implementation-plan.md`. The accepted evidence is `character-model-live`, not readiness or stub/local output.

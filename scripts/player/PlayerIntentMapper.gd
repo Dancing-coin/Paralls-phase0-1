@@ -48,6 +48,63 @@ func emit_interact_intent(target_object_id: String, interaction_type: String) ->
         }
     }
 
+func emit_pickup_intent(target_object_id: String) -> Dictionary:
+	var metadata := _next_request_metadata("pickup_intent")
+	var producer_ts: int = metadata["producer_ts"]
+	var request_id: String = metadata["request_id"]
+	return {
+        "message_type": "player_input",
+        "payload": {
+            "player_id": player_id,
+            "room_id": room_id,
+            "scene_id": scene_id,
+            "zone_id": zone_id,
+            "actor_id": player_actor_id,
+            "intent_type": "pickup_intent",
+			"producer_ts": producer_ts,
+			"request_id": request_id,
+            "target_object_id": target_object_id,
+        }
+    }
+
+func emit_stow_intent(target_object_id: String) -> Dictionary:
+	var metadata := _next_request_metadata("stow_intent")
+	var producer_ts: int = metadata["producer_ts"]
+	var request_id: String = metadata["request_id"]
+	return {
+        "message_type": "player_input",
+        "payload": {
+            "player_id": player_id,
+            "room_id": room_id,
+            "scene_id": scene_id,
+            "zone_id": zone_id,
+            "actor_id": player_actor_id,
+            "intent_type": "stow_intent",
+			"producer_ts": producer_ts,
+			"request_id": request_id,
+            "target_object_id": target_object_id,
+        }
+    }
+
+func emit_retrieve_intent(target_object_id: String) -> Dictionary:
+	var metadata := _next_request_metadata("retrieve_intent")
+	var producer_ts: int = metadata["producer_ts"]
+	var request_id: String = metadata["request_id"]
+	return {
+        "message_type": "player_input",
+        "payload": {
+            "player_id": player_id,
+            "room_id": room_id,
+            "scene_id": scene_id,
+            "zone_id": zone_id,
+            "actor_id": player_actor_id,
+            "intent_type": "retrieve_intent",
+			"producer_ts": producer_ts,
+			"request_id": request_id,
+            "target_object_id": target_object_id,
+        }
+    }
+
 func emit_focus_target_change(target_actor_id: String = "", target_object_id: String = "") -> Dictionary:
     var metadata := _next_request_metadata("focus_target_change")
     var producer_ts: int = metadata["producer_ts"]

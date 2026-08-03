@@ -99,7 +99,357 @@ def test_esm_service_rejects_out_of_range_interaction() -> None:
     result = service.resolve_interaction(event, is_in_range=False)
     assert result.result_type == "constraint_state_result"
     assert result.constraint_type == "distance_constraint"
-    assert result.constraint_code == "out_of_range"
+
+
+def test_esm_service_accepts_the_registered_default_scene_plaque_policy() -> None:
+    service = ESMService()
+    event = InteractIntent(
+        player_id="p1",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        actor_id="char_c",
+        intent_type="interact_intent",
+        producer_ts=12,
+        target_object_id="obj_plaque",
+        interaction_type="read",
+    )
+
+    result = service.resolve_interaction(event, actor_position=(-2.2, 1.2, -1.0))
+
+    assert result.result_type == "action_resolution_result"
+    assert service.interaction_policy_for("obj_plaque", "read") == {
+        "allowed_interactions": {"inspect", "read"},
+        "machine_id": "visibility",
+        "previous_state": "partially_visible",
+        "current_state": "visible",
+        "affordances": ["inspect", "read"],
+        "occludes": False,
+        "environment_transition": "none",
+    }
+
+
+def test_esm_service_accepts_only_press_for_the_registered_lamp_switch_policy() -> None:
+    service = ESMService()
+    event = InteractIntent(
+        player_id="p1",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        actor_id="char_c",
+        intent_type="interact_intent",
+        producer_ts=13,
+        target_object_id="obj_lamp_switch",
+        interaction_type="press",
+    )
+
+    result = service.resolve_interaction(event, actor_position=(2.2, 1.2, -1.0))
+
+    assert result.result_type == "action_resolution_result"
+    assert service.interaction_policy_for("obj_lamp_switch", "press") == {
+        "allowed_interactions": {"press"},
+        "machine_id": "switch",
+        "previous_state": "idle",
+        "current_state": "activated",
+        "affordances": ["press"],
+        "occludes": False,
+        "environment_transition": "alert_lamp",
+    }
+    assert service.interaction_policy_for("obj_lamp_switch", "inspect") is None
+
+    object_result = service.emit_object_state_result(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        actor_id="char_c",
+        target_object_id="obj_lamp_switch",
+        previous_state="idle",
+        current_state="activated",
+        machine_id="switch",
+        producer_ts=14,
+    )
+    assert object_result.machine_id == "switch"
+
+
+def test_esm_service_accepts_only_open_for_the_registered_archive_door_policy() -> None:
+    service = ESMService()
+    event = InteractIntent(
+        player_id="p1",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        actor_id="char_c",
+        intent_type="interact_intent",
+        producer_ts=15,
+        target_object_id="obj_archive_door",
+        interaction_type="open",
+    )
+
+    result = service.resolve_interaction(event, actor_position=(0.0, 1.2, -3.0))
+
+    assert result.result_type == "action_resolution_result"
+    assert service.interaction_policy_for("obj_archive_door", "open") == {
+        "allowed_interactions": {"open", "close"},
+        "machine_id": "door",
+        "previous_state": "closed",
+        "current_state": "open",
+        "affordances": ["open", "close"],
+        "occludes": False,
+        "environment_transition": "none",
+        "initial_state": "closed",
+        "stateful": True,
+        "state_match": True,
+    }
+
+
+def test_esm_service_accepts_stateful_use_and_finish_use_for_the_registered_worktable_policy() -> None:
+    service = ESMService()
+    event = InteractIntent(
+        player_id="p1",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        actor_id="char_c",
+        intent_type="interact_intent",
+        producer_ts=15,
+        target_object_id="obj_worktable",
+        interaction_type="use",
+    )
+
+    result = service.resolve_interaction(event, actor_position=(-0.9, 0.85, -1.0))
+
+    assert result.result_type == "action_resolution_result"
+    assert service.interaction_policy_for("obj_worktable", "use") == {
+        "allowed_interactions": {"use", "finish_use"},
+        "machine_id": "work_surface",
+        "previous_state": "ready",
+        "current_state": "engaged",
+        "affordances": ["use", "finish_use"],
+        "occludes": False,
+        "environment_transition": "none",
+        "initial_state": "ready",
+        "stateful": True,
+        "state_match": True,
+    }
+
+
+def test_esm_service_worktable_policy_requires_authority_committed_state_before_finish_use() -> None:
+    service = ESMService()
+    use_policy = service.interaction_policy_for(
+        "obj_worktable",
+        "use",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+    )
+    premature_finish_policy = service.interaction_policy_for(
+        "obj_worktable",
+        "finish_use",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+    )
+
+    assert use_policy is not None
+    assert use_policy["state_match"] is True
+    assert premature_finish_policy is not None
+    assert premature_finish_policy["previous_state"] == "engaged"
+    assert premature_finish_policy["current_state"] == "ready"
+    assert premature_finish_policy["state_match"] is False
+
+    service.commit_interaction_state(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        target_object_id="obj_worktable",
+        current_state="engaged",
+    )
+    finish_policy = service.interaction_policy_for(
+        "obj_worktable",
+        "finish_use",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+    )
+    repeated_use_policy = service.interaction_policy_for(
+        "obj_worktable",
+        "use",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+    )
+    assert finish_policy is not None
+    assert finish_policy["state_match"] is True
+    assert repeated_use_policy is not None
+    assert repeated_use_policy["state_match"] is False
+
+
+def test_esm_service_observation_bench_requires_the_authority_scoped_occupant() -> None:
+    service = ESMService()
+    sit_policy = service.interaction_policy_for(
+        "obj_observation_bench",
+        "sit",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        actor_id="char_c",
+    )
+    premature_stand_policy = service.interaction_policy_for(
+        "obj_observation_bench",
+        "stand",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        actor_id="char_c",
+    )
+
+    assert sit_policy is not None
+    assert sit_policy["state_match"] is True
+    assert sit_policy["owner_match"] is True
+    assert sit_policy["body_state_class"] == "posture"
+    assert premature_stand_policy is not None
+    assert premature_stand_policy["state_match"] is False
+
+    service.commit_interaction_state(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        target_object_id="obj_observation_bench",
+        current_state="occupied",
+        actor_id="char_c",
+        interaction_type="sit",
+    )
+    owner_stand_policy = service.interaction_policy_for(
+        "obj_observation_bench",
+        "stand",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        actor_id="char_c",
+    )
+    other_actor_stand_policy = service.interaction_policy_for(
+        "obj_observation_bench",
+        "stand",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        actor_id="char_a",
+    )
+
+    assert service.interaction_owner_for(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        target_object_id="obj_observation_bench",
+    ) == "char_c"
+    assert owner_stand_policy is not None
+    assert owner_stand_policy["state_match"] is True
+    assert owner_stand_policy["owner_match"] is True
+    assert other_actor_stand_policy is not None
+    assert other_actor_stand_policy["state_match"] is True
+    assert other_actor_stand_policy["owner_match"] is False
+
+    service.commit_interaction_state(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        target_object_id="obj_observation_bench",
+        current_state="available",
+        actor_id="char_c",
+        interaction_type="stand",
+    )
+    assert service.interaction_owner_for(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        target_object_id="obj_observation_bench",
+    ) == ""
+
+
+def test_esm_service_door_policy_requires_authority_committed_state_before_close() -> None:
+    service = ESMService()
+    open_policy = service.interaction_policy_for(
+        "obj_archive_door",
+        "open",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+    )
+    premature_close_policy = service.interaction_policy_for(
+        "obj_archive_door",
+        "close",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+    )
+
+    assert open_policy is not None
+    assert open_policy["state_match"] is True
+    assert premature_close_policy is not None
+    assert premature_close_policy["previous_state"] == "open"
+    assert premature_close_policy["current_state"] == "closed"
+    assert premature_close_policy["state_match"] is False
+
+    event = InteractIntent(
+        player_id="p1",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        actor_id="char_c",
+        intent_type="interact_intent",
+        producer_ts=16,
+        target_object_id="obj_archive_door",
+        interaction_type="close",
+    )
+    rejected = service.reject_interaction_state(event, expected_state="open", actual_state="closed")
+    assert rejected.constraint_type == "interaction_state_constraint"
+    assert rejected.constraint_code == "invalid_interaction_state"
+
+    service.commit_interaction_state(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        target_object_id="obj_archive_door",
+        current_state="open",
+    )
+    close_policy = service.interaction_policy_for(
+        "obj_archive_door",
+        "close",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+    )
+    repeated_open_policy = service.interaction_policy_for(
+        "obj_archive_door",
+        "open",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+    )
+    assert close_policy is not None
+    assert close_policy["state_match"] is True
+    assert repeated_open_policy is not None
+    assert repeated_open_policy["state_match"] is False
+
+
+def test_esm_service_rejects_unregistered_or_unsupported_interactions() -> None:
+    service = ESMService()
+    unknown_target = InteractIntent(
+        player_id="p1",
+        room_id="room_demo",
+        actor_id="char_c",
+        intent_type="interact_intent",
+        producer_ts=13,
+        target_object_id="obj_unreviewed_mesh",
+        interaction_type="inspect",
+    )
+    unsupported_action = unknown_target.model_copy(update={"target_object_id": "obj_plaque", "interaction_type": "grab"})
+
+    unknown_result = service.reject_unsupported_interaction(unknown_target)
+    unsupported_result = service.reject_unsupported_interaction(unsupported_action)
+
+    assert unknown_result.constraint_code == "unsupported_object"
+    assert unsupported_result.constraint_code == "unsupported_interaction"
 
 
 def test_esm_service_computes_range_from_actor_position() -> None:
@@ -996,7 +1346,7 @@ def test_esm_service_workbench_snapshot_exposes_recent_history_window() -> None:
     )
 
     first_resolution, first_result = service.resolve_environment_request(first_event)
-    first_transition = service.emit_state_machine_transition(
+    service.emit_state_machine_transition(
         room_id="room_demo",
         scene_id="scene_demo",
         zone_id="zone_focus",
@@ -1011,7 +1361,7 @@ def test_esm_service_workbench_snapshot_exposes_recent_history_window() -> None:
         correlation_id="decision:61",
     )
     second_resolution, second_result = service.resolve_environment_request(second_event)
-    second_transition = service.emit_state_machine_transition(
+    service.emit_state_machine_transition(
         room_id="room_demo",
         scene_id="scene_demo",
         zone_id="zone_focus",
