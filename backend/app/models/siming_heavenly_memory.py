@@ -84,6 +84,24 @@ class InterventionOutcomeMemoryEntry(StrictMemoryModel):
     selected_node_ref: str | None = None
     realization_signature: str | None = None
     authority_result_ref: str | None = None
+    obligation_id: str | None = None
+    staging_status: Literal["staged", "aborted_before_activation", "cancelled"] | None = None
+    story_node_lifecycle: Literal["staged", "aborted"] | None = None
+    obligation_status: Literal["open", "pressured", "partially_satisfied"] | None = None
+    reason: str = ""
+
+    @model_validator(mode="after")
+    def require_staging_result_fields(self) -> "InterventionOutcomeMemoryEntry":
+        if self.stage == "staging" and (
+            self.selected_node_ref is None
+            or self.realization_signature is None
+            or self.obligation_id is None
+            or self.staging_status is None
+            or self.story_node_lifecycle is None
+            or self.obligation_status is None
+        ):
+            raise ValueError("staging intervention outcome requires its complete result")
+        return self
 
 
 class ConvergenceStrategyMemoryEntry(StrictMemoryModel):

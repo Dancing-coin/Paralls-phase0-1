@@ -74,6 +74,7 @@ class StagingRequest(StrictResourceModel):
     node_id: str = Field(min_length=1)
     correlation_id: str = Field(min_length=1)
     obligation_id: str = Field(min_length=1)
+    recorded_at: int = Field(ge=0)
     resource_match: ResourceMatch
 
 
