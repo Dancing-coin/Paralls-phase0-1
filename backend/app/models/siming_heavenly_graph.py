@@ -12,6 +12,12 @@ GraphSourceKind = Literal[
     "runtime_outcome",
     "authored_seed",
 ]
+GraphNamespace = Literal[
+    "siming_heavenly",
+    "actor_private",
+    "resource_capability",
+]
+HeavenlySubgraphDirection = Literal["outgoing", "incoming", "both"]
 
 
 class HeavenlyGraphScope(BaseModel):
@@ -22,6 +28,16 @@ class HeavenlyGraphScope(BaseModel):
     story_branch_id: str = Field(min_length=1)
     room_id: str | None = Field(default=None, min_length=1)
     scene_id: str | None = Field(default=None, min_length=1)
+    graph_namespace: GraphNamespace = "siming_heavenly"
+    owner_actor_id: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def validate_owner_boundary(self) -> "HeavenlyGraphScope":
+        if self.graph_namespace == "actor_private" and self.owner_actor_id is None:
+            raise ValueError("actor_private scope requires owner_actor_id")
+        if self.graph_namespace != "actor_private" and self.owner_actor_id is not None:
+            raise ValueError("owner_actor_id is only valid for actor_private scope")
+        return self
 
 
 class GraphValidity(BaseModel):
@@ -160,6 +176,18 @@ class HeavenlyRelationQuery(BaseModel):
     source_node_ids: list[str] = Field(default_factory=list)
     target_node_ids: list[str] = Field(default_factory=list)
     limit: int | None = Field(default=100, ge=1, le=1000)
+
+
+class HeavenlySubgraphResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scope: HeavenlyGraphScope
+    seed_node_ids: list[str]
+    valid_at: int = Field(ge=0)
+    recorded_at: int | None = Field(default=None, ge=0)
+    nodes: list[HeavenlyGraphNode] = Field(default_factory=list)
+    relations: list[HeavenlyGraphRelation] = Field(default_factory=list)
+    truncated: bool = False
 
 
 class HeavenlyGraphCheckpointRef(BaseModel):

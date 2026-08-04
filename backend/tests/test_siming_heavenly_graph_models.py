@@ -55,6 +55,27 @@ def test_graph_validity_rejects_empty_half_open_interval() -> None:
         GraphValidity(valid_from=10, valid_to=10)
 
 
+def test_actor_private_scope_requires_owner() -> None:
+    with pytest.raises(ValidationError, match="owner_actor_id"):
+        HeavenlyGraphScope(
+            world_id="world:demo",
+            session_id="session:demo",
+            story_branch_id="branch:main",
+            graph_namespace="actor_private",
+        )
+
+
+def test_heavenly_scope_forbids_owner() -> None:
+    with pytest.raises(ValidationError, match="owner_actor_id"):
+        HeavenlyGraphScope(
+            world_id="world:demo",
+            session_id="session:demo",
+            story_branch_id="branch:main",
+            graph_namespace="siming_heavenly",
+            owner_actor_id="char_b",
+        )
+
+
 def test_first_revision_rejects_supersedes_revision() -> None:
     with pytest.raises(ValidationError, match="revision 1 cannot supersede"):
         make_node(revision=1, supersedes_revision=1)

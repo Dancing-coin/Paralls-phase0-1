@@ -10,6 +10,8 @@ from app.models.siming_heavenly_graph import (
     HeavenlyGraphWriteResult,
     HeavenlyNodeQuery,
     HeavenlyRelationQuery,
+    HeavenlySubgraphDirection,
+    HeavenlySubgraphResult,
 )
 
 
@@ -74,6 +76,21 @@ class HeavenlyGraphPort(Protocol):
         self,
         query: HeavenlyRelationQuery,
     ) -> list[HeavenlyGraphRelation]:
+        raise NotImplementedError
+
+    def query_subgraph(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        seed_node_ids: list[str],
+        relation_types: list[str],
+        direction: HeavenlySubgraphDirection,
+        max_depth: int,
+        valid_at: int,
+        recorded_at: int | None,
+        node_limit: int,
+        relation_limit: int,
+    ) -> HeavenlySubgraphResult:
         raise NotImplementedError
 
     def create_checkpoint(
