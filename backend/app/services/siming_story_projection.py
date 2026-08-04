@@ -1,6 +1,4 @@
-from typing import Any
-
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 from app.models.siming_heavenly_memory import SimingCompiledContext
 from app.models.siming_runtime_state import (
@@ -18,7 +16,7 @@ class SimingGraphProjectionBundle(BaseModel):
     state_tree: StateTreeSnapshot
     storyline: StorylineStateSnapshot
     read_model: NarrativeReadModel
-    debug_summary: dict[str, Any] = Field(default_factory=dict)
+    debug_summary: dict[str, JsonValue] = Field(default_factory=dict)
 
 
 class SimingStoryProjection:
