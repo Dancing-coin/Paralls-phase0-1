@@ -34,6 +34,7 @@ def test_projection_is_disposable_read_only_graph_basis_with_runtime_authorities
     assert set(bundle.model_fields_set) == {"state_tree", "storyline", "read_model", "debug_summary"}
     assert bundle.state_tree.environment.authority == "mirror"
     assert bundle.state_tree.character.authority == "mirror"
+    assert bundle.state_tree.storyline.owner_system == "siming"
     assert bundle.state_tree.storyline.authority == "editable"
     assert bundle.read_model.derived_from_snapshot_ref == "a" * 64
     assert bundle.state_tree.snapshot_id == f"state-tree:{'a' * 64}"

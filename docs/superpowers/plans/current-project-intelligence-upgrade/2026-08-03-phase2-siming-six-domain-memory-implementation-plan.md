@@ -281,7 +281,8 @@ def test_compiler_rebuilds_identical_context_without_cached_summary(graph, seede
 def test_projection_contains_graph_basis_and_cannot_write_memory(compiled_context) -> None:
     projection = SimingStoryProjection().project(compiled_context)
     assert projection.read_model.derived_from_snapshot_ref == compiled_context.context_hash
-    assert projection.state_tree.storyline.authority == "siming"
+    assert projection.state_tree.storyline.owner_system == "siming"
+    assert projection.state_tree.storyline.authority == "editable"
     assert not hasattr(SimingStoryProjection(), "write_entry")
 ```
 
@@ -313,7 +314,7 @@ class SimingContextCompiler:
 
 - [ ] **Step 5: Implement typed compatibility projection**
 
-`SimingGraphProjectionBundle` contains `StateTreeSnapshot`, `StorylineStateSnapshot`, `NarrativeReadModel`, and `debug_summary`. Build all IDs from `context_hash`; mark environment/character branches `authority="mirror"`, storyline `authority="siming"`, and include graph refs in `derived_from_snapshot_ref`. Do not call the graph write service.
+`SimingGraphProjectionBundle` contains `StateTreeSnapshot`, `StorylineStateSnapshot`, `NarrativeReadModel`, and `debug_summary`. Build all IDs from `context_hash`; mark environment/character branches `authority="mirror"`, and mark the storyline `owner_system="siming"` with the existing editable authority vocabulary. Include graph refs in `derived_from_snapshot_ref`. Do not call the graph write service.
 
 ```python
 class SimingGraphProjectionBundle(BaseModel):
