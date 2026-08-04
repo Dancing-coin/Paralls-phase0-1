@@ -136,6 +136,91 @@ def test_deposits_all_five_pools_and_replays_source_event_without_duplicates() -
     )
 
 
+def test_repeated_source_event_reaches_graph_idempotency_replay() -> None:
+    class RecordingGraph(InMemoryHeavenlyGraphAdapter):
+        def __init__(self) -> None:
+            super().__init__()
+            self.write_results = []
+
+        def write_batch(self, batch):
+            result = super().write_batch(batch)
+            self.write_results.append(result)
+            return result
+
+    graph = RecordingGraph()
+    store = CharacterGraphMemoryStore(graph, scope_resolver=_scope)
+    event = _event("character_perceived_event", "evt:replay", 100, {"summary": "once"})
+
+    store.write_event(event)
+    store.write_event(event)
+
+    assert [result.applied for result in graph.write_results] == [True, False]
+    assert [result.replayed for result in graph.write_results] == [False, True]
+
+
+def test_backdated_shared_reference_has_anchor_at_relation_time() -> None:
+    graph = InMemoryHeavenlyGraphAdapter()
+    store = CharacterGraphMemoryStore(graph, scope_resolver=_scope)
+    store.write_event(
+        _event(
+            "social_cognition_event",
+            "evt:later",
+            200,
+            {"entity_id": "char_a"},
+        )
+    )
+
+    store.write_event(
+        _event(
+            "higher_order_belief_event",
+            "evt:earlier",
+            100,
+            {
+                "subject_actor_id": "char_a",
+                "proposition_key": "letter:destroyed",
+                "meta_belief": "char_a knows",
+                "confidence": 0.8,
+            },
+        )
+    )
+
+    assert graph.query_nodes(
+        HeavenlyNodeQuery(
+            scope=_scope("char_b"),
+            valid_at=100,
+            node_types=["actor_memory_anchor:actor"],
+            limit=None,
+        )
+    )
+
+
+def test_fallback_observation_ids_do_not_create_actor_or_object_anchors() -> None:
+    graph = InMemoryHeavenlyGraphAdapter()
+    store = CharacterGraphMemoryStore(graph, scope_resolver=_scope)
+    store.write_event(
+        _event("character_perceived_event", "evt:scene", 100, {"summary": "scene"})
+    )
+    store.write_event(
+        _event(
+            "character_perceived_event",
+            "evt:candidate",
+            101,
+            {
+                "summary": "candidate",
+                "source_candidate_event_id": "candidate:letter:1",
+            },
+        )
+    )
+
+    assert not [
+        node
+        for node in graph.query_nodes(
+            HeavenlyNodeQuery(scope=_scope("char_b"), valid_at=101, limit=None)
+        )
+        if node.node_type.startswith("actor_memory_anchor:")
+    ]
+
+
 def test_recall_honors_matching_branch_and_temporal_bound() -> None:
     store = CharacterGraphMemoryStore(
         InMemoryHeavenlyGraphAdapter(), scope_resolver=_scope

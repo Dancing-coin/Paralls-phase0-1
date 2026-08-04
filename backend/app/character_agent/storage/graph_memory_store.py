@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from copy import deepcopy
 
 from app.character_agent.models.event_memory import CharacterEventMemoryRecord
 from app.character_agent.models.higher_order_memory import (
@@ -55,21 +56,31 @@ class CharacterGraphMemoryStore:
         self._graph = graph
         self._scope_resolver = scope_resolver
         self._normalizer = CharacterAgentMemoryStore()
+        self._source_batches: dict[
+            tuple[str, str, str], tuple[dict[str, object], HeavenlyGraphWriteBatch]
+        ] = {}
 
     def write_event(self, event: dict[str, object]) -> None:
         actor_id = str(event.get("actor_id", "") or "")
         if not actor_id:
             return
         scope = self._scope_for_actor(actor_id)
-        self._normalizer.write_event(event)
         source_event_id = str(event.get("event_id", "") or "")
+        source_key = (scope.model_dump_json(), actor_id, source_event_id)
+        cached = self._source_batches.get(source_key)
+        if cached is not None and cached[0] == event:
+            self._graph.write_batch(cached[1])
+            return
+        self._normalizer.write_event(event)
         if source_event_id:
-            self._deposit_bundle(
+            batch = self._deposit_bundle(
                 actor_id,
                 scope,
                 self._normalizer.retrieval_record_bundle(actor_id),
                 source_event_id,
             )
+            if batch is not None:
+                self._source_batches[source_key] = (deepcopy(event), batch)
 
     def retrieval_record_bundle(
         self,
@@ -159,22 +170,12 @@ class CharacterGraphMemoryStore:
         scope: HeavenlyGraphScope,
         bundle: CharacterMemoryRecordBundle,
         source_event_id: str,
-    ) -> None:
+    ) -> HeavenlyGraphWriteBatch | None:
         nodes: list[HeavenlyGraphNode] = []
         relations: list[HeavenlyGraphRelation] = []
         for pool, field, _ in self.POOLS:
             for record in getattr(bundle, field):
                 if record.source_event_id != source_event_id:
-                    continue
-                prior = self._latest_node(
-                    scope,
-                    f"actor-memory:{pool}:{record.memory_id}",
-                )
-                if (
-                    prior is not None
-                    and prior.provenance.source_ref == source_event_id
-                    and prior.attributes.get("record") == record.model_dump(mode="json")
-                ):
                     continue
                 memory_node = self._memory_node(pool, record, scope)
                 nodes.append(memory_node)
@@ -182,21 +183,37 @@ class CharacterGraphMemoryStore:
                 if anchor is None:
                     continue
                 anchor_node, relation = anchor
-                if self._latest_node(scope, anchor_node.node_id) is None:
+                if (
+                    self._node_at(
+                        scope,
+                        anchor_node.node_id,
+                        valid_at=relation.validity.valid_from,
+                        recorded_at=relation.recorded_at,
+                    )
+                    is None
+                ):
                     nodes.append(anchor_node)
-                if self._latest_relation(scope, relation.relation_id) is None:
+                if (
+                    self._relation_at(
+                        scope,
+                        relation.relation_id,
+                        valid_at=relation.validity.valid_from,
+                        recorded_at=relation.recorded_at,
+                    )
+                    is None
+                ):
                     relations.append(relation)
         if not nodes and not relations:
-            return
-        self._graph.write_batch(
-            HeavenlyGraphWriteBatch(
-                transaction_id=f"character-memory:{actor_id}:{source_event_id}",
-                idempotency_key=f"character-memory:{actor_id}:{source_event_id}",
-                scope=scope,
-                nodes=nodes,
-                relations=relations,
-            )
+            return None
+        batch = HeavenlyGraphWriteBatch(
+            transaction_id=f"character-memory:{actor_id}:{source_event_id}",
+            idempotency_key=f"character-memory:{actor_id}:{source_event_id}",
+            scope=scope,
+            nodes=nodes,
+            relations=relations,
         )
+        self._graph.write_batch(batch)
+        return batch
 
     def _memory_node(
         self,
@@ -231,25 +248,40 @@ class CharacterGraphMemoryStore:
         kind, reference_id = reference
         timestamp = self._record_time(record)
         anchor_id = f"actor-memory-anchor:{kind}:{reference_id}"
+        prior_anchor = self._latest_node(scope, anchor_id)
+        anchor_recorded_at = (
+            max(timestamp, prior_anchor.recorded_at) if prior_anchor else timestamp
+        )
+        relation_id = (
+            f"actor-memory-relation:{pool}:{record.memory_id}:{kind}:{reference_id}"
+        )
+        prior_relation = self._latest_relation(scope, relation_id)
+        relation_recorded_at = max(
+            timestamp,
+            anchor_recorded_at,
+            prior_relation.recorded_at if prior_relation else 0,
+        )
         anchor = HeavenlyGraphNode(
             node_id=anchor_id,
             node_type=f"actor_memory_anchor:{kind}",
             scope=scope,
             validity=GraphValidity(valid_from=timestamp),
-            recorded_at=timestamp,
-            revision=1,
+            recorded_at=anchor_recorded_at,
+            revision=(prior_anchor.revision + 1) if prior_anchor else 1,
+            supersedes_revision=prior_anchor.revision if prior_anchor else None,
             attributes={"reference_id": reference_id},
             provenance=self._provenance(record, actor_id=record.actor_id),
         )
         return anchor, HeavenlyGraphRelation(
-            relation_id=f"actor-memory-relation:{pool}:{record.memory_id}:{kind}:{reference_id}",
+            relation_id=relation_id,
             relation_type=f"actor_memory:references_{kind}",
             source_node_id=f"actor-memory:{pool}:{record.memory_id}",
             target_node_id=anchor_id,
             scope=scope,
             validity=GraphValidity(valid_from=timestamp),
-            recorded_at=timestamp,
-            revision=1,
+            recorded_at=relation_recorded_at,
+            revision=(prior_relation.revision + 1) if prior_relation else 1,
+            supersedes_revision=prior_relation.revision if prior_relation else None,
             provenance=self._provenance(record, actor_id=record.actor_id),
             attributes={},
         )
@@ -263,10 +295,11 @@ class CharacterGraphMemoryStore:
             return "actor", record.subject_actor_id
         else:
             return None
-        return (
-            "actor" if reference_id.startswith(("char_", "actor:")) else "object",
-            reference_id,
-        )
+        if reference_id.startswith(("char_", "actor:")):
+            return "actor", reference_id
+        if reference_id.startswith(("obj_", "object:")):
+            return "object", reference_id
+        return None
 
     def _provenance(self, record: MemoryRecord, *, actor_id: str) -> GraphProvenance:
         source_ref = record.source_event_id or record.memory_id
@@ -297,6 +330,36 @@ class CharacterGraphMemoryStore:
     ) -> HeavenlyGraphRelation | None:
         return self._graph.get_relation(
             relation_id=relation_id, scope=scope, valid_at=self._MAX_TIME
+        )
+
+    def _node_at(
+        self,
+        scope: HeavenlyGraphScope,
+        node_id: str,
+        *,
+        valid_at: int,
+        recorded_at: int,
+    ) -> HeavenlyGraphNode | None:
+        return self._graph.get_node(
+            node_id=node_id,
+            scope=scope,
+            valid_at=valid_at,
+            recorded_at=recorded_at,
+        )
+
+    def _relation_at(
+        self,
+        scope: HeavenlyGraphScope,
+        relation_id: str,
+        *,
+        valid_at: int,
+        recorded_at: int,
+    ) -> HeavenlyGraphRelation | None:
+        return self._graph.get_relation(
+            relation_id=relation_id,
+            scope=scope,
+            valid_at=valid_at,
+            recorded_at=recorded_at,
         )
 
     def _record_time(self, record: MemoryRecord) -> int:
