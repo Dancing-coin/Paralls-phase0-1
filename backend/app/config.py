@@ -49,6 +49,10 @@ class Settings(BaseModel):
     siming_llm_timeout_seconds: float = Field(default=8.0, gt=0)
     siming_llm_provider_order: list[SimingLlmProviderName] = Field(default_factory=lambda: ["openai_responses"])
     siming_llm_routes: list[SimingLlmRouteSettings] = Field(default_factory=list)
+    heavenly_graph_path: str = ".runtime/siming-heavenly.sqlite3"
+    character_graph_memory_heavy_actor_ids: list[str] = Field(
+        default_factory=lambda: ["char_b"]
+    )
     vla_provider_mode: Literal["disabled", "http", "local", "blocked"] = "blocked"
     vla_provider_kind: Literal["openai_compatible"] = "openai_compatible"
     vla_provider_endpoint: str | None = None
@@ -205,6 +209,13 @@ settings = Settings(
         [] if _env_value("SIMING_LLM_ROUTES_JSON") else ["openai_responses"],
     ),
     siming_llm_routes=_env_siming_llm_routes(),
+    heavenly_graph_path=(
+        _env_value("PARALLS_HEAVENLY_GRAPH_PATH", ".runtime/siming-heavenly.sqlite3")
+        or ".runtime/siming-heavenly.sqlite3"
+    ),
+    character_graph_memory_heavy_actor_ids=_env_list(
+        "CHARACTER_GRAPH_MEMORY_HEAVY_ACTORS", ["char_b"]
+    ),
     vla_provider_mode=_env_value("VLA_PROVIDER_MODE", "blocked") or "blocked",
     vla_provider_kind=_env_value("VLA_PROVIDER_KIND", "openai_compatible") or "openai_compatible",
     vla_provider_endpoint=_env_value("VLA_PROVIDER_ENDPOINT"),

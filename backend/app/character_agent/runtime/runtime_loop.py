@@ -49,7 +49,7 @@ from app.character_agent.planning.l3_planner import CharacterAgentL3Service
 from app.character_agent.execution.l4_adapter import CharacterAgentL4Adapter
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
 from app.character_agent.storage.session_store import CharacterAgentSessionStore
-from app.character_agent.storage.memory_store import CharacterAgentMemoryStore
+from app.character_agent.storage.memory_store import CharacterAgentMemoryStore, CharacterMemoryStorePort
 from app.character_agent.storage.dynamic_state_store import CharacterDynamicStateStore
 from app.character_agent.storage.goal_state_store import CharacterGoalStateStore
 from app.character_agent.storage.need_tension_store import CharacterNeedTensionStore
@@ -77,6 +77,7 @@ class CharacterAgentRuntime:
         storage_root: str | Path | None = None,
         *,
         skill_service: CharacterSkillService | None = None,
+        memory_store: CharacterMemoryStorePort | None = None,
     ) -> None:
         self._profile_registry = CharacterProfileRegistry.from_directory(self._PROFILE_DIRECTORY)
         self._supported_actor_ids = set(self._profile_registry.actor_ids())
@@ -122,7 +123,7 @@ class CharacterAgentRuntime:
         self._last_emitted_scheduling_round_id = 0
         self._last_skill_affordance_summaries: dict[str, dict[str, object]] = {}
         self._session_store = CharacterAgentSessionStore(storage_root=storage_root)
-        self._memory_store = CharacterAgentMemoryStore()
+        self._memory_store = memory_store or CharacterAgentMemoryStore()
         self._dynamic_state_store = CharacterDynamicStateStore()
         self._need_tension_store = CharacterNeedTensionStore()
         self._goal_state_store = CharacterGoalStateStore()
@@ -1028,8 +1029,18 @@ class CharacterAgentRuntime:
     def get_memory_bundle(self, actor_id: str) -> dict[str, list[dict[str, object]]]:
         return self._memory_store.retrieval_bundle(actor_id)
 
-    def get_memory_record_bundle(self, actor_id: str) -> CharacterMemoryRecordBundle:
-        return self._memory_store.retrieval_record_bundle(actor_id)
+    def get_memory_record_bundle(
+        self,
+        actor_id: str,
+        *,
+        story_branch_id: str | None = None,
+        valid_at: int | None = None,
+    ) -> CharacterMemoryRecordBundle:
+        return self._memory_store.retrieval_record_bundle(
+            actor_id,
+            story_branch_id=story_branch_id,
+            valid_at=valid_at,
+        )
 
     def get_working_memory_state(self, actor_id: str, private_snapshot: dict[str, object] | None = None) -> dict[str, object]:
         return self.get_working_memory_state_record(
