@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Annotated, Any, Literal
 
 from pydantic import (
@@ -13,6 +14,9 @@ from pydantic import (
 )
 
 from app.models.siming_heavenly_graph import HeavenlyGraphScope
+
+
+_NORMALIZED_PUBLIC_REF = re.compile(r"^[a-z][a-z0-9_]*(?::[A-Za-z0-9_.-]+)+$")
 
 
 class StrictMemoryModel(BaseModel):
@@ -29,8 +33,8 @@ class StrictMemoryModel(BaseModel):
             return value
 
         for ref in value:
-            if ref != ref.strip() or ref.lower().startswith(
-                ("actor_private:", "data:", "file:")
+            if not _NORMALIZED_PUBLIC_REF.fullmatch(ref) or ref.startswith(
+                "actor_private:"
             ):
                 raise ValueError("references must be normalized public reference IDs")
         return value

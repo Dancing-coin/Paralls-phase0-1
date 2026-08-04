@@ -87,6 +87,8 @@ def test_union_discriminates_all_six_domains(entry: SimingHeavenlyMemoryEntry) -
 @pytest.mark.parametrize(
     "ref",
     [
+        "",
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB",
         "data:image/png;base64,AAAA",
         "file:///private/letter.png",
         "actor_private:char_b:event:secret",
