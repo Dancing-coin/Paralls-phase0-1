@@ -58,6 +58,7 @@ python scripts/verification/harness.py --profile embodied-grab-carry-place-autho
 python scripts/verification/harness.py --profile embodied-interaction-foundation-all
 python scripts/verification/harness.py --profile siming-heavenly-graph-foundation
 python scripts/verification/harness.py --profile siming-six-domain-memory
+python scripts/verification/harness.py --profile siming-actor-memory-read
 python scripts/verification/harness.py --profile all
 ```
 
@@ -494,6 +495,16 @@ read models rather than canonical graph truth.
 
 ```powershell
 python scripts/verification/harness.py --profile siming-six-domain-memory
+```
+
+### `siming-actor-memory-read`
+
+Backend proof that `char_b` persists actor-private graph memory, `char_a`
+remains light-store backed, restart recalls `char_b`, and Siming reads only
+through the revision-vector gateway.
+
+```powershell
+python scripts/verification/harness.py --profile siming-actor-memory-read
 ```
 
 ### `llm-integration-closure`

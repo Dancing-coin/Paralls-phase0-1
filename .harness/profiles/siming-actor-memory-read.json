@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "siming-actor-memory-read",
+  "order": 74,
+  "script": "scripts/verification/verify_siming_actor_memory_read.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/siming-actor-memory-read-report.json",
+  "description": "Backend proof for char_b actor-private five-pool graph memory, restart recall, and Siming read-only isolation"
+}

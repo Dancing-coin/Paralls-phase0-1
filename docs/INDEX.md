@@ -78,6 +78,7 @@
 - `docs/superpowers/plans/current-project-intelligence-upgrade/2026-07-30-advisory-vla-routing-and-tts-convergence-implementation-plan.md`
 - `docs/superpowers/specs/current-project-intelligence-upgrade/2026-08-03-current-project-siming-durable-heavenly-graph-phase2-7-integration-design.md`
 - `docs/superpowers/plans/current-project-intelligence-upgrade/2026-08-03-current-project-siming-durable-heavenly-graph-program-plan.md`
+- `docs/superpowers/plans/current-project-intelligence-upgrade/2026-08-03-phase3-actor-five-pool-graph-memory-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-19-deepseek-character-model-gateway-design.md`
 - `docs/superpowers/plans/2026-06-19-deepseek-character-model-gateway-implementation-plan.md`
 - `docs/superpowers/plans/2026-06-19-character-actor-stage2-closeout-implementation-plan.md`

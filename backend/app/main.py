@@ -61,6 +61,11 @@ from app.services.candidate_percept_service import compile_candidate_percepts
 from app.services.character_service import CharacterService
 from app.services.character_perceived_input_service import CharacterPerceivedInputService
 from app.services.character_agent_runtime import CharacterAgentRuntime
+from app.character_agent.storage.graph_memory_store import CharacterGraphMemoryStore
+from app.character_agent.storage.memory_store import CharacterAgentMemoryStore
+from app.character_agent.storage.memory_store_router import CharacterMemoryStoreRouter
+from app.models.siming_heavenly_graph import HeavenlyGraphScope
+from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
 from app.services.character_runtime_state_service import CharacterRuntimeStateService
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.conversation_relation_service import ConversationRelationService
@@ -131,6 +136,16 @@ _PLAYER_SHELL_ACTOR_IDS = {"char_c"}
 _SPEECH_REQUEST_TYPES = {"speak_public", "speak_private", "share_info", "withhold"}
 
 
+def actor_private_scope(actor_id: str) -> HeavenlyGraphScope:
+    return HeavenlyGraphScope(
+        world_id="world:demo",
+        session_id="session:demo",
+        story_branch_id="branch:main",
+        graph_namespace="actor_private",
+        owner_actor_id=actor_id,
+    )
+
+
 class FrontendSimingCharacterDispatchAdapter(SimingCharacterDispatchAdapter):
     def dispatch(self, event: AuthorityEvent) -> SimingCharacterDispatchResult:
         result = super().dispatch(event)
@@ -183,10 +198,27 @@ def reset_runtime_state() -> None:
     global inventory_definition_registry
     global inventory_authority_service
     global embodied_custody_inventory_authority_service
+    global heavenly_graph
     global _pending_siming_character_dispatch_messages
 
+    previous_graph = globals().get("heavenly_graph")
+    if isinstance(previous_graph, SQLiteHeavenlyGraphAdapter):
+        previous_graph.close()
+    graph_path = Path(settings.heavenly_graph_path)
+    graph_path.parent.mkdir(parents=True, exist_ok=True)
+    heavenly_graph = SQLiteHeavenlyGraphAdapter(graph_path)
+    graph_memory = CharacterGraphMemoryStore(
+        heavenly_graph,
+        scope_resolver=actor_private_scope,
+    )
+    memory_router = CharacterMemoryStoreRouter(
+        light_store=CharacterAgentMemoryStore(),
+        graph_store=graph_memory,
+        heavy_actor_ids=frozenset(settings.character_graph_memory_heavy_actor_ids),
+    )
+
     runtime = SessionInputRouter()
-    character_agent_runtime = CharacterAgentRuntime()
+    character_agent_runtime = CharacterAgentRuntime(memory_store=memory_router)
 
     def dialogue_context_provider(actor_id: str) -> dict[str, object]:
         if not character_agent_runtime.supports_actor(actor_id):
