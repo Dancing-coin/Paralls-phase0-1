@@ -48,12 +48,17 @@ class PreparedHeavenlyDecision(BaseModel):
     eligible_candidates: list["PreparedHeavenlyCandidate"] = Field(default_factory=list)
     validation_audit_refs: list[str] = Field(default_factory=list)
     degraded_reason: str = ""
+    compiled_context: SimingCompiledContext | None = None
 
 
 class PreparedHeavenlyCandidate(BaseModel):
     node_ref: str
     proposal: AdaptiveBridgeNodeProposal
     staging_request: StagingRequest
+
+
+class SimingDuplicateDispatchError(ValueError):
+    """A graph-owned correlation already has a durable dispatch."""
 
 
 @dataclass(frozen=True)
@@ -207,6 +212,7 @@ class SimingHeavenlyRuntimeSupport:
             eligible_node_refs=eligible_node_refs,
             eligible_candidates=eligible_candidates,
             validation_audit_refs=validation_audit_refs,
+            compiled_context=context,
         )
 
     def record_selection(
@@ -267,6 +273,49 @@ class SimingHeavenlyRuntimeSupport:
             authority_result_ref=dispatch_event_id,
         )
         return record_ref
+
+    def has_dispatch(self, event: AuthorityEvent) -> bool:
+        return (
+            self._dispatch_record_for(
+                scope=self._scope_for(event),
+                correlation_id=event.correlation_id,
+                valid_at=event.producer_ts,
+            )
+            is not None
+        )
+
+    def ensure_dispatch_available(self, event: AuthorityEvent) -> bool:
+        if not self._is_selected_candidate(event):
+            return False
+        if self.has_dispatch(event):
+            raise SimingDuplicateDispatchError(
+                "a heavenly dispatch is already recorded for this correlation"
+            )
+        return True
+
+    def record_dispatch_for_event(
+        self, event: AuthorityEvent, dispatch_event_id: str
+    ) -> str | None:
+        if not self._is_selected_candidate(event):
+            return None
+        prior_dispatch = self._dispatch_record_for(
+            scope=self._scope_for(event),
+            correlation_id=event.correlation_id,
+            valid_at=event.producer_ts,
+        )
+        if prior_dispatch is not None:
+            if prior_dispatch.authority_result_ref != dispatch_event_id:
+                raise SimingDuplicateDispatchError(
+                    "a heavenly dispatch is already recorded for this correlation"
+                )
+            return prior_dispatch.entry_id
+        return self._record(
+            scope=self._scope_for(event),
+            recorded_at=event.producer_ts,
+            correlation_id=event.correlation_id,
+            stage="dispatch",
+            authority_result_ref=dispatch_event_id,
+        )
 
     def record_authority_outcome(self, event: AuthorityEvent) -> str | None:
         if self.mode == "off":
@@ -448,6 +497,37 @@ class SimingHeavenlyRuntimeSupport:
                 "multiple durable heavenly records exist for one correlation stage"
             )
         return records[0] if records else None
+
+    def _dispatch_record_for(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        correlation_id: str,
+        valid_at: int,
+    ) -> InterventionOutcomeMemoryEntry | None:
+        records = [
+            entry
+            for entry in self._memory.list_domain(
+                scope, "intervention_outcome", valid_at=valid_at
+            )
+            if isinstance(entry, InterventionOutcomeMemoryEntry)
+            and entry.correlation_id == correlation_id
+            and entry.stage == "dispatch"
+        ]
+        if len(records) > 1:
+            raise SimingDuplicateDispatchError(
+                "multiple durable heavenly dispatches exist for one correlation"
+            )
+        return records[0] if records else None
+
+    def _is_selected_candidate(self, event: AuthorityEvent) -> bool:
+        candidate = self.find_candidate(event)
+        return candidate is not None and self._has_selection(
+            scope=self._scope_for(event),
+            correlation_id=event.correlation_id,
+            valid_at=event.producer_ts,
+            node_id=candidate.node_ref,
+        )
 
     def _require_active_owned(self, prepared: PreparedHeavenlyDecision) -> None:
         if self.mode != "active" or not prepared.owns_event_family:

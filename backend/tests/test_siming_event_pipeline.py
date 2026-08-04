@@ -262,6 +262,70 @@ def test_pipeline_dispatches_new_character_input_outputs_through_adapter() -> No
     assert any(entry["event_type"] == "siming_output_event" for entry in timeline)
 
 
+class _GraphDispatchRuntime:
+    def __init__(self) -> None:
+        self.journal: list[str] = []
+
+    def record_authority_outcome(self, event: AuthorityEvent) -> None:
+        self.journal.append(f"authority:{event.event_id}")
+
+    def tick(self, inputs: list[object]) -> SimingTickResult:
+        self.journal.append("tick")
+        return SimingTickResult(
+            outputs=[
+                SimingOutput(
+                    output_type="dispatch_intent",
+                    room_id="room_demo",
+                    scene_id="scene_demo",
+                    zone_id="zone_focus",
+                    causation_id="visual_fact:300:char_c:light_level_drop",
+                    correlation_id="visual_fact:300",
+                    producer_ts=304,
+                    selected_path="character_input_path",
+                    intervention_band="fact_reveal",
+                    payload={"target_actor_id": "char_b"},
+                )
+            ]
+        )
+
+    def ensure_dispatches_unpublished(
+        self, event: AuthorityEvent, outputs: list[SimingOutput]
+    ) -> None:
+        assert [output.output_type for output in outputs] == ["dispatch_intent"]
+        self.journal.append(f"preflight:{event.correlation_id}")
+
+    def record_published_dispatches(
+        self, event: AuthorityEvent, dispatch_events: list[AuthorityEvent]
+    ) -> None:
+        assert event.correlation_id == "visual_fact:300"
+        self.journal.extend(
+            f"dispatch:{dispatch_event.event_id}" for dispatch_event in dispatch_events
+        )
+
+
+def test_pipeline_records_authority_before_tick_and_actual_dispatch_after_publish() -> None:
+    bus = InMemoryAuthorityEventBus()
+    audit_writer = SimingAuditWriter()
+    runtime = _GraphDispatchRuntime()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=runtime,  # type: ignore[arg-type]
+        producer=SimingEventProducer(bus),
+        audit_writer=audit_writer,
+    )
+    bus.subscribe("visual_fact_event", pipeline.handle_event)
+
+    bus.publish(make_visual_fact_event())
+
+    assert runtime.journal == [
+        "authority:visual_fact:300:char_c:light_level_drop",
+        "tick",
+        "preflight:visual_fact:300",
+        "dispatch:siming:dispatch_intent:304:visual_fact:300:char_c:light_level_drop",
+    ]
+
+
 def test_pipeline_does_not_dispatch_visual_observability_outputs_through_adapter() -> None:
     bus = InMemoryAuthorityEventBus()
     audit_writer = SimingAuditWriter()

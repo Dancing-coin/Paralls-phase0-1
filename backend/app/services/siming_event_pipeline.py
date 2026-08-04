@@ -30,6 +30,11 @@ class SimingEventPipeline:
         self._character_dispatch_adapter = character_dispatch_adapter
 
     def handle_event(self, event: AuthorityEvent) -> None:
+        record_authority_outcome = getattr(
+            self._runtime, "record_authority_outcome", None
+        )
+        if record_authority_outcome is not None:
+            record_authority_outcome(event)
         inputs = self._consumer.handle_event(event)
         if not inputs:
             return
@@ -40,7 +45,22 @@ class SimingEventPipeline:
             self._audit_writer.record_checkpoint(checkpoint)
         if result.read_model is not None:
             self._audit_writer.record_read_model(result.read_model)
+        ensure_dispatches_unpublished = getattr(
+            self._runtime, "ensure_dispatches_unpublished", None
+        )
+        if ensure_dispatches_unpublished is not None:
+            ensure_dispatches_unpublished(event, result.outputs)
         published_events = self._producer.publish_outputs(result.outputs)
+        published_dispatches = [
+            published_event
+            for output, published_event in zip(result.outputs, published_events)
+            if output.output_type == "dispatch_intent"
+        ]
+        record_published_dispatches = getattr(
+            self._runtime, "record_published_dispatches", None
+        )
+        if record_published_dispatches is not None:
+            record_published_dispatches(event, published_dispatches)
         if self._character_dispatch_adapter is None:
             return
         for published_event in published_events:

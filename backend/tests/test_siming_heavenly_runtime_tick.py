@@ -1,12 +1,17 @@
+import pytest
+
 from app.models.authority_event import (
     AuthorityEvent,
     AuthorityEventRouting,
     AuthorityEventSource,
 )
-from app.models.siming_event import SimingOutput
-from app.models.siming_event import SimingInput
+from app.models.siming_event import SimingInput, SimingOutput
 from app.models.siming_adaptive_bridge import AdaptiveBridgeNodeProposal
 from app.models.siming_heavenly_graph import HeavenlyGraphScope
+from app.models.siming_heavenly_memory import (
+    SimingCompiledContext,
+    SimingContextRequest,
+)
 from app.models.siming_resource_capability import (
     ResourceCapabilityPackage,
     ResourceMatch,
@@ -41,6 +46,18 @@ def _event(event_type: str, *, payload: dict[str, object]) -> AuthorityEvent:
         causation_id="cause:1",
         correlation_id="corr:destroy:1",
         payload=payload,
+    )
+
+
+def _compiled_context(scope: HeavenlyGraphScope) -> SimingCompiledContext:
+    return SimingCompiledContext(
+        request=SimingContextRequest(
+            scope=scope,
+            valid_at=100,
+            seed_node_ids=["event:world_fact_event"],
+        ),
+        truncated=False,
+        context_hash="context:destroy:1",
     )
 
 
@@ -147,6 +164,7 @@ class _ActiveHeavenlySupport:
                     staging_request=self.request,
                 )
             ],
+            compiled_context=_compiled_context(self.request.scope),
         )
         self.selected = []
 
@@ -180,6 +198,11 @@ def test_active_graph_owned_event_stages_before_dispatch() -> None:
     assert [output.output_type for output in result.outputs].count(
         "dispatch_intent"
     ) == 0
+    assert result.read_model is not None
+    assert result.read_model.producer_system == "siming.graph_projection"
+    assert {
+        checkpoint.state_tree_snapshot_ref for checkpoint in result.checkpoints
+    } == {"state-tree:context:destroy:1"}
 
 
 class _StagingHeavenlySupport(_ActiveHeavenlySupport):
@@ -206,6 +229,10 @@ class _StagingHeavenlySupport(_ActiveHeavenlySupport):
     def find_candidate(self, event: AuthorityEvent) -> PreparedHeavenlyCandidate:
         return self.prepared.eligible_candidates[0]
 
+    def has_dispatch(self, event: AuthorityEvent) -> bool:
+        del event
+        return False
+
 
 def test_all_staging_acks_release_one_dispatch_intent() -> None:
     support = _StagingHeavenlySupport()
@@ -227,6 +254,80 @@ def test_all_staging_acks_release_one_dispatch_intent() -> None:
     result = SimingRuntime(heavenly_support=support).tick(inputs)
 
     assert support.acks == ["godot", "character", "esm"]
+    dispatches = [
+        output for output in result.outputs if output.output_type == "dispatch_intent"
+    ]
+    assert len(dispatches) == 1
+    assert dispatches[0].payload["siming_graph_owned"] is True
+
+
+class _AlreadyDispatchedHeavenlySupport(_StagingHeavenlySupport):
+    def has_dispatch(self, event: AuthorityEvent) -> bool:
+        del event
+        return True
+
+    def complete_staging(self, event: AuthorityEvent) -> StagingResult:
+        return StagingResult(
+            node_id=self.request.node_id,
+            correlation_id=event.correlation_id,
+            status="staged",
+            story_node_lifecycle="staged",
+            obligation_status="open",
+            realization_signature=self.request.resource_match.realization_signature,
+        )
+
+
+class _UnsentHeavenlySupport(_AlreadyDispatchedHeavenlySupport):
+    def has_dispatch(self, event: AuthorityEvent) -> bool:
+        del event
+        return False
+
+
+def test_staging_ack_never_redispatches_a_durable_dispatch() -> None:
+    support = _AlreadyDispatchedHeavenlySupport()
+    event = _event(
+        "siming_staging_ack",
+        payload={
+            "source": "esm",
+            "correlation_id": "corr:destroy:1",
+            "accepted": True,
+        },
+    )
+
+    result = SimingRuntime(heavenly_support=support).tick(
+        [SimingInput(input_type="siming_staging_ack", source_event=event)]
+    )
+
     assert [output.output_type for output in result.outputs].count(
         "dispatch_intent"
-    ) == 1
+    ) == 0
+
+
+@pytest.mark.parametrize(
+    ("state", "support_type", "expected_dispatches"),
+    [
+        ("unsent", _UnsentHeavenlySupport, 1),
+        ("sent_unconfirmed", _AlreadyDispatchedHeavenlySupport, 0),
+        ("authority_confirmed", _AlreadyDispatchedHeavenlySupport, 0),
+    ],
+)
+def test_recovery_dispatches_only_an_unsent_correlation(
+    state: str, support_type: type[_StagingHeavenlySupport], expected_dispatches: int
+) -> None:
+    event = _event(
+        "siming_staging_ack",
+        payload={
+            "source": "esm",
+            "correlation_id": "corr:destroy:1",
+            "accepted": True,
+        },
+    )
+
+    result = SimingRuntime(heavenly_support=support_type()).tick(
+        [SimingInput(input_type="siming_staging_ack", source_event=event)]
+    )
+
+    assert state in {"unsent", "sent_unconfirmed", "authority_confirmed"}
+    assert [output.output_type for output in result.outputs].count(
+        "dispatch_intent"
+    ) == expected_dispatches

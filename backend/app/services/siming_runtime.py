@@ -53,6 +53,7 @@ from app.services.siming_debug_projection import SimingDebugProjection
 from app.world_runtime.intelligence_upgrade import CanonicalPerceptBundle
 from app.services.siming_heavenly_runtime_support import SimingHeavenlyRuntimeSupport
 from app.models.siming_resource_capability import StagingRequest
+from app.services.siming_story_projection import SimingStoryProjection
 
 
 class SimingRuntime:
@@ -104,6 +105,7 @@ class SimingRuntime:
         self._group_bridge = group_bridge or StubGroupSimulationBridge()
         self._read_model_builder = read_model_builder or SimingReadModelBuilder()
         self._heavenly_support = heavenly_support
+        self._heavenly_story_projection = SimingStoryProjection()
         self._observatory_projection = SimingDebugProjection()
         self._pending_observatory_messages: list[dict[str, object]] = []
 
@@ -169,6 +171,7 @@ class SimingRuntime:
                 and prepared.mode == "active"
                 and prepared.owns_event_family
             ):
+                self._project_graph_owned_context(event, prepared, result)
                 outputs, audits = self._process_graph_owned_event(event, prepared)
                 result.outputs.extend(outputs)
                 result.audit_records.extend(audits)
@@ -567,6 +570,58 @@ class SimingRuntime:
             )
         return result
 
+    def record_authority_outcome(self, event: AuthorityEvent) -> None:
+        if self._heavenly_support is not None:
+            self._heavenly_support.record_authority_outcome(event)
+
+    def ensure_dispatches_unpublished(
+        self, event: AuthorityEvent, outputs: list[SimingOutput]
+    ) -> None:
+        if self._heavenly_support is None:
+            return
+        for output in outputs:
+            if (
+                output.output_type == "dispatch_intent"
+                and output.payload.get("siming_graph_owned") is True
+            ):
+                self._heavenly_support.ensure_dispatch_available(event)
+
+    def record_published_dispatches(
+        self, event: AuthorityEvent, dispatch_events: list[AuthorityEvent]
+    ) -> None:
+        if self._heavenly_support is None:
+            return
+        for dispatch_event in dispatch_events:
+            if dispatch_event.payload.get("siming_graph_owned") is True:
+                self._heavenly_support.record_dispatch_for_event(
+                    event, dispatch_event.event_id
+                )
+
+    def _project_graph_owned_context(self, event, prepared, result) -> None:
+        context = prepared.compiled_context
+        if context is None:
+            return
+        projection = self._heavenly_story_projection.project(context)
+        fairness = FairnessStateSnapshot(
+            snapshot_id=f"graph-projection:{event.correlation_id}",
+            room_id=event.room_id,
+            scene_id=event.scene_id,
+            zone_id=event.zone_id,
+            causation_id=event.event_id,
+            correlation_id=event.correlation_id,
+            known_fact_ids=[fact.entry_id for fact in context.world_facts],
+        )
+        result.read_model = projection.read_model
+        result.checkpoints.extend(
+            self._read_model_builder.build_checkpoint(
+                state_tree=projection.state_tree,
+                fairness=fairness,
+                storyline=projection.storyline,
+                checkpoint_type=checkpoint_type,
+            )
+            for checkpoint_type in ("pre_decision", "post_decision")
+        )
+
     def ingest_canonical_percept_bundle(
         self, bundle: CanonicalPerceptBundle
     ) -> SimingTickResult:
@@ -690,6 +745,18 @@ class SimingRuntime:
     ) -> None:
         if self._heavenly_support is None:
             return
+        if self._heavenly_support.has_dispatch(event):
+            result.outputs.append(
+                self._no_action(event, reason="dispatch_already_recorded")
+            )
+            result.audit_records.append(
+                self._audit(
+                    event,
+                    status="duplicate_suppressed",
+                    reason="dispatch_already_recorded",
+                )
+            )
+            return
         request = self._heavenly_support.record_staging_ack(event)
         staging_result = self._heavenly_support.complete_staging(event)
         if request is None or staging_result is None:
@@ -746,6 +813,10 @@ class SimingRuntime:
                 )
             )
             return
+        dispatch = self._dispatch_output(
+            event, candidate, feasibility_result.selected_path
+        )
+        dispatch.payload["siming_graph_owned"] = True
         result.outputs.extend(
             [
                 self._candidate_output(event, candidate),
@@ -756,9 +827,7 @@ class SimingRuntime:
                     ["staging_complete"],
                     feasibility_result.reasons,
                 ),
-                self._dispatch_output(
-                    event, candidate, feasibility_result.selected_path
-                ),
+                dispatch,
             ]
         )
         result.audit_records.append(
