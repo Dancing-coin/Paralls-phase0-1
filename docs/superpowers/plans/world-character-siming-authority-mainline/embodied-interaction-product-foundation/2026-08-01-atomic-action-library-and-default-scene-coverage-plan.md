@@ -1,8 +1,33 @@
 # Atomic Action Library And Default Scene Coverage Plan
 
-Status: `partially-implemented; waves-1-to-3-planned`
+Status: `partially-implemented; Wave 1 semantic coverage and restricted Wave 2 retrieve are evidenced, while physical-door success and generic Wave 2/Wave 3 coverage remain open`
 
 Date: `2026-08-01`
+
+## Execution Checkpoint (2026-08-04)
+
+`gameplay-foundation-all` is freshly green: all 15 dependency profiles,
+including `gameplay-patch-runtime`, `godot-gameplay-mirror`, and the five
+`adventure-basic` authority/replay/mirror/MainDemo scenarios, passed with the
+aggregate report at `.harness/verification/gameplay-foundation-all-report.json`.
+This validates the implemented Gameplay Foundation slice; it does not turn
+each child profile's explicit non-goals into general gameplay closure.
+
+Wave 1's semantic fixtures and the restricted `obj_archive_storage_chest`
+retrieve reference are therefore usable regression foundations. The separate
+`obj_archive_door` physical slice has live evidence for all three required
+failure paths, but its applied-success row remains correctly fail-closed: the
+reviewed contact anchor is outside the shipped rig's measured reach. Its
+authoritative status and required human anchor/revision review are recorded in
+`2026-08-04-obj-archive-door-physical-embodiment-vertical-slice-plan.md`.
+
+Further executable work may continue only where reviewed records already
+exist: generic container, shelf, light, and room-control families still need
+their own reviewed binding plus owning authority policy; Wave 3 still needs a
+reviewed social anchor and `InteractionSession` slot/reservation/privacy
+contract. Do not invent either family from scene nodes. Those external review
+inputs, rather than more local presentation code, are the current gates for
+their acceptance claims.
 
 ## Scope And Preconditions
 
@@ -77,10 +102,15 @@ binding, and Godot runtime probe evidence. They are semantic fixtures, not
 `obj_archive_door` now has a stateful authority-gated `open_close` route:
 the ESM state is scoped by room/scene/zone/object, commits only after its
 object result is published, emits `door: closed -> open -> closed`, and rejects
-a mismatched state. Occupancy occlusion, navigation blocking, and physical
-animation remain planned. Imported scene meshes and all other Wave 1 families
-remain unreviewed; their node names alone are insufficient to begin a family
-claim. `obj_worktable` now provides the reviewed table-family reference slice:
+a mismatched state. Its separate physical embodiment vertical slice is now
+wired through local movement, registered atoms, measured reach, authority
+settlement, and applied-only presentation; the success path remains blocked by
+the reviewed unreachable contact anchor, while distance, revision, and stance
+failure evidence is green. Dynamic navigation blocking and all other physical
+door features remain outside that slice. Imported scene meshes and all other
+Wave 1 families remain unreviewed; their node names alone are insufficient to
+begin a family claim. `obj_worktable` now provides the reviewed table-family
+reference slice:
 an ESM-scoped `work_surface: ready -> engaged -> ready` transition with
 authority-only local presentation and a state mismatch constraint. It does not
 claim a chair pose, shared reservation, ownership, storage, or table animation.

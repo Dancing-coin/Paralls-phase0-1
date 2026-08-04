@@ -1,8 +1,26 @@
 # Advisory VLA Routing And TTS Convergence Implementation Plan
 
 - Date: `2026-07-30`
-- Status: `production-fast-only; godot-runtime-capture-fast-proof-verified; advisory-deep-parked-non-blocking`
+- Status: `production-fast-only; godot-runtime-capture-fast-proof-verified; advisory-deep-parked-non-blocking; semantic-quality promotion awaits human annotation review`
 - Design: `2026-07-30-advisory-vla-routing-and-tts-convergence-design.md`
+
+## Execution Checkpoint (2026-08-04)
+
+`python scripts/verification/verify_vla_replay_annotations.py` now validates
+the official two-scene bootstrap manifest structurally, but reports
+`status=bootstrap_valid_not_coverage_ready`: it has `sample_count=2` against
+the required 20. It therefore forbids any semantic-accuracy or route-quality
+claim. The canonical result is
+`.harness/verification/vla-advisory-replay-annotation-report.json`.
+
+Twenty distinct MainDemo/ThroneHall candidate captures exist at
+`.harness/verification/vla-replay-candidate-captures.json`, but every one is
+`pending_human_review`. They cannot be auto-promoted because visible scene
+truth and the scoring policy must be reviewed without giving model credit for
+PQF, structured facts, or the grounding catalog. The fast provider route
+remains operationally proven; quality promotion, deep re-admission, and any
+semantic superiority claim remain blocked on that human review rather than
+additional routing code.
 
 ## Scope And Truth Relationship
 

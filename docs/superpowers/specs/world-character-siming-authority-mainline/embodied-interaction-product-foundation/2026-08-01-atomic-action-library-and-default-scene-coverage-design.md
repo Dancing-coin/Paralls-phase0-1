@@ -246,13 +246,15 @@ client-selected item/container/receiver route, a generic storage system,
 inventory UI, hand animation, ownership transfer, or a proof of a scene-visible
 chest open/close state.
 
-The inverse `retrieve_to_custody` foundation is now backend-verified but has
-no default-scene route. A policy/settlement layer must supply its actor
-container, item identity, and registered empty receiver; it atomically writes
-custody, inventory transfer-out, receiver occupancy, and retrieve evidence.
-It preserves the item instance and removes only its actor-inventory location.
-It does not license a client-selected retrieve target, a scene container,
-generic world placement, Godot inventory delivery, or an ownership write.
+The inverse `retrieve_to_custody` foundation now has one reviewed
+default-scene route through `obj_archive_storage_chest`. Its policy resolves
+the actor container, fixed item identity, and registered empty receiver; it
+atomically writes custody, inventory transfer-out, receiver occupancy, and
+retrieve evidence. It preserves the item instance and removes only its
+actor-inventory location. The Godot-facing result is an accepted-only carried
+marker. It does not license a client-selected retrieve target, a generic scene
+container, generic world placement, Godot inventory delivery, or an ownership
+write.
 
 Before a broader default-scene container/retrieve family is implemented, its
 authority route must provide reviewed container affordances, source access and

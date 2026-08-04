@@ -1,6 +1,6 @@
 # Stateful Patch Data Migration Plan
 
-Status: `first-typed-resource-slice-implemented; broader-migration-planned`
+Status: `first-typed-resource-slice-implemented-and-mirror-projected; broader-migration-planned`
 
 ## Purpose
 
@@ -34,6 +34,13 @@ maximum-reduction policy only: reservations reject, loss is explicit in an
 append-only resource event, and the domain event/state-group version transition
 /Patch cutover commit together. It intentionally supports only upgrade; its
 loss policy means rollback is typed-rejected before write.
+
+The same committed resource-migration batch carries an explicit
+`godot_mirror` refresh hint. A no-outbox transaction is observed only after
+commit by the existing dispatcher; an explicit backend mirror source rebuilds
+the typed resource projection and the presentation consumer receives only its
+filtered snapshot. Migration descriptors, authority payloads, and direct
+world-state writes never cross into Godot.
 
 ## Non-Negotiable Constraints
 
@@ -100,6 +107,12 @@ proved by focused harness evidence:
   diagnostic; and
 - Godot receives only a post-commit presentation projection, never migration
   instructions or authority payloads.
+
+For the first resource slice, the focused `gameplay-patch-runtime` profile
+emits separate evidence rows for lifecycle control, migration replay and
+zero-write rejection, post-commit filtered Godot projection, and Rule IR
+capability boundaries. Those rows do not claim the broader deferred migration
+program.
 
 ## Explicitly Deferred
 

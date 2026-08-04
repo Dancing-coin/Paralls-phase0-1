@@ -28,17 +28,19 @@ event. It does not close inventory, ownership, hand attachment, or generic
 pickup/place semantics. The next custody-to-inventory reference is a restricted
 backend `stow_intent`: it resolves item and backpack server-side, atomically
 commits custody/location/evidence, and gives Godot only an accepted authority
-presentation marker. It is not a reviewed container/retrieve family, inventory
-UI, or general stow flow. Its internal inverse `retrieve_to_custody` is
-backend-verified but deliberately has no default-scene transport, scene
-container, or client-selected receiver. Every
-further family still needs stable bindings, an authority policy, and visible
-success/constraint evidence.
+presentation marker. It is not a general inventory UI or stow flow. Its
+reviewed `obj_archive_storage_chest` `retrieve_to_custody` inverse now has
+default-scene transport with server-resolved source container and receiver;
+Godot receives only the accepted authority result. It does not authorize a
+generic container family, client-selected receiver, or broad transport policy.
+Every further family still needs stable bindings, an authority policy, and
+visible success/constraint evidence.
 
 ## Plan Order
 
 1. [Implementation plan](2026-07-29-embodied-interaction-product-foundation-implementation-plan.md)
 2. [Atomic action library and default scene coverage](2026-08-01-atomic-action-library-and-default-scene-coverage-plan.md)
+3. [obj_archive_door physical embodiment vertical slice](2026-08-04-obj-archive-door-physical-embodiment-vertical-slice-plan.md)
 
 The plan's phases are sequential at their contract boundaries. Within a phase,
 backend tests and isolated Godot asset/controller work may be parallelized only

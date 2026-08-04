@@ -1,8 +1,31 @@
 # WebSocket Reconnect, Resync, And Live Gameplay Mirror Delivery Plan
 
-Status: `planned; implementation-not-started`
+Status: `implemented-and-real-Godot-verified for the trusted-local Phase 4 closure; production identity and durable transport remain deferred`
 
 Date: `2026-08-03`
+
+## Execution Update (2026-08-04)
+
+The phased design below is retained as the contract record, but its
+trusted-local implementation is no longer a plan-only surface. The backend
+now issues a configured-profile, opaque one-time enrollment through the narrow
+launcher handoff, and a real `BackendBridge` process proves initial bind and
+scope. The fresh launcher report is
+`.harness/verification/trusted-local-gameplay-mirror-launcher-report.json`.
+
+The current `godot-gameplay-mirror` report proves a running backend plus real
+Godot WebSocket delivery for fresh-enrollment reconnect with narrowed scope,
+snapshot recovery after a gap, bounded backpressure isolation, typed stamina
+prediction confirmation/rejection rollback, and a typed revocation envelope
+before controlled close `4403`. The final projection remains a read-only,
+policy-filtered backend view. No client command, cached scope, receipt, or
+prediction becomes gameplay authority.
+
+All references below to unstarted trusted-local reconnect/resync, local issuer
+handoff, live gap/backpressure proof, or bounded prediction rollback describe
+the historical baseline and are superseded by this checkpoint. Production
+authenticated identity, federation, persistence, durable delivery queues, and
+generic transport remain explicit non-goals.
 
 ## Goal / Objective
 

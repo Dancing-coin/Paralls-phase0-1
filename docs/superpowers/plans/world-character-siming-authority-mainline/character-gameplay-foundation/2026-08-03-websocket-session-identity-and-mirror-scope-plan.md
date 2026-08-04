@@ -1,6 +1,6 @@
 # WebSocket Session Identity And Gameplay Mirror Scope Plan
 
-Status: `execution-active-for-foundation-core`
+Status: `foundation-core implemented and runtime-verified; production identity, durable transport, persistence, and migration remain deferred`
 
 Date: `2026-08-03`
 
@@ -34,11 +34,12 @@ event-spine boundaries.
    - Apply the existing Godot projection filter and reject non-subscribed,
      out-of-scope, unknown, or malformed requests.
 
-4. **Future live delivery**
+4. **Live delivery and recovery**
    - Attach connection-safe transports to after-commit fanout.
    - Add reconnect/resync semantics, backpressure bounds, capability negotiation,
      and real Godot runtime proof.
-   - This phase remains planned until separately verified.
+   - Verify it through a real BackendBridge/Godot process, not a local consumer
+     probe alone.
 
 ## Progress Record
 
@@ -63,15 +64,20 @@ resource/body/status/effective-stat groups from committed Gameplay events and
 applies only configured Godot fields; it cannot derive actor identity or scope
 from Godot fixtures or client payloads. A live `/ws` trusted-local
 bind/subscribe snapshot test verifies the source-to-transport read path.
-End-to-end reconnect behavior and a live WebSocket-to-Godot deployment proof
-remain unstarted.
+The live trusted-local closure is now verified through a real BackendBridge and
+running backend: fresh enrollment/reconnect with narrowed scope, scoped
+snapshot recovery after a sequence gap, bounded-queue/backpressure recovery,
+server-issued stamina prediction confirmation and rejection rollback, and a
+typed revocation envelope before controlled WebSocket `4403` close. These
+flows are server-issued and presentation-only; they do not provide production
+identity, client authority, persistence, migration instructions, or a durable
+transport queue.
 
-The first fail-closed reconnect behavior is now written and editor-parsed on
-the Godot side: disconnect clears the local session scope and confirmed
-projection state. Automatic retry is intentionally absent because the current
-trusted-local credential is one-time; a new server-issued enrollment is
-required. End-to-end reconnect and real Godot mirror runtime proof remain
-unstarted.
+The Godot side clears local session scope and confirmed projection state on
+disconnect. Automatic retry remains intentionally absent because the current
+trusted-local credential is one-time; every reconnect uses a new server-issued
+enrollment. The live runtime proof covers that explicit renewal path rather
+than disguising it as automatic reconnection.
 
 ## Required Evidence
 

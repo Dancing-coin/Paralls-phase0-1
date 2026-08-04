@@ -1,6 +1,23 @@
 # Godot Mirror, Persistence, And Migration Plan
 
-Status: `partially-implemented; live-delivery-planned`
+Status: `Phase 3/4 trusted-local live delivery implemented and verified; durable persistence and broader migration remain planned`
+
+## Execution Update (2026-08-04)
+
+The bounded configured Phase 3 source and policy-filtered Godot projection now
+have real trusted-local WebSocket evidence, not only static/local-consumer
+proof. The current `godot-gameplay-mirror` report covers authorized initial
+bind/subscription, committed after-commit projection, fresh-enrollment
+reconnect with narrowed scope, gap/resync, bounded backpressure recovery,
+stamina prediction confirmation/rejection rollback, controlled close, and
+final filtered-revision convergence. The launcher report separately proves
+the server-issued enrollment reaches a real Godot `BackendBridge` without
+leaking the bootstrap secret.
+
+This advances only the listed trusted-local snapshot/delta/prediction surface.
+Durable storage adapters, persistent executable-upcaster manifests, general
+schema migration, generic inventory/equipment UI consumers, production
+identity, and durable transport queues remain outside this plan.
 
 ## 2026-08-03 Implementation Status
 

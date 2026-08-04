@@ -38,6 +38,7 @@ python scripts/verification/harness.py --profile embodied-bridge-attestation
 python scripts/verification/harness.py --profile embodied-action-controller
 python scripts/verification/harness.py --profile embodied-authority-settlement
 python scripts/verification/harness.py --profile embodied-interaction-replay
+python scripts/verification/harness.py --profile obj-archive-door-physical-embodiment
 python scripts/verification/harness.py --profile gameplay-foundation-contract
 python scripts/verification/harness.py --profile gameplay-event-replay
 python scripts/verification/harness.py --profile gameplay-foundation-event-spine
@@ -52,6 +53,7 @@ python scripts/verification/harness.py --profile gameplay-ownership-authority
 python scripts/verification/harness.py --profile gameplay-economy-authority
 python scripts/verification/harness.py --profile godot-gameplay-mirror
 python scripts/verification/harness.py --profile adventure-basic
+python scripts/verification/harness.py --profile gameplay-foundation-all
 python scripts/verification/harness.py --profile embodied-interaction-session
 python scripts/verification/harness.py --profile embodied-handoff-authority
 python scripts/verification/harness.py --profile embodied-grab-carry-place-authority
@@ -908,6 +910,33 @@ Output:
 - `.harness/verification/embodied-kick-chair-vertical-slice-godot-runtime.json`
 - `.harness/verification/embodied-kick-chair-vertical-slice.png`
 
+### `obj-archive-door-physical-embodiment`
+
+Real MainDemo-wrapper verification for the reviewed `obj_archive_door` physical
+embodiment vertical slice. It starts a localhost backend, obtains a one-time
+trusted-local embodied-controller enrollment, and runs the Godot probe through
+the real WebSocket route. It is distinct from the existing semantic door probe:
+success requires physical PlayerShell approach/align, registered atoms,
+reachable local hand/anchor alignment, settlement-gated door presentation, and
+correlated attempt/grant/settlement/ledger evidence.
+
+The profile runs four scenarios: authoritative open, preflight
+`out_of_range`, stale binding/revision rejection, and `stance_occupied`. Each
+failure must show local recovery and a closed door without a world-result
+write. A scenario is accepted only when its Godot runtime payload, viewport
+screenshot, backend settlement trace, and replay trace agree. It does not
+permit a local animation or an older semantic probe to stand in for authority
+or physical proof.
+
+Output:
+
+- `.harness/verification/obj-archive-door-physical-embodiment-report.json`
+- `.harness/verification/obj-archive-door-physical-embodiment-report.md`
+- `.harness/verification/obj-archive-door-physical-embodiment-runtime.json`
+- `.harness/verification/obj-archive-door-physical-embodiment-backend-settlement-trace.json`
+- `.harness/verification/obj-archive-door-physical-embodiment-replay-trace.json`
+- `.harness/verification/obj-archive-door-physical-embodiment-*.png`
+
 ### `gameplay-foundation-contract`
 
 Backend-only contract proof for the Gameplay Foundation authority event store and atomic event-batch writer.
@@ -1021,13 +1050,18 @@ It does not prove a database-backed registry or handler artifacts, full Rule
 IR, general authority settlement conversion beyond `resource.consume`,
 state-group domain-effect revocation, grant/modifier lifecycle effects,
 data-transform stateful migration beyond the bounded resource clamp,
-cross-version reader/rollback compatibility, privacy views, or Godot delivery.
+cross-version reader/rollback compatibility, privacy views, or a live Godot
+process proof for Patch migration delivery. The bounded resource clamp does
+prove a backend-owned, post-commit filtered Godot mirror projection.
 
 Output:
 
 - `.harness/verification/gameplay-patch-runtime-report.json`
 - `.harness/verification/gameplay-patch-runtime-report.md`
-- `.harness/verification/gameplay-patch-runtime-pytest.log`
+- `.harness/verification/gameplay-patch-runtime-patch-contract-and-lifecycle.log`
+- `.harness/verification/gameplay-patch-runtime-migration-replay-and-zero-write-rejection.log`
+- `.harness/verification/gameplay-patch-runtime-post-commit-godot-projection.log`
+- `.harness/verification/gameplay-patch-runtime-patch-rule-ir-and-capability-boundary.log`
 
 ### `gameplay-state-groups`
 
@@ -1254,11 +1288,13 @@ backend-issued trusted-local session identity, explicit multi-actor read scope,
 transport-neutral subscribe/snapshot/unsubscribe access, a backend-published
 generic projection repository, a backend-configured Phase 3 source rebuilt
 only from committed events, `/ws` trusted-local bind/subscribe snapshot wiring,
-bounded after-commit connection-fanout plumbing, and a local Godot bridge probe
-that routes only granted actors and clears state on disconnect.
+live reconnect with fresh enrollment and narrowed scope, gap/resync, bounded
+queue/backpressure recovery, server-issued stamina prediction
+confirmation/rejection rollback, and a local Godot bridge probe that routes
+only granted actors and clears state on disconnect.
 
-It does not prove a production identity adapter, a live WebSocket-to-Godot
-deployment, reconnect/resync, prediction, persistence, or migration behavior.
+It does not prove a production identity adapter, production command routing,
+persistence, or migration behavior.
 
 Output:
 
@@ -1269,15 +1305,39 @@ Output:
 ### `adventure-basic`
 
 Validates the strict, digest-checked governed `adventure-basic` manifest before
-Patch activation plus the backend-only Scenario 1 fixed-offer purchase/equip
-composition. This is not evidence of Patch activation, replay comparison,
-mirror delivery, Godot result, or the remaining reference scenarios.
+Patch activation plus Scenario 1 fixed-offer purchase/equip, Scenario 2
+body/resource constraints, Scenario 3 equipment-gated storage-ring, Scenario 4
+physical-deed/land-title separation, and Scenario 5 gift/debt/typed-contract
+lifecycle compositions. Each scenario must prove a rebuilt authoritative
+facade with revision/result metadata, online/full/checkpoint-tail canonical
+replay hashes, a filtered backend mirror source, and a server-selected
+canonical commit delivered to a fresh trusted-local Godot mirror. It does not
+prove Patch activation, client authority, generic transport durability,
+production identity, or migration closure.
 
 Output:
 
 - `.harness/verification/adventure-basic-report.json`
 - `.harness/verification/adventure-basic-report.md`
 - `.harness/verification/adventure-basic-pytest.log`
+
+### `gameplay-foundation-all`
+
+Fail-closed aggregate for the Gameplay Foundation dependency chain. It runs
+each child profile in dependency order and accepts a child only when both the
+harness invocation and that child's own overall report are green. The aggregate
+does not elevate a child's documented exclusions into a completion claim.
+
+The aggregate itself does not require a Godot executable so that it can write
+a fresh blocked report. Its `godot-gameplay-mirror` child remains mandatory:
+without a real Godot executable the aggregate fails after recording the child
+failure, rather than skipping the runtime gate.
+
+Output:
+
+- `.harness/verification/gameplay-foundation-all-report.json`
+- `.harness/verification/gameplay-foundation-all-report.md`
+- `.harness/verification/gameplay-foundation-all-<child-profile>.log`
 
 ### `gameplay-status-tags`
 
@@ -1407,16 +1467,19 @@ Output:
 
 ### `all`
 
-Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, `siming-backend-chain`, `character-model-live`, `l1-world-fact-runtime`, `llm-integration-closure`, `phase1-slice`, `mainline-unified-runtime`, `model-provider-readiness`, `godot-sampling-production-grade-providers`, `embodied-skeletal-debug-replay`, `tts-voice-profile-adapter`, `vla-provider-backend`, `actor-scene-knowledge-lifecycle`, `siming-global-situation-layer`, `interaction-orchestration-service`, `esm-physical-channel-world-actuation`, `non-runtime-production-pipeline`, `perception-input-alignment`, `embodied-interaction-contracts`, `embodied-affordance-registry`, `embodied-bridge-attestation`, `embodied-action-controller`, `embodied-authority-settlement`, `embodied-interaction-replay`, `gameplay-foundation-contract`, `gameplay-event-replay`, `gameplay-foundation-event-spine`, `gameplay-state-groups`, `embodied-interaction-session`, `gameplay-resource-body`, `embodied-handoff-authority`, `gameplay-effective-stats`, `embodied-grab-carry-place-authority`, `gameplay-status-tags`, `embodied-interaction-foundation-all`, `gameplay-ability-affordance`, `godot-gameplay-mirror`, `gameplay-inventory`, `gameplay-possession-equipment`, `gameplay-ownership-authority`, `gameplay-economy-authority`, `gameplay-patch-runtime`, and `adventure-basic` in profile order. It stops on the first failed profile.
+Runs `docs`, `boundaries`, `drift`, `backend-contract`, `godot-project`, `character-agent-execution`, `release-gate`, `harness-lifecycle`, `change-lifecycle`, `harness-reference`, `harness-evolution`, `phase0`, `siming-backend-chain`, `character-model-live`, `l1-world-fact-runtime`, `llm-integration-closure`, `phase1-slice`, `mainline-unified-runtime`, `model-provider-readiness`, `godot-sampling-production-grade-providers`, `embodied-skeletal-debug-replay`, `tts-voice-profile-adapter`, `vla-provider-backend`, `actor-scene-knowledge-lifecycle`, `siming-global-situation-layer`, `interaction-orchestration-service`, `esm-physical-channel-world-actuation`, `non-runtime-production-pipeline`, `perception-input-alignment`, `embodied-interaction-contracts`, `embodied-affordance-registry`, `embodied-bridge-attestation`, `embodied-action-controller`, `embodied-authority-settlement`, `embodied-interaction-replay`, `gameplay-foundation-contract`, `gameplay-event-replay`, `gameplay-foundation-event-spine`, `gameplay-state-groups`, `embodied-interaction-session`, `gameplay-resource-body`, `embodied-handoff-authority`, `gameplay-effective-stats`, `embodied-grab-carry-place-authority`, `gameplay-status-tags`, `embodied-interaction-foundation-all`, `gameplay-ability-affordance`, `godot-gameplay-mirror`, `obj-archive-door-physical-embodiment`, `gameplay-inventory`, `gameplay-possession-equipment`, `gameplay-ownership-authority`, `gameplay-economy-authority`, `gameplay-patch-runtime`, `adventure-basic`, and `gameplay-foundation-all` in profile order. It stops on the first failed profile.
 
 `siming-backend-chain` is excluded from `all` because it requires live model-provider credentials.
 `character-model-live` and `llm-integration-closure` are also excluded from `all`; they require fresh live provider artifacts and an explicit closure run ID.
 `gameplay-patch-runtime` follows `gameplay-economy-authority` by profile order
 and verifies the current Patch Rule IR/lifecycle foundation. `adventure-basic`
-follows it and proves its strict digest-valid manifest plus the backend-only
-Scenario 1 purchase/equip composition; it does not make Patch activation,
-cross-runtime proof, or the remaining adventure scenarios part of the
-repository-wide closure.
+follows it and proves its strict digest-valid manifest, all five scenario
+facade/replay/mirror chains, and their fresh Godot delivery; it does not make
+Patch activation, client authority, production identity, generic transport
+durability, persistence, or migration part of the repository-wide closure.
+`gameplay-foundation-all` then re-runs the complete Gameplay Foundation
+dependency chain fail-closed; it does not convert the documented partial Patch
+or transport scopes into broader domain closure.
 
 ### `mainline-unified-runtime`
 

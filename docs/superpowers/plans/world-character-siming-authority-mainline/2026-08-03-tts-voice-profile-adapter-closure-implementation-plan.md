@@ -1,13 +1,31 @@
 # TTS Voice Profile Adapter Presentation Boundary Closure Implementation Plan
 
 - Date: `2026-08-03`
-- Status: `implementation-active; closure-plan`
+- Status: `repository-owned implementation and credential-free static boundary complete; final bindings, operator approval, and live proof remain external gates`
 - Corresponding specs:
   - `docs/superpowers/specs/world-character-siming-authority-mainline/2026-07-31-tts-voice-profile-adapter-design.md`
   - `docs/superpowers/specs/world-character-siming-authority-mainline/2026-07-29-real-tts-provider-presentation-design.md`
 - Prior plan: `docs/superpowers/plans/world-character-siming-authority-mainline/2026-07-31-tts-voice-profile-adapter-implementation-plan.md`
 - Scope: close only the remaining presentation boundary: provider/model/catalog capability declaration, operator-approved final bindings, guarded per-actor live synthesis, real-payload Godot consumption proof, redacted evidence, and fail-closed rollback behavior.
 - Not covered: reimplementing the existing profile resolver, XLSX importer/ranking, source-manifest/enrollment primitives, TTS transport, dialogue generation, sentence queueing, token/audio streaming, lip sync, cognition- or Siming-derived expression, voice-cloning platform work, or a second voice-binding/provider-adapter contract.
+
+## Execution Checkpoint (2026-08-04)
+
+The fresh `tts-voice-profile-adapter` report is green. It proves the
+credential-free profile/capability, catalog import, enrollment, fallback,
+legacy-mode, and tracked-evidence-safety boundaries; its declared scope
+explicitly excludes live synthesis, human audition, production-binding approval,
+and Godot playback. The report is
+`.harness/verification/tts-voice-profile-adapter-report.json`.
+
+This does not close the presentation boundary. Before a guarded live run,
+operators must still provide final `char_a`, `char_b`, and `char_c`
+provider/model/catalog/binding selections, non-secret approval references,
+rights/revocation state where applicable, live-call authorization/credentials,
+and one allowed shared evidence run ID. The historical provider/Godot evidence
+is retained as baseline only and cannot be relabelled as final-binding proof.
+No code or static harness run may fabricate those inputs or bypass
+`--allow-live-call`.
 
 ## 1. Current Baseline
 
@@ -38,9 +56,16 @@
 
 ### Fresh Evidence Still Missing
 
-- No fresh capability declaration presently ties the active adapter/model to the selected catalog revision. The current `TTSProvider` exposes `provider_name` plus the instruction boolean, while the resolver independently compares catalog and configuration.
-- No redacted evidence bundle ties an operator approval reference, the final binding identity, and one guarded live call for every final actor.
-- No Godot proof has been re-run against each final approved binding under the same allowed evidence run ID.
+- The active adapters now declare `TTSProviderCapabilities` and the resolver
+  requires provider/model/catalog-contract compatibility, the configured
+  catalog revision pin, mono PCM WAV output, and an operator approval reference
+  before a profile binding can reach synthesis. The guarded provider and Godot
+  verifiers also require an opaque shared evidence run ID and report only
+  safe binding metadata. This repository-owned capability surface is complete.
+- No redacted evidence bundle ties an operator approval reference, the final
+  binding identity, and one guarded live call for every final actor.
+- No Godot proof has been re-run against each final approved binding under the
+  same allowed evidence run ID.
 
 ### Explicitly Deferred Long-Term Capabilities
 
@@ -303,7 +328,7 @@ At plan creation, the status is deliberately precise:
 
 | Required state | Current status | Closure condition |
 | --- | --- | --- |
-| `implementation complete` | `not complete` | Capability surface, tests, evidence redaction, fallback/revocation behavior, and documentation/harness alignment are implemented and pass. |
+| `implementation complete` | `complete for repository-owned scope` | Capability surface, tests, evidence redaction, fallback/revocation behavior, guarded live-verifier preflight, and documentation/harness alignment are implemented and pass. |
 | `provider live proof complete` | `historical baseline only; not complete for final bindings` | Every approved final actor binding has a successful guarded provider report under the allowed run ID. |
 | `Godot playback proof complete` | `historical baseline only; not complete for final bindings` | Every approved final actor binding has a matching real-payload `AudioStreamWAV` consumption report. |
 | `operator approval pending` | `yes` | Final `char_a`/`char_b`/`char_c` voice IDs, B/C presentation choices, and approval references are recorded. |

@@ -1,8 +1,25 @@
 # Trusted-Local Gameplay Mirror Launcher Enrollment Handoff Plan
 
-Status: `approved-for-implementation`
+Status: `implemented-and-real-Godot-verified; development-only trusted-local handoff`
 
 Date: `2026-08-04`
+
+## Execution Update (2026-08-04)
+
+The configured-profile issuer, loopback/bootstrap guard, opaque one-time
+handoff, and launcher are implemented. A fresh real-Godot proof ran through
+`scripts/verification/verify_trusted_local_gameplay_mirror_launcher.py` and
+wrote `.harness/verification/trusted-local-gameplay-mirror-launcher-report.json`.
+It proves that a backend-issued enrollment reaches `BackendBridge` and binds
+only the server-granted `actor:visible` scope. The child artifact contains no
+credential or launcher bootstrap secret.
+
+The parent live-mirror verifier separately proves that reconnect obtains a
+fresh enrollment and narrowed scope, plus gap/resync, bounded backpressure,
+stamina prediction confirmation/rejection rollback, and typed controlled
+close. This handoff remains deliberately limited to trusted-local development
+launches; production authenticated sessions, federation, and durable
+credentials remain outside this plan.
 
 ## Purpose
 

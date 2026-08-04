@@ -1,6 +1,6 @@
 # Character Gameplay Foundation Plan Tree
 
-Status: `execution-active-for-foundation-core`
+Status: `implemented-and-verified for the scoped Gameplay Foundation closure; broader generic domains remain separately deferred`
 
 Date: `2026-07-29`
 
@@ -38,13 +38,17 @@ outbox, and authority-bus coupling prerequisite for embodied-interaction Phase
 6. Plans 6-11 are prerequisite branches
 for the `adventure-basic` pack and must follow their listed dependency order.
 
-Current execution has completed bounded foundations through the initial
+Current execution has completed the bounded foundation domains through initial
 inventory/encumbrance, equipment placement/activation, fixed-offer purchase,
-zero-consideration gift, credential-link/presentation, and simple-debt
-ownership/economy slices plus registered-terms contract records and bounded
-typed service-completion fulfillment. This is not a complete equipment,
-ownership, economy, or adventure closure; those phases retain their own
-dependency and evidence gates.
+zero-consideration gift, credential-link/presentation, simple-debt
+ownership/economy, registered-terms contracts, and bounded typed
+service-completion fulfillment. The strict `adventure-basic` reference closure
+now composes those into all five scoped scenarios with authoritative success
+and structured failure, atomic events, facade revision/result metadata,
+online/full/checkpoint-tail replay equivalence, filtered mirror output,
+explanation traces, and real-Godot delivery. It is still not a claim of
+generic equipment, ownership, economy, dynamic market, cultivation, or
+relationship-graph completion.
 
 The Patch Rule IR/capability phase has an implemented minimum governed runtime:
 trusted immutable candidate manifests, dependency/schema gates, active-set
@@ -62,11 +66,10 @@ domain-effect revocation, compensation, additional data-transform stateful
 migration, general settlement conversion, durable registry, and delivery work
 remain planned.
 
-`adventure-basic` now has a governed, digest-validated manifest plus a
-Scenario 1 backend composition that reuses the existing fixed-offer and
-equipment authorities. It is not a scenario closure: Patch activation, replay
-comparison, mirror delivery, Godot evidence, and every remaining scenario stay
-planned under its dedicated plan.
+`adventure-basic` has a governed, digest-validated manifest plus five verified
+reference compositions that reuse the existing authorities. Patch activation,
+client authority, generic transport durability, and broader domain expansion
+remain outside its dedicated closure plan.
 
 ## Global Controls
 
