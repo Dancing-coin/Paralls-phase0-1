@@ -476,8 +476,12 @@ when changing governed script-evolution behavior.
 
 ### `siming-heavenly-graph-foundation`
 
-Proof profile for the Siming heavenly-graph foundation and its governed
-runtime contracts.
+Backend proof for namespace-safe, owner-isolated, bi-temporal, bounded,
+restart-durable Heavenly Graph adapters.
+
+```powershell
+python scripts/verification/harness.py --profile siming-heavenly-graph-foundation
+```
 
 ### `llm-integration-closure`
 

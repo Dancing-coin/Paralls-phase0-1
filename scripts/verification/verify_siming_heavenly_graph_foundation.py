@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
@@ -14,6 +15,7 @@ from app.models.siming_heavenly_graph import (
     HeavenlyGraphWriteBatch,
 )
 from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
+from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
 from common import (
     repo_root,
     resolve_python_exe,
@@ -27,6 +29,7 @@ from common import (
 TEST_FILES = [
     "backend/tests/test_siming_heavenly_graph_models.py",
     "backend/tests/test_siming_heavenly_graph_contract.py",
+    "backend/tests/test_sqlite_heavenly_graph_contract.py",
 ]
 
 
@@ -191,6 +194,26 @@ def main() -> int:
     )
     snapshot = graph.read_checkpoint(checkpoint.checkpoint_ref)
 
+    with tempfile.TemporaryDirectory(dir=log_dir) as temporary_directory:
+        sqlite_path = Path(temporary_directory) / "heavenly.sqlite3"
+        sqlite_graph = SQLiteHeavenlyGraphAdapter(sqlite_path)
+        private_scope = HeavenlyGraphScope(
+            world_id="world:demo", session_id="session:demo",
+            story_branch_id="branch:main", room_id="room_demo", scene_id="scene_demo",
+            graph_namespace="actor_private", owner_actor_id="char_b",
+        )
+        sqlite_graph.write_batch(HeavenlyGraphWriteBatch(
+            transaction_id="graph_tx:sqlite:private", idempotency_key="authority:event:sqlite:private",
+            scope=private_scope, nodes=[_node(branch_id="branch:main", state="observed", revision=1, supersedes_revision=None, valid_from=0, recorded_at=10, source_ref="authority:event:sqlite:private").model_copy(update={"scope": private_scope})],
+        ))
+        sqlite_checkpoint = sqlite_graph.create_checkpoint(checkpoint_id="checkpoint:sqlite", scope=private_scope, valid_at=20, recorded_at=20)
+        sqlite_graph.close()
+        sqlite_graph = SQLiteHeavenlyGraphAdapter(sqlite_path)
+        sqlite_node = sqlite_graph.get_node(node_id="fact:lamp", scope=private_scope, valid_at=20)
+        sqlite_subgraph = sqlite_graph.query_subgraph(scope=private_scope, seed_node_ids=["fact:lamp"], relation_types=[], direction="both", max_depth=1, valid_at=20, recorded_at=20, node_limit=10, relation_limit=10)
+        sqlite_snapshot = sqlite_graph.read_checkpoint(sqlite_checkpoint.checkpoint_ref)
+        sqlite_graph.close()
+
     trace_path = log_dir / "siming-heavenly-graph-foundation-trace.json"
     write_json(
         trace_path,
@@ -276,6 +299,10 @@ def main() -> int:
             checkpoint_ok,
             [str(trace_path)],
         ),
+        _result("namespace_owner_isolation", "Private namespace and owner identity are isolated", sqlite_node is not None and sqlite_node.attributes["state"] == "observed", [str(trace_path)]),
+        _result("bounded_subgraph", "Bounded subgraph traversal returns only the reachable effective scope", [node.node_id for node in sqlite_subgraph.nodes] == ["fact:lamp"], [str(trace_path)]),
+        _result("sqlite_restart", "SQLite restores nodes and checkpoints after restart", sqlite_snapshot.nodes and sqlite_snapshot.nodes[0].revision == 1, [str(trace_path)]),
+        _result("adapter_contract_parity", "In-memory and SQLite adapter contract suites pass", pytest_result.returncode == 0, [str(pytest_log)]),
     ]
     overall = all(entry["status"] == "proved" for entry in results)
     report = {
