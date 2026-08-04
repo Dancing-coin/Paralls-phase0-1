@@ -15,7 +15,10 @@ from app.models.siming_adaptive_bridge import (
     AdaptiveBridgeValidationResult,
     GeneratedAdaptiveBridgeProposalBatch,
 )
-from app.services.siming_llm_provider import FakeSimingLlmCandidateProvider
+from app.services.siming_llm_provider import (
+    FakeSimingLlmCandidateProvider,
+    SimingLlmProviderTimeout,
+)
 
 
 def _reload_settings():
@@ -99,6 +102,33 @@ class _AcceptedBridge:
             graph_transaction_ref="story_instantiate:runtime:bridge:proposal:destroy:1",
             runtime_node_ref="runtime:bridge:proposal:destroy:1",
         )
+
+
+class _AutonomyAwareBridge:
+    def __init__(self, *, actor_autonomy, **kwargs) -> None:
+        del kwargs
+        self._actor_autonomy = actor_autonomy
+
+    def validate_and_commit(self, proposal, *, provider_audit):
+        del provider_audit
+        if not self._actor_autonomy(proposal):
+            return AdaptiveBridgeValidationResult(
+                accepted=False,
+                proposal_id=proposal.proposal_id,
+                reason_codes=["actor_autonomy_rejected"],
+            )
+        return AdaptiveBridgeValidationResult(
+            accepted=True,
+            proposal_id=proposal.proposal_id,
+            graph_transaction_ref="story_instantiate:runtime:bridge:proposal:destroy:1",
+            runtime_node_ref="runtime:bridge:proposal:destroy:1",
+        )
+
+
+class _UnavailableProposalProvider:
+    def generate_adaptive_bridge_proposals(self, **kwargs):
+        del kwargs
+        raise SimingLlmProviderTimeout("provider timed out")
 
 
 def _support_with_candidate(state, correlation_id: str):
@@ -195,6 +225,95 @@ def test_active_owned_destruction_prepares_typed_eligible_bridge_candidate(
         assert prepared.owns_event_family is True
         assert prepared.eligible_node_refs == ["runtime:bridge:proposal:destroy:1"]
         assert prepared.validation_audit_refs
+    finally:
+        state.close()
+
+
+def test_active_bridge_rejects_proactive_actor_under_supervision(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(main, "SimingAdaptiveBridge", _AutonomyAwareBridge)
+    state = main.build_runtime_state(
+        config_module.Settings(
+            siming_heavenly_mode="active",
+            heavenly_graph_path=str(tmp_path / "runtime.sqlite3"),
+        )
+    )
+    try:
+        state.character_agent_runtime.apply_supervision_authorization(
+            {
+                "authorization_id": "auth:char-b:quiet",
+                "actor_id": "char_b",
+                "approved_level": "medium",
+                "approved_by": "strategy_service",
+                "approval_reason": "proactive initiation is forbidden",
+                "constraints": {"allow_proactive_initiation": False},
+                "effective_from_ts": 100,
+                "producer_ts": 100,
+            }
+        )
+        support = state.siming_runtime.heavenly_support
+        support._llm_provider = FakeSimingLlmCandidateProvider(
+            [], adaptive_bridge_proposal_batch=_proposal_batch("corr:destroy:1")
+        )
+
+        prepared = support.prepare(_destruction_input())
+
+        assert prepared.owns_event_family is True
+        assert prepared.eligible_node_refs == []
+    finally:
+        state.close()
+
+
+def test_active_bridge_rejects_proposal_for_unsupported_actor(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setattr(main, "SimingAdaptiveBridge", _AutonomyAwareBridge)
+    state = main.build_runtime_state(
+        config_module.Settings(
+            siming_heavenly_mode="active",
+            heavenly_graph_path=str(tmp_path / "runtime.sqlite3"),
+        )
+    )
+    try:
+        support = state.siming_runtime.heavenly_support
+        proposal_batch = _proposal_batch("corr:destroy:1")
+        unsupported_proposal = proposal_batch.proposals[0].model_copy(
+            update={"target_actor_id": "char_unknown"}
+        )
+        support._llm_provider = FakeSimingLlmCandidateProvider(
+            [],
+            adaptive_bridge_proposal_batch=proposal_batch.model_copy(
+                update={"proposals": [unsupported_proposal]}
+            ),
+        )
+
+        prepared = support.prepare(_destruction_input())
+
+        assert prepared.owns_event_family is True
+        assert prepared.eligible_node_refs == []
+    finally:
+        state.close()
+
+
+def test_active_support_returns_non_activatable_result_when_llm_is_unavailable(
+    tmp_path,
+) -> None:
+    state = main.build_runtime_state(
+        config_module.Settings(
+            siming_heavenly_mode="active",
+            heavenly_graph_path=str(tmp_path / "runtime.sqlite3"),
+        )
+    )
+    try:
+        support = state.siming_runtime.heavenly_support
+        support._llm_provider = _UnavailableProposalProvider()
+
+        prepared = support.prepare(_destruction_input())
+
+        assert prepared.owns_event_family is False
+        assert prepared.eligible_node_refs == []
+        assert prepared.degraded_reason.startswith("llm_unavailable:")
     finally:
         state.close()
 

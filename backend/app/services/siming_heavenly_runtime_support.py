@@ -22,7 +22,10 @@ from app.services.siming_actor_memory_gateway import ActorMemoryReadGateway
 from app.services.siming_adaptive_bridge import SimingAdaptiveBridge
 from app.services.siming_context_compiler import SimingContextCompiler
 from app.services.siming_heavenly_memory import SimingHeavenlyMemoryService
-from app.services.siming_llm_provider import SimingLlmCandidateProvider
+from app.services.siming_llm_provider import (
+    SimingLlmCandidateProvider,
+    SimingLlmProviderError,
+)
 from app.services.siming_resource_capability_registry import ResourceCapabilityRegistry
 from app.services.siming_story_graph_runtime import SimingStoryGraphRuntime
 from app.services.siming_story_node_staging import SimingStoryNodeStaging
@@ -102,10 +105,13 @@ class SimingHeavenlyRuntimeSupport:
 
         proposal_batch = None
         if owns_event_family:
-            proposal_batch = self._llm_provider.generate_adaptive_bridge_proposals(
-                compiled_context=context.model_dump(mode="json"),
-                correlation_id=event.correlation_id,
-            )
+            try:
+                proposal_batch = self._llm_provider.generate_adaptive_bridge_proposals(
+                    compiled_context=context.model_dump(mode="json"),
+                    correlation_id=event.correlation_id,
+                )
+            except SimingLlmProviderError as error:
+                return self._llm_unavailable(event, event_family, error)
         try:
             eligible_node_refs = []
             validation_audit_refs = []
@@ -306,6 +312,28 @@ class SimingHeavenlyRuntimeSupport:
             correlation_id=event.correlation_id,
             context_hash="",
             degraded_reason=f"graph_degraded:{type(error).__name__}",
+        )
+
+    def _llm_unavailable(
+        self,
+        event: AuthorityEvent,
+        event_family: str,
+        error: SimingLlmProviderError,
+    ) -> PreparedHeavenlyDecision:
+        context = self._prepared_by_correlation.get(event.correlation_id)
+        if context is not None:
+            self._prepared_by_correlation[event.correlation_id] = _PreparedContext(
+                scope=context.scope,
+                recorded_at=context.recorded_at,
+                owns_event_family=False,
+            )
+        return PreparedHeavenlyDecision(
+            mode=self.mode,
+            event_family=event_family,
+            owns_event_family=False,
+            correlation_id=event.correlation_id,
+            context_hash="",
+            degraded_reason=f"llm_unavailable:{type(error).__name__}",
         )
 
     def _record(

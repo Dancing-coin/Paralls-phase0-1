@@ -189,6 +189,17 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
     )
     character_agent_runtime = CharacterAgentRuntime(memory_store=memory_router)
     llm_provider = build_siming_llm_provider(runtime_settings)
+
+    def actor_autonomy(proposal) -> bool:
+        actor_id = proposal.target_actor_id
+        if not character_agent_runtime.supports_actor(actor_id):
+            return False
+        return (
+            character_agent_runtime.get_supervision_state_record(
+                actor_id
+            ).active_constraints.allow_proactive_initiation
+        )
+
     support = None
     if runtime_settings.siming_heavenly_mode != "off":
         memory = SimingHeavenlyMemoryService(heavenly_graph)
@@ -212,7 +223,7 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
                 obligations=obligations,
                 resources=resources,
                 actor_memory_gateway=actor_memory,
-                actor_autonomy=lambda proposal: True,
+                actor_autonomy=actor_autonomy,
             ),
             llm_provider=llm_provider,
         )
