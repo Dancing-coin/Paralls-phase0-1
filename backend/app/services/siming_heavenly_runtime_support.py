@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Callable
 
 from pydantic import BaseModel, Field
 
@@ -15,9 +15,11 @@ from app.models.siming_heavenly_graph import (
 )
 from app.models.siming_heavenly_memory import (
     InterventionOutcomeMemoryEntry,
+    SimingCompiledContext,
     SimingContextRequest,
 )
 from app.services.siming_actor_memory_gateway import ActorMemoryReadGateway
+from app.services.siming_adaptive_bridge import SimingAdaptiveBridge
 from app.services.siming_context_compiler import SimingContextCompiler
 from app.services.siming_heavenly_memory import SimingHeavenlyMemoryService
 from app.services.siming_llm_provider import SimingLlmCandidateProvider
@@ -59,7 +61,7 @@ class SimingHeavenlyRuntimeSupport:
         obligations: SimingStoryObligationRuntime,
         resources: ResourceCapabilityRegistry,
         staging: SimingStoryNodeStaging,
-        bridges: Any,
+        bridges: Callable[[SimingCompiledContext], SimingAdaptiveBridge],
         llm_provider: SimingLlmCandidateProvider,
     ) -> None:
         self.mode = mode
@@ -73,8 +75,6 @@ class SimingHeavenlyRuntimeSupport:
         self._bridges = bridges
         self._llm_provider = llm_provider
         self._prepared_by_correlation: dict[str, _PreparedContext] = {}
-        self._selected_node_by_correlation: dict[str, str] = {}
-        self._dispatch_event_by_correlation: dict[str, str] = {}
 
     def prepare(self, siming_input: SimingInput) -> PreparedHeavenlyDecision:
         event = siming_input.source_event
@@ -98,30 +98,54 @@ class SimingHeavenlyRuntimeSupport:
                 )
             )
         except Exception as error:
-            return PreparedHeavenlyDecision(
-                mode=self.mode,
-                event_family=event_family,
-                owns_event_family=owns_event_family,
-                correlation_id=event.correlation_id,
-                context_hash="",
-                degraded_reason=f"graph_degraded:{type(error).__name__}",
-            )
+            return self._graph_degraded(event, event_family, error)
 
-        audit_ref = self._record(
-            scope=scope,
-            recorded_at=event.producer_ts,
-            correlation_id=event.correlation_id,
-            stage="proposal",
-            reason="shadow_advisory" if self.mode == "shadow" else "prepared",
-        )
+        proposal_batch = None
+        if owns_event_family:
+            proposal_batch = self._llm_provider.generate_adaptive_bridge_proposals(
+                compiled_context=context.model_dump(mode="json"),
+                correlation_id=event.correlation_id,
+            )
+        try:
+            eligible_node_refs = []
+            validation_audit_refs = []
+            if proposal_batch is not None:
+                bridge = self._bridges(context)
+                validation_results = [
+                    bridge.validate_and_commit(
+                        proposal,
+                        provider_audit=proposal_batch.audit,
+                    )
+                    for proposal in proposal_batch.proposals
+                ]
+                eligible_node_refs = sorted(
+                    result.runtime_node_ref
+                    for result in validation_results
+                    if result.accepted and result.runtime_node_ref is not None
+                )
+                validation_audit_refs.extend(
+                    f"adaptive_bridge_audit:{proposal.proposal_id}"
+                    for proposal in proposal_batch.proposals
+                )
+            validation_audit_refs.append(
+                self._record(
+                    scope=scope,
+                    recorded_at=event.producer_ts,
+                    correlation_id=event.correlation_id,
+                    stage="proposal",
+                    reason="shadow_advisory" if self.mode == "shadow" else "prepared",
+                )
+            )
+        except Exception as error:
+            return self._graph_degraded(event, event_family, error)
         return PreparedHeavenlyDecision(
             mode=self.mode,
             event_family=event_family,
             owns_event_family=owns_event_family,
             correlation_id=event.correlation_id,
             context_hash=context.context_hash,
-            eligible_node_refs=[],
-            validation_audit_refs=[audit_ref],
+            eligible_node_refs=eligible_node_refs,
+            validation_audit_refs=validation_audit_refs,
         )
 
     def record_selection(
@@ -131,12 +155,21 @@ class SimingHeavenlyRuntimeSupport:
     ) -> str:
         self._require_active_owned(prepared)
         context = self._prepared_context(prepared.correlation_id)
-        prior_selection = self._selected_node_by_correlation.get(
-            prepared.correlation_id
+        prior_selection = self._durable_stage_record(
+            context,
+            correlation_id=prepared.correlation_id,
+            stage="selection",
         )
-        if prior_selection is not None and prior_selection != selected_node_ref:
+        if (
+            prior_selection is not None
+            and prior_selection.selected_node_ref != selected_node_ref
+        ):
             raise ValueError(
                 "a heavenly decision is already selected for this correlation"
+            )
+        if prior_selection is not None:
+            return self._entry_id(
+                "selection", prepared.correlation_id, selected_node_ref
             )
         record_ref = self._record(
             scope=context.scope,
@@ -145,18 +178,26 @@ class SimingHeavenlyRuntimeSupport:
             stage="selection",
             selected_node_ref=selected_node_ref,
         )
-        self._selected_node_by_correlation[prepared.correlation_id] = selected_node_ref
         return record_ref
 
     def record_dispatch(self, *, correlation_id: str, dispatch_event_id: str) -> str:
         context = self._prepared_context(correlation_id)
         if self.mode != "active" or not context.owns_event_family:
             raise ValueError("only active graph-owned decisions may record dispatch")
-        prior_dispatch = self._dispatch_event_by_correlation.get(correlation_id)
-        if prior_dispatch is not None and prior_dispatch != dispatch_event_id:
+        prior_dispatch = self._durable_stage_record(
+            context,
+            correlation_id=correlation_id,
+            stage="dispatch",
+        )
+        if (
+            prior_dispatch is not None
+            and prior_dispatch.authority_result_ref != dispatch_event_id
+        ):
             raise ValueError(
                 "a heavenly dispatch is already recorded for this correlation"
             )
+        if prior_dispatch is not None:
+            return self._entry_id("dispatch", correlation_id, dispatch_event_id)
         record_ref = self._record(
             scope=context.scope,
             recorded_at=context.recorded_at,
@@ -164,7 +205,6 @@ class SimingHeavenlyRuntimeSupport:
             stage="dispatch",
             authority_result_ref=dispatch_event_id,
         )
-        self._dispatch_event_by_correlation[correlation_id] = dispatch_event_id
         return record_ref
 
     def record_authority_outcome(self, event: AuthorityEvent) -> str | None:
@@ -216,11 +256,57 @@ class SimingHeavenlyRuntimeSupport:
         except KeyError as error:
             raise ValueError("unknown heavenly decision correlation") from error
 
+    def _durable_stage_record(
+        self,
+        context: _PreparedContext,
+        *,
+        correlation_id: str,
+        stage: str,
+    ) -> InterventionOutcomeMemoryEntry | None:
+        records = [
+            entry
+            for entry in self._memory.list_domain(
+                context.scope,
+                "intervention_outcome",
+                valid_at=context.recorded_at,
+            )
+            if isinstance(entry, InterventionOutcomeMemoryEntry)
+            and entry.correlation_id == correlation_id
+            and entry.stage == stage
+        ]
+        if len(records) > 1:
+            raise ValueError(
+                "multiple durable heavenly records exist for one correlation stage"
+            )
+        return records[0] if records else None
+
     def _require_active_owned(self, prepared: PreparedHeavenlyDecision) -> None:
         if self.mode != "active" or not prepared.owns_event_family:
             raise ValueError("only active graph-owned decisions may be selected")
         if prepared.degraded_reason:
             raise ValueError(prepared.degraded_reason)
+
+    def _graph_degraded(
+        self,
+        event: AuthorityEvent,
+        event_family: str,
+        error: Exception,
+    ) -> PreparedHeavenlyDecision:
+        context = self._prepared_by_correlation.get(event.correlation_id)
+        if context is not None:
+            self._prepared_by_correlation[event.correlation_id] = _PreparedContext(
+                scope=context.scope,
+                recorded_at=context.recorded_at,
+                owns_event_family=False,
+            )
+        return PreparedHeavenlyDecision(
+            mode=self.mode,
+            event_family=event_family,
+            owns_event_family=False,
+            correlation_id=event.correlation_id,
+            context_hash="",
+            degraded_reason=f"graph_degraded:{type(error).__name__}",
+        )
 
     def _record(
         self,
@@ -233,7 +319,11 @@ class SimingHeavenlyRuntimeSupport:
         authority_result_ref: str | None = None,
         reason: str = "",
     ) -> str:
-        entry_id = f"heavenly_{stage}:{correlation_id}:{selected_node_ref or authority_result_ref or 'record'}"
+        entry_id = self._entry_id(
+            stage,
+            correlation_id,
+            selected_node_ref or authority_result_ref or "record",
+        )
         self._memory.write_entry(
             scope=scope,
             entry=InterventionOutcomeMemoryEntry(
@@ -259,3 +349,7 @@ class SimingHeavenlyRuntimeSupport:
             idempotency_key=entry_id,
         )
         return entry_id
+
+    @staticmethod
+    def _entry_id(stage: str, correlation_id: str, value: str) -> str:
+        return f"heavenly_{stage}:{correlation_id}:{value}"

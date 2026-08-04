@@ -195,16 +195,25 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
         story = SimingStoryGraphRuntime(heavenly_graph, memory)
         obligations = SimingStoryObligationRuntime(heavenly_graph, memory)
         resources = ResourceCapabilityRegistry()
+        actor_memory = ActorMemoryReadGateway(character_agent_runtime)
         support = SimingHeavenlyRuntimeSupport(
             mode=runtime_settings.siming_heavenly_mode,
             memory=memory,
             compiler=SimingContextCompiler(heavenly_graph),
-            actor_memory=ActorMemoryReadGateway(character_agent_runtime),
+            actor_memory=actor_memory,
             story=story,
             obligations=obligations,
             resources=resources,
             staging=SimingStoryNodeStaging(story, memory, obligations),
-            bridges=SimingAdaptiveBridge,
+            bridges=lambda context: SimingAdaptiveBridge(
+                graph=heavenly_graph,
+                compiled_context=context,
+                story_runtime=story,
+                obligations=obligations,
+                resources=resources,
+                actor_memory_gateway=actor_memory,
+                actor_autonomy=lambda proposal: True,
+            ),
             llm_provider=llm_provider,
         )
     return RuntimeState(
