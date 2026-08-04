@@ -35,6 +35,7 @@ from app.services.siming_state_tree import InMemorySimingStateTree
 from app.services.siming_storyline import InMemoryNarrativeObligationLedger, InMemoryStorylineState
 from app.services.siming_debug_projection import SimingDebugProjection
 from app.world_runtime.intelligence_upgrade import CanonicalPerceptBundle
+from app.services.siming_heavenly_runtime_support import SimingHeavenlyRuntimeSupport
 
 
 class SimingRuntime:
@@ -57,6 +58,7 @@ class SimingRuntime:
         storyline_projection: StorylineProjectionPort | None = None,
         group_bridge: GroupSimulationBridgePort | None = None,
         read_model_builder: SimingReadModelBuilder | None = None,
+        heavenly_support: SimingHeavenlyRuntimeSupport | None = None,
     ) -> None:
         self._feature_registry = feature_registry or SimingFeatureRegistry()
         self._llm_provider = llm_provider or DisabledSimingLlmCandidateProvider()
@@ -76,8 +78,13 @@ class SimingRuntime:
         self._storyline_projection = storyline_projection or StubStorylineProjection()
         self._group_bridge = group_bridge or StubGroupSimulationBridge()
         self._read_model_builder = read_model_builder or SimingReadModelBuilder()
+        self._heavenly_support = heavenly_support
         self._observatory_projection = SimingDebugProjection()
         self._pending_observatory_messages: list[dict[str, object]] = []
+
+    @property
+    def heavenly_support(self) -> SimingHeavenlyRuntimeSupport | None:
+        return self._heavenly_support
 
     def tick(self, inputs: list[SimingInput]) -> SimingTickResult:
         result = SimingTickResult()

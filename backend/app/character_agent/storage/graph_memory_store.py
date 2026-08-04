@@ -60,6 +60,10 @@ class CharacterGraphMemoryStore:
             tuple[str, str, str], tuple[dict[str, object], HeavenlyGraphWriteBatch]
         ] = {}
 
+    @property
+    def graph(self) -> HeavenlyGraphPort:
+        return self._graph
+
     def write_event(self, event: dict[str, object]) -> None:
         actor_id = str(event.get("actor_id", "") or "")
         if not actor_id:

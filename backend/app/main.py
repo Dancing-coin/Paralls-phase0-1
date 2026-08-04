@@ -1,4 +1,5 @@
 import asyncio
+from dataclasses import dataclass
 from queue import Empty, Queue
 from pathlib import Path
 from time import time
@@ -9,7 +10,7 @@ from fastapi.responses import HTMLResponse, Response
 from pydantic import ValidationError
 from starlette.websockets import WebSocketDisconnect
 
-from app.config import settings
+from app.config import Settings, settings
 from app.debug_narration import (
     build_debug_event,
     summarize_backend_route,
@@ -118,6 +119,15 @@ from app.services.siming_event_consumer import SimingEventConsumer
 from app.services.siming_event_pipeline import SimingEventPipeline
 from app.services.siming_event_producer import SimingEventProducer
 from app.services.siming_llm_provider import build_siming_llm_provider
+from app.services.siming_actor_memory_gateway import ActorMemoryReadGateway
+from app.services.siming_adaptive_bridge import SimingAdaptiveBridge
+from app.services.siming_context_compiler import SimingContextCompiler
+from app.services.siming_heavenly_memory import SimingHeavenlyMemoryService
+from app.services.siming_heavenly_runtime_support import SimingHeavenlyRuntimeSupport
+from app.services.siming_resource_capability_registry import ResourceCapabilityRegistry
+from app.services.siming_story_graph_runtime import SimingStoryGraphRuntime
+from app.services.siming_story_node_staging import SimingStoryNodeStaging
+from app.services.siming_story_obligation_runtime import SimingStoryObligationRuntime
 from app.services.siming_debug_projection import SimingDebugProjection
 from app.services.siming_runtime import SimingRuntime
 from app.services.character_agent_debug_projection import CharacterAgentDebugProjection
@@ -151,6 +161,61 @@ class FrontendSimingCharacterDispatchAdapter(SimingCharacterDispatchAdapter):
         result = super().dispatch(event)
         _queue_siming_character_dispatch_messages(event.event_id, result)
         return result
+
+
+@dataclass
+class RuntimeState:
+    heavenly_graph: SQLiteHeavenlyGraphAdapter
+    character_graph_memory: CharacterGraphMemoryStore
+    character_agent_runtime: CharacterAgentRuntime
+    siming_runtime: SimingRuntime
+
+    def close(self) -> None:
+        self.heavenly_graph.close()
+
+
+def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
+    graph_path = Path(runtime_settings.heavenly_graph_path)
+    graph_path.parent.mkdir(parents=True, exist_ok=True)
+    heavenly_graph = SQLiteHeavenlyGraphAdapter(graph_path)
+    graph_memory = CharacterGraphMemoryStore(
+        heavenly_graph,
+        scope_resolver=actor_private_scope,
+    )
+    memory_router = CharacterMemoryStoreRouter(
+        light_store=CharacterAgentMemoryStore(),
+        graph_store=graph_memory,
+        heavy_actor_ids=frozenset(runtime_settings.character_graph_memory_heavy_actor_ids),
+    )
+    character_agent_runtime = CharacterAgentRuntime(memory_store=memory_router)
+    llm_provider = build_siming_llm_provider(runtime_settings)
+    support = None
+    if runtime_settings.siming_heavenly_mode != "off":
+        memory = SimingHeavenlyMemoryService(heavenly_graph)
+        story = SimingStoryGraphRuntime(heavenly_graph, memory)
+        obligations = SimingStoryObligationRuntime(heavenly_graph, memory)
+        resources = ResourceCapabilityRegistry()
+        support = SimingHeavenlyRuntimeSupport(
+            mode=runtime_settings.siming_heavenly_mode,
+            memory=memory,
+            compiler=SimingContextCompiler(heavenly_graph),
+            actor_memory=ActorMemoryReadGateway(character_agent_runtime),
+            story=story,
+            obligations=obligations,
+            resources=resources,
+            staging=SimingStoryNodeStaging(story, memory, obligations),
+            bridges=SimingAdaptiveBridge,
+            llm_provider=llm_provider,
+        )
+    return RuntimeState(
+        heavenly_graph=heavenly_graph,
+        character_graph_memory=graph_memory,
+        character_agent_runtime=character_agent_runtime,
+        siming_runtime=SimingRuntime(
+            llm_provider=llm_provider,
+            heavenly_support=support,
+        ),
+    )
 
 
 def reset_runtime_state() -> None:
@@ -204,21 +269,10 @@ def reset_runtime_state() -> None:
     previous_graph = globals().get("heavenly_graph")
     if isinstance(previous_graph, SQLiteHeavenlyGraphAdapter):
         previous_graph.close()
-    graph_path = Path(settings.heavenly_graph_path)
-    graph_path.parent.mkdir(parents=True, exist_ok=True)
-    heavenly_graph = SQLiteHeavenlyGraphAdapter(graph_path)
-    graph_memory = CharacterGraphMemoryStore(
-        heavenly_graph,
-        scope_resolver=actor_private_scope,
-    )
-    memory_router = CharacterMemoryStoreRouter(
-        light_store=CharacterAgentMemoryStore(),
-        graph_store=graph_memory,
-        heavy_actor_ids=frozenset(settings.character_graph_memory_heavy_actor_ids),
-    )
-
+    runtime_state = build_runtime_state(settings)
+    heavenly_graph = runtime_state.heavenly_graph
     runtime = SessionInputRouter()
-    character_agent_runtime = CharacterAgentRuntime(memory_store=memory_router)
+    character_agent_runtime = runtime_state.character_agent_runtime
 
     def dialogue_context_provider(actor_id: str) -> dict[str, object]:
         if not character_agent_runtime.supports_actor(actor_id):
@@ -379,7 +433,7 @@ def reset_runtime_state() -> None:
     siming_event_pipeline = SimingEventPipeline(
         bus=authority_event_bus,
         consumer=SimingEventConsumer(),
-        runtime=SimingRuntime(llm_provider=build_siming_llm_provider(settings)),
+        runtime=runtime_state.siming_runtime,
         producer=SimingEventProducer(authority_event_bus),
         audit_writer=siming_audit_writer,
         character_dispatch_adapter=FrontendSimingCharacterDispatchAdapter(runtime=character_agent_runtime),

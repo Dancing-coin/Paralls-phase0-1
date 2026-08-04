@@ -3,10 +3,11 @@ import os
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 SimingLlmProviderName = Literal["disabled", "openai_responses", "deepseek_chat", "seed_doubao", "qwen"]
+SimingHeavenlyMode = Literal["off", "shadow", "active"]
 
 
 class SimingLlmRouteSettings(BaseModel):
@@ -49,7 +50,8 @@ class Settings(BaseModel):
     siming_llm_timeout_seconds: float = Field(default=8.0, gt=0)
     siming_llm_provider_order: list[SimingLlmProviderName] = Field(default_factory=lambda: ["openai_responses"])
     siming_llm_routes: list[SimingLlmRouteSettings] = Field(default_factory=list)
-    heavenly_graph_path: str = ".runtime/siming-heavenly.sqlite3"
+    siming_heavenly_mode: SimingHeavenlyMode = "off"
+    heavenly_graph_path: str = Field(default=".runtime/siming-heavenly.sqlite3", min_length=1)
     character_graph_memory_heavy_actor_ids: list[str] = Field(
         default_factory=lambda: ["char_b"]
     )
@@ -84,6 +86,32 @@ class Settings(BaseModel):
     non_runtime_model_api_key: str | None = Field(default=None, repr=False, exclude=True)
     non_runtime_model_model: str = "doubao-seed-2.0-lite"
     non_runtime_model_timeout_seconds: float = Field(default=30.0, gt=0)
+
+    @field_validator("heavenly_graph_path")
+    @classmethod
+    def require_heavenly_graph_path(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("heavenly_graph_path must not be empty")
+        return value
+
+    @field_validator("character_graph_memory_heavy_actor_ids")
+    @classmethod
+    def require_runtime_profile_actors(cls, actor_ids: list[str]) -> list[str]:
+        from app.character_agent.profile.registry import CharacterProfileRegistry
+
+        profile_directory = (
+            Path(__file__).resolve().parents[2] / "assets" / "characters" / "profiles"
+        )
+        known_actor_ids = set(
+            CharacterProfileRegistry.from_directory(profile_directory).actor_ids()
+        )
+        unknown_actor_ids = sorted(set(actor_ids).difference(known_actor_ids))
+        if unknown_actor_ids:
+            raise ValueError(
+                "heavy actor IDs must exist in the runtime profile registry: "
+                + ", ".join(unknown_actor_ids)
+            )
+        return actor_ids
 
 
 def _read_project_env() -> dict[str, str]:
@@ -209,6 +237,7 @@ settings = Settings(
         [] if _env_value("SIMING_LLM_ROUTES_JSON") else ["openai_responses"],
     ),
     siming_llm_routes=_env_siming_llm_routes(),
+    siming_heavenly_mode=_env_value("SIMING_HEAVENLY_MODE", "off") or "off",
     heavenly_graph_path=(
         _env_value("PARALLS_HEAVENLY_GRAPH_PATH", ".runtime/siming-heavenly.sqlite3")
         or ".runtime/siming-heavenly.sqlite3"
