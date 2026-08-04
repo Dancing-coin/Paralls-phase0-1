@@ -60,6 +60,7 @@ python scripts/verification/harness.py --profile siming-heavenly-graph-foundatio
 python scripts/verification/harness.py --profile siming-six-domain-memory
 python scripts/verification/harness.py --profile siming-actor-memory-read
 python scripts/verification/harness.py --profile siming-story-runtime
+python scripts/verification/harness.py --profile siming-resource-staging
 python scripts/verification/harness.py --profile all
 ```
 
@@ -517,6 +518,17 @@ reopen an alternate attractor route without resurrecting the closed instance.
 
 ```powershell
 python scripts/verification/harness.py --profile siming-story-runtime
+```
+
+### `siming-resource-staging`
+
+Backend and repository-static proof that existing MainDemo resources can be
+reused by distinct story semantics, exact-signature fatigue remains narrow, a
+resource score cannot bypass story hard gates, and Godot/Character/ESM staging
+acknowledgements preserve truthful node and obligation state.
+
+```powershell
+python scripts/verification/harness.py --profile siming-resource-staging
 ```
 
 ### `llm-integration-closure`
