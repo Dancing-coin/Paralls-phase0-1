@@ -69,18 +69,23 @@ def _request(semantic_purpose: str) -> ResourceRealizationRequest:
     )
 
 
-def _candidate(candidate_id: str, *, confirmed_fact: bool, resource_score: float) -> StoryDecisionCandidate:
+def _candidate(
+    candidate_id: str,
+    *,
+    resource_score: float,
+    **gate_values: bool,
+) -> StoryDecisionCandidate:
     return StoryDecisionCandidate(
         candidate_id=candidate_id,
         runtime_node_ref=f"runtime:{candidate_id}",
-        confirmed_fact=confirmed_fact,
-        player_choice=True,
-        actor_autonomy=True,
-        world_feasibility=True,
-        safety=True,
-        playability_fairness=True,
-        open_obligation=True,
-        reachable_attractor=True,
+        confirmed_fact=gate_values.get("confirmed_fact", True),
+        player_choice=gate_values.get("player_choice", True),
+        actor_autonomy=gate_values.get("actor_autonomy", True),
+        world_feasibility=gate_values.get("world_feasibility", True),
+        safety=gate_values.get("safety", True),
+        playability_fairness=gate_values.get("playability_fairness", True),
+        open_obligation=gate_values.get("open_obligation", True),
+        reachable_attractor=gate_values.get("reachable_attractor", True),
         narrative_score=0.5,
         resource_score=resource_score,
     )
@@ -161,17 +166,54 @@ def _acks(correlation_id: str, *, character_accepted: bool = True) -> list[Stagi
 
 
 def _static_resources(project_root: Path) -> dict[str, bool]:
-    required_sources = {
-        "main_demo_scene": ("scenes/phase0/MainDemo.tscn", ("CharacterB", 'actor_id = "char_b"')),
-        "letter_object": ("scripts/object/InteractiveObject.gd", ('object_id := "obj_letter"',)),
-        "lamp_environment": ("scripts/environment/EnvironmentStateController.gd", ('environment_id := "env_lamp"',)),
-        "realization_keys": ("backend/app/character_agent/skills/catalog.py", ('"look_at_target"', '"focus_attention"')),
-        "character_assets": ("scripts/character/CharacterEmbodimentAssetRegistry.gd", ("preload_assets_for_semantics",)),
+    def read_source(relative_path: str) -> str:
+        path = project_root / relative_path
+        return path.read_text(encoding="utf-8") if path.is_file() else ""
+
+    source_text = {
+        relative_path: read_source(relative_path)
+        for relative_path in (
+            "scenes/phase0/MainDemo.tscn",
+            "scenes/phase0/InteractiveObject.tscn",
+            "scenes/phase0/EnvironmentStateNode.tscn",
+            "scripts/object/InteractiveObject.gd",
+            "scripts/environment/EnvironmentStateController.gd",
+            "scripts/visual/VisualFactEmitter.gd",
+            "scripts/character/CharacterEmbodimentAssetRegistry.gd",
+            "backend/app/character_agent/skills/catalog.py",
+            "backend/app/services/character_service.py",
+            "scripts/audio/SpatialVoiceController.gd",
+        )
     }
+    main_demo = source_text["scenes/phase0/MainDemo.tscn"]
     return {
-        name: (path := project_root / relative_path).is_file()
-        and all(token in path.read_text(encoding="utf-8") for token in tokens)
-        for name, (relative_path, tokens) in required_sources.items()
+        "main_demo_wiring": all(
+            token in main_demo
+            for token in (
+                'res://scenes/phase0/InteractiveObject.tscn',
+                'res://scenes/phase0/EnvironmentStateNode.tscn',
+                'instance=ExtResource("6_object")',
+                'instance=ExtResource("7_environment")',
+            )
+        ),
+        "throne_room_and_camera": "ThroneRoomImported" in main_demo and "CineCameraActor" in main_demo,
+        "participant_bindings": 'actor_id = "char_b"' in main_demo
+        and 'actor_id := "char_c"' in source_text["scripts/visual/VisualFactEmitter.gd"],
+        "letter_object": 'res://scripts/object/InteractiveObject.gd'
+        in source_text["scenes/phase0/InteractiveObject.tscn"]
+        and 'object_id := "obj_letter"' in source_text["scripts/object/InteractiveObject.gd"],
+        "lamp_environment": 'res://scripts/environment/EnvironmentStateController.gd'
+        in source_text["scenes/phase0/EnvironmentStateNode.tscn"]
+        and 'environment_id := "env_lamp"'
+        in source_text["scripts/environment/EnvironmentStateController.gd"],
+        "realization_and_assets": '"look_at_target"'
+        in source_text["backend/app/character_agent/skills/catalog.py"]
+        and '"focus_attention"' in source_text["backend/app/character_agent/skills/catalog.py"]
+        and "preload_assets_for_semantics"
+        in source_text["scripts/character/CharacterEmbodimentAssetRegistry.gd"],
+        "dialogue_voice_path": "stream_dialogue"
+        in source_text["backend/app/services/character_service.py"]
+        and "play_voice" in source_text["scripts/audio/SpatialVoiceController.gd"],
     }
 
 
@@ -183,25 +225,37 @@ def main() -> int:
     registry = ResourceCapabilityRegistry()
     reveal_request = _request("evidence_reveal")
     confrontation_request = _request("private_confrontation")
+    ranking = StoryNodeOrchestrator().rank(
+        [
+            _candidate(f"{gate}_rejected", resource_score=1.0, **{gate: False})
+            for gate in StoryNodeOrchestrator.GATE_ORDER
+        ]
+        + [_candidate("fact_confirmed", resource_score=0.0)]
+    )
+    eligible_requests = {"fact_confirmed": confrontation_request}
+    eligible_matches = {
+        candidate.candidate_id: registry.match(
+            eligible_requests[candidate.candidate_id], world_ts=20
+        )
+        for candidate in ranking.eligible
+    }
+    confrontation_match = eligible_matches["fact_confirmed"]
     reveal_match = registry.match(reveal_request, world_ts=20)
-    confrontation_match = registry.match(confrontation_request, world_ts=20)
     registry.record_realization(reveal_request, "main_demo_throne_room", world_ts=19)
     repeated_reveal = registry.match(reveal_request, world_ts=20)
     distinct_confrontation = registry.match(confrontation_request, world_ts=20)
 
-    ranking = StoryNodeOrchestrator().rank(
-        [
-            _candidate("reusable_but_false", confirmed_fact=False, resource_score=1.0),
-            _candidate("fact_confirmed", confirmed_fact=True, resource_score=0.0),
-        ]
-    )
-
-    stager, staged_story, _ = _stager()
+    stager, staged_story, staged_obligations = _stager()
     staged_request = _staging_request("corr:staged", confrontation_match)
     staged = stager.complete(staged_request, acks=_acks("corr:staged"))
     staged_node = staged_story.read_runtime_node(
         scope=staged_request.scope,
         node_id=staged_request.node_id,
+        valid_at=20,
+    )
+    staged_obligation = staged_obligations.read(
+        scope=staged_request.scope,
+        obligation_id=staged_request.obligation_id,
         valid_at=20,
     )
 
@@ -229,8 +283,10 @@ def main() -> int:
         "repeated_reveal": repeated_reveal.model_dump(mode="json"),
         "distinct_confrontation": distinct_confrontation.model_dump(mode="json"),
         "ranking": ranking.model_dump(mode="json"),
+        "matched_candidate_ids": sorted(eligible_matches),
         "staged": staged.model_dump(mode="json"),
         "staged_lifecycle": None if staged_node is None else staged_node.lifecycle,
+        "staged_obligation": None if staged_obligation is None else staged_obligation.status,
         "refused": refused.model_dump(mode="json"),
         "refused_lifecycle": None if refused_node is None else refused_node.lifecycle,
         "refused_obligation": None if open_obligation is None else open_obligation.status,
@@ -247,15 +303,19 @@ def main() -> int:
             and confrontation_match.accepted
             and capability is not None
             and capability.asset_bundle == "main_demo_throne_room"
-            and capability.scene_refs == ["scenes/phase0/MainDemo.tscn"],
+            and capability.scene_refs == ["scenes/phase0/MainDemo.tscn"]
+            and set(capability.actor_ids) == {"char_b", "char_c"}
+            and capability.object_ids == ["obj_letter"]
+            and capability.environment_ids == ["env_lamp"]
+            and set(capability.realization_keys) == {"look_at_target", "focus_attention"},
             [str(trace_path)],
         ),
         _result(
             "hard_gate_precedes_resource_score",
-            "A high-reuse candidate cannot bypass the hard fact gate",
+            "Every hard-gate rejection occurs before only the eligible candidate is matched",
             [item.candidate_id for item in ranking.eligible] == ["fact_confirmed"]
-            and len(ranking.rejected) == 1
-            and ranking.rejected[0].reason == "fact_gate_failed",
+            and len(ranking.rejected) == len(StoryNodeOrchestrator.GATE_ORDER)
+            and set(eligible_matches) == {"fact_confirmed"},
             [str(trace_path)],
         ),
         _result(
@@ -281,7 +341,9 @@ def main() -> int:
             "Godot, Character, and ESM acknowledgements stage the selected node",
             staged.status == "staged"
             and staged_node is not None
-            and staged_node.lifecycle == "staged",
+            and staged_node.lifecycle == "staged"
+            and staged_obligation is not None
+            and staged_obligation.status == "open",
             [str(trace_path)],
         ),
         _result(
@@ -297,6 +359,7 @@ def main() -> int:
             "obligation_remains_open",
             "A pre-activation refusal does not falsely fulfill the obligation",
             refused.obligation_status == "open"
+            and staged.obligation_status == "open"
             and open_obligation is not None
             and open_obligation.status == "open",
             [str(trace_path)],

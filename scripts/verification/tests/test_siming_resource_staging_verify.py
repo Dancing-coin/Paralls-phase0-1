@@ -48,7 +48,7 @@ def test_resource_staging_verifier_proves_all_required_results() -> None:
     )
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["overall_siming_resource_staging_passed"] is True
-    assert {entry["id"] for entry in report["results"]} == {
+    required_result_ids = {
         "existing_resource_package",
         "hard_gate_precedes_resource_score",
         "semantic_reuse",
@@ -57,4 +57,12 @@ def test_resource_staging_verifier_proves_all_required_results() -> None:
         "refusal_aborted",
         "obligation_remains_open",
     }
+    assert {entry["id"] for entry in report["results"]} == required_result_ids
+    assert len(report["results"]) == len(required_result_ids)
     assert all(entry["status"] == "proved" for entry in report["results"])
+
+    trace_path = Path(report["artifacts"]["trace"])
+    trace = json.loads(trace_path.read_text(encoding="utf-8"))
+    assert trace["matched_candidate_ids"] == ["fact_confirmed"]
+    assert trace["staged_obligation"] == "open"
+    assert all(trace["static_resources"].values())
