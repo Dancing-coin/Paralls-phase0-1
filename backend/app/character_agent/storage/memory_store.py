@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 import json
 from pathlib import Path
+from typing import Protocol
 
 from app.character_agent.memory.event_memory import CharacterEventMemory
 from app.character_agent.memory.higher_order_memory import CharacterHigherOrderMemory
@@ -19,6 +20,31 @@ from app.character_agent.models.memory_record_bundle import CharacterMemoryRecor
 from app.character_agent.models.observation_memory import CharacterObservationMemoryRecord
 from app.character_agent.models.social_memory import CharacterSocialMemoryRecord
 from app.character_agent.models.working_memory_state import CharacterWorkingMemoryState
+
+
+class CharacterMemoryStorePort(Protocol):
+    def write_event(self, event: dict[str, object]) -> None:
+        raise NotImplementedError
+
+    def retrieval_bundle(self, actor_id: str) -> dict[str, list[dict[str, object]]]:
+        raise NotImplementedError
+
+    def retrieval_record_bundle(
+        self,
+        actor_id: str,
+        *,
+        story_branch_id: str | None = None,
+        valid_at: int | None = None,
+    ) -> CharacterMemoryRecordBundle:
+        raise NotImplementedError
+
+    def working_memory_state(
+        self,
+        actor_id: str,
+        private_snapshot: dict[str, object] | None = None,
+        dynamic_state: dict[str, object] | CharacterDynamicState | None = None,
+    ) -> CharacterWorkingMemoryState:
+        raise NotImplementedError
 
 
 class CharacterAgentMemoryStore:
@@ -247,7 +273,13 @@ class CharacterAgentMemoryStore:
             "relational_memories": self._legacy_relational_memories(knowledge_memories),
         }
 
-    def retrieval_record_bundle(self, actor_id: str) -> CharacterMemoryRecordBundle:
+    def retrieval_record_bundle(
+        self,
+        actor_id: str,
+        *,
+        story_branch_id: str | None = None,
+        valid_at: int | None = None,
+    ) -> CharacterMemoryRecordBundle:
         return CharacterMemoryRecordBundle(
             event_memories=self._event.recall_records(actor_id),
             observation_memories=self._observation.recall_records(actor_id),
