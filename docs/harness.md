@@ -59,6 +59,7 @@ python scripts/verification/harness.py --profile embodied-interaction-foundation
 python scripts/verification/harness.py --profile siming-heavenly-graph-foundation
 python scripts/verification/harness.py --profile siming-six-domain-memory
 python scripts/verification/harness.py --profile siming-actor-memory-read
+python scripts/verification/harness.py --profile siming-story-runtime
 python scripts/verification/harness.py --profile all
 ```
 
@@ -505,6 +506,17 @@ through the revision-vector gateway.
 
 ```powershell
 python scripts/verification/harness.py --profile siming-actor-memory-read
+```
+
+### `siming-story-runtime`
+
+Backend proof that immutable authored blueprints remain separate from
+branch-scoped runtime nodes, Authority-confirmed evidence closes terminal paths,
+obligations transform without false fulfillment, and fresh causal basis can
+reopen an alternate attractor route without resurrecting the closed instance.
+
+```powershell
+python scripts/verification/harness.py --profile siming-story-runtime
 ```
 
 ### `llm-integration-closure`
