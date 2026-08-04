@@ -244,13 +244,16 @@ def test_active_candidate_staging_contract_survives_runtime_restart(tmp_path) ->
 
     second_state = main.build_runtime_state(settings)
     try:
-        request = second_state.siming_runtime.heavenly_support.find_staging_request(
+        candidate = second_state.siming_runtime.heavenly_support.find_candidate(
             _destruction_input().source_event
         )
-        assert request is not None
-        assert request.node_id == "runtime:bridge:proposal:destroy:1"
-        assert request.obligation_id == "obligation:letter_consequence"
-        assert request.resource_match.accepted is True
+        assert candidate is not None
+        assert candidate.staging_request.node_id == "runtime:bridge:proposal:destroy:1"
+        assert (
+            candidate.staging_request.obligation_id == "obligation:letter_consequence"
+        )
+        assert candidate.staging_request.resource_match.accepted is True
+        assert candidate.proposal.target_actor_id == "char_b"
     finally:
         second_state.close()
 

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.config import SimingHeavenlyMode
 from app.models.authority_event import AuthorityEvent
+from app.models.siming_adaptive_bridge import AdaptiveBridgeNodeProposal
 from app.models.siming_event import SimingInput
 from app.models.siming_heavenly_graph import (
     GraphProvenance,
@@ -44,8 +45,15 @@ class PreparedHeavenlyDecision(BaseModel):
     correlation_id: str
     context_hash: str
     eligible_node_refs: list[str] = Field(default_factory=list)
+    eligible_candidates: list["PreparedHeavenlyCandidate"] = Field(default_factory=list)
     validation_audit_refs: list[str] = Field(default_factory=list)
     degraded_reason: str = ""
+
+
+class PreparedHeavenlyCandidate(BaseModel):
+    node_ref: str
+    proposal: AdaptiveBridgeNodeProposal
+    staging_request: StagingRequest
 
 
 @dataclass(frozen=True)
@@ -119,6 +127,7 @@ class SimingHeavenlyRuntimeSupport:
                 return self._llm_unavailable(event, event_family, error)
         try:
             eligible_node_refs = []
+            eligible_candidates = []
             validation_audit_refs = []
             if proposal_batch is not None:
                 bridge = self._bridges(context)
@@ -153,6 +162,13 @@ class SimingHeavenlyRuntimeSupport:
                         resource_match=resource_match,
                     )
                     eligible_node_refs.append(validation.runtime_node_ref)
+                    eligible_candidates.append(
+                        PreparedHeavenlyCandidate(
+                            node_ref=validation.runtime_node_ref,
+                            proposal=proposal,
+                            staging_request=staging_request,
+                        )
+                    )
                     validation_audit_refs.append(
                         self._record(
                             scope=scope,
@@ -161,6 +177,7 @@ class SimingHeavenlyRuntimeSupport:
                             stage="proposal",
                             selected_node_ref=validation.runtime_node_ref,
                             staging_request=staging_request,
+                            proposal=proposal,
                             reason="candidate_prepared",
                         )
                     )
@@ -178,6 +195,7 @@ class SimingHeavenlyRuntimeSupport:
                     reason="shadow_advisory" if self.mode == "shadow" else "prepared",
                 )
             )
+            eligible_candidates.sort(key=lambda candidate: candidate.node_ref)
         except Exception as error:
             return self._graph_degraded(event, event_family, error)
         return PreparedHeavenlyDecision(
@@ -187,6 +205,7 @@ class SimingHeavenlyRuntimeSupport:
             correlation_id=event.correlation_id,
             context_hash=context.context_hash,
             eligible_node_refs=eligible_node_refs,
+            eligible_candidates=eligible_candidates,
             validation_audit_refs=validation_audit_refs,
         )
 
@@ -481,8 +500,12 @@ class SimingHeavenlyRuntimeSupport:
         )
 
     def find_staging_request(self, event: AuthorityEvent) -> StagingRequest | None:
+        candidate = self.find_candidate(event)
+        return candidate.staging_request if candidate is not None else None
+
+    def find_candidate(self, event: AuthorityEvent) -> PreparedHeavenlyCandidate | None:
         scope = self._scope_for(event)
-        return self._staging_request_for(
+        return self._candidate_for(
             scope=scope,
             correlation_id=event.correlation_id,
             valid_at=event.producer_ts,
@@ -496,6 +519,22 @@ class SimingHeavenlyRuntimeSupport:
         valid_at: int,
         node_id: str | None = None,
     ) -> StagingRequest | None:
+        candidate = self._candidate_for(
+            scope=scope,
+            correlation_id=correlation_id,
+            valid_at=valid_at,
+            node_id=node_id,
+        )
+        return candidate.staging_request if candidate is not None else None
+
+    def _candidate_for(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        correlation_id: str,
+        valid_at: int,
+        node_id: str | None = None,
+    ) -> PreparedHeavenlyCandidate | None:
         candidates = [
             entry
             for entry in self._memory.list_domain(
@@ -507,6 +546,7 @@ class SimingHeavenlyRuntimeSupport:
             and entry.correlation_id == correlation_id
             and entry.stage == "proposal"
             and entry.staging_request is not None
+            and entry.proposal is not None
         ]
         selections = [
             entry.selected_node_ref
@@ -521,7 +561,11 @@ class SimingHeavenlyRuntimeSupport:
         ]
         selected_node_ref = node_id or (selections[0] if selections else None)
         matches = [
-            entry.staging_request
+            PreparedHeavenlyCandidate(
+                node_ref=entry.selected_node_ref or entry.staging_request.node_id,
+                proposal=entry.proposal,
+                staging_request=entry.staging_request,
+            )
             for entry in candidates
             if selected_node_ref is None or entry.selected_node_ref == selected_node_ref
         ]
@@ -562,6 +606,7 @@ class SimingHeavenlyRuntimeSupport:
         authority_result_ref: str | None = None,
         staging_ack: StagingAck | None = None,
         staging_request: StagingRequest | None = None,
+        proposal: AdaptiveBridgeNodeProposal | None = None,
         entry_value: str | None = None,
         reason: str = "",
     ) -> str:
@@ -580,6 +625,7 @@ class SimingHeavenlyRuntimeSupport:
                 authority_result_ref=authority_result_ref,
                 staging_ack=staging_ack,
                 staging_request=staging_request,
+                proposal=proposal,
                 reason=reason,
             ),
             validity=GraphValidity(valid_from=recorded_at),

@@ -14,6 +14,7 @@ from pydantic import (
 )
 
 from app.models.siming_heavenly_graph import HeavenlyGraphScope
+from app.models.siming_adaptive_bridge import AdaptiveBridgeNodeProposal
 from app.models.siming_resource_capability import StagingAck, StagingRequest
 
 
@@ -108,6 +109,7 @@ class InterventionOutcomeMemoryEntry(StrictMemoryModel):
     staging_recorded_at: int | None = Field(default=None, ge=0)
     staging_ack: StagingAck | None = None
     staging_request: StagingRequest | None = None
+    proposal: AdaptiveBridgeNodeProposal | None = None
     reason: str = ""
 
     @model_validator(mode="after")
