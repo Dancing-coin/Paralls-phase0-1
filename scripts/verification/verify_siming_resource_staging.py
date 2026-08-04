@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import re
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
@@ -201,6 +202,19 @@ def _static_resources(project_root: Path) -> dict[str, bool]:
         )
     }
     main_demo = source_text["scenes/phase0/MainDemo.tscn"]
+    character_base = source_text["scenes/phase0/CharacterBase.tscn"]
+    player_instance = bool(
+        re.search(
+            r'\[node name="PlayerCharacter"[^]]*instance=ExtResource\("2_player"\)',
+            main_demo,
+        )
+    )
+    player_char_c_binding = bool(
+        re.search(
+            r'\[node name="CharacterReplica"[^]]*instance=ExtResource\("2_character"\)[^\n]*\n(?:[^\n]*\n)*?actor_id = "char_c"',
+            character_base,
+        )
+    )
     return {
         "main_demo_wiring": all(
             token in main_demo
@@ -215,11 +229,15 @@ def _static_resources(project_root: Path) -> dict[str, bool]:
         "participant_bindings": 'actor_id = "char_b"' in main_demo
         and 'res://scripts/visual/VisualFactEmitter.gd' in main_demo
         and 'actor_id := "char_c"' in source_text["scripts/visual/VisualFactEmitter.gd"],
-        "player_camera_voice_wiring": 'res://scenes/phase0/CharacterBase.tscn' in main_demo
+        "player_character_instance": player_instance,
+        "player_char_c_binding": player_instance and player_char_c_binding,
+        "player_camera_voice_wiring": player_instance
+        and player_char_c_binding
+        and 'res://scenes/phase0/CharacterBase.tscn' in main_demo
         and 'res://scenes/phase0/CharacterReplica.tscn' in main_demo
         and 'res://scenes/phase0/CharacterReplica.tscn'
-        in source_text["scenes/phase0/CharacterBase.tscn"]
-        and 'type="Camera3D"' in source_text["scenes/phase0/CharacterBase.tscn"]
+        in character_base
+        and 'type="Camera3D"' in character_base
         and 'res://scripts/audio/SpatialVoiceController.gd'
         in source_text["scenes/phase0/CharacterReplica.tscn"]
         and "SpatialVoiceController"

@@ -68,6 +68,8 @@ def test_resource_staging_verifier_proves_all_required_results() -> None:
     assert all(trace["static_resources"].values())
     assert {
         "main_demo_wiring",
+        "player_character_instance",
+        "player_char_c_binding",
         "player_camera_voice_wiring",
         "dialogue_to_voice_delivery",
     }.issubset(trace["static_resources"])
