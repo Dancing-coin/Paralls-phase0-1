@@ -23,7 +23,7 @@ from app.services.siming_heavenly_graph_port import (
 )
 
 
-ScopeKey = tuple[str, str, str, str | None, str | None]
+ScopeKey = tuple[str, str, str, str | None, str | None, str, str | None]
 CheckpointKey = tuple[ScopeKey, str]
 
 
@@ -420,6 +420,8 @@ class InMemoryHeavenlyGraphAdapter:
             scope.story_branch_id,
             scope.room_id,
             scope.scene_id,
+            scope.graph_namespace,
+            scope.owner_actor_id,
         )
 
     def _entity_ref(

@@ -99,6 +99,53 @@ class HeavenlyGraphContract(ABC):
     def make_graph(self) -> HeavenlyGraphPort:
         raise NotImplementedError
 
+    def test_actor_private_scopes_isolate_equal_node_ids(self) -> None:
+        graph = self.make_graph()
+        owner_a_scope = HeavenlyGraphScope(
+            world_id="world:demo",
+            session_id="session:demo",
+            story_branch_id="branch:main",
+            graph_namespace="actor_private",
+            owner_actor_id="char:a",
+        )
+        owner_b_scope = owner_a_scope.model_copy(
+            update={"owner_actor_id": "char:b"},
+        )
+
+        for scope, state, owner in [
+            (owner_a_scope, "known_by_a", "a"),
+            (owner_b_scope, "known_by_b", "b"),
+        ]:
+            graph.write_batch(
+                HeavenlyGraphWriteBatch(
+                    transaction_id=f"graph_tx:private:{owner}",
+                    idempotency_key=f"authority:event:private:{owner}",
+                    scope=scope,
+                    nodes=[
+                        graph_node(
+                            node_id="fact:secret",
+                            state=state,
+                        ).model_copy(update={"scope": scope}, deep=True)
+                    ],
+                )
+            )
+
+        owner_a_node = graph.get_node(
+            node_id="fact:secret",
+            scope=owner_a_scope,
+            valid_at=20,
+        )
+        owner_b_node = graph.get_node(
+            node_id="fact:secret",
+            scope=owner_b_scope,
+            valid_at=20,
+        )
+
+        assert owner_a_node is not None
+        assert owner_a_node.attributes["state"] == "known_by_a"
+        assert owner_b_node is not None
+        assert owner_b_node.attributes["state"] == "known_by_b"
+
     def test_node_refs_are_collision_safe_across_complete_scopes(self) -> None:
         graph = self.make_graph()
         scopes = [
