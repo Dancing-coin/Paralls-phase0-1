@@ -1,14 +1,39 @@
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from app.models.siming_heavenly_graph import HeavenlyGraphScope
 
 
 class StrictMemoryModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @field_validator("*", check_fields=False)
+    @classmethod
+    def require_normalized_public_refs(
+        cls,
+        value: Any,
+        info: ValidationInfo,
+    ) -> Any:
+        if not info.field_name.endswith("_refs"):
+            return value
+
+        for ref in value:
+            if ref != ref.strip() or ref.lower().startswith(
+                ("actor_private:", "data:", "file:")
+            ):
+                raise ValueError("references must be normalized public reference IDs")
+        return value
 
 
 class WorldFactMemoryEntry(StrictMemoryModel):
