@@ -18,6 +18,13 @@ from app.services.siming_story_node_staging import (
 from app.services.siming_story_obligation_runtime import SimingStoryObligationRuntime
 
 
+class _RejectingStagingGraph(InMemoryHeavenlyGraphAdapter):
+    def write_batch(self, batch):  # type: ignore[no-untyped-def]
+        if any(node.node_type == "memory:intervention_outcome" for node in batch.nodes):
+            raise RuntimeError("staging write failed")
+        return super().write_batch(batch)
+
+
 def _scope() -> HeavenlyGraphScope:
     return HeavenlyGraphScope(
         world_id="world:demo",
@@ -328,5 +335,124 @@ def test_correlation_cannot_replay_a_different_open_obligation(
     with pytest.raises(StoryNodeStagingError, match="reused"):
         stager.complete(
             staging_request.model_copy(update={"obligation_id": "O2"}),
+            acks=[_ack("godot", True), _ack("character", True), _ack("esm", True)],
+        )
+
+
+def test_missing_obligation_does_not_stage_a_partial_node(
+    stager: SimingStoryNodeStaging,
+    story: SimingStoryGraphRuntime,
+    memory: SimingHeavenlyMemoryService,
+    staging_request: StagingRequest,
+) -> None:
+    missing_obligation = staging_request.model_copy(
+        update={"obligation_id": "O_missing"}
+    )
+
+    with pytest.raises(StoryNodeStagingError, match="obligation"):
+        stager.complete(
+            missing_obligation,
+            acks=[_ack("godot", True), _ack("character", True), _ack("esm", True)],
+        )
+
+    assert story.read_runtime_node(
+        scope=staging_request.scope,
+        node_id=staging_request.node_id,
+        valid_at=20,
+    ).lifecycle == "selected"
+    assert memory.get_entry(
+        scope=staging_request.scope,
+        entry_id="story_staging:runtime:N1:main:corr:1",
+        valid_at=20,
+    ) is None
+
+
+def test_staging_write_failure_does_not_commit_a_partial_node() -> None:
+    graph = _RejectingStagingGraph()
+    memory = SimingHeavenlyMemoryService(graph)
+    story = SimingStoryGraphRuntime(graph, memory)
+    obligations = SimingStoryObligationRuntime(graph, memory)
+    stager = SimingStoryNodeStaging(story, memory, obligations)
+    scope = _scope()
+    story.seed_blueprint(
+        scope=scope,
+        blueprint=StoryNodeBlueprint(blueprint_id="N1", title="Letter confrontation"),
+        provenance=_provenance("author:story:N1"),
+        recorded_at=10,
+    )
+    story.instantiate(
+        scope=scope,
+        blueprint_id="N1",
+        node_id="runtime:N1:main",
+        causal_basis_refs=[],
+        recorded_at=10,
+    )
+    story.transition(
+        scope=scope,
+        node_id="runtime:N1:main",
+        expected="latent",
+        target="eligible",
+        reason="facts_confirmed",
+        recorded_at=11,
+    )
+    story.transition(
+        scope=scope,
+        node_id="runtime:N1:main",
+        expected="eligible",
+        target="selected",
+        reason="hard_gates_passed",
+        recorded_at=12,
+    )
+    obligations.seed(
+        scope=scope,
+        obligation=NarrativeObligation(
+            obligation_id="O1",
+            description="The letter must have consequences.",
+            status="open",
+            pressure=0.8,
+            source_fact_refs=["fact:letter:discovered"],
+        ),
+        provenance=_provenance("story:O1"),
+        recorded_at=10,
+    )
+    request = StagingRequest(
+        scope=scope,
+        node_id="runtime:N1:main",
+        correlation_id="corr:1",
+        obligation_id="O1",
+        recorded_at=20,
+        resource_match=_resource_match(),
+    )
+
+    with pytest.raises(RuntimeError, match="staging write failed"):
+        stager.complete(
+            request,
+            acks=[_ack("godot", True), _ack("character", True), _ack("esm", True)],
+        )
+
+    assert story.read_runtime_node(
+        scope=scope,
+        node_id="runtime:N1:main",
+        valid_at=20,
+    ).lifecycle == "selected"
+    assert memory.get_entry(
+        scope=scope,
+        entry_id="story_staging:runtime:N1:main:corr:1",
+        valid_at=20,
+    ) is None
+
+
+def test_correlation_cannot_replay_a_different_recorded_time(
+    stager: SimingStoryNodeStaging,
+    staging_request: StagingRequest,
+) -> None:
+    stager.complete(
+        staging_request,
+        acks=[_ack("godot", True), _ack("character", True), _ack("esm", True)],
+    )
+
+    with pytest.raises(StoryNodeStagingError, match="reused"):
+        stager.complete(
+            staging_request.model_copy(update={"recorded_at": 21}),
             acks=[_ack("godot", True), _ack("character", True), _ack("esm", True)],
         )

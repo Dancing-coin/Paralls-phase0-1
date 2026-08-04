@@ -1,4 +1,4 @@
-from app.models.siming_heavenly_graph import GraphProvenance, GraphValidity, HeavenlyGraphScope
+from app.models.siming_heavenly_graph import GraphProvenance, HeavenlyGraphScope
 from app.models.siming_heavenly_memory import InterventionOutcomeMemoryEntry
 from app.models.siming_resource_capability import StagingAck, StagingRequest, StagingResult
 from app.services.siming_heavenly_memory import SimingHeavenlyMemoryService
@@ -37,6 +37,7 @@ class SimingStoryNodeStaging:
             valid_at=request.recorded_at,
             obligation_id=request.obligation_id,
             realization_signature=request.resource_match.realization_signature,
+            staging_recorded_at=request.recorded_at,
         )
         if existing is not None:
             return existing
@@ -71,6 +72,7 @@ class SimingStoryNodeStaging:
             node_id=node_id,
             correlation_id=correlation_id,
             valid_at=recorded_at,
+            staging_recorded_at=recorded_at,
         )
         if existing is not None:
             return existing
@@ -89,15 +91,7 @@ class SimingStoryNodeStaging:
         )
 
     def _stage(self, request: StagingRequest) -> StagingResult:
-        self._transition(
-            scope=request.scope,
-            node_id=request.node_id,
-            recorded_at=request.recorded_at,
-            expected="selected",
-            target="staged",
-            reason="all_staging_acknowledgements",
-        )
-        return self._record(
+        result = self._record(
             scope=request.scope,
             node_id=request.node_id,
             correlation_id=request.correlation_id,
@@ -108,6 +102,17 @@ class SimingStoryNodeStaging:
             lifecycle="staged",
             reason="",
         )
+        self._transition(
+            scope=request.scope,
+            node_id=request.node_id,
+            obligation_id=request.obligation_id,
+            recorded_at=request.recorded_at,
+            expected="selected",
+            target="staged",
+            reason="all_staging_acknowledgements",
+            result=result,
+        )
+        return result
 
     def _abort(
         self,
@@ -121,22 +126,7 @@ class SimingStoryNodeStaging:
         reason: str,
         status: str,
     ) -> StagingResult:
-        current = self._story.read_runtime_node(
-            scope=scope,
-            node_id=node_id,
-            valid_at=recorded_at,
-        )
-        if current is None or current.lifecycle not in {"selected", "staged"}:
-            raise StoryNodeStagingError("only selected or staged story nodes can be aborted")
-        self._transition(
-            scope=scope,
-            node_id=node_id,
-            recorded_at=recorded_at,
-            expected=current.lifecycle,
-            target="aborted",
-            reason=reason,
-        )
-        return self._record(
+        result = self._record(
             scope=scope,
             node_id=node_id,
             correlation_id=correlation_id,
@@ -147,24 +137,65 @@ class SimingStoryNodeStaging:
             lifecycle="aborted",
             reason=reason,
         )
+        current = self._story.read_runtime_node(
+            scope=scope,
+            node_id=node_id,
+            valid_at=recorded_at,
+        )
+        if current is None or current.lifecycle not in {"selected", "staged"}:
+            raise StoryNodeStagingError("only selected or staged story nodes can be aborted")
+        self._transition(
+            scope=scope,
+            node_id=node_id,
+            obligation_id=obligation_id,
+            recorded_at=recorded_at,
+            expected=current.lifecycle,
+            target="aborted",
+            reason=reason,
+            result=result,
+        )
+        return result
 
     def _transition(
         self,
         *,
         scope: HeavenlyGraphScope,
         node_id: str,
+        obligation_id: str,
         recorded_at: int,
         expected: str,
         target: str,
         reason: str,
+        result: StagingResult,
     ) -> None:
-        self._story.transition(
+        outcome = InterventionOutcomeMemoryEntry(
+            entry_id=self._entry_id(node_id, result.correlation_id),
+            stage="staging",
+            correlation_id=result.correlation_id,
+            selected_node_ref=node_id,
+            realization_signature=result.realization_signature,
+            obligation_id=obligation_id,
+            staging_status=result.status,
+            story_node_lifecycle=result.story_node_lifecycle,
+            obligation_status=result.obligation_status,
+            staging_recorded_at=recorded_at,
+            reason=result.reason,
+        )
+        self._story.transition_with_intervention_outcome(
             scope=scope,
             node_id=node_id,
             expected=expected,
             target=target,
             reason=reason,
             recorded_at=recorded_at,
+            outcome=outcome,
+            provenance=GraphProvenance(
+                source_kind="runtime_outcome",
+                source_ref=f"story_staging:{node_id}",
+                causation_id=f"story_staging:{node_id}",
+                correlation_id=result.correlation_id,
+                producer_system="siming_story_node_staging",
+            ),
         )
 
     def _record(
@@ -194,35 +225,6 @@ class SimingStoryNodeStaging:
             realization_signature=realization_signature,
             reason=reason,
         )
-        entry = InterventionOutcomeMemoryEntry(
-            entry_id=self._entry_id(node_id, correlation_id),
-            stage="staging",
-            correlation_id=correlation_id,
-            selected_node_ref=node_id,
-            realization_signature=result.realization_signature,
-            obligation_id=obligation_id,
-            staging_status=result.status,
-            story_node_lifecycle=result.story_node_lifecycle,
-            obligation_status=result.obligation_status,
-            reason=result.reason,
-        )
-        self._memory.write_entry(
-            scope=scope,
-            entry=entry,
-            validity=GraphValidity(valid_from=recorded_at),
-            recorded_at=recorded_at,
-            revision=1,
-            supersedes_revision=None,
-            provenance=GraphProvenance(
-                source_kind="runtime_outcome",
-                source_ref=f"story_staging:{node_id}",
-                causation_id=f"story_staging:{node_id}",
-                correlation_id=correlation_id,
-                producer_system="siming_story_node_staging",
-            ),
-            transaction_id=entry.entry_id,
-            idempotency_key=entry.entry_id,
-        )
         return result
 
     def _read_result(
@@ -234,6 +236,7 @@ class SimingStoryNodeStaging:
         valid_at: int,
         obligation_id: str | None = None,
         realization_signature: str | None = None,
+        staging_recorded_at: int | None = None,
     ) -> StagingResult | None:
         entry = self._memory.get_entry(
             scope=scope,
@@ -251,6 +254,8 @@ class SimingStoryNodeStaging:
             and entry.obligation_id != obligation_id
             or realization_signature is not None
             and entry.realization_signature != realization_signature
+            or staging_recorded_at is not None
+            and entry.staging_recorded_at != staging_recorded_at
         ):
             raise StoryNodeStagingError("staging correlation was reused with a different request")
         return StagingResult(

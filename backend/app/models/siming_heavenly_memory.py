@@ -88,6 +88,7 @@ class InterventionOutcomeMemoryEntry(StrictMemoryModel):
     staging_status: Literal["staged", "aborted_before_activation", "cancelled"] | None = None
     story_node_lifecycle: Literal["staged", "aborted"] | None = None
     obligation_status: Literal["open", "pressured", "partially_satisfied"] | None = None
+    staging_recorded_at: int | None = Field(default=None, ge=0)
     reason: str = ""
 
     @model_validator(mode="after")
@@ -99,6 +100,7 @@ class InterventionOutcomeMemoryEntry(StrictMemoryModel):
             or self.staging_status is None
             or self.story_node_lifecycle is None
             or self.obligation_status is None
+            or self.staging_recorded_at is None
         ):
             raise ValueError("staging intervention outcome requires its complete result")
         return self

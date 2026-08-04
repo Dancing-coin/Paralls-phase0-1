@@ -9,7 +9,10 @@ from app.models.siming_heavenly_graph import (
     HeavenlyGraphWriteResult,
     HeavenlyNodeQuery,
 )
-from app.models.siming_heavenly_memory import StorylineObligationMemoryEntry
+from app.models.siming_heavenly_memory import (
+    InterventionOutcomeMemoryEntry,
+    StorylineObligationMemoryEntry,
+)
 from app.models.siming_story_graph import (
     AuthorityStoryOutcome,
     RuntimeStoryNode,
@@ -198,6 +201,68 @@ class SimingStoryGraphRuntime:
         reason: str,
         recorded_at: int,
     ) -> RuntimeStoryNode:
+        return self._transition(
+            scope=scope,
+            node_id=node_id,
+            expected=expected,
+            target=target,
+            reason=reason,
+            recorded_at=recorded_at,
+            transaction_id=f"story_transition:{node_id}",
+            idempotency_key=(
+                f"story_transition:{node_id}:{expected}:{target}:{reason}:{recorded_at}"
+            ),
+        )
+
+    def transition_with_intervention_outcome(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        node_id: str,
+        expected: str,
+        target: str,
+        reason: str,
+        recorded_at: int,
+        outcome: InterventionOutcomeMemoryEntry,
+        provenance: GraphProvenance,
+    ) -> RuntimeStoryNode:
+        outcome_node = HeavenlyGraphNode(
+            node_id=outcome.entry_id,
+            node_type=f"memory:{outcome.domain}",
+            scope=scope,
+            validity=GraphValidity(valid_from=recorded_at),
+            recorded_at=recorded_at,
+            revision=1,
+            provenance=provenance,
+            attributes=outcome.model_dump(mode="json"),
+        )
+        return self._transition(
+            scope=scope,
+            node_id=node_id,
+            expected=expected,
+            target=target,
+            reason=reason,
+            recorded_at=recorded_at,
+            transaction_id=outcome.entry_id,
+            idempotency_key=outcome.entry_id,
+            provenance=provenance,
+            extra_nodes=[outcome_node],
+        )
+
+    def _transition(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        node_id: str,
+        expected: str,
+        target: str,
+        reason: str,
+        recorded_at: int,
+        transaction_id: str,
+        idempotency_key: str,
+        provenance: GraphProvenance | None = None,
+        extra_nodes: list[HeavenlyGraphNode] | None = None,
+    ) -> RuntimeStoryNode:
         prior = self._runtime_graph_node_at(
             scope=scope,
             node_id=node_id,
@@ -225,12 +290,17 @@ class SimingStoryGraphRuntime:
             raise StoryNodeTransitionError(str(error)) from error
 
         updated = current.model_copy(update={"lifecycle": target})
+        provenance = provenance or GraphProvenance(
+            source_kind="runtime_outcome",
+            source_ref=f"story_transition:{node_id}",
+            causation_id=f"story_transition:{node_id}",
+            correlation_id=f"story_transition:{node_id}:{prior.revision + 1}",
+            producer_system="siming_story_graph_runtime",
+        )
         self._graph.write_batch(
             HeavenlyGraphWriteBatch(
-                transaction_id=f"story_transition:{node_id}:{prior.revision + 1}",
-                idempotency_key=(
-                    f"story_transition:{node_id}:{expected}:{target}:{reason}:{recorded_at}"
-                ),
+                transaction_id=f"{transaction_id}:{prior.revision + 1}",
+                idempotency_key=idempotency_key,
                 scope=scope,
                 nodes=[
                     self._runtime_graph_node(
@@ -238,15 +308,10 @@ class SimingStoryGraphRuntime:
                         runtime_node=updated,
                         prior=prior,
                         recorded_at=recorded_at,
-                        provenance=GraphProvenance(
-                            source_kind="runtime_outcome",
-                            source_ref=f"story_transition:{node_id}",
-                            causation_id=f"story_transition:{node_id}",
-                            correlation_id=f"story_transition:{node_id}:{prior.revision + 1}",
-                            producer_system="siming_story_graph_runtime",
-                        ),
+                        provenance=provenance,
                     )
-                ],
+                ]
+                + (extra_nodes or []),
             )
         )
         return updated
