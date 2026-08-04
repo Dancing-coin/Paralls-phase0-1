@@ -16,6 +16,12 @@ var _cleared_after_disconnect := false
 var _reconnect_bound_epoch := 0
 var _scenario := "reconnect"
 var _backpressure_control_seen := false
+var _prediction_confirm_started := false
+var _prediction_reject_started := false
+var _session_ref := ""
+var _controlled_close_revocation_seen := false
+var _controlled_close_reason := ""
+var _controlled_close_code := 0
 
 
 func _ready() -> void:
@@ -27,6 +33,7 @@ func _ready() -> void:
 	bus.backend_connected.connect(_on_backend_connected)
 	bus.backend_disconnected.connect(_on_backend_disconnected)
 	bus.websocket_session_bound_received.connect(_on_session_bound)
+	bus.websocket_session_revoked_received.connect(_on_websocket_session_revoked)
 	bus.backend_ack_received.connect(_on_backend_ack)
 	bus.gameplay_runtime_state_projection_received.connect(_on_projection)
 	bus.gameplay_mirror_delivery_received.connect(_on_delivery)
@@ -53,8 +60,17 @@ func _on_backend_connected(_url: String) -> void:
 		_finish(false, "bind_send_failed")
 
 
-func _on_backend_disconnected(_code: int) -> void:
+func _on_backend_disconnected(code: int) -> void:
 	_write_stage("backend_disconnected")
+	if _scenario == "controlled_close":
+		_controlled_close_code = code
+		_finish(
+			_controlled_close_revocation_seen
+			and _controlled_close_reason == "mirror_delivery_unrecoverable"
+			and _controlled_close_code == 4403,
+			"typed_revocation_precedes_controlled_close"
+		)
+		return
 	if _reconnecting and not _finished:
 		call_deferred("_after_backend_disconnected")
 
@@ -66,6 +82,10 @@ func _after_backend_disconnected() -> void:
 
 func _on_session_bound(payload: Dictionary) -> void:
 	_write_stage("session_bound")
+	_session_ref = str(payload.get("session_ref", ""))
+	if _session_ref.is_empty():
+		_finish(false, "session_ref_missing")
+		return
 	if _reconnecting:
 		_reconnect_bound_epoch = int(payload.get("connection_epoch", 0))
 	var scope: Variant = payload.get("allowed_actor_refs", [])
@@ -75,6 +95,17 @@ func _on_session_bound(payload: Dictionary) -> void:
 	_actor_ref = str((scope as Array)[0])
 	_mirror_bridge.register_consumer(_actor_ref, _consumer)
 	call_deferred("_subscribe_bound_actor")
+
+
+func _on_websocket_session_revoked(payload: Dictionary) -> void:
+	if _scenario != "controlled_close":
+		return
+	if str(payload.get("route", "")) != "gameplay_mirror_transport":
+		_finish(false, "controlled_close_route_invalid")
+		return
+	_controlled_close_revocation_seen = true
+	_controlled_close_reason = str(payload.get("reason_code", ""))
+	_write_stage("typed_revocation_received")
 
 
 func _subscribe_bound_actor() -> void:
@@ -148,6 +179,9 @@ func _on_delivery(payload: Dictionary) -> void:
 	if str(payload.get("actor_ref", "")) != _actor_ref or not _initial_snapshot_seen:
 		return
 	await get_tree().process_frame
+	if _scenario == "prediction":
+		_advance_prediction()
+		return
 	if _scenario != "reconnect":
 		return
 	var entries: Dictionary = _consumer.visible_groups.get("core.resources", {}).get("payload", {}).get("entries", {})
@@ -165,6 +199,59 @@ func _on_delivery(payload: Dictionary) -> void:
 		return
 	backend.close_backend_connection()
 	_write_stage("disconnect_requested")
+
+
+func _advance_prediction() -> void:
+	var entries: Dictionary = _consumer.visible_groups.get("core.resources", {}).get("payload", {}).get("entries", {})
+	var stamina: Dictionary = entries.get("core.stamina", {})
+	var current := int(stamina.get("current", -1))
+	if not _prediction_confirm_started:
+		if current != 6:
+			_finish(false, "prediction_initial_authority_snapshot_invalid")
+			return
+		var started := _consumer.begin_stamina_prediction(
+			"prediction:live:stamina-confirm",
+			"command:live:stamina-confirm",
+			-1,
+		)
+		if not bool(started.get("accepted", false)) or int(_consumer.get_predicted_resource_current("core.stamina")) != 5:
+			_finish(false, "prediction_overlay_start_failed")
+			return
+		_prediction_confirm_started = true
+		_write_prediction_ready("confirm")
+		return
+	if not _prediction_reject_started:
+		if _consumer.pending_predictions.has("prediction:live:stamina-confirm"):
+			return
+		if current != 5 or _consumer.prediction_resolution_trace.is_empty():
+			_finish(false, "prediction_confirmation_authority_projection_missing")
+			return
+		var confirmed: Dictionary = _consumer.prediction_resolution_trace.back()
+		if str(confirmed.get("resolution", "")) != "confirmed" or str(confirmed.get("transaction_id", "")).is_empty():
+			_finish(false, "prediction_confirmation_result_invalid")
+			return
+		var started := _consumer.begin_stamina_prediction(
+			"prediction:live:stamina-reject",
+			"command:live:stamina-reject",
+			-1,
+		)
+		if not bool(started.get("accepted", false)) or int(_consumer.get_predicted_resource_current("core.stamina")) != 4:
+			_finish(false, "prediction_rejection_overlay_start_failed")
+			return
+		_prediction_reject_started = true
+		_write_prediction_ready("reject")
+		return
+	if _consumer.pending_predictions.has("prediction:live:stamina-reject"):
+		return
+	if current != 5 or _consumer.prediction_resolution_trace.size() != 2:
+		_finish(false, "prediction_rejection_rollback_invalid")
+		return
+	var rejected: Dictionary = _consumer.prediction_resolution_trace.back()
+	_finish(
+		str(rejected.get("resolution", "")) == "rejected"
+		and not str(rejected.get("error_code", "")).is_empty(),
+		"prediction_confirmed_then_rejected_overlay_rolled_back",
+	)
 
 
 func _wait_for_reconnect_enrollment() -> void:
@@ -192,7 +279,7 @@ func _write_ready() -> void:
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file != null:
-		file.store_string(JSON.stringify({"status": "ready", "actor_ref": _actor_ref}))
+		file.store_string(JSON.stringify({"status": "ready", "actor_ref": _actor_ref, "session_ref": _session_ref}))
 		file.close()
 
 
@@ -202,6 +289,20 @@ func _write_first_delivery() -> void:
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file != null:
 		file.store_string(JSON.stringify({"status": "first_delivery", "actor_ref": _actor_ref, "connection_epoch": _first_epoch}))
+		file.close()
+
+
+func _write_prediction_ready(stage: String) -> void:
+	var path := ProjectSettings.globalize_path(VERIFICATION_ROOT + "live-gameplay-mirror-prediction-%s-ready.json" % stage)
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify({
+			"status": "prediction_%s_ready" % stage,
+			"actor_ref": _actor_ref,
+			"facade_revision": _consumer.facade_revision,
+			"pending_prediction_ids": _consumer.pending_predictions.keys(),
+		}))
 		file.close()
 
 
@@ -219,7 +320,7 @@ func _finish(ok: bool, reason: String) -> void:
 		return
 	_finished = true
 	var report := {
-		"status": ("live_gap_resync_verified" if _scenario == "gap" else "live_backpressure_isolation_verified" if _scenario == "backpressure" else "live-gameplay-mirror-delivery-verified") if ok else "live-gameplay-mirror-delivery-failed",
+		"status": _success_status() if ok else "live-gameplay-mirror-delivery-failed",
 		"reason": reason,
 		"scenario": _scenario,
 		"actor_ref": _actor_ref,
@@ -234,6 +335,12 @@ func _finish(ok: bool, reason: String) -> void:
 		"cleared_after_disconnect": _cleared_after_disconnect,
 		"reconnect_bound_epoch": _reconnect_bound_epoch,
 		"facade_revision": _consumer.facade_revision,
+		"pending_prediction_ids": _consumer.pending_predictions.keys(),
+		"prediction_resolution_trace": _consumer.prediction_resolution_trace,
+		"session_ref": _session_ref,
+		"controlled_close_revocation_seen": _controlled_close_revocation_seen,
+		"controlled_close_reason": _controlled_close_reason,
+		"controlled_close_code": _controlled_close_code,
 	}
 	var path := ProjectSettings.globalize_path(VERIFICATION_ROOT + "live-gameplay-mirror-runtime.json")
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
@@ -243,3 +350,17 @@ func _finish(ok: bool, reason: String) -> void:
 		file.close()
 	print("live_gameplay_mirror_delivery_probe:verified=%s" % str(ok).to_lower())
 	get_tree().quit(0 if ok else 1)
+
+
+func _success_status() -> String:
+	match _scenario:
+		"gap":
+			return "live_gap_resync_verified"
+		"backpressure":
+			return "live_backpressure_isolation_verified"
+		"prediction":
+			return "live_prediction_confirm_reject_rollback_verified"
+		"controlled_close":
+			return "live_controlled_close_verified"
+		_:
+			return "live-gameplay-mirror-delivery-verified"

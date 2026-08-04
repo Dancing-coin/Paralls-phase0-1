@@ -96,8 +96,16 @@ class GameplayGodotMirrorSyncAdapter:
         self,
         base: CharacterGameRuntimeSnapshot,
         target: CharacterGameRuntimeSnapshot,
+        *,
+        confirmed_prediction_ids: tuple[str, ...] = (),
+        rejected_predictions: tuple[str, ...] = (),
     ) -> CharacterGameRuntimeDelta:
-        return self._sync.delta(base, target)
+        return self._sync.delta(
+            base,
+            target,
+            confirmed_prediction_ids=confirmed_prediction_ids,
+            rejected_predictions=rejected_predictions,
+        )
 
     def apply_delta(
         self,
@@ -151,6 +159,8 @@ class GameplayGodotMirrorSyncAdapter:
             "schema_capabilities": list(delta.target_schema_capabilities),
             "enabled_state_groups": list(delta.target_enabled_state_groups),
             "removed_group_ids": list(delta.removed_group_ids),
+            "confirmed_prediction_ids": list(delta.confirmed_prediction_ids),
+            "rejected_predictions": list(delta.rejected_predictions),
             "groups": {
                 group_id: {
                     "projection_revision": envelope.projection_revision,
@@ -268,6 +278,10 @@ class GameplayMirrorConnectionRegistry:
         del self._connections[session_ref]
         return True
 
+    def connection_ref_for(self, *, session_ref: str) -> str | None:
+        connection = self._connections.get(session_ref)
+        return None if connection is None else connection.connection_ref
+
     def deliver(self, session_ref: str, payload: dict[str, object]) -> None:
         connection = self._connections.get(session_ref)
         if connection is None:
@@ -292,6 +306,36 @@ class GameplayMirrorConnectionRegistry:
         if connection is None:
             raise GameplayMirrorConnectionError("mirror_connection_unavailable")
         return connection.receipt_ledger.acknowledge(receipt)
+
+    def deliver_prediction_resolutions(
+        self,
+        *,
+        session_ref: str,
+        actor_ref: str,
+        facade_revision: str,
+        resolutions: tuple,
+    ) -> None:
+        """Deliver only server-authored resolution metadata after a settled outcome."""
+
+        connection = self._connections.get(session_ref)
+        if connection is None:
+            raise GameplayMirrorConnectionError("mirror_connection_unavailable")
+        if not actor_ref or not facade_revision or not resolutions:
+            raise GameplayMirrorConnectionError("mirror_prediction_resolution_invalid")
+        sequence = connection.next_delivery_sequence
+        envelope = GameplayMirrorDeliveryEnvelope(
+            delivery_kind="prediction",
+            connection_epoch=connection.connection_epoch,
+            delivery_sequence=sequence,
+            actor_ref=actor_ref,
+            projection_schema="gameplay_runtime_state.godot.v1",
+            facade_revision=facade_revision,
+            payload={},
+            prediction_resolutions=tuple(resolutions),
+        )
+        connection.receipt_ledger.record_sent(sequence)
+        connection.next_delivery_sequence += 1
+        connection.deliver({"message_type": "gameplay_mirror_delivery", "payload": envelope.model_dump(mode="json")})
 
 
 @dataclass
@@ -430,6 +474,13 @@ class GameplayMirrorSubscriptionRegistry:
         self._subscriptions.remove(scope)
         return True
 
+    def subscribed_session_refs(self, *, actor_ref: str) -> tuple[str, ...]:
+        """Return only already-authorized, active subscribers for a server-selected actor."""
+
+        if not actor_ref:
+            return ()
+        return tuple(sorted(session_ref for session_ref, subscribed_actor_ref in self._subscriptions if subscribed_actor_ref == actor_ref))
+
     def drop_session(self, *, session_ref: str) -> None:
         """Drop only connection-scoped mirror grants and subscriptions for one binding."""
 
@@ -471,9 +522,11 @@ class GameplayMirrorAfterCommitDelivery:
         *,
         registry: GameplayMirrorSubscriptionRegistry,
         deliver: Callable[[str, dict[str, object]], None],
+        on_delivery_failure: Callable[[str], None] | None = None,
     ) -> None:
         self._registry = registry
         self._deliver = deliver
+        self._on_delivery_failure = on_delivery_failure
 
     def deliver_for_committed_actor_refs(self, *, affected_actor_refs: Iterable[str]) -> GameplayMirrorDeliveryResult:
         delivered_session_refs: list[str] = []
@@ -484,6 +537,14 @@ class GameplayMirrorAfterCommitDelivery:
             except Exception:
                 # Delivery cannot reverse or retry the already committed authority batch.
                 failed_session_refs.append(delivery.subscription.session_ref)
+                if self._on_delivery_failure is not None:
+                    try:
+                        self._on_delivery_failure(delivery.subscription.session_ref)
+                    except Exception:
+                        pass
+                # A failed transport must not retain read scope while awaiting a
+                # fresh, backend-issued enrollment.
+                self._registry.drop_session(session_ref=delivery.subscription.session_ref)
                 continue
             delivered_session_refs.append(delivery.subscription.session_ref)
         return GameplayMirrorDeliveryResult(

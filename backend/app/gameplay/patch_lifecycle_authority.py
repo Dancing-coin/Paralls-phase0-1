@@ -28,6 +28,8 @@ from app.gameplay.patch_runtime import (
 from app.gameplay.resource_body_runtime import (
     RESOURCE_BOUNDS_CLAMP_MIGRATOR_CODE_DIGEST,
     RESOURCE_BOUNDS_CLAMP_MIGRATOR_ID,
+    RESOURCE_BOUNDS_MIGRATED_SCHEMA_DIGEST,
+    RESOURCE_MATERIALIZED_SCHEMA_DIGEST,
     ResourceBodyRuntimeError,
     ResourceBodyRuntimeProjector,
     ResourceBoundsMigrationAuthorityService,
@@ -295,6 +297,7 @@ class GameplayPatchLifecycleAuthorityService:
             events=tuple(event_specs),
             extra_events=state_group_events,
             extra_expected_stream_revisions=state_group_expected_revisions,
+            projection_refresh_hints=self._resource_migration_refresh_hints(state_group_events),
         )
         if append_result.idempotency_status == "duplicate_replayed":
             if self._registry.active_patch_set != target:
@@ -321,6 +324,7 @@ class GameplayPatchLifecycleAuthorityService:
         events: tuple[tuple[str, dict[str, object]], ...],
         extra_events: list[dict[str, object]] | None = None,
         extra_expected_stream_revisions: dict[str, int] | None = None,
+        projection_refresh_hints: list[dict[str, object]] | None = None,
     ) -> AppendBatchResult:
         transaction_id = f"tx:{command_id}"
         serialized_events = []
@@ -376,7 +380,7 @@ class GameplayPatchLifecycleAuthorityService:
                         "context": context.model_dump(mode="json"),
                     }
                 ),
-                "projection_refresh_hints": [],
+                "projection_refresh_hints": projection_refresh_hints or [],
             }
         )
         if not append_result.committed:
@@ -384,6 +388,29 @@ class GameplayPatchLifecycleAuthorityService:
                 append_result.failure.error_code if append_result.failure is not None else "append_batch_failed"
             )
         return append_result
+
+    @staticmethod
+    def _resource_migration_refresh_hints(
+        events: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        actor_refs = tuple(
+            dict.fromkeys(
+                str(payload.get("actor_ref", ""))
+                for event in events
+                if str(event.get("event_type", "")) == "gameplay.resource.bounds_migrated"
+                for payload in [event.get("payload", {})]
+                if isinstance(payload, dict) and str(payload.get("actor_ref", ""))
+            )
+        )
+        return [
+            {
+                "projection_id": "godot_mirror",
+                "stream_id": f"gameplay:resources:{actor_ref}",
+                "reason": "patch_resource_migration_committed",
+                "actor_refs": [actor_ref],
+            }
+            for actor_ref in actor_refs
+        ]
 
     def _plan_state_group_materialization(
         self,
@@ -624,13 +651,20 @@ class GameplayPatchLifecycleAuthorityService:
         if set(migrations) != {"core.resources"}:
             raise GameplayPatchLifecycleAuthorityError("patch_resource_migration_group_unsupported")
         migration = migrations["core.resources"]
+        if migration.migration_digest != migration.expected_migration_digest():
+            raise GameplayPatchLifecycleAuthorityError("patch_resource_migration_digest_mismatch")
+        if (
+            migration.input_event_schema is None
+            or migration.output_event_schema is None
+            or migration.input_event_schema.schema_digest != RESOURCE_MATERIALIZED_SCHEMA_DIGEST
+            or migration.output_event_schema.schema_digest != RESOURCE_BOUNDS_MIGRATED_SCHEMA_DIGEST
+        ):
+            raise GameplayPatchLifecycleAuthorityError("patch_resource_migration_schema_digest_mismatch")
         if (
             migration.migration_kind != "resource_bounds_clamp"
             or migration.migrator_id != RESOURCE_BOUNDS_CLAMP_MIGRATOR_ID
             or migration.migrator_code_digest != RESOURCE_BOUNDS_CLAMP_MIGRATOR_CODE_DIGEST
             or migration.resource_id is None
-            or migration.input_event_schema is None
-            or migration.output_event_schema is None
             or migration.input_event_schema.event_type != "gameplay.resource.materialized"
             or migration.input_event_schema.schema_version != 1
             or migration.output_event_schema.event_type != "gameplay.resource.bounds_migrated"

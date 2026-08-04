@@ -18,6 +18,7 @@ from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from test_gameplay_event_store_contract import _batch, _event, _outbox
 from app.gameplay.runtime_state import CharacterGameRuntimeStateBuilder, StateGroupDefinition, StateGroupRegistry
 from app.gameplay.state_group_views import StateGroupConsumerViewPolicy, StateGroupViewProjector
+from app.ws_protocol import GameplayMirrorPredictionResolution
 
 
 def _snapshot_projection(actor_ref: str, facade_revision: str) -> dict[str, object]:
@@ -92,6 +93,16 @@ def test_after_commit_fanout_only_reaches_subscribed_authorized_affected_actor_s
     ]
 
 
+def test_prediction_resolution_targets_only_authorized_subscribed_actor_scopes() -> None:
+    registry = GameplayMirrorSubscriptionRegistry(projection_source=_godot_view)
+    for session_ref, actor_ref in (("session:one", "actor:a"), ("session:two", "actor:a"), ("session:one", "actor:b")):
+        registry.grant_read_scope(session_ref=session_ref, actor_ref=actor_ref)
+        registry.subscribe(session_ref=session_ref, actor_ref=actor_ref)
+
+    assert registry.subscribed_session_refs(actor_ref="actor:a") == ("session:one", "session:two")
+    assert registry.subscribed_session_refs(actor_ref="actor:b") == ("session:one",)
+
+
 def test_after_commit_transport_failure_does_not_prevent_other_authorized_deliveries() -> None:
     registry = GameplayMirrorSubscriptionRegistry(projection_source=_godot_view)
     for session_ref in ("session:one", "session:two"):
@@ -110,6 +121,25 @@ def test_after_commit_transport_failure_does_not_prevent_other_authorized_delive
     assert result.delivered_session_refs == ("session:two",)
     assert result.failed_session_refs == ("session:one",)
     assert delivered == ["session:two"]
+
+
+def test_unrecoverable_after_commit_failure_drops_scope_and_requests_transport_revocation() -> None:
+    registry = GameplayMirrorSubscriptionRegistry(projection_source=_godot_view)
+    registry.grant_read_scope(session_ref="session:failed", actor_ref="actor:a")
+    registry.subscribe(session_ref="session:failed", actor_ref="actor:a")
+    revoked: list[str] = []
+
+    delivery = GameplayMirrorAfterCommitDelivery(
+        registry=registry,
+        deliver=lambda _session_ref, _payload: (_ for _ in ()).throw(ConnectionError("closed")),
+        on_delivery_failure=revoked.append,
+    )
+    result = delivery.deliver_for_committed_actor_refs(affected_actor_refs=("actor:a",))
+
+    assert result.delivered_session_refs == ()
+    assert result.failed_session_refs == ("session:failed",)
+    assert revoked == ["session:failed"]
+    assert registry.subscribed_session_refs(actor_ref="actor:a") == ()
 
 
 def test_connection_registry_replaces_only_matching_connection_and_fails_closed() -> None:
@@ -146,6 +176,44 @@ def test_connection_registry_assigns_monotonic_delivery_sequences_per_epoch() ->
     assert [message["message_type"] for message in delivered] == ["gameplay_mirror_delivery", "gameplay_mirror_delivery"]
     assert [message["payload"]["delivery_sequence"] for message in delivered] == [1, 2]
     assert {message["payload"]["connection_epoch"] for message in delivered} == {4}
+
+
+def test_connection_registry_orders_prediction_resolutions_after_authority_delivery() -> None:
+    registry = GameplayMirrorConnectionRegistry()
+    delivered: list[dict[str, object]] = []
+    registry.register(
+        session_ref="session:one",
+        connection_ref="connection:one",
+        connection_epoch=4,
+        deliver=delivered.append,
+    )
+
+    registry.deliver("session:one", _snapshot_projection("actor:a", "facade:1"))
+    registry.deliver_prediction_resolutions(
+        session_ref="session:one",
+        actor_ref="actor:a",
+        facade_revision="facade:1",
+        resolutions=(
+            GameplayMirrorPredictionResolution(
+                prediction_id="prediction:stamina:one",
+                command_id="command:stamina:one",
+                resolution="confirmed",
+                transaction_id="tx:stamina:one",
+            ),
+        ),
+    )
+
+    assert [message["payload"]["delivery_kind"] for message in delivered] == ["snapshot", "prediction"]
+    assert [message["payload"]["delivery_sequence"] for message in delivered] == [1, 2]
+    assert delivered[1]["payload"]["prediction_resolutions"] == [
+        {
+            "prediction_id": "prediction:stamina:one",
+            "command_id": "command:stamina:one",
+            "resolution": "confirmed",
+            "transaction_id": "tx:stamina:one",
+            "error_code": "",
+        }
+    ]
 
 
 def test_outbound_queue_coalesces_only_its_own_dirty_actor_without_authority_mutation() -> None:
@@ -254,7 +322,12 @@ def test_filtered_view_sync_adapter_uses_exact_base_checksum_and_removes_omitted
     target_view = _godot_view("actor:a", include_resources=False, include_status=True)
     target = adapter.snapshot(target_view)
 
-    delta = adapter.delta(base, target)
+    delta = adapter.delta(
+        base,
+        target,
+        confirmed_prediction_ids=("prediction:stamina:one",),
+        rejected_predictions=("prediction:stamina:two",),
+    )
     rebuilt = adapter.apply_delta(base, delta)
     snapshot_payload = adapter.snapshot_payload(target)
     delta_payload = adapter.delta_payload(base, delta)
@@ -267,3 +340,5 @@ def test_filtered_view_sync_adapter_uses_exact_base_checksum_and_removes_omitted
     assert delta_payload["base_snapshot_checksum"] == base.snapshot_checksum
     assert delta_payload["target_snapshot_checksum"] == target.snapshot_checksum
     assert delta_payload["removed_group_ids"] == ["core.resources"]
+    assert delta_payload["confirmed_prediction_ids"] == ["prediction:stamina:one"]
+    assert delta_payload["rejected_predictions"] == ["prediction:stamina:two"]

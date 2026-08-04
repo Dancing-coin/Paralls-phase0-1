@@ -6,7 +6,20 @@ import json
 import pytest
 
 from app.gameplay.event_schema_registry import EventSchemaRegistry
+from app.gameplay.dispatcher import GameplayOutboxDispatcher
 from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.godot_mirror_delivery import (
+    GameplayGodotProjectionPublisher,
+    GameplayGodotProjectionRepository,
+    GameplayMirrorAfterCommitDelivery,
+    GameplayMirrorOutboxRefreshConsumer,
+    GameplayMirrorSubscriptionRegistry,
+)
+from app.gameplay.models import ProjectionRefreshHint
+from app.gameplay.phase3_mirror_source import (
+    Phase3MirrorActorConfiguration,
+    install_phase3_mirror_sources,
+)
 from app.gameplay.patch_lifecycle_authority import (
     GameplayPatchLifecycleAuthorityError,
     GameplayPatchLifecycleAuthorityService,
@@ -27,6 +40,8 @@ from app.gameplay.resource_body_runtime import (
 )
 from app.gameplay.runtime_state import StateGroupDefinition, StateGroupLifecycleProjector, StateGroupRegistry
 from app.gameplay.state_group_lifecycle_authority import StateAssemblyContext
+from app.gameplay.state_group_views import StateGroupConsumerViewPolicy
+from app.services.authority_event_bus import InMemoryAuthorityEventBus
 
 
 def _digest(payload: object) -> str:
@@ -920,11 +935,76 @@ def test_resource_bounds_patch_upgrade_commits_domain_fact_lifecycle_transition_
         "gameplay.patch.active_set_activated",
     ]
     assert {event.transaction_id for event in transaction.events} == {"tx:cmd:upgrade:resource-bounds"}
+    assert transaction.projection_refresh_hints == [
+        ProjectionRefreshHint(
+            projection_id="godot_mirror",
+            stream_id="gameplay:resources:actor:char_a",
+            reason="patch_resource_migration_committed",
+            actor_refs=("actor:char_a",),
+        )
+    ]
     resource_entry = ResourceBodyRuntimeProjector(resource_definitions=resource_definitions).rebuild_resources("actor:char_a", store.read_events()).entries["core.stamina"]
     assert (resource_entry.definition_version, resource_entry.current, resource_entry.maximum) == ("2.0.0", 6, 6)
     lifecycle = StateGroupLifecycleProjector(state_groups).rebuild("actor:char_a", store.read_events())
     assert lifecycle.records["core.resources"].definition_version == "2.0.0"
     assert lifecycle.records["core.resources"].source_patch_revision == v2_target.active_patch_set_revision
+
+    repository = GameplayGodotProjectionRepository()
+    publisher = GameplayGodotProjectionPublisher(repository=repository)
+    install_phase3_mirror_sources(
+        configurations=(
+            Phase3MirrorActorConfiguration(
+                actor_ref="actor:char_a",
+                state_group_definitions=(
+                    StateGroupDefinition(group_id="core.resources", definition_version="1.0.0", projection_schema_version=1),
+                    StateGroupDefinition(group_id="core.resources", definition_version="2.0.0", projection_schema_version=2),
+                ),
+                godot_view_policies=(
+                    StateGroupConsumerViewPolicy(group_id="core.resources", godot_allowed_fields=("entries",)),
+                ),
+                godot_allowed_group_ids=("core.resources",),
+                resource_definitions=(
+                    ResourceDefinition(resource_id="core.stamina", definition_version="1.0.0", minimum=0, maximum=10),
+                    ResourceDefinition(resource_id="core.stamina", definition_version="2.0.0", minimum=0, maximum=6),
+                ),
+                registry_revision="registry:patch-migration:v1",
+                world_config_revision="world:patch-migration:v1",
+                active_patch_set_revision=v2_target.active_patch_set_revision,
+            ),
+        ),
+        store=store,
+        publisher=publisher,
+    )
+    publisher.refresh_actor(actor_ref="actor:char_a")
+    subscriptions = GameplayMirrorSubscriptionRegistry(projection_source=repository.view_for)
+    subscriptions.grant_read_scope(session_ref="session:patch-migration", actor_ref="actor:char_a")
+    subscriptions.subscribe(session_ref="session:patch-migration", actor_ref="actor:char_a")
+    delivered: list[tuple[str, dict[str, object]]] = []
+    mirror_consumer = GameplayMirrorOutboxRefreshConsumer(
+        delivery=GameplayMirrorAfterCommitDelivery(
+            registry=subscriptions,
+            deliver=lambda session_ref, payload: delivered.append((session_ref, payload)),
+        )
+    )
+    dispatcher = GameplayOutboxDispatcher(
+        store=store,
+        bus=InMemoryAuthorityEventBus(),
+        after_transaction_dispatched=lambda committed: (
+            publisher.after_transaction_dispatched(committed),
+            mirror_consumer.after_transaction_dispatched(committed),
+        ),
+    )
+
+    assert transaction.outbox_entries == []
+    assert dispatcher.dispatch_pending().published_count == 0
+    assert [(session_ref, payload["actor_ref"]) for session_ref, payload in delivered] == [
+        ("session:patch-migration", "actor:char_a"),
+    ]
+    mirror_payload = delivered[0][1]
+    assert mirror_payload["groups"]["core.resources"]["payload"]["entries"]["core.stamina"]["maximum"] == 6
+    assert "migration_digest" not in str(mirror_payload)
+    assert "migrator_code_digest" not in str(mirror_payload)
+    assert "authority_command" not in str(mirror_payload)
 
     duplicate = service.apply_active_set(upgrade_command, upgrade_context)
     assert duplicate.changed is False
@@ -953,3 +1033,107 @@ def test_resource_bounds_migration_manifest_requires_declared_event_schema_ident
             state_group_ids=("core.resources",),
             state_group_migrations=(_resource_bounds_clamp(),),
         )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_error"),
+    [
+        ("input_schema_digest", "patch_resource_migration_schema_digest_mismatch"),
+        ("migration_digest", "patch_resource_migration_digest_mismatch"),
+        ("migrator_id", "patch_resource_migration_contract_invalid"),
+        ("actor_context", "patch_resource_migration_context_mismatch"),
+    ],
+)
+def test_resource_bounds_migration_rejects_tampered_manifest_descriptor_before_any_write(
+    mutation: str,
+    expected_error: str,
+) -> None:
+    registry = GameplayPatchRegistry(trusted_authors=frozenset({"author:repo"}))
+    state_groups = StateGroupRegistry()
+    state_groups.register(StateGroupDefinition(group_id="core.resources", definition_version="1.0.0", projection_schema_version=1))
+    state_groups.register(StateGroupDefinition(group_id="core.resources", definition_version="2.0.0", projection_schema_version=2))
+    resource_definitions = ResourceDefinitionRegistry()
+    resource_definitions.register(ResourceDefinition(resource_id="core.stamina", definition_version="1.0.0", minimum=0, maximum=10))
+    resource_definitions.register(ResourceDefinition(resource_id="core.stamina", definition_version="2.0.0", minimum=0, maximum=6))
+    store = GameplayEventStore()
+    service = GameplayPatchLifecycleAuthorityService(
+        store=store,
+        registry=registry,
+        state_group_registry=state_groups,
+        resource_definition_registry=resource_definitions,
+    )
+    v1 = _manifest(revision="patch:camp@1.0.0", version="1.0.0", state_group_ids=("core.resources",))
+    migration = _resource_bounds_clamp()
+    if mutation == "input_schema_digest":
+        migration = migration.model_copy(
+            update={"input_event_schema": migration.input_event_schema.model_copy(update={"schema_digest": "schema:tampered"})}
+        )
+    elif mutation == "migration_digest":
+        migration = migration.model_copy(update={"migration_digest": "sha256:" + "0" * 64})
+    elif mutation == "migrator_id":
+        migration = migration.model_copy(update={"migrator_id": "resource.bounds.untrusted.v1"})
+    if mutation != "migration_digest":
+        migration = migration.model_copy(update={"migration_digest": migration.expected_migration_digest()})
+    v2 = _manifest(
+        revision="patch:camp@2.0.0",
+        version="2.0.0",
+        state_group_ids=("core.resources",),
+        state_group_migrations=(migration,),
+        event_schemas=(migration.input_event_schema, migration.output_event_schema),
+    )
+    service.install_candidate(_install_command(v1, command_id=f"cmd:install:v1:{mutation}"), _context(registry))
+    service.install_candidate(_install_command(v2, command_id=f"cmd:install:v2:{mutation}"), _context(registry))
+    v1_target = registry.compose_active_set((v1.patch_revision_id,))
+    enabled = service.apply_active_set(
+        _active_set_command(
+            operation="enable",
+            patch_revision_ids=(v1.patch_revision_id,),
+            command_id=f"cmd:enable:v1:{mutation}",
+            state_group_actor_refs=("actor:char_a",),
+        ),
+        _context(
+            registry,
+            state_group_contexts=(
+                _state_group_context(
+                    actor_ref="actor:char_a",
+                    active_patch_set_revision=v1_target.active_patch_set_revision,
+                    definition_version="1.0.0",
+                ),
+            ),
+        ),
+    )
+    _materialize_versioned_resource(store)
+    resources = ResourceBodyRuntimeProjector(resource_definitions=resource_definitions).rebuild_resources("actor:char_a", store.read_events())
+    before_events = list(store.read_events())
+    before_active = registry.active_patch_set
+
+    with pytest.raises(GameplayPatchLifecycleAuthorityError, match=expected_error):
+        service.apply_active_set(
+            _active_set_command(
+                operation="upgrade",
+                patch_revision_ids=(v2.patch_revision_id,),
+                command_id=f"cmd:upgrade:tampered:{mutation}",
+                state_group_actor_refs=("actor:char_a",),
+            ),
+            _context(
+                registry,
+                active_revision=enabled.active_patch_set.active_patch_set_revision,
+                state_group_contexts=(
+                    _state_group_context(
+                        actor_ref="actor:char_a",
+                        active_patch_set_revision=enabled.active_patch_set.active_patch_set_revision,
+                        definition_version="1.0.0",
+                    ),
+                ),
+                resource_bounds_migration_contexts=(
+                    ResourceBoundsMigrationContext(
+                        actor_ref="actor:other" if mutation == "actor_context" else "actor:char_a",
+                        resource_id="core.stamina",
+                        expected_projection_revision=resources.projection_revision,
+                    ),
+                ),
+            ),
+        )
+
+    assert store.read_events() == before_events
+    assert registry.active_patch_set == before_active

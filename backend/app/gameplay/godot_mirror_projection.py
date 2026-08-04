@@ -12,7 +12,19 @@ class GodotGameplayMirrorProjectionError(ValueError):
     """Raised when a non-Godot or unsafe view would cross the presentation boundary."""
 
 
-_FORBIDDEN_FIELDS = {"world_truth_claim", "authority_command", "private_mind_state", "bone_transforms", "rigid_body_velocity"}
+_FORBIDDEN_FIELDS = {
+    "world_truth_claim",
+    "authority_command",
+    "private_mind_state",
+    "bone_transforms",
+    "rigid_body_velocity",
+    "migration_kind",
+    "migration_digest",
+    "migrator_code_digest",
+    "rollback_mode",
+    "input_event_schema",
+    "output_event_schema",
+}
 
 
 def project_godot_runtime_state(view: CharacterGameRuntimeStateView) -> dict[str, Any]:

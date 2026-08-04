@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from app.ws_protocol import (
     GameplayMirrorCapabilityOffer,
     GameplayMirrorDeliveryEnvelope,
+    GameplayMirrorPredictionResolution,
     GameplayMirrorReceipt,
     GameplayMirrorProtocolError,
     WebSocketSessionRenewalRequest,
@@ -90,6 +91,45 @@ def test_receipt_and_capability_offer_reject_scope_or_projection_field_requests(
     with pytest.raises(ValidationError):
         GameplayMirrorReceipt.model_validate(
             {"connection_epoch": 3, "delivery_sequence": 7, "actor_ref": "actor:a"}
+        )
+
+
+def test_prediction_resolution_requires_a_server_result_without_client_world_state() -> None:
+    confirmed = GameplayMirrorPredictionResolution.model_validate(
+        {
+            "prediction_id": "prediction:stamina:one",
+            "command_id": "command:stamina:one",
+            "resolution": "confirmed",
+            "transaction_id": "tx:stamina:one",
+        }
+    )
+    rejected = GameplayMirrorPredictionResolution.model_validate(
+        {
+            "prediction_id": "prediction:stamina:two",
+            "command_id": "command:stamina:two",
+            "resolution": "rejected",
+            "error_code": "insufficient_stamina",
+        }
+    )
+
+    assert confirmed.transaction_id == "tx:stamina:one"
+    assert rejected.error_code == "insufficient_stamina"
+    with pytest.raises(ValidationError):
+        GameplayMirrorPredictionResolution.model_validate(
+            {
+                "prediction_id": "prediction:invalid",
+                "command_id": "command:invalid",
+                "resolution": "confirmed",
+            }
+        )
+    with pytest.raises(ValidationError):
+        GameplayMirrorPredictionResolution.model_validate(
+            {
+                "prediction_id": "prediction:invalid",
+                "command_id": "command:invalid",
+                "resolution": "rejected",
+                "world_truth_claim": {"current": 1},
+            }
         )
 
 

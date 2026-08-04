@@ -3,6 +3,7 @@ from __future__ import annotations
 import inspect
 from pathlib import Path
 import runpy
+from time import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -269,6 +270,53 @@ def test_live_probe_repeat_commit_keeps_existing_phase3_source_available(monkeyp
     assert main.gameplay_godot_projection_publisher.refresh_actor(actor_ref="actor:live-probe").actor_ref == "actor:live-probe"
 
 
+def test_live_probe_controlled_close_route_revokes_only_the_registered_transport(monkeypatch) -> None:
+    import app.main as main
+
+    configuration = {
+        "actor_ref": "actor:live-probe",
+        "state_group_definitions": [{"group_id": "core.resources", "definition_version": "1", "projection_schema_version": 1}],
+        "godot_view_policies": [{"group_id": "core.resources", "godot_allowed_fields": ["entries"]}],
+        "godot_allowed_group_ids": ["core.resources"],
+        "registry_revision": "registry:live:v1",
+        "world_config_revision": "world:live:v1",
+        "active_patch_set_revision": "patch:live:v1",
+    }
+    monkeypatch.setattr(main.settings, "gameplay_mirror_phase3_actor_configs", [configuration])
+    main = _configured_runtime_issuer()
+    now = int(time())
+    enrollment = main.gameplay_mirror_trusted_local_enrollment_issuer.issue_for_launch_profile("mirror-demo", now=now)
+    binding = main.websocket_session_auth_service.bind_session(enrollment, remote_host="127.0.0.1", now=now)
+    assert binding.binding is not None
+    session_ref = binding.binding.session_ref
+    close_requests: list[str] = []
+    main.gameplay_mirror_connection_registry.register(
+        session_ref=session_ref,
+        connection_ref="connection:controlled-close",
+        deliver=lambda _payload: None,
+    )
+    main.websocket_transport_closers["connection:controlled-close"] = close_requests.append
+    authority_snapshot = main.gameplay_event_store.export_snapshot()
+    client = TestClient(main.app, client=("127.0.0.1", 47009))
+
+    denied = client.post(
+        "/internal/trusted-local-gameplay-mirror-live-probe-controlled-close",
+        json={"session_ref": session_ref},
+    )
+    accepted = client.post(
+        "/internal/trusted-local-gameplay-mirror-live-probe-controlled-close",
+        headers={"X-Gameplay-Mirror-Launcher-Secret": "launcher-test-secret"},
+        json={"session_ref": session_ref},
+    )
+
+    assert denied.status_code == 403
+    assert accepted.status_code == 200
+    assert accepted.json() == {"session_ref": session_ref, "reason_code": "mirror_delivery_unrecoverable"}
+    assert close_requests == ["mirror_delivery_unrecoverable"]
+    assert main.websocket_session_auth_service.resolve_binding(session_ref) is None
+    assert main.gameplay_event_store.export_snapshot() == authority_snapshot
+
+
 def test_launcher_child_environment_strips_issuer_secrets_and_profile_configuration() -> None:
     launcher = runpy.run_path(
         str(Path(__file__).resolve().parents[2] / "scripts" / "launch_trusted_local_gameplay_mirror.py")
@@ -319,11 +367,15 @@ def test_live_delivery_probe_uses_backend_bridge_and_server_commit_handoff() -> 
     assert "_actor_ref != _first_actor_ref" in source
     assert "GAMEPLAY_MIRROR_LIVE_PROBE_DROP_FIRST_DELIVERY" in verifier
     assert "live_gap_resync" in source
+    assert "websocket_session_revoked_received" in source
+    assert "live_controlled_close_verified" in source
+    assert "trusted-local-gameplay-mirror-live-probe-controlled-close" in verifier
+    assert '"controlled_close_code": _controlled_close_code' in source
 
 
 def test_godot_mirror_harness_runs_each_required_live_recovery_scenario() -> None:
     root = Path(__file__).resolve().parents[2]
     verifier = (root / "scripts" / "verification" / "verify_godot_gameplay_mirror.py").read_text(encoding="utf-8")
 
-    assert 'LIVE_SCENARIOS = ("reconnect", "gap", "backpressure")' in verifier
+    assert 'LIVE_SCENARIOS = ("reconnect", "gap", "backpressure", "prediction", "controlled_close")' in verifier
     assert '"--scenario", scenario' in verifier

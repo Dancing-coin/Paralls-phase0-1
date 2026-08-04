@@ -12,7 +12,11 @@ from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.godot_mirror_delivery import GameplayGodotProjectionPublisher
 from app.gameplay.models import StrictGameplayModel
 from app.gameplay.phase3_state_composer import Phase3StateComposer
-from app.gameplay.resource_body_runtime import ResourceBodyRuntimeProjector
+from app.gameplay.resource_body_runtime import (
+    ResourceBodyRuntimeProjector,
+    ResourceDefinition,
+    ResourceDefinitionRegistry,
+)
 from app.gameplay.runtime_state import CharacterGameRuntimeStateBuilder, StateGroupDefinition, StateGroupLifecycleProjector, StateGroupRegistry
 from app.gameplay.state_group_views import StateGroupConsumerViewPolicy, StateGroupViewProjector
 from app.gameplay.status_tags import StatusTagDefinition, StatusTagProjector, StatusTagRegistry, active_status_tag_modifiers
@@ -41,6 +45,7 @@ class Phase3MirrorActorConfiguration(StrictGameplayModel):
     state_group_definitions: tuple[StateGroupDefinition, ...] = Field(min_length=1)
     godot_view_policies: tuple[StateGroupConsumerViewPolicy, ...] = ()
     godot_allowed_group_ids: tuple[str, ...] = ()
+    resource_definitions: tuple[ResourceDefinition, ...] = ()
     status_tag_definitions: tuple[StatusTagDefinition, ...] = ()
     stat_baselines: tuple[StatBaseline, ...] = ()
     registry_revision: str = Field(min_length=1)
@@ -50,8 +55,12 @@ class Phase3MirrorActorConfiguration(StrictGameplayModel):
     @model_validator(mode="after")
     def validate_mirror_source_scope(self) -> "Phase3MirrorActorConfiguration":
         group_ids = tuple(item.group_id for item in self.state_group_definitions)
-        if len(set(group_ids)) != len(group_ids):
-            raise ValueError("phase3_mirror_state_group_duplicate")
+        definition_keys = tuple(
+            (item.group_id, item.definition_version)
+            for item in self.state_group_definitions
+        )
+        if len(set(definition_keys)) != len(definition_keys):
+            raise ValueError("phase3_mirror_state_group_definition_duplicate")
         unsupported = set(group_ids).difference(_SUPPORTED_GROUP_IDS)
         if unsupported:
             raise ValueError("phase3_mirror_state_group_unsupported")
@@ -63,6 +72,12 @@ class Phase3MirrorActorConfiguration(StrictGameplayModel):
             raise ValueError("phase3_mirror_godot_policy_invalid")
         if set(allowed).difference(policy_ids):
             raise ValueError("phase3_mirror_godot_policy_required")
+        resource_definition_keys = tuple(
+            (item.resource_id, item.definition_version)
+            for item in self.resource_definitions
+        )
+        if len(set(resource_definition_keys)) != len(resource_definition_keys):
+            raise ValueError("phase3_mirror_resource_definition_duplicate")
         if len({item.tag_id for item in self.status_tag_definitions}) != len(self.status_tag_definitions):
             raise ValueError("phase3_mirror_status_tag_duplicate")
         if len({item.stat_id for item in self.stat_baselines}) != len(self.stat_baselines):
@@ -92,6 +107,9 @@ class Phase3MirrorSource:
         state_groups = StateGroupRegistry()
         for definition in configuration.state_group_definitions:
             state_groups.register(definition)
+        resource_definitions = ResourceDefinitionRegistry()
+        for definition in configuration.resource_definitions:
+            resource_definitions.register(definition)
         tag_registry = StatusTagRegistry()
         for definition in configuration.status_tag_definitions:
             tag_registry.register(definition)
@@ -99,7 +117,9 @@ class Phase3MirrorSource:
             configuration=configuration,
             store=store,
             _lifecycle_projector=StateGroupLifecycleProjector(state_groups),
-            _resource_body_projector=ResourceBodyRuntimeProjector(),
+            _resource_body_projector=ResourceBodyRuntimeProjector(
+                resource_definitions=resource_definitions if configuration.resource_definitions else None,
+            ),
             _status_tag_projector=StatusTagProjector(tag_registry),
             _composer=Phase3StateComposer(facade_builder=CharacterGameRuntimeStateBuilder(state_groups)),
             _view_projector=StateGroupViewProjector(list(configuration.godot_view_policies)),

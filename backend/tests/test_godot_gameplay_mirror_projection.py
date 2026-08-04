@@ -29,3 +29,32 @@ def test_projector_rejects_forbidden_fields_nested_inside_an_allowed_group() -> 
 
     with pytest.raises(GodotGameplayMirrorProjectionError, match="forbidden_projection_field"):
         project_godot_runtime_state(view)
+
+
+def test_projector_rejects_patch_migration_instructions_even_when_a_view_policy_allows_them() -> None:
+    state = _state(
+        {
+            "current": 6,
+            "migration_kind": "resource.bounds.clamp_maximum.v1",
+            "migration_digest": "sha256:must-not-reach-godot",
+            "migrator_code_digest": "sha256:must-not-reach-godot",
+            "rollback_mode": "forward_fix_only",
+        }
+    )
+    view = StateGroupViewProjector(
+        [
+            StateGroupConsumerViewPolicy(
+                group_id="core.resources",
+                godot_allowed_fields=(
+                    "current",
+                    "migration_kind",
+                    "migration_digest",
+                    "migrator_code_digest",
+                    "rollback_mode",
+                ),
+            )
+        ]
+    ).godot_view(state, allowed_group_ids=("core.resources",))
+
+    with pytest.raises(GodotGameplayMirrorProjectionError, match="forbidden_projection_field"):
+        project_godot_runtime_state(view)

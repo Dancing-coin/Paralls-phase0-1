@@ -33,6 +33,39 @@ def _post_reconnect_commit(secret: str) -> dict[str, object]:
         return json.loads(response.read().decode("utf-8"))
 
 
+def _post_prediction_confirm(secret: str) -> dict[str, object]:
+    request = Request(
+        "http://127.0.0.1:8000/internal/trusted-local-gameplay-mirror-live-probe-prediction-confirm",
+        data=b"{}",
+        headers={"Content-Type": "application/json", "X-Gameplay-Mirror-Launcher-Secret": secret},
+        method="POST",
+    )
+    with urlopen(request, timeout=10) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _post_prediction_reject(secret: str) -> dict[str, object]:
+    request = Request(
+        "http://127.0.0.1:8000/internal/trusted-local-gameplay-mirror-live-probe-prediction-reject",
+        data=b"{}",
+        headers={"Content-Type": "application/json", "X-Gameplay-Mirror-Launcher-Secret": secret},
+        method="POST",
+    )
+    with urlopen(request, timeout=10) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _post_controlled_close(secret: str, session_ref: str) -> dict[str, object]:
+    request = Request(
+        "http://127.0.0.1:8000/internal/trusted-local-gameplay-mirror-live-probe-controlled-close",
+        data=json.dumps({"session_ref": session_ref}).encode("utf-8"),
+        headers={"Content-Type": "application/json", "X-Gameplay-Mirror-Launcher-Secret": secret},
+        method="POST",
+    )
+    with urlopen(request, timeout=10) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
 def _request_enrollment(secret: str, profile_ref: str) -> dict[str, object]:
     request = Request(
         "http://127.0.0.1:8000/internal/trusted-local-gameplay-mirror-enrollment",
@@ -48,7 +81,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--godot-exe", default=None)
     parser.add_argument("--python-exe", default=None)
-    parser.add_argument("--scenario", choices=("reconnect", "gap", "backpressure"), default="reconnect")
+    parser.add_argument("--scenario", choices=("reconnect", "gap", "backpressure", "prediction", "controlled_close"), default="reconnect")
     args = parser.parse_args()
     root = repo_root()
     log_dir = verification_dir(root)
@@ -57,7 +90,11 @@ def main() -> int:
     reconnect_enrollment_path = log_dir / "live-gameplay-mirror-reconnect-enrollment.json"
     stage_path = log_dir / "live-gameplay-mirror-stage.json"
     runtime_path = log_dir / "live-gameplay-mirror-runtime.json"
-    for path in (ready_path, first_delivery_path, reconnect_enrollment_path, stage_path, runtime_path):
+    prediction_confirm_ready_path = log_dir / "live-gameplay-mirror-prediction-confirm-ready.json"
+    prediction_reject_ready_path = log_dir / "live-gameplay-mirror-prediction-reject-ready.json"
+    prediction_backend_path = log_dir / "live-gameplay-mirror-prediction-backend.json"
+    controlled_close_backend_path = log_dir / "live-gameplay-mirror-controlled-close-backend.json"
+    for path in (ready_path, first_delivery_path, reconnect_enrollment_path, stage_path, runtime_path, prediction_confirm_ready_path, prediction_reject_ready_path, prediction_backend_path, controlled_close_backend_path):
         if path.exists():
             path.unlink()
     secret = "live-gameplay-mirror-verifier-secret"
@@ -116,19 +153,79 @@ def main() -> int:
             time.sleep(0.1)
         if not ready_path.exists():
             return 1
-        _post_commit(secret)
+        if args.scenario == "controlled_close":
+            ready = json.loads(ready_path.read_text(encoding="utf-8"))
+            session_ref = str(ready.get("session_ref", ""))
+            if not session_ref:
+                return 1
+            controlled_close = _post_controlled_close(secret, session_ref)
+            controlled_close_backend_path.write_text(json.dumps(controlled_close, indent=2), encoding="utf-8")
+            deadline = time.time() + 15
+            while time.time() < deadline and not runtime_path.exists() and process.poll() is None:
+                time.sleep(0.1)
+            process.wait(timeout=30)
+            runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
+            return 0 if (
+                runtime.get("status") == "live_controlled_close_verified"
+                and runtime.get("controlled_close_revocation_seen") is True
+                and runtime.get("controlled_close_reason") == controlled_close.get("reason_code")
+                and runtime.get("controlled_close_code") == 4403
+            ) else 1
+        initial_commit = _post_commit(secret)
+        prediction_confirmation: dict[str, object] = {}
+        prediction_rejection: dict[str, object] = {}
+        if args.scenario == "prediction":
+            deadline = time.time() + 15
+            while time.time() < deadline and not prediction_confirm_ready_path.exists() and process.poll() is None:
+                time.sleep(0.1)
+            if not prediction_confirm_ready_path.exists():
+                return 1
+            prediction_confirmation = _post_prediction_confirm(secret)
+            deadline = time.time() + 15
+            while time.time() < deadline and not prediction_reject_ready_path.exists() and process.poll() is None:
+                time.sleep(0.1)
+            if not prediction_reject_ready_path.exists():
+                return 1
+            prediction_rejection = _post_prediction_reject(secret)
         if args.scenario == "gap":
             _post_commit(secret)
         if args.scenario == "backpressure":
             _post_commit(secret)
             _post_commit(secret)
-        if args.scenario in {"gap", "backpressure"}:
+        if args.scenario in {"gap", "backpressure", "prediction"}:
             deadline = time.time() + 15
             while time.time() < deadline and not runtime_path.exists() and process.poll() is None:
                 time.sleep(0.1)
             process.wait(timeout=30)
-            expected = "live_gap_resync_verified" if args.scenario == "gap" else "live_backpressure_isolation_verified"
-            return 0 if json.loads(runtime_path.read_text(encoding="utf-8")).get("status") == expected else 1
+            expected = {
+                "gap": "live_gap_resync_verified",
+                "backpressure": "live_backpressure_isolation_verified",
+                "prediction": "live_prediction_confirm_reject_rollback_verified",
+            }[args.scenario]
+            runtime = json.loads(runtime_path.read_text(encoding="utf-8"))
+            if args.scenario == "prediction":
+                prediction_backend_path.write_text(
+                    json.dumps(
+                        {
+                            "initial_commit": initial_commit,
+                            "confirmation": prediction_confirmation,
+                            "rejection": prediction_rejection,
+                            "godot_facade_revision": runtime.get("facade_revision", ""),
+                        },
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+                prediction_evidence_ok = (
+                    int(prediction_confirmation.get("mutation_count", 0)) > 0
+                    and int(prediction_confirmation.get("prediction_resolution_deliveries", 0)) > 0
+                    and int(prediction_rejection.get("mutation_count", -1)) == 0
+                    and str(prediction_rejection.get("error_code", "")) == "revision_conflict"
+                    and int(prediction_rejection.get("prediction_resolution_deliveries", 0)) > 0
+                    and str(prediction_rejection.get("facade_revision", "")) == str(runtime.get("facade_revision", ""))
+                )
+                return 0 if runtime.get("status") == expected and prediction_evidence_ok else 1
+            return 0 if runtime.get("status") == expected else 1
         deadline = time.time() + 15
         while time.time() < deadline and not first_delivery_path.exists() and process.poll() is None:
             time.sleep(0.1)

@@ -28,6 +28,7 @@ class EquipmentProfile:
     ability_grant_path_ids: tuple[str, ...] = ()
     modifier_template_ids: tuple[str, ...] = ()
     required_slot_keys: tuple[str, ...] = ()
+    container_access_container_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,7 @@ class EquipmentActivation:
     ability_grant_ids: tuple[str, ...]
     modifier_instance_ids: tuple[str, ...]
     source_event_id: str
+    container_access_container_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -77,6 +79,8 @@ class EquipmentDefinitionRegistry:
             or len(set(profile.modifier_template_ids)) != len(profile.modifier_template_ids)
             or any(not slot_key for slot_key in profile.required_slot_keys)
             or len(set(profile.required_slot_keys)) != len(profile.required_slot_keys)
+            or any(not container_id for container_id in profile.container_access_container_ids)
+            or len(set(profile.container_access_container_ids)) != len(profile.container_access_container_ids)
         ):
             raise EquipmentRuntimeError("equipment_profile_invalid")
         self._profiles_by_definition_id[definition_id] = profile
@@ -116,6 +120,7 @@ class EquipmentProjector:
                 equipment_location = _text(payload, "equipment_location")
                 ability_grant_ids = _text_tuple(payload.get("ability_grant_ids", ()))
                 modifier_instance_ids = _text_tuple(payload.get("modifier_instance_ids", ()))
+                container_access_container_ids = _text_tuple(payload.get("container_access_container_ids", ()))
                 if (
                     activation_id in activations
                     or not slot_keys
@@ -134,6 +139,7 @@ class EquipmentProjector:
                     ability_grant_ids,
                     modifier_instance_ids,
                     event.event_id,
+                    container_access_container_ids,
                 )
                 for occupied_slot in slot_keys:
                     active_by_slot[occupied_slot] = activation_id
@@ -278,7 +284,18 @@ class EquipmentAuthorityService:
                 2,
                 causation_id,
                 correlation_id,
-                {"actor_ref": actor_ref, "activation_id": activation_id, "item_id": item_id, "profile_id": profile.profile_id, "slot_key": slot_key, "slot_keys": list(occupied_slot_keys), "equipment_location": equipment_location, "ability_grant_ids": list(ability_grant_ids), "modifier_instance_ids": list(modifier_instance_ids)},
+                {
+                    "actor_ref": actor_ref,
+                    "activation_id": activation_id,
+                    "item_id": item_id,
+                    "profile_id": profile.profile_id,
+                    "slot_key": slot_key,
+                    "slot_keys": list(occupied_slot_keys),
+                    "equipment_location": equipment_location,
+                    "ability_grant_ids": list(ability_grant_ids),
+                    "modifier_instance_ids": list(modifier_instance_ids),
+                    "container_access_container_ids": list(profile.container_access_container_ids),
+                },
             ),
         ]
         for index, (instance_id, template_id) in enumerate(zip(modifier_instance_ids, profile.modifier_template_ids), start=3):
@@ -342,6 +359,11 @@ class EquipmentAuthorityService:
             raise EquipmentRuntimeError("equipment_activation_not_found")
         if inventory.locations.get(activation.item_id) != activation.equipment_location:
             raise EquipmentRuntimeError("equipment_source_placement_mismatch")
+        if any(
+            location in activation.container_access_container_ids
+            for location in inventory.locations.values()
+        ):
+            raise EquipmentRuntimeError("equipment_container_non_empty")
         self._require_destination_capacity(inventory, destination_container_id, inventory.items[activation.item_id])
         inventory_stream = _inventory_stream(actor_ref)
         equipment_stream = _equipment_stream(actor_ref)
@@ -654,6 +676,155 @@ class EquipmentAuthorityService:
         )
 
 
+class EquipmentContainerAccessAuthority:
+    """Moves items through a container only while its owning equipment is active."""
+
+    _PRINCIPAL = "actor_gameplay.equipment_container_access"
+
+    def __init__(
+        self,
+        *,
+        store: GameplayEventStore,
+        inventory_registry: InventoryDefinitionRegistry,
+    ) -> None:
+        self._store = store
+        self._inventory_registry = inventory_registry
+        self._inventory_projector = InventoryProjector(inventory_registry)
+        self._equipment_projector = EquipmentProjector()
+
+    def move(
+        self,
+        *,
+        command_id: str,
+        actor_ref: str,
+        activation_id: str,
+        item_id: str,
+        from_container_id: str,
+        to_container_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ) -> AppendBatchResult:
+        command = {
+            "kind": "equipment_container_move",
+            "command_id": command_id,
+            "actor_ref": actor_ref,
+            "activation_id": activation_id,
+            "item_id": item_id,
+            "from_container_id": from_container_id,
+            "to_container_id": to_container_id,
+        }
+        digest = _digest(command)
+        duplicate = self._duplicate(actor_ref, idempotency_key, digest)
+        if duplicate is not None:
+            return duplicate
+
+        events = self._store.read_events()
+        inventory = self._inventory_projector.rebuild(actor_ref, events)
+        equipment = self._equipment_projector.rebuild(actor_ref, events)
+        activation = equipment.activations.get(activation_id)
+        if activation is None:
+            raise EquipmentRuntimeError("equipment_container_access_denied")
+        access_container_ids = set(activation.container_access_container_ids)
+        if not access_container_ids or not ({from_container_id, to_container_id} & access_container_ids):
+            raise EquipmentRuntimeError("equipment_container_access_denied")
+        item = inventory.items.get(item_id)
+        target = inventory.containers.get(to_container_id)
+        if item is None or inventory.locations.get(item_id) != from_container_id:
+            raise EquipmentRuntimeError("equipment_container_move_source_invalid")
+        if target is None or target.sealed:
+            raise EquipmentRuntimeError("equipment_container_destination_rejected")
+        for container_id in access_container_ids:
+            container = inventory.containers.get(container_id)
+            if container is None or container.carrier_item_id != activation.item_id:
+                raise EquipmentRuntimeError("equipment_container_binding_invalid")
+        self._require_destination_capacity(inventory, to_container_id, item)
+
+        inventory_stream = _inventory_stream(actor_ref)
+        equipment_stream = _equipment_stream(actor_ref)
+        transaction_id = f"tx:{command_id}"
+        event = _event(
+            command_id,
+            transaction_id,
+            inventory_stream,
+            "gameplay.inventory.item_moved",
+            1,
+            causation_id,
+            correlation_id,
+            {
+                "actor_ref": actor_ref,
+                "item_id": item_id,
+                "from_container_id": from_container_id,
+                "to_container_id": to_container_id,
+            },
+        )
+        return self._store.append_batch(
+            {
+                "transaction_id": transaction_id,
+                "command_id": command_id,
+                "expected_stream_revisions": {
+                    inventory_stream: inventory.source_revision_vector.get(inventory_stream, 0),
+                    equipment_stream: equipment.source_revision_vector.get(equipment_stream, 0),
+                },
+                "pinned_revisions": {
+                    "inventory": inventory.source_revision_vector.get(inventory_stream, 0),
+                    "equipment": equipment.source_revision_vector.get(equipment_stream, 0),
+                },
+                "events": [event],
+                "idempotency_record": {
+                    "principal_ref": self._PRINCIPAL,
+                    "idempotency_key": f"{actor_ref}:{idempotency_key}",
+                    "payload_digest": digest,
+                },
+                "outbox_entries": [],
+                "result_digest": _digest([event]),
+                "projection_refresh_hints": [],
+            }
+        )
+
+    def _duplicate(self, actor_ref: str, idempotency_key: str, digest: str) -> AppendBatchResult | None:
+        key = f"{actor_ref}:{idempotency_key}"
+        record = self._store.get_idempotency_record(self._PRINCIPAL, key)
+        if record is None:
+            return None
+        if record.payload_digest != digest:
+            raise EquipmentRuntimeError("idempotency_key_reused")
+        result = self._store.get_by_idempotency(self._PRINCIPAL, key)
+        if result is None:
+            raise EquipmentRuntimeError("equipment_container_idempotency_missing_result")
+        return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+
+    def _require_destination_capacity(
+        self,
+        inventory: InventoryProjection,
+        container_id: str,
+        candidate: InventoryItem,
+    ) -> None:
+        container = inventory.containers[container_id]
+        definition = self._inventory_registry.item(candidate.definition_id)
+        if definition.is_living and not container.allows_living_items:
+            raise EquipmentRuntimeError("inventory_living_item_rejected")
+        entries = [
+            item
+            for item_id, item in inventory.items.items()
+            if inventory.locations.get(item_id) == container_id and item_id != candidate.item_id
+        ]
+        weight = sum(
+            self._inventory_registry.item(item.definition_id).unit_weight * item.quantity
+            for item in entries
+        ) + definition.unit_weight * candidate.quantity
+        volume = sum(
+            self._inventory_registry.item(item.definition_id).unit_volume * item.quantity
+            for item in entries
+        ) + definition.unit_volume * candidate.quantity
+        if (
+            len(entries) + 1 > container.capacity_slots
+            or weight > container.capacity_weight
+            or volume > container.capacity_volume
+        ):
+            raise EquipmentRuntimeError("inventory_capacity_exceeded")
+
+
 def _event(
     command_id: str,
     transaction_id: str,
@@ -735,6 +906,7 @@ def _occupied_slot_keys(requested_slot_key: str, profile: EquipmentProfile) -> t
 __all__ = [
     "EquipmentActivation",
     "EquipmentAuthorityService",
+    "EquipmentContainerAccessAuthority",
     "EquipmentDefinitionRegistry",
     "EquipmentProfile",
     "EquipmentProjector",

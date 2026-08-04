@@ -6,5 +6,5 @@
   "requires_godot": true,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/godot-gameplay-mirror-report.json",
-  "description": "Backend/Godot proof for gameplay mirror foundations: filtered envelope, backend-configured Phase 3 committed-event source, session-binding/read scope, backend renewal/revocation lifecycle, live /ws trusted-local bind/subscribe snapshot proof, bounded after-commit connection-fanout plumbing, Phase 4 typed delivery contracts, plus a local Godot fresh-enrollment disconnect probe; it excludes live WebSocket mirror delivery/reconnect/resync, prediction, persistence, and migration closure"
+  "description": "Backend/Godot proof for gameplay mirror foundations: filtered envelope, backend-configured Phase 3 committed-event source, session-binding/read scope, backend renewal/revocation lifecycle, trusted-local live /ws bind/subscribe/reconnect delivery, snapshot recovery, gap/resync, bounded-queue backpressure recovery, and authority prediction confirmation/rejection rollback; it excludes production identity, production command routing, persistence, and migration closure"
 }

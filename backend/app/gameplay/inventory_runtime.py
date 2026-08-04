@@ -22,6 +22,7 @@ class ItemDefinition:
     definition_version: str
     unit_weight: int
     unit_volume: int
+    is_living: bool = False
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,9 @@ class ContainerSpec:
     capacity_volume: int
     capacity_slots: int
     sealed: bool = False
+    carrier_item_id: str = ""
+    content_weight_propagation: str = "include_contents"
+    allows_living_items: bool = True
 
 
 @dataclass(frozen=True)
@@ -49,6 +53,9 @@ class InventoryContainer:
     capacity_slots: int
     sealed: bool
     source_event_id: str
+    carrier_item_id: str = ""
+    content_weight_propagation: str = "include_contents"
+    allows_living_items: bool = True
 
 
 @dataclass(frozen=True)
@@ -69,6 +76,17 @@ class EncumbranceProjection:
     source_breakdown: Mapping[str, int]
     source_revision_vector: Mapping[str, int]
     projection_revision: str
+    explanation_entries: tuple["EncumbranceExplanationEntry", ...] = ()
+
+
+@dataclass(frozen=True)
+class EncumbranceExplanationEntry:
+    item_id: str
+    location: str
+    propagation_strategy: str
+    included_weight: int
+    excluded_weight: int
+    source_refs: tuple[str, ...]
 
 
 class InventoryDefinitionRegistry:
@@ -76,7 +94,14 @@ class InventoryDefinitionRegistry:
         self._items: dict[str, ItemDefinition] = {}
 
     def register_item(self, definition: ItemDefinition) -> None:
-        if not definition.definition_id or not definition.definition_version or definition.definition_id in self._items or definition.unit_weight < 0 or definition.unit_volume < 0:
+        if (
+            not definition.definition_id
+            or not definition.definition_version
+            or definition.definition_id in self._items
+            or definition.unit_weight < 0
+            or definition.unit_volume < 0
+            or not isinstance(definition.is_living, bool)
+        ):
             raise InventoryRuntimeError("inventory_item_definition_invalid")
         self._items[definition.definition_id] = definition
 
@@ -110,7 +135,17 @@ class InventoryProjector:
                 container_id = _text(payload, "container_id")
                 if container_id in containers:
                     raise InventoryRuntimeError("inventory_container_duplicate")
-                containers[container_id] = InventoryContainer(container_id, _nonnegative(payload, "capacity_weight"), _nonnegative(payload, "capacity_volume"), _nonnegative(payload, "capacity_slots"), bool(payload.get("sealed", False)), event.event_id)
+                containers[container_id] = InventoryContainer(
+                    container_id,
+                    _nonnegative(payload, "capacity_weight"),
+                    _nonnegative(payload, "capacity_volume"),
+                    _nonnegative(payload, "capacity_slots"),
+                    bool(payload.get("sealed", False)),
+                    event.event_id,
+                    _optional_text(payload, "carrier_item_id"),
+                    _content_weight_propagation(payload.get("content_weight_propagation", "include_contents")),
+                    _bool_with_default(payload, "allows_living_items", True),
+                )
             elif event.event_type == "gameplay.inventory.item_instantiated":
                 item_id = _text(payload, "item_id")
                 definition_id = _text(payload, "definition_id")
@@ -170,19 +205,90 @@ class InventoryProjector:
         frozen_revisions = MappingProxyType(dict(sorted(revisions.items())))
         return InventoryProjection(actor_ref, frozen_items, frozen_containers, frozen_locations, frozen_revisions, f"inventory:{_digest([actor_ref, frozen_items, frozen_containers, frozen_locations, frozen_revisions])[:16]}")
 
-    def rebuild_encumbrance(self, projection: InventoryProjection, *, carrier_ref: str, carried_container_ids: Sequence[str]) -> EncumbranceProjection:
+    def rebuild_encumbrance(
+        self,
+        projection: InventoryProjection,
+        *,
+        carrier_ref: str,
+        carried_container_ids: Sequence[str],
+        carried_item_ids: Sequence[str] = (),
+    ) -> EncumbranceProjection:
         container_ids = tuple(sorted(set(carried_container_ids)))
         if any(container_id not in projection.containers for container_id in container_ids):
             raise InventoryRuntimeError("inventory_container_unknown")
-        breakdown = {
-            item_id: self._registry.item(item.definition_id).unit_weight * item.quantity
-            for item_id, item in projection.items.items()
-            if projection.locations.get(item_id) in container_ids
-        }
-        volume = sum(self._registry.item(item.definition_id).unit_volume * item.quantity for item_id, item in projection.items.items() if projection.locations.get(item_id) in container_ids)
+        direct_item_ids = tuple(sorted(set(carried_item_ids)))
+        if any(item_id not in projection.items for item_id in direct_item_ids):
+            raise InventoryRuntimeError("inventory_item_unknown")
+
+        weights: dict[str, int] = {}
+        volumes: dict[str, int] = {}
+        explanations: dict[str, EncumbranceExplanationEntry] = {}
+
+        def record(item_id: str, propagation_strategy: str, *, source_container: InventoryContainer | None = None) -> None:
+            item = projection.items[item_id]
+            definition = self._registry.item(item.definition_id)
+            total_weight = definition.unit_weight * item.quantity
+            total_volume = definition.unit_volume * item.quantity
+            included_weight = total_weight if propagation_strategy != "exclude_contents" else 0
+            excluded_weight = total_weight - included_weight
+            source_refs = [item.source_event_id]
+            if source_container is not None:
+                source_refs.append(source_container.source_event_id)
+            explanations[item_id] = EncumbranceExplanationEntry(
+                item_id=item_id,
+                location=projection.locations.get(item_id, "inventory:unplaced"),
+                propagation_strategy=propagation_strategy,
+                included_weight=included_weight,
+                excluded_weight=excluded_weight,
+                source_refs=tuple(sorted(set(source_refs))),
+            )
+            weights[item_id] = included_weight
+            volumes[item_id] = total_volume if included_weight else 0
+
+        for item_id, item in projection.items.items():
+            if projection.locations.get(item_id) in container_ids:
+                container = projection.containers[str(projection.locations[item_id])]
+                record(item_id, container.content_weight_propagation, source_container=container)
+        for item_id in direct_item_ids:
+            record(item_id, "carrier_item")
+            for container in projection.containers.values():
+                if container.carrier_item_id != item_id:
+                    continue
+                for contained_item_id in sorted(
+                    candidate_id
+                    for candidate_id, location in projection.locations.items()
+                    if location == container.container_id
+                ):
+                    record(
+                        contained_item_id,
+                        container.content_weight_propagation,
+                        source_container=container,
+                    )
+
+        breakdown = {item_id: weight for item_id, weight in weights.items() if weight > 0}
+        volume = sum(volumes.values())
         frozen_breakdown = MappingProxyType(dict(sorted(breakdown.items())))
-        digest = _digest({"carrier_ref": carrier_ref, "containers": container_ids, "breakdown": frozen_breakdown, "volume": volume, "revisions": projection.source_revision_vector})
-        return EncumbranceProjection(carrier_ref, sum(frozen_breakdown.values()), volume, frozen_breakdown, projection.source_revision_vector, f"encumbrance:{digest[:16]}")
+        frozen_explanations = tuple(explanations[item_id] for item_id in sorted(explanations))
+        digest = _digest(
+            {
+                "carrier_ref": carrier_ref,
+                "containers": container_ids,
+                "carried_item_ids": direct_item_ids,
+                "breakdown": frozen_breakdown,
+                "explanation": frozen_explanations,
+                "volume": volume,
+                "revisions": projection.source_revision_vector,
+            }
+        )
+        return EncumbranceProjection(
+            carrier_ref,
+            sum(frozen_breakdown.values()),
+            volume,
+            frozen_breakdown,
+            projection.source_revision_vector,
+            f"encumbrance:{digest[:16]}",
+            frozen_explanations,
+        )
 
 
 class InventoryAuthorityService:
@@ -199,9 +305,34 @@ class InventoryAuthorityService:
         projection = self._projector.rebuild(actor_ref, self._store.read_events())
         if not spec.container_id or spec.container_id in projection.containers:
             raise InventoryRuntimeError("inventory_container_invalid")
-        if min(spec.capacity_weight, spec.capacity_volume, spec.capacity_slots) < 0:
+        if (
+            min(spec.capacity_weight, spec.capacity_volume, spec.capacity_slots) < 0
+            or spec.content_weight_propagation not in {"include_contents", "exclude_contents"}
+            or not isinstance(spec.allows_living_items, bool)
+        ):
             raise InventoryRuntimeError("inventory_container_invalid")
-        return self._append(command_id, actor_ref, [("gameplay.inventory.container_created", {"container_id": spec.container_id, "capacity_weight": spec.capacity_weight, "capacity_volume": spec.capacity_volume, "capacity_slots": spec.capacity_slots, "sealed": spec.sealed})], idempotency_key, causation_id, correlation_id)
+        return self._append(
+            command_id,
+            actor_ref,
+            [
+                (
+                    "gameplay.inventory.container_created",
+                    {
+                        "container_id": spec.container_id,
+                        "capacity_weight": spec.capacity_weight,
+                        "capacity_volume": spec.capacity_volume,
+                        "capacity_slots": spec.capacity_slots,
+                        "sealed": spec.sealed,
+                        "carrier_item_id": spec.carrier_item_id,
+                        "content_weight_propagation": spec.content_weight_propagation,
+                        "allows_living_items": spec.allows_living_items,
+                    },
+                )
+            ],
+            idempotency_key,
+            causation_id,
+            correlation_id,
+        )
 
     def instantiate(self, *, command_id: str, actor_ref: str, item_id: str, definition_id: str, quantity: int, container_id: str, idempotency_key: str, causation_id: str, correlation_id: str) -> AppendBatchResult:
         self._registry.item(definition_id)
@@ -210,6 +341,8 @@ class InventoryAuthorityService:
             raise InventoryRuntimeError("inventory_container_unknown")
         if projection.containers[container_id].sealed:
             raise InventoryRuntimeError("inventory_access_denied")
+        if projection.containers[container_id].carrier_item_id:
+            raise InventoryRuntimeError("inventory_container_access_requires_equipment")
         if not item_id or quantity <= 0 or item_id in projection.items:
             raise InventoryRuntimeError("inventory_item_invalid")
         item = InventoryItem(item_id, definition_id, quantity, "pending")
@@ -226,14 +359,20 @@ class InventoryAuthorityService:
             raise InventoryRuntimeError("inventory_container_unknown")
         if target.sealed:
             raise InventoryRuntimeError("inventory_access_denied")
+        source = projection.containers.get(from_container_id)
+        if target.carrier_item_id or (source is not None and source.carrier_item_id):
+            raise InventoryRuntimeError("inventory_container_access_requires_equipment")
         self._require_capacity(projection, to_container_id, item, excluding_item_id=item_id)
         return self._append(command_id, actor_ref, [("gameplay.inventory.item_moved", {"item_id": item_id, "from_container_id": from_container_id, "to_container_id": to_container_id})], idempotency_key, causation_id, correlation_id)
 
     def _require_capacity(self, projection: InventoryProjection, container_id: str, candidate: InventoryItem, *, excluding_item_id: str | None = None) -> None:
         container = projection.containers[container_id]
+        candidate_definition = self._registry.item(candidate.definition_id)
+        if candidate_definition.is_living and not container.allows_living_items:
+            raise InventoryRuntimeError("inventory_living_item_rejected")
         entries = [item for item_id, item in projection.items.items() if projection.locations.get(item_id) == container_id and item_id != excluding_item_id]
-        weight = sum(self._registry.item(item.definition_id).unit_weight * item.quantity for item in entries) + self._registry.item(candidate.definition_id).unit_weight * candidate.quantity
-        volume = sum(self._registry.item(item.definition_id).unit_volume * item.quantity for item in entries) + self._registry.item(candidate.definition_id).unit_volume * candidate.quantity
+        weight = sum(self._registry.item(item.definition_id).unit_weight * item.quantity for item in entries) + candidate_definition.unit_weight * candidate.quantity
+        volume = sum(self._registry.item(item.definition_id).unit_volume * item.quantity for item in entries) + candidate_definition.unit_volume * candidate.quantity
         if len(entries) + 1 > container.capacity_slots or weight > container.capacity_weight or volume > container.capacity_volume:
             raise InventoryRuntimeError("inventory_capacity_exceeded")
 
@@ -261,6 +400,26 @@ def _nonnegative(payload: Mapping[str, object], key: str) -> int:
 def _positive(payload: Mapping[str, object], key: str) -> int:
     value = _nonnegative(payload, key)
     if value == 0:
+        raise InventoryRuntimeError("inventory_event_payload_invalid")
+    return value
+
+
+def _optional_text(payload: Mapping[str, object], key: str) -> str:
+    value = payload.get(key, "")
+    if not isinstance(value, str):
+        raise InventoryRuntimeError("inventory_event_payload_invalid")
+    return value
+
+
+def _content_weight_propagation(value: object) -> str:
+    if value not in {"include_contents", "exclude_contents"}:
+        raise InventoryRuntimeError("inventory_event_payload_invalid")
+    return str(value)
+
+
+def _bool_with_default(payload: Mapping[str, object], key: str, default: bool) -> bool:
+    value = payload.get(key, default)
+    if not isinstance(value, bool):
         raise InventoryRuntimeError("inventory_event_payload_invalid")
     return value
 

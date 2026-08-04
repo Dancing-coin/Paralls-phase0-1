@@ -65,6 +65,8 @@ RESOURCE_BOUNDS_CLAMP_MIGRATOR_ID = "resource.bounds.clamp_maximum.v1"
 RESOURCE_BOUNDS_CLAMP_MIGRATOR_CODE_DIGEST = "sha256:" + sha256(
     RESOURCE_BOUNDS_CLAMP_MIGRATOR_ID.encode("utf-8")
 ).hexdigest()
+RESOURCE_MATERIALIZED_SCHEMA_DIGEST = "schema:resource-materialized:v1"
+RESOURCE_BOUNDS_MIGRATED_SCHEMA_DIGEST = "schema:resource-bounds-migrated:v1"
 
 
 class ResourceBoundsMigrationRequest(StrictGameplayModel):

@@ -38,6 +38,11 @@ class GameplayOutboxDispatcher:
             self._store.mark_outbox_delivered(entry.outbox_id)
             published.append(entry.outbox_id)
             self._notify_if_transaction_fully_dispatched(entry.transaction_id)
+        # A transaction with an explicit refresh hint and no outbox has no
+        # transport work to await, but remains post-commit-only.
+        for transaction in self._store.read_transactions():
+            if not transaction.outbox_entries and transaction.projection_refresh_hints:
+                self._notify_if_transaction_fully_dispatched(transaction.transaction_id)
         return DispatchResult(
             published_count=len(published),
             failed_count=len(failed),
@@ -52,11 +57,15 @@ class GameplayOutboxDispatcher:
             (batch for batch in self._store.read_transactions() if batch.transaction_id == transaction_id),
             None,
         )
-        if transaction is None or not transaction.outbox_entries:
+        if transaction is None:
             return
-        delivery_by_id = {entry.outbox_id: entry.delivery_state for entry in self._store.list_outbox()}
-        if any(delivery_by_id.get(entry.outbox_id) != "delivered" for entry in transaction.outbox_entries):
-            return
+        if not transaction.outbox_entries:
+            if not transaction.projection_refresh_hints:
+                return
+        else:
+            delivery_by_id = {entry.outbox_id: entry.delivery_state for entry in self._store.list_outbox()}
+            if any(delivery_by_id.get(entry.outbox_id) != "delivered" for entry in transaction.outbox_entries):
+                return
         self._notified_transaction_ids.add(transaction_id)
         try:
             self._after_transaction_dispatched(transaction)

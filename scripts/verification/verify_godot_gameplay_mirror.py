@@ -18,7 +18,7 @@ TEST_FILES = [
     "backend/tests/test_gameplay_runtime_state_mirror_static.py",
     "backend/tests/test_websocket_mirror_delivery_protocol.py",
 ]
-LIVE_SCENARIOS = ("reconnect", "gap", "backpressure")
+LIVE_SCENARIOS = ("reconnect", "gap", "backpressure", "prediction", "controlled_close")
 
 
 def main() -> int:
@@ -56,6 +56,8 @@ def main() -> int:
             "reconnect": "live-gameplay-mirror-delivery-verified",
             "gap": "live_gap_resync_verified",
             "backpressure": "live_backpressure_isolation_verified",
+            "prediction": "live_prediction_confirm_reject_rollback_verified",
+            "controlled_close": "live_controlled_close_verified",
         }
         live_runtime = log_dir / "live-gameplay-mirror-runtime.json"
         for scenario in LIVE_SCENARIOS:
@@ -93,7 +95,7 @@ def main() -> int:
         },
         {
             "id": "live-websocket-recovery-delivery",
-            "title": "Running backend and real BackendBridge prove reconnect scope recovery, gap/resync, and bounded-queue backpressure recovery",
+            "title": "Running backend and real BackendBridge prove reconnect scope recovery, gap/resync, bounded-queue backpressure recovery, prediction confirmation/rejection rollback, and typed controlled close before WebSocket 4403",
             "status": "proved" if all(live_results.values()) else "missing",
             "evidence": [
                 str(log_dir / f"live-gameplay-mirror-{scenario}-verifier.log")
@@ -102,7 +104,7 @@ def main() -> int:
                 str(log_dir / f"live-gameplay-mirror-{scenario}-runtime.json")
                 for scenario in LIVE_SCENARIOS
             ] if all(live_results.values()) else [],
-            "notes": "Each scenario uses the running backend, trusted server enrollment, real BackendBridge, and existing after-commit delivery path.",
+            "notes": "Each scenario uses the running backend, trusted server enrollment, and real BackendBridge. The controlled-close scenario additionally requires the typed server revocation envelope before close code 4403.",
         },
         {
             "id": "godot-local-bridge",
@@ -115,7 +117,7 @@ def main() -> int:
     overall = all(result["status"] == "proved" for result in results)
     report = {
         "overall_godot_gameplay_mirror_passed": overall,
-        "scope": "backend-safe Godot envelope, backend-configured Phase 3 committed-event source, backend-issued session/read scope, bounded after-commit connection-fanout, and live backend-to-Godot reconnect scope recovery, gap/resync, and backpressure recovery; it excludes prediction, persistence, and migration closure",
+        "scope": "backend-safe Godot envelope, backend-configured Phase 3 committed-event source, backend-issued session/read scope, bounded after-commit connection-fanout, live backend-to-Godot reconnect scope recovery, gap/resync, bounded-queue backpressure recovery, and bounded stamina-preview confirmation/rejection rollback; it excludes production command routing, persistence, and migration closure",
         "results": results,
         "artifacts": {"pytest_log": str(pytest_log), "godot_log": str(godot_log), "godot_runtime": str(godot_artifact)},
     }

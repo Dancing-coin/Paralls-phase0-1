@@ -19,6 +19,18 @@ def test_gameplay_runtime_state_mirror_is_presentation_only_and_fail_closed() ->
     assert "resync_required = false" in snapshot_consumer
 
 
+def test_gameplay_runtime_state_mirror_exposes_bounded_prediction_overlay_api() -> None:
+    source = (ROOT / "scripts" / "interaction" / "GameplayRuntimeStateMirrorConsumer.gd").read_text(encoding="utf-8")
+
+    assert "var pending_predictions: Dictionary = {}" in source
+    assert "func begin_stamina_prediction(" in source
+    assert "func get_predicted_resource_current(" in source
+    assert "func _apply_prediction_resolutions(" in source
+    assert "prediction_confirmation_projection_required" in source
+    assert "pending_predictions.clear()" in source
+    assert "world_truth_claim" in source
+
+
 def test_backend_bridge_and_presentation_bus_expose_only_projection_signal() -> None:
     bridge = (ROOT / "scripts" / "autoload" / "BackendBridge.gd").read_text(encoding="utf-8")
     bus = (ROOT / "scripts" / "autoload" / "LocalPresentationBus.gd").read_text(encoding="utf-8")
@@ -58,3 +70,18 @@ def test_gameplay_mirror_bridge_requires_a_new_handoff_enrollment_after_disconne
     assert "return not _session_enrollment.is_empty()" in source
     assert "if _session_enrollment.is_empty():\n\t\treturn ERR_UNCONFIGURED" in source
     assert "_session_enrollment.clear()" in source
+
+
+def test_live_mirror_verifier_covers_authority_prediction_confirmation_and_rejection() -> None:
+    verifier = (ROOT / "scripts" / "verification" / "verify_live_gameplay_mirror_delivery.py").read_text(encoding="utf-8")
+    probe = (ROOT / "scripts" / "verification" / "LiveGameplayMirrorDeliveryProbe.gd").read_text(encoding="utf-8")
+
+    assert '"prediction"' in verifier
+    assert "_post_prediction_confirm" in verifier
+    assert "_post_prediction_reject" in verifier
+    assert "prediction:live:stamina-confirm" in probe
+    assert "prediction:live:stamina-reject" in probe
+    assert "live_prediction_confirm_reject_rollback_verified" in probe
+    assert "live-gameplay-mirror-prediction-backend.json" in verifier
+    assert 'str(prediction_rejection.get("error_code", "")) == "revision_conflict"' in verifier
+    assert '"mutation_count": 0' in (ROOT / "backend" / "app" / "main.py").read_text(encoding="utf-8")

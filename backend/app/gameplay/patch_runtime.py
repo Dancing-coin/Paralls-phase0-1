@@ -166,6 +166,10 @@ class StateGroupMigration(StrictPatchModel):
     output_event_schema: PatchEventSchema | None = None
     rollback_mode: Literal["identity_rebind", "forward_fix_only"] | None = None
 
+    def expected_migration_digest(self) -> str:
+        """Return the digest of the immutable manifest-declared descriptor."""
+        return _canonical_digest(self.model_dump(mode="json", exclude={"migration_digest"}, exclude_none=True))
+
     @model_validator(mode="after")
     def _validate_kind_contract(self) -> "StateGroupMigration":
         if self.migration_kind == "identity_rebind":

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "gameplay-foundation-all",
+  "order": 101,
+  "script": "scripts/verification/verify_gameplay_foundation_all.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/gameplay-foundation-all-report.json",
+  "description": "Fail-closed dependency-ordered aggregate for Gameplay Foundation contracts, replay, event spine, domains, patch runtime, local Godot mirror, and adventure-basic; it preserves every child profile's declared scope and refuses a missing or non-green child report"
+}

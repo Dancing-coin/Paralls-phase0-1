@@ -89,6 +89,35 @@ def test_rejected_batch_never_creates_publishable_outbox() -> None:
     assert bus.list_events() == []
 
 
+def test_dispatcher_notifies_an_explicit_post_commit_projection_refresh_without_outbox() -> None:
+    store = GameplayEventStore()
+    notified: list[str] = []
+    dispatcher = GameplayOutboxDispatcher(
+        store=store,
+        bus=InMemoryAuthorityEventBus(),
+        after_transaction_dispatched=lambda transaction: notified.append(transaction.transaction_id),
+    )
+    batch = _batch(
+        events=[_event("evt:projection:refresh", stream_id="actor:projection")],
+        expected={"actor:projection": 0},
+    )
+    batch["outbox_entries"] = []
+    batch["projection_refresh_hints"] = [
+        {
+            "projection_id": "godot_mirror",
+            "stream_id": "actor:projection",
+            "reason": "post_commit_projection_only",
+            "actor_refs": ["actor:projection"],
+        }
+    ]
+    assert store.append_batch(batch).committed
+
+    dispatch = dispatcher.dispatch_pending()
+
+    assert dispatch.published_count == 0
+    assert notified == ["tx:gameplay:1"]
+
+
 def test_sequence_gap_consumer_requests_store_backed_resync() -> None:
     store = GameplayEventStore()
     store.append_batch(_batch(events=[_event("evt:session:1", stream_id="session:1")], outbox_entries=[_outbox("evt:session:1")], expected={"session:1": 0}))

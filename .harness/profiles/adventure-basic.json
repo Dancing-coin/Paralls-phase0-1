@@ -3,8 +3,8 @@
   "name": "adventure-basic",
   "order": 100,
   "script": "scripts/verification/verify_adventure_basic.py",
-  "requires_godot": false,
+  "requires_godot": true,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/adventure-basic-report.json",
-  "description": "Digest-valid governed adventure-basic manifest baseline; it does not claim the planned cross-domain reference scenarios are closed"
+  "description": "Digest-valid governed adventure-basic manifest plus five authoritative scenario facades/replay chains and fresh trusted-local Godot mirror delivery after server-selected canonical commits; the profile fails closed when any scenario lacks runtime evidence"
 }

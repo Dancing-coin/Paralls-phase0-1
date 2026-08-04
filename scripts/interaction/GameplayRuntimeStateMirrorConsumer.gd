@@ -20,13 +20,15 @@ var last_delivery_sequence := 0
 var resync_required := false
 var snapshot_checksum := ""
 var schema_capabilities: Array[String] = []
+var pending_predictions: Dictionary = {}
+var prediction_resolution_trace: Array[Dictionary] = []
 
 
 func consume_delivery(payload: Dictionary) -> Dictionary:
 	var delivery_kind := str(payload.get("delivery_kind", ""))
 	var next_epoch := int(payload.get("connection_epoch", 0))
 	var sequence := int(payload.get("delivery_sequence", 0))
-	if delivery_kind != "snapshot" and delivery_kind != "delta":
+	if delivery_kind != "snapshot" and delivery_kind != "delta" and delivery_kind != "prediction":
 		return _delivery_rejected("mirror_sequence_invalid")
 	if next_epoch < connection_epoch or next_epoch < 1:
 		return _delivery_rejected("mirror_sequence_stale")
@@ -44,6 +46,12 @@ func consume_delivery(payload: Dictionary) -> Dictionary:
 	if sequence != last_delivery_sequence + 1:
 		resync_required = true
 		return _delivery_rejected("mirror_sequence_gap")
+	if delivery_kind == "prediction":
+		var prediction_result := _apply_prediction_resolutions(payload.get("prediction_resolutions", []), false)
+		if not bool(prediction_result.get("accepted", false)):
+			return prediction_result
+		last_delivery_sequence = sequence
+		return prediction_result
 	var projection: Variant = payload.get("payload", {})
 	if typeof(projection) != TYPE_DICTIONARY:
 		resync_required = true
@@ -52,6 +60,10 @@ func consume_delivery(payload: Dictionary) -> Dictionary:
 	if not bool(result.get("accepted", false)):
 		resync_required = true
 		return result
+	var prediction_result := _apply_prediction_resolutions(payload.get("prediction_resolutions", []), true)
+	if not bool(prediction_result.get("accepted", false)):
+		resync_required = true
+		return prediction_result
 	last_delivery_sequence = sequence
 	return result
 
@@ -100,6 +112,78 @@ func clear_projection() -> void:
 	resync_required = false
 	snapshot_checksum = ""
 	schema_capabilities.clear()
+	pending_predictions.clear()
+	prediction_resolution_trace.clear()
+
+
+func begin_stamina_prediction(prediction_id: String, command_id: String, delta: int) -> Dictionary:
+	if actor_ref.is_empty() or facade_revision.is_empty():
+		return {"accepted": false, "error_code": "prediction_base_required", "authority_mutation": false}
+	if prediction_id.is_empty() or command_id.is_empty() or delta == 0:
+		return {"accepted": false, "error_code": "prediction_payload_invalid", "authority_mutation": false}
+	if pending_predictions.has(prediction_id):
+		return {"accepted": false, "error_code": "prediction_duplicate", "authority_mutation": false}
+	pending_predictions[prediction_id] = {
+		"prediction_id": prediction_id,
+		"command_id": command_id,
+		"resource_id": "core.stamina",
+		"delta": delta,
+		"base_facade_revision": facade_revision,
+	}
+	return {"accepted": true, "authority_mutation": false, "prediction_id": prediction_id}
+
+
+func get_predicted_resource_current(resource_id: String) -> Variant:
+	var entries: Dictionary = visible_groups.get("core.resources", {}).get("payload", {}).get("entries", {})
+	var resource: Variant = entries.get(resource_id, {})
+	if typeof(resource) != TYPE_DICTIONARY or not (resource as Dictionary).has("current"):
+		return null
+	var current: Variant = (resource as Dictionary).get("current")
+	if not (current is int or current is float):
+		return null
+	var predicted := float(current)
+	for prediction: Variant in pending_predictions.values():
+		if prediction is Dictionary and str((prediction as Dictionary).get("resource_id", "")) == resource_id:
+			predicted += float((prediction as Dictionary).get("delta", 0))
+	return predicted
+
+
+func _apply_prediction_resolutions(resolutions: Variant, confirmed_projection_applied: bool) -> Dictionary:
+	if typeof(resolutions) != TYPE_ARRAY:
+		return _delivery_rejected("prediction_resolution_invalid")
+	for resolution_value: Variant in resolutions as Array:
+		if typeof(resolution_value) != TYPE_DICTIONARY:
+			return _delivery_rejected("prediction_resolution_invalid")
+		var resolution := resolution_value as Dictionary
+		var prediction_id := str(resolution.get("prediction_id", ""))
+		var command_id := str(resolution.get("command_id", ""))
+		var status := str(resolution.get("resolution", ""))
+		if prediction_id.is_empty() or command_id.is_empty() or not pending_predictions.has(prediction_id):
+			return _delivery_rejected("prediction_resolution_unknown")
+		var pending: Dictionary = pending_predictions[prediction_id]
+		if str(pending.get("command_id", "")) != command_id:
+			return _delivery_rejected("prediction_resolution_mismatch")
+		if status == "confirmed":
+			if str(resolution.get("transaction_id", "")).is_empty() or (
+				not confirmed_projection_applied
+				and facade_revision == str(pending.get("base_facade_revision", ""))
+			):
+				return _delivery_rejected("prediction_confirmation_projection_required")
+		elif status == "rejected":
+			if str(resolution.get("error_code", "")).is_empty():
+				return _delivery_rejected("prediction_rejection_error_required")
+		else:
+			return _delivery_rejected("prediction_resolution_invalid")
+		pending_predictions.erase(prediction_id)
+		prediction_resolution_trace.append({
+			"prediction_id": prediction_id,
+			"command_id": command_id,
+			"resolution": status,
+			"transaction_id": str(resolution.get("transaction_id", "")),
+			"error_code": str(resolution.get("error_code", "")),
+			"authority_mutation": false,
+		})
+	return {"accepted": true, "authority_mutation": false}
 
 
 func mark_resync_required() -> void:
