@@ -66,3 +66,18 @@ def test_resource_staging_verifier_proves_all_required_results() -> None:
     assert trace["matched_candidate_ids"] == ["fact_confirmed"]
     assert trace["staged_obligation"] == "open"
     assert all(trace["static_resources"].values())
+    assert {
+        "main_demo_wiring",
+        "player_camera_voice_wiring",
+        "dialogue_to_voice_delivery",
+    }.issubset(trace["static_resources"])
+    assert trace["hard_gate_rejections"] == [
+        ["confirmed_fact_rejected", "fact_gate_failed"],
+        ["player_choice_rejected", "player_choice_gate_failed"],
+        ["actor_autonomy_rejected", "actor_autonomy_gate_failed"],
+        ["world_feasibility_rejected", "world_feasibility_gate_failed"],
+        ["safety_rejected", "safety_gate_failed"],
+        ["playability_fairness_rejected", "playability_fairness_gate_failed"],
+        ["open_obligation_rejected", "open_obligation_gate_failed"],
+        ["reachable_attractor_rejected", "reachable_attractor_gate_failed"],
+    ]

@@ -27,6 +27,18 @@ from app.services.siming_story_obligation_runtime import SimingStoryObligationRu
 from common import repo_root, verification_dir, write_json, write_markdown
 
 
+REQUIRED_HARD_GATES = (
+    ("confirmed_fact", "fact_gate_failed"),
+    ("player_choice", "player_choice_gate_failed"),
+    ("actor_autonomy", "actor_autonomy_gate_failed"),
+    ("world_feasibility", "world_feasibility_gate_failed"),
+    ("safety", "safety_gate_failed"),
+    ("playability_fairness", "playability_fairness_gate_failed"),
+    ("open_obligation", "open_obligation_gate_failed"),
+    ("reachable_attractor", "reachable_attractor_gate_failed"),
+)
+
+
 def _result(result_id: str, title: str, proved: bool, evidence: list[str]) -> dict[str, object]:
     return {
         "id": result_id,
@@ -174,11 +186,14 @@ def _static_resources(project_root: Path) -> dict[str, bool]:
         relative_path: read_source(relative_path)
         for relative_path in (
             "scenes/phase0/MainDemo.tscn",
+            "scenes/phase0/CharacterBase.tscn",
+            "scenes/phase0/CharacterReplica.tscn",
             "scenes/phase0/InteractiveObject.tscn",
             "scenes/phase0/EnvironmentStateNode.tscn",
             "scripts/object/InteractiveObject.gd",
             "scripts/environment/EnvironmentStateController.gd",
             "scripts/visual/VisualFactEmitter.gd",
+            "scripts/character/CharacterReplica.gd",
             "scripts/character/CharacterEmbodimentAssetRegistry.gd",
             "backend/app/character_agent/skills/catalog.py",
             "backend/app/services/character_service.py",
@@ -196,9 +211,19 @@ def _static_resources(project_root: Path) -> dict[str, bool]:
                 'instance=ExtResource("7_environment")',
             )
         ),
-        "throne_room_and_camera": "ThroneRoomImported" in main_demo and "CineCameraActor" in main_demo,
+        "throne_room": "ThroneRoomImported" in main_demo,
         "participant_bindings": 'actor_id = "char_b"' in main_demo
+        and 'res://scripts/visual/VisualFactEmitter.gd' in main_demo
         and 'actor_id := "char_c"' in source_text["scripts/visual/VisualFactEmitter.gd"],
+        "player_camera_voice_wiring": 'res://scenes/phase0/CharacterBase.tscn' in main_demo
+        and 'res://scenes/phase0/CharacterReplica.tscn' in main_demo
+        and 'res://scenes/phase0/CharacterReplica.tscn'
+        in source_text["scenes/phase0/CharacterBase.tscn"]
+        and 'type="Camera3D"' in source_text["scenes/phase0/CharacterBase.tscn"]
+        and 'res://scripts/audio/SpatialVoiceController.gd'
+        in source_text["scenes/phase0/CharacterReplica.tscn"]
+        and "SpatialVoiceController"
+        in source_text["scenes/phase0/CharacterReplica.tscn"],
         "letter_object": 'res://scripts/object/InteractiveObject.gd'
         in source_text["scenes/phase0/InteractiveObject.tscn"]
         and 'object_id := "obj_letter"' in source_text["scripts/object/InteractiveObject.gd"],
@@ -211,9 +236,10 @@ def _static_resources(project_root: Path) -> dict[str, bool]:
         and '"focus_attention"' in source_text["backend/app/character_agent/skills/catalog.py"]
         and "preload_assets_for_semantics"
         in source_text["scripts/character/CharacterEmbodimentAssetRegistry.gd"],
-        "dialogue_voice_path": "stream_dialogue"
+        "dialogue_to_voice_delivery": "stream_dialogue"
         in source_text["backend/app/services/character_service.py"]
-        and "play_voice" in source_text["scripts/audio/SpatialVoiceController.gd"],
+        and "voice.play_voice"
+        in source_text["scripts/character/CharacterReplica.gd"],
     }
 
 
@@ -228,7 +254,7 @@ def main() -> int:
     ranking = StoryNodeOrchestrator().rank(
         [
             _candidate(f"{gate}_rejected", resource_score=1.0, **{gate: False})
-            for gate in StoryNodeOrchestrator.GATE_ORDER
+            for gate, _ in REQUIRED_HARD_GATES
         ]
         + [_candidate("fact_confirmed", resource_score=0.0)]
     )
@@ -284,6 +310,9 @@ def main() -> int:
         "distinct_confrontation": distinct_confrontation.model_dump(mode="json"),
         "ranking": ranking.model_dump(mode="json"),
         "matched_candidate_ids": sorted(eligible_matches),
+        "hard_gate_rejections": [
+            [item.candidate_id, item.reason] for item in ranking.rejected
+        ],
         "staged": staged.model_dump(mode="json"),
         "staged_lifecycle": None if staged_node is None else staged_node.lifecycle,
         "staged_obligation": None if staged_obligation is None else staged_obligation.status,
@@ -295,6 +324,9 @@ def main() -> int:
     write_json(trace_path, trace)
 
     capability = confrontation_match.capability
+    hard_gate_rejections = [
+        (f"{gate}_rejected", reason) for gate, reason in REQUIRED_HARD_GATES
+    ]
     results = [
         _result(
             "existing_resource_package",
@@ -314,7 +346,10 @@ def main() -> int:
             "hard_gate_precedes_resource_score",
             "Every hard-gate rejection occurs before only the eligible candidate is matched",
             [item.candidate_id for item in ranking.eligible] == ["fact_confirmed"]
-            and len(ranking.rejected) == len(StoryNodeOrchestrator.GATE_ORDER)
+            and [
+                (item.candidate_id, item.reason) for item in ranking.rejected
+            ]
+            == hard_gate_rejections
             and set(eligible_matches) == {"fact_confirmed"},
             [str(trace_path)],
         ),
