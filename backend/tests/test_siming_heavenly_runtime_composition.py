@@ -64,7 +64,7 @@ def _proposal_batch(correlation_id: str) -> GeneratedAdaptiveBridgeProposalBatch
                     "target_actor_id": "char_b",
                     "supporting_fact_refs": ["fact:letter:destroyed"],
                     "required_actor_memory_refs": [],
-                    "obligation_refs": [],
+                    "obligation_refs": ["obligation:letter_consequence"],
                     "attractor_refs": [],
                     "realization_request": {
                         "node_id": "runtime:bridge:proposal:destroy:1",
@@ -227,6 +227,32 @@ def test_active_owned_destruction_prepares_typed_eligible_bridge_candidate(
         assert prepared.validation_audit_refs
     finally:
         state.close()
+
+
+def test_active_candidate_staging_contract_survives_runtime_restart(tmp_path) -> None:
+    graph_path = tmp_path / "runtime.sqlite3"
+    settings = config_module.Settings(
+        siming_heavenly_mode="active", heavenly_graph_path=str(graph_path)
+    )
+    first_state = main.build_runtime_state(settings)
+    try:
+        support = _support_with_candidate(first_state, "corr:destroy:1")
+        prepared = support.prepare(_destruction_input())
+        assert prepared.eligible_node_refs == ["runtime:bridge:proposal:destroy:1"]
+    finally:
+        first_state.close()
+
+    second_state = main.build_runtime_state(settings)
+    try:
+        request = second_state.siming_runtime.heavenly_support.find_staging_request(
+            _destruction_input().source_event
+        )
+        assert request is not None
+        assert request.node_id == "runtime:bridge:proposal:destroy:1"
+        assert request.obligation_id == "obligation:letter_consequence"
+        assert request.resource_match.accepted is True
+    finally:
+        second_state.close()
 
 
 def test_active_bridge_rejects_proactive_actor_under_supervision(

@@ -14,6 +14,7 @@ from pydantic import (
 )
 
 from app.models.siming_heavenly_graph import HeavenlyGraphScope
+from app.models.siming_resource_capability import StagingAck, StagingRequest
 
 
 _NORMALIZED_PUBLIC_REF = re.compile(r"^[a-z][a-z0-9_]*(?::[A-Za-z0-9_.-]+)+$")
@@ -71,7 +72,14 @@ class ActorCognitionMemoryEntry(StrictMemoryModel):
 class StorylineObligationMemoryEntry(StrictMemoryModel):
     domain: Literal["storyline_obligation"] = "storyline_obligation"
     entry_id: str
-    record_type: Literal["storyline", "story_node", "outcome_port", "obligation", "attractor", "constraint"]
+    record_type: Literal[
+        "storyline",
+        "story_node",
+        "outcome_port",
+        "obligation",
+        "attractor",
+        "constraint",
+    ]
     lifecycle: str
     supporting_fact_refs: list[str] = Field(default_factory=list)
 
@@ -79,16 +87,27 @@ class StorylineObligationMemoryEntry(StrictMemoryModel):
 class InterventionOutcomeMemoryEntry(StrictMemoryModel):
     domain: Literal["intervention_outcome"] = "intervention_outcome"
     entry_id: str
-    stage: Literal["proposal", "selection", "staging", "dispatch", "authority_result"]
+    stage: Literal[
+        "proposal",
+        "selection",
+        "staging_ack",
+        "staging",
+        "dispatch",
+        "authority_result",
+    ]
     correlation_id: str
     selected_node_ref: str | None = None
     realization_signature: str | None = None
     authority_result_ref: str | None = None
     obligation_id: str | None = None
-    staging_status: Literal["staged", "aborted_before_activation", "cancelled"] | None = None
+    staging_status: (
+        Literal["staged", "aborted_before_activation", "cancelled"] | None
+    ) = None
     story_node_lifecycle: Literal["staged", "aborted"] | None = None
     obligation_status: Literal["open", "pressured", "partially_satisfied"] | None = None
     staging_recorded_at: int | None = Field(default=None, ge=0)
+    staging_ack: StagingAck | None = None
+    staging_request: StagingRequest | None = None
     reason: str = ""
 
     @model_validator(mode="after")
@@ -102,7 +121,9 @@ class InterventionOutcomeMemoryEntry(StrictMemoryModel):
             or self.obligation_status is None
             or self.staging_recorded_at is None
         ):
-            raise ValueError("staging intervention outcome requires its complete result")
+            raise ValueError(
+                "staging intervention outcome requires its complete result"
+            )
         return self
 
 
@@ -115,7 +136,15 @@ class ConvergenceStrategyMemoryEntry(StrictMemoryModel):
     next_minimal_intervention: str = ""
 
 
-SimingHeavenlyMemoryEntry = Annotated[WorldFactMemoryEntry | CausalTimelineMemoryEntry | ActorCognitionMemoryEntry | StorylineObligationMemoryEntry | InterventionOutcomeMemoryEntry | ConvergenceStrategyMemoryEntry, Field(discriminator="domain")]
+SimingHeavenlyMemoryEntry = Annotated[
+    WorldFactMemoryEntry
+    | CausalTimelineMemoryEntry
+    | ActorCognitionMemoryEntry
+    | StorylineObligationMemoryEntry
+    | InterventionOutcomeMemoryEntry
+    | ConvergenceStrategyMemoryEntry,
+    Field(discriminator="domain"),
+]
 
 
 class SimingContextRequest(StrictMemoryModel):
@@ -130,7 +159,10 @@ class SimingContextRequest(StrictMemoryModel):
 
     @model_validator(mode="after")
     def require_heavenly_scope(self) -> "SimingContextRequest":
-        if self.scope.graph_namespace != "siming_heavenly" or self.scope.owner_actor_id is not None:
+        if (
+            self.scope.graph_namespace != "siming_heavenly"
+            or self.scope.owner_actor_id is not None
+        ):
             raise ValueError("Siming context requires siming_heavenly scope")
         return self
 
@@ -140,9 +172,15 @@ class SimingCompiledContext(StrictMemoryModel):
     world_facts: list[WorldFactMemoryEntry] = Field(default_factory=list)
     causal_timeline: list[CausalTimelineMemoryEntry] = Field(default_factory=list)
     actor_cognition: list[ActorCognitionMemoryEntry] = Field(default_factory=list)
-    storyline_obligations: list[StorylineObligationMemoryEntry] = Field(default_factory=list)
-    intervention_outcomes: list[InterventionOutcomeMemoryEntry] = Field(default_factory=list)
-    convergence_strategies: list[ConvergenceStrategyMemoryEntry] = Field(default_factory=list)
+    storyline_obligations: list[StorylineObligationMemoryEntry] = Field(
+        default_factory=list
+    )
+    intervention_outcomes: list[InterventionOutcomeMemoryEntry] = Field(
+        default_factory=list
+    )
+    convergence_strategies: list[ConvergenceStrategyMemoryEntry] = Field(
+        default_factory=list
+    )
     selected_node_refs: list[str] = Field(default_factory=list)
     selected_relation_refs: list[str] = Field(default_factory=list)
     truncated: bool

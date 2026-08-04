@@ -10,6 +10,7 @@ class SimingEventConsumer:
         "character_behavior_event",
         "conversation_resolution_event",
         "constraint_state_event",
+        "siming_staging_ack",
     }
 
     def handle_event(self, event: AuthorityEvent) -> list[SimingInput]:

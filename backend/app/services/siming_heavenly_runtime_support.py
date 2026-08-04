@@ -18,6 +18,11 @@ from app.models.siming_heavenly_memory import (
     SimingCompiledContext,
     SimingContextRequest,
 )
+from app.models.siming_resource_capability import (
+    StagingAck,
+    StagingRequest,
+    StagingResult,
+)
 from app.services.siming_actor_memory_gateway import ActorMemoryReadGateway
 from app.services.siming_adaptive_bridge import SimingAdaptiveBridge
 from app.services.siming_context_compiler import SimingContextCompiler
@@ -118,17 +123,48 @@ class SimingHeavenlyRuntimeSupport:
             if proposal_batch is not None:
                 bridge = self._bridges(context)
                 validation_results = [
-                    bridge.validate_and_commit(
+                    (
                         proposal,
-                        provider_audit=proposal_batch.audit,
+                        bridge.validate_and_commit(
+                            proposal,
+                            provider_audit=proposal_batch.audit,
+                        ),
                     )
                     for proposal in proposal_batch.proposals
                 ]
-                eligible_node_refs = sorted(
-                    result.runtime_node_ref
-                    for result in validation_results
-                    if result.accepted and result.runtime_node_ref is not None
-                )
+                eligible_node_refs = []
+                for proposal, validation in validation_results:
+                    if not validation.accepted or validation.runtime_node_ref is None:
+                        continue
+                    if not proposal.obligation_refs:
+                        continue
+                    resource_match = self._resources.match(
+                        proposal.realization_request,
+                        world_ts=event.producer_ts,
+                    )
+                    if not resource_match.accepted:
+                        continue
+                    staging_request = StagingRequest(
+                        scope=scope,
+                        node_id=validation.runtime_node_ref,
+                        correlation_id=event.correlation_id,
+                        obligation_id=proposal.obligation_refs[0],
+                        recorded_at=event.producer_ts,
+                        resource_match=resource_match,
+                    )
+                    eligible_node_refs.append(validation.runtime_node_ref)
+                    validation_audit_refs.append(
+                        self._record(
+                            scope=scope,
+                            recorded_at=event.producer_ts,
+                            correlation_id=event.correlation_id,
+                            stage="proposal",
+                            selected_node_ref=validation.runtime_node_ref,
+                            staging_request=staging_request,
+                            reason="candidate_prepared",
+                        )
+                    )
+                eligible_node_refs.sort()
                 validation_audit_refs.extend(
                     f"adaptive_bridge_audit:{proposal.proposal_id}"
                     for proposal in proposal_batch.proposals
@@ -226,6 +262,114 @@ class SimingHeavenlyRuntimeSupport:
             authority_result_ref=event.event_id,
             reason=event.event_type,
         )
+
+    def select_for_staging(
+        self,
+        prepared: PreparedHeavenlyDecision,
+        selected_node_ref: str,
+    ) -> StagingRequest:
+        self._require_active_owned(prepared)
+        context = self._prepared_context(prepared.correlation_id)
+        request = self._staging_request_for(
+            scope=context.scope,
+            correlation_id=prepared.correlation_id,
+            valid_at=context.recorded_at,
+            node_id=selected_node_ref,
+        )
+        if request is None:
+            raise ValueError("selected heavenly candidate has no staging contract")
+        prior = self._durable_stage_record(
+            context,
+            correlation_id=prepared.correlation_id,
+            stage="selection",
+        )
+        if prior is not None:
+            if prior.selected_node_ref != selected_node_ref:
+                raise ValueError(
+                    "a heavenly decision is already selected for this correlation"
+                )
+            return request
+        node = self._story.read_runtime_node(
+            scope=context.scope,
+            node_id=selected_node_ref,
+            valid_at=context.recorded_at,
+        )
+        if node is None:
+            raise ValueError("selected heavenly candidate is missing its story node")
+        if node.lifecycle == "latent":
+            node = self._story.transition(
+                scope=context.scope,
+                node_id=selected_node_ref,
+                expected="latent",
+                target="eligible",
+                reason="heavenly_candidate_validated",
+                recorded_at=context.recorded_at,
+            )
+        if node.lifecycle != "eligible":
+            raise ValueError("selected heavenly candidate is not eligible")
+        selection_id = self._entry_id(
+            "selection", prepared.correlation_id, selected_node_ref
+        )
+        self._story.transition_with_intervention_outcome(
+            scope=context.scope,
+            node_id=selected_node_ref,
+            expected="eligible",
+            target="selected",
+            reason="heavenly_candidate_selected",
+            recorded_at=context.recorded_at,
+            outcome=InterventionOutcomeMemoryEntry(
+                entry_id=selection_id,
+                stage="selection",
+                correlation_id=prepared.correlation_id,
+                selected_node_ref=selected_node_ref,
+            ),
+            provenance=self._provenance(selection_id, prepared.correlation_id),
+        )
+        return request
+
+    def record_staging_ack(self, event: AuthorityEvent) -> StagingRequest | None:
+        request = self.find_staging_request(event)
+        if request is None:
+            return None
+        ack = StagingAck.model_validate(event.payload)
+        if ack.correlation_id != event.correlation_id:
+            raise ValueError("staging acknowledgement correlation mismatch")
+        self._record(
+            scope=request.scope,
+            recorded_at=event.producer_ts,
+            correlation_id=event.correlation_id,
+            stage="staging_ack",
+            selected_node_ref=request.node_id,
+            staging_ack=ack,
+            entry_value=ack.source,
+        )
+        return request
+
+    def complete_staging(self, event: AuthorityEvent) -> StagingResult | None:
+        request = self.find_staging_request(event)
+        if request is None or not self._has_selection(
+            scope=request.scope,
+            correlation_id=event.correlation_id,
+            valid_at=event.producer_ts,
+            node_id=request.node_id,
+        ):
+            return None
+        acks = [
+            entry.staging_ack
+            for entry in self._memory.list_domain(
+                request.scope,
+                "intervention_outcome",
+                valid_at=event.producer_ts,
+            )
+            if isinstance(entry, InterventionOutcomeMemoryEntry)
+            and entry.correlation_id == event.correlation_id
+            and entry.stage == "staging_ack"
+            and entry.selected_node_ref == request.node_id
+            and entry.staging_ack is not None
+        ]
+        if {ack.source for ack in acks} != self._staging.REQUIRED_ACK_SOURCES:
+            return None
+        return self._staging.complete(request, acks=acks)
 
     @staticmethod
     def _event_family(event: AuthorityEvent) -> str:
@@ -336,6 +480,77 @@ class SimingHeavenlyRuntimeSupport:
             degraded_reason=f"llm_unavailable:{type(error).__name__}",
         )
 
+    def find_staging_request(self, event: AuthorityEvent) -> StagingRequest | None:
+        scope = self._scope_for(event)
+        return self._staging_request_for(
+            scope=scope,
+            correlation_id=event.correlation_id,
+            valid_at=event.producer_ts,
+        )
+
+    def _staging_request_for(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        correlation_id: str,
+        valid_at: int,
+        node_id: str | None = None,
+    ) -> StagingRequest | None:
+        candidates = [
+            entry
+            for entry in self._memory.list_domain(
+                scope,
+                "intervention_outcome",
+                valid_at=valid_at,
+            )
+            if isinstance(entry, InterventionOutcomeMemoryEntry)
+            and entry.correlation_id == correlation_id
+            and entry.stage == "proposal"
+            and entry.staging_request is not None
+        ]
+        selections = [
+            entry.selected_node_ref
+            for entry in self._memory.list_domain(
+                scope,
+                "intervention_outcome",
+                valid_at=valid_at,
+            )
+            if isinstance(entry, InterventionOutcomeMemoryEntry)
+            and entry.correlation_id == correlation_id
+            and entry.stage == "selection"
+        ]
+        selected_node_ref = node_id or (selections[0] if selections else None)
+        matches = [
+            entry.staging_request
+            for entry in candidates
+            if selected_node_ref is None or entry.selected_node_ref == selected_node_ref
+        ]
+        if len(matches) > 1:
+            raise ValueError(
+                "multiple durable staging requests exist for one correlation"
+            )
+        return matches[0] if matches else None
+
+    def _has_selection(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        correlation_id: str,
+        valid_at: int,
+        node_id: str,
+    ) -> bool:
+        return any(
+            isinstance(entry, InterventionOutcomeMemoryEntry)
+            and entry.correlation_id == correlation_id
+            and entry.stage == "selection"
+            and entry.selected_node_ref == node_id
+            for entry in self._memory.list_domain(
+                scope,
+                "intervention_outcome",
+                valid_at=valid_at,
+            )
+        )
+
     def _record(
         self,
         *,
@@ -345,12 +560,15 @@ class SimingHeavenlyRuntimeSupport:
         stage: str,
         selected_node_ref: str | None = None,
         authority_result_ref: str | None = None,
+        staging_ack: StagingAck | None = None,
+        staging_request: StagingRequest | None = None,
+        entry_value: str | None = None,
         reason: str = "",
     ) -> str:
         entry_id = self._entry_id(
             stage,
             correlation_id,
-            selected_node_ref or authority_result_ref or "record",
+            entry_value or selected_node_ref or authority_result_ref or "record",
         )
         self._memory.write_entry(
             scope=scope,
@@ -360,6 +578,8 @@ class SimingHeavenlyRuntimeSupport:
                 correlation_id=correlation_id,
                 selected_node_ref=selected_node_ref,
                 authority_result_ref=authority_result_ref,
+                staging_ack=staging_ack,
+                staging_request=staging_request,
                 reason=reason,
             ),
             validity=GraphValidity(valid_from=recorded_at),
@@ -377,6 +597,16 @@ class SimingHeavenlyRuntimeSupport:
             idempotency_key=entry_id,
         )
         return entry_id
+
+    @staticmethod
+    def _provenance(entry_id: str, correlation_id: str) -> GraphProvenance:
+        return GraphProvenance(
+            source_kind="siming_projection",
+            source_ref=entry_id,
+            causation_id=correlation_id,
+            correlation_id=correlation_id,
+            producer_system="siming_heavenly_runtime_support",
+        )
 
     @staticmethod
     def _entry_id(stage: str, correlation_id: str, value: str) -> str:
