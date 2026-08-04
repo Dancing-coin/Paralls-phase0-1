@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from app.character_agent.models.cognition_delta import CharacterDynamicStateDelta
+
 
 class CharacterPromptPolicy:
     _MAX_VALUE_CHARS = 240
+    _DYNAMIC_STATE_DELTA_FIELDS = tuple(CharacterDynamicStateDelta.model_fields)
 
     def build_prompt(
         self,
@@ -70,6 +73,9 @@ class CharacterPromptPolicy:
                 'active_goal_frame.primary_goal cannot be empty. '
                 'active_goal_frame.urgency and each goal_portfolio urgency must be exactly one of "low", "medium", or "high"; do not use numbers.'
             )
+        allowed_dynamic_state_fields = ", ".join(
+            f'"{field_name}"' for field_name in self._DYNAMIC_STATE_DELTA_FIELDS
+        )
         return (
             f"CharacterAgent {task_kind} on {route_mode}: return one JSON object with keys "
             '["interpreted_summary", "interpretation_type", "salience_score", '
@@ -79,6 +85,8 @@ class CharacterPromptPolicy:
             'salience_score must be a JSON number from 0.0 to 1.0. '
             'ambiguity_level, risk_level, and opportunity_level must each be exactly one of "low", "medium", or "high"; do not use "moderate" or numbers. '
             'All confidence, strength, trust, suspicion, intimacy, dependency, unresolved_tension, and dynamic_state_delta values must be JSON numbers from 0.0 to 1.0, not words. '
+            f'dynamic_state_delta may contain only [{allowed_dynamic_state_fields}]. '
+            'Do not emit any other dynamic_state_delta key; use {} when no allowed delta applies. '
             'goal_hints must be a list of objects with keys ["goal", "source", "strength", "evidence_tags"].'
         )
 

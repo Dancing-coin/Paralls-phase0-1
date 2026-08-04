@@ -138,6 +138,8 @@ def test_model_gateway_prepares_structured_run_request(monkeypatch) -> None:
     assert "goal_hints" in request["prompt"]["required_output_keys"]
     assert "goal_hints" in request["prompt"]["system_instruction"]
     assert "evidence_tags" in request["prompt"]["system_instruction"]
+    assert 'dynamic_state_delta may contain only ["vigilance_level", "distraction_level", "stress_load", "social_pressure", "masking_pressure", "affect_valence", "fear", "anger", "shame", "sadness", "relief", "curiosity", "affection", "joy", "calm", "trust", "gratitude", "pride", "confidence", "hope"]' in request["prompt"]["system_instruction"]
+    assert "Do not emit any other dynamic_state_delta key; use {} when no allowed delta applies." in request["prompt"]["system_instruction"]
 
 
 def test_model_router_supports_environment_default_override(monkeypatch) -> None:

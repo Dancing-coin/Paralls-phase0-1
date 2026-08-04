@@ -54,11 +54,14 @@ def build_report() -> dict[str, object]:
         name: _load_json(log_dir / filename) for name, filename in SOURCE_FILES.items()
     }
     errors: list[str] = []
+    fresh_artifacts: dict[str, bool] = {}
     for name, payload in artifacts.items():
         if payload is None:
             errors.append(f"missing_artifact:{name}")
+            fresh_artifacts[name] = False
             continue
-        if str(payload.get("verification_run_id", "")) != run_id:
+        fresh_artifacts[name] = bool(run_id) and str(payload.get("verification_run_id", "")) == run_id
+        if not fresh_artifacts[name]:
             errors.append(f"run_id_mismatch:{name}")
 
     readiness = artifacts["readiness"] or {}
@@ -69,10 +72,18 @@ def build_report() -> dict[str, object]:
     provider = character.get("provider", {}) if isinstance(character.get("provider", {}), dict) else {}
 
     claims = {
-        "character_dialogue_live": _claim_character(character, "dialogue_live_deepseek", errors),
-        "character_l2_live": _claim_character(character, "l2_live_deepseek", errors),
-        "character_l3_live": _claim_character(character, "l3_live_deepseek", errors),
-        "siming_deepseek_live": _claim_siming(siming, errors),
+        "character_dialogue_live": _claim_character(character, "dialogue_live_deepseek", errors)
+        if fresh_artifacts["readiness"] and fresh_artifacts["character"]
+        else "unverified",
+        "character_l2_live": _claim_character(character, "l2_live_deepseek", errors)
+        if fresh_artifacts["readiness"] and fresh_artifacts["character"]
+        else "unverified",
+        "character_l3_live": _claim_character(character, "l3_live_deepseek", errors)
+        if fresh_artifacts["readiness"] and fresh_artifacts["character"]
+        else "unverified",
+        "siming_deepseek_live": _claim_siming(siming, errors)
+        if fresh_artifacts["readiness"] and fresh_artifacts["siming"]
+        else "unverified",
     }
 
     if character_row is not None:

@@ -7,6 +7,7 @@ from common import read_text, repo_root, verification_dir, write_json, write_mar
 
 
 RESOURCE_PATTERN = re.compile(r"res://([^\"'\)\],\s]+)")
+GENERATED_ARTIFACT_ROOT = ".harness/verification/"
 
 
 def _result(result_id: str, title: str, proved: bool, evidence: list[str], notes: str = "") -> dict[str, object]:
@@ -33,7 +34,10 @@ def _project_resources(project_root: Path) -> list[tuple[Path, str]]:
                 continue
             text = read_text(path)
             for match in RESOURCE_PATTERN.finditer(text):
-                resources.append((path, "res://" + match.group(1)))
+                resource = match.group(1)
+                if resource.startswith(GENERATED_ARTIFACT_ROOT):
+                    continue
+                resources.append((path, "res://" + resource))
     return resources
 
 
