@@ -10,6 +10,9 @@ func apply_intent_frame(body: CharacterBody3D, frame: Dictionary, delta: float) 
 	var move_local := CharacterControllerPortRef.get_move_local(normalized_frame)
 	var gait_name := CharacterControllerPortRef.get_gait_name(normalized_frame)
 	var action_name := CharacterControllerPortRef.get_action_name(normalized_frame)
+	var desired_facing_yaw := CharacterControllerPortRef.get_desired_facing_yaw(normalized_frame, body.rotation.y)
+	var facing_turn_speed := _get_body_float(body, "facing_turn_speed", 8.0)
+	body.rotation.y = rotate_toward(body.rotation.y, desired_facing_yaw, facing_turn_speed * delta)
 	var forward := -body.global_basis.z
 	var right := body.global_basis.x
 	var target_planar_velocity := Vector3.ZERO

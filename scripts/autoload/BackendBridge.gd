@@ -4,9 +4,12 @@ var ws := WebSocketPeer.new()
 var last_ready_state := WebSocketPeer.STATE_CLOSED
 var last_requested_url := ""
 var transport_barrier_sequence := 0
+var _embodied_controller_enrollment: Dictionary = {}
+var _embodied_controller_bind_sent := false
 
 func _ready() -> void:
     ws.inbound_buffer_size = 1024 * 1024
+    load_embodied_controller_enrollment_from_environment()
     var bus := _get_bus()
     if bus and bus.has_signal("character_actor_status_emitted"):
         bus.character_actor_status_emitted.connect(_on_character_actor_status_emitted)
@@ -14,6 +17,8 @@ func _ready() -> void:
         bus.embodied_phase_event_emitted.connect(_on_embodied_phase_event_emitted)
     if bus and bus.has_signal("embodied_local_outcome_emitted"):
         bus.embodied_local_outcome_emitted.connect(_on_embodied_local_outcome_emitted)
+    if bus and bus.has_signal("embodied_presentation_observed_emitted"):
+        bus.embodied_presentation_observed_emitted.connect(_on_embodied_presentation_observed_emitted)
     if bus and bus.has_signal("embodied_resync_request_emitted"):
         bus.embodied_resync_request_emitted.connect(_on_embodied_resync_request_emitted)
 
@@ -21,6 +26,8 @@ func is_backend_open() -> bool:
     return ws.get_ready_state() == WebSocketPeer.STATE_OPEN
 
 func connect_to_backend(url: String) -> int:
+    if ws.get_ready_state() == WebSocketPeer.STATE_CONNECTING and last_requested_url == url:
+        return OK
     last_requested_url = url
     transport_barrier_sequence = 0
     if ws.get_ready_state() != WebSocketPeer.STATE_CLOSED:
@@ -76,12 +83,40 @@ func close_backend_connection() -> void:
     ws.close()
     _handle_state_transition()
 
+func set_embodied_controller_enrollment(enrollment: Dictionary) -> void:
+    _embodied_controller_enrollment = enrollment.duplicate(true)
+    _embodied_controller_bind_sent = false
+
+func has_pending_embodied_controller_enrollment() -> bool:
+    return not _embodied_controller_enrollment.is_empty() and not _embodied_controller_bind_sent
+
+func load_embodied_controller_enrollment_from_environment() -> int:
+    var raw_enrollment := OS.get_environment("PARALLS_EMBODIED_CONTROLLER_ENROLLMENT_JSON")
+    if raw_enrollment.is_empty():
+        return ERR_UNCONFIGURED
+    var parsed: Variant = JSON.parse_string(raw_enrollment)
+    if typeof(parsed) != TYPE_DICTIONARY:
+        return ERR_INVALID_DATA
+    var enrollment: Dictionary = parsed
+    if enrollment.size() != 5:
+        return ERR_INVALID_DATA
+    if str(enrollment.get("credential_kind", "")) != "trusted_local_launch":
+        return ERR_INVALID_DATA
+    if str(enrollment.get("credential", "")).is_empty():
+        return ERR_INVALID_DATA
+    if str(enrollment.get("actor_id", "")).is_empty():
+        return ERR_INVALID_DATA
+    if str(enrollment.get("controller_instance_id", "")).is_empty():
+        return ERR_INVALID_DATA
+    if int(enrollment.get("protocol_version", 0)) < 1:
+        return ERR_INVALID_DATA
+    set_embodied_controller_enrollment(enrollment)
+    return OK
+
 func _process(_delta: float) -> void:
     ws.poll()
     if ws.get_ready_state() == WebSocketPeer.STATE_CLOSED and last_ready_state == WebSocketPeer.STATE_CLOSED:
         return
-
-    _handle_state_transition()
 
     while ws.get_available_packet_count() > 0:
         var raw_text := ws.get_packet().get_string_from_utf8()
@@ -99,6 +134,7 @@ func _handle_state_transition() -> void:
         WebSocketPeer.STATE_CONNECTING:
             _bus_log("backend_connecting")
         WebSocketPeer.STATE_OPEN:
+            _emit_pending_embodied_controller_bind()
             _bus_log("backend_connected:%s" % last_requested_url)
             _bus_emit("backend_connected", [last_requested_url])
         WebSocketPeer.STATE_CLOSING:
@@ -184,6 +220,7 @@ func _dispatch_message(raw_text: String) -> void:
             _dispatch_authority_event(payload)
         "embodied_controller_bound":
             _bus_log("embodied_controller_bound:%s" % JSON.stringify(payload))
+            _embodied_controller_enrollment.clear()
             _bus_emit("embodied_controller_bound_received", [payload])
         "embodied_action_request":
             _bus_log("embodied_action_request:%s" % JSON.stringify(payload))
@@ -218,6 +255,10 @@ func _dispatch_message(raw_text: String) -> void:
         "websocket_session_bound":
             _bus_log("websocket_session_bound:%s" % JSON.stringify(payload))
             _bus_emit("websocket_session_bound_received", [payload])
+        "websocket_session_revoked":
+            _bus_log("websocket_session_revoked:%s" % JSON.stringify(payload))
+            _bus_emit("websocket_session_revoked_received", [payload])
+            send_envelope({"message_type": "websocket_session_revocation_received", "payload": payload.duplicate(true)})
         "gameplay_runtime_state_projection":
             var projection := parsed_dict.duplicate(true)
             projection.erase("message_type")
@@ -273,6 +314,16 @@ func _on_embodied_local_outcome_emitted(payload: Dictionary) -> void:
         }
     )
 
+func _on_embodied_presentation_observed_emitted(payload: Dictionary) -> void:
+    if ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
+        return
+    send_envelope(
+        {
+            "message_type": "embodied_presentation_observed",
+            "payload": payload,
+        }
+    )
+
 func _on_embodied_resync_request_emitted(payload: Dictionary) -> void:
     if ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
         return
@@ -282,6 +333,20 @@ func _on_embodied_resync_request_emitted(payload: Dictionary) -> void:
             "payload": payload,
         }
     )
+
+func _emit_pending_embodied_controller_bind() -> void:
+    if ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
+        return
+    if _embodied_controller_enrollment.is_empty() or _embodied_controller_bind_sent:
+        return
+    var err := send_envelope(
+        {
+            "message_type": "embodied_controller_bind",
+            "payload": _embodied_controller_enrollment.duplicate(true),
+        }
+    )
+    if err == OK:
+        _embodied_controller_bind_sent = true
 
 func _get_bus() -> Node:
     return get_node_or_null("/root/LocalPresentationBus")

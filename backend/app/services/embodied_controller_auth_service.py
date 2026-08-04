@@ -40,6 +40,14 @@ class GrantValidationResult(BaseModel):
     error_code: str = ""
 
 
+class ControllerBindingLookupResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    accepted: bool
+    binding: ControllerBinding | None = None
+    error_code: str = ""
+
+
 class _TrustedLocalCredential(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -56,7 +64,10 @@ class EmbodiedControllerAuthService:
         self._trusted_credentials: dict[str, _TrustedLocalCredential] = {}
         self._bindings: dict[str, ControllerBinding] = {}
         self._controller_epochs: dict[str, int] = {}
+        self._binding_connection_refs: dict[str, str] = {}
+        self._binding_ids_by_connection_ref: dict[str, str] = {}
         self._grants: dict[str, ControllerExecutionGrant] = {}
+        self._grant_connection_refs: dict[str, str] = {}
         self._grant_results: dict[str, dict[str, object]] = {}
 
     def create_trusted_local_launch_credential(
@@ -82,6 +93,7 @@ class EmbodiedControllerAuthService:
         *,
         remote_host: str,
         now: int,
+        connection_ref: str = "direct_handler",
     ) -> ControllerBindResult:
         if enrollment.credential_kind == "authenticated_session":
             if not self.authenticated_session_adapter_configured:
@@ -109,6 +121,8 @@ class EmbodiedControllerAuthService:
             connection_epoch=epoch,
         )
         self._bindings[binding.binding_id] = binding
+        self._binding_connection_refs[binding.binding_id] = connection_ref
+        self._binding_ids_by_connection_ref[connection_ref] = binding.binding_id
         return ControllerBindResult(accepted=True, binding=binding)
 
     def issue_execution_grant(
@@ -120,6 +134,7 @@ class EmbodiedControllerAuthService:
         ttl: int,
     ) -> ControllerExecutionGrant:
         request_digest = self.request_digest(request)
+        connection_ref = self._binding_connection_refs.get(binding.binding_id, "")
         grant = ControllerExecutionGrant(
             grant_id=f"grant:{request.interaction_attempt_id}:{binding.connection_epoch}",
             authenticated_principal_ref=binding.authenticated_principal_ref,
@@ -139,9 +154,21 @@ class EmbodiedControllerAuthService:
             one_time_outcome_nonce=f"nonce:{token_urlsafe(24)}",
         )
         self._grants[grant.grant_id] = grant
+        self._grant_connection_refs[grant.grant_id] = connection_ref
         return grant
 
-    def validate_grant_for_phase(self, *, grant_id: str, connection_epoch: int) -> GrantValidationResult:
+    def resolve_controller_binding(self, *, actor_id: str, connection_ref: str) -> ControllerBindingLookupResult:
+        binding_id = self._binding_ids_by_connection_ref.get(connection_ref)
+        if binding_id is None:
+            return ControllerBindingLookupResult(accepted=False, error_code="controller_binding_required")
+        binding = self._bindings.get(binding_id)
+        if binding is None or binding.state != "bound":
+            return ControllerBindingLookupResult(accepted=False, error_code="controller_binding_required")
+        if binding.actor_id != actor_id:
+            return ControllerBindingLookupResult(accepted=False, error_code="controller_binding_subject_mismatch")
+        return ControllerBindingLookupResult(accepted=True, binding=binding)
+
+    def validate_grant_for_phase(self, *, grant_id: str, connection_epoch: int, connection_ref: str | None = None) -> GrantValidationResult:
         grant = self._grants.get(grant_id)
         if grant is None:
             return GrantValidationResult(accepted=False, error_code="grant_unknown")
@@ -151,6 +178,8 @@ class EmbodiedControllerAuthService:
             return GrantValidationResult(accepted=False, error_code="grant_consumed")
         if grant.connection_epoch != connection_epoch:
             return GrantValidationResult(accepted=False, error_code="stale_connection_epoch")
+        if connection_ref is not None and self._grant_connection_refs.get(grant_id) != connection_ref:
+            return GrantValidationResult(accepted=False, error_code="controller_binding_required")
         return GrantValidationResult(accepted=True, grant=grant)
 
     def consume_grant_for_outcome(
@@ -161,10 +190,13 @@ class EmbodiedControllerAuthService:
         outcome_nonce: str,
         payload_digest: str,
         now: int,
+        connection_ref: str | None = None,
     ) -> GrantValidationResult:
         grant = self._grants.get(grant_id)
         if grant is None:
             return GrantValidationResult(accepted=False, error_code="grant_unknown")
+        if connection_ref is not None and self._grant_connection_refs.get(grant_id) != connection_ref:
+            return GrantValidationResult(accepted=False, error_code="controller_binding_required")
         stored = self._grant_results.get(grant_id)
         if stored is not None:
             if stored.get("payload_digest") == payload_digest and stored.get("outcome_nonce") == outcome_nonce:

@@ -51,12 +51,32 @@ class GameplayMirrorReceipt(BaseModel):
     delivery_sequence: int = Field(ge=1)
 
 
+class GameplayMirrorPredictionResolution(BaseModel):
+    """Server-issued resolution for one bounded, presentation-only prediction."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    prediction_id: str = Field(min_length=1)
+    command_id: str = Field(min_length=1)
+    resolution: Literal["confirmed", "rejected"]
+    transaction_id: str = ""
+    error_code: str = ""
+
+    @model_validator(mode="after")
+    def _validate_authority_result(self) -> "GameplayMirrorPredictionResolution":
+        if self.resolution == "confirmed" and not self.transaction_id:
+            raise ValueError("prediction_confirmation_transaction_required")
+        if self.resolution == "rejected" and not self.error_code:
+            raise ValueError("prediction_rejection_error_required")
+        return self
+
+
 class GameplayMirrorDeliveryEnvelope(BaseModel):
     """Versioned, already-filtered snapshot/delta transport wrapper."""
 
     model_config = ConfigDict(extra="forbid")
 
-    delivery_kind: Literal["snapshot", "delta"]
+    delivery_kind: Literal["snapshot", "delta", "prediction"]
     connection_epoch: int = Field(ge=1)
     delivery_sequence: int = Field(ge=1)
     actor_ref: str = Field(min_length=1)
@@ -67,9 +87,14 @@ class GameplayMirrorDeliveryEnvelope(BaseModel):
     target_snapshot_checksum: str | None = None
     source_revision_vector: dict[str, int] | None = None
     payload: dict[str, object]
+    prediction_resolutions: tuple[GameplayMirrorPredictionResolution, ...] = ()
 
     @model_validator(mode="after")
     def _validate_delivery_base(self) -> "GameplayMirrorDeliveryEnvelope":
+        if self.delivery_kind == "prediction":
+            if not self.prediction_resolutions:
+                raise ValueError("prediction_resolution_required")
+            return self
         if self.delivery_kind == "snapshot":
             return self
         if (

@@ -14,11 +14,12 @@ def test_wave_one_keeps_only_named_reviewed_default_scene_fixtures() -> None:
     main_scene = _read("scenes/phase0/MainDemo.tscn")
     controller = _read("scripts/phase0/MainDemoController.gd")
     affordance_bridge = _read("scripts/interaction/DefaultSceneLetterAffordanceBridge.gd")
+    archive_door_scene = _read("scenes/phase0/ArchiveDoorPhysical.tscn")
+    archive_door_bridge = _read("scripts/interaction/ArchiveDoorEmbodiedAffordanceBridge.gd")
 
     fixtures = {
         "obj_plaque": "affordance:obj_plaque:inspect",
         "obj_lamp_switch": "affordance:obj_lamp_switch:press",
-        "obj_archive_door": "affordance:obj_archive_door:open_close",
         "obj_worktable": "affordance:obj_worktable:use_surface",
         "obj_observation_bench": "affordance:obj_observation_bench:seat",
         "obj_archive_token": "affordance:obj_archive_token:grab",
@@ -30,6 +31,18 @@ def test_wave_one_keeps_only_named_reviewed_default_scene_fixtures() -> None:
         assert f"collider:{object_id}:body" in main_scene
         assert f"anchor:{object_id}:stance" in main_scene
         assert f"anchor:{object_id}:observation" in main_scene
+    # The archive door is the physical embodiment slice. Its reviewed
+    # affordance and anchors live in the instanced physical scene rather than
+    # the generic default-scene bridge property surface.
+    assert 'object_id = "obj_archive_door"' in main_scene
+    assert 'metadata/entity_ref = "obj_archive_door"' in archive_door_scene
+    assert 'affordance:obj_archive_door:open' in archive_door_scene
+    assert 'anchor:obj_archive_door:stance' in archive_door_scene
+    assert 'anchor:obj_archive_door:contact' in archive_door_scene
+    assert 'anchor:obj_archive_door:observation' in archive_door_scene
+    assert 'const AFFORDANCE_ID := "affordance:obj_archive_door:open"' in archive_door_bridge
+    assert 'func handles_interaction(target_object_id: String, interaction_type: String) -> bool:' in archive_door_bridge
+    assert 'return target_object_id == OBJECT_ID and interaction_type == "open"' in archive_door_bridge
     # The compatibility instance intentionally inherits its reviewed identity
     # and constructs the record refs from that stable identifier.
     assert 'object_id := "obj_letter"' in affordance_bridge

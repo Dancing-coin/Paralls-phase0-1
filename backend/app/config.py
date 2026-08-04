@@ -26,6 +26,13 @@ class GameplayMirrorTrustedLocalLaunchProfileSettings(BaseModel):
     credential_ttl_seconds: int = Field(ge=1, le=300)
 
 
+class EmbodiedControllerTrustedLocalLaunchProfileSettings(BaseModel):
+    profile_ref: str
+    actor_id: str
+    controller_instance_id: str
+    credential_ttl_seconds: int = Field(ge=1, le=300)
+
+
 class Settings(BaseModel):
     dialogue_mode: str = "stub"
     tts_mode: Literal["stub", "openai_compatible", "dashscope_http"] = "stub"
@@ -85,11 +92,14 @@ class Settings(BaseModel):
     gameplay_mirror_phase3_actor_configs: list[dict[str, object]] = Field(default_factory=list)
     gameplay_mirror_trusted_local_launch_profiles: list[GameplayMirrorTrustedLocalLaunchProfileSettings] = Field(default_factory=list)
     gameplay_mirror_launcher_bootstrap_secret: str | None = Field(default=None, repr=False, exclude=True)
+    embodied_controller_trusted_local_launch_profiles: list[EmbodiedControllerTrustedLocalLaunchProfileSettings] = Field(default_factory=list)
+    embodied_controller_launcher_bootstrap_secret: str | None = Field(default=None, repr=False, exclude=True)
     gameplay_mirror_projection_queue_capacity: int = Field(default=128, ge=1, le=1024)
     gameplay_mirror_control_queue_capacity: int = Field(default=8, ge=1, le=128)
     gameplay_mirror_dirty_actor_limit: int = Field(default=16, ge=1, le=128)
     gameplay_mirror_live_probe_drop_first_delivery: bool = False
     gameplay_mirror_live_probe_delivery_delay_seconds: float = Field(default=0, ge=0, le=1)
+    adventure_basic_mirror_live_scenario: Literal["", "scenario-1", "scenario-2", "scenario-3", "scenario-4", "scenario-5"] = ""
     non_runtime_model_mode: Literal["disabled", "http", "local", "blocked"] = "disabled"
     non_runtime_model_endpoint: str | None = None
     non_runtime_model_api_key: str | None = Field(default=None, repr=False, exclude=True)
@@ -253,11 +263,17 @@ settings = Settings(
         for item in _env_object_list("GAMEPLAY_MIRROR_TRUSTED_LOCAL_LAUNCH_PROFILES_JSON")
     ],
     gameplay_mirror_launcher_bootstrap_secret=_env_optional("GAMEPLAY_MIRROR_LAUNCHER_BOOTSTRAP_SECRET"),
+    embodied_controller_trusted_local_launch_profiles=[
+        EmbodiedControllerTrustedLocalLaunchProfileSettings.model_validate(item)
+        for item in _env_object_list("EMBODIED_CONTROLLER_TRUSTED_LOCAL_LAUNCH_PROFILES_JSON")
+    ],
+    embodied_controller_launcher_bootstrap_secret=_env_optional("EMBODIED_CONTROLLER_LAUNCHER_BOOTSTRAP_SECRET"),
     gameplay_mirror_projection_queue_capacity=int(_env_value("GAMEPLAY_MIRROR_PROJECTION_QUEUE_CAPACITY", "128") or "128"),
     gameplay_mirror_control_queue_capacity=int(_env_value("GAMEPLAY_MIRROR_CONTROL_QUEUE_CAPACITY", "8") or "8"),
     gameplay_mirror_dirty_actor_limit=int(_env_value("GAMEPLAY_MIRROR_DIRTY_ACTOR_LIMIT", "16") or "16"),
     gameplay_mirror_live_probe_drop_first_delivery=_env_bool("GAMEPLAY_MIRROR_LIVE_PROBE_DROP_FIRST_DELIVERY", False),
     gameplay_mirror_live_probe_delivery_delay_seconds=float(_env_value("GAMEPLAY_MIRROR_LIVE_PROBE_DELIVERY_DELAY_SECONDS", "0") or "0"),
+    adventure_basic_mirror_live_scenario=_env_value("ADVENTURE_BASIC_MIRROR_LIVE_SCENARIO", "") or "",
     non_runtime_model_mode=_env_value("NON_RUNTIME_MODEL_MODE", "disabled") or "disabled",
     non_runtime_model_endpoint=_env_value("NON_RUNTIME_MODEL_ENDPOINT"),
     non_runtime_model_api_key=_env_value("NON_RUNTIME_MODEL_API_KEY"),

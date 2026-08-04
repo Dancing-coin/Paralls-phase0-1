@@ -80,16 +80,18 @@ def test_main_demo_registers_door_as_an_explicit_open_fixture() -> None:
     main_scene = (project_root / "scenes" / "phase0" / "MainDemo.tscn").read_text(encoding="utf-8")
     controller_source = (project_root / "scripts" / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
     esm_source = (project_root / "backend" / "app" / "services" / "esm_service.py").read_text(encoding="utf-8")
+    bridge_source = (project_root / "scripts" / "interaction" / "ArchiveDoorEmbodiedAffordanceBridge.gd").read_text(encoding="utf-8")
 
     assert 'object_id = "obj_archive_door"' in main_scene
-    assert 'affordance_id = "affordance:obj_archive_door:open_close"' in main_scene
-    assert 'primary_interaction_type = "open"' in main_scene
-    assert 'supported_interaction_types = PackedStringArray("open", "close")' in main_scene
-    assert 'default_interaction_by_state = {"closed": "open", "open": "close"}' in main_scene
-    assert 'policy_ref = "authority_policy:esm_open_archive_door:v1"' in main_scene
-    assert "metadata/grounding_refs = PackedStringArray(\"collider:obj_archive_door:body\"" in main_scene
+    assert 'path="res://scenes/phase0/ArchiveDoorPhysical.tscn"' in main_scene
+    assert 'path="res://scripts/interaction/ArchiveDoorEmbodiedAffordanceBridge.gd"' in main_scene
+    assert 'instance=ExtResource("139_archive_door_physical")' in main_scene
+    assert 'script = ExtResource("140_archive_door_bridge")' in main_scene
     assert "$DefaultSceneArchiveDoorAffordanceBridge" in controller_source
     assert '"obj_archive_door"' in esm_source
+    assert 'const AFFORDANCE_ID := "affordance:obj_archive_door:open"' in bridge_source
+    assert '["approach_stance", "contact", "observation"]' in bridge_source
+    assert 'interaction_type == "open"' in bridge_source
 
 
 def test_main_demo_registers_worktable_as_a_stateful_single_actor_use_fixture() -> None:

@@ -107,6 +107,9 @@ var _perception_sampler = ACTOR_PERCEPTION_SAMPLER.new()
 var _perception_target_resolver = ACTOR_PERCEPTION_TARGET_RESOLVER.new()
 
 func _ready() -> void:
+	var runtime_backend_url := OS.get_environment("PARALLS_BACKEND_WS_URL").strip_edges()
+	if not runtime_backend_url.is_empty():
+		backend_url = runtime_backend_url
 	_perception_sampler.range_m = focus_max_distance
 	_perception_sampler.forward_threshold = focus_forward_threshold
 	_perception_target_resolver.target_property_names = PackedStringArray(["actor_id", "object_id"])
@@ -1031,7 +1034,7 @@ func _perform_backend_reconnect() -> void:
 	# This flag covers only a queued attempt. Clear it before the asynchronous
 	# handshake so a refused connection can queue the next retry.
 	pending_backend_reconnect = false
-	var err: int = bridge.connect_to_backend(backend_url)
+	var err: int = bridge.connect_to_backend(_resolve_backend_url())
 	_bus_log("phase0_backend_reconnect_err:%s" % err)
 	if err != OK:
 		_schedule_backend_reconnect_retry()
@@ -1121,7 +1124,9 @@ func _emit_interaction_request(target_object_id: String, interaction_type: Strin
 		pending_interaction_request = {"target_object_id": target_object_id, "interaction_type": interaction_type}
 		_request_backend_reconnect()
 		return {}
-	return _send_player_input_envelope(bridge, intent_mapper.emit_interact_intent(target_object_id, interaction_type))
+	var descriptor := _send_player_input_envelope(bridge, intent_mapper.emit_interact_intent(target_object_id, interaction_type))
+	_register_archive_door_request(descriptor, target_object_id, interaction_type)
+	return descriptor
 
 func _emit_interaction_request_without_near_object_fact(target_object_id: String, interaction_type: String) -> Dictionary:
 	var bridge := _get_bridge()
@@ -1136,7 +1141,9 @@ func _emit_interaction_request_without_near_object_fact(target_object_id: String
 		pending_interaction_request = {"target_object_id": target_object_id, "interaction_type": interaction_type}
 		_request_backend_reconnect()
 		return {}
-	return _send_player_input_envelope(bridge, intent_mapper.emit_interact_intent(target_object_id, interaction_type))
+	var descriptor := _send_player_input_envelope(bridge, intent_mapper.emit_interact_intent(target_object_id, interaction_type))
+	_register_archive_door_request(descriptor, target_object_id, interaction_type)
+	return descriptor
 
 
 func _emit_pickup_intent_request(target_object_id: String, interaction_type: String) -> void:
@@ -1268,6 +1275,24 @@ func _send_player_input_envelope(bridge: Node, envelope: Dictionary) -> Dictiona
 	if err != OK:
 		return {}
 	return descriptor
+
+func _register_archive_door_request(descriptor: Dictionary, target_object_id: String, interaction_type: String) -> void:
+	if descriptor.is_empty():
+		return
+	if target_object_id != "obj_archive_door" or interaction_type != "open":
+		return
+	var bus := _get_bus()
+	if bus == null or not bus.has_signal("archive_door_request_registered"):
+		return
+	var payload := {
+		"request_id": str(descriptor.get("request_id", "")),
+		"producer_ts": int(descriptor.get("producer_ts", 0)),
+		"actor_id": "char_c",
+		"target_object_id": target_object_id,
+		"interaction_type": interaction_type,
+		"correlation_id": "interact:%s" % descriptor.get("producer_ts", 0),
+	}
+	bus.emit_signal("archive_door_request_registered", payload)
 
 func _emit_move_intent_if_needed() -> void:
 	if autotest_enabled or focus_autotest_enabled:

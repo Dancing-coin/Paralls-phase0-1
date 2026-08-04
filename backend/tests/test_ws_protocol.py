@@ -1297,7 +1297,7 @@ def test_websocket_press_intent_uses_registered_switch_authority_policy() -> Non
     assert environment_result["payload"]["current_state"] == "alerted"
 
 
-def test_websocket_open_intent_uses_registered_archive_door_authority_policy() -> None:
+def test_websocket_archive_door_open_requires_bound_controller_before_physical_preflight() -> None:
     _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
     with client.websocket_connect("/ws") as websocket:
@@ -1316,30 +1316,18 @@ def test_websocket_open_intent_uses_registered_archive_door_authority_policy() -
             }
         )
 
-        ack = websocket.receive_json()
-        action_request = websocket.receive_json()
-        action_resolution = websocket.receive_json()
-        transition = websocket.receive_json()
-        object_state_result = websocket.receive_json()
+        messages = _receive_messages_by_type(websocket, {"action_request", "world_result"})
 
-    assert ack["payload"]["route"] == "esm_service"
+    action_request = messages["action_request"]
+    constraint_result = messages["world_result"]
     assert action_request["payload"]["request_id"] == "interact:458:obj_archive_door"
-    assert action_resolution["payload"]["target_object_id"] == "obj_archive_door"
-    assert action_resolution["payload"]["resolution_status"] == "accepted"
-    assert transition["message_type"] == "state_machine_transition"
-    assert transition["entity_id"] == "obj_archive_door"
-    assert transition["machine_id"] == "door"
-    assert transition["from_state"] == "closed"
-    assert transition["to_state"] == "open"
-    assert transition["trigger_type"] == "interact.open"
-    assert object_state_result["event_type"] == "object_state_result"
-    assert object_state_result["payload"]["target_object_id"] == "obj_archive_door"
-    assert object_state_result["payload"]["machine_id"] == "door"
-    assert object_state_result["payload"]["previous_state"] == "closed"
-    assert object_state_result["payload"]["current_state"] == "open"
+    assert constraint_result["event_type"] == "constraint_state_result"
+    assert constraint_result["payload"]["target_object_id"] == "obj_archive_door"
+    assert constraint_result["payload"]["constraint_type"] == "controller_binding_constraint"
+    assert constraint_result["payload"]["constraint_code"] == "controller_binding_required"
 
 
-def test_door_close_requires_the_authority_committed_open_state() -> None:
+def test_door_close_fails_closed_until_its_physical_path_is_implemented() -> None:
     _reset_runtime_state_with_local_character_model()
 
     def interact(producer_ts: int, interaction_type: str) -> list[dict[str, object]]:
@@ -1358,30 +1346,21 @@ def test_door_close_requires_the_authority_committed_open_state() -> None:
             )
         )
 
-    opened = interact(459, "open")
-    closed = interact(460, "close")
-    rejected = interact(461, "close")
-
-    opened_transition = next(message for message in opened if message.get("message_type") == "state_machine_transition")
-    closed_transition = next(message for message in closed if message.get("message_type") == "state_machine_transition")
-    closed_object_result = next(
-        message
-        for message in closed
-        if message.get("message_type") == "world_result" and message.get("event_type") == "object_state_result"
-    )
+    rejected = interact(459, "close")
     state_constraint = next(
         message
         for message in rejected
         if message.get("message_type") == "world_result" and message.get("event_type") == "constraint_state_result"
     )
 
-    assert opened_transition["from_state"] == "closed"
-    assert opened_transition["to_state"] == "open"
-    assert closed_transition["from_state"] == "open"
-    assert closed_transition["to_state"] == "closed"
-    assert closed_object_result["payload"]["current_state"] == "closed"
-    assert state_constraint["payload"]["constraint_type"] == "interaction_state_constraint"
-    assert state_constraint["payload"]["constraint_code"] == "invalid_interaction_state"
+    assert state_constraint["payload"]["constraint_type"] == "interaction_policy_constraint"
+    assert state_constraint["payload"]["constraint_code"] == "physical_close_not_implemented"
+    assert main.esm_service.interaction_state_for(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        target_object_id="obj_archive_door",
+    ) == "closed"
 
 
 def test_worktable_finish_use_requires_the_authority_committed_engaged_state() -> None:

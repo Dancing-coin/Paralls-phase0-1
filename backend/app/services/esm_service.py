@@ -899,6 +899,9 @@ class ESMService:
         request_ref: str | None = None,
         causation_id: str | None = None,
         correlation_id: str | None = None,
+        settlement_id: str = "",
+        interaction_attempt_id: str = "",
+        grant_id: str = "",
     ) -> EnvironmentStateResult:
         field_state = self._update_environment_field(
             room_id=room_id,
@@ -1107,6 +1110,9 @@ class ESMService:
         request_ref: str | None = None,
         causation_id: str | None = None,
         correlation_id: str | None = None,
+        settlement_id: str = "",
+        interaction_attempt_id: str = "",
+        grant_id: str = "",
     ) -> ObjectStateResult:
         return ObjectStateResult(
             request_ref=request_ref or f"object:{target_object_id}:{producer_ts}",
@@ -1126,6 +1132,9 @@ class ESMService:
             current_state=current_state,
             change_summary=f"{target_object_id} changed from {previous_state} to {current_state}",
             settlement_status="applied",
+            settlement_id=settlement_id,
+            interaction_attempt_id=interaction_attempt_id,
+            grant_id=grant_id,
         )
 
     def emit_body_state_result(

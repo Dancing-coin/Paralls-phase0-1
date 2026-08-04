@@ -46,7 +46,7 @@ def test_player_shell_human_ingress_keeps_explicit_intent_frame_fields() -> None
 
     assert '"move_local": move_local' in player_shell_source
     assert '"look_local": Vector2(0.0, look_pitch)' in player_shell_source
-    assert '"desired_facing_yaw": rotation.y' in player_shell_source
+    assert '"desired_facing_yaw": forced_desired_facing_yaw if forced_facing_active else rotation.y' in player_shell_source
     assert '"gait": gait' in player_shell_source
     assert '"action": action' in player_shell_source
 

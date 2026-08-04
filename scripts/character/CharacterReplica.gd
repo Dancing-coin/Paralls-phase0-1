@@ -220,6 +220,51 @@ func perform_action(action_name: String) -> void:
 		return
 	_trigger_role_state(next_state, _role_action_duration_for(action_name))
 
+
+func play_reviewed_action_atom(action_tag: String, animation_clip_ref: String, phase: String) -> Dictionary:
+	if role_asset_scene == null or not role_asset_scene.has_method("play_reviewed_action_atom"):
+		return {"accepted": false, "played_clip": ""}
+	var result: Variant = role_asset_scene.call("play_reviewed_action_atom", action_tag, animation_clip_ref, phase)
+	return result if result is Dictionary else {"accepted": false, "played_clip": ""}
+
+
+func restore_reviewed_action_playback() -> void:
+	if role_asset_scene != null and role_asset_scene.has_method("restore_reviewed_action_playback"):
+		role_asset_scene.call("restore_reviewed_action_playback")
+
+
+func begin_right_hand_reach(anchor_world_position: Vector3, tolerance_m: float) -> Dictionary:
+	if role_asset_scene == null or not role_asset_scene.has_method("begin_right_hand_reach"):
+		return {"available": false, "distance_m": INF, "error_code": "ik_chain_unavailable"}
+	var result: Variant = role_asset_scene.call("begin_right_hand_reach", anchor_world_position, tolerance_m)
+	return result if result is Dictionary else {"available": false, "distance_m": INF, "error_code": "ik_chain_unavailable"}
+
+
+func begin_right_hand_modifier_reach(anchor_world_position: Vector3, tolerance_m: float) -> Dictionary:
+	if role_asset_scene == null or not role_asset_scene.has_method("begin_right_hand_modifier_reach"):
+		return {"available": false, "distance_m": INF, "error_code": "ik_chain_unavailable"}
+	var result: Variant = role_asset_scene.call("begin_right_hand_modifier_reach", anchor_world_position, tolerance_m)
+	return result if result is Dictionary else {"available": false, "distance_m": INF, "error_code": "ik_chain_unavailable"}
+
+
+func begin_archive_door_reach_modifier(anchor_world_position: Vector3, tolerance_m: float) -> Dictionary:
+	if role_asset_scene == null or not role_asset_scene.has_method("begin_archive_door_reach_modifier"):
+		return {"available": false, "distance_m": INF, "error_code": "ik_chain_unavailable"}
+	var result: Variant = role_asset_scene.call("begin_archive_door_reach_modifier", anchor_world_position, tolerance_m)
+	return result if result is Dictionary else {"available": false, "distance_m": INF, "error_code": "ik_chain_unavailable"}
+
+
+func clear_right_hand_reach() -> void:
+	if role_asset_scene != null and role_asset_scene.has_method("clear_right_hand_reach"):
+		role_asset_scene.call("clear_right_hand_reach")
+
+
+func measure_right_hand_to_anchor(anchor_world_position: Vector3) -> Dictionary:
+	if role_asset_scene == null or not role_asset_scene.has_method("measure_right_hand_to_anchor"):
+		return {"available": false, "distance_m": INF, "error_code": "ik_chain_unavailable"}
+	var result: Variant = role_asset_scene.call("measure_right_hand_to_anchor", anchor_world_position)
+	return result if result is Dictionary else {"available": false, "distance_m": INF, "error_code": "ik_chain_unavailable"}
+
 func begin_embodied_control_frame(world_position: Vector3, move_direction: Vector3, look_target: Vector3, is_grounded: bool, wants_run: bool, gait_name: String, stance_name: String, jump_type: String) -> void:
 	driver_mode = DriverMode.PLAYER
 	player_shell_active = true

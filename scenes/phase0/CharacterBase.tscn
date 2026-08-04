@@ -1,10 +1,11 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/player/PlayerShell.gd" id="1_shell"]
 [ext_resource type="PackedScene" path="res://scenes/phase0/CharacterReplica.tscn" id="2_character"]
 [ext_resource type="Script" path="res://scripts/player/Phase0PlayerBridge.gd" id="3_bridge"]
 [ext_resource type="Script" path="res://scripts/player/CameraOcclusionFader.gd" id="5_occlusion"]
 [ext_resource type="Script" path="res://scripts/player/Phase0PlayerCommandRelay.gd" id="7_command_relay"]
+[ext_resource type="Script" path="res://scripts/interaction/ArchiveDoorEmbodiedActionHost.gd" id="8_door_host"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 height = 1.7
@@ -45,6 +46,9 @@ script = ExtResource("3_bridge")
 
 [node name="Phase0PlayerCommandRelay" type="Node" parent="."]
 script = ExtResource("7_command_relay")
+
+[node name="ArchiveDoorEmbodiedActionHost" type="Node" parent="."]
+script = ExtResource("8_door_host")
 
 [node name="CameraOcclusionFader" type="Node" parent="."]
 script = ExtResource("5_occlusion")

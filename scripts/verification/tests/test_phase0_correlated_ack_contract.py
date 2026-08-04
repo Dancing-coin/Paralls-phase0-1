@@ -214,6 +214,8 @@ def test_backend_bridge_generates_connection_local_transport_barriers() -> None:
     )[0]
 
     assert "var transport_barrier_sequence := 0" in source
+    assert "if ws.get_ready_state() == WebSocketPeer.STATE_CONNECTING and last_requested_url == url:" in connect_section
+    assert "return OK" in connect_section
     assert "transport_barrier_sequence = 0" in connect_section
     assert "transport_barrier_sequence += 1" in barrier_section
     assert '"transport_barrier:%s:%s"' in barrier_section
@@ -236,6 +238,9 @@ def test_strict_phase0_selects_runtime_only_without_changing_normal_or_focus_url
 
     assert "var connection_url := _resolve_backend_url()" in connect_section
     assert "bridge.connect_to_backend(connection_url)" in connect_section
+    assert 'var runtime_backend_url := OS.get_environment("PARALLS_BACKEND_WS_URL").strip_edges()' in source
+    assert "if not runtime_backend_url.is_empty():" in source
+    assert "backend_url = runtime_backend_url" in source
     assert "if not autotest_enabled or focus_autotest_enabled:" in resolver_section
     assert "return backend_url" in resolver_section
     assert 'var separator: String = "&" if backend_url.contains("?") else "?"' in resolver_section

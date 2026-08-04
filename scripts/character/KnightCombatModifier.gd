@@ -27,6 +27,7 @@ var sword_in_hand: Node3D
 var shield_in_hand: Node3D
 var base_sword_transform := Transform3D.IDENTITY
 var base_shield_transform := Transform3D.IDENTITY
+var external_right_arm_solver_active := false
 
 func _ready() -> void:
 	sword_in_hand = get_node_or_null(sword_in_hand_path)
@@ -46,6 +47,10 @@ func configure_bones(bones: Dictionary) -> void:
 	left_hand_bone = int(bones.get("left_hand_bone", -1))
 	spine_upper_bone = int(bones.get("spine_upper_bone", -1))
 	_cache_bones()
+
+
+func set_external_right_arm_solver_active(enabled: bool) -> void:
+	external_right_arm_solver_active = enabled
 
 func set_sword_overlay(progress: float, upper_strength: float, forearm_strength: float, hand_strength: float, spine_strength: float) -> void:
 	sword_swing_progress = clamp(progress, 0.0, 1.0)
@@ -105,10 +110,12 @@ func _cache_bones() -> void:
 
 func _restore_base_pose(skeleton: Skeleton3D) -> void:
 	for bone_idx in base_bone_rotations.keys():
+		if external_right_arm_solver_active and int(bone_idx) in [right_upper_arm_bone, right_forearm_bone, right_hand_bone]:
+			continue
 		skeleton.set_bone_pose_rotation(int(bone_idx), base_bone_rotations[bone_idx])
 
 func _apply_sword_pose(skeleton: Skeleton3D) -> void:
-	if sword_swing_progress <= 0.0:
+	if sword_swing_progress <= 0.0 or external_right_arm_solver_active:
 		return
 	var swing_phase: float = sin(sword_swing_progress * PI)
 	var slash_phase: float = sin(sword_swing_progress * TAU - PI * 0.35)

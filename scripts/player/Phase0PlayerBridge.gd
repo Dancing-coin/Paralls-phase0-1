@@ -117,6 +117,14 @@ func clear_forced_player_motion() -> void:
 	if player and player.has_method("clear_forced_control"):
 		player.clear_forced_control()
 
+func set_forced_facing_yaw(next_yaw: float) -> void:
+	if player and player.has_method("set_forced_facing_yaw"):
+		player.set_forced_facing_yaw(next_yaw)
+
+func clear_forced_facing_yaw() -> void:
+	if player and player.has_method("clear_forced_facing_yaw"):
+		player.clear_forced_facing_yaw()
+
 func trigger_forced_jump(jump_type: String) -> void:
 	var _program_frame := build_program_intent_frame(
 		{

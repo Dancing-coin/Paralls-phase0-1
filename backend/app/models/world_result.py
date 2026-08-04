@@ -18,6 +18,7 @@ class WorldResultBase(BaseModel):
     target_object_id: str | None = None
     target_environment_id: str | None = None
     settlement_status: str = ""
+    settlement_id: str = ""
 
 
 class ActionResolutionResult(WorldResultBase):
@@ -53,6 +54,8 @@ class EnvironmentStateResult(WorldResultBase):
 class ObjectStateResult(WorldResultBase):
     result_type: str = "object_state_result"
     machine_id: str = ""
+    interaction_attempt_id: str = ""
+    grant_id: str = ""
     previous_state: str
     current_state: str
     change_summary: str

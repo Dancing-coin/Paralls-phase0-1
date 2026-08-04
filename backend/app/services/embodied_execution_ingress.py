@@ -41,12 +41,12 @@ class EmbodiedExecutionIngress:
         self._phase_sequences: dict[str, dict[int, str]] = {}
         self._terminal_results: dict[str, EmbodiedIngressResult] = {}
 
-    def handle_phase_event(self, payload: dict[str, object]) -> EmbodiedIngressResult:
+    def handle_phase_event(self, payload: dict[str, object], *, connection_ref: str | None = None) -> EmbodiedIngressResult:
         grant_id = str(payload.get("grant_id", "") or "")
         connection_epoch = int(payload.get("connection_epoch", 0) or 0)
         source_sequence = int(payload.get("source_sequence", 0) or 0)
         payload_digest = str(payload.get("payload_digest", "") or "")
-        validation = self._auth.validate_grant_for_phase(grant_id=grant_id, connection_epoch=connection_epoch)
+        validation = self._auth.validate_grant_for_phase(grant_id=grant_id, connection_epoch=connection_epoch, connection_ref=connection_ref)
         if not validation.accepted:
             return EmbodiedIngressResult(accepted=False, message_type="embodied_phase_event", error_code=validation.error_code)
         if source_sequence < 1:
@@ -74,7 +74,7 @@ class EmbodiedExecutionIngress:
             outbound=[self._ack("embodied_phase_event", True, "embodied_execution_ingress")],
         )
 
-    def handle_local_outcome(self, payload: dict[str, object], *, now: int) -> EmbodiedIngressResult:
+    def handle_local_outcome(self, payload: dict[str, object], *, now: int, connection_ref: str | None = None) -> EmbodiedIngressResult:
         grant_id = str(payload.get("controller_grant_id", "") or "")
         terminal_key = f"{grant_id}:{payload.get('payload_digest', '')}:{payload.get('outcome_nonce', '')}"
         if terminal_key in self._terminal_results:
@@ -87,6 +87,7 @@ class EmbodiedExecutionIngress:
             outcome_nonce=outcome.outcome_nonce,
             payload_digest=outcome.payload_digest,
             now=now,
+            connection_ref=connection_ref,
         )
         if not validation.accepted:
             return EmbodiedIngressResult(accepted=False, message_type="embodied_local_outcome", error_code=validation.error_code)

@@ -1,0 +1,51 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/object/ArchiveDoorPhysical.gd" id="1_door"]
+[ext_resource type="Script" path="res://scripts/object/ArchiveDoorPhysicalPresentation.gd" id="1_presentation"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_door_leaf"]
+size = Vector3(1.6, 2.4, 0.14)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial_door_leaf"]
+albedo_color = Color(0.2, 0.13, 0.07, 1)
+roughness = 0.62
+
+[sub_resource type="BoxShape3D" id="BoxShape_closed_passage"]
+size = Vector3(1.6, 2.4, 0.18)
+
+[node name="ArchiveDoorPhysical" type="Node3D"]
+script = ExtResource("1_door")
+metadata/grounding_refs = PackedStringArray("collider:obj_archive_door:body", "anchor:obj_archive_door:stance", "anchor:obj_archive_door:contact", "anchor:obj_archive_door:observation", "affordance:obj_archive_door:open", "nav:obj_archive_door:approach_footprint")
+metadata/entity_ref = "obj_archive_door"
+
+[node name="ApproachStance" type="Marker3D" parent="."]
+position = Vector3(0, 0, 1.25)
+
+[node name="ContactAnchor" type="Marker3D" parent="."]
+position = Vector3(0.45, 1.18, 0.12)
+
+[node name="ObservationAnchor" type="Marker3D" parent="."]
+position = Vector3(0, 1.2, 1.1)
+
+[node name="HingePivot" type="Node3D" parent="."]
+position = Vector3(-0.8, 1.2, 0)
+
+[node name="DoorLeaf" type="MeshInstance3D" parent="HingePivot"]
+position = Vector3(0.8, 0, 0)
+mesh = SubResource("BoxMesh_door_leaf")
+material_override = SubResource("StandardMaterial_door_leaf")
+
+[node name="ClosedPassageBlocker" type="StaticBody3D" parent="."]
+position = Vector3(0, 1.2, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ClosedPassageBlocker"]
+shape = SubResource("BoxShape_closed_passage")
+
+[node name="StateLabel" type="Label3D" parent="."]
+position = Vector3(0, 2.7, 0.22)
+text = "Archive Door: closed"
+font_size = 24
+billboard = 1
+
+[node name="ArchiveDoorPhysicalPresentation" type="Node" parent="."]
+script = ExtResource("1_presentation")

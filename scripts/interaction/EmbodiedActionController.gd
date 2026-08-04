@@ -35,6 +35,11 @@ var selected_action_atoms: Array[Dictionary] = []
 var phase_action_atoms: Dictionary = {}
 var trace_events: Array[Dictionary] = []
 var active_playback_adapter: Node
+var realtime_attempt_active := false
+var realtime_request: Dictionary = {}
+var realtime_grant: Dictionary = {}
+var realtime_registry_binding: Dictionary = {}
+var realtime_next_phase_index := 0
 
 
 func can_start_attempt(request: Dictionary, grant: Dictionary) -> Dictionary:
@@ -109,6 +114,99 @@ func run_attempt(
 		if terminal != "":
 			return _terminal_outcome(request, grant, registry_binding, terminal, _failure_for_terminal(terminal, scenario), terminal == "contact_observed")
 	return _terminal_outcome(request, grant, registry_binding, "contact_observed", "", true)
+
+
+func start_realtime_attempt(
+	request: Dictionary,
+	grant: Dictionary,
+	registry_binding: Dictionary,
+	action_asset_registry: CharacterEmbodimentAssetRegistry = null,
+	playback_adapter: Node = null
+) -> Dictionary:
+	active_playback_adapter = playback_adapter
+	var allowed := can_start_attempt(request, grant)
+	if not bool(allowed.get("accepted", false)):
+		return _terminal_outcome(request, grant, registry_binding, "failed_precondition", str(allowed.get("error_code", "")), false)
+	active_attempt_id = str(request.get("interaction_attempt_id", ""))
+	active_controller_grant_id = str(grant.get("grant_id", ""))
+	active_connection_epoch = int(grant.get("connection_epoch", 0))
+	active_outcome_nonce = str(grant.get("one_time_outcome_nonce", ""))
+	selected_realization_route = str(request.get("realization_route", ""))
+	selected_action_atoms.clear()
+	phase_action_atoms.clear()
+	if action_asset_registry != null:
+		var action_selection := select_action_atoms(request, action_asset_registry)
+		if str(action_selection.get("status", "")) != "available":
+			return _terminal_outcome(request, grant, registry_binding, "failed_precondition", "action_assets_unavailable", false)
+	elif _has_requested_action_atoms(request):
+		return _terminal_outcome(request, grant, registry_binding, "failed_precondition", "action_assets_unavailable", false)
+	local_ownership_restored = false
+	trace_events.clear()
+	current_phase = "idle"
+	realtime_attempt_active = true
+	realtime_request = request.duplicate(true)
+	realtime_grant = grant.duplicate(true)
+	realtime_registry_binding = registry_binding.duplicate(true)
+	realtime_next_phase_index = 0
+	return {
+		"accepted": true,
+		"interaction_attempt_id": active_attempt_id,
+		"phase": current_phase,
+	}
+
+
+func advance_realtime_attempt(phase: String) -> Dictionary:
+	if not realtime_attempt_active:
+		return {"accepted": false, "error_code": "realtime_attempt_inactive"}
+	if realtime_next_phase_index >= ORDERED_PHASES.size() - 1:
+		return {"accepted": false, "error_code": "realtime_phase_exhausted"}
+	var expected_phase := str(ORDERED_PHASES[realtime_next_phase_index])
+	if phase != expected_phase:
+		return {"accepted": false, "error_code": "realtime_phase_out_of_order", "expected_phase": expected_phase}
+	var playback := _enter_phase(phase)
+	if not bool(playback.get("accepted", false)):
+		return finish_realtime_attempt("failed_precondition", "local_playback_unavailable", false)
+	realtime_next_phase_index += 1
+	return {
+		"accepted": true,
+		"phase": phase,
+		"trace_event": trace_events.back().duplicate(true),
+	}
+
+
+func finish_realtime_attempt(
+	terminal_status: String,
+	failure_code: String = "",
+	contact_observed: bool = false,
+	contact_observation_override: Dictionary = {},
+	object_observation_override: Dictionary = {}
+) -> Dictionary:
+	var request := realtime_request if not realtime_request.is_empty() else {
+		"interaction_attempt_id": active_attempt_id,
+	}
+	var grant := realtime_grant if not realtime_grant.is_empty() else {
+		"grant_id": active_controller_grant_id,
+		"connection_epoch": active_connection_epoch,
+		"one_time_outcome_nonce": active_outcome_nonce,
+	}
+	var outcome := _terminal_outcome(
+		request,
+		grant,
+		realtime_registry_binding,
+		terminal_status,
+		failure_code,
+		contact_observed
+	)
+	if contact_observed and not contact_observation_override.is_empty():
+		outcome["contact_observation"] = contact_observation_override.duplicate(true)
+	if contact_observed and not object_observation_override.is_empty():
+		outcome["object_observation"] = object_observation_override.duplicate(true)
+	realtime_attempt_active = false
+	realtime_request.clear()
+	realtime_grant.clear()
+	realtime_registry_binding.clear()
+	realtime_next_phase_index = 0
+	return outcome
 
 
 func select_action_atoms(request: Dictionary, action_asset_registry: CharacterEmbodimentAssetRegistry) -> Dictionary:

@@ -64,12 +64,14 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "embodied-interaction-foundation-all",
         "gameplay-ability-affordance",
         "godot-gameplay-mirror",
+        "obj-archive-door-physical-embodiment",
         "gameplay-inventory",
         "gameplay-possession-equipment",
         "gameplay-ownership-authority",
         "gameplay-economy-authority",
         "gameplay-patch-runtime",
         "adventure-basic",
+        "gameplay-foundation-all",
     ]
     assert registry.profiles["docs"]["script"] == "scripts/verification/check_docs.py"
     assert registry.profiles["backend-contract"]["script"] == "scripts/verification/check_backend_contract.py"
@@ -105,6 +107,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["gameplay-event-replay"]["script"] == "scripts/verification/verify_gameplay_event_replay.py"
     assert registry.profiles["gameplay-foundation-event-spine"]["script"] == "scripts/verification/verify_gameplay_foundation_event_spine.py"
     assert registry.profiles["adventure-basic"]["script"] == "scripts/verification/verify_adventure_basic.py"
+    assert registry.profiles["gameplay-foundation-all"]["script"] == "scripts/verification/verify_gameplay_foundation_all.py"
     assert registry.profiles["gameplay-state-groups"]["script"] == "scripts/verification/verify_gameplay_state_groups.py"
     assert registry.profiles["gameplay-possession-equipment"]["script"] == "scripts/verification/verify_gameplay_possession_equipment.py"
     assert registry.profiles["gameplay-ownership-authority"]["script"] == "scripts/verification/verify_gameplay_ownership_authority.py"
@@ -112,6 +115,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["embodied-handoff-authority"]["script"] == "scripts/verification/verify_embodied_handoff_authority.py"
     assert registry.profiles["embodied-grab-carry-place-authority"]["script"] == "scripts/verification/verify_embodied_grab_carry_place_authority.py"
     assert registry.profiles["embodied-interaction-foundation-all"]["script"] == "scripts/verification/verify_embodied_interaction_foundation_all.py"
+    assert registry.profiles["obj-archive-door-physical-embodiment"]["script"] == "scripts/verification/verify_obj_archive_door_physical_embodiment.py"
     assert registry.profiles["phase0"]["requires_godot"] is True
     assert registry.profiles["mainline-unified-runtime"]["script"] == "scripts/verification/verify_mainline_unified_runtime.py"
     assert "not a product L1 runtime" in registry.profiles["l1-world-fact-runtime"]["description"]

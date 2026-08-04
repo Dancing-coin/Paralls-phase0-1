@@ -207,6 +207,8 @@ class ContactObservation(StrictEmbodiedModel):
     actor_contact_ref: str = Field(min_length=1)
     target_collider_ref: str = Field(min_length=1)
     contact_window_ref: str = Field(min_length=1)
+    observation_rule_ref: str = ""
+    hand_alignment_error_m: float | None = Field(default=None, ge=0.0)
 
 
 class ObjectObservation(StrictEmbodiedModel):
@@ -229,6 +231,11 @@ class LocalExecutionOutcome(StrictEmbodiedModel):
     environment_observation: dict[str, object] | None = None
     failure_code: str = ""
     trace_refs: list[str] = Field(default_factory=list)
+    # Semantic local realization evidence is auditable but cannot assert world truth.
+    local_ownership_restored: bool = True
+    selected_action_tags: list[str] = Field(default_factory=list)
+    phase_action_tags: dict[str, list[str]] = Field(default_factory=dict)
+    local_root_motion_phase_refs: dict[str, list[str]] = Field(default_factory=dict)
     causation_id: str = Field(min_length=1)
     correlation_id: str = Field(min_length=1)
     controller_grant_id: str = Field(min_length=1)
@@ -248,6 +255,14 @@ class LocalExecutionOutcome(StrictEmbodiedModel):
         if value == "":
             raise ValueError("controller_grant_id and outcome_nonce are required")
         return value
+
+
+class EmbodiedPresentationObservation(StrictEmbodiedModel):
+    """A bounded local acknowledgement of an already-applied authority result."""
+
+    interaction_attempt_id: str = Field(min_length=1)
+    settlement_id: str = Field(min_length=1)
+    snapshot_digest: str = Field(min_length=1)
 
 
 class EmbodiedSettlementResult(StrictEmbodiedModel):

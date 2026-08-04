@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Callable
 from secrets import compare_digest
 from pathlib import Path
 from time import time
@@ -57,6 +58,10 @@ from app.gameplay.phase3_mirror_source import (
     Phase3MirrorActorConfiguration,
     install_phase3_mirror_sources,
 )
+from app.gameplay.adventure_basic_mirror_runtime import (
+    AdventureBasicMirrorRuntime,
+    AdventureBasicMirrorRuntimeError,
+)
 from app.gameplay.inventory_runtime import ContainerSpec, InventoryAuthorityService, InventoryDefinitionRegistry, ItemDefinition
 from app.services.candidate_percept_service import compile_candidate_percepts
 from app.services.character_service import CharacterService
@@ -70,6 +75,7 @@ from app.services.embodied_controller_auth_service import EmbodiedControllerAuth
 from app.services.embodied_execution_ingress import EmbodiedExecutionIngress, EmbodiedRealizationRouteGate
 from app.services.embodied_carry_place_authority_service import EmbodiedCarryPlaceAuthorityService
 from app.services.embodied_custody_inventory_authority_service import EmbodiedCustodyInventoryAuthorityService
+from app.services.default_scene_archive_door_embodied_service import DefaultSceneArchiveDoorEmbodiedService
 from app.services.default_scene_pickup_policy import DefaultScenePickupPolicyService
 from app.services.embodied_evidence_ledger import EmbodiedEvidenceLedger
 from app.services.embodied_handoff_authority_service import EmbodiedHandoffAuthorityService
@@ -104,6 +110,10 @@ from app.services.trusted_local_gameplay_mirror_launcher import (
     TrustedLocalGameplayMirrorEnrollmentIssuer,
     TrustedLocalGameplayMirrorLaunchProfile,
 )
+from app.services.trusted_local_embodied_controller_launcher import (
+    TrustedLocalEmbodiedControllerEnrollmentIssuer,
+    TrustedLocalEmbodiedControllerLaunchProfile,
+)
 from app.services.siming_audit_writer import SimingAuditWriter
 from app.world_runtime.projection import project_world_result_delta
 from app.world_runtime.l1_fact_projection import FactProjectionLayer
@@ -123,7 +133,7 @@ from app.services.siming_runtime import SimingRuntime
 from app.services.character_agent_debug_projection import CharacterAgentDebugProjection
 from app.services.script_beat_projection import ScriptBeatProjection
 from app.services.world_outcome_debug_projection import WorldOutcomeDebugProjection
-from app.ws_protocol import Envelope, GameplayMirrorCapabilityOffer, GameplayMirrorCapabilityProfile, GameplayMirrorReceipt, WebSocketSessionRenewalRequest
+from app.ws_protocol import Envelope, GameplayMirrorCapabilityOffer, GameplayMirrorCapabilityProfile, GameplayMirrorPredictionResolution, GameplayMirrorReceipt, WebSocketSessionRenewalRequest
 from app.character_agent.execution.l4_adapter import CharacterAgentL4Adapter
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
 
@@ -135,6 +145,7 @@ _pending_siming_character_dispatch_messages: dict[str, list[dict[str, object]]] 
 _PLAYER_SHELL_ACTOR_IDS = {"char_c"}
 _SPEECH_REQUEST_TYPES = {"speak_public", "speak_private", "share_info", "withhold"}
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+websocket_transport_closers: dict[str, Callable[[str], None]] = {}
 
 
 class TrustedLocalGameplayMirrorEnrollmentRequest(BaseModel):
@@ -143,8 +154,20 @@ class TrustedLocalGameplayMirrorEnrollmentRequest(BaseModel):
     launch_profile_ref: str
 
 
+class TrustedLocalEmbodiedControllerEnrollmentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    launch_profile_ref: str
+
+
 class TrustedLocalGameplayMirrorLiveProbeCommitRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class TrustedLocalGameplayMirrorLiveProbeControlledCloseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    session_ref: str
 
 
 class FrontendSimingCharacterDispatchAdapter(SimingCharacterDispatchAdapter):
@@ -180,6 +203,8 @@ def reset_runtime_state() -> None:
     global l1_perception_bridge
     global interaction_orchestration_service
     global embodied_controller_auth_service
+    global embodied_controller_trusted_local_enrollment_issuer
+    global embodied_controller_launcher_bootstrap_secret
     global websocket_session_auth_service
     global gameplay_mirror_trusted_local_enrollment_issuer
     global gameplay_mirror_launcher_bootstrap_secret
@@ -193,6 +218,7 @@ def reset_runtime_state() -> None:
     global embodied_realization_route_gate
     global gameplay_event_store
     global gameplay_outbox_dispatcher
+    global adventure_basic_mirror_runtime
     global embodied_evidence_ledger
     global embodied_interaction_session_service
     global embodied_handoff_authority_service
@@ -201,9 +227,12 @@ def reset_runtime_state() -> None:
     global inventory_definition_registry
     global inventory_authority_service
     global embodied_custody_inventory_authority_service
+    global default_scene_archive_door_embodied_service
     global _pending_siming_character_dispatch_messages
+    global websocket_transport_closers
 
     runtime = SessionInputRouter()
+    websocket_transport_closers = {}
     character_agent_runtime = CharacterAgentRuntime()
 
     def dialogue_context_provider(actor_id: str) -> dict[str, object]:
@@ -226,6 +255,27 @@ def reset_runtime_state() -> None:
     esm_service = ESMService()
     interaction_orchestration_service = InteractionOrchestrationService(esm_service=esm_service)
     embodied_controller_auth_service = EmbodiedControllerAuthService()
+    embodied_evidence_ledger = EmbodiedEvidenceLedger()
+    default_scene_archive_door_embodied_service = DefaultSceneArchiveDoorEmbodiedService(
+        esm_service=esm_service,
+        auth_service=embodied_controller_auth_service,
+        evidence_ledger=embodied_evidence_ledger,
+    )
+    embodied_controller_launcher_bootstrap_secret = settings.embodied_controller_launcher_bootstrap_secret
+    embodied_controller_trusted_local_enrollment_issuer = None
+    if embodied_controller_launcher_bootstrap_secret and settings.embodied_controller_trusted_local_launch_profiles:
+        embodied_controller_trusted_local_enrollment_issuer = TrustedLocalEmbodiedControllerEnrollmentIssuer(
+            auth_service=embodied_controller_auth_service,
+            launch_profiles=tuple(
+                TrustedLocalEmbodiedControllerLaunchProfile(
+                    profile_ref=profile.profile_ref,
+                    actor_id=profile.actor_id,
+                    controller_instance_id=profile.controller_instance_id,
+                    credential_ttl_seconds=profile.credential_ttl_seconds,
+                )
+                for profile in settings.embodied_controller_trusted_local_launch_profiles
+            ),
+        )
     websocket_session_auth_service = WebSocketSessionAuthService()
     gameplay_mirror_launcher_bootstrap_secret = settings.gameplay_mirror_launcher_bootstrap_secret
     gameplay_mirror_trusted_local_enrollment_issuer = None
@@ -258,6 +308,7 @@ def reset_runtime_state() -> None:
         delivery=GameplayMirrorAfterCommitDelivery(
             registry=gameplay_mirror_subscription_registry,
             deliver=gameplay_mirror_connection_registry.deliver,
+            on_delivery_failure=lambda session_ref: _revoke_mirror_delivery_session(session_ref),
         )
     )
     embodied_execution_ingress = EmbodiedExecutionIngress(auth_service=embodied_controller_auth_service)
@@ -284,12 +335,20 @@ def reset_runtime_state() -> None:
         gameplay_godot_projection_publisher.after_transaction_dispatched(transaction)
         gameplay_mirror_outbox_refresh_consumer.after_transaction_dispatched(transaction)
 
+    adventure_basic_mirror_runtime = None
+    if settings.adventure_basic_mirror_live_scenario:
+        adventure_basic_mirror_runtime = AdventureBasicMirrorRuntime.create(
+            scenario_id=settings.adventure_basic_mirror_live_scenario,
+            publisher=gameplay_godot_projection_publisher,
+            authority_bus=authority_event_bus,
+            after_transaction_dispatched=refresh_then_fanout,
+        )
+
     gameplay_outbox_dispatcher = GameplayOutboxDispatcher(
         store=gameplay_event_store,
         bus=authority_event_bus,
         after_transaction_dispatched=refresh_then_fanout,
     )
-    embodied_evidence_ledger = EmbodiedEvidenceLedger()
     embodied_interaction_session_service = EmbodiedInteractionSessionService(
         store=gameplay_event_store,
         dispatcher=gameplay_outbox_dispatcher,
@@ -469,6 +528,38 @@ def issue_trusted_local_gameplay_mirror_enrollment(
     return enrollment.model_dump(exclude_none=True)
 
 
+@app.post("/internal/trusted-local-embodied-controller-enrollment")
+def issue_trusted_local_embodied_controller_enrollment(
+    payload: TrustedLocalEmbodiedControllerEnrollmentRequest,
+    request: Request,
+    launcher_secret: str | None = Header(default=None, alias="X-Embodied-Controller-Launcher-Secret"),
+) -> dict[str, object]:
+    peer_host = request.client.host if request.client is not None else ""
+    if peer_host not in _LOOPBACK_HOSTS:
+        raise HTTPException(
+            status_code=403,
+            detail={"error_code": "trusted_local_embodied_controller_launcher_requires_loopback"},
+        )
+    if (
+        embodied_controller_trusted_local_enrollment_issuer is None
+        or not embodied_controller_launcher_bootstrap_secret
+        or launcher_secret is None
+        or not compare_digest(launcher_secret, embodied_controller_launcher_bootstrap_secret)
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail={"error_code": "trusted_local_embodied_controller_launcher_unauthorized"},
+        )
+    try:
+        enrollment = embodied_controller_trusted_local_enrollment_issuer.issue_for_launch_profile(
+            payload.launch_profile_ref,
+            now=int(time()),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail={"error_code": str(exc)}) from exc
+    return enrollment.model_dump(exclude_none=True)
+
+
 def _require_trusted_local_gameplay_mirror_live_probe(
     *,
     request: Request,
@@ -511,7 +602,173 @@ def commit_trusted_local_gameplay_mirror_live_probe_reconnect(
     return _commit_configured_trusted_local_gameplay_mirror_live_probe(configuration_index=1)
 
 
-def _commit_configured_trusted_local_gameplay_mirror_live_probe(*, configuration_index: int) -> dict[str, object]:
+@app.post("/internal/trusted-local-gameplay-mirror-live-probe-prediction-confirm")
+def confirm_trusted_local_gameplay_mirror_live_prediction(
+    request: Request,
+    launcher_secret: str | None = Header(default=None, alias="X-Gameplay-Mirror-Launcher-Secret"),
+    payload: TrustedLocalGameplayMirrorLiveProbeCommitRequest | None = None,
+) -> dict[str, object]:
+    """Verifier-only authority commit followed by its server-issued prediction confirmation."""
+
+    del payload
+    _require_trusted_local_gameplay_mirror_live_probe(request=request, launcher_secret=launcher_secret)
+    committed = _commit_configured_trusted_local_gameplay_mirror_live_probe(
+        configuration_index=0,
+        resource_delta=-1,
+    )
+    delivered = _deliver_trusted_local_gameplay_mirror_prediction_resolutions(
+        actor_ref=str(committed["actor_ref"]),
+        resolutions=(
+            GameplayMirrorPredictionResolution(
+                prediction_id="prediction:live:stamina-confirm",
+                command_id="command:live:stamina-confirm",
+                resolution="confirmed",
+                transaction_id=str(committed["transaction_id"]),
+            ),
+        ),
+    )
+    view = gameplay_godot_projection_repository.view_for(str(committed["actor_ref"]))
+    return {
+        **committed,
+        "prediction_resolution_deliveries": delivered,
+        "facade_revision": view.source_facade_revision,
+        "source_revision_vector": dict(view.source_revision_vector),
+    }
+
+
+@app.post("/internal/trusted-local-gameplay-mirror-live-probe-prediction-reject")
+def reject_trusted_local_gameplay_mirror_live_prediction(
+    request: Request,
+    launcher_secret: str | None = Header(default=None, alias="X-Gameplay-Mirror-Launcher-Secret"),
+    payload: TrustedLocalGameplayMirrorLiveProbeCommitRequest | None = None,
+) -> dict[str, object]:
+    """Verifier-only stale-revision rejection with no event-batch write."""
+
+    del payload
+    _require_trusted_local_gameplay_mirror_live_probe(request=request, launcher_secret=launcher_secret)
+    if not settings.gameplay_mirror_phase3_actor_configs:
+        raise HTTPException(status_code=409, detail={"error_code": "trusted_local_gameplay_mirror_live_probe_source_unavailable"})
+    configuration = Phase3MirrorActorConfiguration.model_validate(settings.gameplay_mirror_phase3_actor_configs[0])
+    actor_ref = configuration.actor_ref
+    resource_stream = f"gameplay:resources:{actor_ref}"
+    head = gameplay_event_store.get_stream_head(resource_stream)
+    if head < 1:
+        raise HTTPException(status_code=409, detail={"error_code": "trusted_local_gameplay_mirror_prediction_base_required"})
+    transaction_id = f"tx:trusted-local-mirror-live:prediction-reject:{uuid4()}"
+    command_id = f"cmd:trusted-local-mirror-live:prediction-reject:{uuid4()}"
+    event_count_before = len(gameplay_event_store.read_events())
+    rejected = gameplay_event_store.append_batch(
+        {
+            "transaction_id": transaction_id,
+            "command_id": command_id,
+            "expected_stream_revisions": {resource_stream: head - 1},
+            "pinned_revisions": {},
+            "events": [
+                {
+                    "event_id": f"evt:trusted-local-mirror-live:prediction-reject:{uuid4()}",
+                    "event_type": "gameplay.resource.adjusted",
+                    "schema_version": 1,
+                    "stream_id": resource_stream,
+                    "stream_revision": 0,
+                    "global_sequence": 0,
+                    "transaction_id": transaction_id,
+                    "command_id": command_id,
+                    "causation_id": command_id,
+                    "correlation_id": transaction_id,
+                    "visibility_policy": "authority_only",
+                    "payload": {
+                        "actor_ref": actor_ref,
+                        "resource_id": "core.stamina",
+                        "delta": -1,
+                        "reason_ref": "trusted_local_live_prediction_reject",
+                    },
+                }
+            ],
+            "idempotency_record": {
+                "principal_ref": "trusted_local_gameplay_mirror_live_probe",
+                "idempotency_key": command_id,
+                "payload_digest": f"sha256:{command_id}",
+            },
+            "outbox_entries": [],
+            "result_digest": f"sha256:{transaction_id}",
+            "projection_refresh_hints": [],
+        }
+    )
+    if rejected.committed:
+        raise HTTPException(status_code=500, detail={"error_code": "trusted_local_gameplay_mirror_prediction_rejection_committed"})
+    if len(gameplay_event_store.read_events()) != event_count_before:
+        raise HTTPException(status_code=500, detail={"error_code": "trusted_local_gameplay_mirror_prediction_rejection_mutated"})
+    error_code = rejected.failure.error_code if rejected.failure is not None else "stream_revision_conflict"
+    delivered = _deliver_trusted_local_gameplay_mirror_prediction_resolutions(
+        actor_ref=actor_ref,
+        resolutions=(
+            GameplayMirrorPredictionResolution(
+                prediction_id="prediction:live:stamina-reject",
+                command_id="command:live:stamina-reject",
+                resolution="rejected",
+                error_code=error_code,
+            ),
+        ),
+    )
+    view = gameplay_godot_projection_repository.view_for(actor_ref)
+    return {
+        "actor_ref": actor_ref,
+        "transaction_id": transaction_id,
+        "error_code": error_code,
+        "mutation_count": 0,
+        "prediction_resolution_deliveries": delivered,
+        "facade_revision": view.source_facade_revision,
+        "source_revision_vector": dict(view.source_revision_vector),
+    }
+
+
+@app.post("/internal/trusted-local-gameplay-mirror-live-probe-controlled-close")
+def close_trusted_local_gameplay_mirror_live_probe_transport(
+    payload: TrustedLocalGameplayMirrorLiveProbeControlledCloseRequest,
+    request: Request,
+    launcher_secret: str | None = Header(default=None, alias="X-Gameplay-Mirror-Launcher-Secret"),
+) -> dict[str, object]:
+    """Verifier-only transport revocation that cannot mutate Gameplay authority state."""
+
+    _require_trusted_local_gameplay_mirror_live_probe(request=request, launcher_secret=launcher_secret)
+    connection_ref = gameplay_mirror_connection_registry.connection_ref_for(session_ref=payload.session_ref)
+    if connection_ref is None:
+        raise HTTPException(status_code=404, detail={"error_code": "mirror_live_probe_transport_unknown"})
+    if not revoke_websocket_session_for_transport(
+        session_ref=payload.session_ref,
+        connection_ref=connection_ref,
+        reason_code="mirror_delivery_unrecoverable",
+        now=int(time()),
+    ):
+        raise HTTPException(status_code=409, detail={"error_code": "mirror_live_probe_transport_revocation_failed"})
+    return {"session_ref": payload.session_ref, "reason_code": "mirror_delivery_unrecoverable"}
+
+
+def _deliver_trusted_local_gameplay_mirror_prediction_resolutions(
+    *,
+    actor_ref: str,
+    resolutions: tuple[GameplayMirrorPredictionResolution, ...],
+) -> int:
+    view = gameplay_godot_projection_repository.view_for(actor_ref)
+    delivered = 0
+    for session_ref in gameplay_mirror_subscription_registry.subscribed_session_refs(actor_ref=actor_ref):
+        gameplay_mirror_connection_registry.deliver_prediction_resolutions(
+            session_ref=session_ref,
+            actor_ref=actor_ref,
+            facade_revision=view.source_facade_revision,
+            resolutions=resolutions,
+        )
+        delivered += 1
+    if delivered == 0:
+        raise HTTPException(status_code=409, detail={"error_code": "trusted_local_gameplay_mirror_prediction_subscriber_required"})
+    return delivered
+
+
+def _commit_configured_trusted_local_gameplay_mirror_live_probe(
+    *,
+    configuration_index: int,
+    resource_delta: int = 0,
+) -> dict[str, object]:
     if not settings.gameplay_mirror_phase3_actor_configs:
         raise HTTPException(status_code=409, detail={"error_code": "trusted_local_gameplay_mirror_live_probe_source_unavailable"})
     if configuration_index >= len(settings.gameplay_mirror_phase3_actor_configs):
@@ -575,7 +832,7 @@ def _commit_configured_trusted_local_gameplay_mirror_live_probe(*, configuration
         events[-1]["payload"] = {
             "actor_ref": actor_ref,
             "resource_id": "core.stamina",
-            "delta": 0,
+            "delta": resource_delta,
             "reason_ref": "trusted_local_live_probe_refresh",
         }
     result = gameplay_event_store.append_batch(
@@ -607,7 +864,30 @@ def _commit_configured_trusted_local_gameplay_mirror_live_probe(*, configuration
     if not result.committed:
         raise HTTPException(status_code=409, detail={"error_code": result.failure.error_code if result.failure else "trusted_local_gameplay_mirror_live_probe_commit_failed"})
     gameplay_outbox_dispatcher.dispatch_pending()
-    return {"actor_ref": actor_ref, "transaction_id": transaction_id}
+    return {"actor_ref": actor_ref, "transaction_id": transaction_id, "mutation_count": len(events)}
+
+
+@app.post("/internal/trusted-local-adventure-basic-live-probe-commit")
+def commit_trusted_local_adventure_basic_live_probe(
+    request: Request,
+    launcher_secret: str | None = Header(default=None, alias="X-Gameplay-Mirror-Launcher-Secret"),
+    payload: TrustedLocalGameplayMirrorLiveProbeCommitRequest | None = None,
+) -> dict[str, object]:
+    """Run one server-configured Adventure Basic authority path for live mirror proof."""
+
+    del payload
+    _require_trusted_local_gameplay_mirror_live_probe(request=request, launcher_secret=launcher_secret)
+    if adventure_basic_mirror_runtime is None:
+        raise HTTPException(status_code=409, detail={"error_code": "adventure_basic_live_probe_source_unavailable"})
+    try:
+        result = adventure_basic_mirror_runtime.execute_canonical_success()
+    except AdventureBasicMirrorRuntimeError as exc:
+        raise HTTPException(status_code=409, detail={"error_code": str(exc)}) from exc
+    return {
+        "scenario_id": result.scenario_id,
+        "actor_ref": adventure_basic_mirror_runtime.actor_ref,
+        "transaction_ids": list(result.transaction_ids),
+    }
 
 
 @app.websocket("/ws")
@@ -630,6 +910,22 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         observed_at=int(time()),
         connection_ref=f"ws_connection:{uuid4()}",
     )
+    transport_close_requested = asyncio.Event()
+    transport_close_revocation_received = asyncio.Event()
+    transport_close_reason = ""
+    connection_loop = asyncio.get_running_loop()
+
+    def request_transport_close(reason_code: str) -> None:
+        def request_on_connection_loop() -> None:
+            nonlocal transport_close_reason
+            if transport_close_requested.is_set():
+                return
+            transport_close_reason = reason_code
+            transport_close_requested.set()
+
+        connection_loop.call_soon_threadsafe(request_on_connection_loop)
+
+    websocket_transport_closers[connection_context.connection_ref] = request_transport_close
     active_dialogue_streams: dict[str, tuple[asyncio.Event, asyncio.Task[None]]] = {}
     raw_fact_followup_tasks: set[asyncio.Task[None]] = set()
     send_lock = asyncio.Lock()
@@ -648,6 +944,28 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     async def send_batch(messages: list[dict[str, object]]) -> None:
         for message in project_outbound_messages(messages, stream_mode=stream_mode):
             await send(message)
+
+    async def send_controlled_transport_close() -> None:
+        await transport_close_requested.wait()
+        try:
+            await send(
+                _as_envelope(
+                    "websocket_session_revoked",
+                    {
+                        "reason_code": transport_close_reason,
+                        "route": "gameplay_mirror_transport",
+                    },
+                )
+            )
+            try:
+                await asyncio.wait_for(transport_close_revocation_received.wait(), timeout=1.0)
+            except TimeoutError:
+                pass
+            await websocket.close(code=4403, reason=transport_close_reason)
+        except RuntimeError:
+            # The peer may have disconnected after server revocation. Either
+            # way, the transport state was already removed synchronously.
+            return
 
     async def send_mirror_deliveries() -> None:
         nonlocal drop_first_live_probe_delivery
@@ -751,6 +1069,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             await send(_as_error_ack(source_type=envelope.message_type, route="raw_fact_followup_failed", error=exc))
 
     mirror_delivery_task = asyncio.create_task(send_mirror_deliveries())
+    controlled_close_task = asyncio.create_task(send_controlled_transport_close())
     try:
         while True:
             try:
@@ -817,6 +1136,15 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     raw_fact_followup_tasks.add(task)
                     task.add_done_callback(raw_fact_followup_tasks.discard)
                     continue
+                if envelope.message_type == "websocket_session_revocation_received":
+                    payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+                    if (
+                        transport_close_requested.is_set()
+                        and str(payload.get("reason_code", "")) == transport_close_reason
+                        and str(payload.get("route", "")) == "gameplay_mirror_transport"
+                    ):
+                        transport_close_revocation_received.set()
+                    continue
                 outbound = _handle_websocket_envelope(envelope, connection_context)
                 if _session_bound_by(outbound, envelope.message_type, connection_context):
                     gameplay_mirror_connection_registry.register(
@@ -834,6 +1162,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         return
     finally:
+        if websocket_transport_closers.get(connection_context.connection_ref) == request_transport_close:
+            websocket_transport_closers.pop(connection_context.connection_ref, None)
         if connection_context.binding is not None:
             _drop_mirror_transport_session(connection_context, connection_context.binding.session_ref)
             websocket_session_auth_service.disconnect_session(
@@ -841,6 +1171,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 now=int(time()),
             )
         mirror_delivery_task.cancel()
+        controlled_close_task.cancel()
         mirror_delivery_queue.clear()
         tasks = [task for cancelled, task in active_dialogue_streams.values()]
         for cancelled, _task in active_dialogue_streams.values():
@@ -854,6 +1185,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         if raw_fact_followup_tasks:
             await asyncio.gather(*raw_fact_followup_tasks, return_exceptions=True)
         await asyncio.gather(mirror_delivery_task, return_exceptions=True)
+        await asyncio.gather(controlled_close_task, return_exceptions=True)
 
 
 @app.websocket("/debug/ws")
@@ -935,6 +1267,7 @@ def _handle_envelope(
             enrollment,
             remote_host=connection_context.remote_host,
             now=int(envelope.payload.get("producer_ts", 100) or 100),
+            connection_ref=connection_context.connection_ref,
         )
         if not result.accepted or result.binding is None:
             return EmbodiedExecutionIngress.protocol_error(envelope.message_type, result.error_code)
@@ -1126,19 +1459,75 @@ def _handle_envelope(
         ]
 
     if envelope.message_type == "embodied_phase_event":
-        result = embodied_execution_ingress.handle_phase_event(envelope.payload)
+        result = embodied_execution_ingress.handle_phase_event(
+            envelope.payload,
+            connection_ref=connection_context.connection_ref,
+        )
         if not result.accepted:
             return EmbodiedExecutionIngress.protocol_error(envelope.message_type, result.error_code)
+        grant_id = str(envelope.payload.get("grant_id", "") or "")
+        if default_scene_archive_door_embodied_service.handles_grant(grant_id):
+            if not default_scene_archive_door_embodied_service.record_phase_event(
+                envelope.payload,
+                now=int(envelope.payload.get("observed_at", 0) or 0),
+            ):
+                return EmbodiedExecutionIngress.protocol_error(envelope.message_type, "evidence_ledger_rejected")
         return result.outbound
 
     if envelope.message_type == "embodied_local_outcome":
+        grant_id = str(envelope.payload.get("controller_grant_id", "") or "")
+        if default_scene_archive_door_embodied_service.handles_grant(grant_id):
+            result = default_scene_archive_door_embodied_service.handle_local_outcome(
+                envelope.payload,
+                connection_ref=connection_context.connection_ref,
+                now=int(envelope.payload.get("observed_at", 0) or 0),
+            )
+            if not result.accepted:
+                return EmbodiedExecutionIngress.protocol_error(envelope.message_type, result.error_code)
+            outbound = [
+                _as_envelope(
+                    "ack",
+                    {
+                        "accepted": True,
+                        "source_type": envelope.message_type,
+                        "route": "default_scene_archive_door_embodied_authority",
+                    },
+                ),
+            ]
+            if result.settlement_payload is not None:
+                outbound.append(_as_envelope("embodied_settlement_result", result.settlement_payload))
+            if result.object_result is not None:
+                outbound.extend(_publish_world_result_authority_event(result.object_result, source_event=envelope))
+                outbound.append(_as_world_result_envelope(result.object_result.model_dump(mode="json")))
+            return outbound
         result = embodied_execution_ingress.handle_local_outcome(
             envelope.payload,
             now=int(envelope.payload.get("observed_at", 0) or 0),
+            connection_ref=connection_context.connection_ref,
         )
         if not result.accepted:
             return EmbodiedExecutionIngress.protocol_error(envelope.message_type, result.error_code)
         return result.outbound
+
+    if envelope.message_type == "embodied_presentation_observed":
+        result = default_scene_archive_door_embodied_service.record_presentation_observation(
+            envelope.payload,
+            connection_ref=connection_context.connection_ref,
+            now=int(time() * 1000),
+        )
+        if not result.accepted:
+            return EmbodiedExecutionIngress.protocol_error(envelope.message_type, result.error_code)
+        return [
+            _as_envelope(
+                "ack",
+                {
+                    "accepted": True,
+                    "source_type": envelope.message_type,
+                    "route": "default_scene_archive_door_presentation_evidence",
+                    "idempotent": result.idempotent,
+                },
+            )
+        ]
 
     if envelope.message_type == "embodied_resync_request":
         return [
@@ -1642,6 +2031,20 @@ def _handle_envelope(
         event_trace.record("action_request")
         messages.append(_as_action_request_envelope(action_request.model_dump()))
         actor_position = runtime.get_actor_position(event.actor_id)
+        if event.target_object_id == "obj_archive_door" and event.interaction_type in {"open", "close"}:
+            preflight = default_scene_archive_door_embodied_service.preflight(
+                event=event,
+                action_request=action_request,
+                actor_position=actor_position,
+                connection_ref=connection_context.connection_ref,
+                now=event.producer_ts,
+            )
+            if preflight.constraint is not None:
+                messages.extend(_publish_world_result_authority_event(preflight.constraint, source_event=event))
+                messages.append(_as_world_result_envelope(preflight.constraint.model_dump(mode="json")))
+            elif preflight.embodied_action_request is not None:
+                messages.append(_as_envelope("embodied_action_request", preflight.embodied_action_request))
+            return _finalize_outbound_messages(messages)
         interaction_policy = esm_service.interaction_policy_for(
             event.target_object_id,
             event.interaction_type,
@@ -1910,6 +2313,21 @@ def _drop_mirror_transport_session(connection_context: WebSocketConnectionContex
     )
 
 
+def _revoke_mirror_delivery_session(session_ref: str) -> None:
+    """Close an unusable mirror transport without touching committed gameplay state."""
+
+    connection_ref = gameplay_mirror_connection_registry.connection_ref_for(session_ref=session_ref)
+    if connection_ref is None:
+        gameplay_mirror_subscription_registry.drop_session(session_ref=session_ref)
+        return
+    revoke_websocket_session_for_transport(
+        session_ref=session_ref,
+        connection_ref=connection_ref,
+        reason_code="mirror_delivery_unrecoverable",
+        now=int(time()),
+    )
+
+
 def revoke_websocket_session_for_transport(
     *,
     session_ref: str,
@@ -1939,6 +2357,9 @@ def revoke_websocket_session_for_transport(
             detail={"connection_ref": connection_ref, "session_ref": session_ref, "reason_code": reason_code},
         )
     )
+    closer = websocket_transport_closers.get(connection_ref)
+    if closer is not None:
+        closer(reason_code)
     return True
 
 

@@ -244,6 +244,7 @@ const VARIANT_CONFIG := {
 @onready var animation_player: AnimationPlayer = $KnightScene/AnimationPlayer
 @onready var skeleton: Skeleton3D = $KnightScene/KnightArmature/Skeleton3D
 @onready var combat_modifier: SkeletonModifier3D = $KnightScene/KnightArmature/Skeleton3D/KnightCombatModifier
+@onready var archive_door_reach_modifier: SkeletonModifier3D = $KnightScene/KnightArmature/Skeleton3D/ArchiveDoorReachModifier
 var hips_bone := -1
 var neck_bone := -1
 var head_bone := -1
@@ -276,6 +277,14 @@ var root_motion_initialized := false
 var current_root_motion_track_index := -1
 var current_motion_profile := "default"
 var current_distance_scale := 1.0
+var right_hand_reach_active := false
+var right_hand_reach_runtime_kind := "unavailable"
+var right_hand_reach_error_code := "ik_chain_unavailable"
+var right_hand_reach_target_world := Vector3.ZERO
+var right_hand_reach_tolerance_m := 0.08
+var right_hand_reach_chain_bones: PackedStringArray = PackedStringArray()
+var right_hand_reach_ik: Node
+var right_hand_reach_target_node: Node3D
 var sword_swing_timer := 0.0
 var shield_block_timer := 0.0
 var move_x := 0.0
@@ -299,6 +308,7 @@ func _process(delta: float) -> void:
 	_apply_locomotion_pose_refinement()
 	_update_action_pose_overlays(delta)
 	_sync_combat_modifier()
+	_update_right_hand_reach_runtime()
 
 func configure_role(actor_name: String) -> void:
 	role_actor_id = actor_name
@@ -357,7 +367,113 @@ func play_reviewed_action_atom(action_tag: String, animation_clip_ref: String, p
 
 func restore_reviewed_action_playback() -> void:
 	reset_root_motion()
+	clear_right_hand_reach()
 	set_motion_profile("idle", "default")
+
+
+func begin_right_hand_reach(anchor_world_position: Vector3, tolerance_m: float) -> Dictionary:
+	_set_combat_modifier_right_arm_solver_active(false)
+	right_hand_reach_target_world = anchor_world_position
+	right_hand_reach_tolerance_m = tolerance_m
+	right_hand_reach_error_code = "ik_chain_unavailable"
+	right_hand_reach_chain_bones = PackedStringArray()
+	right_hand_reach_active = false
+	if skeleton == null or right_upper_arm_bone < 0 or right_forearm_bone < 0 or right_hand_bone < 0:
+		right_hand_reach_runtime_kind = "unavailable"
+		return {"available": false, "distance_m": INF, "error_code": right_hand_reach_error_code}
+	right_hand_reach_chain_bones = PackedStringArray([
+		skeleton.get_bone_name(right_upper_arm_bone),
+		skeleton.get_bone_name(right_forearm_bone),
+		skeleton.get_bone_name(right_hand_bone),
+	])
+	if _configure_skeleton_ik_reach(anchor_world_position):
+		_set_combat_modifier_right_arm_solver_active(true)
+		right_hand_reach_runtime_kind = "skeleton_ik_3d"
+		right_hand_reach_active = true
+		right_hand_reach_error_code = ""
+		return measure_right_hand_to_anchor(anchor_world_position)
+	if combat_modifier != null:
+		right_hand_reach_runtime_kind = "skeleton_modifier_fallback"
+		right_hand_reach_active = true
+		right_hand_reach_error_code = ""
+		return measure_right_hand_to_anchor(anchor_world_position)
+	right_hand_reach_runtime_kind = "unavailable"
+	return {"available": false, "distance_m": INF, "error_code": right_hand_reach_error_code}
+
+
+func begin_right_hand_modifier_reach(anchor_world_position: Vector3, tolerance_m: float) -> Dictionary:
+	_set_combat_modifier_right_arm_solver_active(false)
+	right_hand_reach_target_world = anchor_world_position
+	right_hand_reach_tolerance_m = tolerance_m
+	right_hand_reach_error_code = "ik_chain_unavailable"
+	right_hand_reach_active = false
+	if skeleton == null or combat_modifier == null or right_upper_arm_bone < 0 or right_forearm_bone < 0 or right_hand_bone < 0:
+		right_hand_reach_runtime_kind = "unavailable"
+		return {"available": false, "distance_m": INF, "error_code": right_hand_reach_error_code}
+	if right_hand_reach_ik != null and right_hand_reach_ik.has_method("stop"):
+		right_hand_reach_ik.call("stop")
+	right_hand_reach_chain_bones = PackedStringArray([
+		skeleton.get_bone_name(right_upper_arm_bone),
+		skeleton.get_bone_name(right_forearm_bone),
+		skeleton.get_bone_name(right_hand_bone),
+	])
+	right_hand_reach_runtime_kind = "skeleton_modifier_fallback"
+	right_hand_reach_active = true
+	right_hand_reach_error_code = ""
+	return measure_right_hand_to_anchor(anchor_world_position)
+
+
+func begin_archive_door_reach_modifier(anchor_world_position: Vector3, tolerance_m: float) -> Dictionary:
+	right_hand_reach_target_world = anchor_world_position
+	right_hand_reach_tolerance_m = tolerance_m
+	right_hand_reach_error_code = "ik_chain_unavailable"
+	right_hand_reach_active = false
+	if skeleton == null or archive_door_reach_modifier == null or not archive_door_reach_modifier.has_method("begin_reach"):
+		right_hand_reach_runtime_kind = "unavailable"
+		return {"available": false, "distance_m": INF, "error_code": right_hand_reach_error_code}
+	if not bool(archive_door_reach_modifier.call("begin_reach", anchor_world_position)):
+		right_hand_reach_runtime_kind = "unavailable"
+		return {"available": false, "distance_m": INF, "error_code": right_hand_reach_error_code}
+	_set_combat_modifier_right_arm_solver_active(true)
+	right_hand_reach_chain_bones = PackedStringArray([
+		skeleton.get_bone_name(right_upper_arm_bone),
+		skeleton.get_bone_name(right_forearm_bone),
+		skeleton.get_bone_name(right_hand_bone),
+	])
+	right_hand_reach_runtime_kind = "archive_door_reach_modifier"
+	right_hand_reach_active = true
+	right_hand_reach_error_code = ""
+	return measure_right_hand_to_anchor(anchor_world_position)
+
+
+func clear_right_hand_reach() -> void:
+	_set_combat_modifier_right_arm_solver_active(false)
+	if archive_door_reach_modifier != null and archive_door_reach_modifier.has_method("clear_reach"):
+		archive_door_reach_modifier.call("clear_reach")
+	right_hand_reach_active = false
+	right_hand_reach_runtime_kind = "unavailable"
+	right_hand_reach_error_code = "ik_chain_unavailable"
+	if right_hand_reach_ik != null and right_hand_reach_ik.has_method("stop"):
+		right_hand_reach_ik.call("stop")
+
+
+func measure_right_hand_to_anchor(anchor_world_position: Vector3) -> Dictionary:
+	if skeleton == null or right_hand_bone < 0:
+		return {"available": false, "distance_m": INF, "error_code": "ik_chain_unavailable"}
+	right_hand_reach_target_world = anchor_world_position
+	_update_right_hand_reach_runtime()
+	if skeleton.has_method("force_update_all_bone_transforms"):
+		skeleton.call("force_update_all_bone_transforms")
+	var hand_position := skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone).origin
+	return {
+		"available": right_hand_reach_active or right_hand_reach_runtime_kind == "skeleton_ik_3d" or right_hand_reach_runtime_kind == "skeleton_modifier_fallback",
+		"distance_m": hand_position.distance_to(anchor_world_position),
+		"hand_world_position": [hand_position.x, hand_position.y, hand_position.z],
+		"anchor_world_position": [anchor_world_position.x, anchor_world_position.y, anchor_world_position.z],
+		"runtime_kind": right_hand_reach_runtime_kind,
+		"chain_bones": right_hand_reach_chain_bones,
+		"error_code": right_hand_reach_error_code,
+	}
 
 func set_focus_highlight(is_focused: bool) -> void:
 	if knight_scene == null:
@@ -634,6 +750,20 @@ func _configure_combat_modifier() -> void:
 			"spine_upper_bone": spine_upper_bone,
 		}
 	)
+	if archive_door_reach_modifier != null and archive_door_reach_modifier.has_method("configure_bones"):
+		archive_door_reach_modifier.call(
+			"configure_bones",
+			{
+				"right_upper_arm_bone": right_upper_arm_bone,
+				"right_forearm_bone": right_forearm_bone,
+				"right_hand_bone": right_hand_bone,
+			}
+		)
+
+
+func _set_combat_modifier_right_arm_solver_active(enabled: bool) -> void:
+	if combat_modifier != null and combat_modifier.has_method("set_external_right_arm_solver_active"):
+		combat_modifier.call("set_external_right_arm_solver_active", enabled)
 
 func _find_first_bone(candidates: Array[String]) -> int:
 	if skeleton == null:
@@ -819,7 +949,7 @@ func _sync_combat_modifier() -> void:
 func _build_combat_modifier_input() -> Dictionary:
 	var sword_progress := 1.0 - (sword_swing_timer / 0.78) if sword_swing_timer > 0.0 else 0.0
 	var shield_progress := 1.0 - (shield_block_timer / 0.92) if shield_block_timer > 0.0 else 0.0
-	return {
+	var modifier_input := {
 		"sword_overlay_progress": sword_progress,
 		"shield_overlay_progress": shield_progress,
 		"sword_upper_strength": 2.2,
@@ -831,6 +961,75 @@ func _build_combat_modifier_input() -> Dictionary:
 		"shield_hand_strength": -0.72,
 		"shield_spine_strength": 0.36,
 	}
+	if right_hand_reach_active and right_hand_reach_runtime_kind == "skeleton_modifier_fallback":
+		var reach_input := _build_right_hand_reach_modifier_input()
+		for key: Variant in reach_input.keys():
+			modifier_input[key] = reach_input[key]
+	return modifier_input
+
+
+func _build_right_hand_reach_modifier_input() -> Dictionary:
+	var shoulder_world := _bone_world_position(right_upper_arm_bone)
+	var direction := right_hand_reach_target_world - shoulder_world
+	if direction.length() <= 0.001:
+		right_hand_reach_error_code = "ik_chain_unavailable"
+		return {}
+	var local_direction: Vector3 = skeleton.global_basis.inverse() * direction.normalized()
+	var pitch: float = clamp(-atan2(local_direction.y, max(local_direction.z, 0.1)), -1.1, 1.1)
+	var yaw: float = clamp(atan2(local_direction.x, max(local_direction.z, 0.1)), -0.95, 0.95)
+	right_hand_reach_error_code = ""
+	return {
+		"sword_overlay_progress": 1.0,
+		"sword_upper_strength": 1.2 + (pitch * 0.6),
+		"sword_forearm_strength": 1.0 + (pitch * 0.4),
+		"sword_hand_strength": 0.72 + absf(yaw) * 0.22,
+		"sword_spine_strength": clamp(-yaw * 0.35, -0.5, 0.5),
+	}
+
+
+func _update_right_hand_reach_runtime() -> void:
+	if not right_hand_reach_active:
+		return
+	if right_hand_reach_runtime_kind != "skeleton_ik_3d":
+		return
+	if right_hand_reach_target_node != null:
+		right_hand_reach_target_node.global_position = right_hand_reach_target_world
+	if right_hand_reach_ik != null and right_hand_reach_ik.has_method("start"):
+		right_hand_reach_ik.call("start", true)
+
+
+func _configure_skeleton_ik_reach(anchor_world_position: Vector3) -> bool:
+	if not ClassDB.class_exists("SkeletonIK3D"):
+		return false
+	if skeleton == null:
+		return false
+	var ik_candidate: Variant = right_hand_reach_ik
+	if ik_candidate == null:
+		ik_candidate = ClassDB.instantiate("SkeletonIK3D")
+	if not (ik_candidate is Node):
+		return false
+	right_hand_reach_ik = ik_candidate as Node
+	if right_hand_reach_target_node == null:
+		right_hand_reach_target_node = Node3D.new()
+		right_hand_reach_target_node.name = "ArchiveDoorReachTarget"
+		skeleton.add_child(right_hand_reach_target_node)
+	right_hand_reach_target_node.global_position = anchor_world_position
+	right_hand_reach_ik.name = "ArchiveDoorReachIK"
+	right_hand_reach_ik.set("root_bone", skeleton.get_bone_name(right_upper_arm_bone))
+	right_hand_reach_ik.set("tip_bone", skeleton.get_bone_name(right_hand_bone))
+	right_hand_reach_ik.set("target_node", NodePath("../ArchiveDoorReachTarget"))
+	if right_hand_reach_ik.get_parent() == null:
+		skeleton.add_child(right_hand_reach_ik)
+	if right_hand_reach_ik.has_method("start"):
+		right_hand_reach_ik.call("start", true)
+		return true
+	return false
+
+
+func _bone_world_position(bone_idx: int) -> Vector3:
+	if skeleton == null or bone_idx < 0:
+		return global_position
+	return skeleton.global_transform * skeleton.get_bone_global_pose(bone_idx).origin
 
 func _bus_log(message: String) -> void:
 	var bus: Node = get_node_or_null("/root/LocalPresentationBus")
