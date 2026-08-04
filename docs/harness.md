@@ -61,6 +61,7 @@ python scripts/verification/harness.py --profile siming-six-domain-memory
 python scripts/verification/harness.py --profile siming-actor-memory-read
 python scripts/verification/harness.py --profile siming-story-runtime
 python scripts/verification/harness.py --profile siming-resource-staging
+python scripts/verification/harness.py --profile siming-adaptive-bridge
 python scripts/verification/harness.py --profile all
 ```
 
@@ -529,6 +530,18 @@ acknowledgements preserve truthful node and obligation state.
 
 ```powershell
 python scripts/verification/harness.py --profile siming-resource-staging
+```
+
+### `siming-adaptive-bridge`
+
+Backend proof that a deterministic typed proposal is grounded in existing
+facts, char_b's observed memory, an open O6 obligation, and an available
+resource package. It proves no terminal branch is resurrected, actor-private
+memory remains read-only, and acceptance creates one latent runtime node. This
+profile does not make a live LLM call.
+
+```powershell
+python scripts/verification/harness.py --profile siming-adaptive-bridge
 ```
 
 ### `llm-integration-closure`

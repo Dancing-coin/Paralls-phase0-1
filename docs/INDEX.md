@@ -154,6 +154,7 @@
 - `actor-scene-knowledge-lifecycle`：后端证明，覆盖 actor-private ASK store isolation、revision/conflict/freshness/expiry lifecycle，以及 active perception 回到 PQF/provider refs。
 - `siming-global-situation-layer`：后端证明，覆盖 Siming global situation snapshots，来源为 public L1/world/authority/evidence/参考性 refs，并保持 `siming_mm:*` context isolation。
 - `siming-story-runtime`：后端图谱证明，覆盖 authored possibility 与 branch runtime story node 分离、Authority-confirmed 的终局玩家关闭、O2 到 O6 的义务转换、以及新因果基础的替代吸引子路径；不宣称它已绕过 `SimingRuntime.tick(...)` 发布决策。
+- `siming-adaptive-bridge`：后端确定性证明，覆盖 typed proposal 对既有事实、`char_b` 五池观察、开放 O6 和资源包的约束；拒绝终局路径复活，不写角色私有记忆，只提交 latent runtime node；不宣称已完成在线 LLM 调用。
 - `interaction-orchestration-service`：后端证明，覆盖 structured interaction policies、semantic ESM path、physical seam、degrade paths 和 unified result merge。
 - `esm-physical-channel-world-actuation`：后端与 Godot 运行时证明，覆盖 physical effect refs、contact/body/object/environment observations、constraint gating 和 orchestration merge。
 - `non-runtime-production-pipeline`：离线生产证明，覆盖 scene semantic extraction、spatial baking、multimodal classification readiness、review gating 和 approved replay dataset artifacts。
