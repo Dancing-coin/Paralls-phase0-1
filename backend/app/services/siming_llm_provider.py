@@ -1,10 +1,17 @@
+import hashlib
 import json
+import time
 from typing import Protocol
 
 import httpx
 from pydantic import ValidationError
 
 from app.models.authority_event import AuthorityEvent
+from app.models.siming_adaptive_bridge import (
+    AdaptiveBridgeNodeProposal,
+    GeneratedAdaptiveBridgeProposalBatch,
+    SimingLlmProposalAudit,
+)
 from app.models.siming_event import FairnessStateSnapshot, InterventionCandidate, SimingAuditRecord
 from app.config import Settings, SimingLlmRouteSettings
 
@@ -47,6 +54,35 @@ class SimingLlmCandidateProvider(Protocol):
     ) -> list[InterventionCandidate]:
         raise NotImplementedError
 
+    def generate_adaptive_bridge_proposals(
+        self,
+        *,
+        compiled_context: dict[str, object],
+        correlation_id: str,
+    ) -> GeneratedAdaptiveBridgeProposalBatch:
+        raise NotImplementedError
+
+
+def _empty_adaptive_bridge_batch(
+    *,
+    provider: str,
+    route_id: str,
+    model: str,
+    correlation_id: str,
+) -> GeneratedAdaptiveBridgeProposalBatch:
+    return GeneratedAdaptiveBridgeProposalBatch(
+        proposals=[],
+        audit=SimingLlmProposalAudit(
+            provider=provider,
+            route_id=route_id,
+            model=model,
+            request_id="not_requested",
+            correlation_id=correlation_id,
+            latency_ms=0,
+            response_artifact_hash=hashlib.sha256(b"").hexdigest(),
+        ),
+    )
+
 
 class DisabledSimingLlmCandidateProvider:
     def generate_candidates(
@@ -57,6 +93,19 @@ class DisabledSimingLlmCandidateProvider:
         recent_audit: list[SimingAuditRecord],
     ) -> list[InterventionCandidate]:
         return []
+
+    def generate_adaptive_bridge_proposals(
+        self,
+        *,
+        compiled_context: dict[str, object],
+        correlation_id: str,
+    ) -> GeneratedAdaptiveBridgeProposalBatch:
+        return _empty_adaptive_bridge_batch(
+            provider="disabled",
+            route_id="disabled",
+            model="disabled",
+            correlation_id=correlation_id,
+        )
 
 
 class SimingLlmProviderRouter:
@@ -86,6 +135,36 @@ class SimingLlmProviderRouter:
         if last_error is not None:
             raise last_error
         return []
+
+    def generate_adaptive_bridge_proposals(
+        self,
+        *,
+        compiled_context: dict[str, object],
+        correlation_id: str,
+    ) -> GeneratedAdaptiveBridgeProposalBatch:
+        last_error: SimingLlmProviderError | None = None
+        first_empty_batch: GeneratedAdaptiveBridgeProposalBatch | None = None
+        for provider in self.providers:
+            try:
+                batch = provider.generate_adaptive_bridge_proposals(
+                    compiled_context=compiled_context,
+                    correlation_id=correlation_id,
+                )
+            except SimingLlmProviderError as exc:
+                last_error = exc
+                continue
+            if batch.proposals:
+                return batch
+            if first_empty_batch is None:
+                first_empty_batch = batch
+        if first_empty_batch is not None:
+            return first_empty_batch
+        if last_error is not None:
+            raise last_error
+        return DisabledSimingLlmCandidateProvider().generate_adaptive_bridge_proposals(
+            compiled_context=compiled_context,
+            correlation_id=correlation_id,
+        )
 
 
 class HttpSimingLlmCandidateProvider:
@@ -127,6 +206,57 @@ class HttpSimingLlmCandidateProvider:
     ) -> list[InterventionCandidate]:
         payload = self._request_payload(snapshot=snapshot, recent_events=recent_events, recent_audit=recent_audit)
         try:
+            data, _, _, _ = self._post_json(payload)
+            candidate_data = self._candidate_data_from_response(data)
+            raw_candidates = candidate_data["candidates"]
+            if not isinstance(raw_candidates, list):
+                raise TypeError("provider response candidates must be a list")
+            candidates: list[InterventionCandidate] = []
+            for index, item in enumerate(raw_candidates):
+                if self._provider_name in {"deepseek_chat", "seed_doubao", "qwen"}:
+                    self._validate_chat_completions_candidate(item, index)
+                candidates.append(InterventionCandidate.model_validate(item))
+            return candidates
+        except SimingLlmProviderError:
+            raise
+        except (KeyError, TypeError, ValueError, ValidationError, AttributeError) as exc:
+            raise SimingLlmProviderInvalidOutput(str(exc)) from exc
+
+    def generate_adaptive_bridge_proposals(
+        self,
+        *,
+        compiled_context: dict[str, object],
+        correlation_id: str,
+    ) -> GeneratedAdaptiveBridgeProposalBatch:
+        try:
+            data, request_id, latency_ms, artifact_hash = self._post_json(
+                self._adaptive_bridge_payload(compiled_context, correlation_id)
+            )
+            proposal_data = self._candidate_data_from_response(data)
+            raw_proposals = proposal_data["proposals"]
+            if not isinstance(raw_proposals, list):
+                raise TypeError("provider response proposals must be a list")
+            proposals = [AdaptiveBridgeNodeProposal.model_validate(item) for item in raw_proposals]
+        except SimingLlmProviderError:
+            raise
+        except (KeyError, TypeError, ValueError, ValidationError, AttributeError) as exc:
+            raise SimingLlmProviderInvalidOutput(str(exc)) from exc
+        return GeneratedAdaptiveBridgeProposalBatch(
+            proposals=proposals,
+            audit=SimingLlmProposalAudit(
+                provider=self._provider_name,
+                route_id=self._route_id,
+                model=self._model,
+                request_id=request_id,
+                correlation_id=correlation_id,
+                latency_ms=latency_ms,
+                response_artifact_hash=artifact_hash,
+            ),
+        )
+
+    def _post_json(self, payload: dict[str, object]) -> tuple[dict[str, object], str, int, str]:
+        started = time.monotonic()
+        try:
             response = httpx.post(
                 self._endpoint,
                 headers={"Authorization": f"Bearer {self._api_key}"},
@@ -139,20 +269,16 @@ class HttpSimingLlmCandidateProvider:
         except httpx.HTTPError as exc:
             raise SimingLlmProviderError(str(exc)) from exc
 
-        try:
-            data = response.json()
-            candidate_data = self._candidate_data_from_response(data)
-            raw_candidates = candidate_data["candidates"]
-            if not isinstance(raw_candidates, list):
-                raise TypeError("provider response candidates must be a list")
-            candidates: list[InterventionCandidate] = []
-            for index, item in enumerate(raw_candidates):
-                if self._provider_name in {"deepseek_chat", "seed_doubao", "qwen"}:
-                    self._validate_chat_completions_candidate(item, index)
-                candidates.append(InterventionCandidate.model_validate(item))
-            return candidates
-        except (KeyError, TypeError, ValueError, ValidationError, AttributeError) as exc:
-            raise SimingLlmProviderInvalidOutput(str(exc)) from exc
+        data = response.json()
+        if not isinstance(data, dict):
+            raise TypeError("provider response JSON must be an object")
+        raw = getattr(response, "content", b"")
+        return (
+            data,
+            getattr(response, "headers", {}).get("x-request-id") or "not_provided",
+            int((time.monotonic() - started) * 1000),
+            hashlib.sha256(raw).hexdigest(),
+        )
 
     def _request_payload(
         self,
@@ -172,6 +298,66 @@ class HttpSimingLlmCandidateProvider:
             recent_events=recent_events,
             recent_audit=recent_audit,
         )
+
+    def _adaptive_bridge_payload(
+        self,
+        compiled_context: dict[str, object],
+        correlation_id: str,
+    ) -> dict[str, object]:
+        proposal_schema = AdaptiveBridgeNodeProposal.model_json_schema()
+        proposal_definitions = proposal_schema.pop("$defs", {})
+        context = {
+            "compiled_context": compiled_context,
+            "correlation_id": correlation_id,
+        }
+        instruction = (
+            "Return only adaptive bridge proposals for one local causal gap. "
+            "Do not invent world facts, write actor memory, activate story nodes, stage resources, "
+            "publish catalysts, override actor refusal, or include chain-of-thought."
+        )
+        if self._provider_name in {"deepseek_chat", "seed_doubao", "qwen"}:
+            return {
+                "model": self._model,
+                "messages": [
+                    {"role": "system", "content": instruction},
+                    {"role": "user", "content": json.dumps(context, ensure_ascii=False, separators=(",", ":"))},
+                ],
+                "response_format": {"type": "json_object"},
+            }
+        return {
+            "model": self._model,
+            "instructions": instruction,
+            "input": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": json.dumps(context, ensure_ascii=False, separators=(",", ":")),
+                        }
+                    ],
+                }
+            ],
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "siming_adaptive_bridge_proposals",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "$defs": proposal_definitions,
+                        "required": ["proposals"],
+                        "properties": {
+                            "proposals": {
+                                "type": "array",
+                                "items": proposal_schema,
+                            }
+                        },
+                    },
+                }
+            },
+        }
 
     def _responses_payload(
         self,
@@ -371,9 +557,20 @@ class HttpSimingLlmCandidateProvider:
 
 
 class FakeSimingLlmCandidateProvider:
-    def __init__(self, candidates: list[InterventionCandidate], *, timeout: bool = False) -> None:
+    def __init__(
+        self,
+        candidates: list[InterventionCandidate],
+        *,
+        timeout: bool = False,
+        adaptive_bridge_proposal_batch: GeneratedAdaptiveBridgeProposalBatch | None = None,
+    ) -> None:
         self._candidates = [candidate.model_copy(deep=True) for candidate in candidates]
         self._timeout = timeout
+        self._adaptive_bridge_proposal_batch = (
+            adaptive_bridge_proposal_batch.model_copy(deep=True)
+            if adaptive_bridge_proposal_batch is not None
+            else None
+        )
 
     def generate_candidates(
         self,
@@ -385,6 +582,23 @@ class FakeSimingLlmCandidateProvider:
         if self._timeout:
             raise SimingLlmProviderTimeout("Siming LLM provider timed out")
         return [candidate.model_copy(deep=True) for candidate in self._candidates]
+
+    def generate_adaptive_bridge_proposals(
+        self,
+        *,
+        compiled_context: dict[str, object],
+        correlation_id: str,
+    ) -> GeneratedAdaptiveBridgeProposalBatch:
+        if self._timeout:
+            raise SimingLlmProviderTimeout("Siming LLM provider timed out")
+        if self._adaptive_bridge_proposal_batch is None:
+            return _empty_adaptive_bridge_batch(
+                provider="fake",
+                route_id="fake",
+                model="fake",
+                correlation_id=correlation_id,
+            )
+        return self._adaptive_bridge_proposal_batch.model_copy(deep=True)
 
 
 def build_siming_llm_provider(settings: Settings) -> SimingLlmCandidateProvider:

@@ -1,7 +1,7 @@
 import pytest
 
 from app.models.authority_event import AuthorityEvent
-from app.models.siming_event import FairnessStateSnapshot, InterventionCandidate, SimingAuditRecord
+from app.models.siming_event import FairnessStateSnapshot, InterventionCandidate
 from app.services.siming_llm_provider import (
     DisabledSimingLlmCandidateProvider,
     FakeSimingLlmCandidateProvider,
