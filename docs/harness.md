@@ -56,6 +56,8 @@ python scripts/verification/harness.py --profile embodied-interaction-session
 python scripts/verification/harness.py --profile embodied-handoff-authority
 python scripts/verification/harness.py --profile embodied-grab-carry-place-authority
 python scripts/verification/harness.py --profile embodied-interaction-foundation-all
+python scripts/verification/harness.py --profile siming-heavenly-graph-foundation
+python scripts/verification/harness.py --profile siming-six-domain-memory
 python scripts/verification/harness.py --profile all
 ```
 
@@ -481,6 +483,17 @@ restart-durable Heavenly Graph adapters.
 
 ```powershell
 python scripts/verification/harness.py --profile siming-heavenly-graph-foundation
+```
+
+### `siming-six-domain-memory`
+
+Backend proof that all six durable Siming memory domains persist through a
+SQLite restart, that a fresh compiler reconstructs the same bounded context
+without a summary cache, and that compatibility projections remain derived
+read models rather than canonical graph truth.
+
+```powershell
+python scripts/verification/harness.py --profile siming-six-domain-memory
 ```
 
 ### `llm-integration-closure`

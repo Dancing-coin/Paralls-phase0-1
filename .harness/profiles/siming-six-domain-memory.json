@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "siming-six-domain-memory",
+  "order": 73,
+  "script": "scripts/verification/verify_siming_six_domain_memory.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/siming-six-domain-memory-report.json",
+  "description": "Backend proof for durable six-domain Siming memory and summary-free context reconstruction"
+}
