@@ -47,7 +47,9 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "embodied-interaction-contracts",
         "siming-heavenly-graph-foundation",
         "embodied-affordance-registry",
+        "siming-six-domain-memory",
         "embodied-bridge-attestation",
+        "siming-actor-memory-read",
         "embodied-action-controller",
         "embodied-authority-settlement",
         "embodied-interaction-replay",
@@ -96,6 +98,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["non-runtime-production-pipeline"]["script"] == "scripts/verification/verify_non_runtime_production_pipeline.py"
     assert registry.profiles["perception-input-alignment"]["script"] == "scripts/verification/verify_perception_input_alignment.py"
     assert registry.profiles["embodied-interaction-contracts"]["script"] == "scripts/verification/verify_embodied_interaction_contracts.py"
+    assert registry.profiles["siming-actor-memory-read"]["script"] == "scripts/verification/verify_siming_actor_memory_read.py"
     assert registry.profiles["embodied-affordance-registry"]["script"] == "scripts/verification/verify_embodied_affordance_registry.py"
     assert registry.profiles["embodied-bridge-attestation"]["script"] == "scripts/verification/verify_embodied_bridge_attestation.py"
     assert registry.profiles["embodied-action-controller"]["script"] == "scripts/verification/verify_embodied_action_controller.py"

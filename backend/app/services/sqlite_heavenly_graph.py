@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from threading import RLock
 from pathlib import Path
 
 from app.models.siming_heavenly_graph import (
@@ -17,7 +18,8 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
     SCHEMA_VERSION = 1
 
     def __init__(self, database_path: str | Path) -> None:
-        self._connection = sqlite3.connect(str(database_path))
+        self._lock = RLock()
+        self._connection = sqlite3.connect(str(database_path), check_same_thread=False)
         self._connection.execute("PRAGMA foreign_keys = ON")
         self._connection.execute("PRAGMA journal_mode = WAL")
         self._migrate()
@@ -25,18 +27,21 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
         self._load()
 
     def close(self) -> None:
-        self._connection.close()
+        with self._lock:
+            self._connection.close()
 
     def write_batch(self, batch: HeavenlyGraphWriteBatch) -> HeavenlyGraphWriteResult:
-        result = super().write_batch(batch)
-        if result.applied:
-            self._persist()
-        return result
+        with self._lock:
+            result = super().write_batch(batch)
+            if result.applied:
+                self._persist()
+            return result
 
     def create_checkpoint(self, **kwargs: object):
-        checkpoint = super().create_checkpoint(**kwargs)
-        self._persist()
-        return checkpoint
+        with self._lock:
+            checkpoint = super().create_checkpoint(**kwargs)
+            self._persist()
+            return checkpoint
 
     def _migrate(self) -> None:
         connection = self._connection

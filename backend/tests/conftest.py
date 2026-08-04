@@ -33,6 +33,7 @@ def disable_live_siming_llm_for_unit_tests(monkeypatch: pytest.MonkeyPatch) -> N
         character_model_api_key=None,
         character_model_model=None,
         character_model_timeout_seconds=20.0,
+        heavenly_graph_path=":memory:",
     )
     current_settings = config_module.settings
     for field_name in Settings.model_fields:
