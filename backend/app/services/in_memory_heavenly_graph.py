@@ -223,10 +223,12 @@ class InMemoryHeavenlyGraphAdapter:
     ) -> HeavenlySubgraphResult:
         if direction not in {"outgoing", "incoming", "both"}:
             raise ValueError(f"unsupported subgraph direction {direction!r}")
-        if max_depth < 0 or node_limit < 1 or relation_limit < 1:
-            raise ValueError(
-                "subgraph bounds must be non-negative depth and positive limits"
-            )
+        if not 0 <= max_depth <= 8:
+            raise ValueError("max_depth must be within 0..8")
+        if not 1 <= node_limit <= 1000:
+            raise ValueError("node_limit must be within 1..1000")
+        if not 1 <= relation_limit <= 2000:
+            raise ValueError("relation_limit must be within 1..2000")
 
         nodes = self.query_nodes(
             HeavenlyNodeQuery(

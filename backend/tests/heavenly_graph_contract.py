@@ -354,6 +354,33 @@ class HeavenlyGraphContract(ABC):
         ]
         assert relation_limited.truncated is True
 
+    @pytest.mark.parametrize(
+        ("max_depth", "node_limit", "relation_limit"),
+        [
+            (9, 10, 10),
+            (1, 1001, 10),
+            (1, 10, 2001),
+        ],
+    )
+    def test_subgraph_traversal_rejects_upper_bounds(
+        self,
+        max_depth: int,
+        node_limit: int,
+        relation_limit: int,
+    ) -> None:
+        with pytest.raises(ValueError):
+            self.make_graph().query_subgraph(
+                scope=actor_scope("char_b"),
+                seed_node_ids=[],
+                relation_types=[],
+                direction="outgoing",
+                max_depth=max_depth,
+                valid_at=20,
+                recorded_at=20,
+                node_limit=node_limit,
+                relation_limit=relation_limit,
+            )
+
     def test_actor_private_scopes_isolate_equal_node_ids(self) -> None:
         graph = self.make_graph()
         owner_a_scope = HeavenlyGraphScope(
