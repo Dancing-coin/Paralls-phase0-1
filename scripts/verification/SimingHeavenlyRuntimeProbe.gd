@@ -1,10 +1,11 @@
 extends Node
 
 const PERCEPTION_SAMPLER := preload("res://scripts/character/ActorPerceptionSampler.gd")
+const CAPTURE_CHECK := preload("res://scripts/verification/VLAReplayCoverageCaptureProbe.gd")
 
 var _destroyed := false
 var _staging_request: Dictionary = {}
-var _char_b_reacted := false
+var _char_b_reaction_count := 0
 var _char_b_had_line_of_sight := false
 var _char_b_observation_acknowledged := false
 var _destruction_result_ref := ""
@@ -38,7 +39,9 @@ func _run() -> void:
 	if not _char_b_had_line_of_sight:
 		_finish("siming_heavenly_char_b_visibility_failed")
 		return
-	await _capture("siming-heavenly-before-destruction.png")
+	if not await _capture("siming-heavenly-before-destruction.png"):
+		_finish("siming_heavenly_meaningful_before_capture_failed")
+		return
 	_controller._emit_interaction_request("obj_letter", "inspect")
 	await get_tree().create_timer(0.2).timeout
 	_controller._emit_interaction_request("obj_letter", "destroy")
@@ -48,7 +51,9 @@ func _run() -> void:
 	if not (await _wait_until(Callable(self, "_char_b_observation_persisted"))):
 		_finish("siming_heavenly_char_b_observation_timeout")
 		return
-	await _capture("siming-heavenly-after-destruction.png")
+	if not await _capture("siming-heavenly-after-destruction.png"):
+		_finish("siming_heavenly_meaningful_after_capture_failed")
+		return
 	print("siming_heavenly_restart_ready")
 	_backend_connection_target = _backend_connection_count + 1
 	if not (await _wait_until(Callable(self, "_backend_reconnected"))):
@@ -62,7 +67,13 @@ func _run() -> void:
 	if not (await _wait_until(Callable(self, "_char_b_reacted"))):
 		_finish("siming_heavenly_char_b_reaction_timeout")
 		return
-	await _capture("siming-heavenly-char-b-reaction.png")
+	await get_tree().create_timer(0.5).timeout
+	if _char_b_reaction_count != 1:
+		_finish("siming_heavenly_multiple_char_b_reactions")
+		return
+	if not await _capture("siming-heavenly-char-b-reaction.png"):
+		_finish("siming_heavenly_meaningful_reaction_capture_failed")
+		return
 	print("siming_heavenly_godot_complete")
 
 func _backend_ready() -> bool:
@@ -82,13 +93,14 @@ func _character_b_can_see_letter() -> bool:
 	return visible.has(_letter)
 
 func _on_world_result_received(payload: Dictionary) -> void:
-	_destroyed = (
+	var is_destruction_result := (
 		str(payload.get("result_type", "")) == "object_state_result"
 		and str(payload.get("target_object_id", "")) == "obj_letter"
 		and str(payload.get("current_state", "")) == "removed_from_surface"
 		and str(payload.get("settlement_status", "")) == "applied"
 	)
-	if _destroyed:
+	if is_destruction_result:
+		_destroyed = true
 		_destruction_result_ref = str(payload.get("result_id", ""))
 		_destruction_correlation_id = str(payload.get("correlation_id", ""))
 		_emit_char_b_observation()
@@ -97,10 +109,18 @@ func _on_siming_staging_requested(event: Dictionary) -> void:
 	_staging_request = event
 
 func _on_character_agent_execution_received(payload: Dictionary) -> void:
-	_char_b_reacted = str(payload.get("actor_id", "")) == "char_b"
+	if str(payload.get("actor_id", "")) != "char_b":
+		return
+	if not _is_staging_causal(payload):
+		return
+	_char_b_reaction_count += 1
 
 func _on_dialogue_received(payload: Dictionary) -> void:
-	_char_b_reacted = str(payload.get("actor_id", "")) == "char_b"
+	if str(payload.get("actor_id", "")) != "char_b":
+		return
+	if not _is_staging_causal(payload):
+		return
+	_char_b_reaction_count += 1
 
 func _on_backend_ack_received(payload: Dictionary) -> void:
 	_char_b_observation_acknowledged = (
@@ -125,6 +145,9 @@ func _backend_reconnected() -> bool:
 
 func _char_b_observation_persisted() -> bool:
 	return _char_b_observation_acknowledged and not _destruction_result_ref.is_empty()
+
+func _char_b_reacted() -> bool:
+	return _char_b_reaction_count == 1
 
 func _emit_char_b_observation() -> void:
 	if not _char_b_had_line_of_sight or _destruction_result_ref.is_empty():
@@ -167,11 +190,26 @@ func _send_staging_ack() -> void:
 		}
 	)
 
-func _capture(filename: String) -> void:
+func _capture(filename: String) -> bool:
 	var directory := OS.get_environment("SIMING_HEAVENLY_AUTOTEST_DIR")
 	if directory == "":
 		directory = "user://"
 	await _controller._capture_autotest_screenshot(directory.path_join(filename))
+	var image := get_viewport().get_texture().get_image()
+	var checker := CAPTURE_CHECK.new()
+	return checker._has_meaningful_pixels(image)
+
+func _staging_correlation_id() -> String:
+	return str(_staging_request.get("correlation_id", ""))
+
+func _is_staging_causal(payload: Dictionary) -> bool:
+	var correlation_id := str(payload.get("correlation_id", ""))
+	var causation_id := str(payload.get("causation_id", ""))
+	return (
+		correlation_id == _staging_correlation_id()
+		or causation_id == str(_staging_request.get("event_id", ""))
+		or causation_id == str(_staging_request.get("causation_id", ""))
+	)
 
 func _wait_until(predicate: Callable, timeout_ms: int = 10000) -> bool:
 	var deadline := Time.get_ticks_msec() + timeout_ms

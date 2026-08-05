@@ -894,6 +894,22 @@ def _handle_envelope(
                 route="siming_staging_ack",
                 error=exc,
             )
+        if any(
+            existing.correlation_id == ack.correlation_id
+            and existing.payload.get("source") == ack.source
+            for existing in authority_event_bus.list_events(event_type="siming_staging_ack")
+        ):
+            event_trace.record("siming_staging_ack_duplicate_suppressed")
+            return _finalize_outbound_messages(
+                [{
+                    "message_type": "ack",
+                    "payload": {
+                        "accepted": True,
+                        "source_type": envelope.message_type,
+                        "route": "siming_staging_ack_duplicate",
+                    },
+                }]
+            )
         authority_event_bus.publish(
             authority_event_adapter.staging_ack_event(
                 ack,
@@ -2663,10 +2679,15 @@ def _as_envelope(message_type: str, payload: dict[str, object]) -> dict[str, obj
 def _as_character_agent_execution_envelopes(commands: list[CharacterGoalCommand]) -> list[dict[str, object]]:
     envelopes: list[dict[str, object]] = []
     for command in commands:
+        payload = dict(character_agent_l4_adapter.command_to_execution_payload(command))
+        payload["actor_id"] = command.actor_id
+        payload["producer_ts"] = command.producer_ts
+        payload["causation_id"] = command.causation_id
+        payload["correlation_id"] = command.correlation_id
         envelopes.append(
             {
                 "message_type": "character_agent_execution",
-                "payload": character_agent_l4_adapter.command_to_execution_payload(command),
+                "payload": payload,
             }
         )
     return envelopes

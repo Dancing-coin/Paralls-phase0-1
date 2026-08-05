@@ -46,3 +46,25 @@ def test_probe_waits_for_backend_reconnect_before_triggering_the_post_restart_ti
     assert "backend_connected.connect(_on_backend_connected)" in probe
     assert 'Callable(self, "_backend_reconnected")' in probe
     assert '_controller._emit_dialogue_request("char_b", "The letter is gone.")' in probe
+
+
+def test_heavenly_probe_requires_authoritative_destruction_and_one_matched_reaction() -> None:
+    bridge = Path("scripts/interaction/DefaultSceneLetterAffordanceBridge.gd").read_text(
+        encoding="utf-8"
+    )
+    probe = Path("scripts/verification/SimingHeavenlyRuntimeProbe.gd").read_text(
+        encoding="utf-8"
+    )
+    affordance_probe = Path("scripts/verification/DefaultSceneLetterAffordanceProbe.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'PackedStringArray(["inspect", "read", "destroy"])' in bridge
+    assert '"destroy"' in affordance_probe
+    assert "letter_destroy_resolution" in affordance_probe
+    assert "_destroyed = true" in probe
+    assert "_char_b_reaction_count == 1" in probe
+    assert "_staging_correlation_id()" in probe
+    assert "VLAReplayCoverageCaptureProbe.gd" in probe
+    assert "checker._has_meaningful_pixels(image)" in probe
+    assert "_has_meaningful_pixels" in probe

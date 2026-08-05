@@ -1,5 +1,6 @@
 from app import main
 from app.models.authority_event import AuthorityEvent, AuthorityEventRouting, AuthorityEventSource
+from app.models.character_agent_runtime import CharacterGoalCommand
 from app.ws_protocol import Envelope
 
 
@@ -30,6 +31,45 @@ def test_godot_staging_ack_is_published_as_authority_event() -> None:
         "accepted": True,
         "reason": "scene_ready",
     }
+
+
+def test_repeated_godot_staging_ack_is_published_once_per_correlation_and_source() -> None:
+    main.reset_runtime_state()
+    payload = {
+        "room_id": "room_demo",
+        "scene_id": "scene_demo",
+        "zone_id": "zone_focus",
+        "producer_ts": 500,
+        "correlation_id": "corr:destroy:1",
+        "accepted": True,
+        "reason": "scene_ready",
+    }
+
+    main._handle_envelope(Envelope(message_type="siming_staging_ack", payload=payload))
+    main._handle_envelope(Envelope(message_type="siming_staging_ack", payload=payload))
+
+    acks = main.authority_event_bus.list_events(event_type="siming_staging_ack")
+    assert [(ack.correlation_id, ack.payload["source"]) for ack in acks] == [
+        ("corr:destroy:1", "godot")
+    ]
+
+
+def test_character_execution_envelope_retains_siming_staging_correlation() -> None:
+    main.reset_runtime_state()
+    command = CharacterGoalCommand(
+        actor_id="char_b",
+        command_type="observe",
+        ttl_ms=1000,
+        causation_id="siming:staging_request:503:destroy",
+        correlation_id="corr:destroy:1",
+        execution_payload={"actor_id": "char_b", "action_request_bundle": {"requested_actions": []}},
+    )
+
+    envelope = main._as_character_agent_execution_envelopes([command])[0]
+
+    assert envelope["payload"]["actor_id"] == "char_b"
+    assert envelope["payload"]["correlation_id"] == "corr:destroy:1"
+    assert envelope["payload"]["causation_id"] == "siming:staging_request:503:destroy"
 
 
 def test_char_b_observation_retains_the_destruction_authority_reference() -> None:
