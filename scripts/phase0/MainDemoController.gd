@@ -915,8 +915,9 @@ func _move_player_to_focus_vantage(target_position: Vector3) -> void:
 		if spring_arm is SpringArm3D:
 			(spring_arm as SpringArm3D).spring_length = 2.6
 
-func _capture_autotest_screenshot() -> void:
-	var screenshot_path := OS.get_environment("PHASE0_AUTOTEST_SCREENSHOT")
+func _capture_autotest_screenshot(screenshot_path: String = "") -> void:
+	if screenshot_path == "":
+		screenshot_path = OS.get_environment("PHASE0_AUTOTEST_SCREENSHOT")
 	if screenshot_path == "":
 		_bus_log("phase0_screenshot_skipped")
 		return

@@ -230,6 +230,9 @@ func _dispatch_authority_event(payload: Dictionary) -> void:
     _bus_emit("authority_event_received", [payload])
     var event_type := str(payload.get("event_type", ""))
     match event_type:
+        "siming.staging_request":
+            _bus_log("siming_staging_request:%s" % JSON.stringify(payload))
+            _bus_emit("siming_staging_requested", [payload])
         "siming.visual_observability_request":
             _bus_log("siming_visual_observability_request:%s" % JSON.stringify(payload))
             _bus_emit("siming_visual_observability_requested", [payload])

@@ -2,6 +2,7 @@ from app.models.authority_event import AuthorityEvent, AuthorityEventRouting, Au
 from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent
 from app.models.runtime_state import ConversationCandidateEvent
 from app.models.state_machine_transition import StateMachineTransitionEvent
+from app.models.siming_resource_capability import StagingAck
 from app.models.visual_fact import VisualFactEvent
 from app.models.world_result import (
     ActionResolutionResult,
@@ -25,6 +26,39 @@ WorldResultEvent = (
 
 
 class Phase0AuthorityEventAdapter:
+    def staging_ack_event(
+        self,
+        ack: StagingAck,
+        *,
+        room_id: str,
+        scene_id: str,
+        zone_id: str,
+        producer_ts: int,
+    ) -> AuthorityEvent:
+        source_layer = {
+            "godot": "presentation",
+            "character": "L2",
+            "esm": "L1",
+        }[ack.source]
+        return AuthorityEvent(
+            event_id=f"siming_staging_ack:{producer_ts}:{ack.source}:{ack.correlation_id}",
+            event_type="siming_staging_ack",
+            producer_ts=producer_ts,
+            room_id=room_id,
+            scene_id=scene_id,
+            zone_id=zone_id,
+            source=AuthorityEventSource(layer=source_layer, system=ack.source),
+            routing=AuthorityEventRouting(
+                audience_mode="room", routing_mode="event_type", target_ids=["siming"]
+            ),
+            priority="p2",
+            ttl=5000,
+            durability="replayable",
+            causation_id=f"{ack.source}_staging_ack:{ack.correlation_id}",
+            correlation_id=ack.correlation_id,
+            payload=ack.model_dump(),
+        )
+
     def visual_fact_event(self, event: VisualFactEvent) -> AuthorityEvent:
         event_id = f"visual_fact:{event.producer_ts}:{event.actor_id}:{event.fact_type}"
         payload = event.model_dump(exclude_none=True)

@@ -949,6 +949,31 @@ def test_esm_service_action_resolution_result_is_replayable() -> None:
     assert result.stable_state_summary == "interaction accepted"
 
 
+def test_visible_letter_can_be_destroyed_by_authority() -> None:
+    service = ESMService()
+    service.commit_interaction_state(
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        target_object_id="obj_letter",
+        current_state="visible",
+    )
+
+    policy = service.interaction_policy_for(
+        "obj_letter",
+        "destroy",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        actor_id="char_c",
+    )
+
+    assert policy is not None
+    assert policy["previous_state"] == "visible"
+    assert policy["current_state"] == "removed_from_surface"
+    assert policy["state_match"] is True
+
+
 def test_esm_service_body_state_result_is_replayable() -> None:
     service = ESMService()
 

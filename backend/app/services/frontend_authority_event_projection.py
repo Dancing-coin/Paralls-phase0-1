@@ -3,6 +3,7 @@ from app.models.siming_catalyst import InnerPrompt
 
 
 FRONTEND_AUTHORITY_EVENT_TYPES = {
+    "siming.staging_request",
     "siming.visual_observability_request",
     "siming.fact_reveal",
     "siming.inner_prompt",

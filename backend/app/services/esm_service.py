@@ -30,13 +30,27 @@ class ESMService:
     # boundary explicit while broader object-family ownership is still pending.
     INTERACTION_POLICIES: dict[str, dict[str, object]] = {
         "obj_letter": {
-            "allowed_interactions": {"inspect", "read"},
+            "allowed_interactions": {"inspect", "read", "destroy"},
             "machine_id": "visibility",
-            "previous_state": "partially_visible",
-            "current_state": "visible",
             "affordances": ["inspect", "read"],
             "occludes": False,
             "environment_transition": "alert_lamp",
+            "initial_state": "partially_visible",
+            "stateful": True,
+            "transitions": {
+                "inspect": {
+                    "previous_state": "partially_visible",
+                    "current_state": "visible",
+                },
+                "read": {
+                    "previous_state": "partially_visible",
+                    "current_state": "visible",
+                },
+                "destroy": {
+                    "previous_state": "visible",
+                    "current_state": "removed_from_surface",
+                },
+            },
         },
         "obj_plaque": {
             "allowed_interactions": {"inspect", "read"},

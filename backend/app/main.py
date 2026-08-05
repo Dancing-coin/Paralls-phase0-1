@@ -39,6 +39,7 @@ from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractI
 from app.models.raw_fact import RawFactEvent
 from app.models.runtime_state import ConversationCandidateEvent
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
+from app.models.siming_resource_capability import StagingAck
 from app.models.transport import TransportBarrier
 from app.models.visual_fact import VisualFactEvent
 from app.models.world_result import WorldResultBase
@@ -460,6 +461,7 @@ def reset_runtime_state() -> None:
     )
     for event_type in SimingEventConsumer.ALLOWED_EVENT_TYPES:
         authority_event_bus.subscribe(event_type, siming_event_pipeline.handle_event)
+    authority_event_bus.subscribe("siming.staging_request", _ack_siming_staging_request)
     frontend_authority_event_projector = FrontendAuthorityEventProjector()
     character_agent_l4_executor = CharacterAgentL4Executor()
     character_agent_l4_adapter = CharacterAgentL4Adapter(executor=character_agent_l4_executor)
@@ -470,6 +472,71 @@ def reset_runtime_state() -> None:
     for event_type in FRONTEND_AUTHORITY_EVENT_TYPES:
         authority_event_bus.subscribe(event_type, frontend_authority_event_projector.handle_event)
     debug_stream.clear()
+
+
+def _ack_siming_staging_request(event: AuthorityEvent) -> None:
+    payload = event.payload
+    target_actor_id = str(payload.get("target_actor_id", "") or "")
+    character_accepted = character_agent_runtime.supports_actor(target_actor_id)
+    character_reason = "" if character_accepted else "unsupported_actor"
+    if character_accepted:
+        character_accepted = (
+            character_agent_runtime.get_supervision_state_record(
+                target_actor_id
+            ).active_constraints.allow_proactive_initiation
+        )
+        if not character_accepted:
+            character_reason = "proactive_initiation_disallowed"
+    _publish_runtime_staging_ack(
+        event,
+        source="character",
+        accepted=character_accepted,
+        reason=character_reason,
+        producer_ts=event.producer_ts + 1,
+    )
+
+    esm_accepted = all(
+        isinstance(payload.get(key), str) and bool(payload[key])
+        for key in ("node_id", "obligation_id", "realization_signature")
+    )
+    _publish_runtime_staging_ack(
+        event,
+        source="esm",
+        accepted=esm_accepted,
+        reason="" if esm_accepted else "invalid_staging_contract",
+        producer_ts=event.producer_ts + 2,
+    )
+
+
+def _publish_runtime_staging_ack(
+    event: AuthorityEvent,
+    *,
+    source: str,
+    accepted: bool,
+    reason: str,
+    producer_ts: int,
+) -> None:
+    if any(
+        ack.correlation_id == event.correlation_id
+        and ack.payload.get("source") == source
+        for ack in authority_event_bus.list_events(event_type="siming_staging_ack")
+    ):
+        return
+    ack = StagingAck(
+        source=source,
+        correlation_id=event.correlation_id,
+        accepted=accepted,
+        reason=reason,
+    )
+    authority_event_bus.publish(
+        authority_event_adapter.staging_ack_event(
+            ack,
+            room_id=event.room_id,
+            scene_id=event.scene_id,
+            zone_id=event.zone_id,
+            producer_ts=producer_ts,
+        )
+    )
 
 
 reset_runtime_state()
@@ -799,6 +866,56 @@ def _handle_envelope(
                 },
             }
         ]
+    if envelope.message_type == "siming_staging_ack":
+        payload = envelope.payload
+        required_text = ("room_id", "scene_id", "zone_id", "correlation_id")
+        if any(not isinstance(payload.get(key), str) or not payload[key] for key in required_text):
+            return _as_error_ack(
+                source_type=envelope.message_type,
+                route="siming_staging_ack",
+                error=ValueError("missing_staging_ack_context"),
+            )
+        if not isinstance(payload.get("producer_ts"), int) or isinstance(payload.get("producer_ts"), bool):
+            return _as_error_ack(
+                source_type=envelope.message_type,
+                route="siming_staging_ack",
+                error=ValueError("invalid_staging_ack_timestamp"),
+            )
+        try:
+            ack = StagingAck(
+                source="godot",
+                correlation_id=payload["correlation_id"],
+                accepted=payload["accepted"],
+                reason=payload.get("reason", ""),
+            )
+        except (KeyError, ValidationError, TypeError) as exc:
+            return _as_error_ack(
+                source_type=envelope.message_type,
+                route="siming_staging_ack",
+                error=exc,
+            )
+        authority_event_bus.publish(
+            authority_event_adapter.staging_ack_event(
+                ack,
+                room_id=payload["room_id"],
+                scene_id=payload["scene_id"],
+                zone_id=payload["zone_id"],
+                producer_ts=payload["producer_ts"],
+            )
+        )
+        event_trace.record("siming_staging_ack")
+        return _finalize_outbound_messages(
+            [
+                {
+                    "message_type": "ack",
+                    "payload": {
+                        "accepted": True,
+                        "source_type": envelope.message_type,
+                        "route": "siming_staging_ack",
+                    },
+                }
+            ]
+        )
     if envelope.message_type == "embodied_interaction_session_probe":
         return _handle_embodied_interaction_session_probe(envelope)
 

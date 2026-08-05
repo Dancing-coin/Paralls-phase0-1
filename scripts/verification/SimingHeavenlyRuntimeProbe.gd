@@ -1,0 +1,185 @@
+extends Node
+
+const PERCEPTION_SAMPLER := preload("res://scripts/character/ActorPerceptionSampler.gd")
+
+var _destroyed := false
+var _staging_request: Dictionary = {}
+var _char_b_reacted := false
+var _char_b_had_line_of_sight := false
+var _char_b_observation_acknowledged := false
+var _destruction_result_ref := ""
+var _destruction_correlation_id := ""
+var _backend_connection_count := 0
+var _backend_connection_target := 0
+
+@onready var _controller: Node = get_parent()
+@onready var _letter: Node3D = _controller.get_node("InteractiveObject") as Node3D
+@onready var _character_b: Node3D = _controller.get_node("CharacterB") as Node3D
+
+func _ready() -> void:
+	if OS.get_environment("SIMING_HEAVENLY_AUTOTEST") == "1":
+		var bus := get_node_or_null("/root/LocalPresentationBus")
+		if bus:
+			bus.world_result_received.connect(_on_world_result_received)
+			bus.siming_staging_requested.connect(_on_siming_staging_requested)
+			bus.character_agent_execution_received.connect(_on_character_agent_execution_received)
+			bus.dialogue_received.connect(_on_dialogue_received)
+			bus.backend_ack_received.connect(_on_backend_ack_received)
+			bus.backend_connected.connect(_on_backend_connected)
+		call_deferred("_run")
+
+func _run() -> void:
+	if not (await _wait_until(Callable(self, "_backend_ready"))):
+		_finish("siming_heavenly_backend_timeout")
+		return
+	_character_b.set_look_target(_letter.global_position)
+	await get_tree().create_timer(0.3).timeout
+	_char_b_had_line_of_sight = _character_b_can_see_letter()
+	if not _char_b_had_line_of_sight:
+		_finish("siming_heavenly_char_b_visibility_failed")
+		return
+	await _capture("siming-heavenly-before-destruction.png")
+	_controller._emit_interaction_request("obj_letter", "inspect")
+	await get_tree().create_timer(0.2).timeout
+	_controller._emit_interaction_request("obj_letter", "destroy")
+	if not (await _wait_until(Callable(self, "_destruction_applied"))):
+		_finish("siming_heavenly_destruction_timeout")
+		return
+	if not (await _wait_until(Callable(self, "_char_b_observation_persisted"))):
+		_finish("siming_heavenly_char_b_observation_timeout")
+		return
+	await _capture("siming-heavenly-after-destruction.png")
+	print("siming_heavenly_restart_ready")
+	_backend_connection_target = _backend_connection_count + 1
+	if not (await _wait_until(Callable(self, "_backend_reconnected"))):
+		_finish("siming_heavenly_backend_reconnect_timeout")
+		return
+	_controller._emit_dialogue_request("char_b", "The letter is gone.")
+	if not (await _wait_until(Callable(self, "_has_staging_request"))):
+		_finish("siming_heavenly_staging_request_timeout")
+		return
+	_send_staging_ack()
+	if not (await _wait_until(Callable(self, "_char_b_reacted"))):
+		_finish("siming_heavenly_char_b_reaction_timeout")
+		return
+	await _capture("siming-heavenly-char-b-reaction.png")
+	print("siming_heavenly_godot_complete")
+
+func _backend_ready() -> bool:
+	var bridge := get_node_or_null("/root/BackendBridge")
+	return bridge != null and bridge.is_backend_open()
+
+func _character_b_can_see_letter() -> bool:
+	var sampler := PERCEPTION_SAMPLER.new()
+	var visible := sampler.sample_visible_targets(
+		_character_b.get_focus_anchor_position(),
+		_character_b.get_embodied_forward_vector(),
+		[_letter],
+		_character_b,
+		Callable(_character_b, "_get_perception_target_position"),
+		Callable(_character_b, "_has_line_of_sight_to_target")
+	)
+	return visible.has(_letter)
+
+func _on_world_result_received(payload: Dictionary) -> void:
+	_destroyed = (
+		str(payload.get("result_type", "")) == "object_state_result"
+		and str(payload.get("target_object_id", "")) == "obj_letter"
+		and str(payload.get("current_state", "")) == "removed_from_surface"
+		and str(payload.get("settlement_status", "")) == "applied"
+	)
+	if _destroyed:
+		_destruction_result_ref = str(payload.get("result_id", ""))
+		_destruction_correlation_id = str(payload.get("correlation_id", ""))
+		_emit_char_b_observation()
+
+func _on_siming_staging_requested(event: Dictionary) -> void:
+	_staging_request = event
+
+func _on_character_agent_execution_received(payload: Dictionary) -> void:
+	_char_b_reacted = str(payload.get("actor_id", "")) == "char_b"
+
+func _on_dialogue_received(payload: Dictionary) -> void:
+	_char_b_reacted = str(payload.get("actor_id", "")) == "char_b"
+
+func _on_backend_ack_received(payload: Dictionary) -> void:
+	_char_b_observation_acknowledged = (
+		bool(payload.get("accepted", false))
+		and str(payload.get("route", "")) == "authority_visual_fact"
+		and str(payload.get("relation_type", "")) == "actor_observes_object_removal"
+	)
+
+func _on_backend_connected(_payload: String) -> void:
+	_backend_connection_count += 1
+
+func _destruction_applied() -> bool:
+	var visual_root := _letter.get_node("VisualRoot") as Node3D
+	var collision_shape := _letter.get_node("InteractionCollider/CollisionShape3D") as CollisionShape3D
+	return _destroyed and not visual_root.visible and collision_shape.disabled
+
+func _has_staging_request() -> bool:
+	return not _staging_request.is_empty()
+
+func _backend_reconnected() -> bool:
+	return _backend_connection_count >= _backend_connection_target
+
+func _char_b_observation_persisted() -> bool:
+	return _char_b_observation_acknowledged and not _destruction_result_ref.is_empty()
+
+func _emit_char_b_observation() -> void:
+	if not _char_b_had_line_of_sight or _destruction_result_ref.is_empty():
+		return
+	var emitter := _character_b.get_node("VisualFactEmitter")
+	if emitter == null or not emitter.has_method("emit_visual_fact"):
+		return
+	var source_ref_lineage := [_destruction_result_ref]
+	emitter.call(
+		"emit_visual_fact",
+		"object_state_change",
+		"actor_observes_object_removal",
+		"",
+		"obj_letter",
+		"",
+		"pulse",
+		"",
+		null,
+		source_ref_lineage,
+		_destruction_result_ref,
+		_destruction_correlation_id
+	)
+
+func _send_staging_ack() -> void:
+	var bridge := get_node_or_null("/root/BackendBridge")
+	if bridge == null:
+		return
+	bridge.send_envelope(
+		{
+			"message_type": "siming_staging_ack",
+			"payload": {
+				"room_id": "room_demo",
+				"scene_id": "scene_demo",
+				"zone_id": "zone_focus",
+				"producer_ts": Time.get_ticks_msec(),
+				"correlation_id": str(_staging_request.get("correlation_id", "")),
+				"accepted": true,
+				"reason": "main_demo_ready",
+			},
+		}
+	)
+
+func _capture(filename: String) -> void:
+	var directory := OS.get_environment("SIMING_HEAVENLY_AUTOTEST_DIR")
+	if directory == "":
+		directory = "user://"
+	await _controller._capture_autotest_screenshot(directory.path_join(filename))
+
+func _wait_until(predicate: Callable, timeout_ms: int = 10000) -> bool:
+	var deadline := Time.get_ticks_msec() + timeout_ms
+	while Time.get_ticks_msec() < deadline:
+		if predicate.call():
+			return true
+		await get_tree().create_timer(0.05).timeout
+	return predicate.call()
+
+func _finish(marker: String) -> void:
+	print(marker)

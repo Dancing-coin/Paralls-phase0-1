@@ -8,7 +8,9 @@ var current_state := "partially_visible"
 var focused := false
 
 @onready var mesh_instance: MeshInstance3D = $VisualRoot/GreyboxPropRoot/MeshInstance3D
+@onready var visual_root: Node3D = $VisualRoot
 @onready var label_3d: Label3D = $Label3D
+@onready var collision_shape: CollisionShape3D = $InteractionCollider/CollisionShape3D
 
 func _ready() -> void:
     current_state = initial_state
@@ -32,8 +34,14 @@ func _on_world_result_received(payload: Dictionary) -> void:
         apply_result(payload)
 
 func _apply_visual_state() -> void:
+	var removed := current_state == "removed_from_surface"
+	if visual_root:
+		visual_root.visible = not removed
     if label_3d:
+		label_3d.visible = not removed
         label_3d.text = "%s%s: %s" % [display_name, " <" if focused else "", current_state]
+	if collision_shape:
+		collision_shape.disabled = removed
 
     if mesh_instance:
         var material := StandardMaterial3D.new()

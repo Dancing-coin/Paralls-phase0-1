@@ -1515,6 +1515,15 @@ class CharacterAgentRuntime:
                 "summary": event.perceived_summary,
                 "tags": [event.percept_channel],
                 "source_candidate_event_id": event.source_candidate_event_id,
+                "source_actor_id": event.source_actor_id,
+                "target_actor_id": event.target_actor_id,
+                "target_object_id": event.target_object_id,
+                "target_environment_id": event.target_environment_id,
+                "target_ref": event.target_ref,
+                "world_anchor_id": event.world_anchor_id,
+                "capture_id": event.capture_id,
+                "capture_root_id": event.capture_root_id,
+                "source_ref_lineage": list(event.source_ref_lineage),
             },
         )
         self._memory_store.write_event(stored)
