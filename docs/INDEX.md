@@ -130,6 +130,11 @@
 
 ## 验证配置
 
+The `siming-heavenly-runtime` profile is the Godot-required live acceptance
+profile for the durable Siming heavenly graph. Run its secret-safe preflight
+before invoking the harness profile; live acceptance never downgrades to a
+fake or disabled provider.
+
 使用 `python scripts/verification/harness.py --profile <name>`。
 
 - `docs`：文档新鲜度和索引检查。

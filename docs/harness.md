@@ -489,6 +489,23 @@ restart-durable Heavenly Graph adapters.
 python scripts/verification/harness.py --profile siming-heavenly-graph-foundation
 ```
 
+### `siming-heavenly-runtime`
+
+Godot-required live proof for the complete Siming heavenly runtime. It requires
+an active online HTTP provider, a verifier-owned SQLite database, all 17 result
+IDs, and three meaningful Godot captures. Preflight output contains only
+presence booleans, route IDs, and model names.
+
+```powershell
+python scripts/verification/verify_siming_heavenly_runtime.py --preflight
+python scripts/verification/harness.py --profile siming-heavenly-runtime
+```
+
+Output:
+
+- `.harness/verification/siming-heavenly-runtime-report.json`
+- `.harness/verification/siming-heavenly-runtime-report.md`
+
 ### `siming-six-domain-memory`
 
 Backend proof that all six durable Siming memory domains persist through a
