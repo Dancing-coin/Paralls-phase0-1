@@ -73,6 +73,18 @@ def test_preflight_rejects_disabled_or_fake_provider(monkeypatch: pytest.MonkeyP
     assert "online_siming_llm_required" in result.reasons
 
 
+def test_preflight_rejects_route_configuration_without_an_enabled_online_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("SIMING_LLM_MODE", "http")
+    monkeypatch.setenv("SIMING_LLM_ROUTES_JSON", '[{"route_id":"disabled","provider":"disabled","enabled":false}]')
+
+    result = live_preflight(project_root())
+
+    assert result.ok is False
+    assert "online_http_route_required" in result.reasons
+
+
 def test_report_requires_all_three_nonblank_captures(tmp_path: Path) -> None:
     evidence = valid_live_evidence(tmp_path)
     evidence.reaction_capture.unlink()
