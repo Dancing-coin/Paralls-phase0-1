@@ -11,7 +11,7 @@ repository implementation as inspected on 2026-08-01. It is a status record,
 not a replacement design and not an implementation authorization.
 
 The normative design remains this directory's existing 2026-07-23 documents.
-`docs/kimi分析/2026-07-20-游戏角色与世界玩法底座需求分析.md` is an input analysis
+`docs/7月分析/2026-07-20-游戏角色与世界玩法底座需求分析.md` is an input analysis
 only. It does not override this tree.
 
 ## Mainline Boundary

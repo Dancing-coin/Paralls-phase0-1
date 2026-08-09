@@ -6,7 +6,7 @@ const SPACE_EXTRACTOR := preload("res://scripts/l1/space/SceneSpaceModelExtracto
 const OCCUPANCY_SAMPLER := preload("res://scripts/l1/space/RuntimeOccupancySampler.gd")
 const REGISTRY := preload("res://scripts/interaction/SceneAffordanceRegistry.gd")
 
-const BINDING_REVISION := 2
+const BINDING_REVISION := 4
 const SCENE_INSTANCE_ID := "scene_instance:main_demo:1"
 const OBJECT_ID := "obj_archive_door"
 const AFFORDANCE_ID := "affordance:obj_archive_door:open"

@@ -955,6 +955,59 @@ Output:
 - `.harness/verification/gameplay-foundation-contract-report.md`
 - `.harness/verification/gameplay-foundation-contract-pytest.log`
 
+The 2026-08-07 Phase One Gameplay closure extends this profile with shared
+identity/semantic/revision/replay/permission focused tests and emits:
+
+- `.harness/verification/gameplay-foundation-contract-evidence.ndjson`
+
+### `phase1b-contract-verification`
+
+P1B reuses the shared contract through deterministic effect/resistance and
+object/ownership fixtures. It fails closed when the P1A predecessor is absent,
+records stale-revision zero-write checks, and emits JSON/Markdown/NDJSON evidence.
+
+### `phase1c-frost-farm`
+
+Bounded frost-farm environment-effect and resistance sample. The package owns
+only farm/crop facts and maps accepted results through the existing event store;
+it does not own weather, Survival, or a scheduler.
+
+### `econ1-construction-production`
+
+Proves plot, facility, recipe, and explicit production-run ownership for the
+bakery reference configuration.
+
+### `econ1-survival-profile`
+
+Proves disabled/narrative/lightweight/simulation Survival mode boundaries and
+proposal-only consumption ticks.
+
+### `econ1-economy-period-settlement`
+
+Proves fixed supplier quote validation and three deterministic business-period
+closures without dynamic market or order-book state.
+
+### `econ1-organization-government`
+
+Proves permit, inspection, tax-policy, organization-role, and existing-character
+constraints.
+
+### `phase1d-econ1-bakery`
+
+Composes the four Econ-1 owner profiles into three replayable bakery periods, runs
+the failure/recovery and stale/duplicate matrix on isolated/committed ledgers, checks
+full/checkpoint-tail replay equality, and requires a real Godot headless probe to
+consume the committed facility/output mirror view. It records the explicit
+deferred-domain non-claims. Pass `--godot-exe` (or set `GODOT_EXE`) because this
+profile is `requires_godot: true`.
+
+### `phase1e-generalization-gate`
+
+Compares Frost Farm, Bakery, and ownership-contract-debt fixtures for shared
+contract fields, owner boundaries, profile-backed CharacterRecord input,
+full/checkpoint-tail replay equality, scope-filtered projection, stale/duplicate/
+permission/custody/term zero-write failures, and deferred scopes.
+
 ### `gameplay-event-replay`
 
 Backend-only replay proof for Gameplay committed events and projection recovery.

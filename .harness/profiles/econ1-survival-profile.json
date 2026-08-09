@@ -1,0 +1,1 @@
+{"schema_version":1,"name":"econ1-survival-profile","order":105,"script":"scripts/verification/verify_econ1_survival_profile.py","requires_godot":false,"max_attempts":1,"result_artifact":".harness/verification/econ1-survival-profile-report.json","description":"Survival profile mode and explicit tick proof"}

@@ -65,6 +65,10 @@ Harness 不拥有：
 | System L1 proof | `python scripts/verification/harness.py --profile l1-world-fact-runtime` |
 | 角色执行 proof | `python scripts/verification/harness.py --profile character-agent-execution` |
 | ESM / physical channel proof | `python scripts/verification/harness.py --profile esm-physical-channel-world-actuation` |
+| Gameplay Foundation aggregate | `python scripts/verification/harness.py --profile gameplay-foundation-all` |
+| Gameplay event/replay spine | `python scripts/verification/harness.py --profile gameplay-foundation-event-spine` |
+| Gameplay economy authority | `python scripts/verification/harness.py --profile gameplay-economy-authority` |
+| Adventure-basic reference closure | `python scripts/verification/harness.py --profile adventure-basic` |
 | VLA proof | `python scripts/verification/harness.py --profile vla-provider-backend` |
 | 模型服务 readiness | `python scripts/verification/harness.py --profile model-provider-readiness` |
 
@@ -84,6 +88,8 @@ Harness 不拥有：
 - 运行时 milestone 不能只靠 docs profile 证明。
 - 真实 provider proof 不能只靠 readiness profile 证明。
 - Godot runtime 相关结论应优先使用 Godot profile 或 Phase 0 profile。
+- `gameplay-foundation-all` 只证明每个子 report 明确写出的范围；它不能把固定报价、
+  简单债务或 `adventure-basic` 推广为动态市场、组织经营或政府监管已完成。
 
 ## 验证
 

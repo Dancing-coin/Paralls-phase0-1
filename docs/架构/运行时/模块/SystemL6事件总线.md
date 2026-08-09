@@ -1,10 +1,14 @@
 # System L6 事件总线
 
-状态：当前运行时模块文档
+状态：`current-code cross-layer event-routing module`
 
 本文记录当前仓库已经落地的 `System L6`：跨层基础设施层。它包含 authority event
 统一信封、事件总线、路由、回放/审计辅助边界，并连接下游前端投影适配器。它不是新的感知层、角色脑、
 ESM 或 world truth owner。
+
+Gameplay Foundation 的 committed domain event、stream revision、checkpoint 与 replay
+属于 `GameplayEventStore`，而不是 L6。Gameplay outbox 只能在 domain batch 已 commit 后
+向 L6 派发可公开的通知；L6 的 `list_events`/审计观察不能反向成为玩法账本或结算 API。
 
 ## 可视化架构图
 
@@ -58,6 +62,7 @@ ESM 或 world truth owner。
 | 前端兼容投影适配器 | `backend/app/services/frontend_authority_event_projection.py` |
 | Siming 消费与生产 | `backend/app/services/siming_event_consumer.py`, `backend/app/services/siming_event_producer.py` |
 | Siming 审计 | `backend/app/services/siming_audit_writer.py` |
+| Gameplay committed-event/replay source | `backend/app/gameplay/event_store.py`, `backend/app/gameplay/dispatcher.py` | 相邻 owner，非 L6 owner |
 
 ## 事件族
 
@@ -80,6 +85,7 @@ L6 可以：
 - 把 ESM、L1、conversation、Siming 输出纳入同一 authority event path。
 - 连接 `FrontendAuthorityEventProjector`，由该适配器投影出 Godot 可消费的 `world_result`、`state_machine_transition`、`siming_output`。
 - 为 replay、audit、harness proof 提供事件证据。
+- 消费 Gameplay committed outbox 的合格公共通知，但不改变其 domain-event canonical source。
 
 L6 不能：
 
@@ -88,6 +94,7 @@ L6 不能：
 - 结算世界真相；结算属于 ESM 与交互编排。
 - 直接控制 Godot 表现；Godot 只消费投影消息。
 - 把 provider readiness 当成真实 provider 成功调用。
+- 取代 `GameplayEventStore` 做领域 replay、账户账本、stream revision 或 atomic settlement。
 
 ## 验证
 

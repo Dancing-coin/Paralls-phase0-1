@@ -22,7 +22,7 @@ metadata/entity_ref = "obj_archive_door"
 position = Vector3(0, 0, 1.25)
 
 [node name="ContactAnchor" type="Marker3D" parent="."]
-position = Vector3(0.45, 1.18, 0.12)
+position = Vector3(-0.15, 0.46, 0.18)
 
 [node name="ObservationAnchor" type="Marker3D" parent="."]
 position = Vector3(0, 1.2, 1.1)

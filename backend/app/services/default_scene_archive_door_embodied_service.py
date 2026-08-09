@@ -76,7 +76,7 @@ class DefaultSceneArchiveDoorEmbodiedService:
         self._auth = auth_service
         self._evidence_ledger = evidence_ledger
         self.scene_revision = 1
-        self.binding_revision = 2
+        self.binding_revision = 4
         self.policy_revision = 1
         self.commit_count = 0
         self._preflight_by_request_id: dict[str, DoorEmbodiedPreflightResult] = {}

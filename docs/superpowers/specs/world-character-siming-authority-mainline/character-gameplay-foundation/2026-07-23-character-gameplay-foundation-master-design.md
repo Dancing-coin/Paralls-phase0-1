@@ -25,7 +25,7 @@ still does not claim `adventure-basic` or full gameplay-domain closure.
 
 This design consolidates requirements from:
 
-- `docs/kimi分析/2026-07-20-游戏角色与世界玩法底座需求分析.md`
+- `docs/7月分析/2026-07-20-游戏角色与世界玩法底座需求分析.md`
 - `docs/上下文不够用/对话2.md`
 - `docs/上下文不够用/对话3.md`
 

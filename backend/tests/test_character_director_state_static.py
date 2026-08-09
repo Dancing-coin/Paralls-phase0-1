@@ -121,6 +121,16 @@ def test_character_director_state_freeze_frame_captures_dialogue_pair_ledger() -
     assert '"recent_dialogue_pairs": recent_dialogue_pairs.duplicate(true)' in freeze_block
 
 
+def test_character_director_state_coalesces_backend_burst_notifications() -> None:
+    source = (ROOT / "scripts" / "ui" / "CharacterDirectorState.gd").read_text(encoding="utf-8")
+
+    assert "var _state_refresh_queued := false" in source
+    assert "func _queue_state_refresh() -> void:" in source
+    assert 'call_deferred("_emit_state_changed")' in source
+    assert "func _emit_state_changed() -> void:" in source
+    assert 'emit_signal("observatory_state_changed")' in source
+
+
 def test_character_director_state_emits_signal_when_tab_cycles_actor_selection() -> None:
     source = (ROOT / "scripts" / "ui" / "CharacterDirectorState.gd").read_text(encoding="utf-8")
 

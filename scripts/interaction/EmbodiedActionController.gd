@@ -197,10 +197,14 @@ func finish_realtime_attempt(
 		failure_code,
 		contact_observed
 	)
-	if contact_observed and not contact_observation_override.is_empty():
-		outcome["contact_observation"] = contact_observation_override.duplicate(true)
-	if contact_observed and not object_observation_override.is_empty():
-		outcome["object_observation"] = object_observation_override.duplicate(true)
+	if contact_observed:
+		# Realtime callers must explicitly attest any world observation; the legacy
+		# terminal helper's chair claim is not valid for the door contact handoff.
+		outcome.erase("object_observation")
+		if not contact_observation_override.is_empty():
+			outcome["contact_observation"] = contact_observation_override.duplicate(true)
+		if not object_observation_override.is_empty():
+			outcome["object_observation"] = object_observation_override.duplicate(true)
 	realtime_attempt_active = false
 	realtime_request.clear()
 	realtime_grant.clear()

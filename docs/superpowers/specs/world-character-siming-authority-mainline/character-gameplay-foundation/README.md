@@ -90,25 +90,37 @@ does not constitute a production patch registry.
 ## Reading Order
 
 1. [Master design](2026-07-23-character-gameplay-foundation-master-design.md)
-2. [Foundation invariants and domain boundaries](2026-07-23-foundation-invariants-and-domain-boundaries-design.md)
-3. [State-group registry and runtime facade](2026-07-23-state-group-registry-and-runtime-facade-design.md)
-4. [Event sourcing and authority settlement](2026-07-23-event-sourcing-and-authority-settlement-design.md)
-5. [Coupled event store and authority bus](2026-07-31-coupled-event-store-and-authority-bus-design.md)
-6. [Resource, status, body, and effective stats](2026-07-23-resource-status-body-and-effective-stats-design.md)
-7. [Inventory, container, and encumbrance](2026-07-23-inventory-container-and-encumbrance-design.md)
-8. [Ownership, economy, and transactions](2026-07-23-ownership-economy-and-transaction-design.md)
-9. [Equipment runtime](2026-07-23-equipment-runtime-design.md)
-10. [Skill, ability graph, and affordance](2026-07-23-skill-ability-graph-and-affordance-design.md)
-11. [Gameplay Patch Rule IR and capabilities](2026-07-23-gameplay-patch-rule-ir-and-capabilities-design.md)
-12. [Godot runtime mirror and prediction](2026-07-23-godot-runtime-mirror-and-prediction-design.md)
-13. [Relationship graph boundaries](2026-07-23-relationship-graph-boundaries-design.md)
-14. [Siming Perspective/Knowledge Graph contract](2026-07-23-siming-perspective-knowledge-graph-contract-design.md)
-15. [Persistence, replay, migration, and hot reload](2026-07-23-persistence-replay-migration-and-hot-reload-design.md)
-16. [Gameplay-domain extension catalog](2026-07-23-gameplay-domain-extension-catalog-design.md)
-17. [adventure-basic reference package](2026-07-23-adventure-basic-reference-pack-design.md)
-18. [Verification and acceptance matrix](2026-07-23-verification-and-acceptance-matrix-design.md)
-19. [Specification and runtime baseline](2026-07-29-gameplay-foundation-spec-and-runtime-baseline.md)
-20. [WebSocket session identity and mirror scope](2026-08-03-websocket-session-identity-and-mirror-scope-design.md)
+2. [Gameplay Foundation Shared Contract Closure](2026-08-07-gameplay-foundation-shared-contract-closure-design.md) `approved` (first-phase P1A dependency; [matching plan](../../../plans/world-character-siming-authority-mainline/phase-one-gameplay/2026-08-07-gameplay-foundation-shared-contract-closure-implementation-plan.md))
+3. [Foundation invariants and domain boundaries](2026-07-23-foundation-invariants-and-domain-boundaries-design.md)
+4. [State-group registry and runtime facade](2026-07-23-state-group-registry-and-runtime-facade-design.md)
+5. [Event sourcing and authority settlement](2026-07-23-event-sourcing-and-authority-settlement-design.md)
+6. [Coupled event store and authority bus](2026-07-31-coupled-event-store-and-authority-bus-design.md)
+7. [Resource, status, body, and effective stats](2026-07-23-resource-status-body-and-effective-stats-design.md)
+8. [Inventory, container, and encumbrance](2026-07-23-inventory-container-and-encumbrance-design.md)
+9. [Ownership, economy, and transactions](2026-07-23-ownership-economy-and-transaction-design.md)
+10. [Equipment runtime](2026-07-23-equipment-runtime-design.md)
+11. [Skill, ability graph, and affordance](2026-07-23-skill-ability-graph-and-affordance-design.md)
+12. [Gameplay Patch Rule IR and capabilities](2026-07-23-gameplay-patch-rule-ir-and-capabilities-design.md)
+13. [Godot runtime mirror and prediction](2026-07-23-godot-runtime-mirror-and-prediction-design.md)
+14. [Relationship graph boundaries](2026-07-23-relationship-graph-boundaries-design.md)
+15. [Siming Perspective/Knowledge Graph contract](2026-07-23-siming-perspective-knowledge-graph-contract-design.md)
+16. [Persistence, replay, migration, and hot reload](2026-07-23-persistence-replay-migration-and-hot-reload-design.md)
+17. [Gameplay-domain extension catalog](2026-07-23-gameplay-domain-extension-catalog-design.md)
+18. [adventure-basic reference package](2026-07-23-adventure-basic-reference-pack-design.md)
+19. [Verification and acceptance matrix](2026-07-23-verification-and-acceptance-matrix-design.md)
+20. [Specification and runtime baseline](2026-07-29-gameplay-foundation-spec-and-runtime-baseline.md)
+21. [WebSocket session identity and mirror scope](2026-08-03-websocket-session-identity-and-mirror-scope-design.md)
+
+## Phase One Gameplay Specs
+
+The first-phase vertical and evidence specifications live in a dedicated child tree so that
+domain closure is not mixed into the reusable foundation contract:
+
+- [Phase One Gameplay Specification Tree](../phase-one-gameplay/README.md)
+- [P1B Contract Verification And Evidence](../phase-one-gameplay/2026-08-07-p1b-contract-verification-and-evidence-design.md)
+- [P1C Frost Farm Contract Sample](../phase-one-gameplay/2026-08-07-p1c-frost-farm-contract-sample-design.md)
+- [P1D Econ-1 Bakery Reference Game](../phase-one-gameplay/2026-08-07-p1d-econ1-bakery-reference-game-design.md)
+- [P1E Generalization Gate](../phase-one-gameplay/2026-08-07-p1e-generalization-gate-design.md)
 
 ## Dependency Layers
 

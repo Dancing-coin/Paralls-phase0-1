@@ -51,6 +51,22 @@ def test_door_host_refreshes_forced_facing_from_the_live_contact_geometry() -> N
     assert align_body.index(refresh) < align_body.index("if absf(wrapf(player.rotation.y - desired_yaw")
 
 
+def test_door_contact_alignment_uses_the_character_motor_forward_convention() -> None:
+    host = _read("scripts/interaction/ArchiveDoorEmbodiedActionHost.gd")
+    probe = _read("scripts/verification/ObjArchiveDoorPhysicalEmbodimentProbe.gd")
+
+    assert "var desired_yaw := atan2(facing.x, facing.z)" in host
+    assert "var desired_yaw := atan2(facing.x, facing.z)" in probe
+
+
+def test_door_binding_pins_the_reachable_contact_anchor_revision() -> None:
+    scene = _read("scenes/phase0/ArchiveDoorPhysical.tscn")
+    bridge = _read("scripts/interaction/ArchiveDoorEmbodiedAffordanceBridge.gd")
+
+    assert 'position = Vector3(-0.15, 0.46, 0.18)' in scene
+    assert "const BINDING_REVISION := 4" in bridge
+
+
 def test_reach_ik_configures_the_discovered_chain_before_entering_the_skeleton_tree() -> None:
     role_skin = _read("scripts/character/KnightRoleSkin.gd")
     combat_modifier = _read("scripts/character/KnightCombatModifier.gd")
@@ -72,6 +88,15 @@ def test_reach_ik_configures_the_discovered_chain_before_entering_the_skeleton_t
     assert "_set_combat_modifier_right_arm_solver_active(false)" in role_skin
     assert "func set_external_right_arm_solver_active(enabled: bool) -> void:" in combat_modifier
     assert "external_right_arm_solver_active" in combat_modifier
+
+
+def test_reach_ik_is_explicitly_activated_after_dynamic_configuration() -> None:
+    role_skin = _read("scripts/character/KnightRoleSkin.gd")
+    ik_body = role_skin.split("func _configure_skeleton_ik_reach(", maxsplit=1)[1].split(
+        "func _bone_world_position", maxsplit=1
+    )[0]
+
+    assert 'right_hand_reach_ik.set("active", true)' in ik_body
 
 
 def test_host_ticks_contact_on_the_character_motor_physics_clock() -> None:
@@ -138,6 +163,39 @@ def test_custom_reach_modifier_is_a_local_last_resort_after_the_existing_modifie
     assert "move_and_slide(" not in modifier
 
 
+def test_custom_reach_modifier_is_explicitly_activated_before_contact_alignment() -> None:
+    role_skin = _read("scripts/character/KnightRoleSkin.gd")
+    custom_reach_body = role_skin.split("func begin_archive_door_reach_modifier(", maxsplit=1)[1].split(
+        "func clear_right_hand_reach", maxsplit=1
+    )[0]
+
+    assert 'archive_door_reach_modifier.set("active", true)' in custom_reach_body
+
+
+def test_custom_reach_modifier_is_solved_on_the_host_physics_measurement_path() -> None:
+    role_skin = _read("scripts/character/KnightRoleSkin.gd")
+    modifier = _read("scripts/character/ArchiveDoorReachModifier.gd")
+    measurement_body = role_skin.split("func measure_right_hand_to_anchor(", maxsplit=1)[1].split(
+        "func set_focus_highlight", maxsplit=1
+    )[0]
+
+    assert "func solve_reach_now() -> void:" in modifier
+    assert 'archive_door_reach_modifier.call("solve_reach_now")' in measurement_body
+
+
+def test_custom_reach_modifier_has_enough_iterations_for_the_contact_window() -> None:
+    modifier = _read("scripts/character/ArchiveDoorReachModifier.gd")
+
+    assert "const ITERATIONS_PER_UPDATE := 24" in modifier
+
+
+def test_custom_reach_keeps_the_contact_window_after_the_initial_ik_probe() -> None:
+    host = _read("scripts/interaction/ArchiveDoorEmbodiedActionHost.gd")
+
+    assert "const IK_SOLVER_SETTLE_PHYSICS_TICKS := 6" in host
+    assert "const CUSTOM_REACH_SETTLE_PHYSICS_TICKS := 30" in host
+
+
 def test_door_host_exposes_read_only_runtime_diagnostics_for_live_evidence() -> None:
     host = _read("scripts/interaction/ArchiveDoorEmbodiedActionHost.gd")
     probe = _read("scripts/verification/ObjArchiveDoorPhysicalEmbodimentProbe.gd")
@@ -181,6 +239,24 @@ def test_door_contact_outcome_reports_measured_contact_without_a_world_state_cla
     assert '"hand_alignment_error_m": hand_alignment_error_m' in host
     assert '"observed_state": "open"' not in host
     assert "object_observation" not in host
+
+
+def test_realtime_contact_outcome_removes_legacy_world_observation_without_override() -> None:
+    controller = _read("scripts/interaction/EmbodiedActionController.gd")
+    finish_body = controller.split("func finish_realtime_attempt(", maxsplit=1)[1].split(
+        "func select_action_atoms", maxsplit=1
+    )[0]
+
+    assert 'outcome.erase("object_observation")' in finish_body
+
+
+def test_door_probe_waits_for_authority_after_contact_observed_local_outcome() -> None:
+    probe = _read("scripts/verification/ObjArchiveDoorPhysicalEmbodimentProbe.gd")
+    wait_body = probe.split("func _wait_for_settlement_applied() -> bool:", maxsplit=1)[1].split(
+        "func _wait_for_distance_constraint", maxsplit=1
+    )[0]
+
+    assert 'str(_local_outcome_payload.get("terminal_status", "")) != "contact_observed"' in wait_body
 
 
 def test_backend_bridge_bootstraps_embodied_controller_enrollment_and_binds_once_per_enrollment() -> None:

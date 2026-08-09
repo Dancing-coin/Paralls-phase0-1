@@ -14,7 +14,7 @@ const STANCE_TOLERANCE_M := 0.12
 const FACING_TOLERANCE_RAD := 0.10
 const CONTACT_TOLERANCE_M := 0.08
 const IK_SOLVER_SETTLE_PHYSICS_TICKS := 6
-const CUSTOM_REACH_SETTLE_PHYSICS_TICKS := 12
+const CUSTOM_REACH_SETTLE_PHYSICS_TICKS := 30
 const CONTACT_SETTLE_TIMEOUT_MS := 750
 
 @export_node_path("Node") var player_bridge_path := NodePath("../Phase0InputBridge")
@@ -239,7 +239,7 @@ func _process_navigate() -> void:
 	if facing.length() <= 0.001:
 		_finalize_local_failure("failed_alignment", "contact_anchor_invalid")
 		return
-	player_bridge.set_forced_facing_yaw(atan2(-facing.x, -facing.z))
+	player_bridge.set_forced_facing_yaw(atan2(facing.x, facing.z))
 	_stage = "align"
 
 
@@ -254,7 +254,7 @@ func _process_align() -> void:
 		return
 	var facing := contact.global_position - player.global_position
 	facing.y = 0.0
-	var desired_yaw := atan2(-facing.x, -facing.z)
+	var desired_yaw := atan2(facing.x, facing.z)
 	var player_bridge := _player_bridge()
 	if player_bridge != null:
 		player_bridge.set_forced_facing_yaw(desired_yaw)

@@ -1,0 +1,1 @@
+{"schema_version":1,"name":"econ1-organization-government","order":107,"script":"scripts/verification/verify_econ1_organization_government.py","requires_godot":false,"max_attempts":1,"result_artifact":".harness/verification/econ1-organization-government-report.json","description":"Organization permit, inspection and role boundary proof"}

@@ -1,0 +1,1 @@
+{"schema_version":1,"name":"econ1-construction-production","order":104,"script":"scripts/verification/verify_econ1_construction_production.py","requires_godot":false,"max_attempts":1,"result_artifact":".harness/verification/econ1-construction-production-report.json","description":"Construction and production owner proof for bakery facility and recipe runs"}

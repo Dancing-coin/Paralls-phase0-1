@@ -1,0 +1,1 @@
+{"schema_version":1,"name":"econ1-economy-period-settlement","order":106,"script":"scripts/verification/verify_econ1_economy_period.py","requires_godot":false,"max_attempts":1,"result_artifact":".harness/verification/econ1-economy-period-settlement-report.json","description":"Fixed quote and three business period settlement proof"}

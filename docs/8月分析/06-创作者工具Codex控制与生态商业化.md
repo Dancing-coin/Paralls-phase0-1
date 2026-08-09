@@ -1,5 +1,7 @@
 # 创作者工具、Codex 控制与生态商业化
 
+状态：`discussion and planned creator-platform guidance; not a current external control-plane contract`
+
 ## 1. 创作者真正需要的不是裸引擎
 
 创作者需要的是“内容生产控制面”，至少包括：
@@ -100,4 +102,3 @@ run start / stop / snapshot / replay
 - 链上权利凭证与链下内容交付的对应关系。
 
 当前项目没有完成链上确权和分账；现有产权/经济模块不能直接等价为创作者收益系统。
-

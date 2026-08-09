@@ -3,15 +3,79 @@ from __future__ import annotations
 import hashlib
 import json
 from copy import deepcopy
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Literal
 
 from app.gameplay.models import GameplayEvent, GameplayFailure, ProjectionCheckpoint, ReplayResult
 from app.gameplay.event_schema_registry import EventSchemaRegistry, EventSchemaRegistryError
 from app.gameplay.event_upcasters import EventUpcasterRegistry, EventUpcasterRegistryError
+from app.gameplay.shared_contracts import AuthorizationDecision
 
 
 def _canonical_hash(payload: dict[str, object]) -> str:
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+@dataclass(frozen=True)
+class ReplayContext:
+    stream_scope: tuple[str, ...]
+    event_schema_registry_revision: str
+    upcaster_chain_digests: tuple[str, ...]
+    active_world_revision_digest: str
+    projector_id: str
+    projector_version: str
+
+
+@dataclass(frozen=True)
+class ReplayEvidence:
+    replay_id: str
+    source_event_digest: str
+    resulting_projection_digest: str
+    active_world_revision_digest: str
+    applied_event_ids: tuple[str, ...]
+    success: bool
+    failure: GameplayFailure | None = None
+
+
+class PackageLifecycleAuthority:
+    _ALLOWED: dict[str, frozenset[str]] = {
+        "draft": frozenset({"validated"}),
+        "validated": frozenset({"staged", "rejected"}),
+        "staged": frozenset({"scheduled", "rejected"}),
+        "scheduled": frozenset({"active", "rejected"}),
+        "active": frozenset({"retired", "rollback_requested"}),
+        "rollback_requested": frozenset({"validated"}),
+        "retired": frozenset(),
+        "rejected": frozenset(),
+    }
+
+    def __init__(self) -> None:
+        self._states: dict[str, str] = {}
+
+    def transition(self, package_ref: str, next_state: str) -> str:
+        current = self._states.get(package_ref, "draft")
+        if next_state not in self._ALLOWED[current]:
+            raise ValueError("package_compatibility_failed")
+        self._states[package_ref] = next_state
+        return next_state
+
+
+def authorize_project_decision(
+    decision: AuthorizationDecision,
+    *,
+    project_ref: str,
+    now: datetime | None = None,
+) -> bool:
+    if decision.decision != "allow" or decision.project_scope != project_ref:
+        raise ValueError("permission_denied")
+    current = now or datetime.now(timezone.utc)
+    if decision.expires_at is not None:
+        expires = datetime.fromisoformat(decision.expires_at.replace("Z", "+00:00"))
+        if expires <= current:
+            raise ValueError("permission_denied")
+    return True
 
 
 class GameplayProjectionReplay:
@@ -34,6 +98,36 @@ class GameplayProjectionReplay:
 
     def full_replay(self, events: list[GameplayEvent]) -> ReplayResult:
         return self._replay(events, initial_state={}, initial_vector={}, applied_event_ids=set(), last_global_sequence=0)
+
+    def replay_with_context(self, events: list[GameplayEvent], context: ReplayContext) -> ReplayEvidence:
+        if context.projector_id != self.projector_id or context.projector_version != self.projector_version:
+            failure = GameplayFailure(
+                error_code="replay_context_mismatch",
+                message="replay context projector does not match replay instance",
+                failed_stage="replay_context",
+            )
+            return ReplayEvidence(
+                replay_id=f"replay:{self.projector_id}:failed",
+                source_event_digest=_canonical_hash({"events": []}),
+                resulting_projection_digest="",
+                active_world_revision_digest=context.active_world_revision_digest,
+                applied_event_ids=(),
+                success=False,
+                failure=failure,
+            )
+        normalized = [event if isinstance(event, GameplayEvent) else GameplayEvent.model_validate(event) for event in events]
+        scoped = [event for event in normalized if not context.stream_scope or event.stream_id in context.stream_scope]
+        result = self.full_replay(scoped)
+        source_digest = _canonical_hash({"events": [event.model_dump(mode="json") for event in scoped]})
+        return ReplayEvidence(
+            replay_id=f"replay:{self.projector_id}:{result.last_global_sequence}",
+            source_event_digest=source_digest,
+            resulting_projection_digest=result.projection_hash,
+            active_world_revision_digest=context.active_world_revision_digest,
+            applied_event_ids=tuple(result.applied_event_ids),
+            success=result.succeeded,
+            failure=result.failure,
+        )
 
     def create_checkpoint(
         self,

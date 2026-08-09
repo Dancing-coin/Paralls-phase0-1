@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "phase1c-frost-farm",
+  "order": 103,
+  "script": "scripts/verification/verify_phase1c_frost_farm.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/phase1c-frost-farm-report.json",
+  "description": "Bounded frost-farm effect/resistance settlement, replay, and scope projection proof; requires P1B contract verification"
+}

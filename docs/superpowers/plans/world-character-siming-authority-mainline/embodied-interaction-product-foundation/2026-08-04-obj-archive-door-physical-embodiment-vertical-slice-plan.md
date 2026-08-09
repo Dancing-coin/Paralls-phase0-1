@@ -155,7 +155,7 @@ No new dependency is permitted.
   enrollment. Missing rig/solver/anchor capability is a typed fail-closed
   outcome, not an excuse to bypass the physical path.
 - Preserve all pre-existing worktree changes. In particular, execution must
-  not modify `docs/kimi分析/2026-08-03-活跃plan与spec进度分析.md` or
+  not modify `docs/7月分析/2026-08-03-活跃plan与spec进度分析.md` or
   `scripts/verification/check_godot_project.py`.
 
 ## 2. Current Code Facts And Gaps
@@ -796,7 +796,7 @@ compatible existing candidate merely because this plan lists it.
 - Verification/docs: aggregate verifier/profile, profile registry tests,
   `docs/INDEX.md`, and `docs/harness.md`.
 
-Do not modify `docs/kimi分析/2026-08-03-活跃plan与spec进度分析.md` or
+Do not modify `docs/7月分析/2026-08-03-活跃plan与spec进度分析.md` or
 `scripts/verification/check_godot_project.py` while executing this plan.
 
 ## 9. Exact Verification Order

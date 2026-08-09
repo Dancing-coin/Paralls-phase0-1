@@ -30,5 +30,4 @@ __pycache__/
 /assets/characters/voice_sources/**/*.flac
 
 docs/architecture
-docs/上下文不够用/
 /.codegraph/codegraph.db

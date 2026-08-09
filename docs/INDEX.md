@@ -15,12 +15,13 @@
 - `docs/character/character-mind-core-status.md`：用中文定义“完整 character mind core”在当前仓库中的含义，并区分 authored profile truth、runtime state 与 long-term drift。
 - `docs/harness.md`：可重复验证的 Harness Engineering 命令面。
 - `docs/架构/运行时/运行时命名边界审计.md`：运行时命名边界审计和迁移表。
-- `docs/架构/整体架构.md`：仓库级整体架构总纲，内含手绘式 Markdown 架构图，覆盖 Godot、后端、世界运行时、System L6 事件总线、角色智能体、ESM、Siming、模型服务、Harness 和非运行时支撑面。
+- `docs/架构/整体架构.md`：仓库级整体架构总纲，内含手绘式 Markdown 架构图，覆盖 Godot、后端、世界运行时、Gameplay Foundation、System L6 事件总线、角色智能体、ESM、Siming、模型服务、Harness 和非运行时支撑面。
 - `docs/架构/感知输入对齐层.md`：双感知链并存时的统一时空 envelope 设计，定义 fact 链和 provider/PQF 链如何在输入阶段对齐。
 - `docs/架构/事实上抛链路与多模态链路.md`：梳理事实上抛链路与 provider/PQF 多模态链路的职责分工，并说明两条链各自已经存在的融合层。
 - `docs/架构/VLA与多模态链.md`：VLA 在多模态主链中的位置、对角色与 Siming 的应用、当前缺陷和模型接入建议。
 - `docs/架构/运行时/运行时总览.md`：整体架构、整体运行时时序和整体数据流总入口。
 - `docs/架构/运行时/运行时覆盖矩阵.md`：当前运行时覆盖矩阵，包含领域、契约、代码负责人和 harness 证据。
+- `docs/架构/运行时/模块/GameplayFoundation与领域结算.md`：`backend/app/gameplay/` 的事件溯源、领域 authority、状态组合、镜像与受限参考闭环边界；明确它与 ESM、System L6、角色智能体和 Godot 的分工。
 - `docs/架构/运行时/模块/世界运行时.md`：`backend/app/world_runtime/` 大类文档，覆盖 L1、PQF、VLA、模型 readiness、调度和 continuity。
 - `docs/架构/运行时/图表/整体运行时时序图.md`：可渲染 Mermaid 时序图，覆盖对话、交互、Siming、角色投递和 provider 流程。
 - `docs/架构/运行时/图表/整体运行时数据流图.md`：可渲染 Mermaid 数据流图，覆盖 L1/PQF、交互结果合并、角色智能体投递、Siming 投影、VLA 运行时和模型服务边界。
@@ -109,7 +110,7 @@
 - `docs/架构/`：仓库级和运行时级架构文档。
 - `docs/架构/运行时/`：运行时总纲、覆盖矩阵、图表和模块文档。
 - `docs/character/`：角色架构、控制链、资产集成和后续 action asset interface 文档。
-- `docs/kimi分析/`：Kimi 会话产生的问题分析与修复方案工作区（分析性质，不作为实现事实声明）。
+- `docs/7月分析/`：历史分析与修复方案工作区（分析性质，不作为实现事实声明）。
 - `docs/art-resource-swap-workflow.md`：场景、角色、道具和环境状态资源的可替换化工作流与接入手册。
 - `scripts/autoload/`：Godot 后端桥接和本地表现总线。
 - `scripts/phase0/`：Phase 0 demo 编排。

@@ -1,5 +1,7 @@
 # VLA、世界模型与机器人沙盒方向
 
+状态：`discussion and incremental advisory guidance; VLA/world-model outputs do not own world truth`
+
 ## 1. 当前项目与 VLA 的真实关系
 
 当前项目已经具备基础 VLA harness 形态，但应准确表述为：
@@ -101,4 +103,3 @@ Codex 与 GPT 的类比可以保留在产品叙事中：harness 不替代模型�
 - 机器人沙盒需要独立的时间、动力学、安全和 sim-to-real 规格，不能直接把游戏运行时当机器人运行时。
 
 结论：当前架构适合预留世界模型接口，但现阶段不应把世界模型当作运行时唯一世界真相。
-

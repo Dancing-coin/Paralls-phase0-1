@@ -234,7 +234,7 @@ func _wait_for_settlement_applied() -> bool:
 		if str(_settlement_payload.get("settlement_status", "")) == "rejected":
 			_notes.append("success_settlement_rejected")
 			return false
-		if not _local_outcome_payload.is_empty():
+		if not _local_outcome_payload.is_empty() and str(_local_outcome_payload.get("terminal_status", "")) != "contact_observed":
 			_notes.append("success_terminal_local_failure")
 			return false
 		await get_tree().process_frame
@@ -372,7 +372,7 @@ func _current_facing_error_rad() -> float:
 	facing.y = 0.0
 	if facing.length() <= 0.001:
 		return 0.0
-	var desired_yaw := atan2(-facing.x, -facing.z)
+	var desired_yaw := atan2(facing.x, facing.z)
 	return absf(wrapf(player.rotation.y - desired_yaw, -PI, PI))
 
 

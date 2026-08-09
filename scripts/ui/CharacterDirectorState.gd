@@ -16,6 +16,7 @@ var recent_world_outcomes: Array[Dictionary] = []
 var recent_scheduling_rounds: Array[Dictionary] = []
 var recent_script_beats: Array[Dictionary] = []
 var recent_dialogue_pairs: Array[Dictionary] = []
+var _state_refresh_queued := false
 
 const MAX_EVENT_HISTORY := 24
 const DEFAULT_OBSERVATORY_ACTOR_IDS := ["char_c", "char_a", "char_b"]
@@ -43,17 +44,17 @@ func _ready() -> void:
 
 func set_observatory_enabled(enabled: bool) -> void:
 	observatory_enabled = enabled
-	emit_signal("observatory_state_changed")
+	_queue_state_refresh()
 
 
 func set_director_mode(enabled: bool) -> void:
 	director_mode = enabled
-	emit_signal("observatory_state_changed")
+	_queue_state_refresh()
 
 
 func set_script_mode(enabled: bool) -> void:
 	script_mode = enabled
-	emit_signal("observatory_state_changed")
+	_queue_state_refresh()
 
 
 func set_freeze_mode(enabled: bool) -> void:
@@ -62,7 +63,7 @@ func set_freeze_mode(enabled: bool) -> void:
 	elif not enabled:
 		frozen_frame = {}
 	freeze_mode = enabled
-	emit_signal("observatory_state_changed")
+	_queue_state_refresh()
 
 
 func cycle_actor(step: int) -> void:
@@ -74,14 +75,14 @@ func cycle_actor(step: int) -> void:
 	if current_index == -1:
 		current_index = 0
 	selected_actor_id = actor_ids[(current_index + step + actor_ids.size()) % actor_ids.size()]
-	emit_signal("observatory_state_changed")
+	_queue_state_refresh()
 
 
 func set_selected_actor(actor_id: String) -> void:
 	if actor_id.is_empty():
 		return
 	selected_actor_id = actor_id
-	emit_signal("observatory_state_changed")
+	_queue_state_refresh()
 
 
 func get_selected_actor_state() -> Dictionary:
@@ -223,7 +224,7 @@ func _on_character_agent_debug_snapshot_received(payload: Dictionary) -> void:
 	if actor_id.is_empty():
 		return
 	latest_actor_states[actor_id] = payload.duplicate(true)
-	emit_signal("observatory_state_changed")
+	_queue_state_refresh()
 
 
 func _on_character_agent_debug_event_received(payload: Dictionary) -> void:
@@ -237,14 +238,14 @@ func _on_character_agent_debug_event_received(payload: Dictionary) -> void:
 	if history.size() > MAX_EVENT_HISTORY:
 		history = _dictionary_array(history.slice(history.size() - MAX_EVENT_HISTORY, history.size()))
 	recent_actor_events[actor_id] = history
-	emit_signal("observatory_state_changed")
+	_queue_state_refresh()
 
 
 func _on_siming_debug_snapshot_received(payload: Dictionary) -> void:
 	if freeze_mode:
 		return
 	latest_siming_state = payload.duplicate(true)
-	emit_signal("observatory_state_changed")
+	_queue_state_refresh()
 
 
 func _on_siming_debug_event_received(payload: Dictionary) -> void:
@@ -253,7 +254,7 @@ func _on_siming_debug_event_received(payload: Dictionary) -> void:
 	recent_siming_events.append(payload.duplicate(true))
 	if recent_siming_events.size() > MAX_EVENT_HISTORY:
 		recent_siming_events = _dictionary_array(recent_siming_events.slice(recent_siming_events.size() - MAX_EVENT_HISTORY, recent_siming_events.size()))
-	emit_signal("observatory_state_changed")
+	_queue_state_refresh()
 
 
 func _on_world_outcome_trace_received(payload: Dictionary) -> void:
@@ -262,7 +263,7 @@ func _on_world_outcome_trace_received(payload: Dictionary) -> void:
 	recent_world_outcomes.append(payload.duplicate(true))
 	if recent_world_outcomes.size() > MAX_EVENT_HISTORY:
 		recent_world_outcomes = _dictionary_array(recent_world_outcomes.slice(recent_world_outcomes.size() - MAX_EVENT_HISTORY, recent_world_outcomes.size()))
-	emit_signal("observatory_state_changed")
+	_queue_state_refresh()
 
 
 func _on_scheduling_round_trace_received(payload: Dictionary) -> void:
@@ -271,7 +272,7 @@ func _on_scheduling_round_trace_received(payload: Dictionary) -> void:
 	recent_scheduling_rounds.append(payload.duplicate(true))
 	if recent_scheduling_rounds.size() > MAX_EVENT_HISTORY:
 		recent_scheduling_rounds = _dictionary_array(recent_scheduling_rounds.slice(recent_scheduling_rounds.size() - MAX_EVENT_HISTORY, recent_scheduling_rounds.size()))
-	emit_signal("observatory_state_changed")
+	_queue_state_refresh()
 
 
 func _on_script_beat_event_received(payload: Dictionary) -> void:
@@ -284,6 +285,18 @@ func _on_script_beat_event_received(payload: Dictionary) -> void:
 		recent_dialogue_pairs,
 		payload.get("dialogue_pairs", [])
 	)
+	_queue_state_refresh()
+
+
+func _queue_state_refresh() -> void:
+	if _state_refresh_queued:
+		return
+	_state_refresh_queued = true
+	call_deferred("_emit_state_changed")
+
+
+func _emit_state_changed() -> void:
+	_state_refresh_queued = false
 	emit_signal("observatory_state_changed")
 
 

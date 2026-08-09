@@ -72,6 +72,14 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "gameplay-patch-runtime",
         "adventure-basic",
         "gameplay-foundation-all",
+        "phase1b-contract-verification",
+        "phase1c-frost-farm",
+        "econ1-construction-production",
+        "econ1-survival-profile",
+        "econ1-economy-period-settlement",
+        "econ1-organization-government",
+        "phase1d-econ1-bakery",
+        "phase1e-generalization-gate",
     ]
     assert registry.profiles["docs"]["script"] == "scripts/verification/check_docs.py"
     assert registry.profiles["backend-contract"]["script"] == "scripts/verification/check_backend_contract.py"
@@ -108,6 +116,11 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["gameplay-foundation-event-spine"]["script"] == "scripts/verification/verify_gameplay_foundation_event_spine.py"
     assert registry.profiles["adventure-basic"]["script"] == "scripts/verification/verify_adventure_basic.py"
     assert registry.profiles["gameplay-foundation-all"]["script"] == "scripts/verification/verify_gameplay_foundation_all.py"
+    assert registry.profiles["phase1b-contract-verification"]["script"] == "scripts/verification/verify_phase1b_contract.py"
+    assert int(registry.profiles["phase1b-contract-verification"].get("max_attempts", 1)) >= 2
+    assert registry.profiles["phase1c-frost-farm"]["script"] == "scripts/verification/verify_phase1c_frost_farm.py"
+    assert registry.profiles["phase1d-econ1-bakery"]["script"] == "scripts/verification/verify_phase1d_bakery.py"
+    assert registry.profiles["phase1e-generalization-gate"]["script"] == "scripts/verification/verify_phase1e_generalization.py"
     assert registry.profiles["gameplay-state-groups"]["script"] == "scripts/verification/verify_gameplay_state_groups.py"
     assert registry.profiles["gameplay-possession-equipment"]["script"] == "scripts/verification/verify_gameplay_possession_equipment.py"
     assert registry.profiles["gameplay-ownership-authority"]["script"] == "scripts/verification/verify_gameplay_ownership_authority.py"
@@ -121,6 +134,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert "not a product L1 runtime" in registry.profiles["l1-world-fact-runtime"]["description"]
     assert int(registry.profiles["mainline-unified-runtime"].get("max_attempts", 1)) >= 2
     assert int(registry.profiles["phase0"].get("max_attempts", 1)) >= 2
+    assert int(registry.profiles["gameplay-inventory"].get("max_attempts", 1)) >= 2
     assert all(profile["schema_version"] == 1 for profile in registry.profiles.values())
 
 

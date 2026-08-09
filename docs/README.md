@@ -72,9 +72,9 @@
 - [架构/运行时/模块/Harness验证证据.md](/d:/Users/User/Documents/paralls-phase-0-demo/docs/架构/运行时/模块/Harness验证证据.md)
 - [phase1-l1-full-scope-checklist.md](/d:/Users/User/Documents/paralls-phase-0-demo/docs/phase1-l1-full-scope-checklist.md)
 - [scene tree.md](/d:/Users/User/Documents/paralls-phase-0-demo/docs/scene%20tree.md)
-- [kimi分析/](/d:/Users/User/Documents/paralls-phase-0-demo/docs/kimi分析/README.md)
-  - Kimi 会话产生的问题分析与修复方案（分析性质，带状态头，不作为实现事实声明）
-  - 当前收录：角色智能体断点分析与修复方案、七月 spec 需求分析与实现差距（清单见目录 README）
+- [7月分析/](/d:/Users/User/Documents/paralls-phase-0-demo/docs/7月分析/README.md)
+  - 历史分析与修复方案（分析性质，带状态头，不作为实现事实声明）
+  - 当前收录：角色智能体断点分析、七月 spec 需求分析与具身/VLA 差距分析
 
 ---
 

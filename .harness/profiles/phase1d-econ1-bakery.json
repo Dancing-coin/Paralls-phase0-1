@@ -1,0 +1,1 @@
+{"schema_version":1,"name":"phase1d-econ1-bakery","order":108,"script":"scripts/verification/verify_phase1d_bakery.py","requires_godot":true,"max_attempts":1,"result_artifact":".harness/verification/phase1d-econ1-bakery-report.json","description":"Three replayable bakery periods, recovery matrix, and committed facility/output Godot mirror proof"}

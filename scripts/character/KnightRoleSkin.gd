@@ -431,6 +431,7 @@ func begin_archive_door_reach_modifier(anchor_world_position: Vector3, tolerance
 	if skeleton == null or archive_door_reach_modifier == null or not archive_door_reach_modifier.has_method("begin_reach"):
 		right_hand_reach_runtime_kind = "unavailable"
 		return {"available": false, "distance_m": INF, "error_code": right_hand_reach_error_code}
+	archive_door_reach_modifier.set("active", true)
 	if not bool(archive_door_reach_modifier.call("begin_reach", anchor_world_position)):
 		right_hand_reach_runtime_kind = "unavailable"
 		return {"available": false, "distance_m": INF, "error_code": right_hand_reach_error_code}
@@ -462,6 +463,8 @@ func measure_right_hand_to_anchor(anchor_world_position: Vector3) -> Dictionary:
 		return {"available": false, "distance_m": INF, "error_code": "ik_chain_unavailable"}
 	right_hand_reach_target_world = anchor_world_position
 	_update_right_hand_reach_runtime()
+	if right_hand_reach_runtime_kind == "archive_door_reach_modifier" and archive_door_reach_modifier != null and archive_door_reach_modifier.has_method("solve_reach_now"):
+		archive_door_reach_modifier.call("solve_reach_now")
 	if skeleton.has_method("force_update_all_bone_transforms"):
 		skeleton.call("force_update_all_bone_transforms")
 	var hand_position := skeleton.global_transform * skeleton.get_bone_global_pose(right_hand_bone).origin
@@ -1020,6 +1023,7 @@ func _configure_skeleton_ik_reach(anchor_world_position: Vector3) -> bool:
 	right_hand_reach_ik.set("target_node", NodePath("../ArchiveDoorReachTarget"))
 	if right_hand_reach_ik.get_parent() == null:
 		skeleton.add_child(right_hand_reach_ik)
+	right_hand_reach_ik.set("active", true)
 	if right_hand_reach_ik.has_method("start"):
 		right_hand_reach_ik.call("start", true)
 		return true

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
 import json
 from types import MappingProxyType
@@ -43,6 +43,23 @@ class InventoryItem:
     definition_id: str
     quantity: int
     source_event_id: str
+    reserved_quantity: int = 0
+
+    @property
+    def remaining_quantity(self) -> int:
+        return self.quantity - self.reserved_quantity
+
+    @property
+    def available_quantity(self) -> int:
+        return self.remaining_quantity
+
+
+@dataclass(frozen=True)
+class InventoryReservation:
+    reservation_ref: str
+    item_id: str
+    quantity: int
+    source_event_id: str
 
 
 @dataclass(frozen=True)
@@ -66,6 +83,7 @@ class InventoryProjection:
     locations: Mapping[str, str]
     source_revision_vector: Mapping[str, int]
     projection_revision: str
+    reservations: Mapping[str, InventoryReservation] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -122,6 +140,8 @@ class InventoryProjector:
         items: dict[str, InventoryItem] = {}
         containers: dict[str, InventoryContainer] = {}
         locations: dict[str, str] = {}
+        reservations: dict[str, InventoryReservation] = {}
+        reserved_quantities: dict[str, int] = {}
         revisions: dict[str, int] = {}
         for event in sorted(events, key=lambda item: (item.global_sequence, item.event_id)):
             if not event.event_type.startswith("gameplay.inventory."):
@@ -153,6 +173,18 @@ class InventoryProjector:
                     raise InventoryRuntimeError("inventory_item_duplicate")
                 self._registry.item(definition_id)
                 items[item_id] = InventoryItem(item_id, definition_id, _positive(payload, "quantity"), event.event_id)
+            elif event.event_type == "gameplay.inventory.output_received":
+                _text(payload, "source_ref")
+                _text(payload, "item_ref")
+                item_id = _text(payload, "item_id")
+                definition_id = _text(payload, "definition_id")
+                quantity = _positive(payload, "quantity")
+                container_id = _text(payload, "container_id")
+                if item_id in items or container_id not in containers:
+                    raise InventoryRuntimeError("inventory_output_invalid")
+                self._registry.item(definition_id)
+                items[item_id] = InventoryItem(item_id, definition_id, quantity, event.event_id)
+                locations[item_id] = container_id
             elif event.event_type == "gameplay.inventory.item_moved":
                 item_id = _text(payload, "item_id")
                 from_container = _text(payload, "from_container_id")
@@ -162,6 +194,8 @@ class InventoryProjector:
                 if locations.get(item_id) != from_container and not (from_container == "inventory:unplaced" and item_id not in locations):
                     raise InventoryRuntimeError("inventory_move_source_invalid")
                 locations[item_id] = to_container
+                item = items[item_id]
+                items[item_id] = InventoryItem(item.item_id, item.definition_id, item.quantity, item.source_event_id, item.reserved_quantity)
             elif event.event_type == "gameplay.inventory.item_transferred_out":
                 item_id = _text(payload, "item_id")
                 from_container = _text(payload, "from_container_id")
@@ -187,6 +221,8 @@ class InventoryProjector:
                 if locations.get(item_id) != from_container:
                     raise InventoryRuntimeError("inventory_move_source_invalid")
                 locations[item_id] = equipment_location
+                item = items[item_id]
+                items[item_id] = InventoryItem(item.item_id, item.definition_id, item.quantity, item.source_event_id, item.reserved_quantity)
             elif event.event_type == "gameplay.inventory.item_unequipped":
                 item_id = _text(payload, "item_id")
                 equipment_location = _text(payload, "equipment_location")
@@ -196,14 +232,62 @@ class InventoryProjector:
                 if locations.get(item_id) != equipment_location:
                     raise InventoryRuntimeError("inventory_move_source_invalid")
                 locations[item_id] = to_container
+                item = items[item_id]
+                items[item_id] = InventoryItem(item.item_id, item.definition_id, item.quantity, item.source_event_id, item.reserved_quantity)
+            elif event.event_type == "gameplay.inventory.reservation_created":
+                item_id = _text(payload, "item_id")
+                reservation_ref = _text(payload, "reservation_ref")
+                quantity = _positive(payload, "quantity")
+                item = items.get(item_id)
+                location = locations.get(item_id, "")
+                if item is None or not location.startswith("container:") or reservation_ref in reservations:
+                    raise InventoryRuntimeError("inventory_reservation_source_invalid" if item is None or not location.startswith("container:") else "inventory_reservation_duplicate")
+                if item.remaining_quantity < quantity:
+                    raise InventoryRuntimeError("inventory_reservation_insufficient")
+                reservations[reservation_ref] = InventoryReservation(reservation_ref, item_id, quantity, event.event_id)
+                reserved_quantities[item_id] = reserved_quantities.get(item_id, 0) + quantity
+                items[item_id] = InventoryItem(item.item_id, item.definition_id, item.quantity, item.source_event_id, reserved_quantities[item_id])
+            elif event.event_type == "gameplay.inventory.reservation_consumed":
+                reservation_ref = _text(payload, "reservation_ref")
+                reservation = reservations.pop(reservation_ref, None)
+                if reservation is None:
+                    raise InventoryRuntimeError("inventory_reservation_unknown")
+                item = items.get(reservation.item_id)
+                if item is None:
+                    raise InventoryRuntimeError("inventory_reservation_unknown")
+                reserved_total = reserved_quantities.get(reservation.item_id, 0) - reservation.quantity
+                updated_quantity = item.quantity - reservation.quantity
+                if reserved_total < 0 or updated_quantity < 0:
+                    raise InventoryRuntimeError("inventory_reservation_unknown")
+                if updated_quantity == 0:
+                    items.pop(reservation.item_id)
+                    locations.pop(reservation.item_id, None)
+                    reserved_quantities.pop(reservation.item_id, None)
+                else:
+                    reserved_quantities[reservation.item_id] = reserved_total
+                    items[reservation.item_id] = InventoryItem(item.item_id, item.definition_id, updated_quantity, item.source_event_id, reserved_total)
+            elif event.event_type == "gameplay.inventory.reservation_released":
+                reservation_ref = _text(payload, "reservation_ref")
+                reservation = reservations.pop(reservation_ref, None)
+                if reservation is None:
+                    raise InventoryRuntimeError("inventory_reservation_unknown")
+                item = items.get(reservation.item_id)
+                if item is None:
+                    raise InventoryRuntimeError("inventory_reservation_unknown")
+                reserved_total = reserved_quantities.get(reservation.item_id, 0) - reservation.quantity
+                if reserved_total < 0:
+                    raise InventoryRuntimeError("inventory_reservation_unknown")
+                reserved_quantities[reservation.item_id] = reserved_total
+                items[reservation.item_id] = InventoryItem(item.item_id, item.definition_id, item.quantity, item.source_event_id, reserved_total)
             else:
                 continue
             revisions[event.stream_id] = max(revisions.get(event.stream_id, 0), event.stream_revision)
         frozen_items = MappingProxyType(dict(sorted(items.items())))
         frozen_containers = MappingProxyType(dict(sorted(containers.items())))
         frozen_locations = MappingProxyType(dict(sorted(locations.items())))
+        frozen_reservations = MappingProxyType(dict(sorted(reservations.items())))
         frozen_revisions = MappingProxyType(dict(sorted(revisions.items())))
-        return InventoryProjection(actor_ref, frozen_items, frozen_containers, frozen_locations, frozen_revisions, f"inventory:{_digest([actor_ref, frozen_items, frozen_containers, frozen_locations, frozen_revisions])[:16]}")
+        return InventoryProjection(actor_ref, frozen_items, frozen_containers, frozen_locations, frozen_revisions, f"inventory:{_digest([actor_ref, frozen_items, frozen_containers, frozen_locations, frozen_reservations, frozen_revisions])[:16]}", frozen_reservations)
 
     def rebuild_encumbrance(
         self,
@@ -365,6 +449,195 @@ class InventoryAuthorityService:
         self._require_capacity(projection, to_container_id, item, excluding_item_id=item_id)
         return self._append(command_id, actor_ref, [("gameplay.inventory.item_moved", {"item_id": item_id, "from_container_id": from_container_id, "to_container_id": to_container_id})], idempotency_key, causation_id, correlation_id)
 
+    def reserve_item(
+        self,
+        *,
+        command_id: str,
+        actor_ref: str,
+        item_id: str,
+        reservation_ref: str,
+        quantity: int,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ) -> AppendBatchResult:
+        serialized = self._serialize_events(
+            command_id,
+            actor_ref,
+            [("gameplay.inventory.reservation_created", {"item_id": item_id, "reservation_ref": reservation_ref, "quantity": quantity})],
+            causation_id,
+            correlation_id,
+        )
+        key = f"{actor_ref}:{idempotency_key}"
+        existing_record = self._store.get_idempotency_record(self._PRINCIPAL, key)
+        if existing_record is not None:
+            if existing_record.payload_digest != _digest(serialized):
+                raise InventoryRuntimeError("inventory_idempotency_key_reused")
+            result = self._store.get_by_idempotency(self._PRINCIPAL, key)
+            assert result is not None
+            return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        projection = self._projector.rebuild(actor_ref, self._store.read_events())
+        item = projection.items.get(item_id)
+        location = projection.locations.get(item_id, "")
+        if not item_id or not reservation_ref or quantity <= 0:
+            raise InventoryRuntimeError("inventory_reservation_invalid")
+        if item is None or not location.startswith("container:"):
+            raise InventoryRuntimeError("inventory_reservation_source_invalid")
+        if reservation_ref in projection.reservations:
+            raise InventoryRuntimeError("inventory_reservation_duplicate")
+        if item.remaining_quantity < quantity:
+            raise InventoryRuntimeError("inventory_reservation_insufficient")
+        return self._store.append_batch(
+            {
+                "transaction_id": f"tx:{command_id}",
+                "command_id": command_id,
+                "expected_stream_revisions": {f"gameplay:inventory:{actor_ref}": self._store.get_stream_head(f"gameplay:inventory:{actor_ref}")},
+                "pinned_revisions": {"inventory": self._store.get_stream_head(f"gameplay:inventory:{actor_ref}")},
+                "events": serialized,
+                "idempotency_record": {"principal_ref": self._PRINCIPAL, "idempotency_key": key, "payload_digest": _digest(serialized)},
+                "outbox_entries": [],
+                "result_digest": _digest(serialized),
+                "projection_refresh_hints": [],
+            }
+        )
+
+    def consume_reservation(
+        self,
+        *,
+        command_id: str,
+        actor_ref: str,
+        reservation_ref: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ) -> AppendBatchResult:
+        serialized = self._serialize_events(
+            command_id,
+            actor_ref,
+            [("gameplay.inventory.reservation_consumed", {"reservation_ref": reservation_ref})],
+            causation_id,
+            correlation_id,
+        )
+        key = f"{actor_ref}:{idempotency_key}"
+        existing_record = self._store.get_idempotency_record(self._PRINCIPAL, key)
+        if existing_record is not None:
+            if existing_record.payload_digest != _digest(serialized):
+                raise InventoryRuntimeError("inventory_idempotency_key_reused")
+            result = self._store.get_by_idempotency(self._PRINCIPAL, key)
+            assert result is not None
+            return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        projection = self._projector.rebuild(actor_ref, self._store.read_events())
+        if reservation_ref not in projection.reservations:
+            raise InventoryRuntimeError("inventory_reservation_unknown")
+        return self._store.append_batch(
+            {
+                "transaction_id": f"tx:{command_id}",
+                "command_id": command_id,
+                "expected_stream_revisions": {f"gameplay:inventory:{actor_ref}": self._store.get_stream_head(f"gameplay:inventory:{actor_ref}")},
+                "pinned_revisions": {"inventory": self._store.get_stream_head(f"gameplay:inventory:{actor_ref}")},
+                "events": serialized,
+                "idempotency_record": {"principal_ref": self._PRINCIPAL, "idempotency_key": key, "payload_digest": _digest(serialized)},
+                "outbox_entries": [],
+                "result_digest": _digest(serialized),
+                "projection_refresh_hints": [],
+            }
+        )
+
+    def release_reservation(
+        self,
+        *,
+        command_id: str,
+        actor_ref: str,
+        reservation_ref: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ) -> AppendBatchResult:
+        serialized = self._serialize_events(
+            command_id,
+            actor_ref,
+            [("gameplay.inventory.reservation_released", {"reservation_ref": reservation_ref})],
+            causation_id,
+            correlation_id,
+        )
+        key = f"{actor_ref}:{idempotency_key}"
+        existing_record = self._store.get_idempotency_record(self._PRINCIPAL, key)
+        if existing_record is not None:
+            if existing_record.payload_digest != _digest(serialized):
+                raise InventoryRuntimeError("inventory_idempotency_key_reused")
+            result = self._store.get_by_idempotency(self._PRINCIPAL, key)
+            assert result is not None
+            return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        projection = self._projector.rebuild(actor_ref, self._store.read_events())
+        if reservation_ref not in projection.reservations:
+            raise InventoryRuntimeError("inventory_reservation_unknown")
+        return self._store.append_batch(
+            {
+                "transaction_id": f"tx:{command_id}",
+                "command_id": command_id,
+                "expected_stream_revisions": {f"gameplay:inventory:{actor_ref}": self._store.get_stream_head(f"gameplay:inventory:{actor_ref}")},
+                "pinned_revisions": {"inventory": self._store.get_stream_head(f"gameplay:inventory:{actor_ref}")},
+                "events": serialized,
+                "idempotency_record": {"principal_ref": self._PRINCIPAL, "idempotency_key": key, "payload_digest": _digest(serialized)},
+                "outbox_entries": [],
+                "result_digest": _digest(serialized),
+                "projection_refresh_hints": [],
+            }
+        )
+
+    def record_output_receipt(
+        self,
+        *,
+        command_id: str,
+        actor_ref: str,
+        source_ref: str,
+        item_ref: str,
+        item_id: str,
+        definition_id: str,
+        container_id: str,
+        quantity: int,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ) -> AppendBatchResult:
+        """Record a production output at the inventory owner boundary.
+
+        The recipe/production owner supplies only a typed output reference; this
+        method owns the inventory receipt event and keeps custody settlement in
+        the existing inventory event stream.
+        """
+        if not source_ref or not item_ref or not item_id or not definition_id or not container_id or quantity <= 0:
+            raise InventoryRuntimeError("inventory_output_invalid")
+        self._registry.item(definition_id)
+        projection = self._projector.rebuild(actor_ref, self._store.read_events())
+        if container_id not in projection.containers:
+            raise InventoryRuntimeError("inventory_container_unknown")
+        if projection.containers[container_id].sealed:
+            raise InventoryRuntimeError("inventory_access_denied")
+        if item_id in projection.items:
+            raise InventoryRuntimeError("inventory_output_invalid")
+        self._require_capacity(projection, container_id, InventoryItem(item_id, definition_id, quantity, "pending"))
+        return self._append(
+            command_id,
+            actor_ref,
+            [
+                (
+                    "gameplay.inventory.output_received",
+                    {
+                        "source_ref": source_ref,
+                        "item_ref": item_ref,
+                        "item_id": item_id,
+                        "definition_id": definition_id,
+                        "container_id": container_id,
+                        "quantity": quantity,
+                    },
+                )
+            ],
+            idempotency_key,
+            causation_id,
+            correlation_id,
+        )
+
     def _require_capacity(self, projection: InventoryProjection, container_id: str, candidate: InventoryItem, *, excluding_item_id: str | None = None) -> None:
         container = projection.containers[container_id]
         candidate_definition = self._registry.item(candidate.definition_id)
@@ -379,8 +652,30 @@ class InventoryAuthorityService:
     def _append(self, command_id: str, actor_ref: str, events: Sequence[tuple[str, Mapping[str, object]]], idempotency_key: str, causation_id: str, correlation_id: str) -> AppendBatchResult:
         stream_id = f"gameplay:inventory:{actor_ref}"
         transaction_id = f"tx:{command_id}"
-        serialized = [{"event_id": f"evt:{command_id}:inventory:{index}", "event_type": event_type, "schema_version": 1, "stream_id": stream_id, "stream_revision": 0, "global_sequence": 0, "transaction_id": transaction_id, "command_id": command_id, "causation_id": causation_id, "correlation_id": correlation_id, "visibility_policy": "authority_only", "payload": {"actor_ref": actor_ref, **payload}} for index, (event_type, payload) in enumerate(events, start=1)]
+        serialized = self._serialize_events(command_id, actor_ref, events, causation_id, correlation_id)
         return self._store.append_batch({"transaction_id": transaction_id, "command_id": command_id, "expected_stream_revisions": {stream_id: self._store.get_stream_head(stream_id)}, "pinned_revisions": {"inventory": self._store.get_stream_head(stream_id)}, "events": serialized, "idempotency_record": {"principal_ref": self._PRINCIPAL, "idempotency_key": f"{actor_ref}:{idempotency_key}", "payload_digest": _digest(serialized)}, "outbox_entries": [], "result_digest": _digest(serialized), "projection_refresh_hints": []})
+
+    @staticmethod
+    def _serialize_events(command_id: str, actor_ref: str, events: Sequence[tuple[str, Mapping[str, object]]], causation_id: str, correlation_id: str) -> list[dict[str, object]]:
+        stream_id = f"gameplay:inventory:{actor_ref}"
+        transaction_id = f"tx:{command_id}"
+        return [
+            {
+                "event_id": f"evt:{command_id}:inventory:{index}",
+                "event_type": event_type,
+                "schema_version": 1,
+                "stream_id": stream_id,
+                "stream_revision": 0,
+                "global_sequence": 0,
+                "transaction_id": transaction_id,
+                "command_id": command_id,
+                "causation_id": causation_id,
+                "correlation_id": correlation_id,
+                "visibility_policy": "authority_only",
+                "payload": {"actor_ref": actor_ref, **payload},
+            }
+            for index, (event_type, payload) in enumerate(events, start=1)
+        ]
 
 
 def _text(payload: Mapping[str, object], key: str) -> str:

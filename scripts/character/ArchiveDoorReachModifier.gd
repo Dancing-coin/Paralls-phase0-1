@@ -1,7 +1,7 @@
 extends SkeletonModifier3D
 
 
-const ITERATIONS_PER_UPDATE := 6
+const ITERATIONS_PER_UPDATE := 24
 const MAX_ROTATION_STEP_RAD := 0.45
 const VECTOR_EPSILON := 0.0001
 
@@ -34,6 +34,10 @@ func clear_reach() -> void:
 
 
 func _process_modification() -> void:
+	solve_reach_now()
+
+
+func solve_reach_now() -> void:
 	if not reach_active:
 		return
 	var skeleton := get_skeleton()

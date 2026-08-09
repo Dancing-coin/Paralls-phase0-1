@@ -134,7 +134,7 @@ and Godot mirror bridge. It must not replace or duplicate any of them.
   as an implementation dependency rather than a source-of-truth design spec
 - `docs/superpowers/plans/world-character-siming-authority-mainline/character-gameplay-foundation/README.md`
 - `docs/harness.md`
-- `docs/kimi分析/2026-08-03-活跃plan与spec进度分析.md` as a progress analysis only, not design authority.
+- `docs/7月分析/2026-08-03-活跃plan与spec进度分析.md` as a progress analysis only, not design authority.
 
 ## Preconditions
 

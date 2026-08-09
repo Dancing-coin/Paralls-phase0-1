@@ -182,7 +182,7 @@ def test_archive_door_preflight_replays_same_grant_and_blocks_competing_attempts
     assert first_preflight["payload"]["grant"]["grant_id"] == replay_preflight["payload"]["grant"]["grant_id"]
     assert first_preflight["payload"]["request"]["interaction_attempt_id"] == replay_preflight["payload"]["request"]["interaction_attempt_id"]
     assert first_preflight["payload"]["request"]["affordance_id"] == "affordance:obj_archive_door:open"
-    assert first_preflight["payload"]["request"]["binding_revision"] == 2
+    assert first_preflight["payload"]["request"]["binding_revision"] == 4
     assert occupancy_constraint["payload"]["constraint_code"] == "stance_occupied"
     assert _door_state() == "closed"
 

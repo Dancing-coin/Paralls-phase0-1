@@ -92,10 +92,10 @@ them as a new milestone.
 
 ### Analysis treated as historical or advisory
 
-- `docs/kimi分析/2026-07-23-具身角色交互与VLA闭环差距分析.md` remains useful for
+- `docs/7月分析/2026-07-23-具身角色交互与VLA闭环差距分析.md` remains useful for
   problem framing and its first-chair reference, but explicitly says it is not
   the active plan and must not replace runtime proof.
-- `docs/kimi分析/2026-07-23-智能体具身交互全景评估与实施路线.md` remains a route
+- `docs/7月分析/2026-07-23-智能体具身交互全景评估与实施路线.md` remains a route
   reference. Its LLM-readiness conclusion is explicitly marked partially
   outdated; its productization route is not implementation truth.
 - Neither analysis upgrades or replaces the current code and harness evidence;

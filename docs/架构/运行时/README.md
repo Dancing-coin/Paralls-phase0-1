@@ -1,6 +1,6 @@
 # 运行时架构文档索引
 
-状态：当前运行时架构入口
+状态：`current-code runtime architecture entry`
 
 本目录承接运行时级架构文档。它属于 `docs/架构/`，不是普通运行手册，也不是历史计划文档。
 
@@ -19,6 +19,7 @@
 | 模块 | `模块/Siming.md` | Siming 全局态势、高层 catalyst 与 L6 事件边界 |
 | 模块 | `模块/角色智能体.md` | 角色智能体 |
 | 模块 | `模块/ESM与交互编排.md` | ESM、交互编排、物理通道 |
+| 模块 | `模块/GameplayFoundation与领域结算.md` | Gameplay Foundation、领域 authority、事件脊柱、镜像和已验证参考闭环 |
 | 模块 | `模块/Godot表现与角色入口.md` | Godot 输入、表现、角色入口 |
 | 模块 | `模块/VLA运行时通道.md` | 已实现的 VLA 慢路径运行时 |
 | 模块 | `模块/模型服务通道.md` | 模型 provider readiness 与真实调用证明 |
@@ -30,3 +31,7 @@
 - 新增运行时 owner 或模块放 `模块/`。
 - 不把历史 plan/spec 移入本目录；那些继续留在 `docs/superpowers/`。
 - 不把操作 runbook 移入本目录；运行和验证入口继续由 `docs/harness.md` 等文档承接。
+- `backend/app/gameplay/` 是现有 authority substrate，不是新的 runtime host；其
+  canonical committed-event/replay 事实与 System L6 的公共事件路由必须分开记录。
+- `docs/8月分析/全域架构/` 与 `docs/8月分析/架构审计/` 只在本目录的代码/Harness
+  基线之上定义增量设计和 backlog，不能替换当前 owner。

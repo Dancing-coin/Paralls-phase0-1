@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.gameplay.event_store import GameplayEventStore
 
 
@@ -195,3 +197,51 @@ def test_outbox_projection_failure_rejects_before_commit() -> None:
     assert result.failure.error_code == "outbox_projection_failed"
     assert store.get_stream_head("session:projection-failed") == 0
     assert store.list_outbox(include_delivered=True) == []
+
+
+def test_gameplay_command_envelope_maps_to_atomic_event_batch_contract_fields() -> None:
+    from app.gameplay.settlement_plan import SettlementPlan
+    from app.gameplay.shared_contracts import GameplayCommandEnvelope
+
+    command = GameplayCommandEnvelope(
+        command_id="command:demo:1",
+        command_type="gameplay.session.reserve",
+        command_version=1,
+        principal_ref="principal:player",
+        actor_ref="actor:player",
+        project_ref="project:demo",
+        transaction_id="tx:gameplay:envelope",
+        idempotency_key="idempotency:gameplay:envelope",
+        expected_revisions={"stream:session": 0},
+        causation_id="cause:gameplay:envelope",
+        correlation_id="corr:gameplay:envelope",
+        source_ref="source:godot",
+        submitted_at="2026-08-07T00:00:00Z",
+        pinned_revisions={"policy": 7, "world": 3},
+        payload={"stream_ref": "stream:session", "event_type": "gameplay.session_reserved"},
+    )
+
+    batch = SettlementPlan.from_command_envelope(command).to_atomic_event_batch()
+
+    assert batch.command_id == command.command_id
+    assert batch.expected_stream_revisions == {"stream:session": 0}
+    assert batch.pinned_revisions == {"policy": 7, "world": 3}
+
+
+def test_reservation_terminal_state_rejection_is_fail_closed() -> None:
+    from app.gameplay.settlement_plan import SettlementPlan
+    from app.gameplay.shared_contracts import Reservation
+
+    reservation = Reservation(
+        reservation_ref="reservation:demo:1",
+        owner_ref="owner:demo",
+        target_ref="target:demo",
+        quantity_or_amount=1,
+        status="final",
+        created_revision=1,
+        expires_at_tick=None,
+        source_obligation_ref="obligation:demo",
+    )
+
+    with pytest.raises(ValueError, match="reservation_unknown_or_final"):
+        SettlementPlan.from_reservation(reservation).to_atomic_event_batch()
