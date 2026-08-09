@@ -370,6 +370,51 @@ class GameplayPackageManifest(StrictGameplayModel):
     compatibility_range: str = Field(min_length=1)
     migration_refs: tuple[str, ...] = Field(default_factory=tuple)
     content_digest: str = Field(min_length=1)
+    actor_refs: tuple[str, ...] = Field(default_factory=tuple)
+    actor_allowlist: tuple[str, ...] = Field(default_factory=tuple)
+
+    @model_validator(mode="after")
+    def _validate_actor_refs(self) -> "GameplayPackageManifest":
+        refs = self.actor_refs or self.actor_allowlist
+        if len(set(refs)) != len(refs):
+            raise ValueError("package_actor_refs_must_be_unique")
+        if any(not value or value.startswith("character:npc:") for value in refs):
+            raise ValueError("package_actor_ref_invalid")
+        return self
+
+
+class ProfileBackedActorRef(StrictGameplayModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    actor_ref: str = Field(pattern=r"^character:[^:]+$")
+    profile_registry_revision: str = Field(min_length=1)
+    authored_identity_digest: str = Field(min_length=1)
+    package_ref: str = Field(min_length=1)
+    package_grant_revision: str = Field(min_length=1)
+    permitted_role_refs: tuple[str, ...] = Field(default_factory=tuple)
+
+
+class ActorWorkIntentEnvelope(StrictGameplayModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    envelope: GameplayCommandEnvelope
+    actor: ProfileBackedActorRef
+
+
+class ActorWorkIntentResult(StrictGameplayModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    envelope: GameplayCommandEnvelope | None = None
+    actor: ProfileBackedActorRef | None = None
+    rejection: StructuredFailure | None = None
+
+    @model_validator(mode="after")
+    def _validate_result_shape(self) -> "ActorWorkIntentResult":
+        if (self.envelope is None) == (self.rejection is None):
+            raise ValueError("actor_work_intent_result_requires_one_outcome")
+        if self.envelope is not None and self.actor is None:
+            raise ValueError("actor_work_intent_actor_required")
+        return self
 
 
 class ProjectionEnvelope(StrictGameplayModel):
@@ -453,6 +498,9 @@ __all__ = [
     "GameplayCommandEnvelope",
     "GameplayEventEnvelope",
     "GameplayPackageManifest",
+    "ProfileBackedActorRef",
+    "ActorWorkIntentEnvelope",
+    "ActorWorkIntentResult",
     "LogicalFact",
     "PhysicalFact",
     "ProjectionEnvelope",

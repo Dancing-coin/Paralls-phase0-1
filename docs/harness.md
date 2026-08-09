@@ -20,6 +20,10 @@ python scripts/verification/harness.py --profile harness-reference
 python scripts/verification/harness.py --profile harness-evolution
 python scripts/verification/harness.py --profile phase0
 python scripts/verification/harness.py --profile phase1-slice
+python scripts/verification/harness.py --profile phase2a-actor-to-gameplay-participation
+python scripts/verification/harness.py --profile phase2b-organization-work-lifecycle
+python scripts/verification/harness.py --profile phase2c-payroll-operating-window
+python scripts/verification/harness.py --profile phase2-bakery-authored-agents
 python scripts/verification/harness.py --profile siming-backend-chain
 python scripts/verification/harness.py --profile character-model-live
 python scripts/verification/harness.py --profile llm-integration-closure

@@ -54,3 +54,32 @@ def test_authorization_decision_requires_matching_project_and_unexpired_policy()
     assert authorize_project_decision(decision, project_ref="project:demo", now=datetime.now(timezone.utc)) is True
     with pytest.raises(ValueError, match="permission_denied"):
         authorize_project_decision(decision, project_ref="project:other", now=datetime.now(timezone.utc))
+
+
+def test_package_manifest_keeps_explicit_actor_allowlist_for_permission_gates() -> None:
+    from app.gameplay.shared_contracts import GameplayPackageManifest
+
+    manifest = GameplayPackageManifest(
+        package_id="package:bakery-authored-agents",
+        package_revision="package:bakery-authored-agents:v1",
+        domain_id="bakery-authored-agents",
+        maturity_level="sample",
+        required_core_version="gameplay-core:v1",
+        owned_aggregates=("shift",),
+        state_groups=("organization",),
+        commands=("gameplay.work.respond_shift",),
+        events=("gameplay.work.respond_shift",),
+        projections=("projection:bakery-authored-agents",),
+        declared_schemas=("gameplay.work.respond_shift:v1",),
+        dependencies=("gameplay-core:v1",),
+        conflicts=(),
+        capabilities=("work-intent",),
+        privacy_policies=("actor-scoped",),
+        mirror_bindings=("godot_actor_scope",),
+        compatibility_range="gameplay-core:v1",
+        migration_refs=(),
+        content_digest="sha256:bakery-authored-agents-v1",
+        actor_allowlist=("char_a", "char_b"),
+    )
+
+    assert manifest.actor_allowlist == ("char_a", "char_b")

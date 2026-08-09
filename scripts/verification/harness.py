@@ -20,7 +20,7 @@ from registry import load_profile_registry
 
 
 PROFILE_REGISTRY = load_profile_registry(repo_root())
-PROFILES = (*PROFILE_REGISTRY.profile_order, "all")
+PROFILES = (*PROFILE_REGISTRY.profiles.keys(), "all")
 DEFAULT_GODOT_EXES = (
     Path(r"D:\godot\Godot_v4.6.3-stable_win64.exe"),
     Path(r"E:\涓嬭浇\Godot_v4.6.3-stable_win64.exe\Godot_v4.6.3-stable_win64_console.exe"),

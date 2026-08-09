@@ -33,6 +33,8 @@
 - `docs/架构/运行时/模块/VLA运行时通道.md`：已实现的 VLA 视觉/空间运行时慢路径和无直接 authority 写权限边界。
 - `docs/架构/运行时/模块/模型服务通道.md`：模型 provider readiness、adapter 和真实调用证明边界。
 - `docs/架构/运行时/模块/Harness验证证据.md`：Harness profile 与证据产物模块文档。
+- `docs/8月分析/README.md`：基于当前实现、正式 spec/plan 与 Harness 证据的增量设计指导；其中第二阶段推进目录定义已有角色的多智能体协作边界。
+- `docs/8月分析/第二阶段推进/README.md`：`bakery-authored-agents` 的增量指导入口；正式 SDD/plan 见下方 Phase Two tree。
 - `docs/art-resource-swap-workflow.md`：美术资源替换与更新工作流手册，定义 art pack、adapter scene、runtime shell 和 binding profile 的接入方式。
 - `docs/demo-script.md`：预期 demo 节拍和可观察证明路径。
 
@@ -43,12 +45,22 @@
 - `docs/superpowers/specs/world-character-siming-authority-mainline/character-gameplay-foundation/README.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/character-gameplay-foundation/2026-07-31-coupled-event-store-and-authority-bus-design.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/character-gameplay-foundation/2026-08-03-websocket-session-identity-and-mirror-scope-design.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/README.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/2026-08-09-p2a-actor-to-gameplay-participation-design.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/2026-08-09-p2b-organization-work-lifecycle-design.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/2026-08-09-p2c-payroll-and-operating-window-design.md`
+- `docs/superpowers/specs/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/2026-08-09-p2d-authored-agents-bakery-vertical-slice-design.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/embodied-interaction-product-foundation/README.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/embodied-interaction-product-foundation/2026-08-01-atomic-action-library-and-default-scene-coverage-design.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/README.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/character-gameplay-foundation/2026-07-31-coupled-event-store-and-authority-bus-plan.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/character-gameplay-foundation/2026-08-02-stateful-patch-data-migration-plan.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/character-gameplay-foundation/2026-08-03-websocket-session-identity-and-mirror-scope-plan.md`
+- `docs/superpowers/plans/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/README.md`
+- `docs/superpowers/plans/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/2026-08-09-p2a-actor-to-gameplay-participation-implementation-plan.md`
+- `docs/superpowers/plans/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/2026-08-09-p2b-organization-work-lifecycle-implementation-plan.md`
+- `docs/superpowers/plans/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/2026-08-09-p2c-payroll-and-operating-window-implementation-plan.md`
+- `docs/superpowers/plans/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/2026-08-09-p2d-authored-agents-bakery-vertical-slice-implementation-plan.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/embodied-interaction-product-foundation/2026-08-01-atomic-action-library-and-default-scene-coverage-plan.md`
 - `docs/superpowers/plans/world-character-siming-authority-mainline/embodied-interaction-product-foundation/2026-08-04-obj-archive-door-physical-embodiment-vertical-slice-plan.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/2026-07-29-character-dialogue-streaming-design.md`

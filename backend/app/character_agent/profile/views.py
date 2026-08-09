@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Mapping
 
 from app.character_agent.profile.models import CharacterProfile
 
@@ -73,3 +74,42 @@ class ProfileConversationBiasView:
             deception_control=profile.conversation_personality_layer.deception_control,
             trust_threshold_for_private_talk=profile.conversation_personality_layer.trust_threshold_for_private_talk,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class ActorGameplayParticipationView:
+    """The profile-only part of an actor-scoped Gameplay input."""
+
+    actor_ref: str
+    profile_registry_revision: str
+    authored_identity_digest: str
+    permitted_role_refs: tuple[str, ...]
+    public_facts: Mapping[str, object]
+
+    @classmethod
+    def from_profile(
+        cls,
+        profile: CharacterProfile,
+        *,
+        profile_registry_revision: str,
+        authored_identity_digest: str,
+        permitted_role_refs: tuple[str, ...] = (),
+        public_facts: Mapping[str, object] | None = None,
+    ) -> "ActorGameplayParticipationView":
+        return cls(
+            actor_ref=f"character:{profile.identity_core.character_id}",
+            profile_registry_revision=profile_registry_revision,
+            authored_identity_digest=authored_identity_digest,
+            permitted_role_refs=permitted_role_refs,
+            public_facts=dict(public_facts or {}),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ActorGameplayScopeView:
+    actor_ref: str
+    canonical_name: str
+    occupation_role: str
+    profile_registry_revision: str
+    permitted_role_refs: tuple[str, ...]
+    allowed_intent_kinds: tuple[str, ...]

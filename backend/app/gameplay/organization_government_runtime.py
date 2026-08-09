@@ -22,6 +22,52 @@ class RoleAssignment(StrictGameplayModel):
     organization_ref: str = Field(min_length=1)
     character_ref: str = Field(pattern=r"^character:")
     role: str = Field(min_length=1)
+    assignment_ref: str | None = None
+    permitted_role_ref: str | None = None
+    authorization_revision: int = Field(default=0, ge=0)
+    status: str = "active"
+
+
+class ShiftOffer(StrictGameplayModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    shift_ref: str = Field(min_length=1)
+    assignment_ref: str = Field(min_length=1)
+    work_kind: str = Field(min_length=1)
+    operating_window_ref: str = Field(min_length=1)
+    status: str = "offered"
+
+
+class WorkOrder(StrictGameplayModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    work_order_ref: str = Field(min_length=1)
+    shift_ref: str = Field(min_length=1)
+    evidence_kind: str = Field(min_length=1)
+    status: str = "issued"
+    target_refs: tuple[str, ...] = ()
+
+
+class AttendanceEvidence(StrictGameplayModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    evidence_ref: str = Field(min_length=1)
+    actor_ref: str = Field(pattern=r"^character:")
+    assignment_ref: str = Field(min_length=1)
+    work_order_ref: str = Field(min_length=1)
+    source_ref: str = Field(min_length=1)
+    issuer_principal_ref: str = Field(min_length=1)
+    evidence_kind: str = Field(min_length=1)
+    observed_at: str = Field(min_length=1)
+    outcome: str = Field(min_length=1)
+    verification_state: str = Field(min_length=1)
+    source_digest: str = Field(min_length=1)
+
+
+class WorkerContributionRef(StrictGameplayModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    actor_ref: str = Field(pattern=r"^character:")
+    assignment_ref: str = Field(min_length=1)
+    work_order_ref: str = Field(min_length=1)
+    evidence_refs: tuple[str, ...] = ()
+    contribution_digest: str = Field(min_length=1)
 
 
 class OperatingPlan(StrictGameplayModel):
@@ -295,6 +341,21 @@ class OrganizationAuthority:
             raise ValueError("character_record_required")
         return role
 
+    @staticmethod
+    def completed_evidence(evidence: AttendanceEvidence) -> AttendanceEvidence:
+        if evidence.outcome != "completed" or evidence.verification_state != "verified":
+            raise ValueError("work_evidence_invalid")
+        expected_issuer = {
+            "production-completed": "actor_gameplay.production_domain",
+            "procurement-completed": "actor_gameplay.economy_domain",
+            "service-completed": "actor_gameplay.organization_domain",
+        }.get(evidence.evidence_kind)
+        if expected_issuer is None or evidence.issuer_principal_ref != expected_issuer:
+            raise ValueError("work_evidence_issuer_unauthorized")
+        if not evidence.source_digest.startswith("sha256:"):
+            raise ValueError("work_evidence_digest_invalid")
+        return evidence
+
     def settle_role_assignment(
         self,
         role: RoleAssignment,
@@ -324,4 +385,4 @@ class OrganizationAuthority:
         return self._store.append_batch(batch)
 
 
-__all__ = ["GovernmentAuthority", "Inspection", "OperatingPlan", "Organization", "OrganizationAuthority", "Permit", "RoleAssignment", "TaxAssessment"]
+__all__ = ["AttendanceEvidence", "GovernmentAuthority", "Inspection", "OperatingPlan", "Organization", "OrganizationAuthority", "Permit", "RoleAssignment", "ShiftOffer", "TaxAssessment", "WorkOrder", "WorkerContributionRef"]

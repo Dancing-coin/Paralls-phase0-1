@@ -60,6 +60,9 @@ class InventoryReservation:
     item_id: str
     quantity: int
     source_event_id: str
+    work_order_ref: str | None = None
+    shift_ref: str | None = None
+    reservation_context_ref: str | None = None
 
 
 @dataclass(frozen=True)

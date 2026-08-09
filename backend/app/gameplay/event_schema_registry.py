@@ -17,6 +17,15 @@ class EventSchemaRegistration:
     schema_digest: str
 
 
+PHASE2A_WORK_INTENT_EVENT_SCHEMAS = (
+    EventSchemaRegistration("gameplay.work.respond_shift", 1, "sha256:phase2a:respond_shift:v1"),
+    EventSchemaRegistration("gameplay.work.start_work", 1, "sha256:phase2a:start_work:v1"),
+    EventSchemaRegistration("gameplay.work.finish_work", 1, "sha256:phase2a:finish_work:v1"),
+    EventSchemaRegistration("gameplay.work.report_absence", 1, "sha256:phase2a:report_absence:v1"),
+    EventSchemaRegistration("gameplay.work.request_break", 1, "sha256:phase2a:request_break:v1"),
+)
+
+
 class EventSchemaRegistry:
     def __init__(self) -> None:
         self._registrations: dict[tuple[str, int], EventSchemaRegistration] = {}
@@ -85,3 +94,13 @@ class EventSchemaRegistry:
                 raise
             raise EventSchemaRegistryError("event_schema_registry_snapshot_invalid") from exc
         return registry
+
+
+def register_phase2a_work_intent_event_schemas(registry: EventSchemaRegistry) -> None:
+    for registration in PHASE2A_WORK_INTENT_EVENT_SCHEMAS:
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError as exc:
+            existing = registry.get(registration.event_type, registration.schema_version)
+            if existing != registration:
+                raise exc

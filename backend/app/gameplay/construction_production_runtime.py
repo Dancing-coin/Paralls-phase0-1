@@ -67,6 +67,10 @@ class ProductionRun(StrictGameplayModel):
     reservation_refs: tuple[str, ...] = ()
     output_item: str | None = None
     maintenance_obligation_ref: str | None = None
+    work_order_ref: str | None = None
+    shift_ref: str | None = None
+    worker_contribution_refs: tuple[str, ...] = ()
+    facility_slot_ref: str | None = None
 
 
 @dataclass(frozen=True)

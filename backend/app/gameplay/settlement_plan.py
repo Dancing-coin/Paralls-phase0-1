@@ -157,4 +157,39 @@ def build_atomic_event_batch(
     )
 
 
-__all__ = ["SettlementPlan", "build_atomic_event_batch"]
+def build_multi_stream_atomic_event_batch(
+    *,
+    command_id: str,
+    principal_ref: str,
+    expected_revisions: Mapping[str, int],
+    event_specs: Mapping[str, Sequence[tuple[str, Mapping[str, Any]]]],
+    idempotency_key: str,
+    causation_id: str,
+    correlation_id: str,
+    pinned_revisions: Mapping[str, int] | None = None,
+) -> AtomicEventBatch:
+    """Compose owner proposals into one batch without choosing domain outcomes."""
+    if not expected_revisions or set(event_specs) != set(expected_revisions):
+        raise ValueError("settlement_revision_vector_incomplete")
+    transaction_id = f"transaction:{command_id}"
+    events: list[GameplayEvent] = []
+    for stream_id in sorted(event_specs):
+        specs = event_specs[stream_id]
+        if not specs:
+            raise ValueError("settlement_events_required")
+        for index, (event_type, payload) in enumerate(specs, start=1):
+            events.append(GameplayEvent(
+                event_id=f"event:{command_id}:{stream_id}:{index}", event_type=event_type, schema_version=1,
+                stream_id=stream_id, stream_revision=0, global_sequence=0, transaction_id=transaction_id,
+                command_id=command_id, causation_id=causation_id, correlation_id=correlation_id,
+                visibility_policy="project", payload=dict(payload),
+            ))
+    digest = _digest({"command_id": command_id, "expected_revisions": dict(expected_revisions), "events": [(event.stream_id, event.event_type, event.payload) for event in events]})
+    return AtomicEventBatch(
+        transaction_id=transaction_id, command_id=command_id, expected_stream_revisions=dict(expected_revisions),
+        pinned_revisions=dict(pinned_revisions or {}), events=events,
+        idempotency_record=IdempotencyRecord(principal_ref=principal_ref, idempotency_key=idempotency_key, payload_digest=digest), result_digest=digest,
+    )
+
+
+__all__ = ["SettlementPlan", "build_atomic_event_batch", "build_multi_stream_atomic_event_batch"]

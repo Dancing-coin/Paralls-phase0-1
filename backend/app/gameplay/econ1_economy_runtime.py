@@ -9,7 +9,8 @@ from pydantic import ConfigDict, Field
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import StrictGameplayModel
-from app.gameplay.settlement_plan import build_atomic_event_batch
+from app.gameplay.settlement_plan import build_atomic_event_batch, build_multi_stream_atomic_event_batch
+from app.gameplay.economy_runtime import EconomyProjector, EconomyRuntimeError
 
 
 class MarketQuote(StrictGameplayModel):
@@ -52,6 +53,28 @@ class EconomicObligation(StrictGameplayModel):
     status: str = "due"
 
 
+class OperatingWindow(StrictGameplayModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    window_ref: str = Field(min_length=1)
+    organization_ref: str = Field(min_length=1)
+    opens_at_tick: int = Field(ge=0)
+    closes_at_tick: int = Field(ge=0)
+    policy_revision: str = Field(min_length=1)
+    source_revision: str = Field(min_length=1)
+    status: str = "planned"
+
+
+class WageAccrual(StrictGameplayModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    accrual_ref: str = Field(min_length=1)
+    organization_ref: str = Field(min_length=1)
+    payee_actor_ref: str = Field(pattern=r"^character:")
+    work_evidence_refs: tuple[str, ...] = Field(min_length=1)
+    wage_policy_revision: str = Field(min_length=1)
+    amount: float = Field(gt=0)
+    status: str = "accrued"
+
+
 class BusinessPeriod(StrictGameplayModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     period_ref: str = Field(min_length=1)
@@ -81,6 +104,97 @@ class EconomyAuthority:
             raise ValueError("quote_expired")
         if quantity > quote.quantity_limit:
             raise ValueError("quote_quantity_exhausted")
+
+    def open_window(self, window: OperatingWindow, *, command_id: str, idempotency_key: str, causation_id: str, correlation_id: str):
+        current_status = self._window_status(window.window_ref)
+        if current_status is not None:
+            raise ValueError("operating_window_already_opened")
+        if window.status not in {"planned", "open"}:
+            raise ValueError("operating_window_invalid")
+        opened = window.model_copy(update={"status": "open"})
+        return self._settle(stream_id=f"gameplay:organization:window:{window.window_ref}", command_id=command_id, idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id, event_type="gameplay.organization.operating_window_opened", payload=opened.model_dump(mode="json"), pinned_revisions={"window": 0})
+
+    def close_window(self, window: OperatingWindow, *, command_id: str, idempotency_key: str, causation_id: str, correlation_id: str):
+        if self._window_status(window.window_ref) != "open":
+            raise ValueError("operating_window_closed")
+        closed = window.model_copy(update={"status": "closed"})
+        return self._settle(stream_id=f"gameplay:organization:window:{window.window_ref}", command_id=command_id, idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id, event_type="gameplay.organization.operating_window_closed", payload=closed.model_dump(mode="json"), pinned_revisions={"window": 0})
+
+    def evaluate_due(self, window: OperatingWindow, *, command_id: str, idempotency_key: str, causation_id: str, correlation_id: str):
+        if self._window_status(window.window_ref) != "closed":
+            raise ValueError("operating_window_open")
+        return self._settle(stream_id=f"gameplay:organization:window:{window.window_ref}", command_id=command_id, idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id, event_type="gameplay.organization.due_evaluation_recorded", payload={"window_ref": window.window_ref}, pinned_revisions={"window": 0})
+
+    def accrue_wage(self, accrual: WageAccrual, *, completed_evidence_refs: set[str], command_id: str, idempotency_key: str, causation_id: str, correlation_id: str):
+        if not set(accrual.work_evidence_refs).issubset(completed_evidence_refs):
+            raise ValueError("work_evidence_invalid")
+        return self._settle(stream_id=f"gameplay:economy:wage:{accrual.payee_actor_ref}", command_id=command_id, idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id, event_type="gameplay.economy.wage_accrued", payload=accrual.model_dump(mode="json"), pinned_revisions={"wage": 1})
+
+    def mark_overdue(self, accrual: WageAccrual, *, command_id: str, idempotency_key: str, causation_id: str, correlation_id: str):
+        overdue = accrual.model_copy(update={"status": "overdue"})
+        return self._settle(stream_id=f"gameplay:economy:wage:{accrual.payee_actor_ref}", command_id=command_id, idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id, event_type="gameplay.economy.wage_overdue", payload=overdue.model_dump(mode="json"), pinned_revisions={"wage": 1})
+
+    def pay_wage(
+        self,
+        accrual: WageAccrual,
+        *,
+        payer_account_id: str,
+        payee_account_id: str,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ):
+        """Commit wage payment and account transfer as one multi-stream batch."""
+        if accrual.status not in {"accrued", "due"}:
+            raise ValueError("wage_payment_invalid_status")
+        amount = int(accrual.amount)
+        if amount != accrual.amount or amount <= 0:
+            raise ValueError("wage_amount_not_integral")
+        projection = EconomyProjector().rebuild(self._store.read_events())
+        payer = projection.accounts.get(payer_account_id)
+        payee = projection.accounts.get(payee_account_id)
+        if payer is None or payee is None or payer.currency_ref != payee.currency_ref:
+            raise EconomyRuntimeError("economy_account_invalid")
+        if payer.balance < amount:
+            raise EconomyRuntimeError("economy_insufficient_funds")
+        wage_stream = f"gameplay:economy:wage:{accrual.payee_actor_ref}"
+        account_stream = "gameplay:economy"
+        batch = build_multi_stream_atomic_event_batch(
+            command_id=command_id,
+            principal_ref=self._PRINCIPAL,
+            expected_revisions={
+                wage_stream: self._store.get_stream_head(wage_stream),
+                account_stream: projection.source_revision_vector.get(account_stream, 0),
+            },
+            event_specs={
+                account_stream: [
+                    ("gameplay.economy.account_debited", {"account_id": payer_account_id, "amount": amount}),
+                    ("gameplay.economy.account_credited", {"account_id": payee_account_id, "amount": amount}),
+                ],
+                wage_stream: [("gameplay.economy.wage_paid", {
+                    **accrual.model_dump(mode="json"),
+                    "status": "paid",
+                    "payer_account_id": payer_account_id,
+                    "payee_account_id": payee_account_id,
+                })],
+            },
+            idempotency_key=idempotency_key,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            pinned_revisions={"wage": 1, "economy": projection.source_revision_vector.get(account_stream, 0)},
+        )
+        return self._store.append_batch(batch)
+
+    def _window_status(self, window_ref: str) -> str | None:
+        stream_id = f"gameplay:organization:window:{window_ref}"
+        status: str | None = None
+        for event in self._store.read_stream(stream_id):
+            if event.event_type.endswith("operating_window_opened"):
+                status = "open"
+            elif event.event_type.endswith("operating_window_closed"):
+                status = "closed"
+        return status
 
     @staticmethod
     def close_period(period: BusinessPeriod) -> BusinessPeriod:
@@ -268,4 +382,4 @@ class EconomyAuthority:
         return store.append_batch(batch)
 
 
-__all__ = ["BusinessPeriod", "EconomicObligation", "EconomyAuthority", "MarketQuote", "PurchasePosting", "SalePosting"]
+__all__ = ["BusinessPeriod", "EconomicObligation", "EconomyAuthority", "MarketQuote", "OperatingWindow", "PurchasePosting", "SalePosting", "WageAccrual"]

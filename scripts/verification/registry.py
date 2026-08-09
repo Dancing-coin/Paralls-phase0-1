@@ -40,6 +40,7 @@ def load_profile_registry(project_root: Path) -> ProfileRegistry:
     profile_order = [
         str(profile["name"])
         for profile in sorted(profiles.values(), key=lambda payload: int(payload.get("order", 0)))
+        if bool(profile.get("include_in_profile_order", True))
     ]
     return ProfileRegistry(profiles=profiles, profile_order=profile_order)
 
