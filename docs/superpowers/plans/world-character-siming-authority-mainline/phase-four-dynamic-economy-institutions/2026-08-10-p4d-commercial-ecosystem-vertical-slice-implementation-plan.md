@@ -1,6 +1,6 @@
 # P4D Commercial Ecosystem Vertical Slice Implementation Plan
 
-Status: `design-only; implementation not authorized`
+Status: `implemented-and-verified; focused Harness fresh on 2026-08-11`
 
 1. Require fresh P4A-C, P3D and P2/P1D reports.
 2. Assemble fixtures only from existing profile, organization, inventory,

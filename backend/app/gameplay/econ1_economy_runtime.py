@@ -8,7 +8,7 @@ import json
 from pydantic import ConfigDict, Field
 
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.models import StrictGameplayModel
+from app.gameplay.models import OwnerAuthorizedFragment, StrictGameplayModel
 from app.gameplay.settlement_plan import build_atomic_event_batch, build_multi_stream_atomic_event_batch
 from app.gameplay.economy_runtime import EconomyProjector, EconomyRuntimeError
 
@@ -97,6 +97,48 @@ class EconomyAuthority:
 
     def __init__(self, *, store: GameplayEventStore) -> None:
         self._store = store
+
+    @classmethod
+    def build_commerce_wage_accrual_fragment(
+        cls,
+        *,
+        commitment_ref: str,
+        organization_ref: str,
+        worker_ref: str,
+        wage_obligation_ref: str,
+        work_evidence_refs: tuple[str, ...],
+        wage_amount_minor: int,
+        wage_policy_revision: str,
+        expected_revision: int,
+    ) -> OwnerAuthorizedFragment:
+        """Economy-owned labor consequence; commerce only references the contract."""
+        if not work_evidence_refs or wage_amount_minor <= 0 or not worker_ref.startswith("character:"):
+            raise ValueError("commerce_wage_accrual_invalid")
+        stream_id = f"gameplay:economy:wage:{worker_ref}"
+        return OwnerAuthorizedFragment(
+            fragment_id=f"fragment:economy:wage:{commitment_ref}:{worker_ref}",
+            owner_principal_ref=cls._PRINCIPAL,
+            source_rule_ref="economy:commerce-labor-accrual",
+            expected_revisions={stream_id: expected_revision},
+            pinned_revisions={f"wage:{worker_ref}": expected_revision},
+            event_specs={
+                stream_id: (
+                    (
+                        "gameplay.economy.wage_accrued",
+                        {
+                            "accrual_ref": wage_obligation_ref,
+                            "commitment_ref": commitment_ref,
+                            "organization_ref": organization_ref,
+                            "payee_actor_ref": worker_ref,
+                            "work_evidence_refs": work_evidence_refs,
+                            "wage_policy_revision": wage_policy_revision,
+                            "amount": wage_amount_minor,
+                            "status": "accrued",
+                        },
+                    ),
+                )
+            },
+        )
 
     @staticmethod
     def validate_quote(quote: MarketQuote, *, tick: int, quantity: int) -> None:
@@ -379,7 +421,6 @@ class EconomyAuthority:
             causation_id=f"causation:{command_id}",
             correlation_id=f"correlation:{organization_ref}:{period.sequence}",
         )
-        return store.append_batch(batch)
 
 
 __all__ = ["BusinessPeriod", "EconomicObligation", "EconomyAuthority", "MarketQuote", "OperatingWindow", "PurchasePosting", "SalePosting", "WageAccrual"]

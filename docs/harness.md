@@ -24,6 +24,17 @@ python scripts/verification/harness.py --profile phase2a-actor-to-gameplay-parti
 python scripts/verification/harness.py --profile phase2b-organization-work-lifecycle
 python scripts/verification/harness.py --profile phase2c-payroll-operating-window
 python scripts/verification/harness.py --profile phase2-bakery-authored-agents
+python scripts/verification/harness.py --profile phase4a-dynamic-quote-clearing
+python scripts/verification/harness.py --profile phase4b-multi-organization-commerce
+python scripts/verification/harness.py --profile phase4c-government-credit
+python scripts/verification/harness.py --profile phase4d-commercial-ecosystem
+
+### Phase Four Profiles
+
+- `phase4a-dynamic-quote-clearing`
+- `phase4b-multi-organization-commerce`
+- `phase4c-government-credit`
+- `phase4d-commercial-ecosystem`
 python scripts/verification/harness.py --profile siming-backend-chain
 python scripts/verification/harness.py --profile character-model-live
 python scripts/verification/harness.py --profile llm-integration-closure

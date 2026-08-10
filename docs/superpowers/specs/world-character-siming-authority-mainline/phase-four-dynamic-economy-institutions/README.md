@@ -1,6 +1,6 @@
 # Phase Four Dynamic Economy And Institutions Specification Tree
 
-Status: `design-only; implementation not authorized`
+Status: `implemented-and-verified; P4A-P4D focused Harness evidence fresh on 2026-08-11`
 
 Date: `2026-08-10`
 

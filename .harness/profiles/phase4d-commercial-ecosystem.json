@@ -1,0 +1,1 @@
+{"schema_version":1,"name":"phase4d-commercial-ecosystem","order":121,"include_in_profile_order":false,"script":"scripts/verification/verify_phase4d_commercial_ecosystem.py","requires_godot":false,"max_attempts":1,"result_artifact":".harness/verification/phase4d-commercial-ecosystem-report.json","description":"P4 commercial ecosystem vertical-slice replay and redaction evidence"}

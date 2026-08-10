@@ -36,6 +36,36 @@ class IdempotencyRecord(StrictGameplayModel):
     payload_digest: str = Field(min_length=1)
 
 
+class OwnerAuthorizedFragment(StrictGameplayModel):
+    """A pre-validated slice of a cross-domain settlement from its fact owner.
+
+    Fragments are proposal data, not a second writer.  The existing event
+    store receives exactly one merged ``AtomicEventBatch`` and retains these
+    records only as auditable owner provenance.
+    """
+
+    fragment_id: str = Field(min_length=1)
+    owner_principal_ref: str = Field(min_length=1)
+    source_rule_ref: str = Field(min_length=1)
+    expected_revisions: dict[str, int] = Field(min_length=1)
+    event_specs: dict[str, tuple[tuple[str, dict[str, Any]], ...]] = Field(min_length=1)
+    pinned_revisions: dict[str, int] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_owner_fragment(self) -> "OwnerAuthorizedFragment":
+        if set(self.expected_revisions) != set(self.event_specs):
+            raise ValueError("settlement_fragment_revision_vector_incomplete")
+        if any(revision < 0 or isinstance(revision, bool) for revision in self.expected_revisions.values()):
+            raise ValueError("settlement_fragment_revision_invalid")
+        if any(
+            not event_type or not isinstance(payload, dict)
+            for events in self.event_specs.values()
+            for event_type, payload in events
+        ) or any(not events for events in self.event_specs.values()):
+            raise ValueError("settlement_fragment_events_required")
+        return self
+
+
 class GameplayEvent(StrictGameplayModel):
     event_id: str = Field(min_length=1)
     event_type: str = Field(min_length=1)
@@ -77,6 +107,7 @@ class AtomicEventBatch(StrictGameplayModel):
     pinned_revisions: dict[str, int] = Field(default_factory=dict)
     events: list[GameplayEvent] = Field(min_length=1)
     idempotency_record: IdempotencyRecord
+    owner_fragments: list[OwnerAuthorizedFragment] = Field(default_factory=list)
     outbox_entries: list[GameplayOutboxEntry] = Field(default_factory=list)
     result_digest: str = Field(min_length=1)
     projection_refresh_hints: list[ProjectionRefreshHint] = Field(default_factory=list)

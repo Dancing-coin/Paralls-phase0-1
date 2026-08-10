@@ -9,7 +9,7 @@ from types import MappingProxyType
 from typing import Mapping, Sequence
 
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.models import AppendBatchResult, GameplayEvent
+from app.gameplay.models import AppendBatchResult, GameplayEvent, OwnerAuthorizedFragment
 
 
 class InventoryRuntimeError(ValueError):
@@ -66,6 +66,20 @@ class InventoryReservation:
 
 
 @dataclass(frozen=True)
+class CommerceCapacityReservation:
+    """A bounded delivery/output slot owned by Inventory/Production.
+
+    This is deliberately a reservation reference, not a scheduler or a
+    generalized production plan.  P4 only needs a current, owner-backed
+    quantity that a clearing authority can revalidate.
+    """
+
+    capacity_reservation_ref: str
+    available_quantity: int
+    source_event_id: str
+
+
+@dataclass(frozen=True)
 class InventoryContainer:
     container_id: str
     capacity_weight: int
@@ -87,6 +101,7 @@ class InventoryProjection:
     source_revision_vector: Mapping[str, int]
     projection_revision: str
     reservations: Mapping[str, InventoryReservation] = field(default_factory=dict)
+    capacity_reservations: Mapping[str, CommerceCapacityReservation] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -144,6 +159,7 @@ class InventoryProjector:
         containers: dict[str, InventoryContainer] = {}
         locations: dict[str, str] = {}
         reservations: dict[str, InventoryReservation] = {}
+        capacity_reservations: dict[str, CommerceCapacityReservation] = {}
         reserved_quantities: dict[str, int] = {}
         revisions: dict[str, int] = {}
         for event in sorted(events, key=lambda item: (item.global_sequence, item.event_id)):
@@ -282,6 +298,20 @@ class InventoryProjector:
                     raise InventoryRuntimeError("inventory_reservation_unknown")
                 reserved_quantities[reservation.item_id] = reserved_total
                 items[reservation.item_id] = InventoryItem(item.item_id, item.definition_id, item.quantity, item.source_event_id, reserved_total)
+            elif event.event_type == "gameplay.inventory.commerce_capacity_reserved":
+                capacity_reservation_ref = _text(payload, "capacity_reservation_ref")
+                if capacity_reservation_ref in capacity_reservations:
+                    raise InventoryRuntimeError("inventory_capacity_reservation_duplicate")
+                capacity_reservations[capacity_reservation_ref] = CommerceCapacityReservation(
+                    capacity_reservation_ref,
+                    _positive(payload, "available_quantity"),
+                    event.event_id,
+                )
+            elif event.event_type == "gameplay.inventory.commerce_capacity_released":
+                capacity_reservation_ref = _text(payload, "capacity_reservation_ref")
+                if capacity_reservation_ref not in capacity_reservations:
+                    raise InventoryRuntimeError("inventory_capacity_reservation_unknown")
+                capacity_reservations.pop(capacity_reservation_ref)
             else:
                 continue
             revisions[event.stream_id] = max(revisions.get(event.stream_id, 0), event.stream_revision)
@@ -289,8 +319,18 @@ class InventoryProjector:
         frozen_containers = MappingProxyType(dict(sorted(containers.items())))
         frozen_locations = MappingProxyType(dict(sorted(locations.items())))
         frozen_reservations = MappingProxyType(dict(sorted(reservations.items())))
+        frozen_capacity_reservations = MappingProxyType(dict(sorted(capacity_reservations.items())))
         frozen_revisions = MappingProxyType(dict(sorted(revisions.items())))
-        return InventoryProjection(actor_ref, frozen_items, frozen_containers, frozen_locations, frozen_revisions, f"inventory:{_digest([actor_ref, frozen_items, frozen_containers, frozen_locations, frozen_reservations, frozen_revisions])[:16]}", frozen_reservations)
+        return InventoryProjection(
+            actor_ref,
+            frozen_items,
+            frozen_containers,
+            frozen_locations,
+            frozen_revisions,
+            f"inventory:{_digest([actor_ref, frozen_items, frozen_containers, frozen_locations, frozen_reservations, frozen_capacity_reservations, frozen_revisions])[:16]}",
+            frozen_reservations,
+            frozen_capacity_reservations,
+        )
 
     def rebuild_encumbrance(
         self,
@@ -387,6 +427,108 @@ class InventoryAuthorityService:
         self._store = store
         self._registry = registry
         self._projector = InventoryProjector(registry)
+
+    def build_commerce_custody_fragment(
+        self,
+        *,
+        seller_actor_ref: str,
+        commitment_ref: str,
+        custody_refs: tuple[str, ...],
+        capacity_reservation_refs: tuple[str, ...],
+        delivery_window_ref: str,
+        expected_revision: int,
+        policy_revision: str,
+    ) -> OwnerAuthorizedFragment:
+        """Inventory-owned reservation proposal for the P4 commerce batch."""
+        if not seller_actor_ref or not custody_refs or not delivery_window_ref:
+            raise InventoryRuntimeError("commerce_inventory_reference_invalid")
+        if any(not ref.startswith(("reservation:", "custody:")) for ref in custody_refs):
+            raise InventoryRuntimeError("commerce_inventory_custody_invalid")
+        if any(not ref.startswith("capacity:") for ref in capacity_reservation_refs):
+            raise InventoryRuntimeError("commerce_inventory_capacity_invalid")
+        stream_id = f"gameplay:inventory:{seller_actor_ref}"
+        projection = self._projector.rebuild(seller_actor_ref, self._store.read_events())
+        if projection.source_revision_vector.get(stream_id, 0) != expected_revision:
+            raise InventoryRuntimeError("revision_conflict")
+        missing_custody = [
+            ref for ref in custody_refs
+            if ref.startswith("reservation:") and ref not in projection.reservations
+        ]
+        if missing_custody:
+            raise InventoryRuntimeError("commerce_inventory_custody_missing")
+        if any(ref not in projection.capacity_reservations for ref in capacity_reservation_refs):
+            raise InventoryRuntimeError("commerce_inventory_capacity_missing")
+        return OwnerAuthorizedFragment(
+            fragment_id=f"fragment:inventory:commerce:{seller_actor_ref}:{commitment_ref}",
+            owner_principal_ref=self._PRINCIPAL,
+            source_rule_ref="inventory:commerce-custody-reservation",
+            expected_revisions={stream_id: expected_revision},
+            pinned_revisions={f"inventory:{seller_actor_ref}": expected_revision},
+            event_specs={
+                stream_id: (
+                    (
+                        "gameplay.inventory.custody_reserved_for_commerce",
+                        {
+                            "commitment_ref": commitment_ref,
+                            "actor_ref": seller_actor_ref,
+                            "custody_refs": custody_refs,
+                            "capacity_reservation_refs": capacity_reservation_refs,
+                            "delivery_window_ref": delivery_window_ref,
+                            "policy_revision": policy_revision,
+                        },
+                    ),
+                )
+            },
+        )
+
+    def build_commerce_delivery_fragment(
+        self,
+        *,
+        seller_actor_ref: str,
+        delivery_ref: str,
+        commitment_ref: str,
+        status: str,
+        delivered_quantity: int,
+        quality_evidence_ref: str,
+        delivery_window_ref: str,
+        reason: str | None,
+        expected_revision: int,
+        policy_revision: str,
+    ) -> OwnerAuthorizedFragment:
+        if status not in {"delivered", "rejected", "cancelled"} or delivered_quantity < 0 or not quality_evidence_ref:
+            raise InventoryRuntimeError("commerce_delivery_invalid")
+        stream_id = f"gameplay:inventory:{seller_actor_ref}"
+        if self._store.get_stream_head(stream_id) != expected_revision:
+            raise InventoryRuntimeError("revision_conflict")
+        event_type = {
+            "delivered": "gameplay.inventory.delivery_committed",
+            "rejected": "gameplay.inventory.delivery_rejected",
+            "cancelled": "gameplay.inventory.delivery_cancelled",
+        }[status]
+        return OwnerAuthorizedFragment(
+            fragment_id=f"fragment:inventory:delivery:{seller_actor_ref}:{delivery_ref}",
+            owner_principal_ref=self._PRINCIPAL,
+            source_rule_ref="inventory:commerce-delivery",
+            expected_revisions={stream_id: expected_revision},
+            pinned_revisions={f"inventory:{seller_actor_ref}": expected_revision},
+            event_specs={
+                stream_id: (
+                    (
+                        event_type,
+                        {
+                            "delivery_ref": delivery_ref,
+                            "commitment_ref": commitment_ref,
+                            "actor_ref": seller_actor_ref,
+                            "delivered_quantity": delivered_quantity,
+                            "quality_evidence_ref": quality_evidence_ref,
+                            "delivery_window_ref": delivery_window_ref,
+                            "reason": reason,
+                            "policy_revision": policy_revision,
+                        },
+                    ),
+                )
+            },
+        )
 
     def create_container(self, *, command_id: str, actor_ref: str, spec: ContainerSpec, idempotency_key: str, causation_id: str, correlation_id: str) -> AppendBatchResult:
         projection = self._projector.rebuild(actor_ref, self._store.read_events())
@@ -502,6 +644,42 @@ class InventoryAuthorityService:
                 "result_digest": _digest(serialized),
                 "projection_refresh_hints": [],
             }
+        )
+
+    def reserve_commerce_capacity(
+        self,
+        *,
+        command_id: str,
+        actor_ref: str,
+        capacity_reservation_ref: str,
+        available_quantity: int,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ) -> AppendBatchResult:
+        """Record a narrow Inventory/Production-owned capacity reservation."""
+        projection = self._projector.rebuild(actor_ref, self._store.read_events())
+        if (
+            not capacity_reservation_ref.startswith("capacity:")
+            or available_quantity <= 0
+            or capacity_reservation_ref in projection.capacity_reservations
+        ):
+            raise InventoryRuntimeError("inventory_capacity_reservation_invalid")
+        return self._append(
+            command_id,
+            actor_ref,
+            [
+                (
+                    "gameplay.inventory.commerce_capacity_reserved",
+                    {
+                        "capacity_reservation_ref": capacity_reservation_ref,
+                        "available_quantity": available_quantity,
+                    },
+                )
+            ],
+            idempotency_key,
+            causation_id,
+            correlation_id,
         )
 
     def consume_reservation(

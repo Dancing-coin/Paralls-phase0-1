@@ -1,6 +1,6 @@
 # P4A Dynamic Quote And Deterministic Clearing Implementation Plan
 
-Status: `design-only; implementation not authorized`
+Status: `implemented-and-verified; focused Harness fresh on 2026-08-11`
 
 1. Re-run P3D and write quote lifecycle, integer rounding, expiry, stock race,
    cancellation, stale-revision and zero-write tests first.

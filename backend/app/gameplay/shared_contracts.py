@@ -293,7 +293,7 @@ class SettlementPlan(StrictGameplayModel):
     command_id: str = Field(min_length=1)
     expected_revision_vector: dict[str, int] = Field(default_factory=dict)
     proposals: tuple[EffectProposal, ...] = Field(default_factory=tuple)
-    event_mapping: dict[str, str] = Field(default_factory=dict)
+    event_mapping: dict[str, str | tuple[str, ...]] = Field(default_factory=dict)
     idempotency_key: str = Field(min_length=1)
     causation_id: str = Field(min_length=1)
     correlation_id: str = Field(min_length=1)

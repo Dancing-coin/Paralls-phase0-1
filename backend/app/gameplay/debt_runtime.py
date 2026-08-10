@@ -38,6 +38,7 @@ class DebtClaim:
     outstanding_amount: int
     status: str
     source_event_id: str
+    due_tick: int | None = None
 
 
 @dataclass(frozen=True)
@@ -77,6 +78,8 @@ class DebtProjector:
         "gameplay.contract.simple_debt_reopened",
         "gameplay.contract.simple_debt_cancellation_reversed",
         "gameplay.debt.claim_issued",
+        "gameplay.debt.claim_overdue",
+        "gameplay.debt.claim_defaulted",
         "gameplay.debt.payment_applied",
         "gameplay.debt.payment_corrected",
         "gameplay.debt.claim_satisfied",
@@ -146,6 +149,9 @@ class DebtProjector:
                     raise DebtRuntimeError("economy_debt_invalid")
                 if contract.creditor_ref != _text(payload, "creditor_ref") or contract.debtor_ref != _text(payload, "debtor_ref") or contract.currency_ref != _text(payload, "currency_ref"):
                     raise DebtRuntimeError("economy_debt_contract_mismatch")
+                due_tick = payload.get("due_tick")
+                if due_tick is not None:
+                    due_tick = _nonnegative(payload, "due_tick")
                 claims[debt_id] = DebtClaim(
                     debt_id=debt_id,
                     contract_id=contract_id,
@@ -156,14 +162,31 @@ class DebtProjector:
                     outstanding_amount=principal_amount,
                     status="active",
                     source_event_id=event.event_id,
+                    due_tick=due_tick,
                 )
             elif event.event_type == "gameplay.debt.payment_applied":
                 debt_id = _text(payload, "debt_id")
                 claim = claims.get(debt_id)
                 amount = _positive(payload, "amount")
-                if claim is None or claim.status != "active" or amount > claim.outstanding_amount:
+                if claim is None or claim.status not in {"active", "overdue"} or amount > claim.outstanding_amount:
                     raise DebtRuntimeError("economy_payment_exceeds_outstanding")
                 claims[debt_id] = DebtClaim(**{**claim.__dict__, "outstanding_amount": claim.outstanding_amount - amount, "source_event_id": event.event_id})
+            elif event.event_type == "gameplay.debt.claim_overdue":
+                debt_id = _text(payload, "debt_id")
+                claim = claims.get(debt_id)
+                due_tick = _nonnegative(payload, "due_tick")
+                overdue_tick = _nonnegative(payload, "overdue_tick")
+                if claim is None or claim.status != "active" or overdue_tick <= due_tick:
+                    raise DebtRuntimeError("economy_debt_not_overdue")
+                claims[debt_id] = DebtClaim(**{**claim.__dict__, "status": "overdue", "source_event_id": event.event_id})
+            elif event.event_type == "gameplay.debt.claim_defaulted":
+                debt_id = _text(payload, "debt_id")
+                claim = claims.get(debt_id)
+                due_tick = _nonnegative(payload, "due_tick")
+                default_tick = _nonnegative(payload, "default_tick")
+                if claim is None or claim.status != "overdue" or claim.due_tick != due_tick or default_tick <= due_tick:
+                    raise DebtRuntimeError("economy_debt_default_invalid")
+                claims[debt_id] = DebtClaim(**{**claim.__dict__, "status": "defaulted", "source_event_id": event.event_id})
             elif event.event_type == "gameplay.debt.payment_corrected":
                 debt_id = _text(payload, "debt_id")
                 original_payment_record_id = _text(payload, "original_payment_record_id")
@@ -180,7 +203,7 @@ class DebtProjector:
             elif event.event_type == "gameplay.debt.claim_satisfied":
                 debt_id = _text(payload, "debt_id")
                 claim = claims.get(debt_id)
-                if claim is None or claim.status != "active" or claim.outstanding_amount != 0:
+                if claim is None or claim.status not in {"active", "overdue"} or claim.outstanding_amount != 0:
                     raise DebtRuntimeError("economy_debt_not_active")
                 claims[debt_id] = DebtClaim(**{**claim.__dict__, "status": "satisfied", "source_event_id": event.event_id})
             elif event.event_type == "gameplay.debt.claim_reopened":
@@ -207,7 +230,7 @@ class DebtProjector:
             elif event.event_type == "gameplay.debt.claim_cancelled":
                 debt_id = _text(payload, "debt_id")
                 claim = claims.get(debt_id)
-                if claim is None or claim.status != "active":
+                if claim is None or claim.status not in {"active", "overdue"}:
                     raise DebtRuntimeError("economy_debt_not_active")
                 _text(payload, "authority_ref")
                 _text(payload, "reason")
@@ -288,6 +311,7 @@ class DebtAuthorityService:
         debtor_account_id: str,
         currency_ref: str,
         principal_amount: int,
+        due_tick: int | None = None,
         idempotency_key: str,
         causation_id: str,
         correlation_id: str,
@@ -303,12 +327,13 @@ class DebtAuthorityService:
             "debtor_account_id": debtor_account_id,
             "currency_ref": currency_ref,
             "principal_amount": principal_amount,
+            "due_tick": due_tick,
         }
         digest = _digest(command)
         duplicate = self._duplicate(idempotency_key, digest)
         if duplicate is not None:
             return duplicate
-        if not all((contract_id, debt_id, creditor_ref, debtor_ref, creditor_account_id, debtor_account_id, currency_ref)) or creditor_ref == debtor_ref or creditor_account_id == debtor_account_id or principal_amount <= 0:
+        if not all((contract_id, debt_id, creditor_ref, debtor_ref, creditor_account_id, debtor_account_id, currency_ref)) or creditor_ref == debtor_ref or creditor_account_id == debtor_account_id or principal_amount <= 0 or (due_tick is not None and (isinstance(due_tick, bool) or due_tick < 0)):
             raise DebtRuntimeError("economy_debt_invalid")
         events = self._store.read_events()
         projection = self._debt_projector.rebuild(events)
@@ -329,7 +354,7 @@ class DebtAuthorityService:
             self._event(command_id, 1, "gameplay.economy.account_debited", self._ECONOMY_STREAM, transaction_id, causation_id, correlation_id, {"account_id": creditor_account_id, "amount": principal_amount}),
             self._event(command_id, 2, "gameplay.economy.account_credited", self._ECONOMY_STREAM, transaction_id, causation_id, correlation_id, {"account_id": debtor_account_id, "amount": principal_amount}),
             self._event(command_id, 3, "gameplay.contract.simple_debt_created", self._CONTRACT_STREAM, transaction_id, causation_id, correlation_id, {"contract_id": contract_id, "creditor_ref": creditor_ref, "debtor_ref": debtor_ref, "currency_ref": currency_ref}),
-            self._event(command_id, 4, "gameplay.debt.claim_issued", self._DEBT_STREAM, transaction_id, causation_id, correlation_id, {"debt_id": debt_id, "contract_id": contract_id, "creditor_ref": creditor_ref, "debtor_ref": debtor_ref, "currency_ref": currency_ref, "principal_amount": principal_amount}),
+            self._event(command_id, 4, "gameplay.debt.claim_issued", self._DEBT_STREAM, transaction_id, causation_id, correlation_id, {"debt_id": debt_id, "contract_id": contract_id, "creditor_ref": creditor_ref, "debtor_ref": debtor_ref, "currency_ref": currency_ref, "principal_amount": principal_amount, **({"due_tick": due_tick} if due_tick is not None else {})}),
             self._event(command_id, 5, "gameplay.commerce.debt_issued_settled", self._COMMERCE_STREAM, transaction_id, causation_id, correlation_id, {"record_id": f"debt-issue:{command_id}", "debt_id": debt_id, "principal_amount": principal_amount}),
         ]
         return self._append(command_id, idempotency_key, digest, batch_events, revisions)
@@ -361,7 +386,7 @@ class DebtAuthorityService:
         events = self._store.read_events()
         projection = self._debt_projector.rebuild(events)
         claim = projection.claims.get(debt_id)
-        if claim is None or claim.status != "active":
+        if claim is None or claim.status not in {"active", "overdue"}:
             raise DebtRuntimeError("economy_debt_not_active")
         if amount <= 0 or amount > claim.outstanding_amount:
             raise DebtRuntimeError("economy_payment_exceeds_outstanding")
@@ -431,6 +456,84 @@ class DebtAuthorityService:
             self._event(command_id, 3, "gameplay.commerce.debt_cancelled_settled", self._COMMERCE_STREAM, transaction_id, causation_id, correlation_id, {"record_id": f"debt-cancel:{command_id}", "debt_id": debt_id, "amount": 0, "cancelled_outstanding_amount": claim.outstanding_amount, "authority_ref": authority_ref, "reason": reason}),
         ]
         return self._append(command_id, idempotency_key, digest, events, self._revisions())
+
+    def mark_debt_overdue(
+        self,
+        *,
+        command_id: str,
+        debt_id: str,
+        due_tick: int,
+        overdue_tick: int,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ) -> AppendBatchResult:
+        command = {
+            "kind": "mark_debt_overdue",
+            "command_id": command_id,
+            "debt_id": debt_id,
+            "due_tick": due_tick,
+            "overdue_tick": overdue_tick,
+        }
+        digest = _digest(command)
+        duplicate = self._duplicate(idempotency_key, digest)
+        if duplicate is not None:
+            return duplicate
+        claim = self._debt_projector.rebuild(self._store.read_events()).claims.get(debt_id)
+        if not debt_id or due_tick < 0 or overdue_tick <= due_tick or claim is None or claim.status != "active":
+            raise DebtRuntimeError("economy_debt_not_overdue")
+        if claim.due_tick is None or claim.due_tick != due_tick:
+            raise DebtRuntimeError("economy_debt_due_tick_mismatch")
+        event = self._event(
+            command_id,
+            1,
+            "gameplay.debt.claim_overdue",
+            self._DEBT_STREAM,
+            f"tx:{command_id}",
+            causation_id,
+            correlation_id,
+            {"debt_id": debt_id, "due_tick": due_tick, "overdue_tick": overdue_tick},
+        )
+        return self._append(command_id, idempotency_key, digest, [event], self._revisions())
+
+    def mark_debt_default(
+        self,
+        *,
+        command_id: str,
+        debt_id: str,
+        due_tick: int,
+        default_tick: int,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ) -> AppendBatchResult:
+        command = {
+            "kind": "mark_debt_default",
+            "command_id": command_id,
+            "debt_id": debt_id,
+            "due_tick": due_tick,
+            "default_tick": default_tick,
+        }
+        digest = _digest(command)
+        duplicate = self._duplicate(idempotency_key, digest)
+        if duplicate is not None:
+            return duplicate
+        claim = self._debt_projector.rebuild(self._store.read_events()).claims.get(debt_id)
+        if not debt_id or due_tick < 0 or default_tick <= due_tick or claim is None or claim.status != "overdue":
+            raise DebtRuntimeError("economy_debt_default_invalid")
+        if claim.due_tick is None or claim.due_tick != due_tick:
+            raise DebtRuntimeError("economy_debt_due_tick_mismatch")
+        event = self._event(
+            command_id,
+            1,
+            "gameplay.debt.claim_defaulted",
+            self._DEBT_STREAM,
+            f"tx:{command_id}",
+            causation_id,
+            correlation_id,
+            {"debt_id": debt_id, "due_tick": due_tick, "default_tick": default_tick},
+        )
+        return self._append(command_id, idempotency_key, digest, [event], self._revisions())
 
     def reverse_debt_cancellation_by_policy(
         self,

@@ -1,6 +1,6 @@
 # P4A Dynamic Quote And Deterministic Clearing
 
-Status: `design-only; implementation not authorized`
+Status: `implemented-and-verified; matching focused Harness evidence fresh on 2026-08-11`
 
 ## Purpose
 

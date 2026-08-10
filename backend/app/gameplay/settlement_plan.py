@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
-from app.gameplay.models import AtomicEventBatch, GameplayEvent, IdempotencyRecord
+from app.gameplay.models import AtomicEventBatch, GameplayEvent, IdempotencyRecord, OwnerAuthorizedFragment
 from app.gameplay.shared_contracts import GameplayCommandEnvelope, Reservation
 
 
@@ -192,4 +192,49 @@ def build_multi_stream_atomic_event_batch(
     )
 
 
-__all__ = ["SettlementPlan", "build_atomic_event_batch", "build_multi_stream_atomic_event_batch"]
+def build_multi_stream_atomic_event_batch_from_fragments(
+    *,
+    command_id: str,
+    idempotency_principal_ref: str,
+    idempotency_key: str,
+    causation_id: str,
+    correlation_id: str,
+    fragments: Sequence[OwnerAuthorizedFragment],
+) -> AtomicEventBatch:
+    """Merge disjoint owner-authorized proposals into the one existing append path."""
+    if not fragments:
+        raise ValueError("settlement_fragments_required")
+    expected_revisions: dict[str, int] = {}
+    event_specs: dict[str, Sequence[tuple[str, Mapping[str, Any]]]] = {}
+    pinned_revisions: dict[str, int] = {}
+    for fragment in sorted(fragments, key=lambda item: item.fragment_id):
+        overlap = set(expected_revisions) & set(fragment.expected_revisions)
+        if overlap:
+            raise ValueError("settlement_fragment_stream_overlap")
+        expected_revisions.update(fragment.expected_revisions)
+        event_specs.update(fragment.event_specs)
+        for pin, revision in fragment.pinned_revisions.items():
+            prior = pinned_revisions.get(pin)
+            if prior is not None and prior != revision:
+                raise ValueError("settlement_fragment_pin_conflict")
+            pinned_revisions[pin] = revision
+    batch = build_multi_stream_atomic_event_batch(
+        command_id=command_id,
+        principal_ref=idempotency_principal_ref,
+        expected_revisions=expected_revisions,
+        event_specs=event_specs,
+        idempotency_key=idempotency_key,
+        causation_id=causation_id,
+        correlation_id=correlation_id,
+        pinned_revisions=pinned_revisions,
+    )
+    return batch.model_copy(update={"owner_fragments": list(sorted(fragments, key=lambda item: item.fragment_id))}, deep=True)
+
+
+__all__ = [
+    "OwnerAuthorizedFragment",
+    "SettlementPlan",
+    "build_atomic_event_batch",
+    "build_multi_stream_atomic_event_batch",
+    "build_multi_stream_atomic_event_batch_from_fragments",
+]

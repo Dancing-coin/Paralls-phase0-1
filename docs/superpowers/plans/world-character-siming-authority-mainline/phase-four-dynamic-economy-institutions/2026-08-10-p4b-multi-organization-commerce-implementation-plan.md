@@ -1,6 +1,6 @@
 # P4B Multi-Organization Commerce Implementation Plan
 
-Status: `design-only; implementation not authorized`
+Status: `implemented-and-verified; focused Harness fresh on 2026-08-11`
 
 1. Freeze P4A evidence and add tests for multi-organization grant, budget,
    reservation, delivery, quality, cancellation and deferred recovery.

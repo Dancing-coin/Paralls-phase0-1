@@ -1,6 +1,6 @@
 # P4C Government, Credit And Public Obligations Implementation Plan
 
-Status: `design-only; implementation not authorized`
+Status: `implemented-and-verified; focused Harness fresh on 2026-08-11`
 
 1. Lock P4A/B reports and add tests for jurisdiction/policy pinning, permit
    denial, inspection evidence, tax due, limited credit and overdue recovery.

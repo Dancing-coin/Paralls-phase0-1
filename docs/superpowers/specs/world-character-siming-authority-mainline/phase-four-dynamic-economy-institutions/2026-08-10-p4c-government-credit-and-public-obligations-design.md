@@ -1,6 +1,6 @@
 # P4C Government, Credit And Public Obligations
 
-Status: `design-only; implementation not authorized`
+Status: `implemented-and-verified; matching focused Harness evidence fresh on 2026-08-11`
 
 ## Purpose
 

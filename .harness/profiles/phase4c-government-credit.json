@@ -1,0 +1,1 @@
+{"schema_version":1,"name":"phase4c-government-credit","order":120,"include_in_profile_order":false,"script":"scripts/verification/verify_phase4c_government_credit.py","requires_godot":false,"max_attempts":1,"result_artifact":".harness/verification/phase4c-government-credit-report.json","description":"Government policy, permit, tax and bounded credit evidence"}
