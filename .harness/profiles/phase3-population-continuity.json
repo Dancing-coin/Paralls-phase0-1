@@ -1,0 +1,1 @@
+{"schema_version":1,"name":"phase3-population-continuity","order":117,"include_in_profile_order":false,"script":"scripts/verification/verify_phase3_population_continuity.py","requires_godot":false,"max_attempts":1,"result_artifact":".harness/verification/phase3-population-continuity-report.json","description":"Aggregate P3A-P3D fresh-green continuity evidence"}

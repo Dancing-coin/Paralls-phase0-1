@@ -57,3 +57,24 @@ def select_schedulable_actor_ids(
 
     selected = sorted(candidates, key=_sort_key)[:active_limit]
     return [candidate.actor_id for candidate in selected]
+
+
+def select_population_continuity_actor_ids(
+    *,
+    candidates: list[RuntimeWakeUpCandidate],
+    policy: RuntimePopulationPolicy,
+    actor_population: int,
+    wake_budget: int,
+) -> list[str]:
+    """Bound explicit population selection by the existing cadence policy.
+
+    This only selects actors for a caller-owned request. It creates no clock,
+    background wake-up, or domain settlement side effect.
+    """
+    if wake_budget < 0:
+        raise ValueError("population_wake_budget_invalid")
+    return select_schedulable_actor_ids(
+        candidates=candidates,
+        policy=policy,
+        actor_population=actor_population,
+    )[:wake_budget]
