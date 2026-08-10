@@ -19,6 +19,12 @@ Phase 1A 通用基础契约冻结
   -> Phase 1E 第二个异质样板泛化门禁
 ```
 
+第一阶段完成后的增量入口见
+[第二阶段推进](../第二阶段推进/README.md)。第二阶段只接入已经存在的
+`CharacterProfile/CharacterAgent` 参与组织工作；在 P1D 的产出、销售、回放和 Harness
+证据没有重新确认前，第二阶段不能进入正式实现。P2 的 matching formal spec/plan 已经
+形成 design-only 收口，下一步仍是按 P2A-P2D 顺序取得 focused green evidence。
+
 群体模拟不在上述第一阶段执行链内。第一阶段的 Econ-1 默认使用单玩家角色与聚合
 需求；已有的多智能体角色只有在正式 `CharacterRecord` 已存在时才能接入。员工、
 顾客、供应商和监管人员的 NPC 生活推进，必须等待独立的 Population Simulation
