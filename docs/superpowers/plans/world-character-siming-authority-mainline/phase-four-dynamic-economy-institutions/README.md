@@ -1,0 +1,21 @@
+# Phase Four Dynamic Economy And Institutions Plan Tree
+
+Status: `design-only; implementation not authorized`
+
+Date: `2026-08-10`
+
+P4 starts only after P3D fresh evidence. Every change retains fixed-point or
+integer deterministic calculation, pinned policy/quote revisions, one authority
+settlement batch and owner-specific projections. No plan authorizes an order
+book service, financial ledger, free-floating model price or macro system.
+
+## Plans
+
+1. [P4A](2026-08-10-p4a-dynamic-quote-and-deterministic-clearing-implementation-plan.md)
+2. [P4B](2026-08-10-p4b-multi-organization-commerce-implementation-plan.md)
+3. [P4C](2026-08-10-p4c-government-credit-and-public-obligations-implementation-plan.md)
+4. [P4D](2026-08-10-p4d-commercial-ecosystem-vertical-slice-implementation-plan.md)
+
+Every stage requires focused tests, replay, idempotency, stale-policy rejection,
+explanation projection, zero-write-on-reject, predecessor Harness and docs
+Harness before the next stage.

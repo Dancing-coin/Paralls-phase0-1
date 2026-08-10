@@ -54,3 +54,7 @@ commercial-ecosystem vertical slice。每份 spec 需先引用 P3 population con
 2. [02-动态报价、清算与跨组织结算契约.md](02-动态报价、清算与跨组织结算契约.md)
 3. [03-政府监管、信用与公共义务契约.md](03-政府监管、信用与公共义务契约.md)
 4. [04-商业生态参考包与第四阶段门禁.md](04-商业生态参考包与第四阶段门禁.md)
+
+正式 SDD 入口：
+[Phase Four Dynamic Economy And Institutions Specification Tree](../../superpowers/specs/world-character-siming-authority-mainline/phase-four-dynamic-economy-institutions/README.md)
+；对应实施计划见同名 plan tree。当前仍为 `design-only; implementation not authorized`。

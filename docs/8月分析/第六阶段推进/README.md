@@ -46,3 +46,7 @@ creator vertical spec，并为 local preview、remote staging、admin activation
 2. [02-UI、CLI与MCP对齐契约.md](02-UI、CLI与MCP对齐契约.md)
 3. [03-玩法包、激活、发布与远程运营契约.md](03-玩法包、激活、发布与远程运营契约.md)
 4. [04-创作者流程与第六阶段门禁.md](04-创作者流程与第六阶段门禁.md)
+
+正式 SDD 入口：
+[Phase Six Creator Control Plane Specification Tree](../../superpowers/specs/world-character-siming-authority-mainline/phase-six-creator-control-plane/README.md)
+；对应实施计划见同名 plan tree。当前仍为 `design-only; implementation not authorized`。

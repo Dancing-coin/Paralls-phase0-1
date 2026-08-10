@@ -43,3 +43,7 @@ revision pinning、atomic settlement 和 scope-filtered mirror。
 2. [02-任务、证据、关系与知识协作契约.md](02-任务、证据、关系与知识协作契约.md)
 3. [03-调查、潜行与冲突结算契约.md](03-调查、潜行与冲突结算契约.md)
 4. [04-RPG参考包与第五阶段门禁.md](04-RPG参考包与第五阶段门禁.md)
+
+正式 SDD 入口：
+[Phase Five RPG And Social Gameplay Specification Tree](../../superpowers/specs/world-character-siming-authority-mainline/phase-five-rpg-social-gameplay/README.md)
+；对应实施计划见同名 plan tree。当前仍为 `design-only; implementation not authorized`。

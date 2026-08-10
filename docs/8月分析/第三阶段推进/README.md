@@ -55,3 +55,7 @@ fresh evidence 和现有 `world_runtime`、Character Core、Gameplay Foundation 
 1. [01-第三阶段范围与运行模式边界.md](01-第三阶段范围与运行模式边界.md)
 2. [02-角色激活、批量意图与连续性契约.md](02-角色激活、批量意图与连续性契约.md)
 3. [03-面包店人口样板与第三阶段门禁.md](03-面包店人口样板与第三阶段门禁.md)
+
+正式 SDD 入口：
+[Phase Three Population Continuity Specification Tree](../../superpowers/specs/world-character-siming-authority-mainline/phase-three-population-continuity/README.md)
+；对应实施计划见同名 plan tree。当前仍为 `design-only; implementation not authorized`。

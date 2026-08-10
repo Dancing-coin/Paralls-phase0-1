@@ -36,3 +36,7 @@ P7 扩展的是世界规模、推演消费模式和跨形态实验，不重建�
 2. [02-分支回放、校准与反事实推演契约.md](02-分支回放、校准与反事实推演契约.md)
 3. [03-世界模型与机器人安全边界.md](03-世界模型与机器人安全边界.md)
 4. [04-文明推演参考包与第七阶段门禁.md](04-文明推演参考包与第七阶段门禁.md)
+
+正式 SDD 入口：
+[Phase Seven Civilization, World Model And Robotics Research Specification Tree](../../superpowers/specs/world-character-siming-authority-mainline/phase-seven-civilization-world-model-research/README.md)
+；对应实施计划见同名 plan tree。当前仍为 `design-only; implementation not authorized`。
