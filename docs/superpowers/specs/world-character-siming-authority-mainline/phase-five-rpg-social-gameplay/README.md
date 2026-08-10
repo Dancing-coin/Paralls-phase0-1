@@ -16,7 +16,8 @@ ESM, Gameplay Foundation or a task/physics runtime.
 Quest, social, knowledge and conflict authorities own their own projections and
 typed proposals. CharacterAgent produces intent; Godot presents and predicts;
 authority validates evidence, affordance, skill, status, ownership and policy,
-then uses `SettlementPlan` and `GameplayEventStore.append_batch()`. Survival,
+then uses `GameplayCommandEnvelope`, `SettlementPlan` and
+`GameplayEventStore.append_batch()`. Survival,
 relationship and conflict rules remain optional mode/ruleset profiles.
 
 ## Dependency Order
@@ -25,6 +26,10 @@ relationship and conflict rules remain optional mode/ruleset profiles.
 P4D fresh-green -> P5A quest/evidence -> P5B social/knowledge
                  -> P5C investigation/stealth/conflict -> P5D RPG slice
 ```
+
+The hard predecessor is [P4D commercial ecosystem](../phase-four-dynamic-economy-institutions/2026-08-10-p4d-commercial-ecosystem-vertical-slice-design.md);
+P5 extends P1/P2 Character Core and Gameplay contracts rather than adding a
+second quest, social or conflict runtime.
 
 ## Documents
 

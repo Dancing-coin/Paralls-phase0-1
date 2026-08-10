@@ -19,12 +19,19 @@ Government, Organization and Gameplay authority retain their owners. A branch,
 prediction, model output or robot controller is an explicitly classified
 proposal, report or sandbox artifact.
 
+P7 is read-only with respect to gameplay truth: it may consume replay/checkpoint
+readers and emit proposal/report artifacts, but it never calls
+`GameplayEventStore.append_batch()` or accepts a `SettlementPlan` as a direct
+write request.
+
 ## Dependency Order
 
 ```text
 P6D governance evidence -> P7A civilization projection -> P7B branch/replay
                          -> P7C world-model proposal -> P7D robotics safety slice
 ```
+
+The hard predecessor is [P6D creator operations](../phase-six-creator-control-plane/2026-08-10-p6d-creator-operations-vertical-slice-design.md).
 
 ## Documents
 

@@ -19,7 +19,7 @@ credit. It is not a market runtime, financial ledger or macroeconomic model.
 | custody, reservation, output | Inventory / Production / Ownership | delivery and capacity references |
 | membership, budget, work | Organization | business decision and relationship projection |
 | permit, inspection, tax, policy | Government | policy revision and due evaluation |
-| atomic commit | Gameplay authority, `SettlementPlan` | one `append_batch()` path |
+| command and atomic commit | `GameplayCommandEnvelope`, Gameplay authority, `SettlementPlan` | one `append_batch()` path |
 
 Price models, organization planners, government scripts and agents can produce
 typed proposals but never direct account, inventory, permit or debt writes.
@@ -30,6 +30,10 @@ typed proposals but never direct account, inventory, permit or debt writes.
 P3D fresh-green -> P4A quotes/clearing -> P4B organization commerce
                  -> P4C government/credit -> P4D commercial ecosystem
 ```
+
+P4 consumes [P3D population continuity](../phase-three-population-continuity/2026-08-10-p3d-bakery-district-population-vertical-slice-design.md)
+and the P1/P2 owner contracts; it does not replace their event, identity or
+settlement paths.
 
 ## Documents
 

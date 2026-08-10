@@ -32,6 +32,11 @@ P2 fresh evidence -> P3A activation/identity -> P3B modes/cadence
                   -> P3C batch intent/continuity merge -> P3D district slice
 ```
 
+Hard predecessors are [P1D Econ-1 bakery](../phase-one-gameplay/2026-08-07-p1d-econ1-bakery-reference-game-design.md)
+and [P2D authored-agents bakery](../phase-two-bakery-authored-agents/2026-08-09-p2d-authored-agents-bakery-vertical-slice-design.md).
+Their owner contracts and fresh Harness reports are evidence inputs, not APIs to
+be re-created in P3.
+
 Each predecessor needs fresh focused replay, permission and zero-write-on-reject
 evidence. P3D is the only population-backed vertical claim.
 

@@ -24,12 +24,19 @@ One authorization-decision contract governs UI, CLI and MCP. Client hiding alone
 does not enforce permissions. The closed core retains authority, keys, raw event
 ingress, private memory and internal policy implementation.
 
+Approved package activation remains a proposal into the existing
+`GameplayCommandEnvelope` / `SettlementPlan` / `GameplayEventStore.append_batch()`
+path. The control plane never becomes a canonical gameplay writer.
+
 ## Dependency Order
 
 ```text
 P5D fresh-green -> P6A capability boundary -> P6B UI/CLI/MCP alignment
                  -> P6C package lifecycle -> P6D creator operations slice
 ```
+
+P6 consumes [P5D RPG investigation](../phase-five-rpg-social-gameplay/2026-08-10-p5d-rpg-investigation-vertical-slice-design.md)
+and the closed-core/Patch contracts in the Character Gameplay Foundation tree.
 
 ## Documents
 
