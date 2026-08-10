@@ -22,7 +22,10 @@ zero events after denied input.
 
 ## Plans
 
-1. [P3A](2026-08-10-p3a-profile-activation-and-population-identity-implementation-plan.md)
-2. [P3B](2026-08-10-p3b-world-mode-cadence-and-obligation-continuity-implementation-plan.md)
-3. [P3C](2026-08-10-p3c-batch-intent-and-continuity-merge-implementation-plan.md)
-4. [P3D](2026-08-10-p3d-bakery-district-population-vertical-slice-implementation-plan.md)
+1. [P3A plan](2026-08-10-p3a-profile-activation-and-population-identity-implementation-plan.md)
+2. [P3B plan](2026-08-10-p3b-world-mode-cadence-and-obligation-continuity-implementation-plan.md)
+3. [P3C plan](2026-08-10-p3c-batch-intent-and-continuity-merge-implementation-plan.md)
+4. [P3D plan](2026-08-10-p3d-bakery-district-population-vertical-slice-implementation-plan.md)
+
+阶段级执行提示词：
+[Phase Three Population Continuity Execution Prompt](2026-08-10-phase-three-population-continuity-execution-prompt.md)

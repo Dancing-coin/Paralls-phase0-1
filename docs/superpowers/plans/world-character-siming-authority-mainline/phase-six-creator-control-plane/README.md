@@ -12,10 +12,13 @@ client-only permission check.
 
 ## Plans
 
-1. [P6A](2026-08-10-p6a-creator-capability-and-closed-core-boundary-implementation-plan.md)
-2. [P6B](2026-08-10-p6b-ui-cli-and-mcp-authoring-alignment-implementation-plan.md)
-3. [P6C](2026-08-10-p6c-package-publishing-and-remote-operations-implementation-plan.md)
-4. [P6D](2026-08-10-p6d-creator-operations-vertical-slice-implementation-plan.md)
+1. [P6A plan](2026-08-10-p6a-creator-capability-and-closed-core-boundary-implementation-plan.md)
+2. [P6B plan](2026-08-10-p6b-ui-cli-and-mcp-authoring-alignment-implementation-plan.md)
+3. [P6C plan](2026-08-10-p6c-package-publishing-and-remote-operations-implementation-plan.md)
+4. [P6D plan](2026-08-10-p6d-creator-operations-vertical-slice-implementation-plan.md)
+
+阶段级执行提示词：
+[Phase Six Creator Control Plane Execution Prompt](2026-08-10-phase-six-creator-control-plane-execution-prompt.md)
 
 Security, audit, compatibility, rollback, replay and permission-denial evidence
 are mandatory before each successor.
