@@ -28,6 +28,11 @@ python scripts/verification/harness.py --profile phase4a-dynamic-quote-clearing
 python scripts/verification/harness.py --profile phase4b-multi-organization-commerce
 python scripts/verification/harness.py --profile phase4c-government-credit
 python scripts/verification/harness.py --profile phase4d-commercial-ecosystem
+python scripts/verification/harness.py --profile phase5a-quest-objective-evidence
+python scripts/verification/harness.py --profile phase5b-relationship-reputation-knowledge
+python scripts/verification/harness.py --profile phase5c-investigation-stealth-conflict
+python scripts/verification/harness.py --profile phase5d-investigation-vertical-slice
+```
 
 ### Phase Four Profiles
 
@@ -35,6 +40,15 @@ python scripts/verification/harness.py --profile phase4d-commercial-ecosystem
 - `phase4b-multi-organization-commerce`
 - `phase4c-government-credit`
 - `phase4d-commercial-ecosystem`
+
+### Phase Five Profiles
+
+- `phase5a-quest-objective-evidence`
+- `phase5b-relationship-reputation-knowledge`
+- `phase5c-investigation-stealth-conflict`
+- `phase5d-investigation-vertical-slice`
+
+```powershell
 python scripts/verification/harness.py --profile siming-backend-chain
 python scripts/verification/harness.py --profile character-model-live
 python scripts/verification/harness.py --profile llm-integration-closure
@@ -1022,6 +1036,118 @@ Compares Frost Farm, Bakery, and ownership-contract-debt fixtures for shared
 contract fields, owner boundaries, profile-backed CharacterRecord input,
 full/checkpoint-tail replay equality, scope-filtered projection, stale/duplicate/
 permission/custody/term zero-write failures, and deferred scopes.
+
+### `phase5a-quest-objective-evidence`
+
+Backend-only phase-gate proof for the P5A quest objective evidence authority
+slice.
+
+It runs:
+
+- `backend/tests/test_p5_quest_evidence.py`
+- `backend/tests/test_p5_contracts.py`
+- `backend/tests/test_gameplay_p5_batch_contract.py`
+
+Current proof includes:
+
+- committed provenance from the canonical evidence/objective event pair
+- explicit permission redaction, objective visibility, event visibility, and hidden-evidence rejection evidence
+- committed decision receipt plus duplicate idempotency replay evidence
+- full replay and checkpoint-tail replay hash equivalence for the committed event log
+- typed zero-write rejection evidence for the hidden-visibility failure path
+
+Command:
+
+```powershell
+python scripts/verification/harness.py --profile phase5a-quest-objective-evidence
+```
+
+Output:
+
+- `.harness/verification/phase5a-quest-objective-evidence-report.json`
+
+### `phase5b-relationship-reputation-knowledge`
+
+Backend-only phase-gate proof for the P5B relationship, reputation, and
+knowledge authority slice.
+
+It runs:
+
+- `backend/tests/test_p5_social_knowledge.py`
+- `backend/tests/test_p5_quest_evidence.py`
+- `backend/tests/test_p5_contracts.py`
+- `backend/tests/test_gameplay_p5_batch_contract.py`
+
+Current proof includes:
+
+- concrete public and private recipient views for one committed relationship plus one private knowledge observation
+- explicit redaction evidence showing the public relationship view omits evidence payload while the private recipient keeps the knowledge fact
+- conflicting public observations with deterministic decay and reputation projection facts
+- committed decision receipt plus duplicate idempotency replay evidence
+- revocation receipt evidence with `godot_mirror` refresh hints and post-revocation recipient-view invalidation
+- real full replay, checkpoint-tail replay, and recipient-authorized projection-hash equivalence evidence
+- typed zero-write rejection evidence for the stale-revision path
+
+Command:
+
+```powershell
+python scripts/verification/harness.py --profile phase5b-relationship-reputation-knowledge
+```
+
+Output:
+
+- `.harness/verification/phase5b-relationship-reputation-knowledge-report.json`
+
+### `phase5c-investigation-stealth-conflict`
+
+Backend-only phase-gate proof for the P5C investigation, stealth/conflict, and
+nonlethal adverse-outcome authority slice.
+
+It runs:
+
+- `backend/tests/test_p5_investigation_conflict.py`
+- `backend/tests/test_p5_social_knowledge.py`
+- `backend/tests/test_p5_quest_evidence.py`
+- `backend/tests/test_p5_contracts.py`
+- `backend/tests/test_gameplay_p5_batch_contract.py`
+
+Current proof includes:
+
+- concrete provenance from a committed public perception resolution, including the canonical investigation/conflict streams and hidden-clue source
+- explicit recipient privacy/redaction evidence showing the public view omits hidden clue payload while the investigator and authority views retain it
+- skill-gate rejection and unregistered-resistance zero-write evidence
+- committed adverse-outcome evidence for conflict, alarm, and registered nonlethal status-tag application
+- duplicate idempotency replay evidence plus atomicity violation zero-write rejection evidence
+- real full replay and checkpoint-tail replay hash equivalence evidence for the committed event log
+- typed zero-write rejection evidence for hidden-perception, malformed-input, invalid-owner-visibility, and atomicity-failure paths
+
+Command:
+
+```powershell
+python scripts/verification/harness.py --profile phase5c-investigation-stealth-conflict
+```
+
+Output:
+
+- `.harness/verification/phase5c-investigation-stealth-conflict-report.json`
+
+### `phase5d-investigation-vertical-slice`
+
+Backend-only closure proof for the bounded bakery-theft investigation. The
+profile records provenance and registry pins, public/private redaction,
+decision receipts, stealth alarm and nonlethal consequence, hidden-clue and
+unsupported-Survival zero-write failures, and equal full/checkpoint-tail
+replay hashes.
+
+Run:
+
+```powershell
+python scripts/verification/harness.py --profile phase5d-investigation-vertical-slice
+```
+
+Output:
+
+- `.harness/verification/phase5d-investigation-vertical-slice-report.json`
 
 ### `gameplay-event-replay`
 

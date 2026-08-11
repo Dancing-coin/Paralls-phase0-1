@@ -19,6 +19,130 @@ def _digest(value: object) -> str:
     return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
+def _event_visibility_vector(
+    stream_id: str,
+    specs: Sequence[tuple[str, Mapping[str, Any]]],
+    visibility_policies: Mapping[str, Sequence[str]] | None,
+) -> tuple[str, ...]:
+    policies = tuple((visibility_policies or {}).get(stream_id, ()))
+    if not policies:
+        return tuple("project" for _ in specs)
+    if len(policies) != len(specs):
+        raise ValueError("settlement_event_visibility_incomplete")
+    if any(not policy for policy in policies):
+        raise ValueError("settlement_event_visibility_invalid")
+    return policies
+
+
+def _fragment_digest_payload(
+    *,
+    command_id: str,
+    idempotency_principal_ref: str,
+    idempotency_key: str,
+    causation_id: str,
+    correlation_id: str,
+    fragments: Sequence[OwnerAuthorizedFragment],
+) -> dict[str, object]:
+    return {
+        "command": {
+            "command_id": command_id,
+            "idempotency_principal_ref": idempotency_principal_ref,
+            "idempotency_key": idempotency_key,
+            "causation_id": causation_id,
+            "correlation_id": correlation_id,
+        },
+        "fragments": [
+            {
+                "fragment_id": fragment.fragment_id,
+                "owner_principal_ref": fragment.owner_principal_ref,
+                "source_rule_ref": fragment.source_rule_ref,
+                "write_stream_revisions": dict(sorted(fragment.expected_revisions.items())),
+                "read_stream_revisions": dict(sorted(fragment.read_set_revisions.items())),
+                "pinned_revisions": dict(sorted(fragment.pinned_revisions.items())),
+                "events": [
+                    {
+                        "stream_id": stream_id,
+                        "event_type": event_type,
+                        "schema_version": 1,
+                        "visibility_policy": visibility_policy,
+                        "payload": dict(payload),
+                    }
+                    for stream_id in sorted(fragment.event_specs)
+                    for (event_type, payload), visibility_policy in zip(
+                        fragment.event_specs[stream_id],
+                        _event_visibility_vector(
+                            stream_id,
+                            fragment.event_specs[stream_id],
+                            fragment.event_visibility_policies,
+                        ),
+                        strict=False,
+                    )
+                ],
+            }
+            for fragment in sorted(fragments, key=lambda item: item.fragment_id)
+        ],
+    }
+
+
+def _single_stream_digest_payload(
+    *,
+    command_id: str,
+    stream_id: str,
+    expected_revision: int,
+    event_specs: Sequence[tuple[str, Mapping[str, Any]]],
+    read_stream_revisions: Mapping[str, int] | None,
+    pinned_revisions: Mapping[str, int] | None,
+) -> dict[str, object]:
+    return {
+        "command_id": command_id,
+        "write_stream_revisions": {stream_id: expected_revision},
+        "read_stream_revisions": dict(sorted((read_stream_revisions or {}).items())),
+        "pinned_revisions": dict(sorted((pinned_revisions or {}).items())),
+        "events": [
+            {
+                "stream_id": stream_id,
+                "event_type": event_type,
+                "schema_version": 1,
+                "visibility_policy": "project",
+                "payload": dict(payload),
+            }
+            for event_type, payload in event_specs
+        ],
+    }
+
+
+def _multi_stream_digest_payload(
+    *,
+    command_id: str,
+    expected_revisions: Mapping[str, int],
+    event_specs: Mapping[str, Sequence[tuple[str, Mapping[str, Any]]]],
+    read_stream_revisions: Mapping[str, int] | None,
+    event_visibility_policies: Mapping[str, Sequence[str]] | None,
+    pinned_revisions: Mapping[str, int] | None,
+) -> dict[str, object]:
+    return {
+        "command_id": command_id,
+        "write_stream_revisions": dict(sorted(expected_revisions.items())),
+        "read_stream_revisions": dict(sorted((read_stream_revisions or {}).items())),
+        "pinned_revisions": dict(sorted((pinned_revisions or {}).items())),
+        "events": [
+            {
+                "stream_id": stream_id,
+                "event_type": event_type,
+                "schema_version": 1,
+                "visibility_policy": visibility_policy,
+                "payload": dict(payload),
+            }
+            for stream_id in sorted(event_specs)
+            for (event_type, payload), visibility_policy in zip(
+                event_specs[stream_id],
+                _event_visibility_vector(stream_id, event_specs[stream_id], event_visibility_policies),
+                strict=False,
+            )
+        ],
+    }
+
+
 @dataclass(frozen=True)
 class SettlementPlan:
     """A pre-commit mapping; it owns no state and never appends events."""
@@ -87,6 +211,7 @@ class SettlementPlan:
             transaction_id=transaction_id,
             command_id=command.command_id,
             expected_stream_revisions=dict(command.expected_revisions),
+            read_stream_revisions=dict(command.read_set_revisions),
             pinned_revisions=dict(command.pinned_revisions),
             events=[event],
             idempotency_record=IdempotencyRecord(
@@ -108,6 +233,7 @@ def build_atomic_event_batch(
     idempotency_key: str,
     causation_id: str,
     correlation_id: str,
+    read_stream_revisions: Mapping[str, int] | None = None,
     pinned_revisions: Mapping[str, int] | None = None,
 ) -> AtomicEventBatch:
     """Build one owner-scoped batch for a domain authority to submit.
@@ -135,17 +261,21 @@ def build_atomic_event_batch(
         )
         for index, (event_type, payload) in enumerate(event_specs, start=1)
     ]
-    command_payload = {
-        "command_id": command_id,
-        "stream_id": stream_id,
-        "expected_revision": expected_revision,
-        "events": [(event_type, dict(payload)) for event_type, payload in event_specs],
-    }
-    digest = _digest(command_payload)
+    digest = _digest(
+        _single_stream_digest_payload(
+            command_id=command_id,
+            stream_id=stream_id,
+            expected_revision=expected_revision,
+            event_specs=event_specs,
+            read_stream_revisions=read_stream_revisions,
+            pinned_revisions=pinned_revisions,
+        )
+    )
     return AtomicEventBatch(
         transaction_id=transaction_id,
         command_id=command_id,
         expected_stream_revisions={stream_id: expected_revision},
+        read_stream_revisions=dict(read_stream_revisions or {}),
         pinned_revisions=dict(pinned_revisions or {}),
         events=events,
         idempotency_record=IdempotencyRecord(
@@ -166,6 +296,8 @@ def build_multi_stream_atomic_event_batch(
     idempotency_key: str,
     causation_id: str,
     correlation_id: str,
+    read_stream_revisions: Mapping[str, int] | None = None,
+    event_visibility_policies: Mapping[str, Sequence[str]] | None = None,
     pinned_revisions: Mapping[str, int] | None = None,
 ) -> AtomicEventBatch:
     """Compose owner proposals into one batch without choosing domain outcomes."""
@@ -177,16 +309,29 @@ def build_multi_stream_atomic_event_batch(
         specs = event_specs[stream_id]
         if not specs:
             raise ValueError("settlement_events_required")
-        for index, (event_type, payload) in enumerate(specs, start=1):
+        for index, ((event_type, payload), visibility_policy) in enumerate(
+            zip(specs, _event_visibility_vector(stream_id, specs, event_visibility_policies), strict=False),
+            start=1,
+        ):
             events.append(GameplayEvent(
                 event_id=f"event:{command_id}:{stream_id}:{index}", event_type=event_type, schema_version=1,
                 stream_id=stream_id, stream_revision=0, global_sequence=0, transaction_id=transaction_id,
                 command_id=command_id, causation_id=causation_id, correlation_id=correlation_id,
-                visibility_policy="project", payload=dict(payload),
+                visibility_policy=visibility_policy, payload=dict(payload),
             ))
-    digest = _digest({"command_id": command_id, "expected_revisions": dict(expected_revisions), "events": [(event.stream_id, event.event_type, event.payload) for event in events]})
+    digest = _digest(
+        _multi_stream_digest_payload(
+            command_id=command_id,
+            expected_revisions=expected_revisions,
+            event_specs=event_specs,
+            read_stream_revisions=read_stream_revisions,
+            event_visibility_policies=event_visibility_policies,
+            pinned_revisions=pinned_revisions,
+        )
+    )
     return AtomicEventBatch(
         transaction_id=transaction_id, command_id=command_id, expected_stream_revisions=dict(expected_revisions),
+        read_stream_revisions=dict(read_stream_revisions or {}),
         pinned_revisions=dict(pinned_revisions or {}), events=events,
         idempotency_record=IdempotencyRecord(principal_ref=principal_ref, idempotency_key=idempotency_key, payload_digest=digest), result_digest=digest,
     )
@@ -205,7 +350,9 @@ def build_multi_stream_atomic_event_batch_from_fragments(
     if not fragments:
         raise ValueError("settlement_fragments_required")
     expected_revisions: dict[str, int] = {}
+    read_stream_revisions: dict[str, int] = {}
     event_specs: dict[str, Sequence[tuple[str, Mapping[str, Any]]]] = {}
+    event_visibility_policies: dict[str, Sequence[str]] = {}
     pinned_revisions: dict[str, int] = {}
     for fragment in sorted(fragments, key=lambda item: item.fragment_id):
         overlap = set(expected_revisions) & set(fragment.expected_revisions)
@@ -213,11 +360,28 @@ def build_multi_stream_atomic_event_batch_from_fragments(
             raise ValueError("settlement_fragment_stream_overlap")
         expected_revisions.update(fragment.expected_revisions)
         event_specs.update(fragment.event_specs)
+        for stream_id, revision in fragment.read_set_revisions.items():
+            prior = read_stream_revisions.get(stream_id)
+            if prior is not None and prior != revision:
+                raise ValueError("settlement_fragment_read_conflict")
+            read_stream_revisions[stream_id] = revision
+        for stream_id, policies in fragment.event_visibility_policies.items():
+            event_visibility_policies[stream_id] = tuple(policies)
         for pin, revision in fragment.pinned_revisions.items():
             prior = pinned_revisions.get(pin)
             if prior is not None and prior != revision:
                 raise ValueError("settlement_fragment_pin_conflict")
             pinned_revisions[pin] = revision
+    digest = _digest(
+        _fragment_digest_payload(
+            command_id=command_id,
+            idempotency_principal_ref=idempotency_principal_ref,
+            idempotency_key=idempotency_key,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            fragments=fragments,
+        )
+    )
     batch = build_multi_stream_atomic_event_batch(
         command_id=command_id,
         principal_ref=idempotency_principal_ref,
@@ -226,9 +390,18 @@ def build_multi_stream_atomic_event_batch_from_fragments(
         idempotency_key=idempotency_key,
         causation_id=causation_id,
         correlation_id=correlation_id,
+        read_stream_revisions=read_stream_revisions,
+        event_visibility_policies=event_visibility_policies,
         pinned_revisions=pinned_revisions,
     )
-    return batch.model_copy(update={"owner_fragments": list(sorted(fragments, key=lambda item: item.fragment_id))}, deep=True)
+    return batch.model_copy(
+        update={
+            "owner_fragments": list(sorted(fragments, key=lambda item: item.fragment_id)),
+            "idempotency_record": batch.idempotency_record.model_copy(update={"payload_digest": digest}, deep=True),
+            "result_digest": digest,
+        },
+        deep=True,
+    )
 
 
 __all__ = [

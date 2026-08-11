@@ -48,7 +48,9 @@ class OwnerAuthorizedFragment(StrictGameplayModel):
     owner_principal_ref: str = Field(min_length=1)
     source_rule_ref: str = Field(min_length=1)
     expected_revisions: dict[str, int] = Field(min_length=1)
+    read_set_revisions: dict[str, int] = Field(default_factory=dict)
     event_specs: dict[str, tuple[tuple[str, dict[str, Any]], ...]] = Field(min_length=1)
+    event_visibility_policies: dict[str, tuple[str, ...]] = Field(default_factory=dict)
     pinned_revisions: dict[str, int] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -57,12 +59,21 @@ class OwnerAuthorizedFragment(StrictGameplayModel):
             raise ValueError("settlement_fragment_revision_vector_incomplete")
         if any(revision < 0 or isinstance(revision, bool) for revision in self.expected_revisions.values()):
             raise ValueError("settlement_fragment_revision_invalid")
+        if any(revision < 0 or isinstance(revision, bool) for revision in self.read_set_revisions.values()):
+            raise ValueError("settlement_fragment_read_revision_invalid")
+        if any(revision < 0 or isinstance(revision, bool) for revision in self.pinned_revisions.values()):
+            raise ValueError("settlement_fragment_pin_revision_invalid")
         if any(
             not event_type or not isinstance(payload, dict)
             for events in self.event_specs.values()
             for event_type, payload in events
         ) or any(not events for events in self.event_specs.values()):
             raise ValueError("settlement_fragment_events_required")
+        if not set(self.event_visibility_policies).issubset(self.event_specs):
+            raise ValueError("settlement_fragment_visibility_vector_incomplete")
+        for stream_id, policies in self.event_visibility_policies.items():
+            if len(policies) != len(self.event_specs[stream_id]) or any(not policy for policy in policies):
+                raise ValueError("settlement_fragment_visibility_invalid")
         return self
 
 
@@ -104,6 +115,7 @@ class AtomicEventBatch(StrictGameplayModel):
     transaction_id: str = Field(min_length=1)
     command_id: str = Field(min_length=1)
     expected_stream_revisions: dict[str, int] = Field(default_factory=dict)
+    read_stream_revisions: dict[str, int] = Field(default_factory=dict)
     pinned_revisions: dict[str, int] = Field(default_factory=dict)
     events: list[GameplayEvent] = Field(min_length=1)
     idempotency_record: IdempotencyRecord
@@ -115,6 +127,12 @@ class AtomicEventBatch(StrictGameplayModel):
     @model_validator(mode="after")
     def validate_batch_identity(self) -> "AtomicEventBatch":
         event_ids = {event.event_id for event in self.events}
+        if any(revision < 0 or isinstance(revision, bool) for revision in self.expected_stream_revisions.values()):
+            raise ValueError("batch_expected_revision_invalid")
+        if any(revision < 0 or isinstance(revision, bool) for revision in self.read_stream_revisions.values()):
+            raise ValueError("batch_read_revision_invalid")
+        if any(revision < 0 or isinstance(revision, bool) for revision in self.pinned_revisions.values()):
+            raise ValueError("batch_pinned_revision_invalid")
         for event in self.events:
             if event.transaction_id != self.transaction_id:
                 raise ValueError("event transaction_id must match batch")

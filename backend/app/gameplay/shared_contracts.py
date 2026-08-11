@@ -108,6 +108,7 @@ class GameplayCommandEnvelope(StrictGameplayModel):
     transaction_id: str | None = None
     idempotency_key: str = Field(min_length=1)
     expected_revisions: dict[str, int] = Field(default_factory=dict)
+    read_set_revisions: dict[str, int] = Field(default_factory=dict)
     causation_id: str = Field(min_length=1)
     correlation_id: str = Field(min_length=1)
     source_ref: str = Field(min_length=1)

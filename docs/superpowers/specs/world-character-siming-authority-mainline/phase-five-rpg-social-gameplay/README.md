@@ -1,6 +1,6 @@
 # Phase Five RPG And Social Gameplay Specification Tree
 
-Status: `design-only; implementation not authorized`
+Status: `P5A-P5D implemented and focused/predecessor Harness green; eligible to request P6`
 
 Date: `2026-08-10`
 
@@ -37,6 +37,7 @@ second quest, social or conflict runtime.
 2. [P5B relationship and knowledge](2026-08-10-p5b-relationship-reputation-and-knowledge-design.md)
 3. [P5C investigation, stealth and conflict](2026-08-10-p5c-investigation-stealth-and-conflict-design.md)
 4. [P5D RPG vertical slice](2026-08-10-p5d-rpg-investigation-vertical-slice-design.md)
+5. [P5 authority contract](2026-08-11-p5-authority-contract-design.md)
 
 Matching plans: [P5A](../../../plans/world-character-siming-authority-mainline/phase-five-rpg-social-gameplay/2026-08-10-p5a-quest-objective-and-evidence-implementation-plan.md),
 [P5B](../../../plans/world-character-siming-authority-mainline/phase-five-rpg-social-gameplay/2026-08-10-p5b-relationship-reputation-and-knowledge-implementation-plan.md),

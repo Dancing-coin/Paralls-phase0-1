@@ -163,7 +163,25 @@ class GameplayEventStore:
                     stream_id=event.stream_id,
                 )
 
-        for stream_id, expected_revision in batch.expected_stream_revisions.items():
+        for stream_id, expected_revision in batch.read_stream_revisions.items():
+            write_revision = batch.expected_stream_revisions.get(stream_id)
+            if write_revision is not None and write_revision != expected_revision:
+                return _empty_result(
+                    transaction_id=batch.transaction_id,
+                    command_id=batch.command_id,
+                    error_code="revision_conflict",
+                    message="stream revision conflict",
+                    failed_stage="revision_check",
+                    expected_revision=expected_revision,
+                    actual_revision=write_revision,
+                    stream_id=stream_id,
+                )
+
+        revision_vector = dict(batch.expected_stream_revisions)
+        for stream_id, expected_revision in batch.read_stream_revisions.items():
+            revision_vector.setdefault(stream_id, expected_revision)
+
+        for stream_id, expected_revision in revision_vector.items():
             actual_revision = self.get_stream_head(stream_id)
             if actual_revision != expected_revision:
                 return _empty_result(
