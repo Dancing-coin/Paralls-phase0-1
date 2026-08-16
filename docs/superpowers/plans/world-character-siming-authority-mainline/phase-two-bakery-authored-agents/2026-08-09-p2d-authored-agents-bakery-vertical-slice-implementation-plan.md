@@ -1,6 +1,6 @@
 # P2D Authored-Agents Bakery Vertical Slice Implementation Plan
 
-Status: `implemented-and-verified; closed`
+Status: `historical plan superseded; P2D-R re-closure required`
 
 ## Hard prerequisites
 
@@ -48,6 +48,8 @@ python scripts/verification/harness.py --profile docs
 
 ## Explicit non-authorization
 
-This closed plan did not authorize `PopulationAuthority`, `NpcState`, dynamic market/order book,
-`SimulationClock`, scheduler, second event store/bus/settlement path, or CharacterAgent direct
-append. Any such need is a new design decision outside P2D.
+The historical implementation did not satisfy this plan: it constructed batches in the verifier
+instead of composing the stated owner entry points, and its focused test did not exercise the
+success scenario. It is therefore superseded by
+[`P2D-R`](2026-08-15-p2d-r-authored-bakery-authority-reclosure-plan.md). The new plan retains the
+no-Population/no-NPC/no-second-store/no-scheduler boundary.

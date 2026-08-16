@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-population-world-mode-complete",
+  "order": 147,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_population_world_mode_complete.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-population-world-mode-complete-report.json",
+  "description": "INF-4Z bounded mode cadence, existing-owner mapping, retired legacy PopulationBatchPlan merge zero-write, inspection scoped-outbox privacy/replay, production zero-write preview boundary and fixed-base branch evidence"
+}

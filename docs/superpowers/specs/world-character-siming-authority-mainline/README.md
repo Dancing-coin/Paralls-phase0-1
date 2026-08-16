@@ -40,6 +40,10 @@ Primary commands:
 - Matching plan tree:
   - [plans/world-character-siming-authority-mainline/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/world-character-siming-authority-mainline/README.md>)
 
+## INF Naming
+
+- [INF mainline and substrate mapping guide](2026-08-17-inf-mainline-substrate-mapping-guide.md) - explains the `INF-1..4` domain axis and `INF-C1..5` reusable-contract axis
+
 ## Spec Tree
 
 1. [2026-06-29-world-character-siming-authority-mainline-master-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md>)
@@ -51,7 +55,16 @@ Primary commands:
 7. [phase-five-rpg-social-gameplay/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/phase-five-rpg-social-gameplay/README.md>)
 8. [phase-six-creator-control-plane/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/phase-six-creator-control-plane/README.md>)
 9. [phase-seven-civilization-world-model-research/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/phase-seven-civilization-world-model-research/README.md>)
-10. [2026-06-29-world-runtime-foundation-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-runtime-foundation-design.md>)
+10. [post-p5-capability-foundation/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/post-p5-capability-foundation/README.md>) - unnumbered prerequisite and P6/P7 decision gate
+11. [INF-1 continuation](inf-1/README.md) - verified vertical plus planned semantic/cross-domain expansion
+12. [INF reusable contract substrate](2026-08-16-inf-reusable-contract-substrate-design.md) - prioritized reusable, owner-bound planning/admission/replay layers before further broad INF row expansion
+13. [INF-C4 ecology consumer admission contract](2026-08-16-inf-c4-ecology-consumer-admission-contract-design.md) - verified finite read-only pre-fragment checks reused by existing Construction and Organization owners
+14. [INF-C5 (INF-4) fixed-base branch replay contract](inf-4/2026-08-17-inf-c5-fixed-base-branch-replay-contract-design.md) - verified deterministic isolated replay inputs and fixed Organization admission contract
+12. [INF-2 continuation](inf-2/README.md) - verified vertical plus planned multi-domain obligation policies
+13. [INF-3 continuation](inf-3/README.md) - verified frost/crop vertical and one canonical frost -> construction edge; further regional propagation remains planned
+14. [INF-4 continuation](inf-4/README.md) - verified branch-preview vertical plus planned population world-mode interface
+15. [INF remaining-scope dependency design](2026-08-12-inf-remaining-scope-dependency-design.md) - R verticals plus X/Y/Z closure packages and owner blockers
+11. [2026-06-29-world-runtime-foundation-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-runtime-foundation-design.md>)
 6. [2026-06-29-actor-local-perception-and-fact-production-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-actor-local-perception-and-fact-production-design.md>)
 7. [2026-06-29-autonomous-social-contact-and-exchange-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-autonomous-social-contact-and-exchange-design.md>)
 8. [2026-06-29-authority-and-settlement-runtime-closure-design.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-authority-and-settlement-runtime-closure-design.md>)

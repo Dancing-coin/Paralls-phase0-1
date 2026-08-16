@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-government-promotion-owner-contract-catalog",
+  "order": 172,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_government_promotion_owner_contract_catalog.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-government-promotion-owner-contract-catalog-report.json",
+  "description": "INF-4Q immutable owner-contract admission for the fixed Government passed-inspection production promotion"
+}

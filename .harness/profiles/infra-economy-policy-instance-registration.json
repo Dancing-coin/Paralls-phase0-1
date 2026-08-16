@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-economy-policy-instance-registration",
+  "order": 200,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_economy_policy_instance_registration.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-economy-policy-instance-registration-report.json",
+  "description": "INF-2U existing-Economy scheduled-transfer policy-instance registration with bound settlement, revocation, replay, and authority-only receipt evidence"
+}

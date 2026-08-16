@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-durable-isolated-branch-snapshot",
+  "order": 168,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_durable_isolated_branch_snapshot.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-durable-isolated-branch-snapshot-report.json",
+  "description": "INF-4M explicit creator-debug persistence and replay of one isolated BranchPreviewAuthority buffer"
+}

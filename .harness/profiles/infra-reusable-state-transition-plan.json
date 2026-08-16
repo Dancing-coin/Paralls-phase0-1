@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-reusable-state-transition-plan",
+  "order": 120,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_reusable_state_transition_plan.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-reusable-state-transition-plan-report.json",
+  "description": "INF-C1 pure reusable state transition proposal layer"
+}

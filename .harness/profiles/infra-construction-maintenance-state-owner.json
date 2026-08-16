@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-construction-maintenance-state-owner",
+  "order": 158,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_construction_maintenance_state_owner.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-construction-maintenance-state-owner-report.json",
+  "description": "INF-1G closed maintenance-required to maintenance-due Construction owner row"
+}

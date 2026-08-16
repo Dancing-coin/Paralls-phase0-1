@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-schedule-gated-supply",
+  "order": 151,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_schedule_gated_supply.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-schedule-gated-supply-report.json",
+  "description": "INF-4A existing social/household/organization schedule inputs bound to the admitted Organization supply fragment"
+}

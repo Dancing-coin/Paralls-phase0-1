@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "post-p5-capability-foundation-docs",
+  "order": 126,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_post_p5_capability_foundation_docs.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/post-p5-capability-foundation-docs-report.json",
+  "description": "Static documentation-gate verification for the post-P5 capability foundation; it does not prove F0-F2, P6, or P7 runtime completion"
+}

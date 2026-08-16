@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
-from app.gameplay.models import StrictGameplayModel
+from app.gameplay.models import AppendBatchResult, StrictGameplayModel
 
 
 def _stable_tuple(value: tuple[str, ...]) -> tuple[str, ...]:
@@ -311,6 +311,29 @@ class ScheduledObligation(StrictGameplayModel):
     retry_policy: dict[str, object] = Field(default_factory=dict)
     compensation_policy: dict[str, object] = Field(default_factory=dict)
     source_refs: tuple[str, ...] = Field(default_factory=tuple)
+    idempotency_key: str = Field(default="", min_length=1)
+    expected_revisions: dict[str, int] = Field(default_factory=dict)
+    visibility_scope: str = Field(default="project", min_length=1)
+
+    @model_validator(mode="after")
+    def _validate_lifecycle(self) -> "ScheduledObligation":
+        if self.status not in {
+            "open",
+            "due",
+            "settled",
+            "cancelled",
+            "expired",
+            "retry",
+            "compensated",
+            "settling",
+            "retryable",
+            "closed",
+            "failed",
+        }:
+            raise ValueError("scheduled_obligation_status_invalid")
+        if any(value < 0 for value in self.expected_revisions.values()):
+            raise ValueError("scheduled_obligation_revision_invalid")
+        return self
 
 
 class WorldConsumptionProfile(StrictGameplayModel):
@@ -440,6 +463,35 @@ class SettlementReceipt(StrictGameplayModel):
     rejected_effects: tuple[str, ...] = Field(default_factory=tuple)
     audit_refs: tuple[str, ...] = Field(default_factory=tuple)
     pinned_revisions: dict[str, int] = Field(default_factory=dict)
+    idempotency_status: Literal["new_commit", "duplicate_replayed", "rejected"] = "new_commit"
+    zero_write: bool = False
+    error_code: str | None = None
+
+    @classmethod
+    def from_append_result(
+        cls,
+        *,
+        result: AppendBatchResult,
+        audit_refs: tuple[str, ...] = (),
+        pinned_revisions: dict[str, int] | None = None,
+        projection_digests: dict[str, str] | None = None,
+    ) -> "SettlementReceipt":
+        """Build a read-only receipt from exactly one append result."""
+        if result.committed and result.failure is not None:
+            raise ValueError("settlement_receipt_append_result_invalid")
+        if not result.committed and result.idempotency_status != "rejected":
+            raise ValueError("settlement_receipt_append_result_invalid")
+        return cls(
+            transaction_id=result.transaction_id,
+            committed_event_ids=tuple(result.committed_event_ids),
+            stream_revisions=dict(result.resulting_stream_revisions),
+            projection_digests=dict(projection_digests or {}),
+            audit_refs=audit_refs,
+            pinned_revisions=dict(pinned_revisions or {}),
+            idempotency_status=result.idempotency_status,
+            zero_write=not result.committed,
+            error_code=result.failure.error_code if result.failure else None,
+        )
 
 
 class RevisionActivationRequest(StrictGameplayModel):

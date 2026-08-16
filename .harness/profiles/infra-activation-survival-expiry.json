@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-activation-survival-expiry",
+  "order": 146,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_activation_survival_expiry.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-activation-survival-expiry-report.json",
+  "description": "INF-2B released activation pending to existing Survival state-expiry settlement"
+}

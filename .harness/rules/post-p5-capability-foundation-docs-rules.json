@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "name": "post-p5-capability-foundation-docs-rules",
+  "profile": "post-p5-capability-foundation-docs",
+  "description": "Mechanical documentation invariants enforced by scripts/verification/verify_post_p5_capability_foundation_docs.py",
+  "rules": [
+    {
+      "id": "post_p5_documents_exist",
+      "title": "Post-P5 August guidance, formal specs, matching plans, and execution prompt exist",
+      "evidence": [
+        ".harness/verification/post-p5-capability-foundation-docs-report.json:results.post_p5_documents_exist"
+      ]
+    },
+    {
+      "id": "f0_august_coverage_ledger_complete",
+      "title": "F0 ledger maps all non-phase-progression August analysis families",
+      "evidence": [
+        ".harness/verification/post-p5-capability-foundation-docs-report.json:results.f0_august_coverage_ledger_complete"
+      ]
+    },
+    {
+      "id": "dg_opening_matrix_is_evidence_aware",
+      "title": "P6/P7 opening matrix names report paths, freshness invalidation, and future profiles",
+      "evidence": [
+        ".harness/verification/post-p5-capability-foundation-docs-report.json:results.dg_opening_matrix_is_evidence_aware"
+      ]
+    },
+    {
+      "id": "post_p5_cross_links_present",
+      "title": "August guidance, formal specs, plans, and execution prompt cross-link",
+      "evidence": [
+        ".harness/verification/post-p5-capability-foundation-docs-report.json:results.post_p5_cross_links_present"
+      ]
+    }
+  ]
+}

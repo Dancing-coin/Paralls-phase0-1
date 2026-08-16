@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-economy-scheduled-transfer-obligation",
+  "order": 132,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_economy_scheduled_transfer_obligation.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-economy-scheduled-transfer-obligation-report.json",
+  "description": "INF-2J fixed Economy scheduled account-transfer obligation lifecycle"
+}

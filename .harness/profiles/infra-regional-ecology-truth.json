@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-regional-ecology-truth",
+  "order": 140,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_regional_ecology_truth.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-regional-ecology-truth-report.json",
+  "description": "INF-3X canonical EcologyHazardAuthority regional record lifecycle, scoped projection, and replay evidence"
+}

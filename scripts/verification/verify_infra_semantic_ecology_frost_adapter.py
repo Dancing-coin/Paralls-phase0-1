@@ -1,0 +1,13 @@
+from __future__ import annotations
+from datetime import datetime, timezone
+from common import evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
+
+def main() -> int:
+    root=repo_root(); python=resolve_python_exe(None); path=root/"backend"/"tests"/"test_infra_semantic_ecology_frost_adapter.py"
+    cases={"closed_input":"test_semantic_ecology_frost_command_forbids_free_owner_stream_and_payload_fields","owner_append":"test_semantic_ecology_frost_maps_only_to_existing_ecology_owner_append","stale_revision_zero_write":"test_semantic_ecology_frost_rejects_stale_revision_without_write","snapshot_zero_write":"test_semantic_ecology_frost_rejects_snapshot_mismatch_without_write","exact_duplicate":"test_semantic_ecology_frost_replays_exact_duplicate_without_second_write","changed_duplicate_zero_write":"test_semantic_ecology_frost_rejects_changed_duplicate_without_write","source_privacy_zero_write":"test_semantic_ecology_frost_rejects_authority_only_hazard_without_write","source_relation_zero_write":"test_semantic_ecology_frost_rejects_forged_region_relation_without_write","checkpoint_tail_replay":"test_semantic_ecology_frost_reuses_ecology_checkpoint_tail_replay"}
+    checks={}; logs=[]
+    for key,test in cases.items():
+        log=verification_dir(root)/f"infra-semantic-ecology-frost-adapter-{key}.log"; result=run_command([python,"-m","pytest","-q",str(path),"-k",test],root,log); checks[key]=result.returncode==0; logs.append(str(log.relative_to(root)).replace("\\","/"))
+    report={"profile":"infra-semantic-ecology-frost-adapter","overall_passed":all(checks.values()),"checks":checks,"evidence":logs,"run_id":f"infra-semantic-ecology-frost-adapter-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}","commit":evidence_revision(root),"write_path":"closed semantic proposal -> Ecology-owned envelope -> EcologyHazardAuthority.apply_crop_state -> one append -> outbox/replay","limitations":["Only effect:frost -> state:frosted@1 is admitted.","No generic ecology adapter or caller-selected owner/stream/event is admitted."]}
+    target=verification_dir(root)/"infra-semantic-ecology-frost-adapter-report.json"; write_json(target,report); write_markdown(target.with_suffix(".md"),"INF-1X Semantic Ecology Frost Adapter Report",{"results":[{"id":key,"status":"proved" if value else "missing","title":key} for key,value in checks.items()],"overall_passed":report["overall_passed"]},"overall_passed"); print(target); return 0 if report["overall_passed"] else 1
+if __name__=="__main__": raise SystemExit(main())

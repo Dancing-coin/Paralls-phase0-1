@@ -1,6 +1,6 @@
 # Phase Three Population Continuity Specification Tree
 
-Status: `design-only; implementation not authorized`
+Status: `implemented-and-verified for the bounded P3A-P3D population-continuity slice; full population simulation remains deferred`
 
 Date: `2026-08-10`
 

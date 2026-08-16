@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-semantic-closed-guard-composition",
+  "order": 138,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_semantic_closed_guard_composition.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-semantic-closed-guard-composition-report.json",
+  "description": "INF-1C finite all/any semantic guard composition remains proposal-only"
+}

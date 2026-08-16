@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-activation-profile-region-assignment",
+  "order": 213,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_activation_profile_region_assignment.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-activation-profile-region-assignment-report.json",
+  "description": "INF-4AC activation-owned, evidence-pinned profile region assignment"
+}

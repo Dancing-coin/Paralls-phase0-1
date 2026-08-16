@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-generic-obligation-lifecycle",
+  "order": 141,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_generic_obligation_lifecycle.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-generic-obligation-lifecycle-report.json",
+  "description": "INF-2A two-owner event-derived obligation lifecycle with Survival retry and compensation rows"
+}

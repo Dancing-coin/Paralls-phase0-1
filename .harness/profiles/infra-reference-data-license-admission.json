@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-reference-data-license-admission",
+  "order": 148,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_reference_data_license_admission.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-reference-data-license-admission-report.json",
+  "description": "INF-4Z reference-data authority lifecycle, frozen authoritative calibration admission, privacy, zero-write and replay evidence"
+}

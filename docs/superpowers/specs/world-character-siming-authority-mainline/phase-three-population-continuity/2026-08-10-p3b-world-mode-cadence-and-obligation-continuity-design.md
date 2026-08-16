@@ -1,6 +1,6 @@
 # P3B World Mode, Cadence And Obligation Continuity
 
-Status: `design-only; implementation not authorized`
+Status: `implemented-and-verified; bounded world-mode and obligation-continuity slice`
 
 ## Purpose And Contract
 

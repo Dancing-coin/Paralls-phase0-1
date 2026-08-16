@@ -1,0 +1,38 @@
+# INF-2 Plan Tree
+
+Status: `approved INF-2 narrow verticals verified; INF-2V bounded payroll/operating-window re-closure verified; broader INF-2 remains incomplete`
+
+1. [INF-2 implementation plan](2026-08-12-inf-2-time-obligation-and-cross-domain-settlement-implementation-plan.md)
+2. [INF-2R expansion implementation plan](2026-08-12-inf-2r-multi-domain-obligation-policy-expansion-implementation-plan.md)
+3. [INF-2X obligation lifecycle and policy registration implementation plan](2026-08-12-inf-2x-obligation-lifecycle-and-policy-registration-implementation-plan.md)
+4. [INF-2A Survival generic obligation lifecycle implementation plan](2026-08-13-inf-2a-survival-generic-obligation-lifecycle-implementation-plan.md)
+5. [INF-2B activation-released Survival expiry implementation plan](2026-08-14-inf-2b-activation-released-survival-expiry-implementation-plan.md) - verified exact two-receipt owner row
+6. [INF-2C Economy wage obligation implementation plan](2026-08-14-inf-2c-economy-wage-obligation-implementation-plan.md) - verified one existing Economy owner row
+7. [INF-2D Economy wage terminal lifecycle implementation plan](2026-08-14-inf-2d-economy-wage-terminal-lifecycle-implementation-plan.md) - verified authority-owned closed registration and retry/cancel/expired/settled/compensated states for that one row
+8. [INF-2E activation-released dehydration expiry implementation plan](2026-08-14-inf-2e-activation-released-dehydration-expiry-implementation-plan.md) - verified exact second Survival activation row; no generic binding
+9. [INF-2F activation-released overheated expiry implementation plan](2026-08-14-inf-2f-activation-released-overheated-expiry-implementation-plan.md) - verified exact third Survival activation row; no generic binding
+10. [INF-2G activation-obligation binding contract implementation plan](2026-08-14-inf-2g-activation-obligation-binding-contract-implementation-plan.md) - verified finite reader for four existing rows; no open registration
+11. [INF-2H economy account settlement spine implementation plan](2026-08-14-inf-2h-economy-account-settlement-spine-implementation-plan.md) - implemented bounded; formalizes only the existing account-ledger path
+12. [INF-2I Organization/Economy commerce commitment implementation plan](2026-08-14-inf-2i-organization-economy-commerce-commitment-implementation-plan.md) - implemented bounded existing-owner atomic commitment
+13. [INF-2J Economy scheduled account-transfer obligation implementation plan](2026-08-15-inf-2j-economy-scheduled-account-transfer-obligation-implementation-plan.md) - verified fixed Economy lifecycle row; no caller registration or generic payment writer
+14. [INF-2K Government policy registration implementation plan](2026-08-15-inf-2k-government-policy-registration-implementation-plan.md) - verified one fixed Government policy lifecycle row; no arbitrary registration or settlement
+15. [INF-2L debt settlement formal spine implementation plan](2026-08-15-inf-2l-debt-settlement-formal-spine-implementation-plan.md) - verified bounded existing simple-debt adapter migration and owner-local replay-reader closure
+16. [INF-2M closed lifecycle registration admission plan](2026-08-15-inf-2m-closed-lifecycle-registration-admission-plan.md) - verified input fence for generic coordinator admission and event-family smuggling; coordinator append removal remains INF-2Q work
+17. [INF-2N activation-released fatigue expiry plan](2026-08-15-inf-2n-activation-fatigue-expiry-plan.md) - verified fourth finite Survival activation row; not generic binding
+18. [INF-2O Economy dynamic quote formal spine plan](2026-08-15-inf-2o-economy-dynamic-quote-formal-spine-plan.md) - completed for the existing Economy quote formal write, revision pin and project privacy boundary
+19. [INF-2P payroll and organization operating-window closure plan](2026-08-15-inf-2p-payroll-and-organization-operating-window-closure-plan.md) - completed for the Organization-owned window stream closure and Economy wage/account boundary
+20. [INF-2Q owner-only obligation commit spine plan](2026-08-15-inf-2q-owner-only-obligation-commit-spine-plan.md) - implemented and verified bounded ownership repair. Coordinator append removal and owner migration do not close August INF-2.
+21. [INF-2R payroll owner-contract catalog plan](2026-08-16-inf-2r-payroll-owner-contract-catalog-plan.md) - approved pre-append contract admission for the existing Organization window and Economy wage-payment rows.
+22. [INF-2S append-derived settlement receipt factory plan](2026-08-16-inf-2s-append-derived-settlement-receipt-factory-plan.md) - completed pure receipt derivation for the admitted readers.
+23. [INF-2T event-derived bounded due lifecycle view plan](2026-08-16-inf-2t-event-derived-bounded-due-lifecycle-view-plan.md) - completed: test-first shared lifecycle time view for closed registrations.
+24. [INF-2U Economy policy-instance registration plan](2026-08-16-inf-2u-economy-policy-instance-registration-plan.md) - completed with 27 focused acceptance tests and a dedicated harness profile for replay, authority-only receipt/outbox privacy, and instance-bound settlement/revocation.
+25. [INF-2V bounded payroll and operating-window closure re-closure plan](2026-08-15-inf-2v-bounded-payroll-operating-window-closure-reclosure-plan.md) - independently verified while preserving existing owners and adding only focused evidence/receipt closure.
+26. [INF-2W event-derived obligation materialization plan](2026-08-16-inf-2w-event-derived-obligation-materialization-plan.md) - verified read-only reconstruction of owner-neutral `ScheduledObligation` inputs from closed lifecycle projections.
+27. [INF-2Y exact lifecycle owner-contract catalog plan](2026-08-16-inf-2y-exact-lifecycle-owner-contract-catalog-plan.md) - verified exact owner rows and pre-append catalog admission for the existing state lifecycle entries.
+28. [INF-2Z Economy tax obligation plan](2026-08-16-inf-2z-economy-tax-obligation-plan.md) - completed one fixed Economy owner-local tax obligation lifecycle with source pinning, terminal-only settlement, privacy, idempotency and replay evidence; no payment or arbitrary settlement.
+29. [INF-2C2 reusable lifecycle contract plan](2026-08-16-inf-2c2-reusable-lifecycle-contract-implementation-plan.md) - implemented shared closed terminal-operation lookup and explicit canonical registry factory; preserves legacy empty-registration zero-write behavior.
+30. [INF-2C3 append-derived settlement recipe plan](2026-08-16-inf-2c3-append-derived-settlement-recipe-implementation-plan.md) - implemented pure owner-fragment batch/receipt composition and integrated it into obligation planning.
+31. [INF-2AA Commerce delivery payment plan](2026-08-16-inf-2aa-commerce-delivery-payment-plan.md) - implemented and independently verified one commitment-bound Economy payment and compensation row; no arbitrary payment or generic settlement.
+32. [INF-2AB tax payment owner-contract audit plan](2026-08-17-inf-2ab-tax-payment-owner-contract-audit-plan.md) - blocked after read-only audit: a canonical treasury account/account-holder and tax-payment event/receipt contract are absent, so no implementation starts.
+
+Evidence: [focused Harness report](../../../../../.harness/verification/infra-time-obligation-report.json) proves the historical clock/coordinator surface only. Released `schedule_gated_supply` and three exact `survival_state_expiry` rows (`cold`, `dehydrated`, `overheated`) are separately verified, owner-specific pending rows. Generic activation-obligation binding remains open. Future owner policy extensions must retain the existing caller-to-owner-fragment-to-append path and provide independent evidence.

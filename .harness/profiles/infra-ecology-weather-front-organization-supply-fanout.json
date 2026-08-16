@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-ecology-weather-front-organization-supply-fanout",
+  "order": 212,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_ecology_weather_front_organization_supply_fanout.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-ecology-weather-front-organization-supply-fanout-report.json",
+  "description": "INF-3O exact weather-front to two existing Organization supply commitments in one owner batch"
+}

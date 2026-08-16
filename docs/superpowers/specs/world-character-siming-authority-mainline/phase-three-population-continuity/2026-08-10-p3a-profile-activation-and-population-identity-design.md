@@ -1,6 +1,6 @@
 # P3A Profile Activation And Population Identity
 
-Status: `design-only; implementation not authorized`
+Status: `implemented-and-verified; bounded profile activation and identity slice`
 
 ## Purpose And Contract
 

@@ -1,6 +1,6 @@
 # P3D Bakery District Population Vertical Slice
 
-Status: `design-only; implementation not authorized`
+Status: `implemented-and-verified; bounded bakery-district population slice`
 
 ## Purpose And Scope
 

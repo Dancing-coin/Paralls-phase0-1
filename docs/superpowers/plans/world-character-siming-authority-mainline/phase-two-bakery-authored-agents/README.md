@@ -1,6 +1,6 @@
 # Phase Two Bakery Authored-Agents Plan Tree
 
-Status: `implemented-and-verified; all P2 plans closed`
+Status: `P2A-P2C verified; historical P2D invalidated; P2D-R bounded re-closure verified; full Phase Two close remains open`
 
 Date: `2026-08-09`
 
@@ -45,6 +45,9 @@ python -m pytest -q backend/tests/test_gameplay_event_store_contract.py backend/
 python scripts/verification/harness.py --profile phase1d-econ1-bakery
 ```
 
-P2A, P2B and P2C were implemented and verified in strict sequence; P2D started only after their
-fresh-green evidence plus P1D. The plan is now closed. Population Simulation remains a separate,
-unstarted handoff gated by the specs.
+P2A, P2B and P2C were implemented and verified in strict sequence. The historical P2D plan is
+not a closure proof: its code bypasses the formal authority composition it claims and its Harness
+does not independently assert the listed capabilities. The
+[`P2D-R re-closure plan`](2026-08-15-p2d-r-authored-bakery-authority-reclosure-plan.md) is now
+verified against fresh predecessor reports, but only closes its fixed two-worker owner rows.
+Population Simulation remains a separate, unstarted handoff gated by the specs.

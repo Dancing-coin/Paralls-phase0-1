@@ -7,15 +7,18 @@ from hashlib import sha256
 from typing import Any
 
 from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.models import GameplayOutboxEntry
 from app.gameplay.p5.contracts import P5ResolutionRequest, P5ResolutionResult, build_directed_relationship_ref
 from app.gameplay.p5.registry import P5PolicyRegistry
 from app.gameplay.shared_contracts import GameplayCommandEnvelope, SettlementPlan
+from app.gameplay.settlement_plan import SettlementPlan as EventStoreSettlementPlan
 
 
 _PRINCIPAL = "authority:p5:social"
 _RELATIONSHIP_EVENT = "gameplay.social.relationship_fact_recorded"
 _KNOWLEDGE_EVENT = "gameplay.social.knowledge_observed"
 _REVOCATION_EVENT = "gameplay.social.visibility_revoked"
+_HOUSEHOLD_MEMBERSHIP_EVENT = "gameplay.social.household_membership_recorded"
 
 
 def _digest(payload: object) -> str:
@@ -83,10 +86,149 @@ class SocialRecipientView:
     projection_hash: str
 
 
+@dataclass(frozen=True)
+class HouseholdRecipientView:
+    owner_principal_ref: str
+    household_memberships: tuple[dict[str, object], ...]
+    source_revision_vector: dict[str, int]
+    projection_hash: str
+
+    def validate_against(self, *, store: GameplayEventStore):
+        for stream_id, expected_revision in self.source_revision_vector.items():
+            if store.get_stream_head(stream_id) != expected_revision:
+                return SocialInputValidation(accepted=False, error_code="household_source_revision_stale")
+        return SocialInputValidation(accepted=True)
+
+
+@dataclass(frozen=True)
+class SocialInputValidation:
+    accepted: bool
+    error_code: str | None = None
+
+
 class SocialFactAuthority:
     def __init__(self, *, registry: P5PolicyRegistry, store: GameplayEventStore) -> None:
         self._registry = registry
         self._store = store
+
+    def record_household_membership(
+        self,
+        *,
+        command_id: str,
+        household_ref: str,
+        member_ref: str,
+        relation_kind: str,
+        membership_status: str,
+        effective_from: str,
+        effective_to: str | None,
+        residence_ref: str,
+        visibility: str,
+        recipient_ref: str,
+        observed_at: str,
+    ):
+        if not household_ref.startswith("household:") or not member_ref.startswith("character:"):
+            raise ValueError("household_reference_invalid")
+        if not relation_kind or not membership_status or not residence_ref:
+            raise ValueError("household_membership_invalid")
+        if not _is_visible(visibility, recipient_ref) and visibility != "authority_only":
+            raise ValueError("household_visibility_invalid")
+        stream_id = _relationship_stream(
+            source_ref=household_ref,
+            target_ref=member_ref,
+            relation_kind=relation_kind,
+        )
+        command = GameplayCommandEnvelope(
+            command_id=command_id,
+            command_type="gameplay.social.record_household_membership",
+            command_version=1,
+            principal_ref=_PRINCIPAL,
+            actor_ref=recipient_ref,
+            project_ref=None,
+            transaction_id=f"transaction:{command_id}",
+            idempotency_key=f"idempotency:{command_id}",
+            expected_revisions={stream_id: self._store.get_stream_head(stream_id)},
+            causation_id=f"causation:{command_id}",
+            correlation_id=f"correlation:{household_ref}",
+            source_ref="authority:p5:social",
+            submitted_at=observed_at,
+            pinned_revisions={"social:household": 1},
+            payload={
+                "stream_ref": stream_id,
+                "event_type": _HOUSEHOLD_MEMBERSHIP_EVENT,
+                "visibility_policy": visibility,
+                "household_ref": household_ref,
+                "member_ref": member_ref,
+                "relation_kind": relation_kind,
+                "membership_status": membership_status,
+                "effective_from": effective_from,
+                "effective_to": effective_to,
+                "residence_ref": residence_ref,
+                "visibility": visibility,
+                "recipient_ref": recipient_ref,
+                "observed_at": observed_at,
+            },
+        )
+        batch = EventStoreSettlementPlan.from_command_envelope(command).to_atomic_event_batch()
+        batch = batch.model_copy(
+            update={
+                "outbox_entries": [
+                    GameplayOutboxEntry(
+                        outbox_id=f"outbox:{event.event_id}",
+                        transaction_id=batch.transaction_id,
+                        event_id=event.event_id,
+                        global_sequence=0,
+                        topic="world.household.scoped_projection",
+                        audience=visibility,
+                        payload_projection={"household_ref": household_ref, "member_ref": member_ref},
+                    )
+                    for event in batch.events
+                ]
+            },
+            deep=True,
+        )
+        return self._store.append_batch(batch)
+
+    def household_view_for(self, *, recipient_ref: str, now: str) -> HouseholdRecipientView:
+        memberships: list[dict[str, object]] = []
+        source_revision_vector: dict[str, int] = {}
+        for event in self._store.read_events():
+            if event.event_type != _HOUSEHOLD_MEMBERSHIP_EVENT:
+                continue
+            visibility = str(event.payload.get("visibility", event.visibility_policy))
+            if not _is_visible(visibility, recipient_ref) and not (
+                visibility == "authority_only" and recipient_ref.startswith("authority:")
+            ):
+                continue
+            effective_from = str(event.payload.get("effective_from", ""))
+            effective_to = event.payload.get("effective_to")
+            if effective_from and _parse_time(now) is not None and _parse_time(effective_from) is not None and _parse_time(now) < _parse_time(effective_from):
+                continue
+            if effective_to and _parse_time(now) is not None and _parse_time(str(effective_to)) is not None and _parse_time(now) >= _parse_time(str(effective_to)):
+                continue
+            memberships.append(
+                {
+                    "household_ref": event.payload["household_ref"],
+                    "member_ref": event.payload["member_ref"],
+                    "relation_kind": event.payload["relation_kind"],
+                    "membership_status": event.payload["membership_status"],
+                    "residence_ref": event.payload["residence_ref"],
+                    "effective_from": effective_from,
+                    "effective_to": effective_to,
+                    "visibility": visibility,
+                }
+            )
+            source_revision_vector[event.stream_id] = event.stream_revision
+        memberships.sort(key=lambda item: (str(item["household_ref"]), str(item["member_ref"]), str(item["effective_from"])))
+        projection = {
+            "household_memberships": memberships,
+            "source_revision_vector": dict(sorted(source_revision_vector.items())),
+        }
+        return HouseholdRecipientView(
+            owner_principal_ref=_PRINCIPAL,
+            household_memberships=tuple(memberships),
+            source_revision_vector=dict(sorted(source_revision_vector.items())),
+            projection_hash=_digest(projection),
+        )
 
     def resolve(
         self,
@@ -550,6 +692,7 @@ class SocialFactAuthority:
 
 
 __all__ = [
+    "HouseholdRecipientView",
     "SocialFactAuthority",
     "SocialFactAuthorityResult",
     "SocialRecipientView",

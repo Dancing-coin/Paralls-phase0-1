@@ -1,0 +1,1 @@
+{"schema_version":1,"name":"infra-ecology-drought-process","order":199,"include_in_profile_order":false,"include_in_all":false,"script":"scripts/verification/verify_infra_ecology_drought_process.py","requires_godot":false,"max_attempts":1,"result_artifact":".harness/verification/infra-ecology-drought-process-report.json","description":"INF-3K bounded Ecology drought process"}

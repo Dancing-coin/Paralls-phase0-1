@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-exact-lifecycle-owner-contract-catalog",
+  "order": 201,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_exact_lifecycle_owner_contract_catalog.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-exact-lifecycle-owner-contract-catalog-report.json",
+  "description": "INF-2Y exact existing-owner lifecycle catalog and pre-append admission gates"
+}

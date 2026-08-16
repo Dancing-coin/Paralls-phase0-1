@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-isolated-branch-owner-consequence-projection",
+  "order": 155,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_isolated_branch_owner_consequence_projection.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-isolated-branch-owner-consequence-projection-report.json",
+  "description": "INF-4G isolated branch-local consequence projection from validated existing-owner fragments only"
+}

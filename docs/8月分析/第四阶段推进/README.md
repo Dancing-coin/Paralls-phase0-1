@@ -1,6 +1,6 @@
 # 第四阶段推进：动态经济与社会制度扩展
 
-状态：`phase-four workbench; incremental guidance; non-authorizing until formal spec/plan`
+状态：`phase-four bounded scope implemented-and-verified; this directory remains non-authorizing guidance`
 
 第四阶段建立在 P3 的持续角色与组织生态之上，把第一阶段的固定 quote、聚合需求和单店
 经营扩展为受约束的动态商业生态。它仍然复用既有 Economy、Organization、Government、
@@ -57,4 +57,5 @@ commercial-ecosystem vertical slice。每份 spec 需先引用 P3 population con
 
 正式 SDD 入口：
 [Phase Four Dynamic Economy And Institutions Specification Tree](../../superpowers/specs/world-character-siming-authority-mainline/phase-four-dynamic-economy-institutions/README.md)
-；对应实施计划见同名 plan tree。当前仍为 `design-only; implementation not authorized`。
+；对应实施计划见同名 plan tree。P4A-P4D 已有 focused Harness 证据；动态经济仍是受限确定性切片，不是宏观市场或金融系统完成。
+INF-4O 另外单独证明了一个固定 Organization `supply` 推广行，但它仍然只是既有 owner 的受限 promotion 证据，不把本目录升级成泛化 promotion 面。

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-payroll-owner-contract-catalog",
+  "order": 171,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_payroll_owner_contract_catalog.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-payroll-owner-contract-catalog-report.json",
+  "description": "INF-2R immutable owner-contract admission for Organization operating windows and Economy wage payment"
+}

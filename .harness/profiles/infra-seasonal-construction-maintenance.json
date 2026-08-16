@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-seasonal-construction-maintenance",
+  "order": 155,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_seasonal_construction_maintenance.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-seasonal-construction-maintenance-report.json",
+  "description": "INF-3B one project-visible seasonal ecology process to existing Construction maintenance owner edge"
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-government-branch-scenario-settlement",
+  "order": 157,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_government_branch_scenario_settlement.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-government-branch-scenario-settlement-report.json",
+  "description": "INF-4I one Government-owned passed-inspection branch scenario settlement on the existing event spine"
+}

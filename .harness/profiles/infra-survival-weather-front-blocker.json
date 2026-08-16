@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-survival-weather-front-blocker",
+  "order": 181,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_survival_weather_front_blocker.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-survival-weather-front-blocker-report.json",
+  "description": "INF-1U weather-front to Survival remains an unsupported-input zero-write blocker"
+}

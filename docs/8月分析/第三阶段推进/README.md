@@ -1,6 +1,6 @@
 # 第三阶段推进：Population Simulation 与持续世界运行
 
-状态：`phase-three workbench; incremental guidance; non-authorizing until formal spec/plan`
+状态：`phase-three bounded population-continuity slice implemented-and-verified; this directory remains non-authorizing guidance`
 
 第三阶段承接 `bakery-authored-agents`。目标是让员工、顾客、供应商、竞争对手和监管
 角色可以由人口/世界模式机制激活，并以同一 `CharacterRecord` 和 Gameplay authority
@@ -58,4 +58,4 @@ fresh evidence 和现有 `world_runtime`、Character Core、Gameplay Foundation 
 
 正式 SDD 入口：
 [Phase Three Population Continuity Specification Tree](../../superpowers/specs/world-character-siming-authority-mainline/phase-three-population-continuity/README.md)
-；对应实施计划见同名 plan tree。当前仍为 `design-only; implementation not authorized`。
+；对应实施计划见同名 plan tree。P3A-P3D 已有实现和聚合 Harness 证据，但这只代表受限人口连续性切片，不代表完整 Population Simulation 或文明模拟。

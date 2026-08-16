@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-activation-obligation-binding-contract",
+  "order": 162,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_activation_obligation_binding_contract.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-activation-obligation-binding-contract-report.json",
+  "description": "INF-2G finite activation pending-to-existing-owner binding contract"
+}

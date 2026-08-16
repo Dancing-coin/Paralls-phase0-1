@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-ecology-weather-front-propagation",
+  "order": 143,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_ecology_weather_front_propagation.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-ecology-weather-front-propagation-report.json",
+  "description": "INF-3C one-step ecology-owned weather-front propagation over two existing ecology streams"
+}

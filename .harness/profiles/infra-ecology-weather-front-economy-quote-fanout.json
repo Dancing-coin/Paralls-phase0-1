@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-ecology-weather-front-economy-quote-fanout",
+  "order": 211,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_ecology_weather_front_economy_quote_fanout.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-ecology-weather-front-economy-quote-fanout-report.json",
+  "description": "INF-3N exact weather-front to two existing Economy quotes in one owner batch"
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-semantic-survival-state-bridge",
+  "order": 145,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_semantic_survival_state_bridge.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-semantic-survival-state-bridge-report.json",
+  "description": "INF-1B semantic proposal to the two registered Survival state/effect obligation owner rows"
+}

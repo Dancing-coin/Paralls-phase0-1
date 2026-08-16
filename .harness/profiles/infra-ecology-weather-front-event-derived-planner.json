@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-ecology-weather-front-event-derived-planner",
+  "order": 174,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_ecology_weather_front_event_derived_planner.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-ecology-weather-front-event-derived-planner-report.json",
+  "description": "INF-3M event-derived Ecology-only weather-front planner"
+}

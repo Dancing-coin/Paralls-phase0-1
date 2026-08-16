@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-isolated-branch-owner-fragment-evaluation",
+  "order": 154,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_isolated_branch_owner_fragment_evaluation.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-isolated-branch-owner-fragment-evaluation-report.json",
+  "description": "INF-4F isolated validation of the two registered owner fragment rows without production settlement"
+}

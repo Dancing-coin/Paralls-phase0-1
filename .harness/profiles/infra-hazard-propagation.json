@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-hazard-propagation",
+  "order": 142,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_hazard_propagation.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-hazard-propagation-report.json",
+  "description": "INF-3Y one registered canonical frost to construction consumer edge"
+}

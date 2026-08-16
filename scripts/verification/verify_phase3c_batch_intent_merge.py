@@ -73,10 +73,10 @@ def main() -> int:
     )
     report = {
         "overall_passed": focused
-        and receipt.committed
-        and bool(receipt.rejections)
-        and not denied.committed
-        and denied.zero_write,
+        and receipt.zero_write
+        and receipt.stop_reason == "legacy_population_merge_retired"
+        and denied.zero_write
+        and denied.stop_reason == "legacy_population_merge_retired",
         "predecessors": {"phase1d": True, "phase2": True, "p3a": True, "p3b": True},
         "receipt": receipt.model_dump(mode="json"),
         "revision_vector": receipt.revision_vector,

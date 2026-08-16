@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-government-inspection-promotion",
+  "order": 166,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_government_inspection_promotion.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-government-inspection-promotion-report.json",
+  "description": "INF-4N fixed Government passed-inspection promotion through the existing production event spine"
+}

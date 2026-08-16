@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-governed-authority-contract-catalog",
+  "order": 168,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_governed_authority_contract_catalog.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-governed-authority-contract-catalog-report.json",
+  "description": "INF read-only catalog of existing owner-bound policy, settlement, ecology and branch contracts"
+}

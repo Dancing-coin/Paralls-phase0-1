@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-civilization-capability-inspection-consumer",
+  "order": 149,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_civilization_capability_inspection_consumer.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-civilization-capability-inspection-consumer-report.json",
+  "description": "INF-4Y user-approved authority-scoped capability to existing government inspection fragment edge"
+}

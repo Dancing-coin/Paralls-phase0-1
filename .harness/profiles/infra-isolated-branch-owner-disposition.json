@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-isolated-branch-owner-disposition",
+  "order": 153,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_isolated_branch_owner_disposition.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-isolated-branch-owner-disposition-report.json",
+  "description": "INF-4D isolated branch analysis records for existing-owner candidate dispositions"
+}

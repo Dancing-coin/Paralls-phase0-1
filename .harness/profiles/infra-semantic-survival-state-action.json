@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-semantic-survival-state-action",
+  "order": 161,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_semantic_survival_state_action.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-semantic-survival-state-action-report.json",
+  "description": "INF-1K closed semantic Survival dispel and fixed-recovery transform obligation actions"
+}

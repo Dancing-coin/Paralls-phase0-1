@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-ecology-disaster",
+  "order": 134,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_ecology_disaster.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-ecology-disaster-report.json",
+  "description": "INF-3 ecology hazard authority, frost settlement, privacy and replay evidence"
+}

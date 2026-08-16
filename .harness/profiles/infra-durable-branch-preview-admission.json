@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-durable-branch-preview-admission",
+  "order": 165,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_durable_branch_preview_admission.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-durable-branch-preview-admission-report.json",
+  "description": "INF-4L durable BranchPreview admission evidence before Government scenario settlement"
+}

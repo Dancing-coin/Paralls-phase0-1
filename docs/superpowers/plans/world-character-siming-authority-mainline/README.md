@@ -26,6 +26,7 @@ contains implementation and verification evidence across the major branches of t
 ## Parent Spec Tree
 
 - [specs/world-character-siming-authority-mainline/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/README.md>)
+- [INF mainline and substrate mapping guide](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/2026-08-17-inf-mainline-substrate-mapping-guide.md>)
 
 ## Plan Tree
 
@@ -44,7 +45,16 @@ contains implementation and verification evidence across the major branches of t
 13. [phase-five-rpg-social-gameplay/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/world-character-siming-authority-mainline/phase-five-rpg-social-gameplay/README.md>)
 14. [phase-six-creator-control-plane/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/world-character-siming-authority-mainline/phase-six-creator-control-plane/README.md>)
 15. [phase-seven-civilization-world-model-research/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/world-character-siming-authority-mainline/phase-seven-civilization-world-model-research/README.md>)
-16. [2026-07-29-character-dialogue-streaming-implementation-plan.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/world-character-siming-authority-mainline/2026-07-29-character-dialogue-streaming-implementation-plan.md>)
+16. [post-p5-capability-foundation/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/world-character-siming-authority-mainline/post-p5-capability-foundation/README.md>) - unnumbered prerequisite and P6/P7 decision gate
+17. [INF-1 continuation](inf-1/README.md) - semantic/cross-domain expansion is planned only
+18. [INF reusable contract substrate plan](2026-08-16-inf-reusable-contract-substrate-implementation-plan.md) - prioritized shared owner-bound abstractions before further broad INF row expansion
+19. [INF-C4 ecology consumer admission contract plan](2026-08-16-inf-c4-ecology-consumer-admission-contract-implementation-plan.md) - verified finite read-only pre-fragment checks reused by existing Construction and Organization owners
+20. [INF-C5 (INF-4) fixed-base branch replay contract plan](inf-4/2026-08-17-inf-c5-fixed-base-branch-replay-contract-plan.md) - verified deterministic isolated replay inputs and fixed Organization admission contract
+18. [INF-2 continuation](inf-2/README.md) - multi-domain obligation policy expansion is planned only
+19. [INF-3 continuation](inf-3/README.md) - one canonical frost -> construction edge is verified; all further ecology propagation remains planned
+20. [INF-4 continuation](inf-4/README.md) - population world-mode interface expansion is planned only
+21. [INF remaining-scope dependency implementation plan](2026-08-12-inf-remaining-scope-dependency-implementation-plan.md) - ordered R/X/Y/Z execution gates
+17. [2026-07-29-character-dialogue-streaming-implementation-plan.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/world-character-siming-authority-mainline/2026-07-29-character-dialogue-streaming-implementation-plan.md>)
 12. [2026-07-29-real-tts-provider-presentation-implementation-plan.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/world-character-siming-authority-mainline/2026-07-29-real-tts-provider-presentation-implementation-plan.md>)
 13. [2026-07-31-tts-voice-profile-adapter-implementation-plan.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/world-character-siming-authority-mainline/2026-07-31-tts-voice-profile-adapter-implementation-plan.md>)
 14. [2026-08-03-tts-voice-profile-adapter-closure-implementation-plan.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/world-character-siming-authority-mainline/2026-08-03-tts-voice-profile-adapter-closure-implementation-plan.md>)

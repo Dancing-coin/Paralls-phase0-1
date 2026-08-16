@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "p2dr-authored-bakery-authority-reclosure",
+  "order": 113,
+  "include_in_profile_order": false,
+  "script": "scripts/verification/verify_p2dr_authored_bakery_authority_reclosure.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/p2dr-authored-bakery-authority-reclosure-report.json",
+  "description": "P2D-R owner-driven two-worker bakery procurement, production evidence, wage, scope, replay and zero-write closure"
+}

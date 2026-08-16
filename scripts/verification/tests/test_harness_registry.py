@@ -151,6 +151,9 @@ def test_load_rule_registry_reads_versioned_rule_manifests() -> None:
         "harness-evolution-rules",
         "harness-lifecycle-rules",
         "harness-reference-rules",
+        "post-p5-capability-foundation-docs-rules",
+        "post-p5-f2-gates-rules",
+        "post-p5-foundation-rules",
         "release-gate-rules",
     ]
     assert all(manifest["schema_version"] == 1 for manifest in registry.rules.values())
@@ -167,6 +170,8 @@ def test_rule_registry_exposes_rule_to_evidence_mapping() -> None:
     assert mapping["change-lifecycle.workflow_doc_exists"]["profile"] == "change-lifecycle"
     assert mapping["harness-reference.reference_taxonomy_exists"]["profile"] == "harness-reference"
     assert mapping["harness-evolution.evolution_config_valid"]["profile"] == "harness-evolution"
+    assert mapping["post-p5-capability-foundation-docs.f0_august_coverage_ledger_complete"]["profile"] == "post-p5-capability-foundation-docs"
+    assert mapping["post-p5-f2-gates.predecessor_reports_green"]["profile"] == "post-p5-f2-gates"
 
 
 def test_write_harness_report_creates_run_id_archive(tmp_path: Path) -> None:

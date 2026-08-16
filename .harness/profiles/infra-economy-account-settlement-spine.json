@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-economy-account-settlement-spine",
+  "order": 131,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_economy_account_settlement_spine.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-economy-account-settlement-spine-report.json",
+  "description": "INF-2H EconomyAuthorityService account settlement through the formal single-store spine"
+}

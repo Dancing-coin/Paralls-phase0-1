@@ -1,6 +1,6 @@
 # 第二阶段推进：已有角色的多智能体组织协作
 
-状态：`incremental guidance; formal SDD implemented-and-verified; this directory remains non-authorizing`
+状态：`incremental guidance; P2A-P2C verified; historical P2D invalidated; P2D-R bounded owner re-closure verified; this directory remains non-authorizing`
 
 ## 1. 阶段定位
 
@@ -18,7 +18,8 @@
   -> P2A：正式角色引用、岗位和受控工作协作 contract
   -> P2B：排班/工作订单/设施争用与工作证据
   -> P2C：工资义务、角色状态约束与组织期末结算
-  -> P2D：多角色投影、回放、Godot mirror 和 Harness 垂直闭环
+  -> P2D historical sample：direct-batch evidence invalidated
+  -> P2D-R：两名已有角色的 Organization/Production/Economy owner 闭环
   -> 后置：Population Simulation 接入，再进入真实商业生态
 ```
 
@@ -35,8 +36,11 @@
 实际 worker contribution；CharacterAgent L4 也尚未成为任意 Gameplay command writer。第二阶段
 必须把这些缺口显式变成受限 contract，不能用测试脚本直接改组织、角色或经济结果。
 
-P1D focused tests 与 `phase1d-econ1-bakery` Harness 已 fresh-green；Phase Two 的 focused
-tests、四个 phase2 Harness 和全量 pytest 也已通过。实现证据只认主线 formal spec/plan 与
+P1D、P2A、P2B、P2C 的 fresh Harness 仍为有效前置。历史 `phase2-bakery-authored-agents`
+profile 虽可运行，但已确认直接构造 event batch、focused tests 不覆盖其成功链、Harness 以
+合成布尔值替代独立断言，因此不再构成 P2D 完成证据。P2D-R 的
+`p2dr-authored-bakery-authority-reclosure` report 才记录当前已验证的限定闭环；它不等同于
+完整三角色、Godot mirror 或 Population Simulation。实现证据只认主线 formal spec/plan 与
 `.harness/verification/` 报告，不把本目录的分析文字当作运行时 API。
 
 ## 3. 本阶段范围
@@ -89,12 +93,14 @@ profile。它们可影响同一经营结果，但绝不拥有角色私有需求�
 - [P2B Organization Work Lifecycle spec](../../superpowers/specs/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/2026-08-09-p2b-organization-work-lifecycle-design.md)
 - [P2C Payroll and Operating Window spec](../../superpowers/specs/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/2026-08-09-p2c-payroll-and-operating-window-design.md)
 - [P2D Authored-Agents Bakery Vertical Slice spec](../../superpowers/specs/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/2026-08-09-p2d-authored-agents-bakery-vertical-slice-design.md)
+- [P2D-R Authored Bakery Authority Re-closure spec](../../superpowers/specs/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/2026-08-15-p2d-r-authored-bakery-authority-reclosure-design.md)
 
 ## 7. 正式化路径
 
 本目录只在八月分析中冻结下一阶段的增量边界。对应的 matching P2 formal spec/plan 已在
 `docs/superpowers/specs/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/`
 和 `docs/superpowers/plans/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/`
-中形成 `implemented-and-verified` 收口。这里仍只是增量设计指导、非直接实现授权；正式实现
-证据必须继续引用当前代码 owner 与 fresh Harness reports，不得把本目录中的候选名称直接当作
-现有 API 或存储结构。Population Simulation 仍未授权。
+中形成 P2A-P2C verified、P2D historical invalidated、P2D-R bounded re-closure 的当前状态。
+这里仍只是增量设计指导、非直接实现授权；正式实现证据必须继续引用当前代码 owner 与 fresh
+Harness reports，不得把本目录中的候选名称直接当作现有 API 或存储结构。Population
+Simulation 仍未授权。

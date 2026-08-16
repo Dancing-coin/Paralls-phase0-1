@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-weather-front-survival-overheated",
+  "order": 215,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_weather_front_survival_overheated.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-weather-front-survival-overheated-report.json",
+  "description": "INF-1AD fixed weather:heat to existing Survival overheated owner row"
+}

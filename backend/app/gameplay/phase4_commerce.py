@@ -26,7 +26,7 @@ from app.gameplay.inventory_runtime import (
     InventoryProjector,
     InventoryRuntimeError,
 )
-from app.gameplay.models import AppendBatchResult, StrictGameplayModel
+from app.gameplay.models import AppendBatchResult, GameplayOutboxEntry, StrictGameplayModel
 from app.gameplay.organization_government_runtime import GovernmentAuthority, OrganizationAuthority
 from app.gameplay.replay import GameplayProjectionReplay
 from app.gameplay.settlement_plan import (
@@ -37,6 +37,7 @@ from app.gameplay.settlement_plan import (
 from app.gameplay.shared_contracts import (
     EffectProposal,
     GameplayCommandEnvelope,
+    SettlementReceipt,
     SettlementPlan as SharedSettlementPlan,
 )
 
@@ -291,6 +292,21 @@ class CommerceAuthority:
         self._inventory_registry = inventory_registry or InventoryDefinitionRegistry()
 
     def accept_commitment(self, commitment: CommerceCommitment, *, idempotency_key: str) -> CommercialCommitOutcome:
+        idempotency_digest = self._commitment_idempotency_digest(commitment)
+        existing_record = self._store.get_idempotency_record(self._PRINCIPAL, idempotency_key)
+        if existing_record is not None:
+            if existing_record.payload_digest != idempotency_digest:
+                return self._rejected_payload(commitment.commitment_ref, "idempotency_key_reused")
+            duplicate = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+            if duplicate is None:
+                return self._rejected_payload(commitment.commitment_ref, "idempotency_record_missing_result")
+            return CommercialCommitOutcome(
+                committed=duplicate.committed,
+                receipt=duplicate.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
+                zero_write=True,
+                revision_vector=dict(duplicate.resulting_stream_revisions),
+                public_digest=_digest(duplicate.model_dump(mode="json")),
+            )
         required_streams = {
             self._organization_stream(commitment.buyer_organization_ref),
             self._organization_stream(commitment.seller_organization_ref),
@@ -381,6 +397,7 @@ class CommerceAuthority:
             source_ref=commitment.commitment_ref,
             pinned=commitment.revision_vector,
             atomic_validation_revisions=commitment.revision_vector,
+            idempotency_payload_digest=idempotency_digest,
         )
 
     def record_delivery(self, commitment: CommerceCommitment, delivery: DeliveryResult, *, idempotency_key: str) -> CommercialCommitOutcome:
@@ -449,6 +466,21 @@ class CommerceAuthority:
         )
 
     @staticmethod
+    def commerce_settlement_receipt_for(*, result: AppendBatchResult | None, privacy_scope: str) -> SettlementReceipt:
+        if privacy_scope != "authority":
+            raise ValueError("commerce_settlement_receipt_scope_denied")
+        if result is None:
+            raise ValueError("commerce_settlement_receipt_missing")
+        return SettlementReceipt.from_append_result(
+            result=result,
+            audit_refs=(f"commerce_transaction:{result.transaction_id}",),
+        )
+
+    @staticmethod
+    def _commitment_idempotency_digest(commitment: CommerceCommitment) -> str:
+        return _digest({"operation": "commerce_commitment", "commitment": commitment.model_dump(mode="json")})
+
+    @staticmethod
     def _organization_stream(ref: str) -> str:
         return f"gameplay:organization:{ref}"
 
@@ -465,10 +497,8 @@ class CommerceAuthority:
         source_ref: str,
         pinned: dict[str, int],
         atomic_validation_revisions: dict[str, int] | None = None,
+        idempotency_payload_digest: str | None = None,
     ) -> CommercialCommitOutcome:
-        duplicate = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
-        if duplicate is not None:
-            return CommercialCommitOutcome(committed=duplicate.committed, receipt=duplicate.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True), zero_write=True, revision_vector=dict(duplicate.resulting_stream_revisions), public_digest=_digest(duplicate.model_dump(mode="json")))
         expected = {stream: revision for fragment in fragments for stream, revision in fragment.expected_revisions.items()}
         for stream, revision in expected.items():
             actual = self._store.get_stream_head(stream)
@@ -520,6 +550,28 @@ class CommerceAuthority:
                     "pinned_revisions": dict(
                         sorted({**batch.pinned_revisions, **atomic_validation_revisions}.items())
                     ),
+                },
+                deep=True,
+            )
+        if idempotency_payload_digest is not None:
+            batch = batch.model_copy(
+                update={
+                    "idempotency_record": batch.idempotency_record.model_copy(
+                        update={"payload_digest": idempotency_payload_digest},
+                        deep=True,
+                    ),
+                    "outbox_entries": [
+                        GameplayOutboxEntry(
+                            outbox_id=f"outbox:{command_id}:{event.event_id}",
+                            transaction_id=batch.transaction_id,
+                            event_id=event.event_id,
+                            global_sequence=0,
+                            topic="commerce.commitment.settled",
+                            audience="authority:commerce",
+                            payload_projection={"commitment_ref": source_ref, "event_type": event.event_type},
+                        )
+                        for event in batch.events
+                    ],
                 },
                 deep=True,
             )

@@ -1,6 +1,6 @@
 # Phase Two: `bakery-authored-agents` Specification Tree
 
-Status: `implemented-and-verified; Phase Two plan closed`
+Status: `P2A-P2C verified; historical P2D evidence invalidated; P2D-R bounded owner re-closure verified; full Phase Two close remains open`
 
 Date: `2026-08-09`
 
@@ -74,10 +74,18 @@ replay、permission 和 zero-write evidence fresh-green 后才能开始。
 1. [P2A Actor-to-Gameplay Participation](2026-08-09-p2a-actor-to-gameplay-participation-design.md) / [plan](../../../plans/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/2026-08-09-p2a-actor-to-gameplay-participation-implementation-plan.md)
 2. [P2B Organization Work Lifecycle](2026-08-09-p2b-organization-work-lifecycle-design.md) / [plan](../../../plans/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/2026-08-09-p2b-organization-work-lifecycle-implementation-plan.md)
 3. [P2C Payroll and Operating Window](2026-08-09-p2c-payroll-and-operating-window-design.md) / [plan](../../../plans/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/2026-08-09-p2c-payroll-and-operating-window-implementation-plan.md)
-4. [P2D Authored-Agents Bakery Vertical Slice](2026-08-09-p2d-authored-agents-bakery-vertical-slice-design.md) / [plan](../../../plans/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/2026-08-09-p2d-authored-agents-bakery-vertical-slice-implementation-plan.md)
+4. [P2D historical sample](2026-08-09-p2d-authored-agents-bakery-vertical-slice-design.md) / [historical plan](../../../plans/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/2026-08-09-p2d-authored-agents-bakery-vertical-slice-implementation-plan.md)
+5. [P2D-R authority re-closure](2026-08-15-p2d-r-authored-bakery-authority-reclosure-design.md) / [plan](../../../plans/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/2026-08-15-p2d-r-authored-bakery-authority-reclosure-plan.md)
 
 ## Completion language
 
-P2A-P2D focused tests、四个 phase2 Harness、P1D predecessor Harness、docs Harness 与全量
-pytest 均已 fresh-green；可以使用“已有角色的多智能体组织协作已通过 authority、replay、
-scope-filtered mirror 和 Harness 门禁”的完成表述。Population Simulation handoff gate 仍未满足。
+P2A-P2C 的 focused tests 和 Harness 仍是有效前置。历史 P2D profile 在 2026-08-15
+被重新审计：它直接构造 event batch，focused test 只检查 fixture/零写回放，Harness 也以一个
+合成布尔值代替独立 capability assertion。因此它不能证明“已有角色的多智能体组织协作”已经
+通过 authority、replay、scope-filtered mirror 门禁，也不能作为 INF 主线完整能力的证据。
+
+P2D-R 已重新绑定既有 Organization、Construction/Production 与 Economy owner，且 source
+admission、authoritative business write、payment/overdue、privacy、idempotency/revision 和
+full/checkpoint-tail replay 已逐项 fresh-green。它只恢复固定两名 worker 的 owner evidence，
+不能恢复完整 P2D 或 Phase Two 完成表述：envelope-only actor intent consumer、第三角色的完整
+业务证据、scope-filtered Godot mirror 仍未实现。Population Simulation handoff gate 仍未满足。

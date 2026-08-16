@@ -8,6 +8,7 @@
 
 ```text
 P5 verified gameplay packages
+  -> P5 后续能力基础 F0-F2 fresh-green
   -> P6A reader/editor/admin capability surface
   -> P6B UI + CLI/MCP aligned authoring contract
   -> P6C package validation, staging, activation and rollback

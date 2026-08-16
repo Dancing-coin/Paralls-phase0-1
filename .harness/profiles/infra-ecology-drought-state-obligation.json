@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-ecology-drought-state-obligation",
+  "order": 174,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_ecology_drought_state_obligation.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-ecology-drought-state-obligation-report.json",
+  "description": "INF-1AA fixed Ecology drought state obligation and strict semantic adapter through the existing event spine"
+}

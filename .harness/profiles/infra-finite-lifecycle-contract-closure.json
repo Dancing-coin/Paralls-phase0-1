@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-finite-lifecycle-contract-closure",
+  "order": 168,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_finite_lifecycle_contract_closure.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-finite-lifecycle-contract-closure-report.json",
+  "description": "INF-1Q immutable lifecycle admission reader for existing Survival, Construction, Ecology, and Economy owner rows"
+}

@@ -24,6 +24,7 @@ python scripts/verification/harness.py --profile phase2a-actor-to-gameplay-parti
 python scripts/verification/harness.py --profile phase2b-organization-work-lifecycle
 python scripts/verification/harness.py --profile phase2c-payroll-operating-window
 python scripts/verification/harness.py --profile phase2-bakery-authored-agents
+python scripts/verification/harness.py --profile p2dr-authored-bakery-authority-reclosure
 python scripts/verification/harness.py --profile phase4a-dynamic-quote-clearing
 python scripts/verification/harness.py --profile phase4b-multi-organization-commerce
 python scripts/verification/harness.py --profile phase4c-government-credit
@@ -32,7 +33,19 @@ python scripts/verification/harness.py --profile phase5a-quest-objective-evidenc
 python scripts/verification/harness.py --profile phase5b-relationship-reputation-knowledge
 python scripts/verification/harness.py --profile phase5c-investigation-stealth-conflict
 python scripts/verification/harness.py --profile phase5d-investigation-vertical-slice
+python scripts/verification/harness.py --profile post-p5-capability-foundation-docs
+python scripts/verification/harness.py --profile post-p5-f1a-foundation
+python scripts/verification/harness.py --profile post-p5-f1b-foundation
+python scripts/verification/harness.py --profile post-p5-f1c-foundation
+python scripts/verification/harness.py --profile post-p5-f2-gates
+python scripts/verification/harness.py --profile infra-payroll-operating-window-closure
+python scripts/verification/harness.py --profile infra-event-derived-bounded-due-lifecycle-view
 ```
+
+`phase2-bakery-authored-agents` is retained as a historical sample profile only. Its direct-batch
+verification does not prove an authority-driven P2D close. Use
+`p2dr-authored-bakery-authority-reclosure` for the current narrow owner-driven evidence: each of
+the nine reported capabilities is an independently selected focused test.
 
 ### Phase Four Profiles
 
@@ -47,6 +60,21 @@ python scripts/verification/harness.py --profile phase5d-investigation-vertical-
 - `phase5b-relationship-reputation-knowledge`
 - `phase5c-investigation-stealth-conflict`
 - `phase5d-investigation-vertical-slice`
+
+### Post-P5 Documentation Gate
+
+`post-p5-capability-foundation-docs` is a static documentation gate for the
+P5-follow-up foundation. It checks the F0 source ledger, matching formal
+spec/plan set, execution prompt, and P6/P7 evidence-aware opening matrix. It
+does not prove F0-F2, P6, or P7 runtime completion, and it is intentionally
+excluded from `all` until a future implementation plan promotes its runtime
+profiles.
+
+`post-p5-f1a-foundation`, `post-p5-f1b-foundation`, and
+`post-p5-f1c-foundation` are bounded partial-foundation profiles over existing
+owners. `post-p5-f2-gates` aggregates their evidence with fresh P5 reports and
+records replay/privacy/zero-write taxonomy. None of these profiles claims the
+generic F1 tracks, P6, or P7 are complete.
 
 ```powershell
 python scripts/verification/harness.py --profile siming-backend-chain
@@ -1716,6 +1744,1211 @@ Harness-facing changes can be recorded under `.harness/changes/` as decision man
 The Harness runner includes active manifests in `harness-run-manifest.json` under `harness_changes`. Malformed manifests are reported under `harness_change_errors` so normal profile runs remain usable while evidence problems stay visible.
 
 When a profile fails, the runner writes a deterministic failure digest such as `.harness/verification/phase0-failure-digest.json` and archives the same digest under that run's `.harness/verification/runs/run-.../` directory. A digest is an index into existing reports and traces; it does not replace the original profile report or runtime trace.
+
+### `infra-frost-production-admission`
+
+Backend-only proof for INF-3R-A. It verifies the committed ecology frost source,
+authority/public redaction, deterministic due construction-run selection,
+zero-write source and target rejections, idempotency, and source/target
+full/checkpoint-tail reconstruction. It does not write a production outcome.
+
+Output:
+
+- `.harness/verification/infra-frost-production-admission-report.json`
+
+### `infra-obligation-lifecycle`
+
+Backend-only INF-2X proof for the sole registered
+`policy:construction_due_completion@1` construction row. Its independent
+assertions cover owner/stream registration, fragment stream and revision,
+lifecycle correlation, committed source obligation identity, idempotency,
+revision and terminal zero-write rejection, registered project scope, and
+full/checkpoint-tail replay. Cancellation can only correlate an obligation
+identity committed on the construction `run_started` source fact.
+
+It does not admit retry, failure, compensation, ecology lifecycle policies,
+other owner rows, a second scheduler, or a new event store.
+
+Output:
+
+- `.harness/verification/infra-obligation-lifecycle-report.json`
+
+### `infra-survival-state-obligation`
+
+Backend-only INF-1A proof for exactly one `SurvivalAuthority` row:
+`state:cold@1` on `gameplay:survival:{actor_ref}`. Independent assertions cover
+the formal owner matrix, scheduled apply/open, caller-driven due selection,
+owner expiry settlement, each closed stack policy, idempotency/revision/forged
+owner zero-write, event-derived dispel/transform cancellation, scoped public
+redaction, and checkpoint-tail replay. The pure semantic evaluator remains
+proposal-only and cannot append Survival truth; the separately evidenced closed
+semantic bridges may only hand their registered cold/heat proposals to the
+Survival owner.
+
+It does not prove generic state ownership, periodic effects, retry,
+compensation, other domain rows, or a second scheduler/store.
+
+- `.harness/verification/infra-survival-state-obligation-report.json`
+
+### `infra-semantic-survival-state-bridge`
+
+Backend-only INF-1B proof for exactly two closed handoffs:
+`authority:semantic -> effect:cold_exposure -> state:cold@1 -> SurvivalAuthority`
+and `authority:semantic -> effect:heat_exposure -> state:overheated@1 ->
+SurvivalAuthority`. Separate assertions prove each row's owner submission,
+duplicate replay,
+altered-idempotency-payload zero-write, target revision zero-write, privacy
+zero-write, unmapped-owner zero-write and checkpoint-tail replay. The pure
+semantic evaluator remains proposal-only; this does not
+authorize a generic semantic writer or owner matrix.
+
+- `.harness/verification/infra-semantic-survival-state-bridge-report.json`
+
+### `infra-semantic-state-owner-matrix`
+
+Backend-only INF-1F proof that the three existing Survival state/effect rows
+are represented by one registered lifecycle-owner matrix, not by a second
+hard-coded bridge mapping. Independent assertions cover exact row lookup,
+effect/state mismatch and unregistered-owner denial, deterministic row listing,
+owner append, duplicate idempotency, revision/privacy zero writes and
+checkpoint-tail replay. It does not add an owner, stream or cross-domain
+effect/state lifecycle.
+
+- `.harness/verification/infra-semantic-state-owner-matrix-report.json`
+
+### `infra-generic-obligation-lifecycle`
+
+Backend-only INF-2A proof for the read-only two-owner obligation lifecycle
+projection over existing construction and Survival streams. Separate assertions
+cover canonical statuses, due derivation without lifecycle writes, Survival
+settled projection, bounded retry re-entering the one shared clock and owner
+settlement path, settled-only explicit Survival compensation, revision and
+unregistered/exhausted zero writes, idempotency, privacy and checkpoint-tail
+replay.
+
+It does not admit construction or ecology retry/compensation, an obligation
+store, second scheduler, or a generic population activation-obligation pending
+merge. The separately verified INF-2B/2E/2F `survival_state_expiry` rows are
+the only registered exceptions for `state:cold@1`, `state:dehydrated@1`, and
+`state:overheated@1`, and do not widen this profile.
+
+- `.harness/verification/infra-generic-obligation-lifecycle-report.json`
+
+### `infra-frost-production-recipe-admission`
+
+Backend-only proof for INF-3R-B. It verifies the existing construction owner's
+immutable recipe snapshot on `run_started`, authority-only revisioned reads,
+legacy/missing/stale/privacy zero-write behavior, idempotency, and
+full/checkpoint-tail reconstruction. It does not write a frost consequence.
+
+Output:
+
+- `.harness/verification/infra-frost-production-recipe-admission-report.json`
+
+### `infra-regional-ecology`
+
+Backend-only proof for the sole INF-3R edge: one committed frost source becomes
+one construction-owner due-finish fragment and one existing `append_batch`,
+with a scoped outbox, public redaction, authority provenance, idempotency,
+source/target/privacy/retry/compensation zero-write fences, and full/checkpoint-tail
+replay. It does not prove other hazards, generic consumers, regional truth,
+retry/compensation implementation, market/body/social/population effects, or
+Godot presentation.
+
+Output:
+
+- `.harness/verification/infra-regional-ecology-report.json`
+
+### `infra-regional-ecology-truth`
+
+Backend-only INF-3X proof for `EcologyHazardAuthority`'s sole
+`gameplay:ecology:{region_ref}` stream. It separately asserts each canonical
+region/environment/resource/crop/hazard recorded and retired event row, then
+proves the one-fragment/one-append/outbox path, record/revision/unknown/privacy
+zero-write fences, idempotency, scoped public/authority projection, a
+revisioned resource update, and full/checkpoint-tail replay.
+
+It does not authorize an ecology scheduler, regeneration/growth obligation,
+retry, compensation, weather algorithm, or hazard consumer edge.
+
+Output:
+
+- `.harness/verification/infra-regional-ecology-truth-report.json`
+
+### `infra-ecology-seasonal-process`
+
+Independent INF-3A evidence for the closed `EcologyHazardAuthority` seasonal
+process. Each Harness check runs a distinct focused pytest assertion for the
+atomic environment/resource/crop owner batch and the independent idempotency,
+revision, privacy, forged-principal, public-scope and checkpoint-tail replay
+boundary. It does not claim scheduler, generic weather, fanout or a consumer
+edge.
+
+- `.harness/verification/infra-ecology-seasonal-process-report.json`
+
+### `infra-seasonal-construction-maintenance`
+
+Backend-only INF-3B proof for one non-frost ecology process edge. A committed,
+project-visible seasonal process event becomes ecology proposal/admission only;
+the existing Construction owner revalidates it and writes its own maintenance
+obligation event. Independent checks cover success, closed admission,
+stale-source and target-revision zero-write, idempotency, outbox privacy and
+checkpoint-tail replay. It does not prove generic propagation, fanout, another
+target owner, scheduler, market/body/social/population effects, or P6/P7.
+
+- `.harness/verification/infra-seasonal-construction-maintenance-report.json`
+
+### `infra-schedule-gated-supply`
+
+Independent INF-4A evidence for one real existing-owner household/organization
+schedule input. Separate checks prove combined planner source pins, the
+Organization supply fragment settlement, and missing-work-order/activation-lock
+zero-write boundaries. It does not admit generic `work`; the former universal
+pending-merge limitation is superseded only by INF-4C's named row.
+
+- `.harness/verification/infra-schedule-gated-supply-report.json`
+
+### `infra-activation-pending-schedule-merge`
+
+Backend-only INF-4C proof for one activation-owned, event-derived pending
+admission: released `schedule_gated_supply` is revalidated before the existing
+Organization supply fragment can write. Separate assertions cover pending and
+release events, unsupported zero-write, duplicate idempotency, privacy,
+checkpoint-tail replay, existing-owner merge, and forged/stale zero-write.
+It does not admit generic pending payloads, ScheduledObligation activation
+integration, branch promotion, or a population truth owner.
+
+- `.harness/verification/infra-activation-pending-schedule-merge-report.json`
+
+### `infra-activation-survival-expiry`
+
+Backend-only INF-2B proof for one released `survival_state_expiry` pending row.
+The activation projection is revalidated, then the existing Survival expiry
+fragment is settled through the existing coordinator. Independent assertions
+cover success, duplicate idempotency, revision conflict, privacy and terminal
+zero-write, and checkpoint-tail replay. Activation and Survival remain separate
+append-derived receipts; this is not generic cross-domain atomic settlement.
+
+- `.harness/verification/infra-activation-survival-expiry-report.json`
+
+### `infra-released-survival-expiry-batch-closure`
+
+Backend-only INF-4AB proof for the second exact released-pending batch row:
+`ContinuityMergeAuthority` reads one released project-scoped activation record,
+then the existing `SurvivalAuthority` alone builds and commits the state-expiry
+fragment. Separate selectors prove the existing-owner path, a receipt derived
+from only the Survival append, idempotency, revision/privacy/terminal zero-write,
+and full versus checkpoint-tail replay. It does not admit a generic pending
+merge, cross-stream atomic receipt, branch promotion or a population truth owner.
+
+- `.harness/verification/infra-released-survival-expiry-batch-closure-report.json`
+
+### `infra-activation-dehydration-expiry`
+
+Backend-only INF-2E proof for one released `survival_state_expiry` pending row
+for `state:dehydrated@1`. The activation projection is revalidated, then the
+existing Survival expiry fragment is settled through the existing coordinator.
+Independent assertions cover success, duplicate and changed-duplicate behavior,
+revision/privacy/unregistered-state/terminal zero-write, checkpoint-tail replay,
+and the distinct activation versus Survival append receipts. This is not generic
+activation-obligation binding or a cross-stream atomic receipt.
+
+- `.harness/verification/infra-activation-dehydration-expiry-report.json`
+
+### `infra-activation-overheated-expiry`
+
+Backend-only INF-2F proof for one released `survival_state_expiry` pending row
+for `state:overheated@1`. The activation projection is revalidated, then the
+existing Survival expiry fragment settles through the existing coordinator.
+Independent assertions cover success, exact and changed duplicate behavior,
+changed pending zero activation write, revision/privacy/unsupported-state/
+terminal zero-write, scoped project outbox, checkpoint-tail replay and the
+distinct activation versus Survival append receipts. This is not generic
+activation-obligation binding or a cross-stream atomic receipt.
+
+- `.harness/verification/infra-activation-overheated-expiry-report.json`
+
+### `infra-activation-obligation-binding-contract`
+
+Backend-only INF-2G proof for a finite activation pending binding reader. Each
+check independently covers the exact four existing-owner rows, unknown kind,
+event-derived binding reference, forged binding zero-write, idempotency,
+privacy, replay, the three existing Survival handoffs, and the existing
+Organization schedule handoff. Activation and target receipts remain separate;
+this is neither registration nor a generic dispatcher or cross-stream receipt.
+It also proves an unbound historical pending cannot replay a valid Survival
+settlement receipt.
+
+- `.harness/verification/infra-activation-obligation-binding-contract-report.json`
+
+### `infra-economy-wage-obligation`
+
+Backend-only INF-2C proof for one existing Economy owner wage-accrual
+obligation row. Independent assertions cover opening projection, caller due
+selection and owner settlement receipt, duplicate handling, revision/privacy/
+terminal/reopened-identity zero-write, settlement revision zero-write, project outbox scope, and
+checkpoint-tail replay. It does not admit payment, accounts, cancellation,
+retry, compensation, generic work, activation binding, or cross-stream atomic
+receipts.
+
+- `.harness/verification/infra-economy-wage-obligation-report.json`
+
+### `infra-semantic-closed-guard-composition`
+
+Backend-only INF-1C proof for finite proposal-only `all(...)` and `any(...)`
+composition over existing tag/status/numeric guards. Separate assertions cover
+true and false `all`, true `any`, and malformed/script rejection. This profile
+does not append domain events or prove any additional effect/state owner row.
+
+- `.harness/verification/infra-semantic-closed-guard-composition-report.json`
+
+### `infra-isolated-branch-evolution`
+
+Independent INF-4B evidence for deterministic isolated branch descriptor and
+candidate records, local checkpoint-tail projection equivalence, invalid base/
+profile zero-write, and unsupported promotion. The branch buffer is explicitly
+not a production event store or writer.
+
+- `.harness/verification/infra-isolated-branch-evolution-report.json`
+
+### `infra-isolated-branch-owner-disposition`
+
+Backend-only INF-4D proof for branch-local analysis records that label a
+candidate as mapped to an existing Organization/Government owner or blocked.
+Separate assertions prove zero production write, checkpoint-tail replay, base
+and profile rejection, and unsupported promotion. An admitted disposition does
+not execute a fragment, settle a domain consequence, or enable promotion.
+
+- `.harness/verification/infra-isolated-branch-owner-disposition-report.json`
+
+### `infra-isolated-branch-owner-fragment-evaluation`
+
+Backend-only INF-4F proof that the isolated branch buffer can validate the two
+closed Organization/Government fragment-builder mappings and record only a
+branch-local disposition and fragment digest. It independently asserts accepted
+evaluation, rejected/stale evaluation, branch replay, base/profile rejection,
+and production zero writes. It does not settle a fragment, create a production
+receipt, mutate a domain projection, or enable promotion.
+
+- `.harness/verification/infra-isolated-branch-owner-fragment-evaluation-report.json`
+
+### `infra-isolated-branch-owner-consequence-projection`
+
+Backend-only INF-4G evidence that an already accepted Organization `supply` or
+Government `inspection` fragment evaluation can yield exactly one redacted,
+branch-local planned consequence. Independent assertions cover supply,
+inspection, rejection without projection, owner-only-reference redaction,
+checkpoint-tail replay, base/profile zero writes, and unsupported promotion.
+The buffer remains non-production: it never appends a `GameplayEvent`, creates
+an outbox row, settles a fragment, emits a receipt, or permits promotion.
+
+- `.harness/verification/infra-isolated-branch-owner-consequence-projection-report.json`
+
+### `infra-durable-isolated-branch-snapshot`
+
+Backend-only INF-4M proof that the existing `BranchPreviewAuthority` can
+explicitly persist its already accepted, redacted analysis buffer to the
+existing creator-debug `gameplay:branch_preview:{branch_ref}` stream. Independent
+assertions cover append/fresh-instance reconstruction, missing-buffer and
+privacy zero writes, idempotency and stale revision, redaction, and
+checkpoint-tail replay. It never settles a domain fragment, creates a
+production receipt, or permits promotion.
+
+- `.harness/verification/infra-durable-isolated-branch-snapshot-report.json`
+
+### `infra-organization-branch-scenario-settlement`
+
+Backend-only INF-4H proof for one accepted `supply` candidate settled by the
+existing `OrganizationAuthority` onto its non-production scenario stream in the
+same `GameplayEventStore`. Independent assertions cover Organization ownership,
+duplicate idempotency, privacy/unknown-candidate/revision zero writes, scoped
+outbox, checkpoint-tail scenario replay, production replay isolation and
+unsupported promotion. It does not create a branch authority/store, write a
+production organization stream, admit inspection/generic scenario settlement,
+issue a cross-domain receipt or permit promotion.
+
+- `.harness/verification/infra-organization-branch-scenario-settlement-report.json`
+
+### `infra-government-branch-scenario-settlement`
+
+Backend-only INF-4I proof for one accepted, passed `inspection` candidate
+settled by the existing `GovernmentAuthority` onto its non-production scenario
+stream in the same `GameplayEventStore`. Independent assertions cover Government
+ownership, duplicate and changed-duplicate idempotency, privacy/unknown-candidate/
+failed-inspection-at-this-passed-endpoint/revision zero writes, scoped outbox,
+checkpoint-tail scenario replay, production replay isolation and unsupported
+promotion. INF-4J separately proves the fixed failed-inspection remediation row;
+neither package creates a remediation obligation, generic scenario settlement,
+cross-domain receipt or promotion path.
+
+- `.harness/verification/infra-government-branch-scenario-settlement-report.json`
+
+### `infra-government-inspection-promotion`
+
+Backend-only INF-4N proof for one durable passed-inspection admission and
+Government scenario event revalidated by the existing `GovernmentAuthority`
+before it writes the existing production Government inspection event. Each
+capability has an independent focused assertion: production append,
+append-derived duplicate receipt, changed-idempotency zero write, stale source
+zero write, privacy zero write, forged scenario zero write, and scoped outbox
+with production checkpoint-tail replay. It admits no Organization/remediation/
+generic promotion row and does not create a second store, receipt store or
+population truth owner.
+
+- `.harness/verification/infra-government-inspection-promotion-report.json`
+
+### `infra-organization-supply-promotion`
+
+Backend-only INF-4O proof for one durable supply admission emitted on the
+existing creator-debug `gameplay:branch_preview:{branch_ref}` stream and one
+matching Organization branch scenario row revalidated by the existing
+`OrganizationAuthority` before it writes the existing production Organization
+commerce event. Each capability has an independent focused assertion:
+production append, append-derived duplicate receipt, changed-idempotency zero
+write, stale source zero write, privacy zero write, forged source/scenario zero
+write, and scoped outbox with production checkpoint-tail replay. It admits no
+Government/remediation/generic promotion row and does not create a second
+store, receipt store or promotion coordinator.
+
+- `.harness/verification/infra-organization-supply-promotion-report.json`
+
+### `infra-government-failed-inspection-promotion`
+
+Backend-only INF-4S proof for one durable failed-inspection admission and one
+matching Government remediation scenario event revalidated by the existing
+`GovernmentAuthority` before it writes the existing production Government
+inspection event with `passed=False`. Each capability has an independent
+focused assertion: production append, append-derived duplicate receipt,
+changed-idempotency zero write, stale source zero write, privacy zero write,
+forged scenario zero write, catalog pre-append admission, and scoped outbox
+with production checkpoint-tail replay. It admits no Organization/remediation
+generic promotion row and does not create a second store, receipt store or
+population truth owner.
+
+- `.harness/verification/infra-government-failed-inspection-promotion-report.json`
+
+### `infra-government-failed-inspection-remediation-scenario`
+
+Backend-only INF-4J proof for one accepted failed `inspection` candidate
+settled by the existing `GovernmentAuthority` as a fixed
+`follow_up_required` remediation record on its non-production scenario stream
+in the same `GameplayEventStore`. Independent assertions cover owner append,
+derived immutable remediation identity/action, exact and changed-duplicate
+behavior, privacy/unknown/passed/source/scenario-revision zero writes,
+checkpoint-tail scenario replay, production replay isolation and unsupported
+promotion. It does not create a branch authority/store, a remediation
+`ScheduledObligation`, generic scenario receipt, production Government write or
+promotion path.
+
+- `.harness/verification/infra-government-failed-inspection-remediation-scenario-report.json`
+
+### `infra-durable-branch-preview-admission`
+
+Backend-only INF-4L proof that an accepted inspection is first recorded as a
+`creator_debug` BranchPreview evidence event in the sole gameplay store, then
+reloaded and revalidated by the existing Government owner before either passed
+inspection or fixed failed-inspection remediation scenario append. Independent
+assertions cover both outcomes, missing/primitive provenance and passed/failed
+forged cross-branch zero writes, duplicates, source revision, scoped outbox, replay, production isolation and
+unsupported promotion. The evidence is not production/population/social truth
+and creates no receipt, lifecycle, scheduler, second store or promotion path.
+
+- `.harness/verification/infra-durable-branch-preview-admission-report.json`
+
+### `infra-ecology-weather-front-propagation`
+
+Backend-only INF-3C proof for one closed, project-visible weather-front step
+between two mutually adjacent existing ecology regions. It independently asserts
+the source propagation event, target environment record, source/target revision
+checks, privacy, idempotency and checkpoint-tail replay. It does not admit a
+scheduler, fanout, multi-hop propagation, retry/compensation, or any consumer
+domain write.
+
+- `.harness/verification/infra-ecology-weather-front-propagation-report.json`
+
+### `infra-ecology-weather-front-path-propagation`
+
+Backend-only INF-3D proof for one caller-submitted, no-repeat, symmetric
+Ecology path of one to three weather-front hops. Eight independent selectors
+cover the three-hop one-batch result, exact/changed idempotency, stale vector,
+repeated path, nonadjacent hop, privacy zero-write, and full/checkpoint-tail
+replay. It does not admit a fanout set, scheduler, third consumer edge, or
+non-Ecology write.
+
+- `.harness/verification/infra-ecology-weather-front-path-propagation-report.json`
+
+### `infra-ecology-weather-front-fanout`
+
+Backend-only INF-3E proof for one caller-named root and one to three symmetric
+Ecology neighbors. Seven independent selectors cover one-batch fanout and full
+edge projection, exact/changed idempotency, stale vector, duplicate target,
+privacy zero-write, and full/checkpoint-tail replay. It does not admit
+multi-round fanout, a consumer edge, a scheduler, or non-Ecology writes.
+
+- `.harness/verification/infra-ecology-weather-front-fanout-report.json`
+
+### `infra-ecology-weather-front-wave-fanout`
+
+Backend-only INF-3F proof for a closed two-wave Ecology-only weather-front
+fanout. Nine independent selectors prove the one-batch transaction and chained
+environment revision, exact and changed idempotency, stale vector, invalid
+second wave, adjacency and privacy zero writes, redacted project outbox, and
+full versus checkpoint-tail replay. It admits only the existing Ecology owner,
+streams and event family; it does not create a scheduler, generic graph
+runtime, third consumer edge, retry/compensation, or non-Ecology write.
+
+- `.harness/verification/infra-ecology-weather-front-wave-fanout-report.json`
+
+### `infra-ecology-weather-front-construction-edge`
+
+Backend-only INF-3G proof for one exact project-visible weather-front to
+Construction maintenance consumer edge. Nine independent selectors cover the
+Construction owner append, closed opaque admission, exact and changed
+idempotency, source and target revision zero-write, source privacy, redacted
+project outbox, and full/checkpoint-tail replay. The edge reuses only the
+existing Ecology source event, Construction facility stream and maintenance
+obligation event; it does not create a generic consumer registry, scheduler,
+retry/compensation path, or Economy/Organization/population writer.
+
+- `.harness/verification/infra-ecology-weather-front-construction-edge-report.json`
+
+### `infra-ecology-weather-front-construction-fanout`
+
+Backend-only INF-3H proof for one fixed two-facility, same-owner Construction
+consumer fanout from a single Ecology weather-front source event. Four
+independent selectors cover the two-stream one-batch append, closed admission
+zero-write, changed duplicate/privacy zero-write, and revision/idempotency/
+project-outbox/full-checkpoint replay. It is not a generic fanout registry or
+cross-domain settlement writer.
+
+- `.harness/verification/infra-ecology-weather-front-construction-fanout-report.json`
+
+### `infra-ecology-weather-front-organization-supply-edge`
+
+Backend-only INF-3I proof for one fixed project-visible Ecology
+weather-front source to the existing Organization commerce commitment owner.
+Four independent selectors cover the owner fragment append, exact and changed
+duplicate behavior, forged/privacy/stale-source zero-write, and the existing
+Organization commitment projection full/checkpoint-tail replay. The edge uses
+the existing Organization event family and append spine; it is not a generic
+consumer registry, direct Ecology write, payment path, or arbitrary fanout.
+
+- `.harness/verification/infra-ecology-weather-front-organization-supply-edge-report.json`
+
+### `infra-ecology-weather-front-organization-supply-fanout`
+
+Backend-only INF-3O proof for one fixed project-visible weather-front source
+to exactly two existing Organization commitment targets in one owner batch.
+Independent checks cover the two-stream one-batch append, exact opaque pair
+admission and arity, catalog/source/revision zero-write, idempotency,
+project-only privacy, and full/checkpoint-tail replay. It does not admit a
+generic consumer registry, arbitrary fanout, payment, pricing, scheduler, or a
+new owner/store.
+
+- `.harness/verification/infra-ecology-weather-front-organization-supply-fanout-report.json`
+
+### `infra-durable-branch-evolution`
+
+Backend-only INF-4P proof that the existing branch-preview authority can append
+one fixed, redacted owner-consequence evolution event after its durable
+creator-debug snapshot, then rebuild it in a fresh authority. Four independent
+selectors cover branch-stream append/projection, unsupported or private
+zero-write, exact idempotency and revision, and checkpoint-tail replay. The
+event remains isolated branch evidence; it does not write production truth,
+create a branch-domain receipt, or enable generic promotion.
+
+- `.harness/verification/infra-durable-branch-evolution-report.json`
+
+### `infra-survival-heat-state-obligation`
+
+Backend-only INF-1D proof for the single closed semantic row
+`effect:heat_exposure -> state:overheated@1 -> SurvivalAuthority`. It
+independently asserts owner admission, state/open-obligation append, settlement,
+duplicate/revision/privacy rejection and replay. It does not establish generic
+effect/state ownership or a general semantic lifecycle.
+
+- `.harness/verification/infra-survival-heat-state-obligation-report.json`
+
+### `infra-survival-dehydration-state-obligation`
+
+Backend-only INF-1E proof for the single closed semantic row
+`effect:dehydration_exposure -> state:dehydrated@1 -> SurvivalAuthority`. It
+independently asserts owner append, duplicate and changed-duplicate behavior,
+revision/privacy/unmapped-pair zero writes, due settlement with checkpoint-tail
+replay, and project-scoped outbox. It does not establish generic effect/state
+ownership or a general semantic lifecycle.
+
+- `.harness/verification/infra-survival-dehydration-state-obligation-report.json`
+
+### `infra-survival-fatigue-owner-row`
+
+Backend-only INF-1S proof for the one explicit closed semantic row
+`effect:fatigue_exposure -> state:fatigued -> SurvivalAuthority`. Its selectors
+independently assert the closed matrix, owner-spine append, duplicate and
+changed-duplicate behavior, stale/forged-contract zero write, semantic owner
+dispatch, and non-project privacy zero write. It does not admit generic effect,
+state, owner, stream, or event registration.
+
+- `.harness/verification/infra-survival-fatigue-owner-row-report.json`
+
+### `infra-survival-fatigue-state-action`
+
+Backend-only INF-1T proof that the already-admitted fatigue row can use only
+the existing Survival dispel and fixed recovery-transform actions. Independent
+selectors cover both owner-event paths, non-project privacy zero write, and
+duplicate/revision/replay closure. It does not admit generic state actions.
+
+- `.harness/verification/infra-survival-fatigue-state-action-report.json`
+
+### `infra-activation-fatigue-expiry`
+
+Backend-only INF-2N proof for the fourth explicit released Survival expiry
+binding. It independently asserts owner-fragment settlement, duplicate/revision
+zero write, privacy rejection, and checkpoint-tail replay. It does not prove or
+admit generic activation-obligation binding.
+
+- `.harness/verification/infra-activation-fatigue-expiry-report.json`
+
+### `infra-construction-maintenance-state-owner`
+
+Backend-only INF-1G proof for one closed semantic proposal,
+`effect:maintenance_required -> state:maintenance_due@1`, settled by the
+existing `ConstructionProductionAuthority` on an already acquired facility
+stream. Sixteen independent assertions cover the owner append, duplicate and
+changed-duplicate behavior, revision/privacy/mapping/vector/unacquired-facility
+zero writes, an acquired facility without a started run, project-scoped
+outbox/projection, and full/checkpoint-tail replay. It does not admit a generic
+cross-owner matrix, construction state expiry, scheduler, retry, compensation,
+or a cross-stream receipt.
+
+- `.harness/verification/infra-construction-maintenance-state-owner-report.json`
+
+### `infra-construction-maintenance-state-obligation`
+
+Backend-only INF-1N proof for the fixed existing Construction facility-stream
+state lifecycle: committed `maintenance_state_applied` source -> owner-owned
+obligation open -> `maintenance_state_expired` plus settled event in one
+append-derived receipt. Nineteen independent selectors cover owner append,
+unknown/duplicate/stale/wrong-source/second-active zero writes, exact duplicate
+behavior and each changed-duplicate rejection, committed-open admission,
+paired-expiry and direct non-owner zero-write rejection, unsupported
+cancel/retry/compensation, lifecycle projection,
+project-scoped outbox, receipt privacy, and full/checkpoint-tail replay. It is
+one fixed owner policy, not generic effect/state dispatch or a scheduler.
+
+- `.harness/verification/infra-construction-maintenance-state-obligation-report.json`
+
+### `infra-semantic-registered-state-owner-dispatch`
+
+Backend-only INF-1H/INF-1I proof for the exact four-row owner matrix and closed
+dispatch of the three registered Survival rows and the Construction
+maintenance row to their existing owners. Independent assertions cover
+matrix shape, Survival/Construction dispatch, unknown and
+mismatched routes, duplicate/revision/privacy zero writes, direct-helper stale
+semantic-vector rejection, non-canonical Survival definition rejection, and
+checkpoint-tail replay. The profile remains a closed adapter route; it does
+not establish generic owner dispatch, a new lifecycle policy, scheduler,
+clock, event store, or cross-stream receipt.
+
+- `.harness/verification/infra-semantic-registered-state-owner-dispatch-report.json`
+
+### `infra-semantic-economy-wage-obligation`
+
+Backend-only INF-1J proof for the exact semantic
+`effect:wage_accrual_due -> EconomyAuthority` obligation row. Fourteen independent
+assertions cover owner submission, unknown/unregistered effect, owner/stream/
+privacy/vector zero writes, duplicate and malformed-input zero writes,
+idempotency, revision conflict, project outbox scope, full/checkpoint-tail
+lifecycle replay and the bare-`pytest` Economy terminal-lifecycle import path.
+It does not admit payment, account
+truth, generic wage policy or generic semantic effect routing.
+
+- `.harness/verification/infra-semantic-economy-wage-obligation-report.json`
+
+### `infra-semantic-survival-state-action`
+
+Backend-only INF-1K proof for the two closed semantic Survival state-action
+rows: dispel and fixed recovery transform. Fifteen independent assertions
+cover each success action, unknown/unregistered routes, owner/stream/privacy/
+vector/reason zero-write fences, revision conflict, exact and changed
+idempotency behavior (including changed semantic snapshot), project outbox
+scope, and full/checkpoint-tail replay.
+It does not claim generic state actions, arbitrary replacement states, or a
+generic semantic owner router.
+
+- `.harness/verification/infra-semantic-survival-state-action-report.json`
+
+### `infra-state-action-lifecycle-closure`
+
+Backend-only INF-1O proof that the closed `StateDefinition` contract decides
+dispel and fixed recovery transform before the existing Survival owner fragment
+is built. Thirteen independent selectors cover each pure action decision,
+each policy rejection, fixed contract target, contract-before-fragment
+zero-write, both owner settlements, idempotency, revision/privacy zero-write,
+and full/checkpoint-tail replay. It does not admit a generic action registry,
+state writer, arbitrary transform target, scheduler, or new owner row.
+
+- `.harness/verification/infra-state-action-lifecycle-closure-report.json`
+
+### `infra-construction-maintenance-state-action`
+
+Backend-only INF-1P proof for the one closed Construction action row:
+`effect:maintenance_state_dispel` over an existing project-scoped
+`state:maintenance_due` and its exact committed open obligation. Ten
+independent selectors prove the single owner cancellation batch, exact and
+changed idempotency, revision/privacy/closed-contract/transform/unknown-effect
+zero-write, full/checkpoint-tail replay, and that ordinary Construction
+lifecycle cancel is still unsupported. It does not claim repair, payment,
+material, transform, generic state actions or generic cancellation.
+
+- `.harness/verification/infra-construction-maintenance-state-action-report.json`
+
+### `infra-government-policy-registration`
+
+Backend-only INF-2K proof for the one existing-Government-owner commercial
+ inspection policy registration row. Eight independent selectors cover separate
+ register/revoke formal appends, exact and changed duplicate behavior,
+ revision/privacy/unknown-kind zero writes and full/checkpoint-tail replay. It does not admit arbitrary policy kinds,
+obligation settlement, payment or a generic cross-domain writer.
+
+- `.harness/verification/infra-government-policy-registration-report.json`
+
+### `infra-debt-settlement-formal-spine`
+
+Backend-only INF-2L proof that the existing fixed simple-debt owner now uses
+`GameplayCommandEnvelope -> DebtSettlementPlan -> owner fragments -> one
+GameplayEventStore.append_batch()` across its existing Economy, Contract, Debt
+and Commerce streams. Ten independent selectors prove issue/payment formal
+fragments and redacted authority outboxes, legacy event compatibility, exact
+duplicate zero-write, changed-idempotency zero-write, stale revision zero-write,
+closed event/type-to-stream admission zero-write, generic full/checkpoint-tail
+replay, and the owner-local `DebtAuthorityService.replay_projection`
+full/checkpoint-tail reader. It does not admit arbitrary payment, caller-open
+policy registration, or a generic cross-domain writer.
+
+- `.harness/verification/infra-debt-settlement-formal-spine-report.json`
+
+### `infra-governed-authority-contract-catalog`
+
+Backend-only cross-INF proof for the immutable, read-only catalog that binds
+existing lifecycle, Government policy, Debt settlement, Ecology-to-Organization
+consumer, and Organization branch-promotion contracts. Eight independent
+selectors prove the fixed catalog shape, unknown/kind rejection, owner/stream/
+event/privacy fences, the fixed debt replay-reader surface, and each existing
+owner path. The catalog cannot register contracts, append events, create a
+coordinator, or authorize arbitrary policy, settlement, fanout, promotion, or
+population truth.
+
+- `.harness/verification/infra-governed-authority-contract-catalog-report.json`
+
+### `infra-ecology-weather-front-economy-quote-edge`
+
+Backend-only INF-3J proof for one sealed weather-front source to one existing
+Economy quote owner. Independent selectors cover success, forged admission,
+stale source, cross-quote reuse, exact duplicate/replay, changed-source
+idempotency and authority-only source privacy. It does not admit generic
+pricing, consumer registration, or Ecology economic writes.
+
+- `.harness/verification/infra-ecology-weather-front-economy-quote-edge-report.json`
+
+### `infra-ecology-weather-front-economy-quote-fanout`
+
+Backend-only INF-3N proof for one fixed project-visible weather-front source
+to exactly two existing Economy quotes in one owner batch. Independent checks
+cover the two-event batch, opaque pair admission and arity, source/target/
+catalog zero-write, idempotency with checkpoint-tail replay, and project-source
+privacy. It does not admit a generic consumer registry, arbitrary fanout,
+pricing formulas, account mutation, payment or a scheduler.
+
+- `.harness/verification/infra-ecology-weather-front-economy-quote-fanout-report.json`
+
+### `infra-ecology-weather-front-owner-contract-matrix`
+
+Backend-only INF-3L proof that the immutable catalog contains distinct existing
+Construction, Organization and Economy weather-front consumer contracts,
+including INF-3N's fixed two-quote Economy row.
+Separate selectors prove each row's metadata, each target owner's pre-append
+zero-write mismatch fence, and the existing fixed two-facility Construction
+batch. It does not register consumers, widen fanout, add retry/compensation,
+or let Ecology append target-domain truth.
+
+- `.harness/verification/infra-ecology-weather-front-owner-contract-matrix-report.json`
+
+### `infra-economy-dynamic-quote-formal-spine`
+
+Backend-only INF-2O proof that the existing Economy dynamic quote family uses
+the formal owner append spine. Independent selectors cover owner/outbox,
+idempotency, revision conflict, account-truth privacy rejection and replay. It
+does not itself admit an Ecology consumer or a generic settlement writer.
+
+- `.harness/verification/infra-economy-dynamic-quote-formal-spine-report.json`
+
+### `infra-payroll-operating-window-closure`
+
+Backend-only INF-2P/INF-2V proof that `OrganizationAuthority` is the sole
+writer for `gameplay:organization:window:{window_ref}` open/close/due facts
+while `EconomyAuthority` remains limited to wage
+obligation/accrual/payment/overdue and the existing account transfer path.
+Independent selectors cover the verified-completed-evidence
+schedule-view-to-window/wage happy path, formal wage accrual/overdue append
+path, paid-wage command-plan materialization, paid wage scoped outbox,
+append-derived authority receipt, invalid or unverified evidence zero-write,
+compatibility-wrapper delegation, duplicate idempotency, changed-key
+open/close/due revision-conflict reuse, stale revision zero-write, privacy
+scope, explicit overdue after close, and full/checkpoint-tail replay. It does
+not admit a scheduler, generic payroll policy, or arbitrary cross-domain
+settlement.
+
+- `.harness/verification/infra-payroll-operating-window-closure-report.json`
+
+### `infra-payroll-owner-contract-catalog`
+
+Backend-only INF-2R proof that the immutable governed catalog records two
+already-existing payroll owner rows and that each owner rejects a mismatched
+catalog admission before append. Separate selectors prove Organization window
+metadata, Economy wage-payment metadata, both zero-write fences, scoped
+receipt/outbox, duplicate/revision behavior, and full/checkpoint-tail replay.
+It is an extension admission substrate, not caller-open registration, a
+generic payroll policy, a scheduler, or arbitrary cross-domain settlement.
+
+- `.harness/verification/infra-payroll-owner-contract-catalog-report.json`
+
+### `infra-government-promotion-owner-contract-catalog`
+
+Backend-only INF-4Q proof that the immutable catalog records the one existing
+Government passed-inspection production-promotion row and that
+`GovernmentAuthority` rejects a catalog mismatch before it constructs a
+fragment or appends. Nine independent selectors prove metadata, pre-append
+zero-write, success, duplicate receipt replay, changed duplicate, stale source,
+privacy, forged scenario identity and scoped checkpoint-tail production replay.
+It does not admit generic promotion, a branch-domain writer, or group
+simulation.
+
+- `.harness/verification/infra-government-promotion-owner-contract-catalog-report.json`
+
+### `infra-survival-unregistered-state-fence`
+
+Backend-only INF-1V admission proof that an unregistered `reject` StateDefinition
+cannot reach the existing Survival owner append path. It records a blocker, not
+a newly admitted state row.
+
+- `.harness/verification/infra-survival-unregistered-state-fence-report.json`
+
+### `infra-ecology-frost-state-obligation`
+
+Backend-only INF-1L proof for the fixed existing-ecology-owner
+`effect:frost -> state:frosted@1` row. Twelve independent assertions cover
+apply, refresh, exact and changed idempotency behavior, revision, command/source privacy,
+unknown-row zero writes, caller-driven due expiry through the existing
+coordinator, project-scoped outbox, and full/checkpoint-tail replay. It does
+not authorize an ecology scheduler, retry/compensation, a new consumer edge,
+or generic effect/state routing.
+
+- `.harness/verification/infra-ecology-frost-state-obligation-report.json`
+
+### `infra-ecology-drought-state-obligation`
+
+Backend-only INF-1AA proof for the seventh finite Ecology state-owner row
+`effect:drought -> state:drought@1`. Independent selectors cover owner apply,
+missing/private/forged/stale source rejection, wrong effect/definition,
+revision/privacy/catalog/second-active-obligation zero write, owner-only due
+expiry, append-derived outbox/receipt, full/checkpoint-tail replay, strict
+semantic command/admission, and the finite state/lifecycle/adapter catalog
+rows. It does not authorize generic lifecycle closure, a scheduler, direct
+semantic append, or a new Ecology consumer edge.
+
+- `.harness/verification/infra-ecology-drought-state-obligation-report.json`
+
+### `infra-ecology-frost-state-action`
+
+Backend-only INF-1Z proof for the one fixed semantic frost dispel proposal.
+The existing Ecology authority alone appends `crop_state_dispelled` and the
+exact open obligation cancellation in one existing canonical stream batch.
+Eight independent selectors cover owner append, exact and changed duplicate,
+inactive source, revision, privacy, lifecycle-action contract rejection, and
+full/checkpoint-tail replay. It does not admit generic Ecology actions,
+repair/transform semantics, a scheduler, or cross-domain writes.
+
+- `.harness/verification/infra-ecology-frost-state-action-report.json`
+
+### `infra-closed-state-owner-contract-matrix`
+
+Backend-only INF-1M proof for the finite seven-row StateDefinition owner
+matrix. Independent checks prove its exact shape, unknown-row rejection,
+fixed Ecology event/privacy contract, and zero-write rejection of forged
+contract metadata at the Survival, Construction and Ecology append boundaries,
+plus existing replay/privacy evidence. It is not open registration, generic
+dispatch or a writer.
+
+- `.harness/verification/infra-closed-state-owner-contract-matrix-report.json`
+
+### `infra-finite-lifecycle-contract-closure`
+
+Backend-only INF-1Q proof for one immutable reader over the five existing
+StateDefinition rows and the existing Economy wage-obligation row. Separate
+selectors prove exact shape, unknown-contract rejection, action/terminal-event
+admission, fixed metadata, and each existing owner family's fence and
+checkpoint-tail replay. The reader neither registers rows nor writes world
+truth; Ecology frost remains owner-local rather than a generic semantic route.
+
+- `.harness/verification/infra-finite-lifecycle-contract-closure-report.json`
+
+### `infra-closed-lifecycle-registration-admission`
+
+Backend-only INF-2M proof that the obligation coordinator accepts only six
+existing owner lifecycle registrations and their closed owner-local event
+families. Independent selectors prove closed
+policy shape, policy-less/unknown/forged/widened registration zero-write,
+terminal-plus-smuggled-event zero-write, and existing Construction and Survival
+owner success plus replay. It separately proves that a project-scoped owner
+fragment cannot override its event visibility to `authority_only`. Historical
+caller-generated generic fragments are explicitly rejection evidence; this does
+not add open policy registration or generic cross-domain settlement.
+The Construction due-completion selector separately proves that no terminal
+fragment can append without its exact committed `run_started` source event.
+
+- `.harness/verification/infra-closed-lifecycle-registration-admission-report.json`
+
+### `infra-economy-wage-terminal-lifecycle`
+
+Backend-only INF-2D proof for the existing Economy wage-accrual owner row's
+authority-owned closed registration, retry, cancel, expiry and accrual-only
+compensation fragments. It independently asserts registration ownership,
+one-store append receipts, exact and changed-duplicate idempotency, revision,
+privacy and replay.
+Expiry closes only the unpaid obligation and writes no wage accrual, payment or
+account change. It does not admit payment, balance recovery, generic owner
+lifecycle binding, or a unified cross-domain settlement receipt.
+
+- `.harness/verification/infra-economy-wage-terminal-lifecycle-report.json`
+
+### `infra-owner-only-obligation-commit-spine`
+
+Backend-only INF-2Q proof that `ObligationSettlementCoordinator` only plans
+validated owner batches and cannot receive a callback or append world truth.
+Independent selectors prove planner and direct-call zero writes, raw-store
+callback rejection, each existing Construction, Survival, Ecology and two
+Economy owner commit rows, duplicate idempotency, revision conflict, scoped
+privacy and full/checkpoint-tail replay. It does not admit caller-open policy
+registration, arbitrary cross-domain settlement, a second scheduler/store or a
+new truth owner.
+
+- `.harness/verification/infra-owner-only-obligation-commit-spine-report.json`
+
+### `infra-state-lifecycle-adapter-matrix`
+
+Backend-only INF-1W proof for the immutable semantic adapter admission matrix.
+Its separate selectors prove the existing four Survival and one Construction
+apply rows, unsupported-operation rejection before append, both owner action
+paths, duplicate/revision/privacy fences, and full/checkpoint-tail replay.
+The matrix has no callback or append path. Ecology and Economy remain excluded
+because no semantic proposal adapter has been admitted for either owner.
+
+- `.harness/verification/infra-state-lifecycle-adapter-matrix-report.json`
+
+### `infra-semantic-ecology-frost-adapter`
+
+Backend-only INF-1X proof for one closed semantic frost proposal mapped to the
+existing Ecology crop-state owner. Separate selectors prove strict input,
+owner append, revision/snapshot/idempotency, source-privacy and forged-region
+relation zero writes, and Ecology checkpoint-tail replay. It does not admit generic Ecology effects,
+caller-selected streams, or a semantic append path.
+
+- `.harness/verification/infra-semantic-ecology-frost-adapter-report.json`
+
+### `infra-ecology-semantic-adapter-matrix-admission`
+
+Backend-only INF-1Y proof that the immutable semantic adapter matrix admits
+only the already-existing `effect:frost -> state:frosted@1` Ecology entry for
+`apply`. Separate selectors prove the matrix/operation fence, matrix-gated
+zero-write entry rejection, strict input, owner append, stale revision,
+snapshot, exact/changed duplicate, source privacy/relation, and checkpoint-tail
+replay. It does not make the generic state command sufficient for Ecology's
+hazard/crop/region source contract.
+
+- `.harness/verification/infra-ecology-semantic-adapter-matrix-admission-report.json`
+
+### `infra-economy-account-settlement-spine`
+
+Backend-only INF-2H proof for the existing `EconomyAuthorityService` account
+ledger owner. Independent selectors prove the owner-built
+`GameplayCommandEnvelope -> SettlementPlan -> GameplayEventStore.append_batch`
+path, authority-scoped redacted outbox, append-derived authority receipt,
+duplicate and changed-duplicate behavior, stale-revision and insufficient-funds
+zero writes, owner/authority privacy, receipt scope rejection, and full versus
+checkpoint-tail replay. It covers only the existing single-stream account
+opening, same-currency transfer, and budget reservation events; it does not
+admit generic payment, open policy registration, or cross-domain settlement.
+
+- `.harness/verification/infra-economy-account-settlement-spine-report.json`
+
+### `infra-commerce-delivery-payment`
+
+Backend-only INF-2AA proof for one exact `EconomyAuthorityService` payment and
+compensation row. Seven independent selectors prove the single append-derived
+payment receipt, source/account/currency/privacy/revision zero writes,
+commitment-bound reservation and source-head zero writes, idempotency, exact
+compensation, insufficient-funds rejection, and authority-only full versus
+checkpoint-tail replay. It does not prove generic payment, compensation,
+policy registration, or cross-domain settlement.
+
+- `.harness/verification/infra-commerce-delivery-payment-report.json`
+
+### `infra-append-derived-settlement-receipt`
+
+Backend-only INF-2S proof that committed and rejected `SettlementReceipt`
+instances derive solely from one append result. Independent selectors cover the
+shared factory, Economy/Commerce authority-only reader scopes, the read-only
+obligation reader, and owner-only append/replay. It does not authorize a
+coordinator or generic business settlement writer.
+
+- `.harness/verification/infra-append-derived-settlement-receipt-report.json`
+
+### `infra-economy-scheduled-transfer-obligation`
+
+### `infra-ecology-drought-process`
+
+Backend-only INF-3K proof for one caller-driven drought process on an existing
+Ecology region stream. Independent checks prove one owner batch, authority/
+privacy/revision zero writes, exact duplicate and checkpoint-tail replay. It
+does not authorize a hazard consumer, scheduler, or cross-domain writer.
+
+- `.harness/verification/infra-ecology-drought-process-report.json`
+
+Backend-only INF-2J proof for one fixed Economy account-transfer obligation.
+Each selector independently proves the event-derived open/due/settled,
+cancelled, or expired lifecycle; exact and changed idempotency; duplicate
+source, revision, insufficient-funds, and forged-input zero writes;
+authority-only receipt/outbox privacy; and full versus checkpoint-tail replay.
+It admits only `policy:economy_scheduled_account_transfer@1` on
+`gameplay:economy`; it does not admit caller policy registration, generic
+payment, reservation release, retry/compensation, or cross-domain settlement.
+
+- `.harness/verification/infra-economy-scheduled-transfer-obligation-report.json`
+
+### `infra-continuation-gate`
+
+Backend-only continuation preflight for the active INF sequence. It runs seven
+independent assertions for the admitted ecology owner, canonical stream,
+record kinds, event family, canonical write path, and the INF-3Y empty enabled
+consumer-edge stop fence. It also records the required predecessor reports and
+the exact missing consumer contract. This profile is declarative: it cannot
+write events and does not authorize a hazard edge.
+
+Output:
+
+- `.harness/verification/infra-continuation-gate-report.json`
+
+### `infra-hazard-propagation`
+
+Backend-only INF-3Y proof for exactly one registered edge,
+`ecology-hazard:frost-to-construction-finish:v1`. The ecology owner only emits
+a project-visible canonical hazard/crop proposal. The existing construction
+owner verifies the exact source vector and writes its existing due-finish
+fragment through one append batch. Sixteen independent assertions cover success,
+unknown/disabled edge, source/revision/privacy/direct-input zero writes,
+forged-authority/admission rejection including a real-class forged admission
+and a module-API admission-issuer fence,
+event-derived retired-source rejection,
+exact crop pinning, idempotency, scoped projection and checkpoint-tail replay. No other consumer,
+fanout, retry, compensation or delayed canonical-hazard row is admitted.
+
+Output:
+
+- `.harness/verification/infra-hazard-propagation-report.json`
+
+### `infra-civilization-capability-read`
+
+Backend-only INF-4Y-A proof for the sole `CivilizationCapabilityAuthority`
+owner admission. It independently verifies the canonical stream and outbox,
+authority/revision/duplicate zero-write behavior, jurisdiction and effective
+tick gates, authority/actor/public/creator scopes, event-derived correction and
+revocation, and full/checkpoint-tail replay equivalence. It does not bind a
+semantic or population consumer and does not admit civilization progression or
+P6/P7 work.
+
+- `.harness/verification/infra-civilization-capability-read-report.json`
+
+### `infra-population-world-mode`
+
+Backend-only INF-4R proof that a planner consumes only the typed frozen
+`SocialFactAuthority.view_for` result. It separately proves recipient/time/
+digest/source-vector pinning, stale and scope zero-write behavior, deterministic
+planning, unsupported schedule/capability rejection, legacy generic-merge
+zero-write, and social-source full/checkpoint-tail replay. It does not admit
+household, organization, civilization, or full
+population simulation behavior.
+
+- `.harness/verification/infra-population-world-mode-report.json`
+
+### `infra-household-org-source-projection`
+
+Backend-only INF-4X proof that household membership is sourced by the existing
+`SocialFactAuthority` and organization membership/role/shift/work-order
+schedule rows by the existing `OrganizationAuthority`. It independently proves
+canonical owner writes, recipient privacy, immutable source-input provenance,
+effective-window filtering, forged provenance/digest zero-write, stale revision
+zero-write, duplicate planning, and full/checkpoint-tail replay.
+The planner remains proposal-only; kinship, care, organization policy,
+unmapped civilization consumer bindings, INF-4Z full scope, and P6/P7 remain
+blocked. The separately verified `supply` capability edge is documented by
+`infra-civilization-capability-supply-consumer`.
+
+- `.harness/verification/infra-household-org-source-projection-report.json`
+
+### `infra-population-world-mode-complete`
+
+Backend-only INF-4Z bounded proof for the admitted population world-mode rows.
+It independently asserts immutable world-plan base/tail/budget pinning, caller-
+selected `game` / `simulation` / `preview` cadence-budget labels, preview
+production zero-write fencing, existing-owner `supply` and `inspection`
+fragment/receipt paths, a separate generic inspection scoped-outbox privacy and
+full/checkpoint-tail replay assertion, unsupported `work` zero-write, retired legacy
+`PopulationBatchPlan` free-form merge zero-write, duplicate idempotency
+replay, revision conflict zero-write, privacy-scope zero-write, activation-lock
+pending zero-write, production full/checkpoint-tail replay, fixed-base branch
+request digest pinning, fixed-base branch replay, and tail-boundary zero-write.
+
+It does not admit a population truth store, generic `work` consumer mapping,
+branch promotion, unmapped civilization consumer bindings, or P6/P7 work.
+
+### `infra-population-branch-preview`
+
+Backend-only INF-4Z branch evidence for isolated preview inputs. It separately
+asserts shuffled candidate determinism, fixed-base digest zero-write,
+calibration-digest zero-write, unknown-profile zero-write, dataset-scope
+zero-write, metadata-buffer replay and production isolation. It intentionally
+covers legacy caller metadata only; authoritative reference-data license
+admission is proved separately by `infra-reference-data-license-admission`.
+It does not prove replayable branch event/projection evolution, real branch
+scenario progression, promotion, or full group simulation.
+
+- `.harness/verification/infra-population-branch-preview-report.json`
+
+### `infra-reference-data-license-admission`
+
+Backend-only INF-4Z-A proof for the sole reference-data owner contract:
+`authority:reference_data` writes registered/corrected/revoked dataset records
+to `gameplay:reference_data:{dataset_ref}` through the existing event-store
+spine. It independently asserts authoritative branch admission, revocation,
+forged-digest, owner, revision and privacy zero-write paths, changed duplicate
+handling, and full/checkpoint-tail replay. `BranchPreviewAuthority` receives a
+frozen authority-scoped view only; external ingestion, branch promotion,
+population truth, generic work, P6 and P7 remain excluded.
+
+- `.harness/verification/infra-reference-data-license-admission-report.json`
+
+### `infra-civilization-capability-supply-consumer`
+
+Backend-only INF-4Y proof for the one user-approved capability-gated
+eligibility edge: authority-scoped active `CivilizationCapabilityView` to an
+existing `OrganizationAuthority` supply fragment. It independently asserts
+owner receipt, event redaction, stale/forged/not-effective/unauthorized source
+zero-write, candidate mapping, policy pin, revocation, organization revision,
+idempotency, changed duplicate zero-write, independent capability lifecycle and
+stream revisions, and full/checkpoint-tail replay. Inspection, work, semantic,
+and every unlisted consumer remain rejected; no civilization progression or
+P6/P7 work is admitted.
+
+- `.harness/verification/infra-civilization-capability-supply-consumer-report.json`
+
+### `infra-civilization-capability-inspection-consumer`
+
+Backend-only INF-4Y proof for the second user-approved capability-gated
+eligibility edge: authority-scoped active `CivilizationCapabilityView` to the
+existing `GovernmentAuthority` commercial-inspection fragment. Its independent
+assertions cover Government owner receipt, actor-scoped outbox projection, opaque capability provenance,
+jurisdiction mapping, stale/forged/scope/policy/target-revision/privacy
+zero-write, duplicate/changed-duplicate behavior and full/checkpoint-tail
+replay. Government's existing target jurisdiction remains inspection data;
+capability source lineage is not emitted. Supply is separately proven; work,
+semantic and unlisted consumers remain rejected, with no civilization
+progression, P6 or P7 work.
+
+- `.harness/verification/infra-civilization-capability-inspection-consumer-report.json`
+
+### `infra-production-completed-evidence-source`
+
+Backend-only INF-4Z source admission for the narrow Production-owned
+`production-completed` evidence row. It independently asserts committed worker
+contribution linkage, a finished run source requirement, canonical
+`GameplayCommandEnvelope -> SettlementPlan -> GameplayEventStore.append_batch`
+owner path, actor event scope, redacted outbox, empty/untrusted/mismatched/stale
+zero-write, duplicate/changed-duplicate behavior, and full/checkpoint-tail
+scoped-view digest/vector replay. It does not admit a PopulationPlanner work
+consumer, wage accrual, payroll, or non-production work evidence.
+
+- `.harness/verification/infra-production-completed-evidence-source-report.json`
+
+### `infra-production-evidence-wage-consumer`
+
+Backend-only INF-4Z proof for the one Production completed-evidence to Economy
+wage-accrual consumer. It independently asserts worker-scoped frozen source
+admission, Economy owner envelope/SettlementPlan write, source event/vector/
+digest and wage-policy pins, event/outbox redaction, forged/stale/privacy/wage
+revision zero-write, duplicate/changed-duplicate behavior, and
+full/checkpoint-tail replay. It does not admit generic work, non-production
+evidence, payroll payment, compensation, civilization consumers, or P6/P7.
+
+- `.harness/verification/infra-production-evidence-wage-consumer-report.json`
+
+### `infra-organization-economy-commerce-commitment`
+
+Backend-only INF-2I proof for one fixed Organization/Economy commerce
+commitment. It independently asserts the existing owner fragments and one
+append batch, append-derived authority receipt, exact and changed idempotency,
+Organization and Economy revision zero-writes, missing budget reservation,
+public/outbox privacy, full/checkpoint-tail replay, and receipt scope. It does
+not admit generic settlement, payment, policy registration, a scheduler, group
+simulation, or branch promotion.
+
+- `.harness/verification/infra-organization-economy-commerce-commitment-report.json`
+
+- `.harness/verification/infra-population-world-mode-complete-report.json`
+
+### `infra-exact-lifecycle-owner-contract-catalog`
+
+Backend-only INF-2Y proof that the governed catalog contains exact existing
+Survival, Construction maintenance, Ecology frost/drought, and Economy wage
+lifecycle rows instead of the synthetic lifecycle placeholder. Its five
+independent checks cover exact row metadata, scope rejection, separate
+Survival and Construction pre-append zero-write gates, and existing
+checkpoint-tail replay. It does not prove caller-open registration, a generic
+lifecycle dispatcher, scheduler, or cross-domain settlement.
+
+### `infra-economy-tax-obligation`
+
+Backend-only INF-2Z proof for one fixed Economy owner-local tax obligation.
+Its independent checks cover committed-source pinning, exact and changed
+idempotency, forged-source and stale-revision zero-write, terminal settlement
+without account mutation, cancellation/expiry, authority-only outbox privacy,
+and full/checkpoint-tail lifecycle replay. It does not admit payment truth,
+account debit/credit, caller-open policy registration, compensation, or
+arbitrary cross-domain settlement.
+
+- `.harness/verification/infra-economy-tax-obligation-report.json`
+
+### `infra-reusable-state-transition-plan`
+
+Backend-only INF-1C1 proof for the pure reusable `StateTransitionPlan`.
+Independent checks cover add/replace/refresh/reject, scheduled expiry,
+dispel, transform, proposal-only zero-write shape, and reuse across existing
+Survival, Construction and Ecology definitions. It does not prove generic
+state registration, owner routing, event append, or lifecycle settlement.
+
+- `.harness/verification/infra-reusable-state-transition-plan-report.json`
+
+### `infra-ecology-consumer-admission-contract`
+
+Backend-only INF-C4 proof for a finite, read-only weather-front consumer
+admission check reused by existing Construction and Organization target owners.
+Its independent checks cover two-owner contract reuse, forged owner/stream/
+scope/source zero-write, target revision zero-write, existing owner duplicate
+idempotency, privacy denial, and full/checkpoint-tail replay. It does not
+issue admissions, select owners, construct fragments, append events, or
+register generic consumers.
+
+- `.harness/verification/infra-ecology-consumer-admission-contract-report.json`
 
 ## Evidence Rules
 

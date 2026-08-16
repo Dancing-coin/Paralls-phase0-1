@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-survival-dehydration-state-obligation",
+  "order": 157,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_survival_dehydration_state_obligation.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-survival-dehydration-state-obligation-report.json",
+  "description": "INF-1E closed dehydration-exposure to dehydrated Survival owner row"
+}

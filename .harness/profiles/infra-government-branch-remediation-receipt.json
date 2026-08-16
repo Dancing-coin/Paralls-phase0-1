@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-government-branch-remediation-receipt",
+  "order": 164,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_government_branch_remediation_receipt.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-government-branch-remediation-receipt-report.json",
+  "description": "INF-4K derived receipt for the existing Government failed-inspection scenario row"
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-semantic-cross-domain",
+  "order": 135,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_semantic_cross_domain.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-semantic-cross-domain-report.json",
+  "description": "INF-1R closed semantic proposal to construction production owner-fragment evidence"
+}

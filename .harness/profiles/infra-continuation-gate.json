@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-continuation-gate",
+  "order": 141,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_continuation_gate.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-continuation-gate-report.json",
+  "description": "INF continuation admission gate: canonical ecology ownership contract and exact registered consumer-edge stop fence"
+}

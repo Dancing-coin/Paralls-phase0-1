@@ -8,13 +8,206 @@ import json
 from types import MappingProxyType
 from typing import Mapping, Sequence
 
+from pydantic import ConfigDict, Field
+
 from app.gameplay.economy_runtime import EconomyProjector
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.models import AppendBatchResult, GameplayEvent
+from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
+from app.gameplay.models import (
+    AppendBatchResult,
+    AtomicEventBatch,
+    GameplayEvent,
+    GameplayOutboxEntry,
+    IdempotencyRecord,
+    OwnerAuthorizedFragment,
+    StrictGameplayModel,
+)
+from app.gameplay.replay import GameplayProjectionReplay
+from app.gameplay.shared_contracts import GameplayCommandEnvelope
 
 
 class DebtRuntimeError(ValueError):
     pass
+
+
+class DebtSettlementEventSpec(StrictGameplayModel):
+    """Closed event proposal accepted only by the existing debt authority."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    event_type: str = Field(min_length=1)
+    stream_id: str = Field(min_length=1)
+    payload: dict[str, object] = Field(default_factory=dict)
+    causation_id: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+
+    @classmethod
+    def from_legacy(cls, event: Mapping[str, object], *, command_id: str) -> "DebtSettlementEventSpec":
+        if (
+            event.get("command_id") != command_id
+            or event.get("visibility_policy") != "authority_only"
+            or not isinstance(event.get("event_type"), str)
+            or not isinstance(event.get("stream_id"), str)
+            or not isinstance(event.get("payload"), dict)
+            or not isinstance(event.get("causation_id"), str)
+            or not isinstance(event.get("correlation_id"), str)
+        ):
+            raise DebtRuntimeError("debt_settlement_event_invalid")
+        return cls(
+            event_type=str(event["event_type"]),
+            stream_id=str(event["stream_id"]),
+            payload=dict(event["payload"]),
+            causation_id=str(event["causation_id"]),
+            correlation_id=str(event["correlation_id"]),
+        )
+
+
+@dataclass(frozen=True)
+class DebtSettlementPlan:
+    """The non-generic formal plan for existing simple-debt settlement rows."""
+
+    command: GameplayCommandEnvelope
+    event_specs: tuple[DebtSettlementEventSpec, ...]
+    expected_revisions: Mapping[str, int]
+    idempotency_digest: str
+
+    _STREAMS = frozenset({"gameplay:economy", "gameplay:contracts", "gameplay:debt", "gameplay:commerce"})
+    _EVENT_STREAMS = MappingProxyType(
+        {
+            "gameplay.economy.account_debited": "gameplay:economy",
+            "gameplay.economy.account_credited": "gameplay:economy",
+            "gameplay.contract.simple_debt_created": "gameplay:contracts",
+            "gameplay.contract.simple_debt_fulfilled": "gameplay:contracts",
+            "gameplay.contract.simple_debt_cancelled": "gameplay:contracts",
+            "gameplay.contract.simple_debt_reopened": "gameplay:contracts",
+            "gameplay.contract.simple_debt_cancellation_reversed": "gameplay:contracts",
+            "gameplay.debt.claim_issued": "gameplay:debt",
+            "gameplay.debt.claim_overdue": "gameplay:debt",
+            "gameplay.debt.claim_defaulted": "gameplay:debt",
+            "gameplay.debt.payment_applied": "gameplay:debt",
+            "gameplay.debt.payment_corrected": "gameplay:debt",
+            "gameplay.debt.claim_satisfied": "gameplay:debt",
+            "gameplay.debt.claim_cancelled": "gameplay:debt",
+            "gameplay.debt.claim_reopened": "gameplay:debt",
+            "gameplay.debt.claim_cancellation_reversed": "gameplay:debt",
+            "gameplay.commerce.debt_issued_settled": "gameplay:commerce",
+            "gameplay.commerce.debt_payment_settled": "gameplay:commerce",
+            "gameplay.commerce.debt_cancelled_settled": "gameplay:commerce",
+            "gameplay.commerce.debt_payment_corrected_settled": "gameplay:commerce",
+            "gameplay.commerce.debt_cancellation_reversed": "gameplay:commerce",
+        }
+    )
+
+    def to_atomic_event_batch(self) -> AtomicEventBatch:
+        if (
+            self.command.command_type != "gameplay.debt.simple_settlement"
+            or self.command.principal_ref != DebtAuthorityService._PRINCIPAL
+            or not self.event_specs
+            or set(self.expected_revisions) != self._STREAMS
+            or self.command.expected_revisions != dict(self.expected_revisions)
+            or self.command.read_set_revisions != dict(self.expected_revisions)
+        ):
+            raise DebtRuntimeError("debt_settlement_plan_invalid")
+        if any(spec.stream_id not in self._STREAMS for spec in self.event_specs):
+            raise DebtRuntimeError("debt_settlement_stream_invalid")
+        if any(spec.event_type not in self._EVENT_STREAMS for spec in self.event_specs):
+            raise DebtRuntimeError("debt_settlement_event_invalid")
+        if any(self._EVENT_STREAMS[spec.event_type] != spec.stream_id for spec in self.event_specs):
+            raise DebtRuntimeError("debt_settlement_stream_invalid")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:simple-debt-settlement@1",
+                contract_kind="settlement",
+                owner_ref=DebtAuthorityService._PRINCIPAL,
+                stream_ids=tuple(sorted(self.expected_revisions)),
+                event_types=tuple(spec.event_type for spec in self.event_specs),
+                projection_scope="authority_only",
+            )
+        except GovernedAuthorityContractError as exc:
+            raise DebtRuntimeError(str(exc)) from exc
+        if any(
+            spec.causation_id != self.command.causation_id
+            or spec.correlation_id != self.command.correlation_id
+            for spec in self.event_specs
+        ):
+            raise DebtRuntimeError("debt_settlement_event_invalid")
+        transaction_id = self.command.transaction_id or f"transaction:{self.command.command_id}"
+        events = [
+            GameplayEvent(
+                event_id=f"event:{self.command.command_id}:debt:{index}",
+                event_type=spec.event_type,
+                schema_version=self.command.command_version,
+                stream_id=spec.stream_id,
+                stream_revision=0,
+                global_sequence=0,
+                transaction_id=transaction_id,
+                command_id=self.command.command_id,
+                causation_id=spec.causation_id,
+                correlation_id=spec.correlation_id,
+                visibility_policy="authority_only",
+                payload=spec.payload,
+            )
+            for index, spec in enumerate(self.event_specs, start=1)
+        ]
+        fragments = [
+            OwnerAuthorizedFragment(
+                fragment_id=f"fragment:debt:settlement:{self.command.command_id}:{stream_id}",
+                owner_principal_ref=DebtAuthorityService._PRINCIPAL,
+                source_rule_ref="debt:simple-settlement",
+                expected_revisions={stream_id: self.expected_revisions[stream_id]},
+                read_set_revisions=dict(self.expected_revisions),
+                pinned_revisions=dict(self.command.pinned_revisions),
+                event_specs={
+                    stream_id: tuple(
+                        (spec.event_type, spec.payload)
+                        for spec in self.event_specs
+                        if spec.stream_id == stream_id
+                    )
+                },
+                event_visibility_policies={
+                    stream_id: tuple(
+                        "authority_only"
+                        for spec in self.event_specs
+                        if spec.stream_id == stream_id
+                    )
+                },
+            )
+            for stream_id in self._STREAMS
+            if any(spec.stream_id == stream_id for spec in self.event_specs)
+        ]
+        digest = _digest(
+            {
+                "command": self.command.model_dump(mode="json"),
+                "event_specs": [spec.model_dump(mode="json") for spec in self.event_specs],
+            }
+        )
+        return AtomicEventBatch(
+            transaction_id=transaction_id,
+            command_id=self.command.command_id,
+            expected_stream_revisions=dict(self.expected_revisions),
+            read_stream_revisions=dict(self.expected_revisions),
+            pinned_revisions=dict(self.command.pinned_revisions),
+            events=events,
+            idempotency_record=IdempotencyRecord(
+                principal_ref=DebtAuthorityService._PRINCIPAL,
+                idempotency_key=self.command.idempotency_key,
+                payload_digest=self.idempotency_digest,
+            ),
+            owner_fragments=fragments,
+            outbox_entries=[
+                GameplayOutboxEntry(
+                    outbox_id=f"outbox:{event.event_id}",
+                    transaction_id=transaction_id,
+                    event_id=event.event_id,
+                    global_sequence=0,
+                    topic="world.debt.scoped_projection",
+                    audience="authority",
+                    payload_projection={"event_type": event.event_type, "stream_id": event.stream_id},
+                )
+                for event in events
+            ],
+            result_digest=digest,
+        )
 
 
 @dataclass(frozen=True)
@@ -298,6 +491,17 @@ class DebtAuthorityService:
         self._store = store
         self._economy_projector = EconomyProjector()
         self._debt_projector = DebtProjector()
+
+    def replay_projection(self, *, checkpoint_at: int | None = None):
+        """Replay the fixed simple-debt owner surface from the canonical event store."""
+        replay = GameplayProjectionReplay(
+            projector_id="infra-simple-debt-settlement", projector_version="1"
+        )
+        events = self._store.read_events()
+        if checkpoint_at is None:
+            return replay.full_replay(events)
+        checkpoint = replay.create_checkpoint(events[:checkpoint_at])
+        return replay.checkpoint_plus_tail_replay(checkpoint, events[checkpoint_at:])
 
     def issue_simple_debt(
         self,
@@ -661,19 +865,37 @@ class DebtAuthorityService:
         }
 
     def _append(self, command_id: str, idempotency_key: str, digest: str, events: list[dict[str, object]], revisions: Mapping[str, int]) -> AppendBatchResult:
-        return self._store.append_batch(
-            {
-                "transaction_id": f"tx:{command_id}",
-                "command_id": command_id,
-                "expected_stream_revisions": dict(revisions),
-                "pinned_revisions": dict(revisions),
-                "events": events,
-                "idempotency_record": {"principal_ref": self._PRINCIPAL, "idempotency_key": idempotency_key, "payload_digest": digest},
-                "outbox_entries": [],
-                "result_digest": digest,
-                "projection_refresh_hints": [],
-            }
+        specs = tuple(
+            DebtSettlementEventSpec.from_legacy(event, command_id=command_id)
+            for event in events
         )
+        if not specs:
+            raise DebtRuntimeError("debt_settlement_events_required")
+        command = GameplayCommandEnvelope(
+            command_id=command_id,
+            command_type="gameplay.debt.simple_settlement",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=None,
+            project_ref=None,
+            transaction_id=f"transaction:{command_id}",
+            idempotency_key=idempotency_key,
+            expected_revisions=dict(revisions),
+            read_set_revisions=dict(revisions),
+            causation_id=specs[0].causation_id,
+            correlation_id=specs[0].correlation_id,
+            source_ref="debt-simple-settlement",
+            submitted_at="debt-settlement",
+            pinned_revisions={f"debt_settlement:{stream}": revision for stream, revision in revisions.items()},
+            payload={"settlement_kind": "simple_debt"},
+        )
+        batch = DebtSettlementPlan(
+            command=command,
+            event_specs=specs,
+            expected_revisions=dict(revisions),
+            idempotency_digest=digest,
+        ).to_atomic_event_batch()
+        return self._store.append_batch(batch)
 
     def _duplicate(self, idempotency_key: str, digest: str) -> AppendBatchResult | None:
         record = self._store.get_idempotency_record(self._PRINCIPAL, idempotency_key)

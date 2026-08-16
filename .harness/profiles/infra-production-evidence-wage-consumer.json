@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-production-evidence-wage-consumer",
+  "order": 150,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_production_evidence_wage_consumer.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-production-evidence-wage-consumer-report.json",
+  "description": "INF-4Z one Production evidence to Economy wage consumer edge"
+}

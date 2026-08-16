@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-household-org-source-projection",
+  "order": 147,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_household_org_source_projection.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-household-org-source-projection-report.json",
+  "description": "INF-4X existing SocialFactAuthority and OrganizationAuthority scoped source projections"
+}

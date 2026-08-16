@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-owner-only-obligation-commit-spine",
+  "order": 194,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_owner_only_obligation_commit_spine.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-owner-only-obligation-commit-spine-report.json",
+  "description": "INF-2Q independent proof that only existing obligation owners commit planned batches"
+}

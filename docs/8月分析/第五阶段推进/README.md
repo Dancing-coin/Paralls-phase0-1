@@ -1,6 +1,6 @@
 # 第五阶段推进：RPG 与社会玩法域扩展
 
-状态：`phase-five workbench; incremental guidance; non-authorizing until formal spec/plan`
+状态：`phase-five bounded scope implemented; aggregate focused/predecessor evidence green; this directory remains non-authorizing guidance`
 
 第五阶段把前四阶段的角色、社会投影、经济和世界运行能力扩展为可玩的 RPG/剧本杀闭环。
 它不是重新实现 Character Core、ESM 或 Gameplay Foundation，而是补齐任务、证据、关系、
@@ -46,4 +46,4 @@ revision pinning、atomic settlement 和 scope-filtered mirror。
 
 正式 SDD 入口：
 [Phase Five RPG And Social Gameplay Specification Tree](../../superpowers/specs/world-character-siming-authority-mainline/phase-five-rpg-social-gameplay/README.md)
-；对应实施计划见同名 plan tree。当前仍为 `design-only; implementation not authorized`。
+；对应实施计划见同名 plan tree。P5D 聚合 focused 证据已通过；P5A/P5B/P5C 若要分别宣称独立收口，仍需补齐对应独立报告。

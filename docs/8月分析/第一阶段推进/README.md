@@ -1,6 +1,6 @@
 # 第一阶段推进：通用基础契约收口
 
-状态：`phase-one workbench; incremental guidance; non-authorizing until formal spec/plan`
+状态：`phase-one bounded scope implemented-and-verified; this directory remains non-authorizing guidance`
 
 本目录用于推进第一阶段，不建立新的 runtime、event store、scheduler 或 authority。
 它把当前 Gameplay Foundation 的实现基础收口为可跨玩法复用的稳定契约，并用少量
@@ -23,7 +23,7 @@ Phase 1A 通用基础契约冻结
 [第二阶段推进](../第二阶段推进/README.md)。第二阶段只接入已经存在的
 `CharacterProfile/CharacterAgent` 参与组织工作；在 P1D 的产出、销售、回放和 Harness
 证据没有重新确认前，第二阶段不能进入正式实现。P2 的 matching formal spec/plan 已经
-形成 design-only 收口，下一步仍是按 P2A-P2D 顺序取得 focused green evidence。
+形成 bounded implementation closure；P1D/P1E 与前置证据已通过，后续阶段仍必须以正式 spec/plan 为准。
 
 群体模拟不在上述第一阶段执行链内。第一阶段的 Econ-1 默认使用单玩家角色与聚合
 需求；已有的多智能体角色只有在正式 `CharacterRecord` 已存在时才能接入。员工、

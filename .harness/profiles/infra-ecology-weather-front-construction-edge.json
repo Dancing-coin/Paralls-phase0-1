@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-ecology-weather-front-construction-edge",
+  "order": 165,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_ecology_weather_front_construction_edge.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-ecology-weather-front-construction-edge-report.json",
+  "description": "INF-3G exact weather-front to Construction maintenance consumer edge"
+}

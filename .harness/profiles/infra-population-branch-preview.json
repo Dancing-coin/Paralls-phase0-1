@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-population-branch-preview",
+  "order": 135,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_population_branch_preview.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-population-branch-preview-report.json",
+  "description": "INF-4 profile identity, digest-pinned calibration and base, isolated branch preview and replay evidence; license authority remains blocked"
+}

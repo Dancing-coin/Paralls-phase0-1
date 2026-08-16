@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-government-failed-inspection-remediation-scenario",
+  "order": 163,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_government_failed_inspection_remediation_scenario.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-government-failed-inspection-remediation-scenario-report.json",
+  "description": "INF-4J fixed Government failed-inspection remediation on an existing non-production scenario stream"
+}

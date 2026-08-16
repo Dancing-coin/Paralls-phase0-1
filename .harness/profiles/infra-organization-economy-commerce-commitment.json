@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-organization-economy-commerce-commitment",
+  "order": 132,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_organization_economy_commerce_commitment.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-organization-economy-commerce-commitment-report.json",
+  "description": "INF-2I bounded Organization/Economy commerce commitment through existing owner fragments and one append batch"
+}

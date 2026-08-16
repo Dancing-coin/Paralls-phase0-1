@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-closed-state-owner-contract-matrix",
+  "order": 161,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_closed_state_owner_contract_matrix.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-closed-state-owner-contract-matrix-report.json",
+  "description": "INF-1M closed owner-contract matrix enforced by existing Survival, Construction, and Ecology authorities"
+}

@@ -5,10 +5,12 @@ from pathlib import Path
 
 from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.replay import GameplayProjectionReplay
 from app.population_continuity.activation import ProfileActivationAuthority
 from app.population_continuity.batch import ContinuityMergeAuthority
 from app.population_continuity.models import (
     ActivationGrant,
+    PendingChange,
     BatchIntentCandidate,
     PopulationBatchPlan,
     WorldModeProfile,
@@ -124,6 +126,91 @@ def test_p3a_suspend_requeue_and_duplicate_are_replayable() -> None:
     assert duplicate.committed and duplicate.idempotency_status == "duplicate_replayed"
 
 
+def test_activation_lock_records_replayable_schedule_pending_then_releases() -> None:
+    store = GameplayEventStore()
+    authority = ProfileActivationAuthority(registry=registry(), store=store)
+    locked = authority.lock(world_ref="world:bakery", profile_ref="character:char_a", expected_revision=0)
+    assert locked.committed
+    pending = authority.record_pending(
+        PendingChange(
+            change_ref="pending:1", lock_ref="lock:world:bakery:character:char_a", profile_ref="character:char_a", expected_revision=0,
+            payload={"kind": "schedule_gated_supply", "plan_digest": "sha256:pending-plan"}, privacy_scope="actor:self",
+        )
+    )
+    assert pending.committed and pending.zero_write is False
+    assert authority.pending_projection("world:bakery")["pending:1"]["status"] == "recorded"
+    released = authority.release_lock(lock_ref="lock:world:bakery:character:char_a", expected_revision=2)
+    assert released.committed
+    assert store.read_events()[-1].payload["pending_change_refs"] == ["pending:1"]
+    assert authority.pending_projection("world:bakery")["pending:1"]["status"] == "released"
+
+
+def test_activation_schedule_pending_rejects_free_form_payload_without_writes() -> None:
+    store = GameplayEventStore()
+    authority = ProfileActivationAuthority(registry=registry(), store=store)
+    assert authority.lock(world_ref="world:bakery", profile_ref="character:char_a", expected_revision=0).committed
+    before = len(store.read_events())
+    denied = authority.record_pending(
+        PendingChange(
+            change_ref="pending:free-form", lock_ref="lock:world:bakery:character:char_a", profile_ref="character:char_a", expected_revision=0,
+            payload={"kind": "free_form_world_write"}, privacy_scope="actor:self",
+        )
+    )
+    assert denied.zero_write and denied.stop_reason == "pending_change_kind_unsupported"
+    assert len(store.read_events()) == before
+
+
+def test_activation_schedule_pending_duplicate_is_idempotent() -> None:
+    store = GameplayEventStore()
+    authority = ProfileActivationAuthority(registry=registry(), store=store)
+    assert authority.lock(world_ref="world:bakery", profile_ref="character:char_a", expected_revision=0).committed
+    change = PendingChange(
+        change_ref="pending:replay", lock_ref="lock:world:bakery:character:char_a", profile_ref="character:char_a", expected_revision=0,
+        payload={"kind": "schedule_gated_supply", "plan_digest": "sha256:replay-plan"}, privacy_scope="actor:self",
+    )
+    first = authority.record_pending(change)
+    duplicate = authority.record_pending(change)
+    assert first.committed and duplicate.committed and duplicate.idempotency_status == "duplicate_replayed"
+
+
+def test_activation_schedule_pending_privacy_scope_filters_view() -> None:
+    store = GameplayEventStore()
+    authority = ProfileActivationAuthority(registry=registry(), store=store)
+    assert authority.lock(world_ref="world:bakery", profile_ref="character:char_a", expected_revision=0).committed
+    assert authority.record_pending(PendingChange(
+        change_ref="pending:scope", lock_ref="lock:world:bakery:character:char_a", profile_ref="character:char_a", expected_revision=0,
+        payload={"kind": "schedule_gated_supply", "plan_digest": "sha256:scope-plan"}, privacy_scope="actor:self",
+    )).committed
+    assert authority.pending_view_for(world_ref="world:bakery", reader_scope="public") == {}
+    assert authority.pending_view_for(world_ref="world:bakery", reader_scope="actor:self")["pending:scope"]["plan_digest"] == "sha256:scope-plan"
+
+
+def test_activation_schedule_pending_checkpoint_tail_replay_matches_full() -> None:
+    store = GameplayEventStore()
+    authority = ProfileActivationAuthority(registry=registry(), store=store)
+    assert authority.lock(world_ref="world:bakery", profile_ref="character:char_a", expected_revision=0).committed
+    assert authority.record_pending(PendingChange(
+        change_ref="pending:replay", lock_ref="lock:world:bakery:character:char_a", profile_ref="character:char_a", expected_revision=0,
+        payload={"kind": "schedule_gated_supply", "plan_digest": "sha256:replay-plan"}, privacy_scope="actor:self",
+    )).committed
+    events = store.read_events()
+    replay = GameplayProjectionReplay(projector_id="population-activation", projector_version="1")
+    checkpoint = replay.create_checkpoint(events[:1])
+    assert replay.full_replay(events).projection_hash == replay.checkpoint_plus_tail_replay(checkpoint, events[1:]).projection_hash
+
+
+def test_activation_lock_stale_pending_or_release_is_zero_write() -> None:
+    store = GameplayEventStore()
+    authority = ProfileActivationAuthority(registry=registry(), store=store)
+    authority.lock(world_ref="world:bakery", profile_ref="character:char_a", expected_revision=0)
+    pending = authority.record_pending(
+        PendingChange(change_ref="pending:stale", lock_ref="lock:world:bakery:character:char_a", profile_ref="character:char_a", expected_revision=1, payload={}, privacy_scope="actor:self")
+    )
+    assert pending.zero_write and pending.stop_reason == "revision_conflict"
+    released = authority.release_lock(lock_ref="lock:world:bakery:character:char_a", expected_revision=2)
+    assert released.zero_write and released.stop_reason == "revision_conflict"
+
+
 def test_p3a_requires_an_explicit_matching_package_scope_grant_when_configured() -> (
     None
 ):
@@ -206,8 +293,10 @@ def test_p3c_shuffled_determinism_contention_and_atomic_failure() -> None:
     second = ContinuityMergeAuthority(
         store=store_b, registry=registry(), mode=mode()
     ).merge(shuffled)
-    assert first.replay_hash == second.replay_hash
-    assert first.committed and first.rejections
+    assert first.replay_hash == second.replay_hash == ""
+    assert first.zero_write and second.zero_write
+    assert first.stop_reason == second.stop_reason == "legacy_population_merge_retired"
+    assert store_a.read_events() == store_b.read_events() == []
     stale = plan.model_copy(
         update={
             "candidates": (
@@ -222,9 +311,10 @@ def test_p3c_shuffled_determinism_contention_and_atomic_failure() -> None:
         store=store_a, registry=registry(), mode=mode()
     ).merge(stale)
     assert (
-        not failed.committed
-        and failed.zero_write
-        and len(store_a.read_events()) == before
+            not failed.committed
+            and failed.zero_write
+            and failed.stop_reason == "legacy_population_merge_retired"
+            and len(store_a.read_events()) == before
     )
 
 
@@ -260,7 +350,7 @@ def test_p3c_privacy_denial_is_atomic_and_zero_write() -> None:
     assert (
         not receipt.committed
         and receipt.zero_write
-        and receipt.stop_reason == "privacy_denial"
+            and receipt.stop_reason == "legacy_population_merge_retired"
         and store.read_events() == []
     )
 
@@ -270,7 +360,17 @@ def test_p3d_bakery_district_fixture_uses_existing_profiles_and_replays(
 ) -> None:
     result = BakeryDistrictPopulationFixture.create(profile_dir=PROFILE_DIR).run()
     assert result["replay_equal"]
-    assert result["batch"]["committed"]
+    assert result["batch"]["committed"] is True
+    assert result["batch"]["owner_receipt_ref"] == "actor_gameplay.organization_domain"
+    assert result["batch_duplicate"]["committed"] is True
+    assert result["batch_duplicate"]["idempotency_status"] == "duplicate_replayed"
+    assert result["revision_conflict"]["zero_write"] is True
+    assert result["revision_conflict"]["stop_reason"] == "source_revision_stale"
+    assert result["privacy_denial"]["zero_write"] is True
+    assert result["privacy_denial"]["stop_reason"] == "schedule_privacy_denied"
+    assert result["rejected_input"]["accepted"] is False
+    assert result["rejected_input"]["error_code"] == "schedule_work_order_missing"
+    assert result["zero_write"] is True
     assert result["scope_redaction"]["public"]["active_profiles"] == [
         "character:char_a",
         "character:char_b",

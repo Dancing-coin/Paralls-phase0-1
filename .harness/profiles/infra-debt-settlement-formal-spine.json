@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-debt-settlement-formal-spine",
+  "order": 167,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_debt_settlement_formal_spine.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-debt-settlement-formal-spine-report.json",
+  "description": "INF-2L fixed simple-debt settlement migrated to the formal authority event spine"
+}

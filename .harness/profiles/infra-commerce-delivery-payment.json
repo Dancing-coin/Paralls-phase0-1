@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-commerce-delivery-payment",
+  "order": 147,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_commerce_delivery_payment.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-commerce-delivery-payment-report.json",
+  "description": "INF-2AA exact Economy-owned delivery payment and compensation contract"
+}

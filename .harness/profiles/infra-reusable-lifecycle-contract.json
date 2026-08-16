@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-reusable-lifecycle-contract",
+  "order": 121,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_reusable_lifecycle_contract.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-reusable-lifecycle-contract-report.json",
+  "description": "INF-2C2 reusable closed obligation lifecycle contract substrate"
+}

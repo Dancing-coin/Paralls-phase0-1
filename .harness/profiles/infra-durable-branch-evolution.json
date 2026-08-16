@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-durable-branch-evolution",
+  "order": 166,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_durable_branch_evolution.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-durable-branch-evolution-report.json",
+  "description": "INF-4P one fixed durable isolated branch owner-consequence evolution step"
+}

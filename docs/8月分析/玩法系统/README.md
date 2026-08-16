@@ -2,6 +2,8 @@
 
 状态：`incremental gameplay guidance; gameplay hierarchy is separate from canonical-owner classification`
 
+当前实现映射：见 [../12-实现收口与证据映射.md](../12-实现收口与证据映射.md#玩法系统)。P1-P5 已形成多个可回放的限定玩法切片，不代表所有 L1-L5 玩法域都已产品化。
+
 本目录按**玩家决策的作用尺度与反馈周期**组织，而不是按哪个 authority 拥有事实来
 排除系统。经济、组织、政府、金融、公共秩序和文明都是高层玩法：玩家可以劳动、创业、
 雇佣、经营、交易、投资、申请许可、申诉或参与制度演进；NPC 也可以在玩家不在场时由

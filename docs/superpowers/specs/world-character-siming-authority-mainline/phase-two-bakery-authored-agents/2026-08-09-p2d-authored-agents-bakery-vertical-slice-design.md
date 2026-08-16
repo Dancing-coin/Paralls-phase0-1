@@ -1,6 +1,6 @@
 # P2D Authored-Agents Bakery Vertical Slice
 
-Status: `implemented-and-verified`
+Status: `historical sample invalidated; superseded by P2D-R re-closure`
 
 ## Purpose
 
@@ -90,10 +90,11 @@ P2D 通过门禁必须有：
 7. no-new-owner audit：无 Population authority、NpcState、dynamic order book、第二 store/bus/
    scheduler、CharacterAgent append path。
 
-`phase2-bakery-authored-agents` Harness fresh-green；证据见
-`.harness/verification/phase2-bakery-authored-agents-report.{json,md}`，包含 65 个 committed
-events、三期 bakery、双角色工作 evidence、full/checkpoint-tail replay、outbox 与 Godot
-mirror checksum。
+历史 `phase2-bakery-authored-agents` Harness 不再是 completion evidence。2026-08-15
+复审确认其直接构造 batch、未通过本表所列 domain authority，且用合成布尔值代替逐项能力
+断言；65 个事件、双角色工作 evidence、支付与 scope claim 因而不可信。其保留为历史样板，
+不能作为 P2D 或 INF 的通过证据。替代收口合同见
+[`P2D-R`](2026-08-15-p2d-r-authored-bakery-authority-reclosure-design.md)。
 
 ## Population Simulation handoff gate
 

@@ -7,7 +7,9 @@
 门禁之上，不能用“模型生成”跳过 authority。
 
 ```text
-P4 institutional economy + P5 RPG/social + P6 governed packages
+P4 institutional economy + P5 RPG/social
+  -> P5 后续能力基础 F0-F2
+  -> P6 governed packages
   -> P7A civilization capability and cross-jurisdiction projection
   -> P7B branch replay, calibration and counterfactual reports
   -> P7C world-model proposal/prediction channel

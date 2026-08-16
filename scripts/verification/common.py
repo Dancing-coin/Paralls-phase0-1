@@ -9,6 +9,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import hashlib
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,6 +19,16 @@ DEFAULT_GODOT_EXE = Path(r"E:\下载\Godot_v4.6.3-stable_win64.exe\Godot_v4.6.3-
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def evidence_revision(project_root: Path | None = None) -> str:
+    """Return a reproducible revision for committed or dirty-tree evidence."""
+    root = project_root or repo_root()
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, check=False).stdout.strip() or "unknown"
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=root, capture_output=True, text=True, check=False).stdout
+    if not status:
+        return head
+    return f"{head}+dirty:{hashlib.sha256(status.encode('utf-8')).hexdigest()[:16]}"
 
 
 def verification_dir(project_root: Path) -> Path:

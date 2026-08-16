@@ -1,0 +1,9 @@
+from __future__ import annotations
+from datetime import datetime, timezone
+from common import evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
+def main() -> int:
+    root=repo_root(); python=resolve_python_exe(None); path=root/"backend"/"tests"/"test_infra_ecology_drought_process.py"; cases={"owner_batch":"test_drought_process_commits_existing_ecology_records_and_cursor","rejection_zero_write":"test_drought_process_rejects_stale_private_and_forged_commands_without_write","duplicate_replay":"test_drought_process_replays_exact_duplicate_and_checkpoint_tail"}; checks={}; logs=[]
+    for key, selector in cases.items():
+        log=verification_dir(root)/f"infra-ecology-drought-process-{key}.log"; result=run_command([python,"-m","pytest","-q",str(path),"-k",selector],root,log); checks[key]=result.returncode==0; logs.append(str(log.relative_to(root)).replace("\\","/"))
+    report={"profile":"infra-ecology-drought-process","overall_passed":all(checks.values()),"checks":checks,"evidence":logs,"run_id":f"infra-ecology-drought-process-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}","commit":evidence_revision(root),"write_path":"EcologyHazardAuthority -> owner fragment -> one append_batch -> outbox/replay -> regional projection","limitations":["One caller-driven region drought process.","No consumer or cross-domain write."]}; target=verification_dir(root)/"infra-ecology-drought-process-report.json"; write_json(target,report); write_markdown(target.with_suffix(".md"),"INF-3K Ecology Drought Process Report",{"results":[{"id":key,"status":"proved" if value else "missing","title":key} for key,value in checks.items()],"overall_passed":report["overall_passed"]},"overall_passed"); print(target); return 0 if report["overall_passed"] else 1
+if __name__=="__main__": raise SystemExit(main())

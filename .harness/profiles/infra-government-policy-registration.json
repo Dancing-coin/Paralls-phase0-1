@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-government-policy-registration",
+  "order": 165,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_government_policy_registration.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-government-policy-registration-report.json",
+  "description": "INF-2K fixed Government commercial inspection policy registration"
+}
