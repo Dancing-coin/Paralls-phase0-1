@@ -865,6 +865,22 @@ class GameplayPatchLifecycleAuthorityService:
             "next_active_patch_set_revision": target.active_patch_set_revision if target is not None else None,
             "next_patch_revision_ids": list(target.patch_revision_ids) if target is not None else [],
             "registry_revision_after": target.registry_revision if target is not None else context.expected_registry_revision,
+            "capability_bindings": (
+                [
+                    {
+                        "binding_ref": binding.binding_ref,
+                        "package_revision": binding.package_revision,
+                        "content_digest": binding.content_digest,
+                        "declaration_digest": binding.declaration_digest,
+                        "descriptor_ref": binding.descriptor_ref,
+                        "descriptor_revision": binding.descriptor_revision,
+                        "active_patch_set_revision": binding.active_patch_set_revision,
+                    }
+                    for binding in target.capability_bindings
+                ]
+                if target is not None
+                else []
+            ),
         }
 
     def _require_existing_candidate(self, manifest: GameplayPatchManifest) -> None:
@@ -957,6 +973,23 @@ class GameplayPatchLifecycleProjector:
                     expected = payload.get("next_active_patch_set_revision")
                     if expected != composed.active_patch_set_revision:
                         raise GameplayPatchLifecycleReplayError("patch_lifecycle_active_set_mismatch")
+                    expected_bindings = [
+                        {
+                            "binding_ref": binding.binding_ref,
+                            "package_revision": binding.package_revision,
+                            "content_digest": binding.content_digest,
+                            "declaration_digest": binding.declaration_digest,
+                            "descriptor_ref": binding.descriptor_ref,
+                            "descriptor_revision": binding.descriptor_revision,
+                            "active_patch_set_revision": binding.active_patch_set_revision,
+                        }
+                        for binding in composed.capability_bindings
+                    ]
+                    persisted_bindings = payload.get("capability_bindings")
+                    if persisted_bindings is None and not expected_bindings:
+                        persisted_bindings = []
+                    if persisted_bindings != expected_bindings:
+                        raise GameplayPatchLifecycleReplayError("patch_lifecycle_capability_binding_mismatch")
                     active = composed
                 else:
                     if payload.get("next_active_patch_set_revision") is not None:

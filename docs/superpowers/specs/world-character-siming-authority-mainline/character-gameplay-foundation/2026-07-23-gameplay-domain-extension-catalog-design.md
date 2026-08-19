@@ -44,6 +44,8 @@ Date: `2026-07-23`
 - `2026-07-23-equipment-runtime-design.md`
 - `2026-07-23-skill-ability-graph-and-affordance-design.md`
 - `2026-07-23-godot-runtime-mirror-and-prediction-design.md`
+- `2026-08-17-package-content-and-cross-domain-binding-matrix-design.md`
+- `2026-08-17-package-contract-closure-and-manifest-adapter-design.md`
 
 ## Extension Maturity Levels
 
@@ -109,6 +111,46 @@ command
 - 为方便查询把其他领域完整状态复制进自己的 aggregate。
 - patch disable 时删除历史事件。
 - 后续领域扩展不得默认获得 actor-private 或 world authority 权限。
+
+### Package-Provided Economic Content And Plausibility
+
+玩法包可以声明世界中可出现的物品、服务、货币、生产/提供条件、社会制度前提和受限
+价格规则；它们不能直接写账户、物权、债务、交易记录或 `GameplayEventStore`。这使核心
+不必预先穷举未来内容，同时避免把内容包变成新的通用经济 authority 或运行时 registry。
+
+经济内容必须位于现有 `GameplayPatchManifest` 的已激活、不可变 revision 中，并使用受
+schema 约束的 definition/Rule IR 输入。每个可协商交易 outcome 至少声明以下内容引用：
+
+```text
+economic_outcome_id
+tradeable_ref or typed_service_ref
+allowed_currency_refs
+source owner and committed source-evidence kind
+world eligibility requirements (technology, institution, resource/production,
+  and other domain-owned capability refs)
+price policy revision (fixed amount or bounded negotiation range)
+party/consent requirements
+  owner-contract reference for privacy, replay, receipt, and compensation semantics
+```
+
+上面的 owner-contract reference 只能指向已批准的固定 owner capability contract；玩法包
+不能在 outcome 中定义或覆盖 privacy、replay、receipt 或 compensation 的实际规则。
+
+角色档案中的职业、能力、需求、关系和权限只可形成结构化交易/服务意图或协商 proposal。
+双方同意也只是一项可验证输入；它不自行创建货币、物品、服务完成、账户余额或成交事实。
+最终 settlement 仍由各自既有 owner 验证并以原子事件批次提交。价格应由激活玩法包的
+固定报价、受限区间或确定性公式决定；智能体可在声明范围内协商，但调用方不能临时指定
+价格 policy、货币、event family、owner 或 settlement fragment。
+
+例如，前文字阶段的角色不能交易现代步枪：若 active revision 未声明该物品，或其科技、
+制度、生产/库存和持有条件不由对应 owner 的已提交视图满足，则提议必须在 append 前
+zero-write 拒绝。未知交易对象、失活/过期 package revision、缺失 source evidence、
+世界条件不满足、价格越界、未授权 party、隐私不匹配和重复/冲突 revision 都必须拒绝。
+
+本节只规定内容包如何提供可审计候选，并不批准 arbitrary payment、generic transfer、
+generic treasury、通用市场定价服务或新的 owner。每一种新 outcome 仍需要 row-specific
+Owner-Admission Contract，固定其 owner、command、stream/event、revision、privacy、
+idempotency、receipt、full/checkpoint-tail replay 和 compensation 语义。
 
 ## Foundation Catalog
 

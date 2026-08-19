@@ -5,7 +5,7 @@ import json
 
 from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.models import GameplayOutboxEntry
+from app.gameplay.models import GameplayOutboxEntry, StrictGameplayModel
 from app.gameplay.civilization_capability_runtime import CivilizationCapabilityView
 from app.gameplay.replay import GameplayProjectionReplay
 from app.gameplay.settlement_plan import (
@@ -78,6 +78,28 @@ def _capability_inspection_plan_digest(plan: PopulationWorldPlan) -> str:
 
 def _production_wage_plan_digest(plan: PopulationWorldPlan) -> str:
     return _digest(plan.model_dump(mode="json"))
+
+
+class BranchWorkWageRequest(StrictGameplayModel):
+    """Fixed INF-4T request; branch data is admission evidence, never a writer."""
+
+    batch_ref: str
+    branch_ref: str
+    branch_buffer_digest: str
+    branch_base_event_digest: str
+    branch_base_checkpoint_sequence: int
+    branch_tail_boundary: int
+    branch_replay_contract_digest: str
+    candidate_intent_ref: str
+    candidate_digest: str
+    worker_ref: str
+    production_evidence_ref: str
+    authenticated_actor_ref: str
+    wage_plan_digest: str
+
+
+def _branch_work_wage_request_digest(request: BranchWorkWageRequest) -> str:
+    return _digest(request.model_dump(mode="json"))
 
 
 
@@ -1096,6 +1118,169 @@ class ContinuityMergeAuthority:
             return self._failed(plan, result.failure.error_code if result.failure else "append_rejected")
         replay = GameplayProjectionReplay(projector_id="population-continuity", projector_version="1").full_replay(self.store.read_events())
         return ContinuityMergeReceipt(committed=True, batch_ref=plan.batch_ref, accepted_intent_refs=(candidate.intent_ref,), committed_event_ids=tuple(result.committed_event_ids), revision_vector=dict(result.resulting_stream_revisions), replay_hash=replay.projection_hash, scope=("actor:self",), redaction="scope-filtered", zero_write=False, idempotency_status=result.idempotency_status, owner_receipt_ref=EconomyAuthority._PRINCIPAL)
+
+    def merge_branch_work_wage(
+        self,
+        *,
+        request: BranchWorkWageRequest,
+        wage_plan: PopulationWorldPlan,
+    ) -> ContinuityMergeReceipt:
+        """Validate an isolated branch request, then invoke the existing Economy owner."""
+        plan = wage_plan
+        if (
+            plan.batch_ref != request.batch_ref
+            or request.wage_plan_digest != _production_wage_plan_digest(plan)
+            or plan.world_ref != self.mode.world_ref
+            or plan.policy_revision != self.mode.revision
+            or plan.mode != self.mode.mode
+            or plan.report_scope != "actor:self"
+            or request.worker_ref != request.authenticated_actor_ref
+            or not request.worker_ref.startswith("character:")
+            or len(plan.candidates) != 1
+            or plan.candidates[0].profile_ref != request.worker_ref
+            or plan.candidates[0].intent_kind != "work"
+            or plan.candidates[0].privacy_scope != "actor:self"
+            or request.candidate_intent_ref != plan.candidates[0].intent_ref
+        ):
+            return self._failed(plan, "branch_work_wage_request_denied")
+        request_digest = _branch_work_wage_request_digest(request)
+        existing = self.store.get_by_idempotency(
+            EconomyAuthority._PRINCIPAL, f"branch-wage:{request.batch_ref}"
+        )
+        if existing is not None:
+            prior = self.store.get_event(existing.committed_event_ids[0])
+            if prior.payload.get("branch_work_wage_request_digest") != request_digest:
+                return self._failed(plan, "idempotency_key_reused")
+            replay = GameplayProjectionReplay(
+                projector_id="population-continuity", projector_version="1"
+            ).full_replay(self.store.read_events())
+            return ContinuityMergeReceipt(
+                committed=True,
+                batch_ref=plan.batch_ref,
+                accepted_intent_refs=(plan.candidates[0].intent_ref,),
+                committed_event_ids=tuple(existing.committed_event_ids),
+                revision_vector=dict(existing.resulting_stream_revisions),
+                replay_hash=replay.projection_hash,
+                scope=("actor:self",),
+                redaction="scope-filtered",
+                zero_write=False,
+                idempotency_status="duplicate_replayed",
+                owner_receipt_ref=EconomyAuthority._PRINCIPAL,
+            )
+        from app.character_agent.profile.registry import CharacterProfileRegistry
+        from app.gameplay.construction_production_runtime import ConstructionProductionAuthority
+        from app.population_continuity.branch_preview import BranchPreviewAuthority
+
+        branch_stream = BranchPreviewAuthority.admission_stream_id(branch_ref=request.branch_ref)
+        snapshot_events = [
+            event
+            for event in self.store.read_stream(branch_stream)
+            if event.event_type == "gameplay.branch_preview.isolated_snapshot_recorded"
+        ]
+        if len(snapshot_events) != 1:
+            return self._failed(plan, "branch_snapshot_missing")
+        snapshot = snapshot_events[0]
+        records = snapshot.payload.get("records")
+        descriptor = next((record for record in records or () if isinstance(record, dict) and record.get("kind") == "branch_descriptor"), None)
+        candidate_record = next((record for record in records or () if isinstance(record, dict) and record.get("kind") == "branch_candidate_proposed" and record.get("intent_ref") == request.candidate_intent_ref), None)
+        if (
+            snapshot.visibility_policy != "creator_debug"
+            or snapshot.payload.get("branch_ref") != request.branch_ref
+            or snapshot.payload.get("buffer_digest") != request.branch_buffer_digest
+            or not isinstance(records, (list, tuple))
+            or not isinstance(descriptor, dict)
+            or not isinstance(candidate_record, dict)
+            or descriptor.get("base_event_digest") != request.branch_base_event_digest
+            or descriptor.get("base_checkpoint_sequence") != request.branch_base_checkpoint_sequence
+            or descriptor.get("tail_boundary") != request.branch_tail_boundary
+            or descriptor.get("replay_contract_digest") != request.branch_replay_contract_digest
+            or candidate_record.get("candidate_digest") != request.candidate_digest
+            or candidate_record.get("profile_ref") != request.worker_ref
+            or request.candidate_digest != _digest(plan.candidates[0].model_dump(mode="json"))
+        ):
+            return self._failed(plan, "branch_snapshot_pin_mismatch")
+        try:
+            branch_authority = BranchPreviewAuthority(
+                store=self.store,
+                registry=CharacterProfileRegistry(profiles_by_actor_id={}),
+            )
+            branch_authority.durable_branch_projection(request.branch_ref)
+            branch_authority.production_replay()
+        except (TypeError, ValueError, KeyError):
+            return self._failed(plan, "branch_replay_contract_invalid")
+        source = ProductionCompletedEvidenceInput(
+            recipient_ref=plan.production_evidence_recipient_ref or "",
+            observed_at=plan.production_evidence_observed_at or "",
+            owner_principal_ref="actor_gameplay.construction_production_domain",
+            projection_digest=plan.production_evidence_projection_digest or "",
+            source_revision_vector=dict(plan.production_evidence_source_revision_vector),
+            evidence_refs=plan.production_evidence_refs,
+            evidence_rows=plan.production_evidence_rows,
+            source_event_refs=plan.production_evidence_event_refs,
+        )
+        if request.production_evidence_ref not in source.evidence_refs:
+            return self._failed(plan, "production_evidence_ref_mismatch")
+        validation = source.validate_against(store=self.store)
+        if not validation.accepted:
+            return self._failed(plan, validation.error_code or "production_evidence_source_invalid")
+        canonical = ConstructionProductionAuthority(store=self.store).completed_evidence_view_for(recipient_ref=request.worker_ref)
+        if canonical.projection_hash != source.projection_digest or request.production_evidence_ref not in canonical.evidence_refs:
+            return self._failed(plan, "production_evidence_source_mismatch")
+        candidate = plan.candidates[0]
+        wage_stream = f"gameplay:economy:wage:{request.worker_ref}"
+        expected_wage_revision = candidate.expected_revisions.get(wage_stream)
+        if expected_wage_revision is None or self.store.get_stream_head(wage_stream) != expected_wage_revision:
+            return self._failed(plan, "production_wage_revision_conflict")
+        from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:branch-work-wage-admission@1",
+                contract_kind="settlement",
+                owner_ref=EconomyAuthority._PRINCIPAL,
+                stream_ids=(wage_stream,),
+                event_types=("gameplay.economy.wage_accrued",),
+                projection_scope="project",
+            )
+        except ValueError:
+            return self._failed(plan, "branch_work_wage_contract_denied")
+        payload = candidate.payload
+        try:
+            result = EconomyAuthority(store=self.store).settle_production_evidence_wage_accrual(
+                command_id=f"branch-wage:{plan.batch_ref}",
+                idempotency_key=f"branch-wage:{plan.batch_ref}",
+                causation_id=f"branch:{request.branch_ref}",
+                correlation_id=plan.batch_ref,
+                organization_ref=str(payload.get("organization_ref", "")),
+                worker_ref=request.worker_ref,
+                wage_obligation_ref=str(payload.get("wage_obligation_ref", "")),
+                work_evidence_refs=plan.production_evidence_refs,
+                production_evidence_projection_digest=source.projection_digest,
+                production_evidence_source_event_refs=source.source_event_refs,
+                production_evidence_source_revision_vector=dict(source.source_revision_vector),
+                production_wage_plan_digest=_production_wage_plan_digest(plan),
+                wage_amount_minor=int(payload.get("wage_amount_minor", 0)),
+                wage_policy_revision=str(payload.get("wage_policy_revision", "")),
+                expected_wage_revision=expected_wage_revision,
+                branch_work_wage_request_digest=request_digest,
+            )
+        except (TypeError, ValueError):
+            return self._failed(plan, "branch_work_wage_mapping_rejected")
+        if not result.committed:
+            return self._failed(plan, result.failure.error_code if result.failure else "append_rejected")
+        replay = GameplayProjectionReplay(projector_id="population-continuity", projector_version="1").full_replay(self.store.read_events())
+        return ContinuityMergeReceipt(
+            committed=True,
+            batch_ref=plan.batch_ref,
+            accepted_intent_refs=(candidate.intent_ref,),
+            committed_event_ids=tuple(result.committed_event_ids),
+            revision_vector=dict(result.resulting_stream_revisions),
+            replay_hash=replay.projection_hash,
+            scope=("actor:self",),
+            redaction="scope-filtered",
+            zero_write=False,
+            idempotency_status=result.idempotency_status,
+            owner_receipt_ref=EconomyAuthority._PRINCIPAL,
+        )
 
     def merge_capability_gated_supply(self, plan: PopulationWorldPlan) -> ContinuityMergeReceipt:
         existing = self.store.get_by_idempotency(

@@ -106,10 +106,18 @@ does not constitute a production patch registry.
 15. [Siming Perspective/Knowledge Graph contract](2026-07-23-siming-perspective-knowledge-graph-contract-design.md)
 16. [Persistence, replay, migration, and hot reload](2026-07-23-persistence-replay-migration-and-hot-reload-design.md)
 17. [Gameplay-domain extension catalog](2026-07-23-gameplay-domain-extension-catalog-design.md)
-18. [adventure-basic reference package](2026-07-23-adventure-basic-reference-pack-design.md)
-19. [Verification and acceptance matrix](2026-07-23-verification-and-acceptance-matrix-design.md)
-20. [Specification and runtime baseline](2026-07-29-gameplay-foundation-spec-and-runtime-baseline.md)
-21. [WebSocket session identity and mirror scope](2026-08-03-websocket-session-identity-and-mirror-scope-design.md)
+18. [Package content and cross-domain binding matrix](2026-08-17-package-content-and-cross-domain-binding-matrix-design.md) `design baseline; no runtime implementation`
+19. [Package contract closure and manifest adapter](2026-08-17-package-contract-closure-and-manifest-adapter-design.md) `design-only; implementation gated`
+20. [Federated Gameplay Extension Platform](2026-08-18-federated-gameplay-extension-platform-design.md) `INF-P P1 binding sequencing implemented and verified; package and row gates remain separate`
+21. [Federated Gameplay Extension Platform approval packet](2026-08-18-federated-gameplay-extension-platform-approval-packet.md) `platform contract approved; downstream implementation separately gated`
+22. [Federated Gameplay Extension Platform approval-readiness audit](2026-08-18-federated-gameplay-extension-platform-approval-readiness-audit.md) `design approved and complete; schema implementation approval pending`
+23. [Federated Gameplay Extension Platform schema decision design](2026-08-18-federated-gameplay-extension-platform-schema-decision-design.md) `design approved and complete; schema implementation approval pending`
+24. [Federated Gameplay Extension Platform schema mapping and migration errata](2026-08-18-federated-gameplay-extension-platform-schema-mapping-and-migration-errata-design.md) `design approved and complete; schema implementation approval pending`
+25. [Federated Gameplay Extension Platform schema-closure addendum](2026-08-18-federated-gameplay-extension-platform-schema-closure-addendum.md) `design approved and complete; schema implementation approval pending`
+20. [adventure-basic reference package](2026-07-23-adventure-basic-reference-pack-design.md)
+21. [Verification and acceptance matrix](2026-07-23-verification-and-acceptance-matrix-design.md)
+22. [Specification and runtime baseline](2026-07-29-gameplay-foundation-spec-and-runtime-baseline.md)
+23. [WebSocket session identity and mirror scope](2026-08-03-websocket-session-identity-and-mirror-scope-design.md)
 
 ## Phase One Gameplay Specs
 

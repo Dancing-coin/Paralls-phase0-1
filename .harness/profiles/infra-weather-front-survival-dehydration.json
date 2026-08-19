@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-weather-front-survival-dehydration",
+  "order": 218,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_weather_front_survival_dehydration.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-weather-front-survival-dehydration-report.json",
+  "description": "INF-3Q fixed weather:drought to existing Survival dehydration owner row"
+}

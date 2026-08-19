@@ -1,6 +1,6 @@
 # INF-3 Specification Tree
 
-Status: `INF-3 narrow ecology lifecycle, seasonal process, bounded and event-derived Ecology-only propagation, fixed Construction fanout, fixed Organization/Economy consumer edges including one fixed two-quote Economy fanout and one fixed two-Organization supply fanout, a finite weather-front owner-contract matrix, and a finite read-only consumer admission check are implemented-and-verified; generic propagation and broader domain fanout remain incomplete`
+Status: `INF-3 narrow ecology lifecycle, seasonal process, bounded and event-derived Ecology-only propagation, fixed Construction fanout, fixed Organization/Economy consumer edges, one fixed drought weather-front -> existing Survival dehydration edge, a finite weather-front owner-contract matrix, and a finite read-only consumer admission check are implemented-and-verified; generic propagation and broader domain fanout remain incomplete`
 
 1. [INF-3 ecology and disaster authority design](2026-08-12-inf-3-ecology-disaster-authority-design.md)
 2. [INF-3R regional ecology propagation expansion design](2026-08-12-inf-3r-regional-ecology-propagation-expansion-design.md) - verified one fixed frost-to-due-production-finish edge only
@@ -22,6 +22,10 @@ Status: `INF-3 narrow ecology lifecycle, seasonal process, bounded and event-der
 18. [INF-3N weather-front Economy quote fanout](2026-08-16-inf-3n-weather-front-economy-quote-fanout-design.md) - verified one exact weather-front -> two distinct existing Economy quotes in one owner batch; not generic fanout, pricing or consumer registration
 19. [INF-3O weather-front Organization supply fanout](2026-08-16-inf-3o-weather-front-organization-supply-fanout-design.md) - verified one exact weather-front -> two distinct existing Organization commitments in one owner batch; not generic fanout or arbitrary settlement
 20. [INF-C4 ecology consumer admission contract](../2026-08-16-inf-c4-ecology-consumer-admission-contract-design.md) - verified finite read-only pre-fragment checks reused by existing Construction and Organization owners; not a consumer registry or target-domain writer
+21. [INF-3Q unlisted consumer owner-contract audit](2026-08-17-inf-3q-unlisted-consumer-owner-contract-audit.md) - durable blocker evidence for why this exact row required admission; all other unlisted consumer edges remain blocked
+22. [INF-3Q drought-to-dehydration Owner-Admission Contract](2026-08-17-inf-3q-drought-survival-dehydration-owner-admission-design.md) - verified one exact `weather:drought -> Survival dehydrated` edge with project source/assignment pins, fixed Survival apply/open events, receipt/replay, and no compensation or fanout
+
+INF-3Q evidence: [independent dehydration Harness report](../../../../../.harness/verification/infra-weather-front-survival-dehydration-report.json).
 
 INF-3L/INF-3N/INF-3O evidence is [weather-front owner-contract matrix report](../../../../../.harness/verification/infra-ecology-weather-front-owner-contract-matrix-report.json). It enforces the existing Construction, Organization and Economy weather-front rows, including the fixed two-quote Economy fanout and fixed two-Organization supply fanout, as a finite catalog; all edges remain fixed and owner-bound.
 

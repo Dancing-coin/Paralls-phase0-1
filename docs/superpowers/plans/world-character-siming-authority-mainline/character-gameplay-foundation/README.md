@@ -32,6 +32,15 @@ own plan phases and evidence. The current code boundary is recorded in
 12. [Godot mirror, persistence, and migration](2026-07-29-godot-mirror-persistence-and-migration-plan.md)
 13. [WebSocket session identity and mirror scope](2026-08-03-websocket-session-identity-and-mirror-scope-plan.md)
 14. [Adventure-basic reference closure](2026-07-29-adventure-basic-reference-closure-plan.md)
+15. [Package content and cross-domain binding matrix](2026-08-17-package-content-and-cross-domain-binding-matrix-plan.md) `design-only; no package schema or runtime implementation`
+16. [Package contract closure and manifest adapter](2026-08-17-package-contract-closure-and-manifest-adapter-plan.md) `design-only; implementation gated`
+17. [Federated Gameplay Extension Platform](2026-08-18-federated-gameplay-extension-platform-implementation-plan.md) `INF-P P1 binding sequencing implemented and verified; package and row gates remain separate`
+18. [Federated Gameplay Extension Platform approval packet](../../../../specs/world-character-siming-authority-mainline/character-gameplay-foundation/2026-08-18-federated-gameplay-extension-platform-approval-packet.md) `platform contract approved; downstream implementation separately gated`
+19. [Federated Gameplay Extension Platform approval-readiness audit](../../../../specs/world-character-siming-authority-mainline/character-gameplay-foundation/2026-08-18-federated-gameplay-extension-platform-approval-readiness-audit.md) `design approved and complete; schema implementation approval pending`
+20. [Federated Gameplay Extension Platform schema decision design](../../../../specs/world-character-siming-authority-mainline/character-gameplay-foundation/2026-08-18-federated-gameplay-extension-platform-schema-decision-design.md) `design approved and complete; schema implementation approval pending`
+21. [Federated Gameplay Extension Platform schema decision implementation plan](2026-08-18-federated-gameplay-extension-platform-schema-decision-implementation-plan.md) `design approved and complete; schema implementation approval pending`
+22. [Federated Gameplay Extension Platform schema mapping and migration errata](../../../../specs/world-character-siming-authority-mainline/character-gameplay-foundation/2026-08-18-federated-gameplay-extension-platform-schema-mapping-and-migration-errata-design.md) `design approved and complete; schema implementation approval pending`
+23. [Federated Gameplay Extension Platform schema-closure addendum](../../../../specs/world-character-siming-authority-mainline/character-gameplay-foundation/2026-08-18-federated-gameplay-extension-platform-schema-closure-addendum.md) `design approved and complete; schema implementation approval pending`
 
 Plans 2-5 are the first minimal closure. Plan 3 is the explicit event-store,
 outbox, and authority-bus coupling prerequisite for embodied-interaction Phase

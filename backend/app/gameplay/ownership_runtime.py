@@ -9,7 +9,7 @@ from types import MappingProxyType
 from typing import Mapping, Sequence
 
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.models import AppendBatchResult, GameplayEvent
+from app.gameplay.models import AppendBatchResult, GameplayEvent, OwnerAuthorizedFragment
 
 
 class OwnershipRuntimeError(ValueError):
@@ -95,6 +95,71 @@ class OwnershipAuthorityService:
         if right.holder_ref != from_holder_ref or not to_holder_ref:
             raise OwnershipRuntimeError("ownership_right_holder_mismatch")
         return self._append(command_id, idempotency_key, digest, "gameplay.ownership.right_transferred", {"right_id": right_id, "asset_ref": asset_ref, "from_holder_ref": from_holder_ref, "to_holder_ref": to_holder_ref}, causation_id, correlation_id, projection)
+
+    def build_package_declared_negotiated_exchange_fragment(
+        self,
+        *,
+        provider_holder_ref: str,
+        receiver_holder_ref: str,
+        source_ref: str,
+        asset_ref: str,
+        outcome_ref: str,
+        package_revision: str,
+        expected_revision: int,
+    ) -> OwnerAuthorizedFragment:
+        """Build the fixed INF-2AC ownership transfer fragment.
+
+        Ownership computes the active right from committed title truth; the
+        caller may not nominate a right_id directly for this admitted outcome.
+        """
+        if (
+            not provider_holder_ref
+            or not receiver_holder_ref
+            or not source_ref
+            or not asset_ref
+            or not outcome_ref
+            or not package_revision
+        ):
+            raise OwnershipRuntimeError("ownership_package_exchange_invalid")
+        projection = self._projector.rebuild(self._store.read_events())
+        stream_id = "gameplay:ownership"
+        if projection.source_revision_vector.get(stream_id, 0) != expected_revision:
+            raise OwnershipRuntimeError("revision_conflict")
+        right_id = projection.active_right_by_asset.get(asset_ref)
+        if right_id is None:
+            raise OwnershipRuntimeError("ownership_package_exchange_source_ambiguous")
+        right = projection.rights.get(right_id)
+        if right is None or right.holder_ref != provider_holder_ref:
+            raise OwnershipRuntimeError("ownership_right_holder_mismatch")
+        return OwnerAuthorizedFragment(
+            fragment_id=(
+                "fragment:ownership:package-declared-negotiated-exchange:"
+                f"{provider_holder_ref}:{receiver_holder_ref}:{outcome_ref}"
+            ),
+            owner_principal_ref=self._PRINCIPAL,
+            source_rule_ref="ownership:package-declared-negotiated-exchange@1",
+            expected_revisions={stream_id: expected_revision},
+            pinned_revisions={"ownership": expected_revision},
+            event_specs={
+                stream_id: (
+                    (
+                        "gameplay.ownership.right_transferred",
+                        {
+                            "source_ref": source_ref,
+                            "right_id": right.right_id,
+                            "asset_ref": asset_ref,
+                            "from_holder_ref": provider_holder_ref,
+                            "to_holder_ref": receiver_holder_ref,
+                            "outcome_ref": outcome_ref,
+                            "package_revision": package_revision,
+                            "source_event_id": right.source_event_id,
+                            "source_selection_rule_ref": "exchange:unique-owned-source@1",
+                        },
+                    ),
+                )
+            },
+            event_visibility_policies={stream_id: ("authority_only",)},
+        )
 
     def _duplicate(self, idempotency_key: str, digest: str) -> AppendBatchResult | None:
         record = self._store.get_idempotency_record(self._PRINCIPAL, idempotency_key)

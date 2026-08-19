@@ -92,7 +92,7 @@ implementation plan，完成计划审阅后才能进入 SDD 实现。
 | Selector/query | `planned` | freeze read-only query input, result and privacy behavior | projection/query path |
 | State-group/profile activation | `partial/reusable` | freeze `disabled/narrative/lightweight/simulation`, mode revision and no-hidden-effect semantics | state-group lifecycle authority |
 | World profile and active revision set | `planned` | freeze game/simulation/inference profile, `ActiveSemanticSet`, `ActiveWorldRevision` and session pinning | existing session/patch/schema revision paths |
-| Gameplay package/domain-extension manifest | `partial/reusable` for trusted Patch manifests | freeze domain maturity, owned aggregates, state groups, commands/events, dependencies, compatibility and migration declarations | Patch/package registry path |
+| Gameplay package/domain-extension manifest | `partial/reusable` for trusted Patch manifests | freeze domain maturity, owned aggregates, state groups, commands/events, dependencies, compatibility and migration declarations | `GameplayPatchManifest` / Patch lifecycle path |
 | `SettlementPlan` adapter | `planned` | define pre-submit shape and exact `append_batch` mapping | authority settlement path |
 | Reservation/Hold lifecycle | `partial/reusable` | freeze reserve/consume/release/expire/compensate, ownership and idempotency | resource/inventory/economy/domain authorities |
 | Tick/obligation/calendar/revision pinning | `planned` | freeze command/lifecycle contract; do not create a global clock runtime | existing scheduling/continuity path plus domain owners |
@@ -492,9 +492,14 @@ lifecycle commands return stable failures or the original receipt and append no 
 
 ## Package And Active Revision Contract
 
-`GameplayPackageManifest` is a declaration boundary for schema, semantic, rule and capability
-dependencies. It may reference a registered closed-core migrator, but cannot carry executable
-Python/GDScript, an event deletion operation or an authority handler.
+`GameplayPackageManifest` is retained here as the logical declaration vocabulary for schema,
+semantic, rule, and capability dependencies. The executable admission path is the existing
+`GameplayPatchManifest` / `GameplayPatchRegistry`; the reference model does not create a second
+registry or active-revision lifecycle. The detailed record shapes and read-only adapter boundary
+are specified in `2026-08-17-package-contract-closure-and-manifest-adapter-design.md`.
+
+The logical package declaration may reference a registered closed-core migrator, but cannot carry
+executable Python/GDScript, an event deletion operation, or an authority handler.
 
 Before a session accepts writes, the active package revisions, semantic/rule revisions, policy
 references, schema registry revision and core compatibility version are combined into an

@@ -62,6 +62,19 @@ INF-4P closes only the snapshot-to-one-evolution evidence gap. It does not
 create a branch-domain settlement owner, generic branch receipt, promotion
 registry, or production-equivalent branch evolution.
 
+INF-4T records a bounded branch-request-to-Economy wage vertical. Its
+typed request confirms that the existing Production-evidence wage consumer is
+not replaced: a creator-debug candidate supplies only branch pins while the
+owner rereads committed worker-scoped Production evidence. The immutable
+catalog and independent Harness prove the fixed Economy append. Only the exact
+Government inspection, Organization supply, and this wage request remain
+admitted; all other branch inputs stay zero-write.
+
+The companion INF-4T branch-work-to-wage design/plan is approved and
+implemented narrowly. It reuses the existing Production completed-evidence
+source and Economy wage owner, explicitly rejects branch-as-Production
+substitution, and adds no branch promotion writer or combined receipt.
+
 User-directed deferral (2026-08-15): complete group simulation is deferred,
 not closed. Promotion is unsupported and zero-write except for INF-4N's
 separately approved Government passed-inspection row and INF-4O's separately

@@ -16,6 +16,34 @@ Use this folder rather than the old flat-file entrypoint for all follow-on archi
 - Implementation and verification evidence already exist in the matching plan tree and
   the `mainline-unified-runtime` harness profile.
 
+## Unknown Gameplay-Pack/Mod Rows
+
+The mainline does not need to hard-code every future game activity. Trusted
+gameplay packages/mods may declare typed content and its world, technology,
+social, institutional, resource, production, consent, and price constraints
+through the existing patch-manifest and active-revision contracts. Character
+profiles and agent agreement remain proposal inputs only; they never become
+payment, ownership, account, or world truth.
+
+When a future row is missing concrete gameplay, use this repair order:
+
+```text
+business outcome
+-> package/mod definition
+-> source owner/evidence
+-> complete row-specific owner contract
+-> explicit approval
+-> plan -> RED -> Harness -> runtime
+```
+
+Until then, label the row `owner-contract blocked` or `unimplemented`. Do not
+invent a generic payment owner, default account, implicit technology, caller-
+selected price/currency/event, router, registry, coordinator, or second
+runtime. The canonical details are in
+[INF federated owner capability admission design](2026-08-17-inf-federated-owner-capability-admission-design.md),
+[INF completion audit](2026-08-15-inf-mainline-completion-audit.md), and
+[INF remaining-scope dependency design](2026-08-12-inf-remaining-scope-dependency-design.md).
+
 ## Current Proof Aggregate
 
 The current unified proof aggregate records direct evidence for:
@@ -43,6 +71,12 @@ Primary commands:
 ## INF Naming
 
 - [INF mainline and substrate mapping guide](2026-08-17-inf-mainline-substrate-mapping-guide.md) - explains the `INF-1..4` domain axis and `INF-C1..5` reusable-contract axis
+- [INF federated owner capability admission design](2026-08-17-inf-federated-owner-capability-admission-design.md) - approved mechanism for adding bounded, typed owner capabilities without admitting a generic writer or settlement authority
+- [Package content and cross-domain binding matrix](character-gameplay-foundation/2026-08-17-package-content-and-cross-domain-binding-matrix-design.md) - design baseline for extensible package definitions and typed bindings to Siming, character-agent mind models, ESM/physics, and existing owners
+- [Package contract closure and manifest adapter](character-gameplay-foundation/2026-08-17-package-contract-closure-and-manifest-adapter-design.md) - design-only closure for manifest sections, immutable package revisions, owner-derived eligibility proofs, and replay retention
+- [INF-1AG package/binding sequencing design](inf-1/2026-08-18-inf-1ag-package-content-readonly-binding-sequencing-design.md) - historical P1 resolution of the binding-before-candidate ordering conflict; it enabled only the exact frozen industrial package and descriptor path now verified by INF-1AG
+- [INF-1AG industrial facilities v1 freeze record](inf-1/2026-08-19-inf-1ag-industrial-facilities-v1-freeze-record.md) - canonical immutable package bytes and verified digest evidence; it does not install a candidate or admit a business descriptor
+- [INF-1AG Construction descriptor/catalog admission packet](inf-1/2026-08-19-inf-1ag-construction-owner-operation-descriptor-admission-packet.md) - frozen package resolves the approved exact immutable descriptor; the separately approved Construction narrow vertical is implemented and verified without admitting a generic transform
 
 ## Spec Tree
 

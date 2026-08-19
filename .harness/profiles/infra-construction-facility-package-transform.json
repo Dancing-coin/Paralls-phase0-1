@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-construction-facility-package-transform",
+  "order": 166,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_construction_facility_package_transform.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-construction-facility-package-transform-report.json",
+  "description": "INF-1AG frozen industrial-facilities oven-to-kiln terminal Construction transform"
+}

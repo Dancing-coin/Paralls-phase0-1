@@ -566,6 +566,7 @@ class EconomyAuthority:
         wage_amount_minor: int,
         wage_policy_revision: str,
         expected_wage_revision: int,
+        branch_work_wage_request_digest: str | None = None,
     ):
         """The lone Economy-owned consumer for frozen Production evidence."""
         if (
@@ -618,6 +619,7 @@ class EconomyAuthority:
                 "production_evidence_source_event_refs": production_evidence_source_event_refs,
                 "production_evidence_source_revision_vector": dict(production_evidence_source_revision_vector),
                 "production_wage_plan_digest": production_wage_plan_digest,
+                **({"branch_work_wage_request_digest": branch_work_wage_request_digest} if branch_work_wage_request_digest else {}),
             },
         )
         batch = SettlementPlan.from_command_envelope(command).to_atomic_event_batch()

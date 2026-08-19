@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-branch-work-wage-owner-admission",
+  "order": 219,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_branch_work_wage_owner_admission.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-branch-work-wage-owner-admission-report.json",
+  "description": "INF-4T branch candidate request validated against committed Production evidence before existing Economy wage accrual"
+}

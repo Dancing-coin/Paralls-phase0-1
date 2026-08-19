@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf-p-federated-gameplay-extension-platform",
+  "order": 168,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf_p_federated_gameplay_extension_platform.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf-p-federated-gameplay-extension-platform-report.json",
+  "description": "INF-P immutable GameplayPatchManifest v2 admission, canonical digest, snapshot retention, and read-only capability-binding boundary"
+}

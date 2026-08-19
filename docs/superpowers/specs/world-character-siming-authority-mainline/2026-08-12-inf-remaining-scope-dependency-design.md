@@ -11,6 +11,73 @@ verticals. It prevents broad phrases such as "complete INF", "full ecology",
 or "complete group simulation" from concealing missing owners, write paths, or
 evidence.
 
+## Unknown Gameplay And Package/Mod Completion Path
+
+INF-P now implements and verifies the federated platform schema,
+canonicalization rules, immutable candidate/active admission boundary, and P1
+read-only binding sequencing. A complete non-empty binding package passes only
+package-local structural/digest validation at candidate time; activation then
+requires exact-one resolution against the immutable catalog and persists the
+package/content/declaration/descriptor/active-set pins. Work on a
+package-declared outcome still requires a separately approved complete package
+revision/content digest and a row-specific owner descriptor/binding. This is
+not a request to invent a generic owner or to calculate a provisional digest.
+
+For INF-1AG, P1 closes the former candidate-binding sequencing blocker. The
+complete non-empty `package:industrial-facilities:v1` is now frozen with its
+explicit equal `patch_version` / `package_version` values and exact derived
+digests in the [freeze record](inf-1/2026-08-19-inf-1ag-industrial-facilities-v1-freeze-record.md).
+At the former sequencing gate, activation remained zero-write until an
+independently approved immutable descriptor resolved exactly once. That exact
+descriptor admission, row binding, and Construction vertical are now complete
+only for the frozen `oven -> kiln` row. Do not alter the frozen revision or use
+it to admit another declaration.
+
+Current INF-1AG status is `implemented and verified: exact frozen
+package-declared oven-to-kiln narrow vertical`. The approved descriptor and
+existing-Construction catalog contract are recorded in [the admission packet](inf-1/2026-08-19-inf-1ag-construction-owner-operation-descriptor-admission-packet.md).
+The owner-bound verifier/reducer and append spine are covered by `11 passed`
+focused tests and the green independent
+`infra-construction-facility-package-transform` Harness. This is not a
+generic Construction transform and does not close the remaining INF-1 rows or
+August INF A-D.
+
+The remaining-scope matrix must not assume that the core already knows every
+human-world income, expense, service, or exchange. A gameplay package/mod may
+later declare those typed definitions and their technology, social,
+institutional, resource, production, consent, and price constraints through
+the existing patch manifest and active revision. The package supplies content
+and eligibility inputs; it is not an account, ownership, payment, market, or
+settlement authority.
+
+Character needs provide a stable discovery axis for these rows, but they are
+not transactions: hunger may resolve through consumption, purchase, aid,
+service, or self-production; safety may resolve through shelter, treatment,
+debt, or social protection. Use the baseline outcome families in the federated
+owner-admission design to name the candidate family first, then let the
+package/mod supply the concrete item, service, world conditions, and price
+policy.
+
+When a row is discovered from character profiles or future package design,
+record the character data as proposal context only, then fill the row in this
+order:
+
+1. one named business outcome;
+2. package/mod definition and immutable revision;
+3. existing source owner and committed evidence kind;
+4. target owner operation and exact event/revision/privacy/idempotency/
+   receipt/replay/terminal/compensation contract;
+5. explicit row-specific approval;
+6. plan, RED tests, independent Harness, and runtime implementation.
+
+If any item is unknown, the row remains `owner-contract blocked` or
+`unimplemented`; do not fill it with a generic payment, arbitrary currency,
+implicit technology, default account, caller-selected owner, or agent
+consensus alone. An implausible or unavailable package proposal must be
+rejected before `append_batch()` with zero writes. This rule is the intended
+way to support future innovation without creating a second runtime, registry,
+router, coordinator, or generic cross-domain settlement authority.
+
 ## Verified narrow verticals
 
 | Package | Scope | Required predecessors | Cannot own |
@@ -126,24 +193,85 @@ formal owner/event/projection contract before code starts:
 | --- | --- | --- |
 | INF-1 lifecycle closure | Event-derived effect expiry; StateDefinition add/replace/refresh/reject, stack limits, dispel and transform; constrained multi-condition selectors; owner-bound settlement rows | four explicit Survival rows (`cold` / `cold_exposure`, `overheated` / `heat_exposure`, `dehydrated` / `dehydration_exposure`, `fatigued` / `fatigue_exposure`) plus their closed semantic bridge, finite proposal-only `all(...)`/`any(...)` guard composition, one verified Construction `maintenance_required -> maintenance_due` facility-state row, INF-1H's closed state dispatch, INF-1J's separately registered `wage_accrual_due -> EconomyAuthority` obligation row, INF-1K's two closed Survival actions, INF-1O's pure closed-contract dispel/fixed-transform decisions before the existing Survival fragment, INF-1L's exact Ecology `effect:frost -> state:frosted@1` apply/open/expiry/settled row, INF-1AA's exact Ecology `effect:drought -> state:drought@1` apply/open/expiry/settled row sourced from committed drought-process evidence, INF-1Z's exact semantic frost dispel -> Ecology `crop_state_dispelled` plus exact open-obligation cancellation row, INF-1N's exact Construction apply -> event-derived open -> expired/settled row, and closed semantic proposal-to-Ecology frost/drought adapters are verified through 2026-08-16. INF-1Q adds one closed reader for the finite seven state rows plus the existing wage row, including terminal event, action, outbox, revision, idempotency and replay metadata. It does not add generic registration or routing. Additional cross-domain rows and generic event-derived lifecycle remain blocked by missing approved owner/event-family/receipt mappings; evaluator payload alone remains only a proposal |
 | INF-2 lifecycle closure | open/due/settled/cancelled/expired/retry/compensated across construction and at least one survival/economy owner; bounded catch-up, activation pending merge and single-store receipt | construction settled/cancelled, Survival state-expiry open/retry/settled/cancelled/compensated, Economy wage open/retry/cancel/expired/settled/compensated, and INF-2J's fixed Economy scheduled account-transfer open/settled/cancelled/expired row are verified. `SettlementReceipt` always summarizes exactly one resulting `GameplayEventStore.append_batch()`. INF-2J binds only two existing same-currency Economy accounts to `policy:economy_scheduled_account_transfer@1`; its debit/credit/terminal batch and authority-only receipt/outbox have independent evidence. INF-2B/2E/2F additionally verify released activation `survival_state_expiry` -> Survival settlement for exactly `cold`, `dehydrated` and `overheated`, each with deliberately separate activation and Survival append-derived receipts. INF-2G now gives those three rows plus existing `schedule_gated_supply -> OrganizationAuthority` one immutable four-row, event-derived binding reader and preserves their separate target receipts. INF-2H formalizes the existing `EconomyAuthorityService` single-stream account opening/transfer/reservation path with authority outbox, append-derived receipt, privacy and replay evidence. INF-2P separately verifies that `OrganizationAuthority` alone writes `gameplay:organization:window:{window_ref}` open/close/due facts while `EconomyAuthority` remains bounded to wage obligation/accrual/payment/overdue and existing account transfers; the old Economy window helpers survive only as delegates and do not retain a second writer. INF-2R records those exact two append-owner rows in the immutable governed catalog and makes each owner reject catalog mismatch before batch construction; it is source-controlled admission, not registration or a coordinator writer. INF-2M now rejects policy-less, unknown, forged, or widened caller registrations, terminal-plus-smuggled-event fragments, owner-privacy scope overrides, and Construction due terminals lacking the exact committed `run_started` source event before append; caller registrations are normalized so they cannot weaken canonical `requires_committed_open` or other required admission conditions. It recognizes six existing owner policies with closed owner-local event families and fixed visibility only. Open policy registration, generic payment, account reservation release and broad cross-domain atomic policy remain incomplete |
-| INF-3 process closure | weather/resource/crop/environment process lifecycle, one non-frost process or hazard, budgeted progressive propagation and target-owner edges | record/retire rows, closed one-region seasonal and drought environment/resource/crop processes, caller-driven bounded propagation, and INF-3M's bounded event-derived next-frontier planner are verified. Three exact Construction edges, INF-3H fixed two-facility fanout, INF-3I one exact Organization supply edge, INF-3J one exact source-pinned Economy quote edge, INF-3N one exact two-quote Economy owner fanout, INF-4AC's evidence-pinned active profile-to-region prerequisite, and INF-1AC's exact weather:frost -> existing Survival cold row remain finite. INF-3L records the target-owner contracts. Generic target-owner effects, arbitrary fanout, autonomous scheduling and retry/compensation remain blocked pending their own policy, privacy and owner-fragment contracts |
+| INF-3 process closure | weather/resource/crop/environment process lifecycle, one non-frost process or hazard, budgeted progressive propagation and target-owner edges | record/retire rows, closed one-region seasonal and drought environment/resource/crop processes, caller-driven bounded propagation, and INF-3M's bounded event-derived next-frontier planner are verified. Three exact Construction edges, INF-3H fixed two-facility fanout, INF-3I one exact Organization supply edge, INF-3J one exact source-pinned Economy quote edge, INF-3N one exact two-quote Economy owner fanout, INF-4AC's evidence-pinned active profile-to-region prerequisite, INF-1AC's exact weather:frost -> existing Survival cold row, and INF-3Q's exact project-visible `weather:drought` -> existing Survival `dehydrated` row are finite. INF-3Q consumes only `weather_front.propagated`, pins source/assignment/target revisions, writes only the Survival apply/open pair, and explicitly rejects `drought_process_advanced`, compensation, and fanout. INF-3L records the target-owner contracts. Generic target-owner effects, arbitrary fanout, autonomous scheduling and retry/compensation remain blocked pending their own policy, privacy and owner-fragment contracts |
 | INF-4 branch and batch closure | replayable isolated branch event/projection evolution and one real household/organization schedule input merged via revision/activation lock | INF-4M persists a redacted accepted isolated branch buffer and INF-4P appends one fixed redacted owner-consequence evolution event to the same `gameplay:branch_preview:{branch_ref}` stream; a fresh authority rebuilds snapshot plus ordered evolution with checkpoint-tail replay. INF-4L durably records accepted inspection evidence on that same stream before Government revalidates it to append the existing INF-4I passed or INF-4J fixed-remediation scenario row; revalidation requires exact stream/branch equality with independent passed/failed forged cross-branch zero-write proof. INF-4K derives one immutable remediation receipt from that evidence-backed row only. All use the same store, scoped outbox and replay while production replay remains isolated. One frozen social/household/organization schedule -> existing Organization supply fragment row, INF-4C's activation-event-derived released `schedule_gated_supply` pending merge, INF-4AB's released `survival_state_expiry` pending -> existing Survival owner settlement with a separate single-append receipt, and INF-4AC's activation-owned project-scoped Ecology-evidence `profile_ref -> region_ref` projection are verified. Generic remediation lifecycle, other owner scenario rows, generic scenario receipt, promotion, generic pending and complete group simulation remain incomplete |
 
 ## Mainline Closure Owner-Contract Matrix
 
 The following are the actual August-mainline blockers after the verified narrow
 verticals. They are not authorization to create a generic router, a coordinator,
-or a new truth owner. A future package may start only after its row is replaced
-by a concrete existing-authority contract and a focused RED test.
+or an unapproved truth owner. A future package may start only after an
+existing-authority contract exists or a row-specific Owner-Admission Contract
+is explicitly approved, followed by a focused RED test.
 
 | Mainline gap | Existing evidence | Missing contract that blocks code | Required next artifact |
 | --- | --- | --- | --- |
 | INF-1 generic effect/state lifecycle | INF-1Q's six-contract immutable lifecycle reader fixes event family, action allowance, outbox, revision, idempotency and replay metadata for five existing `StateOwnerContract` rows plus the existing Economy wage row; all use existing owner append/receipt/replay | every additional pair or action lacks an approved existing authority, target stream, complete event family, scoped projection, revision/idempotency rule and owner receipt/replay reader; Construction transform/repair/payment truth is still absent | one owner-row design naming all fields, then a row-specific RED suite; state-only callers retain `semantic_state_owner_contract_unknown`, while the new lifecycle reader returns `semantic_lifecycle_owner_contract_unknown`; both are zero-write |
-| INF-2 open obligation-policy registration and cross-domain settlement | construction, Survival and Economy rows each derive lifecycle events; INF-2J proves a second fixed Economy lifecycle with account debit/credit; INF-2I proves one fixed Organization/Economy/Inventory/Wage commerce commitment; INF-2K registers/revokes one typed Government inspection policy on an existing Government stream with replay view and one append-derived receipt; INF-2L migrates fixed simple-debt issue/payment/cancellation/correction/reopen/overdue/default batches to its owner-bound formal spine; INF-2M constrains coordinator input to six existing policy contracts; INF-2Q has already retired the coordinator append/callback surface, leaving it as a read-only planner | no existing owner defines the business outcome, compensation semantics, target stream/revision and receipt boundary for arbitrary policy kinds; generic cross-stream atomic business settlement remains unapproved; caller-open registration is intentionally rejected rather than implemented as a generic writer | bind one next existing-owner policy to its exact outcome and receipt, or reject before append |
-| INF-3 fanout and further consumer effects | Ecology owns canonical records, bounded caller-driven propagation, INF-3M's deterministic event-derived next-frontier proposal/append, three Construction edges, the fixed INF-3I Organization supply edge, INF-3J's exact project-visible weather-front -> Economy quote edge, INF-3N's exact project-visible weather-front -> two Economy quotes one-batch row, and INF-3L's catalog enforcement across those fixed target-owner contracts | INF-3M is not autonomous scheduling or generic propagation. Each additional Economy/other-domain fanout or propagation edge still requires its own admitted target-owner fragment plus source/target revision, privacy, idempotency, retry/compensation and projection contract. INF-3L/INF-3N formalize no generic Economy path and do not make other consumers eligible | a separately designed target-owner edge and updated continuation gate; until then no generic consumer registry or other-domain write |
-| INF-4 production-equivalent branch evolution and complete group simulation | isolated evidence/projection plus finite Organization/Government scenario rows, INF-4N's one Government passed-inspection promotion, INF-4O's one Organization supply promotion, and one schedule-gated merge | no approved branch-domain settlement/event-family/receipt owner exists for arbitrary owner fragments; only the exact INF-4N Government source admission -> scenario -> production inspection row and INF-4O Organization source admission -> scenario -> production commerce row are admitted, and a population/NPC/social truth owner is expressly absent | an independently approved existing-owner contract for each further fragment, or keep all non-listed branch inputs and promotion zero-write |
+| INF-2 open obligation-policy registration and cross-domain settlement | construction, Survival and Economy rows each derive lifecycle events; INF-2J proves a second fixed Economy lifecycle with account debit/credit; INF-2I proves one fixed Organization/Economy/Inventory/Wage commerce commitment; INF-2K registers/revokes one typed Government inspection policy on an existing Government stream with replay view and one append-derived receipt; INF-2L migrates fixed simple-debt issue/payment/cancellation/correction/reopen/overdue/default batches to its owner-bound formal spine; INF-2M constrains coordinator input to six existing policy contracts; INF-2Q has already retired the coordinator append/callback surface, leaving it as a read-only planner | no existing owner defines the business outcome, compensation semantics, target stream/revision and receipt boundary for arbitrary policy kinds; generic cross-stream atomic business settlement remains unapproved; caller-open registration is intentionally rejected rather than implemented as a generic writer | bind one next existing-owner policy to its exact outcome and receipt, or explicitly approve a row-specific Owner-Admission Contract, or reject before append |
+| INF-3 fanout and further consumer effects | Ecology owns canonical records, bounded caller-driven propagation, INF-3M's deterministic event-derived next-frontier proposal/append, three Construction edges, the fixed INF-3I Organization supply edge, INF-3J's exact project-visible weather-front -> Economy quote edge, INF-3N's exact project-visible weather-front -> two Economy quotes one-batch row, INF-3Q's exact project-visible `weather:drought -> Survival dehydrated` single-target row, and INF-3L's catalog enforcement across those fixed target-owner contracts | INF-3M is not autonomous scheduling or generic propagation. Each additional Economy/other-domain fanout or propagation edge still requires its own admitted target-owner fragment plus source/target revision, privacy, idempotency, retry/compensation and projection contract. INF-3Q fixes only its one dehydration edge: source selection and target-terminal semantics are still not inferred for any other weather-front or Survival lifecycle fact. INF-3L/INF-3N/INF-3Q formalize no generic target path and do not make other consumers eligible | a separately designed target-owner edge and updated continuation gate; until then no generic consumer registry or other-domain write |
+| INF-4 production-equivalent branch evolution and complete group simulation | isolated evidence/projection plus finite Organization/Government scenario rows, INF-4N's one Government passed-inspection promotion, INF-4O's one Organization supply promotion, one schedule-gated merge, and INF-4T's typed branch-work request validated against committed Production evidence before existing Economy wage accrual | no approved branch-domain settlement/event-family/receipt owner exists for arbitrary owner fragments; only the exact INF-4N Government source admission -> scenario -> production inspection row, INF-4O Organization source admission -> scenario -> production commerce row, and INF-4T branch request -> existing Economy wage row are admitted; a population/NPC/social truth owner is expressly absent | an independently approved existing-owner contract for each further fragment, or keep all non-listed branch inputs and promotion zero-write |
 
 This matrix records a blocked design state, not a claim that INF is complete.
+
+### 2026-08-17 continuation rows
+
+The next concrete rows were audited with one bounded implementation:
+
+- `INF-1AE`: one Construction facility repair/compensation vertical is
+  implemented through the existing Construction owner; transform and payment
+  remain blocked, and all other actions remain zero-write.
+- `INF-1AF`: generic Construction facility transforms remain owner-contract
+  blocked. The separately approved `bakery -> bakery_reinforced` contract is
+  implemented as one existing-owner narrow vertical with fixed source,
+  target-kind event/projection, catalog, receipt/replay, and terminal
+  no-compensation semantics. It does not authorize a new Construction owner
+  or generic action path.
+- `INF-1AG`: the row-specific Owner-Admission Contract is now approved for
+  design only for the exact `package:industrial-facilities:v1` declaration:
+  `oven -> kiln`, policy
+  `policy:industrial-facilities:oven-to-kiln@1`, and
+  `construction:facility-acquired@1` evidence owned by
+  `ConstructionProductionAuthority`. The fixed Construction owner, facility
+  stream, `facility_transformed@1` event family, project privacy,
+  construction-plot project binding, source/current revision fence,
+  authority-derived idempotency, append receipt, full/tail replay and v1
+  terminal/no-compensation semantics are all recorded in the row contract and
+  plan. The row is now `platform-contract pending`: the user explicitly
+  deferred complete package freeze and canonical digest confirmation until the
+  federated platform schema, canonicalization, and immutable admission
+  boundary are separately approved. The existing `package:frost-farm:v1`
+  manifest cannot substitute and declares no facility transform. No manifest
+  schema, verifier, reducer, catalog row, RED test, Harness or runtime work is
+  authorized before the platform gate and its later package-content gate.
+- `INF-2AB`: existing-owner discovery is exhausted, and the separately
+  approved Treasury collector Owner-Admission Contract is implemented as one
+  narrow vertical. It commits jurisdiction/currency source pins, an explicit
+  Economy-owned canonical payer-account binding with account-opened pins, and
+  atomic settled/compensated/reopened obligation semantics. The independent
+  Harness proves the identity-only Treasury/Economy split; this does not
+  authorize generic Treasury, payment, transfer, or settlement behavior.
+- `INF-2AC`: existing-owner discovery is exhausted. The explicitly approved
+  immutable-package `package_declared_negotiated_exchange@1` contract is
+  implemented as one narrow existing-owner composition and verified by its
+  focused suite and independent Harness. It does not admit adjacent outcomes:
+  fixed Economy, Commerce, Government, and Debt rows cannot be generalized,
+  and every caller-open payment/policy request remains zero-write.
+- `INF-3Q`: the bounded `weather:drought -> Survival dehydrated` target-edge
+  was explicitly approved and implemented through existing Ecology and Survival
+  owners. It accepts only the fixed project-visible weather-front source and
+  matching active region assignment, writes only the existing Survival
+  dehydration apply/open pair, and rejects drought-process substitution,
+  compensation, fanout, and every other unlisted consumer edge.
+- `INF-4T`: existing-owner discovery was exhausted and the separately
+  approved row-specific Owner-Admission Contract is implemented narrowly.
+  The typed branch request validates creator-debug snapshot pins and rereads
+  committed worker-scoped Production evidence before invoking the existing
+  Economy wage owner. Branch-as-Production substitution, generic promotion,
+  combined receipts, payroll, and compensation remain zero-write.
+
+The corresponding formal audits/plans and the durable checkpoint are recorded
+in the 2026-08-17 completion audit. These dispositions do not authorize a
+generic writer, router, registry, coordinator, or second runtime/store/bus.
 
 ### 2026-08-15 owner-contract audit
 

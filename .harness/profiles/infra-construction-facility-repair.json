@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-construction-facility-repair",
+  "order": 164,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_construction_facility_repair.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-construction-facility-repair-report.json",
+  "description": "INF-1AE bounded Construction facility repair and explicit compensation"
+}

@@ -1,20 +1,33 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from app.gameplay.debt_runtime import DebtAuthorityService
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
+from app.gameplay.governed_contract_catalog import (
+    GovernedAuthorityContractCatalog,
+    GovernedAuthorityContractError,
+    OwnerOperationDescriptor,
+)
+from app.gameplay.patch_runtime import GameplayPatchManifest, GameplayPatchRegistry
 
 
 def test_catalog_materializes_only_existing_cross_inf_owner_contracts() -> None:
     contracts = GovernedAuthorityContractCatalog.contracts()
 
     assert [contract.contract_ref for contract in contracts] == [
+        "inf:branch-work-wage-admission@1",
+        "inf:construction-facility-bakery-reinforcement@1",
+        "inf:construction-facility-package-declared-transform@1",
+        "inf:construction-facility-repair@1",
         "inf:construction-maintenance-state-expiry@1",
             "inf:ecology-drought-state-expiry@1",
             "inf:ecology-frost-state-expiry@1",
             "inf:economy-commerce-delivery-payment@1",
+            "inf:economy-government-tax-payment@1",
             "inf:economy-scheduled-transfer-policy@1",
         "inf:economy-tax-obligation@1",
         "inf:economy-wage-accrual-obligation@1",
@@ -22,8 +35,10 @@ def test_catalog_materializes_only_existing_cross_inf_owner_contracts() -> None:
         "inf:government-failed-inspection-promotion@1",
         "inf:government-inspection-policy@1",
         "inf:government-inspection-promotion@1",
+        "inf:government-treasury-collector@1",
         "inf:organization-operating-window@1",
         "inf:organization-supply-promotion@1",
+        "inf:package-declared-negotiated-exchange@1",
         "inf:simple-debt-settlement@1",
         "inf:survival-state-expiry@1",
         "inf:weather-front-construction-maintenance@1",
@@ -32,12 +47,18 @@ def test_catalog_materializes_only_existing_cross_inf_owner_contracts() -> None:
         "inf:weather-front-organization-supply-fanout@1",
         "inf:weather-front-organization-supply@1",
         "inf:weather-front-survival-cold@1",
+        "inf:weather-front-survival-dehydration@1",
         "inf:weather-front-survival-heat@1",
     ]
     assert [(contract.owner_ref, contract.projection_scope) for contract in contracts] == [
+        ("actor_gameplay.econ1_economy_domain", "project"),
+        ("actor_gameplay.construction_production_domain", "project"),
+        ("actor_gameplay.construction_production_domain", "project"),
+        ("actor_gameplay.construction_production_domain", "project"),
         ("actor_gameplay.construction_production_domain", "project"),
         ("authority:ecology", "project"),
         ("authority:ecology", "project"),
+        ("actor_gameplay.economy_domain", "authority_only"),
         ("actor_gameplay.economy_domain", "authority_only"),
         ("actor_gameplay.economy_domain", "authority_only"),
         ("actor_gameplay.economy_domain", "authority_only"),
@@ -46,8 +67,10 @@ def test_catalog_materializes_only_existing_cross_inf_owner_contracts() -> None:
         ("actor_gameplay.government_domain", "project"),
         ("actor_gameplay.government_domain", "project"),
         ("actor_gameplay.government_domain", "project"),
+        ("actor_gameplay.government_treasury_collector", "authority_only"),
         ("actor_gameplay.organization_domain", "mixed"),
         ("actor_gameplay.organization_domain", "project"),
+        ("actor_gameplay.economy_domain", "authority_only"),
         ("actor_gameplay.debt_domain", "authority_only"),
         ("actor_gameplay.survival_domain", "project"),
         ("actor_gameplay.construction_production_domain", "project"),
@@ -55,6 +78,7 @@ def test_catalog_materializes_only_existing_cross_inf_owner_contracts() -> None:
         ("actor_gameplay.economy_domain", "project"),
         ("actor_gameplay.organization_domain", "project"),
         ("actor_gameplay.organization_domain", "project"),
+        ("actor_gameplay.survival_domain", "project"),
         ("actor_gameplay.survival_domain", "project"),
         ("actor_gameplay.survival_domain", "project"),
     ]
@@ -168,6 +192,59 @@ def test_catalog_pins_weather_front_construction_consumer_contract_metadata() ->
         "gameplay.construction_production.maintenance_obligation_created",
     )
     assert construction.projection_scope == "project"
+
+
+def test_catalog_pins_only_the_approved_inf_1ag_descriptor_and_construction_contract() -> None:
+    contract = GovernedAuthorityContractCatalog.require(
+        contract_ref="inf:construction-facility-package-declared-transform@1",
+        contract_kind="settlement",
+    )
+
+    assert contract.owner_ref == "actor_gameplay.construction_production_domain"
+    assert contract.stream_patterns == ("gameplay:construction_production:{facility_ref}",)
+    assert contract.event_types == ("gameplay.construction_production.facility_transformed",)
+    assert contract.projection_scope == "project"
+    assert contract.receipt_reader_ref == "GameplayEventStore.append_batch"
+    assert contract.replay_reader_ref == "ConstructionProductionAuthority.projector"
+
+    assert GovernedAuthorityContractCatalog.descriptors() == (
+        OwnerOperationDescriptor(
+            descriptor_ref="descriptor:construction-facility-package-declared-transform@1",
+            descriptor_revision="descriptor:construction-facility-package-declared-transform@1",
+            capability_ref="capability:construction-facility-package-declared-transform@1",
+            outcome_family_ref="outcome:construction-facility-package-declared-transform@1",
+            allowed_predicate_family_refs=("predicate:construction-facility-acquired@1",),
+            allowed_proposal_effect_types=(
+                "effect:construction-facility-package-declared-transform@1",
+            ),
+        ),
+    )
+
+
+def test_frozen_inf_1ag_package_binds_to_the_one_admitted_descriptor_without_construction_write() -> None:
+    manifest_path = (
+        Path(__file__).resolve().parents[2]
+        / "docs"
+        / "superpowers"
+        / "specs"
+        / "world-character-siming-authority-mainline"
+        / "inf-1"
+        / "package-industrial-facilities-v1.manifest.json"
+    )
+    manifest = GameplayPatchManifest.model_validate(json.loads(manifest_path.read_text(encoding="utf-8")))
+    registry = GameplayPatchRegistry(trusted_authors=frozenset({"author:repo"}))
+
+    registry.install(manifest)
+    active = registry.activate((manifest.patch_revision_id,))
+
+    assert len(active.capability_bindings) == 1
+    binding = active.capability_bindings[0]
+    assert binding.binding_ref == "binding:industrial-facilities-oven-to-kiln@1"
+    assert binding.package_revision == "package:industrial-facilities:v1"
+    assert binding.content_digest == manifest.content_digest
+    assert binding.declaration_digest == manifest.platform_extension.outcome_declarations[0].declaration_digest
+    assert binding.descriptor_ref == "descriptor:construction-facility-package-declared-transform@1"
+    assert binding.descriptor_revision == "descriptor:construction-facility-package-declared-transform@1"
 
 
 def test_catalog_pins_weather_front_organization_consumer_contract_metadata() -> None:

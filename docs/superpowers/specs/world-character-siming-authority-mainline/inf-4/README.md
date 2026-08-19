@@ -29,6 +29,8 @@ Status: `narrow predecessor verticals implemented and verified; August INF-4 mai
 25. [INF-4AB released Survival expiry batch closure](2026-08-16-inf-4ab-released-survival-expiry-batch-closure-design.md) - independently verified second released-pending Survival settlement and single-append receipt boundary; no generic merge or branch promotion
 26. [INF-4AC activation-owned profile region assignment](2026-08-16-inf-4ac-activation-region-assignment-design.md) - independently verified project-scoped, evidence-pinned profile-to-region prerequisite; no Survival write or population truth owner
 27. [INF-C5 (INF-4) deterministic fixed-base branch replay contract](2026-08-17-inf-c5-fixed-base-branch-replay-contract-design.md) - independently verified pure fixed-base/calibration/input-order/projection replay contract over the existing isolated branch and fixed Organization supply admission
+28. [INF-4T generic branch promotion owner-contract audit](2026-08-17-inf-4t-generic-branch-promotion-owner-contract-audit.md) - blocked: branch `work` preview cannot be promoted to Economy wage accrual; Production evidence, Economy branch contract, privacy, receipt/replay, and compensation semantics are absent
+29. [INF-4T branch-work-to-wage Owner-Admission Contract](2026-08-17-inf-4t-branch-work-wage-owner-admission-design.md) - implemented narrow vertical: typed branch request validates committed Production evidence and isolated branch replay before existing Economy wage accrual; generic promotion remains unimplemented
 
 INF-4Z and INF-4Z-A supersede the base document's earlier source/revision/digest/
 calibration-admission gaps. INF-4C supersedes the former fail-closed-only

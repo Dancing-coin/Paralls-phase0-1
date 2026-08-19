@@ -27,6 +27,41 @@ class GovernedAuthorityContract(StrictGameplayModel):
     replay_reader_ref: str = Field(min_length=1)
 
 
+class OwnerOperationDescriptor(StrictGameplayModel):
+    """Frozen metadata for one separately admitted owner operation family."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    descriptor_ref: str = Field(min_length=1)
+    descriptor_revision: str = Field(min_length=1)
+    capability_ref: str = Field(min_length=1)
+    outcome_family_ref: str = Field(min_length=1)
+    allowed_predicate_family_refs: tuple[str, ...] = ()
+    allowed_proposal_effect_types: tuple[str, ...] = ()
+
+    def model_post_init(self, __context: object) -> None:
+        if not self.descriptor_ref.startswith("descriptor:") or "@" not in self.descriptor_ref:
+            raise ValueError("owner_operation_descriptor_invalid")
+        if not self.descriptor_revision.startswith("descriptor:") or "@" not in self.descriptor_revision:
+            raise ValueError("owner_operation_descriptor_invalid")
+        if not self.capability_ref.startswith("capability:") or "@" not in self.capability_ref:
+            raise ValueError("owner_operation_descriptor_invalid")
+        if not self.outcome_family_ref.startswith("outcome:") or "@" not in self.outcome_family_ref:
+            raise ValueError("owner_operation_descriptor_invalid")
+        if (
+            len(set(self.allowed_predicate_family_refs)) != len(self.allowed_predicate_family_refs)
+            or tuple(sorted(self.allowed_predicate_family_refs)) != self.allowed_predicate_family_refs
+            or any(not value.startswith("predicate:") or "@" not in value for value in self.allowed_predicate_family_refs)
+        ):
+            raise ValueError("owner_operation_descriptor_invalid")
+        if (
+            len(set(self.allowed_proposal_effect_types)) != len(self.allowed_proposal_effect_types)
+            or tuple(sorted(self.allowed_proposal_effect_types)) != self.allowed_proposal_effect_types
+            or any(not value.startswith("effect:") or "@" not in value for value in self.allowed_proposal_effect_types)
+        ):
+            raise ValueError("owner_operation_descriptor_invalid")
+
+
 class GovernedAuthorityContractCatalog:
     """A frozen catalog. It neither registers contracts nor writes world truth."""
 
@@ -66,6 +101,57 @@ class GovernedAuthorityContractCatalog:
                 replay_reader_ref="EconomyAuthorityService.commerce_delivery_payment_projection",
             ),
             GovernedAuthorityContract(
+                contract_ref="inf:economy-government-tax-payment@1",
+                contract_kind="settlement",
+                owner_ref="actor_gameplay.economy_domain",
+                stream_patterns=("gameplay:economy",),
+                event_types=(
+                    "gameplay.economy.tax_obligation_payer_bound",
+                    "gameplay.economy.account_debited",
+                    "gameplay.economy.account_credited",
+                    "gameplay.economy.tax_payment_settled",
+                    "gameplay.economy.tax_obligation_settled",
+                    "gameplay.economy.tax_payment_reversal_requested",
+                    "gameplay.economy.tax_payment_compensated",
+                    "gameplay.economy.tax_obligation_reopened",
+                ),
+                projection_scope="authority_only",
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_ref="EconomyAuthorityService.tax_payment_projection",
+            ),
+            GovernedAuthorityContract(
+                contract_ref="inf:package-declared-negotiated-exchange@1",
+                contract_kind="settlement",
+                owner_ref="actor_gameplay.economy_domain",
+                stream_patterns=(
+                    "gameplay:economy",
+                    "gameplay:inventory:{actor_ref}",
+                    "gameplay:ownership",
+                    "gameplay:contracts",
+                ),
+                event_types=(
+                    "gameplay.economy.account_debited",
+                    "gameplay.economy.account_credited",
+                    "gameplay.economy.package_declared_negotiated_exchange_settled",
+                    "gameplay.inventory.item_transferred_out",
+                    "gameplay.inventory.item_transferred_in",
+                    "gameplay.ownership.right_transferred",
+                ),
+                projection_scope="authority_only",
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_ref="EconomyAuthorityService.package_declared_negotiated_exchange_projection",
+            ),
+            GovernedAuthorityContract(
+                contract_ref="inf:government-treasury-collector@1",
+                contract_kind="settlement",
+                owner_ref="actor_gameplay.government_treasury_collector",
+                stream_patterns=("gameplay:government_treasury:{jurisdiction_ref}",),
+                event_types=("gameplay.government_treasury.collector_account_admitted",),
+                projection_scope="authority_only",
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_ref="GovernmentTreasuryCollectorAuthority.collector_identity_projection",
+            ),
+            GovernedAuthorityContract(
                 contract_ref="inf:survival-state-expiry@1",
                 contract_kind="lifecycle",
                 owner_ref="actor_gameplay.survival_domain",
@@ -98,6 +184,39 @@ class GovernedAuthorityContractCatalog:
                     "gameplay.construction_production.maintenance_state_obligation_settled",
                     "gameplay.construction_production.maintenance_state_dispelled",
                     "gameplay.construction_production.maintenance_state_obligation_cancelled",
+                ),
+                projection_scope="project",
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_ref="ConstructionProductionAuthority.projector",
+            ),
+            GovernedAuthorityContract(
+                contract_ref="inf:construction-facility-bakery-reinforcement@1",
+                contract_kind="settlement",
+                owner_ref="actor_gameplay.construction_production_domain",
+                stream_patterns=("gameplay:construction_production:{facility_ref}",),
+                event_types=("gameplay.construction_production.facility_transformed",),
+                projection_scope="project",
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_ref="ConstructionProductionAuthority.projector",
+            ),
+            GovernedAuthorityContract(
+                contract_ref="inf:construction-facility-package-declared-transform@1",
+                contract_kind="settlement",
+                owner_ref="actor_gameplay.construction_production_domain",
+                stream_patterns=("gameplay:construction_production:{facility_ref}",),
+                event_types=("gameplay.construction_production.facility_transformed",),
+                projection_scope="project",
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_ref="ConstructionProductionAuthority.projector",
+            ),
+            GovernedAuthorityContract(
+                contract_ref="inf:construction-facility-repair@1",
+                contract_kind="settlement",
+                owner_ref="actor_gameplay.construction_production_domain",
+                stream_patterns=("gameplay:construction_production:{facility_ref}",),
+                event_types=(
+                    "gameplay.construction_production.facility_repaired",
+                    "gameplay.construction_production.facility_repair_compensated",
                 ),
                 projection_scope="project",
                 receipt_reader_ref="GameplayEventStore.append_batch",
@@ -153,6 +272,16 @@ class GovernedAuthorityContractCatalog:
                 projection_scope="project",
                 receipt_reader_ref="GameplayEventStore.append_batch",
                 replay_reader_ref="ObligationSettlementCoordinator.replay",
+            ),
+            GovernedAuthorityContract(
+                contract_ref="inf:branch-work-wage-admission@1",
+                contract_kind="settlement",
+                owner_ref="actor_gameplay.econ1_economy_domain",
+                stream_patterns=("gameplay:economy:wage:{worker_ref}",),
+                event_types=("gameplay.economy.wage_accrued",),
+                projection_scope="project",
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_ref="EconomyAuthority.settle_production_evidence_wage_accrual",
             ),
             GovernedAuthorityContract(
                 contract_ref="inf:economy-tax-obligation@1",
@@ -308,6 +437,19 @@ class GovernedAuthorityContractCatalog:
                 replay_reader_ref="SurvivalProjector",
             ),
             GovernedAuthorityContract(
+                contract_ref="inf:weather-front-survival-dehydration@1",
+                contract_kind="ecology_consumer",
+                owner_ref="actor_gameplay.survival_domain",
+                stream_patterns=("gameplay:survival:{profile_ref}",),
+                event_types=(
+                    "gameplay.survival.state_applied",
+                    "gameplay.survival.obligation_opened",
+                ),
+                projection_scope="project",
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_ref="SurvivalProjector",
+            ),
+            GovernedAuthorityContract(
                 contract_ref="inf:economy-scheduled-transfer-policy@1",
                 contract_kind="policy",
                 owner_ref="actor_gameplay.economy_domain",
@@ -352,6 +494,26 @@ class GovernedAuthorityContractCatalog:
             ),
         )
         return tuple(sorted(contracts, key=lambda contract: contract.contract_ref))
+
+    @staticmethod
+    def descriptors() -> tuple[OwnerOperationDescriptor, ...]:
+        """Return only statically admitted operation descriptors.
+
+        Rows are source-defined and immutable. There is no registration or
+        mutation API.
+        """
+        return (
+            OwnerOperationDescriptor(
+                descriptor_ref="descriptor:construction-facility-package-declared-transform@1",
+                descriptor_revision="descriptor:construction-facility-package-declared-transform@1",
+                capability_ref="capability:construction-facility-package-declared-transform@1",
+                outcome_family_ref="outcome:construction-facility-package-declared-transform@1",
+                allowed_predicate_family_refs=("predicate:construction-facility-acquired@1",),
+                allowed_proposal_effect_types=(
+                    "effect:construction-facility-package-declared-transform@1",
+                ),
+            ),
+        )
 
     @classmethod
     def require(
@@ -401,4 +563,5 @@ __all__ = [
     "GovernedAuthorityContract",
     "GovernedAuthorityContractCatalog",
     "GovernedAuthorityContractError",
+    "OwnerOperationDescriptor",
 ]

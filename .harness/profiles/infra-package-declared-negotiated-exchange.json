@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-package-declared-negotiated-exchange",
+  "order": 166,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_package_declared_negotiated_exchange.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-package-declared-negotiated-exchange-report.json",
+  "description": "INF-2AC immutable-package negotiated exchange narrow owner-admission vertical"
+}

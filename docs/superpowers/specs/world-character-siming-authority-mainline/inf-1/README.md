@@ -66,6 +66,16 @@ This tree is aligned with:
 29. [INF-1AB drought opening-event provenance](2026-08-16-inf-1ab-drought-opening-event-provenance-design.md) - repaired the existing INF-1AA settlement fragment to derive source provenance from the committed opening event; not a new row
 30. [INF-1C1 reusable state transition plan](2026-08-16-inf-1c1-reusable-state-transition-plan-design.md) - verified a pure typed add/replace/refresh/reject/expiry/dispel/transform proposal shape reused by existing Survival, Construction and Ecology definitions; no writer or registration
 31. [INF-1AD weather-front Survival overheated owner row](2026-08-17-inf-1ad-weather-front-survival-overheated-design.md) - independently verified one exact `weather:heat -> effect:heat_exposure -> state:overheated` source edge through the existing Survival owner; no generic weather mapping
+32. [INF-1AE Construction action owner-contract audit](2026-08-17-inf-1ae-construction-action-owner-contract-audit.md) - bounded facility repair/compensation implemented and verified; transform/payment remain blocked
+33. [INF-1AF Construction facility transform owner-contract audit](2026-08-17-inf-1af-construction-facility-transform-owner-contract-audit.md) - generic transforms remain owner-contract blocked; one separately approved `bakery -> bakery_reinforced` existing-Construction-owner capability is implemented and verified
+34. [INF-1AF bakery reinforcement Owner-Admission Contract](2026-08-17-inf-1af-bakery-reinforcement-owner-admission-design.md) - implemented narrow vertical with focused tests and independent Harness; it does not admit generic transforms
+35. [INF-1AG Construction package-declared facility-transform Owner-Admission design](2026-08-17-inf-1ag-construction-candidate-owner-admission-design.md) - exact frozen `package:industrial-facilities:v1` `oven -> kiln` existing-Construction-owner row is implemented and verified; it does not admit generic transforms
+36. [INF-1AG facility-transform content-authoring packet](2026-08-18-inf-1ag-facility-transform-content-authoring-packet-design.md) - design-only authoring templates for a future immutable package row; includes a strictly non-admitted example and cannot authorize runtime work
+37. [Federated Gameplay Extension Platform design](../character-gameplay-foundation/2026-08-18-federated-gameplay-extension-platform-design.md) - design-only platform schema, canonicalization, immutable admission, proof, privacy, and replay boundary; no runtime or manifest change
+38. [Federated Gameplay Extension Platform blocker taxonomy](../character-gameplay-foundation/2026-08-18-federated-gameplay-extension-platform-blocker-taxonomy.md) - separates platform-contract, package-content, owner-contract, implementation, and environment blockers
+39. [INF-1AG package-content/read-only-binding sequencing design](2026-08-18-inf-1ag-package-content-readonly-binding-sequencing-design.md) - P1 verifies candidate-time structural validation plus activation-time exact-one descriptor binding/pin retention; it is historical sequencing evidence for the exact frozen `oven -> kiln` row only
+40. [INF-1AG industrial facilities v1 freeze record](2026-08-19-inf-1ag-industrial-facilities-v1-freeze-record.md) - frozen canonical v2 manifest bytes plus verified declaration/content digest claims for the exact implemented row; no additional candidate, descriptor, catalog row, or Construction write path is admitted
+41. [INF-1AG Construction descriptor/catalog admission packet](2026-08-19-inf-1ag-construction-owner-operation-descriptor-admission-packet.md) - approved immutable descriptor and existing-Construction contract row with focused binding evidence; the subsequent narrow vertical is separately verified
 
 ## Current implementation boundary
 
@@ -102,3 +112,23 @@ tests, focused Harness profile, and reviewed evidence all exist and all claims
 in the formal design are backed by fresh proof. Contract-sample evidence alone
 does not upgrade future INF-2, SOC-1, GAME-1, CREATOR-1, or P6/P7 scopes to
 complete.
+
+## INF-1AG Current Row Status
+
+The exact frozen `oven -> kiln` row is implemented and verified through the
+existing `ConstructionProductionAuthority`. Its typed proposal contains no
+owner, stream, event, privacy, receipt, fragment, target, or package choice.
+The authority resolves the active immutable binding, validates the committed
+project-visible `facility_acquired` evidence and its facility/project/revision
+pins, then appends one project-scoped `facility_transformed` event through
+`GameplayCommandEnvelope -> SettlementPlan -> GameplayEventStore.append_batch()`.
+
+Focused evidence is `11 passed`; the independent
+`infra-construction-facility-package-transform` Harness is green. It proves
+success, append-derived receipt, exact/changed idempotency, inactive/unadmitted/
+ambiguous/digest-conflicting package binding, private and project-conflicting
+evidence, revision zero-write, full replay, checkpoint-tail replay, and v1
+terminal/no-compensation behavior. The frozen manifest remains unchanged.
+This does not admit a generic Construction transform, payment, material,
+fanout, compensation, router, registry, writer, or second runtime. August INF
+A-D remains `not complete`.

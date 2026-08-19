@@ -7,13 +7,21 @@ import json
 from types import MappingProxyType
 from typing import Mapping, Sequence
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_validator
 
 from app.gameplay.ecology_consumer_admission import EcologyConsumerAdmissionCheck
 from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.government_treasury_runtime import (
+    TaxPaymentCompensationIntentV1,
+    TaxPaymentIntentV1,
+)
 from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
+from app.gameplay.contract_runtime import ContractProjector
+from app.gameplay.inventory_runtime import InventoryAuthorityService, InventoryDefinitionRegistry, InventoryRuntimeError
 from app.gameplay.models import AtomicEventBatch, AppendBatchResult, GameplayEvent, GameplayFailure, GameplayOutboxEntry, OwnerAuthorizedFragment, StrictGameplayModel
-from app.gameplay.settlement_plan import SettlementPlan
+from app.gameplay.ownership_runtime import OwnershipAuthorityService, OwnershipRuntimeError
+from app.gameplay.patch_runtime import GameplayPatchRuntimeError, PackageDeclaredNegotiatedExchangeDefinition
+from app.gameplay.settlement_plan import AppendDerivedSettlementRecipe, SettlementPlan
 from app.gameplay.shared_contracts import GameplayCommandEnvelope, ScheduledObligation, SettlementReceipt
 from app.world_runtime.obligations import ObligationLifecycleRegistration
 
@@ -110,6 +118,8 @@ class TaxDue:
     evidence_refs: tuple[str, ...]
     source_digest: str
     source_event_id: str
+    jurisdiction_ref: str | None = None
+    currency_ref: str | None = None
 
 
 @dataclass(frozen=True)
@@ -132,6 +142,42 @@ class TaxObligationResult:
     committed: bool
     obligation: ScheduledObligation | None
     append_result: AppendBatchResult
+
+
+class PartyConsentAttestationV1(StrictGameplayModel):
+    """A proposal attestation; it is not a payment or source-fact selector."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    party_ref: str = Field(min_length=1)
+    proposal_digest: str = Field(min_length=1)
+
+
+class PackageDeclaredNegotiatedExchangeIntentV1(StrictGameplayModel):
+    """The closed caller surface for the one admitted package exchange."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    capability_ref: str = Field(min_length=1)
+    outcome_ref: str = Field(min_length=1)
+    proposal_digest: str = Field(min_length=1)
+    provider_consent: PartyConsentAttestationV1
+    receiver_consent: PartyConsentAttestationV1
+    proposed_amount: int | None = Field(default=None, gt=0)
+    command_id: str = Field(min_length=1)
+    idempotency_key: str = Field(min_length=1)
+    causation_id: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate_attestations(self) -> "PackageDeclaredNegotiatedExchangeIntentV1":
+        if (
+            self.provider_consent.proposal_digest != self.proposal_digest
+            or self.receiver_consent.proposal_digest != self.proposal_digest
+            or self.provider_consent.party_ref == self.receiver_consent.party_ref
+        ):
+            raise ValueError("package_exchange_consent_invalid")
+        return self
 
 
 class ScheduledAccountTransferPolicyInstance(StrictGameplayModel):
@@ -198,6 +244,8 @@ class EconomyProjector:
                     evidence_refs=_text_tuple(p, "evidence_refs"),
                     source_digest=_text(p, "source_digest"),
                     source_event_id=event.event_id,
+                    jurisdiction_ref=_optional_text(p, "jurisdiction_ref"),
+                    currency_ref=_optional_text(p, "currency_ref"),
                 )
                 continue
             if event.event_type == "gameplay.economy.budget_reserved":
@@ -255,7 +303,35 @@ class EconomyProjector:
 
 class EconomyAuthorityService:
     _PRINCIPAL="actor_gameplay.economy_domain"
-    def __init__(self, *, store: GameplayEventStore): self._store=store; self._projector=EconomyProjector()
+    def __init__(
+        self,
+        *,
+        store: GameplayEventStore,
+        package_registry: object | None = None,
+        inventory_registry: InventoryDefinitionRegistry | None = None,
+        inventory_authority: object | None = None,
+        ownership_authority: object | None = None,
+        contract_authority: object | None = None,
+    ):
+        self._store=store
+        self._projector=EconomyProjector()
+        self._package_registry = package_registry
+        self._inventory_registry = inventory_registry
+        self._inventory_authority = (
+            inventory_authority
+            if inventory_authority is not None
+            else (
+                InventoryAuthorityService(store=store, registry=inventory_registry)
+                if inventory_registry is not None
+                else None
+            )
+        )
+        self._ownership_authority = (
+            ownership_authority
+            if ownership_authority is not None
+            else OwnershipAuthorityService(store=store)
+        )
+        self._contract_authority = contract_authority
     def commit_obligation_batch(self, batch: AtomicEventBatch) -> AppendBatchResult:
         """Commit only an Economy-ledger scheduled-transfer plan."""
         if not batch.owner_fragments or any(
@@ -275,6 +351,488 @@ class EconomyAuthorityService:
             idempotency_status="rejected",
             failure=GameplayFailure(error_code=error_code, message=error_code, failed_stage="economy_obligation_commit"),
         )
+
+    def settle_package_declared_negotiated_exchange(
+        self, intent: PackageDeclaredNegotiatedExchangeIntentV1
+    ) -> AppendBatchResult:
+        if (
+            not isinstance(intent, PackageDeclaredNegotiatedExchangeIntentV1)
+            or intent.capability_ref != "capability:package-declared-negotiated-exchange@1"
+        ):
+            return self._rejected_append(
+                getattr(intent, "command_id", "package-exchange"),
+                "package_exchange_capability_denied",
+            )
+        request_digest = _digest(intent.model_dump(mode="json"))
+        duplicate = self._package_exchange_duplicate_result(
+            command_id=intent.command_id,
+            idempotency_key=intent.idempotency_key,
+            request_digest=request_digest,
+        )
+        if duplicate is not None:
+            return duplicate
+        try:
+            manifest, definition, registry_revision, active_patch_set_revision = (
+                self._resolve_package_exchange_definition(
+                    capability_ref=intent.capability_ref,
+                    outcome_ref=intent.outcome_ref,
+                )
+            )
+            amount_minor = self._resolve_package_exchange_amount(
+                definition=definition,
+                proposed_amount=intent.proposed_amount,
+            )
+            provider_ref = intent.provider_consent.party_ref
+            receiver_ref = intent.receiver_consent.party_ref
+            (
+                provider_account,
+                receiver_account,
+                provider_opened,
+                receiver_opened,
+            ) = self._resolve_package_exchange_accounts(
+                provider_ref=provider_ref,
+                receiver_ref=receiver_ref,
+                currency_ref=definition.price_policy.currency_ref,
+            )
+            source_fragment, source_event_ids, source_event_revisions = (
+                self._resolve_package_exchange_source(
+                    definition=definition,
+                    provider_ref=provider_ref,
+                    receiver_ref=receiver_ref,
+                    outcome_ref=intent.outcome_ref,
+                    package_revision=manifest.patch_revision_id,
+                )
+            )
+        except (EconomyRuntimeError, GameplayPatchRuntimeError) as exc:
+            return self._rejected_append(intent.command_id, str(exc))
+
+        stream = "gameplay:economy"
+        expected_revision = self._store.get_stream_head(stream)
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:package-declared-negotiated-exchange@1",
+                contract_kind="settlement",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(stream,),
+                event_types=(
+                    "gameplay.economy.account_debited",
+                    "gameplay.economy.account_credited",
+                    "gameplay.economy.package_declared_negotiated_exchange_settled",
+                ),
+                projection_scope="authority_only",
+            )
+        except GovernedAuthorityContractError as exc:
+            return self._rejected_append(intent.command_id, str(exc))
+        economy_fragment = OwnerAuthorizedFragment(
+            fragment_id=(
+                "fragment:economy:package-declared-negotiated-exchange:"
+                f"{manifest.patch_revision_id}:{intent.proposal_digest}"
+            ),
+            owner_principal_ref=self._PRINCIPAL,
+            source_rule_ref="economy:package-declared-negotiated-exchange@1",
+            expected_revisions={stream: expected_revision},
+            read_set_revisions={stream: expected_revision},
+            pinned_revisions={
+                "economy": expected_revision,
+                "provider_account_opened": provider_opened.stream_revision,
+                "receiver_account_opened": receiver_opened.stream_revision,
+                **source_event_revisions,
+            },
+            event_specs={
+                stream: (
+                    (
+                        "gameplay.economy.account_debited",
+                        {
+                            "account_id": receiver_account.account_id,
+                            "amount": amount_minor,
+                            "currency_ref": definition.price_policy.currency_ref,
+                        },
+                    ),
+                    (
+                        "gameplay.economy.account_credited",
+                        {
+                            "account_id": provider_account.account_id,
+                            "amount": amount_minor,
+                            "currency_ref": definition.price_policy.currency_ref,
+                        },
+                    ),
+                    (
+                        "gameplay.economy.package_declared_negotiated_exchange_settled",
+                        {
+                            "economic_outcome_id": definition.economic_outcome_id,
+                            "outcome_ref": intent.outcome_ref,
+                            "proposal_digest": intent.proposal_digest,
+                            "package_revision_id": manifest.patch_revision_id,
+                            "package_content_digest": manifest.content_digest,
+                            "patch_registry_revision": registry_revision,
+                            "active_patch_set_revision": active_patch_set_revision,
+                            "price_policy_revision": definition.price_policy.price_policy_revision,
+                            "currency_ref": definition.price_policy.currency_ref,
+                            "amount_minor": amount_minor,
+                            "provider_ref": provider_ref,
+                            "receiver_ref": receiver_ref,
+                            "provider_account_ref": provider_account.account_id,
+                            "receiver_account_ref": receiver_account.account_id,
+                            "provider_account_opened_event_id": provider_opened.event_id,
+                            "provider_account_opened_stream_revision": provider_opened.stream_revision,
+                            "receiver_account_opened_event_id": receiver_opened.event_id,
+                            "receiver_account_opened_stream_revision": receiver_opened.stream_revision,
+                            "source_evidence_mode": definition.source_evidence_mode,
+                            "source_owner_ref": definition.source_owner_ref,
+                            "source_evidence_kind": definition.source_evidence_kind,
+                            "source_event_ids": list(source_event_ids),
+                            "source_selection_rule_ref": definition.source_selection_rule_ref,
+                            "consent_rule_ref": definition.consent_rule_ref,
+                            "privacy_policy_ref": definition.privacy_policy_ref,
+                            "compensation_policy_ref": definition.compensation_policy_ref,
+                            "status": "settled",
+                        },
+                    ),
+                )
+            },
+            event_visibility_policies={stream: ("authority_only", "authority_only", "authority_only")},
+        )
+        fragments = (economy_fragment,) if source_fragment is None else (economy_fragment, source_fragment)
+        recipe = AppendDerivedSettlementRecipe.from_fragments(
+            command_id=intent.command_id,
+            idempotency_principal_ref=self._PRINCIPAL,
+            idempotency_key=intent.idempotency_key,
+            causation_id=intent.causation_id,
+            correlation_id=intent.correlation_id,
+            fragments=fragments,
+        )
+        batch = recipe.batch.model_copy(
+            update={
+                "idempotency_record": recipe.batch.idempotency_record.model_copy(
+                    update={"payload_digest": request_digest},
+                    deep=True,
+                ),
+                "outbox_entries": [
+                    GameplayOutboxEntry(
+                        outbox_id=f"outbox:{event.event_id}",
+                        transaction_id=recipe.batch.transaction_id,
+                        event_id=event.event_id,
+                        global_sequence=0,
+                        topic="economy.package_declared_negotiated_exchange.scoped_projection",
+                        audience="authority:economy",
+                        payload_projection={
+                            "event_type": event.event_type,
+                            "proposal_digest": intent.proposal_digest,
+                            "outcome_ref": intent.outcome_ref,
+                        },
+                    )
+                    for event in recipe.batch.events
+                    if event.event_type == "gameplay.economy.package_declared_negotiated_exchange_settled"
+                ],
+            },
+            deep=True,
+        )
+        return self._store.append_batch(batch)
+
+    def package_declared_negotiated_exchange_receipt_for(
+        self, *, result: AppendBatchResult | None, scope: str
+    ) -> SettlementReceipt:
+        if scope != "authority":
+            raise EconomyRuntimeError("package_exchange_receipt_scope_denied")
+        if result is None:
+            raise EconomyRuntimeError("package_exchange_receipt_missing")
+        return SettlementReceipt.from_append_result(
+            result=result,
+            audit_refs=(f"economy_transaction:{result.transaction_id}",),
+        )
+
+    def package_declared_negotiated_exchange_projection(
+        self, *, scope: str, checkpoint_at: int | None = None
+    ) -> dict[str, object]:
+        if scope != "authority":
+            raise EconomyRuntimeError("package_exchange_projection_scope_denied")
+        if checkpoint_at is not None and checkpoint_at < 0:
+            raise EconomyRuntimeError("package_exchange_checkpoint_invalid")
+        events = [
+            event
+            for event in self._store.read_stream("gameplay:economy")
+            if event.event_type == "gameplay.economy.package_declared_negotiated_exchange_settled"
+        ]
+        if checkpoint_at is None:
+            settlements = self._reduce_package_declared_negotiated_exchange_projection(events=events)
+        else:
+            checkpoint = self._reduce_package_declared_negotiated_exchange_projection(
+                events=[event for event in events if event.global_sequence <= checkpoint_at]
+            )
+            settlements = self._reduce_package_declared_negotiated_exchange_projection(
+                events=[event for event in events if event.global_sequence > checkpoint_at],
+                settlements=checkpoint,
+            )
+        projection: dict[str, object] = {"scope": scope, "settlements": settlements}
+        projection["projection_hash"] = "sha256:" + sha256(
+            json.dumps(projection, sort_keys=True, separators=(",", ":"), default=str).encode()
+        ).hexdigest()
+        return projection
+
+    @staticmethod
+    def _reduce_package_declared_negotiated_exchange_projection(
+        *,
+        events: Sequence[GameplayEvent],
+        settlements: Mapping[str, Mapping[str, object]] | None = None,
+    ) -> dict[str, dict[str, object]]:
+        reduced = {
+            proposal_digest: dict(value)
+            for proposal_digest, value in (settlements or {}).items()
+        }
+        for event in sorted(events, key=lambda item: (item.global_sequence, item.event_id)):
+            proposal_digest = event.payload.get("proposal_digest")
+            if not isinstance(proposal_digest, str) or not proposal_digest:
+                continue
+            reduced[proposal_digest] = {
+                "status": "settled",
+                "settlement_event_id": event.event_id,
+                "outcome_ref": event.payload.get("outcome_ref"),
+                "source_evidence_mode": event.payload.get("source_evidence_mode"),
+                "amount_minor": event.payload.get("amount_minor"),
+                "currency_ref": event.payload.get("currency_ref"),
+            }
+        return {proposal_digest: reduced[proposal_digest] for proposal_digest in sorted(reduced)}
+
+    def _resolve_package_exchange_definition(
+        self, *, capability_ref: str, outcome_ref: str
+    ) -> tuple[object, PackageDeclaredNegotiatedExchangeDefinition, str, str]:
+        if self._package_registry is None:
+            raise EconomyRuntimeError("package_exchange_package_inactive")
+        active = getattr(self._package_registry, "active_patch_set", None)
+        if active is None:
+            raise EconomyRuntimeError("package_exchange_package_inactive")
+        manifests = self._package_registry.active_manifests(active.active_patch_set_revision)
+        capability_id, _, capability_version = capability_ref.partition("@")
+        matches: list[tuple[object, PackageDeclaredNegotiatedExchangeDefinition]] = []
+        for manifest in manifests:
+            capability_allowed = any(
+                item.capability_id == capability_id and item.capability_version == capability_version
+                for item in manifest.requested_capabilities
+            )
+            if not capability_allowed:
+                continue
+            for definition in manifest.economic_outcomes:
+                if definition.outcome_ref == outcome_ref and definition.capability_ref == capability_ref:
+                    matches.append((manifest, definition))
+        if not matches:
+            raise EconomyRuntimeError("package_exchange_capability_denied")
+        if len(matches) != 1:
+            raise EconomyRuntimeError("package_exchange_outcome_ambiguous")
+        manifest, definition = matches[0]
+        return manifest, definition, active.registry_revision, active.active_patch_set_revision
+
+    @staticmethod
+    def _resolve_package_exchange_amount(
+        *, definition: PackageDeclaredNegotiatedExchangeDefinition, proposed_amount: int | None
+    ) -> int:
+        policy = definition.price_policy
+        if policy.fixed_amount is not None:
+            if proposed_amount is not None and proposed_amount != policy.fixed_amount:
+                raise EconomyRuntimeError("package_exchange_price_invalid")
+            return policy.fixed_amount
+        if (
+            proposed_amount is None
+            or policy.minimum_amount is None
+            or policy.maximum_amount is None
+            or not policy.minimum_amount <= proposed_amount <= policy.maximum_amount
+        ):
+            raise EconomyRuntimeError("package_exchange_price_invalid")
+        return proposed_amount
+
+    def _resolve_package_exchange_accounts(
+        self,
+        *,
+        provider_ref: str,
+        receiver_ref: str,
+        currency_ref: str,
+    ) -> tuple[Account, Account, GameplayEvent, GameplayEvent]:
+        projection = self._projector.rebuild(self._store.read_events())
+        provider_matches = [
+            account
+            for account in projection.accounts.values()
+            if account.owner_ref == provider_ref and account.currency_ref == currency_ref
+        ]
+        receiver_matches = [
+            account
+            for account in projection.accounts.values()
+            if account.owner_ref == receiver_ref and account.currency_ref == currency_ref
+        ]
+        if len(provider_matches) != 1 or len(receiver_matches) != 1:
+            raise EconomyRuntimeError("package_exchange_party_account_unavailable")
+        provider_account = provider_matches[0]
+        receiver_account = receiver_matches[0]
+        provider_opened = self._store.get_event(provider_account.source_event_id)
+        receiver_opened = self._store.get_event(receiver_account.source_event_id)
+        if (
+            provider_opened.event_type != "gameplay.economy.account_opened"
+            or receiver_opened.event_type != "gameplay.economy.account_opened"
+            or provider_opened.visibility_policy != "authority_only"
+            or receiver_opened.visibility_policy != "authority_only"
+        ):
+            raise EconomyRuntimeError("package_exchange_party_account_unavailable")
+        if receiver_account.balance <= 0:
+            raise EconomyRuntimeError("package_exchange_party_account_unavailable")
+        return provider_account, receiver_account, provider_opened, receiver_opened
+
+    def _resolve_package_exchange_source(
+        self,
+        *,
+        definition: PackageDeclaredNegotiatedExchangeDefinition,
+        provider_ref: str,
+        receiver_ref: str,
+        outcome_ref: str,
+        package_revision: str,
+    ) -> tuple[OwnerAuthorizedFragment | None, tuple[str, ...], dict[str, int]]:
+        if definition.source_evidence_mode == "inventory_custody@1":
+            inventory = self._require_inventory_authority()
+            destination_container_id = self._resolve_package_exchange_destination_container(
+                actor_ref=receiver_ref,
+                inventory=inventory,
+            )
+            provider_stream = f"gameplay:inventory:{provider_ref}"
+            receiver_stream = f"gameplay:inventory:{receiver_ref}"
+            try:
+                fragment, source_proof = inventory.build_package_declared_negotiated_exchange_fragment(
+                    provider_actor_ref=provider_ref,
+                    receiver_actor_ref=receiver_ref,
+                    source_ref=definition.tradeable_ref or "",
+                    traded_definition_id=definition.tradeable_ref or "",
+                    destination_container_id=destination_container_id,
+                    outcome_ref=outcome_ref,
+                    package_revision=package_revision,
+                    expected_provider_revision=self._store.get_stream_head(provider_stream),
+                    expected_receiver_revision=self._store.get_stream_head(receiver_stream),
+                )
+            except InventoryRuntimeError as exc:
+                if str(exc) == "revision_conflict":
+                    raise EconomyRuntimeError("revision_conflict") from exc
+                if str(exc) == "inventory_package_exchange_source_ambiguous":
+                    raise EconomyRuntimeError("package_exchange_source_ambiguous") from exc
+                raise EconomyRuntimeError("package_exchange_source_invalid") from exc
+            source_event_id = str(source_proof["source_event_id"])
+            source_event = self._store.get_event(source_event_id)
+            return fragment, (source_event_id,), {"inventory_source": source_event.stream_revision}
+        if definition.source_evidence_mode == "ownership_right@1":
+            ownership = self._require_ownership_authority()
+            try:
+                fragment = ownership.build_package_declared_negotiated_exchange_fragment(
+                    provider_holder_ref=provider_ref,
+                    receiver_holder_ref=receiver_ref,
+                    source_ref=definition.tradeable_ref or "",
+                    asset_ref=definition.tradeable_ref or "",
+                    outcome_ref=outcome_ref,
+                    package_revision=package_revision,
+                    expected_revision=self._store.get_stream_head("gameplay:ownership"),
+                )
+            except OwnershipRuntimeError as exc:
+                if str(exc) == "revision_conflict":
+                    raise EconomyRuntimeError("revision_conflict") from exc
+                if str(exc) in {"ownership_package_exchange_source_ambiguous", "ownership_right_holder_mismatch"}:
+                    raise EconomyRuntimeError("package_exchange_source_ambiguous") from exc
+                raise EconomyRuntimeError("package_exchange_source_invalid") from exc
+            payload = fragment.event_specs["gameplay:ownership"][0][1]
+            source_event_id = str(payload["source_event_id"])
+            source_event = self._store.get_event(source_event_id)
+            return fragment, (source_event_id,), {"ownership_source": source_event.stream_revision}
+        return self._resolve_completed_service_source(
+            provider_ref=provider_ref,
+            receiver_ref=receiver_ref,
+            service_ref=definition.typed_service_ref or "",
+            source_evidence_kind=definition.source_evidence_kind,
+        )
+
+    def _resolve_completed_service_source(
+        self,
+        *,
+        provider_ref: str,
+        receiver_ref: str,
+        service_ref: str,
+        source_evidence_kind: str,
+    ) -> tuple[OwnerAuthorizedFragment | None, tuple[str, ...], dict[str, int]]:
+        events = self._store.read_stream("gameplay:contracts")
+        projection = ContractProjector().rebuild(events)
+        candidates = [
+            record
+            for record in projection.contracts.values()
+            if record.contract_type == "simple_service"
+            and record.terms_ref == service_ref
+            and record.status == "fulfilled"
+            and record.party_refs == (provider_ref, receiver_ref)
+            and record.completion_evidence_ref is not None
+            and source_evidence_kind in {record.completion_evidence_kind, "completed_service@1"}
+        ]
+        if len(candidates) != 1:
+            raise EconomyRuntimeError("package_exchange_source_ambiguous")
+        contract_id = candidates[0].contract_id
+        completion = next(
+            (
+                event for event in events
+                if event.event_type == "gameplay.contract.service_completion_recorded"
+                and event.payload.get("contract_id") == contract_id
+            ),
+            None,
+        )
+        fulfilled = next(
+            (
+                event for event in events
+                if event.event_type == "gameplay.contract.record_fulfilled"
+                and event.payload.get("contract_id") == contract_id
+            ),
+            None,
+        )
+        if completion is None or fulfilled is None or fulfilled.global_sequence <= completion.global_sequence:
+            raise EconomyRuntimeError("package_exchange_source_invalid")
+        return (
+            None,
+            (completion.event_id, fulfilled.event_id),
+            {
+                "contract_completion": completion.stream_revision,
+                "contract_fulfilled": fulfilled.stream_revision,
+            },
+        )
+
+    def _resolve_package_exchange_destination_container(
+        self, *, actor_ref: str, inventory: InventoryAuthorityService
+    ) -> str:
+        projection = inventory._projector.rebuild(actor_ref, self._store.read_events())
+        candidates = [
+            container_id
+            for container_id, container in projection.containers.items()
+            if not container.sealed and not container.carrier_item_id
+        ]
+        if len(candidates) != 1:
+            raise EconomyRuntimeError("package_exchange_receiver_container_unavailable")
+        return candidates[0]
+
+    def _require_inventory_authority(self) -> InventoryAuthorityService:
+        if isinstance(self._inventory_authority, InventoryAuthorityService):
+            return self._inventory_authority
+        if self._inventory_registry is None:
+            raise EconomyRuntimeError("package_exchange_source_invalid")
+        self._inventory_authority = InventoryAuthorityService(
+            store=self._store,
+            registry=self._inventory_registry,
+        )
+        return self._inventory_authority
+
+    def _require_ownership_authority(self) -> OwnershipAuthorityService:
+        if isinstance(self._ownership_authority, OwnershipAuthorityService):
+            return self._ownership_authority
+        self._ownership_authority = OwnershipAuthorityService(store=self._store)
+        return self._ownership_authority
+
+    def _package_exchange_duplicate_result(
+        self, *, command_id: str, idempotency_key: str, request_digest: str
+    ) -> AppendBatchResult | None:
+        record = self._store.get_idempotency_record(self._PRINCIPAL, idempotency_key)
+        if record is None:
+            return None
+        if record.payload_digest != request_digest:
+            return self._rejected_append(command_id, "idempotency_key_reused")
+        result = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if result is None:
+            return self._rejected_append(command_id, "idempotency_record_missing_result")
+        return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
     @staticmethod
     def assess_tax_due(*, taxable_amount_minor:int, tax_rate_basis_points:int, evidence_refs:tuple[str,...])->int:
         if taxable_amount_minor < 0 or tax_rate_basis_points < 0 or not evidence_refs or any(not ref for ref in evidence_refs): raise EconomyRuntimeError("economy_tax_assessment_invalid")
@@ -319,18 +877,24 @@ class EconomyAuthorityService:
     ) -> TaxObligationResult:
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if existing is not None and existing.committed:
-            if len(existing.committed_event_ids) == 1:
-                prior = self._store.get_event(existing.committed_event_ids[0])
-                if (
-                    prior.event_type == "gameplay.economy.tax_obligation_opened"
-                    and prior.payload.get("source_tax_due_event_id") == tax_due_event_id
-                    and prior.payload.get("due_tick") == due_tick
-                ):
-                    return TaxObligationResult(
-                        True,
-                        self.tax_obligation_for(obligation_id=_text(prior.payload, "obligation_id")),
-                        existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
-                    )
+            prior = next(
+                (
+                    self._store.get_event(event_id)
+                    for event_id in existing.committed_event_ids
+                    if self._store.get_event(event_id).event_type == "gameplay.economy.tax_obligation_opened"
+                ),
+                None,
+            )
+            if (
+                prior is not None
+                and prior.payload.get("source_tax_due_event_id") == tax_due_event_id
+                and prior.payload.get("due_tick") == due_tick
+            ):
+                return TaxObligationResult(
+                    True,
+                    self.tax_obligation_for(obligation_id=_text(prior.payload, "obligation_id")),
+                    existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
+                )
             return TaxObligationResult(False, None, self._rejected_append(command_id, "idempotency_key_reused"))
         if isinstance(due_tick, bool) or not isinstance(due_tick, int) or due_tick < 0:
             return TaxObligationResult(False, None, self._rejected_append(command_id, "economy_tax_due_tick_invalid"))
@@ -356,6 +920,7 @@ class EconomyAuthorityService:
         payload = {
             "obligation_id": obligation_id,
             "source_tax_due_event_id": source.event_id,
+            "source_tax_due_stream_revision": source.stream_revision,
             "organization_ref": organization_ref,
             "period_ref": period_ref,
             "assessed_amount_minor": _nonnegative(source.payload, "assessed_amount_minor"),
@@ -366,6 +931,59 @@ class EconomyAuthorityService:
             "source_digest": _text(source.payload, "source_digest"),
             "evidence_refs": _text_tuple(source.payload, "evidence_refs"),
         }
+        source_admission_fields = (
+            _optional_text(source.payload, "jurisdiction_ref"),
+            _optional_text(source.payload, "currency_ref"),
+        )
+        event_specs: tuple[tuple[str, dict[str, object]], ...] = (("gameplay.economy.tax_obligation_opened", payload),)
+        if any(value is not None for value in source_admission_fields):
+            jurisdiction_ref, currency_ref = source_admission_fields
+            if (
+                not isinstance(jurisdiction_ref, str)
+                or not isinstance(currency_ref, str)
+            ):
+                return TaxObligationResult(False, None, self._rejected_append(command_id, "economy_tax_payment_source_invalid"))
+            payer_openings = [
+                event
+                for event in self._store.read_stream("gameplay:economy")
+                if event.event_type == "gameplay.economy.account_opened"
+                and event.visibility_policy == "authority_only"
+                and event.stream_revision <= source.stream_revision
+                and event.payload.get("owner_ref") == organization_ref
+                and event.payload.get("currency_ref") == currency_ref
+            ]
+            # The explicit canonical rule is unique-match only. There is no
+            # default/first-account selection or caller-provided account hint.
+            if len(payer_openings) != 1:
+                return TaxObligationResult(False, None, self._rejected_append(command_id, "economy_tax_payer_binding_unavailable"))
+            payer_opened = payer_openings[0]
+            payer_opened_event_id = payer_opened.event_id
+            payer_opened_revision = payer_opened.stream_revision
+            payer_binding_event_id = f"event:{command_id}:2"
+            payload.update({
+                "jurisdiction_ref": jurisdiction_ref,
+                "currency_ref": currency_ref,
+                "payer_binding_event_id": payer_binding_event_id,
+                "payer_binding_stream_revision": expected_revision + 2,
+                "payer_account_opened_event_id": payer_opened_event_id,
+                "payer_account_opened_stream_revision": payer_opened_revision,
+                "payer_account_ref": payer_opened.payload["account_id"],
+                "payer_account_owner_ref": organization_ref,
+            })
+            event_specs = (
+                ("gameplay.economy.tax_obligation_opened", payload),
+                (
+                    "gameplay.economy.tax_obligation_payer_bound",
+                    {
+                        "obligation_id": obligation_id,
+                        "payer_account_ref": payer_opened.payload["account_id"],
+                        "payer_account_owner_ref": organization_ref,
+                        "payer_binding_rule_ref": "economy:tax-payment:canonical-payer@1",
+                        "payer_account_opened_event_id": payer_opened_event_id,
+                        "payer_account_opened_stream_revision": payer_opened_revision,
+                    },
+                ),
+            )
         try:
             GovernedAuthorityContractCatalog.require_operation(
                 contract_ref="inf:economy-tax-obligation@1",
@@ -383,8 +1001,8 @@ class EconomyAuthorityService:
             source_rule_ref="economy:tax-obligation:open",
             expected_revisions={"gameplay:economy": expected_revision},
             pinned_revisions={"economy": expected_revision},
-            event_specs={"gameplay:economy": (("gameplay.economy.tax_obligation_opened", payload),)},
-            event_visibility_policies={"gameplay:economy": ("authority_only",)},
+            event_specs={"gameplay:economy": event_specs},
+            event_visibility_policies={"gameplay:economy": tuple("authority_only" for _ in event_specs)},
         )
         batch = self._tax_fragment_batch(
             command_id=command_id,
@@ -1108,6 +1726,341 @@ class EconomyAuthorityService:
             deep=True,
         )
         return self._store.append_batch(batch)
+    def settle_tax_payment(self, intent: TaxPaymentIntentV1) -> AppendBatchResult:
+        """Settle the one admitted government tax-payment capability.
+
+        The typed intent identifies an obligation only. Every account, stream,
+        event, revision, and privacy choice is derived from committed evidence.
+        """
+        if not isinstance(intent, TaxPaymentIntentV1) or intent.capability_ref != "capability:government-tax-payment@1":
+            return self._rejected_append(getattr(intent, "command_id", "tax-payment"), "government_tax_payment_capability_denied")
+        command_id = intent.command_id
+        request_digest = _digest(intent.model_dump(mode="json"))
+        duplicate = self._tax_payment_duplicate_result(command_id=command_id, idempotency_key=intent.idempotency_key, request_digest=request_digest)
+        if duplicate is not None:
+            return duplicate
+        try:
+            opening = self._tax_opening(obligation_id=intent.obligation_id)
+            jurisdiction_ref = _text(opening.payload, "jurisdiction_ref")
+            currency_ref = _text(opening.payload, "currency_ref")
+            tax_due_event_id = _text(opening.payload, "source_tax_due_event_id")
+            tax_due_revision = _nonnegative(opening.payload, "source_tax_due_stream_revision")
+            payer_binding_event_id = _text(opening.payload, "payer_binding_event_id")
+            payer_binding_revision = _nonnegative(opening.payload, "payer_binding_stream_revision")
+            payer_account_opened_event_id = _text(opening.payload, "payer_account_opened_event_id")
+            payer_opened_revision = _nonnegative(opening.payload, "payer_account_opened_stream_revision")
+            payer_account_ref = _text(opening.payload, "payer_account_ref")
+            payer_owner_ref = _text(opening.payload, "payer_account_owner_ref")
+        except EconomyRuntimeError:
+            return self._rejected_append(command_id, "government_tax_payment_source_pin_missing")
+        economy_stream = "gameplay:economy"
+        expected_revision = self._store.get_stream_head(economy_stream)
+        try:
+            tax_due = self._store.get_event(tax_due_event_id)
+            binding = self._store.get_event(payer_binding_event_id)
+            payer_opened = self._store.get_event(payer_account_opened_event_id)
+        except KeyError:
+            return self._rejected_append(command_id, "government_tax_payment_source_missing")
+        if (
+            tax_due.event_type != "gameplay.economy.tax_due_recorded"
+            or tax_due.stream_revision != tax_due_revision
+            or tax_due.payload.get("jurisdiction_ref") != jurisdiction_ref
+            or tax_due.payload.get("currency_ref") != currency_ref
+            or binding.event_type != "gameplay.economy.tax_obligation_payer_bound"
+            or binding.stream_revision != payer_binding_revision
+            or binding.payload.get("obligation_id") != intent.obligation_id
+            or binding.payload.get("payer_account_ref") != payer_account_ref
+            or binding.payload.get("payer_account_owner_ref") != payer_owner_ref
+            or binding.payload.get("payer_account_opened_event_id") != payer_account_opened_event_id
+            or binding.payload.get("payer_account_opened_stream_revision") != payer_opened_revision
+            or payer_opened.event_type != "gameplay.economy.account_opened"
+            or payer_opened.stream_revision != payer_opened_revision
+            or payer_opened.payload.get("account_id") != payer_account_ref
+            or payer_opened.payload.get("owner_ref") != payer_owner_ref
+            or payer_opened.payload.get("currency_ref") != currency_ref
+        ):
+            return self._rejected_append(command_id, "government_tax_payment_source_invalid")
+        treasury_stream = f"gameplay:government_treasury:{jurisdiction_ref}"
+        collector = next(
+            (
+                event for event in reversed(self._store.read_stream(treasury_stream))
+                if event.event_type == "gameplay.government_treasury.collector_account_admitted"
+                and event.visibility_policy == "authority_only"
+                and event.payload.get("jurisdiction_ref") == jurisdiction_ref
+                and event.payload.get("currency_ref") == currency_ref
+            ),
+            None,
+        )
+        if collector is None or collector.stream_revision != self._store.get_stream_head(treasury_stream):
+            return self._rejected_append(command_id, "government_tax_payment_collector_missing")
+        collector_account_ref = collector.payload.get("collector_account_ref")
+        collector_owner_ref = collector.payload.get("collector_owner_ref")
+        projection = self._projector.rebuild(self._store.read_events())
+        payer = projection.accounts.get(payer_account_ref)
+        collector_account = projection.accounts.get(str(collector_account_ref))
+        amount = opening.payload.get("assessed_amount_minor")
+        if (
+            payer is None
+            or collector_account is None
+            or payer.owner_ref != payer_owner_ref
+            or payer.currency_ref != currency_ref
+            or collector_account.owner_ref != collector_owner_ref
+            or collector_account.currency_ref != currency_ref
+            or isinstance(amount, bool)
+            or not isinstance(amount, int)
+            or amount <= 0
+            or payer.balance < amount
+        ):
+            return self._rejected_append(command_id, "government_tax_payment_account_invalid")
+        current_state = self._tax_obligation_state(obligation_id=intent.obligation_id)
+        if current_state != "open":
+            return self._rejected_append(command_id, "government_tax_payment_obligation_not_open")
+        required_key = f"tax-payment:{intent.obligation_id}:{payer_account_ref}:v1"
+        if not intent.idempotency_key.startswith(required_key):
+            return self._rejected_append(command_id, "government_tax_payment_idempotency_invalid")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:economy-government-tax-payment@1",
+                contract_kind="settlement",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(economy_stream,),
+                event_types=(
+                    "gameplay.economy.account_debited",
+                    "gameplay.economy.account_credited",
+                    "gameplay.economy.tax_payment_settled",
+                    "gameplay.economy.tax_obligation_settled",
+                ),
+                projection_scope="authority_only",
+            )
+        except GovernedAuthorityContractError as exc:
+            return self._rejected_append(command_id, str(exc))
+        fragment = OwnerAuthorizedFragment(
+            fragment_id=f"fragment:economy:government-tax-payment:{intent.obligation_id}",
+            owner_principal_ref=self._PRINCIPAL,
+            source_rule_ref="economy:government-tax-payment@1",
+            expected_revisions={economy_stream: expected_revision},
+            read_set_revisions={treasury_stream: collector.stream_revision},
+            pinned_revisions={
+                "economy": expected_revision,
+                "tax_due": tax_due_revision,
+                "payer_binding": payer_binding_revision,
+                "payer_account_opened": payer_opened_revision,
+                "treasury_collector": collector.stream_revision,
+            },
+            event_specs={economy_stream: (
+                ("gameplay.economy.account_debited", {"account_id": payer_account_ref, "amount": amount}),
+                ("gameplay.economy.account_credited", {"account_id": collector_account_ref, "amount": amount}),
+                ("gameplay.economy.tax_payment_settled", {
+                    "obligation_id": intent.obligation_id, "payer_account_ref": payer_account_ref,
+                    "collector_account_ref": collector_account_ref, "amount_minor": amount,
+                    "tax_due_event_id": tax_due_event_id, "payer_binding_event_id": payer_binding_event_id,
+                    "collector_admission_event_id": collector.event_id, "status": "settled",
+                }),
+                ("gameplay.economy.tax_obligation_settled", {
+                    "obligation_id": intent.obligation_id, "prior_state": "open", "current_state": "settled",
+                    "payment_event_id": f"event:{command_id}:3", "tax_due_event_id": tax_due_event_id,
+                }),
+            )},
+            event_visibility_policies={economy_stream: ("authority_only",) * 4},
+        )
+        return self._append_tax_payment(
+            command_id=command_id, command_type="gameplay.economy.tax_payment", submitted_at="economy-government-tax-payment",
+            source_ref=opening.event_id, idempotency_key=intent.idempotency_key, causation_id=intent.causation_id,
+            correlation_id=intent.correlation_id, fragment=fragment, request_digest=request_digest,
+        )
+
+    def request_tax_payment_reversal(self, *, settled_payment_event_id: str, command_id: str, idempotency_key: str, causation_id: str, correlation_id: str) -> AppendBatchResult:
+        """Record the one committed reversal source permitted for compensation."""
+        if not all(isinstance(value, str) and value for value in (settled_payment_event_id, command_id, idempotency_key, causation_id, correlation_id)):
+            return self._rejected_append(command_id, "government_tax_payment_reversal_input_invalid")
+        request_digest = _digest({
+            "settled_payment_event_id": settled_payment_event_id,
+            "command_id": command_id,
+            "causation_id": causation_id,
+            "correlation_id": correlation_id,
+        })
+        duplicate = self._tax_payment_duplicate_result(
+            command_id=command_id,
+            idempotency_key=idempotency_key,
+            request_digest=request_digest,
+        )
+        if duplicate is not None:
+            return duplicate
+        try:
+            settled = self._store.get_event(settled_payment_event_id)
+        except KeyError:
+            return self._rejected_append(command_id, "government_tax_payment_settlement_missing")
+        if settled.event_type != "gameplay.economy.tax_payment_settled" or settled.visibility_policy != "authority_only":
+            return self._rejected_append(command_id, "government_tax_payment_settlement_invalid")
+        obligation_id = settled.payload.get("obligation_id")
+        if not isinstance(obligation_id, str) or not obligation_id:
+            return self._rejected_append(command_id, "government_tax_payment_settlement_invalid")
+        stream = "gameplay:economy"
+        revision = self._store.get_stream_head(stream)
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:economy-government-tax-payment@1",
+                contract_kind="settlement",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(stream,),
+                event_types=("gameplay.economy.tax_payment_reversal_requested",),
+                projection_scope="authority_only",
+            )
+        except GovernedAuthorityContractError as exc:
+            return self._rejected_append(command_id, str(exc))
+        fragment = OwnerAuthorizedFragment(
+            fragment_id=f"fragment:economy:government-tax-payment-reversal:{settled.event_id}",
+            owner_principal_ref=self._PRINCIPAL,
+            source_rule_ref="economy:government-tax-payment-reversal@1",
+            expected_revisions={stream: revision},
+            read_set_revisions={},
+            pinned_revisions={"economy": revision, "settled_payment": settled.stream_revision},
+            event_specs={stream: (("gameplay.economy.tax_payment_reversal_requested", {
+                "settled_payment_event_id": settled.event_id,
+                "obligation_id": obligation_id,
+            }),)},
+            event_visibility_policies={stream: ("authority_only",)},
+        )
+        return self._append_tax_payment(
+            command_id=command_id,
+            command_type="gameplay.economy.tax_payment_reversal_request",
+            submitted_at="economy-government-tax-payment-reversal",
+            source_ref=settled.event_id,
+            idempotency_key=idempotency_key,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            fragment=fragment,
+            request_digest=request_digest,
+        )
+
+    def compensate_tax_payment(self, intent: TaxPaymentCompensationIntentV1) -> AppendBatchResult:
+        if not isinstance(intent, TaxPaymentCompensationIntentV1) or intent.capability_ref != "capability:government-tax-payment@1":
+            return self._rejected_append(getattr(intent, "command_id", "tax-payment-compensation"), "government_tax_payment_capability_denied")
+        command_id = intent.command_id; request_digest = _digest(intent.model_dump(mode="json"))
+        duplicate = self._tax_payment_duplicate_result(command_id=command_id, idempotency_key=intent.idempotency_key, request_digest=request_digest)
+        if duplicate is not None:
+            return duplicate
+        try:
+            settled = self._store.get_event(intent.settled_payment_event_id)
+            reversal = self._store.get_event(intent.reversal_source_event_id)
+        except KeyError:
+            return self._rejected_append(command_id, "government_tax_payment_compensation_source_missing")
+        if (
+            settled.event_type != "gameplay.economy.tax_payment_settled"
+            or reversal.event_type != "gameplay.economy.tax_payment_reversal_requested"
+            or reversal.payload.get("settled_payment_event_id") != settled.event_id
+            or reversal.global_sequence <= settled.global_sequence
+        ):
+            return self._rejected_append(command_id, "government_tax_payment_compensation_source_invalid")
+        obligation_id = settled.payload.get("obligation_id")
+        payer_account_ref = settled.payload.get("payer_account_ref")
+        collector_account_ref = settled.payload.get("collector_account_ref")
+        amount = settled.payload.get("amount_minor")
+        if not all(isinstance(value, str) and value for value in (obligation_id, payer_account_ref, collector_account_ref)) or isinstance(amount, bool) or not isinstance(amount, int) or amount <= 0:
+            return self._rejected_append(command_id, "government_tax_payment_settlement_invalid")
+        stream = "gameplay:economy"; revision = self._store.get_stream_head(stream)
+        if self._tax_obligation_state(obligation_id=obligation_id) != "settled":
+            return self._rejected_append(command_id, "government_tax_payment_obligation_not_settled")
+        if any(event.event_type == "gameplay.economy.tax_payment_compensated" and event.payload.get("settled_payment_event_id") == settled.event_id for event in self._store.read_stream(stream)):
+            return self._rejected_append(command_id, "government_tax_payment_already_compensated")
+        projection = self._projector.rebuild(self._store.read_events()); collector = projection.accounts.get(collector_account_ref)
+        if collector is None or collector.balance < amount:
+            return self._rejected_append(command_id, "government_tax_payment_compensation_insufficient_funds")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(contract_ref="inf:economy-government-tax-payment@1", contract_kind="settlement", owner_ref=self._PRINCIPAL, stream_ids=(stream,), event_types=("gameplay.economy.account_debited", "gameplay.economy.account_credited", "gameplay.economy.tax_payment_compensated", "gameplay.economy.tax_obligation_reopened"), projection_scope="authority_only")
+        except GovernedAuthorityContractError as exc:
+            return self._rejected_append(command_id, str(exc))
+        fragment = OwnerAuthorizedFragment(
+            fragment_id=f"fragment:economy:government-tax-payment-compensation:{settled.event_id}", owner_principal_ref=self._PRINCIPAL,
+            source_rule_ref="economy:government-tax-payment-compensation@1", expected_revisions={stream: revision},
+            read_set_revisions={}, pinned_revisions={"economy": revision, "settled_payment": settled.stream_revision, "reversal": reversal.stream_revision},
+            event_specs={stream: (
+                ("gameplay.economy.account_debited", {"account_id": collector_account_ref, "amount": amount}),
+                ("gameplay.economy.account_credited", {"account_id": payer_account_ref, "amount": amount}),
+                ("gameplay.economy.tax_payment_compensated", {"settled_payment_event_id": settled.event_id, "reversal_source_event_id": reversal.event_id, "obligation_id": obligation_id, "amount_minor": amount, "status": "compensated"}),
+                ("gameplay.economy.tax_obligation_reopened", {"obligation_id": obligation_id, "prior_state": "settled", "current_state": "open", "compensation_event_id": f"event:{command_id}:3", "reversal_source_event_id": reversal.event_id}),
+            )}, event_visibility_policies={stream: ("authority_only",) * 4},
+        )
+        return self._append_tax_payment(command_id=command_id, command_type="gameplay.economy.tax_payment_compensation", submitted_at="economy-government-tax-payment-compensation", source_ref=reversal.event_id, idempotency_key=intent.idempotency_key, causation_id=intent.causation_id, correlation_id=intent.correlation_id, fragment=fragment, request_digest=request_digest)
+
+    def _tax_obligation_state(self, *, obligation_id: str) -> str:
+        state = "open"
+        for event in self._store.read_stream("gameplay:economy"):
+            if event.payload.get("obligation_id") != obligation_id:
+                continue
+            if event.event_type == "gameplay.economy.tax_obligation_settled": state = "settled"
+            elif event.event_type == "gameplay.economy.tax_obligation_reopened": state = "open"
+        return state
+
+    def _tax_payment_duplicate_result(self, *, command_id: str, idempotency_key: str, request_digest: str) -> AppendBatchResult | None:
+        record = self._store.get_idempotency_record(self._PRINCIPAL, idempotency_key)
+        if record is None: return None
+        if record.payload_digest != request_digest: return self._rejected_append(command_id, "idempotency_key_reused")
+        result = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True) if result is not None else self._rejected_append(command_id, "idempotency_record_missing_result")
+
+    def _append_tax_payment(self, *, command_id: str, command_type: str, submitted_at: str, source_ref: str, idempotency_key: str, causation_id: str, correlation_id: str, fragment: OwnerAuthorizedFragment, request_digest: str) -> AppendBatchResult:
+        stream = "gameplay:economy"; specs = fragment.event_specs[stream]
+        command = GameplayCommandEnvelope(command_id=command_id, command_type=command_type, command_version=1, principal_ref=self._PRINCIPAL, actor_ref=None, project_ref=None, transaction_id=f"transaction:{command_id}", idempotency_key=idempotency_key, expected_revisions={stream: fragment.expected_revisions[stream]}, read_set_revisions=dict(fragment.read_set_revisions), causation_id=causation_id, correlation_id=correlation_id, source_ref=source_ref, submitted_at=submitted_at, pinned_revisions=dict(fragment.pinned_revisions), payload={"stream_ref": stream, "event_specs": [{"event_type": event_type, "payload": {**payload, "visibility_policy": "authority_only"}} for event_type, payload in specs]})
+        batch = SettlementPlan.from_command_envelope(command).to_atomic_event_batch()
+        batch = batch.model_copy(update={"owner_fragments": [fragment], "idempotency_record": batch.idempotency_record.model_copy(update={"payload_digest": request_digest}, deep=True), "outbox_entries": [GameplayOutboxEntry(outbox_id=f"outbox:{event.event_id}", transaction_id=batch.transaction_id, event_id=event.event_id, global_sequence=0, topic="economy.tax_payment.scoped_projection", audience="authority:economy", payload_projection={"event_type": event.event_type, "obligation_id": str(event.payload.get("obligation_id", ""))}) for event in batch.events]}, deep=True)
+        return self._store.append_batch(batch)
+
+    def tax_payment_receipt_for(self, *, result: AppendBatchResult | None, scope: str) -> SettlementReceipt:
+        if scope != "authority": raise EconomyRuntimeError("government_tax_payment_receipt_scope_denied")
+        if result is None: raise EconomyRuntimeError("government_tax_payment_receipt_missing")
+        return SettlementReceipt.from_append_result(result=result, audit_refs=(f"economy_transaction:{result.transaction_id}",))
+
+    def tax_payment_projection(self, *, scope: str, checkpoint_at: int | None = None) -> dict[str, object]:
+        if scope != "authority":
+            raise EconomyRuntimeError("government_tax_payment_projection_scope_denied")
+        events = [
+            event
+            for event in self._store.read_stream("gameplay:economy")
+            if event.event_type in {
+                "gameplay.economy.tax_payment_settled",
+                "gameplay.economy.tax_payment_compensated",
+                "gameplay.economy.tax_obligation_reopened",
+            }
+        ]
+        if checkpoint_at is not None and checkpoint_at < 0:
+            raise EconomyRuntimeError("government_tax_payment_checkpoint_invalid")
+        if checkpoint_at is None:
+            payments = self._reduce_tax_payment_projection(events=events)
+        else:
+            checkpoint = self._reduce_tax_payment_projection(
+                events=[event for event in events if event.global_sequence <= checkpoint_at]
+            )
+            payments = self._reduce_tax_payment_projection(
+                events=[event for event in events if event.global_sequence > checkpoint_at],
+                payments=checkpoint,
+            )
+        projection: dict[str, object] = {"scope": scope, "payments": payments}
+        projection["projection_hash"] = "sha256:" + sha256(json.dumps(projection, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
+        return projection
+
+    @staticmethod
+    def _reduce_tax_payment_projection(
+        *, events: Sequence[GameplayEvent], payments: Mapping[str, Mapping[str, object]] | None = None
+    ) -> dict[str, dict[str, object]]:
+        reduced = {obligation_id: dict(value) for obligation_id, value in (payments or {}).items()}
+        for event in sorted(events, key=lambda item: (item.global_sequence, item.event_id)):
+            obligation_id = event.payload.get("obligation_id")
+            if not isinstance(obligation_id, str) or not obligation_id:
+                continue
+            if event.event_type == "gameplay.economy.tax_payment_settled":
+                reduced[obligation_id] = {
+                    "status": "settled",
+                    "payment_status": "settled",
+                    "payment_event_id": event.event_id,
+                    "amount_minor": event.payload.get("amount_minor"),
+                }
+            elif event.event_type == "gameplay.economy.tax_payment_compensated":
+                reduced.setdefault(obligation_id, {})["payment_status"] = "compensated"
+            elif event.event_type == "gameplay.economy.tax_obligation_reopened":
+                reduced.setdefault(obligation_id, {})["status"] = "open"
+        return {obligation_id: reduced[obligation_id] for obligation_id in sorted(reduced)}
+
     def open_account(self, *, command_id:str, account_id:str, owner_ref:str, currency_ref:str, initial_balance:int, idempotency_key:str, causation_id:str, correlation_id:str, expected_revision:int|None=None)->AppendBatchResult:
         p=self._projector.rebuild(self._store.read_events())
         if account_id in p.accounts or not account_id or not owner_ref or not currency_ref or initial_balance<0: raise EconomyRuntimeError("economy_account_invalid")
@@ -1872,10 +2825,18 @@ class EconomyAuthorityService:
         if order_ref in p.dynamic_orders or order_payload.get("status") not in {"active", "cancelled"}:
             raise EconomyRuntimeError("economy_dynamic_order_invalid")
         return self._append(command_id,idempotency_key,[self._event(command_id,"gameplay.economy.dynamic_order_submitted",1,{"order":dict(order_payload)},causation_id,correlation_id)],p)
-    def record_tax_due(self, *, command_id:str, organization_ref:str, period_ref:str, assessed_amount_minor:int, policy_revision:str, policy_digest:str, due_calendar_ref:str, evidence_refs:tuple[str,...], source_digest:str, idempotency_key:str, causation_id:str, correlation_id:str)->AppendBatchResult:
+    def record_tax_due(self, *, command_id:str, organization_ref:str, period_ref:str, assessed_amount_minor:int, policy_revision:str, policy_digest:str, due_calendar_ref:str, evidence_refs:tuple[str,...], source_digest:str, idempotency_key:str, causation_id:str, correlation_id:str, jurisdiction_ref: str | None = None, currency_ref: str | None = None)->AppendBatchResult:
         p=self._projector.rebuild(self._store.read_events())
         if not all((organization_ref, period_ref, policy_revision, policy_digest, due_calendar_ref, source_digest, evidence_refs)) or assessed_amount_minor < 0: raise EconomyRuntimeError("economy_tax_assessment_invalid")
+        admission_fields = (jurisdiction_ref, currency_ref)
+        if any(value is not None for value in admission_fields) and not all(isinstance(value, str) and value for value in admission_fields):
+            raise EconomyRuntimeError("economy_tax_payment_source_invalid")
         payload={"organization_ref":organization_ref,"period_ref":period_ref,"assessed_amount_minor":assessed_amount_minor,"policy_revision":policy_revision,"policy_digest":policy_digest,"due_calendar_ref":due_calendar_ref,"evidence_refs":evidence_refs,"source_digest":source_digest}
+        if jurisdiction_ref is not None:
+            payload.update({
+                "jurisdiction_ref": jurisdiction_ref,
+                "currency_ref": currency_ref,
+            })
         return self._append(command_id,idempotency_key,[self._event(command_id,"gameplay.economy.tax_due_recorded",1,payload,causation_id,correlation_id)],p)
     def _validate_scheduled_transfer_policy_instance(self, *, policy: ScheduledAccountTransferPolicyInstance, projection: EconomyProjection) -> None:
         debit = projection.accounts.get(policy.debit_account_id)
@@ -2105,10 +3066,24 @@ def _text(p:Mapping[str,object],k:str)->str:
     v=p.get(k)
     if not isinstance(v,str) or not v: raise EconomyRuntimeError("economy_event_payload_invalid")
     return v
+def _optional_text(p: Mapping[str, object], k: str) -> str | None:
+    value = p.get(k)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise EconomyRuntimeError("economy_event_payload_invalid")
+    return value
 def _nonnegative(p:Mapping[str,object],k:str)->int:
     v=p.get(k)
     if isinstance(v,bool) or not isinstance(v,int) or v<0: raise EconomyRuntimeError("economy_event_payload_invalid")
     return v
+def _optional_nonnegative(p: Mapping[str, object], k: str) -> int | None:
+    value = p.get(k)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise EconomyRuntimeError("economy_event_payload_invalid")
+    return value
 def _positive(p:Mapping[str,object],k:str)->int:
     v=_nonnegative(p,k)
     if not v: raise EconomyRuntimeError("economy_event_payload_invalid")

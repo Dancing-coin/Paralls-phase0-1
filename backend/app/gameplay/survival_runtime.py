@@ -685,6 +685,139 @@ class SurvivalAuthority:
             source_evidence_refs=(weather_event_id, assignment_event_id),
         )
 
+    def apply_weather_front_dehydration_exposure(
+        self, *, command: GameplayCommandEnvelope
+    ) -> AppendBatchResult:
+        """Apply the approved drought weather-front row through existing Survival events."""
+        if (
+            command.command_type != "gameplay.survival.apply_weather_front_dehydration"
+            or command.principal_ref != self._PRINCIPAL
+            or command.source_ref != "authority:ecology"
+            or command.actor_ref is None
+            or command.payload.get("visibility_scope") != "project"
+        ):
+            return self._rejected(command, "weather_front_dehydration_authority_required")
+        actor_ref = command.actor_ref
+        world_ref = command.payload.get("world_ref")
+        weather_event_id = command.payload.get("weather_event_id")
+        assignment_event_id = command.payload.get("region_assignment_event_id")
+        if not all(
+            isinstance(value, str) and value
+            for value in (world_ref, weather_event_id, assignment_event_id)
+        ):
+            return self._rejected(command, "weather_front_dehydration_evidence_required")
+        if command.idempotency_key != f"weather-front-dehydration:{weather_event_id}:{actor_ref}:v1":
+            return self._rejected(command, "weather_front_dehydration_idempotency_key_invalid")
+        try:
+            weather_event = self._store.get_event(weather_event_id)
+            assignment_event = self._store.get_event(assignment_event_id)
+        except KeyError:
+            return self._rejected(command, "weather_front_dehydration_evidence_missing")
+        target_region_ref = weather_event.payload.get("target_region_ref")
+        ecology_stream = weather_event.stream_id
+        population_stream = f"population:{world_ref}"
+        if (
+            weather_event.event_type != "gameplay.ecology.weather_front.propagated"
+            or not ecology_stream.startswith("gameplay:ecology:")
+            or weather_event.visibility_policy != "project"
+            or weather_event.payload.get("weather_ref") != "weather:drought"
+            or not isinstance(target_region_ref, str)
+            or not target_region_ref
+            or assignment_event.event_type != "population.activation.region_assigned"
+            or assignment_event.stream_id != population_stream
+            or assignment_event.visibility_policy != "project"
+            or assignment_event.payload.get("profile_ref") != actor_ref
+            or assignment_event.payload.get("region_ref") != target_region_ref
+            or assignment_event.payload.get("privacy_scope") != "project"
+        ):
+            return self._rejected(command, "weather_front_dehydration_evidence_invalid")
+        lifecycle = {
+            "population.activation.committed": "active",
+            "population.activation.suspended": "suspended",
+            "population.activation.requeued": "requeued",
+            "population.activation.locked": "locked",
+        }
+        status = None
+        for event in self._store.read_stream(population_stream):
+            if event.payload.get("profile_ref") == actor_ref and event.event_type in lifecycle:
+                status = lifecycle[event.event_type]
+        if status != "active":
+            return self._rejected(command, "weather_front_dehydration_profile_not_active")
+        survival_stream = f"gameplay:survival:{actor_ref}"
+        if (
+            set(command.expected_revisions) != {survival_stream}
+            or set(command.read_set_revisions) != {ecology_stream, population_stream}
+            or command.read_set_revisions[ecology_stream] != weather_event.stream_revision
+            or command.read_set_revisions[population_stream] != assignment_event.stream_revision
+        ):
+            return self._rejected(command, "weather_front_dehydration_revision_vector_invalid")
+        if self._store.get_by_idempotency(self._PRINCIPAL, command.idempotency_key) is None:
+            admission_check = EcologyConsumerAdmissionCheck.verify(
+                store=self._store,
+                contract_ref="inf:weather-front-survival-dehydration@1",
+                target_owner_ref=self._PRINCIPAL,
+                target_stream_ids=(survival_stream,),
+                target_event_types=(
+                    "gameplay.survival.state_applied",
+                    "gameplay.survival.obligation_opened",
+                ),
+                projection_scope="project",
+                source_event_id=weather_event.event_id,
+                source_stream_id=ecology_stream,
+                source_revision=weather_event.stream_revision,
+                target_expected_revisions=dict(command.expected_revisions),
+                idempotency_key=command.idempotency_key,
+            )
+            if not admission_check.accepted:
+                return self._rejected(
+                    command,
+                    admission_check.error_code or "weather_front_dehydration_admission_invalid",
+                )
+        try:
+            tick = int(weather_event.payload["tick"])
+        except (KeyError, TypeError, ValueError):
+            return self._rejected(command, "weather_front_dehydration_evidence_invalid")
+        if tick < 0 or isinstance(weather_event.payload.get("tick"), bool):
+            return self._rejected(command, "weather_front_dehydration_evidence_invalid")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:weather-front-survival-dehydration@1",
+                contract_kind="ecology_consumer",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(survival_stream,),
+                event_types=(
+                    "gameplay.survival.state_applied",
+                    "gameplay.survival.obligation_opened",
+                ),
+                projection_scope="project",
+            )
+        except GovernedAuthorityContractError as error:
+            return self._rejected(command, str(error))
+        return self.apply_effect_state(
+            command=command,
+            application=EffectApplication(
+                effect_ref="effect:dehydration_exposure",
+                target_component_ref=actor_ref,
+                magnitude=100,
+                stack_key="dehydration",
+                expires_at_tick=tick + 1,
+                causal_chain_id=f"weather-front-dehydration:{weather_event_id}:{assignment_event_id}",
+            ),
+            resistance=ResistanceProfile(
+                effect_ref="effect:dehydration_exposure",
+                source_ref=actor_ref,
+                modifier_basis_points=0,
+                revision=1,
+            ),
+            definition=StateDefinition(
+                state_ref="state:dehydrated",
+                stack_policy="add",
+                stack_limit=2,
+                expiry_policy="scheduled",
+            ),
+            source_evidence_refs=(weather_event_id, assignment_event_id),
+        )
+
     @staticmethod
     def _state_application_digest(
         *,

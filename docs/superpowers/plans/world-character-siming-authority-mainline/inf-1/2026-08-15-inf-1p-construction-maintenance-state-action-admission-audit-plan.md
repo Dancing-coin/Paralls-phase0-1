@@ -12,11 +12,13 @@ Status: `implemented bounded Construction dispel and verified; transform stopped
    replay assertions.
 4. Add only the fixed `effect:maintenance_state_dispel` route, the matching
    Construction owner fragment, lifecycle registration and projector handling.
-5. Keep repair/payment/material semantics and transform inputs zero-write;
+5. Keep generic repair, payment, material semantics and transform inputs
+   zero-write; INF-1AE owns only one explicit facility repair pair.
    they lack a replacement-state truth contract.
 6. Add a dedicated Harness profile/report and synchronize the INF-1 tree,
    root formal documents and August analysis.
 
 Result: all steps complete. The focused suite, ten-selector Harness report,
 documentation gate, `git diff --check` and full backend suite passed. The
-transform/repair/payment/material boundary remains blocked and zero-write.
+generic transform/repair/payment/material boundary remains blocked and
+zero-write.

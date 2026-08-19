@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-construction-bakery-reinforcement",
+  "order": 165,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_construction_bakery_reinforcement.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-construction-bakery-reinforcement-report.json",
+  "description": "INF-1AF fixed Construction bakery-to-bakery_reinforced terminal transition"
+}

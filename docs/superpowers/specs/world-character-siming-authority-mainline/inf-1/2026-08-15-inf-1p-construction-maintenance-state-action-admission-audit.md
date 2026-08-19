@@ -17,7 +17,9 @@ general state-action contract. It has one exact owner and stream:
 | projection | project-scoped `maintenance_states` |
 | receipt | append-derived coordinator receipt |
 
-Inspection found no existing Construction repair or transform event family.
+At the time of this audit there was no existing Construction repair or
+transform event family. INF-1AE later adds one explicitly bounded facility
+repair/compensation pair; transform and payment remain unsupported.
 The only existing mutation that removes `state:maintenance_due` is the
 policy-owned expiry event. Reusing that event as a semantic "dispel" would
 falsify its causal meaning.

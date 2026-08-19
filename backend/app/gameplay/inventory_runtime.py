@@ -819,6 +819,132 @@ class InventoryAuthorityService:
             correlation_id,
         )
 
+    def build_package_declared_negotiated_exchange_fragment(
+        self,
+        *,
+        provider_actor_ref: str,
+        receiver_actor_ref: str,
+        source_ref: str,
+        traded_definition_id: str,
+        destination_container_id: str,
+        outcome_ref: str,
+        package_revision: str,
+        expected_provider_revision: int,
+        expected_receiver_revision: int,
+    ) -> tuple[OwnerAuthorizedFragment, dict[str, object]]:
+        if (
+            not provider_actor_ref
+            or not receiver_actor_ref
+            or not source_ref
+            or not traded_definition_id
+            or not destination_container_id
+            or not outcome_ref
+            or not package_revision
+        ):
+            raise InventoryRuntimeError("inventory_package_exchange_invalid")
+        self._registry.item(traded_definition_id)
+        all_events = self._store.read_events()
+        provider = self._projector.rebuild(provider_actor_ref, all_events)
+        receiver = self._projector.rebuild(receiver_actor_ref, all_events)
+        provider_stream = f"gameplay:inventory:{provider_actor_ref}"
+        receiver_stream = f"gameplay:inventory:{receiver_actor_ref}"
+        if provider.source_revision_vector.get(provider_stream, 0) != expected_provider_revision:
+            raise InventoryRuntimeError("revision_conflict")
+        if receiver.source_revision_vector.get(receiver_stream, 0) != expected_receiver_revision:
+            raise InventoryRuntimeError("revision_conflict")
+        destination = receiver.containers.get(destination_container_id)
+        if destination is None:
+            raise InventoryRuntimeError("inventory_container_unknown")
+        if destination.sealed:
+            raise InventoryRuntimeError("inventory_access_denied")
+        if destination.carrier_item_id:
+            raise InventoryRuntimeError("inventory_container_access_requires_equipment")
+        matches: list[tuple[InventoryItem, str, GameplayEvent]] = []
+        for item in provider.items.values():
+            if item.definition_id != traded_definition_id or item.available_quantity != item.quantity or item.quantity != 1:
+                continue
+            container_id = provider.locations.get(item.item_id)
+            if not isinstance(container_id, str) or not container_id.startswith("container:"):
+                continue
+            container = provider.containers.get(container_id)
+            if container is None or container.sealed or container.carrier_item_id:
+                continue
+            source_event = self._store.get_event(item.source_event_id)
+            if source_event.event_type not in {
+                "gameplay.inventory.item_instantiated",
+                "gameplay.inventory.output_received",
+                "gameplay.inventory.item_transferred_in",
+            }:
+                continue
+            matches.append((item, container_id, source_event))
+        if len(matches) != 1:
+            raise InventoryRuntimeError("inventory_package_exchange_source_ambiguous")
+        item, from_container_id, source_event = matches[0]
+        self._require_capacity(receiver, destination_container_id, item)
+        source_rule_ref = "exchange:unique-owned-source@1"
+        fragment = OwnerAuthorizedFragment(
+            fragment_id=(
+                "fragment:inventory:package-declared-negotiated-exchange:"
+                f"{provider_actor_ref}:{receiver_actor_ref}:{outcome_ref}"
+            ),
+            owner_principal_ref=self._PRINCIPAL,
+            source_rule_ref="inventory:package-declared-negotiated-exchange@1",
+            expected_revisions={
+                provider_stream: expected_provider_revision,
+                receiver_stream: expected_receiver_revision,
+            },
+            pinned_revisions={
+                f"inventory:{provider_actor_ref}": expected_provider_revision,
+                f"inventory:{receiver_actor_ref}": expected_receiver_revision,
+            },
+            event_specs={
+                provider_stream: (
+                    (
+                        "gameplay.inventory.item_transferred_out",
+                        {
+                            "source_ref": source_ref,
+                            "actor_ref": provider_actor_ref,
+                            "item_id": item.item_id,
+                            "from_container_id": from_container_id,
+                            "to_actor_ref": receiver_actor_ref,
+                            "outcome_ref": outcome_ref,
+                            "package_revision": package_revision,
+                            "source_event_id": source_event.event_id,
+                            "source_selection_rule_ref": source_rule_ref,
+                        },
+                    ),
+                ),
+                receiver_stream: (
+                    (
+                        "gameplay.inventory.item_transferred_in",
+                        {
+                            "source_ref": source_ref,
+                            "actor_ref": receiver_actor_ref,
+                            "item_id": item.item_id,
+                            "definition_id": item.definition_id,
+                            "quantity": item.quantity,
+                            "to_container_id": destination_container_id,
+                            "from_actor_ref": provider_actor_ref,
+                            "outcome_ref": outcome_ref,
+                            "package_revision": package_revision,
+                            "source_event_id": source_event.event_id,
+                            "source_selection_rule_ref": source_rule_ref,
+                        },
+                    ),
+                ),
+            },
+            event_visibility_policies={
+                provider_stream: ("authority_only",),
+                receiver_stream: ("authority_only",),
+            },
+        )
+        return fragment, {
+            "source_event_id": source_event.event_id,
+            "source_event_revision": source_event.stream_revision,
+            "item_id": item.item_id,
+            "definition_id": item.definition_id,
+        }
+
     def _require_capacity(self, projection: InventoryProjection, container_id: str, candidate: InventoryItem, *, excluding_item_id: str | None = None) -> None:
         container = projection.containers[container_id]
         candidate_definition = self._registry.item(candidate.definition_id)

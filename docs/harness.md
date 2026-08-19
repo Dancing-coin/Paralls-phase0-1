@@ -40,6 +40,8 @@ python scripts/verification/harness.py --profile post-p5-f1c-foundation
 python scripts/verification/harness.py --profile post-p5-f2-gates
 python scripts/verification/harness.py --profile infra-payroll-operating-window-closure
 python scripts/verification/harness.py --profile infra-event-derived-bounded-due-lifecycle-view
+python scripts/verification/harness.py --profile infra-economy-government-tax-payment
+python scripts/verification/harness.py --profile infra-package-declared-negotiated-exchange
 ```
 
 `phase2-bakery-authored-agents` is retained as a historical sample profile only. Its direct-batch
@@ -2928,6 +2930,33 @@ arbitrary cross-domain settlement.
 
 - `.harness/verification/infra-economy-tax-obligation-report.json`
 
+### `infra-economy-government-tax-payment`
+
+Backend-only INF-2AB proof for the approved bounded Treasury collector
+identity and Economy-owned government tax-payment capability. Its independent
+selectors prove committed tax-due jurisdiction/currency pins, explicit
+Economy payer-binding/account-opened pins, collector identity privacy and
+replay, the one atomic payment vector, the exact compensation/reopen vector,
+authority-only receipt/outbox behavior, full/checkpoint-tail replay, exact and
+changed idempotency, and capability/collector/revision zero-write rejection.
+It does not admit a generic Treasury, arbitrary payment, transfer, or
+settlement authority.
+
+- `.harness/verification/infra-economy-government-tax-payment-report.json`
+
+### `infra-package-declared-negotiated-exchange`
+
+Backend-only INF-2AC proof for the approved immutable-package negotiated
+exchange row. Its independent selectors separately prove the admitted
+inventory, ownership, and completed-service success modes; fixed price,
+source, capability, and inactive-package zero-write rejection; authority-only
+receipt and projection scopes; exact duplicate replay and changed-duplicate
+zero-write; and full versus checkpoint-tail replay equivalence. It does not
+admit generic payment, transfer, treasury, market pricing, compensation,
+router, registry, coordinator, or a new truth owner.
+
+- `.harness/verification/infra-package-declared-negotiated-exchange-report.json`
+
 ### `infra-reusable-state-transition-plan`
 
 Backend-only INF-1C1 proof for the pure reusable `StateTransitionPlan`.
@@ -2949,6 +2978,19 @@ issue admissions, select owners, construct fragments, append events, or
 register generic consumers.
 
 - `.harness/verification/infra-ecology-consumer-admission-contract-report.json`
+
+### `infra-weather-front-survival-dehydration`
+
+Backend-only INF-3Q proof for one fixed project-visible
+`weather:drought -> Survival dehydrated` target edge. Independent selectors
+prove the one Survival append receipt, missing/wrong-source zero-write,
+assignment/privacy and source/target revision fences, exact and changed
+idempotency, project-scoped redacted outbox, full/checkpoint-tail replay,
+`drought_process_advanced` rejection, and no compensation or fanout vector.
+It does not authorize an Ecology-to-Survival router, generic consumer registry,
+new runtime, retry, compensation, or any other target edge.
+
+- `.harness/verification/infra-weather-front-survival-dehydration-report.json`
 
 ## Evidence Rules
 
@@ -2990,3 +3032,40 @@ It also adapts `ai-boost/awesome-harness-engineering` as a reference taxonomy ra
 4. Run the profile.
 5. Read the generated report before claiming success.
 6. If a profile fails, fix the missing invariant or runtime behavior and rerun the same profile.
+### `infra-construction-facility-repair`
+
+This independent INF-1AE profile proves one bounded Construction facility
+repair and its explicit latest-repair compensation on the existing facility
+stream. Seven selectors cover successful owner append and receipt, exact and
+changed duplicate behavior, revision/privacy/amount zero-write rejection,
+compensation, and full/checkpoint-tail projector replay. It does not admit
+generic Construction actions, transform, payment, or material semantics.
+
+### `infra-construction-bakery-reinforcement`
+
+Backend-only INF-1AF proof for one fixed committed project-visible
+`facility_acquired(facility_kind=bakery) -> bakery_reinforced` transition
+inside the existing Construction owner. Eight independent selectors prove the
+one append-derived receipt, source/revision zero-write rejection, owner-fixed
+privacy and redacted outbox, exact/changed idempotency, durable acquisition
+evidence after a repair, full/checkpoint-tail replay, and the terminal
+no-compensation/no-fanout boundary. It does not admit a generic facility
+transform, payment, material, policy registry, or second owner/runtime.
+
+- `.harness/verification/infra-construction-bakery-reinforcement-report.json`
+
+### `infra-branch-work-wage-owner-admission`
+
+Backend-only INF-4T proof for one approved branch-request-to-Economy wage
+vertical. Five independent selectors prove that a creator-debug branch
+candidate is only a request: the existing Production completed-evidence view
+is reread and pinned before the existing Economy owner appends one
+actor-scoped `gameplay.economy.wage_accrued` event. The profile covers branch
+snapshot/base/tail/replay pins, zero-write missing or forged source, worker and
+privacy/revision fences, exact/changed idempotency, the single Economy receipt,
+independent branch and Economy replay, and the no-combined-receipt,
+no-payroll/no-compensation boundary. It does not admit a branch truth owner,
+generic promotion, router, registry, payroll, payment, compensation, or any
+other branch target.
+
+- `.harness/verification/infra-branch-work-wage-owner-admission-report.json`

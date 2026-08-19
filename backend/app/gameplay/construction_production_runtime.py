@@ -18,7 +18,7 @@ from app.gameplay.replay import GameplayProjectionReplay
 from app.gameplay.semantic_effects import EffectApplication, EffectLifecycleEvaluator, ResistanceProfile, StateDefinition
 from app.gameplay.semantic_registry import SemanticRegistry, SemanticRegistryError
 from app.gameplay.settlement_plan import build_atomic_event_batch, build_multi_stream_atomic_event_batch_from_fragments
-from app.gameplay.shared_contracts import GameplayCommandEnvelope, ScheduledObligation
+from app.gameplay.shared_contracts import GameplayCommandEnvelope, ScheduledObligation, SettlementReceipt
 from app.gameplay.settlement_plan import SettlementPlan
 from app.gameplay.organization_government_runtime import WorkerContributionRef
 
@@ -442,6 +442,26 @@ class CanonicalWeatherFrontConstructionMaintenanceFanoutCommand(StrictGameplayMo
     idempotency_key: str = Field(min_length=1)
 
 
+class PackageDeclaredFacilityTransformIntentV1(StrictGameplayModel):
+    """Typed proposal for the single admitted industrial facility transform.
+
+    Authority coordinates and package content are intentionally absent from this
+    caller surface; they are resolved from the active immutable package binding.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    facility_ref: str = Field(min_length=1)
+    acquisition_event_id: str = Field(min_length=1)
+    expected_revision: int = Field(ge=0)
+    expected_facility_revision: int = Field(ge=0)
+    command_id: str = Field(min_length=1)
+    idempotency_key: str = Field(min_length=1)
+    causation_id: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+    submitted_at: str = Field(min_length=1)
+
+
 class FrostFinishSettlementResult(StrictGameplayModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -477,6 +497,9 @@ class ConstructionProductionProjector:
     _MAINTENANCE_STATE_CANCELLED = "gameplay.construction_production.maintenance_state_obligation_cancelled"
     _MAINTENANCE_STATE_EXPIRED = "gameplay.construction_production.maintenance_state_expired"
     _ACQUIRED = "gameplay.construction_production.facility_acquired"
+    _REPAIRED = "gameplay.construction_production.facility_repaired"
+    _REPAIR_COMPENSATED = "gameplay.construction_production.facility_repair_compensated"
+    _TRANSFORMED = "gameplay.construction_production.facility_transformed"
 
     def rebuild(
         self,
@@ -504,6 +527,9 @@ class ConstructionProductionProjector:
                 self._MAINTENANCE_STATE_CANCELLED,
                 self._MAINTENANCE_STATE_EXPIRED,
                 self._ACQUIRED,
+                self._REPAIRED,
+                self._REPAIR_COMPENSATED,
+                self._TRANSFORMED,
             }:
                 continue
             payload = event.payload
@@ -517,6 +543,66 @@ class ConstructionProductionProjector:
                     facility_kind=str(payload["facility_kind"]),
                     condition=float(payload["condition"]),
                     revision=int(payload.get("revision", 0)),
+                )
+                revisions[event.stream_id] = max(revisions.get(event.stream_id, 0), event.stream_revision)
+                continue
+            if event.event_type in {self._REPAIRED, self._REPAIR_COMPENSATED}:
+                facility_ref = str(payload.get("facility_ref", ""))
+                facility = facilities.get(facility_ref)
+                if facility is None:
+                    raise ValueError("facility_repair_target_missing")
+                if event.event_type == self._REPAIRED:
+                    prior = float(payload["prior_condition"])
+                    next_condition = float(payload["next_condition"])
+                else:
+                    prior = float(payload["prior_condition"])
+                    next_condition = float(payload["restored_condition"])
+                if abs(facility.condition - prior) > 1e-9:
+                    raise ValueError("facility_repair_condition_conflict")
+                facilities[facility_ref] = facility.model_copy(
+                    update={
+                        "condition": next_condition,
+                        "revision": int(payload["facility_revision"]),
+                    },
+                    deep=True,
+                )
+                revisions[event.stream_id] = max(revisions.get(event.stream_id, 0), event.stream_revision)
+                continue
+            if event.event_type == self._TRANSFORMED:
+                facility_ref = str(payload.get("facility_ref", ""))
+                facility = facilities.get(facility_ref)
+                if facility is None:
+                    raise ValueError("facility_transform_target_missing")
+                legacy_bakery = (
+                    payload.get("prior_kind") == "bakery"
+                    and payload.get("next_kind") == "bakery_reinforced"
+                )
+                package_oven_kiln = (
+                    payload.get("prior_kind") == "oven"
+                    and payload.get("next_kind") == "kiln"
+                    and payload.get("outcome_family") == "construction_facility_package_declared_transform@1"
+                    and payload.get("capability_ref") == "capability:construction-facility-package-declared-transform@1"
+                    and payload.get("package_revision") == "package:industrial-facilities:v1"
+                    and payload.get("content_digest") == "sha256:41e1b40bcd1fd13e1692f2f51aed7dea6dceee0b1605bf215fe6c673fcd11f88"
+                    and payload.get("declaration_ref") == "declaration:industrial-facilities-oven-to-kiln@1"
+                    and payload.get("declaration_digest") == "sha256:04869873a57a24b834cc123a14440444717bdd482910eb9d8ae1d50cc3bc2ed8"
+                    and payload.get("descriptor_ref") == "descriptor:construction-facility-package-declared-transform@1"
+                    and payload.get("descriptor_revision") == "descriptor:construction-facility-package-declared-transform@1"
+                    and payload.get("policy_revision") == "policy:industrial-facilities:oven-to-kiln@1"
+                    and payload.get("project_ref") == facility.plot_ref
+                )
+                if (
+                    not (legacy_bakery or package_oven_kiln)
+                    or facility.facility_kind != payload["prior_kind"]
+                    or facility.revision != int(payload["prior_facility_revision"])
+                ):
+                    raise ValueError("facility_transform_conflict")
+                facilities[facility_ref] = facility.model_copy(
+                    update={
+                        "facility_kind": str(payload["next_kind"]),
+                        "revision": int(payload["facility_revision"]),
+                    },
+                    deep=True,
                 )
                 revisions[event.stream_id] = max(revisions.get(event.stream_id, 0), event.stream_revision)
                 continue
@@ -618,8 +704,9 @@ class ConstructionProductionAuthority:
     owner = "construction-production"
     _PRINCIPAL = "actor_gameplay.construction_production_domain"
 
-    def __init__(self, *, store: GameplayEventStore) -> None:
+    def __init__(self, *, store: GameplayEventStore, package_registry: object | None = None) -> None:
         self._store = store
+        self._package_registry = package_registry
         self._projector = ConstructionProductionProjector()
 
     def commit_obligation_batch(self, batch: AtomicEventBatch) -> AppendBatchResult:
@@ -645,12 +732,237 @@ class ConstructionProductionAuthority:
                 return self._rejected_append(batch.command_id, str(error))
         return self._store.append_batch(batch)
 
+    @staticmethod
+    def facility_package_transform_receipt_for(
+        *, result: AppendBatchResult | None, scope: str
+    ) -> SettlementReceipt:
+        if scope != "project":
+            raise ValueError("construction_facility_transform_receipt_scope_denied")
+        if result is None:
+            raise ValueError("construction_facility_transform_receipt_missing")
+        return SettlementReceipt.from_append_result(
+            result=result,
+            audit_refs=(f"construction_transaction:{result.transaction_id}",),
+        )
+
     def projector(self, *, checkpoint_at: int | None = None) -> ConstructionProductionProjection:
         events = self._store.read_events()
         if checkpoint_at is None:
             return self._projector.rebuild(events)
         checkpoint = self._projector.rebuild(events[:checkpoint_at])
         return self._projector.rebuild(events[checkpoint_at:], checkpoint=checkpoint)
+
+    def transform_facility_from_package(
+        self, intent: PackageDeclaredFacilityTransformIntentV1
+    ) -> AppendBatchResult:
+        """Commit the frozen industrial ``oven -> kiln`` operation only.
+
+        The package and descriptor are read-only inputs from the active patch
+        set. The caller supplies only a typed facility/evidence reference.
+        """
+        command_id = intent.command_id
+        package_revision = "package:industrial-facilities:v1"
+        capability_ref = "capability:construction-facility-package-declared-transform@1"
+        binding_ref = "binding:industrial-facilities-oven-to-kiln@1"
+        descriptor_ref = "descriptor:construction-facility-package-declared-transform@1"
+        descriptor_revision = descriptor_ref
+        outcome_family = "construction_facility_package_declared_transform@1"
+        outcome_family_ref = "outcome:construction-facility-package-declared-transform@1"
+        event_type = "gameplay.construction_production.facility_transformed"
+        stream_id = f"gameplay:construction_production:{intent.facility_ref}"
+
+        registry = self._package_registry
+        active = getattr(registry, "active_patch_set", None) if registry is not None else None
+        if active is None:
+            return self._rejected_append(command_id, "construction_facility_transform_package_inactive")
+        try:
+            manifests = registry.active_manifests(active.active_patch_set_revision)
+        except Exception:
+            return self._rejected_append(command_id, "construction_facility_transform_package_inactive")
+        package_matches = tuple(
+            manifest
+            for manifest in manifests
+            if manifest.patch_id == "package:industrial-facilities"
+            and manifest.patch_revision_id == package_revision
+        )
+        if not package_matches:
+            return self._rejected_append(command_id, "construction_facility_transform_package_unknown")
+        if len(package_matches) != 1:
+            return self._rejected_append(command_id, "construction_facility_transform_package_ambiguous")
+        manifest = package_matches[0]
+        if manifest.content_digest != "sha256:41e1b40bcd1fd13e1692f2f51aed7dea6dceee0b1605bf215fe6c673fcd11f88":
+            return self._rejected_append(command_id, "construction_facility_transform_digest_mismatch")
+        extension = manifest.platform_extension
+        if extension is None:
+            return self._rejected_append(command_id, "construction_facility_transform_binding_unknown")
+        declarations = tuple(
+            declaration
+            for declaration in extension.outcome_declarations
+            if declaration.declaration_ref == "declaration:industrial-facilities-oven-to-kiln@1"
+        )
+        requests = tuple(
+            request
+            for request in extension.capability_binding_requests
+            if request.binding_ref == binding_ref
+        )
+        bindings = tuple(binding for binding in active.capability_bindings if binding.binding_ref == binding_ref)
+        if len(declarations) != 1 or len(requests) != 1:
+            return self._rejected_append(command_id, "construction_facility_transform_binding_unknown")
+        if len(bindings) != 1:
+            return self._rejected_append(
+                command_id,
+                "construction_facility_transform_binding_ambiguous" if len(bindings) > 1 else "construction_facility_transform_binding_unadmitted",
+            )
+        declaration = declarations[0]
+        request = requests[0]
+        binding = bindings[0]
+        if (
+            declaration.outcome_family_ref != outcome_family_ref
+            or declaration.policy_revision_ref != "policy:industrial-facilities:oven-to-kiln@1"
+            or declaration.eligibility_refs != ("construction:facility-acquired@1",)
+            or request.capability_ref != capability_ref
+            or request.declaration_ref != declaration.declaration_ref
+            or tuple(requirement.predicate_family_ref for requirement in request.typed_read_requirements)
+            != ("predicate:construction-facility-acquired@1",)
+            or request.proposal_effect_types != ("effect:construction-facility-package-declared-transform@1",)
+            or binding.package_revision != package_revision
+            or binding.content_digest != manifest.content_digest
+            or binding.declaration_digest != declaration.declaration_digest
+            or binding.descriptor_ref != descriptor_ref
+            or binding.descriptor_revision != descriptor_revision
+        ):
+            return self._rejected_append(command_id, "construction_facility_transform_binding_conflict")
+
+        canonical_idempotency_key = (
+            f"construction:facility-transform:{package_revision}:{manifest.content_digest}:"
+            f"{intent.facility_ref}:{intent.acquisition_event_id}"
+        )
+        if intent.idempotency_key != canonical_idempotency_key:
+            return self._rejected_append(command_id, "construction_facility_transform_idempotency_key_invalid")
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, intent.idempotency_key)
+        if existing is not None:
+            prior = next(
+                (event for event in self._store.read_events() if event.event_id in set(existing.committed_event_ids)),
+                None,
+            )
+            if prior is not None and prior.event_type == event_type and (
+                prior.payload.get("facility_ref") == intent.facility_ref
+                and prior.payload.get("acquisition_event_id") == intent.acquisition_event_id
+                and prior.payload.get("expected_stream_revision") == intent.expected_revision
+                and prior.payload.get("prior_facility_revision") == intent.expected_facility_revision
+                and prior.causation_id == intent.causation_id
+                and prior.correlation_id == intent.correlation_id
+            ):
+                return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._rejected_append(command_id, "idempotency_key_reused")
+        try:
+            acquisition_event = self._store.get_event(intent.acquisition_event_id)
+        except KeyError:
+            return self._rejected_append(command_id, "construction_facility_transform_source_missing")
+        if (
+            acquisition_event.event_type != "gameplay.construction_production.facility_acquired"
+            or acquisition_event.stream_id != stream_id
+            or acquisition_event.visibility_policy != "project"
+            or acquisition_event.payload.get("facility_ref") != intent.facility_ref
+            or acquisition_event.payload.get("facility_kind") != "oven"
+        ):
+            return self._rejected_append(command_id, "construction_facility_transform_source_invalid")
+        projection = self.projector()
+        facility = projection.facilities.get(intent.facility_ref)
+        if facility is None or facility.facility_kind != "oven":
+            return self._rejected_append(command_id, "construction_facility_transform_target_invalid")
+        if facility.plot_ref != acquisition_event.payload.get("plot_ref"):
+            return self._rejected_append(command_id, "construction_facility_transform_binding_conflict")
+        if facility.revision != intent.expected_facility_revision:
+            return self._rejected_append(command_id, "construction_facility_transform_facility_revision_conflict")
+        if self._store.get_stream_head(stream_id) != intent.expected_revision:
+            return self._rejected_append(command_id, "revision_conflict")
+        if acquisition_event.stream_revision <= 0:
+            return self._rejected_append(command_id, "construction_facility_transform_source_revision_conflict")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:construction-facility-package-declared-transform@1",
+                contract_kind="settlement",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(stream_id,),
+                event_types=(event_type,),
+                projection_scope="project",
+            )
+        except GovernedAuthorityContractError as error:
+            return self._rejected_append(command_id, str(error))
+
+        envelope = GameplayCommandEnvelope(
+            command_id=command_id,
+            command_type="gameplay.construction_production.package_declared_facility_transform",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=intent.facility_ref,
+            project_ref=str(acquisition_event.payload["plot_ref"]),
+            transaction_id=f"transaction:{command_id}",
+            idempotency_key=intent.idempotency_key,
+            expected_revisions={stream_id: intent.expected_revision},
+            causation_id=intent.causation_id,
+            correlation_id=intent.correlation_id,
+            source_ref=intent.acquisition_event_id,
+            submitted_at=intent.submitted_at,
+            pinned_revisions={
+                "acquisition_event": acquisition_event.stream_revision,
+                "facility": intent.expected_facility_revision,
+                "active_patch_set": 1,
+            },
+            payload={
+                "stream_ref": stream_id,
+                "event_type": event_type,
+                "visibility_policy": "project",
+                "owner_principal_ref": self._PRINCIPAL,
+                "facility_ref": intent.facility_ref,
+                "project_ref": acquisition_event.payload["plot_ref"],
+                "acquisition_event_id": intent.acquisition_event_id,
+                "acquisition_event_revision": acquisition_event.stream_revision,
+                "expected_stream_revision": intent.expected_revision,
+                "prior_kind": "oven",
+                "next_kind": "kiln",
+                "prior_facility_revision": intent.expected_facility_revision,
+                "facility_revision": intent.expected_facility_revision + 1,
+                "package_id": manifest.patch_id,
+                "package_revision": package_revision,
+                "content_digest": manifest.content_digest,
+                "declaration_ref": declaration.declaration_ref,
+                "declaration_digest": declaration.declaration_digest,
+                "descriptor_ref": descriptor_ref,
+                "descriptor_revision": descriptor_revision,
+                "active_patch_set_revision": active.active_patch_set_revision,
+                "capability_ref": capability_ref,
+                "outcome_family": outcome_family,
+                "policy_revision": declaration.policy_revision_ref,
+                "eligibility_ref": "construction:facility-acquired@1",
+                "predicate_family_ref": "predicate:construction-facility-acquired@1",
+                "terminal": "v1_terminal_no_compensation",
+            },
+        )
+        batch = SettlementPlan.from_command_envelope(envelope).to_atomic_event_batch()
+        event = batch.events[0]
+        batch = batch.model_copy(
+            update={
+                "outbox_entries": [
+                    GameplayOutboxEntry(
+                        outbox_id=f"outbox:{event.event_id}",
+                        transaction_id=batch.transaction_id,
+                        event_id=event.event_id,
+                        global_sequence=0,
+                        topic="construction_production.scoped_projection",
+                        audience="project",
+                        payload_projection={
+                            "facility_ref": intent.facility_ref,
+                            "project_ref": acquisition_event.payload["plot_ref"],
+                            "next_kind": "kiln",
+                        },
+                    )
+                ]
+            },
+            deep=True,
+        )
+        return self._store.append_batch(batch)
 
     def select_due_run_for_plot(
         self, *, plot_ref: str, due_tick: int, checkpoint_at: int | None = None
@@ -944,6 +1256,352 @@ class ConstructionProductionAuthority:
             return replay.full_replay(events)
         checkpoint = replay.create_checkpoint(events[:checkpoint_at])
         return replay.checkpoint_plus_tail_replay(checkpoint, events[checkpoint_at:])
+
+    def reinforce_bakery_facility(
+        self,
+        *,
+        facility_ref: str,
+        acquisition_event_id: str,
+        expected_revision: int,
+        expected_facility_revision: int,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        submitted_at: str,
+    ) -> AppendBatchResult:
+        """Append the one admitted, terminal ``bakery -> bakery_reinforced`` fact."""
+        command_id = f"construction:bakery-reinforcement:{facility_ref}:{acquisition_event_id}"
+        canonical_idempotency_key = (
+            f"facility-transform:bakery-reinforcement:{facility_ref}:{acquisition_event_id}:v1"
+        )
+        if idempotency_key != canonical_idempotency_key:
+            return self._rejected_append(
+                command_id,
+                "construction_bakery_reinforcement_idempotency_key_invalid",
+            )
+        stream_id = f"gameplay:construction_production:{facility_ref}"
+        try:
+            acquisition_event = self._store.get_event(acquisition_event_id)
+        except KeyError:
+            return self._rejected_append(command_id, "construction_bakery_reinforcement_source_missing")
+        if (
+            acquisition_event.event_type != "gameplay.construction_production.facility_acquired"
+            or acquisition_event.stream_id != stream_id
+            or acquisition_event.visibility_policy != "project"
+            or acquisition_event.payload.get("facility_ref") != facility_ref
+            or acquisition_event.payload.get("facility_kind") != "bakery"
+        ):
+            return self._rejected_append(command_id, "construction_bakery_reinforcement_source_kind_invalid")
+
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            prior = next(
+                (
+                    event
+                    for event in self._store.read_events()
+                    if event.event_id in set(existing.committed_event_ids)
+                ),
+                None,
+            )
+            if prior is not None and prior.event_type == "gameplay.construction_production.facility_transformed" and (
+                prior.payload.get("facility_ref") == facility_ref
+                and prior.payload.get("acquisition_event_id") == acquisition_event_id
+                and prior.payload.get("acquisition_event_revision") == acquisition_event.stream_revision
+                and prior.payload.get("expected_stream_revision") == expected_revision
+                and prior.payload.get("prior_facility_revision") == expected_facility_revision
+                and prior.causation_id == causation_id
+                and prior.correlation_id == correlation_id
+            ):
+                return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._rejected_append(command_id, "idempotency_key_reused")
+
+        projection = self.projector()
+        facility = projection.facilities.get(facility_ref)
+        if facility is None or facility.facility_kind != "bakery":
+            return self._rejected_append(command_id, "construction_bakery_reinforcement_target_invalid")
+        if facility.plot_ref != acquisition_event.payload.get("plot_ref"):
+            return self._rejected_append(command_id, "construction_bakery_reinforcement_source_binding_invalid")
+        if facility.revision != expected_facility_revision:
+            return self._rejected_append(
+                command_id,
+                "construction_bakery_reinforcement_facility_revision_conflict",
+            )
+        if self._store.get_stream_head(stream_id) != expected_revision:
+            return self._rejected_append(command_id, "revision_conflict")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:construction-facility-bakery-reinforcement@1",
+                contract_kind="settlement",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(stream_id,),
+                event_types=("gameplay.construction_production.facility_transformed",),
+                projection_scope="project",
+            )
+        except GovernedAuthorityContractError as error:
+            return self._rejected_append(command_id, str(error))
+
+        envelope = GameplayCommandEnvelope(
+            command_id=command_id,
+            command_type="gameplay.construction_production.reinforce_bakery_facility",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=facility_ref,
+            project_ref=None,
+            transaction_id=f"transaction:{command_id}",
+            idempotency_key=idempotency_key,
+            expected_revisions={stream_id: expected_revision},
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            source_ref=acquisition_event_id,
+            submitted_at=submitted_at,
+            pinned_revisions={
+                "acquisition_event": acquisition_event.stream_revision,
+                "facility": expected_facility_revision,
+                "transform_policy": 1,
+            },
+            payload={
+                "stream_ref": stream_id,
+                "event_type": "gameplay.construction_production.facility_transformed",
+                "visibility_policy": "project",
+                "owner_principal_ref": self._PRINCIPAL,
+                "facility_ref": facility_ref,
+                "acquisition_event_id": acquisition_event_id,
+                "acquisition_event_revision": acquisition_event.stream_revision,
+                "expected_stream_revision": expected_revision,
+                "prior_kind": "bakery",
+                "next_kind": "bakery_reinforced",
+                "prior_facility_revision": expected_facility_revision,
+                "facility_revision": expected_facility_revision + 1,
+                "transform_policy_ref": "policy:construction_bakery_reinforcement",
+                "transform_policy_revision": "1",
+            },
+        )
+        batch = SettlementPlan.from_command_envelope(envelope).to_atomic_event_batch()
+        event = batch.events[0]
+        batch = batch.model_copy(
+            update={
+                "outbox_entries": [
+                    GameplayOutboxEntry(
+                        outbox_id=f"outbox:{event.event_id}",
+                        transaction_id=batch.transaction_id,
+                        event_id=event.event_id,
+                        global_sequence=0,
+                        topic="construction_production.scoped_projection",
+                        audience="project",
+                        payload_projection={
+                            "facility_ref": facility_ref,
+                            "next_kind": "bakery_reinforced",
+                        },
+                    )
+                ],
+            },
+            deep=True,
+        )
+        return self._store.append_batch(batch)
+
+    def settle_facility_repair(
+        self,
+        *,
+        facility_ref: str,
+        repair_ref: str,
+        repair_amount: float,
+        expected_revision: int,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        source_ref: str,
+        submitted_at: str,
+        privacy_scope: str,
+    ) -> AppendBatchResult:
+        """Append one Construction-owned, reversible facility repair."""
+        if privacy_scope != "project":
+            return self._rejected_append(f"construction:repair:{repair_ref}", "construction_repair_privacy_scope_denied")
+        if repair_amount <= 0 or repair_amount > 1:
+            return self._rejected_append(f"construction:repair:{repair_ref}", "construction_repair_amount_invalid")
+        stream_id = f"gameplay:construction_production:{facility_ref}"
+        projection = self.projector()
+        facility = projection.facilities.get(facility_ref)
+        if facility is None:
+            return self._rejected_append(f"construction:repair:{repair_ref}", "construction_repair_target_missing")
+        command_id = f"construction:repair:{repair_ref}"
+        envelope = GameplayCommandEnvelope(
+            command_id=command_id,
+            command_type="gameplay.construction_production.repair_facility",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=facility_ref,
+            project_ref=None,
+            transaction_id=f"transaction:{command_id}",
+            idempotency_key=idempotency_key,
+            expected_revisions={stream_id: expected_revision},
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            source_ref=source_ref,
+            submitted_at=submitted_at,
+            pinned_revisions={"facility": facility.revision},
+            payload={
+                "stream_ref": stream_id,
+                "event_type": "gameplay.construction_production.facility_repaired",
+                "visibility_policy": "project",
+                "owner_principal_ref": self._PRINCIPAL,
+                "facility_ref": facility_ref,
+                "repair_ref": repair_ref,
+                "prior_condition": facility.condition,
+                "next_condition": min(1.0, facility.condition + repair_amount),
+                "repair_amount": repair_amount,
+                "facility_revision": facility.revision + 1,
+            },
+        )
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            prior = next(
+                (event for event in self._store.read_events() if event.event_id in set(existing.committed_event_ids)),
+                None,
+            )
+            if prior is not None and prior.event_type == "gameplay.construction_production.facility_repaired" and (
+                prior.payload.get("facility_ref") == facility_ref
+                and prior.payload.get("repair_ref") == repair_ref
+                and prior.payload.get("repair_amount") == repair_amount
+                and prior.causation_id == causation_id
+                and prior.correlation_id == correlation_id
+            ):
+                return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._rejected_append(command_id, "idempotency_key_reused")
+        if self._store.get_stream_head(stream_id) != expected_revision:
+            return self._rejected_append(command_id, "revision_conflict")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:construction-facility-repair@1",
+                contract_kind="settlement",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(stream_id,),
+                event_types=("gameplay.construction_production.facility_repaired",),
+                projection_scope="project",
+            )
+        except GovernedAuthorityContractError as error:
+            return self._rejected_append(command_id, str(error))
+        batch = SettlementPlan.from_command_envelope(envelope).to_atomic_event_batch()
+        event = batch.events[0]
+        batch = batch.model_copy(
+            update={
+                "outbox_entries": [
+                    GameplayOutboxEntry(
+                        outbox_id=f"outbox:{event.event_id}",
+                        transaction_id=batch.transaction_id,
+                        event_id=event.event_id,
+                        global_sequence=0,
+                        topic="construction_production.scoped_projection",
+                        audience="project",
+                        payload_projection={"facility_ref": facility_ref, "condition": envelope.payload["next_condition"]},
+                    )
+                ],
+            },
+            deep=True,
+        )
+        return self._store.append_batch(batch)
+
+    def compensate_facility_repair(
+        self,
+        *,
+        repair_event_id: str,
+        expected_revision: int,
+        reason_ref: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        source_ref: str,
+        submitted_at: str,
+        privacy_scope: str,
+    ) -> AppendBatchResult:
+        if privacy_scope != "project":
+            return self._rejected_append(f"construction:repair-compensate:{repair_event_id}", "construction_repair_privacy_scope_denied")
+        try:
+            repair_event = self._store.get_event(repair_event_id)
+        except KeyError:
+            return self._rejected_append(f"construction:repair-compensate:{repair_event_id}", "construction_repair_source_missing")
+        if repair_event.event_type != "gameplay.construction_production.facility_repaired" or repair_event.visibility_policy != "project":
+            return self._rejected_append(f"construction:repair-compensate:{repair_event_id}", "construction_repair_source_invalid")
+        facility_ref = str(repair_event.payload.get("facility_ref", ""))
+        stream_id = f"gameplay:construction_production:{facility_ref}"
+        command_id = f"construction:repair-compensate:{repair_event_id}"
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            prior = next(
+                (event for event in self._store.read_events() if event.event_id in set(existing.committed_event_ids)),
+                None,
+            )
+            if prior is not None and prior.event_type == "gameplay.construction_production.facility_repair_compensated" and (
+                prior.payload.get("repair_event_id") == repair_event_id
+                and prior.payload.get("reason_ref") == reason_ref
+                and prior.causation_id == causation_id
+                and prior.correlation_id == correlation_id
+            ):
+                return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._rejected_append(command_id, "idempotency_key_reused")
+        projection = self.projector()
+        facility = projection.facilities.get(facility_ref)
+        if facility is None or facility.condition != float(repair_event.payload.get("next_condition", -1)):
+            return self._rejected_append(f"construction:repair-compensate:{repair_event_id}", "construction_repair_compensation_not_current")
+        envelope = GameplayCommandEnvelope(
+            command_id=command_id,
+            command_type="gameplay.construction_production.compensate_facility_repair",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=facility_ref,
+            project_ref=None,
+            transaction_id=f"transaction:{command_id}",
+            idempotency_key=idempotency_key,
+            expected_revisions={stream_id: expected_revision},
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            source_ref=source_ref,
+            submitted_at=submitted_at,
+            pinned_revisions={"repair_event": repair_event.stream_revision},
+            payload={
+                "stream_ref": stream_id,
+                "event_type": "gameplay.construction_production.facility_repair_compensated",
+                "visibility_policy": "project",
+                "owner_principal_ref": self._PRINCIPAL,
+                "facility_ref": facility_ref,
+                "repair_event_id": repair_event_id,
+                "prior_condition": facility.condition,
+                "restored_condition": float(repair_event.payload["prior_condition"]),
+                "facility_revision": facility.revision + 1,
+                "reason_ref": reason_ref,
+            },
+        )
+        if self._store.get_stream_head(stream_id) != expected_revision:
+            return self._rejected_append(command_id, "revision_conflict")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:construction-facility-repair@1",
+                contract_kind="settlement",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(stream_id,),
+                event_types=("gameplay.construction_production.facility_repair_compensated",),
+                projection_scope="project",
+            )
+        except GovernedAuthorityContractError as error:
+            return self._rejected_append(command_id, str(error))
+        batch = SettlementPlan.from_command_envelope(envelope).to_atomic_event_batch()
+        event = batch.events[0]
+        batch = batch.model_copy(
+            update={
+                "outbox_entries": [
+                    GameplayOutboxEntry(
+                        outbox_id=f"outbox:{event.event_id}",
+                        transaction_id=batch.transaction_id,
+                        event_id=event.event_id,
+                        global_sequence=0,
+                        topic="construction_production.scoped_projection",
+                        audience="project",
+                        payload_projection={"facility_ref": facility_ref, "condition": envelope.payload["restored_condition"]},
+                    )
+                ],
+            },
+            deep=True,
+        )
+        return self._store.append_batch(batch)
 
     def settle_facility_acquisition(
         self,
@@ -2244,4 +2902,4 @@ class ConstructionProductionAuthority:
     def maintenance(run: ProductionRun, *, obligation_ref: str) -> ProductionRun:
         return run.model_copy(update={"maintenance_obligation_ref": obligation_ref}, deep=True)
 
-__all__ = ["Blueprint", "CanonicalFrostProductionFinishCommand", "CanonicalSeasonalConstructionMaintenanceCommand", "CanonicalWeatherFrontConstructionMaintenanceCommand", "CanonicalWeatherFrontConstructionMaintenanceFanoutCommand", "CommittedProductionRecipe", "ConstructionDueCompletionPolicy", "ConstructionFrostFinishCommand", "ConstructionJob", "ConstructionMaintenanceState", "ConstructionMaintenanceStateObligationResult", "ConstructionProductionAuthority", "ConstructionProductionProjection", "ConstructionProductionProjector", "Facility", "FrostFinishSettlementResult", "FrostProductionTarget", "FrostProductionTargetSelection", "Plot", "ProductionCompletedEvidenceView", "ProductionRecipeResult", "ProductionRun", "Recipe"]
+__all__ = ["Blueprint", "CanonicalFrostProductionFinishCommand", "CanonicalSeasonalConstructionMaintenanceCommand", "CanonicalWeatherFrontConstructionMaintenanceCommand", "CanonicalWeatherFrontConstructionMaintenanceFanoutCommand", "CommittedProductionRecipe", "ConstructionDueCompletionPolicy", "ConstructionFrostFinishCommand", "ConstructionJob", "ConstructionMaintenanceState", "ConstructionMaintenanceStateObligationResult", "ConstructionProductionAuthority", "ConstructionProductionProjection", "ConstructionProductionProjector", "Facility", "FrostFinishSettlementResult", "FrostProductionTarget", "FrostProductionTargetSelection", "PackageDeclaredFacilityTransformIntentV1", "Plot", "ProductionCompletedEvidenceView", "ProductionRecipeResult", "ProductionRun", "Recipe"]

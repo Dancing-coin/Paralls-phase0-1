@@ -99,6 +99,13 @@ types remain outside this adapter and fail before any write.
 
 首批目标是支持仓库内部和明确受信任作者安全扩展玩法，而不是提供第三方任意脚本沙箱。任何 patch 都不能直接写 event store、projection、Godot node 或 world truth。
 
+玩法包内容边界和 manifest 适配合同见：
+`2026-08-17-package-content-and-cross-domain-binding-matrix-design.md` 与
+`2026-08-17-package-contract-closure-and-manifest-adapter-design.md`。
+这两份设计把 `PackageDefinition`、`PackageOutcomeDeclaration` 和
+`BindingRequest` 视为 `GameplayPatchManifest` 内的不可变数据段，而不是
+第二个可执行 package model、registry 或 runtime。
+
 ## Scope
 
 本规格覆盖：
@@ -170,6 +177,12 @@ GameplayPatchPackage
   projection_migrations[]
   verification_metadata
 ```
+
+上面的逻辑模型只描述 manifest 的组成，不授权独立的 package install 或
+active-revision 生命周期。可执行安装、启用、停用和 revision pinning 仍由
+`GameplayPatchManifest` / `GameplayPatchRegistry` 既有控制面负责；
+`GameplayPackageManifest` 仍是 reference/legacy 描述，除非另有明确批准的
+只读 adapter，不得并行扩展。
 
 已安装 revision 不可原位覆盖。任何内容 byte 或语义变化都必须产生新的 package version/content digest。
 
