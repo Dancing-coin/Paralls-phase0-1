@@ -174,12 +174,8 @@ def test_settings_read_siming_llm_modes_from_env(monkeypatch) -> None:
     assert reloaded.settings.siming_llm_provider_order == ["deepseek_chat", "openai_responses"]
 
 
-def test_heavenly_mode_defaults_off(monkeypatch) -> None:
-    monkeypatch.delenv("SIMING_HEAVENLY_MODE", raising=False)
-
-    reloaded = importlib.reload(config_module)
-
-    assert reloaded.settings.siming_heavenly_mode == "off"
+def test_heavenly_mode_model_default_is_off() -> None:
+    assert Settings().siming_heavenly_mode == "off"
 
 
 def test_settings_reject_empty_heavenly_graph_path() -> None:
