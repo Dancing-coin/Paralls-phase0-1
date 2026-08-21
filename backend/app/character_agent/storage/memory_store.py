@@ -95,6 +95,16 @@ class CharacterAgentMemoryStore:
             summary = str(payload.get("summary", "") or "")
             source_event_id = str(event.get("event_id", "") or "")
             producer_ts = int(event.get("producer_ts", 0) or 0)
+            source_refs = list(
+                dict.fromkeys(
+                    ref
+                    for ref in [
+                        source_event_id,
+                        *payload.get("source_ref_lineage", []),
+                    ]
+                    if isinstance(ref, str) and ref
+                )
+            )
             self._event.record_event(
                 actor_id=actor_id,
                 source_event_id=source_event_id,
@@ -103,11 +113,12 @@ class CharacterAgentMemoryStore:
                 summary=summary,
                 clarity_score=float(payload.get("clarity_score", 1.0) or 1.0),
                 certainty_score=float(payload.get("certainty_score", 1.0) or 1.0),
-                refs=[source_event_id] if source_event_id else [],
+                refs=source_refs,
                 event_id=source_event_id,
             )
             observed_entity_id = str(
-                payload.get("target_actor_id", "")
+                payload.get("target_object_id", "")
+                or payload.get("target_actor_id", "")
                 or payload.get("source_actor_id", "")
                 or payload.get("source_candidate_event_id", "")
                 or "scene"
@@ -122,7 +133,7 @@ class CharacterAgentMemoryStore:
                 clarity_score=float(payload.get("clarity_score", 1.0) or 1.0),
                 certainty_score=float(payload.get("certainty_score", 1.0) or 1.0),
                 distortion_tags=[],
-                refs=[source_event_id] if source_event_id else [],
+                refs=source_refs,
             )
         elif event_type == "character_agent_settlement_result":
             settlement_summary = (

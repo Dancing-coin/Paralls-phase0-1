@@ -40,11 +40,13 @@ def _write_harness_report(
     *,
     overall_passed: bool,
     run_id: str | None = None,
+    suite_id: str | None = None,
     profile_configs: dict[str, dict[str, object]] | None = None,
 ) -> dict[str, Path]:
     run_id = run_id or datetime.now().strftime("run-%Y%m%d-%H%M%S-%f")
     report = {
         "run_id": run_id,
+        "suite_id": suite_id,
         "overall_harness_passed": overall_passed,
         "profiles": profiles,
     }
@@ -64,7 +66,7 @@ def _write_harness_report(
     json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     archived_json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    lines = ["# Harness Run Report", "", f"- Run ID: `{run_id}`", f"- Overall: `{overall_passed}`", "", "| Profile | Exit Code | Command |", "| --- | --- | --- |"]
+    lines = ["# Harness Run Report", "", f"- Run ID: `{run_id}`", f"- Suite ID: `{suite_id}`", f"- Overall: `{overall_passed}`", "", "| Profile | Exit Code | Command |", "| --- | --- | --- |"]
     for profile in profiles:
         command = " ".join(str(part) for part in profile["command"])
         lines.append(f"| `{profile['profile']}` | `{profile['exit_code']}` | `{command}` |")
@@ -94,6 +96,7 @@ def _write_harness_report(
     harness_change_result = collect_harness_changes(project_root)
     manifest = build_run_manifest(
         run_id=run_id,
+        suite_id=suite_id,
         overall_passed=overall_passed,
         profiles=profiles,
         artifacts={
@@ -108,6 +111,7 @@ def _write_harness_report(
     )
     archived_manifest = build_run_manifest(
         run_id=run_id,
+        suite_id=suite_id,
         overall_passed=overall_passed,
         profiles=profiles,
         artifacts={
@@ -212,6 +216,7 @@ def main() -> int:
                 profile_results,
                 overall_passed=False,
                 run_id=run_id,
+                suite_id=args.profile,
                 profile_configs=registry.profiles,
             )
             print("harness_error=Godot executable not found. Set GODOT_EXE or pass --godot-exe.")
@@ -246,6 +251,7 @@ def main() -> int:
                 profile_results,
                 overall_passed=False,
                 run_id=run_id,
+                suite_id=args.profile,
                 profile_configs=registry.profiles,
             )
             print(f"harness_report_json={report_paths['json']}")
@@ -257,6 +263,7 @@ def main() -> int:
         profile_results,
         overall_passed=True,
         run_id=run_id,
+        suite_id=args.profile,
         profile_configs=registry.profiles,
     )
     print(f"harness_report_json={report_paths['json']}")

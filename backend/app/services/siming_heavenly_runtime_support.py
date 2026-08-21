@@ -15,9 +15,18 @@ from app.models.siming_heavenly_graph import (
     HeavenlyGraphScope,
 )
 from app.models.siming_heavenly_memory import (
+    WorldFactMemoryEntry,
     InterventionOutcomeMemoryEntry,
     SimingCompiledContext,
     SimingContextRequest,
+    StorylineObligationMemoryEntry,
+)
+from app.models.siming_story_graph import (
+    AuthorityStoryOutcome,
+    NarrativeObligation,
+    StoryNodeBlueprint,
+    StoryOutcomeEffect,
+    StoryOutcomePort,
 )
 from app.models.siming_resource_capability import (
     StagingAck,
@@ -25,7 +34,11 @@ from app.models.siming_resource_capability import (
     StagingResult,
 )
 from app.services.siming_actor_memory_gateway import ActorMemoryReadGateway
-from app.services.siming_adaptive_bridge import SimingAdaptiveBridge
+from app.services.authority_event_bus import AuthorityRecoveryLedger
+from app.services.siming_adaptive_bridge import (
+    SimingAdaptiveBridge,
+    canonical_obligation_id,
+)
 from app.services.siming_context_compiler import SimingContextCompiler
 from app.services.siming_heavenly_memory import SimingHeavenlyMemoryService
 from app.services.siming_llm_provider import (
@@ -103,6 +116,7 @@ class SimingHeavenlyRuntimeSupport:
         scope = self._scope_for(event)
         owns_event_family = (
             self.mode == "active" and event_family in self.GRAPH_OWNED_EVENT_FAMILIES
+            and not self._is_authority_destruction(event)
         )
         self._prepared_by_correlation[event.correlation_id] = _PreparedContext(
             scope=scope,
@@ -136,16 +150,17 @@ class SimingHeavenlyRuntimeSupport:
             validation_audit_refs = []
             if proposal_batch is not None:
                 bridge = self._bridges(context)
-                validation_results = [
-                    (
-                        proposal,
-                        bridge.validate_and_commit(
+                validation_results = []
+                for proposal in proposal_batch.proposals:
+                    validation_results.append(
+                        (
                             proposal,
-                            provider_audit=proposal_batch.audit,
-                        ),
+                            bridge.validate_and_commit(
+                                proposal,
+                                provider_audit=proposal_batch.audit,
+                            ),
+                        )
                     )
-                    for proposal in proposal_batch.proposals
-                ]
                 eligible_node_refs = []
                 for proposal, validation in validation_results:
                     if not validation.accepted or validation.runtime_node_ref is None:
@@ -162,7 +177,9 @@ class SimingHeavenlyRuntimeSupport:
                         scope=scope,
                         node_id=validation.runtime_node_ref,
                         correlation_id=event.correlation_id,
-                        obligation_id=proposal.obligation_refs[0],
+                        obligation_id=canonical_obligation_id(
+                            proposal.obligation_refs[0]
+                        ),
                         recorded_at=event.producer_ts,
                         resource_match=resource_match,
                     )
@@ -197,6 +214,7 @@ class SimingHeavenlyRuntimeSupport:
                     recorded_at=event.producer_ts,
                     correlation_id=event.correlation_id,
                     stage="proposal",
+                    entry_value=event.event_id,
                     reason="shadow_advisory" if self.mode == "shadow" else "prepared",
                 )
             )
@@ -251,38 +269,21 @@ class SimingHeavenlyRuntimeSupport:
         context = self._prepared_context(correlation_id)
         if self.mode != "active" or not context.owns_event_family:
             raise ValueError("only active graph-owned decisions may record dispatch")
-        prior_dispatch = self._durable_stage_record(
-            context,
-            correlation_id=correlation_id,
-            stage="dispatch",
-        )
-        if (
-            prior_dispatch is not None
-            and prior_dispatch.authority_result_ref != dispatch_event_id
-        ):
-            raise ValueError(
-                "a heavenly dispatch is already recorded for this correlation"
-            )
-        if prior_dispatch is not None:
-            return self._entry_id("dispatch", correlation_id, dispatch_event_id)
-        record_ref = self._record(
+        return self._record_dispatch_state(
             scope=context.scope,
             recorded_at=context.recorded_at,
             correlation_id=correlation_id,
-            stage="dispatch",
-            authority_result_ref=dispatch_event_id,
+            dispatch_event_id=dispatch_event_id,
+            state="authority_confirmed",
         )
-        return record_ref
 
     def has_dispatch(self, event: AuthorityEvent) -> bool:
-        return (
-            self._dispatch_record_for(
-                scope=self._scope_for(event),
-                correlation_id=event.correlation_id,
-                valid_at=event.producer_ts,
-            )
-            is not None
+        record = self._dispatch_record_for(
+            scope=self._scope_for(event),
+            correlation_id=event.correlation_id,
+            valid_at=event.producer_ts,
         )
+        return record is not None and self._dispatch_state(record) == "authority_confirmed"
 
     def ensure_dispatch_available(self, event: AuthorityEvent) -> bool:
         if not self._is_selected_candidate(event):
@@ -294,32 +295,57 @@ class SimingHeavenlyRuntimeSupport:
         return True
 
     def record_dispatch_for_event(
-        self, event: AuthorityEvent, dispatch_event_id: str
+        self, event: AuthorityEvent, dispatch_event_id: str, *, unconfirmed: bool = False
     ) -> str | None:
         if not self._is_selected_candidate(event):
             return None
-        prior_dispatch = self._dispatch_record_for(
+        return self._record_dispatch_state(
+            scope=self._scope_for(event),
+            recorded_at=event.producer_ts,
+            correlation_id=event.correlation_id,
+            dispatch_event_id=dispatch_event_id,
+            state="sent_unconfirmed" if unconfirmed else "authority_confirmed",
+        )
+
+    def reconcile_dispatch(
+        self,
+        event: AuthorityEvent,
+        *,
+        authority_ledger: AuthorityRecoveryLedger | None,
+    ) -> str:
+        record = self._dispatch_record_for(
             scope=self._scope_for(event),
             correlation_id=event.correlation_id,
             valid_at=event.producer_ts,
         )
-        if prior_dispatch is not None:
-            if prior_dispatch.authority_result_ref != dispatch_event_id:
-                raise SimingDuplicateDispatchError(
-                    "a heavenly dispatch is already recorded for this correlation"
-                )
-            return prior_dispatch.entry_id
-        return self._record(
+        if record is None or self._dispatch_state(record) == "authority_confirmed":
+            return "not_pending"
+        dispatch_event_id = self._dispatch_event_id(record)
+        if authority_ledger is None:
+            dispatch_state = "authority_unknown"
+            recovery_state = "authority_unknown"
+        elif dispatch_event_id in authority_ledger.event_ids:
+            dispatch_state = "authority_confirmed"
+            recovery_state = "authority_confirmed"
+        elif authority_ledger.is_complete_across_restart:
+            dispatch_state = "sent_unconfirmed"
+            recovery_state = "authority_absent"
+        else:
+            dispatch_state = "authority_unknown"
+            recovery_state = "authority_unknown"
+        self._record_dispatch_state(
             scope=self._scope_for(event),
             recorded_at=event.producer_ts,
             correlation_id=event.correlation_id,
-            stage="dispatch",
-            authority_result_ref=dispatch_event_id,
+            dispatch_event_id=dispatch_event_id,
+            state=dispatch_state,
         )
+        return recovery_state
 
     def record_authority_outcome(self, event: AuthorityEvent) -> str | None:
-        if self.mode == "off":
+        if self.mode == "off" or not self._is_authority_destruction(event):
             return None
+        self._seed_demo_graph(event)
         context = self._prepared_by_correlation.get(event.correlation_id)
         scope = context.scope if context is not None else self._scope_for(event)
         return self._record(
@@ -442,12 +468,190 @@ class SimingHeavenlyRuntimeSupport:
     @staticmethod
     def _event_family(event: AuthorityEvent) -> str:
         payload = event.payload
+        target_ref = (
+            payload.get("target_ref")
+            or payload.get("target_object_id")
+            or payload.get("entity_id")
+        )
         if (
-            payload.get("target_ref") == "obj_letter"
+            event.event_type == "visual_fact_event"
+            and target_ref == "obj_letter"
+            and payload.get("relation_type") == "actor_observes_object_removal"
+        ) or (
+            target_ref == "obj_letter"
             and payload.get("current_state") == "removed_from_surface"
         ):
             return "evidence_destruction_consequence"
         return event.event_type
+
+    @staticmethod
+    def _is_authority_destruction(event: AuthorityEvent) -> bool:
+        payload = event.payload
+        target_ref = (
+            payload.get("target_ref")
+            or payload.get("target_object_id")
+            or payload.get("entity_id")
+        )
+        return (
+            event.event_type == "esm_result_event"
+            and event.source.layer == "L1"
+            and event.source.system in {"esm", "world_authority"}
+            and isinstance(payload.get("result_id"), str)
+            and bool(payload.get("result_id"))
+            and payload.get("result_type") == "object_state_result"
+            and target_ref == "obj_letter"
+            and payload.get("current_state") == "removed_from_surface"
+            and payload.get("settlement_status") == "applied"
+        )
+
+    def _seed_demo_graph(self, event: AuthorityEvent) -> None:
+        scope = self._scope_for(event)
+        recorded_at = event.producer_ts
+        result_ref = str(event.payload.get("result_id") or event.event_id)
+        provenance = GraphProvenance(
+            source_kind="authority_event",
+            source_ref=result_ref,
+            causation_id=event.causation_id,
+            correlation_id=event.correlation_id,
+            producer_system="system_l6",
+        )
+        fact = WorldFactMemoryEntry(
+            entry_id="fact:letter:removed",
+            world_anchor_id="obj_letter",
+            state_key="surface_state",
+            state_value="removed_from_surface",
+            authority_result_ref=result_ref,
+            evidence_refs=[result_ref],
+        )
+        if self._memory.get_entry(scope=scope, entry_id=fact.entry_id, valid_at=recorded_at) is None:
+            self._memory.write_entry(
+                scope=scope,
+                entry=fact,
+                validity=GraphValidity(valid_from=recorded_at),
+                recorded_at=recorded_at,
+                revision=1,
+                supersedes_revision=None,
+                provenance=provenance,
+                transaction_id=f"siming_seed:{fact.entry_id}",
+                idempotency_key=f"siming_seed:{fact.entry_id}",
+            )
+
+        blueprints = (
+            StoryNodeBlueprint(
+                blueprint_id="N3",
+                title="Repair record opportunity",
+                outcome_ports=[
+                    StoryOutcomePort(
+                        port_id="player_destroyed_evidence",
+                        required_result_type="object_state_result",
+                        target_ref="obj_letter",
+                        required_state="removed_from_surface",
+                        outcome_semantic="resolved_with_divergence",
+                        effects=[
+                            StoryOutcomeEffect(
+                                target_blueprint_id="N4",
+                                effect="close_permanently",
+                                reason="player destroyed the original evidence",
+                            ),
+                            StoryOutcomeEffect(
+                                target_blueprint_id="N5",
+                                effect="mark_unreachable",
+                                reason="the evidence route is closed by ledger",
+                            ),
+                        ],
+                    )
+                ],
+            ),
+            StoryNodeBlueprint(blueprint_id="N4", title="Original evidence confrontation"),
+            StoryNodeBlueprint(blueprint_id="N5", title="Public time contradiction"),
+        )
+        for blueprint in blueprints:
+            self._story.seed_blueprint(
+                scope=scope,
+                blueprint=blueprint,
+                provenance=provenance,
+                recorded_at=recorded_at,
+            )
+            node_id = f"runtime:{blueprint.blueprint_id}:main"
+            if self._story.read_runtime_node(
+                scope=scope, node_id=node_id, valid_at=recorded_at
+            ) is None:
+                self._story.instantiate(
+                    scope=scope,
+                    blueprint_id=blueprint.blueprint_id,
+                    node_id=node_id,
+                    causal_basis_refs=[],
+                    recorded_at=recorded_at,
+                )
+
+        outcome = AuthorityStoryOutcome(
+            result_type=str(event.payload.get("result_type") or "object_state_result"),
+            target_ref="obj_letter",
+            current_state="removed_from_surface",
+            authority_result_ref=result_ref,
+            correlation_id=event.correlation_id,
+            recorded_at=recorded_at,
+        )
+        self._story.apply_authority_outcome(scope=scope, outcome=outcome)
+
+        o2 = self._obligations.read(scope=scope, obligation_id="O2", valid_at=recorded_at)
+        if o2 is None:
+            self._obligations.seed(
+                scope=scope,
+                obligation=NarrativeObligation(
+                    obligation_id="O2",
+                    description="The time contradiction must have consequences.",
+                    status="open",
+                    pressure=0.8,
+                    source_fact_refs=[fact.entry_id],
+                ),
+                provenance=provenance,
+                recorded_at=recorded_at,
+            )
+        o6 = self._obligations.read(scope=scope, obligation_id="O6", valid_at=recorded_at)
+        if o6 is None:
+            self._obligations.transform(
+                scope=scope,
+                source_obligation_id="O2",
+                replacement=NarrativeObligation(
+                    obligation_id="O6",
+                    description="The player cover-up must have consequences.",
+                    status="open",
+                    pressure=0.7,
+                    source_fact_refs=[fact.entry_id],
+                ),
+                authority_result_ref=result_ref,
+                correlation_id=event.correlation_id,
+                recorded_at=recorded_at,
+            )
+
+        for obligation_id in ("O2", "O6"):
+            memory_id = f"obligation:{obligation_id}"
+            if self._memory.get_entry(
+                scope=scope, entry_id=memory_id, valid_at=recorded_at
+            ) is not None:
+                continue
+            obligation = self._obligations.read(
+                scope=scope, obligation_id=obligation_id, valid_at=recorded_at
+            )
+            if obligation is None:
+                continue
+            self._memory.write_entry(
+                scope=scope,
+                entry=StorylineObligationMemoryEntry(
+                    entry_id=memory_id,
+                    record_type="obligation",
+                    lifecycle=obligation.status,
+                    supporting_fact_refs=[fact.entry_id],
+                ),
+                validity=GraphValidity(valid_from=recorded_at),
+                recorded_at=recorded_at,
+                revision=1,
+                supersedes_revision=None,
+                provenance=provenance,
+                transaction_id=f"siming_seed:{memory_id}",
+                idempotency_key=f"siming_seed:{memory_id}",
+            )
 
     @staticmethod
     def _scope_for(event: AuthorityEvent) -> HeavenlyGraphScope:
@@ -462,11 +666,32 @@ class SimingHeavenlyRuntimeSupport:
     @staticmethod
     def _seed_node_ids(event: AuthorityEvent) -> list[str]:
         raw_seed_ids = event.payload.get("graph_seed_node_ids", [])
-        if not isinstance(raw_seed_ids, list) or not all(
-            isinstance(node_id, str) and node_id for node_id in raw_seed_ids
+        seed_ids = (
+            set(raw_seed_ids)
+            if isinstance(raw_seed_ids, list)
+            and all(isinstance(node_id, str) and node_id for node_id in raw_seed_ids)
+            else set()
+        )
+        target_ref = (
+            event.payload.get("target_ref")
+            or event.payload.get("target_object_id")
+            or event.payload.get("entity_id")
+        )
+        if target_ref == "obj_letter" and (
+            event.payload.get("current_state") == "removed_from_surface"
+            or event.payload.get("relation_type") == "actor_observes_object_removal"
         ):
-            return []
-        return sorted(set(raw_seed_ids))
+            seed_ids.update(
+                {
+                    "fact:letter:removed",
+                    "obligation:O2",
+                    "obligation:O6",
+                    "runtime:N3:main",
+                    "runtime:N4:main",
+                    "runtime:N5:main",
+                }
+            )
+        return sorted(seed_ids)
 
     def _prepared_context(self, correlation_id: str) -> _PreparedContext:
         try:
@@ -519,6 +744,77 @@ class SimingHeavenlyRuntimeSupport:
                 "multiple durable heavenly dispatches exist for one correlation"
             )
         return records[0] if records else None
+
+    def _record_dispatch_state(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        recorded_at: int,
+        correlation_id: str,
+        dispatch_event_id: str,
+        state: str,
+    ) -> str:
+        if not dispatch_event_id:
+            raise ValueError("dispatch event identity is required")
+        prior = self._dispatch_record_for(
+            scope=scope,
+            correlation_id=correlation_id,
+            valid_at=recorded_at,
+        )
+        if prior is not None:
+            if self._dispatch_event_id(prior) != dispatch_event_id:
+                raise SimingDuplicateDispatchError(
+                    "a heavenly dispatch is already recorded for this correlation"
+                )
+            if self._dispatch_state(prior) == "authority_confirmed":
+                return prior.entry_id
+            if self._dispatch_state(prior) == state:
+                return prior.entry_id
+        entry_id = self._entry_id("dispatch", correlation_id, dispatch_event_id)
+        revision = self._memory.entry_revision(
+            scope=scope, entry_id=entry_id, valid_at=recorded_at
+        )
+        next_revision = (revision or 0) + 1
+        self._memory.write_entry(
+            scope=scope,
+            entry=InterventionOutcomeMemoryEntry(
+                entry_id=entry_id,
+                stage="dispatch",
+                correlation_id=correlation_id,
+                authority_result_ref=dispatch_event_id,
+                dispatch_event_id=dispatch_event_id,
+                dispatch_state=state,  # type: ignore[arg-type]
+                reason=state,
+            ),
+            validity=GraphValidity(valid_from=recorded_at),
+            recorded_at=recorded_at,
+            revision=next_revision,
+            supersedes_revision=revision,
+            provenance=GraphProvenance(
+                source_kind="siming_projection",
+                source_ref=entry_id,
+                causation_id=correlation_id,
+                correlation_id=correlation_id,
+                producer_system="siming_heavenly_runtime_support",
+            ),
+            transaction_id=f"{entry_id}:{next_revision}:{state}",
+            idempotency_key=f"{entry_id}:{next_revision}:{state}",
+        )
+        return entry_id
+
+    @staticmethod
+    def _dispatch_event_id(record: InterventionOutcomeMemoryEntry) -> str:
+        return record.dispatch_event_id or record.authority_result_ref or ""
+
+    @staticmethod
+    def _dispatch_state(record: InterventionOutcomeMemoryEntry) -> str | None:
+        if record.dispatch_state is not None:
+            return record.dispatch_state
+        if record.authority_result_ref:
+            # Dispatch records written before the explicit state field existed
+            # were persisted only after publisher success.
+            return "authority_confirmed"
+        return None
 
     def _is_selected_candidate(self, event: AuthorityEvent) -> bool:
         candidate = self.find_candidate(event)

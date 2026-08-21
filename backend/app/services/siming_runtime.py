@@ -7,6 +7,7 @@ from app.models.siming_event import (
     SimingOutput,
     SimingTickResult,
 )
+from app.services.authority_event_bus import AuthorityRecoveryLedger
 from app.models.siming_narrative import NarrativeCoreResult
 from app.models.siming_runtime_state import (
     ProjectionRunSnapshot,
@@ -574,6 +575,18 @@ class SimingRuntime:
         if self._heavenly_support is not None:
             self._heavenly_support.record_authority_outcome(event)
 
+    def reconcile_pending_dispatch(
+        self,
+        event: AuthorityEvent,
+        *,
+        authority_ledger: AuthorityRecoveryLedger | None,
+    ) -> str:
+        if self._heavenly_support is None:
+            return "not_pending"
+        return self._heavenly_support.reconcile_dispatch(
+            event, authority_ledger=authority_ledger
+        )
+
     def ensure_dispatches_unpublished(
         self, event: AuthorityEvent, outputs: list[SimingOutput]
     ) -> None:
@@ -585,6 +598,16 @@ class SimingRuntime:
                 and output.payload.get("siming_graph_owned") is True
             ):
                 self._heavenly_support.ensure_dispatch_available(event)
+
+    def record_dispatches_unconfirmed(
+        self, event: AuthorityEvent, dispatch_events: list[AuthorityEvent]
+    ) -> None:
+        if self._heavenly_support is None:
+            return
+        for dispatch_event in dispatch_events:
+            self._heavenly_support.record_dispatch_for_event(
+                event, dispatch_event.event_id, unconfirmed=True
+            )
 
     def record_published_dispatches(
         self, event: AuthorityEvent, dispatch_events: list[AuthorityEvent]
@@ -1007,6 +1030,7 @@ class SimingRuntime:
             payload={
                 "decision_id": f"decision_{candidate.candidate_id}",
                 "candidate_id": candidate.candidate_id,
+                "target_actor_id": candidate.target_actor_id,
                 "accepted": True,
                 "policy_reasons": list(policy_reasons),
                 "feasibility_reasons": list(feasibility_reasons),

@@ -204,7 +204,18 @@ def _read_graph_payload(path: Path) -> dict[str, object]:
         return payload
     try:
         with sqlite3.connect(str(path)) as connection:
-            rows = connection.execute("SELECT node_id, payload_json FROM graph_nodes").fetchall()
+            rows = connection.execute(
+                """
+                SELECT current.node_id, current.payload_json
+                FROM graph_nodes AS current
+                WHERE current.revision = (
+                    SELECT MAX(candidate.revision)
+                    FROM graph_nodes AS candidate
+                    WHERE candidate.scope_json = current.scope_json
+                      AND candidate.node_id = current.node_id
+                )
+                """
+            ).fetchall()
     except sqlite3.Error:
         return payload
     node_ids: set[str] = set()
@@ -230,21 +241,264 @@ def _read_graph_payload(path: Path) -> dict[str, object]:
     return payload
 
 
-def _collect_result_ids(log: str, graph_payload: dict[str, object]) -> set[str]:
-    found = {result_id for result_id in RESULT_IDS if result_id in log}
+def _restart_boundary_ready(graph_payload: dict[str, object]) -> bool:
+    """Require the durable pre-restart chain before stopping the first backend."""
+    artifacts = [
+        artifact
+        for artifact in graph_payload.get("artifacts", [])
+        if isinstance(artifact, dict)
+    ]
 
-    def walk(value: object) -> None:
-        if isinstance(value, str):
-            found.update(result_id for result_id in RESULT_IDS if result_id == value or result_id in value)
-        elif isinstance(value, dict):
-            for key, child in value.items():
-                walk(key)
-                walk(child)
-        elif isinstance(value, list):
-            for child in value:
-                walk(child)
+    def attributes(artifact: dict[str, object]) -> dict[str, object]:
+        value = artifact.get("attributes")
+        return value if isinstance(value, dict) else {}
 
-    walk(graph_payload)
+    def provenance(artifact: dict[str, object]) -> dict[str, object]:
+        value = artifact.get("provenance")
+        return value if isinstance(value, dict) else {}
+
+    removal = next(
+        (
+            artifact
+            for artifact in artifacts
+            if attributes(artifact).get("world_anchor_id") == "obj_letter"
+            and attributes(artifact).get("state_value") == "removed_from_surface"
+            and str(attributes(artifact).get("authority_result_ref", ""))
+        ),
+        None,
+    )
+    if removal is None:
+        return False
+    authority_result_ref = str(attributes(removal)["authority_result_ref"])
+    correlation_id = str(provenance(removal).get("correlation_id", ""))
+    if not correlation_id:
+        return False
+    related = [
+        artifact
+        for artifact in artifacts
+        if str(provenance(artifact).get("correlation_id", "")) == correlation_id
+    ]
+
+    # Character memory is private and keeps its own event correlation. Link it
+    # to the world fact through the durable authority result reference instead
+    # of assuming it shares the Siming correlation ID.
+    actor_memory = [
+        artifact
+        for artifact in artifacts
+        if str(artifact.get("node_type", "")).startswith("actor_memory:")
+    ]
+    has_event = any(
+        str(artifact.get("node_type", "")) == "actor_memory:event"
+        and isinstance(attributes(artifact).get("record"), dict)
+        and attributes(artifact)["record"].get("actor_id") == "char_b"
+        and authority_result_ref in attributes(artifact)["record"].get("refs", [])
+        for artifact in actor_memory
+    )
+    has_observation = any(
+        str(artifact.get("node_type", "")) == "actor_memory:observation"
+        and isinstance(attributes(artifact).get("record"), dict)
+        and attributes(artifact)["record"].get("actor_id") == "char_b"
+        and attributes(artifact)["record"].get("observed_entity_id") == "obj_letter"
+        and authority_result_ref in attributes(artifact)["record"].get("refs", [])
+        for artifact in actor_memory
+    )
+    bridge_accepted = any(
+        str(artifact.get("node_type", "")) == "adaptive_bridge_audit"
+        and isinstance(attributes(artifact).get("proposal"), dict)
+        and attributes(artifact)["proposal"].get("pattern") == "private_confrontation"
+        and isinstance(attributes(artifact).get("validation"), dict)
+        and attributes(artifact)["validation"].get("accepted") is True
+        for artifact in related
+    )
+    has_staging_request = any(
+        str(artifact.get("node_type", "")) == "memory:intervention_outcome"
+        and attributes(artifact).get("stage") == "proposal"
+        and str(attributes(artifact).get("selected_node_ref", ""))
+        and isinstance(attributes(artifact).get("staging_request"), dict)
+        and str(attributes(artifact)["staging_request"].get("node_id", ""))
+        for artifact in related
+    )
+    has_selection = any(
+        str(artifact.get("node_type", "")) == "memory:intervention_outcome"
+        and attributes(artifact).get("stage") == "selection"
+        and str(attributes(artifact).get("selected_node_ref", ""))
+        for artifact in related
+    )
+    staging_ack_sources = {
+        str(attributes(artifact)["staging_ack"].get("source", ""))
+        for artifact in related
+        if str(artifact.get("node_type", "")) == "memory:intervention_outcome"
+        and attributes(artifact).get("stage") == "staging_ack"
+        and isinstance(attributes(artifact).get("staging_ack"), dict)
+        and attributes(artifact)["staging_ack"].get("accepted") is True
+    }
+    return (
+        has_event
+        and has_observation
+        and bridge_accepted
+        and has_staging_request
+        and has_selection
+        and {"character", "esm"}.issubset(staging_ack_sources)
+    )
+
+
+def _wait_for_restart_boundary(path: Path, timeout: float = 15.0) -> bool:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _restart_boundary_ready(_read_graph_payload(path)):
+            return True
+        time.sleep(0.1)
+    return _restart_boundary_ready(_read_graph_payload(path))
+
+
+def _collect_result_ids(
+    log: str,
+    graph_payload: dict[str, object],
+    *,
+    preflight_ready: bool = False,
+) -> set[str]:
+    found = {"preflight_live_ready"} if preflight_ready else set()
+    artifacts = [
+        artifact
+        for artifact in graph_payload.get("artifacts", [])
+        if isinstance(artifact, dict)
+    ]
+
+    def attributes(artifact: dict[str, object]) -> dict[str, object]:
+        value = artifact.get("attributes")
+        return value if isinstance(value, dict) else {}
+
+    def provenance(artifact: dict[str, object]) -> dict[str, object]:
+        value = artifact.get("provenance")
+        return value if isinstance(value, dict) else {}
+
+    removal = next(
+        (
+            artifact
+            for artifact in artifacts
+            if attributes(artifact).get("world_anchor_id") == "obj_letter"
+            and attributes(artifact).get("state_value") == "removed_from_surface"
+            and str(attributes(artifact).get("authority_result_ref", ""))
+        ),
+        None,
+    )
+    if removal is None:
+        return found
+
+    authority_result_ref = str(attributes(removal)["authority_result_ref"])
+    correlation_id = str(provenance(removal).get("correlation_id", ""))
+    if not correlation_id:
+        return found
+    related = [
+        artifact
+        for artifact in artifacts
+        if str(provenance(artifact).get("correlation_id", "")) == correlation_id
+    ]
+    found.add("authority_removed_from_surface")
+
+    restart_complete = (
+        "siming_heavenly_restart_ready" in log
+        and "siming_heavenly_godot_complete" in log
+    )
+    if restart_complete:
+        found.add("godot_object_disappeared")
+
+    actor_memory = [
+        artifact
+        for artifact in artifacts
+        if str(artifact.get("node_type", "")).startswith("actor_memory:")
+    ]
+    observation = next(
+        (
+            artifact
+            for artifact in actor_memory
+            if str(artifact.get("node_type", "")) == "actor_memory:observation"
+            and isinstance(attributes(artifact).get("record"), dict)
+            and attributes(artifact)["record"].get("actor_id") == "char_b"
+            and attributes(artifact)["record"].get("observed_entity_id") == "obj_letter"
+            and authority_result_ref in attributes(artifact)["record"].get("refs", [])
+        ),
+        None,
+    )
+    char_b_event = any(
+        str(artifact.get("node_type", "")) == "actor_memory:event"
+        and isinstance(attributes(artifact).get("record"), dict)
+        and attributes(artifact)["record"].get("actor_id") == "char_b"
+        and authority_result_ref in attributes(artifact)["record"].get("refs", [])
+        for artifact in actor_memory
+    )
+    if observation is not None and char_b_event:
+        found.add("char_b_observed")
+        owner_ids = {
+            str(scope.get("owner_actor_id", ""))
+            for artifact in actor_memory
+            if isinstance((scope := artifact.get("scope")), dict)
+        }
+        if owner_ids == {"char_b"}:
+            found.add("cross_actor_isolated")
+        if restart_complete:
+            found.add("char_b_restart_recalled")
+
+    story_nodes = {
+        str(attributes(artifact).get("blueprint_id", "")): attributes(artifact)
+        for artifact in related
+        if str(artifact.get("node_type", "")) == "runtime_story_node"
+    }
+    n3, n4, n5 = (story_nodes.get(node_id, {}) for node_id in ("N3", "N4", "N5"))
+    if n3.get("lifecycle") == "resolved" and n3.get("outcome_semantic") == "resolved_with_divergence":
+        found.add("n3_divergence")
+    if n4.get("lifecycle") == "aborted" and n4.get("closure_reason") == "closed_by_player_choice" and n4.get("terminal") is True:
+        found.add("n4_terminal")
+    if n5.get("reachability") == "unreachable_by_ledger":
+        found.add("n5_unreachable")
+
+    obligations = {
+        str(attributes(artifact).get("entry_id", "")): attributes(artifact)
+        for artifact in related
+        if str(artifact.get("node_type", "")) == "memory:storyline_obligation"
+    }
+    if obligations.get("obligation:O2", {}).get("lifecycle") == "transformed" and obligations.get("obligation:O6", {}).get("lifecycle") == "open":
+        found.add("o2_to_o6")
+
+    bridge_audit = next(
+        (
+            attributes(artifact)
+            for artifact in related
+            if str(artifact.get("node_type", "")) == "adaptive_bridge_audit"
+            and isinstance(attributes(artifact).get("proposal"), dict)
+            and attributes(artifact)["proposal"].get("pattern") == "private_confrontation"
+        ),
+        {},
+    )
+    if bridge_audit:
+        found.update({"online_private_confrontation", "summary_free_context_rebuilt"})
+        if isinstance(bridge_audit.get("validation"), dict) and bridge_audit["validation"].get("accepted") is True:
+            found.add("validator_accepted")
+
+    staged = [
+        attributes(artifact)
+        for artifact in related
+        if attributes(artifact).get("stage") == "staging"
+        and attributes(artifact).get("staging_status") == "staged"
+        and str(attributes(artifact).get("realization_signature", ""))
+    ]
+    if staged:
+        found.add("resource_signature_recorded")
+    dispatches = [
+        artifact for artifact in related if attributes(artifact).get("stage") == "dispatch"
+    ]
+    if len(dispatches) == 1:
+        found.add("single_dispatch")
+        if restart_complete:
+            found.add("char_b_visible_reaction")
+
+    if any(
+        str(artifact.get("node_id", "")).startswith("story_outcome:")
+        and attributes(artifact).get("record_type") == "outcome_port"
+        and authority_result_ref in attributes(artifact).get("supporting_fact_refs", [])
+        for artifact in related
+    ):
+        found.add("outcome_written_back")
     return found
 
 
@@ -337,20 +591,29 @@ def main() -> int:
         godot_exe = resolve_godot_exe(args.godot_exe)
         runtime_env = {"SIMING_HEAVENLY_MODE": "active", "SIMING_LLM_MODE": "http", "PARALLS_HEAVENLY_GRAPH_PATH": str(db_path), "SIMING_HEAVENLY_AUTOTEST": "1", "SIMING_HEAVENLY_AUTOTEST_DIR": str(db_path.parent)}
         _, backend_process = ensure_backend(root, python_exe, prefer_fresh_backend=True, env=runtime_env)
-        godot_process, lines = _start_logged_process([str(godot_exe), "--headless", "--path", str(root), "--scene", "res://scenes/phase0/MainDemo.tscn", "--render-thread", "safe"], root, verification_dir(root) / "siming-heavenly-runtime-godot.log", runtime_env)
-        if not _wait_marker(godot_process, lines, "siming_heavenly_restart_ready", 90):
+        godot_process, lines = _start_logged_process([str(godot_exe), "--path", str(root), "--scene", "res://scenes/phase0/MainDemo.tscn", "--render-thread", "safe"], root, verification_dir(root) / "siming-heavenly-runtime-godot.log", runtime_env)
+        if not _wait_marker(godot_process, lines, "siming_heavenly_restart_ready", 180):
             return _write_report(root, None, preflight, "godot_restart_marker_missing")
+        if not _wait_for_restart_boundary(db_path):
+            return _write_report(root, None, preflight, "restart_boundary_graph_incomplete")
         stop_backend(backend_process)
         backend_process = None
         wait_for_backend_release()
         _, backend_process = ensure_backend(root, python_exe, prefer_fresh_backend=True, env=runtime_env)
-        if not _wait_marker(godot_process, lines, "siming_heavenly_godot_complete", 90):
+        if not _wait_marker(godot_process, lines, "siming_heavenly_godot_complete", 180):
             return _write_report(root, None, preflight, "godot_complete_marker_missing")
         graph_payload = _read_graph_payload(db_path)
         log = read_text(verification_dir(root) / "siming-heavenly-runtime-godot.log")
         captures = tuple(db_path.parent / name for name in CAPTURE_NAMES)
         audit = _provider_audit_from_graph(graph_payload)
-        evidence = LiveEvidence(_collect_result_ids(log, graph_payload), captures[0], captures[1], captures[2], audit, graph_payload)
+        evidence = LiveEvidence(
+            _collect_result_ids(log, graph_payload, preflight_ready=preflight.ok),
+            captures[0],
+            captures[1],
+            captures[2],
+            audit,
+            graph_payload,
+        )
         return _write_report(root, evidence, preflight)
     finally:
         if godot_process is not None:

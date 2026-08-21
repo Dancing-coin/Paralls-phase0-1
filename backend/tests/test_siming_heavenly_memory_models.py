@@ -72,6 +72,14 @@ def test_context_request_rejects_actor_private_scope() -> None:
             entry_id="outcome:dispatch",
             stage="dispatch",
             correlation_id="corr:letter",
+            authority_result_ref="siming:dispatch:letter:1",
+        ),
+        InterventionOutcomeMemoryEntry(
+            entry_id="outcome:dispatch:pending",
+            stage="dispatch",
+            correlation_id="corr:letter:pending",
+            dispatch_event_id="siming:dispatch:letter:pending",
+            dispatch_state="sent_unconfirmed",
         ),
         ConvergenceStrategyMemoryEntry(entry_id="strategy:letter"),
     ],
@@ -173,3 +181,13 @@ def test_ownerless_heavenly_scope_and_compiled_context_are_typed() -> None:
 
     assert request.scope.graph_namespace == "siming_heavenly"
     assert context.world_facts[0].entry_id == "fact:letter:removed"
+
+
+def test_dispatch_rejects_partially_specified_durable_state() -> None:
+    with pytest.raises(ValidationError, match="identity and state"):
+        InterventionOutcomeMemoryEntry(
+            entry_id="outcome:dispatch:partial",
+            stage="dispatch",
+            correlation_id="corr:letter:partial",
+            dispatch_event_id="siming:dispatch:letter:partial",
+        )

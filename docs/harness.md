@@ -1549,6 +1549,9 @@ When a profile fails, the runner writes a deterministic failure digest such as `
 - Backend-only live Siming model-provider architecture claims require explicit `siming-backend-chain`.
 - Godot claims require scene execution or Godot MCP/editor inspection.
 - Generated evidence should stay under `.harness/verification/`.
+- Each Harness report and run manifest records both `run_id` and `suite_id`. For durable
+  evidence, match an archived report and manifest on both identifiers; the mutable latest
+  files are insufficient when concurrent runs can overwrite them.
 - Profile and rule manifests stay under `.harness/profiles/` and `.harness/rules/`.
 - CI/release gate metadata stays under `.harness/ci/`.
 - Baseline/diff artifacts are evidence helpers, not source-of-truth design docs.

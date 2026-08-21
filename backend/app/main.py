@@ -2,6 +2,7 @@ import asyncio
 from dataclasses import dataclass
 from queue import Empty, Queue
 from pathlib import Path
+from threading import RLock
 from time import time
 from uuid import uuid4
 
@@ -143,6 +144,7 @@ BACKEND_BUILD = "paralls-phase0-backend-worktree-2026-06-02"
 WORKTREE_ROOT = str(Path(__file__).resolve().parents[2])
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 _pending_siming_character_dispatch_messages: dict[str, list[dict[str, object]]] = {}
+_raw_fact_followup_lock = RLock()
 _PLAYER_SHELL_ACTOR_IDS = {"char_c"}
 _SPEECH_REQUEST_TYPES = {"speak_public", "speak_private", "share_info", "withhold"}
 
@@ -195,10 +197,14 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
         actor_id = proposal.target_actor_id
         if not character_agent_runtime.supports_actor(actor_id):
             return False
-        return (
-            character_agent_runtime.get_supervision_state_record(
-                actor_id
-            ).active_constraints.allow_proactive_initiation
+        supervision = character_agent_runtime.get_supervision_state_record(actor_id)
+        if (
+            supervision.current_level in {"medium", "strong"}
+            and not supervision.active_constraints.allow_proactive_initiation
+        ):
+            return False
+        return character_agent_runtime.is_command_allowed_for_mode(
+            character_agent_runtime.get_control_mode(actor_id), "speak"
         )
 
     support = None
@@ -480,13 +486,20 @@ def _ack_siming_staging_request(event: AuthorityEvent) -> None:
     character_accepted = character_agent_runtime.supports_actor(target_actor_id)
     character_reason = "" if character_accepted else "unsupported_actor"
     if character_accepted:
+        supervision = character_agent_runtime.get_supervision_state_record(
+            target_actor_id
+        )
         character_accepted = (
-            character_agent_runtime.get_supervision_state_record(
-                target_actor_id
-            ).active_constraints.allow_proactive_initiation
+            (
+                supervision.current_level == "weak"
+                or supervision.active_constraints.allow_proactive_initiation
+            )
+            and character_agent_runtime.is_command_allowed_for_mode(
+                character_agent_runtime.get_control_mode(target_actor_id), "speak"
+            )
         )
         if not character_accepted:
-            character_reason = "proactive_initiation_disallowed"
+            character_reason = "actor_control_mode_disallows_staging"
     _publish_runtime_staging_ack(
         event,
         source="character",
@@ -644,6 +657,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 event_trace.record(response.output_type)
                 await send(_as_envelope("dialogue_response", response.model_dump()))
                 await send(_dialogue_stream_end(request_id, "completed", len(response.content), fallback_used))
+                await send_batch(_observatory_messages_from_outbound([]))
                 return
 
             stream = character_service.stream_dialogue(event, cancelled=cancelled.is_set)
@@ -685,6 +699,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 event_trace.record(response.output_type)
                 await send(_as_envelope("dialogue_response", response.model_dump()))
                 await send(_dialogue_stream_end(request_id, "completed", partial_chars, fallback_used))
+                await send_batch(_observatory_messages_from_outbound([]))
                 return
         except Exception as exc:
             if cancelled.is_set():
@@ -697,7 +712,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
     async def send_raw_fact_followups(envelope: Envelope, authority_ack: dict[str, object]) -> None:
         try:
-            outbound = await asyncio.to_thread(_handle_envelope, envelope, connection_context=connection_context)
+            outbound = await asyncio.to_thread(
+                _handle_raw_fact_followup,
+                envelope,
+                connection_context=connection_context,
+            )
             await send_batch(_drop_matching_authority_ack(outbound, authority_ack))
         except (ValidationError, ValueError, TypeError) as exc:
             await send(_as_error_ack(source_type=envelope.message_type, route="raw_fact_followup_failed", error=exc))
@@ -832,6 +851,15 @@ async def debug_websocket_endpoint(websocket: WebSocket) -> None:
         return
     finally:
         debug_stream.unsubscribe(queue)
+
+
+def _handle_raw_fact_followup(
+    envelope: Envelope,
+    *,
+    connection_context: WebSocketConnectionContext,
+) -> list[dict[str, object]]:
+    with _raw_fact_followup_lock:
+        return _handle_envelope(envelope, connection_context=connection_context)
 
 
 def _handle_websocket_envelope(

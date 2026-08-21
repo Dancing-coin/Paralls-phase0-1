@@ -332,7 +332,7 @@ func get_embodied_anchor_position() -> Vector3:
 	return global_position
 
 func get_embodied_forward_vector() -> Vector3:
-	return global_basis.z.normalized()
+	return -global_basis.z.normalized()
 
 func apply_dialogue(payload: Dictionary) -> void:
 	var voice := get_node_or_null("SpatialVoiceController")

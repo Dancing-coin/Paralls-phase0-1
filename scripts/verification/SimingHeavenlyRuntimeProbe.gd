@@ -2,6 +2,7 @@ extends Node
 
 const PERCEPTION_SAMPLER := preload("res://scripts/character/ActorPerceptionSampler.gd")
 const CAPTURE_CHECK := preload("res://scripts/verification/VLAReplayCoverageCaptureProbe.gd")
+const RUNTIME_EVENT_TIMEOUT_MS := 60000
 
 var _destroyed := false
 var _staging_request: Dictionary = {}
@@ -12,6 +13,8 @@ var _destruction_result_ref := ""
 var _destruction_correlation_id := ""
 var _backend_connection_count := 0
 var _backend_connection_target := 0
+var _move_request_id := ""
+var _acknowledged_request_ids: Dictionary = {}
 
 @onready var _controller: Node = get_parent()
 @onready var _letter: Node3D = _controller.get_node("InteractiveObject") as Node3D
@@ -39,32 +42,46 @@ func _run() -> void:
 	if not _char_b_had_line_of_sight:
 		_finish("siming_heavenly_char_b_visibility_failed")
 		return
+	_controller.suspend_near_object_visual_fact = true
+	_controller.suspend_spatial_access_fact = true
+	_controller._set_autotest_actor_local_perception_enabled(false)
+	_controller._move_player_to_interact_position()
+	var move_request: Dictionary = _controller._emit_move_intent_request(
+		_controller.autotest_interact_position,
+		"locomotion"
+	)
+	_move_request_id = str(move_request.get("request_id", ""))
+	if _move_request_id.is_empty() or not await _wait_until(Callable(self, "_move_request_acknowledged"), _controller.autotest_request_timeout_ms):
+		_finish("siming_heavenly_interact_position_sync_failed")
+		return
 	if not await _capture("siming-heavenly-before-destruction.png"):
 		_finish("siming_heavenly_meaningful_before_capture_failed")
 		return
 	_controller._emit_interaction_request("obj_letter", "inspect")
 	await get_tree().create_timer(0.2).timeout
 	_controller._emit_interaction_request("obj_letter", "destroy")
-	if not (await _wait_until(Callable(self, "_destruction_applied"))):
+	if not (await _wait_until(Callable(self, "_destruction_applied"), RUNTIME_EVENT_TIMEOUT_MS)):
 		_finish("siming_heavenly_destruction_timeout")
 		return
-	if not (await _wait_until(Callable(self, "_char_b_observation_persisted"))):
+	if not (await _wait_until(Callable(self, "_char_b_observation_persisted"), RUNTIME_EVENT_TIMEOUT_MS)):
 		_finish("siming_heavenly_char_b_observation_timeout")
+		return
+	# The raw-fact authority ACK is intentionally fast; wait for the graph-owned
+	# staging request before allowing the verifier to restart the backend.
+	if not (await _wait_until(Callable(self, "_has_staging_request"), RUNTIME_EVENT_TIMEOUT_MS)):
+		_finish("siming_heavenly_staging_request_timeout")
 		return
 	if not await _capture("siming-heavenly-after-destruction.png"):
 		_finish("siming_heavenly_meaningful_after_capture_failed")
 		return
 	print("siming_heavenly_restart_ready")
 	_backend_connection_target = _backend_connection_count + 1
-	if not (await _wait_until(Callable(self, "_backend_reconnected"))):
+	if not (await _wait_until(Callable(self, "_backend_reconnected"), RUNTIME_EVENT_TIMEOUT_MS)):
 		_finish("siming_heavenly_backend_reconnect_timeout")
 		return
 	_controller._emit_dialogue_request("char_b", "The letter is gone.")
-	if not (await _wait_until(Callable(self, "_has_staging_request"))):
-		_finish("siming_heavenly_staging_request_timeout")
-		return
 	_send_staging_ack()
-	if not (await _wait_until(Callable(self, "_char_b_reacted"))):
+	if not (await _wait_until(Callable(self, "_char_b_reacted"), RUNTIME_EVENT_TIMEOUT_MS)):
 		_finish("siming_heavenly_char_b_reaction_timeout")
 		return
 	await get_tree().create_timer(0.5).timeout
@@ -123,11 +140,15 @@ func _on_dialogue_received(payload: Dictionary) -> void:
 	_char_b_reaction_count += 1
 
 func _on_backend_ack_received(payload: Dictionary) -> void:
-	_char_b_observation_acknowledged = (
+	var request_id := str(payload.get("request_id", ""))
+	if not request_id.is_empty() and bool(payload.get("accepted", false)):
+		_acknowledged_request_ids[request_id] = true
+	if (
 		bool(payload.get("accepted", false))
 		and str(payload.get("route", "")) == "authority_visual_fact"
 		and str(payload.get("relation_type", "")) == "actor_observes_object_removal"
-	)
+	):
+		_char_b_observation_acknowledged = true
 
 func _on_backend_connected(_payload: String) -> void:
 	_backend_connection_count += 1
@@ -143,6 +164,9 @@ func _has_staging_request() -> bool:
 func _backend_reconnected() -> bool:
 	return _backend_connection_count >= _backend_connection_target
 
+func _move_request_acknowledged() -> bool:
+	return bool(_acknowledged_request_ids.get(_move_request_id, false))
+
 func _char_b_observation_persisted() -> bool:
 	return _char_b_observation_acknowledged and not _destruction_result_ref.is_empty()
 
@@ -155,7 +179,8 @@ func _emit_char_b_observation() -> void:
 	var emitter := _character_b.get_node("VisualFactEmitter")
 	if emitter == null or not emitter.has_method("emit_visual_fact"):
 		return
-	var source_ref_lineage := [_destruction_result_ref]
+	emitter.set("actor_id", "char_b")
+	var source_ref_lineage: Array[String] = [_destruction_result_ref]
 	emitter.call(
 		"emit_visual_fact",
 		"object_state_change",

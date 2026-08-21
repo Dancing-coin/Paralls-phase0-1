@@ -1,6 +1,9 @@
+import pytest
+
 from app import main
 from app.models.authority_event import AuthorityEvent, AuthorityEventRouting, AuthorityEventSource
 from app.models.character_agent_runtime import CharacterGoalCommand
+from app.services.siming_character_dispatch_adapter import SimingCharacterDispatchResult
 from app.ws_protocol import Envelope
 
 
@@ -146,3 +149,58 @@ def test_staging_request_collects_character_and_esm_acks_before_godot() -> None:
     acks = main.authority_event_bus.list_events(event_type="siming_staging_ack")
     assert [ack.payload["source"] for ack in acks] == ["character", "esm"]
     assert {ack.correlation_id for ack in acks} == {"corr:destroy:1"}
+    assert acks[0].payload["accepted"] is True
+
+
+@pytest.mark.parametrize("event_type", ["siming.opportunity", "siming.impulse"])
+def test_character_dispatch_reaches_godot_character_execution(event_type: str) -> None:
+    main.reset_runtime_state()
+    event = AuthorityEvent(
+        event_id="siming:dispatch_intent:503:staging_ack:godot",
+        event_type=event_type,
+        producer_ts=503,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source=AuthorityEventSource(layer="L2", system="siming.dispatcher"),
+        routing=AuthorityEventRouting(
+            audience_mode="targeted",
+            routing_mode="event_type",
+            target_ids=["char_b", "frontend_projector"],
+        ),
+        priority="p2",
+        ttl=5000,
+        durability="replayable",
+        causation_id="siming_staging_ack:503:godot:corr:destroy:1",
+        correlation_id="corr:destroy:1",
+        payload={
+            "target_actor_id": "char_b",
+            "presentation_hint": "The original evidence is gone.",
+        },
+    )
+    command = CharacterGoalCommand(
+        actor_id="char_b",
+        command_type="observe",
+        ttl_ms=1000,
+        causation_id=event.causation_id,
+        correlation_id=event.correlation_id,
+        execution_payload={"actor_id": "char_b", "action_request_bundle": {"requested_actions": []}},
+    )
+
+    main._queue_siming_character_dispatch_messages(
+        event.event_id,
+        SimingCharacterDispatchResult(commands_by_actor={"char_b": [command]}),
+    )
+    main.authority_event_bus.publish(event)
+    messages = main._finalize_outbound_messages(
+        [{"message_type": "ack", "payload": {"accepted": True}}]
+    )
+
+    assert [message["message_type"] for message in messages] == [
+        "ack",
+        "siming_output",
+        "character_agent_execution",
+        "authority_event",
+    ]
+    assert messages[1]["payload"]["authority_event_id"] == event.event_id
+    assert messages[2]["payload"]["correlation_id"] == "corr:destroy:1"

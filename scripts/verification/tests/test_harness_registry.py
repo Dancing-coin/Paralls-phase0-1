@@ -179,3 +179,37 @@ def test_write_harness_report_creates_run_id_archive(tmp_path: Path) -> None:
     assert latest_payload["run_id"] == "run_test"
     assert archived_payload["run_id"] == "run_test"
     assert report_paths["run_dir"] == tmp_path / ".harness" / "verification" / "runs" / "run_test"
+
+
+def test_write_harness_report_archives_matching_suite_identity(tmp_path: Path) -> None:
+    report_paths = _write_harness_report(
+        tmp_path,
+        [
+            {
+                "profile": "siming-heavenly-runtime",
+                "command": ["python", "scripts/verification/verify_siming_heavenly_runtime.py"],
+                "exit_code": 0,
+            }
+        ],
+        overall_passed=True,
+        run_id="run_suite_identity",
+        suite_id="siming-heavenly-runtime",
+    )
+
+    latest_report = json.loads(report_paths["json"].read_text(encoding="utf-8"))
+    archived_report = json.loads(
+        (report_paths["run_dir"] / "harness-run-report.json").read_text(encoding="utf-8")
+    )
+    latest_manifest = json.loads(report_paths["manifest"].read_text(encoding="utf-8"))
+    archived_manifest = json.loads(
+        (report_paths["run_dir"] / "run-manifest.json").read_text(encoding="utf-8")
+    )
+
+    assert latest_report["suite_id"] == "siming-heavenly-runtime"
+    assert archived_report["suite_id"] == "siming-heavenly-runtime"
+    assert latest_manifest["suite_id"] == "siming-heavenly-runtime"
+    assert archived_manifest["suite_id"] == "siming-heavenly-runtime"
+    assert "- Suite ID: `siming-heavenly-runtime`" in report_paths["markdown"].read_text(encoding="utf-8")
+    assert "- Suite ID: `siming-heavenly-runtime`" in (
+        report_paths["run_dir"] / "harness-run-report.md"
+    ).read_text(encoding="utf-8")

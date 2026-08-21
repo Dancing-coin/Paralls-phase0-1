@@ -271,6 +271,8 @@ func _connect_backend() -> void:
 	_bus_log("phase0_backend_connect_err:%s" % err)
 
 func _resolve_backend_url() -> String:
+	if OS.get_environment("PHASE0_OBSERVATORY_STREAM") == "1":
+		return backend_url
 	if not autotest_enabled or focus_autotest_enabled:
 		return backend_url
 	var separator: String = "&" if backend_url.contains("?") else "?"
@@ -922,7 +924,7 @@ func _capture_autotest_screenshot(screenshot_path: String = "") -> void:
 		_bus_log("phase0_screenshot_skipped")
 		return
 
-	await RenderingServer.frame_post_draw
+	await get_tree().process_frame
 	var image := get_viewport().get_texture().get_image()
 	var err := image.save_png(screenshot_path)
 	_bus_log("phase0_screenshot_saved:%s:%s" % [screenshot_path, err])

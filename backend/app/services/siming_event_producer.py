@@ -20,10 +20,19 @@ class SimingEventProducer:
             raise ValueError("SimingEventProducer requires an authority event bus")
 
     def publish_outputs(self, outputs: list[SimingOutput]) -> list[AuthorityEvent]:
-        published_events: list[AuthorityEvent] = []
+        return self.publish_events(self.materialize_outputs(outputs))
+
+    def materialize_outputs(self, outputs: list[SimingOutput]) -> list[AuthorityEvent]:
+        events: list[AuthorityEvent] = []
         for output in outputs:
             event = self._to_authority_event(output)
             validate_siming_authority_event(event)
+            events.append(event)
+        return events
+
+    def publish_events(self, events: list[AuthorityEvent]) -> list[AuthorityEvent]:
+        published_events: list[AuthorityEvent] = []
+        for event in events:
             self._bus.publish(event)
             published_events.append(event)
         return published_events

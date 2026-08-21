@@ -1,9 +1,14 @@
 from app.models.authority_event import AuthorityEvent
+import pytest
+
 from app.models.siming_event import InterventionCandidate, SimingOutput, SimingTickResult
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from app.character_agent.planning.l3_planner import CharacterAgentL3Service
 from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
-from app.services.authority_event_bus import InMemoryAuthorityEventBus
+from app.services.authority_event_bus import (
+    AuthorityRecoveryLedger,
+    InMemoryAuthorityEventBus,
+)
 from app.services.character_agent_runtime import CharacterAgentRuntime
 from app.services.siming_audit_writer import SimingAuditWriter
 from app.services.siming_character_dispatch_adapter import SimingCharacterDispatchAdapter
@@ -324,6 +329,178 @@ def test_pipeline_records_authority_before_tick_and_actual_dispatch_after_publis
         "preflight:visual_fact:300",
         "dispatch:siming:dispatch_intent:304:visual_fact:300:char_c:light_level_drop",
     ]
+
+
+class _CrashOnceAfterPublishProducer(SimingEventProducer):
+    def __init__(self, bus: InMemoryAuthorityEventBus) -> None:
+        super().__init__(bus)
+        self._crash_once = True
+
+    def publish_outputs(self, outputs: list[SimingOutput]) -> list[AuthorityEvent]:
+        published = super().publish_outputs(outputs)
+        self._raise_after_first_publish()
+        return published
+
+    def publish_events(self, events: list[AuthorityEvent]) -> list[AuthorityEvent]:
+        published = super().publish_events(events)
+        self._raise_after_first_publish()
+        return published
+
+    def _raise_after_first_publish(self) -> None:
+        if self._crash_once:
+            self._crash_once = False
+            raise RuntimeError("simulated crash after broker publication")
+
+
+class _PrepublicationLedgerRuntime:
+    def __init__(self) -> None:
+        self.sent_dispatch_ids: dict[str, str] = {}
+
+    def tick(self, inputs: list[object]) -> SimingTickResult:
+        event = inputs[0].source_event
+        if event.correlation_id in self.sent_dispatch_ids:
+            return SimingTickResult()
+        return SimingTickResult(
+            outputs=[
+                SimingOutput(
+                    output_type="dispatch_intent",
+                    room_id=event.room_id,
+                    scene_id=event.scene_id,
+                    zone_id=event.zone_id,
+                    causation_id=event.causation_id,
+                    correlation_id=event.correlation_id,
+                    producer_ts=event.producer_ts + 1,
+                    selected_path="character_input_path",
+                    intervention_band="fact_reveal",
+                    payload={
+                        "target_actor_id": "char_b",
+                        "siming_graph_owned": True,
+                    },
+                )
+            ]
+        )
+
+    def record_dispatches_unconfirmed(
+        self, event: AuthorityEvent, dispatch_events: list[AuthorityEvent]
+    ) -> None:
+        assert len(dispatch_events) == 1
+        dispatch_event = dispatch_events[0]
+        assert dispatch_event.correlation_id == event.correlation_id
+        self.sent_dispatch_ids.setdefault(event.correlation_id, dispatch_event.event_id)
+
+
+class _AuthorityUnknownDispatchRuntime:
+    def __init__(self) -> None:
+        self.tick_calls = 0
+
+    def reconcile_pending_dispatch(
+        self,
+        event: AuthorityEvent,
+        *,
+        authority_ledger: AuthorityRecoveryLedger | None,
+    ) -> str:
+        assert event.correlation_id == "visual_fact:300"
+        assert authority_ledger is None
+        return "authority_unknown"
+
+    def tick(self, inputs: list[object]) -> SimingTickResult:
+        self.tick_calls += 1
+        return SimingTickResult()
+
+
+class _UnavailableAuthorityLedgerBus(InMemoryAuthorityEventBus):
+    def authority_recovery_ledger(self) -> AuthorityRecoveryLedger:
+        raise RuntimeError("authority ledger unavailable")
+
+
+class _LedgerArgumentsRuntime:
+    def __init__(self) -> None:
+        self.authority_ledger: AuthorityRecoveryLedger | None = None
+
+    def reconcile_pending_dispatch(
+        self,
+        event: AuthorityEvent,
+        *,
+        authority_ledger: AuthorityRecoveryLedger | None,
+    ) -> str:
+        del event
+        self.authority_ledger = authority_ledger
+        return "not_pending"
+
+    def tick(self, inputs: list[object]) -> SimingTickResult:
+        del inputs
+        return SimingTickResult()
+
+
+def test_pipeline_persists_graph_dispatch_before_publish_crash_and_replay() -> None:
+    bus = InMemoryAuthorityEventBus()
+    runtime = _PrepublicationLedgerRuntime()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=runtime,  # type: ignore[arg-type]
+        producer=_CrashOnceAfterPublishProducer(bus),
+        audit_writer=SimingAuditWriter(),
+    )
+    event = make_visual_fact_event()
+
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        pipeline.handle_event(event)
+
+    pipeline.handle_event(event)
+
+    dispatches = bus.list_events(event_type="siming.fact_reveal")
+    assert len(dispatches) == 1
+    assert runtime.sent_dispatch_ids == {event.correlation_id: dispatches[0].event_id}
+
+
+def test_pipeline_audits_and_does_not_retry_when_authority_ledger_is_unavailable() -> None:
+    bus = _UnavailableAuthorityLedgerBus()
+    audit_writer = SimingAuditWriter()
+    runtime = _AuthorityUnknownDispatchRuntime()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=runtime,  # type: ignore[arg-type]
+        producer=SimingEventProducer(bus),
+        audit_writer=audit_writer,
+    )
+
+    pipeline.handle_event(make_visual_fact_event())
+
+    assert runtime.tick_calls == 0
+    records = audit_writer.find_by_correlation(
+        room_id="room_demo", correlation_id="visual_fact:300"
+    )
+    assert [(record.status, record.reason) for record in records] == [
+        ("no_action", "dispatch_recovery_authority_unknown")
+    ]
+
+
+def test_pipeline_reconciles_against_expired_authority_ledger_events() -> None:
+    bus = InMemoryAuthorityEventBus(now_ts_provider=lambda: 10_000)
+    expired = make_visual_fact_event(
+        event_id="siming:dispatch_intent:304:expired",
+        event_type="siming.fact_reveal",
+        producer_ts=1,
+        ttl=1,
+    )
+    bus.publish(expired)
+    runtime = _LedgerArgumentsRuntime()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=runtime,  # type: ignore[arg-type]
+        producer=SimingEventProducer(bus),
+        audit_writer=SimingAuditWriter(),
+    )
+
+    pipeline.handle_event(make_visual_fact_event())
+
+    assert runtime.authority_ledger == AuthorityRecoveryLedger(
+        event_ids=frozenset({expired.event_id}),
+        is_complete_across_restart=False,
+    )
 
 
 def test_pipeline_does_not_dispatch_visual_observability_outputs_through_adapter() -> None:

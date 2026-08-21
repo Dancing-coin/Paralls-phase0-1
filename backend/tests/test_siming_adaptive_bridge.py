@@ -117,7 +117,12 @@ class _IncompleteGateway:
         )
 
 
-def _actor_gateway(graph: InMemoryHeavenlyGraphAdapter, *, observed: bool) -> ActorMemoryReadGateway:
+def _actor_gateway(
+    graph: InMemoryHeavenlyGraphAdapter,
+    *,
+    observed: bool,
+    lineage_only: bool = False,
+) -> ActorMemoryReadGateway:
     store = CharacterGraphMemoryStore(graph, scope_resolver=_actor_scope)
     router = CharacterMemoryStoreRouter(
         light_store=CharacterAgentMemoryStore(),
@@ -125,9 +130,14 @@ def _actor_gateway(graph: InMemoryHeavenlyGraphAdapter, *, observed: bool) -> Ac
         heavy_actor_ids=frozenset({"char_b"}),
     )
     if observed:
+        source_event_id = (
+            "char_b:perceived:letter-removal"
+            if lineage_only
+            else "authority:letter:destroyed"
+        )
         router.write_event(
             {
-                "event_id": "authority:letter:destroyed",
+                "event_id": source_event_id,
                 "event_index": 100,
                 "actor_id": "char_b",
                 "event_type": "character_perceived_event",
@@ -136,6 +146,9 @@ def _actor_gateway(graph: InMemoryHeavenlyGraphAdapter, *, observed: bool) -> Ac
                     "summary": "the letter was destroyed",
                     "target_actor_id": "obj_letter",
                     "percept_channel": "visual",
+                    "source_ref_lineage": (
+                        ["authority:letter:destroyed"] if lineage_only else []
+                    ),
                 },
             }
         )
@@ -157,6 +170,7 @@ def _bridge_setup(
     resource_available: bool = True,
     actor_autonomy: bool = True,
     recorded_at: int = 100,
+    lineage_only: bool = False,
 ) -> _BridgeSetup:
     graph = InMemoryHeavenlyGraphAdapter()
     scope = _scope()
@@ -204,7 +218,11 @@ def _bridge_setup(
     resources = ResourceCapabilityRegistry()
     if not resource_available:
         resources.set_cooldown("main_demo_throne_room", until=101)
-    gateway = _IncompleteGateway() if incomplete_memory else _actor_gateway(graph, observed=observed)
+    gateway = (
+        _IncompleteGateway()
+        if incomplete_memory
+        else _actor_gateway(graph, observed=observed, lineage_only=lineage_only)
+    )
     return _BridgeSetup(
         bridge=SimingAdaptiveBridge(
             graph=graph,
@@ -266,6 +284,23 @@ def test_private_confrontation_commits_new_node_when_all_gates_pass() -> None:
         node_id=result.runtime_node_ref,
         valid_at=100,
     ).lifecycle == "latent"
+
+
+def test_private_confrontation_accepts_graph_obligation_reference() -> None:
+    setup = _bridge_setup()
+    proposal = _proposal().model_copy(update={"obligation_refs": ["obligation:O6"]})
+
+    result = setup.bridge.validate_and_commit(proposal, provider_audit=_audit())
+
+    assert result.accepted is True
+
+
+def test_private_confrontation_accepts_actor_observation_authority_lineage() -> None:
+    setup = _bridge_setup(lineage_only=True)
+
+    result = setup.bridge.validate_and_commit(_proposal(), provider_audit=_audit())
+
+    assert result.accepted is True
 
 
 @pytest.mark.parametrize(
@@ -347,6 +382,7 @@ def test_bridge_records_safe_provider_and_validation_audit() -> None:
         valid_at=100,
     )
     assert audit.attributes["provider_audit"]["response_artifact_hash"] == "a" * 64
+    assert audit.attributes["proposal"]["target_actor_id"] == "char_b"
     assert audit.attributes["validation"]["accepted"] is True
     assert "compiled_context" not in audit.attributes
 

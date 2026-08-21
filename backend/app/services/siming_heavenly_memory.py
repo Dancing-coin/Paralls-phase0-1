@@ -70,6 +70,21 @@ class SimingHeavenlyMemoryService:
             return None
         return self._entry_adapter.validate_python(node.attributes)
 
+    def entry_revision(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        entry_id: str,
+        valid_at: int,
+    ) -> int | None:
+        self._require_heavenly_scope(scope)
+        node = self._graph.get_node(
+            node_id=entry_id,
+            scope=scope,
+            valid_at=valid_at,
+        )
+        return None if node is None else node.revision
+
     def list_domain(
         self,
         scope: HeavenlyGraphScope,

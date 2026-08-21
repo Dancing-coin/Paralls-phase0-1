@@ -957,6 +957,8 @@ class CharacterAgentRuntime:
             snapshot,
             interpretation,
             decision,
+            causation_id=str(normalized_payload.get("causation_id", "") or ""),
+            correlation_id=str(normalized_payload.get("correlation_id", "") or ""),
         )
         return self.filter_commands_for_actor(
             actor_id,
@@ -2503,12 +2505,24 @@ class CharacterAgentRuntime:
         snapshot: CharacterPrivateWorldSnapshot,
         interpretation: CharacterInterpretation,
         decision: CharacterIntentDecision,
+        *,
+        causation_id: str = "",
+        correlation_id: str = "",
     ) -> dict[str, object]:
         plan = self._l4_executor.build_execution_plan(
             snapshot=snapshot,
             interpretation=interpretation,
             decision=decision,
         )
+        frames = plan.get("actor_control_frames", [])
+        if isinstance(frames, list):
+            for frame in frames:
+                if not isinstance(frame, dict):
+                    continue
+                if causation_id:
+                    frame["causation_id"] = causation_id
+                if correlation_id:
+                    frame["correlation_id"] = correlation_id
         self._attach_skill_shadow_fields(actor_id=actor_id, plan=plan)
         self._attach_skill_behavior_guardrail(actor_id=actor_id, plan=plan)
         self._set_observatory_context(actor_id, "execution_summary", str(plan.get("social_spatial_channel", {}).get("spacing_behavior", "") if isinstance(plan.get("social_spatial_channel"), dict) else ""))

@@ -164,3 +164,13 @@ def test_expired_ttl_event_is_excluded_from_current_replay() -> None:
             current_only=False,
         )
     ] == ["evt:expired"]
+
+
+def test_in_memory_bus_recovery_ledger_is_explicitly_not_restart_complete() -> None:
+    bus = InMemoryAuthorityEventBus()
+    bus.publish(make_authority_event(event_id="evt:recovery"))
+
+    ledger = bus.authority_recovery_ledger()
+
+    assert ledger.event_ids == frozenset({"evt:recovery"})
+    assert ledger.is_complete_across_restart is False

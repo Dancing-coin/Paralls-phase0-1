@@ -28,6 +28,10 @@ class SimingAdaptiveBridgeError(RuntimeError):
     pass
 
 
+def canonical_obligation_id(reference: str) -> str:
+    return reference.removeprefix("obligation:")
+
+
 class SimingAdaptiveBridge:
     _AUDIT_NODE_TYPE = "adaptive_bridge_audit"
     _PATTERN_TITLES = {
@@ -175,9 +179,17 @@ class SimingAdaptiveBridge:
             for entry in self._context.world_facts
             if entry.entry_id in proposal.supporting_fact_refs
         }
-        event_refs = {record.source_event_id for record in memory.bundle.event_memories}
+        event_refs = {
+            ref
+            for record in memory.bundle.event_memories
+            for ref in (record.source_event_id, *record.refs)
+            if ref
+        }
         observation_refs = {
-            record.source_event_id for record in memory.bundle.observation_memories
+            ref
+            for record in memory.bundle.observation_memories
+            for ref in (record.source_event_id, *record.refs)
+            if ref
         }
         if not destruction_refs.intersection(event_refs).intersection(observation_refs):
             return ["actor_did_not_observe"]
@@ -192,7 +204,7 @@ class SimingAdaptiveBridge:
         for obligation_id in proposal.obligation_refs:
             obligation = self._obligations.read(
                 scope=self._scope,
-                obligation_id=obligation_id,
+                obligation_id=canonical_obligation_id(obligation_id),
                 valid_at=self._valid_at,
             )
             if obligation is None or obligation.status != "open":
@@ -303,6 +315,7 @@ class SimingAdaptiveBridge:
                         provenance=self._provenance(proposal),
                         attributes={
                             "proposal_id": proposal.proposal_id,
+                            "proposal": proposal.model_dump(mode="json"),
                             "proposal_fingerprint": self._proposal_fingerprint(proposal),
                             "provider_audit": provider_audit.model_dump(mode="json"),
                             "validation": result.model_dump(mode="json"),

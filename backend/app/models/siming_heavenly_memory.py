@@ -100,6 +100,12 @@ class InterventionOutcomeMemoryEntry(StrictMemoryModel):
     selected_node_ref: str | None = None
     realization_signature: str | None = None
     authority_result_ref: str | None = None
+    dispatch_event_id: str | None = None
+    dispatch_state: Literal[
+        "sent_unconfirmed",
+        "authority_confirmed",
+        "authority_unknown",
+    ] | None = None
     obligation_id: str | None = None
     staging_status: (
         Literal["staged", "aborted_before_activation", "cancelled"] | None
@@ -126,6 +132,10 @@ class InterventionOutcomeMemoryEntry(StrictMemoryModel):
             raise ValueError(
                 "staging intervention outcome requires its complete result"
             )
+        if self.stage == "dispatch" and (
+            (self.dispatch_event_id is None) != (self.dispatch_state is None)
+        ):
+            raise ValueError("dispatch intervention outcome requires identity and state")
         return self
 
 

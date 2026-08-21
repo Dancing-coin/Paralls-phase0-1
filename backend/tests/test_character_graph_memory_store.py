@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import pytest
 
 from app.character_agent.storage.graph_memory_store import CharacterGraphMemoryStore
@@ -70,6 +72,32 @@ def test_percept_deposits_event_and_observation_in_actor_private_graph() -> None
         )
     } == {"actor_memory:event", "actor_memory:observation"}
     assert store.retrieval_record_bundle("char_a").event_memories == []
+
+
+def test_percept_keeps_authority_lineage_and_observed_object_in_private_memory() -> None:
+    graph = InMemoryHeavenlyGraphAdapter()
+    store = CharacterGraphMemoryStore(graph, scope_resolver=_scope)
+
+    store.write_event(
+        _event(
+            "character_perceived_event",
+            "char_b:perceived:letter-removal",
+            100,
+            {
+                "summary": "the letter was removed",
+                "target_actor_id": "char_b",
+                "target_object_id": "obj_letter",
+                "percept_channel": "visual",
+                "source_ref_lineage": ["object_result:obj_letter:100"],
+            },
+        )
+    )
+
+    bundle = store.retrieval_record_bundle("char_b")
+
+    assert bundle.observation_memories[0].observed_entity_id == "obj_letter"
+    assert "object_result:obj_letter:100" in bundle.event_memories[0].refs
+    assert "object_result:obj_letter:100" in bundle.observation_memories[0].refs
 
 
 def test_deposits_all_five_pools_and_replays_source_event_without_duplicates() -> None:
@@ -268,6 +296,90 @@ def test_rejects_scope_owner_mismatch() -> None:
                 {"summary": "blocked"},
             )
         )
+
+
+def test_concurrent_actor_memory_writes_keep_graph_batches_consistent(tmp_path: Path) -> None:
+    graph = SQLiteHeavenlyGraphAdapter(tmp_path / "concurrent-character-memory.sqlite3")
+    store = CharacterGraphMemoryStore(graph, scope_resolver=_scope)
+
+    def event(index: int) -> dict[str, object]:
+        event_type = index % 3
+        if event_type == 0:
+            payload = {
+                "summary": f"char_c observed signal {index}",
+                "target_actor_id": "char_b",
+                "target_object_id": "obj_letter",
+                "percept_channel": "visual",
+            }
+            kind = "character_perceived_event"
+        elif event_type == 1:
+            payload = {
+                "entity_id": "char_c",
+                "belief_type": "trust_level",
+                "value": "noticed",
+            }
+            kind = "relational_belief_event"
+        else:
+            payload = {"entity_id": "char_c", "trust_baseline": 0.5}
+            kind = "social_cognition_event"
+        return _event(kind, f"evt:concurrent:{index}", 100 + index, payload)
+
+    errors: list[BaseException] = []
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [executor.submit(store.write_event, event(index)) for index in range(1, 31)]
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except BaseException as exc:  # pragma: no cover - asserted below
+                errors.append(exc)
+
+    assert errors == []
+    bundle = store.retrieval_record_bundle("char_b")
+    assert bundle.social_memories
+    assert bundle.knowledge_memories
+    graph.close()
+
+
+def test_cross_runtime_lower_timestamp_social_memory_write_keeps_relation_endpoints(tmp_path: Path) -> None:
+    graph = SQLiteHeavenlyGraphAdapter(tmp_path / "cross-runtime-character-memory.sqlite3")
+    first = CharacterGraphMemoryStore(graph, scope_resolver=_scope)
+    second = CharacterGraphMemoryStore(graph, scope_resolver=_scope)
+
+    first.write_event(
+        _event(
+            "character_perceived_event",
+            "evt:first-percept",
+            1200,
+            {"summary": "char c seen", "target_actor_id": "char_b"},
+        )
+    )
+    first.write_event(
+        _event(
+            "relational_belief_event",
+            "evt:first-runtime",
+            1200,
+            {"entity_id": "char_c", "belief_type": "trust_level", "value": "noticed"},
+        )
+    )
+    second.write_event(
+        _event(
+            "character_perceived_event",
+            "evt:second-percept",
+            100,
+            {"summary": "char c seen", "target_actor_id": "char_b"},
+        )
+    )
+    second.write_event(
+        _event(
+            "relational_belief_event",
+            "evt:second-runtime",
+            100,
+            {"entity_id": "char_c", "belief_type": "trust_level", "value": "noticed"},
+        )
+    )
+
+    assert second.retrieval_record_bundle("char_b").social_memories
+    graph.close()
 
 
 def test_sqlite_restart_recalls_durable_records(tmp_path: Path) -> None:

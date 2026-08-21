@@ -149,6 +149,43 @@ def test_responses_bridge_schema_resolves_resource_request_definition() -> None:
     assert "ResourceRealizationRequest" in schema["$defs"]
 
 
+def test_adaptive_bridge_prompt_pins_the_main_demo_target_actor() -> None:
+    provider = HttpSimingLlmCandidateProvider(
+        api_key="secret",
+        endpoint="https://example.test/v1/chat/completions",
+        model="model-live",
+        timeout_seconds=8,
+        provider_name="deepseek_chat",
+    )
+
+    payload = provider._adaptive_bridge_payload(
+        compiled_context_payload(), "corr:destroy:1"
+    )
+    prompt = payload["messages"][0]["content"]
+
+    assert "target_actor_id=char_b exactly" in prompt
+    assert "Never use siming as target_actor_id" in prompt
+
+
+def test_adaptive_bridge_prompt_separates_fact_and_obligation_references() -> None:
+    provider = HttpSimingLlmCandidateProvider(
+        api_key="secret",
+        endpoint="https://example.test/v1/chat/completions",
+        model="model-live",
+        timeout_seconds=8,
+        provider_name="deepseek_chat",
+    )
+
+    payload = provider._adaptive_bridge_payload(
+        compiled_context_payload(), "corr:destroy:1"
+    )
+    prompt = payload["messages"][0]["content"]
+
+    assert "supporting_fact_refs must be a non-empty subset of compiled_context.world_facts" in prompt
+    assert "Never include obligation IDs in supporting_fact_refs" in prompt
+    assert "obligation_refs must be drawn only from compiled_context.storyline_obligations" in prompt
+
+
 def test_http_provider_rejects_invalid_bridge_schema(monkeypatch) -> None:
     invalid = private_confrontation_payload()
     invalid["pattern"] = "world_mutation"

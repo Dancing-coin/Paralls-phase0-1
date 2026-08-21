@@ -311,9 +311,26 @@ class HttpSimingLlmCandidateProvider:
             "correlation_id": correlation_id,
         }
         instruction = (
-            "Return only adaptive bridge proposals for one local causal gap. "
+            "Return only adaptive bridge proposals as a JSON object for one local causal gap. "
             "Do not invent world facts, write actor memory, activate story nodes, stage resources, "
-            "publish catalysts, override actor refusal, or include chain-of-thought."
+            "publish catalysts, override actor refusal, or include chain-of-thought. "
+            "The JSON object must contain a proposals array. Each proposal must include proposal_id, "
+            "pattern, correlation_id, causal_gap_ref, title, target_actor_id, supporting_fact_refs, "
+            "required_actor_memory_refs, obligation_refs, attractor_refs, realization_request, and "
+            "autonomy_reason. Use only values and reference IDs present in the supplied context. "
+            "supporting_fact_refs must be a non-empty subset of compiled_context.world_facts entry_id values. "
+            "Never include obligation IDs in supporting_fact_refs. obligation_refs must be drawn only from "
+            "compiled_context.storyline_obligations entry_id values, and must remain a separate field. "
+            "For a private_confrontation, target_actor_id should be the observed actor and "
+            "realization_request must include node_id, actor_bindings, target_object_id, "
+            "target_environment_id, required_realization_keys, camera_pattern, semantic_purpose, "
+            "and location_state. causal_gap_ref and supporting_fact_refs must use supplied world fact "
+            "entry IDs. In the demo, bind speaker=char_b and listener=char_c, use target_object_id="
+            "obj_letter, target_environment_id=env_lamp, required_realization_keys=[look_at_target, "
+            "focus_attention], camera_pattern=two_actor_confrontation, semantic_purpose="
+            "private_confrontation, obligation_refs=[obligation:O6], and location_state=throne_room:letter_removed. "
+            "For the demo set target_actor_id=char_b exactly. Never use siming as target_actor_id; "
+            "Siming is the proposal source, not a character actor."
         )
         if self._provider_name in {"deepseek_chat", "seed_doubao", "qwen"}:
             return {

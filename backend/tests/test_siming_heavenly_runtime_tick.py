@@ -307,11 +307,11 @@ def test_staging_ack_never_redispatches_a_durable_dispatch() -> None:
     ("state", "support_type", "expected_dispatches"),
     [
         ("unsent", _UnsentHeavenlySupport, 1),
-        ("sent_unconfirmed", _AlreadyDispatchedHeavenlySupport, 0),
+        ("sent_unconfirmed", _UnsentHeavenlySupport, 1),
         ("authority_confirmed", _AlreadyDispatchedHeavenlySupport, 0),
     ],
 )
-def test_recovery_dispatches_only_an_unsent_correlation(
+def test_recovery_dispatches_only_a_nonterminal_correlation(
     state: str, support_type: type[_StagingHeavenlySupport], expected_dispatches: int
 ) -> None:
     event = _event(

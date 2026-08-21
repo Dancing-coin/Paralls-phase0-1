@@ -20,7 +20,6 @@ from common import (
     write_markdown,
 )
 
-OBSERVATORY_PROBE_QUIT_AFTER = "300"
 OBSERVATORY_PROBE_MARKER_TIMEOUT_SECONDS = 120.0
 REQUIRED_MARKERS = [
     "character_director_observatory_probe:state_payloads_ok=true",
@@ -38,6 +37,8 @@ REQUIRED_MARKERS = [
 OBSERVATORY_VERIFY_ENV = {
     "CHARACTER_MODEL_PROVIDER_KIND": "local",
     "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
+    "SIMING_HEAVENLY_MODE": "off",
+    "SIMING_LLM_MODE": "disabled",
 }
 
 
@@ -70,8 +71,6 @@ def main() -> int:
                 str(project_root),
                 "--scene",
                 "res://scenes/phase0/CharacterDirectorObservatoryProbe.tscn",
-                "--quit-after",
-                OBSERVATORY_PROBE_QUIT_AFTER,
                 "--verbose",
                 "--render-thread",
                 "safe",
@@ -83,7 +82,7 @@ def main() -> int:
             require_all_markers=True,
             env={
                 "PHASE0_AUTOTEST_SCREENSHOT": str(main_screenshot),
-                "PHASE0_DEBUG_LOGGING": "1",
+                "PHASE0_OBSERVATORY_STREAM": "1",
                 "CHARACTER_MODEL_PROVIDER_KIND": "local",
                 "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
             },

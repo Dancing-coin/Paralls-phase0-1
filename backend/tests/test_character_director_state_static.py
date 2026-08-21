@@ -112,6 +112,52 @@ def test_character_director_state_keeps_dialogue_pair_ledger_outside_script_beat
     assert "recent_script_beats" not in dialogue_pair_block
     assert "recent_dialogue_pairs = _merge_dialogue_pair_rows(" in script_beat_handler_block
     assert 'payload.get("dialogue_pairs", [])' in script_beat_handler_block
+    assert (
+        '\t\trecent_script_beats = _dictionary_array(recent_script_beats.slice(recent_script_beats.size() - MAX_EVENT_HISTORY, recent_script_beats.size()))\n'
+        '\t\trecent_dialogue_pairs = _merge_dialogue_pair_rows('
+    ) not in script_beat_handler_block
+    assert (
+        '\trecent_dialogue_pairs = _merge_dialogue_pair_rows(\n'
+        '\t\trecent_dialogue_pairs,\n'
+        '\t\tpayload.get("dialogue_pairs", [])\n'
+        '\t)\n\t_request_observatory_refresh()'
+    ) in script_beat_handler_block
+
+
+def test_character_director_state_caches_a_bounded_script_beat_presentation_projection() -> None:
+    source = (ROOT / "scripts" / "ui" / "CharacterDirectorState.gd").read_text(encoding="utf-8")
+    script_beat_handler_block = _function_block(source, "func _on_script_beat_event_received(payload: Dictionary) -> void:")
+
+    assert "_presentation_script_beat(payload)" in script_beat_handler_block
+    assert "func _presentation_script_beat(payload: Dictionary) -> Dictionary:" in source
+    assert "func _presentation_actor_summaries(value: Variant) -> Array[Dictionary]:" in source
+    presentation_rows_block = _function_block(
+        source, "func _presentation_actor_summaries(value: Variant) -> Array[Dictionary]:"
+    )
+    assert 'row.get("actor_id", "")' in presentation_rows_block
+    assert 'row.get("stage", "")' in presentation_rows_block
+    assert 'row.get("summary", "")' in presentation_rows_block
+    assert 'row.get("focus_target", "")' in presentation_rows_block
+    assert 'row.get("intent_label", "")' in presentation_rows_block
+    assert 'row.get("detail", "")' not in presentation_rows_block
+
+
+def test_character_director_state_pair_merge_preserves_non_empty_context() -> None:
+    source = (ROOT / "scripts" / "ui" / "CharacterDirectorState.gd").read_text(encoding="utf-8")
+    merge_block = _function_block(source, "func _merge_dialogue_pair_rows(")
+
+    assert "var existing_row" in merge_block
+    assert "incoming_value is String" in merge_block
+    assert "incoming_value.is_empty()" in merge_block
+
+
+def test_character_director_state_coalesces_event_refresh_signals() -> None:
+    source = (ROOT / "scripts" / "ui" / "CharacterDirectorState.gd").read_text(encoding="utf-8")
+
+    assert "var _observatory_refresh_queued := false" in source
+    assert "func _request_observatory_refresh() -> void:" in source
+    assert 'call_deferred("_emit_observatory_state_changed")' in source
+    assert "_observatory_refresh_queued = true" in source
 
 
 def test_character_director_state_freeze_frame_captures_dialogue_pair_ledger() -> None:

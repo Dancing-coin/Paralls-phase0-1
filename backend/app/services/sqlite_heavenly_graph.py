@@ -9,6 +9,9 @@ from app.models.siming_heavenly_graph import (
     HeavenlyGraphSnapshot,
     HeavenlyGraphWriteBatch,
     HeavenlyGraphWriteResult,
+    HeavenlyNodeQuery,
+    HeavenlyRelationQuery,
+    HeavenlySubgraphResult,
 )
 from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
 from app.services.siming_heavenly_graph_port import HeavenlyGraphError
@@ -42,6 +45,24 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
             checkpoint = super().create_checkpoint(**kwargs)
             self._persist()
             return checkpoint
+
+    def query_nodes(self, query: HeavenlyNodeQuery) -> list[HeavenlyGraphNode]:
+        with self._lock:
+            return super().query_nodes(query)
+
+    def query_relations(
+        self, query: HeavenlyRelationQuery
+    ) -> list[HeavenlyGraphRelation]:
+        with self._lock:
+            return super().query_relations(query)
+
+    def query_subgraph(self, **kwargs: object) -> HeavenlySubgraphResult:
+        with self._lock:
+            return super().query_subgraph(**kwargs)
+
+    def read_checkpoint(self, checkpoint_ref: str) -> HeavenlyGraphSnapshot:
+        with self._lock:
+            return super().read_checkpoint(checkpoint_ref)
 
     def _migrate(self) -> None:
         connection = self._connection

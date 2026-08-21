@@ -1,10 +1,17 @@
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Protocol
 
 from app.models.authority_event import AuthorityEvent
 
 
 EventConsumer = Callable[[AuthorityEvent], None]
+
+
+@dataclass(frozen=True)
+class AuthorityRecoveryLedger:
+    event_ids: frozenset[str]
+    is_complete_across_restart: bool
 
 
 class AuthorityEventBusPort(Protocol):
@@ -23,6 +30,9 @@ class AuthorityEventBusPort(Protocol):
         include_realtime: bool = False,
         current_only: bool = True,
     ) -> list[AuthorityEvent]:
+        raise NotImplementedError
+
+    def authority_recovery_ledger(self) -> AuthorityRecoveryLedger:
         raise NotImplementedError
 
 
@@ -62,6 +72,18 @@ class InMemoryAuthorityEventBus:
         if current_only:
             events = [event for event in events if not self._is_expired(event)]
         return [event.model_copy(deep=True) for event in events]
+
+    def authority_recovery_ledger(self) -> AuthorityRecoveryLedger:
+        return AuthorityRecoveryLedger(
+            event_ids=frozenset(
+                event.event_id
+                for event in self.list_events(
+                    include_realtime=True,
+                    current_only=False,
+                )
+            ),
+            is_complete_across_restart=False,
+        )
 
     def _matches_route(self, event: AuthorityEvent, consumer_id: str) -> bool:
         if consumer_id == "*":
