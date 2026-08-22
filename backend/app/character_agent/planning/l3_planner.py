@@ -1,6 +1,7 @@
 from app.character_agent.gateway.context_builder import CharacterContextBuilder
 from app.character_agent.models.cognition_delta import CharacterHigherOrderDelta
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
+from app.character_agent.gateway.memory_recall import CharacterMemoryRecallPolicy
 from app.character_agent.models.cognition_delta import CharacterBeliefDelta
 from app.character_agent.models.cognition_delta import CharacterSocialDelta
 from app.character_agent.models.event_memory import CharacterEventMemoryRecord
@@ -17,9 +18,15 @@ from app.models.character_agent_runtime import CharacterIntentDecision, Characte
 
 
 class CharacterAgentL3Service:
-    def __init__(self, gateway: CharacterModelGateway | None = None) -> None:
+    def __init__(
+        self,
+        gateway: CharacterModelGateway | None = None,
+        memory_recall_policy: CharacterMemoryRecallPolicy | None = None,
+    ) -> None:
         self._gateway = gateway or CharacterModelGateway()
         self._triple_filter = CharacterTripleFilter()
+        self._memory_recall_policy = memory_recall_policy or CharacterMemoryRecallPolicy()
+        self._consumed_behavior_policy_ids: set[str] = set()
 
     def build_intent_plan(
         self,
@@ -44,8 +51,7 @@ class CharacterAgentL3Service:
         normalized_snapshot = self._normalize_snapshot(snapshot)
         normalized_profile = self._normalize_profile(profile)
         normalized_effective_profile = self._normalize_profile(effective_profile) or normalized_profile
-        typed_memory_bundle = self._memory_record_bundle_model(memory_bundle)
-        normalized_memory_bundle = CharacterContextBuilder.normalize_memory_bundle(typed_memory_bundle)
+        normalized_memory_bundle = CharacterContextBuilder.normalize_memory_bundle(memory_bundle)
         normalized_working_memory_state = self._working_memory_state_mapping(working_memory_state)
         normalized_need_tension_state = self._normalize_mapping(need_tension_state)
         normalized_dynamic_state = self._dynamic_state_mapping(
@@ -56,6 +62,16 @@ class CharacterAgentL3Service:
             current_goal_state,
             actor_id=interpretation.actor_id,
         )
+        recall = self._memory_recall_policy.select(
+            normalized_memory_bundle,
+            context={
+                "snapshot": normalized_snapshot,
+                "interpretation": interpretation.model_dump(),
+                "current_goal_state": normalized_current_goal_state,
+            },
+        )
+        recalled_memory_bundle = self._memory_record_bundle_model(recall.memory)
+        behavior_policy = self._runtime_behavior_policy(recall.memory)
         normalized_goal_state_history = self._goal_state_history_mappings(
             goal_state_history,
             actor_id=interpretation.actor_id,
@@ -70,7 +86,7 @@ class CharacterAgentL3Service:
         local_active_goal_tags = self._active_goal_tags(
             interpretation=interpretation,
             snapshot=normalized_snapshot,
-            memory_bundle=typed_memory_bundle,
+            memory_bundle=recalled_memory_bundle,
             profile=normalized_profile,
             working_memory_state=normalized_working_memory_state,
             current_goal_state=normalized_current_goal_state,
@@ -79,7 +95,7 @@ class CharacterAgentL3Service:
             active_goal_tags=local_active_goal_tags,
             interpretation=interpretation,
             snapshot=normalized_snapshot,
-            memory_bundle=typed_memory_bundle,
+            memory_bundle=recalled_memory_bundle,
             profile=normalized_profile,
             working_memory_state=normalized_working_memory_state,
             current_goal_state=normalized_current_goal_state,
@@ -95,7 +111,9 @@ class CharacterAgentL3Service:
                 "need_tension_state": normalized_need_tension_state,
                 "dynamic_state": normalized_dynamic_state,
                 "snapshot": normalized_snapshot,
-                "memory": normalized_memory_bundle,
+                "memory": recall.memory,
+                "memory_recall": recall.metadata,
+                "behavior_policy": behavior_policy,
                 "working_memory_state": normalized_working_memory_state,
                 "active_goal_tags": context_goal_tags,
                 "active_goal_frame": context_goal_frame.model_dump(),
@@ -107,9 +125,15 @@ class CharacterAgentL3Service:
                 "skill_affordance_summary": normalized_skill_affordance_summary,
             },
         )
+        local_affordances = self._generate_candidates(interpretation, control_mode)
         candidates = self._model_owned_candidates(
             model_candidates=model_output.get("candidate_intents", []),
-            local_affordances=self._generate_candidates(interpretation, control_mode),
+            local_affordances=local_affordances,
+        )
+        candidates = self._apply_behavior_policy(
+            candidates,
+            behavior_policy,
+            local_affordances=local_affordances,
         )
         active_goal_tags = self._model_owned_active_goal_tags(
             model_goal_tags=model_output.get("active_goal_tags", []),
@@ -124,7 +148,7 @@ class CharacterAgentL3Service:
                 candidate,
                 interpretation,
                 snapshot=normalized_snapshot,
-                memory_bundle=typed_memory_bundle,
+                memory_bundle=recalled_memory_bundle,
                 profile=normalized_profile,
                 effective_profile=normalized_effective_profile,
                 control_mode=control_mode,
@@ -142,6 +166,8 @@ class CharacterAgentL3Service:
             "model_output": model_output,
             "candidates": candidates,
             "filter_results": filter_results,
+            "memory_recall": recall.metadata,
+            "behavior_policy": behavior_policy,
         }
 
     def select_intent(
@@ -392,6 +418,44 @@ class CharacterAgentL3Service:
         if deduped_model_candidates:
             return deduped_model_candidates
         return local_affordances
+
+    def _runtime_behavior_policy(
+        self,
+        memory_bundle: dict[str, list[dict[str, object]]],
+    ) -> dict[str, object]:
+        for entry in reversed(memory_bundle.get("working_memory", [])):
+            if str(entry.get("event_type", "") or "") != "character_policy_candidate_event":
+                continue
+            payload = entry.get("payload", {})
+            if not isinstance(payload, dict) or str(payload.get("status", "") or "") != "candidate_only":
+                continue
+            candidate_id = str(payload.get("candidate_id", "") or "")
+            if candidate_id == "" or candidate_id in self._consumed_behavior_policy_ids:
+                continue
+            self._consumed_behavior_policy_ids.add(candidate_id)
+            return {
+                "candidate_id": candidate_id,
+                "policy_type": str(payload.get("policy_type", "") or ""),
+                "failed_intent": str(payload.get("failed_intent", "") or ""),
+                "hypothesis": str(payload.get("hypothesis", "") or ""),
+                "status": "active_for_next_decision",
+            }
+        return {}
+
+    def _apply_behavior_policy(
+        self,
+        candidates: list[str],
+        behavior_policy: dict[str, object],
+        *,
+        local_affordances: list[str],
+    ) -> list[str]:
+        if behavior_policy.get("policy_type") != "recovery_policy":
+            return candidates
+        failed_intent = str(behavior_policy.get("failed_intent", "") or "")
+        if failed_intent == "":
+            return candidates
+        filtered = [candidate for candidate in candidates if candidate != failed_intent]
+        return filtered or [candidate for candidate in local_affordances if candidate != failed_intent]
 
     def _model_owned_active_goal_tags(
         self,

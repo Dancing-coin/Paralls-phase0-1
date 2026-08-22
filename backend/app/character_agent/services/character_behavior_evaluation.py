@@ -47,6 +47,14 @@ class CharacterBehaviorEvaluationService:
         execution_payload = execution.get("payload", {}) if isinstance(execution, dict) else {}
         if not isinstance(execution_payload, dict):
             execution_payload = {}
+        proposal = execution_payload.get("composite_action_proposal", {})
+        if not isinstance(proposal, dict):
+            proposal = {}
+        failed_intent = str(
+            execution_payload.get("selected_intent", "")
+            or proposal.get("source_intent", "")
+            or ""
+        )
 
         metadata = settlement_payload.get("action_settlement_result", {})
         if not isinstance(metadata, dict):
@@ -65,6 +73,7 @@ class CharacterBehaviorEvaluationService:
             failure_domains=failure_domains,
             recall=recall,
             settlement_payload=settlement_payload,
+            failed_intent=failed_intent,
         )
         source_refs = [
             str(event.get("event_id", ""))
@@ -90,6 +99,7 @@ class CharacterBehaviorEvaluationService:
                 "attention_target": str(interpretation_payload.get("attention_target", "") or ""),
             },
             "selected_intent": str(goal_payload.get("dominant_goal_id", "") or execution_payload.get("selected_intent", "") or ""),
+            "failed_intent": failed_intent,
             "execution_event_id": str(execution.get("event_id", "") if isinstance(execution, dict) else ""),
             "settlement_event_id": str(settlement_event.get("event_id", "") or ""),
             "source_refs": source_refs,
@@ -126,6 +136,7 @@ class CharacterBehaviorEvaluationService:
         failure_domains: list[str],
         recall: dict[str, object],
         settlement_payload: dict[str, object],
+        failed_intent: str,
     ) -> dict[str, object] | None:
         if score >= 0.75 and not bool(recall.get("truncated", False)):
             return None
@@ -143,6 +154,7 @@ class CharacterBehaviorEvaluationService:
             "status": "candidate_only",
             "score_before": score,
             "failure_domains": failure_domains,
+            "failed_intent": failed_intent,
             "hypothesis": self._hypothesis(policy_type),
             "evidence": {
                 "settlement_status": str(settlement_payload.get("settlement_status", "") or ""),

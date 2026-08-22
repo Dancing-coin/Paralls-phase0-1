@@ -109,6 +109,7 @@ class CharacterPromptPolicy:
         supervision_state = context.get("supervision_state", {})
         unresolved_tensions = context.get("unresolved_tensions", {})
         background_agenda_state = context.get("background_agenda_state", {})
+        behavior_policy = context.get("behavior_policy", {})
         profile_summary = self._profile_summary(profile if isinstance(profile, dict) else {})
         effective_profile_summary = self._profile_summary(
             effective_profile if isinstance(effective_profile, dict) else {}
@@ -133,6 +134,9 @@ class CharacterPromptPolicy:
         background_agenda_summary = self._background_agenda_summary(
             background_agenda_state if isinstance(background_agenda_state, dict) else {}
         )
+        behavior_policy_summary = self._behavior_policy_summary(
+            behavior_policy if isinstance(behavior_policy, dict) else {}
+        )
         return (
             f"actor_id={actor_id}; control_mode={control_mode}; "
             f"profile_summary={profile_summary}; "
@@ -145,7 +149,20 @@ class CharacterPromptPolicy:
             f"supervision_state={supervision_state_summary}; "
             f"unresolved_tensions={unresolved_tension_summary}; "
             f"background_agenda_state={background_agenda_summary}; "
+            f"behavior_policy={behavior_policy_summary}; "
             f"event_summary={event_summary}"
+        )
+
+    def _behavior_policy_summary(self, policy: dict[str, object]) -> str:
+        if not policy:
+            return ""
+        return "; ".join(
+            [
+                f"status={self._truncate(policy.get('status', '') or '')}",
+                f"policy_type={self._truncate(policy.get('policy_type', '') or '')}",
+                f"failed_intent={self._truncate(policy.get('failed_intent', '') or '')}",
+                f"hypothesis={self._truncate(policy.get('hypothesis', '') or '')}",
+            ]
         )
 
     def _required_output_keys(self, task_kind: str) -> list[str]:

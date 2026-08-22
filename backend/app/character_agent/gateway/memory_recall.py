@@ -171,7 +171,9 @@ class CharacterMemoryRecallPolicy:
     ) -> float:
         haystack = self._flatten_text(entry).lower()
         matches = sum(1 for term in terms if term in haystack)
-        relevance = min(1.0, matches / max(1, len(terms))) if terms else 0.0
+        # A single exact target match should beat recency noise even when the
+        # context contains many descriptive terms.
+        relevance = min(1.0, matches / max(1, min(3, len(terms)))) if terms else 0.0
         recency = self._timestamp(entry) / max_timestamp if max_timestamp > 0 else 0.0
         certainty = self._numeric(entry, "confidence", "certainty_score")
         clarity = self._numeric(entry, "clarity_score", "salience_score")
