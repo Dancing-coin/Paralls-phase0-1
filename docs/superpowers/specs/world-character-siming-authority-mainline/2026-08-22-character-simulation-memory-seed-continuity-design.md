@@ -48,7 +48,8 @@ The canonical owners remain split:
 | objective world/gameplay facts | existing world or domain authority |
 | actor-private five-pool memory | Character Core / Character Agent runtime |
 | actor continuity state, SeedDelta admission and materialization | Character Core continuity owner |
-| simulation candidate, policy, audit and activation priority | Siming / Population derived layer |
+| simulation policy, admission, audit and activation priority | Siming authority |
+| population batch calculation and candidate derivation | Siming-owned `PopulationPlanner` internal module |
 | natural-language interpretation | optional LLM proposal, never the owner |
 
 ## 3. Non-Negotiable Invariants
@@ -71,8 +72,9 @@ The canonical owners remain split:
    inputs produce zero production write and an auditable result.
 10. LLM output is an untrusted proposal. Character Core owns validation,
     materialization, persistence and replay semantics.
-11. Siming and PopulationPlanner may submit candidates or request continuity
-    settlement, but only Character Core may admit a CharacterContinuityCommand,
+11. Siming may submit governed intents and its PopulationPlanner may derive
+    candidates or prepare requests, but only Character Core may admit a
+    CharacterContinuityCommand,
     append SeedDelta, update actor runtime state or advance actor continuity
     cursors.
 
@@ -408,10 +410,97 @@ activation lock
 | Edit | create new ruleset, selector, candidate or explanation revision | edit locked facts, rewrite history, delete receipts |
 | Execute | invoke a statically admitted owner capability; request Character Core materialization | choose arbitrary owner/stream/event; directly call memory stores or Godot |
 
-Population simulation uses the same candidate restrictions and cannot expand
-Siming's read scope. Only Character Core may admit a
+Population simulation has the internal module matrix in section 8.2 and cannot
+expand Siming's read scope. Only Character Core may admit a
 `CharacterContinuityCommand`, append its SeedDelta/experience ledger result,
 settle actor runtime state or advance actor continuity cursors.
+
+### 8.1 Population Simulation Placement and PopulationPlanner Role
+
+Population simulation belongs to Siming at the authority and orchestration
+level. `PopulationPlanner` is not a peer authority, a second Siming, or a
+generic world coordinator. It is an internal, bounded calculation module
+owned and invoked by Siming to process cohorts at scale.
+
+The hierarchy is:
+
+```text
+Siming authority
+  -> admits cadence, scope, policy and budget
+  -> invokes its PopulationPlanner
+  -> reviews BatchReport and candidates
+  -> admits and submits owner-bound intent
+  -> receives owner receipt and drives continuity requests
+```
+
+`PopulationPlanner` has no independent principal, policy authority, owner
+selection authority, production event append authority or Character Core write
+authority. The matrix below is an internal module boundary, not a grant of a
+new external actor role. A planner result without a Siming decision remains a
+candidate, preview or requeue artifact.
+
+### 8.2 PopulationPlanner Permission Matrix
+
+`PopulationPlanner` is a Siming-owned simulation operator, not a world-truth
+owner and not a second character-memory writer. Its permission surface is
+formalized separately so that population scale does not turn a proposal into
+a write.
+
+| Capability | PopulationPlanner may do | PopulationPlanner may not do | Required output / owner |
+| --- | --- | --- | --- |
+| Read | read frozen cadence projections, scoped owner projections, public events and authorized actor/organization summaries | read raw five-pool memory, actor-private relations, hidden knowledge, arbitrary owner stores or future/branch-only data | immutable batch read-set with source vector, scope digest and revisions |
+| Simulate | select a cohort, run deterministic B0-B2 rules within budget, calculate propagation/pressure and produce a `BatchReport` | create shadow NPC truth, run an uncontrolled per-actor LLM loop, advance a free-running clock or treat a prediction as fact | `BatchReport` and derived candidates |
+| Write | append planner-owned candidates, reports, audit records, `presentation_seed` and activation hints | append world events, inventory/prices/relations, actor runtime state, `SeedDelta` or five-pool records | derived-layer record; no production settlement |
+| Edit | append selector, ruleset, candidate-order and explanation revisions in the planner/branch scope | edit locked owner facts, receipts, historical records or another owner's catalog entry | revisioned planner state or branch artifact |
+| Execute | prepare an owner-bound typed intent for Siming's guarded admission | independently invoke a capability, choose an owner/stream/event family, call `GameplayEventStore` directly or substitute a different owner after rejection | Siming decision and, only after admission, an owner settlement request |
+| Continuity | prepare state/memory candidates for Siming to request continuity settlement after an owner receipt | independently admit the command, append `SeedDelta`, settle actor runtime state or advance state/experience/memory cursors | Siming request; Character Core command and receipt |
+
+The operational rule is therefore:
+
+```text
+Siming owns policy and submission; PopulationPlanner computes and proposes.
+Character Core can settle actor continuity; it cannot settle world truth.
+The domain owner settles world truth.
+```
+
+### 8.2 How Siming Advances a Population Simulation
+
+The statement “Siming can cause a population simulation to change world truth
+and character memory, but does not own either final write” is the intended
+runtime meaning of the boundary. Siming performs observation, calculation,
+policy decision and governed submission; the domain owner and Character Core
+perform final settlement respectively.
+
+```text
+scoped projection / cadence
+Siming invokes its PopulationPlanner
+  -> cohort batch
+  -> BatchReport + owner-bound intent candidate
+  -> Siming policy and static capability admission
+  -> domain owner validation and settlement
+  -> GameplayEventStore.append_batch()
+  -> owner receipt and scoped projection
+  -> CharacterContinuityCommand
+  -> Character Core revision/privacy/idempotency check
+  -> runtime state + SeedDelta / experience ledger
+  -> activation-time five-pool materialization
+```
+
+An intent is not a fact, and an owner receipt is not automatically a character
+memory. A committed owner receipt changes the authoritative world projection.
+Character Core then decides, per actor, whether valid exposure evidence exists
+and which memory candidate can be materialized. An actor who did not observe,
+participate in, receive notice of, or suffer a settled consequence receives no
+candidate merely because Siming saw the global fact.
+
+The first proof vertical is `schedule_gated_supply`: the planner may propose a
+supply commitment and Siming may submit that fixed capability, but only
+`OrganizationAuthority` can settle the commitment and emit the accepted event.
+After that receipt, Character Core may update affected actors' dynamic state
+and append SeedDelta; five-pool records are still written only during the
+activation/materialization path. Rejection, stale revisions, missing
+capability, privacy failure or duplicate intent produces an auditable zero
+production write or requeue.
 
 ## 9. LLM Role
 
@@ -559,7 +648,7 @@ must be resolved in this spec and then reflected back to the Chinese package.
 | `00-影响矩阵与状态登记.md` | package state, formalization gates, owner/capability/replay prerequisites | registry and gate; no runtime authorization |
 | `01-司命受控能力面.md` | RWEE scope, guarded execute, owner-bound intent and zero-write rejection | capability boundary |
 | `02-知识图谱记忆与故事线桥.md` | provenance, privacy/redaction, derived graph and actor-scoped summaries | derived cognition boundary |
-| `03-群体模拟与角色分级连续性.md` | cohort batch, fidelity tiers, activation/requeue and owner-bound intent | population continuity boundary |
+| `03-群体模拟与角色分级连续性.md` | cohort batch, fidelity tiers, PopulationPlanner permission matrix, activation/requeue and owner-bound intent | population continuity and planner authority boundary |
 | `04-世界真相到场景表现投影.md` | owner event to scoped presentation; no presentation writeback | presentation projection boundary |
 | `05-性能回放观测与渐进交付.md` | budget, replay, evidence and staged delivery requirements | operational evidence boundary |
 | `06-GitHub成熟实现参照与采纳边界.md` | external pattern rationale and rejection boundaries | research only |

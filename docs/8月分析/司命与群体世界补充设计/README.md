@@ -9,6 +9,11 @@
 本目录负责中文分析、示例和分包映射；母规格负责 owner、权限、字段、时间/版本合并、
 receipt、回放和验收合同。中文分析与母规格不一致时，以母规格为准，并将修订回补到本目录。
 
+其中，司命的 RWEE 矩阵见 [01-司命受控能力面](01-司命受控能力面.md)，
+`PopulationPlanner` 的正式内部模块矩阵见 [03-群体模拟与角色分级连续性](03-群体模拟与角色分级连续性.md)。群体模拟属于司命能力域，Planner 只是司命内部批量计算模块，不是独立 authority。
+司命负责最终受治理提交；世界真相由领域 Owner 结算，角色连续性和
+`SeedDelta`/五池物化由 Character Core 结算。
+
 ## 阅读与执行顺序
 
 1. [00-影响矩阵与状态登记](00-影响矩阵与状态登记.md)
@@ -28,7 +33,7 @@ receipt、回放和验收合同。中文分析与母规格不一致时，以母�
 
 ## 约束
 
-- 领域 owner 才能结算生产世界事实；司命和群体 planner 可以消费投影、提出候选并提交受治理的 `owner-bound intent`，但不能绕过 owner 直接结算或改写事实；角色和 Godot 只能消费投影、提出候选或表现结果。
+- 领域 owner 才能结算生产世界事实；司命可以消费投影、调用内部 PopulationPlanner、审阅候选并提交受治理的 `owner-bound intent`，但不能绕过 owner 直接结算或改写事实；PopulationPlanner 只能准备批量候选，角色和 Godot 只能消费投影、提出候选或表现结果。
 - 图谱是带来源、隐私、revision 和时间有效期的派生认知层，不是第二份世界真相。
 - 同一 `CharacterRecord` 在远场、中场和近场切换，不创建影子 NPC 身份、影子记忆或平行生产状态。
 - 所有未来生产写入复用 `GameplayCommandEnvelope -> SettlementPlan -> GameplayEventStore.append_batch() -> outbox/replay -> scoped projection`。
