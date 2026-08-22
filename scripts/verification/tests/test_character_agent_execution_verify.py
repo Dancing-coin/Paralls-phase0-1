@@ -73,9 +73,65 @@ def test_character_director_observatory_verify_script_uses_marker_driven_runtime
     assert "run_command_until_markers(" in source
     assert '"CHARACTER_MODEL_PROVIDER_KIND": "local"' in source
     assert '"CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only"' in source
+    assert '"SIMING_HEAVENLY_MODE": "off"' in source
+    assert '"SIMING_LLM_MODE": "disabled"' in source
     assert "character_director_observatory_probe:state_payloads_ok=true" in source
     assert "character_director_observatory_probe:panels_populated=true" in source
     assert "character_director_observatory_probe:freeze_roundtrip_ok=true" in source
+
+
+def test_character_director_observatory_is_wall_clock_bounded_not_frame_bounded() -> None:
+    source = (
+        Path(__file__).resolve().parents[1] / "verify_character_director_observatory.py"
+    ).read_text(encoding="utf-8")
+    observatory_run = source.split("result = run_command_until_markers(", 1)[1].split(
+        "log_text = read_text(main_log)", 1
+    )[0]
+
+    assert '"--quit-after"' not in observatory_run
+    assert "timeout_seconds=OBSERVATORY_PROBE_MARKER_TIMEOUT_SECONDS" in observatory_run
+
+
+def test_character_director_observatory_keeps_high_volume_debug_logging_off() -> None:
+    verify_source = (
+        Path(__file__).resolve().parents[1] / "verify_character_director_observatory.py"
+    ).read_text(encoding="utf-8")
+    probe_source = (
+        Path(__file__).resolve().parents[2] / "verification" / "CharacterDirectorObservatoryProbe.gd"
+    ).read_text(encoding="utf-8")
+
+    assert '"PHASE0_DEBUG_LOGGING": "1"' not in verify_source
+    assert "set_debug_logging_enabled(true)" not in probe_source
+
+
+def test_character_director_observatory_requests_the_full_observatory_stream() -> None:
+    verify_source = (
+        Path(__file__).resolve().parents[1] / "verify_character_director_observatory.py"
+    ).read_text(encoding="utf-8")
+    main_demo_source = (
+        Path(__file__).resolve().parents[2] / "phase0" / "MainDemoController.gd"
+    ).read_text(encoding="utf-8")
+
+    assert '"PHASE0_OBSERVATORY_STREAM": "1"' in verify_source
+    assert 'OS.get_environment("PHASE0_OBSERVATORY_STREAM") == "1"' in main_demo_source
+
+
+def test_character_director_observatory_uses_its_main_demo_instance_as_controller() -> None:
+    source = (
+        Path(__file__).resolve().parents[2] / "verification" / "CharacterDirectorObservatoryProbe.gd"
+    ).read_text(encoding="utf-8")
+
+    assert "var main_controller := main_demo" in source
+    assert 'get_node_or_null(".")' not in source
+
+
+def test_observatory_probe_sends_dialogue_through_the_known_actor_runtime_path() -> None:
+    source = (
+        Path(__file__).resolve().parents[2] / "verification" / "CharacterDirectorObservatoryProbe.gd"
+    ).read_text(encoding="utf-8")
+
+    assert 'main_demo.call("_emit_dialogue_request", "char_a", "what did you see near the letter?")' in source
+    assert 'main_demo.call("submit_dialogue", "what did you see near the letter?")' not in source
 
 
 def test_phase0_verify_script_reads_character_agent_execution_probe_report() -> None:
@@ -84,6 +140,8 @@ def test_phase0_verify_script_reads_character_agent_execution_probe_report() -> 
     assert "verify_character_agent_execution.py" in source
     assert "character-agent-execution-report.json" in source
     assert '"CHARACTER_MODEL_PROVIDER_KIND": "local"' in source
+    assert '"SIMING_HEAVENLY_MODE": "off"' in source
+    assert '"SIMING_LLM_MODE": "disabled"' in source
     assert '"character_agent_execution_contract"' in source
     assert "character_agent_execution_consumer" in source
     assert '"PHASE0_DEBUG_LOGGING": "1"' not in source
@@ -119,6 +177,43 @@ def test_phase0_verify_script_runs_backend_pytest_before_starting_runtime_backen
 
     assert pytest_index < ensure_backend_index
     assert '"PYTHONPATH": pytest_pythonpath' in source
+
+
+def test_phase0_backend_pytest_uses_the_repository_root_for_repo_relative_checks() -> None:
+    source = (Path(__file__).resolve().parents[1] / "verify_phase0.py").read_text(encoding="utf-8")
+    pytest_call = source.split("pytest_result = run_command(", 1)[1].split(
+        "health, backend_process = ensure_backend(", 1
+    )[0]
+
+    assert '[python_exe, "-m", "pytest", "-v", "backend/tests"]' in pytest_call
+    assert "project_root," in pytest_call
+
+
+def test_backend_test_fixture_clears_phase0_route_override_from_process_environment() -> None:
+    source = (Path(__file__).resolve().parents[2] / ".." / "backend" / "tests" / "conftest.py").resolve().read_text(
+        encoding="utf-8"
+    )
+
+    assert 'monkeypatch.delenv("CHARACTER_MODEL_ROUTE_OVERRIDE", raising=False)' in source
+
+
+def test_observatory_probe_accepts_a_backend_connection_opened_before_signal_subscription() -> None:
+    source = (
+        Path(__file__).resolve().parents[2] / "verification" / "CharacterDirectorObservatoryProbe.gd"
+    ).read_text(encoding="utf-8")
+
+    assert 'get_node_or_null("/root/BackendBridge")' in source
+    assert "is_backend_open" in source
+
+
+def test_observatory_probe_reconnects_after_a_missed_backend_connection_signal() -> None:
+    source = (
+        Path(__file__).resolve().parents[2] / "verification" / "CharacterDirectorObservatoryProbe.gd"
+    ).read_text(encoding="utf-8")
+
+    assert 'call_deferred("_run_probe")' in source
+    assert 'const BACKEND_URL := "ws://127.0.0.1:8000/ws"' in source
+    assert 'bridge.call("connect_to_backend", BACKEND_URL)' in source
 
 
 def test_phase0_main_demo_ignores_preopen_disconnect_before_first_backend_connected() -> None:

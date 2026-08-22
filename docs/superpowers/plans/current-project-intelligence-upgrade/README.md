@@ -158,6 +158,21 @@ python scripts/verification/verify_siming_backend_chain.py --live-provider deeps
 
 这棵计划树的职责不是重新推进主线，而是把 mainline 已闭合之后仍需补强的感知、多模态、协议、具身和工具链能力逐步落地。
 
+## 2026-08-03 司命持久天道图谱 Phase 1.1-7
+
+已批准设计的依赖门禁式实施入口：
+
+1. [Program dependency index](2026-08-03-current-project-siming-durable-heavenly-graph-program-plan.md)
+2. [Phase 1.1 Durable Graph Hardening](2026-08-03-phase1-1-durable-graph-hardening-implementation-plan.md)
+3. [Phase 2 Siming Six-Domain Memory](2026-08-03-phase2-siming-six-domain-memory-implementation-plan.md)
+4. [Phase 3 Actor Five-Pool Graph Memory](2026-08-03-phase3-actor-five-pool-graph-memory-implementation-plan.md)
+5. [Phase 4 Storyline Obligation and Attractor](2026-08-03-phase4-storyline-obligation-attractor-implementation-plan.md)
+6. [Phase 5 Resource Capability and Staging](2026-08-03-phase5-resource-capability-staging-implementation-plan.md)
+7. [Phase 6 Adaptive Bridge](2026-08-03-phase6-adaptive-bridge-implementation-plan.md)
+8. [Phase 7 Full Runtime Integration](2026-08-03-phase7-full-runtime-integration-implementation-plan.md)
+
+严格按 1.1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 执行；前一 dedicated Harness profile 未通过时，不进入后续实现。
+
 ## 当前执行证据
 
 - 聚合 focused verifier:

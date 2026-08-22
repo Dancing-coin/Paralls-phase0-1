@@ -21,6 +21,7 @@ def read_json_object(path: Path) -> dict[str, object] | None:
 def build_run_manifest(
     *,
     run_id: str,
+    suite_id: str | None = None,
     overall_passed: bool,
     profiles: list[dict[str, object]],
     artifacts: dict[str, str],
@@ -31,6 +32,7 @@ def build_run_manifest(
     return {
         "schema_version": 1,
         "run_id": run_id,
+        "suite_id": suite_id,
         "overall_harness_passed": overall_passed,
         "profile_exit_codes": [
             {

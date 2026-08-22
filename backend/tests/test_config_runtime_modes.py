@@ -176,6 +176,20 @@ def test_settings_read_siming_llm_modes_from_env(monkeypatch) -> None:
     assert reloaded.settings.siming_llm_provider_order == ["deepseek_chat", "openai_responses"]
 
 
+def test_heavenly_mode_model_default_is_off() -> None:
+    assert Settings().siming_heavenly_mode == "off"
+
+
+def test_settings_reject_empty_heavenly_graph_path() -> None:
+    with pytest.raises(ValidationError, match="heavenly_graph_path"):
+        Settings(heavenly_graph_path="")
+
+
+def test_settings_reject_heavy_actor_outside_runtime_profiles() -> None:
+    with pytest.raises(ValueError, match="runtime profile registry"):
+        Settings(character_graph_memory_heavy_actor_ids=["not-a-runtime-actor"])
+
+
 def test_settings_read_project_dotenv_before_process_env(monkeypatch) -> None:
     env_path = Path(config_module.__file__).resolve().parents[2] / ".env"
     tts_env_path = env_path.with_name(".env.tts")

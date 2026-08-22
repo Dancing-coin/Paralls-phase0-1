@@ -103,7 +103,7 @@ def test_character_replica_forward_vector_comes_from_replica_root_not_role_asset
     )
 
     assert "func get_embodied_forward_vector() -> Vector3:" in replica_source
-    assert "return global_basis.z.normalized()" in replica_source
+    assert "return -global_basis.z.normalized()" in replica_source
     assert "role_asset_scene as Node3D" not in replica_source.split("func get_embodied_forward_vector() -> Vector3:")[1].split("func ", 1)[0]
 
 

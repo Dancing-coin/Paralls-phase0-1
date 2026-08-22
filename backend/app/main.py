@@ -1,7 +1,10 @@
 import asyncio
 from collections.abc import Callable
 from secrets import compare_digest
+from dataclasses import dataclass
+from queue import Empty, Queue
 from pathlib import Path
+from threading import RLock
 from time import time
 from uuid import uuid4
 
@@ -10,7 +13,7 @@ from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, ConfigDict, ValidationError
 from starlette.websockets import WebSocketDisconnect
 
-from app.config import settings
+from app.config import Settings, settings
 from app.debug_narration import (
     build_debug_event,
     summarize_backend_route,
@@ -39,6 +42,7 @@ from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractI
 from app.models.raw_fact import RawFactEvent
 from app.models.runtime_state import ConversationCandidateEvent
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
+from app.models.siming_resource_capability import StagingAck
 from app.models.transport import TransportBarrier
 from app.models.visual_fact import VisualFactEvent
 from app.models.world_result import WorldResultBase
@@ -67,6 +71,11 @@ from app.services.candidate_percept_service import compile_candidate_percepts
 from app.services.character_service import CharacterService
 from app.services.character_perceived_input_service import CharacterPerceivedInputService
 from app.services.character_agent_runtime import CharacterAgentRuntime
+from app.character_agent.storage.graph_memory_store import CharacterGraphMemoryStore
+from app.character_agent.storage.memory_store import CharacterAgentMemoryStore
+from app.character_agent.storage.memory_store_router import CharacterMemoryStoreRouter
+from app.models.siming_heavenly_graph import HeavenlyGraphScope
+from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
 from app.services.character_runtime_state_service import CharacterRuntimeStateService
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.conversation_relation_service import ConversationRelationService
@@ -128,6 +137,15 @@ from app.services.siming_event_consumer import SimingEventConsumer
 from app.services.siming_event_pipeline import SimingEventPipeline
 from app.services.siming_event_producer import SimingEventProducer
 from app.services.siming_llm_provider import build_siming_llm_provider
+from app.services.siming_actor_memory_gateway import ActorMemoryReadGateway
+from app.services.siming_adaptive_bridge import SimingAdaptiveBridge
+from app.services.siming_context_compiler import SimingContextCompiler
+from app.services.siming_heavenly_memory import SimingHeavenlyMemoryService
+from app.services.siming_heavenly_runtime_support import SimingHeavenlyRuntimeSupport
+from app.services.siming_resource_capability_registry import ResourceCapabilityRegistry
+from app.services.siming_story_graph_runtime import SimingStoryGraphRuntime
+from app.services.siming_story_node_staging import SimingStoryNodeStaging
+from app.services.siming_story_obligation_runtime import SimingStoryObligationRuntime
 from app.services.siming_debug_projection import SimingDebugProjection
 from app.services.siming_runtime import SimingRuntime
 from app.services.character_agent_debug_projection import CharacterAgentDebugProjection
@@ -142,6 +160,7 @@ BACKEND_BUILD = "paralls-phase0-backend-worktree-2026-06-02"
 WORKTREE_ROOT = str(Path(__file__).resolve().parents[2])
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 _pending_siming_character_dispatch_messages: dict[str, list[dict[str, object]]] = {}
+_raw_fact_followup_lock = RLock()
 _PLAYER_SHELL_ACTOR_IDS = {"char_c"}
 _SPEECH_REQUEST_TYPES = {"speak_public", "speak_private", "share_info", "withhold"}
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
@@ -170,11 +189,100 @@ class TrustedLocalGameplayMirrorLiveProbeControlledCloseRequest(BaseModel):
     session_ref: str
 
 
+def actor_private_scope(actor_id: str) -> HeavenlyGraphScope:
+    return HeavenlyGraphScope(
+        world_id="world:demo",
+        session_id="session:demo",
+        story_branch_id="branch:main",
+        graph_namespace="actor_private",
+        owner_actor_id=actor_id,
+    )
+
+
 class FrontendSimingCharacterDispatchAdapter(SimingCharacterDispatchAdapter):
     def dispatch(self, event: AuthorityEvent) -> SimingCharacterDispatchResult:
         result = super().dispatch(event)
         _queue_siming_character_dispatch_messages(event.event_id, result)
         return result
+
+
+@dataclass
+class RuntimeState:
+    heavenly_graph: SQLiteHeavenlyGraphAdapter
+    character_graph_memory: CharacterGraphMemoryStore
+    character_agent_runtime: CharacterAgentRuntime
+    siming_runtime: SimingRuntime
+
+    def close(self) -> None:
+        self.heavenly_graph.close()
+
+
+def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
+    graph_path = Path(runtime_settings.heavenly_graph_path)
+    graph_path.parent.mkdir(parents=True, exist_ok=True)
+    heavenly_graph = SQLiteHeavenlyGraphAdapter(graph_path)
+    graph_memory = CharacterGraphMemoryStore(
+        heavenly_graph,
+        scope_resolver=actor_private_scope,
+    )
+    memory_router = CharacterMemoryStoreRouter(
+        light_store=CharacterAgentMemoryStore(),
+        graph_store=graph_memory,
+        heavy_actor_ids=frozenset(runtime_settings.character_graph_memory_heavy_actor_ids),
+    )
+    character_agent_runtime = CharacterAgentRuntime(memory_store=memory_router)
+    llm_provider = build_siming_llm_provider(runtime_settings)
+
+    def actor_autonomy(proposal) -> bool:
+        actor_id = proposal.target_actor_id
+        if not character_agent_runtime.supports_actor(actor_id):
+            return False
+        supervision = character_agent_runtime.get_supervision_state_record(actor_id)
+        if (
+            supervision.current_level in {"medium", "strong"}
+            and not supervision.active_constraints.allow_proactive_initiation
+        ):
+            return False
+        return character_agent_runtime.is_command_allowed_for_mode(
+            character_agent_runtime.get_control_mode(actor_id), "speak"
+        )
+
+    support = None
+    if runtime_settings.siming_heavenly_mode != "off":
+        memory = SimingHeavenlyMemoryService(heavenly_graph)
+        story = SimingStoryGraphRuntime(heavenly_graph, memory)
+        obligations = SimingStoryObligationRuntime(heavenly_graph, memory)
+        resources = ResourceCapabilityRegistry()
+        actor_memory = ActorMemoryReadGateway(character_agent_runtime)
+        support = SimingHeavenlyRuntimeSupport(
+            mode=runtime_settings.siming_heavenly_mode,
+            memory=memory,
+            compiler=SimingContextCompiler(heavenly_graph),
+            actor_memory=actor_memory,
+            story=story,
+            obligations=obligations,
+            resources=resources,
+            staging=SimingStoryNodeStaging(story, memory, obligations),
+            bridges=lambda context: SimingAdaptiveBridge(
+                graph=heavenly_graph,
+                compiled_context=context,
+                story_runtime=story,
+                obligations=obligations,
+                resources=resources,
+                actor_memory_gateway=actor_memory,
+                actor_autonomy=actor_autonomy,
+            ),
+            llm_provider=llm_provider,
+        )
+    return RuntimeState(
+        heavenly_graph=heavenly_graph,
+        character_graph_memory=graph_memory,
+        character_agent_runtime=character_agent_runtime,
+        siming_runtime=SimingRuntime(
+            llm_provider=llm_provider,
+            heavenly_support=support,
+        ),
+    )
 
 
 def reset_runtime_state() -> None:
@@ -228,12 +336,19 @@ def reset_runtime_state() -> None:
     global inventory_authority_service
     global embodied_custody_inventory_authority_service
     global default_scene_archive_door_embodied_service
+    global heavenly_graph
     global _pending_siming_character_dispatch_messages
     global websocket_transport_closers
 
+    previous_graph = globals().get("heavenly_graph")
+    if isinstance(previous_graph, SQLiteHeavenlyGraphAdapter):
+        previous_graph.close()
+    runtime_state = build_runtime_state(settings)
+    heavenly_graph = runtime_state.heavenly_graph
     runtime = SessionInputRouter()
     websocket_transport_closers = {}
     character_agent_runtime = CharacterAgentRuntime()
+    character_agent_runtime = runtime_state.character_agent_runtime
 
     def dialogue_context_provider(actor_id: str) -> dict[str, object]:
         if not character_agent_runtime.supports_actor(actor_id):
@@ -439,13 +554,14 @@ def reset_runtime_state() -> None:
     siming_event_pipeline = SimingEventPipeline(
         bus=authority_event_bus,
         consumer=SimingEventConsumer(),
-        runtime=SimingRuntime(llm_provider=build_siming_llm_provider(settings)),
+        runtime=runtime_state.siming_runtime,
         producer=SimingEventProducer(authority_event_bus),
         audit_writer=siming_audit_writer,
         character_dispatch_adapter=FrontendSimingCharacterDispatchAdapter(runtime=character_agent_runtime),
     )
     for event_type in SimingEventConsumer.ALLOWED_EVENT_TYPES:
         authority_event_bus.subscribe(event_type, siming_event_pipeline.handle_event)
+    authority_event_bus.subscribe("siming.staging_request", _ack_siming_staging_request)
     frontend_authority_event_projector = FrontendAuthorityEventProjector()
     character_agent_l4_executor = CharacterAgentL4Executor()
     character_agent_l4_adapter = CharacterAgentL4Adapter(executor=character_agent_l4_executor)
@@ -456,6 +572,78 @@ def reset_runtime_state() -> None:
     for event_type in FRONTEND_AUTHORITY_EVENT_TYPES:
         authority_event_bus.subscribe(event_type, frontend_authority_event_projector.handle_event)
     debug_stream.clear()
+
+
+def _ack_siming_staging_request(event: AuthorityEvent) -> None:
+    payload = event.payload
+    target_actor_id = str(payload.get("target_actor_id", "") or "")
+    character_accepted = character_agent_runtime.supports_actor(target_actor_id)
+    character_reason = "" if character_accepted else "unsupported_actor"
+    if character_accepted:
+        supervision = character_agent_runtime.get_supervision_state_record(
+            target_actor_id
+        )
+        character_accepted = (
+            (
+                supervision.current_level == "weak"
+                or supervision.active_constraints.allow_proactive_initiation
+            )
+            and character_agent_runtime.is_command_allowed_for_mode(
+                character_agent_runtime.get_control_mode(target_actor_id), "speak"
+            )
+        )
+        if not character_accepted:
+            character_reason = "actor_control_mode_disallows_staging"
+    _publish_runtime_staging_ack(
+        event,
+        source="character",
+        accepted=character_accepted,
+        reason=character_reason,
+        producer_ts=event.producer_ts + 1,
+    )
+
+    esm_accepted = all(
+        isinstance(payload.get(key), str) and bool(payload[key])
+        for key in ("node_id", "obligation_id", "realization_signature")
+    )
+    _publish_runtime_staging_ack(
+        event,
+        source="esm",
+        accepted=esm_accepted,
+        reason="" if esm_accepted else "invalid_staging_contract",
+        producer_ts=event.producer_ts + 2,
+    )
+
+
+def _publish_runtime_staging_ack(
+    event: AuthorityEvent,
+    *,
+    source: str,
+    accepted: bool,
+    reason: str,
+    producer_ts: int,
+) -> None:
+    if any(
+        ack.correlation_id == event.correlation_id
+        and ack.payload.get("source") == source
+        for ack in authority_event_bus.list_events(event_type="siming_staging_ack")
+    ):
+        return
+    ack = StagingAck(
+        source=source,
+        correlation_id=event.correlation_id,
+        accepted=accepted,
+        reason=reason,
+    )
+    authority_event_bus.publish(
+        authority_event_adapter.staging_ack_event(
+            ack,
+            room_id=event.room_id,
+            scene_id=event.scene_id,
+            zone_id=event.zone_id,
+            producer_ts=producer_ts,
+        )
+    )
 
 
 reset_runtime_state()
@@ -1010,6 +1198,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 event_trace.record(response.output_type)
                 await send(_as_envelope("dialogue_response", response.model_dump()))
                 await send(_dialogue_stream_end(request_id, "completed", len(response.content), fallback_used))
+                await send_batch(_observatory_messages_from_outbound([]))
                 return
 
             stream = character_service.stream_dialogue(event, cancelled=cancelled.is_set)
@@ -1051,6 +1240,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 event_trace.record(response.output_type)
                 await send(_as_envelope("dialogue_response", response.model_dump()))
                 await send(_dialogue_stream_end(request_id, "completed", partial_chars, fallback_used))
+                await send_batch(_observatory_messages_from_outbound([]))
                 return
         except Exception as exc:
             if cancelled.is_set():
@@ -1063,7 +1253,11 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
     async def send_raw_fact_followups(envelope: Envelope, authority_ack: dict[str, object]) -> None:
         try:
-            outbound = await asyncio.to_thread(_handle_envelope, envelope, connection_context=connection_context)
+            outbound = await asyncio.to_thread(
+                _handle_raw_fact_followup,
+                envelope,
+                connection_context=connection_context,
+            )
             await send_batch(_drop_matching_authority_ack(outbound, authority_ack))
         except (ValidationError, ValueError, TypeError) as exc:
             await send(_as_error_ack(source_type=envelope.message_type, route="raw_fact_followup_failed", error=exc))
@@ -1217,6 +1411,15 @@ async def debug_websocket_endpoint(websocket: WebSocket) -> None:
         debug_stream.unsubscribe(queue)
 
 
+def _handle_raw_fact_followup(
+    envelope: Envelope,
+    *,
+    connection_context: WebSocketConnectionContext,
+) -> list[dict[str, object]]:
+    with _raw_fact_followup_lock:
+        return _handle_envelope(envelope, connection_context=connection_context)
+
+
 def _handle_websocket_envelope(
     envelope: Envelope,
     connection_context: WebSocketConnectionContext,
@@ -1249,6 +1452,72 @@ def _handle_envelope(
                 },
             }
         ]
+    if envelope.message_type == "siming_staging_ack":
+        payload = envelope.payload
+        required_text = ("room_id", "scene_id", "zone_id", "correlation_id")
+        if any(not isinstance(payload.get(key), str) or not payload[key] for key in required_text):
+            return _as_error_ack(
+                source_type=envelope.message_type,
+                route="siming_staging_ack",
+                error=ValueError("missing_staging_ack_context"),
+            )
+        if not isinstance(payload.get("producer_ts"), int) or isinstance(payload.get("producer_ts"), bool):
+            return _as_error_ack(
+                source_type=envelope.message_type,
+                route="siming_staging_ack",
+                error=ValueError("invalid_staging_ack_timestamp"),
+            )
+        try:
+            ack = StagingAck(
+                source="godot",
+                correlation_id=payload["correlation_id"],
+                accepted=payload["accepted"],
+                reason=payload.get("reason", ""),
+            )
+        except (KeyError, ValidationError, TypeError) as exc:
+            return _as_error_ack(
+                source_type=envelope.message_type,
+                route="siming_staging_ack",
+                error=exc,
+            )
+        if any(
+            existing.correlation_id == ack.correlation_id
+            and existing.payload.get("source") == ack.source
+            for existing in authority_event_bus.list_events(event_type="siming_staging_ack")
+        ):
+            event_trace.record("siming_staging_ack_duplicate_suppressed")
+            return _finalize_outbound_messages(
+                [{
+                    "message_type": "ack",
+                    "payload": {
+                        "accepted": True,
+                        "source_type": envelope.message_type,
+                        "route": "siming_staging_ack_duplicate",
+                    },
+                }]
+            )
+        authority_event_bus.publish(
+            authority_event_adapter.staging_ack_event(
+                ack,
+                room_id=payload["room_id"],
+                scene_id=payload["scene_id"],
+                zone_id=payload["zone_id"],
+                producer_ts=payload["producer_ts"],
+            )
+        )
+        event_trace.record("siming_staging_ack")
+        return _finalize_outbound_messages(
+            [
+                {
+                    "message_type": "ack",
+                    "payload": {
+                        "accepted": True,
+                        "source_type": envelope.message_type,
+                        "route": "siming_staging_ack",
+                    },
+                }
+            ]
+        )
     if envelope.message_type == "embodied_interaction_session_probe":
         return _handle_embodied_interaction_session_probe(envelope)
 
@@ -3244,10 +3513,15 @@ def _as_envelope(message_type: str, payload: dict[str, object]) -> dict[str, obj
 def _as_character_agent_execution_envelopes(commands: list[CharacterGoalCommand]) -> list[dict[str, object]]:
     envelopes: list[dict[str, object]] = []
     for command in commands:
+        payload = dict(character_agent_l4_adapter.command_to_execution_payload(command))
+        payload["actor_id"] = command.actor_id
+        payload["producer_ts"] = command.producer_ts
+        payload["causation_id"] = command.causation_id
+        payload["correlation_id"] = command.correlation_id
         envelopes.append(
             {
                 "message_type": "character_agent_execution",
-                "payload": character_agent_l4_adapter.command_to_execution_payload(command),
+                "payload": payload,
             }
         )
     return envelopes

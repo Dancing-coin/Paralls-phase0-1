@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from uuid import uuid4
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
@@ -266,6 +267,8 @@ def _write_mainline_route_contract(provider_refs: dict[str, list[dict[str, str]]
     from app import main as backend_main
     from app.debug_stream import debug_stream
 
+    graph_path = verification_dir(repo_root()) / f"l1-mainline-route-{uuid4().hex}.sqlite3"
+    backend_main.settings.heavenly_graph_path = str(graph_path)
     backend_main.reset_runtime_state()
     backend_main.l1_occupancy_service.apply_object_state_update(
         object_id="obj_letter",

@@ -33,6 +33,8 @@ FOCUS_AUTOTEST_MARKER_TIMEOUT_SECONDS = 120.0
 PHASE0_VERIFY_ENV = {
     "CHARACTER_MODEL_PROVIDER_KIND": "local",
     "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
+    "SIMING_HEAVENLY_MODE": "off",
+    "SIMING_LLM_MODE": "disabled",
 }
 PHASE0_PYTEST_TIMEOUT_SECONDS = float(os.environ.get("PHASE0_PYTEST_TIMEOUT_SECONDS", "1200"))
 
@@ -107,10 +109,10 @@ def main() -> int:
             if path
         )
         pytest_result = run_command(
-            [python_exe, "-m", "pytest", "-v"],
-            project_root / "backend",
+            [python_exe, "-m", "pytest", "-v", "backend/tests"],
+            project_root,
             pytest_log,
-            env={"PYTHONPATH": pytest_pythonpath},
+            env={"PYTHONPATH": pytest_pythonpath, **PHASE0_VERIFY_ENV},
             timeout_seconds=PHASE0_PYTEST_TIMEOUT_SECONDS,
         )
 

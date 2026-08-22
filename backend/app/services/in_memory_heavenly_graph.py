@@ -9,6 +9,8 @@ from app.models.siming_heavenly_graph import (
     HeavenlyGraphRelation,
     HeavenlyGraphScope,
     HeavenlyGraphSnapshot,
+    HeavenlySubgraphDirection,
+    HeavenlySubgraphResult,
     HeavenlyGraphWriteBatch,
     HeavenlyGraphWriteResult,
     HeavenlyNodeQuery,
@@ -23,7 +25,7 @@ from app.services.siming_heavenly_graph_port import (
 )
 
 
-ScopeKey = tuple[str, str, str, str | None, str | None]
+ScopeKey = tuple[str, str, str, str | None, str | None, str, str | None]
 CheckpointKey = tuple[ScopeKey, str]
 
 
@@ -206,6 +208,106 @@ class InMemoryHeavenlyGraphAdapter:
         )
         return ordered if query.limit is None else ordered[: query.limit]
 
+    def query_subgraph(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        seed_node_ids: list[str],
+        relation_types: list[str],
+        direction: HeavenlySubgraphDirection,
+        max_depth: int,
+        valid_at: int,
+        recorded_at: int | None,
+        node_limit: int,
+        relation_limit: int,
+    ) -> HeavenlySubgraphResult:
+        if direction not in {"outgoing", "incoming", "both"}:
+            raise ValueError(f"unsupported subgraph direction {direction!r}")
+        if not 0 <= max_depth <= 8:
+            raise ValueError("max_depth must be within 0..8")
+        if not 1 <= node_limit <= 1000:
+            raise ValueError("node_limit must be within 1..1000")
+        if not 1 <= relation_limit <= 2000:
+            raise ValueError("relation_limit must be within 1..2000")
+
+        nodes = self.query_nodes(
+            HeavenlyNodeQuery(
+                scope=scope,
+                valid_at=valid_at,
+                recorded_at=recorded_at,
+                limit=None,
+            )
+        )
+        node_by_id = {node.node_id: node for node in nodes}
+        relations = self.query_relations(
+            HeavenlyRelationQuery(
+                scope=scope,
+                valid_at=valid_at,
+                recorded_at=recorded_at,
+                relation_types=relation_types,
+                limit=None,
+            )
+        )
+        selected_node_ids: list[str] = []
+        seen_node_ids: set[str] = set()
+        truncated = False
+        for node_id in sorted(set(seed_node_ids)):
+            if node_id not in node_by_id:
+                continue
+            if len(selected_node_ids) == node_limit:
+                truncated = True
+                break
+            selected_node_ids.append(node_id)
+            seen_node_ids.add(node_id)
+
+        selected_relations: list[HeavenlyGraphRelation] = []
+        seen_relation_ids: set[str] = set()
+        frontier = selected_node_ids
+        for depth in range(max_depth + 1):
+            next_frontier: list[str] = []
+            for node_id in sorted(frontier):
+                for relation in relations:
+                    if relation.relation_id in seen_relation_ids:
+                        continue
+                    neighbor_id = self._traversal_neighbor(
+                        relation,
+                        node_id=node_id,
+                        direction=direction,
+                    )
+                    if neighbor_id is None or neighbor_id not in node_by_id:
+                        continue
+                    if neighbor_id not in seen_node_ids and depth == max_depth:
+                        truncated = True
+                        continue
+                    if (
+                        neighbor_id not in seen_node_ids
+                        and len(selected_node_ids) == node_limit
+                    ):
+                        truncated = True
+                        continue
+                    if len(selected_relations) == relation_limit:
+                        truncated = True
+                        continue
+                    selected_relations.append(relation)
+                    seen_relation_ids.add(relation.relation_id)
+                    if neighbor_id not in seen_node_ids:
+                        seen_node_ids.add(neighbor_id)
+                        selected_node_ids.append(neighbor_id)
+                        next_frontier.append(neighbor_id)
+            frontier = next_frontier
+
+        return HeavenlySubgraphResult(
+            scope=scope,
+            seed_node_ids=seed_node_ids,
+            valid_at=valid_at,
+            recorded_at=recorded_at,
+            nodes=[node_by_id[node_id] for node_id in selected_node_ids],
+            relations=sorted(
+                selected_relations, key=lambda relation: relation.relation_id
+            ),
+            truncated=truncated,
+        )
+
     def create_checkpoint(
         self,
         *,
@@ -280,6 +382,19 @@ class InMemoryHeavenlyGraphAdapter:
                 raise HeavenlyGraphReferentialIntegrityError(
                     "every entity must match the batch scope"
                 )
+
+    def _traversal_neighbor(
+        self,
+        relation: HeavenlyGraphRelation,
+        *,
+        node_id: str,
+        direction: HeavenlySubgraphDirection,
+    ) -> str | None:
+        if direction in {"outgoing", "both"} and relation.source_node_id == node_id:
+            return relation.target_node_id
+        if direction in {"incoming", "both"} and relation.target_node_id == node_id:
+            return relation.source_node_id
+        return None
 
     def _batch_hash(self, batch: HeavenlyGraphWriteBatch) -> str:
         canonical = json.dumps(
@@ -420,6 +535,8 @@ class InMemoryHeavenlyGraphAdapter:
             scope.story_branch_id,
             scope.room_id,
             scope.scene_id,
+            scope.graph_namespace,
+            scope.owner_actor_id,
         )
 
     def _entity_ref(

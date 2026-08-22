@@ -6,6 +6,7 @@ import app.main as main
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from app.character_agent.gateway.model_provider import CharacterModelProvider
 from app.config import settings
+from app.models.player_input import DialogueSubmit
 
 
 class _StreamingProvider:
@@ -136,6 +137,39 @@ def test_websocket_dialogue_stream_keeps_final_response_as_the_only_written_resu
     }
     bundle = main.character_agent_runtime.get_memory_bundle("char_a")
     assert [entry["event_type"] for entry in bundle["working_memory"]].count("character_agent_dialogue_response") == 1
+
+
+def test_completed_dialogue_response_produces_observatory_writeback_and_dialogue_pair() -> None:
+    main.reset_runtime_state()
+    event = DialogueSubmit(**_dialogue_envelope()["payload"])
+
+    main._handle_player_dialogue_submit(event)
+    observatory_messages = main._observatory_messages_from_outbound([])
+
+    assert any(
+        message["message_type"] == "character_agent_debug_event"
+        and message["payload"]["stage"] == "dialogue_writeback"
+        for message in observatory_messages
+    )
+    script_beat = next(
+        message["payload"]
+        for message in observatory_messages
+        if message["message_type"] == "script_beat_event"
+    )
+    assert script_beat["dialogue_pairs"]
+    assert any(pair["pair_key"] == "char_a<->char_c" for pair in script_beat["dialogue_pairs"])
+
+
+def test_websocket_dialogue_stream_sends_queued_observatory_writeback() -> None:
+    main.reset_runtime_state()
+    client = TestClient(main.app)
+
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(_dialogue_envelope("dialogue-observatory-1"))
+        [websocket.receive_json() for _ in range(5)]
+        first_observatory_message = websocket.receive_json()
+
+    assert first_observatory_message["message_type"] == "character_agent_debug_event"
 
 
 def test_cancelled_dialogue_stream_has_no_completed_authority_result() -> None:

@@ -462,6 +462,11 @@ def test_character_agent_runtime_accepts_targeted_siming_output() -> None:
 
     assert commands
     assert commands[0].actor_id == "char_b"
+    assert commands[0].causation_id == "siming:330"
+    assert commands[0].correlation_id == "siming:330"
+    assert commands[0].execution_payload is not None
+    assert commands[0].execution_payload["actor_control_frames"][0]["causation_id"] == "siming:330"
+    assert commands[0].execution_payload["actor_control_frames"][0]["correlation_id"] == "siming:330"
     assert "siming_output_event" in stages
     assert "interpretation" in stages
     assert "decision" in stages

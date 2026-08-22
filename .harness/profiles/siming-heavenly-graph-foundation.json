@@ -6,5 +6,5 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/siming-heavenly-graph-foundation-report.json",
-  "description": "Backend proof for the typed, bi-temporal, branch-isolated, idempotent Siming heavenly graph port and deterministic in-memory adapter"
+  "description": "Backend proof for namespace-safe, owner-isolated, bi-temporal, bounded, restart-durable Heavenly Graph adapters"
 }

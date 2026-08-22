@@ -47,11 +47,17 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "embodied-interaction-contracts",
         "siming-heavenly-graph-foundation",
         "embodied-affordance-registry",
+        "siming-six-domain-memory",
         "embodied-bridge-attestation",
+        "siming-actor-memory-read",
         "embodied-action-controller",
+        "siming-story-runtime",
         "embodied-authority-settlement",
+        "siming-resource-staging",
         "embodied-interaction-replay",
+        "siming-adaptive-bridge",
         "gameplay-foundation-contract",
+        "siming-heavenly-runtime",
         "gameplay-event-replay",
         "gameplay-foundation-event-spine",
         "gameplay-state-groups",
@@ -106,6 +112,8 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["non-runtime-production-pipeline"]["script"] == "scripts/verification/verify_non_runtime_production_pipeline.py"
     assert registry.profiles["perception-input-alignment"]["script"] == "scripts/verification/verify_perception_input_alignment.py"
     assert registry.profiles["embodied-interaction-contracts"]["script"] == "scripts/verification/verify_embodied_interaction_contracts.py"
+    assert registry.profiles["siming-actor-memory-read"]["script"] == "scripts/verification/verify_siming_actor_memory_read.py"
+    assert registry.profiles["siming-story-runtime"]["script"] == "scripts/verification/verify_siming_story_runtime.py"
     assert registry.profiles["embodied-affordance-registry"]["script"] == "scripts/verification/verify_embodied_affordance_registry.py"
     assert registry.profiles["embodied-bridge-attestation"]["script"] == "scripts/verification/verify_embodied_bridge_attestation.py"
     assert registry.profiles["embodied-action-controller"]["script"] == "scripts/verification/verify_embodied_action_controller.py"
@@ -194,3 +202,37 @@ def test_write_harness_report_creates_run_id_archive(tmp_path: Path) -> None:
     assert latest_payload["run_id"] == "run_test"
     assert archived_payload["run_id"] == "run_test"
     assert report_paths["run_dir"] == tmp_path / ".harness" / "verification" / "runs" / "run_test"
+
+
+def test_write_harness_report_archives_matching_suite_identity(tmp_path: Path) -> None:
+    report_paths = _write_harness_report(
+        tmp_path,
+        [
+            {
+                "profile": "siming-heavenly-runtime",
+                "command": ["python", "scripts/verification/verify_siming_heavenly_runtime.py"],
+                "exit_code": 0,
+            }
+        ],
+        overall_passed=True,
+        run_id="run_suite_identity",
+        suite_id="siming-heavenly-runtime",
+    )
+
+    latest_report = json.loads(report_paths["json"].read_text(encoding="utf-8"))
+    archived_report = json.loads(
+        (report_paths["run_dir"] / "harness-run-report.json").read_text(encoding="utf-8")
+    )
+    latest_manifest = json.loads(report_paths["manifest"].read_text(encoding="utf-8"))
+    archived_manifest = json.loads(
+        (report_paths["run_dir"] / "run-manifest.json").read_text(encoding="utf-8")
+    )
+
+    assert latest_report["suite_id"] == "siming-heavenly-runtime"
+    assert archived_report["suite_id"] == "siming-heavenly-runtime"
+    assert latest_manifest["suite_id"] == "siming-heavenly-runtime"
+    assert archived_manifest["suite_id"] == "siming-heavenly-runtime"
+    assert "- Suite ID: `siming-heavenly-runtime`" in report_paths["markdown"].read_text(encoding="utf-8")
+    assert "- Suite ID: `siming-heavenly-runtime`" in (
+        report_paths["run_dir"] / "harness-run-report.md"
+    ).read_text(encoding="utf-8")

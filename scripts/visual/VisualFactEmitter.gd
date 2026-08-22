@@ -19,7 +19,10 @@ func emit_visual_fact(
 	target_environment_id: String = "",
 	effect_kind: String = "pulse",
 	subject_key: String = "",
-	ttl_ms: Variant = null
+	ttl_ms: Variant = null,
+	source_ref_lineage: Array[String] = [],
+	causation_id: String = "",
+	correlation_id: String = ""
 ) -> bool:
 	var payload := _build_visual_fact_payload(
 		fact_type,
@@ -32,6 +35,12 @@ func emit_visual_fact(
 		subject_key,
 		ttl_ms
 	)
+	if not source_ref_lineage.is_empty():
+		payload["source_ref_lineage"] = source_ref_lineage
+	if causation_id != "":
+		payload["causation_id"] = causation_id
+	if correlation_id != "":
+		payload["correlation_id"] = correlation_id
 	return _get_raw_fact_emitter().emit_raw_fact(
 		payload,
 		"phase0_visual_fact_emitter",

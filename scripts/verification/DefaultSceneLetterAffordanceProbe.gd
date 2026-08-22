@@ -214,6 +214,7 @@ func _run_probe() -> void:
 	await get_tree().process_frame
 
 	var initial_resolution: Dictionary = bridge.resolve_interaction("obj_letter", "inspect")
+	var letter_destroy_resolution: Dictionary = bridge.resolve_interaction("obj_letter", "destroy")
 	var plaque_initial_resolution: Dictionary = plaque_bridge.resolve_interaction("obj_plaque", "read")
 	var lamp_switch_initial_resolution: Dictionary = lamp_switch_bridge.resolve_interaction("obj_lamp_switch", "press")
 	var lamp_switch_default_interaction := lamp_switch_bridge.default_interaction_type("obj_lamp_switch")
@@ -489,6 +490,7 @@ func _run_probe() -> void:
 	var observation_bench_collider := observation_bench.get_node_or_null("InteractionCollider/CollisionShape3D")
 	var ok: bool = (
 		str(initial_resolution.get("status", "")) == "available"
+		and str(letter_destroy_resolution.get("status", "")) == "available"
 		and str(stale_refresh_resolution.get("status", "")) == "available"
 		and initial_state == "partially_visible"
 		and state_after_authority == "visible"
@@ -559,6 +561,7 @@ func _run_probe() -> void:
 	var report := {
 		"status": "godot-runtime-default-scene-letter-affordance-verified" if ok else "godot-runtime-default-scene-letter-affordance-failed",
 		"initial_resolution": initial_resolution,
+		"letter_destroy_resolution": letter_destroy_resolution,
 		"stale_refresh_resolution": stale_refresh_resolution,
 		"initial_state": initial_state,
 		"state_after_authority": state_after_authority,

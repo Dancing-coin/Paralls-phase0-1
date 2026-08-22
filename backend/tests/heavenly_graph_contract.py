@@ -94,10 +94,339 @@ def graph_relation(
     )
 
 
+def actor_scope(owner_actor_id: str) -> HeavenlyGraphScope:
+    return HeavenlyGraphScope(
+        world_id="world:demo",
+        session_id="session:demo",
+        story_branch_id="branch:main",
+        room_id="room_demo",
+        scene_id="scene_demo",
+        graph_namespace="actor_private",
+        owner_actor_id=owner_actor_id,
+    )
+
+
+def seed_chain(
+    adapter: HeavenlyGraphPort,
+    scope: HeavenlyGraphScope,
+    *,
+    length: int,
+) -> None:
+    node_ids = [f"n{index}" for index in range(length)]
+    adapter.write_batch(
+        HeavenlyGraphWriteBatch(
+            transaction_id=f"graph_tx:chain:{scope.owner_actor_id}:{length}",
+            idempotency_key=f"authority:event:chain:{scope.owner_actor_id}:{length}",
+            scope=scope,
+            nodes=[
+                graph_node(node_id=node_id, valid_from=0, recorded_at=10).model_copy(
+                    update={"scope": scope}, deep=True
+                )
+                for node_id in node_ids
+            ],
+            relations=[
+                graph_relation(
+                    relation_id=f"r{index}",
+                    source_node_id=node_ids[index],
+                    target_node_id=node_ids[index + 1],
+                    valid_from=0,
+                    recorded_at=10,
+                ).model_copy(
+                    update={"scope": scope, "relation_type": "CAUSED_BY"},
+                    deep=True,
+                )
+                for index in range(length - 1)
+            ],
+        )
+    )
+
+
+def seed_private_fact(
+    adapter: HeavenlyGraphPort,
+    scope: HeavenlyGraphScope,
+    node_id: str,
+) -> None:
+    adapter.write_batch(
+        HeavenlyGraphWriteBatch(
+            transaction_id=f"graph_tx:private-fact:{scope.owner_actor_id}",
+            idempotency_key=f"authority:event:private-fact:{scope.owner_actor_id}",
+            scope=scope,
+            nodes=[
+                graph_node(node_id=node_id, valid_from=0, recorded_at=10).model_copy(
+                    update={"scope": scope}, deep=True
+                )
+            ],
+        )
+    )
+
+
+def assert_bounded_subgraph_contract(adapter: HeavenlyGraphPort) -> None:
+    scope = actor_scope("char_b")
+    seed_chain(adapter, scope, length=4)
+    result = adapter.query_subgraph(
+        scope=scope,
+        seed_node_ids=["n0"],
+        relation_types=["CAUSED_BY"],
+        direction="outgoing",
+        max_depth=2,
+        valid_at=20,
+        recorded_at=20,
+        node_limit=10,
+        relation_limit=10,
+    )
+    assert [node.node_id for node in result.nodes] == ["n0", "n1", "n2"]
+    assert [relation.relation_id for relation in result.relations] == ["r0", "r1"]
+    assert result.truncated is True
+
+
+def assert_owner_isolation_contract(adapter: HeavenlyGraphPort) -> None:
+    seed_private_fact(adapter, actor_scope("char_b"), "memory:observed-destruction")
+    result = adapter.query_subgraph(
+        scope=actor_scope("char_a"),
+        seed_node_ids=["memory:observed-destruction"],
+        relation_types=[],
+        direction="both",
+        max_depth=1,
+        valid_at=20,
+        recorded_at=20,
+        node_limit=10,
+        relation_limit=10,
+    )
+    assert result.nodes == []
+    assert result.relations == []
+
+
 class HeavenlyGraphContract(ABC):
     @abstractmethod
     def make_graph(self) -> HeavenlyGraphPort:
         raise NotImplementedError
+
+    def test_subgraph_traversal_respects_depth_bound(self) -> None:
+        assert_bounded_subgraph_contract(self.make_graph())
+
+    def test_subgraph_traversal_isolates_private_owners(self) -> None:
+        assert_owner_isolation_contract(self.make_graph())
+
+    def test_subgraph_traversal_honors_direction(self) -> None:
+        graph = self.make_graph()
+        scope = actor_scope("char_b")
+        seed_chain(graph, scope, length=3)
+
+        result = graph.query_subgraph(
+            scope=scope,
+            seed_node_ids=["n2"],
+            relation_types=["CAUSED_BY"],
+            direction="incoming",
+            max_depth=1,
+            valid_at=20,
+            recorded_at=20,
+            node_limit=10,
+            relation_limit=10,
+        )
+
+        assert [node.node_id for node in result.nodes] == ["n2", "n1"]
+        assert [relation.relation_id for relation in result.relations] == ["r1"]
+        assert result.truncated is True
+
+    def test_subgraph_traversal_has_stable_frontier_order(self) -> None:
+        graph = self.make_graph()
+        scope = actor_scope("char_b")
+        seed_chain(graph, scope, length=3)
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:ordered-frontier",
+                idempotency_key="authority:event:ordered-frontier",
+                scope=scope,
+                relations=[
+                    graph_relation(
+                        relation_id="a",
+                        source_node_id="n0",
+                        target_node_id="n2",
+                        valid_from=0,
+                        recorded_at=10,
+                    ).model_copy(
+                        update={"scope": scope, "relation_type": "CAUSED_BY"},
+                        deep=True,
+                    )
+                ],
+            )
+        )
+
+        result = graph.query_subgraph(
+            scope=scope,
+            seed_node_ids=["n0"],
+            relation_types=["CAUSED_BY"],
+            direction="outgoing",
+            max_depth=1,
+            valid_at=20,
+            recorded_at=20,
+            node_limit=10,
+            relation_limit=10,
+        )
+
+        assert [node.node_id for node in result.nodes] == ["n0", "n2", "n1"]
+        assert [relation.relation_id for relation in result.relations] == ["a", "r0", "r1"]
+
+    def test_subgraph_traversal_uses_bitemporal_effective_relations(self) -> None:
+        graph = self.make_graph()
+        scope = actor_scope("char_b")
+        seed_chain(graph, scope, length=2)
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:temporal-relation:v2",
+                idempotency_key="authority:event:temporal-relation:v2",
+                scope=scope,
+                relations=[
+                    graph_relation(
+                        relation_id="r0",
+                        source_node_id="n0",
+                        target_node_id="n1",
+                        valid_from=50,
+                        recorded_at=60,
+                        revision=2,
+                        supersedes_revision=1,
+                    ).model_copy(
+                        update={"scope": scope, "relation_type": "CAUSED_BY"},
+                        deep=True,
+                    )
+                ],
+            )
+        )
+
+        before_recording = graph.query_subgraph(
+            scope=scope,
+            seed_node_ids=["n0"],
+            relation_types=["CAUSED_BY"],
+            direction="outgoing",
+            max_depth=1,
+            valid_at=55,
+            recorded_at=59,
+            node_limit=10,
+            relation_limit=10,
+        )
+        after_recording = graph.query_subgraph(
+            scope=scope,
+            seed_node_ids=["n0"],
+            relation_types=["CAUSED_BY"],
+            direction="outgoing",
+            max_depth=1,
+            valid_at=55,
+            recorded_at=60,
+            node_limit=10,
+            relation_limit=10,
+        )
+
+        assert before_recording.relations[0].revision == 1
+        assert after_recording.relations[0].revision == 2
+
+    def test_subgraph_traversal_marks_node_and_relation_limit_truncation(self) -> None:
+        graph = self.make_graph()
+        scope = actor_scope("char_b")
+        seed_chain(graph, scope, length=3)
+
+        node_limited = graph.query_subgraph(
+            scope=scope,
+            seed_node_ids=["n0"],
+            relation_types=["CAUSED_BY"],
+            direction="outgoing",
+            max_depth=2,
+            valid_at=20,
+            recorded_at=20,
+            node_limit=2,
+            relation_limit=10,
+        )
+        relation_limited = graph.query_subgraph(
+            scope=scope,
+            seed_node_ids=["n0"],
+            relation_types=["CAUSED_BY"],
+            direction="outgoing",
+            max_depth=2,
+            valid_at=20,
+            recorded_at=20,
+            node_limit=10,
+            relation_limit=1,
+        )
+
+        assert [node.node_id for node in node_limited.nodes] == ["n0", "n1"]
+        assert node_limited.truncated is True
+        assert [relation.relation_id for relation in relation_limited.relations] == [
+            "r0"
+        ]
+        assert relation_limited.truncated is True
+
+    @pytest.mark.parametrize(
+        ("max_depth", "node_limit", "relation_limit"),
+        [
+            (9, 10, 10),
+            (1, 1001, 10),
+            (1, 10, 2001),
+        ],
+    )
+    def test_subgraph_traversal_rejects_upper_bounds(
+        self,
+        max_depth: int,
+        node_limit: int,
+        relation_limit: int,
+    ) -> None:
+        with pytest.raises(ValueError):
+            self.make_graph().query_subgraph(
+                scope=actor_scope("char_b"),
+                seed_node_ids=[],
+                relation_types=[],
+                direction="outgoing",
+                max_depth=max_depth,
+                valid_at=20,
+                recorded_at=20,
+                node_limit=node_limit,
+                relation_limit=relation_limit,
+            )
+
+    def test_actor_private_scopes_isolate_equal_node_ids(self) -> None:
+        graph = self.make_graph()
+        owner_a_scope = HeavenlyGraphScope(
+            world_id="world:demo",
+            session_id="session:demo",
+            story_branch_id="branch:main",
+            graph_namespace="actor_private",
+            owner_actor_id="char:a",
+        )
+        owner_b_scope = owner_a_scope.model_copy(
+            update={"owner_actor_id": "char:b"},
+        )
+
+        for scope, state, owner in [
+            (owner_a_scope, "known_by_a", "a"),
+            (owner_b_scope, "known_by_b", "b"),
+        ]:
+            graph.write_batch(
+                HeavenlyGraphWriteBatch(
+                    transaction_id=f"graph_tx:private:{owner}",
+                    idempotency_key=f"authority:event:private:{owner}",
+                    scope=scope,
+                    nodes=[
+                        graph_node(
+                            node_id="fact:secret",
+                            state=state,
+                        ).model_copy(update={"scope": scope}, deep=True)
+                    ],
+                )
+            )
+
+        owner_a_node = graph.get_node(
+            node_id="fact:secret",
+            scope=owner_a_scope,
+            valid_at=20,
+        )
+        owner_b_node = graph.get_node(
+            node_id="fact:secret",
+            scope=owner_b_scope,
+            valid_at=20,
+        )
+
+        assert owner_a_node is not None
+        assert owner_a_node.attributes["state"] == "known_by_a"
+        assert owner_b_node is not None
+        assert owner_b_node.attributes["state"] == "known_by_b"
 
     def test_node_refs_are_collision_safe_across_complete_scopes(self) -> None:
         graph = self.make_graph()

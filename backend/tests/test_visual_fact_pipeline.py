@@ -1,4 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+import time
 
 from fastapi.testclient import TestClient
 import app.main as main
@@ -78,6 +80,49 @@ def test_visual_fact_event_shape() -> None:
     )
     assert event.fact_type == "fixed_gaze_on_target"
     assert event.target_actor_id == "char_a"
+
+
+def test_concurrent_raw_fact_handlers_do_not_duplicate_character_memory_events() -> None:
+    reset_runtime_state()
+    runtime = main.character_agent_runtime
+    local_gateway = _LocalGateway()
+    runtime._l2 = CharacterAgentL2Service(gateway=local_gateway, profile_registry=runtime._profile_registry)
+    runtime._l3 = CharacterAgentL3Service(gateway=local_gateway)
+    main.siming_event_pipeline._character_dispatch_adapter._runtime = runtime
+    append_event = runtime._session_store.append_event
+
+    def delayed_append_event(*args: object, **kwargs: object) -> dict[str, object]:
+        time.sleep(0.01)
+        return append_event(*args, **kwargs)
+
+    runtime._session_store.append_event = delayed_append_event  # type: ignore[method-assign]
+
+    def envelope(index: int) -> Envelope:
+        event = RawFactEvent(
+            fact_family="visual_fact",
+            fact_type="fixed_gaze_on_target",
+            relation_type="actor_looks_at_actor",
+            producer_ts=700,
+            room_id="room_demo",
+            scene_id="scene_demo",
+            zone_id="zone_focus",
+            source={"system": "godot.raw_fact_emitter", "actor_id": "char_c"},
+            targets={"actor_id": "char_b"},
+            causation_id=f"concurrent:{index}",
+            correlation_id="concurrent:batch",
+        )
+        return Envelope(message_type="raw_fact_event", payload=event.model_dump())
+
+    errors: list[BaseException] = []
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [executor.submit(_handle_envelope, envelope(index)) for index in range(16)]
+        for future in as_completed(futures):
+            try:
+                future.result()
+            except BaseException as exc:  # pragma: no cover - asserted below
+                errors.append(exc)
+
+    assert errors == []
 
 
 def test_visual_fact_event_model_dump_supports_environment_state_subject_key() -> None:

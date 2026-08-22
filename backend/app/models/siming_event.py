@@ -17,12 +17,14 @@ SimingInputType = Literal[
     "character_behavior_event",
     "conversation_resolution_event",
     "constraint_state_event",
+    "siming_staging_ack",
 ]
 
 SimingOutputType = Literal[
     "fairness_snapshot",
     "intervention_candidate",
     "intervention_decision",
+    "staging_request",
     "dispatch_intent",
     "audit_record",
     "no_action",
@@ -119,7 +121,9 @@ class InterventionCandidate(BaseModel):
         }
         present = sorted(forbidden.intersection(value.keys()))
         if present:
-            raise ValueError(f"forbidden Siming candidate field(s): {', '.join(present)}")
+            raise ValueError(
+                f"forbidden Siming candidate field(s): {', '.join(present)}"
+            )
         return value
 
 

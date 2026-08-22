@@ -274,6 +274,8 @@ func _connect_backend() -> void:
 	_bus_log("phase0_backend_connect_err:%s" % err)
 
 func _resolve_backend_url() -> String:
+	if OS.get_environment("PHASE0_OBSERVATORY_STREAM") == "1":
+		return backend_url
 	if not autotest_enabled or focus_autotest_enabled:
 		return backend_url
 	var separator: String = "&" if backend_url.contains("?") else "?"
@@ -918,13 +920,14 @@ func _move_player_to_focus_vantage(target_position: Vector3) -> void:
 		if spring_arm is SpringArm3D:
 			(spring_arm as SpringArm3D).spring_length = 2.6
 
-func _capture_autotest_screenshot() -> void:
-	var screenshot_path := OS.get_environment("PHASE0_AUTOTEST_SCREENSHOT")
+func _capture_autotest_screenshot(screenshot_path: String = "") -> void:
+	if screenshot_path == "":
+		screenshot_path = OS.get_environment("PHASE0_AUTOTEST_SCREENSHOT")
 	if screenshot_path == "":
 		_bus_log("phase0_screenshot_skipped")
 		return
 
-	await RenderingServer.frame_post_draw
+	await get_tree().process_frame
 	var image := get_viewport().get_texture().get_image()
 	var err := image.save_png(screenshot_path)
 	_bus_log("phase0_screenshot_saved:%s:%s" % [screenshot_path, err])

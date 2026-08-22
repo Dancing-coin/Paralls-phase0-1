@@ -29,6 +29,8 @@ PHASE1_SLICE_PROBE_SCENE_PATH = Path("scenes/phase0/Phase1SliceRuntimeProbe.tscn
 PHASE1_SLICE_VERIFY_ENV = {
     "CHARACTER_MODEL_PROVIDER_KIND": "local",
     "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
+    "SIMING_HEAVENLY_MODE": "off",
+    "SIMING_LLM_MODE": "disabled",
 }
 
 

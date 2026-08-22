@@ -1,6 +1,10 @@
 extends Node
 
 var _backend_connected := false
+var _dialogue_received := false
+var _character_debug_event_count := 0
+var _script_beat_count := 0
+const BACKEND_URL := "ws://127.0.0.1:8000/ws"
 
 const STATE_PAYLOADS_OK_MARKER := "character_director_observatory_probe:state_payloads_ok=true"
 const PANELS_POPULATED_OK_MARKER := "character_director_observatory_probe:panels_populated=true"
@@ -24,19 +28,31 @@ func _string_or_empty(value: Variant) -> String:
 
 
 func _ready() -> void:
+	print("character_director_observatory_probe:ready_entered")
 	call_deferred("_run_probe")
 
 
 func _run_probe() -> void:
+	print("character_director_observatory_probe:run_entered")
 	var bus := get_node_or_null("/root/LocalPresentationBus")
 	if bus == null:
 		push_error("character_director_observatory_probe:missing_bus")
 		get_tree().quit(1)
 		return
-	if bus.has_method("set_debug_logging_enabled"):
-		bus.set_debug_logging_enabled(true)
 	if bus.has_signal("backend_connected"):
 		bus.backend_connected.connect(_on_backend_connected)
+	if bus.has_signal("dialogue_received"):
+		bus.dialogue_received.connect(_on_dialogue_received)
+	if bus.has_signal("character_agent_debug_event_received"):
+		bus.character_agent_debug_event_received.connect(_on_character_agent_debug_event_received)
+	if bus.has_signal("script_beat_event_received"):
+		bus.script_beat_event_received.connect(_on_script_beat_event_received)
+	var bridge := get_node_or_null("/root/BackendBridge")
+	if bridge != null and bridge.has_method("is_backend_open"):
+		_backend_connected = bool(bridge.call("is_backend_open"))
+	print("character_director_observatory_probe:bridge_open=%s" % str(_backend_connected))
+	if not _backend_connected and bridge != null and bridge.has_method("connect_to_backend"):
+		bridge.call("connect_to_backend", BACKEND_URL)
 	var main_demo := get_node_or_null("MainDemo")
 	if main_demo == null:
 		push_error("character_director_observatory_probe:missing_main_demo")
@@ -52,29 +68,40 @@ func _run_probe() -> void:
 		push_error("character_director_observatory_probe:missing_observatory_nodes")
 		get_tree().quit(1)
 		return
+	print("character_director_observatory_probe:wait_begin")
 	var connected_ok := await _wait_for_backend_connected(10000)
+	print("character_director_observatory_probe:wait_result=%s" % str(connected_ok))
 	if not connected_ok:
 		push_error("character_director_observatory_probe:backend_connect_timeout")
 		get_tree().quit(1)
 		return
+	print("character_director_observatory_probe:connected_stage")
 	state.set_observatory_enabled(true)
 	state.set_director_mode(true)
 	state.set_script_mode(true)
-	var main_controller := main_demo.get_node_or_null(".")
+	var main_controller := main_demo
 	var actor_node := main_demo.get_node_or_null("CharacterA")
 	var object_node := main_demo.get_node_or_null("InteractiveObject")
+	print("character_director_observatory_probe:actor_node_id=%s" % str(actor_node.get("actor_id") if actor_node != null else "<missing>"))
+	print("character_director_observatory_probe:backend_url=%s" % str(main_demo.call("_resolve_backend_url")))
 	if main_controller != null and main_controller.has_method("_force_focus_target") and actor_node != null:
 		main_controller.call("_force_focus_target", actor_node)
 	await get_tree().create_timer(0.2).timeout
-	main_demo.call("submit_dialogue", "what did you see near the letter?")
-	await get_tree().create_timer(0.8).timeout
+	print("character_director_observatory_probe:dialogue_target=%s" % str(main_demo.call("_resolve_focused_actor_id")))
+	if main_demo.has_method("_emit_dialogue_request"):
+		main_demo.call("_emit_dialogue_request", "char_a", "what did you see near the letter?")
+	var dialogue_ok := await _wait_for_dialogue_received(5000)
+	print("character_director_observatory_probe:dialogue_received=%s" % str(dialogue_ok))
+	print("character_director_observatory_probe:dialogue_stage")
 	var early_bottom_strip_siming_populated: bool = await _wait_for_bottom_strip_siming(state, observatory_root, 1500)
+	print("character_director_observatory_probe:bottom_wait_stage")
 	if main_controller != null and main_controller.has_method("_force_focus_target") and object_node != null:
 		main_controller.call("_force_focus_target", object_node)
 	await get_tree().create_timer(0.2).timeout
 	if main_controller != null and main_controller.has_method("_emit_interaction_request"):
 		main_controller.call("_emit_interaction_request", "obj_letter", "inspect")
 	await get_tree().create_timer(1.2).timeout
+	print("character_director_observatory_probe:interaction_stage")
 	var state_payloads_ok: bool = (
 		state.get_visible_actor_states().size() > 0
 		and not state.get_latest_siming_state().is_empty()
@@ -90,6 +117,7 @@ func _run_probe() -> void:
 	var timeline_beats: Array[Dictionary] = state.call("get_recent_script_beats")
 	var actor_panel_populated := false
 	var selected_actor_siming_summary_populated := false
+	print("character_director_observatory_probe:panel_stage")
 	if actor_label != null:
 		var actor_state_keys: Array = state.get_visible_actor_states().keys()
 		var actor_probe_ids: Array[String] = ["char_c", "char_a", "char_b"]
@@ -98,11 +126,16 @@ func _run_probe() -> void:
 			if not actor_probe_ids.has(actor_id_text):
 				actor_probe_ids.append(actor_id_text)
 		for actor_id in actor_probe_ids:
+			print("character_director_observatory_probe:actor_select_begin=%s" % actor_id)
 			state.set_selected_actor(actor_id)
+			print("character_director_observatory_probe:actor_select_changed=%s" % actor_id)
 			if actor_panel.has_method("_refresh"):
 				actor_panel.call("_refresh")
+			print("character_director_observatory_probe:actor_panel_refreshed=%s" % actor_id)
 			await get_tree().process_frame
+			print("character_director_observatory_probe:actor_first_frame=%s" % actor_id)
 			await get_tree().process_frame
+			print("character_director_observatory_probe:actor_second_frame=%s" % actor_id)
 			var selected_payload: Dictionary = state.get_selected_actor_state()
 			var actor_panel_text := _string_or_empty(actor_label.text)
 			var selected_actor_siming_summary := _string_or_empty(
@@ -179,6 +212,7 @@ func _run_probe() -> void:
 		and str(ledger_label.text).find("听的人回出来的话：") >= 0
 	)
 	var dialogue_pairs: Array[Dictionary] = state.call("get_dialogue_pair_entries")
+	print("character_director_observatory_probe:dialogue_pair_count=%s" % str(dialogue_pairs.size()))
 	var rich_dialogue_pair := _find_dialogue_pair_with_siming(dialogue_pairs)
 	var rich_dialogue_pair_key := _string_or_empty(rich_dialogue_pair.get("pair_key", ""))
 	if not rich_dialogue_pair_key.is_empty():
@@ -233,6 +267,7 @@ func _run_probe() -> void:
 			and str(world_trace_label.text).find("[司命]") >= 0
 		)
 	)
+	print("character_director_observatory_probe:marker_stage")
 	var panels_populated: bool = (
 		actor_panel_populated
 		and director_cast_world_siming_populated
@@ -283,6 +318,28 @@ func _run_probe() -> void:
 
 func _on_backend_connected(_url: String) -> void:
 	_backend_connected = true
+	print("character_director_observatory_probe:signal_connected")
+
+
+func _on_dialogue_received(_payload: Dictionary) -> void:
+	_dialogue_received = true
+
+
+func _on_character_agent_debug_event_received(_payload: Dictionary) -> void:
+	_character_debug_event_count += 1
+
+
+func _on_script_beat_event_received(_payload: Dictionary) -> void:
+	_script_beat_count += 1
+
+
+func _wait_for_dialogue_received(timeout_ms: int) -> bool:
+	var deadline := Time.get_ticks_msec() + timeout_ms
+	while Time.get_ticks_msec() < deadline:
+		if _dialogue_received:
+			return true
+		await get_tree().process_frame
+	return false
 
 
 func _wait_for_backend_connected(timeout_ms: int) -> bool:

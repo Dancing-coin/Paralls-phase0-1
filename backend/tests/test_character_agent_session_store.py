@@ -47,3 +47,17 @@ def test_session_store_persists_and_recovers_actor_timelines(tmp_path: Path) -> 
     assert events
     assert events[0]["payload"]["summary"] == "persisted"
     assert (tmp_path / "character_agent_session_store.json").exists()
+
+
+def test_independent_runtime_session_stores_generate_distinct_event_ids() -> None:
+    first_runtime = CharacterAgentSessionStore()
+    second_runtime = CharacterAgentSessionStore()
+
+    first = first_runtime.append_event(
+        "char_b", "character_perceived_event", 1005, {"summary": "first"}
+    )
+    second = second_runtime.append_event(
+        "char_b", "character_perceived_event", 1005, {"summary": "second"}
+    )
+
+    assert first["event_id"] != second["event_id"]

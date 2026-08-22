@@ -117,6 +117,12 @@ python scripts/verification/harness.py --profile embodied-interaction-session
 python scripts/verification/harness.py --profile embodied-handoff-authority
 python scripts/verification/harness.py --profile embodied-grab-carry-place-authority
 python scripts/verification/harness.py --profile embodied-interaction-foundation-all
+python scripts/verification/harness.py --profile siming-heavenly-graph-foundation
+python scripts/verification/harness.py --profile siming-six-domain-memory
+python scripts/verification/harness.py --profile siming-actor-memory-read
+python scripts/verification/harness.py --profile siming-story-runtime
+python scripts/verification/harness.py --profile siming-resource-staging
+python scripts/verification/harness.py --profile siming-adaptive-bridge
 python scripts/verification/harness.py --profile all
 ```
 
@@ -537,8 +543,84 @@ when changing governed script-evolution behavior.
 
 ### `siming-heavenly-graph-foundation`
 
-Proof profile for the Siming heavenly-graph foundation and its governed
-runtime contracts.
+Backend proof for namespace-safe, owner-isolated, bi-temporal, bounded,
+restart-durable Heavenly Graph adapters.
+
+```powershell
+python scripts/verification/harness.py --profile siming-heavenly-graph-foundation
+```
+
+### `siming-heavenly-runtime`
+
+Godot-required live proof for the complete Siming heavenly runtime. It requires
+an active online HTTP provider, a verifier-owned SQLite database, all 17 result
+IDs, and three meaningful Godot captures. Preflight output contains only
+presence booleans, route IDs, and model names.
+
+```powershell
+python scripts/verification/verify_siming_heavenly_runtime.py --preflight
+python scripts/verification/harness.py --profile siming-heavenly-runtime
+```
+
+Output:
+
+- `.harness/verification/siming-heavenly-runtime-report.json`
+- `.harness/verification/siming-heavenly-runtime-report.md`
+
+### `siming-six-domain-memory`
+
+Backend proof that all six durable Siming memory domains persist through a
+SQLite restart, that a fresh compiler reconstructs the same bounded context
+without a summary cache, and that compatibility projections remain derived
+read models rather than canonical graph truth.
+
+```powershell
+python scripts/verification/harness.py --profile siming-six-domain-memory
+```
+
+### `siming-actor-memory-read`
+
+Backend proof that `char_b` persists actor-private graph memory, `char_a`
+remains light-store backed, restart recalls `char_b`, and Siming reads only
+through the revision-vector gateway.
+
+```powershell
+python scripts/verification/harness.py --profile siming-actor-memory-read
+```
+
+### `siming-story-runtime`
+
+Backend proof that immutable authored blueprints remain separate from
+branch-scoped runtime nodes, Authority-confirmed evidence closes terminal paths,
+obligations transform without false fulfillment, and fresh causal basis can
+reopen an alternate attractor route without resurrecting the closed instance.
+
+```powershell
+python scripts/verification/harness.py --profile siming-story-runtime
+```
+
+### `siming-resource-staging`
+
+Backend and repository-static proof that existing MainDemo resources can be
+reused by distinct story semantics, exact-signature fatigue remains narrow, a
+resource score cannot bypass story hard gates, and Godot/Character/ESM staging
+acknowledgements preserve truthful node and obligation state.
+
+```powershell
+python scripts/verification/harness.py --profile siming-resource-staging
+```
+
+### `siming-adaptive-bridge`
+
+Backend proof that a deterministic typed proposal is grounded in existing
+facts, char_b's observed memory, an open O6 obligation, and an available
+resource package. It proves no terminal branch is resurrected, actor-private
+memory remains read-only, and acceptance creates one latent runtime node. This
+profile does not make a live LLM call.
+
+```powershell
+python scripts/verification/harness.py --profile siming-adaptive-bridge
+```
 
 ### `llm-integration-closure`
 
@@ -3000,6 +3082,9 @@ new runtime, retry, compensation, or any other target edge.
 - Backend-only live Siming model-provider architecture claims require explicit `siming-backend-chain`.
 - Godot claims require scene execution or Godot MCP/editor inspection.
 - Generated evidence should stay under `.harness/verification/`.
+- Each Harness report and run manifest records both `run_id` and `suite_id`. For durable
+  evidence, match an archived report and manifest on both identifiers; the mutable latest
+  files are insufficient when concurrent runs can overwrite them.
 - Profile and rule manifests stay under `.harness/profiles/` and `.harness/rules/`.
 - CI/release gate metadata stays under `.harness/ci/`.
 - Baseline/diff artifacts are evidence helpers, not source-of-truth design docs.
