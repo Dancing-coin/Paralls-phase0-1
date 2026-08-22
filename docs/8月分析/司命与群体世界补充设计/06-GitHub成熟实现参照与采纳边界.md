@@ -2,6 +2,8 @@
 
 状态：`research baseline; representative open-source survey completed 2026-08-17; not an adoption decision`
 
+对应母规格：[Character Simulation Memory Seed And Continuity Design](../../superpowers/specs/world-character-siming-authority-mainline/2026-08-22-character-simulation-memory-seed-continuity-design.md)，映射范围：外部模式的适用边界；本文件不提供 owner admission。
+
 ## 方法与结论
 
 本轮按“可运行代码、明确系统边界、与群体模拟/记忆/表现相关”筛选代表性开源实现。它不是对 GitHub 的穷尽性搜索；后续正式 spec 只可引用已经在此记录了适用边界的模式。结论是：Paralls 应借鉴它们的**派生认知、分层调度、agent 组件和观测方法**，但不得借用任何一个项目的单一 sandbox、全局 Game Master、通用数据库 mutation 或自由 agent action 作为生产 truth writer。

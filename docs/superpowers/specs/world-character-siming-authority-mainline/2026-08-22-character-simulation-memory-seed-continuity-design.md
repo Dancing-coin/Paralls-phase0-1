@@ -32,10 +32,11 @@ free-form JSON mutation surface.
 
 ```text
 simulation input
-  -> SeedDelta
-  -> owner-bound world settlement (when applicable)
-  -> runtime-state materialization
-  -> experience ledger
+  -> owner-bound typed intent (when a world effect is proposed)
+  -> existing domain owner settlement and owner receipt
+  -> CharacterContinuityCommand
+  -> Character Core state settlement and continuity receipt
+  -> SeedDelta / experience ledger
   -> continuity checkpoint
   -> activation-time five-pool materialization
 ```
@@ -46,6 +47,7 @@ The canonical owners remain split:
 | --- | --- |
 | objective world/gameplay facts | existing world or domain authority |
 | actor-private five-pool memory | Character Core / Character Agent runtime |
+| actor continuity state, SeedDelta admission and materialization | Character Core continuity owner |
 | simulation candidate, policy, audit and activation priority | Siming / Population derived layer |
 | natural-language interpretation | optional LLM proposal, never the owner |
 
@@ -69,6 +71,10 @@ The canonical owners remain split:
    inputs produce zero production write and an auditable result.
 10. LLM output is an untrusted proposal. Character Core owns validation,
     materialization, persistence and replay semantics.
+11. Siming and PopulationPlanner may submit candidates or request continuity
+    settlement, but only Character Core may admit a CharacterContinuityCommand,
+    append SeedDelta, update actor runtime state or advance actor continuity
+    cursors.
 
 ## 4. Data Model
 
@@ -88,6 +94,7 @@ CharacterSimulationSeed
 ├── base_checkpoint_ref
 ├── base_revision_vector
 ├── source_event_refs
+├── source_owner_receipt_refs
 ├── source_scope
 ├── ruleset_revision
 ├── selector_revision
@@ -99,6 +106,7 @@ CharacterSimulationSeed
 ├── activation_hints
 ├── presentation_seed (optional, discardable)
 ├── owner_receipt_refs
+├── character_continuity_receipt_ref
 ├── visibility_scope
 ├── privacy_disposition
 ├── apply_status
@@ -150,23 +158,69 @@ social_impression
 higher_order_belief
 ```
 
-### 4.3 ContinuityCursor
+### 4.3 CharacterContinuityCommand and Receipt
+
+World-owner settlement and actor continuity settlement are separate contracts.
+An owner receipt may be used as input to a Character Core command, but it does
+not itself authorize a character-state or memory write.
+
+```text
+CharacterContinuityCommand
+├── command_id
+├── actor_ref
+├── source_owner_receipt_refs
+├── expected_character_revision
+├── source_revision_vector
+├── state_delta
+├── memory_candidate_refs
+├── visibility / exposure_evidence
+├── policy_revision
+├── idempotency_key
+└── command_digest
+
+CharacterContinuityReceipt
+├── receipt_ref
+├── command_id
+├── actor_ref
+├── status = committed | rejected | requeued | idempotent_replay
+├── character_revision_before / after
+├── applied_state_digest
+├── seed_delta_refs
+├── materialization_status
+├── cursor_vector
+├── refusal_reason (optional)
+├── source_owner_receipt_refs
+└── recorded_at
+```
+
+Character Core validates the command and owns the append of the resulting
+SeedDelta/experience ledger. State settlement and cursor advancement must be
+idempotent by `idempotency_key`; a rejected or stale command produces no
+partial actor write.
+
+### 4.4 ContinuityCursor
 
 One `last_simulation_tick` is insufficient. The logical cursor is:
 
 ```text
 ContinuityCursor
-├── owner_cursor
+├── owner_revision_vector
+├── projection_revision_vector
 ├── state_cursor
 ├── experience_cursor
 └── memory_cursor
 ```
 
+`owner_revision_vector` and `projection_revision_vector` are keyed by source
+owner/stream. `state_cursor`, `experience_cursor` and `memory_cursor` are actor
+continuity cursors and must not be inferred from an unrelated world-owner
+revision.
+
 The character can have current state at tick 120 while memory materialization
 is complete only through tick 97. This is a valid, observable state and must
 not be represented as globally "fully current".
 
-### 4.4 ContinuityCheckpoint
+### 4.5 ContinuityCheckpoint
 
 ```text
 ContinuityCheckpoint
@@ -186,6 +240,30 @@ ContinuityCheckpoint
 
 The checkpoint is a rebuildable acceleration view, not a replacement for the
 append-only ledger or production replay.
+
+### 4.6 SimulationBatchInput
+
+Offline continuity is only valid when the population batch is authorized by an
+existing cadence projection. The seed contract consumes, but does not own, the
+clock or scheduler:
+
+```text
+SimulationBatchInput
+├── cadence_ref / cadence_owner_ref
+├── world_mode_ref / world_mode_revision
+├── window_start / window_end
+├── base_checkpoint_ref / digest
+├── tail_boundary
+├── source_revision_vector
+├── policy_revision / selector_revision
+├── deterministic_seed
+├── catch_up_limit / budget
+└── report_scope
+```
+
+Missing, revoked, stale or scope-incompatible cadence input produces
+`no_op/requeue` and zero production write. Catch-up preserves each source
+window and cannot collapse multiple owner revisions into an unsourced jump.
 
 ## 5. Memory Materialization Rules
 
@@ -213,7 +291,15 @@ SeedDelta
   -> typed Character Core writeback candidate
   -> one selected five-pool store
   -> materialization receipt
+  -> memory cursor/checkpoint advancement
 ```
+
+The materialization receipt must bind `candidate_id`, selected pool, source
+owner receipts, character revision before/after, dedup key, result digest and
+cursor advancement. A five-pool append, its materialization receipt and the
+corresponding memory-cursor advancement are one Character Core-owned commit
+boundary. On rejection or conflict, the candidate remains auditable with an
+explicit status and no partial pool/cursor write.
 
 Corrections append a superseding or retraction record. A character's already
 formed subjective memory is not silently deleted when world truth is corrected.
@@ -262,16 +348,28 @@ Every history record carries `valid_at`, `recorded_at`, `source_owner`,
 Every batch pins:
 
 ```text
+cadence_ref / cadence_owner_ref
+world_mode_ref / world_mode_revision
+window_start / window_end
 from_tick / to_tick
 base_checkpoint_digest
 base_revision_vector
+source_revision_vector
 ruleset_revision
 selector_revision
 deterministic_seed
+catch_up_limit / budget
 ```
 
 If the source or target revision has changed, the result is `stale_read_set`:
 no partial merge, preserve the candidate for audit, and requeue a fresh run.
+
+If a candidate can affect objective world state, it must first pass the
+corresponding statically admitted owner capability and receive an
+append-derived owner receipt. A seed or character continuity command cannot
+stand in for that world settlement. The exact owner stream/event remains the
+responsibility of the existing owner contract; caller-selected stream/event
+metadata is rejected.
 
 Field-level merge policy is closed and owner-specific:
 
@@ -293,6 +391,8 @@ Activation uses the existing lock:
 activation lock
   -> catch up owner/state cursors
   -> record experience tail
+  -> submit CharacterContinuityCommand when actor state/experience is pending
+  -> require CharacterContinuityReceipt
   -> materialize eligible memory candidates
   -> advance memory cursor
   -> checkpoint
@@ -304,12 +404,14 @@ activation lock
 | Capability | Siming may do | Siming may not do |
 | --- | --- | --- |
 | Read | scoped world projections, public events, redacted seed history, owner receipts | raw five-pool memory, private relationship graph, hidden knowledge state |
-| Write | append `SeedDelta`, memory/drift candidates, audit and activation hints | append five-pool records, mutate runtime stores, write world truth |
+| Write | append simulation candidates, memory/drift candidates, audit and activation hints; request Character Core continuity settlement | append `SeedDelta` directly, append five-pool records, mutate runtime stores, write world truth |
 | Edit | create new ruleset, selector, candidate or explanation revision | edit locked facts, rewrite history, delete receipts |
 | Execute | invoke a statically admitted owner capability; request Character Core materialization | choose arbitrary owner/stream/event; directly call memory stores or Godot |
 
 Population simulation uses the same candidate restrictions and cannot expand
-Siming's read scope.
+Siming's read scope. Only Character Core may admit a
+`CharacterContinuityCommand`, append its SeedDelta/experience ledger result,
+settle actor runtime state or advance actor continuity cursors.
 
 ## 9. LLM Role
 
@@ -348,7 +450,9 @@ Seed deltas move through:
 generated
 -> admitted
 -> owner_settled
+-> continuity_command_admitted
 -> state_materialized
+-> continuity_receipted
 -> experience_recorded
 -> memory_pending
 -> memory_materialized
@@ -377,7 +481,12 @@ The following cannot be compacted away:
 | future knowledge time | `temporal_knowledge_denied`, zero write |
 | private scope mismatch | `privacy_denied`, redacted audit |
 | stale base revision | `stale_read_set`, requeue |
+| missing/stale cadence authorization | `no_op` or `requeue`, zero production write |
+| missing required world-owner receipt | `owner_settlement_required`, no actor-state or memory write |
+| Character Core continuity rejection | preserve command/refusal receipt, no partial actor write |
+| continuity idempotency replay | return original CharacterContinuityReceipt, no duplicate state/seed write |
 | duplicate source/dedup key | idempotent replay, no duplicate memory |
+| materialization conflict/partial failure | preserve candidate status, no cursor advancement until Character Core commit |
 | branch candidate in production | `branch_scope_denied`, zero write |
 | owner rejection | preserve receipt/refusal and requeue policy |
 | LLM schema or policy failure | discard proposal, keep structured candidate/audit |
@@ -398,7 +507,22 @@ profile must prove:
 9. correction preserves historical subjective memory and appends supersession;
 10. LLM failure never becomes an unvalidated memory write;
 11. public/player projections do not leak actor-private history;
-12. token-bound retrieval sends only scoped, selected memory cards.
+12. token-bound retrieval sends only scoped, selected memory cards;
+13. Siming and PopulationPlanner cannot append SeedDelta or mutate actor state;
+14. a world-affecting candidate requires the exact admitted owner capability and
+    append-derived owner receipt before CharacterContinuityCommand admission;
+15. CharacterContinuityCommand validates character revision, exposure and
+    idempotency and produces one CharacterContinuityReceipt or zero actor writes;
+16. owner/projection revision vectors advance by source owner rather than by a
+    single global revision;
+17. missing/stale cadence authorization produces no-op/requeue and zero write;
+18. state/experience cursor advancement and memory materialization are separate,
+    and a failed materialization does not advance memory cursor;
+19. the materialization receipt binds candidate, selected pool, character
+    revision, source owner receipt and cursor advancement;
+20. the schedule-gated-supply mapping resolves through the existing
+    `activation-binding:schedule-gated-supply:v1` and owner-resolved
+    Organization contract without caller-selected stream/event data.
 
 Suggested future profile name:
 
@@ -416,3 +540,38 @@ character-simulation-memory-seed-continuity
 - no replacement of the existing five-pool memory stores;
 - no promise of full population simulation until an owner-bound vertical and
   replay evidence are admitted.
+
+## 14. Chinese Design Mapping
+
+This document is the formal mother specification for the Chinese analysis
+package at:
+
+```text
+docs/8月分析/司命与群体世界补充设计/
+```
+
+The Chinese documents explain rationale, examples, operating boundaries and
+implementation sequencing. They do not override this contract. Any mismatch
+must be resolved in this spec and then reflected back to the Chinese package.
+
+| Chinese document | Formal scope in this spec | Status relationship |
+| --- | --- | --- |
+| `00-影响矩阵与状态登记.md` | package state, formalization gates, owner/capability/replay prerequisites | registry and gate; no runtime authorization |
+| `01-司命受控能力面.md` | RWEE scope, guarded execute, owner-bound intent and zero-write rejection | capability boundary |
+| `02-知识图谱记忆与故事线桥.md` | provenance, privacy/redaction, derived graph and actor-scoped summaries | derived cognition boundary |
+| `03-群体模拟与角色分级连续性.md` | cohort batch, fidelity tiers, activation/requeue and owner-bound intent | population continuity boundary |
+| `04-世界真相到场景表现投影.md` | owner event to scoped presentation; no presentation writeback | presentation projection boundary |
+| `05-性能回放观测与渐进交付.md` | budget, replay, evidence and staged delivery requirements | operational evidence boundary |
+| `06-GitHub成熟实现参照与采纳边界.md` | external pattern rationale and rejection boundaries | research only |
+| `07-群体世界本体与状态模型.md` | canonical refs, source owner, validity and no shadow truth | population domain model |
+| `08-时间空间与推进内核.md` | cadence owner, batch windows, checkpoint/tail and catch-up semantics | cadence input contract |
+| `09-行为分层与信息传播.md` | B0-B3 behavior budget and scoped propagation candidates | behavior/propagation boundary |
+| `10-校准性能与故障恢复.md` | fixed profile, failure recovery, replay and capacity evidence | verification boundary |
+| `11-创作工具与观测闭环.md` | authoring revisions, branch/preview isolation and traceability | tooling boundary |
+| `12-角色模拟记忆种子与连续性设计.md` | CharacterSimulationSeed, CharacterContinuityCommand/Receipt, cursor vectors and five-pool materialization | actor continuity contract |
+| `13-群体模拟生产纵切与推进闭环设计.md` | first owner-mediated `schedule_gated_supply` vertical and receipt flow | one narrow production proof |
+
+The corresponding Chinese package README links back to this mother spec. Each
+Chinese document should retain a local “对应母规格” link so readers can move
+from analysis to the governing contract without treating analysis prose as
+implementation authorization.

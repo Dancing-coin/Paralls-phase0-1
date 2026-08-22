@@ -4,6 +4,11 @@
 
 本工作区把“司命知识图谱、角色记忆、群体模拟、近场演出和场景表现”拆成可审核的未来主线修订包。它不创建新 truth owner、store、bus、clock、scheduler、generic writer 或 generic router。
 
+本目录的角色模拟记忆与连续性母规格是：
+[Character Simulation Memory Seed And Continuity Design](../../superpowers/specs/world-character-siming-authority-mainline/2026-08-22-character-simulation-memory-seed-continuity-design.md)。
+本目录负责中文分析、示例和分包映射；母规格负责 owner、权限、字段、时间/版本合并、
+receipt、回放和验收合同。中文分析与母规格不一致时，以母规格为准，并将修订回补到本目录。
+
 ## 阅读与执行顺序
 
 1. [00-影响矩阵与状态登记](00-影响矩阵与状态登记.md)
