@@ -22,7 +22,7 @@
 
 ## 约束
 
-- 领域 owner 才能结算生产世界事实；司命、图谱、群体 planner、角色和 Godot 都只能消费投影、提出候选或表现结果。
+- 领域 owner 才能结算生产世界事实；司命和群体 planner 可以消费投影、提出候选并提交受治理的 `owner-bound intent`，但不能绕过 owner 直接结算或改写事实；角色和 Godot 只能消费投影、提出候选或表现结果。
 - 图谱是带来源、隐私、revision 和时间有效期的派生认知层，不是第二份世界真相。
 - 同一 `CharacterRecord` 在远场、中场和近场切换，不创建影子 NPC 身份、影子记忆或平行生产状态。
 - 所有未来生产写入复用 `GameplayCommandEnvelope -> SettlementPlan -> GameplayEventStore.append_batch() -> outbox/replay -> scoped projection`。
