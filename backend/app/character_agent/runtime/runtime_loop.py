@@ -54,6 +54,7 @@ from app.character_agent.storage.dynamic_state_store import CharacterDynamicStat
 from app.character_agent.storage.goal_state_store import CharacterGoalStateStore
 from app.character_agent.storage.need_tension_store import CharacterNeedTensionStore
 from app.character_agent.storage.unresolved_tension_store import CharacterUnresolvedTensionStore
+from app.character_agent.services.character_behavior_evaluation import CharacterBehaviorEvaluationService
 from app.services.character_agent_debug_projection import CharacterAgentDebugProjection
 from app.models.siming_character_bridge import SimingCharacterCompatibilityInput
 from app.world_runtime.intelligence_upgrade import CanonicalPerceptBundle
@@ -128,6 +129,7 @@ class CharacterAgentRuntime:
         self._need_tension_store = CharacterNeedTensionStore()
         self._goal_state_store = CharacterGoalStateStore()
         self._unresolved_tension_store = CharacterUnresolvedTensionStore()
+        self._behavior_evaluation = CharacterBehaviorEvaluationService()
         self._need_tension_engine = NeedTensionEngine()
         self._affect_engine = AffectEngine()
         self._drift_accumulator = DriftAccumulator()
@@ -1704,6 +1706,11 @@ class CharacterAgentRuntime:
             payload=stored_payload,
         )
         self._memory_store.write_event(stored)
+        self._record_behavior_evaluation(
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+            settlement_event=stored,
+        )
         outcome_summary = str(stored_payload.get("constraint_summary", "") or stored_payload.get("change_summary", "") or stored_payload.get("stable_state_summary", "") or stored_payload.get("result_type", "") or "")
         self._set_observatory_context(actor_id, "latest_outcome_summary", outcome_summary)
         self._queue_observatory_stage_event(
@@ -1722,6 +1729,35 @@ class CharacterAgentRuntime:
             snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
             memory_bundle=self.get_memory_bundle(actor_id),
         )
+
+    def _record_behavior_evaluation(
+        self,
+        *,
+        actor_id: str,
+        producer_ts: int,
+        settlement_event: dict[str, object],
+    ) -> None:
+        evaluation = self._behavior_evaluation.evaluate(
+            actor_id=actor_id,
+            settlement_event=settlement_event,
+            timeline=self.get_session_timeline(actor_id),
+        )
+        stored = self._session_store.append_event(
+            actor_id=actor_id,
+            event_type="character_behavior_evaluation_event",
+            producer_ts=producer_ts,
+            payload=evaluation,
+        )
+        self._memory_store.write_event(stored)
+        candidate = evaluation.get("candidate_policy")
+        if isinstance(candidate, dict):
+            candidate_event = self._session_store.append_event(
+                actor_id=actor_id,
+                event_type="character_policy_candidate_event",
+                producer_ts=producer_ts,
+                payload=candidate,
+            )
+            self._memory_store.write_event(candidate_event)
 
     def _action_settlement_result_metadata(self, payload: dict[str, object]) -> dict[str, object]:
         advisory_metadata = self._settlement_advisory_metadata(payload)

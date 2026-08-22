@@ -1,4 +1,5 @@
 from app.character_agent.gateway.context_builder import CharacterContextBuilder
+from app.character_agent.gateway.memory_recall import CharacterMemoryRecallPolicy
 from app.character_agent.gateway.model_provider import CharacterModelProvider
 from app.character_agent.gateway.model_router import CharacterModelRouter
 from app.character_agent.gateway.output_validator import CharacterStructuredOutputValidator
@@ -20,6 +21,7 @@ class CharacterModelGateway:
         self._validator = validator or CharacterStructuredOutputValidator()
         self._router = router or CharacterModelRouter()
         self._context_builder = context_builder or CharacterContextBuilder()
+        self._memory_recall = CharacterMemoryRecallPolicy()
 
     def prepare_run_request(
         self,
@@ -29,10 +31,14 @@ class CharacterModelGateway:
         route_override: str | None = None,
     ) -> dict[str, object]:
         route = self._router.resolve_route(route_override)
+        recall = self._memory_recall.select(
+            dict(context.get("memory", {}) or {}),
+            context=context,
+        )
         prepared_context = self._context_builder.build_context(
             actor_id=str(context.get("actor_id", "") or ""),
             snapshot=context.get("snapshot", {}) or {},
-            memory_bundle=dict(context.get("memory", {}) or {}),
+            memory_bundle=recall.memory,
             control_mode=str(context.get("control_mode", "") or ""),
             working_memory_state=context.get("working_memory_state") if context.get("working_memory_state") is not None else None,
             profile=context.get("profile") if context.get("profile") is not None else None,
@@ -41,6 +47,7 @@ class CharacterModelGateway:
             if key in {"actor_id", "snapshot", "memory", "control_mode", "working_memory_state"}:
                 continue
             prepared_context[key] = value
+        prepared_context["memory_recall"] = recall.metadata
         return {
             "task_kind": task_kind,
             "route": route,
@@ -51,6 +58,7 @@ class CharacterModelGateway:
                     **context,
                     "snapshot": prepared_context["snapshot"],
                     "memory": prepared_context["memory"],
+                    "memory_recall": recall.metadata,
                     "working_memory_state": prepared_context.get("working_memory_state", context.get("working_memory_state")),
                 },
                 route=route,

@@ -221,6 +221,11 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
     graph_path = Path(runtime_settings.heavenly_graph_path)
     graph_path.parent.mkdir(parents=True, exist_ok=True)
     heavenly_graph = SQLiteHeavenlyGraphAdapter(graph_path)
+    character_agent_storage_root = (
+        None
+        if graph_path.name == ":memory:"
+        else graph_path.parent / f"{graph_path.name}.character-agent"
+    )
     graph_memory = CharacterGraphMemoryStore(
         heavenly_graph,
         scope_resolver=actor_private_scope,
@@ -230,7 +235,10 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
         graph_store=graph_memory,
         heavy_actor_ids=frozenset(runtime_settings.character_graph_memory_heavy_actor_ids),
     )
-    character_agent_runtime = CharacterAgentRuntime(memory_store=memory_router)
+    character_agent_runtime = CharacterAgentRuntime(
+        storage_root=character_agent_storage_root,
+        memory_store=memory_router,
+    )
     llm_provider = build_siming_llm_provider(runtime_settings)
 
     def actor_autonomy(proposal) -> bool:

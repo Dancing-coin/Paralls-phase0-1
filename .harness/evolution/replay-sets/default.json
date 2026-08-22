@@ -13,6 +13,18 @@
       "expected_artifacts": [
         ".harness/verification/docs-report.json"
       ]
+    },
+    {
+      "profile": "character-behavior-evaluation",
+      "expected_artifacts": [
+        ".harness/verification/character-behavior-evaluation-report.json"
+      ]
+    },
+    {
+      "profile": "character-policy-calibration",
+      "expected_artifacts": [
+        ".harness/verification/character-policy-calibration-report.json"
+      ]
     }
   ],
   "regression_guards": [

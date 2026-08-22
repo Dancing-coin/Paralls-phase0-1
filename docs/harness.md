@@ -18,6 +18,8 @@ python scripts/verification/harness.py --profile harness-lifecycle
 python scripts/verification/harness.py --profile change-lifecycle
 python scripts/verification/harness.py --profile harness-reference
 python scripts/verification/harness.py --profile harness-evolution
+python scripts/verification/harness.py --profile character-behavior-evaluation
+python scripts/verification/harness.py --profile character-policy-calibration
 python scripts/verification/harness.py --profile phase0
 python scripts/verification/harness.py --profile phase1-slice
 python scripts/verification/harness.py --profile phase2a-actor-to-gameplay-participation
@@ -397,6 +399,31 @@ Output:
 - `.harness/verification/harness-evolution-report.json`
 - `.harness/verification/harness-evolution-report.md`
 - optional `.harness/evolution/candidates/<id>.json` in propose mode
+
+### `character-behavior-evaluation`
+
+Backend-only replay of one character turn. It proves the durable evidence chain
+from L2 context and interpretation through goal/intent, execution request,
+authoritative settlement, behavior score, and source-linked candidate policy.
+Candidates are `candidate_only`; this profile never mutates authored character
+profiles.
+
+Output:
+
+- `.harness/verification/character-behavior-evaluation-report.json`
+- `.harness/verification/character-behavior-evaluation-report.md`
+
+### `character-policy-calibration`
+
+Backend-only calibration proof for context-recall and recovery candidates. It
+checks that a low-scoring turn yields a deterministic policy candidate with
+`context_hash`, selected memory refs, and an explicit hypothesis while keeping
+profile mutation outside runtime evaluation.
+
+Output:
+
+- `.harness/verification/character-policy-calibration-report.json`
+- `.harness/verification/character-policy-calibration-report.md`
 
 ### `phase0`
 

@@ -79,8 +79,12 @@ class CharacterGraphMemoryStore:
             if cached is not None and cached[0] == event:
                 self._graph.write_batch(cached[1])
                 return
+            already_deposited = bool(source_event_id) and self._has_source_event(
+                scope,
+                source_event_id,
+            )
             self._normalizer.write_event(event)
-            if source_event_id:
+            if source_event_id and not already_deposited:
                 batch = self._deposit_bundle(
                     actor_id,
                     scope,
@@ -89,6 +93,24 @@ class CharacterGraphMemoryStore:
                 )
                 if batch is not None:
                     self._source_batches[source_key] = (deepcopy(event), batch)
+
+    def _has_source_event(
+        self,
+        scope: HeavenlyGraphScope,
+        source_event_id: str,
+    ) -> bool:
+        nodes = self._graph.query_nodes(
+            HeavenlyNodeQuery(
+                scope=scope,
+                valid_at=self._MAX_TIME,
+                node_types=[f"actor_memory:{pool}" for pool, _field, _model in self.POOLS],
+                limit=None,
+            )
+        )
+        return any(
+            node.provenance.source_ref == source_event_id
+            for node in nodes
+        )
 
     def retrieval_record_bundle(
         self,

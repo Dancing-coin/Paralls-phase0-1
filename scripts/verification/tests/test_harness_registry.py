@@ -25,6 +25,8 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "change-lifecycle",
         "harness-reference",
         "harness-evolution",
+        "character-behavior-evaluation",
+        "character-policy-calibration",
         "phase0",
         "siming-backend-chain",
         "character-model-live",
