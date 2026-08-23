@@ -74,6 +74,18 @@
       "name": "Governed Harness Evolution Agent proposal lane",
       "status": "pass",
       "evidence": ".harness/evolution/, scripts/verification/analyze_harness_evolution.py, and harness-evolution profile"
+    },
+    {
+      "id": "harness-execution-contract",
+      "name": "Domain-neutral task lifecycle, failure disposition, and correlated trace",
+      "status": "pass",
+      "evidence": "backend/app/models/harness_execution.py, backend/app/services/harness_execution_trace.py, and harness-execution-contract profile"
+    },
+    {
+      "id": "harness-embodied-task",
+      "name": "Harness control and evidence layer around a real embodied session task",
+      "status": "pass",
+      "evidence": "backend/app/services/embodied_harness_task.py and harness-embodied-task profile"
     }
   ]
 }

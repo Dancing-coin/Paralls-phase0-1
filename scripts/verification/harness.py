@@ -176,7 +176,17 @@ def _result_artifact_exists(project_root: Path, profile_config: dict[str, object
     artifact = str(profile_config.get("result_artifact", "") or "")
     if artifact == "":
         return False
-    return (project_root / artifact).exists()
+    path = project_root / artifact
+    if not path.exists():
+        return False
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    for key, value in payload.items():
+        if key.startswith("overall_") and isinstance(value, bool):
+            return value
+    return False
 
 
 def _profiles_for_selection(selection: str, registry: object) -> list[str]:

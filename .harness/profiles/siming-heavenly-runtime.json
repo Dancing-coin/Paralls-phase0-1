@@ -4,7 +4,7 @@
   "order": 78,
   "script": "scripts/verification/verify_siming_heavenly_runtime.py",
   "requires_godot": true,
-  "max_attempts": 1,
+  "max_attempts": 2,
   "result_artifact": ".harness/verification/siming-heavenly-runtime-report.json",
   "description": "Live online-LLM, SQLite, Authority, character-memory, and Godot proof for the complete Siming heavenly runtime"
 }

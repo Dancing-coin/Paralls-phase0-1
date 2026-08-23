@@ -283,6 +283,11 @@ def test_websocket_session_probe_delivers_committed_session_events_from_gameplay
     assert session_payloads[-1]["slot_assignments"][1]["participant_ref"] == "character:maya"
     assert all(payload["transaction_id"].startswith("tx:session:handshake:websocket:") for payload in session_payloads)
     assert all(payload["event_id"].startswith("evt:session:handshake:websocket:") for payload in session_payloads)
+    task_trace = main.embodied_harness_task_coordinator.trace.get_trace("session:handshake:websocket")
+    projection_rows = [row for row in task_trace if row.stage == "godot_projection"]
+    assert projection_rows
+    assert projection_rows[-1].metadata["projection_refs"]
+    assert all("participant_private_terms" not in str(row.metadata) for row in task_trace)
     assert "participant_private_terms" not in str(session_payloads)
     assert "private initiator memory" not in str(session_payloads)
     assert "private target context" not in str(session_payloads)

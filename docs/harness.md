@@ -18,6 +18,8 @@ python scripts/verification/harness.py --profile harness-lifecycle
 python scripts/verification/harness.py --profile change-lifecycle
 python scripts/verification/harness.py --profile harness-reference
 python scripts/verification/harness.py --profile harness-evolution
+python scripts/verification/harness.py --profile harness-execution-contract
+python scripts/verification/harness.py --profile harness-embodied-task
 python scripts/verification/harness.py --profile character-behavior-evaluation
 python scripts/verification/harness.py --profile character-policy-calibration
 python scripts/verification/harness.py --profile phase0
@@ -491,6 +493,44 @@ Output:
 - `.harness/verification/l1-space-model-backend-contract.json` for backend contract proof
 - `.harness/verification/harness-run-report.json`
 - `.harness/verification/harness-run-report.md`
+
+### `harness-execution-contract`
+
+Backend-only Harness contract proof for the domain-neutral task lifecycle and
+trace seam. It verifies the declared execution phases, deterministic failure
+disposition mapping, terminal-phase write rejection, and preservation of
+`task_id`/`run_id`/`correlation_id` across an append-only process-local trace.
+It does not execute Gameplay or ESM commands, persist tasks, or provide
+automatic retries.
+
+Run:
+
+```powershell
+python scripts/verification/harness.py --profile harness-execution-contract
+```
+
+Output:
+
+- `.harness/verification/harness-execution-contract-report.json`
+- `.harness/verification/harness-execution-contract-report.md`
+
+### `harness-embodied-task`
+
+Backend proof that the Harness contract is consumed by the real embodied
+interaction session path. It covers the Gameplay authority append, outbox and
+evidence correlation, domain failure mapping, persistent terminal recovery,
+phase capability ordering, metadata redaction, and safe Godot projection refs.
+The existing `embodied-interaction-session` profile remains the runtime/Godot
+proof; this profile verifies the Harness control/evidence layer around it.
+
+```powershell
+python scripts/verification/harness.py --profile harness-embodied-task
+```
+
+Output:
+
+- `.harness/verification/harness-embodied-task-report.json`
+- `.harness/verification/harness-embodied-task-report.md`
 
 ### `siming-backend-chain`
 

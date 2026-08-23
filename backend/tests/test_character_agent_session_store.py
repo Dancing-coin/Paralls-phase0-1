@@ -61,3 +61,15 @@ def test_independent_runtime_session_stores_generate_distinct_event_ids() -> Non
     )
 
     assert first["event_id"] != second["event_id"]
+
+
+def test_session_store_recovers_from_empty_interrupted_file(tmp_path: Path) -> None:
+    path = tmp_path / "character_agent_session_store.json"
+    path.write_text("", encoding="utf-8")
+
+    store = CharacterAgentSessionStore(storage_root=tmp_path)
+    event = store.append_event("char_b", "character_perceived_event", 1006, {"summary": "recovered"})
+    reloaded = CharacterAgentSessionStore(storage_root=tmp_path)
+
+    assert event["event_index"] == 1
+    assert reloaded.list_events("char_b")[0]["payload"]["summary"] == "recovered"

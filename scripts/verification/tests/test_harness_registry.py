@@ -25,7 +25,9 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "change-lifecycle",
         "harness-reference",
         "harness-evolution",
+        "harness-execution-contract",
         "character-behavior-evaluation",
+        "harness-embodied-task",
         "character-policy-calibration",
         "phase0",
         "siming-backend-chain",
@@ -98,6 +100,8 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["change-lifecycle"]["script"] == "scripts/verification/check_change_lifecycle.py"
     assert registry.profiles["harness-reference"]["script"] == "scripts/verification/check_harness_reference.py"
     assert registry.profiles["harness-evolution"]["script"] == "scripts/verification/check_harness_evolution.py"
+    assert registry.profiles["harness-execution-contract"]["script"] == "scripts/verification/verify_harness_execution_contract.py"
+    assert registry.profiles["harness-embodied-task"]["script"] == "scripts/verification/verify_harness_embodied_task.py"
     assert registry.profiles["siming-backend-chain"]["script"] == "scripts/verification/verify_siming_backend_chain.py"
     assert registry.profiles["siming-backend-chain"]["include_in_all"] is False
     assert registry.profiles["character-model-live"]["script"] == "scripts/verification/verify_character_model_live.py"
@@ -158,7 +162,9 @@ def test_load_rule_registry_reads_versioned_rule_manifests() -> None:
         "docs-rules",
         "drift-rules",
         "godot-project-rules",
+        "harness-embodied-task-rules",
         "harness-evolution-rules",
+        "harness-execution-contract-rules",
         "harness-lifecycle-rules",
         "harness-reference-rules",
         "post-p5-capability-foundation-docs-rules",

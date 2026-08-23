@@ -54,7 +54,10 @@ class CharacterAgentSessionStore:
     def _load(self) -> None:
         if self._storage_path is None or not self._storage_path.exists():
             return
-        payload = json.loads(self._storage_path.read_text(encoding="utf-8"))
+        raw = self._storage_path.read_text(encoding="utf-8").strip()
+        if not raw:
+            return
+        payload = json.loads(raw)
         if not isinstance(payload, dict):
             return
         loaded: dict[str, list[dict[str, object]]] = {}
@@ -67,7 +70,16 @@ class CharacterAgentSessionStore:
     def _persist(self) -> None:
         if self._storage_path is None:
             return
-        self._storage_path.write_text(
-            json.dumps(self._events_by_actor, ensure_ascii=False, indent=2),
+        payload = json.dumps(
+            self._events_by_actor,
+            ensure_ascii=False,
+            indent=2,
+        )
+        temporary_path = self._storage_path.with_suffix(
+            self._storage_path.suffix + ".tmp"
+        )
+        temporary_path.write_text(
+            payload,
             encoding="utf-8",
         )
+        temporary_path.replace(self._storage_path)

@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "name": "harness-execution-contract-rules",
+  "profile": "harness-execution-contract",
+  "description": "Mechanical invariants enforced by scripts/verification/verify_harness_execution_contract.py",
+  "rules": [
+    {
+      "id": "lifecycle_transitions",
+      "title": "Declared task lifecycle transitions accept a committed task",
+      "evidence": [
+        ".harness/verification/harness-execution-contract-report.json:results.lifecycle_transitions"
+      ]
+    },
+    {
+      "id": "failure_policy",
+      "title": "Failure kinds map to deterministic recovery actions",
+      "evidence": [
+        ".harness/verification/harness-execution-contract-report.json:results.failure_policy"
+      ]
+    },
+    {
+      "id": "terminal_guard",
+      "title": "Terminal task phases reject later lifecycle writes",
+      "evidence": [
+        ".harness/verification/harness-execution-contract-report.json:results.terminal_guard"
+      ]
+    },
+    {
+      "id": "trace_correlation",
+      "title": "Task trace preserves task, run, correlation, and sequence identity",
+      "evidence": [
+        ".harness/verification/harness-execution-contract-report.json:results.trace_correlation"
+      ]
+    }
+  ]
+}

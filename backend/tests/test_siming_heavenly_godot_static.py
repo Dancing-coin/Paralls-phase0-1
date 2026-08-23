@@ -14,6 +14,7 @@ def test_main_demo_contains_heavenly_runtime_probe() -> None:
     scene = Path("scenes/phase0/MainDemo.tscn").read_text(encoding="utf-8")
 
     assert "SimingHeavenlyRuntimeProbe.gd" in scene
+    assert '[node name="SimingHeavenlyRuntimeProbe" type="Node" parent="."]' in scene
 
 
 def test_staging_request_reaches_the_opt_in_godot_probe() -> None:
@@ -37,6 +38,7 @@ def test_staging_request_reaches_the_opt_in_godot_probe() -> None:
     assert "var source_ref_lineage: Array[String]" in probe
     assert "siming_heavenly_restart_ready" in probe
     assert "siming_heavenly_godot_complete" in probe
+    assert "_post_restart_reaction_window" in probe
 
 
 def test_probe_waits_for_backend_reconnect_before_triggering_the_post_restart_tick() -> None:

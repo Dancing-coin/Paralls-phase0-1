@@ -40,6 +40,14 @@ class HeavenlyGraphCheckpointNotFound(HeavenlyGraphError):
 
 
 class HeavenlyGraphPort(Protocol):
+    def has_idempotency_key(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        idempotency_key: str,
+    ) -> bool:
+        raise NotImplementedError
+
     def write_batch(
         self,
         batch: HeavenlyGraphWriteBatch,

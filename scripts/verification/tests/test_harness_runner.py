@@ -490,7 +490,7 @@ def test_harness_runner_retries_profile_up_to_max_attempts(monkeypatch, tmp_path
     assert report["profiles"][0]["max_attempts"] == 2
 
 
-def test_harness_runner_does_not_retry_when_report_artifact_exists_after_failure(monkeypatch, tmp_path: Path) -> None:
+def test_harness_runner_retries_when_report_artifact_exists_but_is_failed(monkeypatch, tmp_path: Path) -> None:
     calls = {"count": 0}
     verification_dir = tmp_path / ".harness" / "verification"
     phase0_report = verification_dir / "phase0-report.json"
@@ -539,8 +539,8 @@ def test_harness_runner_does_not_retry_when_report_artifact_exists_after_failure
     report = json.loads((tmp_path / ".harness" / "verification" / "harness-run-report.json").read_text(encoding="utf-8"))
 
     assert exit_code == 1
-    assert calls["count"] == 1
-    assert report["profiles"][0]["attempts"] == 1
+    assert calls["count"] == 2
+    assert report["profiles"][0]["attempts"] == 2
     assert report["profiles"][0]["max_attempts"] == 2
 
 

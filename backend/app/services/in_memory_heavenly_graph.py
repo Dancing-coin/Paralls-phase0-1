@@ -106,6 +106,14 @@ class InMemoryHeavenlyGraphAdapter:
         )
         return result
 
+    def has_idempotency_key(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        idempotency_key: str,
+    ) -> bool:
+        return (self._scope_key(scope), idempotency_key) in self._idempotency
+
     def get_node(
         self,
         *,

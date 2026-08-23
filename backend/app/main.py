@@ -89,6 +89,9 @@ from app.services.default_scene_pickup_policy import DefaultScenePickupPolicySer
 from app.services.embodied_evidence_ledger import EmbodiedEvidenceLedger
 from app.services.embodied_handoff_authority_service import EmbodiedHandoffAuthorityService
 from app.services.embodied_interaction_session_service import EmbodiedInteractionSessionService
+from app.services.embodied_harness_task import EmbodiedHarnessTaskCoordinator
+from app.services.harness_execution_trace import HarnessExecutionTraceService
+from app.services.harness_capability_store import HarnessCapabilityStore
 from app.services.event_trace_service import EventTraceService
 from app.services.fact_handlers.visual_fact_handler import (
     VisualFactHandlerContext,
@@ -337,6 +340,9 @@ def reset_runtime_state() -> None:
     global adventure_basic_mirror_runtime
     global embodied_evidence_ledger
     global embodied_interaction_session_service
+    global embodied_harness_task_coordinator
+    global harness_execution_trace
+    global harness_capability_store
     global embodied_handoff_authority_service
     global embodied_carry_place_authority_service
     global default_scene_pickup_policy_service
@@ -351,6 +357,12 @@ def reset_runtime_state() -> None:
     previous_graph = globals().get("heavenly_graph")
     if isinstance(previous_graph, SQLiteHeavenlyGraphAdapter):
         previous_graph.close()
+    previous_trace = globals().get("harness_execution_trace")
+    if isinstance(previous_trace, HarnessExecutionTraceService):
+        previous_trace.close()
+    previous_capabilities = globals().get("harness_capability_store")
+    if isinstance(previous_capabilities, HarnessCapabilityStore):
+        previous_capabilities.close()
     runtime_state = build_runtime_state(settings)
     heavenly_graph = runtime_state.heavenly_graph
     runtime = SessionInputRouter()
@@ -376,7 +388,19 @@ def reset_runtime_state() -> None:
     else:
         character_perceived_input_service.clear()
     esm_service = ESMService()
-    interaction_orchestration_service = InteractionOrchestrationService(esm_service=esm_service)
+    harness_ledger_parent = (
+        None
+        if Path(settings.heavenly_graph_path).name == ":memory:"
+        else Path(settings.heavenly_graph_path).resolve().parent
+    )
+    harness_ledger_stem = Path(settings.heavenly_graph_path).resolve().stem
+    harness_execution_trace = HarnessExecutionTraceService(
+        ledger_path=(harness_ledger_parent / f"{harness_ledger_stem}.harness-task-ledger.sqlite3") if harness_ledger_parent else None
+    )
+    interaction_orchestration_service = InteractionOrchestrationService(
+        esm_service=esm_service,
+        harness_trace=harness_execution_trace,
+    )
     embodied_controller_auth_service = EmbodiedControllerAuthService()
     embodied_evidence_ledger = EmbodiedEvidenceLedger()
     default_scene_archive_door_embodied_service = DefaultSceneArchiveDoorEmbodiedService(
@@ -476,6 +500,17 @@ def reset_runtime_state() -> None:
         store=gameplay_event_store,
         dispatcher=gameplay_outbox_dispatcher,
         evidence_ledger=embodied_evidence_ledger,
+    )
+    harness_capability_store = (
+        None
+        if harness_ledger_parent is None
+        else HarnessCapabilityStore(harness_ledger_parent / f"{harness_ledger_stem}.harness-capabilities.sqlite3")
+    )
+    embodied_harness_task_coordinator = EmbodiedHarnessTaskCoordinator(
+        session_service=embodied_interaction_session_service,
+        evidence_ledger=embodied_evidence_ledger,
+        trace=harness_execution_trace,
+        capability_store=harness_capability_store,
     )
     embodied_handoff_authority_service = EmbodiedHandoffAuthorityService(
         store=gameplay_event_store,
@@ -621,6 +656,19 @@ def _ack_siming_staging_request(event: AuthorityEvent) -> None:
         reason="" if esm_accepted else "invalid_staging_contract",
         producer_ts=event.producer_ts + 2,
     )
+
+
+def close_runtime_resources() -> None:
+    """Close process-owned persistent runtime resources without rebuilding state."""
+    previous_graph = globals().get("heavenly_graph")
+    if isinstance(previous_graph, SQLiteHeavenlyGraphAdapter):
+        previous_graph.close()
+    previous_trace = globals().get("harness_execution_trace")
+    if isinstance(previous_trace, HarnessExecutionTraceService):
+        previous_trace.close()
+    previous_capabilities = globals().get("harness_capability_store")
+    if isinstance(previous_capabilities, HarnessCapabilityStore):
+        previous_capabilities.close()
 
 
 def _publish_runtime_staging_ack(
@@ -1784,6 +1832,18 @@ def _handle_envelope(
         )
         if not result.accepted:
             return EmbodiedExecutionIngress.protocol_error(envelope.message_type, result.error_code)
+        session_id = str(envelope.payload.get("session_id", "") or "")
+        if session_id:
+            task_result = embodied_harness_task_coordinator.record_terminal_observation(
+                task_id=session_id,
+                participant_ref=str(envelope.payload.get("actor_id", "") or ""),
+                attempt_ref=str(envelope.payload.get("interaction_attempt_id", "") or ""),
+                terminal_status=str(envelope.payload.get("terminal_status", "failed") or "failed"),
+                payload_digest=str(envelope.payload.get("payload_digest", "") or ""),
+                producer_ts=int(envelope.payload.get("observed_at", 0) or 0),
+            )
+            if not task_result.accepted:
+                return EmbodiedExecutionIngress.protocol_error(envelope.message_type, task_result.error_code)
         return result.outbound
 
     if envelope.message_type == "embodied_presentation_observed":
@@ -2690,7 +2750,7 @@ def _handle_embodied_interaction_session_probe(envelope: Envelope) -> list[dict[
         return EmbodiedExecutionIngress.protocol_error(envelope.message_type, "invalid_participant_private_terms")
 
     bus_start = len(authority_event_bus.list_events())
-    proposed = embodied_interaction_session_service.propose(
+    task_result = embodied_harness_task_coordinator.run_handshake(
         session_id=session_id,
         semantic_action=semantic_action,
         initiator_ref=initiator_ref,
@@ -2702,34 +2762,21 @@ def _handle_embodied_interaction_session_probe(envelope: Envelope) -> list[dict[
         causation_id=str(payload.get("causation_id", "") or f"cmd:{session_id}:propose"),
         correlation_id=str(payload.get("correlation_id", "") or f"corr:{session_id}"),
         participant_private_terms=participant_private_terms,
+        complete=False,
     )
-    if not proposed.accepted:
-        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, proposed.error_code)
-
-    for participant_ref in participant_refs:
-        if participant_ref == initiator_ref:
-            continue
-        accepted = embodied_interaction_session_service.accept(
-            session_id=session_id,
-            participant_ref=participant_ref,
-            causation_id=f"cmd:{session_id}:accept:{participant_ref}",
-            payload_digest=f"digest:accept:{session_id}:{participant_ref}",
-        )
-        if not accepted.accepted:
-            return EmbodiedExecutionIngress.protocol_error(envelope.message_type, accepted.error_code)
-
-    realizing = embodied_interaction_session_service.start_realizing(
-        session_id=session_id,
-        causation_id=f"cmd:{session_id}:realize",
-    )
-    if not realizing.accepted:
-        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, realizing.error_code)
+    if not task_result.accepted:
+        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, task_result.error_code)
 
     session_messages = [
         outbound
         for event in authority_event_bus.list_events()[bus_start:]
         if (outbound := _embodied_session_event_envelope_from_authority_event(event)) is not None
     ]
+    embodied_harness_task_coordinator.record_godot_projection(
+        session_id,
+        session_messages,
+        producer_ts=int(payload.get("producer_ts", 0) or 0),
+    )
     return [
         _as_envelope(
             "ack",

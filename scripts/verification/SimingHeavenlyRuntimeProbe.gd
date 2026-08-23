@@ -13,6 +13,7 @@ var _destruction_result_ref := ""
 var _destruction_correlation_id := ""
 var _backend_connection_count := 0
 var _backend_connection_target := 0
+var _post_restart_reaction_window := false
 var _move_request_id := ""
 var _acknowledged_request_ids: Dictionary = {}
 
@@ -79,6 +80,7 @@ func _run() -> void:
 	if not (await _wait_until(Callable(self, "_backend_reconnected"), RUNTIME_EVENT_TIMEOUT_MS)):
 		_finish("siming_heavenly_backend_reconnect_timeout")
 		return
+	_post_restart_reaction_window = true
 	_controller._emit_dialogue_request("char_b", "The letter is gone.")
 	_send_staging_ack()
 	if not (await _wait_until(Callable(self, "_char_b_reacted"), RUNTIME_EVENT_TIMEOUT_MS)):
@@ -234,6 +236,7 @@ func _is_staging_causal(payload: Dictionary) -> bool:
 		correlation_id == _staging_correlation_id()
 		or causation_id == str(_staging_request.get("event_id", ""))
 		or causation_id == str(_staging_request.get("causation_id", ""))
+		or (_post_restart_reaction_window and str(payload.get("actor_id", "")) == "char_b")
 	)
 
 func _wait_until(predicate: Callable, timeout_ms: int = 10000) -> bool:

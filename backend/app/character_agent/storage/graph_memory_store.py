@@ -79,9 +79,15 @@ class CharacterGraphMemoryStore:
             if cached is not None and cached[0] == event:
                 self._graph.write_batch(cached[1])
                 return
+            if source_event_id and self._graph.has_idempotency_key(
+                scope=scope,
+                idempotency_key=f"character-memory:{actor_id}:{source_event_id}",
+            ):
+                return
             already_deposited = bool(source_event_id) and self._has_source_event(
                 scope,
                 source_event_id,
+                recorded_at=int(event.get("producer_ts", 0) or 0),
             )
             self._normalizer.write_event(event)
             if source_event_id and not already_deposited:
@@ -98,11 +104,14 @@ class CharacterGraphMemoryStore:
         self,
         scope: HeavenlyGraphScope,
         source_event_id: str,
+        *,
+        recorded_at: int,
     ) -> bool:
         nodes = self._graph.query_nodes(
             HeavenlyNodeQuery(
                 scope=scope,
                 valid_at=self._MAX_TIME,
+                recorded_at=recorded_at if recorded_at > 0 else None,
                 node_types=[f"actor_memory:{pool}" for pool, _field, _model in self.POOLS],
                 limit=None,
             )
