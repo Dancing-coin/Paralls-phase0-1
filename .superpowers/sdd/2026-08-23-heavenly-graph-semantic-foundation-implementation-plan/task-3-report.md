@@ -174,3 +174,31 @@ python -m pytest -q backend/tests/test_heavenly_graph_semantic_queries.py \
 git diff --check
 passed
 ```
+
+## Review Fix Round 4
+
+- Replaced bounded causal BFS queue expansion with deterministic depth-first
+  path priority. High fan-out siblings no longer consume the entire work
+  budget before a reachable terminal path can be completed.
+- Preserved the derived path-prefix work budget, complete-path `max_paths`
+  semantics, node/relation output bounds, simple-path cycle guard, and
+  truncation disclosure for unexplored alternatives or budget exhaustion.
+- Updated the adapter-parametrized high-branching regression to require one
+  complete valid root-to-terminal path while asserting bounded expansion and
+  `truncated=true` for the unexplored sibling branches.
+
+Round-4 verification:
+
+```text
+python -m pytest -q backend/tests/test_heavenly_graph_semantic_queries.py
+48 passed, 1 warning
+
+python -m pytest -q backend/tests/test_heavenly_graph_semantic_queries.py \
+  backend/tests/heavenly_graph_contract.py \
+  backend/tests/test_sqlite_heavenly_graph_contract.py \
+  backend/tests/test_heavenly_graph_semantics.py
+107 passed, 1 warning
+
+git diff --check
+passed
+```

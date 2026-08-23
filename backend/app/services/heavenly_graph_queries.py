@@ -427,8 +427,13 @@ class HeavenlyGraphSemanticQueryFacade:
                     (*path_nodes, relation.target_node_id),
                     (*path_relation_ids, relation.relation_id),
                 )
-                if processed_work_items >= work_item_budget and not complete_paths:
-                    truncated = True
+                if processed_work_items >= work_item_budget:
+                    # Do not schedule later siblings after exhausting the
+                    # work budget. A recursive visit has already marked
+                    # incomplete traversal; a terminal final child with no
+                    # siblings remains a complete, untruncated result.
+                    if index < len(outgoing) - 1:
+                        truncated = True
                     return
                 if index < len(outgoing) - 1 and len(complete_paths) > before:
                     # A complete path was selected and there are more legal
@@ -437,18 +442,21 @@ class HeavenlyGraphSemanticQueryFacade:
                         truncated = True
                         return
 
-        for node_id in sorted(set(query.seed_node_ids)):
-            if node_id not in node_by_id:
-                continue
-            before = len(complete_paths)
+        seed_node_ids = [
+            node_id
+            for node_id in sorted(set(query.seed_node_ids))
+            if node_id in node_by_id
+        ]
+        for index, node_id in enumerate(seed_node_ids):
             visit((node_id,), ())
             if len(complete_paths) >= query.max_paths:
                 # Additional seeds are also unexplored alternatives.
-                if node_id != sorted(set(query.seed_node_ids))[-1]:
+                if index < len(seed_node_ids) - 1:
                     truncated = True
                 break
-            if processed_work_items >= work_item_budget and len(complete_paths) == before:
-                truncated = True
+            if processed_work_items >= work_item_budget:
+                if index < len(seed_node_ids) - 1:
+                    truncated = True
                 break
 
         selected_node_ids: list[str] = []
