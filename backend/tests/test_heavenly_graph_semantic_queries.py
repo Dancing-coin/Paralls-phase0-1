@@ -312,6 +312,40 @@ def test_causal_path_max_paths_caps_returned_path_union_without_query_subgraph(g
     assert result.truncated is True
 
 
+def test_causal_max_paths_caps_complete_paths_not_edges(graph: object) -> None:
+    nodes = [_node(f"chain:{index}") for index in range(4)]
+    relations = [
+        _relation("chain:r0", "chain:0", "chain:1"),
+        _relation("chain:r1", "chain:1", "chain:2"),
+        _relation("chain:r2", "chain:2", "chain:3"),
+    ]
+    graph.write_batch(HeavenlyGraphWriteBatch(transaction_id="tx:chain-path", idempotency_key="chain-path", scope=_scope(), nodes=nodes, relations=relations))
+    result = graph.query_semantic(CausalPathQuery(context=_context(), seed_node_ids=["chain:0"], max_depth=3, node_limit=10, relation_limit=10, max_paths=1))
+    assert [relation.relation_id for relation in result.relations] == ["chain:r0", "chain:r1", "chain:r2"]
+    assert [node.node_id for node in result.nodes] == ["chain:0", "chain:1", "chain:2", "chain:3"]
+    assert result.truncated is False
+
+
+def test_causal_explicit_noncausal_relation_filter_is_empty(graph: object) -> None:
+    nodes = [_node("noncausal:source"), _node("noncausal:target")]
+    relation = _relation("noncausal:r", "noncausal:source", "noncausal:target", relation_type="contradicts")
+    graph.write_batch(HeavenlyGraphWriteBatch(transaction_id="tx:noncausal", idempotency_key="noncausal", scope=_scope(), nodes=nodes, relations=[relation]))
+    result = graph.query_semantic(CausalPathQuery(context=_context(), seed_node_ids=["noncausal:source"], relation_types=["contradicts"], max_depth=2))
+    assert result.nodes == []
+    assert result.relations == []
+    assert result.truncated is False
+
+
+def test_causal_depth_boundary_reports_unexplored_outgoing_edges(graph: object) -> None:
+    nodes = [_node("depth:source"), _node("depth:target")]
+    relation = _relation("depth:r", "depth:source", "depth:target")
+    graph.write_batch(HeavenlyGraphWriteBatch(transaction_id="tx:depth", idempotency_key="depth", scope=_scope(), nodes=nodes, relations=[relation]))
+    result = graph.query_semantic(CausalPathQuery(context=_context(), seed_node_ids=["depth:source"], max_depth=0, max_paths=1))
+    assert [node.node_id for node in result.nodes] == ["depth:source"]
+    assert result.relations == []
+    assert result.truncated is True
+
+
 def test_conflict_set_preserves_concurrent_claims_and_revisions(graph: object) -> None:
     first = _node("claim:a", metadata=GraphSemanticMetadata(policy_revision="policy:v1"))
     first = first.model_copy(update={"attributes": {"subject_ref": "world:x", "property_key": "mood"}})

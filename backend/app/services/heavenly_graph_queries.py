@@ -340,16 +340,23 @@ class HeavenlyGraphSemanticQueryFacade:
     def _read_causal_union(
         self, query: CausalPathQuery, scope: HeavenlyGraphScope
     ) -> tuple[list[HeavenlyGraphNode], list[HeavenlyGraphRelation], bool]:
-        """Return a bounded deterministic causal path-union.
+        """Enumerate bounded complete causal paths and return their union.
 
-        This result model has no path-row field. Each selected causal edge is
-        therefore the output-equivalent of one path prefix, so `max_paths`
-        caps selected relation edges as well as `relation_limit`.
+        `HeavenlyGraphQueryResult` has no path-row field, so selected complete
+        paths are represented by the deterministic union of their nodes and
+        relations. `max_paths` limits complete paths independently from the
+        node/relation output limits.
         """
-        relation_types = query.relation_types or sorted(_CAUSAL_RELATION_TYPES)
+        requested_types = set(query.relation_types)
         relation_types = sorted(
-            set(relation_types).intersection(_CAUSAL_RELATION_TYPES)
+            (requested_types or _CAUSAL_RELATION_TYPES).intersection(
+                _CAUSAL_RELATION_TYPES
+            )
         )
+        # An explicit all-noncausal filter means no causal relation is
+        # requested. An empty relation filter must not become unrestricted.
+        if query.relation_types and not relation_types:
+            return [], [], False
         raw_nodes = self._graph.query_nodes(
             HeavenlyNodeQuery(
                 scope=scope,
@@ -368,57 +375,91 @@ class HeavenlyGraphSemanticQueryFacade:
             )
         )
         node_by_id = {node.node_id: node for node in raw_nodes}
-        relation_limit = min(query.relation_limit, query.max_paths)
+        relation_by_id = {relation.relation_id: relation for relation in raw_relations}
+        adjacency: dict[str, list[HeavenlyGraphRelation]] = {}
+        for relation in raw_relations:
+            adjacency.setdefault(relation.source_node_id, []).append(relation)
+        for outgoing in adjacency.values():
+            outgoing.sort(key=lambda relation: relation.relation_id)
+
+        complete_paths: list[tuple[tuple[str, ...], tuple[str, ...]]] = []
+        pending: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
+            ((node_id,), ())
+            for node_id in sorted(set(query.seed_node_ids))
+            if node_id in node_by_id
+        ]
+        truncated = self._window_saturated(raw_nodes) or self._window_saturated(raw_relations)
+
+        # Enumerate at most one path beyond the requested bound. This proves
+        # truncation without allowing a branching graph to expand unboundedly.
+        while pending and len(complete_paths) <= query.max_paths:
+            path_nodes, path_relation_ids = pending.pop(0)
+            current_id = path_nodes[-1]
+            outgoing = [
+                relation
+                for relation in adjacency.get(current_id, [])
+                if relation.target_node_id not in path_nodes
+                and relation.target_node_id in node_by_id
+            ]
+            if len(path_relation_ids) >= query.max_depth:
+                if outgoing:
+                    truncated = True
+                complete_paths.append((path_nodes, path_relation_ids))
+                if len(complete_paths) > query.max_paths:
+                    truncated = True
+                    break
+                continue
+            if not outgoing:
+                complete_paths.append((path_nodes, path_relation_ids))
+                if len(complete_paths) > query.max_paths:
+                    truncated = True
+                    break
+                continue
+            for relation in outgoing:
+                pending.append(
+                    (
+                        (*path_nodes, relation.target_node_id),
+                        (*path_relation_ids, relation.relation_id),
+                    )
+                )
+
+        if pending and len(complete_paths) >= query.max_paths:
+            truncated = True
+
         selected_node_ids: list[str] = []
         selected_relation_ids: set[str] = set()
         selected_relations: list[HeavenlyGraphRelation] = []
-        seen_node_ids: set[str] = set()
-        truncated = self._window_saturated(raw_nodes) or self._window_saturated(raw_relations)
 
-        for node_id in sorted(set(query.seed_node_ids)):
-            if node_id not in node_by_id:
-                continue
-            if len(selected_node_ids) >= query.node_limit:
-                truncated = True
-                break
-            selected_node_ids.append(node_id)
-            seen_node_ids.add(node_id)
-
-        frontier = list(selected_node_ids)
-        for depth in range(query.max_depth + 1):
-            next_frontier: list[str] = []
-            for node_id in sorted(frontier):
-                for relation in raw_relations:
-                    if relation.relation_id in selected_relation_ids:
-                        continue
-                    if relation.source_node_id != node_id:
-                        continue
-                    target_id = relation.target_node_id
-                    if target_id not in node_by_id:
-                        continue
-                    if target_id not in seen_node_ids and depth == query.max_depth:
-                        truncated = True
-                        continue
-                    if target_id not in seen_node_ids and len(selected_node_ids) >= query.node_limit:
-                        truncated = True
-                        continue
-                    if len(selected_relations) >= relation_limit:
-                        truncated = True
-                        continue
-                    selected_relations.append(relation)
-                    selected_relation_ids.add(relation.relation_id)
-                    if target_id not in seen_node_ids:
-                        seen_node_ids.add(target_id)
-                        selected_node_ids.append(target_id)
-                        next_frontier.append(target_id)
-            frontier = next_frontier
+        for path_nodes, path_relation_ids in complete_paths[: query.max_paths]:
+            for node_id in path_nodes:
+                if node_id in selected_node_ids:
+                    continue
+                if len(selected_node_ids) >= query.node_limit:
+                    truncated = True
+                    break
+                selected_node_ids.append(node_id)
+            for relation_id in path_relation_ids:
+                if relation_id in selected_relation_ids:
+                    continue
+                relation = relation_by_id[relation_id]
+                if (
+                    relation.source_node_id not in selected_node_ids
+                    or relation.target_node_id not in selected_node_ids
+                ):
+                    truncated = True
+                    continue
+                if len(selected_relations) >= query.relation_limit:
+                    truncated = True
+                    break
+                selected_relations.append(relation)
+                selected_relation_ids.add(relation_id)
 
         # The low-level candidate window cannot prove that an exact output
         # boundary is complete, so report saturation conservatively.
         truncated = (
             truncated
             or len(selected_node_ids) >= query.node_limit
-            or len(selected_relations) >= relation_limit
+            or len(selected_relations) >= query.relation_limit
         )
 
         return (

@@ -93,3 +93,32 @@ python -m pytest -q backend/tests/test_heavenly_graph_semantic_queries.py \
 git diff --check
 passed
 ```
+
+## Review Fix Round 2
+
+- Causal execution now enumerates complete simple paths breadth-first within
+  the requested depth. The result remains a deterministic node/relation union,
+  but `max_paths` limits complete paths independently from `node_limit` and
+  `relation_limit`; a selected path keeps all of its edges until those output
+  limits are reached.
+- An explicit `relation_types` list containing no registered causal relation
+  types now returns an empty causal result. It is never converted into an
+  unrestricted relation query.
+- Added adapter-parametrized regressions for a three-edge path with
+  `max_paths=1` and an explicit non-causal relation filter.
+
+Round-2 verification:
+
+```text
+python -m pytest -q backend/tests/test_heavenly_graph_semantic_queries.py
+44 passed, 1 warning
+
+python -m pytest -q backend/tests/test_heavenly_graph_semantic_queries.py \
+  backend/tests/heavenly_graph_contract.py \
+  backend/tests/test_sqlite_heavenly_graph_contract.py \
+  backend/tests/test_heavenly_graph_semantics.py
+103 passed, 1 warning
+
+git diff --check
+passed
+```
