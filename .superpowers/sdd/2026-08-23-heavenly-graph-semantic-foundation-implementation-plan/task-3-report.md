@@ -15,15 +15,15 @@ dependencies.
    produced 10 failures because the typed query branches were still an empty
    Task 2 shell (plus one intentionally incomplete fixture).
 3. Implemented each semantic branch through the existing low-level adapter
-   queries and deterministic `query_subgraph` traversal.
+   queries and deterministic bounded traversal.
 4. GREEN run: focused semantic query suite passed for both InMemory and SQLite:
    `30 passed, 1 warning`.
 
 ## Implementation
 
-- `CausalPathQuery` now follows only registered causal relation types
-  (`caused_by`, `enabled_by`, `prevented_by`) through the existing bounded
-  subgraph API. Node, relation, depth, and path bounds surface `truncated`.
+- `CausalPathQuery` follows only registered causal relation types
+  (`caused_by`, `enabled_by`, `prevented_by`) through bounded adapter reads.
+  Node, relation, depth, and path bounds surface `truncated`.
 - `ConflictSetQuery` selects concurrent claims by `subject_ref` and
   `property_key`, preserves all eligible claims, and returns connected
   `contradicts` relations without collapsing values.
@@ -111,13 +111,13 @@ Round-2 verification:
 
 ```text
 python -m pytest -q backend/tests/test_heavenly_graph_semantic_queries.py
-44 passed, 1 warning
+45 passed, 1 warning
 
 python -m pytest -q backend/tests/test_heavenly_graph_semantic_queries.py \
   backend/tests/heavenly_graph_contract.py \
   backend/tests/test_sqlite_heavenly_graph_contract.py \
   backend/tests/test_heavenly_graph_semantics.py
-103 passed, 1 warning
+105 passed, 1 warning
 
 git diff --check
 passed
