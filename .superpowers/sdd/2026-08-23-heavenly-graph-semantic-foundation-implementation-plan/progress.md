@@ -52,6 +52,8 @@ Task 4: review rejected; fix scope-level revision streams, strict correction met
 Task 4: fix commits 4d06114/017615f/2e1841c; scoped re-review approved.
 Task 4: complete (commits d2ed863..2e1841c, review clean).
 Task 5: review rejected; normalize fork diff equality, filter lifecycle markers by reader context, enforce branch-scope/terminal write admission, and repair lifecycle time/admit audit details.
+Task 5: fix round 1 committed as 273d672/d488c9c; branch suite 51 passed and affected graph suites 192 passed; awaiting scoped re-review.
 Task 5 fix round still needs coordinate fidelity: fork must honor `fork_valid_at`/`fork_recorded_at` while propagating close state and markers; do not accept current-snapshot substitution without a regression.
+Task 5 fix round 2: lifecycle markers now obey reader `recorded_at`; all explicit semantic `branch:` scopes require a registered fork, while the pre-semantic `policy:legacy` contract path remains compatible. Focused and affected graph suites green; awaiting scoped re-review.
 Task 3: fix round 4 completed; deterministic DFS now returns a complete path under the bounded work budget, with focused and affected graph suites green. Awaiting scoped re-review.
 Task 4: fix round 1 committed as 4d06114/017615f; scope stream counters, strict correction admission, typed provenance lineage, SQLite rollback atomicity, focused and affected graph suites green. Awaiting scoped re-review.
