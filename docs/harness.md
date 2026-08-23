@@ -617,6 +617,24 @@ restart-durable Heavenly Graph adapters.
 python scripts/verification/harness.py --profile siming-heavenly-graph-foundation
 ```
 
+### `heavenly-graph-semantic-foundation`
+
+Graph-only proof for the semantic Heavenly Graph foundation. This focused
+profile uses a verifier-owned temporary SQLite database and checks adapter
+parity, semantic metadata, explicit scope denial, bounded reads, stale-write
+rejection, append-only correction chains, branch isolation, and checkpoint
+replay digest equivalence. It does not use role, Siming runtime, LLM, or Godot
+evidence.
+
+```powershell
+python scripts/verification/harness.py --profile heavenly-graph-semantic-foundation
+```
+
+Output:
+
+- `.harness/verification/heavenly-graph-semantic-foundation-report.json`
+- `.harness/verification/heavenly-graph-semantic-foundation-report.md`
+
 ### `siming-heavenly-runtime`
 
 Godot-required live proof for the complete Siming heavenly runtime. It requires

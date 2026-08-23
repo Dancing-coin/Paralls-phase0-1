@@ -152,6 +152,8 @@ fake or disabled provider.
 
 使用 `python scripts/verification/harness.py --profile <name>`。
 
+- `heavenly-graph-semantic-foundation`：graph-only backend profile，使用 verifier-owned temporary SQLite，证明语义 metadata、adapter parity、scope denial、bounded results、stale-write rejection、correction chain、branch isolation 和 checkpoint replay digest；不采纳 role、Siming runtime、LLM 或 Godot 证据。
+
 - `docs`：文档新鲜度和索引检查。
 - `boundaries`：静态 Harness Engineering 边界检查。
 - `drift`：清理状态和本地产物漂移检查。
@@ -215,6 +217,7 @@ fake or disabled provider.
 - `python scripts/verification/verify_l1_world_fact_runtime.py`
 - `python scripts/verification/verify_mainline_unified_runtime.py`
 - `python scripts/verification/verify_model_provider_readiness.py`
+- `python scripts/verification/verify_heavenly_graph_semantic_foundation.py`
 - `python scripts/verification/verify_character_model_live.py`
 - `python scripts/verification/verify_llm_integration_closure.py`
 - `python scripts/verification/verify_godot_sampling_production_grade_providers.py`
@@ -272,6 +275,8 @@ fake or disabled provider.
 
 - `.harness/verification/mainline-unified-runtime-report.json`
 - `.harness/verification/mainline-unified-runtime-report.md`
+- `.harness/verification/heavenly-graph-semantic-foundation-report.json`
+- `.harness/verification/heavenly-graph-semantic-foundation-report.md`
 
 Harness profile 和规则 manifest 是项目输入：
 

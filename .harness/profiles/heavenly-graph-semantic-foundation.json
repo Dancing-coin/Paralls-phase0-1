@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "name": "heavenly-graph-semantic-foundation",
+  "order": 79,
+  "script": "scripts/verification/verify_heavenly_graph_semantic_foundation.py",
+  "requires_godot": false,
+  "result_artifact": ".harness/verification/heavenly-graph-semantic-foundation-report.json",
+  "description": "graph-only contract verification for the Heavenly Graph semantic foundation"
+}
