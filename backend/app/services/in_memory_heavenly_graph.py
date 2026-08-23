@@ -246,14 +246,21 @@ class InMemoryHeavenlyGraphAdapter:
     ) -> tuple[list[GraphBranchLifecycleMarker], bool]:
         if "authority_only" not in query.reader_context.allowed_visibility_scopes:
             return [], False
-        left = self._branch_markers.get(self._scope_key(query.left_scope), [])
-        right = self._branch_markers.get(self._scope_key(query.right_scope), [])
+        left_key = self._scope_key(query.left_scope)
+        right_key = self._scope_key(query.right_scope)
+        left = self._branch_markers.get(left_key, [])
+        right = self._branch_markers.get(right_key, [])
         window_limit = max(query.limits.marker_limit + 1, 4)
         left_window, left_saturated = self._marker_window(left, window_limit)
-        right_window, right_saturated = self._marker_window(right, window_limit)
+        if left_key == right_key:
+            right_window, right_saturated = left_window, left_saturated
+            marker_windows = (left_window,)
+        else:
+            right_window, right_saturated = self._marker_window(right, window_limit)
+            marker_windows = (left_window, right_window)
         selected: list[GraphBranchLifecycleMarker] = []
         for marker in sorted(
-            [*left_window, *right_window],
+            [marker for window in marker_windows for marker in window],
             key=lambda item: item.marker_id,
         ):
             if marker.valid_at > query.reader_context.valid_at:
