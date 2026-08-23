@@ -46,4 +46,8 @@ Task 3: fix round 1 scoped re-review rejected; max_paths must cap complete paths
 Task 3: fix round 2 re-review found unbounded pending-path work queue; fix round 3 must add deterministic traversal budget and final evidence commit.
 Task 3: fix round 3 committed as 2e04ef3/0b5da4c; scoped re-review approved.
 Task 3: final re-review found bounded BFS can return an empty union despite reachable complete paths; Task 3 remains open until traversal prioritizes a complete path under budget.
+Task 3: fix round 4 committed as 47a4c95/9813dc1; scoped re-review approved.
+Task 3: complete (commits 09ddb14..9813dc1, review clean).
+Task 4: review rejected; fix scope-level revision streams, strict correction metadata/source checks, typed provenance preservation, and SQLite rollback atomicity before advancing.
 Task 3: fix round 4 completed; deterministic DFS now returns a complete path under the bounded work budget, with focused and affected graph suites green. Awaiting scoped re-review.
+Task 4: fix round 1 committed as 4d06114/017615f; scope stream counters, strict correction admission, typed provenance lineage, SQLite rollback atomicity, focused and affected graph suites green. Awaiting scoped re-review.
