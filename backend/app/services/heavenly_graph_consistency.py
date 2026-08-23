@@ -173,6 +173,11 @@ class HeavenlyGraphConsistencyAudit:
         metadata = entity.semantic_metadata
         if metadata.visibility_scope not in context.allowed_visibility_scopes:
             return False
+        # Semantic readers discard stale policy revisions.  The audit may still
+        # report the invariant category, but must not expose stale entity data
+        # or references to a reader pinned to a different policy.
+        if metadata.policy_revision != context.policy_revision:
+            return False
         owner = entity.scope.owner_actor_id
         if metadata.visibility_scope == "actor_private" and owner is not None:
             return context.reader_principal in {owner, f"actor:{owner}", f"reader:{owner}"}
@@ -252,7 +257,25 @@ class HeavenlyGraphConsistencyAudit:
             self._append(errors, "HG-AUDIT-PROVENANCE", "invalid_provenance", entity, context)
 
     def _audit_relation_endpoints(self, relation: HeavenlyGraphRelation, nodes: dict[str, list[HeavenlyGraphNode]], context: GraphReaderContext, errors: list[HeavenlyGraphConsistencyError]) -> None:
-        if relation.source_node_id not in nodes or relation.target_node_id not in nodes:
+        # Endpoint admission is bitemporal: an ID that exists in a different
+        # validity/recorded interval is still an orphan for this relation.
+        endpoint_valid_at = relation.validity.valid_from
+        endpoint_recorded_at = relation.recorded_at
+
+        def exists_at(endpoint_id: str) -> bool:
+            versions = nodes.get(endpoint_id, [])
+            candidates = [
+                node
+                for node in versions
+                if node.validity.contains(endpoint_valid_at)
+                and node.recorded_at <= endpoint_recorded_at
+            ]
+            if not candidates:
+                return False
+            selected = max(candidates, key=lambda item: (item.recorded_at, item.revision))
+            return selected.semantic_metadata.derivation_kind not in {"retraction", "redaction"}
+
+        if not exists_at(relation.source_node_id) or not exists_at(relation.target_node_id):
             self._append(errors, "HG-AUDIT-ORPHAN-RELATION", "orphan_relation", relation, context)
 
     def _audit_revision_chain(self, kind: str, entity_id: str, versions: Iterable[Any], context: GraphReaderContext, errors: list[HeavenlyGraphConsistencyError]) -> None:
@@ -272,14 +295,31 @@ class HeavenlyGraphConsistencyAudit:
         source_refs = attrs.get("correction_source_refs")
         predecessors = histories.get(entity.node_id if isinstance(entity, HeavenlyGraphNode) else entity.relation_id, [])
         expected_revision = entity.supersedes_revision
+        predecessor = next(
+            (item for item in predecessors if item.revision == target_revision),
+            None,
+        )
+        target_source_ref = attrs.get("correction_target_source_ref")
+        provenance = getattr(entity, "provenance", None)
+        semantic_source_refs = set(getattr(metadata, "source_event_refs", ()))
+        provenance_refs = {
+            *getattr(provenance, "source_ref_lineage", ()),
+            *getattr(provenance, "evidence_refs", ()),
+        }
+        source_linkage_valid = (
+            isinstance(source_refs, list)
+            and bool(source_refs)
+            and all(isinstance(ref, str) and ref for ref in source_refs)
+            and all(ref in provenance_refs and ref in semantic_source_refs for ref in source_refs)
+        )
         if (
             not isinstance(target_id, str)
             or not isinstance(target_revision, int)
             or target_id != (entity.node_id if isinstance(entity, HeavenlyGraphNode) else entity.relation_id)
             or target_revision != expected_revision
-            or not isinstance(source_refs, list)
-            or not source_refs
-            or not any(item.revision == target_revision for item in predecessors)
+            or predecessor is None
+            or target_source_ref != predecessor.provenance.source_ref
+            or not source_linkage_valid
         ):
             self._append(errors, "HG-AUDIT-CORRECTION-LINK", "broken_correction_link", entity, context)
 

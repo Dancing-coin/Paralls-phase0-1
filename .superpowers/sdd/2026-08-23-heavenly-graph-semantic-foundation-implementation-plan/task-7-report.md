@@ -26,11 +26,25 @@ Godot files were changed.
 - Added test-only private bypass fixtures for each invalid invariant; normal
   adapter admission remains unchanged.
 
+## Fix Round 1
+
+- Relation endpoint audits now resolve source and target revisions at the
+  relation's `validity.valid_from` and `recorded_at` coordinates, including
+  retraction/redaction semantics.
+- Correction audits now require the predecessor's original
+  `provenance.source_ref` in `correction_target_source_ref`, and require every
+  correction source ref in both typed provenance lineage/evidence and semantic
+  source-event linkage.
+- Policy-revision mismatches are treated as inaccessible for audit payloads,
+  matching semantic reader redaction behavior.
+- Added bitemporal endpoint, forged correction-link, and stale-policy
+  redaction regressions across both InMemory and SQLite adapters.
+
 ## Verification
 
 ```text
 python -m pytest -q backend/tests/heavenly_graph_contract.py backend/tests/test_sqlite_heavenly_graph_contract.py backend/tests/test_heavenly_graph_semantics.py backend/tests/test_heavenly_graph_semantic_queries.py backend/tests/test_heavenly_graph_branch_lifecycle.py backend/tests/test_heavenly_graph_consistency.py
-226 passed, 1 warning
+236 passed, 1 warning
 
 python -m compileall -q backend/app
 passed

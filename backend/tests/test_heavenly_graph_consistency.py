@@ -139,6 +139,26 @@ def _inject_invalid_fixture(graph: object, *, kind: str) -> None:
     key = graph._scope_key(scope)
     if kind == "orphan_relation":
         graph._relations[(key, "relation:orphan")] = [_relation("relation:orphan", target="fact:missing")]
+    elif kind == "temporal_orphan":
+        # The endpoint IDs exist, but not at the relation's bitemporal
+        # coordinates. This mirrors the write-admission predicate.
+        source = _node("fact:temporal:source").model_copy(
+            update={"validity": GraphValidity(valid_from=20)}, deep=True
+        )
+        target = _node("fact:temporal:target").model_copy(
+            update={"recorded_at": 30}, deep=True
+        )
+        relation = _relation(
+            "relation:temporal-orphan",
+            source="fact:temporal:source",
+            target="fact:temporal:target",
+        ).model_copy(
+            update={"validity": GraphValidity(valid_from=10), "recorded_at": 20},
+            deep=True,
+        )
+        graph._nodes[(key, source.node_id)] = [source]
+        graph._nodes[(key, target.node_id)] = [target]
+        graph._relations[(key, relation.relation_id)] = [relation]
     elif kind == "revision_chain":
         malformed = _node("fact:revision", revision=1).model_copy(deep=True)
         malformed.revision = 3
@@ -278,3 +298,69 @@ def test_audit_redacts_inaccessible_payload_but_retains_the_error_category(graph
     assert report.errors[0].redacted is True
     assert report.errors[0].entity_ref is None
     assert report.errors[0].payload == {"redacted": True}
+
+
+def test_audit_redacts_policy_revision_mismatch(graph: object) -> None:
+    scope = _scope()
+    key = graph._scope_key(scope)
+    stale = _node(
+        "fact:stale-policy",
+        metadata=_metadata(policy_revision="policy:old"),
+    ).model_copy(update={"node_type": "unknown_semantic_type"}, deep=True)
+    graph._nodes[(key, stale.node_id)] = [stale]
+
+    report = HeavenlyGraphConsistencyAudit(graph).audit(scope, _context())
+
+    assert report.errors[0].error_id == "HG-AUDIT-SEMANTIC-TYPE"
+    assert report.errors[0].redacted is True
+    assert report.errors[0].entity_ref is None
+    assert report.errors[0].payload == {"redacted": True}
+
+
+def test_audit_checks_relation_endpoints_at_bitemporal_coordinates(graph: object) -> None:
+    _inject_invalid_fixture(graph, kind="temporal_orphan")
+
+    report = HeavenlyGraphConsistencyAudit(graph).audit(_scope(), _context())
+
+    assert [error.error_id for error in report.errors] == [
+        "HG-AUDIT-ORPHAN-RELATION"
+    ]
+
+
+@pytest.mark.parametrize("mutation", ["target_source", "source_linkage"])
+def test_audit_rejects_forged_correction_source_links(graph: object, mutation: str) -> None:
+    target = _node("fact:forged-correction")
+    graph.write_batch(
+        HeavenlyGraphWriteBatch(
+            transaction_id=f"tx:audit:forged:{mutation}:seed",
+            idempotency_key=f"idem:audit:forged:{mutation}:seed",
+            scope=target.scope,
+            nodes=[target],
+        )
+    )
+    graph.correct(
+        GraphCorrectionRequest(
+            target_kind="node",
+            target_id=target.node_id,
+            target_revision=1,
+            correction_kind="corrected",
+            source_refs=["authority:audit:forged"],
+            semantic_metadata=_metadata(),
+            scope=target.scope,
+        )
+    )
+    key = graph._scope_key(target.scope)
+    history = graph._nodes[(key, target.node_id)]
+    corrected = history[-1]
+    attrs = dict(corrected.attributes)
+    if mutation == "target_source":
+        attrs["correction_target_source_ref"] = "authority:forged-predecessor"
+    else:
+        attrs["correction_source_refs"] = ["authority:not-linked"]
+    history[-1] = corrected.model_copy(update={"attributes": attrs}, deep=True)
+
+    report = HeavenlyGraphConsistencyAudit(graph).audit(_scope(), _context())
+
+    assert [error.error_id for error in report.errors] == [
+        "HG-AUDIT-CORRECTION-LINK"
+    ]
