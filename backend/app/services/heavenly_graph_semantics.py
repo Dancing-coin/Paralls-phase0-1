@@ -94,14 +94,25 @@ class HeavenlyNodeTypeRegistry:
             raise ValueError("owner_actor_id is only valid for actor_private namespace")
         return rule
 
-    def validate_node(self, node: HeavenlyGraphNode) -> HeavenlyGraphNode:
-        self.validate(
-            node_type=node.node_type,
-            namespace=node.scope.graph_namespace,
-            record_kind=node.semantic_metadata.record_kind,
-            visibility_scope=node.semantic_metadata.visibility_scope,
-            owner_actor_id=node.scope.owner_actor_id,
-        )
+    def validate_node(self, node: HeavenlyGraphNode, *, allow_legacy: bool = False) -> HeavenlyGraphNode:
+        try:
+            self.validate(
+                node_type=node.node_type,
+                namespace=node.scope.graph_namespace,
+                record_kind=node.semantic_metadata.record_kind,
+                visibility_scope=node.semantic_metadata.visibility_scope,
+                owner_actor_id=node.scope.owner_actor_id,
+            )
+        except ValueError:
+            if not allow_legacy or node.semantic_metadata.policy_revision != "policy:legacy":
+                raise
+            # Existing storage contracts predate semantic metadata. Keep their
+            # known names admissible while rejecting arbitrary new names.
+            legacy_name = node.node_type == "world_fact" or node.node_type == "runtime_story_node" or node.node_type.startswith(("actor_memory:", "actor_memory_anchor:", "memory:", "projection:"))
+            if not legacy_name:
+                raise
+            if node.scope.graph_namespace == _ACTOR and not node.scope.owner_actor_id:
+                raise ValueError("actor_private namespace requires owner_actor_id")
         return node
 
 
@@ -174,18 +185,29 @@ class HeavenlyRelationTypeRegistry:
             raise ValueError("target owner_actor_id is only valid for actor_private")
         return rule
 
-    def validate_relation(self, relation: HeavenlyGraphRelation, *, source_scope: Any | None = None, target_scope: Any | None = None) -> HeavenlyGraphRelation:
+    def validate_relation(self, relation: HeavenlyGraphRelation, *, source_scope: Any | None = None, target_scope: Any | None = None, allow_legacy: bool = False) -> HeavenlyGraphRelation:
         source = source_scope or relation.scope
         target = target_scope or relation.scope
-        self.validate(
-            relation_type=relation.relation_type,
-            source_namespace=source.graph_namespace,
-            target_namespace=target.graph_namespace,
-            record_kind=relation.semantic_metadata.record_kind,
-            visibility_scope=relation.semantic_metadata.visibility_scope,
-            source_owner_actor_id=source.owner_actor_id,
-            target_owner_actor_id=target.owner_actor_id,
-        )
+        try:
+            self.validate(
+                relation_type=relation.relation_type,
+                source_namespace=source.graph_namespace,
+                target_namespace=target.graph_namespace,
+                record_kind=relation.semantic_metadata.record_kind,
+                visibility_scope=relation.semantic_metadata.visibility_scope,
+                source_owner_actor_id=source.owner_actor_id,
+                target_owner_actor_id=target.owner_actor_id,
+            )
+        except ValueError:
+            if not allow_legacy or relation.semantic_metadata.policy_revision != "policy:legacy":
+                raise
+            legacy_name = relation.relation_type.upper() in {"CAUSED_BY", "ENABLED_BY", "PREVENTED_BY"} or relation.relation_type.startswith("actor_memory:references_")
+            if not legacy_name:
+                raise
+            if source.graph_namespace == _ACTOR and not source.owner_actor_id:
+                raise ValueError("actor_private source requires owner_actor_id")
+            if target.graph_namespace == _ACTOR and not target.owner_actor_id:
+                raise ValueError("actor_private target requires owner_actor_id")
         return relation
 
 

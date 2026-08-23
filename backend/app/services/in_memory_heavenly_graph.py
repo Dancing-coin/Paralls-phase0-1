@@ -23,6 +23,10 @@ from app.services.siming_heavenly_graph_port import (
     HeavenlyGraphReferentialIntegrityError,
     HeavenlyGraphRevisionConflict,
 )
+from app.services.heavenly_graph_semantics import (
+    DEFAULT_NODE_TYPE_REGISTRY,
+    DEFAULT_RELATION_TYPE_REGISTRY,
+)
 
 
 ScopeKey = tuple[str, str, str, str | None, str | None, str, str | None]
@@ -50,6 +54,7 @@ class InMemoryHeavenlyGraphAdapter:
         self,
         batch: HeavenlyGraphWriteBatch,
     ) -> HeavenlyGraphWriteResult:
+        self._validate_batch_semantics(batch)
         payload_hash = self._batch_hash(batch)
         scoped_idempotency_key = (
             self._scope_key(batch.scope),
@@ -105,6 +110,13 @@ class InMemoryHeavenlyGraphAdapter:
             result.model_copy(deep=True),
         )
         return result
+
+    def _validate_batch_semantics(self, batch: HeavenlyGraphWriteBatch) -> None:
+        """Reject semantically invalid records before idempotency or mutation."""
+        for node in batch.nodes:
+            DEFAULT_NODE_TYPE_REGISTRY.validate_node(node, allow_legacy=True)
+        for relation in batch.relations:
+            DEFAULT_RELATION_TYPE_REGISTRY.validate_relation(relation, allow_legacy=True)
 
     def has_idempotency_key(
         self,

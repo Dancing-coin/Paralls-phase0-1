@@ -1,4 +1,5 @@
 import pytest
+from pathlib import Path
 from pydantic import ValidationError
 
 from app.models.siming_heavenly_graph import (
@@ -15,6 +16,8 @@ from app.services.heavenly_graph_semantics import (
     HeavenlyNodeTypeRegistry,
     HeavenlyRelationTypeRegistry,
 )
+from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
+from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
 
 
 def _scope(namespace: str = "siming_heavenly", owner: str | None = None) -> HeavenlyGraphScope:
@@ -176,3 +179,109 @@ def test_relation_registry_classifies_fact_and_proposal() -> None:
         record_kind="proposal",
         visibility_scope="siming_internal",
     )
+
+
+def _write_batch(node: HeavenlyGraphNode) -> object:
+    from app.models.siming_heavenly_graph import HeavenlyGraphWriteBatch
+
+    return HeavenlyGraphWriteBatch(
+        transaction_id="graph_tx:semantic-admission",
+        idempotency_key="semantic-admission:1",
+        scope=node.scope,
+        nodes=[node],
+    )
+
+
+@pytest.fixture(params=["memory", "sqlite"])
+def graph_adapter(request: pytest.FixtureRequest, tmp_path: Path) -> object:
+    if request.param == "sqlite":
+        adapter = SQLiteHeavenlyGraphAdapter(tmp_path / "graph.db")
+        yield adapter
+        adapter.close()
+        return
+    yield InMemoryHeavenlyGraphAdapter()
+
+
+def test_adapter_rejects_unknown_node_type_before_idempotency(graph_adapter: object) -> None:
+    node = HeavenlyGraphNode(
+        node_id="unknown:1",
+        node_type="unknown_node",
+        scope=_scope(),
+        validity=GraphValidity(valid_from=1),
+        recorded_at=1,
+        revision=1,
+        provenance=_provenance(),
+        semantic_metadata=_metadata(),
+    )
+    with pytest.raises(ValueError, match="unregistered"):
+        graph_adapter.write_batch(_write_batch(node))
+    assert not graph_adapter.has_idempotency_key(scope=node.scope, idempotency_key="semantic-admission:1")
+
+
+def test_adapter_rejects_unknown_legacy_node_name(graph_adapter: object) -> None:
+    node = HeavenlyGraphNode(
+        node_id="unknown:legacy",
+        node_type="unknown_legacy_node",
+        scope=_scope(),
+        validity=GraphValidity(valid_from=1),
+        recorded_at=1,
+        revision=1,
+        provenance=_provenance(),
+    )
+    with pytest.raises(ValueError, match="unregistered"):
+        graph_adapter.write_batch(_write_batch(node))
+
+
+def test_adapter_rejects_unknown_relation_type_before_idempotency(graph_adapter: object) -> None:
+    from app.models.siming_heavenly_graph import HeavenlyGraphWriteBatch
+
+    relation = HeavenlyGraphRelation(
+        relation_id="unknown:relation",
+        relation_type="unknown_relation",
+        source_node_id="fact:source",
+        target_node_id="fact:target",
+        scope=_scope(),
+        validity=GraphValidity(valid_from=1),
+        recorded_at=1,
+        revision=1,
+        provenance=_provenance(),
+        semantic_metadata=_metadata(),
+    )
+    batch = HeavenlyGraphWriteBatch(
+        transaction_id="graph_tx:unknown-relation",
+        idempotency_key="semantic-admission:relation",
+        scope=relation.scope,
+        relations=[relation],
+    )
+    with pytest.raises(ValueError, match="unregistered"):
+        graph_adapter.write_batch(batch)
+    assert not graph_adapter.has_idempotency_key(
+        scope=relation.scope,
+        idempotency_key="semantic-admission:relation",
+    )
+
+
+def test_adapter_rejects_invalid_semantic_namespace_and_visibility(graph_adapter: object) -> None:
+    owner_scope = _scope("actor_private", owner="char_b")
+    invalid_namespace = HeavenlyGraphNode(
+        node_id="fact:private",
+        node_type="world_fact",
+        scope=owner_scope,
+        validity=GraphValidity(valid_from=1),
+        recorded_at=1,
+        revision=1,
+        provenance=_provenance(),
+        semantic_metadata=_metadata(),
+    )
+    with pytest.raises(ValueError, match="namespace"):
+        graph_adapter.write_batch(_write_batch(invalid_namespace))
+
+    invalid_visibility = invalid_namespace.model_copy(
+        update={
+            "scope": _scope(),
+            "semantic_metadata": _metadata(visibility_scope="siming_internal"),
+        },
+        deep=True,
+    )
+    with pytest.raises(ValueError, match="visibility"):
+        graph_adapter.write_batch(_write_batch(invalid_visibility))
