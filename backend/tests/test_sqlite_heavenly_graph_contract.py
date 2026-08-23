@@ -12,10 +12,14 @@ from heavenly_graph_contract import (
 
 from app.models.siming_heavenly_graph import (
     GraphCorrectionRequest,
+    GraphReaderContext,
     GraphSemanticMetadata,
     HeavenlyGraphWriteBatch,
     HeavenlyNodeQuery,
+    NodeLookupQuery,
 )
+from app.services.heavenly_graph_consistency import HeavenlyGraphConsistencyAudit
+from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
 from app.services.siming_heavenly_graph_port import HeavenlyGraphPort
 from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
 
@@ -23,6 +27,48 @@ from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
 class TestSQLiteHeavenlyGraphContract(HeavenlyGraphContract):
     def make_graph(self) -> HeavenlyGraphPort:
         return SQLiteHeavenlyGraphAdapter(":memory:")
+
+
+def test_sqlite_and_in_memory_share_semantic_query_and_consistency_contract(
+    tmp_path: Path,
+) -> None:
+    scope = graph_scope()
+    context = GraphReaderContext(
+        reader_principal="reader:contract",
+        allowed_visibility_scopes=("public",),
+        world_id=scope.world_id,
+        session_id=scope.session_id,
+        story_branch_id=scope.story_branch_id,
+        valid_at=20,
+        recorded_at=20,
+        policy_revision="policy:legacy",
+    )
+    batch = HeavenlyGraphWriteBatch(
+        transaction_id="graph_tx:adapter-parity",
+        idempotency_key="authority:event:adapter-parity",
+        scope=scope,
+        nodes=[graph_node(node_id="fact:adapter-parity")],
+    )
+    memory = InMemoryHeavenlyGraphAdapter()
+    sqlite = SQLiteHeavenlyGraphAdapter(tmp_path / "adapter-parity.sqlite3")
+    try:
+        memory.write_batch(batch)
+        sqlite.write_batch(batch)
+        query = NodeLookupQuery(
+            context=context,
+            scope=scope,
+            node_ids=["fact:adapter-parity"],
+        )
+        memory_result = memory.query_semantic(query)
+        sqlite_result = sqlite.query_semantic(query)
+        memory_report = HeavenlyGraphConsistencyAudit(memory).audit(scope, context)
+        sqlite_report = HeavenlyGraphConsistencyAudit(sqlite).audit(scope, context)
+    finally:
+        sqlite.close()
+
+    assert memory_result == sqlite_result
+    assert memory_report == sqlite_report
+    assert memory_report.errors == []
 
 
 def test_sqlite_restart_restores_node_revision(tmp_path: Path) -> None:

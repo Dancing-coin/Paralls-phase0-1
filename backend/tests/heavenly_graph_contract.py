@@ -23,6 +23,7 @@ from app.services.siming_heavenly_graph_port import (
     HeavenlyGraphReferentialIntegrityError,
     HeavenlyGraphRevisionConflict,
 )
+from app.services.heavenly_graph_consistency import HeavenlyGraphConsistencyAudit
 
 
 def graph_scope(*, branch_id: str = "branch:main") -> HeavenlyGraphScope:
@@ -206,6 +207,47 @@ class HeavenlyGraphContract(ABC):
 
     def test_subgraph_traversal_respects_depth_bound(self) -> None:
         assert_bounded_subgraph_contract(self.make_graph())
+
+    def test_semantic_consistency_audit_accepts_admitted_history(self) -> None:
+        graph = self.make_graph()
+        scope = graph_scope()
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:consistency:clean",
+                idempotency_key="authority:event:consistency:clean",
+                scope=scope,
+                nodes=[
+                    graph_node(node_id="fact:consistency:source", valid_from=0, recorded_at=10),
+                    graph_node(node_id="fact:consistency:target", valid_from=0, recorded_at=10),
+                ],
+                relations=[
+                    graph_relation(
+                        relation_id="relation:consistency:clean",
+                        source_node_id="fact:consistency:source",
+                        target_node_id="fact:consistency:target",
+                        valid_from=0,
+                        recorded_at=10,
+                    )
+                ],
+            )
+        )
+        from app.models.siming_heavenly_graph import GraphReaderContext
+
+        report = HeavenlyGraphConsistencyAudit(graph).audit(
+            scope,
+            GraphReaderContext(
+                reader_principal="reader:contract",
+                allowed_visibility_scopes=("public",),
+                world_id=scope.world_id,
+                session_id=scope.session_id,
+                story_branch_id=scope.story_branch_id,
+                valid_at=20,
+                recorded_at=20,
+                policy_revision="policy:legacy",
+            ),
+        )
+
+        assert report.errors == []
 
     def test_subgraph_traversal_isolates_private_owners(self) -> None:
         assert_owner_isolation_contract(self.make_graph())

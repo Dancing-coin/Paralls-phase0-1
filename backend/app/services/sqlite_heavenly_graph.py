@@ -10,10 +10,12 @@ from app.models.siming_heavenly_graph import (
     GraphBranchLifecycleMarker,
     GraphBranchLifecycleRequest,
     GraphCorrectionRequest,
+    GraphReaderContext,
     HeavenlyGraphQueryResult,
     HeavenlyGraphSemanticQuery,
     HeavenlyGraphNode,
     HeavenlyGraphRelation,
+    HeavenlyGraphScope,
     HeavenlyGraphSnapshot,
     HeavenlyGraphWriteBatch,
     HeavenlyGraphWriteResult,
@@ -22,6 +24,7 @@ from app.models.siming_heavenly_graph import (
     HeavenlySubgraphResult,
 )
 from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
+from app.services.heavenly_graph_consistency import HeavenlyGraphConsistencyReport
 from app.services.siming_heavenly_graph_port import HeavenlyGraphError
 
 
@@ -108,6 +111,16 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
         """Keep facade reads serialized with SQLite-backed graph mutations."""
         with self._lock:
             return super().query_semantic(query)
+
+    def audit_consistency(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        reader_context: GraphReaderContext,
+    ) -> HeavenlyGraphConsistencyReport:
+        """Keep historical audit reads serialized with SQLite mutations."""
+        with self._lock:
+            return super().audit_consistency(scope=scope, reader_context=reader_context)
 
     def query_subgraph(self, **kwargs: object) -> HeavenlySubgraphResult:
         with self._lock:

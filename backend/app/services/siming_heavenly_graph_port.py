@@ -6,6 +6,7 @@ from app.models.siming_heavenly_graph import (
     GraphBranchForkRequest,
     GraphBranchLifecycleRequest,
     GraphCorrectionRequest,
+    GraphReaderContext,
     HeavenlyGraphQueryResult,
     HeavenlyGraphSemanticQuery,
     HeavenlyGraphCheckpointRef,
@@ -20,6 +21,7 @@ from app.models.siming_heavenly_graph import (
     HeavenlySubgraphDirection,
     HeavenlySubgraphResult,
 )
+from app.services.heavenly_graph_consistency import HeavenlyGraphConsistencyReport
 
 
 class HeavenlyGraphError(RuntimeError):
@@ -58,6 +60,13 @@ class HeavenlyGraphCheckpointNotFound(HeavenlyGraphError):
 
 
 class HeavenlyGraphPort(Protocol):
+    def audit_consistency(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        reader_context: GraphReaderContext,
+    ) -> HeavenlyGraphConsistencyReport:
+        raise NotImplementedError
     def fork_branch(
         self, request: GraphBranchForkRequest
     ) -> HeavenlyGraphWriteResult:

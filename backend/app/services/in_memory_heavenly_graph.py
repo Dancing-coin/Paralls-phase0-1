@@ -11,6 +11,7 @@ from app.models.siming_heavenly_graph import (
     GraphBranchLifecycleMarker,
     GraphBranchLifecycleRequest,
     GraphCorrectionRequest,
+    GraphReaderContext,
     GraphProvenance,
     GraphRevisionVector,
     GraphSemanticMetadata,
@@ -41,6 +42,7 @@ from app.services.heavenly_graph_semantics import (
     DEFAULT_RELATION_TYPE_REGISTRY,
     validate_correction_request,
 )
+from app.services.heavenly_graph_consistency import HeavenlyGraphConsistencyReport
 
 
 ScopeKey = tuple[str, str, str, str | None, str | None, str, str | None]
@@ -573,6 +575,17 @@ class InMemoryHeavenlyGraphAdapter:
         from app.services.heavenly_graph_queries import HeavenlyGraphSemanticQueryFacade
 
         return HeavenlyGraphSemanticQueryFacade(self).query(query)
+
+    def audit_consistency(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        reader_context: GraphReaderContext,
+    ) -> HeavenlyGraphConsistencyReport:
+        """Run a read-only historical consistency audit for this adapter."""
+        from app.services.heavenly_graph_consistency import HeavenlyGraphConsistencyAudit
+
+        return HeavenlyGraphConsistencyAudit(self).audit(scope, reader_context)
 
     def _validate_batch_semantics(self, batch: HeavenlyGraphWriteBatch) -> None:
         """Reject semantically invalid records before idempotency or mutation."""
