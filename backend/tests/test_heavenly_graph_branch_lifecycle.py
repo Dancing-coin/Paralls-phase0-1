@@ -463,6 +463,37 @@ def test_admission_preserves_closed_node_tombstone_and_rejects_resurrection(
         _write(graph, _node("closed-source", branch="branch:closed-admitted"))
 
 
+def test_admission_keeps_a_target_branch_audit_marker(graph: object) -> None:
+    production = _scope()
+    _write(graph, _node("admit-audit"))
+    graph.fork_branch(
+        GraphBranchForkRequest(
+            source_scope=production,
+            target_branch_id="branch:admit-source",
+            fork_valid_at=10,
+            fork_recorded_at=10,
+            source_revision_vector=graph.scope_revision_vector(production),
+        )
+    )
+    source = _scope("branch:admit-source")
+    graph.lifecycle_branch(
+        GraphBranchLifecycleRequest(
+            branch_scope=source,
+            operation="admit",
+            target_branch_id="branch:admit-target",
+            expected_revision_vector=graph.scope_revision_vector(source),
+        )
+    )
+    result = graph.diff_branches(
+        GraphBranchDiffQuery(
+            left_scope=production,
+            right_scope=_scope("branch:admit-target"),
+            reader_context=_context(),
+        )
+    )
+    assert any(marker.operation == "admit" for marker in result.lifecycle_markers)
+
+
 def test_fork_rejects_terminal_source_branch(graph: object) -> None:
     production = _scope()
     _write(graph, _node("source"))

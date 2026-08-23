@@ -301,8 +301,25 @@ class InMemoryHeavenlyGraphAdapter:
                 self._nodes.setdefault((target_key, node.node_id), []).append(node.model_copy(update={"scope": target}, deep=True))
             for relation in relations:
                 self._relations.setdefault((target_key, relation.relation_id), []).append(relation.model_copy(update={"scope": target}, deep=True))
-            self._append_branch_marker(branch, "admit", recorded_at=current.branch_revision + 1, target_branch_id=request.target_branch_id)
+            admission_recorded_at = current.branch_revision + 1
+            self._append_branch_marker(
+                branch,
+                "admit",
+                recorded_at=admission_recorded_at,
+                target_branch_id=request.target_branch_id,
+                source_scope=fork_marker.source_scope,
+                source_revision_vector=fork_marker.source_revision_vector,
+            )
+            self._append_branch_marker(
+                target,
+                "admit",
+                recorded_at=admission_recorded_at,
+                target_branch_id=request.target_branch_id,
+                source_scope=branch,
+                source_revision_vector=fork_marker.source_revision_vector,
+            )
             self._branch_status[key] = "admitted"
+            self._branch_revision(target_key, advance=True)
         else:  # fork is represented by fork_branch and cannot be repeated here.
             raise ValueError("fork must be requested through fork_branch")
         self._branch_revision(key, advance=True)
