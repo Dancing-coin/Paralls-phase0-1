@@ -48,6 +48,8 @@ CheckpointKey = tuple[ScopeKey, str]
 
 
 class InMemoryHeavenlyGraphAdapter:
+    CHECKPOINT_SCHEMA_VERSION = 1
+
     def __init__(self) -> None:
         self._nodes: dict[
             tuple[ScopeKey, str],
@@ -849,12 +851,45 @@ class InMemoryHeavenlyGraphAdapter:
     ) -> HeavenlyGraphCheckpointRef:
         checkpoint_key = (self._scope_key(scope), checkpoint_id)
         checkpoint_ref = self._checkpoint_ref(checkpoint_id, scope)
+        snapshot_nodes = self.query_nodes(
+            HeavenlyNodeQuery(
+                scope=scope,
+                valid_at=valid_at,
+                recorded_at=recorded_at,
+                limit=None,
+            )
+        )
+        snapshot_relations = self.query_relations(
+            HeavenlyRelationQuery(
+                scope=scope,
+                valid_at=valid_at,
+                recorded_at=recorded_at,
+                limit=None,
+            )
+        )
+        source_revision_vector = self._scope_revision_vector(scope, recorded_at=recorded_at)
+        policy_revision = self._checkpoint_policy_revision(
+            snapshot_nodes, snapshot_relations
+        )
+        scope_digest = self._scope_digest(scope)
         checkpoint = HeavenlyGraphCheckpointRef(
             checkpoint_ref=checkpoint_ref,
             checkpoint_id=checkpoint_id,
             scope=scope,
             valid_at=valid_at,
             recorded_at=recorded_at,
+            schema_version=self.CHECKPOINT_SCHEMA_VERSION,
+            source_revision_vector=source_revision_vector,
+            policy_revision=policy_revision,
+            scope_digest=scope_digest,
+            replay_digest=self._replay_digest(
+                scope=scope,
+                nodes=snapshot_nodes,
+                relations=snapshot_relations,
+                source_revision_vector=source_revision_vector,
+                policy_revision=policy_revision,
+                scope_digest=scope_digest,
+            ),
         )
         existing = self._checkpoints.get(checkpoint_key)
         if existing is not None:
@@ -867,22 +902,8 @@ class InMemoryHeavenlyGraphAdapter:
 
         snapshot = HeavenlyGraphSnapshot(
             checkpoint=checkpoint,
-            nodes=self.query_nodes(
-                HeavenlyNodeQuery(
-                    scope=scope,
-                    valid_at=valid_at,
-                    recorded_at=recorded_at,
-                    limit=None,
-                )
-            ),
-            relations=self.query_relations(
-                HeavenlyRelationQuery(
-                    scope=scope,
-                    valid_at=valid_at,
-                    recorded_at=recorded_at,
-                    limit=None,
-                )
-            ),
+            nodes=snapshot_nodes,
+            relations=snapshot_relations,
         )
         self._checkpoints[checkpoint_key] = snapshot.model_copy(deep=True)
         self._checkpoint_refs[checkpoint_ref] = checkpoint_key
@@ -903,6 +924,117 @@ class InMemoryHeavenlyGraphAdapter:
                 f"checkpoint ref {checkpoint_ref!r} was not found"
             )
         return snapshot.model_copy(deep=True)
+
+    def replay_from_checkpoint(
+        self,
+        checkpoint_ref: str,
+        tail_batches: list[HeavenlyGraphWriteBatch],
+    ) -> HeavenlyGraphSnapshot:
+        """Rebuild a read-only snapshot from a checkpoint and an append-only tail.
+
+        The source adapter is never mutated.  The checkpoint is only a replay
+        seed; all tail batches are admitted through the normal write contract.
+        """
+        checkpoint_snapshot = self.read_checkpoint(checkpoint_ref)
+        checkpoint = checkpoint_snapshot.checkpoint
+        scope = checkpoint.scope
+        replay = InMemoryHeavenlyGraphAdapter()
+        scope_key = replay._scope_key(scope)
+        replay._nodes = {
+            (scope_key, node.node_id): [node.model_copy(deep=True)]
+            for node in checkpoint_snapshot.nodes
+        }
+        replay._relations = {
+            (scope_key, relation.relation_id): [relation.model_copy(deep=True)]
+            for relation in checkpoint_snapshot.relations
+        }
+        replay._scope_stream_revisions[scope_key] = (
+            checkpoint.source_revision_vector.node_revision,
+            checkpoint.source_revision_vector.relation_revision,
+        )
+        # A branch checkpoint carries only the lifecycle markers that existed
+        # at its recorded coordinate.  They are copied into the temporary
+        # adapter so branch-only tail admission remains isolated.
+        markers = [
+            marker.model_copy(deep=True)
+            for marker in self._branch_markers.get(scope_key, [])
+            if marker.recorded_at <= checkpoint.recorded_at
+        ]
+        if markers:
+            replay._branch_markers[scope_key] = markers
+            status = "forked"
+            for marker in markers:
+                if marker.operation == "discard":
+                    status = "discarded"
+                elif marker.operation == "admit":
+                    status = "admitted"
+            replay._branch_status[scope_key] = status
+            replay._branch_revisions[scope_key] = checkpoint.source_revision_vector.branch_revision
+
+        for batch in tail_batches:
+            if batch.scope != scope:
+                raise ValueError("checkpoint replay tail scope must match checkpoint scope")
+            replay.write_batch(batch)
+
+        replay_recorded_at = max(
+            [checkpoint.recorded_at]
+            + [
+                entity.recorded_at
+                for batch in tail_batches
+                for entity in [*batch.nodes, *batch.relations]
+            ]
+        )
+        nodes = replay.query_nodes(
+            HeavenlyNodeQuery(
+                scope=scope,
+                valid_at=checkpoint.valid_at,
+                recorded_at=replay_recorded_at,
+                limit=None,
+            )
+        )
+        relations = replay.query_relations(
+            HeavenlyRelationQuery(
+                scope=scope,
+                valid_at=checkpoint.valid_at,
+                recorded_at=replay_recorded_at,
+                limit=None,
+            )
+        )
+        source_revision_vector = replay._scope_revision_vector(scope).model_copy(
+            update={
+                "source_revision": max(
+                    checkpoint.source_revision_vector.source_revision,
+                    replay._scope_revision_vector(scope).source_revision,
+                ),
+                "branch_revision": max(
+                    checkpoint.source_revision_vector.branch_revision,
+                    replay._scope_revision_vector(scope).branch_revision,
+                ),
+            }
+        )
+        policy_revision = self._checkpoint_policy_revision(nodes, relations)
+        scope_digest = self._scope_digest(scope)
+        replay_checkpoint = checkpoint.model_copy(
+            update={
+                "source_revision_vector": source_revision_vector,
+                "policy_revision": policy_revision,
+                "scope_digest": scope_digest,
+                "replay_digest": self._replay_digest(
+                    scope=scope,
+                    nodes=nodes,
+                    relations=relations,
+                    source_revision_vector=source_revision_vector,
+                    policy_revision=policy_revision,
+                    scope_digest=scope_digest,
+                ),
+            },
+            deep=True,
+        )
+        return HeavenlyGraphSnapshot(
+            checkpoint=replay_checkpoint,
+            nodes=nodes,
+            relations=relations,
+        )
 
     def _validate_batch_scopes(
         self,
@@ -935,6 +1067,67 @@ class InMemoryHeavenlyGraphAdapter:
             separators=(",", ":"),
         )
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _scope_digest(scope: HeavenlyGraphScope) -> str:
+        canonical = json.dumps(
+            scope.model_dump(mode="json"),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _checkpoint_policy_revision(
+        nodes: Sequence[HeavenlyGraphNode],
+        relations: Sequence[HeavenlyGraphRelation],
+    ) -> str:
+        revisions = sorted(
+            {
+                entity.semantic_metadata.policy_revision
+                for entity in [*nodes, *relations]
+            }
+        )
+        return revisions[0] if len(revisions) == 1 else "policy:mixed:" + hashlib.sha256(
+            json.dumps(revisions, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()[:16]
+
+    @classmethod
+    def _replay_digest(
+        cls,
+        *,
+        scope: HeavenlyGraphScope,
+        nodes: Sequence[HeavenlyGraphNode],
+        relations: Sequence[HeavenlyGraphRelation],
+        source_revision_vector: GraphRevisionVector,
+        policy_revision: str,
+        scope_digest: str,
+    ) -> str:
+        canonical = {
+            "schema_version": cls.CHECKPOINT_SCHEMA_VERSION,
+            "scope": scope.model_dump(mode="json"),
+            "scope_digest": scope_digest,
+            "source_revision_vector": source_revision_vector.model_dump(mode="json"),
+            "policy_revision": policy_revision,
+            "nodes": [
+                node.model_dump(mode="json")
+                for node in sorted(nodes, key=lambda item: (item.node_id, item.revision))
+            ],
+            "relations": [
+                relation.model_dump(mode="json")
+                for relation in sorted(
+                    relations, key=lambda item: (item.relation_id, item.revision)
+                )
+            ],
+        }
+        encoded = json.dumps(
+            canonical,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
     def _validate_batch_revisions(
         self,
@@ -1093,22 +1286,51 @@ class InMemoryHeavenlyGraphAdapter:
             owner_actor_id=key[6],
         )
 
-    def _scope_revision_vector(self, scope: HeavenlyGraphScope) -> GraphRevisionVector:
+    def _scope_revision_vector(
+        self,
+        scope: HeavenlyGraphScope,
+        recorded_at: int | None = None,
+    ) -> GraphRevisionVector:
         scope_key = self._scope_key(scope)
-        nodes = [item for (key, _), values in self._nodes.items() if key == scope_key for item in values]
-        relations = [item for (key, _), values in self._relations.items() if key == scope_key for item in values]
+        nodes = [
+            item
+            for (key, _), values in self._nodes.items()
+            if key == scope_key
+            for item in values
+            if recorded_at is None or item.recorded_at <= recorded_at
+        ]
+        relations = [
+            item
+            for (key, _), values in self._relations.items()
+            if key == scope_key
+            for item in values
+            if recorded_at is None or item.recorded_at <= recorded_at
+        ]
         entities = [*nodes, *relations]
         vectors = [item.semantic_metadata.source_revision_vector for item in entities]
-        node_revision, relation_revision = self._scope_stream_revisions.get(
-            scope_key, (0, 0)
-        )
+        if recorded_at is None:
+            node_revision, relation_revision = self._scope_stream_revisions.get(
+                scope_key, (0, 0)
+            )
+        else:
+            node_revision, relation_revision = len(nodes), len(relations)
+        branch_revision = self._branch_revisions.get(scope_key, 0)
+        if recorded_at is not None:
+            branch_revision = max(
+                (
+                    marker.revision_vector.branch_revision
+                    for marker in self._branch_markers.get(scope_key, [])
+                    if marker.recorded_at <= recorded_at
+                ),
+                default=0,
+            )
         return GraphRevisionVector(
             node_revision=node_revision,
             relation_revision=relation_revision,
             source_revision=max((item.source_revision for item in vectors), default=0),
             policy_revision=max((item.policy_revision for item in vectors), default=0),
             branch_revision=max(
-                self._branch_revisions.get(scope_key, 0),
+                branch_revision,
                 max((item.branch_revision for item in vectors), default=0),
             ),
         )

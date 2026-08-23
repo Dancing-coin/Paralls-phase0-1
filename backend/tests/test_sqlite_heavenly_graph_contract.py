@@ -35,6 +35,35 @@ def test_sqlite_restart_restores_node_revision(tmp_path: Path) -> None:
     assert node.revision == 1
 
 
+def test_sqlite_restart_restores_checkpoint_replay_metadata(tmp_path: Path) -> None:
+    path = tmp_path / "heavenly-checkpoint.sqlite3"
+    scope = graph_scope()
+    first = SQLiteHeavenlyGraphAdapter(path)
+    first.write_batch(
+        HeavenlyGraphWriteBatch(
+            transaction_id="graph_tx:restart:checkpoint",
+            idempotency_key="authority:event:restart:checkpoint",
+            scope=scope,
+            nodes=[graph_node(node_id="fact:checkpoint")],
+        )
+    )
+    checkpoint = first.create_checkpoint(
+        checkpoint_id="checkpoint:restart",
+        scope=scope,
+        valid_at=20,
+        recorded_at=20,
+    )
+    expected = first.read_checkpoint(checkpoint.checkpoint_ref)
+    first.close()
+
+    reopened = SQLiteHeavenlyGraphAdapter(path)
+    restored = reopened.read_checkpoint(checkpoint.checkpoint_ref)
+    reopened.close()
+
+    assert restored.checkpoint == expected.checkpoint
+    assert restored.nodes == expected.nodes
+
+
 def test_sqlite_query_holds_lock_against_concurrent_write(tmp_path: Path, monkeypatch) -> None:
     graph = SQLiteHeavenlyGraphAdapter(tmp_path / "heavenly.sqlite3")
     scope = graph_scope()

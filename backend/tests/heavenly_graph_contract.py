@@ -3,7 +3,10 @@ from abc import ABC, abstractmethod
 import pytest
 
 from app.models.siming_heavenly_graph import (
+    GraphBranchForkRequest,
+    GraphCorrectionRequest,
     GraphProvenance,
+    GraphSemanticMetadata,
     GraphValidity,
     HeavenlyGraphNode,
     HeavenlyGraphRelation,
@@ -1496,3 +1499,154 @@ class HeavenlyGraphContract(ABC):
                 valid_at=20,
                 recorded_at=21,
             )
+
+    def test_checkpoint_tail_replay_is_equivalent_to_full_history(self) -> None:
+        graph = self.make_graph()
+        scope = graph_scope()
+        initial = HeavenlyGraphWriteBatch(
+            transaction_id="graph_tx:checkpoint:replay:initial",
+            idempotency_key="authority:event:checkpoint:replay:initial",
+            scope=scope,
+            nodes=[
+                graph_node(node_id="fact:lamp", state="dim", valid_from=0, recorded_at=10),
+                graph_node(node_id="fact:room", state="quiet", valid_from=0, recorded_at=10),
+            ],
+            relations=[
+                graph_relation(
+                    relation_id="relation:lamp-room",
+                    source_node_id="fact:lamp",
+                    target_node_id="fact:room",
+                    valid_from=0,
+                    recorded_at=10,
+                )
+            ],
+        )
+        graph.write_batch(initial)
+        checkpoint = graph.create_checkpoint(
+            checkpoint_id="checkpoint:replay:base",
+            scope=scope,
+            valid_at=20,
+            recorded_at=20,
+        )
+        tail = HeavenlyGraphWriteBatch(
+            transaction_id="graph_tx:checkpoint:replay:tail",
+            idempotency_key="authority:event:checkpoint:replay:tail",
+            scope=scope,
+            nodes=[
+                graph_node(
+                    node_id="fact:lamp",
+                    state="lit",
+                    valid_from=0,
+                    recorded_at=30,
+                    revision=2,
+                    supersedes_revision=1,
+                    source_ref="authority:event:checkpoint:replay:tail",
+                )
+            ],
+        )
+        graph.write_batch(tail)
+
+        full = graph.create_checkpoint(
+            checkpoint_id="checkpoint:replay:full",
+            scope=scope,
+            valid_at=20,
+            recorded_at=40,
+        )
+        replayed = graph.replay_from_checkpoint(checkpoint.checkpoint_ref, [tail])
+
+        full_snapshot = graph.read_checkpoint(full.checkpoint_ref)
+        assert replayed.nodes == full_snapshot.nodes
+        assert replayed.relations == full_snapshot.relations
+        assert replayed.checkpoint.source_revision_vector == full_snapshot.checkpoint.source_revision_vector
+        assert replayed.checkpoint.policy_revision == full_snapshot.checkpoint.policy_revision
+        assert replayed.checkpoint.scope_digest == full_snapshot.checkpoint.scope_digest
+        assert replayed.checkpoint.replay_digest == full_snapshot.checkpoint.replay_digest
+        assert replayed.checkpoint.schema_version == 1
+        assert replayed.checkpoint.source_revision_vector.node_revision == 3
+        assert replayed.checkpoint.policy_revision == "policy:legacy"
+        assert replayed.checkpoint.scope_digest.startswith("sha256:")
+        assert replayed.checkpoint.replay_digest.startswith("sha256:")
+        assert graph.read_checkpoint(checkpoint.checkpoint_ref).nodes[0].revision == 1
+
+    def test_checkpoint_replay_preserves_correction_and_branch_tail(self) -> None:
+        graph = self.make_graph()
+        production = graph_scope()
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:checkpoint:branch:seed",
+                idempotency_key="authority:event:checkpoint:branch:seed",
+                scope=production,
+                nodes=[
+                    graph_node(node_id="fact:lamp", state="dim", valid_from=0, recorded_at=10).model_copy(
+                        update={
+                            "semantic_metadata": GraphSemanticMetadata(
+                                source_event_refs=("authority:event:1",),
+                                scope_digest="scope:legacy",
+                            )
+                        },
+                        deep=True,
+                    )
+                ],
+            )
+        )
+        branch_vector = graph.scope_revision_vector(production)
+        graph.fork_branch(
+            GraphBranchForkRequest(
+                source_scope=production,
+                target_branch_id="branch:preview",
+                fork_valid_at=20,
+                fork_recorded_at=20,
+                source_revision_vector=branch_vector,
+            )
+        )
+        branch = graph_scope(branch_id="branch:preview")
+        checkpoint = graph.create_checkpoint(
+            checkpoint_id="checkpoint:branch:base",
+            scope=branch,
+            valid_at=20,
+            recorded_at=20,
+        )
+        graph.correct(
+            GraphCorrectionRequest(
+                target_kind="node",
+                target_id="fact:lamp",
+                target_revision=1,
+                correction_kind="corrected",
+                source_refs=["authority:event:checkpoint:branch:correction"],
+                semantic_metadata=GraphSemanticMetadata(
+                    policy_revision="policy:legacy",
+                    source_event_refs=("authority:event:1",),
+                    scope_digest="scope:legacy",
+                ),
+                scope=branch,
+            )
+        )
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="graph_tx:checkpoint:branch:tail",
+                idempotency_key="authority:event:checkpoint:branch:tail",
+                scope=branch,
+                nodes=[graph_node(node_id="fact:chair", state="occupied", branch_id="branch:preview", valid_from=0, recorded_at=40)],
+            )
+        )
+        corrected = graph.get_node(node_id="fact:lamp", scope=branch, valid_at=20, recorded_at=40)
+        assert corrected is not None and corrected.revision == 2
+        tail = HeavenlyGraphWriteBatch(
+            transaction_id="graph_tx:checkpoint:branch:replay-tail",
+            idempotency_key="authority:event:checkpoint:branch:replay-tail",
+            scope=branch,
+            nodes=[corrected, graph_node(node_id="fact:chair", state="occupied", branch_id="branch:preview", valid_from=0, recorded_at=40)],
+        )
+        full = graph.create_checkpoint(
+            checkpoint_id="checkpoint:branch:full",
+            scope=branch,
+            valid_at=20,
+            recorded_at=50,
+        )
+        replayed = graph.replay_from_checkpoint(checkpoint.checkpoint_ref, [tail])
+        full_snapshot = graph.read_checkpoint(full.checkpoint_ref)
+
+        assert replayed.nodes == full_snapshot.nodes
+        assert replayed.relations == full_snapshot.relations
+        assert replayed.checkpoint.replay_digest == full_snapshot.checkpoint.replay_digest
+        assert graph.read_checkpoint(checkpoint.checkpoint_ref).nodes[0].revision == 1

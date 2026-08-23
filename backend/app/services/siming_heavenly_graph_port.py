@@ -161,3 +161,10 @@ class HeavenlyGraphPort(Protocol):
         checkpoint_ref: str,
     ) -> HeavenlyGraphSnapshot:
         raise NotImplementedError
+
+    def replay_from_checkpoint(
+        self,
+        checkpoint_ref: str,
+        tail_batches: list[HeavenlyGraphWriteBatch],
+    ) -> HeavenlyGraphSnapshot:
+        raise NotImplementedError

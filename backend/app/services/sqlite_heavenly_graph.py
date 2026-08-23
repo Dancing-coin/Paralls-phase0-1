@@ -117,6 +117,14 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
         with self._lock:
             return super().read_checkpoint(checkpoint_ref)
 
+    def replay_from_checkpoint(
+        self,
+        checkpoint_ref: str,
+        tail_batches: list[HeavenlyGraphWriteBatch],
+    ) -> HeavenlyGraphSnapshot:
+        with self._lock:
+            return super().replay_from_checkpoint(checkpoint_ref, tail_batches)
+
     def _migrate(self) -> None:
         connection = self._connection
         connection.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)")

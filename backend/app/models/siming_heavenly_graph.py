@@ -498,6 +498,11 @@ class HeavenlyGraphCheckpointRef(BaseModel):
     scope: HeavenlyGraphScope
     valid_at: int = Field(ge=0)
     recorded_at: int = Field(ge=0)
+    schema_version: int = Field(default=1, ge=1)
+    source_revision_vector: GraphRevisionVector = Field(default_factory=GraphRevisionVector)
+    policy_revision: str = Field(default="policy:legacy", min_length=1)
+    scope_digest: str = Field(default="scope:legacy", min_length=1)
+    replay_digest: str = Field(default="replay:legacy", min_length=1)
 
 
 class HeavenlyGraphSnapshot(BaseModel):
