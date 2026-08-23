@@ -49,5 +49,9 @@ Task 3: final re-review found bounded BFS can return an empty union despite reac
 Task 3: fix round 4 committed as 47a4c95/9813dc1; scoped re-review approved.
 Task 3: complete (commits 09ddb14..9813dc1, review clean).
 Task 4: review rejected; fix scope-level revision streams, strict correction metadata/source checks, typed provenance preservation, and SQLite rollback atomicity before advancing.
+Task 4: fix commits 4d06114/017615f/2e1841c; scoped re-review approved.
+Task 4: complete (commits d2ed863..2e1841c, review clean).
+Task 5: review rejected; normalize fork diff equality, filter lifecycle markers by reader context, enforce branch-scope/terminal write admission, and repair lifecycle time/admit audit details.
+Task 5 fix round still needs coordinate fidelity: fork must honor `fork_valid_at`/`fork_recorded_at` while propagating close state and markers; do not accept current-snapshot substitution without a regression.
 Task 3: fix round 4 completed; deterministic DFS now returns a complete path under the bounded work budget, with focused and affected graph suites green. Awaiting scoped re-review.
 Task 4: fix round 1 committed as 4d06114/017615f; scope stream counters, strict correction admission, typed provenance lineage, SQLite rollback atomicity, focused and affected graph suites green. Awaiting scoped re-review.
