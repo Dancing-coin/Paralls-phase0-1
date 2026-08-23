@@ -60,3 +60,36 @@ passed
 - Query-specific grouping and semantic execution remain graph-foundation
   behavior only. Consumer integration is intentionally deferred to later
   phases.
+
+## Review Fix Round 1
+
+- Added explicit `HeavenlyGraphScope` construction for actor-private
+  perspective queries when the caller supplies `actor_ref` without a scope.
+- Preserved raw 1,000-record candidate-window saturation through all semantic
+  node/relation branches, even when post-query predicates remove most records.
+- Replaced causal `query_subgraph` delegation with bounded facade BFS using
+  low-level node/relation limits. The deterministic path-union result caps
+  selected relation edges at `min(relation_limit, max_paths)` and reports
+  `truncated` when the path-equivalent bound is reached.
+- Restricted relation endpoint source-impact matching to `derived_from`; other
+  relation types require explicit source event/evidence/provenance metadata.
+
+Review-fix regression coverage includes both adapters for implicit actor
+scope, candidate-window saturation, causal `max_paths`, no `query_subgraph`
+delegation, and source-impact relation semantics.
+
+Review-fix verification:
+
+```text
+python -m pytest -q backend/tests/test_heavenly_graph_semantic_queries.py
+40 passed, 1 warning
+
+python -m pytest -q backend/tests/test_heavenly_graph_semantic_queries.py \
+  backend/tests/heavenly_graph_contract.py \
+  backend/tests/test_sqlite_heavenly_graph_contract.py \
+  backend/tests/test_heavenly_graph_semantics.py
+99 passed, 1 warning
+
+git diff --check
+passed
+```

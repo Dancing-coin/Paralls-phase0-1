@@ -15,6 +15,7 @@ from app.models.siming_heavenly_graph import (
     HeavenlyGraphQueryResult,
     HeavenlyGraphRelation,
     HeavenlyGraphSemanticQuery,
+    HeavenlyGraphScope,
     HeavenlyNodeQuery,
     HeavenlyRelationQuery,
     NodeLookupQuery,
@@ -34,9 +35,6 @@ class _LowLevelGraph(Protocol):
     def query_relations(
         self, query: HeavenlyRelationQuery
     ) -> list[HeavenlyGraphRelation]: ...
-
-    def query_subgraph(self, **kwargs: object): ...
-
 
 class HeavenlyGraphSemanticQueryFacade:
     """Applies reader context and semantic admission to bounded adapter reads."""
@@ -79,7 +77,7 @@ class HeavenlyGraphSemanticQueryFacade:
     def _read_bounded(
         self, query: HeavenlyGraphSemanticQuery
     ) -> tuple[list[HeavenlyGraphNode], list[HeavenlyGraphRelation], bool]:
-        scope = query.resolved_scope()
+        scope = self._effective_scope(query)
         node_query = HeavenlyNodeQuery(
             scope=scope,
             valid_at=query.context.valid_at,
@@ -136,30 +134,7 @@ class HeavenlyGraphSemanticQueryFacade:
             relations = self._graph.query_relations(relation_query)
             return [], relations, len(relations) >= query.limit
         if isinstance(query, CausalPathQuery):
-            relation_types = query.relation_types or sorted(_CAUSAL_RELATION_TYPES)
-            relation_types = [
-                relation_type
-                for relation_type in relation_types
-                if relation_type in _CAUSAL_RELATION_TYPES
-            ]
-            subgraph = self._graph.query_subgraph(
-                scope=scope,
-                seed_node_ids=query.seed_node_ids,
-                relation_types=relation_types,
-                direction="outgoing",
-                max_depth=query.max_depth,
-                valid_at=query.context.valid_at,
-                recorded_at=query.context.recorded_at,
-                node_limit=query.node_limit,
-                relation_limit=query.relation_limit,
-            )
-            # Result v1 returns a deterministic path union rather than exposing
-            # path rows. More independent route edges than max_paths is still
-            # disclosed as incomplete instead of silently implying a full read.
-            path_bound_reached = len(subgraph.relations) >= query.max_paths
-            return subgraph.nodes, subgraph.relations, (
-                subgraph.truncated or path_bound_reached
-            )
+            return self._read_causal_union(query, scope)
         if isinstance(query, PerspectiveQuery):
             perspective_scope = scope
             if query.actor_ref and query.scope is None:
@@ -170,7 +145,7 @@ class HeavenlyGraphSemanticQueryFacade:
                     graph_namespace="actor_private",
                     owner_actor_id=query.actor_ref,
                 )
-            candidates = self._graph.query_nodes(
+            raw_candidates = self._graph.query_nodes(
                 HeavenlyNodeQuery(
                     scope=perspective_scope,
                     valid_at=query.context.valid_at,
@@ -179,6 +154,8 @@ class HeavenlyGraphSemanticQueryFacade:
                     limit=self._candidate_limit(query.limit),
                 )
             )
+            candidate_window_truncated = self._window_saturated(raw_candidates)
+            candidates = raw_candidates
             scopes = set(query.visibility_scopes)
             if scopes:
                 candidates = [
@@ -192,9 +169,13 @@ class HeavenlyGraphSemanticQueryFacade:
                     or node.provenance.actor_id == query.actor_ref
                     or node.attributes.get("actor_ref") == query.actor_ref
                 ]
-            return candidates[: query.limit], [], self._bounded(candidates, query.limit)
+            return (
+                candidates[: query.limit],
+                [],
+                candidate_window_truncated or self._bounded(candidates, query.limit),
+            )
         if isinstance(query, ConflictSetQuery):
-            candidates = self._graph.query_nodes(
+            raw_candidates = self._graph.query_nodes(
                 HeavenlyNodeQuery(
                     scope=scope,
                     valid_at=query.context.valid_at,
@@ -202,6 +183,8 @@ class HeavenlyGraphSemanticQueryFacade:
                     limit=self._candidate_limit(query.limit),
                 )
             )
+            candidate_window_truncated = self._window_saturated(raw_candidates)
+            candidates = raw_candidates
             candidates = [
                 node for node in candidates
                 if (
@@ -216,7 +199,7 @@ class HeavenlyGraphSemanticQueryFacade:
                 )
             ]
             selected_ids = {node.node_id for node in candidates}
-            relations = self._graph.query_relations(
+            raw_relations = self._graph.query_relations(
                 HeavenlyRelationQuery(
                     scope=scope,
                     valid_at=query.context.valid_at,
@@ -225,6 +208,8 @@ class HeavenlyGraphSemanticQueryFacade:
                     limit=self._candidate_limit(query.limit),
                 )
             )
+            relation_window_truncated = self._window_saturated(raw_relations)
+            relations = raw_relations
             relations = [
                 relation for relation in relations
                 if relation.source_node_id in selected_ids
@@ -234,10 +219,12 @@ class HeavenlyGraphSemanticQueryFacade:
                 candidates[: query.limit],
                 relations[: query.limit],
                 self._bounded(candidates, query.limit)
-                or self._bounded(relations, query.limit),
+                or self._bounded(relations, query.limit)
+                or candidate_window_truncated
+                or relation_window_truncated,
             )
         if isinstance(query, BehaviorTurnQuery):
-            candidates = self._graph.query_nodes(
+            raw_candidates = self._graph.query_nodes(
                 HeavenlyNodeQuery(
                     scope=scope,
                     valid_at=query.context.valid_at,
@@ -245,11 +232,13 @@ class HeavenlyGraphSemanticQueryFacade:
                     limit=self._candidate_limit(query.limit),
                 )
             )
+            candidate_window_truncated = self._window_saturated(raw_candidates)
+            candidates = raw_candidates
             matching_nodes = [
                 node for node in candidates if self._matches_turn(node, query)
             ]
             selected_ids = {node.node_id for node in matching_nodes}
-            relations = self._graph.query_relations(
+            raw_relations = self._graph.query_relations(
                 HeavenlyRelationQuery(
                     scope=scope,
                     valid_at=query.context.valid_at,
@@ -257,6 +246,8 @@ class HeavenlyGraphSemanticQueryFacade:
                     limit=self._candidate_limit(query.limit),
                 )
             )
+            relation_window_truncated = self._window_saturated(raw_relations)
+            relations = raw_relations
             relations = [
                 relation for relation in relations
                 if relation.source_node_id in selected_ids
@@ -276,10 +267,12 @@ class HeavenlyGraphSemanticQueryFacade:
                 nodes[: query.limit],
                 relations[: query.limit],
                 self._bounded(nodes, query.limit)
-                or self._bounded(relations, query.limit),
+                or self._bounded(relations, query.limit)
+                or candidate_window_truncated
+                or relation_window_truncated,
             )
         if isinstance(query, SourceImpactQuery):
-            candidates = self._graph.query_nodes(
+            raw_candidates = self._graph.query_nodes(
                 HeavenlyNodeQuery(
                     scope=scope,
                     valid_at=query.context.valid_at,
@@ -287,11 +280,13 @@ class HeavenlyGraphSemanticQueryFacade:
                     limit=self._candidate_limit(query.limit),
                 )
             )
+            candidate_window_truncated = self._window_saturated(raw_candidates)
+            candidates = raw_candidates
             candidates = [
                 node for node in candidates
                 if self._references_source(node, query.source_ref, query.source_revision)
             ]
-            relations = self._graph.query_relations(
+            raw_relations = self._graph.query_relations(
                 HeavenlyRelationQuery(
                     scope=scope,
                     valid_at=query.context.valid_at,
@@ -299,6 +294,8 @@ class HeavenlyGraphSemanticQueryFacade:
                     limit=self._candidate_limit(query.limit),
                 )
             )
+            relation_window_truncated = self._window_saturated(raw_relations)
+            relations = raw_relations
             relations = [
                 relation for relation in relations
                 if self._references_source(relation, query.source_ref, query.source_revision)
@@ -307,7 +304,9 @@ class HeavenlyGraphSemanticQueryFacade:
                 candidates[: query.limit],
                 relations[: query.limit],
                 self._bounded(candidates, query.limit)
-                or self._bounded(relations, query.limit),
+                or self._bounded(relations, query.limit)
+                or candidate_window_truncated
+                or relation_window_truncated,
             )
         return [], [], False
 
@@ -320,6 +319,113 @@ class HeavenlyGraphSemanticQueryFacade:
     @staticmethod
     def _bounded(entities: list[object], limit: int) -> bool:
         return len(entities) >= limit
+
+    @staticmethod
+    def _window_saturated(entities: list[object]) -> bool:
+        return len(entities) >= _SEMANTIC_CANDIDATE_LIMIT
+
+    def _effective_scope(
+        self, query: HeavenlyGraphSemanticQuery
+    ) -> HeavenlyGraphScope:
+        if isinstance(query, PerspectiveQuery) and query.actor_ref and query.scope is None:
+            return HeavenlyGraphScope(
+                world_id=query.context.world_id,
+                session_id=query.context.session_id,
+                story_branch_id=query.context.story_branch_id,
+                graph_namespace="actor_private",
+                owner_actor_id=query.actor_ref,
+            )
+        return query.resolved_scope()
+
+    def _read_causal_union(
+        self, query: CausalPathQuery, scope: HeavenlyGraphScope
+    ) -> tuple[list[HeavenlyGraphNode], list[HeavenlyGraphRelation], bool]:
+        """Return a bounded deterministic causal path-union.
+
+        This result model has no path-row field. Each selected causal edge is
+        therefore the output-equivalent of one path prefix, so `max_paths`
+        caps selected relation edges as well as `relation_limit`.
+        """
+        relation_types = query.relation_types or sorted(_CAUSAL_RELATION_TYPES)
+        relation_types = sorted(
+            set(relation_types).intersection(_CAUSAL_RELATION_TYPES)
+        )
+        raw_nodes = self._graph.query_nodes(
+            HeavenlyNodeQuery(
+                scope=scope,
+                valid_at=query.context.valid_at,
+                recorded_at=query.context.recorded_at,
+                limit=_SEMANTIC_CANDIDATE_LIMIT,
+            )
+        )
+        raw_relations = self._graph.query_relations(
+            HeavenlyRelationQuery(
+                scope=scope,
+                valid_at=query.context.valid_at,
+                recorded_at=query.context.recorded_at,
+                relation_types=relation_types,
+                limit=_SEMANTIC_CANDIDATE_LIMIT,
+            )
+        )
+        node_by_id = {node.node_id: node for node in raw_nodes}
+        relation_limit = min(query.relation_limit, query.max_paths)
+        selected_node_ids: list[str] = []
+        selected_relation_ids: set[str] = set()
+        selected_relations: list[HeavenlyGraphRelation] = []
+        seen_node_ids: set[str] = set()
+        truncated = self._window_saturated(raw_nodes) or self._window_saturated(raw_relations)
+
+        for node_id in sorted(set(query.seed_node_ids)):
+            if node_id not in node_by_id:
+                continue
+            if len(selected_node_ids) >= query.node_limit:
+                truncated = True
+                break
+            selected_node_ids.append(node_id)
+            seen_node_ids.add(node_id)
+
+        frontier = list(selected_node_ids)
+        for depth in range(query.max_depth + 1):
+            next_frontier: list[str] = []
+            for node_id in sorted(frontier):
+                for relation in raw_relations:
+                    if relation.relation_id in selected_relation_ids:
+                        continue
+                    if relation.source_node_id != node_id:
+                        continue
+                    target_id = relation.target_node_id
+                    if target_id not in node_by_id:
+                        continue
+                    if target_id not in seen_node_ids and depth == query.max_depth:
+                        truncated = True
+                        continue
+                    if target_id not in seen_node_ids and len(selected_node_ids) >= query.node_limit:
+                        truncated = True
+                        continue
+                    if len(selected_relations) >= relation_limit:
+                        truncated = True
+                        continue
+                    selected_relations.append(relation)
+                    selected_relation_ids.add(relation.relation_id)
+                    if target_id not in seen_node_ids:
+                        seen_node_ids.add(target_id)
+                        selected_node_ids.append(target_id)
+                        next_frontier.append(target_id)
+            frontier = next_frontier
+
+        # The low-level candidate window cannot prove that an exact output
+        # boundary is complete, so report saturation conservatively.
+        truncated = (
+            truncated
+            or len(selected_node_ids) >= query.node_limit
+            or len(selected_relations) >= relation_limit
+        )
+
+        return (
+            [node_by_id[node_id] for node_id in selected_node_ids],
+            selected_relations,
+            truncated,
+        )
 
     @staticmethod
     def _matches_turn(entity: object, query: BehaviorTurnQuery) -> bool:
@@ -343,8 +449,11 @@ class HeavenlyGraphSemanticQueryFacade:
             or source_ref in entity.provenance.evidence_refs
             or entity.attributes.get("source_ref") == source_ref
             or entity.attributes.get("source_node_id") == source_ref
-            or getattr(entity, "source_node_id", None) == source_ref
-            or getattr(entity, "target_node_id", None) == source_ref
+            or (
+                isinstance(entity, HeavenlyGraphRelation)
+                and entity.relation_type == "derived_from"
+                and source_ref in {entity.source_node_id, entity.target_node_id}
+            )
             or (
                 entity.provenance.source_ref == source_ref
                 and metadata.derivation_kind != "authority"
@@ -404,11 +513,10 @@ class HeavenlyGraphSemanticQueryFacade:
             branch_revision=max((vector.branch_revision for vector in vectors), default=0),
         )
 
-    @staticmethod
-    def _scope_digest(query: HeavenlyGraphSemanticQuery) -> str:
+    def _scope_digest(self, query: HeavenlyGraphSemanticQuery) -> str:
         payload = {
             "context": query.context.model_dump(mode="json"),
-            "scope": query.resolved_scope().model_dump(mode="json"),
+            "scope": self._effective_scope(query).model_dump(mode="json"),
         }
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
         return "scope:" + hashlib.sha256(encoded).hexdigest()

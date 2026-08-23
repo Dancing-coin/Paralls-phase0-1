@@ -272,7 +272,7 @@ def test_node_lookup_marks_filtered_results_over_requested_limit_as_truncated(gr
     assert result.truncated is True
 
 
-def _relation(relation_id: str, source: str, target: str, relation_type: str = "caused_by", *, attrs: dict | None = None, scope: HeavenlyGraphScope | None = None) -> HeavenlyGraphRelation:
+def _relation(relation_id: str, source: str, target: str, relation_type: str = "caused_by", *, attrs: dict | None = None, scope: HeavenlyGraphScope | None = None, metadata: GraphSemanticMetadata | None = None) -> HeavenlyGraphRelation:
     return HeavenlyGraphRelation(
         relation_id=relation_id,
         relation_type=relation_type,
@@ -284,7 +284,7 @@ def _relation(relation_id: str, source: str, target: str, relation_type: str = "
         revision=1,
         attributes=attrs or {},
         provenance=GraphProvenance(source_kind="authority_event", source_ref="authority:test", causation_id="cause:test", correlation_id="corr:test", producer_system="test"),
-        semantic_metadata=GraphSemanticMetadata(policy_revision="policy:v1"),
+        semantic_metadata=metadata or GraphSemanticMetadata(policy_revision="policy:v1"),
     )
 
 
@@ -295,6 +295,20 @@ def test_causal_path_query_traverses_registered_relations_and_bounds(graph: obje
     result = graph.query_semantic(CausalPathQuery(context=_context(), seed_node_ids=["n:0"], max_depth=2, node_limit=3, relation_limit=2, max_paths=2))
     assert [node.node_id for node in result.nodes] == ["n:0", "n:1", "n:2"]
     assert [relation.relation_id for relation in result.relations] == ["r:0", "r:1"]
+    assert result.truncated is True
+
+
+def test_causal_path_max_paths_caps_returned_path_union_without_query_subgraph(graph: object, monkeypatch: pytest.MonkeyPatch) -> None:
+    nodes = [_node(f"path:{index}") for index in range(3)]
+    relations = [
+        _relation("path:r-a", "path:0", "path:1"),
+        _relation("path:r-b", "path:0", "path:2"),
+    ]
+    graph.write_batch(HeavenlyGraphWriteBatch(transaction_id="tx:path-limit", idempotency_key="path-limit", scope=_scope(), nodes=nodes, relations=relations))
+    monkeypatch.setattr(graph, "query_subgraph", lambda **_: pytest.fail("semantic causal query must not call query_subgraph"))
+    result = graph.query_semantic(CausalPathQuery(context=_context(), seed_node_ids=["path:0"], max_depth=1, node_limit=10, relation_limit=10, max_paths=1))
+    assert [relation.relation_id for relation in result.relations] == ["path:r-a"]
+    assert [node.node_id for node in result.nodes] == ["path:0", "path:1"]
     assert result.truncated is True
 
 
@@ -320,6 +334,16 @@ def test_perspective_query_filters_actor_projection_without_leaking_other_actor(
     assert [node.node_id for node in result.nodes] == ["view:b"]
 
 
+def test_perspective_query_derives_actor_private_scope_when_omitted(graph: object) -> None:
+    own_scope = _scope("actor_private", owner_actor_id="char_b")
+    own = _node("view:implicit", scope=own_scope, node_type="actor_view", metadata=GraphSemanticMetadata(visibility_scope="actor_private", record_kind="projection", policy_revision="policy:v1"))
+    graph.write_batch(HeavenlyGraphWriteBatch(transaction_id="tx:implicit-perspective", idempotency_key="implicit-perspective", scope=own_scope, nodes=[own]))
+    context = _context(scopes=("actor_private",)).model_copy(update={"reader_principal": "reader:char_b"})
+    result = graph.query_semantic(PerspectiveQuery(context=context, actor_ref="char_b", visibility_scopes=["actor_private"]))
+    assert [node.node_id for node in result.nodes] == ["view:implicit"]
+    assert result.incomplete_reason is None
+
+
 def test_behavior_turn_query_groups_by_turn_and_correlation(graph: object) -> None:
     turn = _node("turn:1", node_type="behavior_turn", metadata=GraphSemanticMetadata(visibility_scope="siming_internal", record_kind="projection", policy_revision="policy:v1"))
     turn = turn.model_copy(update={"attributes": {"turn_id": "turn-1", "stage": "settlement"}, "provenance": turn.provenance.model_copy(update={"correlation_id": "corr-1", "actor_id": "char_b"})})
@@ -337,3 +361,49 @@ def test_source_impact_query_finds_derived_records_for_source_revision(graph: ob
     graph.write_batch(HeavenlyGraphWriteBatch(transaction_id="tx:impact", idempotency_key="impact", scope=_scope(), nodes=[source, derived]))
     result = graph.query_semantic(SourceImpactQuery(context=_context(), source_ref="source:1", source_revision=7))
     assert [node.node_id for node in result.nodes] == ["derived:1"]
+
+
+def test_source_impact_relation_endpoint_requires_derived_from_semantics(graph: object) -> None:
+    nodes = [_node("source:relation"), _node("target:relation")]
+    derived = _relation(
+        "relation:derived",
+        "source:relation",
+        "target:relation",
+        relation_type="derived_from",
+        metadata=GraphSemanticMetadata(record_kind="projection", visibility_scope="siming_internal", policy_revision="policy:v1"),
+    )
+    unrelated = _relation("relation:unrelated", "source:relation", "target:relation")
+    graph.write_batch(HeavenlyGraphWriteBatch(transaction_id="tx:source-relations", idempotency_key="source-nodes", scope=_scope(), nodes=nodes))
+    graph.write_batch(HeavenlyGraphWriteBatch(transaction_id="tx:source-relations", idempotency_key="source-relations", scope=_scope(), relations=[derived, unrelated]))
+    result = graph.query_semantic(SourceImpactQuery(context=_context(scopes=("public", "siming_internal")), source_ref="source:relation"))
+    assert [relation.relation_id for relation in result.relations] == ["relation:derived"]
+
+
+def test_semantic_query_marks_raw_candidate_windows_truncated(graph: object) -> None:
+    nodes = [_node(f"window:{index:04d}") for index in range(1000)]
+    nodes[0] = nodes[0].model_copy(update={"attributes": {"subject_ref": "subject:window", "property_key": "state"}})
+    nodes[1] = nodes[1].model_copy(update={"attributes": {"turn_id": "turn:window"}})
+    nodes[2] = _node("window:derived", node_type="causal_event", metadata=GraphSemanticMetadata(record_kind="projection", visibility_scope="public", source_event_refs=("source:window",), policy_revision="policy:v1"))
+    graph.write_batch(HeavenlyGraphWriteBatch(transaction_id="tx:window", idempotency_key="window-nodes", scope=_scope(), nodes=nodes))
+    relations = [_relation(f"window:r:{index:04d}", "window:0000", "window:0001") for index in range(1000)]
+    graph.write_batch(HeavenlyGraphWriteBatch(transaction_id="tx:window", idempotency_key="window-relations", scope=_scope(), relations=relations))
+    assert graph.query_semantic(ConflictSetQuery(context=_context(), subject_ref="subject:window", property_key="state", limit=10)).truncated is True
+    assert graph.query_semantic(BehaviorTurnQuery(context=_context(), turn_id="turn:window", limit=10)).truncated is True
+    assert graph.query_semantic(SourceImpactQuery(context=_context(), source_ref="source:window", limit=10)).truncated is True
+
+
+def test_perspective_query_marks_raw_candidate_window_truncated(graph: object) -> None:
+    scope = _scope("actor_private", owner_actor_id="char_b")
+    nodes = [
+        _node(
+            f"view:window:{index:04d}",
+            scope=scope,
+            node_type="actor_view",
+            metadata=GraphSemanticMetadata(record_kind="projection", visibility_scope="actor_private", policy_revision="policy:v1"),
+        )
+        for index in range(1000)
+    ]
+    graph.write_batch(HeavenlyGraphWriteBatch(transaction_id="tx:perspective-window", idempotency_key="perspective-window", scope=scope, nodes=nodes))
+    context = _context(scopes=("actor_private",)).model_copy(update={"reader_principal": "reader:char_b"})
+    result = graph.query_semantic(PerspectiveQuery(context=context, actor_ref="char_b", limit=10))
+    assert result.truncated is True
