@@ -316,8 +316,14 @@ def test_diff_branch_marker_reads_are_bounded(
                     raise AssertionError("unbounded lifecycle marker read")
                 yield value
 
+        def __getitem__(self, index):
+            self.reads += 1
+            if self.reads > self.maximum_reads:
+                raise AssertionError("marker scan exceeded per-stream bound")
+            return super().__getitem__(index)
+
     key = graph._scope_key(branch)
-    bounded = BoundedMarkers(graph._branch_markers[key], maximum_reads=2)
+    bounded = BoundedMarkers(graph._branch_markers[key], maximum_reads=4)
     graph._branch_markers[key] = bounded
     monkeypatch.setattr(
         graph,
@@ -346,4 +352,82 @@ def test_diff_branch_marker_reads_are_bounded(
     )
     assert result.truncated is True
     assert len(result.lifecycle_markers) == 1
-    assert bounded.reads == 2
+    assert bounded.reads == 4
+
+
+def test_diff_marker_scan_bounds_ineligible_history(
+    graph: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    production = _scope()
+    _write(graph, scope=production, key="ineligible-seed", nodes=[_node("fact:seed")])
+    graph.fork_branch(
+        GraphBranchForkRequest(
+            source_scope=production,
+            target_branch_id="branch:wave3-markers",
+            fork_valid_at=10,
+            fork_recorded_at=10,
+            source_revision_vector=graph.scope_revision_vector(production),
+        )
+    )
+    branch = _scope("branch:wave3-markers")
+    key = graph._scope_key(branch)
+    stale_markers = [
+        graph._branch_markers[key][0].model_copy(
+            update={
+                "marker_id": f"stale-marker:{index:03d}",
+                "policy_revision": "policy:old",
+            },
+            deep=True,
+        )
+        for index in range(20)
+    ]
+
+    class BoundedMarkers(list[object]):
+        def __init__(self, values: list[object], maximum_reads: int) -> None:
+            super().__init__(values)
+            self.maximum_reads = maximum_reads
+            self.reads = 0
+
+        def __iter__(self):
+            for value in super().__iter__():
+                self.reads += 1
+                if self.reads > self.maximum_reads:
+                    raise AssertionError("marker scan exceeded per-stream bound")
+                yield value
+
+        def __getitem__(self, index):
+            self.reads += 1
+            if self.reads > self.maximum_reads:
+                raise AssertionError("marker scan exceeded per-stream bound")
+            return super().__getitem__(index)
+
+    bounded = BoundedMarkers(stale_markers, maximum_reads=4)
+    graph._branch_markers[key] = bounded
+    monkeypatch.setattr(graph, "_branch_available", lambda *args, **kwargs: True)
+    monkeypatch.setattr(graph, "_is_node_closed", lambda *args, **kwargs: False)
+    monkeypatch.setattr(graph, "_is_branch_discarded", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        graph,
+        "_scope_revision_vector",
+        lambda *args, **kwargs: GraphRevisionVector(),
+    )
+
+    result = graph.diff_branches(
+        GraphBranchDiffQuery(
+            left_scope=production,
+            right_scope=branch,
+            reader_context=_context(
+                production,
+                scopes=("public", "authority_only"),
+                recorded_at=100,
+            ),
+            limits=GraphBranchDiffLimits(
+                node_limit=100,
+                relation_limit=100,
+                marker_limit=1,
+            ),
+        )
+    )
+    assert result.lifecycle_markers == []
+    assert result.truncated is True
+    assert bounded.reads == 4

@@ -3,7 +3,6 @@ import copy
 import hashlib
 import json
 from collections.abc import Sequence
-from itertools import chain
 
 from app.models.siming_heavenly_graph import (
     GraphBranchDiffQuery,
@@ -249,9 +248,14 @@ class InMemoryHeavenlyGraphAdapter:
             return [], False
         left = self._branch_markers.get(self._scope_key(query.left_scope), [])
         right = self._branch_markers.get(self._scope_key(query.right_scope), [])
-        window_limit = query.limits.marker_limit + 1
+        window_limit = max(query.limits.marker_limit + 1, 4)
+        left_window, left_saturated = self._marker_window(left, window_limit)
+        right_window, right_saturated = self._marker_window(right, window_limit)
         selected: list[GraphBranchLifecycleMarker] = []
-        for marker in chain(left, right):
+        for marker in sorted(
+            [*left_window, *right_window],
+            key=lambda item: item.marker_id,
+        ):
             if marker.valid_at > query.reader_context.valid_at:
                 continue
             if (
@@ -264,7 +268,18 @@ class InMemoryHeavenlyGraphAdapter:
             selected.append(marker)
             if len(selected) == window_limit:
                 break
-        return selected[: query.limits.marker_limit], len(selected) == window_limit
+        return (
+            selected[: query.limits.marker_limit],
+            left_saturated or right_saturated or len(selected) == window_limit,
+        )
+
+    @staticmethod
+    def _marker_window(
+        stream: list[GraphBranchLifecycleMarker],
+        limit: int,
+    ) -> tuple[list[GraphBranchLifecycleMarker], bool]:
+        inspected = min(len(stream), limit)
+        return [stream[index] for index in range(inspected)], len(stream) > limit
 
     def lifecycle_branch(self, request: GraphBranchLifecycleRequest) -> HeavenlyGraphWriteResult:
         branch = request.branch_scope
