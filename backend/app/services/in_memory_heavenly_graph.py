@@ -301,6 +301,10 @@ class InMemoryHeavenlyGraphAdapter:
                 self._nodes.setdefault((target_key, node.node_id), []).append(node.model_copy(update={"scope": target}, deep=True))
             for relation in relations:
                 self._relations.setdefault((target_key, relation.relation_id), []).append(relation.model_copy(update={"scope": target}, deep=True))
+            # The admitted target starts with the copied entity streams. Set
+            # these counters before constructing its audit marker so the
+            # marker's revision vector describes the actual admitted snapshot.
+            self._scope_stream_revisions[target_key] = (len(nodes), len(relations))
             admission_recorded_at = current.branch_revision + 1
             self._append_branch_marker(
                 branch,
@@ -316,7 +320,7 @@ class InMemoryHeavenlyGraphAdapter:
                 recorded_at=admission_recorded_at,
                 target_branch_id=request.target_branch_id,
                 source_scope=branch,
-                source_revision_vector=fork_marker.source_revision_vector,
+                source_revision_vector=current,
             )
             self._branch_status[key] = "admitted"
             self._branch_revision(target_key, advance=True)

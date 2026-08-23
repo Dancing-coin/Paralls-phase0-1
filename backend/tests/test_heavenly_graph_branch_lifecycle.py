@@ -494,6 +494,66 @@ def test_admission_keeps_a_target_branch_audit_marker(graph: object) -> None:
     assert any(marker.operation == "admit" for marker in result.lifecycle_markers)
 
 
+def test_admission_marker_source_and_target_streams_are_coherent(
+    graph: object,
+) -> None:
+    production = _scope()
+    _write(graph, _node("admit-node-a"))
+    _write(graph, _node("admit-node-b"))
+    production_vector = graph.scope_revision_vector(production)
+    graph.fork_branch(
+        GraphBranchForkRequest(
+            source_scope=production,
+            target_branch_id="branch:coherent-source",
+            fork_valid_at=10,
+            fork_recorded_at=10,
+            source_revision_vector=production_vector,
+        )
+    )
+    source = _scope("branch:coherent-source")
+    source_vector = graph.scope_revision_vector(source)
+    graph.lifecycle_branch(
+        GraphBranchLifecycleRequest(
+            branch_scope=source,
+            operation="admit",
+            target_branch_id="branch:coherent-target",
+            expected_revision_vector=source_vector,
+        )
+    )
+    target = _scope("branch:coherent-target")
+    target_vector = graph.scope_revision_vector(target)
+    assert target_vector.node_revision == 2
+    assert target_vector.relation_revision == 0
+    target_audit = graph.diff_branches(
+        GraphBranchDiffQuery(
+            left_scope=production,
+            right_scope=target,
+            reader_context=_context(),
+        )
+    )
+    target_admit = next(
+        marker for marker in target_audit.lifecycle_markers
+        if marker.operation == "admit"
+    )
+    assert target_admit.source_scope == source
+    assert target_admit.source_revision_vector == source_vector
+    assert target_admit.revision_vector.node_revision == 2
+    assert target_admit.revision_vector.relation_revision == 0
+    source_audit = graph.diff_branches(
+        GraphBranchDiffQuery(
+            left_scope=production,
+            right_scope=source,
+            reader_context=_context(),
+        )
+    )
+    source_admit = next(
+        marker for marker in source_audit.lifecycle_markers
+        if marker.operation == "admit"
+    )
+    assert source_admit.source_scope == production
+    assert source_admit.source_revision_vector == production_vector
+
+
 def test_fork_rejects_terminal_source_branch(graph: object) -> None:
     production = _scope()
     _write(graph, _node("source"))
