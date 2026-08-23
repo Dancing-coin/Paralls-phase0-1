@@ -46,17 +46,19 @@ def _node(
     *,
     metadata: GraphSemanticMetadata | None = None,
     node_type: str = "world_fact",
+    source_ref: str = "authority:test",
+    scope: HeavenlyGraphScope | None = None,
 ) -> HeavenlyGraphNode:
     return HeavenlyGraphNode(
         node_id=node_id,
         node_type=node_type,
-        scope=_scope(),
+        scope=scope or _scope(),
         validity=GraphValidity(valid_from=1),
         recorded_at=1,
         revision=1,
         provenance=GraphProvenance(
             source_kind="authority_event",
-            source_ref="authority:test",
+            source_ref=source_ref,
             causation_id="cause:test",
             correlation_id="corr:test",
             producer_system="test",
@@ -158,3 +160,105 @@ def test_facade_maps_graph_failures_to_structured_unavailable_result() -> None:
     )
     assert result.nodes == []
     assert result.incomplete_reason == "graph_unavailable"
+
+
+def test_inaccessible_stale_private_record_reports_visibility_denied(graph: object) -> None:
+    private_scope = _scope("actor_private", owner_actor_id="char_b")
+    _write(
+        graph,
+        [
+            _node(
+                "private:stale",
+                scope=private_scope,
+                node_type="actor_view",
+                metadata=GraphSemanticMetadata(
+                    record_kind="projection",
+                    visibility_scope="actor_private", policy_revision="policy:old"
+                ),
+            )
+        ],
+    )
+    context = _context(scopes=("actor_private",)).model_copy(
+        update={"reader_principal": "attacker:char_b"}
+    )
+    result = graph.query_semantic(
+        NodeLookupQuery(context=context, scope=private_scope, limit=10)
+    )
+    assert result.nodes == []
+    assert result.incomplete_reason == "visibility_denied"
+
+
+def test_node_lookup_applies_source_filter_before_result_limit(graph: object) -> None:
+    _write(
+        graph,
+        [
+            _node("fact:a", source_ref="authority:other"),
+            _node("fact:b", source_ref="authority:match"),
+        ],
+    )
+    result = graph.query_semantic(
+        NodeLookupQuery(context=_context(), source_refs=["authority:match"], limit=1)
+    )
+    assert [node.node_id for node in result.nodes] == ["fact:b"]
+    assert result.truncated is False
+
+
+def test_private_reader_authorization_uses_exact_canonical_principal(graph: object) -> None:
+    private_scope = _scope("actor_private", owner_actor_id="char_b")
+    _write(
+        graph,
+        [
+            _node(
+                "private:fact",
+                scope=private_scope,
+                node_type="actor_view",
+                metadata=GraphSemanticMetadata(
+                    record_kind="projection",
+                    visibility_scope="actor_private", policy_revision="policy:v1"
+                ),
+            )
+        ],
+    )
+    attacker = _context(scopes=("actor_private",)).model_copy(
+        update={"reader_principal": "attacker:char_b"}
+    )
+    legitimate = attacker.model_copy(update={"reader_principal": "reader:char_b"})
+    denied = graph.query_semantic(
+        NodeLookupQuery(context=attacker, scope=private_scope, limit=10)
+    )
+    allowed = graph.query_semantic(
+        NodeLookupQuery(context=legitimate, scope=private_scope, limit=10)
+    )
+    assert denied.nodes == []
+    assert denied.incomplete_reason == "visibility_denied"
+    assert [node.node_id for node in allowed.nodes] == ["private:fact"]
+
+
+def test_node_lookup_marks_candidate_window_truncation_after_semantic_filter(graph: object) -> None:
+    _write(
+        graph,
+        [
+            _node(f"fact:{index:04d}", source_ref="authority:match")
+            for index in range(1000)
+        ],
+    )
+    result = graph.query_semantic(
+        NodeLookupQuery(context=_context(), source_refs=["authority:match"], limit=10)
+    )
+    assert len(result.nodes) == 10
+    assert result.truncated is True
+
+
+def test_node_lookup_marks_filtered_results_over_requested_limit_as_truncated(graph: object) -> None:
+    _write(
+        graph,
+        [
+            _node("fact:match-a", source_ref="authority:match"),
+            _node("fact:match-b", source_ref="authority:match"),
+        ],
+    )
+    result = graph.query_semantic(
+        NodeLookupQuery(context=_context(), source_refs=["authority:match"], limit=1)
+    )
+    assert [node.node_id for node in result.nodes] == ["fact:match-a"]
+    assert result.truncated is True

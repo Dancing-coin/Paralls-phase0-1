@@ -83,18 +83,37 @@ class HeavenlyGraphSemanticQueryFacade:
             limit=query.limit,
         )
         if isinstance(query, NodeLookupQuery):
+            candidate_limit = query.limit
+            has_post_query_filter = bool(query.source_refs or query.record_kinds)
+            if has_post_query_filter:
+                # Fetch a larger but still adapter-bounded candidate window so
+                # post-query semantic filters cannot hide an eligible match.
+                candidate_limit = 1000
             node_query = node_query.model_copy(
-                update={"node_ids": query.node_ids, "node_types": query.node_types}
+                update={
+                    "node_ids": query.node_ids,
+                    "node_types": query.node_types,
+                    "limit": candidate_limit,
+                }
             )
-            nodes = self._graph.query_nodes(node_query)
+            candidates = self._graph.query_nodes(node_query)
+            candidate_window_truncated = len(candidates) >= candidate_limit
             if query.source_refs:
                 refs = set(query.source_refs)
-                nodes = [
-                    node for node in nodes
+                candidates = [
+                    node for node in candidates
                     if node.provenance.source_ref in refs
                     or refs.intersection(node.semantic_metadata.source_event_refs)
                 ]
-            return nodes, [], len(nodes) >= query.limit
+            if query.record_kinds:
+                candidates = [
+                    node
+                    for node in candidates
+                    if node.semantic_metadata.record_kind in query.record_kinds
+                ]
+            filtered_count = len(candidates)
+            truncated = candidate_window_truncated or filtered_count > query.limit
+            return candidates[: query.limit], [], truncated
         if isinstance(query, RelationLookupQuery):
             relation_query = relation_query.model_copy(
                 update={
@@ -117,11 +136,6 @@ class HeavenlyGraphSemanticQueryFacade:
         stale = False
         for entity in entities:
             metadata = entity.semantic_metadata
-            if metadata.policy_revision != query.context.policy_revision:
-                stale = True
-                continue
-            if metadata.record_kind == "proposal" and not query.include_proposals:
-                continue
             if metadata.visibility_scope not in query.context.allowed_visibility_scopes:
                 denied = True
                 continue
@@ -135,15 +149,20 @@ class HeavenlyGraphSemanticQueryFacade:
             ):
                 denied = True
                 continue
-            if isinstance(query, NodeLookupQuery) and query.record_kinds:
-                if metadata.record_kind not in query.record_kinds:
-                    continue
+            if metadata.record_kind == "proposal" and not query.include_proposals:
+                continue
+            if metadata.policy_revision != query.context.policy_revision:
+                stale = True
+                continue
             visible.append(entity)
         return visible, denied, stale
 
     @staticmethod
     def _principal_matches_owner(principal: str, owner_actor_id: str) -> bool:
-        return principal == owner_actor_id or principal.rsplit(":", 1)[-1] == owner_actor_id
+        if principal == owner_actor_id:
+            return True
+        namespace, separator, actor_id = principal.partition(":")
+        return separator == ":" and namespace in {"actor", "reader"} and actor_id == owner_actor_id
 
     @staticmethod
     def _revision_vector(
