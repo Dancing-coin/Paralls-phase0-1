@@ -93,3 +93,43 @@ removed at verifier completion.
   consumers.
 - Pytest emits the repository's existing Starlette/httpx deprecation warning;
   it does not affect the graph result.
+
+## Fix Round 1
+
+Addressed review findings for `50f68bd`:
+
+- Every proof now runs independently through both InMemory and SQLite, and
+  the aggregate check requires both adapter results to pass.
+- The focused pytest command now includes the complete six-suite Task 7 graph
+  contract set.
+- `run_verification()` and `main()` both derive the focused result from the
+  pytest exit code; a failed command cannot produce an overall green report.
+- Reports use stable evidence labels (`verifier-owned-temporary-database`,
+  `verifier-owned-temporary-directory`, `focused-graph-contract-pytest`) after
+  temporary SQLite cleanup. `collect_graph_evidence()` still exposes the live
+  temporary path for ownership tests before cleanup.
+- Added fail-closed regressions for every graph proof and for focused pytest
+  failure, while retaining graph-only marker assertions.
+
+Fix-round verification:
+
+```text
+python -m pytest -q scripts/verification/tests/test_heavenly_graph_semantic_foundation_verify.py
+........................                                                 [100%]
+24 passed in 1.69s
+
+python scripts/verification/harness.py --profile heavenly-graph-semantic-foundation
+harness_exit_code=0
+
+python -m pytest -q backend/tests/heavenly_graph_contract.py backend/tests/test_sqlite_heavenly_graph_contract.py backend/tests/test_heavenly_graph_semantics.py backend/tests/test_heavenly_graph_semantic_queries.py backend/tests/test_heavenly_graph_branch_lifecycle.py backend/tests/test_heavenly_graph_consistency.py
+240 passed, 1 warning in 7.26s
+
+python scripts/verification/check_docs.py
+overall_docs_passed=True
+
+python -m compileall -q scripts/verification/verify_heavenly_graph_semantic_foundation.py
+passed
+
+git diff --check
+passed
+```

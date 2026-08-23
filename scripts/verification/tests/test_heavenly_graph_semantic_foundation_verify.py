@@ -37,12 +37,41 @@ def test_verifier_report_ids_and_graph_only_evidence(tmp_path: Path) -> None:
     assert all("simingruntime" not in json.dumps(item).lower() for item in report["results"])
 
 
+def test_verifier_runs_the_complete_graph_contract_suite() -> None:
+    assert verifier.GRAPH_TEST_FILES == (
+        "backend/tests/heavenly_graph_contract.py",
+        "backend/tests/test_sqlite_heavenly_graph_contract.py",
+        "backend/tests/test_heavenly_graph_semantics.py",
+        "backend/tests/test_heavenly_graph_semantic_queries.py",
+        "backend/tests/test_heavenly_graph_branch_lifecycle.py",
+        "backend/tests/test_heavenly_graph_consistency.py",
+    )
+
+
 def test_verifier_uses_temporary_sqlite_owned_by_verifier(tmp_path: Path) -> None:
     evidence = verifier.collect_graph_evidence(tmp_path)
     database = Path(evidence["sqlite_database"])
     assert database.exists()
     assert database.parent == Path(evidence["temporary_directory"])
     assert str(database).startswith(str(tmp_path))
+
+
+def test_every_required_proof_requires_in_memory_sqlite_parity(tmp_path: Path) -> None:
+    evidence = verifier.collect_graph_evidence(tmp_path)
+    assert set(evidence["adapter_checks"]) == {"in_memory", "sqlite"}
+    for check_id in verifier.RESULT_IDS[1:]:
+        assert evidence["adapter_checks"]["in_memory"][check_id] is True
+        assert evidence["adapter_checks"]["sqlite"][check_id] is True
+        assert evidence["checks"][check_id] is True
+
+
+def test_report_uses_stable_evidence_markers_after_temp_cleanup(tmp_path: Path) -> None:
+    report = verifier.run_verification(tmp_path)
+    encoded = json.dumps(report)
+    assert str(tmp_path) not in encoded
+    assert "heavenly-graph-verify-" not in encoded
+    for result in report["results"][1:]:
+        assert result["evidence"] == ["verifier-owned-temporary-database"]
 
 
 @pytest.mark.parametrize(
@@ -71,3 +100,20 @@ def test_verifier_fails_closed_for_missing_metadata(tmp_path: Path) -> None:
     report = verifier.evaluate_evidence(evidence)
     assert report["overall"] is False
     assert report["checks"]["semantic_metadata"] is False
+
+
+@pytest.mark.parametrize("check_id", verifier.RESULT_IDS[1:])
+def test_verifier_fails_closed_for_each_missing_graph_proof(check_id: str, tmp_path: Path) -> None:
+    evidence = verifier.collect_graph_evidence(tmp_path)
+    evidence["checks"][check_id] = False
+    report = verifier.evaluate_evidence(evidence)
+    assert report["overall"] is False
+    assert report["checks"][check_id] is False
+
+
+def test_run_verification_fails_closed_when_focused_pytest_fails(tmp_path: Path) -> None:
+    report = verifier.run_verification(tmp_path, focused_exit_code=1)
+    focused = report["results"][0]
+    assert report["overall_heavenly_graph_semantic_foundation_passed"] is False
+    assert focused["id"] == "focused_contract_tests"
+    assert focused["status"] == "missing"
