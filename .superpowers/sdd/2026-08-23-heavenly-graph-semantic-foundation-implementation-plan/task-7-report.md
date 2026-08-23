@@ -39,12 +39,15 @@ Godot files were changed.
   matching semantic reader redaction behavior.
 - Added bitemporal endpoint, forged correction-link, and stale-policy
   redaction regressions across both InMemory and SQLite adapters.
+- Added a malformed-predecessor provenance regression; missing predecessor
+  provenance now yields stable provenance/correction audit errors instead of
+  raising during the read-only audit.
 
 ## Verification
 
 ```text
 python -m pytest -q backend/tests/heavenly_graph_contract.py backend/tests/test_sqlite_heavenly_graph_contract.py backend/tests/test_heavenly_graph_semantics.py backend/tests/test_heavenly_graph_semantic_queries.py backend/tests/test_heavenly_graph_branch_lifecycle.py backend/tests/test_heavenly_graph_consistency.py
-236 passed, 1 warning
+238 passed, 1 warning
 
 python -m compileall -q backend/app
 passed

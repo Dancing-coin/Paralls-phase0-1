@@ -201,6 +201,25 @@ def _inject_invalid_fixture(graph: object, *, kind: str) -> None:
             deep=True,
         )
         graph._nodes[(key, malformed.node_id)] = [predecessor, malformed]
+    elif kind == "correction_predecessor_provenance":
+        predecessor = _node("fact:correction:missing-provenance").model_copy(
+            update={"provenance": None}, deep=True
+        )
+        malformed = _node(
+            "fact:correction:missing-provenance", revision=2, supersedes_revision=1
+        ).model_copy(
+            update={
+                "semantic_metadata": _metadata(derivation_kind="correction"),
+                "attributes": {
+                    "correction_target_id": "fact:correction:missing-provenance",
+                    "correction_target_revision": 1,
+                    "correction_target_source_ref": "authority:missing",
+                    "correction_source_refs": ["authority:correction"],
+                },
+            },
+            deep=True,
+        )
+        graph._nodes[(key, malformed.node_id)] = [predecessor, malformed]
     else:  # pragma: no cover - fixture names are parametrized below.
         raise AssertionError(f"unknown invalid fixture {kind}")
 
@@ -325,6 +344,18 @@ def test_audit_checks_relation_endpoints_at_bitemporal_coordinates(graph: object
     assert [error.error_id for error in report.errors] == [
         "HG-AUDIT-ORPHAN-RELATION"
     ]
+
+
+def test_audit_reports_corrupted_correction_predecessor_provenance_without_raising(
+    graph: object,
+) -> None:
+    _inject_invalid_fixture(graph, kind="correction_predecessor_provenance")
+
+    report = HeavenlyGraphConsistencyAudit(graph).audit(_scope(), _context())
+
+    error_ids = [error.error_id for error in report.errors]
+    assert "HG-AUDIT-PROVENANCE" in error_ids
+    assert "HG-AUDIT-CORRECTION-LINK" in error_ids
 
 
 @pytest.mark.parametrize("mutation", ["target_source", "source_linkage"])
