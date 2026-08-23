@@ -53,6 +53,10 @@ Task 4: fix commits 4d06114/017615f/2e1841c; scoped re-review approved.
 Task 4: complete (commits d2ed863..2e1841c, review clean).
 Task 5: review rejected; normalize fork diff equality, filter lifecycle markers by reader context, enforce branch-scope/terminal write admission, and repair lifecycle time/admit audit details.
 Task 5: admit audit marker exists, but target copied stream vector remains zero; fix target node/relation stream counters and assert marker/vector coherence.
+Task 5: final audit fix commits 15cd129/88ed64c; scoped re-review approved.
+Task 5: complete (commits 56ed04b..88ed64c, review clean).
+Task 6: review rejected; replay must retain non-effective revision-chain predecessors and reject retroactive tail timestamps before equivalence can be claimed.
+Task 6: fix round 1 adds historical replay frontiers, strict checkpoint tail recorded-time admission, and dual-adapter regressions; focused graph suites green; awaiting scoped re-review.
 Task 5: final audit fix sets copied target stream counters before target admission marker construction and pins its source/vector to the actual admitted source. Dual-adapter regression and affected graph suite pass; awaiting scoped re-review.
 Task 5: fix round 1 committed as 273d672/d488c9c; branch suite 51 passed and affected graph suites 192 passed; awaiting scoped re-review.
 Task 5 fix round still needs coordinate fidelity: fork must honor `fork_valid_at`/`fork_recorded_at` while propagating close state and markers; do not accept current-snapshot substitution without a regression.

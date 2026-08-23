@@ -867,6 +867,9 @@ class InMemoryHeavenlyGraphAdapter:
                 limit=None,
             )
         )
+        replay_nodes, replay_relations = self._revision_history_at(
+            scope, recorded_at=recorded_at
+        )
         source_revision_vector = self._scope_revision_vector(scope, recorded_at=recorded_at)
         policy_revision = self._checkpoint_policy_revision(
             snapshot_nodes, snapshot_relations
@@ -904,6 +907,8 @@ class InMemoryHeavenlyGraphAdapter:
             checkpoint=checkpoint,
             nodes=snapshot_nodes,
             relations=snapshot_relations,
+            replay_nodes=replay_nodes,
+            replay_relations=replay_relations,
         )
         self._checkpoints[checkpoint_key] = snapshot.model_copy(deep=True)
         self._checkpoint_refs[checkpoint_ref] = checkpoint_key
@@ -940,14 +945,16 @@ class InMemoryHeavenlyGraphAdapter:
         scope = checkpoint.scope
         replay = InMemoryHeavenlyGraphAdapter()
         scope_key = replay._scope_key(scope)
-        replay._nodes = {
-            (scope_key, node.node_id): [node.model_copy(deep=True)]
-            for node in checkpoint_snapshot.nodes
-        }
-        replay._relations = {
-            (scope_key, relation.relation_id): [relation.model_copy(deep=True)]
-            for relation in checkpoint_snapshot.relations
-        }
+        replay._nodes = {}
+        for node in checkpoint_snapshot.replay_nodes:
+            replay._nodes.setdefault((scope_key, node.node_id), []).append(
+                node.model_copy(deep=True)
+            )
+        replay._relations = {}
+        for relation in checkpoint_snapshot.replay_relations:
+            replay._relations.setdefault(
+                (scope_key, relation.relation_id), []
+            ).append(relation.model_copy(deep=True))
         replay._scope_stream_revisions[scope_key] = (
             checkpoint.source_revision_vector.node_revision,
             checkpoint.source_revision_vector.relation_revision,
@@ -974,6 +981,13 @@ class InMemoryHeavenlyGraphAdapter:
         for batch in tail_batches:
             if batch.scope != scope:
                 raise ValueError("checkpoint replay tail scope must match checkpoint scope")
+            if any(
+                entity.recorded_at < checkpoint.recorded_at
+                for entity in [*batch.nodes, *batch.relations]
+            ):
+                raise HeavenlyGraphRevisionConflict(
+                    "checkpoint replay tail recorded_at cannot precede checkpoint"
+                )
             replay.write_batch(batch)
 
         replay_recorded_at = max(
@@ -1034,6 +1048,8 @@ class InMemoryHeavenlyGraphAdapter:
             checkpoint=replay_checkpoint,
             nodes=nodes,
             relations=relations,
+            replay_nodes=[],
+            replay_relations=[],
         )
 
     def _validate_batch_scopes(
@@ -1334,6 +1350,42 @@ class InMemoryHeavenlyGraphAdapter:
                 max((item.branch_revision for item in vectors), default=0),
             ),
         )
+
+    def _revision_history_at(
+        self,
+        scope: HeavenlyGraphScope,
+        *,
+        recorded_at: int,
+    ) -> tuple[list[HeavenlyGraphNode], list[HeavenlyGraphRelation]]:
+        """Return every admitted revision visible at one recorded coordinate.
+
+        This is intentionally different from a bitemporal effective read.  A
+        checkpoint uses it only to reconstruct the temporary replay adapter's
+        predecessor chains; callers still receive the effective checkpoint
+        view in ``nodes`` and ``relations``.
+        """
+        scope_key = self._scope_key(scope)
+        nodes = sorted(
+            (
+                node.model_copy(deep=True)
+                for (stored_scope, _), versions in self._nodes.items()
+                if stored_scope == scope_key
+                for node in versions
+                if node.recorded_at <= recorded_at
+            ),
+            key=lambda node: (node.node_id, node.revision),
+        )
+        relations = sorted(
+            (
+                relation.model_copy(deep=True)
+                for (stored_scope, _), versions in self._relations.items()
+                if stored_scope == scope_key
+                for relation in versions
+                if relation.recorded_at <= recorded_at
+            ),
+            key=lambda relation: (relation.relation_id, relation.revision),
+        )
+        return nodes, relations
 
     def scope_revision_vector(self, scope: HeavenlyGraphScope) -> GraphRevisionVector:
         """Expose committed scope streams to semantic readers and stale writes."""

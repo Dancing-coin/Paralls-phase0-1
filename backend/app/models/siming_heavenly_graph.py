@@ -511,3 +511,9 @@ class HeavenlyGraphSnapshot(BaseModel):
     checkpoint: HeavenlyGraphCheckpointRef
     nodes: list[HeavenlyGraphNode] = Field(default_factory=list)
     relations: list[HeavenlyGraphRelation] = Field(default_factory=list)
+    # ``nodes`` and ``relations`` are the effective read view at the checkpoint
+    # coordinates.  Replay needs the complete admitted predecessor chains as
+    # well: a version can already be recorded while not yet valid, or have
+    # been retracted and therefore be absent from the effective view.
+    replay_nodes: list[HeavenlyGraphNode] = Field(default_factory=list)
+    replay_relations: list[HeavenlyGraphRelation] = Field(default_factory=list)
