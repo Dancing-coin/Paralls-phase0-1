@@ -11,13 +11,17 @@ from app.models.siming_heavenly_graph import (
     GraphSemanticMetadata,
     GraphValidity,
     HeavenlyGraphNode,
+    HeavenlyGraphRelation,
     HeavenlyGraphScope,
     HeavenlyGraphWriteBatch,
     HeavenlyNodeQuery,
 )
 from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
 from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
-from app.services.siming_heavenly_graph_port import HeavenlyGraphRevisionConflict
+from app.services.siming_heavenly_graph_port import (
+    HeavenlyGraphReferentialIntegrityError,
+    HeavenlyGraphRevisionConflict,
+)
 
 
 def _scope(branch: str = "branch:main") -> HeavenlyGraphScope:
@@ -113,6 +117,34 @@ def test_fork_is_snapshot_isolated_and_branch_only_writes_do_not_contaminate_pro
     _write(graph, _node("story:branch-only", branch="branch:preview"))
     assert _nodes(graph, production) == ["story:seed"]
     assert _nodes(graph, branch) == ["story:branch-only", "story:seed"]
+
+
+def test_fork_uses_requested_non_default_temporal_coordinates(graph: object) -> None:
+    production = _scope()
+    source = _node("late-seed").model_copy(
+        update={
+            "validity": GraphValidity(valid_from=100),
+            "recorded_at": 100,
+        }
+    )
+    _write(graph, source)
+    graph.fork_branch(
+        GraphBranchForkRequest(
+            source_scope=production,
+            target_branch_id="branch:late-fork",
+            fork_valid_at=100,
+            fork_recorded_at=100,
+            source_revision_vector=graph.scope_revision_vector(production),
+        )
+    )
+    assert [
+        node.node_id
+        for node in graph.query_nodes(
+            HeavenlyNodeQuery(
+                scope=_scope("branch:late-fork"), valid_at=100, limit=None
+            )
+        )
+    ] == ["late-seed"]
 
 
 def test_branch_diff_is_deterministic_and_reports_added_removed_changed(graph: object) -> None:
@@ -258,16 +290,101 @@ def test_policy_mismatched_authority_reader_does_not_receive_lifecycle_markers(
     assert result.lifecycle_markers == []
 
 
-def test_unknown_branch_scope_rejects_all_direct_writes(graph: object) -> None:
-    branch_only = _node("unknown", branch="branch:unknown").model_copy(
+def test_historical_diff_before_lifecycle_marker_hides_future_marker(graph: object) -> None:
+    production = _scope()
+    _write(graph, _node("diff-history"))
+    graph.fork_branch(
+        GraphBranchForkRequest(
+            source_scope=production,
+            target_branch_id="branch:diff-history",
+            fork_valid_at=10,
+            fork_recorded_at=10,
+            source_revision_vector=graph.scope_revision_vector(production),
+        )
+    )
+    branch = _scope("branch:diff-history")
+    graph.lifecycle_branch(
+        GraphBranchLifecycleRequest(
+            branch_scope=branch,
+            operation="close_node",
+            node_id="diff-history",
+            expected_revision_vector=graph.scope_revision_vector(branch),
+        )
+    )
+    context = _context().model_copy(update={"recorded_at": 1})
+    result = graph.diff_branches(
+        GraphBranchDiffQuery(
+            left_scope=production,
+            right_scope=branch,
+            reader_context=context,
+        )
+    )
+    assert result.lifecycle_markers == []
+
+
+def test_branch_diff_hides_lifecycle_markers_after_reader_recorded_at(
+    graph: object,
+) -> None:
+    production = _scope()
+    _write(graph, _node("recorded-close"))
+    graph.fork_branch(
+        GraphBranchForkRequest(
+            source_scope=production,
+            target_branch_id="branch:recorded-close",
+            fork_valid_at=10,
+            fork_recorded_at=1,
+            source_revision_vector=graph.scope_revision_vector(production),
+        )
+    )
+    branch = _scope("branch:recorded-close")
+    graph.lifecycle_branch(
+        GraphBranchLifecycleRequest(
+            branch_scope=branch,
+            operation="close_node",
+            node_id="recorded-close",
+            expected_revision_vector=graph.scope_revision_vector(branch),
+        )
+    )
+    before_close = _context().model_copy(update={"recorded_at": 1})
+    result = graph.diff_branches(
+        GraphBranchDiffQuery(
+            left_scope=production,
+            right_scope=branch,
+            reader_context=before_close,
+        )
+    )
+    assert [marker.operation for marker in result.lifecycle_markers] == ["fork"]
+    after_close = _context().model_copy(update={"recorded_at": 2})
+    result = graph.diff_branches(
+        GraphBranchDiffQuery(
+            left_scope=production,
+            right_scope=branch,
+            reader_context=after_close,
+        )
+    )
+    assert any(marker.operation == "close_node" for marker in result.lifecycle_markers)
+
+
+@pytest.mark.parametrize("visibility_scope", ["public", "branch_only"])
+def test_unknown_branch_scope_rejects_all_direct_writes(
+    graph: object, visibility_scope: str
+) -> None:
+    unknown_branch = _node("unknown", branch="branch:unknown").model_copy(
         update={
             "semantic_metadata": GraphSemanticMetadata(
-                visibility_scope="branch_only", policy_revision="policy:v1"
+                visibility_scope=visibility_scope, policy_revision="policy:v1"
             )
         }
     )
     with pytest.raises(ValueError):
-        _write(graph, branch_only)
+        _write(graph, unknown_branch)
+
+
+def test_known_production_main_scope_still_accepts_direct_writes(
+    graph: object,
+) -> None:
+    _write(graph, _node("production-main", branch="branch:main"))
+    assert _nodes(graph, _scope()) == ["production-main"]
 
 
 @pytest.mark.parametrize("terminal_operation", ["discard", "admit"])
@@ -340,7 +457,9 @@ def test_admission_preserves_closed_node_tombstone_and_rejects_resurrection(
             expected_revision_vector=graph.scope_revision_vector(preview),
         )
     )
-    with pytest.raises((ValueError, HeavenlyGraphRevisionConflict)):
+    with pytest.raises(
+        (ValueError, HeavenlyGraphRevisionConflict, HeavenlyGraphReferentialIntegrityError)
+    ):
         _write(graph, _node("closed-source", branch="branch:closed-admitted"))
 
 
@@ -376,6 +495,49 @@ def test_fork_rejects_terminal_source_branch(graph: object) -> None:
         )
 
 
+def test_fork_propagates_permanent_close_state(graph: object) -> None:
+    production = _scope()
+    _write(graph, _node("fork-closed"))
+    graph.fork_branch(
+        GraphBranchForkRequest(
+            source_scope=production,
+            target_branch_id="branch:closed-parent",
+            fork_valid_at=10,
+            fork_recorded_at=10,
+            source_revision_vector=graph.scope_revision_vector(production),
+        )
+    )
+    parent = _scope("branch:closed-parent")
+    graph.lifecycle_branch(
+        GraphBranchLifecycleRequest(
+            branch_scope=parent,
+            operation="close_node",
+            node_id="fork-closed",
+            expected_revision_vector=graph.scope_revision_vector(parent),
+        )
+    )
+    graph.fork_branch(
+        GraphBranchForkRequest(
+            source_scope=parent,
+            target_branch_id="branch:closed-child",
+            fork_valid_at=10,
+            fork_recorded_at=10,
+            source_revision_vector=graph.scope_revision_vector(parent),
+        )
+    )
+    with pytest.raises((ValueError, HeavenlyGraphRevisionConflict)):
+        _write(graph, _node("fork-closed", branch="branch:closed-child"))
+
+
+def test_direct_lifecycle_marker_records_cannot_bypass_authority(graph: object) -> None:
+    branch = _scope("branch:unadmitted")
+    marker = _node("branch:closed:forged", branch=branch.story_branch_id).model_copy(
+        update={"node_type": "branch_marker"}
+    )
+    with pytest.raises(ValueError):
+        _write(graph, marker)
+
+
 def test_historical_read_before_close_keeps_original_node_visible(graph: object) -> None:
     production = _scope()
     _write(graph, _node("historical"))
@@ -394,6 +556,87 @@ def test_historical_read_before_close_keeps_original_node_visible(graph: object)
             branch_scope=branch,
             operation="close_node",
             node_id="historical",
+            expected_revision_vector=graph.scope_revision_vector(branch),
+        )
+    )
+    assert graph.query_nodes(
+        HeavenlyNodeQuery(scope=branch, valid_at=10, recorded_at=1, limit=None)
+    )
+    assert graph.query_nodes(
+        HeavenlyNodeQuery(scope=branch, valid_at=10, recorded_at=2, limit=None)
+    ) == []
+
+
+def test_relation_cannot_bypass_permanent_close_tombstone(graph: object) -> None:
+    production = _scope()
+    _write(graph, _node("closed-endpoint"))
+    _write(graph, _node("other-endpoint"))
+    graph.fork_branch(
+        GraphBranchForkRequest(
+            source_scope=production,
+            target_branch_id="branch:relation-close",
+            fork_valid_at=10,
+            fork_recorded_at=10,
+            source_revision_vector=graph.scope_revision_vector(production),
+        )
+    )
+    branch = _scope("branch:relation-close")
+    graph.lifecycle_branch(
+        GraphBranchLifecycleRequest(
+            branch_scope=branch,
+            operation="close_node",
+            node_id="closed-endpoint",
+            expected_revision_vector=graph.scope_revision_vector(branch),
+        )
+    )
+    relation = HeavenlyGraphRelation(
+        relation_id="relation:after-close",
+        relation_type="caused_by",
+        source_node_id="other-endpoint",
+        target_node_id="closed-endpoint",
+        scope=branch,
+        validity=GraphValidity(valid_from=1),
+        recorded_at=3,
+        revision=1,
+        provenance={
+            "source_kind": "authority_event",
+            "source_ref": "authority:relation:after-close",
+            "causation_id": "cause:relation:after-close",
+            "correlation_id": "corr:branch",
+            "producer_system": "test",
+        },
+        semantic_metadata=GraphSemanticMetadata(policy_revision="policy:v1"),
+    )
+    with pytest.raises(
+        (ValueError, HeavenlyGraphRevisionConflict, HeavenlyGraphReferentialIntegrityError)
+    ):
+        graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id="tx:relation-after-close",
+                idempotency_key="idem:relation-after-close",
+                scope=branch,
+                relations=[relation],
+            )
+        )
+
+
+def test_historical_read_before_discard_keeps_branch_snapshot_visible(graph: object) -> None:
+    production = _scope()
+    _write(graph, _node("discard-history"))
+    graph.fork_branch(
+        GraphBranchForkRequest(
+            source_scope=production,
+            target_branch_id="branch:discard-history",
+            fork_valid_at=10,
+            fork_recorded_at=10,
+            source_revision_vector=graph.scope_revision_vector(production),
+        )
+    )
+    branch = _scope("branch:discard-history")
+    graph.lifecycle_branch(
+        GraphBranchLifecycleRequest(
+            branch_scope=branch,
+            operation="discard",
             expected_revision_vector=graph.scope_revision_vector(branch),
         )
     )

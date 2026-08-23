@@ -26,15 +26,19 @@ Implemented and verified. Commit: `feat: add Heavenly Graph branch lifecycle`.
   target collisions.
 - Admission rechecks the immutable fork source vector against the current source
   scope, so a branch cannot be admitted after its source has advanced.
+- Fix round 1 normalizes branch-independent diff payloads, filters lifecycle
+  markers by reader policy and recorded time, rejects unknown/terminal branch
+  writes, propagates closure state through descendants, preserves coordinate-
+  bounded fork snapshots, and guards lifecycle-internal marker writes.
 
 ## Verification
 
 ```text
 python -m pytest -q backend/tests/test_heavenly_graph_branch_lifecycle.py
-15 passed, 1 warning
+51 passed, 1 warning
 
 python -m pytest -q backend/tests/test_heavenly_graph_branch_lifecycle.py backend/tests/test_heavenly_graph_semantics.py backend/tests/test_heavenly_graph_semantic_queries.py backend/tests/test_sqlite_heavenly_graph_contract.py
-156 passed, 1 warning
+192 passed, 1 warning
 
 python -m compileall -q backend/app/models/siming_heavenly_graph.py backend/app/services/siming_heavenly_graph_port.py backend/app/services/in_memory_heavenly_graph.py backend/app/services/sqlite_heavenly_graph.py
 passed
@@ -55,3 +59,31 @@ scoring, LLM, Godot, or external graph/database behavior was changed.
 - Lifecycle markers are retained in the graph adapter audit state and are not
   exposed as ordinary branch-marker nodes in normal node queries.
 - Checkpoint replay digest and consistency audit remain Tasks 6 and 7.
+
+## Fix Round 1
+
+- Normalized branch-independent payloads before classifying changed diff records,
+  so a pristine fork has no semantic diff.
+- Restricted lifecycle markers to authority readers with a matching policy and
+  recorded-time window; public or historical readers receive no future internal
+  marker metadata.
+- Enforced explicit branch admission for semantic writes, rejected terminal
+  branch writes and terminal-source forks, while retaining the narrow
+  `policy:legacy` compatibility path required by the pre-existing storage
+  contract fixtures.
+- Propagated append-only close marker history through fork and admission,
+  removed dangling close relations from admitted snapshots, and reject both node
+  resurrection and relations targeting permanently closed nodes.
+- Replaced lifecycle's fixed `valid_at=10` behavior with the requested fork
+  coordinates and source effective snapshot; close markers derive their
+  coordinates from the target record.
+
+Verification after the fix:
+
+```text
+python -m pytest -q backend/tests/test_heavenly_graph_branch_lifecycle.py
+51 passed, 1 warning
+
+python -m pytest -q backend/tests/heavenly_graph_contract.py backend/tests/test_sqlite_heavenly_graph_contract.py backend/tests/test_heavenly_graph_semantics.py backend/tests/test_heavenly_graph_semantic_queries.py backend/tests/test_heavenly_graph_branch_lifecycle.py
+192 passed, 1 warning
+```
