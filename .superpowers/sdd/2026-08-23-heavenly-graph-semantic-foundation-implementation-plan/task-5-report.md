@@ -77,13 +77,16 @@ scoring, LLM, Godot, or external graph/database behavior was changed.
 - Replaced lifecycle's fixed `valid_at=10` behavior with the requested fork
   coordinates and source effective snapshot; close markers derive their
   coordinates from the target record.
+- Admission now appends an explicit audit marker to the admitted target as
+  well as the source branch, preserving source scope and source revision
+  vector provenance on both sides of the transition.
 
 Verification after the fix:
 
 ```text
 python -m pytest -q backend/tests/test_heavenly_graph_branch_lifecycle.py
-51 passed, 1 warning
+53 passed, 1 warning
 
 python -m pytest -q backend/tests/heavenly_graph_contract.py backend/tests/test_sqlite_heavenly_graph_contract.py backend/tests/test_heavenly_graph_semantics.py backend/tests/test_heavenly_graph_semantic_queries.py backend/tests/test_heavenly_graph_branch_lifecycle.py
-192 passed, 1 warning
+194 passed, 1 warning
 ```
