@@ -52,6 +52,8 @@ Task 4: review rejected; fix scope-level revision streams, strict correction met
 Task 4: fix commits 4d06114/017615f/2e1841c; scoped re-review approved.
 Task 4: complete (commits d2ed863..2e1841c, review clean).
 Task 5: review rejected; normalize fork diff equality, filter lifecycle markers by reader context, enforce branch-scope/terminal write admission, and repair lifecycle time/admit audit details.
+Task 5: admit audit marker exists, but target copied stream vector remains zero; fix target node/relation stream counters and assert marker/vector coherence.
+Task 5: final audit fix sets copied target stream counters before target admission marker construction and pins its source/vector to the actual admitted source. Dual-adapter regression and affected graph suite pass; awaiting scoped re-review.
 Task 5: fix round 1 committed as 273d672/d488c9c; branch suite 51 passed and affected graph suites 192 passed; awaiting scoped re-review.
 Task 5 fix round still needs coordinate fidelity: fork must honor `fork_valid_at`/`fork_recorded_at` while propagating close state and markers; do not accept current-snapshot substitution without a regression.
 Task 5 fix round 2: lifecycle markers now obey reader `recorded_at`; all explicit semantic `branch:` scopes require a registered fork, while the pre-semantic `policy:legacy` contract path remains compatible. Focused and affected graph suites green; awaiting scoped re-review.

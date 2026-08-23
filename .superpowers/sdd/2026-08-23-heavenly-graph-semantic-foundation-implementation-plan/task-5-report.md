@@ -81,6 +81,17 @@ scoring, LLM, Godot, or external graph/database behavior was changed.
   well as the source branch, preserving source scope and source revision
   vector provenance on both sides of the transition.
 
+## Fix Round 2
+
+- Target admission markers now reference the immediately admitted source branch
+  and its current revision vector; the source-side marker retains the original
+  fork source/vector audit provenance.
+- The target node and relation stream counters are initialized from copied
+  records before its admission marker is constructed, so its marker revision
+  vector is consistent with the admitted snapshot.
+- Added parametrized InMemory/SQLite regression coverage for source/vector
+  coherence and target stream counts.
+
 Verification after the fix:
 
 ```text
@@ -89,4 +100,7 @@ python -m pytest -q backend/tests/test_heavenly_graph_branch_lifecycle.py
 
 python -m pytest -q backend/tests/heavenly_graph_contract.py backend/tests/test_sqlite_heavenly_graph_contract.py backend/tests/test_heavenly_graph_semantics.py backend/tests/test_heavenly_graph_semantic_queries.py backend/tests/test_heavenly_graph_branch_lifecycle.py
 194 passed, 1 warning
+
+python -m pytest -q backend/tests/test_heavenly_graph_branch_lifecycle.py backend/tests/test_heavenly_graph_semantics.py backend/tests/test_heavenly_graph_semantic_queries.py backend/tests/test_sqlite_heavenly_graph_contract.py backend/tests/test_character_graph_memory_store.py backend/tests/test_character_graph_memory_routing.py
+210 passed, 2 warnings
 ```
