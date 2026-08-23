@@ -37,6 +37,36 @@ passed
 The warning is the existing Starlette/httpx deprecation warning from the test
 conftest. No CharacterAgentRuntime or Siming runtime code was changed.
 
+## Fix Round 2: SQLite restart parity
+
+SQLite restart now recovers a missing replay frontier from the durable source
+revision tables at the checkpoint's recorded coordinate. This handles database
+payloads written before `replay_nodes`/`replay_relations` existed without
+silently treating Pydantic's empty defaults as a complete history. Recovery is
+read-model only; source rows and the stored checkpoint payload remain
+immutable.
+
+Added file-backed regressions for future-valid and retracted predecessor
+chains. Each closes and reopens SQLite, verifies the recovered replay
+frontier, admits a valid revision-3 tail, and compares effective nodes,
+relations, and replay digest with a full-history checkpoint.
+
+Verification:
+
+```text
+python -m pytest -q backend/tests/test_sqlite_heavenly_graph_contract.py
+46 passed, 1 warning
+
+python -m pytest -q backend/tests/heavenly_graph_contract.py backend/tests/test_sqlite_heavenly_graph_contract.py backend/tests/test_heavenly_graph_semantics.py backend/tests/test_heavenly_graph_semantic_queries.py backend/tests/test_heavenly_graph_branch_lifecycle.py
+204 passed, 1 warning
+
+python -m compileall -q backend/app/models/siming_heavenly_graph.py backend/app/services/in_memory_heavenly_graph.py backend/app/services/sqlite_heavenly_graph.py
+passed
+
+git diff --check
+passed
+```
+
 ## Fix Round 1
 
 Review identified that an effective checkpoint view alone cannot seed a later

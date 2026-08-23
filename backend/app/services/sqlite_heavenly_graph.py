@@ -241,7 +241,26 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
             scope = HeavenlyGraphScope.model_validate_json(scope_json)
             self._idempotency[(self._scope_key(scope), key)] = (payload_hash, HeavenlyGraphWriteResult.model_validate_json(result_json))
         for checkpoint_ref, _, _, snapshot_json in self._connection.execute("SELECT checkpoint_ref, scope_json, checkpoint_id, snapshot_json FROM graph_checkpoints"):
+            payload = json.loads(snapshot_json)
             snapshot = HeavenlyGraphSnapshot.model_validate_json(snapshot_json)
+            # Checkpoints written before schema v1's replay frontier fields
+            # existed deserialize those fields as empty defaults.  Empty is a
+            # valid frontier for a genuinely empty graph, so only the payload
+            # shape can distinguish legacy data. Recover the missing portions
+            # from the immutable source history loaded above and leave the
+            # durable checkpoint row unchanged.
+            frontier_update: dict[str, object] = {}
+            if "replay_nodes" not in payload or "replay_relations" not in payload:
+                history_nodes, history_relations = self._revision_history_at(
+                    snapshot.checkpoint.scope,
+                    recorded_at=snapshot.checkpoint.recorded_at,
+                )
+                if "replay_nodes" not in payload:
+                    frontier_update["replay_nodes"] = history_nodes
+                if "replay_relations" not in payload:
+                    frontier_update["replay_relations"] = history_relations
+            if frontier_update:
+                snapshot = snapshot.model_copy(update=frontier_update, deep=True)
             key = (self._scope_key(snapshot.checkpoint.scope), snapshot.checkpoint.checkpoint_id)
             self._checkpoints[key] = snapshot
             self._checkpoint_refs[checkpoint_ref] = key
