@@ -346,7 +346,9 @@ def test_causal_depth_boundary_reports_unexplored_outgoing_edges(graph: object) 
     assert result.truncated is True
 
 
-def test_causal_high_branching_stops_at_deterministic_work_budget(graph: object) -> None:
+def test_causal_high_branching_stops_at_deterministic_work_budget(
+    graph: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
     branch_count = 64
     depth = 8
     root = _node("budget:root")
@@ -375,6 +377,19 @@ def test_causal_high_branching_stops_at_deterministic_work_budget(graph: object)
             relations=relations,
         )
     )
+    original_outgoing = HeavenlyGraphSemanticQueryFacade._causal_outgoing
+    processed_paths = 0
+
+    def count_processed_paths(*args: object) -> list[HeavenlyGraphRelation]:
+        nonlocal processed_paths
+        processed_paths += 1
+        return original_outgoing(*args)
+
+    monkeypatch.setattr(
+        HeavenlyGraphSemanticQueryFacade,
+        "_causal_outgoing",
+        staticmethod(count_processed_paths),
+    )
     result = graph.query_semantic(
         CausalPathQuery(
             context=_context(),
@@ -392,6 +407,7 @@ def test_causal_high_branching_stops_at_deterministic_work_budget(graph: object)
     assert result.nodes == []
     assert result.relations == []
     assert result.truncated is True
+    assert processed_paths <= 9
 
 
 def test_conflict_set_preserves_concurrent_claims_and_revisions(graph: object) -> None:

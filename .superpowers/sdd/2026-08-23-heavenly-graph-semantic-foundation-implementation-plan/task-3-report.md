@@ -122,3 +122,32 @@ python -m pytest -q backend/tests/test_heavenly_graph_semantic_queries.py \
 git diff --check
 passed
 ```
+
+## Review Fix Round 3
+
+- Added a deterministic causal work-item budget derived from
+  `max_paths * (max_depth + 1)` and `node_limit + relation_limit`, capped by
+  the semantic adapter candidate window.
+- Causal BFS now uses a deque and enforces the budget both when admitting seed
+  and child path prefixes and when processing pending prefixes. Queue and
+  traversal exhaustion always set `truncated=true`; no unbounded branch fan-out
+  can accumulate before a terminal path is found.
+- Added an InMemory/SQLite-parametrized 64-way, depth-eight regression with a
+  traversal expansion counter. The query admits no more than the nine work
+  items derived from its limits and discloses truncation.
+
+Round-3 verification:
+
+```text
+python -m pytest -q backend/tests/test_heavenly_graph_semantic_queries.py
+48 passed, 1 warning
+
+python -m pytest -q backend/tests/test_heavenly_graph_semantic_queries.py \
+  backend/tests/heavenly_graph_contract.py \
+  backend/tests/test_sqlite_heavenly_graph_contract.py \
+  backend/tests/test_heavenly_graph_semantics.py
+107 passed, 1 warning
+
+git diff --check
+passed
+```
