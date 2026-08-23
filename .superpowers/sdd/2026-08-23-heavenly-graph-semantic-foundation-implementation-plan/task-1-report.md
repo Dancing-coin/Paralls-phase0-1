@@ -72,3 +72,23 @@ git diff --check
 Result: `62 passed, 1 warning`; whitespace check passed. Focused tests now cover InMemory and SQLite rejection of unknown semantic node types, unknown semantic relation types, invalid namespace, and invalid visibility scope before idempotency persistence.
 
 Fix commit: `5ec861f fix: enforce Heavenly Graph semantic write admission`.
+
+## Review Fix Round 2: Explicit Legacy Admission
+
+The first compatibility fallback caught every registry `ValueError`, which both admitted invalid legacy combinations and rejected existing story writer types. The fallback now uses explicit rules for `authored_story_blueprint`, `runtime_story_node`, `story_authority_outcome`, `narrative_obligation`, `narrative_attractor`, adaptive bridge audits, historical `memory:`/`projection:` names, actor memory names, and `world_fact`. Each rule checks namespace, record kind, visibility, and actor ownership; legacy relation names have the same explicit checks.
+
+Added adapter tests for invalid legacy node namespace/visibility and invalid legacy relation namespace. No runtime consumer behavior was changed.
+
+### Round 2 Evidence
+
+```text
+python -m pytest -q backend/tests/test_heavenly_graph_semantics.py backend/tests/test_siming_heavenly_graph_models.py backend/tests/test_sqlite_heavenly_graph_contract.py backend/tests/test_siming_story_graph_runtime.py backend/tests/test_siming_story_obligation_runtime.py backend/tests/test_siming_story_node_staging.py backend/tests/test_siming_adaptive_bridge.py backend/tests/test_siming_heavenly_runtime_composition.py backend/tests/test_character_graph_memory_store.py
+```
+
+Result: `137 passed, 2 warnings`.
+
+```text
+python -m pytest -q
+```
+
+Result: `3885 passed, 7 warnings in 80.03s`.

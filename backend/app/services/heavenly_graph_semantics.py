@@ -59,6 +59,15 @@ class HeavenlyNodeTypeRegistry:
         "policy_candidate": _NodeRule((_SIMING,), ("proposal",), (_INTERNAL, _AUTHORITY, _BRANCH)),
     }
 
+    _LEGACY_EXACT_RULES: dict[str, _NodeRule] = {
+        "authored_story_blueprint": _NodeRule((_SIMING,), ("fact",), (_PUBLIC,)),
+        "runtime_story_node": _NodeRule((_SIMING,), ("fact",), (_PUBLIC,)),
+        "story_authority_outcome": _NodeRule((_SIMING,), ("fact",), (_PUBLIC,)),
+        "narrative_obligation": _NodeRule((_SIMING,), ("fact",), (_PUBLIC,)),
+        "narrative_attractor": _NodeRule((_SIMING,), ("fact",), (_PUBLIC,)),
+        "adaptive_bridge_audit": _NodeRule((_SIMING,), ("fact",), (_PUBLIC,)),
+    }
+
     def __init__(self, rules: dict[str, _NodeRule] | None = None) -> None:
         self.rules = dict(rules or self.DEFAULT_RULES)
 
@@ -106,14 +115,34 @@ class HeavenlyNodeTypeRegistry:
         except ValueError:
             if not allow_legacy or node.semantic_metadata.policy_revision != "policy:legacy":
                 raise
-            # Existing storage contracts predate semantic metadata. Keep their
-            # known names admissible while rejecting arbitrary new names.
-            legacy_name = node.node_type == "world_fact" or node.node_type == "runtime_story_node" or node.node_type.startswith(("actor_memory:", "actor_memory_anchor:", "memory:", "projection:"))
-            if not legacy_name:
+            legacy_rule = self._legacy_rule(node.node_type)
+            if legacy_rule is None:
                 raise
-            if node.scope.graph_namespace == _ACTOR and not node.scope.owner_actor_id:
-                raise ValueError("actor_private namespace requires owner_actor_id")
+            self._validate_legacy_node(node, legacy_rule)
         return node
+
+    @classmethod
+    def _legacy_rule(cls, node_type: str) -> _NodeRule | None:
+        if node_type == "world_fact":
+            return _NodeRule((_SIMING, _ACTOR), ("fact",), (_PUBLIC,))
+        if node_type in cls._LEGACY_EXACT_RULES:
+            return cls._LEGACY_EXACT_RULES[node_type]
+        if node_type.startswith(("memory:", "projection:")):
+            return _NodeRule((_SIMING,), ("fact",), (_PUBLIC,))
+        if node_type.startswith(("actor_memory:", "actor_memory_anchor:")):
+            return _NodeRule((_ACTOR,), ("fact",), (_PUBLIC,))
+        return None
+
+    @staticmethod
+    def _validate_legacy_node(node: HeavenlyGraphNode, rule: _NodeRule) -> None:
+        if node.scope.graph_namespace not in rule.allowed_namespaces:
+            raise ValueError(f"legacy node namespace is not allowed: {node.node_type}:{node.scope.graph_namespace}")
+        if node.semantic_metadata.record_kind not in rule.allowed_record_kinds:
+            raise ValueError(f"legacy node record_kind is not allowed: {node.node_type}:{node.semantic_metadata.record_kind}")
+        if node.semantic_metadata.visibility_scope not in rule.allowed_visibility_scopes:
+            raise ValueError(f"legacy node visibility scope is not allowed: {node.node_type}:{node.semantic_metadata.visibility_scope}")
+        if node.scope.graph_namespace == _ACTOR and not node.scope.owner_actor_id:
+            raise ValueError("actor_private namespace requires owner_actor_id")
 
 
 class HeavenlyRelationTypeRegistry:
@@ -143,6 +172,12 @@ class HeavenlyRelationTypeRegistry:
         "closes_branch_node": _RelationRule(_SAME_SIMING, ("fact", "projection"), (_AUTHORITY, _BRANCH)),
         "forked_from": _RelationRule(_SAME_SIMING, ("fact", "projection"), (_AUTHORITY, _BRANCH)),
     }
+
+    _LEGACY_RULE = _RelationRule(
+        ((_SIMING, _SIMING), (_ACTOR, _ACTOR)),
+        ("fact",),
+        (_PUBLIC,),
+    )
 
     def __init__(self, rules: dict[str, _RelationRule] | None = None) -> None:
         self.rules = dict(rules or self.DEFAULT_RULES)
@@ -201,14 +236,33 @@ class HeavenlyRelationTypeRegistry:
         except ValueError:
             if not allow_legacy or relation.semantic_metadata.policy_revision != "policy:legacy":
                 raise
-            legacy_name = relation.relation_type.upper() in {"CAUSED_BY", "ENABLED_BY", "PREVENTED_BY"} or relation.relation_type.startswith("actor_memory:references_")
-            if not legacy_name:
+            legacy_rule = self._legacy_rule(relation.relation_type)
+            if legacy_rule is None:
                 raise
-            if source.graph_namespace == _ACTOR and not source.owner_actor_id:
-                raise ValueError("actor_private source requires owner_actor_id")
-            if target.graph_namespace == _ACTOR and not target.owner_actor_id:
-                raise ValueError("actor_private target requires owner_actor_id")
+            self._validate_legacy_relation(relation, source, target, legacy_rule)
         return relation
+
+    @classmethod
+    def _legacy_rule(cls, relation_type: str) -> _RelationRule | None:
+        if relation_type.upper() in {"CAUSED_BY", "ENABLED_BY", "PREVENTED_BY"}:
+            return cls._LEGACY_RULE
+        if relation_type.startswith("actor_memory:references_"):
+            return _RelationRule(((_ACTOR, _ACTOR),), ("fact",), (_PUBLIC,))
+        return None
+
+    @staticmethod
+    def _validate_legacy_relation(relation: HeavenlyGraphRelation, source: Any, target: Any, rule: _RelationRule) -> None:
+        pair = (source.graph_namespace, target.graph_namespace)
+        if pair not in rule.allowed_namespace_pairs:
+            raise ValueError(f"legacy relation namespace pair is not allowed: {relation.relation_type}")
+        if relation.semantic_metadata.record_kind not in rule.allowed_record_kinds:
+            raise ValueError(f"legacy relation record_kind is not allowed: {relation.relation_type}")
+        if relation.semantic_metadata.visibility_scope not in rule.allowed_visibility_scopes:
+            raise ValueError(f"legacy relation visibility scope is not allowed: {relation.relation_type}")
+        if source.graph_namespace == _ACTOR and not source.owner_actor_id:
+            raise ValueError("actor_private source requires owner_actor_id")
+        if target.graph_namespace == _ACTOR and not target.owner_actor_id:
+            raise ValueError("actor_private target requires owner_actor_id")
 
 
 DEFAULT_NODE_TYPE_REGISTRY = HeavenlyNodeTypeRegistry()

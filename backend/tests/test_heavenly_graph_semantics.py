@@ -285,3 +285,52 @@ def test_adapter_rejects_invalid_semantic_namespace_and_visibility(graph_adapter
     )
     with pytest.raises(ValueError, match="visibility"):
         graph_adapter.write_batch(_write_batch(invalid_visibility))
+
+
+def test_adapter_rejects_legacy_node_namespace_and_visibility(graph_adapter: object) -> None:
+    invalid_namespace = HeavenlyGraphNode(
+        node_id="story:private",
+        node_type="authored_story_blueprint",
+        scope=_scope("actor_private", owner="char_b"),
+        validity=GraphValidity(valid_from=1),
+        recorded_at=1,
+        revision=1,
+        provenance=_provenance(),
+    )
+    with pytest.raises(ValueError, match="legacy node namespace"):
+        graph_adapter.write_batch(_write_batch(invalid_namespace))
+
+    invalid_visibility = invalid_namespace.model_copy(
+        update={
+            "scope": _scope(),
+            "semantic_metadata": _metadata(visibility_scope="siming_internal", policy_revision="policy:legacy"),
+        },
+        deep=True,
+    )
+    with pytest.raises(ValueError, match="legacy node visibility"):
+        graph_adapter.write_batch(_write_batch(invalid_visibility))
+
+
+def test_adapter_rejects_legacy_relation_cross_namespace(graph_adapter: object) -> None:
+    from app.models.siming_heavenly_graph import HeavenlyGraphWriteBatch
+
+    relation = HeavenlyGraphRelation(
+        relation_id="legacy:invalid-scope",
+        relation_type="actor_memory:references_actor",
+        source_node_id="private:source",
+        target_node_id="fact:target",
+        scope=_scope(),
+        validity=GraphValidity(valid_from=1),
+        recorded_at=1,
+        revision=1,
+        provenance=_provenance(),
+        semantic_metadata=GraphSemanticMetadata(),
+    )
+    batch = HeavenlyGraphWriteBatch(
+        transaction_id="graph_tx:legacy-invalid-scope",
+        idempotency_key="semantic-admission:legacy-invalid-scope",
+        scope=relation.scope,
+        relations=[relation],
+    )
+    with pytest.raises(ValueError, match="legacy relation namespace"):
+        graph_adapter.write_batch(batch)
