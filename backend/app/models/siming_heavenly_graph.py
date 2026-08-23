@@ -18,6 +18,22 @@ GraphNamespace = Literal[
     "resource_capability",
 ]
 HeavenlySubgraphDirection = Literal["outgoing", "incoming", "both"]
+GraphRecordKind = Literal["fact", "projection", "proposal"]
+GraphVisibilityScope = Literal[
+    "public",
+    "actor_private",
+    "siming_internal",
+    "authority_only",
+    "branch_only",
+]
+GraphDerivationKind = Literal[
+    "authority",
+    "projection",
+    "inference",
+    "correction",
+    "retraction",
+    "redaction",
+]
 
 
 class HeavenlyGraphScope(BaseModel):
@@ -70,6 +86,48 @@ class GraphProvenance(BaseModel):
     evidence_refs: list[str] = Field(default_factory=list)
 
 
+class GraphRevisionVector(BaseModel):
+    """Monotonic revisions for the streams that influence a graph read."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    node_revision: int = Field(default=0, ge=0)
+    relation_revision: int = Field(default=0, ge=0)
+    source_revision: int = Field(default=0, ge=0)
+    policy_revision: int = Field(default=0, ge=0)
+    branch_revision: int = Field(default=0, ge=0)
+
+
+class GraphSemanticMetadata(BaseModel):
+    """Typed semantic admission metadata shared by nodes and relations."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    record_kind: GraphRecordKind = "fact"
+    visibility_scope: GraphVisibilityScope = "public"
+    derivation_kind: GraphDerivationKind = "authority"
+    source_event_refs: tuple[str, ...] = Field(default_factory=tuple)
+    source_revision_vector: GraphRevisionVector = Field(default_factory=GraphRevisionVector)
+    policy_revision: str = Field(default="policy:legacy", min_length=1)
+    scope_digest: str = Field(default="scope:legacy", min_length=1)
+    redaction_reason: str | None = Field(default=None, min_length=1)
+
+
+class GraphReaderContext(BaseModel):
+    """Explicit context required by semantic graph readers."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    reader_principal: str = Field(min_length=1)
+    allowed_visibility_scopes: tuple[GraphVisibilityScope, ...] = Field(min_length=1)
+    world_id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+    story_branch_id: str = Field(min_length=1)
+    valid_at: int = Field(ge=0)
+    recorded_at: int | None = Field(default=None, ge=0)
+    policy_revision: str = Field(min_length=1)
+
+
 class HeavenlyGraphNode(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -82,6 +140,7 @@ class HeavenlyGraphNode(BaseModel):
     supersedes_revision: int | None = Field(default=None, ge=1)
     attributes: dict[str, JsonValue] = Field(default_factory=dict)
     provenance: GraphProvenance
+    semantic_metadata: GraphSemanticMetadata = Field(default_factory=GraphSemanticMetadata)
 
     @model_validator(mode="after")
     def validate_revision_chain(self) -> "HeavenlyGraphNode":
@@ -106,6 +165,7 @@ class HeavenlyGraphRelation(BaseModel):
     supersedes_revision: int | None = Field(default=None, ge=1)
     attributes: dict[str, JsonValue] = Field(default_factory=dict)
     provenance: GraphProvenance
+    semantic_metadata: GraphSemanticMetadata = Field(default_factory=GraphSemanticMetadata)
 
     @model_validator(mode="after")
     def validate_revision_chain(self) -> "HeavenlyGraphRelation":
