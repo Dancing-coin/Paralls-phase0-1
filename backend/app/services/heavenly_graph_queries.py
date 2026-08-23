@@ -7,7 +7,9 @@ import json
 from typing import Protocol
 
 from app.models.siming_heavenly_graph import (
+    BehaviorTurnQuery,
     CausalPathQuery,
+    ConflictSetQuery,
     GraphRevisionVector,
     HeavenlyGraphNode,
     HeavenlyGraphQueryResult,
@@ -16,8 +18,14 @@ from app.models.siming_heavenly_graph import (
     HeavenlyNodeQuery,
     HeavenlyRelationQuery,
     NodeLookupQuery,
+    PerspectiveQuery,
     RelationLookupQuery,
+    SourceImpactQuery,
 )
+
+
+_CAUSAL_RELATION_TYPES = frozenset({"caused_by", "enabled_by", "prevented_by"})
+_SEMANTIC_CANDIDATE_LIMIT = 1000
 
 
 class _LowLevelGraph(Protocol):
@@ -26,6 +34,8 @@ class _LowLevelGraph(Protocol):
     def query_relations(
         self, query: HeavenlyRelationQuery
     ) -> list[HeavenlyGraphRelation]: ...
+
+    def query_subgraph(self, **kwargs: object): ...
 
 
 class HeavenlyGraphSemanticQueryFacade:
@@ -126,9 +136,221 @@ class HeavenlyGraphSemanticQueryFacade:
             relations = self._graph.query_relations(relation_query)
             return [], relations, len(relations) >= query.limit
         if isinstance(query, CausalPathQuery):
-            # Domain traversal is introduced in Task 3; keep this shell bounded.
-            return [], [], False
+            relation_types = query.relation_types or sorted(_CAUSAL_RELATION_TYPES)
+            relation_types = [
+                relation_type
+                for relation_type in relation_types
+                if relation_type in _CAUSAL_RELATION_TYPES
+            ]
+            subgraph = self._graph.query_subgraph(
+                scope=scope,
+                seed_node_ids=query.seed_node_ids,
+                relation_types=relation_types,
+                direction="outgoing",
+                max_depth=query.max_depth,
+                valid_at=query.context.valid_at,
+                recorded_at=query.context.recorded_at,
+                node_limit=query.node_limit,
+                relation_limit=query.relation_limit,
+            )
+            # Result v1 returns a deterministic path union rather than exposing
+            # path rows. More independent route edges than max_paths is still
+            # disclosed as incomplete instead of silently implying a full read.
+            path_bound_reached = len(subgraph.relations) >= query.max_paths
+            return subgraph.nodes, subgraph.relations, (
+                subgraph.truncated or path_bound_reached
+            )
+        if isinstance(query, PerspectiveQuery):
+            perspective_scope = scope
+            if query.actor_ref and query.scope is None:
+                perspective_scope = HeavenlyGraphScope(
+                    world_id=query.context.world_id,
+                    session_id=query.context.session_id,
+                    story_branch_id=query.context.story_branch_id,
+                    graph_namespace="actor_private",
+                    owner_actor_id=query.actor_ref,
+                )
+            candidates = self._graph.query_nodes(
+                HeavenlyNodeQuery(
+                    scope=perspective_scope,
+                    valid_at=query.context.valid_at,
+                    recorded_at=query.context.recorded_at,
+                    node_types=["actor_view", "actor_memory_ref"],
+                    limit=self._candidate_limit(query.limit),
+                )
+            )
+            scopes = set(query.visibility_scopes)
+            if scopes:
+                candidates = [
+                    node for node in candidates
+                    if node.semantic_metadata.visibility_scope in scopes
+                ]
+            if query.actor_ref:
+                candidates = [
+                    node for node in candidates
+                    if node.scope.owner_actor_id == query.actor_ref
+                    or node.provenance.actor_id == query.actor_ref
+                    or node.attributes.get("actor_ref") == query.actor_ref
+                ]
+            return candidates[: query.limit], [], self._bounded(candidates, query.limit)
+        if isinstance(query, ConflictSetQuery):
+            candidates = self._graph.query_nodes(
+                HeavenlyNodeQuery(
+                    scope=scope,
+                    valid_at=query.context.valid_at,
+                    recorded_at=query.context.recorded_at,
+                    limit=self._candidate_limit(query.limit),
+                )
+            )
+            candidates = [
+                node for node in candidates
+                if (
+                    query.subject_ref is None
+                    or node.attributes.get("subject_ref") == query.subject_ref
+                    or node.attributes.get("subject_id") == query.subject_ref
+                )
+                and (
+                    query.property_key is None
+                    or node.attributes.get("property_key") == query.property_key
+                    or node.attributes.get("property") == query.property_key
+                )
+            ]
+            selected_ids = {node.node_id for node in candidates}
+            relations = self._graph.query_relations(
+                HeavenlyRelationQuery(
+                    scope=scope,
+                    valid_at=query.context.valid_at,
+                    recorded_at=query.context.recorded_at,
+                    relation_types=["contradicts"],
+                    limit=self._candidate_limit(query.limit),
+                )
+            )
+            relations = [
+                relation for relation in relations
+                if relation.source_node_id in selected_ids
+                or relation.target_node_id in selected_ids
+            ]
+            return (
+                candidates[: query.limit],
+                relations[: query.limit],
+                self._bounded(candidates, query.limit)
+                or self._bounded(relations, query.limit),
+            )
+        if isinstance(query, BehaviorTurnQuery):
+            candidates = self._graph.query_nodes(
+                HeavenlyNodeQuery(
+                    scope=scope,
+                    valid_at=query.context.valid_at,
+                    recorded_at=query.context.recorded_at,
+                    limit=self._candidate_limit(query.limit),
+                )
+            )
+            matching_nodes = [
+                node for node in candidates if self._matches_turn(node, query)
+            ]
+            selected_ids = {node.node_id for node in matching_nodes}
+            relations = self._graph.query_relations(
+                HeavenlyRelationQuery(
+                    scope=scope,
+                    valid_at=query.context.valid_at,
+                    recorded_at=query.context.recorded_at,
+                    limit=self._candidate_limit(query.limit),
+                )
+            )
+            relations = [
+                relation for relation in relations
+                if relation.source_node_id in selected_ids
+                or relation.target_node_id in selected_ids
+                or self._matches_turn(relation, query)
+            ]
+            related_ids = {
+                node_id
+                for relation in relations
+                for node_id in (relation.source_node_id, relation.target_node_id)
+            }
+            nodes = [
+                node for node in candidates
+                if node.node_id in selected_ids or node.node_id in related_ids
+            ]
+            return (
+                nodes[: query.limit],
+                relations[: query.limit],
+                self._bounded(nodes, query.limit)
+                or self._bounded(relations, query.limit),
+            )
+        if isinstance(query, SourceImpactQuery):
+            candidates = self._graph.query_nodes(
+                HeavenlyNodeQuery(
+                    scope=scope,
+                    valid_at=query.context.valid_at,
+                    recorded_at=query.context.recorded_at,
+                    limit=self._candidate_limit(query.limit),
+                )
+            )
+            candidates = [
+                node for node in candidates
+                if self._references_source(node, query.source_ref, query.source_revision)
+            ]
+            relations = self._graph.query_relations(
+                HeavenlyRelationQuery(
+                    scope=scope,
+                    valid_at=query.context.valid_at,
+                    recorded_at=query.context.recorded_at,
+                    limit=self._candidate_limit(query.limit),
+                )
+            )
+            relations = [
+                relation for relation in relations
+                if self._references_source(relation, query.source_ref, query.source_revision)
+            ]
+            return (
+                candidates[: query.limit],
+                relations[: query.limit],
+                self._bounded(candidates, query.limit)
+                or self._bounded(relations, query.limit),
+            )
         return [], [], False
+
+    @staticmethod
+    def _candidate_limit(limit: int) -> int:
+        # Semantic predicates run after the adapter read. Use the fixed
+        # candidate window so an early non-match cannot hide a later match.
+        return _SEMANTIC_CANDIDATE_LIMIT
+
+    @staticmethod
+    def _bounded(entities: list[object], limit: int) -> bool:
+        return len(entities) >= limit
+
+    @staticmethod
+    def _matches_turn(entity: object, query: BehaviorTurnQuery) -> bool:
+        attrs = entity.attributes
+        provenance = entity.provenance
+        if query.turn_id is not None and attrs.get("turn_id") != query.turn_id:
+            return False
+        if query.correlation_id is not None and provenance.correlation_id != query.correlation_id and attrs.get("correlation_id") != query.correlation_id:
+            return False
+        if query.actor_id is not None and provenance.actor_id != query.actor_id and attrs.get("actor_id") != query.actor_id:
+            return False
+        if query.stage is not None and attrs.get("stage") != query.stage:
+            return False
+        return True
+
+    @staticmethod
+    def _references_source(entity: object, source_ref: str, source_revision: int | None) -> bool:
+        metadata = entity.semantic_metadata
+        source_match = (
+            source_ref in metadata.source_event_refs
+            or source_ref in entity.provenance.evidence_refs
+            or entity.attributes.get("source_ref") == source_ref
+            or entity.attributes.get("source_node_id") == source_ref
+            or (
+                entity.provenance.source_ref == source_ref
+                and metadata.derivation_kind != "authority"
+            )
+        )
+        if not source_match:
+            return False
+        return source_revision is None or metadata.source_revision_vector.source_revision == source_revision
 
     def _filter_entities(self, entities: list[object], query: HeavenlyGraphSemanticQuery):
         visible: list[object] = []

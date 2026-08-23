@@ -4,6 +4,8 @@ from threading import RLock
 from pathlib import Path
 
 from app.models.siming_heavenly_graph import (
+    HeavenlyGraphQueryResult,
+    HeavenlyGraphSemanticQuery,
     HeavenlyGraphNode,
     HeavenlyGraphRelation,
     HeavenlyGraphSnapshot,
@@ -55,6 +57,13 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
     ) -> list[HeavenlyGraphRelation]:
         with self._lock:
             return super().query_relations(query)
+
+    def query_semantic(
+        self, query: HeavenlyGraphSemanticQuery
+    ) -> HeavenlyGraphQueryResult:
+        """Keep facade reads serialized with SQLite-backed graph mutations."""
+        with self._lock:
+            return super().query_semantic(query)
 
     def query_subgraph(self, **kwargs: object) -> HeavenlySubgraphResult:
         with self._lock:
