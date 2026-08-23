@@ -431,3 +431,51 @@ def test_diff_marker_scan_bounds_ineligible_history(
     assert result.lifecycle_markers == []
     assert result.truncated is True
     assert bounded.reads == 4
+
+
+def test_diff_same_scope_reuses_one_marker_window(
+    graph: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    production = _scope()
+    _write(graph, scope=production, key="same-scope-seed", nodes=[_node("fact:seed")])
+    graph.fork_branch(
+        GraphBranchForkRequest(
+            source_scope=production,
+            target_branch_id="branch:wave4-markers",
+            fork_valid_at=10,
+            fork_recorded_at=10,
+            source_revision_vector=graph.scope_revision_vector(production),
+        )
+    )
+    branch = _scope("branch:wave4-markers")
+    key = graph._scope_key(branch)
+
+    class BoundedMarkers(list[object]):
+        def __init__(self, values: list[object]) -> None:
+            super().__init__(values)
+            self.reads = 0
+
+        def __getitem__(self, index):
+            self.reads += 1
+            if self.reads > 4:
+                raise AssertionError("same stream was scanned more than once")
+            return super().__getitem__(index)
+
+    bounded = BoundedMarkers(graph._branch_markers[key])
+    graph._branch_markers[key] = bounded
+    monkeypatch.setattr(graph, "_scope_revision_vector", lambda *args, **kwargs: GraphRevisionVector())
+    monkeypatch.setattr(graph, "_branch_available", lambda *args, **kwargs: True)
+    monkeypatch.setattr(graph, "_is_node_closed", lambda *args, **kwargs: False)
+    monkeypatch.setattr(graph, "_is_branch_discarded", lambda *args, **kwargs: False)
+
+    result = graph.diff_branches(
+        GraphBranchDiffQuery(
+            left_scope=branch,
+            right_scope=branch,
+            reader_context=_context(branch, scopes=("public", "authority_only"), recorded_at=100),
+            limits=GraphBranchDiffLimits(node_limit=100, relation_limit=100, marker_limit=1),
+        )
+    )
+
+    assert len(result.lifecycle_markers) == 1
+    assert bounded.reads == 1
