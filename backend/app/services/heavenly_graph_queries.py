@@ -343,6 +343,8 @@ class HeavenlyGraphSemanticQueryFacade:
             or source_ref in entity.provenance.evidence_refs
             or entity.attributes.get("source_ref") == source_ref
             or entity.attributes.get("source_node_id") == source_ref
+            or getattr(entity, "source_node_id", None) == source_ref
+            or getattr(entity, "target_node_id", None) == source_ref
             or (
                 entity.provenance.source_ref == source_ref
                 and metadata.derivation_kind != "authority"
