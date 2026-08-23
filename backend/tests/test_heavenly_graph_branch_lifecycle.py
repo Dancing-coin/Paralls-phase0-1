@@ -282,3 +282,66 @@ def test_discarded_branch_cannot_be_resurrected_or_admitted(graph: object) -> No
                 expected_revision_vector=graph.scope_revision_vector(branch),
             )
         )
+
+
+def test_admit_rejects_a_branch_when_its_fork_source_vector_is_stale(graph: object) -> None:
+    production = _scope()
+    _write(graph, _node("source"))
+    graph.fork_branch(
+        GraphBranchForkRequest(
+            source_scope=production,
+            target_branch_id="branch:stale-admit",
+            fork_valid_at=10,
+            fork_recorded_at=10,
+            source_revision_vector=graph.scope_revision_vector(production),
+        )
+    )
+    _write(graph, _node("production:later"))
+    branch = _scope("branch:stale-admit")
+    with pytest.raises(HeavenlyGraphRevisionConflict):
+        graph.lifecycle_branch(
+            GraphBranchLifecycleRequest(
+                branch_scope=branch,
+                operation="admit",
+                target_branch_id="branch:admitted",
+                expected_revision_vector=graph.scope_revision_vector(branch),
+            )
+    )
+    assert _nodes(graph, _scope("branch:admitted")) == []
+
+
+def test_sqlite_restores_discarded_branch_state(tmp_path: Path) -> None:
+    path = tmp_path / "branch-restart.sqlite3"
+    graph = SQLiteHeavenlyGraphAdapter(path)
+    production = _scope()
+    _write(graph, _node("source"))
+    graph.fork_branch(
+        GraphBranchForkRequest(
+            source_scope=production,
+            target_branch_id="branch:restart",
+            fork_valid_at=10,
+            fork_recorded_at=10,
+            source_revision_vector=graph.scope_revision_vector(production),
+        )
+    )
+    branch = _scope("branch:restart")
+    graph.lifecycle_branch(
+        GraphBranchLifecycleRequest(
+            branch_scope=branch,
+            operation="discard",
+            expected_revision_vector=graph.scope_revision_vector(branch),
+        )
+    )
+    graph.close()
+
+    reopened = SQLiteHeavenlyGraphAdapter(path)
+    assert _nodes(reopened, branch) == []
+    audit = reopened.diff_branches(
+        GraphBranchDiffQuery(
+            left_scope=production,
+            right_scope=branch,
+            reader_context=_context(),
+        )
+    )
+    reopened.close()
+    assert any(marker.operation == "discard" for marker in audit.lifecycle_markers)

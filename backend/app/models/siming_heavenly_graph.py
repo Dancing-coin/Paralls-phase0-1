@@ -160,6 +160,7 @@ class GraphBranchLifecycleMarker(BaseModel):
     recorded_at: int = Field(ge=0)
     revision_vector: GraphRevisionVector
     source_scope: HeavenlyGraphScope | None = None
+    source_revision_vector: GraphRevisionVector | None = None
     node_id: str | None = None
     target_branch_id: str | None = None
 

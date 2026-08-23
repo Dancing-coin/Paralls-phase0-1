@@ -113,6 +113,7 @@ class InMemoryHeavenlyGraphAdapter:
             target,
             "fork",
             source_scope=source,
+            source_revision_vector=request.source_revision_vector,
             recorded_at=request.fork_recorded_at,
             target_branch_id=request.target_branch_id,
         )
@@ -126,10 +127,26 @@ class InMemoryHeavenlyGraphAdapter:
         return result
 
     def diff_branches(self, query: GraphBranchDiffQuery) -> GraphBranchDiffResult:
-        left_nodes = {node.node_id: node for node in self.query_nodes(HeavenlyNodeQuery(scope=query.left_scope, valid_at=query.reader_context.valid_at, recorded_at=query.reader_context.recorded_at, limit=None))}
-        right_nodes = {node.node_id: node for node in self.query_nodes(HeavenlyNodeQuery(scope=query.right_scope, valid_at=query.reader_context.valid_at, recorded_at=query.reader_context.recorded_at, limit=None))}
-        left_relations = {relation.relation_id: relation for relation in self.query_relations(HeavenlyRelationQuery(scope=query.left_scope, valid_at=query.reader_context.valid_at, recorded_at=query.reader_context.recorded_at, limit=None))}
-        right_relations = {relation.relation_id: relation for relation in self.query_relations(HeavenlyRelationQuery(scope=query.right_scope, valid_at=query.reader_context.valid_at, recorded_at=query.reader_context.recorded_at, limit=None))}
+        left_nodes = {
+            node.node_id: node
+            for node in self.query_nodes(HeavenlyNodeQuery(scope=query.left_scope, valid_at=query.reader_context.valid_at, recorded_at=query.reader_context.recorded_at, limit=None))
+            if self._branch_entity_visible(node, query)
+        }
+        right_nodes = {
+            node.node_id: node
+            for node in self.query_nodes(HeavenlyNodeQuery(scope=query.right_scope, valid_at=query.reader_context.valid_at, recorded_at=query.reader_context.recorded_at, limit=None))
+            if self._branch_entity_visible(node, query)
+        }
+        left_relations = {
+            relation.relation_id: relation
+            for relation in self.query_relations(HeavenlyRelationQuery(scope=query.left_scope, valid_at=query.reader_context.valid_at, recorded_at=query.reader_context.recorded_at, limit=None))
+            if self._branch_entity_visible(relation, query)
+        }
+        right_relations = {
+            relation.relation_id: relation
+            for relation in self.query_relations(HeavenlyRelationQuery(scope=query.right_scope, valid_at=query.reader_context.valid_at, recorded_at=query.reader_context.recorded_at, limit=None))
+            if self._branch_entity_visible(relation, query)
+        }
         node_ids = sorted(set(left_nodes) | set(right_nodes))
         relation_ids = sorted(set(left_relations) | set(right_relations))
         markers = sorted(
@@ -155,6 +172,18 @@ class InMemoryHeavenlyGraphAdapter:
             right_revision_vector=self._scope_revision_vector(query.right_scope),
             truncated=truncated,
         )
+
+    @staticmethod
+    def _branch_entity_visible(entity: object, query: GraphBranchDiffQuery) -> bool:
+        metadata = entity.semantic_metadata
+        if metadata.visibility_scope not in query.reader_context.allowed_visibility_scopes:
+            return False
+        owner_actor_id = entity.scope.owner_actor_id
+        if metadata.visibility_scope == "actor_private" and owner_actor_id is not None:
+            principal = query.reader_context.reader_principal
+            if principal not in {owner_actor_id, f"actor:{owner_actor_id}", f"reader:{owner_actor_id}"}:
+                return False
+        return metadata.policy_revision == query.reader_context.policy_revision
 
     def lifecycle_branch(self, request: GraphBranchLifecycleRequest) -> HeavenlyGraphWriteResult:
         branch = request.branch_scope
@@ -193,6 +222,20 @@ class InMemoryHeavenlyGraphAdapter:
             self._branch_status[key] = "discarded"
         elif request.operation == "admit":
             assert request.target_branch_id is not None
+            fork_marker = next(
+                (marker for marker in self._branch_markers.get(key, []) if marker.operation == "fork"),
+                None,
+            )
+            if fork_marker is None or fork_marker.source_scope is None or fork_marker.source_revision_vector is None:
+                raise ValueError("branch admission requires a fork source marker")
+            source_current = self._scope_revision_vector(fork_marker.source_scope)
+            if not self._revision_vector_matches(fork_marker.source_revision_vector, source_current):
+                raise HeavenlyGraphRevisionConflict(
+                    "branch admission fork source revision vector is stale",
+                    expected_revision_vector=fork_marker.source_revision_vector,
+                    current_revision_vector=source_current,
+                    affected_refs=[fork_marker.source_scope.story_branch_id],
+                )
             target = branch.model_copy(update={"story_branch_id": request.target_branch_id})
             target_key = self._scope_key(target)
             if target_key in self._branch_status or self._has_scope_records(target):
@@ -983,6 +1026,7 @@ class InMemoryHeavenlyGraphAdapter:
         *,
         recorded_at: int,
         source_scope: HeavenlyGraphScope | None = None,
+        source_revision_vector: GraphRevisionVector | None = None,
         node_id: str | None = None,
         target_branch_id: str | None = None,
     ) -> GraphBranchLifecycleMarker:
@@ -994,6 +1038,7 @@ class InMemoryHeavenlyGraphAdapter:
             recorded_at=recorded_at,
             revision_vector=self._scope_revision_vector(scope),
             source_scope=source_scope,
+            source_revision_vector=source_revision_vector,
             node_id=node_id,
             target_branch_id=target_branch_id,
         )
