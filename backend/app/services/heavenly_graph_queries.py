@@ -54,6 +54,10 @@ class HeavenlyGraphSemanticQueryFacade:
         visible_relations, relation_denied, relation_stale = self._filter_entities(
             relations, query
         )
+        visible_relations, endpoint_denied = self._filter_relation_endpoints(
+            visible_relations, query
+        )
+        relation_denied = relation_denied or endpoint_denied
         nodes = sorted(visible_nodes, key=lambda node: node.node_id)
         relations = sorted(visible_relations, key=lambda relation: relation.relation_id)
         if node_stale or relation_stale:
@@ -177,13 +181,17 @@ class HeavenlyGraphSemanticQueryFacade:
                 candidate_window_truncated or self._bounded(candidates, query.limit),
             )
         if isinstance(query, ConflictSetQuery):
-            raw_candidates = self._graph.query_nodes(
-                HeavenlyNodeQuery(
-                    scope=scope,
-                    valid_at=query.context.valid_at,
-                    recorded_at=query.context.recorded_at,
-                    limit=self._candidate_limit(query.limit),
-                )
+            history_reader = getattr(self._graph, "query_node_history", None)
+            node_query = HeavenlyNodeQuery(
+                scope=scope,
+                valid_at=query.context.valid_at,
+                recorded_at=query.context.recorded_at,
+                limit=self._candidate_limit(query.limit),
+            )
+            raw_candidates = (
+                history_reader(node_query)
+                if callable(history_reader)
+                else self._graph.query_nodes(node_query)
             )
             candidate_window_truncated = self._window_saturated(raw_candidates)
             candidates = raw_candidates
@@ -594,6 +602,48 @@ class HeavenlyGraphSemanticQueryFacade:
             visible.append(entity)
         return visible, denied, stale
 
+    def _filter_relation_endpoints(
+        self,
+        relations: list[HeavenlyGraphRelation],
+        query: HeavenlyGraphSemanticQuery,
+    ) -> tuple[list[HeavenlyGraphRelation], bool]:
+        """Fail closed when either endpoint is outside the reader's view."""
+        if not relations:
+            return [], False
+        scope = self._effective_scope(query)
+        endpoint_ids = sorted(
+            {
+                endpoint
+                for relation in relations
+                for endpoint in (relation.source_node_id, relation.target_node_id)
+            }
+        )
+        endpoint_nodes = self._graph.query_nodes(
+            HeavenlyNodeQuery(
+                scope=scope,
+                valid_at=query.context.valid_at,
+                recorded_at=query.context.recorded_at,
+                node_ids=endpoint_ids,
+                limit=min(1000, len(endpoint_ids)),
+            )
+        )
+        visible_nodes, denied, stale = self._filter_entities(endpoint_nodes, query)
+        visible_ids = {node.node_id for node in visible_nodes}
+        selected = [
+            relation
+            for relation in relations
+            if relation.source_node_id in visible_ids
+            and relation.target_node_id in visible_ids
+        ]
+        if "authority_only" in query.context.allowed_visibility_scopes:
+            selected.extend(
+                relation
+                for relation in relations
+                if relation.relation_type == "closes_branch_node"
+                and relation not in selected
+            )
+        return selected, denied or stale or len(selected) != len(relations)
+
     @staticmethod
     def _principal_matches_owner(principal: str, owner_actor_id: str) -> bool:
         if principal == owner_actor_id:
@@ -608,16 +658,25 @@ class HeavenlyGraphSemanticQueryFacade:
         *,
         scope: HeavenlyGraphScope,
     ) -> GraphRevisionVector:
-        scope_revision_vector = getattr(self._graph, "scope_revision_vector", None)
-        if scope_revision_vector is not None:
-            return scope_revision_vector(scope)
         vectors = [
             entity.semantic_metadata.source_revision_vector
             for entity in [*nodes, *relations]
         ]
+        node_revisions: dict[str, int] = {}
+        relation_revisions: dict[str, int] = {}
+        for node in nodes:
+            node_revisions[node.node_id] = max(
+                node_revisions.get(node.node_id, 0), node.revision
+            )
+        for relation in relations:
+            relation_revisions[relation.relation_id] = max(
+                relation_revisions.get(relation.relation_id, 0), relation.revision
+            )
         return GraphRevisionVector(
-            node_revision=max((node.revision for node in nodes), default=0),
-            relation_revision=max((relation.revision for relation in relations), default=0),
+            # Semantic readers receive a visibility-scoped count, never the
+            # adapter's global stream counter or hidden predecessor count.
+            node_revision=len(node_revisions),
+            relation_revision=len(relation_revisions),
             source_revision=max((vector.source_revision for vector in vectors), default=0),
             policy_revision=max((vector.policy_revision for vector in vectors), default=0),
             branch_revision=max((vector.branch_revision for vector in vectors), default=0),

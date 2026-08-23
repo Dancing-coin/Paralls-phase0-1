@@ -150,14 +150,15 @@ def test_node_registry_enforces_actor_private_ownership_and_proposals() -> None:
 
 def test_relation_registry_rejects_forbidden_cross_namespace_relation() -> None:
     registry = HeavenlyRelationTypeRegistry()
-    registry.validate(
-        relation_type="observed_as",
-        source_namespace="actor_private",
-        target_namespace="siming_heavenly",
-        record_kind="projection",
-        visibility_scope="actor_private",
-        source_owner_actor_id="char_b",
-    )
+    with pytest.raises(ValueError, match="cross-namespace relation endpoints are unsupported"):
+        registry.validate(
+            relation_type="observed_as",
+            source_namespace="actor_private",
+            target_namespace="siming_heavenly",
+            record_kind="projection",
+            visibility_scope="actor_private",
+            source_owner_actor_id="char_b",
+        )
     with pytest.raises(ValueError, match="namespace"):
         registry.validate(
             relation_type="part_of_turn",

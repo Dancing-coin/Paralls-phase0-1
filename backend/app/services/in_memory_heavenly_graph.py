@@ -88,7 +88,11 @@ class InMemoryHeavenlyGraphAdapter:
             raise ValueError(
                 f"branch {source.story_branch_id!r} is terminal: {source_status}"
             )
-        source_vector = self._scope_revision_vector(source)
+        source_vector = self._scope_revision_vector(
+            source,
+            recorded_at=request.fork_recorded_at,
+            valid_at=request.fork_valid_at,
+        )
         if not self._revision_vector_matches(request.source_revision_vector, source_vector):
             raise HeavenlyGraphRevisionConflict(
                 "branch fork source revision vector is stale",
@@ -100,7 +104,7 @@ class InMemoryHeavenlyGraphAdapter:
         target_key = self._scope_key(target)
         if target_key in self._branch_status or self._has_scope_records(target):
             raise ValueError(f"branch {request.target_branch_id!r} already exists")
-        source_nodes, source_relations = self._branch_snapshot_at(
+        source_nodes, source_relations = self._branch_history_at(
             source,
             valid_at=request.fork_valid_at,
             recorded_at=request.fork_recorded_at,
@@ -110,25 +114,35 @@ class InMemoryHeavenlyGraphAdapter:
             self._copy_branch_marker(marker, target)
             for marker in self._branch_markers.get(self._scope_key(source), [])
             if marker.recorded_at <= request.fork_recorded_at
+            and marker.valid_at <= request.fork_valid_at
         ]
         self._scope_stream_revisions[target_key] = (len(source_nodes), len(source_relations))
+        self._branch_revisions[target_key] = source_vector.branch_revision
         self._branch_revision(target_key, advance=True)
         for node in source_nodes:
             self._nodes.setdefault((target_key, node.node_id), []).append(
-                node.model_copy(update={"scope": target}, deep=True)
+                node.model_copy(
+                    update={"scope": target},
+                    deep=True,
+                )
             )
         for relation in source_relations:
             self._relations.setdefault((target_key, relation.relation_id), []).append(
-                relation.model_copy(update={"scope": target}, deep=True)
+                relation.model_copy(
+                    update={"scope": target},
+                    deep=True,
+                )
             )
         marker = self._append_branch_marker(
             target,
             "fork",
             source_scope=source,
             source_revision_vector=request.source_revision_vector,
+            valid_at=request.fork_valid_at,
             recorded_at=request.fork_recorded_at,
             target_branch_id=request.target_branch_id,
         )
+        self._refresh_latest_branch_marker_vector(target_key)
         result = HeavenlyGraphWriteResult(
             transaction_id=f"graph:branch:fork:{request.target_branch_id}",
             idempotency_key=f"graph:branch:fork:{source.story_branch_id}:{request.target_branch_id}",
@@ -139,24 +153,26 @@ class InMemoryHeavenlyGraphAdapter:
         return result
 
     def diff_branches(self, query: GraphBranchDiffQuery) -> GraphBranchDiffResult:
+        node_read_limit = min(1000, query.limits.node_limit + 1)
+        relation_read_limit = min(1000, query.limits.relation_limit + 1)
         left_nodes = {
             node.node_id: node
-            for node in self.query_nodes(HeavenlyNodeQuery(scope=query.left_scope, valid_at=query.reader_context.valid_at, recorded_at=query.reader_context.recorded_at, limit=None))
+            for node in self.query_nodes(HeavenlyNodeQuery(scope=query.left_scope, valid_at=query.reader_context.valid_at, recorded_at=query.reader_context.recorded_at, limit=node_read_limit))
             if self._branch_entity_visible(node, query)
         }
         right_nodes = {
             node.node_id: node
-            for node in self.query_nodes(HeavenlyNodeQuery(scope=query.right_scope, valid_at=query.reader_context.valid_at, recorded_at=query.reader_context.recorded_at, limit=None))
+            for node in self.query_nodes(HeavenlyNodeQuery(scope=query.right_scope, valid_at=query.reader_context.valid_at, recorded_at=query.reader_context.recorded_at, limit=node_read_limit))
             if self._branch_entity_visible(node, query)
         }
         left_relations = {
             relation.relation_id: relation
-            for relation in self.query_relations(HeavenlyRelationQuery(scope=query.left_scope, valid_at=query.reader_context.valid_at, recorded_at=query.reader_context.recorded_at, limit=None))
+            for relation in self.query_relations(HeavenlyRelationQuery(scope=query.left_scope, valid_at=query.reader_context.valid_at, recorded_at=query.reader_context.recorded_at, limit=relation_read_limit))
             if self._branch_entity_visible(relation, query)
         }
         right_relations = {
             relation.relation_id: relation
-            for relation in self.query_relations(HeavenlyRelationQuery(scope=query.right_scope, valid_at=query.reader_context.valid_at, recorded_at=query.reader_context.recorded_at, limit=None))
+            for relation in self.query_relations(HeavenlyRelationQuery(scope=query.right_scope, valid_at=query.reader_context.valid_at, recorded_at=query.reader_context.recorded_at, limit=relation_read_limit))
             if self._branch_entity_visible(relation, query)
         }
         node_ids = sorted(set(left_nodes) | set(right_nodes))
@@ -172,13 +188,22 @@ class InMemoryHeavenlyGraphAdapter:
             marker
             for marker in markers
             if "authority_only" in query.reader_context.allowed_visibility_scopes
+            and marker.valid_at <= query.reader_context.valid_at
             and (
                 query.reader_context.recorded_at is None
                 or marker.recorded_at <= query.reader_context.recorded_at
             )
             and marker.policy_revision == query.reader_context.policy_revision
         ]
-        truncated = len(node_ids) > query.limits.node_limit or len(relation_ids) > query.limits.relation_limit or len(markers) > query.limits.marker_limit
+        truncated = (
+            len(node_ids) > query.limits.node_limit
+            or len(relation_ids) > query.limits.relation_limit
+            or len(markers) > query.limits.marker_limit
+            or len(left_nodes) >= node_read_limit
+            or len(right_nodes) >= node_read_limit
+            or len(left_relations) >= relation_read_limit
+            or len(right_relations) >= relation_read_limit
+        )
         added_nodes = [right_nodes[node_id] for node_id in node_ids if node_id not in left_nodes][: query.limits.node_limit]
         removed_nodes = [left_nodes[node_id] for node_id in node_ids if node_id not in right_nodes][: query.limits.node_limit]
         changed_nodes = [
@@ -207,8 +232,16 @@ class InMemoryHeavenlyGraphAdapter:
             removed_relations=removed_relations,
             changed_relations=changed_relations,
             lifecycle_markers=markers[: query.limits.marker_limit],
-            left_revision_vector=self._scope_revision_vector(query.left_scope),
-            right_revision_vector=self._scope_revision_vector(query.right_scope),
+            left_revision_vector=self._scope_revision_vector(
+                query.left_scope,
+                recorded_at=query.reader_context.recorded_at,
+                valid_at=query.reader_context.valid_at,
+            ),
+            right_revision_vector=self._scope_revision_vector(
+                query.right_scope,
+                recorded_at=query.reader_context.recorded_at,
+                valid_at=query.reader_context.valid_at,
+            ),
             truncated=truncated,
         )
 
@@ -247,12 +280,19 @@ class InMemoryHeavenlyGraphAdapter:
             target = self._latest_entity(branch, request.node_id, self._nodes)
             if target is None:
                 raise ValueError(f"node {request.node_id!r} is missing")
-            lifecycle_recorded_at = current.branch_revision + 1
+            lifecycle_valid_at, lifecycle_recorded_at = (
+                self._lifecycle_coordinates(
+                    branch,
+                    request,
+                    current=current,
+                    default_valid_at=target.validity.valid_from,
+                )
+            )
             marker_node = self._branch_marker_node(
                 branch,
                 request.node_id,
                 current,
-                valid_from=target.validity.valid_from,
+                valid_from=lifecycle_valid_at,
                 recorded_at=lifecycle_recorded_at,
             )
             marker_relation = self._branch_close_relation(
@@ -260,19 +300,42 @@ class InMemoryHeavenlyGraphAdapter:
                 marker_node,
                 request.node_id,
                 current,
-                valid_from=target.validity.valid_from,
+                valid_from=lifecycle_valid_at,
                 recorded_at=lifecycle_recorded_at,
             )
             self._nodes.setdefault((key, marker_node.node_id), []).append(marker_node)
             self._relations.setdefault((key, marker_relation.relation_id), []).append(marker_relation)
+            self._advance_scope_stream_revisions(
+                HeavenlyGraphWriteBatch(
+                    transaction_id=f"graph:branch:close:{branch.story_branch_id}",
+                    idempotency_key=f"graph:branch:close:{branch.story_branch_id}:{lifecycle_recorded_at}",
+                    scope=branch,
+                    nodes=[marker_node],
+                    relations=[marker_relation],
+                )
+            )
             self._append_branch_marker(
                 branch,
                 "close_node",
+                valid_at=lifecycle_valid_at,
                 recorded_at=marker_node.recorded_at,
                 node_id=request.node_id,
             )
         elif request.operation == "discard":
-            self._append_branch_marker(branch, "discard", recorded_at=current.branch_revision + 1)
+            lifecycle_valid_at, lifecycle_recorded_at = (
+                self._lifecycle_coordinates(
+                    branch,
+                    request,
+                    current=current,
+                    default_valid_at=0,
+                )
+            )
+            self._append_branch_marker(
+                branch,
+                "discard",
+                valid_at=lifecycle_valid_at,
+                recorded_at=lifecycle_recorded_at,
+            )
             self._branch_status[key] = "discarded"
         elif request.operation == "admit":
             assert request.target_branch_id is not None
@@ -294,7 +357,19 @@ class InMemoryHeavenlyGraphAdapter:
             target_key = self._scope_key(target)
             if target_key in self._branch_status or self._has_scope_records(target):
                 raise ValueError(f"admit target branch {request.target_branch_id!r} already exists")
-            nodes, relations = self._active_branch_snapshot(branch)
+            lifecycle_valid_at, lifecycle_recorded_at = (
+                self._lifecycle_coordinates(
+                    branch,
+                    request,
+                    current=current,
+                    default_valid_at=fork_marker.valid_at,
+                )
+            )
+            nodes, relations = self._branch_history_at(
+                branch,
+                valid_at=10**18,
+                recorded_at=None,
+            )
             self._branch_status[target_key] = "admitted"
             self._branch_markers[target_key] = [
                 self._copy_branch_marker(marker, target)
@@ -302,18 +377,28 @@ class InMemoryHeavenlyGraphAdapter:
             ]
             self._branch_revisions[target_key] = self._branch_revisions.get(key, 0)
             for node in nodes:
-                self._nodes.setdefault((target_key, node.node_id), []).append(node.model_copy(update={"scope": target}, deep=True))
+                self._nodes.setdefault((target_key, node.node_id), []).append(
+                    node.model_copy(
+                        update={"scope": target},
+                        deep=True,
+                    )
+                )
             for relation in relations:
-                self._relations.setdefault((target_key, relation.relation_id), []).append(relation.model_copy(update={"scope": target}, deep=True))
+                self._relations.setdefault((target_key, relation.relation_id), []).append(
+                    relation.model_copy(
+                        update={"scope": target},
+                        deep=True,
+                    )
+                )
             # The admitted target starts with the copied entity streams. Set
             # these counters before constructing its audit marker so the
             # marker's revision vector describes the actual admitted snapshot.
             self._scope_stream_revisions[target_key] = (len(nodes), len(relations))
-            admission_recorded_at = current.branch_revision + 1
             self._append_branch_marker(
                 branch,
                 "admit",
-                recorded_at=admission_recorded_at,
+                valid_at=lifecycle_valid_at,
+                recorded_at=lifecycle_recorded_at,
                 target_branch_id=request.target_branch_id,
                 source_scope=fork_marker.source_scope,
                 source_revision_vector=fork_marker.source_revision_vector,
@@ -321,16 +406,21 @@ class InMemoryHeavenlyGraphAdapter:
             self._append_branch_marker(
                 target,
                 "admit",
-                recorded_at=admission_recorded_at,
+                valid_at=lifecycle_valid_at,
+                recorded_at=lifecycle_recorded_at,
                 target_branch_id=request.target_branch_id,
                 source_scope=branch,
                 source_revision_vector=current,
             )
             self._branch_status[key] = "admitted"
             self._branch_revision(target_key, advance=True)
+            self._refresh_latest_branch_marker_vector(target_key)
         else:  # fork is represented by fork_branch and cannot be repeated here.
             raise ValueError("fork must be requested through fork_branch")
         self._branch_revision(key, advance=True)
+        self._refresh_latest_branch_marker_vector(key)
+        if request.operation == "admit":
+            self._refresh_latest_branch_marker_vector(target_key)
         marker = self._branch_markers[key][-1] if self._branch_markers.get(key) else None
         return HeavenlyGraphWriteResult(
             transaction_id=f"graph:branch:{request.operation}:{branch.story_branch_id}",
@@ -688,7 +778,13 @@ class InMemoryHeavenlyGraphAdapter:
         node_id_filter = set(query.node_ids)
         node_type_filter = set(query.node_types)
         selected: list[HeavenlyGraphNode] = []
-        if self._is_branch_discarded(query.scope, query.recorded_at):
+        if not self._branch_available(
+            query.scope, valid_at=query.valid_at, recorded_at=query.recorded_at
+        ):
+            return []
+        if self._is_branch_discarded(
+            query.scope, query.recorded_at, query.valid_at
+        ):
             return []
         for (stored_scope, node_id), versions in self._nodes.items():
             if stored_scope != scope_key:
@@ -705,13 +801,41 @@ class InMemoryHeavenlyGraphAdapter:
             if node.node_type == "branch_marker":
                 continue
             if self._is_node_closed(
-                query.scope, node.node_id, recorded_at=query.recorded_at
+                query.scope,
+                node.node_id,
+                valid_at=query.valid_at,
+                recorded_at=query.recorded_at,
             ):
                 continue
             if node_type_filter and node.node_type not in node_type_filter:
                 continue
             selected.append(node.model_copy(deep=True))
         ordered = sorted(selected, key=lambda node: node.node_id)
+        return ordered if query.limit is None else ordered[: query.limit]
+
+    def query_node_history(
+        self,
+        query: HeavenlyNodeQuery,
+    ) -> list[HeavenlyGraphNode]:
+        """Return bounded admitted node revisions for historical semantic queries."""
+        scope_key = self._scope_key(query.scope)
+        node_id_filter = set(query.node_ids)
+        node_type_filter = set(query.node_types)
+        selected: list[HeavenlyGraphNode] = []
+        for (stored_scope, node_id), versions in self._nodes.items():
+            if stored_scope != scope_key or (node_id_filter and node_id not in node_id_filter):
+                continue
+            for node in versions:
+                if node.node_type == "branch_marker":
+                    continue
+                if query.recorded_at is not None and node.recorded_at > query.recorded_at:
+                    continue
+                if not node.validity.contains(query.valid_at):
+                    continue
+                if node_type_filter and node.node_type not in node_type_filter:
+                    continue
+                selected.append(node.model_copy(deep=True))
+        ordered = sorted(selected, key=lambda node: (node.node_id, node.revision))
         return ordered if query.limit is None else ordered[: query.limit]
 
     def query_relations(
@@ -724,7 +848,13 @@ class InMemoryHeavenlyGraphAdapter:
         source_filter = set(query.source_node_ids)
         target_filter = set(query.target_node_ids)
         selected: list[HeavenlyGraphRelation] = []
-        if self._is_branch_discarded(query.scope, query.recorded_at):
+        if not self._branch_available(
+            query.scope, valid_at=query.valid_at, recorded_at=query.recorded_at
+        ):
+            return []
+        if self._is_branch_discarded(
+            query.scope, query.recorded_at, query.valid_at
+        ):
             return []
         for (stored_scope, relation_id), versions in self._relations.items():
             if stored_scope != scope_key:
@@ -1225,6 +1355,10 @@ class InMemoryHeavenlyGraphAdapter:
                     is not None
                 )
                 if not exists:
+                    if relation.relation_type in DEFAULT_RELATION_TYPE_REGISTRY.CROSS_NAMESPACE_DECLARED:
+                        raise HeavenlyGraphReferentialIntegrityError(
+                            f"cross-namespace endpoints are unsupported by the single-scope v1 relation model: {relation.relation_type}"
+                        )
                     raise HeavenlyGraphReferentialIntegrityError(
                         f"relation endpoint {endpoint!r} is missing in batch scope "
                         "at the relation valid/recorded time"
@@ -1319,21 +1453,30 @@ class InMemoryHeavenlyGraphAdapter:
         self,
         scope: HeavenlyGraphScope,
         recorded_at: int | None = None,
+        valid_at: int | None = None,
     ) -> GraphRevisionVector:
         scope_key = self._scope_key(scope)
+        if valid_at is not None and not self._branch_available(
+            scope,
+            valid_at=valid_at,
+            recorded_at=recorded_at,
+        ):
+            return GraphRevisionVector()
         nodes = [
             item
             for (key, _), values in self._nodes.items()
             if key == scope_key
             for item in values
-            if recorded_at is None or item.recorded_at <= recorded_at
+            if (recorded_at is None or item.recorded_at <= recorded_at)
+            and (valid_at is None or item.validity.valid_from <= valid_at)
         ]
         relations = [
             item
             for (key, _), values in self._relations.items()
             if key == scope_key
             for item in values
-            if recorded_at is None or item.recorded_at <= recorded_at
+            if (recorded_at is None or item.recorded_at <= recorded_at)
+            and (valid_at is None or item.validity.valid_from <= valid_at)
         ]
         entities = [*nodes, *relations]
         vectors = [item.semantic_metadata.source_revision_vector for item in entities]
@@ -1350,6 +1493,7 @@ class InMemoryHeavenlyGraphAdapter:
                     marker.revision_vector.branch_revision
                     for marker in self._branch_markers.get(scope_key, [])
                     if marker.recorded_at <= recorded_at
+                    and (valid_at is None or marker.valid_at <= valid_at)
                 ),
                 default=0,
             )
@@ -1451,11 +1595,35 @@ class InMemoryHeavenlyGraphAdapter:
             self._branch_revisions[key] = current
         return current
 
+    def _lifecycle_coordinates(
+        self,
+        scope: HeavenlyGraphScope,
+        request: GraphBranchLifecycleRequest,
+        *,
+        current: GraphRevisionVector,
+        default_valid_at: int,
+    ) -> tuple[int, int]:
+        markers = self._branch_markers.get(self._scope_key(scope), [])
+        minimum_valid_at = max(
+            [default_valid_at, *(marker.valid_at for marker in markers)]
+        )
+        minimum_recorded_at = max([0, *(marker.recorded_at for marker in markers)])
+        valid_at = request.valid_at if request.valid_at is not None else minimum_valid_at
+        recorded_at = (
+            request.recorded_at
+            if request.recorded_at is not None
+            else max(current.branch_revision + 1, minimum_recorded_at + 1)
+        )
+        if valid_at < minimum_valid_at or recorded_at < minimum_recorded_at:
+            raise ValueError("branch lifecycle coordinates cannot precede existing markers")
+        return valid_at, recorded_at
+
     def _append_branch_marker(
         self,
         scope: HeavenlyGraphScope,
         operation: str,
         *,
+        valid_at: int,
         recorded_at: int,
         source_scope: HeavenlyGraphScope | None = None,
         source_revision_vector: GraphRevisionVector | None = None,
@@ -1467,6 +1635,7 @@ class InMemoryHeavenlyGraphAdapter:
             marker_id=f"branch-marker:{scope.story_branch_id}:{len(self._branch_markers.get(key, [])) + 1}",
             branch_scope=scope,
             operation=operation,  # type: ignore[arg-type]
+            valid_at=valid_at,
             recorded_at=recorded_at,
             revision_vector=self._scope_revision_vector(scope),
             policy_revision="policy:v1",
@@ -1478,26 +1647,77 @@ class InMemoryHeavenlyGraphAdapter:
         self._branch_markers.setdefault(key, []).append(marker)
         return marker
 
+    def _refresh_latest_branch_marker_vector(self, key: ScopeKey) -> None:
+        markers = self._branch_markers.get(key)
+        if not markers:
+            return
+        marker = markers[-1]
+        vector = self._scope_revision_vector(
+            marker.branch_scope,
+            recorded_at=marker.recorded_at,
+            valid_at=marker.valid_at,
+        )
+        vector = vector.model_copy(
+            update={
+                "branch_revision": max(
+                    vector.branch_revision,
+                    self._branch_revisions.get(key, 0),
+                )
+            }
+        )
+        markers[-1] = marker.model_copy(update={"revision_vector": vector}, deep=True)
+
     def _is_node_closed(
         self,
         scope: HeavenlyGraphScope,
         node_id: str,
         *,
+        valid_at: int | None = None,
         recorded_at: int | None = None,
     ) -> bool:
         return any(
             marker.operation == "close_node" and marker.node_id == node_id
+            and (valid_at is None or marker.valid_at <= valid_at)
             and (recorded_at is None or marker.recorded_at <= recorded_at)
             for marker in self._branch_markers.get(self._scope_key(scope), [])
         )
 
+    def _branch_available(
+        self,
+        scope: HeavenlyGraphScope,
+        *,
+        valid_at: int,
+        recorded_at: int | None,
+    ) -> bool:
+        markers = self._branch_markers.get(self._scope_key(scope), [])
+        admission_markers = [
+            marker
+            for marker in markers
+            if marker.operation == "admit"
+            and marker.target_branch_id == scope.story_branch_id
+        ]
+        creation_markers = admission_markers or [
+            marker for marker in markers if marker.operation == "fork"
+        ]
+        if not creation_markers:
+            return True
+        return any(
+            marker.valid_at <= valid_at
+            and (recorded_at is None or marker.recorded_at <= recorded_at)
+            for marker in creation_markers
+        )
+
     def _is_branch_discarded(
-        self, scope: HeavenlyGraphScope, recorded_at: int | None = None
+        self,
+        scope: HeavenlyGraphScope,
+        recorded_at: int | None = None,
+        valid_at: int | None = None,
     ) -> bool:
         if self._branch_status.get(self._scope_key(scope)) != "discarded":
             return False
         return any(
             marker.operation == "discard"
+            and (valid_at is None or marker.valid_at <= valid_at)
             and (recorded_at is None or marker.recorded_at <= recorded_at)
             for marker in self._branch_markers.get(self._scope_key(scope), [])
         )
@@ -1518,6 +1738,43 @@ class InMemoryHeavenlyGraphAdapter:
     ) -> tuple[list[HeavenlyGraphNode], list[HeavenlyGraphRelation]]:
         return self._branch_snapshot_at(scope, valid_at=10**18, recorded_at=None)
 
+    def _branch_history_at(
+        self,
+        scope: HeavenlyGraphScope,
+        *,
+        valid_at: int,
+        recorded_at: int | None,
+    ) -> tuple[list[HeavenlyGraphNode], list[HeavenlyGraphRelation]]:
+        """Copy every historical revision available at one fork/admit coordinate."""
+        key = self._scope_key(scope)
+        nodes = sorted(
+            (
+                node.model_copy(deep=True)
+                for (stored_scope, node_id), versions in self._nodes.items()
+                if stored_scope == key and not node_id.startswith("branch:closed:")
+                for node in versions
+                if (recorded_at is None or node.recorded_at <= recorded_at)
+                and node.validity.valid_from <= valid_at
+            ),
+            key=lambda node: (node.node_id, node.revision),
+        )
+        visible_node_ids = {node.node_id for node in nodes}
+        relations = sorted(
+            (
+                relation.model_copy(deep=True)
+                for (stored_scope, relation_id), versions in self._relations.items()
+                if stored_scope == key
+                for relation in versions
+                if relation.relation_type != "closes_branch_node"
+                and (recorded_at is None or relation.recorded_at <= recorded_at)
+                and relation.validity.valid_from <= valid_at
+                and relation.source_node_id in visible_node_ids
+                and relation.target_node_id in visible_node_ids
+            ),
+            key=lambda relation: (relation.relation_id, relation.revision),
+        )
+        return nodes, relations
+
     def _branch_snapshot_at(
         self,
         scope: HeavenlyGraphScope,
@@ -1527,7 +1784,7 @@ class InMemoryHeavenlyGraphAdapter:
     ) -> tuple[list[HeavenlyGraphNode], list[HeavenlyGraphRelation]]:
         key = self._scope_key(scope)
         nodes: list[HeavenlyGraphNode] = []
-        if self._is_branch_discarded(scope, recorded_at):
+        if self._is_branch_discarded(scope, recorded_at, valid_at):
             return [], []
         for (stored_scope, node_id), versions in self._nodes.items():
             if stored_scope != key or node_id.startswith("branch:closed:"):
@@ -1538,7 +1795,10 @@ class InMemoryHeavenlyGraphAdapter:
             if not isinstance(effective, HeavenlyGraphNode):
                 continue
             if effective.node_type == "branch_marker" or self._is_node_closed(
-                scope, node_id, recorded_at=recorded_at
+                scope,
+                node_id,
+                valid_at=valid_at,
+                recorded_at=recorded_at,
             ):
                 continue
             nodes.append(effective.model_copy(deep=True))
@@ -1581,6 +1841,7 @@ class InMemoryHeavenlyGraphAdapter:
         scope = payload.get("scope")
         if isinstance(scope, dict):
             scope["story_branch_id"] = "__branch__"
+        payload.pop("recorded_at", None)
         return payload
 
     def _branch_marker_node(

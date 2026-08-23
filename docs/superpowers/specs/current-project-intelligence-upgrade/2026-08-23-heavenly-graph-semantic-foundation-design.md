@@ -203,6 +203,7 @@ source_refs: []
 - `forked_from`
 
 关系类型必须声明是否允许跨 namespace、是否允许 proposal、是否允许 branch-only，以及是否需要 source vector。
+本版 `HeavenlyGraphScope` 将一条 relation 与单一 batch scope 绑定，尚未携带独立的 source/target endpoint scopes；因此声明为跨 namespace 的关系类型（例如 `observed_as`、`derived_from`、`requires_capability`）在 v1 adapter 中只保留词汇登记，跨 namespace admission 明确 fail closed，并返回 `cross-namespace relation endpoints are unsupported by the single-scope v1 relation model`。待 endpoint scope contract 独立落地后再开放这些关系类型，不在本阶段伪造跨 scope 写入。
 
 ## 5. 查询契约
 

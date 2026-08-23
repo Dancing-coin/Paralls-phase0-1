@@ -46,10 +46,15 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
 
     def write_batch(self, batch: HeavenlyGraphWriteBatch) -> HeavenlyGraphWriteResult:
         with self._lock:
-            result = super().write_batch(batch)
-            if result.applied:
-                self._persist()
-            return result
+            snapshot = self._snapshot_mutable_state()
+            try:
+                result = super().write_batch(batch)
+                if result.applied:
+                    self._persist()
+                return result
+            except Exception:
+                self._restore_mutable_state(snapshot)
+                raise
 
     def fork_branch(self, request: GraphBranchForkRequest) -> HeavenlyGraphWriteResult:
         with self._lock:
@@ -91,13 +96,22 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
 
     def create_checkpoint(self, **kwargs: object):
         with self._lock:
-            checkpoint = super().create_checkpoint(**kwargs)
-            self._persist()
-            return checkpoint
+            snapshot = self._snapshot_mutable_state()
+            try:
+                checkpoint = super().create_checkpoint(**kwargs)
+                self._persist()
+                return checkpoint
+            except Exception:
+                self._restore_mutable_state(snapshot)
+                raise
 
     def query_nodes(self, query: HeavenlyNodeQuery) -> list[HeavenlyGraphNode]:
         with self._lock:
             return super().query_nodes(query)
+
+    def query_node_history(self, query: HeavenlyNodeQuery) -> list[HeavenlyGraphNode]:
+        with self._lock:
+            return super().query_node_history(query)
 
     def query_relations(
         self, query: HeavenlyRelationQuery

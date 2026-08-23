@@ -63,6 +63,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "gameplay-foundation-contract",
         "siming-heavenly-runtime",
         "gameplay-event-replay",
+        "heavenly-graph-semantic-foundation",
         "gameplay-foundation-event-spine",
         "gameplay-state-groups",
         "embodied-interaction-session",

@@ -580,7 +580,7 @@ def test_fork_rejects_terminal_source_branch(graph: object) -> None:
                 source_scope=source,
                 target_branch_id="branch:resurrected",
                 fork_valid_at=10,
-                fork_recorded_at=10,
+                fork_recorded_at=11,
                 source_revision_vector=graph.scope_revision_vector(source),
             )
         )
@@ -612,7 +612,7 @@ def test_fork_propagates_permanent_close_state(graph: object) -> None:
             source_scope=parent,
             target_branch_id="branch:closed-child",
             fork_valid_at=10,
-            fork_recorded_at=10,
+            fork_recorded_at=11,
             source_revision_vector=graph.scope_revision_vector(parent),
         )
     )
@@ -651,10 +651,10 @@ def test_historical_read_before_close_keeps_original_node_visible(graph: object)
         )
     )
     assert graph.query_nodes(
-        HeavenlyNodeQuery(scope=branch, valid_at=10, recorded_at=1, limit=None)
+        HeavenlyNodeQuery(scope=branch, valid_at=10, recorded_at=10, limit=None)
     )
     assert graph.query_nodes(
-        HeavenlyNodeQuery(scope=branch, valid_at=10, recorded_at=2, limit=None)
+        HeavenlyNodeQuery(scope=branch, valid_at=10, recorded_at=11, limit=None)
     ) == []
 
 
@@ -732,10 +732,10 @@ def test_historical_read_before_discard_keeps_branch_snapshot_visible(graph: obj
         )
     )
     assert graph.query_nodes(
-        HeavenlyNodeQuery(scope=branch, valid_at=10, recorded_at=1, limit=None)
+        HeavenlyNodeQuery(scope=branch, valid_at=10, recorded_at=10, limit=None)
     )
     assert graph.query_nodes(
-        HeavenlyNodeQuery(scope=branch, valid_at=10, recorded_at=2, limit=None)
+        HeavenlyNodeQuery(scope=branch, valid_at=10, recorded_at=11, limit=None)
     ) == []
 
 

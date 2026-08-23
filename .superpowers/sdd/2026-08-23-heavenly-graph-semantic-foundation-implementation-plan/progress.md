@@ -57,6 +57,10 @@ Task 5: final audit fix commits 15cd129/88ed64c; scoped re-review approved.
 Task 5: complete (commits 56ed04b..88ed64c, review clean).
 Task 6: review rejected; replay must retain non-effective revision-chain predecessors and reject retroactive tail timestamps before equivalence can be claimed.
 Task 6: fix round 1 preserves full frontier but lacks SQLite restart replay parity; add persisted frontier/recovery regression before completion.
+Task 6: fix commits fc05521/a5447f8/33db117; scoped re-review approved.
+Task 6: complete (commits 68f4e64..33db117, review clean).
+Task 7: review rejected; add temporal endpoint audit, typed correction source preservation checks, and policy-aware redaction.
+Task 7: fix round 1 rejected; guard malformed predecessor provenance and verify correction primary typed source_ref retention.
 Task 6: fix round 1 adds historical replay frontiers, strict checkpoint tail recorded-time admission, and dual-adapter regressions; focused graph suites green; awaiting scoped re-review.
 Task 6: fix round 2 recovers legacy SQLite checkpoints with missing replay frontiers from durable recorded-time source history; file-backed future/retracted restart parity and immutability regressions pass.
 Task 5: final audit fix sets copied target stream counters before target admission marker construction and pins its source/vector to the actual admitted source. Dual-adapter regression and affected graph suite pass; awaiting scoped re-review.
@@ -65,3 +69,8 @@ Task 5 fix round still needs coordinate fidelity: fork must honor `fork_valid_at
 Task 5 fix round 2: lifecycle markers now obey reader `recorded_at`; all explicit semantic `branch:` scopes require a registered fork, while the pre-semantic `policy:legacy` contract path remains compatible. Focused and affected graph suites green; awaiting scoped re-review.
 Task 3: fix round 4 completed; deterministic DFS now returns a complete path under the bounded work budget, with focused and affected graph suites green. Awaiting scoped re-review.
 Task 4: fix round 1 committed as 4d06114/017615f; scope stream counters, strict correction admission, typed provenance lineage, SQLite rollback atomicity, focused and affected graph suites green. Awaiting scoped re-review.
+Task 7: scoped re-review of e000689 found typed correction provenance source_ref was still not compared with its predecessor. Fix round 2/5 is active; add a dual-adapter regression and compare the primary typed source_ref as well as the retained target attribute.
+Task 7: fix round 2/5 complete (typed primary correction provenance addressed; scoped re-review approved; commit 14a1fd9).
+Task 8: initial review rejected; fix round 1/5 must exercise all required proofs against SQLite, include the full Task 7 graph contract suite, make report evidence deterministic after temporary DB cleanup, and make helper evaluation fail closed on focused pytest status.
+Task 8: fix round 1/5 complete (all proofs dual-adapter, six-suite gate, stable evidence, fail-closed helper; scoped re-review approved; commit 6596da2).
+Final review: request changes; fix wave 1 must address five P1 graph defects: SQLite write/checkpoint rollback atomicity, canonical-owner/provenance admission, relation endpoint visibility closure, branch lifecycle recorded-time/vector fidelity, and full revision-chain-preserving fork/admit. Also address bounded branch diff and cross-namespace relation admission if possible; residual privacy vector leakage requires explicit triage.

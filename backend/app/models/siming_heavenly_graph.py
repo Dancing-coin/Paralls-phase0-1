@@ -135,6 +135,8 @@ class GraphBranchLifecycleRequest(BaseModel):
     expected_revision_vector: GraphRevisionVector
     node_id: str | None = Field(default=None, min_length=1)
     target_branch_id: str | None = Field(default=None, min_length=1)
+    valid_at: int | None = Field(default=None, ge=0)
+    recorded_at: int | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def validate_operation_fields(self) -> "GraphBranchLifecycleRequest":
@@ -157,6 +159,7 @@ class GraphBranchLifecycleMarker(BaseModel):
     marker_id: str = Field(min_length=1)
     branch_scope: HeavenlyGraphScope
     operation: GraphBranchLifecycleOperation
+    valid_at: int = Field(default=0, ge=0)
     recorded_at: int = Field(ge=0)
     revision_vector: GraphRevisionVector
     policy_revision: str = Field(default="policy:v1", min_length=1)

@@ -120,7 +120,36 @@ class HeavenlyNodeTypeRegistry:
             if legacy_rule is None:
                 raise
             self._validate_legacy_node(node, legacy_rule)
+        self._validate_provenance(node, allow_legacy=allow_legacy)
         return node
+
+    @staticmethod
+    def _validate_provenance(
+        node: HeavenlyGraphNode, *, allow_legacy: bool
+    ) -> None:
+        if allow_legacy and node.semantic_metadata.policy_revision == "policy:legacy":
+            return
+        metadata = node.semantic_metadata
+        if node.provenance is None:
+            return
+        source_kind = node.provenance.source_kind
+        if (
+            node.node_type == "world_fact"
+            and metadata.record_kind == "fact"
+            and metadata.derivation_kind == "authority"
+            and source_kind not in {"authority_event", "world_result", "esm_result"}
+        ):
+            raise ValueError(
+                "world_fact authority requires canonical owner provenance"
+            )
+        if metadata.derivation_kind == "authority" and source_kind == "siming_projection":
+            raise ValueError("authority records require canonical owner provenance")
+        if (
+            metadata.derivation_kind == "authority"
+            and source_kind == "character_memory"
+            and node.scope.graph_namespace != _ACTOR
+        ):
+            raise ValueError("character memory authority is limited to its canonical owner namespace")
 
     @classmethod
     def _legacy_rule(cls, node_type: str) -> _NodeRule | None:
@@ -149,26 +178,36 @@ class HeavenlyNodeTypeRegistry:
 class HeavenlyRelationTypeRegistry:
     """Deterministic registry for relation vocabulary and namespace boundaries."""
 
+    CROSS_NAMESPACE_DECLARED = frozenset(
+        {
+            "observed_as",
+            "believed_as",
+            "knows_about",
+            "derived_from",
+            "part_of_turn",
+            "requires_capability",
+        }
+    )
+
     _SAME_SIMING = ((_SIMING, _SIMING),)
     _SAME_ANY = ((_SIMING, _SIMING), (_ACTOR, _ACTOR), (_RESOURCE, _RESOURCE))
-    _CROSS_ACTOR_SIMING = ((_ACTOR, _SIMING), (_SIMING, _ACTOR), (_SIMING, _SIMING))
-    _CROSS_SIMING_RESOURCE = ((_SIMING, _RESOURCE), (_RESOURCE, _SIMING), (_SIMING, _SIMING))
+    _ACTOR_LOCAL = ((_ACTOR, _ACTOR), (_SIMING, _SIMING))
     DEFAULT_RULES: dict[str, _RelationRule] = {
         "caused_by": _RelationRule(_SAME_SIMING, ("fact", "projection"), (_PUBLIC, _INTERNAL, _AUTHORITY, _BRANCH)),
         "enabled_by": _RelationRule(_SAME_SIMING, ("fact", "projection"), (_PUBLIC, _INTERNAL, _AUTHORITY, _BRANCH)),
         "prevented_by": _RelationRule(_SAME_SIMING, ("fact", "projection"), (_PUBLIC, _INTERNAL, _AUTHORITY, _BRANCH)),
-        "observed_as": _RelationRule(_CROSS_ACTOR_SIMING, ("fact", "projection"), (_PRIVATE, _INTERNAL, _AUTHORITY)),
-        "believed_as": _RelationRule(_CROSS_ACTOR_SIMING, ("projection", "proposal"), (_PRIVATE, _INTERNAL)),
-        "knows_about": _RelationRule(_CROSS_ACTOR_SIMING, ("projection",), (_PRIVATE, _INTERNAL)),
+        "observed_as": _RelationRule(_ACTOR_LOCAL, ("fact", "projection"), (_PRIVATE, _INTERNAL, _AUTHORITY)),
+        "believed_as": _RelationRule(_ACTOR_LOCAL, ("projection", "proposal"), (_PRIVATE, _INTERNAL)),
+        "knows_about": _RelationRule(_ACTOR_LOCAL, ("projection",), (_PRIVATE, _INTERNAL)),
         "contradicts": _RelationRule(_SAME_ANY, ("fact", "projection", "proposal"), (_PUBLIC, _PRIVATE, _INTERNAL, _AUTHORITY, _BRANCH)),
         "supersedes": _RelationRule(_SAME_ANY, ("fact", "projection"), (_PUBLIC, _PRIVATE, _INTERNAL, _AUTHORITY, _BRANCH)),
         "retracts": _RelationRule(_SAME_ANY, ("fact", "projection"), (_PUBLIC, _PRIVATE, _INTERNAL, _AUTHORITY, _BRANCH)),
-        "derived_from": _RelationRule(_SAME_ANY + _CROSS_ACTOR_SIMING + _CROSS_SIMING_RESOURCE, ("projection", "proposal"), (_PRIVATE, _INTERNAL, _AUTHORITY, _BRANCH)),
-        "part_of_turn": _RelationRule(_CROSS_ACTOR_SIMING, ("projection", "proposal"), (_PRIVATE, _INTERNAL, _BRANCH)),
+        "derived_from": _RelationRule(_SAME_ANY, ("projection", "proposal"), (_PRIVATE, _INTERNAL, _AUTHORITY, _BRANCH)),
+        "part_of_turn": _RelationRule(_ACTOR_LOCAL, ("projection", "proposal"), (_PRIVATE, _INTERNAL, _BRANCH)),
         "opens_obligation": _RelationRule(_SAME_SIMING, ("fact", "projection", "proposal"), (_INTERNAL, _BRANCH)),
         "transforms_obligation": _RelationRule(_SAME_SIMING, ("fact", "projection", "proposal"), (_INTERNAL, _BRANCH)),
         "targets_attractor": _RelationRule(_SAME_SIMING, ("projection", "proposal"), (_INTERNAL, _BRANCH)),
-        "requires_capability": _RelationRule(_CROSS_SIMING_RESOURCE, ("fact", "projection", "proposal"), (_PUBLIC, _INTERNAL, _AUTHORITY, _BRANCH)),
+        "requires_capability": _RelationRule(_SAME_SIMING, ("fact", "projection", "proposal"), (_PUBLIC, _INTERNAL, _AUTHORITY, _BRANCH)),
         "realized_by": _RelationRule(_SAME_SIMING, ("fact", "projection"), (_INTERNAL, _AUTHORITY, _BRANCH)),
         "closes_branch_node": _RelationRule(_SAME_SIMING, ("fact", "projection"), (_AUTHORITY, _BRANCH)),
         "forked_from": _RelationRule(_SAME_SIMING, ("fact", "projection"), (_AUTHORITY, _BRANCH)),
@@ -205,6 +244,10 @@ class HeavenlyRelationTypeRegistry:
         target_owner_actor_id: str | None = None,
     ) -> _RelationRule:
         rule = self.require(relation_type)
+        if source_namespace != target_namespace:
+            raise ValueError(
+                "cross-namespace relation endpoints are unsupported by the single-scope v1 relation model"
+            )
         if (source_namespace, target_namespace) not in rule.allowed_namespace_pairs:
             raise ValueError(f"relation namespace pair is not allowed: {relation_type}")
         if record_kind not in rule.allowed_record_kinds:
@@ -241,7 +284,27 @@ class HeavenlyRelationTypeRegistry:
             if legacy_rule is None:
                 raise
             self._validate_legacy_relation(relation, source, target, legacy_rule)
+        self._validate_provenance(relation, allow_legacy=allow_legacy)
         return relation
+
+    @staticmethod
+    def _validate_provenance(
+        relation: HeavenlyGraphRelation, *, allow_legacy: bool
+    ) -> None:
+        if allow_legacy and relation.semantic_metadata.policy_revision == "policy:legacy":
+            return
+        metadata = relation.semantic_metadata
+        if relation.provenance is None:
+            return
+        source_kind = relation.provenance.source_kind
+        if metadata.derivation_kind == "authority" and source_kind == "siming_projection":
+            raise ValueError("authority records require canonical owner provenance")
+        if (
+            metadata.derivation_kind == "authority"
+            and source_kind == "character_memory"
+            and relation.scope.graph_namespace != _ACTOR
+        ):
+            raise ValueError("character memory authority is limited to its canonical owner namespace")
 
     @classmethod
     def _legacy_rule(cls, relation_type: str) -> _RelationRule | None:
