@@ -123,7 +123,7 @@ def test_semantic_node_lookup_returns_structured_deterministic_metadata(graph: o
     assert result.selected_relation_refs == []
     assert result.policy_revision == "policy:v1"
     assert result.scope_digest
-    assert result.revision_vector.node_revision == 1
+    assert result.revision_vector.node_revision == 2
     assert result.truncated is False
     assert result.incomplete_reason is None
 

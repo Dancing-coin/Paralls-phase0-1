@@ -372,6 +372,7 @@ def _correction_request(
         ),
         semantic_metadata=_metadata(),
         expected_revision_vector=expected_revision_vector,
+        scope=_scope(),
     )
 
 
@@ -458,6 +459,7 @@ def test_correction_keeps_concurrent_conflict_claims(graph_adapter: object) -> N
             correction_kind="corrected",
             source_refs=["authority:event:claim-a-correction"],
             semantic_metadata=_metadata(),
+            scope=_scope(),
         )
     )
     assert graph_adapter.get_node(
@@ -584,3 +586,92 @@ def test_sqlite_correction_history_and_idempotency_survive_restart(tmp_path: Pat
     assert replay.replayed is True and replay.applied is False
     assert current is not None and current.revision == 2
     assert historical is not None and historical.revision == 1
+
+
+def test_scope_stream_counter_rejects_vector_captured_before_independent_write(
+    graph_adapter: object,
+) -> None:
+    target = _correction_target()
+    graph_adapter.write_batch(_write_batch(target))
+    captured = graph_adapter.scope_revision_vector(target.scope)
+    independent = target.model_copy(update={"node_id": "fact:independent"}, deep=True)
+    graph_adapter.write_batch(
+        _write_batch(independent).model_copy(update={"idempotency_key": "independent"})
+    )
+
+    request = _correction_request(expected_revision_vector=captured)
+    with pytest.raises(HeavenlyGraphRevisionConflict, match="stale"):
+        graph_adapter.correct(request)
+
+    assert graph_adapter.scope_revision_vector(target.scope).node_revision == 2
+    current = graph_adapter.get_node(
+        node_id=target.node_id, scope=target.scope, valid_at=10
+    )
+    assert current is not None and current.revision == 1
+
+
+@pytest.mark.parametrize(
+    ("update", "error"),
+    [
+        ({"scope": _scope("siming_heavenly") .model_copy(update={"story_branch_id": "branch:other"})}, "scope"),
+        ({"semantic_metadata": _metadata(scope_digest="scope:forged")}, "scope digest"),
+        ({"semantic_metadata": _metadata(source_revision_vector=GraphRevisionVector(source_revision=99))}, "source revision"),
+        ({"semantic_metadata": _metadata(source_event_refs=["authority:event:forged"])}, "source linkage"),
+    ],
+)
+def test_correction_rejects_forged_target_scope_and_source_metadata(
+    graph_adapter: object,
+    update: dict[str, object],
+    error: str,
+) -> None:
+    target = _correction_target()
+    graph_adapter.write_batch(_write_batch(target))
+    request = _correction_request().model_copy(update=update, deep=True)
+    with pytest.raises(ValueError, match=error):
+        graph_adapter.correct(request)
+    current = graph_adapter.get_node(
+        node_id=target.node_id, scope=target.scope, valid_at=10
+    )
+    assert current is not None and current.revision == 1
+
+
+def test_correction_provenance_preserves_typed_original_source_and_lineage(
+    graph_adapter: object,
+) -> None:
+    target = _correction_target()
+    graph_adapter.write_batch(_write_batch(target))
+    graph_adapter.correct(_correction_request())
+    current = graph_adapter.get_node(
+        node_id=target.node_id, scope=target.scope, valid_at=10, recorded_at=11
+    )
+    assert current is not None
+    assert current.provenance.source_ref == target.provenance.source_ref
+    assert target.provenance.source_ref in current.provenance.source_ref_lineage
+    assert "authority:event:correction" in current.provenance.source_ref_lineage
+
+
+def test_sqlite_correction_persistence_failure_restores_memory_and_restart_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database = tmp_path / "correction-atomic.db"
+    adapter = SQLiteHeavenlyGraphAdapter(database)
+    target = _correction_target()
+    adapter.write_batch(_write_batch(target))
+
+    def fail_persist() -> None:
+        raise OSError("injected persistence failure")
+
+    monkeypatch.setattr(adapter, "_persist", fail_persist)
+    with pytest.raises(OSError, match="injected"):
+        adapter.correct(_correction_request())
+    current = adapter.get_node(node_id=target.node_id, scope=target.scope, valid_at=10)
+    assert current is not None and current.revision == 1
+    assert adapter.scope_revision_vector(target.scope).node_revision == 1
+
+    monkeypatch.setattr(adapter, "_persist", type(adapter)._persist.__get__(adapter))
+    adapter.close()
+    reopened = SQLiteHeavenlyGraphAdapter(database)
+    current = reopened.get_node(node_id=target.node_id, scope=target.scope, valid_at=10)
+    assert current is not None and current.revision == 1
+    assert reopened.scope_revision_vector(target.scope).node_revision == 1
+    reopened.close()

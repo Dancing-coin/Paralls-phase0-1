@@ -277,7 +277,7 @@ def validate_correction_request(
     """Validate the semantic invariants shared by both correction adapters."""
     if not request.source_refs:
         raise ValueError("correction requires source linkage")
-    if request.scope is not None and request.scope != target.scope:
+    if request.scope != target.scope:
         raise ValueError("correction scope must match target scope")
     metadata = request.semantic_metadata
     target_metadata = target.semantic_metadata
@@ -287,6 +287,21 @@ def validate_correction_request(
         raise ValueError("correction visibility scope must match target")
     if metadata.record_kind != target_metadata.record_kind:
         raise ValueError("correction record kind must match target")
+    if metadata.scope_digest != target_metadata.scope_digest:
+        raise ValueError("correction scope digest must match target")
+    target_vector = target_metadata.source_revision_vector
+    request_vector = metadata.source_revision_vector
+    if request_vector != target_vector:
+        raise ValueError("correction source revision vector must match target")
+    if metadata.source_event_refs != target_metadata.source_event_refs:
+        raise ValueError("correction source linkage must match target")
+    target_source_refs = {
+        target.provenance.source_ref,
+        *target.provenance.source_ref_lineage,
+        *target.provenance.evidence_refs,
+    }
+    if not target_source_refs.intersection(target_metadata.source_event_refs):
+        raise ValueError("correction source linkage is absent from target")
 
 
 __all__ = [

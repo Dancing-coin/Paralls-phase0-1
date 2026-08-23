@@ -45,10 +45,15 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
 
     def correct(self, request: GraphCorrectionRequest) -> HeavenlyGraphWriteResult:
         with self._lock:
-            result = super().correct(request)
-            if result.applied:
-                self._persist()
-            return result
+            snapshot = self._snapshot_mutable_state()
+            try:
+                result = super().correct(request)
+                if result.applied:
+                    self._persist()
+                return result
+            except Exception:
+                self._restore_mutable_state(snapshot)
+                raise
 
     def create_checkpoint(self, **kwargs: object):
         with self._lock:
@@ -108,6 +113,11 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
                 checkpoint_ref TEXT PRIMARY KEY, scope_json TEXT NOT NULL,
                 checkpoint_id TEXT NOT NULL, snapshot_json TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS graph_stream_revisions (
+                scope_json TEXT PRIMARY KEY,
+                node_revision INTEGER NOT NULL,
+                relation_revision INTEGER NOT NULL
+            );
             """
         )
         connection.commit()
@@ -122,7 +132,7 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
         connection = self._connection
         try:
             connection.execute("BEGIN IMMEDIATE")
-            for table in ("graph_nodes", "graph_relations", "graph_idempotency", "graph_checkpoints"):
+            for table in ("graph_nodes", "graph_relations", "graph_idempotency", "graph_checkpoints", "graph_stream_revisions"):
                 connection.execute(f"DELETE FROM {table}")
             for (scope_key, node_id), versions in self._nodes.items():
                 for node in versions:
@@ -144,6 +154,11 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
                 connection.execute(
                     "INSERT INTO graph_checkpoints VALUES (?, ?, ?, ?)",
                     (checkpoint_ref, self._scope_json(snapshot.checkpoint.scope), snapshot.checkpoint.checkpoint_id, self._payload_json(snapshot)),
+                )
+            for scope_key, (node_revision, relation_revision) in self._scope_stream_revisions.items():
+                connection.execute(
+                    "INSERT INTO graph_stream_revisions VALUES (?, ?, ?)",
+                    (self._scope_json_from_key(scope_key), node_revision, relation_revision),
                 )
             connection.commit()
         except Exception:
@@ -171,3 +186,25 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
             key = (self._scope_key(snapshot.checkpoint.scope), snapshot.checkpoint.checkpoint_id)
             self._checkpoints[key] = snapshot
             self._checkpoint_refs[checkpoint_ref] = key
+        for scope_json, node_revision, relation_revision in self._connection.execute(
+            "SELECT scope_json, node_revision, relation_revision FROM graph_stream_revisions"
+        ):
+            from app.models.siming_heavenly_graph import HeavenlyGraphScope
+            scope = HeavenlyGraphScope.model_validate_json(scope_json)
+            self._scope_stream_revisions[self._scope_key(scope)] = (
+                node_revision,
+                relation_revision,
+            )
+        # Databases created before the stream-counter table can still be read;
+        # establish a conservative floor before the first new commit.
+        for (scope_key, _), versions in self._nodes.items():
+            self._scope_stream_revisions.setdefault(
+                scope_key,
+                (sum(len(items) for (key, _), items in self._nodes.items() if key == scope_key), 0),
+            )
+        for (scope_key, _), versions in self._relations.items():
+            node_revision, relation_revision = self._scope_stream_revisions.get(scope_key, (0, 0))
+            self._scope_stream_revisions[scope_key] = (
+                node_revision,
+                max(relation_revision, sum(len(items) for (key, _), items in self._relations.items() if key == scope_key)),
+            )

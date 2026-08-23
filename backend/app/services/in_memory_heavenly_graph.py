@@ -1,4 +1,5 @@
 import base64
+import copy
 import hashlib
 import json
 from collections.abc import Sequence
@@ -54,6 +55,10 @@ class InMemoryHeavenlyGraphAdapter:
         ] = {}
         self._checkpoints: dict[CheckpointKey, HeavenlyGraphSnapshot] = {}
         self._checkpoint_refs: dict[str, CheckpointKey] = {}
+        # Entity revisions identify a record's local history. These counters
+        # identify every committed write in a scope, which is what a reader's
+        # stale-read set must pin.
+        self._scope_stream_revisions: dict[ScopeKey, tuple[int, int]] = {}
 
     def write_batch(
         self,
@@ -98,6 +103,7 @@ class InMemoryHeavenlyGraphAdapter:
             self._relations.setdefault(key, []).append(
                 relation.model_copy(deep=True)
             )
+        self._advance_scope_stream_revisions(batch)
 
         result = HeavenlyGraphWriteResult(
             transaction_id=batch.transaction_id,
@@ -204,12 +210,20 @@ class InMemoryHeavenlyGraphAdapter:
         )
         next_provenance = target.provenance.model_copy(
             update={
-                "source_ref": request.source_refs[0],
                 "causation_id": f"correction:{request.target_kind}:{request.target_id}:{request.target_revision}",
                 "correlation_id": target.provenance.correlation_id,
                 "evidence_refs": list(
                     dict.fromkeys(
                         [*target.provenance.evidence_refs, *request.source_refs]
+                    )
+                ),
+                "source_ref_lineage": list(
+                    dict.fromkeys(
+                        [
+                            target.provenance.source_ref,
+                            *target.provenance.source_ref_lineage,
+                            *request.source_refs,
+                        ]
                     )
                 ),
             },
@@ -721,10 +735,12 @@ class InMemoryHeavenlyGraphAdapter:
             (scope_key, entity_id, versions)
             for (scope_key, entity_id), versions in store.items()
             if entity_id == request.target_id
-            and (request.scope is None or scope_key == self._scope_key(request.scope))
+            and scope_key == self._scope_key(request.scope)
         ]
         if not candidates:
-            raise ValueError(f"correction target {request.target_kind}:{request.target_id} was not found")
+            raise ValueError(
+                f"correction target {request.target_kind}:{request.target_id} was not found in scope"
+            )
         if len(candidates) > 1:
             raise ValueError("correction target scope is ambiguous")
         scope_key, _, versions = candidates[0]
@@ -747,13 +763,51 @@ class InMemoryHeavenlyGraphAdapter:
         relations = [item for (key, _), values in self._relations.items() if key == scope_key for item in values]
         entities = [*nodes, *relations]
         vectors = [item.semantic_metadata.source_revision_vector for item in entities]
+        node_revision, relation_revision = self._scope_stream_revisions.get(
+            scope_key, (0, 0)
+        )
         return GraphRevisionVector(
-            node_revision=max((item.revision for item in nodes), default=0),
-            relation_revision=max((item.revision for item in relations), default=0),
+            node_revision=node_revision,
+            relation_revision=relation_revision,
             source_revision=max((item.source_revision for item in vectors), default=0),
             policy_revision=max((item.policy_revision for item in vectors), default=0),
             branch_revision=max((item.branch_revision for item in vectors), default=0),
         )
+
+    def scope_revision_vector(self, scope: HeavenlyGraphScope) -> GraphRevisionVector:
+        """Expose committed scope streams to semantic readers and stale writes."""
+        return self._scope_revision_vector(scope)
+
+    def _advance_scope_stream_revisions(self, batch: HeavenlyGraphWriteBatch) -> None:
+        key = self._scope_key(batch.scope)
+        node_revision, relation_revision = self._scope_stream_revisions.get(key, (0, 0))
+        self._scope_stream_revisions[key] = (
+            node_revision + len(batch.nodes),
+            relation_revision + len(batch.relations),
+        )
+
+    def _snapshot_mutable_state(self) -> tuple[object, object, object, object, object, object]:
+        """Return a deep snapshot used by durable adapters around persistence."""
+        return (
+            copy.deepcopy(self._nodes),
+            copy.deepcopy(self._relations),
+            copy.deepcopy(self._idempotency),
+            copy.deepcopy(self._checkpoints),
+            copy.deepcopy(self._checkpoint_refs),
+            copy.deepcopy(self._scope_stream_revisions),
+        )
+
+    def _restore_mutable_state(
+        self, snapshot: tuple[object, object, object, object, object, object]
+    ) -> None:
+        (
+            self._nodes,
+            self._relations,
+            self._idempotency,
+            self._checkpoints,
+            self._checkpoint_refs,
+            self._scope_stream_revisions,
+        ) = snapshot
 
     @staticmethod
     def _revision_vector_matches(

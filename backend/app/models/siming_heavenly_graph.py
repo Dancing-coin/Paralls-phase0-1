@@ -88,6 +88,9 @@ class GraphProvenance(BaseModel):
     producer_system: str = Field(min_length=1)
     actor_id: str | None = Field(default=None, min_length=1)
     evidence_refs: list[str] = Field(default_factory=list)
+    # ``source_ref`` remains the originating source. Later derivations append
+    # their own sources here instead of replacing that typed provenance.
+    source_ref_lineage: list[str] = Field(default_factory=list)
 
 
 class GraphRevisionVector(BaseModel):
@@ -335,7 +338,7 @@ class GraphCorrectionRequest(BaseModel):
     source_refs: list[str] = Field(min_length=1)
     semantic_metadata: GraphSemanticMetadata
     expected_revision_vector: GraphRevisionVector | None = None
-    scope: HeavenlyGraphScope | None = None
+    scope: HeavenlyGraphScope
 
     @model_validator(mode="after")
     def validate_source_refs(self) -> "GraphCorrectionRequest":

@@ -67,7 +67,9 @@ class HeavenlyGraphSemanticQueryFacade:
             relations=relations,
             selected_node_refs=[node.node_id for node in nodes],
             selected_relation_refs=[relation.relation_id for relation in relations],
-            revision_vector=self._revision_vector(nodes, relations),
+            revision_vector=self._revision_vector(
+                nodes, relations, scope=self._effective_scope(query)
+            ),
             policy_revision=query.context.policy_revision,
             scope_digest=self._scope_digest(query),
             truncated=truncated,
@@ -599,10 +601,16 @@ class HeavenlyGraphSemanticQueryFacade:
         namespace, separator, actor_id = principal.partition(":")
         return separator == ":" and namespace in {"actor", "reader"} and actor_id == owner_actor_id
 
-    @staticmethod
     def _revision_vector(
-        nodes: list[HeavenlyGraphNode], relations: list[HeavenlyGraphRelation]
+        self,
+        nodes: list[HeavenlyGraphNode],
+        relations: list[HeavenlyGraphRelation],
+        *,
+        scope: HeavenlyGraphScope,
     ) -> GraphRevisionVector:
+        scope_revision_vector = getattr(self._graph, "scope_revision_vector", None)
+        if scope_revision_vector is not None:
+            return scope_revision_vector(scope)
         vectors = [
             entity.semantic_metadata.source_revision_vector
             for entity in [*nodes, *relations]
