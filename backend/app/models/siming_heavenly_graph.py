@@ -159,6 +159,7 @@ class GraphBranchLifecycleMarker(BaseModel):
     operation: GraphBranchLifecycleOperation
     recorded_at: int = Field(ge=0)
     revision_vector: GraphRevisionVector
+    policy_revision: str = Field(default="policy:v1", min_length=1)
     source_scope: HeavenlyGraphScope | None = None
     source_revision_vector: GraphRevisionVector | None = None
     node_id: str | None = None
