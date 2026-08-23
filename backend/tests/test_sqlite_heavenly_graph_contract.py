@@ -100,19 +100,6 @@ def _remove_replay_frontier(path: Path, checkpoint_ref: str) -> None:
         connection.close()
 
 
-def _checkpoint_payload(path: Path, checkpoint_ref: str) -> dict[str, object]:
-    connection = sqlite3.connect(path)
-    try:
-        row = connection.execute(
-            "SELECT snapshot_json FROM graph_checkpoints WHERE checkpoint_ref = ?",
-            (checkpoint_ref,),
-        ).fetchone()
-        assert row is not None
-        return json.loads(row[0])
-    finally:
-        connection.close()
-
-
 def test_sqlite_restart_replays_future_valid_predecessor_chain(tmp_path: Path) -> None:
     path = tmp_path / "heavenly-replay-future.sqlite3"
     scope = graph_scope()
