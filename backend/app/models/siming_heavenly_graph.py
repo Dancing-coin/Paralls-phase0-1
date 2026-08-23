@@ -38,6 +38,8 @@ GraphDerivationKind = Literal[
 ]
 GraphCorrectionKind = Literal["corrected", "retracted", "redacted"]
 GraphCorrectionTargetKind = Literal["node", "relation"]
+GraphBranchLifecycleOperation = Literal["fork", "close_node", "discard", "admit"]
+GraphBranchStatus = Literal["forked", "discarded", "admitted"]
 
 
 class HeavenlyGraphScope(BaseModel):
@@ -103,6 +105,107 @@ class GraphRevisionVector(BaseModel):
     source_revision: int = Field(default=0, ge=0)
     policy_revision: int = Field(default=0, ge=0)
     branch_revision: int = Field(default=0, ge=0)
+
+
+class GraphBranchForkRequest(BaseModel):
+    """Create an isolated graph branch from one pinned source read set."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    source_scope: HeavenlyGraphScope
+    target_branch_id: str = Field(min_length=1)
+    fork_valid_at: int = Field(ge=0)
+    fork_recorded_at: int = Field(ge=0)
+    source_revision_vector: GraphRevisionVector
+
+    @model_validator(mode="after")
+    def validate_target_branch(self) -> "GraphBranchForkRequest":
+        if self.target_branch_id == self.source_scope.story_branch_id:
+            raise ValueError("fork target branch must differ from source branch")
+        return self
+
+
+class GraphBranchLifecycleRequest(BaseModel):
+    """Append a branch state marker; it never deletes graph audit history."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    branch_scope: HeavenlyGraphScope
+    operation: GraphBranchLifecycleOperation
+    expected_revision_vector: GraphRevisionVector
+    node_id: str | None = Field(default=None, min_length=1)
+    target_branch_id: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def validate_operation_fields(self) -> "GraphBranchLifecycleRequest":
+        if self.operation == "close_node" and self.node_id is None:
+            raise ValueError("close_node requires node_id")
+        if self.operation != "close_node" and self.node_id is not None:
+            raise ValueError("node_id is only valid for close_node")
+        if self.operation == "admit" and self.target_branch_id is None:
+            raise ValueError("admit requires target_branch_id")
+        if self.operation != "admit" and self.target_branch_id is not None:
+            raise ValueError("target_branch_id is only valid for admit")
+        return self
+
+
+class GraphBranchLifecycleMarker(BaseModel):
+    """Immutable audit marker for a branch lifecycle transition."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    marker_id: str = Field(min_length=1)
+    branch_scope: HeavenlyGraphScope
+    operation: GraphBranchLifecycleOperation
+    recorded_at: int = Field(ge=0)
+    revision_vector: GraphRevisionVector
+    source_scope: HeavenlyGraphScope | None = None
+    node_id: str | None = None
+    target_branch_id: str | None = None
+
+
+class GraphBranchDiffLimits(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    node_limit: int = Field(default=100, ge=1, le=1000)
+    relation_limit: int = Field(default=100, ge=1, le=1000)
+    marker_limit: int = Field(default=100, ge=1, le=1000)
+
+
+class GraphBranchDiffQuery(BaseModel):
+    """Compare two explicitly scoped branch snapshots for one reader."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    left_scope: HeavenlyGraphScope
+    right_scope: HeavenlyGraphScope
+    reader_context: GraphReaderContext
+    limits: GraphBranchDiffLimits = Field(default_factory=GraphBranchDiffLimits)
+
+    @model_validator(mode="after")
+    def validate_reader_coordinates(self) -> "GraphBranchDiffQuery":
+        for scope in (self.left_scope, self.right_scope):
+            if (
+                scope.world_id != self.reader_context.world_id
+                or scope.session_id != self.reader_context.session_id
+            ):
+                raise ValueError("branch diff scopes must match reader world/session")
+        return self
+
+
+class GraphBranchDiffResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    added_nodes: list[HeavenlyGraphNode] = Field(default_factory=list)
+    removed_nodes: list[HeavenlyGraphNode] = Field(default_factory=list)
+    changed_nodes: list[HeavenlyGraphNode] = Field(default_factory=list)
+    added_relations: list[HeavenlyGraphRelation] = Field(default_factory=list)
+    removed_relations: list[HeavenlyGraphRelation] = Field(default_factory=list)
+    changed_relations: list[HeavenlyGraphRelation] = Field(default_factory=list)
+    lifecycle_markers: list[GraphBranchLifecycleMarker] = Field(default_factory=list)
+    left_revision_vector: GraphRevisionVector
+    right_revision_vector: GraphRevisionVector
+    truncated: bool = False
 
 
 class GraphSemanticMetadata(BaseModel):

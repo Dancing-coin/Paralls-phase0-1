@@ -1,6 +1,10 @@
 from typing import Protocol
 
 from app.models.siming_heavenly_graph import (
+    GraphBranchDiffQuery,
+    GraphBranchDiffResult,
+    GraphBranchForkRequest,
+    GraphBranchLifecycleRequest,
     GraphCorrectionRequest,
     HeavenlyGraphQueryResult,
     HeavenlyGraphSemanticQuery,
@@ -54,6 +58,21 @@ class HeavenlyGraphCheckpointNotFound(HeavenlyGraphError):
 
 
 class HeavenlyGraphPort(Protocol):
+    def fork_branch(
+        self, request: GraphBranchForkRequest
+    ) -> HeavenlyGraphWriteResult:
+        raise NotImplementedError
+
+    def diff_branches(
+        self, query: GraphBranchDiffQuery
+    ) -> GraphBranchDiffResult:
+        raise NotImplementedError
+
+    def lifecycle_branch(
+        self, request: GraphBranchLifecycleRequest
+    ) -> HeavenlyGraphWriteResult:
+        raise NotImplementedError
+
     def correct(
         self,
         request: GraphCorrectionRequest,
