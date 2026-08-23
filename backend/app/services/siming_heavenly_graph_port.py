@@ -1,6 +1,8 @@
 from typing import Protocol
 
 from app.models.siming_heavenly_graph import (
+    HeavenlyGraphQueryResult,
+    HeavenlyGraphSemanticQuery,
     HeavenlyGraphCheckpointRef,
     HeavenlyGraphNode,
     HeavenlyGraphRelation,
@@ -40,6 +42,12 @@ class HeavenlyGraphCheckpointNotFound(HeavenlyGraphError):
 
 
 class HeavenlyGraphPort(Protocol):
+    def query_semantic(
+        self,
+        query: HeavenlyGraphSemanticQuery,
+    ) -> HeavenlyGraphQueryResult:
+        raise NotImplementedError
+
     def has_idempotency_key(
         self,
         *,

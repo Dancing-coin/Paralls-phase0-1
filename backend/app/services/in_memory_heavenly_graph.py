@@ -4,6 +4,8 @@ import json
 from collections.abc import Sequence
 
 from app.models.siming_heavenly_graph import (
+    HeavenlyGraphQueryResult,
+    HeavenlyGraphSemanticQuery,
     HeavenlyGraphCheckpointRef,
     HeavenlyGraphNode,
     HeavenlyGraphRelation,
@@ -110,6 +112,13 @@ class InMemoryHeavenlyGraphAdapter:
             result.model_copy(deep=True),
         )
         return result
+
+    def query_semantic(
+        self, query: HeavenlyGraphSemanticQuery
+    ) -> HeavenlyGraphQueryResult:
+        from app.services.heavenly_graph_queries import HeavenlyGraphSemanticQueryFacade
+
+        return HeavenlyGraphSemanticQueryFacade(self).query(query)
 
     def _validate_batch_semantics(self, batch: HeavenlyGraphWriteBatch) -> None:
         """Reject semantically invalid records before idempotency or mutation."""

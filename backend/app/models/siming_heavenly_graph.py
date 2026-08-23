@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
@@ -126,6 +128,111 @@ class GraphReaderContext(BaseModel):
     valid_at: int = Field(ge=0)
     recorded_at: int | None = Field(default=None, ge=0)
     policy_revision: str = Field(min_length=1)
+
+
+class HeavenlyGraphQueryBase(BaseModel):
+    """Common bounded, explicitly scoped input for semantic graph readers."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    context: GraphReaderContext
+    scope: HeavenlyGraphScope | None = None
+    include_proposals: bool = False
+    limit: int = Field(default=100, ge=1, le=1000)
+
+    @model_validator(mode="after")
+    def validate_scope_context(self) -> "HeavenlyGraphQueryBase":
+        if self.scope is not None:
+            if (
+                self.scope.world_id != self.context.world_id
+                or self.scope.session_id != self.context.session_id
+                or self.scope.story_branch_id != self.context.story_branch_id
+            ):
+                raise ValueError("query scope must match reader context world/session/branch")
+        return self
+
+    def resolved_scope(self) -> HeavenlyGraphScope:
+        return self.scope or HeavenlyGraphScope(
+            world_id=self.context.world_id,
+            session_id=self.context.session_id,
+            story_branch_id=self.context.story_branch_id,
+        )
+
+
+class NodeLookupQuery(HeavenlyGraphQueryBase):
+    node_ids: list[str] = Field(default_factory=list)
+    node_types: list[str] = Field(default_factory=list)
+    source_refs: list[str] = Field(default_factory=list)
+    record_kinds: list[GraphRecordKind] = Field(default_factory=list)
+
+
+class RelationLookupQuery(HeavenlyGraphQueryBase):
+    relation_ids: list[str] = Field(default_factory=list)
+    relation_types: list[str] = Field(default_factory=list)
+    source_node_ids: list[str] = Field(default_factory=list)
+    target_node_ids: list[str] = Field(default_factory=list)
+
+
+class CausalPathQuery(HeavenlyGraphQueryBase):
+    seed_node_ids: list[str] = Field(default_factory=list)
+    relation_types: list[str] = Field(default_factory=list)
+    max_depth: int = Field(default=2, ge=0, le=8)
+    node_limit: int = Field(default=100, ge=1, le=1000)
+    relation_limit: int = Field(default=200, ge=1, le=2000)
+    max_paths: int = Field(default=20, ge=1, le=200)
+
+
+class PerspectiveQuery(HeavenlyGraphQueryBase):
+    actor_ref: str | None = Field(default=None, min_length=1)
+    visibility_scopes: list[GraphVisibilityScope] = Field(default_factory=list)
+
+
+class ConflictSetQuery(HeavenlyGraphQueryBase):
+    subject_ref: str | None = Field(default=None, min_length=1)
+    property_key: str | None = Field(default=None, min_length=1)
+
+
+class BehaviorTurnQuery(HeavenlyGraphQueryBase):
+    turn_id: str | None = Field(default=None, min_length=1)
+    correlation_id: str | None = Field(default=None, min_length=1)
+    actor_id: str | None = Field(default=None, min_length=1)
+    stage: str | None = Field(default=None, min_length=1)
+
+
+class SourceImpactQuery(HeavenlyGraphQueryBase):
+    source_ref: str = Field(min_length=1)
+    source_revision: int | None = Field(default=None, ge=0)
+
+
+HeavenlyGraphSemanticQuery = (
+    NodeLookupQuery
+    | RelationLookupQuery
+    | CausalPathQuery
+    | PerspectiveQuery
+    | ConflictSetQuery
+    | BehaviorTurnQuery
+    | SourceImpactQuery
+)
+
+
+class HeavenlyGraphQueryResult(BaseModel):
+    """Structured semantic read result, including why a read was incomplete."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    nodes: list[HeavenlyGraphNode] = Field(default_factory=list)
+    relations: list[HeavenlyGraphRelation] = Field(default_factory=list)
+    selected_node_refs: list[str] = Field(default_factory=list)
+    selected_relation_refs: list[str] = Field(default_factory=list)
+    revision_vector: GraphRevisionVector = Field(default_factory=GraphRevisionVector)
+    policy_revision: str = Field(min_length=1)
+    scope_digest: str = Field(min_length=1)
+    truncated: bool = False
+    incomplete_reason: Literal[
+        "visibility_denied",
+        "stale_read_set",
+        "graph_unavailable",
+    ] | None = None
 
 
 class HeavenlyGraphNode(BaseModel):
