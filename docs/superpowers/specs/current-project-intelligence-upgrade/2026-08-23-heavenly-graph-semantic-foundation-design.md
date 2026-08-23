@@ -1,7 +1,7 @@
 # Heavenly Graph Semantic Foundation Design
 
 - 日期：`2026-08-23`
-- 状态：`awaiting-user-review`
+- 状态：`user-approved`
 - 范围：只修复 Heavenly Graph 本体，不修改角色智能体内部功能，不修改司命运行时决策逻辑
 - 上位设计：`2026-07-11-current-project-siming-heavenly-knowledge-graph-and-story-node-design.md`
 - 实现基线：`HeavenlyGraphPort`、`InMemoryHeavenlyGraphAdapter`、`SQLiteHeavenlyGraphAdapter`
