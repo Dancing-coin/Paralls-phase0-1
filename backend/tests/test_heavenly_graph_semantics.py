@@ -581,11 +581,13 @@ def test_sqlite_correction_history_and_idempotency_survive_restart(tmp_path: Pat
     historical = reopened.get_node(
         node_id=target.node_id, scope=target.scope, valid_at=10, recorded_at=10
     )
+    stream_revision = reopened.scope_revision_vector(target.scope).node_revision
     reopened.close()
     assert applied.applied is True
     assert replay.replayed is True and replay.applied is False
     assert current is not None and current.revision == 2
     assert historical is not None and historical.revision == 1
+    assert stream_revision == 2
 
 
 def test_scope_stream_counter_rejects_vector_captured_before_independent_write(
@@ -613,7 +615,14 @@ def test_scope_stream_counter_rejects_vector_captured_before_independent_write(
 @pytest.mark.parametrize(
     ("update", "error"),
     [
-        ({"scope": _scope("siming_heavenly") .model_copy(update={"story_branch_id": "branch:other"})}, "scope"),
+        (
+            {
+                "scope": _scope("siming_heavenly").model_copy(
+                    update={"story_branch_id": "branch:other"}
+                )
+            },
+            "scope",
+        ),
         ({"semantic_metadata": _metadata(scope_digest="scope:forged")}, "scope digest"),
         ({"semantic_metadata": _metadata(source_revision_vector=GraphRevisionVector(source_revision=99))}, "source revision"),
         ({"semantic_metadata": _metadata(source_event_refs=["authority:event:forged"])}, "source linkage"),
