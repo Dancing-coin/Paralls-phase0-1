@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.models.siming_heavenly_graph import (
+    GraphCorrectionRequest,
     GraphNamespace,
     GraphRecordKind,
     GraphVisibilityScope,
@@ -269,9 +270,29 @@ DEFAULT_NODE_TYPE_REGISTRY = HeavenlyNodeTypeRegistry()
 DEFAULT_RELATION_TYPE_REGISTRY = HeavenlyRelationTypeRegistry()
 
 
+def validate_correction_request(
+    request: GraphCorrectionRequest,
+    target: HeavenlyGraphNode | HeavenlyGraphRelation,
+) -> None:
+    """Validate the semantic invariants shared by both correction adapters."""
+    if not request.source_refs:
+        raise ValueError("correction requires source linkage")
+    if request.scope is not None and request.scope != target.scope:
+        raise ValueError("correction scope must match target scope")
+    metadata = request.semantic_metadata
+    target_metadata = target.semantic_metadata
+    if metadata.policy_revision != target_metadata.policy_revision:
+        raise ValueError("correction policy revision must match target")
+    if metadata.visibility_scope != target_metadata.visibility_scope:
+        raise ValueError("correction visibility scope must match target")
+    if metadata.record_kind != target_metadata.record_kind:
+        raise ValueError("correction record kind must match target")
+
+
 __all__ = [
     "DEFAULT_NODE_TYPE_REGISTRY",
     "DEFAULT_RELATION_TYPE_REGISTRY",
     "HeavenlyNodeTypeRegistry",
     "HeavenlyRelationTypeRegistry",
+    "validate_correction_request",
 ]

@@ -36,6 +36,8 @@ GraphDerivationKind = Literal[
     "retraction",
     "redaction",
 ]
+GraphCorrectionKind = Literal["corrected", "retracted", "redacted"]
+GraphCorrectionTargetKind = Literal["node", "relation"]
 
 
 class HeavenlyGraphScope(BaseModel):
@@ -319,6 +321,29 @@ class HeavenlyGraphWriteResult(BaseModel):
     replayed: bool = False
     node_refs: list[str] = Field(default_factory=list)
     relation_refs: list[str] = Field(default_factory=list)
+
+
+class GraphCorrectionRequest(BaseModel):
+    """Append-only correction request for one graph record revision."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    target_kind: GraphCorrectionTargetKind
+    target_id: str = Field(min_length=1)
+    target_revision: int = Field(ge=1)
+    correction_kind: GraphCorrectionKind
+    source_refs: list[str] = Field(min_length=1)
+    semantic_metadata: GraphSemanticMetadata
+    expected_revision_vector: GraphRevisionVector | None = None
+    scope: HeavenlyGraphScope | None = None
+
+    @model_validator(mode="after")
+    def validate_source_refs(self) -> "GraphCorrectionRequest":
+        if any(not ref for ref in self.source_refs):
+            raise ValueError("correction source_refs must be non-empty")
+        if len(self.source_refs) != len(set(self.source_refs)):
+            raise ValueError("correction source_refs must be unique")
+        return self
 
 
 class HeavenlyNodeQuery(BaseModel):

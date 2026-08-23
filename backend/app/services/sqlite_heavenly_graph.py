@@ -4,6 +4,7 @@ from threading import RLock
 from pathlib import Path
 
 from app.models.siming_heavenly_graph import (
+    GraphCorrectionRequest,
     HeavenlyGraphQueryResult,
     HeavenlyGraphSemanticQuery,
     HeavenlyGraphNode,
@@ -38,6 +39,13 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
     def write_batch(self, batch: HeavenlyGraphWriteBatch) -> HeavenlyGraphWriteResult:
         with self._lock:
             result = super().write_batch(batch)
+            if result.applied:
+                self._persist()
+            return result
+
+    def correct(self, request: GraphCorrectionRequest) -> HeavenlyGraphWriteResult:
+        with self._lock:
+            result = super().correct(request)
             if result.applied:
                 self._persist()
             return result

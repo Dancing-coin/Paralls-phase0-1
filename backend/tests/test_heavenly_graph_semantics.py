@@ -3,6 +3,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from app.models.siming_heavenly_graph import (
+    GraphCorrectionRequest,
     GraphProvenance,
     GraphReaderContext,
     GraphRevisionVector,
@@ -18,6 +19,10 @@ from app.services.heavenly_graph_semantics import (
 )
 from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
 from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
+from app.services.siming_heavenly_graph_port import (
+    HeavenlyGraphIdempotencyConflict,
+    HeavenlyGraphRevisionConflict,
+)
 
 
 def _scope(namespace: str = "siming_heavenly", owner: str | None = None) -> HeavenlyGraphScope:
@@ -334,3 +339,248 @@ def test_adapter_rejects_legacy_relation_cross_namespace(graph_adapter: object) 
     )
     with pytest.raises(ValueError, match="legacy relation namespace"):
         graph_adapter.write_batch(batch)
+
+
+def _correction_target() -> HeavenlyGraphNode:
+    return HeavenlyGraphNode(
+        node_id="fact:correctable",
+        node_type="world_fact",
+        scope=_scope(),
+        validity=GraphValidity(valid_from=10),
+        recorded_at=10,
+        revision=1,
+        provenance=_provenance(),
+        semantic_metadata=_metadata(),
+    )
+
+
+def _correction_request(
+    *,
+    correction_kind: str = "corrected",
+    expected_revision_vector: object | None = None,
+    source_refs: list[str] | None = None,
+) -> GraphCorrectionRequest:
+    return GraphCorrectionRequest(
+        target_kind="node",
+        target_id="fact:correctable",
+        target_revision=1,
+        correction_kind=correction_kind,
+        source_refs=(
+            ["authority:event:correction"]
+            if source_refs is None
+            else source_refs
+        ),
+        semantic_metadata=_metadata(),
+        expected_revision_vector=expected_revision_vector,
+    )
+
+
+def test_correction_appends_revision_and_preserves_auditable_history(graph_adapter: object) -> None:
+    target = _correction_target()
+    graph_adapter.write_batch(_write_batch(target))
+
+    result = graph_adapter.correct(_correction_request())
+
+    assert result.applied is True
+    assert result.node_refs
+    current = graph_adapter.get_node(
+        node_id=target.node_id,
+        scope=target.scope,
+        valid_at=10,
+        recorded_at=11,
+    )
+    assert current is not None
+    assert current.revision == 2
+    assert current.supersedes_revision == 1
+    assert current.semantic_metadata.derivation_kind == "correction"
+    assert current.attributes["correction_target_id"] == target.node_id
+    assert current.attributes["correction_target_source_ref"] == "authority:event:1"
+    assert current.semantic_metadata.source_event_refs == (
+        "authority:event:1",
+        "authority:event:correction",
+    )
+
+    historical = graph_adapter.get_node(
+        node_id=target.node_id,
+        scope=target.scope,
+        valid_at=10,
+        recorded_at=10,
+    )
+    assert historical is not None
+    assert historical.revision == 1
+
+
+def test_retraction_is_excluded_from_default_current_query_but_history_remains(graph_adapter: object) -> None:
+    target = _correction_target()
+    graph_adapter.write_batch(_write_batch(target))
+    graph_adapter.correct(_correction_request(correction_kind="retracted"))
+
+    assert graph_adapter.get_node(
+        node_id=target.node_id,
+        scope=target.scope,
+        valid_at=10,
+    ) is None
+    historical = graph_adapter.get_node(
+        node_id=target.node_id,
+        scope=target.scope,
+        valid_at=10,
+        recorded_at=10,
+    )
+    assert historical is not None and historical.revision == 1
+
+
+def test_redaction_is_excluded_from_default_current_query(graph_adapter: object) -> None:
+    target = _correction_target()
+    graph_adapter.write_batch(_write_batch(target))
+    graph_adapter.correct(_correction_request(correction_kind="redacted"))
+
+    assert graph_adapter.get_node(
+        node_id=target.node_id,
+        scope=target.scope,
+        valid_at=10,
+    ) is None
+
+
+def test_correction_keeps_concurrent_conflict_claims(graph_adapter: object) -> None:
+    first = _correction_target().model_copy(update={"node_id": "claim:a"})
+    second = _correction_target().model_copy(update={"node_id": "claim:b"})
+    graph_adapter.write_batch(
+        _write_batch(first).model_copy(update={"idempotency_key": "claim:a"})
+    )
+    graph_adapter.write_batch(
+        _write_batch(second).model_copy(update={"idempotency_key": "claim:b"})
+    )
+    graph_adapter.correct(
+        GraphCorrectionRequest(
+            target_kind="node",
+            target_id="claim:a",
+            target_revision=1,
+            correction_kind="corrected",
+            source_refs=["authority:event:claim-a-correction"],
+            semantic_metadata=_metadata(),
+        )
+    )
+    assert graph_adapter.get_node(
+        node_id="claim:b", scope=first.scope, valid_at=10
+    ) is not None
+
+
+def test_stale_expected_revision_vector_rejects_without_any_write(graph_adapter: object) -> None:
+    target = _correction_target()
+    graph_adapter.write_batch(_write_batch(target))
+    stale = _correction_request(
+        expected_revision_vector=GraphRevisionVector(node_revision=0)
+    )
+
+    with pytest.raises(HeavenlyGraphRevisionConflict) as exc_info:
+        graph_adapter.correct(stale)
+
+    conflict = exc_info.value
+    assert conflict.expected_revision_vector == GraphRevisionVector(node_revision=0)
+    assert conflict.current_revision_vector.node_revision == 1
+    assert target.node_id in conflict.affected_refs
+    assert graph_adapter.has_idempotency_key(
+        scope=target.scope,
+        idempotency_key="graph:correction:node:fact:correctable:1:corrected",
+    ) is False
+    current = graph_adapter.get_node(
+        node_id=target.node_id, scope=target.scope, valid_at=10
+    )
+    assert current is not None and current.revision == 1
+
+
+def test_correction_rejects_missing_source_linkage_before_write(graph_adapter: object) -> None:
+    target = _correction_target()
+    graph_adapter.write_batch(_write_batch(target))
+    with pytest.raises(ValueError, match="source"):
+        graph_adapter.correct(_correction_request(source_refs=[]))
+    current = graph_adapter.get_node(
+        node_id=target.node_id, scope=target.scope, valid_at=10
+    )
+    assert current is not None and current.revision == 1
+
+
+def test_correction_requires_current_immediate_predecessor(graph_adapter: object) -> None:
+    target = _correction_target()
+    graph_adapter.write_batch(_write_batch(target))
+    graph_adapter.correct(_correction_request())
+
+    with pytest.raises(HeavenlyGraphRevisionConflict, match="not current"):
+        graph_adapter.correct(
+            _correction_request(
+                correction_kind="redacted",
+                source_refs=["authority:event:second-correction"],
+            )
+        )
+
+    current = graph_adapter.get_node(
+        node_id=target.node_id, scope=target.scope, valid_at=10
+    )
+    assert current is not None and current.revision == 2
+
+
+@pytest.mark.parametrize(
+    ("metadata", "error"),
+    [
+        (_metadata(policy_revision="policy:v2"), "policy revision"),
+        (_metadata(visibility_scope="authority_only"), "visibility scope"),
+    ],
+)
+def test_correction_rejects_mismatched_semantic_scope_before_write(
+    graph_adapter: object,
+    metadata: GraphSemanticMetadata,
+    error: str,
+) -> None:
+    target = _correction_target()
+    graph_adapter.write_batch(_write_batch(target))
+    request = _correction_request().model_copy(
+        update={"semantic_metadata": metadata}, deep=True
+    )
+
+    with pytest.raises(ValueError, match=error):
+        graph_adapter.correct(request)
+
+    current = graph_adapter.get_node(
+        node_id=target.node_id, scope=target.scope, valid_at=10
+    )
+    assert current is not None and current.revision == 1
+
+
+def test_correction_is_idempotent_and_changed_payload_is_rejected(graph_adapter: object) -> None:
+    target = _correction_target()
+    graph_adapter.write_batch(_write_batch(target))
+    request = _correction_request()
+    first = graph_adapter.correct(request)
+    replay = graph_adapter.correct(request)
+    assert first.applied is True
+    assert replay.applied is False and replay.replayed is True
+    with pytest.raises(HeavenlyGraphIdempotencyConflict, match="idempotency key"):
+        graph_adapter.correct(
+            request.model_copy(
+                update={"source_refs": ["authority:event:changed"]}, deep=True
+            )
+        )
+
+
+def test_sqlite_correction_history_and_idempotency_survive_restart(tmp_path: Path) -> None:
+    database = tmp_path / "correction-restart.db"
+    target = _correction_target()
+    request = _correction_request()
+    first = SQLiteHeavenlyGraphAdapter(database)
+    first.write_batch(_write_batch(target))
+    applied = first.correct(request)
+    first.close()
+
+    reopened = SQLiteHeavenlyGraphAdapter(database)
+    replay = reopened.correct(request)
+    current = reopened.get_node(
+        node_id=target.node_id, scope=target.scope, valid_at=10
+    )
+    historical = reopened.get_node(
+        node_id=target.node_id, scope=target.scope, valid_at=10, recorded_at=10
+    )
+    reopened.close()
+    assert applied.applied is True
+    assert replay.replayed is True and replay.applied is False
+    assert current is not None and current.revision == 2
+    assert historical is not None and historical.revision == 1

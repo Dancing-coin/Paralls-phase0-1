@@ -1,6 +1,7 @@
 from typing import Protocol
 
 from app.models.siming_heavenly_graph import (
+    GraphCorrectionRequest,
     HeavenlyGraphQueryResult,
     HeavenlyGraphSemanticQuery,
     HeavenlyGraphCheckpointRef,
@@ -22,7 +23,18 @@ class HeavenlyGraphError(RuntimeError):
 
 
 class HeavenlyGraphRevisionConflict(HeavenlyGraphError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        expected_revision_vector: object | None = None,
+        current_revision_vector: object | None = None,
+        affected_refs: list[str] | tuple[str, ...] = (),
+    ) -> None:
+        super().__init__(message)
+        self.expected_revision_vector = expected_revision_vector
+        self.current_revision_vector = current_revision_vector
+        self.affected_refs = tuple(affected_refs)
 
 
 class HeavenlyGraphIdempotencyConflict(HeavenlyGraphError):
@@ -42,6 +54,12 @@ class HeavenlyGraphCheckpointNotFound(HeavenlyGraphError):
 
 
 class HeavenlyGraphPort(Protocol):
+    def correct(
+        self,
+        request: GraphCorrectionRequest,
+    ) -> HeavenlyGraphWriteResult:
+        raise NotImplementedError
+
     def query_semantic(
         self,
         query: HeavenlyGraphSemanticQuery,
