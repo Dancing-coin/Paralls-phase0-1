@@ -395,3 +395,43 @@ def test_audit_rejects_forged_correction_source_links(graph: object, mutation: s
     assert [error.error_id for error in report.errors] == [
         "HG-AUDIT-CORRECTION-LINK"
     ]
+
+
+def test_audit_rejects_forged_correction_primary_source_ref(graph: object) -> None:
+    target = _node("fact:forged-primary-source")
+    graph.write_batch(
+        HeavenlyGraphWriteBatch(
+            transaction_id="tx:audit:forged-primary-source:seed",
+            idempotency_key="idem:audit:forged-primary-source:seed",
+            scope=target.scope,
+            nodes=[target],
+        )
+    )
+    graph.correct(
+        GraphCorrectionRequest(
+            target_kind="node",
+            target_id=target.node_id,
+            target_revision=1,
+            correction_kind="corrected",
+            source_refs=["authority:audit:forged-primary-source"],
+            semantic_metadata=_metadata(),
+            scope=target.scope,
+        )
+    )
+    key = graph._scope_key(target.scope)
+    history = graph._nodes[(key, target.node_id)]
+    corrected = history[-1]
+    # Keep correction_target_source_ref intact; forge only the typed primary
+    # provenance source on the correction revision.
+    forged_provenance = corrected.provenance.model_copy(
+        update={"source_ref": "authority:forged-primary-source"}, deep=True
+    )
+    history[-1] = corrected.model_copy(
+        update={"provenance": forged_provenance}, deep=True
+    )
+
+    report = HeavenlyGraphConsistencyAudit(graph).audit(_scope(), _context())
+
+    assert [error.error_id for error in report.errors] == [
+        "HG-AUDIT-CORRECTION-LINK"
+    ]

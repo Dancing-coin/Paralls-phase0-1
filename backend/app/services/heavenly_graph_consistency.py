@@ -304,6 +304,7 @@ class HeavenlyGraphConsistencyAudit:
             getattr(predecessor, "provenance", None), "source_ref", None
         )
         provenance = getattr(entity, "provenance", None)
+        entity_source_ref = getattr(provenance, "source_ref", None)
         semantic_source_refs = set(getattr(metadata, "source_event_refs", ()))
         provenance_refs = {
             *getattr(provenance, "source_ref_lineage", ()),
@@ -322,6 +323,7 @@ class HeavenlyGraphConsistencyAudit:
             or target_revision != expected_revision
             or predecessor is None
             or target_source_ref != predecessor_source_ref
+            or entity_source_ref != predecessor_source_ref
             or not source_linkage_valid
         ):
             self._append(errors, "HG-AUDIT-CORRECTION-LINK", "broken_correction_link", entity, context)
