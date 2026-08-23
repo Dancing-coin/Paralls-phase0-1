@@ -635,13 +635,6 @@ class HeavenlyGraphSemanticQueryFacade:
             if relation.source_node_id in visible_ids
             and relation.target_node_id in visible_ids
         ]
-        if "authority_only" in query.context.allowed_visibility_scopes:
-            selected.extend(
-                relation
-                for relation in relations
-                if relation.relation_type == "closes_branch_node"
-                and relation not in selected
-            )
         return selected, denied or stale or len(selected) != len(relations)
 
     @staticmethod

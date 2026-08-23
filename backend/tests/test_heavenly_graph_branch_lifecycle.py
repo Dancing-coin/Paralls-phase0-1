@@ -769,7 +769,8 @@ def test_close_node_is_permanent_and_appends_a_close_marker(graph: object) -> No
             context=_context("branch:close"), relation_types=["closes_branch_node"]
         )
     )
-    assert len(markers.relations) == 1
+    assert markers.relations == []
+    assert markers.incomplete_reason == "visibility_denied"
     with pytest.raises(HeavenlyGraphRevisionConflict):
         graph.write_batch(
             HeavenlyGraphWriteBatch(

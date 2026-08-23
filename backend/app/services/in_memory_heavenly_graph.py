@@ -3,6 +3,7 @@ import copy
 import hashlib
 import json
 from collections.abc import Sequence
+from itertools import chain
 
 from app.models.siming_heavenly_graph import (
     GraphBranchDiffQuery,
@@ -177,28 +178,11 @@ class InMemoryHeavenlyGraphAdapter:
         }
         node_ids = sorted(set(left_nodes) | set(right_nodes))
         relation_ids = sorted(set(left_relations) | set(right_relations))
-        markers = sorted(
-            [
-                *self._branch_markers.get(self._scope_key(query.left_scope), []),
-                *self._branch_markers.get(self._scope_key(query.right_scope), []),
-            ],
-            key=lambda marker: marker.marker_id,
-        )
-        markers = [
-            marker
-            for marker in markers
-            if "authority_only" in query.reader_context.allowed_visibility_scopes
-            and marker.valid_at <= query.reader_context.valid_at
-            and (
-                query.reader_context.recorded_at is None
-                or marker.recorded_at <= query.reader_context.recorded_at
-            )
-            and marker.policy_revision == query.reader_context.policy_revision
-        ]
+        markers, marker_window_saturated = self._bounded_branch_markers(query)
         truncated = (
             len(node_ids) > query.limits.node_limit
             or len(relation_ids) > query.limits.relation_limit
-            or len(markers) > query.limits.marker_limit
+            or marker_window_saturated
             or len(left_nodes) >= node_read_limit
             or len(right_nodes) >= node_read_limit
             or len(left_relations) >= relation_read_limit
@@ -256,6 +240,31 @@ class InMemoryHeavenlyGraphAdapter:
             if principal not in {owner_actor_id, f"actor:{owner_actor_id}", f"reader:{owner_actor_id}"}:
                 return False
         return metadata.policy_revision == query.reader_context.policy_revision
+
+    def _bounded_branch_markers(
+        self,
+        query: GraphBranchDiffQuery,
+    ) -> tuple[list[GraphBranchLifecycleMarker], bool]:
+        if "authority_only" not in query.reader_context.allowed_visibility_scopes:
+            return [], False
+        left = self._branch_markers.get(self._scope_key(query.left_scope), [])
+        right = self._branch_markers.get(self._scope_key(query.right_scope), [])
+        window_limit = query.limits.marker_limit + 1
+        selected: list[GraphBranchLifecycleMarker] = []
+        for marker in chain(left, right):
+            if marker.valid_at > query.reader_context.valid_at:
+                continue
+            if (
+                query.reader_context.recorded_at is not None
+                and marker.recorded_at > query.reader_context.recorded_at
+            ):
+                continue
+            if marker.policy_revision != query.reader_context.policy_revision:
+                continue
+            selected.append(marker)
+            if len(selected) == window_limit:
+                break
+        return selected[: query.limits.marker_limit], len(selected) == window_limit
 
     def lifecycle_branch(self, request: GraphBranchLifecycleRequest) -> HeavenlyGraphWriteResult:
         branch = request.branch_scope
@@ -819,6 +828,18 @@ class InMemoryHeavenlyGraphAdapter:
     ) -> list[HeavenlyGraphNode]:
         """Return bounded admitted node revisions for historical semantic queries."""
         scope_key = self._scope_key(query.scope)
+        if not self._branch_available(
+            query.scope,
+            valid_at=query.valid_at,
+            recorded_at=query.recorded_at,
+        ):
+            return []
+        if self._is_branch_discarded(
+            query.scope,
+            query.recorded_at,
+            query.valid_at,
+        ):
+            return []
         node_id_filter = set(query.node_ids)
         node_type_filter = set(query.node_types)
         selected: list[HeavenlyGraphNode] = []
@@ -831,6 +852,13 @@ class InMemoryHeavenlyGraphAdapter:
                 if query.recorded_at is not None and node.recorded_at > query.recorded_at:
                     continue
                 if not node.validity.contains(query.valid_at):
+                    continue
+                if self._is_node_closed(
+                    query.scope,
+                    node.node_id,
+                    valid_at=query.valid_at,
+                    recorded_at=query.recorded_at,
+                ):
                     continue
                 if node_type_filter and node.node_type not in node_type_filter:
                     continue
