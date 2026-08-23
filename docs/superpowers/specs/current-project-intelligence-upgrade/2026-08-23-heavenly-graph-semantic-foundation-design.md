@@ -51,16 +51,56 @@
 
 ## 3. 术语和所有权
 
+### 3.0 Canonical Owner 与 World Truth Layer
+
+`owner` 不是一个统一的“世界真相层模块”，而是某一类规范状态的唯一责任主体。
+
+- `Canonical Owner`：对一类状态拥有唯一规范写入、校验和结算权的领域主体；
+- `Domain Authority`：Canonical Owner 的运行时入口，负责验证命令、接受或拒绝变化，并提交领域事件；
+- `World Truth Layer`：各 Canonical Owner 已提交的事实事件及其可重建投影组成的事实平面，不是单独的 owner；
+- `Heavenly Graph`：消费已提交事实并保存关系、派生、冲突、分支和查询视图的知识层，不是事实 owner。
+
+第一版的 owner 例子如下：
+
+| 规范状态 | Canonical Owner / Authority |
+| --- | --- |
+| 对象、环境和物理交互结果 | ESM / 对应 World Authority |
+| inventory 位置 | Inventory Authority |
+| 产权归属 | Ownership Authority |
+| 账户和经济结算 | Economy Authority |
+| 身体资源与生存状态 | Body / Survival Authority |
+| 角色主观记忆与心智状态 | Character Core |
+| 故事线、叙事义务和收敛策略 | Siming 自有叙事状态 |
+
+这些 owner 的已提交事件共同构成 `World Truth Layer`。图谱只能引用和组织这些 committed facts，不能把派生关系、模型 proposal 或摘要提升为领域事实。
+
+统一写入链为：
+
+```text
+command / observation
+  -> Domain Authority validation
+  -> committed domain event
+  -> World Truth Layer
+  -> Heavenly Graph projection
+```
+
+因此以下主体都不是“全部世界状态”的通用 owner：
+
+- Heavenly Graph 不是世界真相 owner；
+- Siming 不是世界事实 owner；
+- ESM 不是所有玩法状态的 owner；
+- World Truth Layer 不是一个可以直接写入的模块。
+
 ### 3.1 图谱不是世界 Authority
 
-世界、ESM、Gameplay owner 和角色 Core 仍然决定事实是否成立。图谱保存：
+各领域 Canonical Owner 仍然决定事实是否成立。图谱保存：
 
 - owner-confirmed fact 的引用；
 - 受治理的派生关系；
 - 可审计的 proposal、correction 和 projection；
 - 查询和恢复所需的版本信息。
 
-图谱不得凭空创建世界事实，不得把模型输出或摘要伪装成 authority fact。
+图谱不得凭空创建世界事实，不得把模型输出或摘要伪装成 authority fact。角色 Core 只拥有角色主观记忆和心智状态；Siming 只拥有其叙事状态、义务和收敛策略，二者都不能越权写入其他领域事实。
 
 ### 3.2 三类记录
 
