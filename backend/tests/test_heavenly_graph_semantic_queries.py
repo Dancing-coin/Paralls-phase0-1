@@ -346,6 +346,54 @@ def test_causal_depth_boundary_reports_unexplored_outgoing_edges(graph: object) 
     assert result.truncated is True
 
 
+def test_causal_high_branching_stops_at_deterministic_work_budget(graph: object) -> None:
+    branch_count = 64
+    depth = 8
+    root = _node("budget:root")
+    nodes = [root]
+    relations = []
+    for branch_index in range(branch_count):
+        previous_id = root.node_id
+        for level in range(1, depth + 1):
+            current_id = f"budget:{branch_index:02d}:{level}"
+            nodes.append(_node(current_id))
+            relations.append(
+                _relation(
+                    f"budget:r:{branch_index:02d}:{level}",
+                    previous_id,
+                    current_id,
+                )
+            )
+            previous_id = current_id
+
+    graph.write_batch(
+        HeavenlyGraphWriteBatch(
+            transaction_id="tx:causal-budget",
+            idempotency_key="causal-budget",
+            scope=_scope(),
+            nodes=nodes,
+            relations=relations,
+        )
+    )
+    result = graph.query_semantic(
+        CausalPathQuery(
+            context=_context(),
+            seed_node_ids=[root.node_id],
+            max_depth=depth,
+            node_limit=100,
+            relation_limit=100,
+            max_paths=1,
+        )
+    )
+
+    # The derived work budget is nine path-prefix work items here (one path
+    # times its nine possible nodes). It stops deterministic BFS immediately
+    # after admitting the root fan-out, rather than expanding all 64 chains.
+    assert result.nodes == []
+    assert result.relations == []
+    assert result.truncated is True
+
+
 def test_conflict_set_preserves_concurrent_claims_and_revisions(graph: object) -> None:
     first = _node("claim:a", metadata=GraphSemanticMetadata(policy_revision="policy:v1"))
     first = first.model_copy(update={"attributes": {"subject_ref": "world:x", "property_key": "mood"}})

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 import hashlib
 import json
 from typing import Protocol
@@ -383,24 +384,29 @@ class HeavenlyGraphSemanticQueryFacade:
             outgoing.sort(key=lambda relation: relation.relation_id)
 
         complete_paths: list[tuple[tuple[str, ...], tuple[str, ...]]] = []
-        pending: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
-            ((node_id,), ())
-            for node_id in sorted(set(query.seed_node_ids))
-            if node_id in node_by_id
-        ]
         truncated = self._window_saturated(raw_nodes) or self._window_saturated(raw_relations)
+        work_item_budget = self._causal_work_item_budget(query)
+        pending: deque[tuple[tuple[str, ...], tuple[str, ...]]] = deque()
+        scheduled_work_items = 0
+        for node_id in sorted(set(query.seed_node_ids)):
+            if node_id not in node_by_id:
+                continue
+            if scheduled_work_items >= work_item_budget:
+                truncated = True
+                break
+            pending.append(((node_id,), ()))
+            scheduled_work_items += 1
+        processed_work_items = 0
 
-        # Enumerate at most one path beyond the requested bound. This proves
-        # truncation without allowing a branching graph to expand unboundedly.
+        # A path is charged when it enters pending, so the cumulative queue
+        # work is bounded even when no terminal path exists in a dense DAG.
         while pending and len(complete_paths) <= query.max_paths:
-            path_nodes, path_relation_ids = pending.pop(0)
-            current_id = path_nodes[-1]
-            outgoing = [
-                relation
-                for relation in adjacency.get(current_id, [])
-                if relation.target_node_id not in path_nodes
-                and relation.target_node_id in node_by_id
-            ]
+            if processed_work_items >= work_item_budget:
+                truncated = True
+                break
+            path_nodes, path_relation_ids = pending.popleft()
+            processed_work_items += 1
+            outgoing = self._causal_outgoing(adjacency, path_nodes, node_by_id)
             if len(path_relation_ids) >= query.max_depth:
                 if outgoing:
                     truncated = True
@@ -416,14 +422,18 @@ class HeavenlyGraphSemanticQueryFacade:
                     break
                 continue
             for relation in outgoing:
+                if scheduled_work_items >= work_item_budget:
+                    truncated = True
+                    break
                 pending.append(
                     (
                         (*path_nodes, relation.target_node_id),
                         (*path_relation_ids, relation.relation_id),
                     )
                 )
+                scheduled_work_items += 1
 
-        if pending and len(complete_paths) >= query.max_paths:
+        if pending:
             truncated = True
 
         selected_node_ids: list[str] = []
@@ -467,6 +477,34 @@ class HeavenlyGraphSemanticQueryFacade:
             selected_relations,
             truncated,
         )
+
+    @staticmethod
+    def _causal_work_item_budget(query: CausalPathQuery) -> int:
+        """Return the maximum number of causal path prefixes to inspect.
+
+        A complete path needs at most ``max_depth + 1`` path-prefix work
+        items. The output node and relation limits additionally cap useful
+        traversal. The adapter candidate window remains the final ceiling.
+        """
+        return min(
+            _SEMANTIC_CANDIDATE_LIMIT,
+            query.max_paths * (query.max_depth + 1),
+            query.node_limit + query.relation_limit,
+        )
+
+    @staticmethod
+    def _causal_outgoing(
+        adjacency: dict[str, list[HeavenlyGraphRelation]],
+        path_nodes: tuple[str, ...],
+        node_by_id: dict[str, HeavenlyGraphNode],
+    ) -> list[HeavenlyGraphRelation]:
+        current_id = path_nodes[-1]
+        return [
+            relation
+            for relation in adjacency.get(current_id, [])
+            if relation.target_node_id not in path_nodes
+            and relation.target_node_id in node_by_id
+        ]
 
     @staticmethod
     def _matches_turn(entity: object, query: BehaviorTurnQuery) -> bool:
