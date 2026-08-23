@@ -53,6 +53,29 @@ git diff --check
 passed
 ```
 
+## Review Fix Round 4
+
+- Replaced budget-consuming sibling-first BFS with deterministic depth-first
+  path selection so a reachable complete path is returned before alternate
+  branches consume the traversal budget.
+- Preserved the finite work-item budget and truncation behavior for unexplored
+  siblings and additional seeds.
+- Updated the high-branching InMemory/SQLite regression to require the first
+  complete path while proving the expansion counter remains within budget.
+
+Round-4 verification:
+
+```text
+python -m pytest -q backend/tests/test_heavenly_graph_semantic_queries.py \
+  backend/tests/heavenly_graph_contract.py \
+  backend/tests/test_sqlite_heavenly_graph_contract.py \
+  backend/tests/test_heavenly_graph_semantics.py
+107 passed, 1 warning
+
+git diff --check
+passed
+```
+
 ## Concerns / Deferred
 
 - The result model exposes the deterministic union of causal paths rather

@@ -346,7 +346,7 @@ def test_causal_depth_boundary_reports_unexplored_outgoing_edges(graph: object) 
     assert result.truncated is True
 
 
-def test_causal_high_branching_stops_at_deterministic_work_budget(
+def test_causal_high_branching_finds_complete_path_with_deterministic_work_budget(
     graph: object, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     branch_count = 64
@@ -402,10 +402,20 @@ def test_causal_high_branching_stops_at_deterministic_work_budget(
     )
 
     # The derived work budget is nine path-prefix work items here (one path
-    # times its nine possible nodes). It stops deterministic BFS immediately
-    # after admitting the root fan-out, rather than expanding all 64 chains.
-    assert result.nodes == []
-    assert result.relations == []
+    # times its nine possible nodes). DFS prioritizes the first complete chain
+    # instead of spending the budget admitting all 64 root siblings.
+    assert {node.node_id for node in result.nodes} == {
+        "budget:root",
+        *[f"budget:00:{level}" for level in range(1, depth + 1)],
+    }
+    assert {relation.relation_id for relation in result.relations} == {
+        *[f"budget:r:00:{level}" for level in range(1, depth + 1)],
+    }
+    assert all(
+        relation.source_node_id in {node.node_id for node in result.nodes}
+        and relation.target_node_id in {node.node_id for node in result.nodes}
+        for relation in result.relations
+    )
     assert result.truncated is True
     assert processed_paths <= 9
 

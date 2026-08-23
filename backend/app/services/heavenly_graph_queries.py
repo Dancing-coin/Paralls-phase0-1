@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import deque
 import hashlib
 import json
 from typing import Protocol
@@ -386,55 +385,71 @@ class HeavenlyGraphSemanticQueryFacade:
         complete_paths: list[tuple[tuple[str, ...], tuple[str, ...]]] = []
         truncated = self._window_saturated(raw_nodes) or self._window_saturated(raw_relations)
         work_item_budget = self._causal_work_item_budget(query)
-        pending: deque[tuple[tuple[str, ...], tuple[str, ...]]] = deque()
-        scheduled_work_items = 0
-        for node_id in sorted(set(query.seed_node_ids)):
-            if node_id not in node_by_id:
-                continue
-            if scheduled_work_items >= work_item_budget:
-                truncated = True
-                break
-            pending.append(((node_id,), ()))
-            scheduled_work_items += 1
         processed_work_items = 0
 
-        # A path is charged when it enters pending, so the cumulative queue
-        # work is bounded even when no terminal path exists in a dense DAG.
-        while pending and len(complete_paths) <= query.max_paths:
+        def visit(
+            path_nodes: tuple[str, ...],
+            path_relation_ids: tuple[str, ...],
+        ) -> None:
+            """Depth-first enumerate paths without spending the budget on siblings.
+
+            A breadth-first queue charges every admitted sibling before any of
+            them can reach a terminal node.  This deterministic DFS keeps only
+            the active path as scheduled work, so a complete path gets the
+            whole ``max_depth + 1`` budget even when the seed has high fan-out.
+            """
+            nonlocal processed_work_items, truncated
+            if len(complete_paths) >= query.max_paths:
+                return
             if processed_work_items >= work_item_budget:
                 truncated = True
-                break
-            path_nodes, path_relation_ids = pending.popleft()
+                return
             processed_work_items += 1
             outgoing = self._causal_outgoing(adjacency, path_nodes, node_by_id)
             if len(path_relation_ids) >= query.max_depth:
                 if outgoing:
                     truncated = True
                 complete_paths.append((path_nodes, path_relation_ids))
-                if len(complete_paths) > query.max_paths:
-                    truncated = True
-                    break
-                continue
+                return
             if not outgoing:
                 complete_paths.append((path_nodes, path_relation_ids))
-                if len(complete_paths) > query.max_paths:
-                    truncated = True
-                    break
-                continue
-            for relation in outgoing:
-                if scheduled_work_items >= work_item_budget:
-                    truncated = True
-                    break
-                pending.append(
-                    (
-                        (*path_nodes, relation.target_node_id),
-                        (*path_relation_ids, relation.relation_id),
-                    )
-                )
-                scheduled_work_items += 1
+                return
 
-        if pending:
-            truncated = True
+            for index, relation in enumerate(outgoing):
+                if len(complete_paths) >= query.max_paths:
+                    # Siblings after the selected path are unexplored. They
+                    # are a semantic truncation even though no work was spent
+                    # on them.
+                    truncated = True
+                    return
+                before = len(complete_paths)
+                visit(
+                    (*path_nodes, relation.target_node_id),
+                    (*path_relation_ids, relation.relation_id),
+                )
+                if processed_work_items >= work_item_budget and not complete_paths:
+                    truncated = True
+                    return
+                if index < len(outgoing) - 1 and len(complete_paths) > before:
+                    # A complete path was selected and there are more legal
+                    # alternatives behind it; max_paths bounds the result.
+                    if len(complete_paths) >= query.max_paths:
+                        truncated = True
+                        return
+
+        for node_id in sorted(set(query.seed_node_ids)):
+            if node_id not in node_by_id:
+                continue
+            before = len(complete_paths)
+            visit((node_id,), ())
+            if len(complete_paths) >= query.max_paths:
+                # Additional seeds are also unexplored alternatives.
+                if node_id != sorted(set(query.seed_node_ids))[-1]:
+                    truncated = True
+                break
+            if processed_work_items >= work_item_budget and len(complete_paths) == before:
+                truncated = True
+                break
 
         selected_node_ids: list[str] = []
         selected_relation_ids: set[str] = set()
