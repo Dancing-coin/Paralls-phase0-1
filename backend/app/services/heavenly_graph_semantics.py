@@ -81,6 +81,8 @@ class HeavenlyNodeTypeRegistry:
             return _NodeRule((_ACTOR,), ("fact", "projection"), (_PRIVATE,))
         if node_type.startswith("memory:"):
             return _NodeRule((_SIMING,), ("fact", "projection", "proposal"), (_INTERNAL, _AUTHORITY, _BRANCH))
+        if node_type in {"authored_story_blueprint", "runtime_story_node", "story_authority_outcome"}:
+            return _NodeRule((_SIMING,), ("fact", "projection", "proposal"), (_INTERNAL, _AUTHORITY, _BRANCH, _PUBLIC))
         try:
             return self.rules[node_type]
         except KeyError as exc:

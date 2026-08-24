@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from app.models.siming_heavenly_graph import (
     GraphProvenance,
+    GraphReaderContext,
+    GraphSemanticMetadata,
     GraphValidity,
     HeavenlyGraphNode,
     HeavenlyGraphScope,
     HeavenlyGraphWriteBatch,
     HeavenlyGraphWriteResult,
+    NodeLookupQuery,
     HeavenlyNodeQuery,
 )
 from app.models.siming_story_graph import (
@@ -85,12 +88,7 @@ class SimingStoryObligationRuntime:
         valid_at: int,
         recorded_at: int | None = None,
     ) -> NarrativeObligation | None:
-        node = self._graph.get_node(
-            node_id=self._obligation_node_id(obligation_id),
-            scope=scope,
-            valid_at=valid_at,
-            recorded_at=recorded_at,
-        )
+        node = self._semantic_node(scope, self._obligation_node_id(obligation_id), valid_at, recorded_at)
         if node is None or node.node_type != self._OBLIGATION_NODE_TYPE:
             return None
         return NarrativeObligation.model_validate(node.attributes)
@@ -230,12 +228,7 @@ class SimingStoryObligationRuntime:
         valid_at: int,
         recorded_at: int | None = None,
     ) -> NarrativeAttractor | None:
-        node = self._graph.get_node(
-            node_id=self._attractor_node_id(attractor_id),
-            scope=scope,
-            valid_at=valid_at,
-            recorded_at=recorded_at,
-        )
+        node = self._semantic_node(scope, self._attractor_node_id(attractor_id), valid_at, recorded_at)
         if node is None or node.node_type != self._ATTRACTOR_NODE_TYPE:
             return None
         return NarrativeAttractor.model_validate(node.attributes)
@@ -412,6 +405,14 @@ class SimingStoryObligationRuntime:
             supersedes_revision=None if prior is None else prior.revision,
             provenance=provenance,
             attributes=obligation.model_dump(mode="json"),
+            semantic_metadata=GraphSemanticMetadata(
+                record_kind="projection",
+                visibility_scope="siming_internal",
+                derivation_kind="projection",
+                source_event_refs=(provenance.source_ref,),
+                policy_revision="policy:v1",
+                scope_digest="scope:siming-heavenly",
+            ),
         )
 
     def _attractor_graph_node(
@@ -433,4 +434,41 @@ class SimingStoryObligationRuntime:
             supersedes_revision=None if prior is None else prior.revision,
             provenance=provenance,
             attributes=attractor.model_dump(mode="json"),
+            semantic_metadata=GraphSemanticMetadata(
+                record_kind="projection",
+                visibility_scope="siming_internal",
+                derivation_kind="projection",
+                source_event_refs=(provenance.source_ref,),
+                policy_revision="policy:v1",
+                scope_digest="scope:siming-heavenly",
+            ),
+        )
+
+    def _semantic_node(self, scope: HeavenlyGraphScope, node_id: str, valid_at: int, recorded_at: int | None) -> HeavenlyGraphNode | None:
+        result = self._graph.query_semantic(
+            NodeLookupQuery(
+                context=GraphReaderContext(
+                    reader_principal="reader:siming",
+                    allowed_visibility_scopes=("siming_internal", "authority_only", "branch_only"),
+                    world_id=scope.world_id,
+                    session_id=scope.session_id,
+                    story_branch_id=scope.story_branch_id,
+                    valid_at=valid_at,
+                    recorded_at=recorded_at,
+                    policy_revision="policy:v1",
+                ),
+                scope=scope,
+                node_ids=[node_id],
+                limit=1,
+            )
+        )
+        if result.nodes:
+            return result.nodes[0]
+        # Compatibility for pre-semantic story fixtures; newly written nodes
+        # always carry policy:v1 metadata and are served by the facade above.
+        return self._graph.get_node(
+            node_id=node_id,
+            scope=scope,
+            valid_at=valid_at,
+            recorded_at=recorded_at,
         )
