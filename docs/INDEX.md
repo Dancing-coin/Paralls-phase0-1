@@ -180,6 +180,7 @@ fake or disabled provider.
 - `behavior-turn-runtime`：后端角色纵切证明，覆盖共享 typed behavior turn（行为回合）的八阶段链、accepted/rejected Authority 结果投影、actor-private scope 隔离和幂等 replay；不宣称角色重启连续性、司命接入、六域 Authority 投影、在线 LLM 或 Godot 已完成。
 - `character-continuity-recovery`：后端角色连续性证明，覆盖 graph-backed dynamic state、need/tension、goal、supervision/continuity、working memory 与 session next-input 在旧 session 文件丢失后的重建；不宣称司命、六域 Authority、在线 LLM 或 Godot 已完成。
 - `authority-graph-projection`：后端 Authority 投影证明，覆盖 ESM/world、Inventory、Ownership、Economy、Survival/body、资源/场景六类 committed event 到 Heavenly Graph 的 owner/source vector/settlement/replay 投影；不宣称在线 LLM 或 Godot 已完成。
+- `siming-behavior-turn-runtime`：后端司命行为回合证明，覆盖 `SimingRuntime.tick(...)` 在唯一决策路径记录共享八阶段链；不宣称在线 LLM 或 Godot 已完成。
 - `interaction-orchestration-service`：后端证明，覆盖 structured interaction policies、semantic ESM path、physical seam、degrade paths 和 unified result merge。
 - `esm-physical-channel-world-actuation`：后端与 Godot 运行时证明，覆盖 physical effect refs、contact/body/object/environment observations、constraint gating 和 orchestration merge。
 - `non-runtime-production-pipeline`：离线生产证明，覆盖 scene semantic extraction、spatial baking、multimodal classification readiness、review gating 和 approved replay dataset artifacts。

@@ -205,6 +205,15 @@ def actor_private_scope(actor_id: str) -> HeavenlyGraphScope:
     )
 
 
+def siming_scope_for_event(event: AuthorityEvent) -> HeavenlyGraphScope:
+    payload = event.payload if isinstance(event.payload, dict) else {}
+    return HeavenlyGraphScope(
+        world_id=str(payload.get("world_id", "world:demo") or "world:demo"),
+        session_id=str(payload.get("session_id", "session:demo") or "session:demo"),
+        story_branch_id=str(payload.get("story_branch_id", "branch:main") or "branch:main"),
+    )
+
+
 class FrontendSimingCharacterDispatchAdapter(SimingCharacterDispatchAdapter):
     def dispatch(self, event: AuthorityEvent) -> SimingCharacterDispatchResult:
         result = super().dispatch(event)
@@ -301,6 +310,8 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
         siming_runtime=SimingRuntime(
             llm_provider=llm_provider,
             heavenly_support=support,
+            behavior_turn_recorder=BehaviorTurnRecorder(heavenly_graph),
+            behavior_turn_scope_resolver=siming_scope_for_event,
         ),
     )
 

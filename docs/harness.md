@@ -130,6 +130,7 @@ python scripts/verification/harness.py --profile siming-adaptive-bridge
 python scripts/verification/harness.py --profile behavior-turn-runtime
 python scripts/verification/harness.py --profile character-continuity-recovery
 python scripts/verification/harness.py --profile authority-graph-projection
+python scripts/verification/harness.py --profile siming-behavior-turn-runtime
 python scripts/verification/harness.py --profile all
 ```
 
@@ -683,6 +684,16 @@ linkage. It does not prove online LLM or Godot closure.
 
 ```powershell
 python scripts/verification/harness.py --profile authority-graph-projection
+```
+
+### `siming-behavior-turn-runtime`
+
+Backend proof that `SimingRuntime.tick(...)` uses the shared eight-stage
+behavior-turn contract on its decision path. It does not prove online LLM or
+Godot closure.
+
+```powershell
+python scripts/verification/harness.py --profile siming-behavior-turn-runtime
 ```
 
 ### `siming-heavenly-runtime`
