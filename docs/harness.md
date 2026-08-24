@@ -127,6 +127,7 @@ python scripts/verification/harness.py --profile siming-actor-memory-read
 python scripts/verification/harness.py --profile siming-story-runtime
 python scripts/verification/harness.py --profile siming-resource-staging
 python scripts/verification/harness.py --profile siming-adaptive-bridge
+python scripts/verification/harness.py --profile behavior-turn-runtime
 python scripts/verification/harness.py --profile all
 ```
 
@@ -639,6 +640,26 @@ Output:
 
 - `.harness/verification/heavenly-graph-semantic-foundation-report.json`
 - `.harness/verification/heavenly-graph-semantic-foundation-report.md`
+
+### `behavior-turn-runtime`
+
+Backend proof for the first shared typed behavior turn（行为回合）runtime
+vertical. It records one character-owned eight-stage chain, preserves accepted
+and rejected Authority settlement outcomes as actor-private projections, and
+proves scope isolation plus idempotent recorder replay.
+
+This profile does not prove character restart continuity, Siming turn
+integration, six-domain Authority projection, online LLM execution, or Godot
+presentation.
+
+```powershell
+python scripts/verification/harness.py --profile behavior-turn-runtime
+```
+
+Output:
+
+- `.harness/verification/behavior-turn-runtime-report.json`
+- `.harness/verification/behavior-turn-runtime-report.md`
 
 ### `siming-heavenly-runtime`
 
