@@ -13,7 +13,7 @@ from app.services.behavior_turn_recorder import BehaviorTurnRecorder
 
 
 class CharacterBehaviorTurnProjection:
-    """Maps one completed character-owned chain to the shared turn contract."""
+    """角色行为回合投影器：映射角色链到共享 typed 回合契约。"""
 
     _CHAIN_TYPES = (
         "l2_reasoning_request",

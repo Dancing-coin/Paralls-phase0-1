@@ -143,25 +143,30 @@
 - Consumes: Tasks 1-3 commits
 - Produces: reviewed, fully verified first vertical slice for Issue #2
 
-- [ ] **Step 1: Run compilation and focused verification**
+- [x] **Step 1: Run compilation and focused verification**
 
   Run: `python -m compileall backend/app backend/tests scripts/verification`
 
   Run: `python scripts/verification/harness.py --profile behavior-turn-runtime`
 
-- [ ] **Step 2: Run the full backend suite**
+- [x] **Step 2: Run the full backend suite**
 
   Run: `python -m pytest -v`
 
-- [ ] **Step 3: Run the broad Harness**
+- [x] **Step 3: Run the broad Harness**
+
+  Note: the implementation slice and its dedicated profile passed. The broad
+  run was blocked by the existing `character-agent-execution` Godot probe
+  missing its execution markers; this is recorded as an external verification
+  blocker, not converted into a passing claim.
 
   Run: `python scripts/verification/harness.py --profile all`
 
-- [ ] **Step 4: Review from the pre-slice commit**
+- [x] **Step 4: Review from the pre-slice commit**
 
   Use `/code-review` against the fixed pre-slice commit and Issue #2. Resolve all correctness/spec blockers and rerun affected verification.
 
-- [ ] **Step 5: Commit review repairs**
+- [x] **Step 5: Commit review repairs**
 
   Commit only repair files with: `修复行为回合运行时评审问题`
 

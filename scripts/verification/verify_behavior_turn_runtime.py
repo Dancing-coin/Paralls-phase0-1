@@ -8,7 +8,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
-from app.models.behavior_turn import BehaviorTurnRecordRequest, BehaviorTurnStageRecord
+from app.models.behavior_turn import (
+    BEHAVIOR_TURN_STAGE_ORDER,
+    BehaviorTurnRecordRequest,
+    BehaviorTurnStageRecord,
+)
 from app.models.character_perceived import CharacterPerceivedEvent
 from app.models.siming_heavenly_graph import (
     BehaviorTurnQuery,
@@ -30,16 +34,7 @@ from common import (
 
 
 TEST_FILES = ["backend/tests/test_behavior_turn_recorder.py"]
-STAGES = [
-    "context",
-    "interpretation",
-    "goal",
-    "intent",
-    "execution",
-    "settlement",
-    "evaluation",
-    "policy",
-]
+STAGES = list(BEHAVIOR_TURN_STAGE_ORDER)
 
 
 def _result(

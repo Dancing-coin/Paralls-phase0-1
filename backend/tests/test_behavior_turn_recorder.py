@@ -4,6 +4,7 @@ from pathlib import Path
 from app import config as config_module
 from app import main
 from app.models.behavior_turn import (
+    BEHAVIOR_TURN_STAGE_ORDER,
     BehaviorTurnRecordRequest,
     BehaviorTurnStageRecord,
 )
@@ -21,16 +22,7 @@ from app.services.behavior_turn_recorder import BehaviorTurnRecorder
 from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
 
 
-STAGES = (
-    "context",
-    "interpretation",
-    "goal",
-    "intent",
-    "execution",
-    "settlement",
-    "evaluation",
-    "policy",
-)
+STAGES = BEHAVIOR_TURN_STAGE_ORDER
 
 
 def _scope() -> HeavenlyGraphScope:

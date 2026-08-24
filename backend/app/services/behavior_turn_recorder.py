@@ -17,7 +17,7 @@ from app.services.siming_heavenly_graph_port import HeavenlyGraphPort
 
 
 class BehaviorTurnRecorder:
-    """Project owner-produced behavior stages into one auditable graph turn."""
+    """行为回合记录器：将 owner 产生的阶段投影为可审计图谱回合。"""
 
     def __init__(self, graph: HeavenlyGraphPort) -> None:
         self._graph = graph
