@@ -589,7 +589,7 @@ def main() -> int:
             db_path.unlink()
         python_exe = resolve_python_exe(args.python_exe)
         godot_exe = resolve_godot_exe(args.godot_exe)
-        runtime_env = {"SIMING_HEAVENLY_MODE": "active", "SIMING_LLM_MODE": "http", "PARALLS_HEAVENLY_GRAPH_PATH": str(db_path), "SIMING_HEAVENLY_AUTOTEST": "1", "SIMING_HEAVENLY_AUTOTEST_DIR": str(db_path.parent)}
+        runtime_env = {"SIMING_HEAVENLY_MODE": "active", "SIMING_LLM_MODE": "http", "PARALLS_HEAVENLY_GRAPH_PATH": str(db_path), "SIMING_HEAVENLY_AUTOTEST": "1", "SIMING_HEAVENLY_AUTOTEST_DIR": str(db_path.parent), "PHASE0_DEBUG_LOGGING": "1"}
         _, backend_process = ensure_backend(root, python_exe, prefer_fresh_backend=True, env=runtime_env)
         godot_process, lines = _start_logged_process([str(godot_exe), "--path", str(root), "--scene", "res://scenes/phase0/MainDemo.tscn", "--render-thread", "safe"], root, verification_dir(root) / "siming-heavenly-runtime-godot.log", runtime_env)
         if not _wait_marker(godot_process, lines, "siming_heavenly_restart_ready", 180):

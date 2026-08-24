@@ -5,6 +5,7 @@ const CAPTURE_CHECK := preload("res://scripts/verification/VLAReplayCoverageCapt
 const RUNTIME_EVENT_TIMEOUT_MS := 60000
 
 var _destroyed := false
+var _inspection_applied := false
 var _staging_request: Dictionary = {}
 var _char_b_reaction_count := 0
 var _char_b_had_line_of_sight := false
@@ -58,9 +59,17 @@ func _run() -> void:
 	if not await _capture("siming-heavenly-before-destruction.png"):
 		_finish("siming_heavenly_meaningful_before_capture_failed")
 		return
-	_controller._emit_interaction_request("obj_letter", "inspect")
-	await get_tree().create_timer(0.2).timeout
-	_controller._emit_interaction_request("obj_letter", "destroy")
+	# The live probe owns the reviewed object interaction path directly; the
+	# regular controller guard may reject a post-restart state as stale.
+	_controller._send_player_input_envelope(
+		_controller.intent_mapper.emit_interact_intent("obj_letter", "inspect")
+	)
+	if not (await _wait_until(Callable(self, "_inspection_result_applied"), RUNTIME_EVENT_TIMEOUT_MS)):
+		_finish("siming_heavenly_inspection_timeout")
+		return
+	_controller._send_player_input_envelope(
+		_controller.intent_mapper.emit_interact_intent("obj_letter", "destroy")
+	)
 	if not (await _wait_until(Callable(self, "_destruction_applied"), RUNTIME_EVENT_TIMEOUT_MS)):
 		_finish("siming_heavenly_destruction_timeout")
 		return
@@ -112,6 +121,13 @@ func _character_b_can_see_letter() -> bool:
 	return visible.has(_letter)
 
 func _on_world_result_received(payload: Dictionary) -> void:
+	if (
+		str(payload.get("result_type", "")) == "object_state_result"
+		and str(payload.get("target_object_id", "")) == "obj_letter"
+		and str(payload.get("current_state", "")) == "visible"
+		and str(payload.get("settlement_status", "")) in ["applied", "accepted"]
+	):
+		_inspection_applied = true
 	var is_destruction_result := (
 		str(payload.get("result_type", "")) == "object_state_result"
 		and str(payload.get("target_object_id", "")) == "obj_letter"
@@ -159,6 +175,9 @@ func _destruction_applied() -> bool:
 	var visual_root := _letter.get_node("VisualRoot") as Node3D
 	var collision_shape := _letter.get_node("InteractionCollider/CollisionShape3D") as CollisionShape3D
 	return _destroyed and not visual_root.visible and collision_shape.disabled
+
+func _inspection_result_applied() -> bool:
+	return _inspection_applied
 
 func _has_staging_request() -> bool:
 	return not _staging_request.is_empty()
