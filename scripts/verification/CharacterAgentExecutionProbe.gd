@@ -1,6 +1,6 @@
 extends Node
 
-const BACKEND_URL := "ws://127.0.0.1:8000/ws"
+const BACKEND_URL := "ws://127.0.0.1:8000/ws?stream_mode=runtime_only"
 const EXECUTION_PAYLOAD_DIRECT_MARKER := "character_agent_execution_probe:execution_payload_direct=true"
 const CONSUMER_SEEN_MARKER := "character_agent_execution_probe:consumer_seen=true"
 const ALL_CHECKS_COMPLETE_MARKER := "character_agent_execution_probe:all_checks_complete=true"

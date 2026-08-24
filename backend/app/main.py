@@ -8,6 +8,7 @@ from threading import RLock
 from time import time
 from uuid import uuid4
 
+
 from fastapi import FastAPI, Header, HTTPException, Request, WebSocket
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -1513,7 +1514,8 @@ def _handle_raw_fact_followup(
     connection_context: WebSocketConnectionContext,
 ) -> list[dict[str, object]]:
     with _raw_fact_followup_lock:
-        return _handle_envelope(envelope, connection_context=connection_context)
+        result = _handle_envelope(envelope, connection_context=connection_context)
+        return result
 
 
 def _handle_websocket_envelope(
@@ -4350,7 +4352,8 @@ def _projection_view_refs(
 
 def _character_agent_messages_from_fact_candidates(event: RawFactEvent) -> list[dict[str, object]]:
     character_agent_messages: list[dict[str, object]] = []
-    for candidate in compile_candidate_percepts(event):
+    candidates = compile_candidate_percepts(event)
+    for candidate in candidates:
         _publish_debug_event(
             build_debug_event(
                 producer_ts=candidate.producer_ts,
