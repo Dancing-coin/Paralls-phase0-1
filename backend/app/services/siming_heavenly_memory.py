@@ -46,9 +46,9 @@ class SimingHeavenlyMemoryService:
             attributes=entry.model_dump(mode="json"),
             provenance=provenance,
             semantic_metadata=GraphSemanticMetadata(
-                record_kind="fact",
+                record_kind=("fact" if provenance.source_kind in {"authority_event", "world_result", "esm_result"} else "projection"),
                 visibility_scope="siming_internal",
-                derivation_kind="authority",
+                derivation_kind=("authority" if provenance.source_kind in {"authority_event", "world_result", "esm_result"} else "projection"),
                 source_event_refs=(provenance.source_ref,),
                 policy_revision="policy:v1",
                 scope_digest="scope:siming-heavenly",

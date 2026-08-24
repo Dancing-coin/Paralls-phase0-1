@@ -111,6 +111,11 @@ class HeavenlyNodeTypeRegistry:
         return rule
 
     def validate_node(self, node: HeavenlyGraphNode, *, allow_legacy: bool = False) -> HeavenlyGraphNode:
+        if allow_legacy and node.semantic_metadata.policy_revision == "policy:legacy":
+            legacy_rule = self._legacy_rule(node.node_type)
+            if legacy_rule is not None:
+                self._validate_legacy_node(node, legacy_rule)
+                return node
         try:
             self.validate(
                 node_type=node.node_type,
