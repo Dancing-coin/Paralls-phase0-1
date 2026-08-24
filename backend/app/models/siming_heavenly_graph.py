@@ -379,6 +379,8 @@ class HeavenlyGraphRelation(BaseModel):
     source_node_id: str = Field(min_length=1)
     target_node_id: str = Field(min_length=1)
     scope: HeavenlyGraphScope
+    source_scope: HeavenlyGraphScope | None = None
+    target_scope: HeavenlyGraphScope | None = None
     validity: GraphValidity
     recorded_at: int = Field(ge=0)
     revision: int = Field(ge=1)

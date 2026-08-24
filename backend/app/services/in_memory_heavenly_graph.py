@@ -741,11 +741,17 @@ class InMemoryHeavenlyGraphAdapter:
                 and self._scope_key(relation.scope) not in self._branch_status
             ):
                 raise ValueError("branch_only relation requires an existing forked branch")
+            endpoint_scopes = (
+                relation.source_scope or relation.scope,
+                relation.target_scope or relation.scope,
+            )
             closed_endpoint = next(
                 (
                     endpoint
-                    for endpoint in (relation.source_node_id, relation.target_node_id)
-                    if self._is_node_closed(relation.scope, endpoint)
+                    for endpoint, endpoint_scope in zip(
+                        (relation.source_node_id, relation.target_node_id), endpoint_scopes
+                    )
+                    if self._is_node_closed(endpoint_scope, endpoint)
                 ),
                 None,
             )
@@ -753,7 +759,12 @@ class InMemoryHeavenlyGraphAdapter:
                 raise HeavenlyGraphReferentialIntegrityError(
                     f"relation endpoint {closed_endpoint!r} is permanently closed"
                 )
-            DEFAULT_RELATION_TYPE_REGISTRY.validate_relation(relation, allow_legacy=True)
+            DEFAULT_RELATION_TYPE_REGISTRY.validate_relation(
+                relation,
+                source_scope=relation.source_scope or relation.scope,
+                target_scope=relation.target_scope or relation.scope,
+                allow_legacy=True,
+            )
 
     def has_idempotency_key(
         self,
@@ -1383,17 +1394,18 @@ class InMemoryHeavenlyGraphAdapter:
         self,
         batch: HeavenlyGraphWriteBatch,
     ) -> None:
-        batch_nodes = {node.node_id: node for node in batch.nodes}
-        scope_key = self._scope_key(batch.scope)
+        batch_nodes = {(self._scope_key(node.scope), node.node_id): node for node in batch.nodes}
         for relation in batch.relations:
-            for endpoint in [
-                relation.source_node_id,
-                relation.target_node_id,
-            ]:
+            endpoint_pairs = (
+                (relation.source_scope or relation.scope, relation.source_node_id),
+                (relation.target_scope or relation.scope, relation.target_node_id),
+            )
+            for endpoint_scope, endpoint in endpoint_pairs:
+                scope_key = self._scope_key(endpoint_scope)
                 versions = list(
                     self._nodes.get((scope_key, endpoint), [])
                 )
-                batch_node = batch_nodes.get(endpoint)
+                batch_node = batch_nodes.get((scope_key, endpoint))
                 if batch_node is not None:
                     versions.append(batch_node)
                 exists = (
@@ -1405,10 +1417,6 @@ class InMemoryHeavenlyGraphAdapter:
                     is not None
                 )
                 if not exists:
-                    if relation.relation_type in DEFAULT_RELATION_TYPE_REGISTRY.CROSS_NAMESPACE_DECLARED:
-                        raise HeavenlyGraphReferentialIntegrityError(
-                            f"cross-namespace endpoints are unsupported by the single-scope v1 relation model: {relation.relation_type}"
-                        )
                     raise HeavenlyGraphReferentialIntegrityError(
                         f"relation endpoint {endpoint!r} is missing in batch scope "
                         "at the relation valid/recorded time"

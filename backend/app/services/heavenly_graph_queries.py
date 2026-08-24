@@ -610,23 +610,30 @@ class HeavenlyGraphSemanticQueryFacade:
         """Fail closed when either endpoint is outside the reader's view."""
         if not relations:
             return [], False
-        scope = self._effective_scope(query)
-        endpoint_ids = sorted(
-            {
-                endpoint
-                for relation in relations
-                for endpoint in (relation.source_node_id, relation.target_node_id)
-            }
-        )
-        endpoint_nodes = self._graph.query_nodes(
-            HeavenlyNodeQuery(
-                scope=scope,
-                valid_at=query.context.valid_at,
-                recorded_at=query.context.recorded_at,
-                node_ids=endpoint_ids,
-                limit=min(1000, len(endpoint_ids)),
+        endpoint_groups: dict[tuple[object, ...], tuple[HeavenlyGraphScope, set[str]]] = {}
+        fallback_scope = self._effective_scope(query)
+        for relation in relations:
+            for endpoint, endpoint_scope in (
+                (relation.source_node_id, relation.source_scope or relation.scope or fallback_scope),
+                (relation.target_node_id, relation.target_scope or relation.scope or fallback_scope),
+            ):
+                key = tuple(endpoint_scope.model_dump(mode="json").values())
+                if key not in endpoint_groups:
+                    endpoint_groups[key] = (endpoint_scope, set())
+                endpoint_groups[key][1].add(endpoint)
+        endpoint_nodes: list[HeavenlyGraphNode] = []
+        for endpoint_scope, endpoint_ids in endpoint_groups.values():
+            endpoint_nodes.extend(
+                self._graph.query_nodes(
+                    HeavenlyNodeQuery(
+                        scope=endpoint_scope,
+                        valid_at=query.context.valid_at,
+                        recorded_at=query.context.recorded_at,
+                        node_ids=sorted(endpoint_ids),
+                        limit=min(1000, len(endpoint_ids)),
+                    )
+                )
             )
-        )
         visible_nodes, denied, stale = self._filter_entities(endpoint_nodes, query)
         visible_ids = {node.node_id for node in visible_nodes}
         selected = [

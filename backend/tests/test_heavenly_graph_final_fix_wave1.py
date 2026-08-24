@@ -26,10 +26,7 @@ from app.models.siming_heavenly_graph import (
 from app.services.heavenly_graph_consistency import HeavenlyGraphConsistencyAudit
 from app.services.heavenly_graph_semantics import DEFAULT_RELATION_TYPE_REGISTRY
 from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
-from app.services.siming_heavenly_graph_port import (
-    HeavenlyGraphCheckpointNotFound,
-    HeavenlyGraphReferentialIntegrityError,
-)
+from app.services.siming_heavenly_graph_port import HeavenlyGraphCheckpointNotFound
 from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
 
 
@@ -137,6 +134,8 @@ def _relation(
     relation_type: str = "caused_by",
     metadata: GraphSemanticMetadata | None = None,
     attributes: dict[str, object] | None = None,
+    source_scope: HeavenlyGraphScope | None = None,
+    target_scope: HeavenlyGraphScope | None = None,
 ) -> HeavenlyGraphRelation:
     source_ref = f"authority:{relation_id}"
     return HeavenlyGraphRelation(
@@ -145,6 +144,8 @@ def _relation(
         source_node_id=source,
         target_node_id=target,
         scope=scope or _scope(),
+        source_scope=source_scope,
+        target_scope=target_scope,
         validity=GraphValidity(valid_from=1),
         recorded_at=1,
         revision=1,
@@ -732,18 +733,17 @@ def test_revision_vectors_include_only_reader_visible_writes(graph: object) -> N
     assert private_result.revision_vector.node_revision == 1
 
 
-def test_v1_registry_rejects_cross_namespace_relations_without_endpoint_scopes() -> None:
-    with pytest.raises(ValueError, match="cross-namespace relation endpoints are unsupported"):
-        DEFAULT_RELATION_TYPE_REGISTRY.validate(
-            relation_type="requires_capability",
-            source_namespace="siming_heavenly",
-            target_namespace="resource_capability",
-            record_kind="projection",
-            visibility_scope="siming_internal",
-        )
+def test_v1_registry_accepts_cross_namespace_relations_with_endpoint_scopes() -> None:
+    DEFAULT_RELATION_TYPE_REGISTRY.validate(
+        relation_type="requires_capability",
+        source_namespace="siming_heavenly",
+        target_namespace="resource_capability",
+        record_kind="projection",
+        visibility_scope="siming_internal",
+    )
 
 
-def test_adapter_reports_single_scope_contract_for_cross_namespace_endpoint(
+def test_adapter_accepts_cross_namespace_endpoint_with_explicit_scopes(
     graph: object,
 ) -> None:
     siming_scope = _scope()
@@ -764,14 +764,12 @@ def test_adapter_reports_single_scope_contract_for_cross_namespace_endpoint(
         metadata=_metadata(
             record_kind="projection", visibility="siming_internal", derivation="projection"
         ),
+        source_scope=siming_scope,
+        target_scope=resource_scope,
     )
-    with pytest.raises(
-        HeavenlyGraphReferentialIntegrityError,
-        match="cross-namespace endpoints are unsupported",
-    ):
-        _write(
-            graph,
-            scope=siming_scope,
-            key="cross-capability-relation",
-            relations=[relation],
-        )
+    _write(
+        graph,
+        scope=siming_scope,
+        key="cross-capability-relation",
+        relations=[relation],
+    )

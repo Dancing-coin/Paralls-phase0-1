@@ -191,23 +191,24 @@ class HeavenlyRelationTypeRegistry:
 
     _SAME_SIMING = ((_SIMING, _SIMING),)
     _SAME_ANY = ((_SIMING, _SIMING), (_ACTOR, _ACTOR), (_RESOURCE, _RESOURCE))
-    _ACTOR_LOCAL = ((_ACTOR, _ACTOR), (_SIMING, _SIMING))
+    _CROSS_ACTOR_SIMING = ((_ACTOR, _SIMING), (_SIMING, _ACTOR), (_SIMING, _SIMING))
+    _CROSS_SIMING_RESOURCE = ((_SIMING, _RESOURCE), (_RESOURCE, _SIMING), (_SIMING, _SIMING))
     DEFAULT_RULES: dict[str, _RelationRule] = {
         "caused_by": _RelationRule(_SAME_SIMING, ("fact", "projection"), (_PUBLIC, _INTERNAL, _AUTHORITY, _BRANCH)),
         "enabled_by": _RelationRule(_SAME_SIMING, ("fact", "projection"), (_PUBLIC, _INTERNAL, _AUTHORITY, _BRANCH)),
         "prevented_by": _RelationRule(_SAME_SIMING, ("fact", "projection"), (_PUBLIC, _INTERNAL, _AUTHORITY, _BRANCH)),
-        "observed_as": _RelationRule(_ACTOR_LOCAL, ("fact", "projection"), (_PRIVATE, _INTERNAL, _AUTHORITY)),
-        "believed_as": _RelationRule(_ACTOR_LOCAL, ("projection", "proposal"), (_PRIVATE, _INTERNAL)),
-        "knows_about": _RelationRule(_ACTOR_LOCAL, ("projection",), (_PRIVATE, _INTERNAL)),
+        "observed_as": _RelationRule(_CROSS_ACTOR_SIMING, ("fact", "projection"), (_PRIVATE, _INTERNAL, _AUTHORITY)),
+        "believed_as": _RelationRule(_CROSS_ACTOR_SIMING, ("projection", "proposal"), (_PRIVATE, _INTERNAL)),
+        "knows_about": _RelationRule(_CROSS_ACTOR_SIMING, ("projection",), (_PRIVATE, _INTERNAL)),
         "contradicts": _RelationRule(_SAME_ANY, ("fact", "projection", "proposal"), (_PUBLIC, _PRIVATE, _INTERNAL, _AUTHORITY, _BRANCH)),
         "supersedes": _RelationRule(_SAME_ANY, ("fact", "projection"), (_PUBLIC, _PRIVATE, _INTERNAL, _AUTHORITY, _BRANCH)),
         "retracts": _RelationRule(_SAME_ANY, ("fact", "projection"), (_PUBLIC, _PRIVATE, _INTERNAL, _AUTHORITY, _BRANCH)),
-        "derived_from": _RelationRule(_SAME_ANY, ("projection", "proposal"), (_PRIVATE, _INTERNAL, _AUTHORITY, _BRANCH)),
-        "part_of_turn": _RelationRule(_ACTOR_LOCAL, ("projection", "proposal"), (_PRIVATE, _INTERNAL, _BRANCH)),
+        "derived_from": _RelationRule(_SAME_ANY + _CROSS_ACTOR_SIMING + _CROSS_SIMING_RESOURCE, ("projection", "proposal"), (_PRIVATE, _INTERNAL, _AUTHORITY, _BRANCH)),
+        "part_of_turn": _RelationRule(_CROSS_ACTOR_SIMING, ("projection", "proposal"), (_PRIVATE, _INTERNAL, _BRANCH)),
         "opens_obligation": _RelationRule(_SAME_SIMING, ("fact", "projection", "proposal"), (_INTERNAL, _BRANCH)),
         "transforms_obligation": _RelationRule(_SAME_SIMING, ("fact", "projection", "proposal"), (_INTERNAL, _BRANCH)),
         "targets_attractor": _RelationRule(_SAME_SIMING, ("projection", "proposal"), (_INTERNAL, _BRANCH)),
-        "requires_capability": _RelationRule(_SAME_SIMING, ("fact", "projection", "proposal"), (_PUBLIC, _INTERNAL, _AUTHORITY, _BRANCH)),
+        "requires_capability": _RelationRule(_CROSS_SIMING_RESOURCE, ("fact", "projection", "proposal"), (_PUBLIC, _INTERNAL, _AUTHORITY, _BRANCH)),
         "realized_by": _RelationRule(_SAME_SIMING, ("fact", "projection"), (_INTERNAL, _AUTHORITY, _BRANCH)),
         "closes_branch_node": _RelationRule(_SAME_SIMING, ("fact", "projection"), (_AUTHORITY, _BRANCH)),
         "forked_from": _RelationRule(_SAME_SIMING, ("fact", "projection"), (_AUTHORITY, _BRANCH)),
@@ -244,10 +245,6 @@ class HeavenlyRelationTypeRegistry:
         target_owner_actor_id: str | None = None,
     ) -> _RelationRule:
         rule = self.require(relation_type)
-        if source_namespace != target_namespace:
-            raise ValueError(
-                "cross-namespace relation endpoints are unsupported by the single-scope v1 relation model"
-            )
         if (source_namespace, target_namespace) not in rule.allowed_namespace_pairs:
             raise ValueError(f"relation namespace pair is not allowed: {relation_type}")
         if record_kind not in rule.allowed_record_kinds:

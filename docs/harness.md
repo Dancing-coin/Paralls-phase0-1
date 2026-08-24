@@ -626,6 +626,11 @@ rejection, append-only correction chains, branch isolation, and checkpoint
 replay digest equivalence. It does not use role, Siming runtime, LLM, or Godot
 evidence.
 
+Semantic relations may carry explicit source and target endpoint scopes.
+Cross-namespace relations are admitted only when both endpoint scopes are
+present and each endpoint passes referential-integrity and visibility checks.
+Legacy same-scope relations remain compatible when those fields are absent.
+
 ```powershell
 python scripts/verification/harness.py --profile heavenly-graph-semantic-foundation
 ```

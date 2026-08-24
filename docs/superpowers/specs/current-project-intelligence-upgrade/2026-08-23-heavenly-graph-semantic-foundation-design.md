@@ -203,7 +203,7 @@ source_refs: []
 - `forked_from`
 
 关系类型必须声明是否允许跨 namespace、是否允许 proposal、是否允许 branch-only，以及是否需要 source vector。
-本版 `HeavenlyGraphScope` 将一条 relation 与单一 batch scope 绑定，尚未携带独立的 source/target endpoint scopes；因此声明为跨 namespace 的关系类型（例如 `observed_as`、`derived_from`、`requires_capability`）在 v1 adapter 中只保留词汇登记，跨 namespace admission 明确 fail closed，并返回 `cross-namespace relation endpoints are unsupported by the single-scope v1 relation model`。待 endpoint scope contract 独立落地后再开放这些关系类型，不在本阶段伪造跨 scope 写入。
+relation 仍保留写入者所属的 batch `scope`，并新增可选的 `source_scope` 与 `target_scope` 端点作用域。未填写时按 relation scope 兼容解释；跨 namespace relation 必须显式填写两个端点作用域。适配器会分别校验端点存在性、双时态和隐私可见性，查询只有在两个端点都对 reader 可见时才返回 relation。旧 SQLite 记录没有端点字段时继续按 relation scope 读取，不需要迁移数据。
 
 ## 5. 查询契约
 
