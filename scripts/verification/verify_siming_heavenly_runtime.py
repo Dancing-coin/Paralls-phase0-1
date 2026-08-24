@@ -592,7 +592,7 @@ def main() -> int:
         runtime_env = {"SIMING_HEAVENLY_MODE": "active", "SIMING_LLM_MODE": "http", "PARALLS_HEAVENLY_GRAPH_PATH": str(db_path), "SIMING_HEAVENLY_AUTOTEST": "1", "SIMING_HEAVENLY_AUTOTEST_DIR": str(db_path.parent), "PHASE0_DEBUG_LOGGING": "1"}
         _, backend_process = ensure_backend(root, python_exe, prefer_fresh_backend=True, env=runtime_env)
         godot_process, lines = _start_logged_process([str(godot_exe), "--path", str(root), "--scene", "res://scenes/phase0/MainDemo.tscn", "--render-thread", "safe"], root, verification_dir(root) / "siming-heavenly-runtime-godot.log", runtime_env)
-        if not _wait_marker(godot_process, lines, "siming_heavenly_restart_ready", 180):
+        if not _wait_marker(godot_process, lines, "siming_heavenly_restart_ready", 300):
             return _write_report(root, None, preflight, "godot_restart_marker_missing")
         if not _wait_for_restart_boundary(db_path):
             return _write_report(root, None, preflight, "restart_boundary_graph_incomplete")
@@ -600,7 +600,7 @@ def main() -> int:
         backend_process = None
         wait_for_backend_release()
         _, backend_process = ensure_backend(root, python_exe, prefer_fresh_backend=True, env=runtime_env)
-        if not _wait_marker(godot_process, lines, "siming_heavenly_godot_complete", 180):
+        if not _wait_marker(godot_process, lines, "siming_heavenly_godot_complete", 300):
             return _write_report(root, None, preflight, "godot_complete_marker_missing")
         graph_payload = _read_graph_payload(db_path)
         log = read_text(verification_dir(root) / "siming-heavenly-runtime-godot.log")

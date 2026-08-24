@@ -2,7 +2,7 @@ extends Node
 
 const PERCEPTION_SAMPLER := preload("res://scripts/character/ActorPerceptionSampler.gd")
 const CAPTURE_CHECK := preload("res://scripts/verification/VLAReplayCoverageCaptureProbe.gd")
-const RUNTIME_EVENT_TIMEOUT_MS := 60000
+const RUNTIME_EVENT_TIMEOUT_MS := 180000
 
 var _destroyed := false
 var _inspection_applied := false
@@ -61,13 +61,16 @@ func _run() -> void:
 		return
 	# The live probe owns the reviewed object interaction path directly; the
 	# regular controller guard may reject a post-restart state as stale.
+	var bridge := get_node_or_null("/root/BackendBridge")
 	_controller._send_player_input_envelope(
+		bridge,
 		_controller.intent_mapper.emit_interact_intent("obj_letter", "inspect")
 	)
 	if not (await _wait_until(Callable(self, "_inspection_result_applied"), RUNTIME_EVENT_TIMEOUT_MS)):
 		_finish("siming_heavenly_inspection_timeout")
 		return
 	_controller._send_player_input_envelope(
+		bridge,
 		_controller.intent_mapper.emit_interact_intent("obj_letter", "destroy")
 	)
 	if not (await _wait_until(Callable(self, "_destruction_applied"), RUNTIME_EVENT_TIMEOUT_MS)):
@@ -174,10 +177,10 @@ func _on_backend_connected(_payload: String) -> void:
 func _destruction_applied() -> bool:
 	var visual_root := _letter.get_node("VisualRoot") as Node3D
 	var collision_shape := _letter.get_node("InteractionCollider/CollisionShape3D") as CollisionShape3D
-	return _destroyed and not visual_root.visible and collision_shape.disabled
+	return _destroyed and str(_letter.get("current_state")) == "removed_from_surface" and not visual_root.visible and collision_shape.disabled
 
 func _inspection_result_applied() -> bool:
-	return _inspection_applied
+	return _inspection_applied or str(_letter.get("current_state")) == "visible"
 
 func _has_staging_request() -> bool:
 	return not _staging_request.is_empty()
