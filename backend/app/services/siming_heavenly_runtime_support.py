@@ -109,6 +109,7 @@ class SimingHeavenlyRuntimeSupport:
         self._bridges = bridges
         self._llm_provider = llm_provider
         self._prepared_by_correlation: dict[str, _PreparedContext] = {}
+        self._authority_seeded_correlations: set[str] = set()
 
     def prepare(self, siming_input: SimingInput) -> PreparedHeavenlyDecision:
         event = siming_input.source_event
@@ -116,6 +117,9 @@ class SimingHeavenlyRuntimeSupport:
         scope = self._scope_for(event)
         owns_event_family = (
             self.mode == "active" and event_family in self.GRAPH_OWNED_EVENT_FAMILIES
+            # Authority destruction seeds the durable fact/obligation surface.
+            # The adaptive proposal must wait for the subsequent actor-scoped
+            # observation event, otherwise async perception can race validation.
             and not self._is_authority_destruction(event)
         )
         self._prepared_by_correlation[event.correlation_id] = _PreparedContext(
@@ -138,8 +142,39 @@ class SimingHeavenlyRuntimeSupport:
         proposal_batch = None
         if owns_event_family:
             try:
+                proposal_context = context.model_dump(mode="json")
+                if event_family == "evidence_destruction_consequence":
+                    proposal_context = {
+                        "world_facts": proposal_context.get("world_facts", []),
+                        "storyline_obligations": [
+                            obligation
+                            for obligation in proposal_context.get("storyline_obligations", [])
+                            if str(obligation.get("entry_id", "")) in {"obligation:O2", "obligation:O6"}
+                        ],
+                        "causal_timeline": [],
+                        "actor_cognition": [],
+                        "intervention_outcomes": [],
+                        "convergence_strategies": [],
+                    }
+                    proposal_context["resource_capabilities"] = [
+                        {
+                            "capability_id": package.capability_id,
+                            "asset_bundle": package.asset_bundle,
+                            "actor_ids": list(package.actor_ids),
+                            "object_ids": list(package.object_ids),
+                            "environment_ids": list(package.environment_ids),
+                            "realization_keys": list(package.realization_keys),
+                            "semantic_purposes": list(package.semantic_purposes),
+                            "loaded": package.loaded,
+                        }
+                        for package in self._resources._packages.values()
+                    ]
+                    proposal_context["actor_views"] = [
+                        {"actor_id": "char_b", "visibility": "actor_private_endpoint_scoped"},
+                        {"actor_id": "char_c", "visibility": "actor_private_endpoint_scoped"},
+                    ]
                 proposal_batch = self._llm_provider.generate_adaptive_bridge_proposals(
-                    compiled_context=context.model_dump(mode="json"),
+                    compiled_context=proposal_context,
                     correlation_id=event.correlation_id,
                 )
             except SimingLlmProviderError as error:
@@ -346,6 +381,7 @@ class SimingHeavenlyRuntimeSupport:
         if self.mode == "off" or not self._is_authority_destruction(event):
             return None
         self._seed_demo_graph(event)
+        self._authority_seeded_correlations.add(event.correlation_id)
         context = self._prepared_by_correlation.get(event.correlation_id)
         scope = context.scope if context is not None else self._scope_for(event)
         return self._record(
@@ -473,10 +509,19 @@ class SimingHeavenlyRuntimeSupport:
             or payload.get("target_object_id")
             or payload.get("entity_id")
         )
+        lineage = payload.get("source_ref_lineage", [])
+        observes_removed_letter = (
+            isinstance(lineage, list)
+            and any("object_result:obj_letter:" in str(ref) for ref in lineage)
+        )
         if (
             event.event_type == "visual_fact_event"
             and target_ref == "obj_letter"
-            and payload.get("relation_type") == "actor_observes_object_removal"
+            and (
+                payload.get("relation_type") == "actor_observes_object_removal"
+                or payload.get("fact_type") == "object_state_change"
+                or observes_removed_letter
+            )
         ) or (
             target_ref == "obj_letter"
             and payload.get("current_state") == "removed_from_surface"
