@@ -57,7 +57,7 @@
 
 - [ ] **Step 1: Write failing model and registry tests**
 
-Test invalid record kinds, invalid visibility scopes, missing reader fields, forbidden actor-private ownership, unknown node types, forbidden cross-namespace relations, and proposal/fact classification.
+Test invalid record kinds, invalid visibility scopes, missing reader fields, forbidden actor-private ownership, unknown node types, cross-namespace relations without valid endpoint scopes, and proposal/fact classification.
 
 - [ ] **Step 2: Run the focused tests and verify expected failures**
 
