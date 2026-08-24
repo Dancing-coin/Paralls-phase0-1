@@ -1,9 +1,14 @@
 import pytest
+from pathlib import Path
 
+from app import config as config_module
+from app import main
 from app.models.behavior_turn import (
     BehaviorTurnRecordRequest,
     BehaviorTurnStageRecord,
 )
+from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
+from app.models.character_perceived import CharacterPerceivedEvent
 from app.models.siming_heavenly_graph import (
     BehaviorTurnQuery,
     GraphProvenance,
@@ -178,3 +183,132 @@ def test_rejects_non_contiguous_stage_order_before_graph_write() -> None:
         recorder.record(_request(stages=stages))
 
     assert graph.query_nodes(HeavenlyNodeQuery(scope=_scope(), valid_at=10)) == []
+
+
+def test_character_runtime_records_rejected_action_as_complete_behavior_turn() -> None:
+    graph = InMemoryHeavenlyGraphAdapter()
+    recorder = BehaviorTurnRecorder(graph)
+    runtime = CharacterAgentRuntime(
+        behavior_turn_recorder=recorder,
+        behavior_turn_scope_resolver=lambda actor_id: _scope().model_copy(
+            update={"owner_actor_id": actor_id}
+        ),
+    )
+    event = CharacterPerceivedEvent(
+        actor_id="char_b",
+        percept_channel="visual",
+        producer_ts=1201,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="obj_letter is visible but out of reach",
+        source_candidate_event_id="visual_fact:1201:char_b",
+        clarity_score=1.0,
+        certainty_score=1.0,
+    )
+    runtime.ingest_character_perceived_event(event)
+
+    runtime.record_settlement_result(
+        actor_id="char_b",
+        producer_ts=1202,
+        payload={
+            "result_id": "constraint:1202:char_b",
+            "result_type": "constraint_state_result",
+            "settlement_status": "rejected",
+            "constraint_summary": "too far from obj_letter",
+            "causation_id": "interact:1202",
+            "correlation_id": "interact:1202",
+            "policy_revision": "policy:character-runtime:v1",
+        },
+    )
+
+    context = _context().model_copy(
+        update={
+            "valid_at": 1202,
+            "recorded_at": 1202,
+            "policy_revision": "policy:character-runtime:v1",
+        }
+    )
+    result = graph.query_semantic(
+        BehaviorTurnQuery(
+            context=context,
+            scope=_scope(),
+            correlation_id="interact:1202",
+            actor_id="char_b",
+        )
+    )
+    stage_nodes = [
+        node for node in result.nodes if node.attributes.get("entity_kind") == "stage"
+    ]
+    assert [node.attributes["stage"] for node in stage_nodes] == list(STAGES)
+    by_stage = {str(node.attributes["stage"]): node for node in stage_nodes}
+    assert by_stage["settlement"].attributes["outcome"] == "rejected"
+    assert by_stage["settlement"].attributes["payload"]["result_id"] == (
+        "constraint:1202:char_b"
+    )
+    assert by_stage["evaluation"].attributes["outcome"] == "failed"
+    assert by_stage["policy"].attributes["payload"]["status"] == "candidate_only"
+    assert all(node.semantic_metadata.record_kind == "projection" for node in stage_nodes)
+
+
+def test_application_runtime_wires_character_turns_to_shared_sqlite_graph(
+    tmp_path: Path,
+) -> None:
+    state = main.build_runtime_state(
+        config_module.Settings(
+            heavenly_graph_path=str(tmp_path / "behavior-turn.sqlite3"),
+            siming_heavenly_mode="off",
+        )
+    )
+    event = CharacterPerceivedEvent(
+        actor_id="char_b",
+        percept_channel="visual",
+        producer_ts=1401,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary="obj_letter is visible",
+        source_candidate_event_id="visual_fact:1401:char_b",
+    )
+    try:
+        state.character_agent_runtime.ingest_character_perceived_event(event)
+        state.character_agent_runtime.record_settlement_result(
+            actor_id="char_b",
+            producer_ts=1402,
+            payload={
+                "result_id": "object-state:1402",
+                "result_type": "object_state_result",
+                "settlement_status": "accepted",
+                "change_summary": "obj_letter inspected",
+                "causation_id": "interact:1402",
+                "correlation_id": "interact:1402",
+                "policy_revision": "policy:character-runtime:v1",
+            },
+        )
+        result = state.heavenly_graph.query_semantic(
+            BehaviorTurnQuery(
+                context=GraphReaderContext(
+                    reader_principal="reader:char_b",
+                    allowed_visibility_scopes=("actor_private",),
+                    world_id="world:demo",
+                    session_id="session:demo",
+                    story_branch_id="branch:main",
+                    valid_at=1402,
+                    recorded_at=1402,
+                    policy_revision="policy:character-runtime:v1",
+                ),
+                scope=main.actor_private_scope("char_b"),
+                correlation_id="interact:1402",
+                actor_id="char_b",
+            )
+        )
+    finally:
+        state.close()
+
+    stage_nodes = [
+        node for node in result.nodes if node.attributes.get("entity_kind") == "stage"
+    ]
+    assert [node.attributes["stage"] for node in stage_nodes] == list(STAGES)
+    assert next(
+        node for node in stage_nodes if node.attributes["stage"] == "settlement"
+    ).attributes["outcome"] == "committed"

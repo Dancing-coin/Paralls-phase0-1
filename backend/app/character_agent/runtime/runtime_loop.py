@@ -1,5 +1,6 @@
 from copy import deepcopy
 from pathlib import Path
+from typing import Callable
 
 from app.character_agent.logic.affect_engine import AffectEngine
 from app.character_agent.logic.drift_accumulator import DriftAccumulator
@@ -43,6 +44,7 @@ from app.models.character_agent_runtime import CharacterIntentDecision
 from app.models.character_agent_runtime import CharacterSuggestionPacket
 from app.models.character_perceived import CharacterPerceivedEvent
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
+from app.models.siming_heavenly_graph import HeavenlyGraphScope
 from app.character_agent.reasoning.l1_perception import CharacterAgentL1Service
 from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
 from app.character_agent.planning.l3_planner import CharacterAgentL3Service
@@ -55,7 +57,9 @@ from app.character_agent.storage.goal_state_store import CharacterGoalStateStore
 from app.character_agent.storage.need_tension_store import CharacterNeedTensionStore
 from app.character_agent.storage.unresolved_tension_store import CharacterUnresolvedTensionStore
 from app.character_agent.services.character_behavior_evaluation import CharacterBehaviorEvaluationService
+from app.character_agent.services.behavior_turn_projection import CharacterBehaviorTurnProjection
 from app.services.character_agent_debug_projection import CharacterAgentDebugProjection
+from app.services.behavior_turn_recorder import BehaviorTurnRecorder
 from app.models.siming_character_bridge import SimingCharacterCompatibilityInput
 from app.world_runtime.intelligence_upgrade import CanonicalPerceptBundle
 from app.world_runtime.continuity import RuntimeContinuityState
@@ -79,6 +83,8 @@ class CharacterAgentRuntime:
         *,
         skill_service: CharacterSkillService | None = None,
         memory_store: CharacterMemoryStorePort | None = None,
+        behavior_turn_recorder: BehaviorTurnRecorder | None = None,
+        behavior_turn_scope_resolver: Callable[[str], HeavenlyGraphScope] | None = None,
     ) -> None:
         self._profile_registry = CharacterProfileRegistry.from_directory(self._PROFILE_DIRECTORY)
         self._supported_actor_ids = set(self._profile_registry.actor_ids())
@@ -130,6 +136,15 @@ class CharacterAgentRuntime:
         self._goal_state_store = CharacterGoalStateStore()
         self._unresolved_tension_store = CharacterUnresolvedTensionStore()
         self._behavior_evaluation = CharacterBehaviorEvaluationService()
+        self._behavior_turn_projection = (
+            CharacterBehaviorTurnProjection(
+                recorder=behavior_turn_recorder,
+                scope_resolver=behavior_turn_scope_resolver,
+            )
+            if behavior_turn_recorder is not None
+            and behavior_turn_scope_resolver is not None
+            else None
+        )
         self._need_tension_engine = NeedTensionEngine()
         self._affect_engine = AffectEngine()
         self._drift_accumulator = DriftAccumulator()
@@ -1706,11 +1721,19 @@ class CharacterAgentRuntime:
             payload=stored_payload,
         )
         self._memory_store.write_event(stored)
-        self._record_behavior_evaluation(
+        evaluation = self._record_behavior_evaluation(
             actor_id=actor_id,
             producer_ts=producer_ts,
             settlement_event=stored,
         )
+        if self._behavior_turn_projection is not None:
+            self._behavior_turn_projection.record(
+                actor_id=actor_id,
+                producer_ts=producer_ts,
+                settlement_event=stored,
+                evaluation=evaluation,
+                timeline=self.get_session_timeline(actor_id),
+            )
         outcome_summary = str(stored_payload.get("constraint_summary", "") or stored_payload.get("change_summary", "") or stored_payload.get("stable_state_summary", "") or stored_payload.get("result_type", "") or "")
         self._set_observatory_context(actor_id, "latest_outcome_summary", outcome_summary)
         self._queue_observatory_stage_event(
@@ -1736,7 +1759,7 @@ class CharacterAgentRuntime:
         actor_id: str,
         producer_ts: int,
         settlement_event: dict[str, object],
-    ) -> None:
+    ) -> dict[str, object]:
         evaluation = self._behavior_evaluation.evaluate(
             actor_id=actor_id,
             settlement_event=settlement_event,
@@ -1758,6 +1781,7 @@ class CharacterAgentRuntime:
                 payload=candidate,
             )
             self._memory_store.write_event(candidate_event)
+        return evaluation
 
     def _action_settlement_result_metadata(self, payload: dict[str, object]) -> dict[str, object]:
         advisory_metadata = self._settlement_advisory_metadata(payload)
