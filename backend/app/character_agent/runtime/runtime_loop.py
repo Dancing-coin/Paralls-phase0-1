@@ -1781,6 +1781,9 @@ class CharacterAgentRuntime:
                 payload=candidate,
             )
             self._memory_store.write_event(candidate_event)
+            evaluation["policy_candidate_event_id"] = str(
+                candidate_event.get("event_id", "")
+            )
         return evaluation
 
     def _action_settlement_result_metadata(self, payload: dict[str, object]) -> dict[str, object]:
