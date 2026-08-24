@@ -65,6 +65,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "behavior-turn-runtime",
         "gameplay-event-replay",
         "heavenly-graph-semantic-foundation",
+        "character-continuity-recovery",
         "gameplay-foundation-event-spine",
         "gameplay-state-groups",
         "embodied-interaction-session",
@@ -123,6 +124,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["siming-actor-memory-read"]["script"] == "scripts/verification/verify_siming_actor_memory_read.py"
     assert registry.profiles["siming-story-runtime"]["script"] == "scripts/verification/verify_siming_story_runtime.py"
     assert registry.profiles["behavior-turn-runtime"]["script"] == "scripts/verification/verify_behavior_turn_runtime.py"
+    assert registry.profiles["character-continuity-recovery"]["script"] == "scripts/verification/verify_character_continuity_recovery.py"
     assert registry.profiles["embodied-affordance-registry"]["script"] == "scripts/verification/verify_embodied_affordance_registry.py"
     assert registry.profiles["embodied-bridge-attestation"]["script"] == "scripts/verification/verify_embodied_bridge_attestation.py"
     assert registry.profiles["embodied-action-controller"]["script"] == "scripts/verification/verify_embodied_action_controller.py"

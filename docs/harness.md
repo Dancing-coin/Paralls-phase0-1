@@ -128,6 +128,7 @@ python scripts/verification/harness.py --profile siming-story-runtime
 python scripts/verification/harness.py --profile siming-resource-staging
 python scripts/verification/harness.py --profile siming-adaptive-bridge
 python scripts/verification/harness.py --profile behavior-turn-runtime
+python scripts/verification/harness.py --profile character-continuity-recovery
 python scripts/verification/harness.py --profile all
 ```
 
@@ -660,6 +661,17 @@ Output:
 
 - `.harness/verification/behavior-turn-runtime-report.json`
 - `.harness/verification/behavior-turn-runtime-report.md`
+
+### `character-continuity-recovery`
+
+Backend proof that dynamic state, need/tension, goal state, continuity state,
+working memory, and the next session input rebuild from an actor-private graph
+snapshot after the legacy session timeline file is removed. This profile does
+not prove Siming, six-domain Authority projection, online LLM, or Godot closure.
+
+```powershell
+python scripts/verification/harness.py --profile character-continuity-recovery
+```
 
 ### `siming-heavenly-runtime`
 

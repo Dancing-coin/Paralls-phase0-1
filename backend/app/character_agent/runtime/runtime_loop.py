@@ -53,6 +53,7 @@ from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
 from app.character_agent.storage.session_store import CharacterAgentSessionStore
 from app.character_agent.storage.memory_store import CharacterAgentMemoryStore, CharacterMemoryStorePort
 from app.character_agent.storage.dynamic_state_store import CharacterDynamicStateStore
+from app.character_agent.storage.graph_continuity_store import CharacterGraphContinuityStore
 from app.character_agent.storage.goal_state_store import CharacterGoalStateStore
 from app.character_agent.storage.need_tension_store import CharacterNeedTensionStore
 from app.character_agent.storage.unresolved_tension_store import CharacterUnresolvedTensionStore
@@ -83,6 +84,7 @@ class CharacterAgentRuntime:
         *,
         skill_service: CharacterSkillService | None = None,
         memory_store: CharacterMemoryStorePort | None = None,
+        continuity_store: CharacterGraphContinuityStore | None = None,
         behavior_turn_recorder: BehaviorTurnRecorder | None = None,
         behavior_turn_scope_resolver: Callable[[str], HeavenlyGraphScope] | None = None,
     ) -> None:
@@ -136,6 +138,7 @@ class CharacterAgentRuntime:
         self._goal_state_store = CharacterGoalStateStore()
         self._unresolved_tension_store = CharacterUnresolvedTensionStore()
         self._behavior_evaluation = CharacterBehaviorEvaluationService()
+        self._continuity_store = continuity_store
         self._behavior_turn_projection = (
             CharacterBehaviorTurnProjection(
                 recorder=behavior_turn_recorder,
@@ -150,6 +153,7 @@ class CharacterAgentRuntime:
         self._drift_accumulator = DriftAccumulator()
         self._drift_promotion_gate = DriftPromotionGate()
         self._rehydrate_runtime_state_from_timeline()
+        self._rehydrate_graph_continuity()
 
     def ingest_character_perceived_event(self, event: CharacterPerceivedEvent) -> list[CharacterGoalCommand]:
         if not self.supports_actor(event.actor_id):
@@ -1653,6 +1657,7 @@ class CharacterAgentRuntime:
             snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
             memory_bundle=self.get_memory_bundle(actor_id),
         )
+        self._persist_graph_continuity(actor_id=actor_id, producer_ts=producer_ts)
 
     def record_settlement_result(
         self,
@@ -1752,6 +1757,7 @@ class CharacterAgentRuntime:
             snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
             memory_bundle=self.get_memory_bundle(actor_id),
         )
+        self._persist_graph_continuity(actor_id=actor_id, producer_ts=producer_ts)
 
     def _record_behavior_evaluation(
         self,
@@ -3520,6 +3526,55 @@ class CharacterAgentRuntime:
                     agenda_payload = payload.get("background_agenda_state", {})
                     if isinstance(agenda_payload, dict) and agenda_payload:
                         self._background_agenda_states[actor_id] = CharacterBackgroundAgendaState(**agenda_payload)
+
+    def _rehydrate_graph_continuity(self) -> None:
+        if self._continuity_store is None:
+            return
+        for actor_id in sorted(self._supported_actor_ids):
+            snapshot = self._continuity_store.read_snapshot(actor_id)
+            if not snapshot:
+                continue
+            dynamic = snapshot.get("dynamic_state")
+            if isinstance(dynamic, dict):
+                self._dynamic_state_store.write(actor_id, dynamic)
+            need_tension = snapshot.get("need_tension_state")
+            if isinstance(need_tension, dict):
+                self._need_tension_store.write(actor_id, need_tension)
+            goal = snapshot.get("goal_state")
+            if isinstance(goal, dict) and goal:
+                self._goal_state_store.write(actor_id, goal)
+            supervision = snapshot.get("supervision_state")
+            if isinstance(supervision, dict) and supervision:
+                self._supervision_states[actor_id] = CharacterSupervisionState(**supervision)
+            continuity = snapshot.get("continuity_state")
+            if isinstance(continuity, dict) and continuity:
+                self._continuity_state[actor_id] = RuntimeContinuityState(**continuity)
+            timeline = snapshot.get("session_timeline")
+            if isinstance(timeline, list):
+                for event in timeline:
+                    if isinstance(event, dict):
+                        self._memory_store.write_event(event)
+
+    def _persist_graph_continuity(self, *, actor_id: str, producer_ts: int) -> None:
+        if self._continuity_store is None:
+            return
+        timeline = self.get_session_timeline(actor_id)
+        source_ref = str(timeline[-1].get("event_id", "") or "") if timeline else ""
+        self._continuity_store.write_snapshot(
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+            source_event_ref=source_ref,
+            snapshot={
+                "working_memory": self.get_working_memory_state(actor_id),
+                "dynamic_state": self.get_dynamic_state(actor_id),
+                "need_tension_state": self.get_need_tension_state(actor_id),
+                "supervision_state": self.get_supervision_state(actor_id),
+                "goal_state": self.get_goal_state(actor_id),
+                "goal_state_history": self.get_goal_state_history(actor_id),
+                "session_timeline": timeline,
+                "continuity_state": self.get_runtime_continuity_state(actor_id),
+            },
+        )
 
     def _observatory_context(self, actor_id: str) -> dict[str, str]:
         return self._observatory_actor_context.setdefault(

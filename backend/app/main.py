@@ -77,6 +77,7 @@ from app.character_agent.storage.memory_store_router import CharacterMemoryStore
 from app.models.siming_heavenly_graph import HeavenlyGraphScope
 from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
 from app.services.behavior_turn_recorder import BehaviorTurnRecorder
+from app.character_agent.storage.graph_continuity_store import CharacterGraphContinuityStore
 from app.services.character_runtime_state_service import CharacterRuntimeStateService
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.conversation_relation_service import ConversationRelationService
@@ -242,6 +243,10 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
     character_agent_runtime = CharacterAgentRuntime(
         storage_root=character_agent_storage_root,
         memory_store=memory_router,
+        continuity_store=CharacterGraphContinuityStore(
+            heavenly_graph,
+            scope_resolver=actor_private_scope,
+        ),
         behavior_turn_recorder=BehaviorTurnRecorder(heavenly_graph),
         behavior_turn_scope_resolver=actor_private_scope,
     )
