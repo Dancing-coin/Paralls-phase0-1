@@ -2063,6 +2063,7 @@ class CharacterAgentRuntime:
         )
         event_payload = {
             **goal_state,
+            "selected_intent": decision.selected_intent,
             "goal_changed": bool(changed_fields),
             "changed_fields": changed_fields,
             "transition_kind": transition_kind,

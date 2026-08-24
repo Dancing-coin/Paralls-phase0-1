@@ -236,6 +236,7 @@ def test_character_runtime_records_rejected_action_as_complete_behavior_turn() -
     ]
     assert [node.attributes["stage"] for node in stage_nodes] == list(STAGES)
     by_stage = {str(node.attributes["stage"]): node for node in stage_nodes}
+    assert by_stage["intent"].attributes["payload"]["selected_intent"]
     assert by_stage["settlement"].attributes["outcome"] == "rejected"
     assert by_stage["settlement"].attributes["payload"]["result_id"] == (
         "constraint:1202:char_b"
