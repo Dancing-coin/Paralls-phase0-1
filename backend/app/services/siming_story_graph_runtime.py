@@ -665,9 +665,10 @@ class SimingStoryGraphRuntime:
             return result.nodes[0]
         # Legacy story fixtures predate semantic policy metadata; preserve their
         # read compatibility while new records use the bounded semantic path.
-        return self._graph.get_node(
+        legacy = self._graph.get_node(
             node_id=node_id,
             scope=scope,
             valid_at=valid_at,
             recorded_at=recorded_at,
         )
+        return legacy if legacy is not None and legacy.semantic_metadata.policy_revision == "policy:legacy" else None

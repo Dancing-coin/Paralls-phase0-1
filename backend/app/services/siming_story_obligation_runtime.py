@@ -458,12 +458,13 @@ class SimingStoryObligationRuntime:
             return result.nodes[0]
         # Compatibility for pre-semantic story fixtures; newly written nodes
         # always carry policy:v1 metadata and are served by the facade above.
-        return self._graph.get_node(
+        legacy = self._graph.get_node(
             node_id=node_id,
             scope=scope,
             valid_at=valid_at,
             recorded_at=recorded_at,
         )
+        return legacy if legacy is not None and legacy.semantic_metadata.policy_revision == "policy:legacy" else None
 
     @staticmethod
     def _reader_context(scope: HeavenlyGraphScope, valid_at: int, recorded_at: int | None) -> GraphReaderContext:
