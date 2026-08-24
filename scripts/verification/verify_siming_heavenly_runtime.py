@@ -589,7 +589,24 @@ def main() -> int:
             db_path.unlink()
         python_exe = resolve_python_exe(args.python_exe)
         godot_exe = resolve_godot_exe(args.godot_exe)
-        runtime_env = {"SIMING_HEAVENLY_MODE": "active", "SIMING_LLM_MODE": "http", "PARALLS_HEAVENLY_GRAPH_PATH": str(db_path), "SIMING_HEAVENLY_AUTOTEST": "1", "SIMING_HEAVENLY_AUTOTEST_DIR": str(db_path.parent), "PHASE0_DEBUG_LOGGING": "1"}
+        # The live closure requires both Siming and character cognition to use
+        # the configured online provider; otherwise the character silently
+        # degrades to continuity-floor fallback while the probe still runs.
+        runtime_env = {
+            "SIMING_HEAVENLY_MODE": "active",
+            "SIMING_LLM_MODE": "http",
+            "SIMING_LLM_TIMEOUT_SECONDS": _env("SIMING_LLM_TIMEOUT_SECONDS", "30"),
+            "PARALLS_HEAVENLY_GRAPH_PATH": str(db_path),
+            "SIMING_HEAVENLY_AUTOTEST": "1",
+            "SIMING_HEAVENLY_AUTOTEST_DIR": str(db_path.parent),
+            "PHASE0_DEBUG_LOGGING": "1",
+            "DIALOGUE_MODE": "http",
+            "CHARACTER_MODEL_PROVIDER_KIND": "deepseek",
+            "CHARACTER_MODEL_ENDPOINT": _env("SIMING_LLM_ENDPOINT"),
+            "CHARACTER_MODEL_API_KEY": _env("SIMING_LLM_API_KEY"),
+            "CHARACTER_MODEL_MODEL": _env("SIMING_LLM_MODEL", "deepseek-chat"),
+            "CHARACTER_MODEL_TIMEOUT_SECONDS": _env("SIMING_LLM_TIMEOUT_SECONDS", "30"),
+        }
         _, backend_process = ensure_backend(root, python_exe, prefer_fresh_backend=True, env=runtime_env)
         godot_process, lines = _start_logged_process([str(godot_exe), "--path", str(root), "--scene", "res://scenes/phase0/MainDemo.tscn", "--render-thread", "safe"], root, verification_dir(root) / "siming-heavenly-runtime-godot.log", runtime_env)
         if not _wait_marker(godot_process, lines, "siming_heavenly_restart_ready", 300):

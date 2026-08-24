@@ -103,6 +103,16 @@ def test_live_profile_uses_real_rendering_for_meaningful_captures() -> None:
     assert '"--render-thread", "safe"' in source
 
 
+def test_live_profile_passes_online_character_model_configuration() -> None:
+    source = (project_root() / "scripts" / "verification" / "verify_siming_heavenly_runtime.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"CHARACTER_MODEL_PROVIDER_KIND": "deepseek"' in source
+    assert '"CHARACTER_MODEL_API_KEY": _env("SIMING_LLM_API_KEY")' in source
+    assert '"CHARACTER_MODEL_ENDPOINT": _env("SIMING_LLM_ENDPOINT")' in source
+
+
 def test_live_verifier_checks_durable_restart_boundary_before_stopping_backend() -> None:
     source = (project_root() / "scripts" / "verification" / "verify_siming_heavenly_runtime.py").read_text(
         encoding="utf-8"

@@ -29,6 +29,7 @@ from app.services.siming_audit_writer import SimingAuditWriter
 from app.services.siming_event_consumer import SimingEventConsumer
 from app.services.siming_event_pipeline import SimingEventPipeline
 from app.services.siming_event_producer import SimingEventProducer
+from app.services.siming_heavenly_runtime_support import SimingHeavenlyRuntimeSupport
 
 
 def _reload_settings():
@@ -326,6 +327,22 @@ def test_shadow_mode_marks_owned_family_advisory_and_support_cannot_publish(
         assert not hasattr(support, "write_actor_memory")
     finally:
         state.close()
+
+
+def test_active_support_does_not_admit_ordinary_object_state_visual_fact() -> None:
+    event = _destruction_input().source_event.model_copy(
+        update={
+            "event_type": "visual_fact_event",
+            "payload": {
+                "fact_type": "object_state_change",
+                "target_object_id": "obj_letter",
+                "relation_type": "object_state_changed",
+            },
+        }
+    )
+
+    assert event.payload["relation_type"] != "actor_observes_object_removal"
+    assert SimingHeavenlyRuntimeSupport._event_family(event) == "visual_fact_event"
 
 
 def test_active_support_rejects_second_selection_for_one_correlation(tmp_path) -> None:

@@ -519,7 +519,6 @@ class SimingHeavenlyRuntimeSupport:
             and target_ref == "obj_letter"
             and (
                 payload.get("relation_type") == "actor_observes_object_removal"
-                or payload.get("fact_type") == "object_state_change"
                 or observes_removed_letter
             )
         ) or (

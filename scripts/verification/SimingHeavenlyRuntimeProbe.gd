@@ -35,6 +35,9 @@ func _ready() -> void:
 		call_deferred("_run")
 
 func _run() -> void:
+	# Keep the probe's setup path deterministic; the post-destruction reaction
+	# remains online and is verified after the restart boundary.
+	_controller._set_autotest_actor_local_perception_enabled(false)
 	if not (await _wait_until(Callable(self, "_backend_ready"))):
 		_finish("siming_heavenly_backend_timeout")
 		return
@@ -46,7 +49,6 @@ func _run() -> void:
 		return
 	_controller.suspend_near_object_visual_fact = true
 	_controller.suspend_spatial_access_fact = true
-	_controller._set_autotest_actor_local_perception_enabled(false)
 	_controller._move_player_to_interact_position()
 	var move_request: Dictionary = _controller._emit_move_intent_request(
 		_controller.autotest_interact_position,
