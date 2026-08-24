@@ -118,6 +118,7 @@ class SimingRuntime:
         self._pending_observatory_messages: list[dict[str, object]] = []
         self._active_turn_event: AuthorityEvent | None = None
         self._active_turn_prepared: object | None = None
+        self._recorded_behavior_turn_correlations: set[str] = set()
 
     @property
     def heavenly_support(self) -> SimingHeavenlyRuntimeSupport | None:
@@ -1282,6 +1283,8 @@ class SimingRuntime:
     def _record_behavior_turn(self, event: AuthorityEvent, prepared: object | None, result: SimingTickResult) -> None:
         if self._behavior_turn_recorder is None:
             return
+        if event.correlation_id in self._recorded_behavior_turn_correlations:
+            return
         resolver = self._behavior_turn_scope_resolver
         if callable(resolver):
             scope = resolver(event)
@@ -1324,6 +1327,7 @@ class SimingRuntime:
                 ),
             )
         )
+        self._recorded_behavior_turn_correlations.add(event.correlation_id)
 
     def _narrative_summary_for(
         self, narrative: NarrativeCoreResult
