@@ -1,3 +1,5 @@
+from threading import RLock
+
 from app.models.authority_event import AuthorityEvent
 from app.models.siming_event import (
     FairnessStateSnapshot,
@@ -119,6 +121,7 @@ class SimingRuntime:
         self._active_turn_event: AuthorityEvent | None = None
         self._active_turn_prepared: object | None = None
         self._recorded_behavior_turn_correlations: set[str] = set()
+        self._behavior_turn_lock = RLock()
 
     @property
     def heavenly_support(self) -> SimingHeavenlyRuntimeSupport | None:
@@ -1283,6 +1286,10 @@ class SimingRuntime:
     def _record_behavior_turn(self, event: AuthorityEvent, prepared: object | None, result: SimingTickResult) -> None:
         if self._behavior_turn_recorder is None:
             return
+        with self._behavior_turn_lock:
+            self._record_behavior_turn_locked(event, prepared, result)
+
+    def _record_behavior_turn_locked(self, event: AuthorityEvent, prepared: object | None, result: SimingTickResult) -> None:
         if event.correlation_id in self._recorded_behavior_turn_correlations:
             return
         resolver = self._behavior_turn_scope_resolver

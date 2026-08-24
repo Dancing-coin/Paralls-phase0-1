@@ -107,7 +107,10 @@ func _run_probe() -> void:
 		return
 	_raw_fact_sent = true
 
-	var execution_ok := await _wait_for_execution_contract(10000)
+	# The raw-fact websocket sends its authority ack first and computes the
+	# character follow-up on a worker; allow the structured execution envelope
+	# its full backend budget before declaring the probe failed.
+	var execution_ok := await _wait_for_execution_contract(30000)
 	if not execution_ok:
 		push_error("character_agent_execution_probe:execution_contract_timeout")
 		get_tree().quit(1)

@@ -1346,6 +1346,17 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             await send_batch(_drop_matching_authority_ack(outbound, authority_ack))
         except (ValidationError, ValueError, TypeError) as exc:
             await send(_as_error_ack(source_type=envelope.message_type, route="raw_fact_followup_failed", error=exc))
+        except Exception as exc:
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=0,
+                    domain="backend",
+                    stage="raw_fact_followup_failed",
+                    summary="raw fact follow-up failed after authority acknowledgement",
+                    detail={"error_type": type(exc).__name__, "error": str(exc)},
+                )
+            )
+            await send(_as_error_ack(source_type=envelope.message_type, route="raw_fact_followup_failed", error=exc))
 
     mirror_delivery_task = asyncio.create_task(send_mirror_deliveries())
     controlled_close_task = asyncio.create_task(send_controlled_transport_close())
