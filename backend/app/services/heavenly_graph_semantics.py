@@ -77,6 +77,10 @@ class HeavenlyNodeTypeRegistry:
         return tuple(sorted(self.rules))
 
     def require(self, node_type: str) -> _NodeRule:
+        if node_type.startswith(("actor_memory:", "actor_memory_anchor:")):
+            return _NodeRule((_ACTOR,), ("fact", "projection"), (_PRIVATE,))
+        if node_type.startswith("memory:"):
+            return _NodeRule((_SIMING,), ("fact", "projection", "proposal"), (_INTERNAL, _AUTHORITY, _BRANCH))
         try:
             return self.rules[node_type]
         except KeyError as exc:
@@ -228,6 +232,8 @@ class HeavenlyRelationTypeRegistry:
         return tuple(sorted(self.rules))
 
     def require(self, relation_type: str) -> _RelationRule:
+        if relation_type.startswith("actor_memory:references_"):
+            return _RelationRule(((_ACTOR, _ACTOR),), ("fact", "projection"), (_PRIVATE,))
         try:
             return self.rules[relation_type]
         except KeyError as exc:
@@ -308,7 +314,7 @@ class HeavenlyRelationTypeRegistry:
         if relation_type.upper() in {"CAUSED_BY", "ENABLED_BY", "PREVENTED_BY"}:
             return cls._LEGACY_RULE
         if relation_type.startswith("actor_memory:references_"):
-            return _RelationRule(((_ACTOR, _ACTOR),), ("fact",), (_PUBLIC,))
+            return _RelationRule(((_ACTOR, _ACTOR),), ("fact", "projection"), (_PRIVATE,))
         return None
 
     @staticmethod

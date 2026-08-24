@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.models.siming_heavenly_graph import (
     GraphProvenance,
+    GraphSemanticMetadata,
     GraphValidity,
     HeavenlyGraphNode,
     HeavenlyGraphScope,
@@ -396,6 +397,14 @@ class SimingStoryGraphRuntime:
                     revision=1,
                     provenance=provenance,
                     attributes=memory_entry.model_dump(mode="json"),
+                    semantic_metadata=GraphSemanticMetadata(
+                        record_kind="fact",
+                        visibility_scope="siming_internal",
+                        derivation_kind="authority",
+                        source_event_refs=(outcome.authority_result_ref,),
+                        policy_revision="policy:v1",
+                        scope_digest="scope:siming-heavenly",
+                    ),
                 ),
                 HeavenlyGraphNode(
                     node_id=self._outcome_node_id(outcome.authority_result_ref),

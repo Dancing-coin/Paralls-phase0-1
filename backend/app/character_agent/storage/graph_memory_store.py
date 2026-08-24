@@ -18,12 +18,15 @@ from app.character_agent.models.working_memory_state import CharacterWorkingMemo
 from app.character_agent.models.dynamic_state import CharacterDynamicState
 from app.character_agent.storage.memory_store import CharacterAgentMemoryStore
 from app.models.siming_heavenly_graph import (
+    GraphReaderContext,
     GraphProvenance,
+    GraphSemanticMetadata,
     GraphValidity,
     HeavenlyGraphNode,
     HeavenlyGraphRelation,
     HeavenlyGraphScope,
     HeavenlyGraphWriteBatch,
+    NodeLookupQuery,
     HeavenlyNodeQuery,
     HeavenlyRelationQuery,
 )
@@ -107,18 +110,17 @@ class CharacterGraphMemoryStore:
         *,
         recorded_at: int,
     ) -> bool:
-        nodes = self._graph.query_nodes(
-            HeavenlyNodeQuery(
+        result = self._graph.query_semantic(
+            NodeLookupQuery(
+                context=self._reader_context(scope, valid_at=self._MAX_TIME, recorded_at=recorded_at if recorded_at > 0 else None),
                 scope=scope,
-                valid_at=self._MAX_TIME,
-                recorded_at=recorded_at if recorded_at > 0 else None,
                 node_types=[f"actor_memory:{pool}" for pool, _field, _model in self.POOLS],
-                limit=None,
+                limit=1000,
             )
         )
         return any(
             node.provenance.source_ref == source_event_id
-            for node in nodes
+            for node in result.nodes
         )
 
     def retrieval_record_bundle(
@@ -136,17 +138,17 @@ class CharacterGraphMemoryStore:
         )
         values: dict[str, list[MemoryRecord]] = {}
         for pool, field, model in self.POOLS:
-            nodes = self._graph.query_nodes(
-                HeavenlyNodeQuery(
+            result = self._graph.query_semantic(
+                NodeLookupQuery(
+                    context=self._reader_context(scope, valid_at=recall_time),
                     scope=scope,
-                    valid_at=recall_time,
                     node_types=[f"actor_memory:{pool}"],
-                    limit=None,
+                    limit=1000,
                 )
             )
             records = [
                 model.model_validate(node.attributes["record"])
-                for node in nodes
+                for node in result.nodes
                 if "record" in node.attributes
             ]
             values[field] = sorted(
@@ -202,6 +204,26 @@ class CharacterGraphMemoryStore:
         if scope.graph_namespace != "actor_private" or scope.owner_actor_id != actor_id:
             raise ValueError("actor-private scope owner must match event actor")
         return scope
+
+    @staticmethod
+    def _reader_context(
+        scope: HeavenlyGraphScope,
+        *,
+        valid_at: int,
+        recorded_at: int | None = None,
+    ) -> GraphReaderContext:
+        owner = scope.owner_actor_id
+        principal = owner or "reader:character-agent"
+        return GraphReaderContext(
+            reader_principal=principal,
+            allowed_visibility_scopes=("actor_private",),
+            world_id=scope.world_id,
+            session_id=scope.session_id,
+            story_branch_id=scope.story_branch_id,
+            valid_at=valid_at,
+            recorded_at=recorded_at,
+            policy_revision="policy:v1",
+        )
 
     def _deposit_bundle(
         self,
@@ -278,6 +300,7 @@ class CharacterGraphMemoryStore:
             supersedes_revision=prior.revision if prior else None,
             attributes={"record": record.model_dump(mode="json")},
             provenance=self._provenance(record, actor_id=record.actor_id),
+            semantic_metadata=self._memory_metadata(record, "authority"),
         )
 
     def _reference_anchor(
@@ -320,6 +343,7 @@ class CharacterGraphMemoryStore:
             supersedes_revision=prior_anchor.revision if prior_anchor else None,
             attributes={"reference_id": reference_id},
             provenance=self._provenance(record, actor_id=record.actor_id),
+            semantic_metadata=self._memory_metadata(record, "projection"),
         )
         return anchor, HeavenlyGraphRelation(
             relation_id=relation_id,
@@ -333,6 +357,19 @@ class CharacterGraphMemoryStore:
             supersedes_revision=prior_relation.revision if prior_relation else None,
             provenance=self._provenance(record, actor_id=record.actor_id),
             attributes={},
+            semantic_metadata=self._memory_metadata(record, "projection"),
+        )
+
+    @staticmethod
+    def _memory_metadata(record: MemoryRecord, derivation_kind: str) -> GraphSemanticMetadata:
+        source_ref = record.source_event_id or record.memory_id
+        return GraphSemanticMetadata(
+            record_kind="fact" if derivation_kind == "authority" else "projection",
+            visibility_scope="actor_private",
+            derivation_kind=derivation_kind,
+            source_event_refs=(source_ref,),
+            policy_revision="policy:v1",
+            scope_digest="scope:actor-private",
         )
 
     def _record_reference(self, record: MemoryRecord) -> tuple[str, str] | None:
