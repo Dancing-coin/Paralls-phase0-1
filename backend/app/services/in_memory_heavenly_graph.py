@@ -736,6 +736,18 @@ class InMemoryHeavenlyGraphAdapter:
                 )
             DEFAULT_NODE_TYPE_REGISTRY.validate_node(node, allow_legacy=True)
         for relation in batch.relations:
+            for endpoint_scope in (
+                relation.source_scope or relation.scope,
+                relation.target_scope or relation.scope,
+            ):
+                if (
+                    endpoint_scope.world_id != relation.scope.world_id
+                    or endpoint_scope.session_id != relation.scope.session_id
+                    or endpoint_scope.story_branch_id != relation.scope.story_branch_id
+                ):
+                    raise ValueError(
+                        "endpoint scopes must match relation world/session/branch"
+                    )
             if (
                 relation.semantic_metadata.visibility_scope == "branch_only"
                 and self._scope_key(relation.scope) not in self._branch_status

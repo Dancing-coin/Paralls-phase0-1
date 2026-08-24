@@ -165,6 +165,17 @@ def test_cross_namespace_relation_fails_when_endpoint_is_missing(graph: object) 
         graph.write_batch(_batch(siming_scope, "missing-endpoint", relations=[_relation("relation:missing", siming_scope, actor, world)]))
 
 
+def test_cross_namespace_relation_rejects_endpoint_from_a_different_story_branch(graph: object) -> None:
+    actor_scope = _scope("actor_private", owner="char:b")
+    actor_scope = actor_scope.model_copy(update={"story_branch_id": "branch:other"})
+    siming_scope = _scope("siming_heavenly")
+    actor = _node("view:other-branch", actor_scope, visibility="actor_private", node_type="actor_view")
+    world = _node("fact:main-branch", siming_scope, visibility="siming_internal", node_type="causal_event")
+    graph.write_batch(_batch(siming_scope, "main-world", nodes=[world]))
+    with pytest.raises(ValueError, match="endpoint scopes must match relation world/session/branch"):
+        graph.write_batch(_batch(siming_scope, "cross-branch", relations=[_relation("relation:cross-branch", siming_scope, actor, world)]))
+
+
 def test_cross_namespace_relation_is_hidden_when_one_endpoint_is_not_visible(graph: object) -> None:
     actor_scope = _scope("actor_private", owner="char:b")
     siming_scope = _scope("siming_heavenly")
