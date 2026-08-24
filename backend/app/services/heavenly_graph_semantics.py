@@ -203,6 +203,7 @@ class HeavenlyRelationTypeRegistry:
     _SAME_SIMING = ((_SIMING, _SIMING),)
     _SAME_ANY = ((_SIMING, _SIMING), (_ACTOR, _ACTOR), (_RESOURCE, _RESOURCE))
     _CROSS_ACTOR_SIMING = ((_ACTOR, _SIMING), (_SIMING, _ACTOR), (_SIMING, _SIMING))
+    _TURN_PAIRS = _CROSS_ACTOR_SIMING + ((_ACTOR, _ACTOR),)
     _CROSS_SIMING_RESOURCE = ((_SIMING, _RESOURCE), (_RESOURCE, _SIMING), (_SIMING, _SIMING))
     DEFAULT_RULES: dict[str, _RelationRule] = {
         "caused_by": _RelationRule(_SAME_SIMING, ("fact", "projection"), (_PUBLIC, _INTERNAL, _AUTHORITY, _BRANCH)),
@@ -215,7 +216,7 @@ class HeavenlyRelationTypeRegistry:
         "supersedes": _RelationRule(_SAME_ANY, ("fact", "projection"), (_PUBLIC, _PRIVATE, _INTERNAL, _AUTHORITY, _BRANCH)),
         "retracts": _RelationRule(_SAME_ANY, ("fact", "projection"), (_PUBLIC, _PRIVATE, _INTERNAL, _AUTHORITY, _BRANCH)),
         "derived_from": _RelationRule(_SAME_ANY + _CROSS_ACTOR_SIMING + _CROSS_SIMING_RESOURCE, ("projection", "proposal"), (_PRIVATE, _INTERNAL, _AUTHORITY, _BRANCH)),
-        "part_of_turn": _RelationRule(_CROSS_ACTOR_SIMING, ("projection", "proposal"), (_PRIVATE, _INTERNAL, _BRANCH)),
+        "part_of_turn": _RelationRule(_TURN_PAIRS, ("projection", "proposal"), (_PRIVATE, _INTERNAL, _BRANCH)),
         "opens_obligation": _RelationRule(_SAME_SIMING, ("fact", "projection", "proposal"), (_INTERNAL, _BRANCH)),
         "transforms_obligation": _RelationRule(_SAME_SIMING, ("fact", "projection", "proposal"), (_INTERNAL, _BRANCH)),
         "targets_attractor": _RelationRule(_SAME_SIMING, ("projection", "proposal"), (_INTERNAL, _BRANCH)),
