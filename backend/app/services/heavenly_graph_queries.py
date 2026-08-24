@@ -655,14 +655,32 @@ class HeavenlyGraphSemanticQueryFacade:
                 )
             )
         visible_nodes, denied, stale = self._filter_entities(endpoint_nodes, query)
-        visible_ids = {node.node_id for node in visible_nodes}
+        visible_endpoints = {
+            (
+                self._scope_key(node.scope),
+                node.node_id,
+            )
+            for node in visible_nodes
+        }
         selected = [
             relation
             for relation in relations
-            if relation.source_node_id in visible_ids
-            and relation.target_node_id in visible_ids
+            if (
+                self._scope_key(relation.source_scope or relation.scope),
+                relation.source_node_id,
+            )
+            in visible_endpoints
+            and (
+                self._scope_key(relation.target_scope or relation.scope),
+                relation.target_node_id,
+            )
+            in visible_endpoints
         ]
         return selected, denied or stale or len(selected) != len(relations)
+
+    @staticmethod
+    def _scope_key(scope: HeavenlyGraphScope) -> tuple[object, ...]:
+        return tuple(scope.model_dump(mode="json").values())
 
     @staticmethod
     def _principal_matches_owner(principal: str, owner_actor_id: str) -> bool:

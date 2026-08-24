@@ -197,6 +197,26 @@ def test_cross_namespace_relation_is_hidden_when_one_endpoint_is_not_visible(gra
     assert result.incomplete_reason == "visibility_denied"
 
 
+def test_cross_namespace_relation_does_not_confuse_same_id_across_scopes(graph: object) -> None:
+    actor_scope = _scope("actor_private", owner="char:b")
+    siming_scope = _scope("siming_heavenly")
+    actor = _node("same:id", actor_scope, visibility="actor_private", node_type="actor_view")
+    world = _node("same:id", siming_scope, visibility="siming_internal", node_type="causal_event")
+    graph.write_batch(_batch(actor_scope, "same-actor", nodes=[actor]))
+    graph.write_batch(_batch(siming_scope, "same-world", nodes=[world]))
+    relation = _relation("relation:same-id", siming_scope, actor, world)
+    graph.write_batch(_batch(siming_scope, "same-relation", relations=[relation]))
+    result = graph.query_semantic(
+        RelationLookupQuery(
+            context=_context(siming_scope, principal="reader:other", scopes=("siming_internal",)),
+            scope=siming_scope,
+            relation_ids=[relation.relation_id],
+        )
+    )
+    assert result.relations == []
+    assert result.incomplete_reason == "visibility_denied"
+
+
 def test_sqlite_restart_preserves_endpoint_scope(tmp_path: Path) -> None:
     actor_scope = _scope("actor_private", owner="char:b")
     siming_scope = _scope("siming_heavenly")
