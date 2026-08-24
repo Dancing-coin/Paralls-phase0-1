@@ -45,7 +45,11 @@ class InMemoryAuthorityEventBus:
     def publish(self, event: AuthorityEvent) -> None:
         stored = event.model_copy(deep=True)
         self._events.append(stored)
-        for consumer_id, consumer in self._subscribers.get(event.event_type, []):
+        subscribers = [
+            *self._subscribers.get(event.event_type, []),
+            *self._subscribers.get("*", []),
+        ]
+        for consumer_id, consumer in subscribers:
             if self._matches_route(stored, consumer_id):
                 consumer(stored.model_copy(deep=True))
 

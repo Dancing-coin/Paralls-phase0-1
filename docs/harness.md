@@ -129,6 +129,7 @@ python scripts/verification/harness.py --profile siming-resource-staging
 python scripts/verification/harness.py --profile siming-adaptive-bridge
 python scripts/verification/harness.py --profile behavior-turn-runtime
 python scripts/verification/harness.py --profile character-continuity-recovery
+python scripts/verification/harness.py --profile authority-graph-projection
 python scripts/verification/harness.py --profile all
 ```
 
@@ -671,6 +672,17 @@ not prove Siming, six-domain Authority projection, online LLM, or Godot closure.
 
 ```powershell
 python scripts/verification/harness.py --profile character-continuity-recovery
+```
+
+### `authority-graph-projection`
+
+Backend proof for committed Authority events projected into Heavenly Graph
+across ESM/world, Inventory, Ownership, Economy, Survival/body, and
+resource/scene domains, retaining owner, source vector, settlement, and replay
+linkage. It does not prove online LLM or Godot closure.
+
+```powershell
+python scripts/verification/harness.py --profile authority-graph-projection
 ```
 
 ### `siming-heavenly-runtime`

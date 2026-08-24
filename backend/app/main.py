@@ -77,6 +77,7 @@ from app.character_agent.storage.memory_store_router import CharacterMemoryStore
 from app.models.siming_heavenly_graph import HeavenlyGraphScope
 from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
 from app.services.behavior_turn_recorder import BehaviorTurnRecorder
+from app.services.authority_graph_projector import HeavenlyAuthorityEventProjector
 from app.character_agent.storage.graph_continuity_store import CharacterGraphContinuityStore
 from app.services.character_runtime_state_service import CharacterRuntimeStateService
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
@@ -614,6 +615,15 @@ def reset_runtime_state() -> None:
         authority_event_bus.subscribe(event_type, siming_event_pipeline.handle_event)
     authority_event_bus.subscribe("siming.staging_request", _ack_siming_staging_request)
     frontend_authority_event_projector = FrontendAuthorityEventProjector()
+    authority_graph_projector = HeavenlyAuthorityEventProjector(
+        heavenly_graph,
+        scope_resolver=lambda event: HeavenlyGraphScope(
+            world_id=event.payload.get("world_id", "world:demo") if isinstance(event.payload.get("world_id", "world:demo"), str) else "world:demo",
+            session_id=event.payload.get("session_id", "session:demo") if isinstance(event.payload.get("session_id", "session:demo"), str) else "session:demo",
+            story_branch_id=event.payload.get("story_branch_id", "branch:main") if isinstance(event.payload.get("story_branch_id", "branch:main"), str) else "branch:main",
+        ),
+    )
+    authority_event_bus.subscribe("*", authority_graph_projector.project)
     character_agent_l4_executor = CharacterAgentL4Executor()
     character_agent_l4_adapter = CharacterAgentL4Adapter(executor=character_agent_l4_executor)
     character_agent_debug_projection = CharacterAgentDebugProjection()
