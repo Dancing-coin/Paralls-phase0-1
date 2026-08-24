@@ -384,6 +384,26 @@ class HeavenlyGraphSemanticQueryFacade:
                 limit=_SEMANTIC_CANDIDATE_LIMIT,
             )
         )
+        endpoint_scopes: dict[tuple[object, ...], HeavenlyGraphScope] = {}
+        for relation in raw_relations:
+            for endpoint_scope in (
+                relation.source_scope or relation.scope,
+                relation.target_scope or relation.scope,
+            ):
+                endpoint_scopes[tuple(endpoint_scope.model_dump(mode="json").values())] = endpoint_scope
+        if endpoint_scopes:
+            raw_nodes = []
+            for endpoint_scope in endpoint_scopes.values():
+                raw_nodes.extend(
+                    self._graph.query_nodes(
+                        HeavenlyNodeQuery(
+                            scope=endpoint_scope,
+                            valid_at=query.context.valid_at,
+                            recorded_at=query.context.recorded_at,
+                            limit=_SEMANTIC_CANDIDATE_LIMIT,
+                        )
+                    )
+                )
         node_by_id = {node.node_id: node for node in raw_nodes}
         relation_by_id = {relation.relation_id: relation for relation in raw_relations}
         adjacency: dict[str, list[HeavenlyGraphRelation]] = {}

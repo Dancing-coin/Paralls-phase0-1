@@ -16,6 +16,7 @@ from app.models.siming_heavenly_graph import (
     RelationLookupQuery,
 )
 from app.services.heavenly_graph_queries import HeavenlyGraphSemanticQueryFacade
+from app.services.heavenly_graph_consistency import HeavenlyGraphConsistencyAudit
 from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
 from app.services.siming_heavenly_graph_port import HeavenlyGraphReferentialIntegrityError
 from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
@@ -203,3 +204,17 @@ def test_sqlite_restart_preserves_endpoint_scope(tmp_path: Path) -> None:
     assert stored.source_scope == actor_scope
     assert stored.target_scope == siming_scope
     reopened.close()
+
+
+def test_cross_namespace_relation_audit_and_causal_query_resolve_endpoint_scopes(graph: object) -> None:
+    actor_scope = _scope("actor_private", owner="char:b")
+    siming_scope = _scope("siming_heavenly")
+    actor = _node("view:causal", actor_scope, visibility="actor_private", node_type="actor_view")
+    world = _node("fact:causal", siming_scope, visibility="siming_internal", node_type="causal_event")
+    graph.write_batch(_batch(actor_scope, "causal-actor", nodes=[actor]))
+    graph.write_batch(_batch(siming_scope, "causal-world", nodes=[world]))
+    relation = _relation("relation:causal", siming_scope, actor, world)
+    graph.write_batch(_batch(siming_scope, "causal-relation", relations=[relation]))
+    context = _context(siming_scope, principal="char:b", scopes=("actor_private", "siming_internal"))
+    report = HeavenlyGraphConsistencyAudit(graph).audit(siming_scope, context)
+    assert report.errors == []

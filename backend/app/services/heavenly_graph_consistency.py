@@ -262,8 +262,11 @@ class HeavenlyGraphConsistencyAudit:
         endpoint_valid_at = relation.validity.valid_from
         endpoint_recorded_at = relation.recorded_at
 
-        def exists_at(endpoint_id: str) -> bool:
+        def exists_at(endpoint_id: str, endpoint_scope: HeavenlyGraphScope | None) -> bool:
             versions = nodes.get(endpoint_id, [])
+            if endpoint_scope is not None and endpoint_scope != relation.scope:
+                versions = self._historical(self._collection("_nodes"), endpoint_scope)
+                versions = [item for item in versions if item.node_id == endpoint_id]
             candidates = [
                 node
                 for node in versions
@@ -275,7 +278,7 @@ class HeavenlyGraphConsistencyAudit:
             selected = max(candidates, key=lambda item: (item.recorded_at, item.revision))
             return selected.semantic_metadata.derivation_kind not in {"retraction", "redaction"}
 
-        if not exists_at(relation.source_node_id) or not exists_at(relation.target_node_id):
+        if not exists_at(relation.source_node_id, relation.source_scope) or not exists_at(relation.target_node_id, relation.target_scope):
             self._append(errors, "HG-AUDIT-ORPHAN-RELATION", "orphan_relation", relation, context)
 
     def _audit_revision_chain(self, kind: str, entity_id: str, versions: Iterable[Any], context: GraphReaderContext, errors: list[HeavenlyGraphConsistencyError]) -> None:

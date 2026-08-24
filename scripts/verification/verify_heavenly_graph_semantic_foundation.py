@@ -49,6 +49,7 @@ GRAPH_TEST_FILES = (
     "backend/tests/test_heavenly_graph_semantic_queries.py",
     "backend/tests/test_heavenly_graph_branch_lifecycle.py",
     "backend/tests/test_heavenly_graph_consistency.py",
+    "backend/tests/test_heavenly_graph_endpoint_scopes.py",
 )
 
 
