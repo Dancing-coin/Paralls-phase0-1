@@ -40,9 +40,6 @@ class CharacterBehaviorTurnProjection:
         evaluation: dict[str, object],
         timeline: list[dict[str, object]],
     ) -> None:
-        chain = self._latest_chain(timeline, producer_ts)
-        if any(event_type not in chain for event_type in self._CHAIN_TYPES):
-            return
         settlement_payload = settlement_event.get("payload", {})
         if not isinstance(settlement_payload, dict):
             return
@@ -50,6 +47,9 @@ class CharacterBehaviorTurnProjection:
             settlement_payload.get("correlation_id", "")
             or settlement_event.get("event_id", "")
         )
+        chain = self._latest_chain(timeline, producer_ts, correlation_id)
+        if any(event_type not in chain for event_type in self._CHAIN_TYPES):
+            return
         causation_id = str(
             settlement_payload.get("causation_id", "") or correlation_id
         )
@@ -72,7 +72,17 @@ class CharacterBehaviorTurnProjection:
             ("context", reasoning, "recorded"),
             ("interpretation", interpretation, "recorded"),
             ("goal", goal, "recorded"),
-            ("intent", goal, "recorded"),
+            (
+                "intent",
+                {
+                    **goal,
+                    "payload": {
+                        "selected_intent": self._intent_from_payload(goal),
+                        "source_goal_event_id": str(goal.get("event_id", "")),
+                    },
+                },
+                "recorded",
+            ),
             ("execution", execution, "recorded"),
             (
                 "settlement",
@@ -104,10 +114,16 @@ class CharacterBehaviorTurnProjection:
                         if policy_payload.get("status") == "candidate_only"
                         else "skipped"
                     ),
-                    source_refs=(str(settlement_event.get("event_id", "")),),
+                    source_refs=self._policy_source_refs(
+                        evaluation, settlement_event
+                    ),
                     payload=policy_payload,
                 ),
             )
+        )
+        authority_event_ref = str(settlement_payload.get("authority_event_ref", ""))
+        has_authority_result = bool(
+            authority_event_ref and settlement_payload.get("authority_owner_ref")
         )
         self._recorder.record(
             BehaviorTurnRecordRequest(
@@ -122,8 +138,8 @@ class CharacterBehaviorTurnProjection:
                 ),
                 scope_digest="scope:actor-private",
                 provenance=GraphProvenance(
-                    source_kind="runtime_outcome",
-                    source_ref=result_ref,
+                    source_kind=("authority_event" if has_authority_result else "runtime_outcome"),
+                    source_ref=authority_event_ref or result_ref,
                     causation_id=causation_id,
                     correlation_id=correlation_id,
                     producer_system="character_agent_runtime",
@@ -137,16 +153,75 @@ class CharacterBehaviorTurnProjection:
         )
 
     def _latest_chain(
-        self, timeline: list[dict[str, object]], producer_ts: int
+        self, timeline: list[dict[str, object]], producer_ts: int, correlation_id: str
     ) -> dict[str, dict[str, object]]:
-        chain: dict[str, dict[str, object]] = {}
+        candidates: dict[str, list[dict[str, object]]] = {
+            event_type: [] for event_type in self._CHAIN_TYPES
+        }
+        candidate_timestamps: set[int] = set()
         for entry in timeline:
             if int(entry.get("producer_ts", 0) or 0) > producer_ts:
                 continue
             event_type = str(entry.get("event_type", "") or "")
-            if event_type in self._CHAIN_TYPES:
-                chain[event_type] = entry
+            if event_type not in candidates:
+                continue
+            payload = entry.get("payload", {})
+            if not isinstance(payload, dict):
+                payload = {}
+            entry_correlation = str(
+                payload.get("correlation_id", "")
+                or payload.get("causation_id", "")
+                or ""
+            )
+            if entry_correlation and entry_correlation != correlation_id:
+                continue
+            candidates[event_type].append(entry)
+            candidate_timestamps.add(int(entry.get("producer_ts", 0) or 0))
+        common_timestamps = {
+            timestamp
+            for timestamp in candidate_timestamps
+            if all(
+                any(
+                    int(entry.get("producer_ts", 0) or 0) == timestamp
+                    for entry in entries
+                )
+                for entries in candidates.values()
+            )
+        }
+        if not common_timestamps:
+            return {}
+        anchor_ts = max(common_timestamps)
+        chain: dict[str, dict[str, object]] = {}
+        for event_type, entries in candidates.items():
+            matching = [
+                entry
+                for entry in entries
+                if int(entry.get("producer_ts", 0) or 0) == anchor_ts
+            ]
+            if len(matching) != 1:
+                return {}
+            chain[event_type] = matching[0]
         return chain
+
+    @staticmethod
+    def _intent_from_payload(entry: dict[str, object]) -> str:
+        payload = entry.get("payload", {})
+        if not isinstance(payload, dict):
+            return ""
+        return str(
+            payload.get("selected_intent", "")
+            or payload.get("dominant_goal_id", "")
+            or ""
+        )
+
+    @staticmethod
+    def _policy_source_refs(
+        evaluation: dict[str, object], settlement_event: dict[str, object]
+    ) -> tuple[str, ...]:
+        candidate_event_id = str(evaluation.get("policy_candidate_event_id", ""))
+        if candidate_event_id:
+            return (candidate_event_id,)
+        return (str(settlement_event.get("event_id", "")),)
 
     @staticmethod
     def _settlement_outcome(payload: dict[str, object]) -> str:
@@ -154,8 +229,12 @@ class CharacterBehaviorTurnProjection:
             payload.get("settlement_status", "")
             or payload.get("resolution_status", "")
         )
-        if status in {"accepted", "applied", "observed"}:
+        if status in {"accepted", "applied", "observed"} and payload.get(
+            "authority_event_ref"
+        ) and payload.get("authority_owner_ref"):
             return "committed"
+        if status in {"accepted", "applied", "observed"}:
+            return "accepted"
         if status in {"rejected", "blocked", "denied"}:
             return "rejected"
         return "failed"

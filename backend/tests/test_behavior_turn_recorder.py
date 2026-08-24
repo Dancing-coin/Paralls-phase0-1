@@ -219,6 +219,8 @@ def test_character_runtime_records_rejected_action_as_complete_behavior_turn() -
             "causation_id": "interact:1202",
             "correlation_id": "interact:1202",
             "policy_revision": "policy:character-runtime:v1",
+            "authority_event_ref": "authority:event:accepted",
+            "authority_owner_ref": "esm:world",
         },
     )
 
@@ -248,6 +250,10 @@ def test_character_runtime_records_rejected_action_as_complete_behavior_turn() -
     )
     assert by_stage["evaluation"].attributes["outcome"] == "failed"
     assert by_stage["policy"].attributes["payload"]["status"] == "candidate_only"
+    assert by_stage["policy"].semantic_metadata.source_event_refs
+    assert "character_policy_candidate_event" in by_stage[
+        "policy"
+    ].semantic_metadata.source_event_refs[0]
     assert all(node.semantic_metadata.record_kind == "projection" for node in stage_nodes)
 
 
@@ -283,6 +289,8 @@ def test_application_runtime_wires_character_turns_to_shared_sqlite_graph(
                 "causation_id": "interact:1402",
                 "correlation_id": "interact:1402",
                 "policy_revision": "policy:character-runtime:v1",
+                "authority_event_ref": "authority:event:accepted",
+                "authority_owner_ref": "esm:world",
             },
         )
         result = state.heavenly_graph.query_semantic(
@@ -312,3 +320,58 @@ def test_application_runtime_wires_character_turns_to_shared_sqlite_graph(
     assert next(
         node for node in stage_nodes if node.attributes["stage"] == "settlement"
     ).attributes["outcome"] == "committed"
+
+
+def test_character_projection_does_not_mix_interleaved_turn_events() -> None:
+    graph = InMemoryHeavenlyGraphAdapter()
+    recorder = BehaviorTurnRecorder(graph)
+    runtime = CharacterAgentRuntime(
+        behavior_turn_recorder=recorder,
+        behavior_turn_scope_resolver=lambda actor_id: _scope().model_copy(
+            update={"owner_actor_id": actor_id}
+        ),
+    )
+    runtime.ingest_character_perceived_event(_event_for_test(200, "first"))
+    runtime.ingest_character_perceived_event(_event_for_test(210, "second"))
+    runtime.record_settlement_result(
+        actor_id="char_b",
+        producer_ts=211,
+        payload={
+            "result_id": "constraint:interleaved",
+            "result_type": "constraint_state_result",
+            "settlement_status": "rejected",
+            "constraint_summary": "blocked",
+            "causation_id": "cause:second",
+            "correlation_id": "cause:second",
+        },
+    )
+    result = graph.query_semantic(
+        BehaviorTurnQuery(
+            context=_context().model_copy(update={"valid_at": 211, "recorded_at": 211}),
+            scope=_scope(),
+            correlation_id="cause:second",
+            actor_id="char_b",
+        )
+    )
+    assert _stage_nodes_for_test(result) == []
+
+
+def _event_for_test(timestamp: int, summary: str) -> CharacterPerceivedEvent:
+    return CharacterPerceivedEvent(
+        actor_id="char_b",
+        percept_channel="visual",
+        producer_ts=timestamp,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        perceived_summary=summary,
+        source_candidate_event_id=f"visual:{timestamp}",
+    )
+
+
+def _stage_nodes_for_test(result: object) -> list[object]:
+    return [
+        node
+        for node in result.nodes
+        if node.attributes.get("entity_kind") == "stage"
+    ]

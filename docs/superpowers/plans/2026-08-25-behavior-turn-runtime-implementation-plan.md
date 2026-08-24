@@ -32,29 +32,29 @@
 - Consumes: `HeavenlyGraphPort.write_batch(batch: HeavenlyGraphWriteBatch) -> HeavenlyGraphWriteResult`
 - Produces: `BehaviorTurnStage`, `BehaviorTurnStageRecord`, `BehaviorTurnRecordRequest`, `BehaviorTurnRecorder.record(request)`
 
-- [ ] **Step 1: Write failing contract and end-to-end recorder tests**
+- [x] **Step 1: Write failing contract and end-to-end recorder tests**
 
   Test a complete eight-stage actor-private turn, required provenance/context fields, `part_of_turn` relations, idempotent replay, and rejected settlement retained as projection rather than fact.
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
   Run: `python -m pytest backend/tests/test_behavior_turn_recorder.py -v`
 
   Expected: collection fails because `app.models.behavior_turn` and `BehaviorTurnRecorder` do not exist.
 
-- [ ] **Step 3: Implement the minimal typed contract and recorder**
+- [x] **Step 3: Implement the minimal typed contract and recorder**
 
   `BehaviorTurnRecordRequest` owns one scope, turn identity and ordered non-empty stages. The recorder validates the fixed stage order, creates one `behavior_turn` anchor plus one stage node per supplied stage, links every stage with `part_of_turn`, and emits one graph batch using the caller-provided idempotency key.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
   Run: `python -m pytest backend/tests/test_behavior_turn_recorder.py -v`
 
-- [ ] **Step 5: Run existing graph semantic contracts**
+- [x] **Step 5: Run existing graph semantic contracts**
 
   Run: `python -m pytest backend/tests/test_heavenly_graph_semantic_queries.py backend/tests/test_sqlite_heavenly_graph_contract.py -v`
 
-- [ ] **Step 6: Commit the contract**
+- [x] **Step 6: Commit the contract**
 
   Commit only Task 1 files with: `实现统一行为回合图谱记录协议`
 
@@ -70,27 +70,27 @@
 - Consumes: `BehaviorTurnRecorder.record(request)` from Task 1
 - Produces: optional `behavior_turn_recorder` injection on `CharacterAgentRuntime` and one recorded turn for an accepted or rejected character action
 
-- [ ] **Step 1: Write a failing character runtime integration test**
+- [x] **Step 1: Write a failing character runtime integration test**
 
   Inject a real in-memory graph recorder, ingest one deterministic perceived event, query by actor/correlation, and assert the eight ordered stages exist with actor-private visibility. Add a rejected/zero-write scenario that still records settlement, evaluation and policy without a committed fact.
 
-- [ ] **Step 2: Run the focused test and verify RED**
+- [x] **Step 2: Run the focused test and verify RED**
 
   Run the two new test node ids with `python -m pytest ... -v`; expected failure is the missing recorder injection/runtime write.
 
-- [ ] **Step 3: Add the narrow runtime hook**
+- [x] **Step 3: Add the narrow runtime hook**
 
   Build the request only after existing L1-L4/settlement/evaluation data exists. Preserve existing return values and event publication. The hook may observe existing typed results but must not decide, dispatch, normalize Authority truth, or swallow graph errors silently.
 
-- [ ] **Step 4: Wire the existing application composition root**
+- [x] **Step 4: Wire the existing application composition root**
 
   Construct one recorder from the existing SQLite Heavenly Graph instance and inject it into `CharacterAgentRuntime`; do not create another graph adapter.
 
-- [ ] **Step 5: Run focused and character integration suites**
+- [x] **Step 5: Run focused and character integration suites**
 
   Run: `python -m pytest backend/tests/test_behavior_turn_recorder.py backend/tests/test_character_agent_runtime_memory_integration.py backend/tests/test_character_agent_runtime.py -v`
 
-- [ ] **Step 6: Commit the runtime integration**
+- [x] **Step 6: Commit the runtime integration**
 
   Commit only Task 2 files with: `接入角色八阶段行为回合图谱链`
 
@@ -108,29 +108,29 @@
 - Consumes: externally queryable behavior-turn runtime from Tasks 1-2
 - Produces: `behavior-turn-runtime` Harness profile and JSON/Markdown evidence
 
-- [ ] **Step 1: Write failing Harness registry and verifier tests**
+- [x] **Step 1: Write failing Harness registry and verifier tests**
 
   Assert profile discovery, isolated selection, evidence paths, eight-stage trace, rejected-turn evidence, actor-private scope and replay status.
 
-- [ ] **Step 2: Run Harness tests and verify RED**
+- [x] **Step 2: Run Harness tests and verify RED**
 
   Run: `python -m pytest scripts/verification/tests/test_behavior_turn_runtime_verify.py scripts/verification/tests/test_harness_registry.py -v`
 
-- [ ] **Step 3: Implement the narrow profile and verifier**
+- [x] **Step 3: Implement the narrow profile and verifier**
 
   Follow existing Heavenly Graph verifier report structure. The verifier must execute real backend tests and emit trace-backed JSON/Markdown; it must not infer completion from source inspection.
 
-- [ ] **Step 4: Register and document the profile**
+- [x] **Step 4: Register and document the profile**
 
   Add it to the all-profile registry and document that it proves the character behavior-turn vertical only, not character restart continuity, Siming integration, Authority six-domain closure or live Godot closure.
 
-- [ ] **Step 5: Run profile and docs gates**
+- [x] **Step 5: Run profile and docs gates**
 
   Run: `python scripts/verification/harness.py --profile behavior-turn-runtime`
 
   Run: `python scripts/verification/harness.py --profile docs`
 
-- [ ] **Step 6: Commit Harness coverage**
+- [x] **Step 6: Commit Harness coverage**
 
   Commit only Task 3 files with: `新增行为回合运行时验证门禁`
 

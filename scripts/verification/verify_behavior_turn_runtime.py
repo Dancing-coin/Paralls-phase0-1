@@ -16,7 +16,6 @@ from app.models.siming_heavenly_graph import (
     GraphReaderContext,
     GraphRevisionVector,
     HeavenlyGraphScope,
-    HeavenlyNodeQuery,
 )
 from app.services.behavior_turn_recorder import BehaviorTurnRecorder
 from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
@@ -163,6 +162,8 @@ def main() -> int:
                 "causation_id": "cause:accepted",
                 "correlation_id": "corr:accepted",
                 "policy_revision": "policy:character-runtime:v1",
+                "authority_event_ref": "authority:event:accepted",
+                "authority_owner_ref": "esm:world",
             },
         )
         runtime.ingest_character_perceived_event(
@@ -199,8 +200,13 @@ def main() -> int:
         )
         accepted_nodes = _stage_nodes(accepted)
         rejected_nodes = _stage_nodes(rejected)
-        other_actor_nodes = graph.query_nodes(
-            HeavenlyNodeQuery(scope=_scope("char_a"), valid_at=111)
+        unauthorized = graph.query_semantic(
+            BehaviorTurnQuery(
+                context=_context("char_a", 111),
+                scope=_scope("char_b"),
+                correlation_id="corr:accepted",
+                actor_id="char_b",
+            )
         )
         recorder.record(_replay_request())
         replayed = recorder.record(_replay_request())
@@ -209,7 +215,7 @@ def main() -> int:
             "rejected_stages": [node.attributes["stage"] for node in rejected_nodes],
             "accepted_settlement_outcome": _settlement_outcome(accepted_nodes),
             "rejected_settlement_outcome": _settlement_outcome(rejected_nodes),
-            "other_actor_visible_node_count": len(other_actor_nodes),
+            "other_actor_visible_node_count": len(unauthorized.nodes),
             "replayed": replayed.replayed,
         }
         graph.close()
@@ -232,7 +238,7 @@ def main() -> int:
         ),
         _result(
             "accepted_committed",
-            "Accepted Authority result is projected as committed settlement",
+            "Authority-linked settlement fixture is projected as committed",
             trace["accepted_settlement_outcome"] == "committed",
             evidence,
         ),
