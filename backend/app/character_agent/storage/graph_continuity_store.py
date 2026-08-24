@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from copy import deepcopy
+from threading import RLock
 
 from app.models.siming_heavenly_graph import (
     GraphProvenance,
@@ -30,6 +31,7 @@ class CharacterGraphContinuityStore:
     ) -> None:
         self._graph = graph
         self._scope_resolver = scope_resolver
+        self._lock = RLock()
 
     def write_snapshot(
         self,
@@ -39,54 +41,57 @@ class CharacterGraphContinuityStore:
         snapshot: dict[str, object],
         source_event_ref: str,
     ) -> None:
-        scope = self._scope_for_actor(actor_id)
-        node_id = f"actor-continuity:{actor_id}"
-        previous = self._graph.get_node(
-            node_id=node_id,
-            scope=scope,
-            valid_at=self._MAX_TIME,
-        )
-        recorded_at = max(producer_ts, previous.recorded_at if previous else 0)
-        revision = previous.revision + 1 if previous else 1
-        node = HeavenlyGraphNode(
-            node_id=node_id,
-            node_type="actor_view",
-            scope=scope,
-            validity=GraphValidity(valid_from=producer_ts),
-            recorded_at=recorded_at,
-            revision=revision,
-            supersedes_revision=previous.revision if previous else None,
-            attributes={
-                "state_kind": "character_continuity",
-                "actor_id": actor_id,
-                "snapshot": deepcopy(snapshot),
-            },
-            provenance=GraphProvenance(
-                source_kind="runtime_outcome",
-                source_ref=source_event_ref or node_id,
-                causation_id=source_event_ref or node_id,
-                correlation_id=source_event_ref or node_id,
-                producer_system="character_agent_runtime",
-                actor_id=actor_id,
-            ),
-            semantic_metadata=GraphSemanticMetadata(
-                record_kind="projection",
-                visibility_scope="actor_private",
-                derivation_kind="projection",
-                source_event_refs=(source_event_ref or node_id,),
-                source_revision_vector=GraphRevisionVector(source_revision=revision),
-                policy_revision="policy:character-continuity:v1",
-                scope_digest="scope:actor-private",
-            ),
-        )
-        self._graph.write_batch(
-            HeavenlyGraphWriteBatch(
-                transaction_id=f"actor-continuity:{actor_id}:{producer_ts}",
-                idempotency_key=f"actor-continuity:{actor_id}:{source_event_ref or producer_ts}",
+        with self._lock:
+            scope = self._scope_for_actor(actor_id)
+            node_id = f"actor-continuity:{actor_id}"
+            previous = self._graph.get_node(
+                node_id=node_id,
                 scope=scope,
-                nodes=[node],
+                valid_at=self._MAX_TIME,
             )
-        )
+            if previous is not None and source_event_ref and source_event_ref in previous.semantic_metadata.source_event_refs:
+                return
+            recorded_at = max(producer_ts, previous.recorded_at if previous else 0)
+            revision = previous.revision + 1 if previous else 1
+            node = HeavenlyGraphNode(
+                node_id=node_id,
+                node_type="actor_view",
+                scope=scope,
+                validity=GraphValidity(valid_from=producer_ts),
+                recorded_at=recorded_at,
+                revision=revision,
+                supersedes_revision=previous.revision if previous else None,
+                attributes={
+                    "state_kind": "character_continuity",
+                    "actor_id": actor_id,
+                    "snapshot": deepcopy(snapshot),
+                },
+                provenance=GraphProvenance(
+                    source_kind="runtime_outcome",
+                    source_ref=source_event_ref or node_id,
+                    causation_id=source_event_ref or node_id,
+                    correlation_id=source_event_ref or node_id,
+                    producer_system="character_agent_runtime",
+                    actor_id=actor_id,
+                ),
+                semantic_metadata=GraphSemanticMetadata(
+                    record_kind="projection",
+                    visibility_scope="actor_private",
+                    derivation_kind="projection",
+                    source_event_refs=(source_event_ref or node_id,),
+                    source_revision_vector=GraphRevisionVector(source_revision=revision),
+                    policy_revision="policy:character-continuity:v1",
+                    scope_digest="scope:actor-private",
+                ),
+            )
+            self._graph.write_batch(
+                HeavenlyGraphWriteBatch(
+                    transaction_id=f"actor-continuity:{actor_id}:{producer_ts}",
+                    idempotency_key=f"actor-continuity:{actor_id}:{source_event_ref or producer_ts}",
+                    scope=scope,
+                    nodes=[node],
+                )
+            )
 
     def read_snapshot(
         self,
