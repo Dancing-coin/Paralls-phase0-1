@@ -541,17 +541,24 @@ class SimingStoryGraphRuntime:
         scope: HeavenlyGraphScope,
         valid_at: int,
     ) -> list[RuntimeStoryNode]:
-        return [
-            RuntimeStoryNode.model_validate(node.attributes)
-            for node in self._graph.query_nodes(
-                HeavenlyNodeQuery(
-                    scope=scope,
+        result = self._graph.query_semantic(
+            NodeLookupQuery(
+                context=GraphReaderContext(
+                    reader_principal="reader:siming",
+                    allowed_visibility_scopes=("siming_internal", "authority_only", "branch_only"),
+                    world_id=scope.world_id,
+                    session_id=scope.session_id,
+                    story_branch_id=scope.story_branch_id,
                     valid_at=valid_at,
-                    node_types=[self._RUNTIME_NODE_TYPE],
-                    limit=None,
-                )
+                    recorded_at=None,
+                    policy_revision="policy:v1",
+                ),
+                scope=scope,
+                node_types=[self._RUNTIME_NODE_TYPE],
+                limit=1000,
             )
-        ]
+        )
+        return [RuntimeStoryNode.model_validate(node.attributes) for node in result.nodes]
 
     @staticmethod
     def _effect_targets(

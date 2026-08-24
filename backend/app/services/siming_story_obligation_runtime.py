@@ -111,11 +111,7 @@ class SimingStoryObligationRuntime:
             valid_at=recorded_at,
         )
         source = NarrativeObligation.model_validate(source_prior.attributes)
-        replacement_prior = self._graph.get_node(
-            node_id=self._obligation_node_id(replacement.obligation_id),
-            scope=scope,
-            valid_at=recorded_at,
-        )
+        replacement_prior = self._semantic_node(scope, self._obligation_node_id(replacement.obligation_id), recorded_at, None)
         transformed_refs = sorted(
             set([*source.transformed_to_refs, replacement.obligation_id])
         )
@@ -291,11 +287,7 @@ class SimingStoryObligationRuntime:
         valid_at: int,
     ) -> bool:
         return any(
-            self._graph.get_node(
-                node_id=fact_ref,
-                scope=scope,
-                valid_at=valid_at,
-            )
+            self._semantic_node(scope, fact_ref, valid_at, None)
             is None
             for fact_ref in attractor.required_fact_refs
         )
@@ -334,17 +326,25 @@ class SimingStoryObligationRuntime:
         scope: HeavenlyGraphScope,
         valid_at: int,
     ) -> list[RuntimeStoryNode]:
-        return [
-            RuntimeStoryNode.model_validate(node.attributes)
-            for node in self._graph.query_nodes(
+        result = self._graph.query_semantic(
+            NodeLookupQuery(
+                context=self._reader_context(scope, valid_at, None),
+                scope=scope,
+                node_types=[self._RUNTIME_NODE_TYPE],
+                limit=1000,
+            )
+        )
+        nodes = result.nodes
+        if not nodes:
+            nodes = self._graph.query_nodes(
                 HeavenlyNodeQuery(
                     scope=scope,
                     valid_at=valid_at,
                     node_types=[self._RUNTIME_NODE_TYPE],
-                    limit=None,
+                    limit=1000,
                 )
             )
-        ]
+        return [RuntimeStoryNode.model_validate(node.attributes) for node in nodes]
 
     @staticmethod
     def _obligation_node_id(obligation_id: str) -> str:
@@ -361,11 +361,7 @@ class SimingStoryObligationRuntime:
         obligation_id: str,
         valid_at: int,
     ) -> HeavenlyGraphNode:
-        node = self._graph.get_node(
-            node_id=self._obligation_node_id(obligation_id),
-            scope=scope,
-            valid_at=valid_at,
-        )
+        node = self._semantic_node(scope, self._obligation_node_id(obligation_id), valid_at, None)
         if node is None or node.node_type != self._OBLIGATION_NODE_TYPE:
             raise StoryObligationError(f"unknown obligation {obligation_id!r}")
         return node
@@ -377,11 +373,7 @@ class SimingStoryObligationRuntime:
         attractor_id: str,
         valid_at: int,
     ) -> HeavenlyGraphNode:
-        node = self._graph.get_node(
-            node_id=self._attractor_node_id(attractor_id),
-            scope=scope,
-            valid_at=valid_at,
-        )
+        node = self._semantic_node(scope, self._attractor_node_id(attractor_id), valid_at, None)
         if node is None or node.node_type != self._ATTRACTOR_NODE_TYPE:
             raise StoryObligationError(f"unknown attractor {attractor_id!r}")
         return node
@@ -471,4 +463,17 @@ class SimingStoryObligationRuntime:
             scope=scope,
             valid_at=valid_at,
             recorded_at=recorded_at,
+        )
+
+    @staticmethod
+    def _reader_context(scope: HeavenlyGraphScope, valid_at: int, recorded_at: int | None) -> GraphReaderContext:
+        return GraphReaderContext(
+            reader_principal="reader:siming",
+            allowed_visibility_scopes=("siming_internal", "authority_only", "branch_only"),
+            world_id=scope.world_id,
+            session_id=scope.session_id,
+            story_branch_id=scope.story_branch_id,
+            valid_at=valid_at,
+            recorded_at=recorded_at,
+            policy_revision="policy:v1",
         )
