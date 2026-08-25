@@ -82,7 +82,7 @@ func _run() -> void:
 		return
 	print("siming_heavenly_inspection_ready")
 	print("siming_heavenly_destroy_begin")
-	var destroy_descriptor := _controller._send_player_input_envelope(
+	var destroy_descriptor: Dictionary = _controller._send_player_input_envelope(
 		bridge,
 		_controller.intent_mapper.emit_interact_intent("obj_letter", "destroy")
 	)
