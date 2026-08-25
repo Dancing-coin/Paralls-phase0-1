@@ -57,15 +57,8 @@ func _run() -> void:
 	print("siming_heavenly_char_b_visible")
 	_controller.suspend_near_object_visual_fact = true
 	_controller.suspend_spatial_access_fact = true
-	_controller._move_player_to_interact_position()
-	var move_request: Dictionary = _controller._emit_move_intent_request(
-		_controller.autotest_interact_position,
-		"locomotion"
-	)
-	_move_request_id = str(move_request.get("request_id", ""))
-	if _move_request_id.is_empty() or not await _wait_until(Callable(self, "_move_request_acknowledged"), _controller.autotest_request_timeout_ms):
-		_finish("siming_heavenly_interact_position_sync_failed")
-		return
+	# ESM accepts an interaction without a position claim; avoid a setup move
+	# round-trip that would enqueue character cognition before the live proof.
 	if not await _capture("siming-heavenly-before-destruction.png"):
 		_finish("siming_heavenly_meaningful_before_capture_failed")
 		return
