@@ -187,13 +187,53 @@ class CharacterGraphMemoryStore:
             "knowledge_memories": knowledge_memories,
             "social_memories": social_memories,
             "higher_order_memories": higher_order_memories,
-            "episodic_memories": self._normalizer._legacy_episodic_memories(
-                event_memories
-            ),
-            "relational_memories": self._normalizer._legacy_relational_memories(
-                knowledge_memories
-            ),
+            "episodic_memories": self._episodic_compatibility_view(event_memories),
+            "relational_memories": self._relational_compatibility_view(knowledge_memories),
         }
+
+    @staticmethod
+    def _episodic_compatibility_view(
+        event_memories: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        return [
+            {
+                "summary": str(entry.get("summary", "") or ""),
+                "source_event_id": str(entry.get("source_event_id", "") or ""),
+                "producer_ts": int(entry.get("world_ts", 0) or 0),
+                "tags": [],
+            }
+            for entry in event_memories
+        ]
+
+    @classmethod
+    def _relational_compatibility_view(
+        cls,
+        knowledge_memories: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        result: list[dict[str, object]] = []
+        for entry in knowledge_memories:
+            key = str(entry.get("proposition_key", "") or "")
+            if not key.startswith("social:"):
+                continue
+            parts = key.split(":", 2)
+            if len(parts) != 3 or not parts[1] or not parts[2]:
+                continue
+            entity_id, belief_type = parts[1], parts[2]
+            proposition = str(entry.get("proposition", "") or "")
+            prefix = f"{entity_id}:{belief_type}="
+            value = proposition[len(prefix):] if proposition.startswith(prefix) else (
+                proposition.split("=", 1)[1] if "=" in proposition else ""
+            )
+            result.append(
+                {
+                    "entity_id": entity_id,
+                    "belief_type": belief_type,
+                    "value": value,
+                    "source_event_id": str(entry.get("source_event_id", "") or ""),
+                    "producer_ts": int(entry.get("producer_ts", 0) or 0),
+                }
+            )
+        return result
 
     def working_memory_state(
         self,
