@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import replace, dataclass
 from urllib.parse import urlparse
 from urllib.error import HTTPError, URLError
@@ -69,7 +70,10 @@ class CharacterModelProvider:
         provider_kind = self._provider_kind
         if isinstance(route, dict):
             provider_kind = str(route.get("provider_kind", provider_kind) or provider_kind)
+        require_online = settings.character_model_require_online or os.getenv("CHARACTER_MODEL_REQUIRE_ONLINE", "").strip() == "1"
         if provider_kind == "local":
+            if require_online:
+                raise ValueError("online character model required; local provider is disabled")
             output = self._offline_complete(request)
             self._record_evidence(task_kind=task_kind, provider_kind=provider_kind, fallback_used=True)
             return output
@@ -77,6 +81,8 @@ class CharacterModelProvider:
             return self._complete_strict(task_kind=task_kind, provider_kind=provider_kind, request=request)
         if provider_kind in {"qwen", "seed_doubao", "openai_compatible"}:
             if (not self._endpoint_url or not self._api_key) and not self._requires_model_semantic_ownership(task_kind):
+                if require_online:
+                    raise ValueError("online character model required; provider credentials are missing")
                 output = self._offline_complete(request)
                 self._record_evidence(task_kind=task_kind, provider_kind=provider_kind, fallback_used=True)
                 return output
@@ -85,6 +91,8 @@ class CharacterModelProvider:
             try:
                 return self._complete_strict(task_kind=task_kind, provider_kind=provider_kind, request=request)
             except (HTTPError, URLError, TimeoutError, ValueError, json.JSONDecodeError):
+                if require_online:
+                    raise ValueError("online character model required; hybrid fallback is disabled")
                 if self._requires_model_semantic_ownership(task_kind):
                     raise
                 output = self._offline_complete(request)

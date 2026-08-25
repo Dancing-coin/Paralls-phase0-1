@@ -626,6 +626,38 @@ def test_model_provider_hybrid_l2_surfaces_provider_error_instead_of_offline_fal
         )
 
 
+def test_model_provider_production_gate_rejects_local_fallback(monkeypatch) -> None:
+    monkeypatch.setenv("CHARACTER_MODEL_REQUIRE_ONLINE", "1")
+    provider = CharacterModelProvider(provider_kind="local")
+
+    with pytest.raises(ValueError, match="online character model required"):
+        provider.complete(
+            {
+                "task_kind": "dialogue_generation",
+                "context": {"actor_id": "char_a", "event": {"content": "hello"}},
+            }
+        )
+
+
+def test_model_provider_production_gate_rejects_hybrid_fallback(monkeypatch) -> None:
+    monkeypatch.setenv("CHARACTER_MODEL_REQUIRE_ONLINE", "1")
+    provider = CharacterModelProvider(
+        provider_kind="hybrid",
+        endpoint_url="https://api.deepseek.com",
+        model_name="deepseek-chat",
+    )
+    provider._complete_via_deepseek = lambda request: (_ for _ in ()).throw(ValueError("boom"))  # type: ignore[method-assign]
+
+    with pytest.raises(ValueError, match="online character model required"):
+        provider.complete(
+            {
+                "task_kind": "dialogue_generation",
+                "route": {"route_mode": "hybrid_ready", "provider_kind": "hybrid"},
+                "context": {"actor_id": "char_a", "event": {"content": "hello"}},
+            }
+        )
+
+
 def test_model_provider_deepseek_route_surfaces_provider_error() -> None:
     provider = CharacterModelProvider(
         provider_kind="deepseek",
