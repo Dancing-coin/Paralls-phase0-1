@@ -125,6 +125,8 @@ class SimingEventPipeline:
     @staticmethod
     def _setup_event_requires_siming(event: AuthorityEvent) -> bool:
         payload = event.payload
+        if event.event_type == "siming_staging_ack":
+            return True
         if event.event_type == "visual_fact_event":
             return payload.get("relation_type") == "actor_observes_object_removal"
         return (
