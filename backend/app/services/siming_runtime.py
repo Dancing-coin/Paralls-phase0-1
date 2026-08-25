@@ -1,3 +1,4 @@
+import os
 from threading import RLock
 
 from app.models.authority_event import AuthorityEvent
@@ -902,6 +903,8 @@ class SimingRuntime:
         event: AuthorityEvent,
         snapshot: FairnessStateSnapshot,
     ) -> tuple[list[InterventionCandidate], list[SimingAuditRecord]]:
+        if os.getenv("SIMING_LLM_ADVISORY_DISABLED", "").strip() == "1":
+            return [], []
         try:
             return (
                 self._llm_provider.generate_candidates(

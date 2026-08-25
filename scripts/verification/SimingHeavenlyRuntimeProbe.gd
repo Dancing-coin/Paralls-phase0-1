@@ -35,18 +35,21 @@ func _ready() -> void:
 		call_deferred("_run")
 
 func _run() -> void:
+	print("siming_heavenly_probe_started")
 	# Keep the probe's setup path deterministic; the post-destruction reaction
 	# remains online and is verified after the restart boundary.
 	_controller._set_autotest_actor_local_perception_enabled(false)
 	if not (await _wait_until(Callable(self, "_backend_ready"))):
 		_finish("siming_heavenly_backend_timeout")
 		return
+	print("siming_heavenly_backend_ready")
 	_character_b.set_look_target(_letter.global_position)
 	await get_tree().create_timer(0.3).timeout
 	_char_b_had_line_of_sight = _character_b_can_see_letter()
 	if not _char_b_had_line_of_sight:
 		_finish("siming_heavenly_char_b_visibility_failed")
 		return
+	print("siming_heavenly_char_b_visible")
 	_controller.suspend_near_object_visual_fact = true
 	_controller.suspend_spatial_access_fact = true
 	_controller._move_player_to_interact_position()
@@ -61,6 +64,7 @@ func _run() -> void:
 	if not await _capture("siming-heavenly-before-destruction.png"):
 		_finish("siming_heavenly_meaningful_before_capture_failed")
 		return
+	print("siming_heavenly_before_capture_ready")
 	# The live probe owns the reviewed object interaction path directly; the
 	# regular controller guard may reject a post-restart state as stale.
 	var bridge := get_node_or_null("/root/BackendBridge")
@@ -71,6 +75,7 @@ func _run() -> void:
 	if not (await _wait_until(Callable(self, "_inspection_result_applied"), RUNTIME_EVENT_TIMEOUT_MS)):
 		_finish("siming_heavenly_inspection_timeout")
 		return
+	print("siming_heavenly_inspection_ready")
 	_controller._send_player_input_envelope(
 		bridge,
 		_controller.intent_mapper.emit_interact_intent("obj_letter", "destroy")
@@ -78,6 +83,7 @@ func _run() -> void:
 	if not (await _wait_until(Callable(self, "_destruction_applied"), RUNTIME_EVENT_TIMEOUT_MS)):
 		_finish("siming_heavenly_destruction_timeout")
 		return
+	print("siming_heavenly_destruction_ready")
 	if not (await _wait_until(Callable(self, "_char_b_observation_persisted"), RUNTIME_EVENT_TIMEOUT_MS)):
 		_finish("siming_heavenly_char_b_observation_timeout")
 		return
