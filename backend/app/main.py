@@ -246,6 +246,7 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
     continuity_store = CharacterGraphContinuityStore(
         heavenly_graph,
         scope_resolver=actor_private_scope,
+        require_complete_snapshot=True,
     )
     graph_memory = CharacterGraphMemoryStore(
         heavenly_graph,

@@ -22,15 +22,29 @@ class CharacterGraphContinuityStore:
     """角色连续性图谱存储：保存可重建状态快照，不接管 runtime owner。"""
 
     _MAX_TIME = 2**63 - 1
+    REQUIRED_SNAPSHOT_FIELDS = frozenset(
+        {
+            "working_memory",
+            "dynamic_state",
+            "need_tension_state",
+            "supervision_state",
+            "goal_state",
+            "goal_state_history",
+            "session_timeline",
+            "continuity_state",
+        }
+    )
 
     def __init__(
         self,
         graph: HeavenlyGraphPort,
         *,
         scope_resolver: Callable[[str], HeavenlyGraphScope],
+        require_complete_snapshot: bool = False,
     ) -> None:
         self._graph = graph
         self._scope_resolver = scope_resolver
+        self._require_complete_snapshot = require_complete_snapshot
         self._lock = RLock()
 
     def write_snapshot(
@@ -42,6 +56,13 @@ class CharacterGraphContinuityStore:
         source_event_ref: str,
     ) -> None:
         with self._lock:
+            if self._require_complete_snapshot:
+                missing = self.REQUIRED_SNAPSHOT_FIELDS.difference(snapshot)
+                if missing:
+                    raise ValueError(
+                        "character continuity snapshot missing required field(s): "
+                        + ", ".join(sorted(missing))
+                    )
             scope = self._scope_for_actor(actor_id)
             node_id = f"actor-continuity:{actor_id}"
             previous = self._graph.get_node(

@@ -51,6 +51,28 @@ def test_graph_continuity_snapshot_survives_sqlite_restart(tmp_path: Path) -> No
     assert restored["continuity_state"]["last_transition_kind"] == "execution_requested"
 
 
+def test_production_continuity_store_rejects_partial_snapshot() -> None:
+    from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
+
+    store = CharacterGraphContinuityStore(
+        InMemoryHeavenlyGraphAdapter(),
+        scope_resolver=_scope,
+        require_complete_snapshot=True,
+    )
+
+    try:
+        store.write_snapshot(
+            actor_id="char_b",
+            producer_ts=100,
+            snapshot={"working_memory": {}},
+            source_event_ref="event:partial",
+        )
+    except ValueError as exc:
+        assert "missing required field" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("partial production continuity snapshot was accepted")
+
+
 def test_character_runtime_rebuilds_state_from_graph_after_session_file_loss(
     tmp_path: Path,
 ) -> None:
