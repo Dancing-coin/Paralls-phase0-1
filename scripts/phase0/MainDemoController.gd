@@ -424,6 +424,8 @@ func _on_debug_event_logged(message: String) -> void:
 func _process(_delta: float) -> void:
 	if autotest_shutdown_in_progress or autotest_transport_quiescent:
 		return
+	if OS.get_environment("SIMING_HEAVENLY_AUTOTEST_SETUP") == "1":
+		return
 	if focus_override_active:
 		if not suspend_spatial_access_fact:
 			_sample_spatial_access_facts()
