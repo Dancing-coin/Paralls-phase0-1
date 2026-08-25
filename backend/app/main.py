@@ -4770,6 +4770,8 @@ def _candidate_messages(candidate: object) -> list[dict[str, object]]:
 
     if not isinstance(candidate, ConversationCandidateEvent):
         return []
+    if os.environ.get("SIMING_HEAVENLY_AUTOTEST_SETUP") == "1":
+        return []
     if not conversation_relation_service.should_emit_candidate(candidate):
         return []
 
