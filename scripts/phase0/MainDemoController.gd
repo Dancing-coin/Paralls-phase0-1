@@ -116,6 +116,12 @@ func _ready() -> void:
 	autotest_enabled = OS.get_environment("PHASE0_AUTOTEST") == "1"
 	focus_autotest_enabled = OS.get_environment("PHASE0_FOCUS_AUTOTEST") == "1"
 	scene_load_probe_only = OS.get_environment("PHASE0_SCENE_LOAD_ONLY") == "1"
+	if OS.get_environment("SIMING_HEAVENLY_AUTOTEST") == "1":
+		# The Heavenly live probe owns its setup traffic. Apply suppression before
+		# the backend connection callback can emit automatic perception facts.
+		suspend_near_object_visual_fact = true
+		suspend_spatial_access_fact = true
+		_set_autotest_actor_local_perception_enabled(false)
 	var bus := _get_bus()
 	if bus:
 		if bus.has_method("set_debug_logging_enabled"):

@@ -134,3 +134,12 @@ def test_heavenly_probe_binds_the_explicit_observation_to_char_b() -> None:
 
     assert 'emitter.set("actor_id", "char_b")' in observation
     assert "_destruction_correlation_id" in observation
+
+
+def test_heavenly_live_scene_suppresses_controller_setup_perception() -> None:
+    source = Path("scripts/phase0/MainDemoController.gd").read_text(encoding="utf-8")
+
+    assert 'SIMING_HEAVENLY_AUTOTEST") == "1"' in source
+    assert "suspend_near_object_visual_fact = true" in source
+    assert "suspend_spatial_access_fact = true" in source
+    assert "_set_autotest_actor_local_perception_enabled(false)" in source
