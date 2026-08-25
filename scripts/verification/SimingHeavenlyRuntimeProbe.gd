@@ -81,10 +81,11 @@ func _run() -> void:
 		_finish("siming_heavenly_inspection_timeout")
 		return
 	print("siming_heavenly_inspection_ready")
-	_controller._send_player_input_envelope(
+	var destroy_descriptor := _controller._send_player_input_envelope(
 		bridge,
 		_controller.intent_mapper.emit_interact_intent("obj_letter", "destroy")
 	)
+	print("siming_heavenly_destroy_sent:%s" % JSON.stringify(destroy_descriptor))
 	if not (await _wait_until(Callable(self, "_destruction_applied"), RUNTIME_EVENT_TIMEOUT_MS)):
 		_finish("siming_heavenly_destruction_timeout")
 		return
