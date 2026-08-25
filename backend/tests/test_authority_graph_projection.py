@@ -154,3 +154,57 @@ def test_authority_correction_projection_retains_correction_lineage(tmp_path: Pa
     assert node.attributes["correction_kind"] == "corrected"
     assert node.attributes["correction_source_refs"] == ["authority:correction:2"]
     assert node.provenance.source_ref_lineage == ["esm_result_event:1"]
+
+
+def test_application_bus_projects_all_authority_domains_to_shared_graph(tmp_path: Path) -> None:
+    previous_path = main.settings.heavenly_graph_path
+    main.settings = config_module.Settings(
+        heavenly_graph_path=str(tmp_path / "authority-all-domains.sqlite3"),
+        siming_heavenly_mode="off",
+    )
+    events = [
+        ("esm_result_event:all", "esm_result_event", "esm_world"),
+        ("gameplay.inventory.item_moved:all", "gameplay.inventory.item_moved", "inventory"),
+        ("gameplay.ownership.right_transferred:all", "gameplay.ownership.right_transferred", "ownership"),
+        ("gameplay.economy.account_credited:all", "gameplay.economy.account_credited", "economy"),
+        ("gameplay.survival.body_changed:all", "gameplay.survival.body_changed", "survival_body"),
+        ("gameplay.resource.capability_committed:all", "gameplay.resource.capability_committed", "resource_scene"),
+        ("gameplay.scene.result_committed:all", "gameplay.scene.result_committed", "resource_scene"),
+    ]
+    main.reset_runtime_state()
+    try:
+        for index, (event_id, event_type, _domain) in enumerate(events, start=1):
+            main.authority_event_bus.publish(
+                _event().model_copy(
+                    update={
+                        "event_id": event_id,
+                        "event_type": event_type,
+                        "producer_ts": index,
+                        "payload": {
+                            **_event().payload,
+                            "owner_ref": f"owner:{event_type}",
+                            "replay_ref": f"replay:{index}",
+                            "source_revision_vector": {"domain": index},
+                        },
+                    }
+                )
+            )
+        nodes = main.heavenly_graph.query_nodes(
+            HeavenlyNodeQuery(
+                scope=HeavenlyGraphScope(world_id="world:demo", session_id="session:demo", story_branch_id="branch:main"),
+                valid_at=10,
+                node_types=["causal_event"],
+                limit=None,
+            )
+        )
+        projected = {node.provenance.source_ref: node for node in nodes}
+        assert len(projected) >= len(events)
+        for event_id, _event_type, domain in events:
+            node = projected[event_id]
+            assert node.attributes["domain"] == domain
+            assert node.attributes["owner_ref"].startswith("owner:")
+            assert node.attributes["replay_ref"].startswith("replay:")
+            assert node.attributes["source_revision_vector"]
+    finally:
+        main.close_runtime_resources()
+        main.settings = config_module.Settings(heavenly_graph_path=previous_path)
