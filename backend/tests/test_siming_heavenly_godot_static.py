@@ -80,14 +80,12 @@ def test_headless_autotest_capture_advances_a_scene_frame() -> None:
     assert "await get_tree().process_frame" in capture_helper
 
 
-def test_heavenly_probe_syncs_player_to_authoritative_interaction_range() -> None:
+def test_heavenly_probe_avoids_setup_move_round_trip() -> None:
     probe = Path("scripts/verification/SimingHeavenlyRuntimeProbe.gd").read_text(
         encoding="utf-8"
     )
 
-    assert "_move_player_to_interact_position()" in probe
-    assert "_emit_move_intent_request" in probe
-    assert "_move_request_acknowledged" in probe
+    assert "ESM accepts an interaction without a position claim" in probe
     assert "suspend_near_object_visual_fact = true" in probe
     assert "suspend_spatial_access_fact = true" in probe
 
