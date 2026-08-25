@@ -181,11 +181,15 @@ class CharacterGraphMemoryStore:
             raise RuntimeError(
                 f"graph continuity snapshot is required before reading working memory for {actor_id}"
             )
-        working_memory = (
-            graph_working_memory
-            if isinstance(graph_working_memory, dict)
-            else self._normalizer.retrieval_bundle(actor_id)["working_memory"]
-        )
+        if isinstance(graph_working_memory, dict):
+            working_memory = self._working_memory_compatibility_view(
+                graph_working_memory,
+                event_memories=event_memories,
+                observation_memories=observation_memories,
+                session_timeline=continuity.get("session_timeline", []) if isinstance(continuity, dict) else [],
+            )
+        else:
+            working_memory = self._normalizer.retrieval_bundle(actor_id)["working_memory"]
         return {
             "working_memory": working_memory,
             "event_memories": event_memories,
@@ -196,6 +200,36 @@ class CharacterGraphMemoryStore:
             "episodic_memories": self._episodic_compatibility_view(event_memories),
             "relational_memories": self._relational_compatibility_view(knowledge_memories),
         }
+
+    @staticmethod
+    def _working_memory_compatibility_view(
+        state: dict[str, object],
+        *,
+        event_memories: list[dict[str, object]],
+        observation_memories: list[dict[str, object]],
+        session_timeline: object,
+    ) -> list[dict[str, object]]:
+        values: list[dict[str, object]] = []
+        for key in ("recent_perceived_events", "recent_esm_results", "recent_siming_catalysts"):
+            entries = state.get(key, [])
+            if isinstance(entries, list):
+                values.extend(entry for entry in entries if isinstance(entry, dict))
+        values.extend(
+            {"event_type": str(entry.get("event_type", "")), **entry}
+            for entry in event_memories
+            if entry.get("event_type")
+        )
+        values.extend(
+            {"event_type": "character_perceived_event", **entry}
+            for entry in observation_memories
+        )
+        if isinstance(session_timeline, list):
+            values.extend(
+                {"event_type": str(entry.get("event_type", "")), **entry}
+                for entry in session_timeline
+                if isinstance(entry, dict) and entry.get("event_type")
+            )
+        return values
 
     @staticmethod
     def _episodic_compatibility_view(

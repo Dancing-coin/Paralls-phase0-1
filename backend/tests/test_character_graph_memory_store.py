@@ -453,9 +453,7 @@ def test_retrieval_bundle_prefers_graph_continuity_working_memory() -> None:
 
     bundle = store.retrieval_bundle("char_b")
 
-    assert bundle["working_memory"] == {
-        "recent_perceived_events": [{"event_type": "graph_rehydrated"}]
-    }
+    assert bundle["working_memory"] == [{"event_type": "graph_rehydrated"}]
 
 
 def test_production_graph_memory_rejects_missing_continuity_snapshot() -> None:
@@ -463,7 +461,7 @@ def test_production_graph_memory_rejects_missing_continuity_snapshot() -> None:
     store = CharacterGraphMemoryStore(
         graph,
         scope_resolver=_scope,
-        continuity_reader=lambda _actor_id: None,
+        continuity_reader=lambda _actor_id: {},
         require_continuity_snapshot=True,
     )
 
