@@ -654,6 +654,7 @@ def main() -> int:
             "SIMING_LLM_ADVISORY_DISABLED": "",
             "SIMING_HEAVENLY_AUTOTEST_SETUP": "",
             "CHARACTER_MODEL_PROVIDER_KIND": "deepseek",
+            "CHARACTER_MODEL_REQUIRE_ONLINE": "1",
             "CHARACTER_MODEL_ROUTE_OVERRIDE": "",
             "CHARACTER_MODEL_ENDPOINT": _env("SIMING_LLM_ENDPOINT"),
             "CHARACTER_MODEL_API_KEY": _env("SIMING_LLM_API_KEY"),
