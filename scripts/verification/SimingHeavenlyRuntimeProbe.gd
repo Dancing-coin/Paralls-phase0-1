@@ -10,6 +10,7 @@ var _staging_request: Dictionary = {}
 var _char_b_reaction_count := 0
 var _char_b_had_line_of_sight := false
 var _char_b_observation_acknowledged := false
+var _inspection_visual_fact_acknowledged := false
 var _destruction_result_ref := ""
 var _destruction_correlation_id := ""
 var _backend_connection_count := 0
@@ -68,6 +69,7 @@ func _run() -> void:
 	# The live probe owns the reviewed object interaction path directly; the
 	# regular controller guard may reject a post-restart state as stale.
 	var bridge := get_node_or_null("/root/BackendBridge")
+	_inspection_visual_fact_acknowledged = false
 	_controller._send_player_input_envelope(
 		bridge,
 		_controller.intent_mapper.emit_interact_intent("obj_letter", "inspect")
@@ -76,7 +78,9 @@ func _run() -> void:
 		_finish("siming_heavenly_inspection_timeout")
 		return
 	print("siming_heavenly_inspection_ready")
-	await get_tree().create_timer(0.5).timeout
+	if not await _wait_until(Callable(self, "_inspection_visual_fact_acknowledged_ready"), _controller.autotest_request_timeout_ms):
+		_finish("siming_heavenly_inspection_visual_fact_ack_timeout")
+		return
 	_controller._send_player_input_envelope(
 		bridge,
 		_controller.intent_mapper.emit_interact_intent("obj_letter", "destroy")
@@ -179,6 +183,13 @@ func _on_backend_ack_received(payload: Dictionary) -> void:
 		and str(payload.get("relation_type", "")) == "actor_observes_object_removal"
 	):
 		_char_b_observation_acknowledged = true
+	if (
+		bool(payload.get("accepted", false))
+		and str(payload.get("route", "")) == "authority_visual_fact"
+		and str(payload.get("relation_type", "")) == "object_state_changed"
+		and str(payload.get("fact_type", "")) == "object_state_change"
+	):
+		_inspection_visual_fact_acknowledged = true
 
 func _on_backend_connected(_payload: String) -> void:
 	_backend_connection_count += 1
@@ -199,6 +210,9 @@ func _backend_reconnected() -> bool:
 
 func _move_request_acknowledged() -> bool:
 	return bool(_acknowledged_request_ids.get(_move_request_id, false))
+
+func _inspection_visual_fact_acknowledged_ready() -> bool:
+	return _inspection_visual_fact_acknowledged
 
 func _char_b_observation_persisted() -> bool:
 	return _char_b_observation_acknowledged and not _destruction_result_ref.is_empty()
