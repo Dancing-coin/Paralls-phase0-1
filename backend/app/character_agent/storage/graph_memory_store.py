@@ -58,10 +58,12 @@ class CharacterGraphMemoryStore:
         *,
         scope_resolver: Callable[[str], HeavenlyGraphScope],
         continuity_reader: Callable[[str], dict[str, object] | None] | None = None,
+        require_continuity_snapshot: bool = False,
     ) -> None:
         self._graph = graph
         self._scope_resolver = scope_resolver
         self._continuity_reader = continuity_reader
+        self._require_continuity_snapshot = require_continuity_snapshot
         self._lock = RLock()
         self._normalizer = CharacterAgentMemoryStore()
         self._source_batches: dict[
@@ -175,6 +177,10 @@ class CharacterGraphMemoryStore:
         ]
         continuity = self._continuity_reader(actor_id) if self._continuity_reader else None
         graph_working_memory = continuity.get("working_memory") if isinstance(continuity, dict) else None
+        if self._require_continuity_snapshot and not isinstance(graph_working_memory, dict):
+            raise RuntimeError(
+                f"graph continuity snapshot is required before reading working memory for {actor_id}"
+            )
         working_memory = (
             graph_working_memory
             if isinstance(graph_working_memory, dict)

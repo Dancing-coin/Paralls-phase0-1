@@ -458,6 +458,23 @@ def test_retrieval_bundle_prefers_graph_continuity_working_memory() -> None:
     }
 
 
+def test_production_graph_memory_rejects_missing_continuity_snapshot() -> None:
+    graph = InMemoryHeavenlyGraphAdapter()
+    store = CharacterGraphMemoryStore(
+        graph,
+        scope_resolver=_scope,
+        continuity_reader=lambda _actor_id: None,
+        require_continuity_snapshot=True,
+    )
+
+    try:
+        store.retrieval_bundle("char_b")
+    except RuntimeError as exc:
+        assert "graph continuity snapshot is required" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("missing production continuity snapshot was silently downgraded")
+
+
 def test_sqlite_restart_rehydrate_replays_source_event_without_idempotency_conflict(
     tmp_path: Path,
 ) -> None:
