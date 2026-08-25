@@ -101,6 +101,7 @@ def test_live_profile_uses_real_rendering_for_meaningful_captures() -> None:
 
     assert '"--headless"' not in source
     assert '"--render-thread", "safe"' in source
+    assert '"--rendering-method", "gl_compatibility"' in source
 
 
 def test_live_profile_passes_online_character_model_configuration() -> None:

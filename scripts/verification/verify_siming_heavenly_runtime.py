@@ -628,7 +628,7 @@ def main() -> int:
             "CHARACTER_MODEL_TIMEOUT_SECONDS": _env("SIMING_LLM_TIMEOUT_SECONDS", "30"),
         }
         _, backend_process = _ensure_live_backend(root, python_exe, runtime_env)
-        godot_process, lines = _start_logged_process([str(godot_exe), "--path", str(root), "--scene", "res://scenes/phase0/MainDemo.tscn", "--render-thread", "safe"], root, verification_dir(root) / "siming-heavenly-runtime-godot.log", runtime_env)
+        godot_process, lines = _start_logged_process([str(godot_exe), "--path", str(root), "--scene", "res://scenes/phase0/MainDemo.tscn", "--render-thread", "safe", "--rendering-method", "gl_compatibility"], root, verification_dir(root) / "siming-heavenly-runtime-godot.log", runtime_env)
         if not _wait_marker(godot_process, lines, "siming_heavenly_restart_ready", 900):
             return _write_report(root, None, preflight, "godot_restart_marker_missing")
         if not _wait_for_restart_boundary(db_path):
