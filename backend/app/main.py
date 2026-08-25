@@ -1,4 +1,5 @@
 import asyncio
+import os
 from collections.abc import Callable
 from secrets import compare_digest
 from dataclasses import dataclass
@@ -2567,7 +2568,8 @@ def _handle_envelope(
             messages.append(_as_envelope("self_body_perceived_event", self_body_perceived.model_dump()))
             self_body_commands = character_agent_runtime.ingest_self_body_perceived_event(self_body_perceived)
             messages.extend(_as_character_agent_execution_envelopes(self_body_commands))
-            character_agent_runtime.run_scheduled_background_cognition_ticks(self_body_perceived.producer_ts)
+            if os.environ.get("SIMING_HEAVENLY_AUTOTEST_SETUP") != "1":
+                character_agent_runtime.run_scheduled_background_cognition_ticks(self_body_perceived.producer_ts)
             if event.actor_id != "char_c":
                 messages.extend(
                     _as_character_agent_suggestion_envelopes(
@@ -4396,7 +4398,8 @@ def _character_agent_messages_from_fact_candidates(event: RawFactEvent) -> list[
             )
             character_agent_commands = character_agent_runtime.ingest_character_perceived_event(perceived)
             character_agent_messages.extend(_as_character_agent_execution_envelopes(character_agent_commands))
-            character_agent_runtime.run_scheduled_background_cognition_ticks(perceived.producer_ts)
+            if os.environ.get("SIMING_HEAVENLY_AUTOTEST_SETUP") != "1":
+                character_agent_runtime.run_scheduled_background_cognition_ticks(perceived.producer_ts)
             character_agent_messages.extend(
                 _as_character_agent_suggestion_envelopes(
                     character_agent_runtime.drain_suggestion_packets(actor_id)

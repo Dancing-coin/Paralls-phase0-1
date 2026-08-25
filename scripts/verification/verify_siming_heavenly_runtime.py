@@ -606,6 +606,7 @@ def main() -> int:
             "SIMING_HEAVENLY_MODE": "active",
             "SIMING_LLM_MODE": "http",
             "SIMING_LLM_ADVISORY_DISABLED": "1",
+            "SIMING_HEAVENLY_AUTOTEST_SETUP": "1",
             "SIMING_LLM_TIMEOUT_SECONDS": _env("SIMING_LLM_TIMEOUT_SECONDS", "30"),
             "PARALLS_HEAVENLY_GRAPH_PATH": str(db_path),
             "SIMING_HEAVENLY_AUTOTEST": "1",
@@ -618,6 +619,7 @@ def main() -> int:
         online_character_env = {
             **runtime_env,
             "SIMING_LLM_ADVISORY_DISABLED": "",
+            "SIMING_HEAVENLY_AUTOTEST_SETUP": "",
             "CHARACTER_MODEL_PROVIDER_KIND": "deepseek",
             "CHARACTER_MODEL_ROUTE_OVERRIDE": "",
             "CHARACTER_MODEL_ENDPOINT": _env("SIMING_LLM_ENDPOINT"),
