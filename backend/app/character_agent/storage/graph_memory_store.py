@@ -177,7 +177,7 @@ class CharacterGraphMemoryStore:
         ]
         continuity = self._continuity_reader(actor_id) if self._continuity_reader else None
         graph_working_memory = continuity.get("working_memory") if isinstance(continuity, dict) else None
-        if self._require_continuity_snapshot and not isinstance(graph_working_memory, dict):
+        if self._require_continuity_snapshot and isinstance(continuity, dict) and not isinstance(graph_working_memory, dict):
             raise RuntimeError(
                 f"graph continuity snapshot is required before reading working memory for {actor_id}"
             )
