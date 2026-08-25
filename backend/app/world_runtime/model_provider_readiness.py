@@ -17,6 +17,7 @@ REPORT_MARKDOWN = Path(".harness/verification/model-provider-readiness-report.md
 class ModelProviderKind(StrEnum):
     CHARACTER_TEXT = "character_text"
     SIMING_CANDIDATE = "siming_candidate"
+    TTS_VOICE = "tts_voice"
     VLA_SPATIAL = "vla_spatial"
     PRODUCTION_MULTIMODAL = "production_multimodal"
 
@@ -82,6 +83,7 @@ def build_model_provider_readiness_report(
     rows = [
         _character_text_row(values, real_smoke_checker),
         _siming_candidate_row(values, real_smoke_checker),
+        _tts_voice_row(values, real_smoke_checker),
         _vla_spatial_row(values, real_smoke_checker),
         _production_multimodal_row(values, real_smoke_checker),
     ]
@@ -213,6 +215,44 @@ def _siming_candidate_row(
     )
 
 
+def _tts_voice_row(
+    env: dict[str, str],
+    real_smoke_checker: Callable[[ModelProviderKind, dict[str, str]], bool] | None,
+) -> ModelProviderReadinessRow:
+    mode_value = _env(env, "TTS_MODE", "stub")
+    mode = ModelProviderMode.LOCAL if mode_value == "stub" else ModelProviderMode.HTTP
+    endpoint = _env(env, "TTS_PROVIDER_ENDPOINT", "")
+    api_key = _env(env, "TTS_PROVIDER_API_KEY", "")
+    model = _env(env, "TTS_PROVIDER_MODEL", "")
+    if mode_value == "stub":
+        status = ModelProviderReadinessStatus.BLOCKED_MISSING_CREDENTIALS
+    else:
+        status = _http_status(
+            api_key=api_key,
+            endpoint=endpoint,
+            kind=ModelProviderKind.TTS_VOICE,
+            env=env,
+            real_smoke_checker=real_smoke_checker,
+        )
+    return ModelProviderReadinessRow(
+        provider_kind=ModelProviderKind.TTS_VOICE.value,
+        mode=mode.value,
+        provider_id=mode_value,
+        model_id=model or "unconfigured",
+        endpoint_host_redacted=_redacted_host(endpoint),
+        readiness_status=status.value,
+        schema_version=SCHEMA_VERSION,
+        required_input_refs=["approved_voice_binding", "dialogue_text", "tts_output_contract"],
+        output_schema_status="complete PCM WAV clip required; stub/fallback is not production proof",
+        timeout_degrade_status=f"timeout_seconds={_env(env, 'TTS_PROVIDER_TIMEOUT_SECONDS', '15.0')}; fallback is forbidden in production",
+        context_isolation_status="voice binding scoped per actor; no character-private text cache sharing",
+        world_truth_write_status="forbidden: audio presentation cannot write world truth or authority",
+        verification_evidence=[
+            "python scripts/verification/verify_tts_provider_live.py --allow-live-call",
+            "python scripts/verification/verify_tts_godot_playback.py",
+        ],
+        notes=["TTS_MODE=stub remains a test compatibility mode only."],
+    )
 def _vla_spatial_row(
     env: dict[str, str],
     real_smoke_checker: Callable[[ModelProviderKind, dict[str, str]], bool] | None,

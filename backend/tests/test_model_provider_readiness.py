@@ -18,6 +18,7 @@ def test_readiness_report_contains_required_provider_rows() -> None:
     assert set(rows) == {
         "character_text",
         "siming_candidate",
+        "tts_voice",
         "vla_spatial",
         "production_multimodal",
     }
