@@ -132,6 +132,7 @@ class CharacterAgentRuntime:
         self._last_emitted_scheduling_round_id = 0
         self._last_skill_affordance_summaries: dict[str, dict[str, object]] = {}
         self._session_store = CharacterAgentSessionStore(storage_root=storage_root)
+        self._graph_session_timelines: dict[str, list[dict[str, object]]] = {}
         self._memory_store = memory_store or CharacterAgentMemoryStore()
         self._dynamic_state_store = CharacterDynamicStateStore()
         self._need_tension_store = CharacterNeedTensionStore()
@@ -1028,7 +1029,10 @@ class CharacterAgentRuntime:
         return snapshot
 
     def get_session_timeline(self, actor_id: str) -> list[dict[str, object]]:
-        return self._session_store.list_events(actor_id)
+        timeline = self._session_store.list_events(actor_id)
+        if timeline:
+            return timeline
+        return deepcopy(self._graph_session_timelines.get(actor_id, []))
 
     def apply_mind_delta_ledger(
         self,
@@ -3551,6 +3555,9 @@ class CharacterAgentRuntime:
                 self._continuity_state[actor_id] = RuntimeContinuityState(**continuity)
             timeline = snapshot.get("session_timeline")
             if isinstance(timeline, list):
+                self._graph_session_timelines[actor_id] = [
+                    deepcopy(event) for event in timeline if isinstance(event, dict)
+                ]
                 for event in timeline:
                     if isinstance(event, dict):
                         self._memory_store.write_event(event)
