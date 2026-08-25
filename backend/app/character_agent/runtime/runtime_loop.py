@@ -2230,6 +2230,8 @@ class CharacterAgentRuntime:
         try:
             return run_model()
         except Exception as exc:
+            if os.getenv("CHARACTER_MODEL_REQUIRE_ONLINE", "").strip() == "1":
+                raise
             interpretation = self._continuity_floor_interpretation(
                 actor_id=actor_id,
                 snapshot=snapshot,
@@ -2267,6 +2269,8 @@ class CharacterAgentRuntime:
         try:
             return run_model()
         except Exception as exc:
+            if os.getenv("CHARACTER_MODEL_REQUIRE_ONLINE", "").strip() == "1":
+                raise
             decision = self._continuity_floor_decision(
                 actor_id=actor_id,
                 snapshot=snapshot,
