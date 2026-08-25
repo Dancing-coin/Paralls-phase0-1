@@ -1,3 +1,5 @@
+import os
+
 from app.models.authority_event import AuthorityEvent
 from app.models.siming_event import SimingAuditRecord
 from app.services.authority_event_bus import (
@@ -39,6 +41,11 @@ class SimingEventPipeline:
         )
         if record_authority_outcome is not None:
             record_authority_outcome(event)
+        if (
+            os.environ.get("SIMING_HEAVENLY_AUTOTEST_SETUP") == "1"
+            and not self._setup_event_requires_siming(event)
+        ):
+            return
         reconcile_pending_dispatch = getattr(
             self._runtime, "reconcile_pending_dispatch", None
         )
@@ -114,6 +121,17 @@ class SimingEventPipeline:
             if published_event.event_type not in SUPPORTED_SIMING_EVENT_TYPES:
                 continue
             self._character_dispatch_adapter.dispatch(published_event)
+
+    @staticmethod
+    def _setup_event_requires_siming(event: AuthorityEvent) -> bool:
+        payload = event.payload
+        if event.event_type == "visual_fact_event":
+            return payload.get("relation_type") == "actor_observes_object_removal"
+        return (
+            event.event_type == "esm_result_event"
+            and payload.get("result_type") == "object_state_result"
+            and payload.get("current_state") == "removed_from_surface"
+        )
 
     def drain_observatory_messages(self) -> list[dict[str, object]]:
         return self._runtime.drain_observatory_messages()
