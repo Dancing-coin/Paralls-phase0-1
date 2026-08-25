@@ -585,8 +585,10 @@ def main() -> int:
     godot_process = None
     try:
         db_path = _owned_db_path(root, args.sqlite_path)
-        if db_path.exists():
-            db_path.unlink()
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            candidate = Path(str(db_path) + suffix)
+            if candidate.exists():
+                candidate.unlink()
         python_exe = resolve_python_exe(args.python_exe)
         godot_exe = resolve_godot_exe(args.godot_exe)
         # Keep the pre-restart authority/observation phase bounded. The
