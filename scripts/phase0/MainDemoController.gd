@@ -324,6 +324,10 @@ func _on_backend_connected(_payload: String) -> void:
 		return
 	backend_connected_once = true
 	pending_backend_reconnect = false
+	if OS.get_environment("SIMING_HEAVENLY_AUTOTEST") == "1":
+		# The Heavenly probe owns the setup sequence and will issue explicit
+		# interaction/perception events after the scene is ready.
+		return
 	_request_backend_health()
 	_emit_spatial_access_zone_entry()
 	if pending_focus_sync:
