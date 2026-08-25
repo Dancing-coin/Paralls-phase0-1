@@ -65,6 +65,10 @@ class HeavenlyAuthorityEventProjector:
                 "owner_ref": owner_ref,
                 "source_revision_vector": deepcopy(source_vector) if isinstance(source_vector, dict) else {},
                 "source_ref_lineage": list(payload.get("source_ref_lineage", [])) if isinstance(payload.get("source_ref_lineage", []), list) else [],
+                "correction_target_id": payload.get("correction_target_id", ""),
+                "correction_target_revision": payload.get("correction_target_revision"),
+                "correction_kind": payload.get("correction_kind", ""),
+                "correction_source_refs": list(payload.get("correction_source_refs", [])) if isinstance(payload.get("correction_source_refs", []), list) else [],
                 "settlement_id": payload.get("settlement_id", ""),
                 "replay_ref": payload.get("replay_ref", "") or f"global_sequence:{event.payload.get('global_sequence', event.producer_ts)}",
                 "committed_payload": payload,
@@ -76,6 +80,7 @@ class HeavenlyAuthorityEventProjector:
                 correlation_id=event.correlation_id,
                 producer_system=event.source.system,
                 actor_id=event.source.actor_id,
+                source_ref_lineage=tuple(str(ref) for ref in payload.get("source_ref_lineage", []) if isinstance(ref, str)),
             ),
             semantic_metadata=GraphSemanticMetadata(
                 record_kind="projection",

@@ -125,3 +125,32 @@ def test_application_authority_bus_projects_esm_event_to_shared_graph(tmp_path: 
     finally:
         main.close_runtime_resources()
         main.settings = config_module.Settings(heavenly_graph_path=previous_path)
+
+
+def test_authority_correction_projection_retains_correction_lineage(tmp_path: Path) -> None:
+    graph = SQLiteHeavenlyGraphAdapter(tmp_path / "authority-correction.sqlite3")
+    projector = HeavenlyAuthorityEventProjector(graph, scope_resolver=lambda _event: _scope())
+    event = _event().model_copy(
+        update={
+            "event_id": "esm_result_event:correction:2",
+            "producer_ts": 2,
+            "payload": {
+                **_event().payload,
+                "correction_target_id": "esm_result_event:1",
+                "correction_target_revision": 1,
+                "correction_kind": "corrected",
+                "correction_source_refs": ["authority:correction:2"],
+                "source_ref_lineage": ["esm_result_event:1"],
+            },
+        }
+    )
+    projector.project(event)
+    node = graph.query_nodes(
+        HeavenlyNodeQuery(scope=_scope(), valid_at=2, node_types=["causal_event"])
+    )[0]
+    graph.close()
+
+    assert node.attributes["correction_target_id"] == "esm_result_event:1"
+    assert node.attributes["correction_kind"] == "corrected"
+    assert node.attributes["correction_source_refs"] == ["authority:correction:2"]
+    assert node.provenance.source_ref_lineage == ["esm_result_event:1"]
