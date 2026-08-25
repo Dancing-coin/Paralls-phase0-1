@@ -504,6 +504,11 @@ def _collect_result_ids(
         ]
     if staged:
         found.add("resource_signature_recorded")
+    has_selection = any(
+        attributes(artifact).get("stage") == "selection"
+        and str(attributes(artifact).get("selected_node_ref", ""))
+        for artifact in related
+    )
     dispatches = [
         artifact for artifact in related if attributes(artifact).get("stage") == "dispatch"
     ]
