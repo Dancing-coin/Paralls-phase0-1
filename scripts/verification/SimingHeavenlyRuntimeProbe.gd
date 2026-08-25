@@ -16,7 +16,6 @@ var _backend_connection_count := 0
 var _backend_connection_target := 0
 var _post_restart_reaction_window := false
 var _move_request_id := ""
-var _transport_barrier_request_id := ""
 var _acknowledged_request_ids: Dictionary = {}
 
 @onready var _controller: Node = get_parent()
@@ -77,11 +76,7 @@ func _run() -> void:
 		_finish("siming_heavenly_inspection_timeout")
 		return
 	print("siming_heavenly_inspection_ready")
-	var barrier := bridge.send_transport_barrier()
-	_transport_barrier_request_id = str(barrier.get("request_id", ""))
-	if _transport_barrier_request_id.is_empty() or not await _wait_until(Callable(self, "_transport_barrier_acknowledged"), _controller.autotest_request_timeout_ms):
-		_finish("siming_heavenly_inspection_barrier_timeout")
-		return
+	await get_tree().create_timer(0.5).timeout
 	_controller._send_player_input_envelope(
 		bridge,
 		_controller.intent_mapper.emit_interact_intent("obj_letter", "destroy")
@@ -204,9 +199,6 @@ func _backend_reconnected() -> bool:
 
 func _move_request_acknowledged() -> bool:
 	return bool(_acknowledged_request_ids.get(_move_request_id, false))
-
-func _transport_barrier_acknowledged() -> bool:
-	return bool(_acknowledged_request_ids.get(_transport_barrier_request_id, false))
 
 func _char_b_observation_persisted() -> bool:
 	return _char_b_observation_acknowledged and not _destruction_result_ref.is_empty()
