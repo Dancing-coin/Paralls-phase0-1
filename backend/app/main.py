@@ -393,7 +393,6 @@ def reset_runtime_state() -> None:
     heavenly_graph = runtime_state.heavenly_graph
     runtime = SessionInputRouter()
     websocket_transport_closers = {}
-    character_agent_runtime = CharacterAgentRuntime()
     character_agent_runtime = runtime_state.character_agent_runtime
 
     def dialogue_context_provider(actor_id: str) -> dict[str, object]:
