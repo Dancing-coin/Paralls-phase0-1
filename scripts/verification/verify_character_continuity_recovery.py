@@ -44,7 +44,9 @@ def main_verify(python_exe: str | None) -> int:
         pytest_log,
     )
     previous_override = os.environ.get("CHARACTER_MODEL_ROUTE_OVERRIDE")
+    previous_continuity = os.environ.get("CHARACTER_GRAPH_REQUIRE_CONTINUITY")
     os.environ["CHARACTER_MODEL_ROUTE_OVERRIDE"] = "local_only"
+    os.environ["CHARACTER_GRAPH_REQUIRE_CONTINUITY"] = "1"
     try:
         with tempfile.TemporaryDirectory(dir=log_dir) as temp_dir:
             graph_path = Path(temp_dir) / "character-continuity.sqlite3"
@@ -100,6 +102,10 @@ def main_verify(python_exe: str | None) -> int:
             os.environ.pop("CHARACTER_MODEL_ROUTE_OVERRIDE", None)
         else:
             os.environ["CHARACTER_MODEL_ROUTE_OVERRIDE"] = previous_override
+        if previous_continuity is None:
+            os.environ.pop("CHARACTER_GRAPH_REQUIRE_CONTINUITY", None)
+        else:
+            os.environ["CHARACTER_GRAPH_REQUIRE_CONTINUITY"] = previous_continuity
 
     trace_path = log_dir / "character-continuity-recovery-trace.json"
     write_json(trace_path, trace)
