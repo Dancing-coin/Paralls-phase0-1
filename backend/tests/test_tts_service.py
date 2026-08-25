@@ -37,6 +37,13 @@ class _Provider:
         return self.wav_bytes
 
 
+class _FailingProvider:
+    provider_name = "failing_provider"
+
+    def synthesize(self, *, content: str, voice_id: str) -> bytes:
+        raise TTSProviderError("provider unavailable")
+
+
 def _real_settings(**overrides: object) -> Settings:
     values: dict[str, object] = {
         "tts_mode": "openai_compatible",
@@ -73,6 +80,21 @@ def test_stub_mode_preserves_a_presentation_only_stub_payload() -> None:
     assert audio.provider == "stub"
     assert audio.voice_id == "default-voice"
     assert audio.payload is None
+
+
+def test_real_tts_gate_rejects_stub_mode(monkeypatch) -> None:
+    monkeypatch.setenv("TTS_REQUIRE_REAL", "1")
+
+    with pytest.raises(TTSProviderError, match="real TTS provider required"):
+        TTSService(configuration=Settings(tts_default_voice="default-voice")).synthesize("char_a", "hello")
+
+
+def test_real_tts_gate_surfaces_provider_failure(monkeypatch) -> None:
+    monkeypatch.setenv("TTS_REQUIRE_REAL", "1")
+    provider = _FailingProvider()
+
+    with pytest.raises(TTSProviderError):
+        TTSService(configuration=_real_settings(), provider=provider).synthesize("char_a", "hello")
 
 
 def test_real_provider_clip_uses_actor_voice_mapping_and_base64_wav_contract() -> None:
