@@ -97,6 +97,7 @@ def test_committed_esm_event_is_projected_with_owner_source_and_replay(tmp_path:
     assert node.attributes["domain"] == "esm_world"
     assert node.attributes["owner_ref"] == "esm:world"
     assert node.attributes["replay_ref"] == "global_sequence:1"
+    assert node.attributes["source_revision_vector"] == {"world": 4}
     assert node.semantic_metadata.source_event_refs == ("esm_result_event:1",)
 
 

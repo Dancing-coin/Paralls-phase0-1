@@ -63,6 +63,8 @@ class HeavenlyAuthorityEventProjector:
                 "domain": domain,
                 "event_type": event.event_type,
                 "owner_ref": owner_ref,
+                "source_revision_vector": deepcopy(source_vector) if isinstance(source_vector, dict) else {},
+                "source_ref_lineage": list(payload.get("source_ref_lineage", [])) if isinstance(payload.get("source_ref_lineage", []), list) else [],
                 "settlement_id": payload.get("settlement_id", ""),
                 "replay_ref": payload.get("replay_ref", "") or f"global_sequence:{event.payload.get('global_sequence', event.producer_ts)}",
                 "committed_payload": payload,
