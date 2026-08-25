@@ -238,9 +238,10 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
     graph_path = Path(runtime_settings.heavenly_graph_path)
     graph_path.parent.mkdir(parents=True, exist_ok=True)
     heavenly_graph = SQLiteHeavenlyGraphAdapter(graph_path)
+    require_graph_continuity = os.environ.get("CHARACTER_GRAPH_REQUIRE_CONTINUITY", "").strip() == "1"
     character_agent_storage_root = (
         None
-        if graph_path.name == ":memory:"
+        if graph_path.name == ":memory:" or require_graph_continuity
         else graph_path.parent / f"{graph_path.name}.character-agent"
     )
     continuity_store = CharacterGraphContinuityStore(
