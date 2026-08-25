@@ -2,7 +2,7 @@ extends Node
 
 const PERCEPTION_SAMPLER := preload("res://scripts/character/ActorPerceptionSampler.gd")
 const CAPTURE_CHECK := preload("res://scripts/verification/VLAReplayCoverageCaptureProbe.gd")
-const RUNTIME_EVENT_TIMEOUT_MS := 180000
+const RUNTIME_EVENT_TIMEOUT_MS := 600000
 
 var _destroyed := false
 var _inspection_applied := false

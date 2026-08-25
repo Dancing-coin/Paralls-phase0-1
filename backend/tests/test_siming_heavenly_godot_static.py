@@ -97,7 +97,7 @@ def test_heavenly_probe_allows_online_decision_latency() -> None:
         encoding="utf-8"
     )
 
-    assert "RUNTIME_EVENT_TIMEOUT_MS := 180000" in probe
+    assert "RUNTIME_EVENT_TIMEOUT_MS := 600000" in probe
     assert '"_destruction_applied"), RUNTIME_EVENT_TIMEOUT_MS' in probe
 
 
