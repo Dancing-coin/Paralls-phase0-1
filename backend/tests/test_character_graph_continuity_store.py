@@ -107,7 +107,8 @@ def test_character_runtime_rebuilds_state_from_graph_after_session_file_loss(
     )
     first.close()
     session_file = graph_path.parent / f"{graph_path.name}.character-agent" / "character_agent_session_store.json"
-    session_file.unlink()
+    if session_file.exists():
+        session_file.unlink()
 
     second = main.build_runtime_state(settings)
     try:

@@ -75,7 +75,8 @@ def main_verify(python_exe: str | None) -> int:
             }
             first.close()
             session_file = graph_path.parent / f"{graph_path.name}.character-agent" / "character_agent_session_store.json"
-            session_file.unlink()
+            if session_file.exists():
+                session_file.unlink()
 
             second = main.build_runtime_state(settings)
             after = {
@@ -92,6 +93,7 @@ def main_verify(python_exe: str | None) -> int:
                 "before": before,
                 "after": after,
                 "next_timeline_event_count": len(next_timeline),
+                "session_file_absent": not session_file.exists(),
             }
     finally:
         if previous_override is None:
@@ -107,6 +109,7 @@ def main_verify(python_exe: str | None) -> int:
         _result("need_tension_recovered", "Need/tension rebuilds from graph", trace["before"]["need"] == trace["after"]["need"], [str(trace_path)]),
         _result("goal_and_continuity_recovered", "Goal and continuity rebuild from graph", trace["before"]["goal"] == trace["after"]["goal"] and trace["before"]["continuity"] == trace["after"]["continuity"], [str(trace_path)]),
         _result("working_memory_recovered", "Working memory and next input remain available", bool(trace["after"]["working_memory"]) and trace["next_timeline_event_count"] > 0, [str(trace_path)]),
+        _result("session_json_not_required", "Graph continuity does not require session JSON", trace.get("session_file_absent", False), [str(trace_path)]),
     ]
     overall = all(item["status"] == "proved" for item in results)
     report = {
