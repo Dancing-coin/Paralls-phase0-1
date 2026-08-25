@@ -1,4 +1,5 @@
 from copy import deepcopy
+import os
 from pathlib import Path
 from typing import Callable
 
@@ -88,6 +89,8 @@ class CharacterAgentRuntime:
         behavior_turn_recorder: BehaviorTurnRecorder | None = None,
         behavior_turn_scope_resolver: Callable[[str], HeavenlyGraphScope] | None = None,
     ) -> None:
+        if os.getenv("CHARACTER_GRAPH_REQUIRE_CONTINUITY", "").strip() == "1" and continuity_store is None:
+            raise ValueError("graph continuity store is required in production continuity mode")
         self._profile_registry = CharacterProfileRegistry.from_directory(self._PROFILE_DIRECTORY)
         self._supported_actor_ids = set(self._profile_registry.actor_ids())
         self._l1 = CharacterAgentL1Service()

@@ -73,6 +73,21 @@ def test_production_continuity_store_rejects_partial_snapshot() -> None:
         raise AssertionError("partial production continuity snapshot was accepted")
 
 
+def test_runtime_requires_graph_continuity_store_in_production_mode(monkeypatch) -> None:
+    from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
+
+    monkeypatch.setenv("CHARACTER_GRAPH_REQUIRE_CONTINUITY", "1")
+    try:
+        try:
+            CharacterAgentRuntime()
+        except ValueError as exc:
+            assert "graph continuity store is required" in str(exc)
+        else:  # pragma: no cover
+            raise AssertionError("production runtime accepted missing continuity store")
+    finally:
+        monkeypatch.delenv("CHARACTER_GRAPH_REQUIRE_CONTINUITY", raising=False)
+
+
 def test_character_runtime_rebuilds_state_from_graph_after_session_file_loss(
     tmp_path: Path,
 ) -> None:
