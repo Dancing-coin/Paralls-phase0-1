@@ -241,6 +241,14 @@ def _read_graph_payload(path: Path) -> dict[str, object]:
     return payload
 
 
+def _ensure_live_backend(root: Path, python_exe: str, env: dict[str, str]):
+    try:
+        return ensure_backend(root, python_exe, prefer_fresh_backend=True, env=env)
+    except RuntimeError:
+        wait_for_backend_release(timeout_seconds=20.0)
+        return ensure_backend(root, python_exe, prefer_fresh_backend=True, env=env)
+
+
 def _restart_boundary_ready(graph_payload: dict[str, object]) -> bool:
     """Require the durable pre-restart chain before stopping the first backend."""
     artifacts = [
@@ -617,7 +625,7 @@ def main() -> int:
             "CHARACTER_MODEL_MODEL": _env("SIMING_LLM_MODEL", "deepseek-chat"),
             "CHARACTER_MODEL_TIMEOUT_SECONDS": _env("SIMING_LLM_TIMEOUT_SECONDS", "30"),
         }
-        _, backend_process = ensure_backend(root, python_exe, prefer_fresh_backend=True, env=runtime_env)
+        _, backend_process = _ensure_live_backend(root, python_exe, runtime_env)
         godot_process, lines = _start_logged_process([str(godot_exe), "--path", str(root), "--scene", "res://scenes/phase0/MainDemo.tscn", "--render-thread", "safe"], root, verification_dir(root) / "siming-heavenly-runtime-godot.log", runtime_env)
         if not _wait_marker(godot_process, lines, "siming_heavenly_restart_ready", 300):
             return _write_report(root, None, preflight, "godot_restart_marker_missing")
@@ -626,7 +634,7 @@ def main() -> int:
         stop_backend(backend_process)
         backend_process = None
         wait_for_backend_release()
-        _, backend_process = ensure_backend(root, python_exe, prefer_fresh_backend=True, env=online_character_env)
+        _, backend_process = _ensure_live_backend(root, python_exe, online_character_env)
         if not _wait_marker(godot_process, lines, "siming_heavenly_godot_complete", 300):
             return _write_report(root, None, preflight, "godot_complete_marker_missing")
         graph_payload = _read_graph_payload(db_path)
