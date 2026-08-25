@@ -95,6 +95,10 @@ func _run() -> void:
 	if not await _capture("siming-heavenly-after-destruction.png"):
 		_finish("siming_heavenly_meaningful_after_capture_failed")
 		return
+	# The verifier restarts the backend immediately after this marker, so the
+	# staging ACK must be durable before advertising restart readiness.
+	_send_staging_ack()
+	await get_tree().create_timer(0.5).timeout
 	print("siming_heavenly_restart_ready")
 	_backend_connection_target = _backend_connection_count + 1
 	if not (await _wait_until(Callable(self, "_backend_reconnected"), RUNTIME_EVENT_TIMEOUT_MS)):
@@ -102,7 +106,6 @@ func _run() -> void:
 		return
 	_post_restart_reaction_window = true
 	_controller._emit_dialogue_request("char_b", "The letter is gone.")
-	_send_staging_ack()
 	if not (await _wait_until(Callable(self, "_char_b_reacted"), RUNTIME_EVENT_TIMEOUT_MS)):
 		_finish("siming_heavenly_char_b_reaction_timeout")
 		return
