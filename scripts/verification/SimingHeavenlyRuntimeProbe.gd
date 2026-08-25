@@ -25,6 +25,11 @@ var _acknowledged_request_ids: Dictionary = {}
 
 func _ready() -> void:
 	if OS.get_environment("SIMING_HEAVENLY_AUTOTEST") == "1":
+		# Suppress controller-owned high-frequency perception before its backend
+		# connection callback can enqueue setup traffic for the live probe.
+		_controller.suspend_near_object_visual_fact = true
+		_controller.suspend_spatial_access_fact = true
+		_controller._set_autotest_actor_local_perception_enabled(false)
 		var bus := get_node_or_null("/root/LocalPresentationBus")
 		if bus:
 			bus.world_result_received.connect(_on_world_result_received)
