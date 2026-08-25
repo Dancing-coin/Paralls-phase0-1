@@ -128,6 +128,8 @@ def test_live_verifier_checks_durable_restart_boundary_before_stopping_backend()
     assert source.index("_wait_for_restart_boundary(db_path)") < source.index(
         "stop_backend(backend_process)"
     )
+    assert '"siming_heavenly_restart_ready", 900' in source
+    assert '"siming_heavenly_godot_complete", 900' in source
 
 
 def test_collect_result_ids_derives_phase_seven_proof_from_graph_semantics() -> None:
