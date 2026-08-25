@@ -10,6 +10,7 @@ var _staging_request: Dictionary = {}
 var _char_b_reaction_count := 0
 var _char_b_had_line_of_sight := false
 var _char_b_observation_acknowledged := false
+var _staging_ack_backend_acknowledged := false
 var _destruction_result_ref := ""
 var _destruction_correlation_id := ""
 var _backend_connection_count := 0
@@ -98,7 +99,9 @@ func _run() -> void:
 	# The verifier restarts the backend immediately after this marker, so the
 	# staging ACK must be durable before advertising restart readiness.
 	_send_staging_ack()
-	await get_tree().create_timer(0.5).timeout
+	if not await _wait_until(Callable(self, "_staging_ack_backend_ready"), _controller.autotest_request_timeout_ms):
+		_finish("siming_heavenly_staging_ack_timeout")
+		return
 	print("siming_heavenly_restart_ready")
 	_backend_connection_target = _backend_connection_count + 1
 	if not (await _wait_until(Callable(self, "_backend_reconnected"), RUNTIME_EVENT_TIMEOUT_MS)):
@@ -181,6 +184,8 @@ func _on_backend_ack_received(payload: Dictionary) -> void:
 		and str(payload.get("relation_type", "")) == "actor_observes_object_removal"
 	):
 		_char_b_observation_acknowledged = true
+	if bool(payload.get("accepted", false)) and str(payload.get("route", "")) == "siming_staging_ack":
+		_staging_ack_backend_acknowledged = true
 
 func _on_backend_connected(_payload: String) -> void:
 	_backend_connection_count += 1
@@ -204,6 +209,9 @@ func _move_request_acknowledged() -> bool:
 
 func _char_b_observation_persisted() -> bool:
 	return _char_b_observation_acknowledged and not _destruction_result_ref.is_empty()
+
+func _staging_ack_backend_ready() -> bool:
+	return _staging_ack_backend_acknowledged
 
 func _char_b_reacted() -> bool:
 	return _char_b_reaction_count == 1

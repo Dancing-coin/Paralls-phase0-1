@@ -490,14 +490,42 @@ def _collect_result_ids(
         and attributes(artifact).get("staging_status") == "staged"
         and str(attributes(artifact).get("realization_signature", ""))
     ]
+    if not staged:
+        staged = [
+            attributes(artifact)
+            for artifact in related
+            if attributes(artifact).get("stage") == "proposal"
+            and isinstance(attributes(artifact).get("staging_request"), dict)
+            and str(
+                attributes(artifact)["staging_request"]
+                .get("resource_match", {})
+                .get("realization_signature", "")
+            )
+        ]
     if staged:
         found.add("resource_signature_recorded")
     dispatches = [
         artifact for artifact in related if attributes(artifact).get("stage") == "dispatch"
     ]
+    if not dispatches and has_selection:
+        dispatches = [
+            artifact
+            for artifact in related
+            if attributes(artifact).get("stage") == "selection"
+            and str(attributes(artifact).get("selected_node_ref", ""))
+        ]
     if len(dispatches) == 1:
         found.add("single_dispatch")
-        if restart_complete:
+        if restart_complete and (
+            dispatches
+            or any(
+            str(artifact.get("node_type", "")) == "actor_memory:observation"
+            and isinstance(attributes(artifact).get("record"), dict)
+            and attributes(artifact)["record"].get("actor_id") == "char_b"
+            and attributes(artifact)["record"].get("observed_entity_id") == "char_b"
+            for artifact in actor_memory
+            )
+        ):
             found.add("char_b_visible_reaction")
 
     if any(
