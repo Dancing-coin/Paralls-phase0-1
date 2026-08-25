@@ -111,6 +111,8 @@ def test_live_profile_passes_online_character_model_configuration() -> None:
     assert '"CHARACTER_MODEL_PROVIDER_KIND": "deepseek"' in source
     assert '"CHARACTER_MODEL_API_KEY": _env("SIMING_LLM_API_KEY")' in source
     assert '"CHARACTER_MODEL_ENDPOINT": _env("SIMING_LLM_ENDPOINT")' in source
+    assert '"CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only"' in source
+    assert source.index('env=runtime_env') < source.index('env=online_character_env')
 
 
 def test_live_verifier_checks_durable_restart_boundary_before_stopping_backend() -> None:
