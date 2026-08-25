@@ -243,9 +243,14 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
         if graph_path.name == ":memory:"
         else graph_path.parent / f"{graph_path.name}.character-agent"
     )
+    continuity_store = CharacterGraphContinuityStore(
+        heavenly_graph,
+        scope_resolver=actor_private_scope,
+    )
     graph_memory = CharacterGraphMemoryStore(
         heavenly_graph,
         scope_resolver=actor_private_scope,
+        continuity_reader=continuity_store.read_snapshot,
     )
     memory_router = CharacterMemoryStoreRouter(
         light_store=CharacterAgentMemoryStore(),
@@ -255,10 +260,7 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
     character_agent_runtime = CharacterAgentRuntime(
         storage_root=character_agent_storage_root,
         memory_store=memory_router,
-        continuity_store=CharacterGraphContinuityStore(
-            heavenly_graph,
-            scope_resolver=actor_private_scope,
-        ),
+        continuity_store=continuity_store,
         behavior_turn_recorder=BehaviorTurnRecorder(heavenly_graph),
         behavior_turn_scope_resolver=actor_private_scope,
     )

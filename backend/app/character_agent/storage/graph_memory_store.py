@@ -57,9 +57,11 @@ class CharacterGraphMemoryStore:
         graph: HeavenlyGraphPort,
         *,
         scope_resolver: Callable[[str], HeavenlyGraphScope],
+        continuity_reader: Callable[[str], dict[str, object] | None] | None = None,
     ) -> None:
         self._graph = graph
         self._scope_resolver = scope_resolver
+        self._continuity_reader = continuity_reader
         self._lock = RLock()
         self._normalizer = CharacterAgentMemoryStore()
         self._source_batches: dict[
@@ -171,7 +173,13 @@ class CharacterGraphMemoryStore:
         higher_order_memories = [
             item.model_dump() for item in records.higher_order_memories
         ]
-        working_memory = self._normalizer.retrieval_bundle(actor_id)["working_memory"]
+        continuity = self._continuity_reader(actor_id) if self._continuity_reader else None
+        graph_working_memory = continuity.get("working_memory") if isinstance(continuity, dict) else None
+        working_memory = (
+            graph_working_memory
+            if isinstance(graph_working_memory, dict)
+            else self._normalizer.retrieval_bundle(actor_id)["working_memory"]
+        )
         return {
             "working_memory": working_memory,
             "event_memories": event_memories,

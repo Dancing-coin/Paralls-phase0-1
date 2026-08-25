@@ -439,6 +439,25 @@ def test_sqlite_restart_recalls_durable_records(tmp_path: Path) -> None:
         reopened.close()
 
 
+def test_retrieval_bundle_prefers_graph_continuity_working_memory() -> None:
+    graph = InMemoryHeavenlyGraphAdapter()
+    store = CharacterGraphMemoryStore(
+        graph,
+        scope_resolver=_scope,
+        continuity_reader=lambda actor_id: {
+            "working_memory": {
+                "recent_perceived_events": [{"event_type": "graph_rehydrated"}],
+            }
+        },
+    )
+
+    bundle = store.retrieval_bundle("char_b")
+
+    assert bundle["working_memory"] == {
+        "recent_perceived_events": [{"event_type": "graph_rehydrated"}]
+    }
+
+
 def test_sqlite_restart_rehydrate_replays_source_event_without_idempotency_conflict(
     tmp_path: Path,
 ) -> None:
