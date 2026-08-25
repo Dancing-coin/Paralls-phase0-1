@@ -114,7 +114,9 @@ def test_live_profile_passes_online_character_model_configuration() -> None:
     assert '"CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only"' in source
     assert '"SIMING_LLM_ADVISORY_DISABLED": "1"' in source
     assert '"SIMING_LLM_ADVISORY_DISABLED": ""' in source
-    assert source.index('env=runtime_env') < source.index('env=online_character_env')
+    assert source.index('_ensure_live_backend(root, python_exe, runtime_env)') < source.index(
+        '_ensure_live_backend(root, python_exe, online_character_env)'
+    )
     assert 'for suffix in ("", "-wal", "-shm", "-journal")' in source
 
 
