@@ -38,6 +38,7 @@
 - `docs/art-resource-swap-workflow.md`：美术资源替换与更新工作流手册，定义 art pack、adapter scene、runtime shell 和 binding profile 的接入方式。
 - `docs/demo-script.md`：预期 demo 节拍和可观察证明路径。
 - `docs/production-readiness.md`：生产级在线 provider、图谱连续性、Authority 与 Godot 发布门禁。
+- `docs/knowledge-graph-future-optimization.md`：当前运行时可用领域知识图谱的通用化、规模化、运维和治理后期优化项。
 
 ## 活跃设计与计划
 
