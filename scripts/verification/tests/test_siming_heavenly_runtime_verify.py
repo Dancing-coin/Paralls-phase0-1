@@ -135,6 +135,15 @@ def test_live_verifier_checks_durable_restart_boundary_before_stopping_backend()
     assert '"siming_heavenly_godot_complete", 900' in source
 
 
+def test_godot_probe_waits_for_staging_ack_with_runtime_timeout() -> None:
+    source = (project_root() / "scripts" / "verification" / "SimingHeavenlyRuntimeProbe.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert '_wait_until(Callable(self, "_staging_ack_backend_ready"), RUNTIME_EVENT_TIMEOUT_MS)' in source
+    assert '_wait_until(Callable(self, "_staging_ack_backend_ready"), _controller.autotest_request_timeout_ms)' not in source
+
+
 def test_collect_result_ids_derives_phase_seven_proof_from_graph_semantics() -> None:
     correlation_id = "interact:live"
 

@@ -120,6 +120,7 @@ def test_character_runtime_rebuilds_state_from_graph_after_session_file_loss(
             "correlation_id": "corr:continuity:201",
         },
     )
+    timeline_before_restart = first.character_agent_runtime.get_session_timeline("char_b")
     first.close()
     session_file = graph_path.parent / f"{graph_path.name}.character-agent" / "character_agent_session_store.json"
     if session_file.exists():
@@ -131,5 +132,56 @@ def test_character_runtime_rebuilds_state_from_graph_after_session_file_loss(
         assert second.character_agent_runtime.get_need_tension_state("char_b")["actor_id"] == "char_b"
         assert second.character_agent_runtime.get_runtime_continuity_state("char_b")["actor_id"] == "char_b"
         assert second.character_agent_runtime.get_memory_bundle("char_b")["working_memory"]
+        second.character_agent_runtime.ingest_character_perceived_event(
+            CharacterPerceivedEvent(
+                actor_id="char_b",
+                percept_channel="visual",
+                producer_ts=202,
+                room_id="room_demo",
+                scene_id="scene_demo",
+                zone_id="zone_focus",
+                perceived_summary="obj_letter remains visible",
+                source_candidate_event_id="visual:continuity:202",
+            )
+        )
+        timeline_after_restart = second.character_agent_runtime.get_session_timeline("char_b")
+        assert [event["event_id"] for event in timeline_after_restart[: len(timeline_before_restart)]] == [
+            event["event_id"] for event in timeline_before_restart
+        ]
+        assert len(timeline_after_restart) > len(timeline_before_restart)
+    finally:
+        second.close()
+
+
+def test_character_runtime_restores_complete_goal_history_from_graph(tmp_path: Path) -> None:
+    graph_path = tmp_path / "goal-history.sqlite3"
+    settings = config_module.Settings(
+        heavenly_graph_path=str(graph_path), siming_heavenly_mode="off"
+    )
+    first = main.build_runtime_state(settings)
+    goal_store = first.character_agent_runtime._goal_state_store
+    goal_store.write(
+        "char_b",
+        {
+            "primary_goal": "inspect the letter",
+            "immediate_goal": "approach the table",
+            "transition_kind": "initial",
+        },
+    )
+    goal_store.write(
+        "char_b",
+        {
+            "primary_goal": "protect the letter",
+            "immediate_goal": "keep watch",
+            "transition_kind": "continued",
+        },
+    )
+    first.character_agent_runtime._persist_graph_continuity(actor_id="char_b", producer_ts=300)
+    expected_history = first.character_agent_runtime.get_goal_state_history("char_b")
+    first.close()
+
+    second = main.build_runtime_state(settings)
+    try:
+        assert second.character_agent_runtime.get_goal_state_history("char_b") == expected_history
     finally:
         second.close()

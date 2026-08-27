@@ -72,8 +72,10 @@ def main_verify(python_exe: str | None) -> int:
                 "dynamic": first.character_agent_runtime.get_dynamic_state("char_b"),
                 "need": first.character_agent_runtime.get_need_tension_state("char_b"),
                 "goal": first.character_agent_runtime.get_goal_state("char_b"),
+                "goal_history": first.character_agent_runtime.get_goal_state_history("char_b"),
                 "continuity": first.character_agent_runtime.get_runtime_continuity_state("char_b"),
                 "working_memory": first.character_agent_runtime.get_working_memory_state("char_b"),
+                "timeline": first.character_agent_runtime.get_session_timeline("char_b"),
             }
             first.close()
             session_file = graph_path.parent / f"{graph_path.name}.character-agent" / "character_agent_session_store.json"
@@ -85,6 +87,7 @@ def main_verify(python_exe: str | None) -> int:
                 "dynamic": second.character_agent_runtime.get_dynamic_state("char_b"),
                 "need": second.character_agent_runtime.get_need_tension_state("char_b"),
                 "goal": second.character_agent_runtime.get_goal_state("char_b"),
+                "goal_history": second.character_agent_runtime.get_goal_state_history("char_b"),
                 "continuity": second.character_agent_runtime.get_runtime_continuity_state("char_b"),
                 "working_memory": second.character_agent_runtime.get_working_memory_state("char_b"),
             }
@@ -95,6 +98,10 @@ def main_verify(python_exe: str | None) -> int:
                 "before": before,
                 "after": after,
                 "next_timeline_event_count": len(next_timeline),
+                "timeline_prefix_preserved": [
+                    event.get("event_id") for event in next_timeline[: len(before["timeline"])]
+                ]
+                == [event.get("event_id") for event in before["timeline"]],
                 "session_file_absent": not session_file.exists(),
             }
     finally:
@@ -114,7 +121,8 @@ def main_verify(python_exe: str | None) -> int:
         _result("dynamic_state_recovered", "Dynamic state rebuilds from graph", trace["before"]["dynamic"] == trace["after"]["dynamic"], [str(trace_path)]),
         _result("need_tension_recovered", "Need/tension rebuilds from graph", trace["before"]["need"] == trace["after"]["need"], [str(trace_path)]),
         _result("goal_and_continuity_recovered", "Goal and continuity rebuild from graph", trace["before"]["goal"] == trace["after"]["goal"] and trace["before"]["continuity"] == trace["after"]["continuity"], [str(trace_path)]),
-        _result("working_memory_recovered", "Working memory and next input remain available", bool(trace["after"]["working_memory"]) and trace["next_timeline_event_count"] > 0, [str(trace_path)]),
+        _result("goal_history_recovered", "Complete goal history rebuilds from graph", trace["before"]["goal_history"] == trace["after"]["goal_history"], [str(trace_path)]),
+        _result("working_memory_recovered", "Working memory and next input retain the pre-restart timeline", bool(trace["after"]["working_memory"]) and trace["next_timeline_event_count"] > len(trace["before"]["timeline"]) and trace["timeline_prefix_preserved"], [str(trace_path)]),
         _result("session_json_not_required", "Graph continuity does not require session JSON", trace.get("session_file_absent", False), [str(trace_path)]),
     ]
     overall = all(item["status"] == "proved" for item in results)

@@ -99,7 +99,7 @@ func _run() -> void:
 	# The verifier restarts the backend immediately after this marker, so the
 	# staging ACK must be durable before advertising restart readiness.
 	_send_staging_ack()
-	if not await _wait_until(Callable(self, "_staging_ack_backend_ready"), _controller.autotest_request_timeout_ms):
+	if not await _wait_until(Callable(self, "_staging_ack_backend_ready"), RUNTIME_EVENT_TIMEOUT_MS):
 		_finish("siming_heavenly_staging_ack_timeout")
 		return
 	print("siming_heavenly_restart_ready")

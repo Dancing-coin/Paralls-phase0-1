@@ -1032,10 +1032,19 @@ class CharacterAgentRuntime:
         return snapshot
 
     def get_session_timeline(self, actor_id: str) -> list[dict[str, object]]:
+        graph_timeline = deepcopy(self._graph_session_timelines.get(actor_id, []))
         timeline = self._session_store.list_events(actor_id)
-        if timeline:
+        if not graph_timeline:
             return timeline
-        return deepcopy(self._graph_session_timelines.get(actor_id, []))
+        known_event_ids = {
+            str(event.get("event_id", "") or "") for event in graph_timeline
+        }
+        graph_timeline.extend(
+            event
+            for event in timeline
+            if not event.get("event_id") or str(event["event_id"]) not in known_event_ids
+        )
+        return graph_timeline
 
     def apply_mind_delta_ledger(
         self,
@@ -3551,9 +3560,15 @@ class CharacterAgentRuntime:
             need_tension = snapshot.get("need_tension_state")
             if isinstance(need_tension, dict):
                 self._need_tension_store.write(actor_id, need_tension)
-            goal = snapshot.get("goal_state")
-            if isinstance(goal, dict) and goal:
-                self._goal_state_store.write(actor_id, goal)
+            goal_history = snapshot.get("goal_state_history")
+            if isinstance(goal_history, list) and goal_history:
+                for goal in goal_history:
+                    if isinstance(goal, dict) and goal:
+                        self._goal_state_store.write(actor_id, goal)
+            else:
+                goal = snapshot.get("goal_state")
+                if isinstance(goal, dict) and goal:
+                    self._goal_state_store.write(actor_id, goal)
             supervision = snapshot.get("supervision_state")
             if isinstance(supervision, dict) and supervision:
                 self._supervision_states[actor_id] = CharacterSupervisionState(**supervision)
