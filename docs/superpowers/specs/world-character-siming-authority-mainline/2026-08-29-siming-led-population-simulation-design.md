@@ -418,4 +418,3 @@ siming-led-population-seed-continuity
 - no branch result promotion without owner/capability and Character Core gates;
 - no claim of complete civilization or large-scale population simulation from
   the first vertical.
-
