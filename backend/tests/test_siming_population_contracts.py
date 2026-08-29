@@ -115,6 +115,14 @@ def test_mismatched_legacy_source_pin_is_rejected() -> None:
         PopulationCadenceInput(**values)
 
 
+def test_conflicting_canonical_and_legacy_source_pin_is_rejected() -> None:
+    values = cadence().model_dump()
+    values["source_refs"] = ("source:legacy",)
+    values["source_revision_vector"] = {"source:legacy": 1}
+    with pytest.raises(ValueError, match="cadence_source_pin_incomplete"):
+        PopulationCadenceInput(**values)
+
+
 def test_duplicate_projection_refs_are_rejected() -> None:
     with pytest.raises(ValueError, match="read_set_projection_duplicate"):
         PopulationReadSet.from_inputs(cadence(), (projection("a"), projection("a")))

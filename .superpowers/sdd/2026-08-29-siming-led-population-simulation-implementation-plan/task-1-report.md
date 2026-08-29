@@ -26,6 +26,17 @@
 - `python -m pytest -q backend/tests/test_population_continuity.py` -> 15 passed
 - `git diff --check` -> passed
 
+## Round 3 修复
+
+- canonical cadence source fields 与 legacy `source_refs` / `source_revision_vector` 同时出现时，要求 legacy pair 规范化后与 canonical ref/revision 完全一致；冲突分别返回 `cadence_source_pin_incomplete` 或 `revision_vector_invalid`，不再静默丢弃。
+- 新增 canonical + conflicting legacy source pin 回归测试。
+
+修复验证命令与结果：
+
+- `python -m pytest -q backend/tests/test_siming_population_contracts.py` -> 10 passed
+- `python -m pytest -q backend/tests/test_population_continuity.py` -> 15 passed
+- `git diff --check` -> passed
+
 ## Round 2 修复
 
 - legacy `source_refs` / `source_revision_vector` 兼容解析现在严格要求单一 source ref、单一 revision key 且两者一致；不一致返回 `revision_vector_invalid`，缺失或数量不符返回 `cadence_source_pin_incomplete`。

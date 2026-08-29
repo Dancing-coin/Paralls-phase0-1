@@ -57,6 +57,12 @@ class PopulationCadenceInput(ContinuityModel):
             vector_ref, vector_revision = next(iter(legacy_vector.items()))
             if vector_ref != legacy_refs[0]:
                 raise ValueError("revision_vector_invalid")
+            canonical_ref = data.get("cadence_source_ref")
+            canonical_revision = data.get("cadence_source_revision")
+            if canonical_ref is not None and canonical_ref != legacy_refs[0]:
+                raise ValueError("cadence_source_pin_incomplete")
+            if canonical_revision is not None and canonical_revision != vector_revision:
+                raise ValueError("revision_vector_invalid")
             data.setdefault("cadence_source_ref", legacy_refs[0])
             data.setdefault("cadence_source_revision", vector_revision)
         return data
