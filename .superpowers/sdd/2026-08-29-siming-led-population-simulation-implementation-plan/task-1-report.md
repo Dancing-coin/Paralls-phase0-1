@@ -25,3 +25,15 @@
 - `python -m pytest -q backend/tests/test_siming_population_contracts.py` -> 7 passed
 - `python -m pytest -q backend/tests/test_population_continuity.py` -> 15 passed
 - `git diff --check` -> passed
+
+## Round 2 修复
+
+- legacy `source_refs` / `source_revision_vector` 兼容解析现在严格要求单一 source ref、单一 revision key 且两者一致；不一致返回 `revision_vector_invalid`，缺失或数量不符返回 `cadence_source_pin_incomplete`。
+- `PopulationCadenceInput.from_authority_event` 复制嵌套 cadence payload 后再剥离 envelope-only `scope`，重复解析 scope mismatch 不会修改原始事件。
+- 新增 legacy source pin mismatch 与 repeated scope mismatch payload-preservation 回归测试。
+
+修复验证命令与结果：
+
+- `python -m pytest -q backend/tests/test_siming_population_contracts.py` -> 9 passed
+- `python -m pytest -q backend/tests/test_population_continuity.py` -> 15 passed
+- `git diff --check` -> passed

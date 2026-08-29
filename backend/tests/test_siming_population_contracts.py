@@ -95,6 +95,26 @@ def test_scope_mismatch_is_rejected_structurally() -> None:
         PopulationCadenceInput.from_authority_event(event)
 
 
+def test_repeated_scope_mismatch_does_not_mutate_event_payload() -> None:
+    event = cadence_event(scope="public")
+    original = event.payload.copy()
+    for _ in range(2):
+        with pytest.raises(ValueError, match="cadence_scope_incompatible"):
+            PopulationCadenceInput.from_authority_event(event)
+    assert event.payload == original
+    assert event.payload["population_cadence"]["scope"] == "public"
+
+
+def test_mismatched_legacy_source_pin_is_rejected() -> None:
+    values = cadence().model_dump()
+    values.pop("cadence_source_ref")
+    values.pop("cadence_source_revision")
+    values["source_refs"] = ("source:a",)
+    values["source_revision_vector"] = {"source:b": 1}
+    with pytest.raises(ValueError, match="revision_vector_invalid"):
+        PopulationCadenceInput(**values)
+
+
 def test_duplicate_projection_refs_are_rejected() -> None:
     with pytest.raises(ValueError, match="read_set_projection_duplicate"):
         PopulationReadSet.from_inputs(cadence(), (projection("a"), projection("a")))

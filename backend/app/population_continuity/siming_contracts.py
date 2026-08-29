@@ -47,14 +47,18 @@ class PopulationCadenceInput(ContinuityModel):
             data["world_mode_ref"] = data.pop("mode_ref")
         if "world_mode_revision" not in data and "mode_revision" in data:
             data["world_mode_revision"] = data.pop("mode_revision")
-        if "cadence_source_ref" not in data and "source_refs" in data:
-            refs = data.pop("source_refs")
-            if isinstance(refs, (list, tuple)) and len(refs) == 1:
-                data["cadence_source_ref"] = refs[0]
-        if "cadence_source_revision" not in data and "source_revision_vector" in data:
-            vector = data.pop("source_revision_vector")
-            if isinstance(vector, dict) and len(vector) == 1:
-                data["cadence_source_revision"] = next(iter(vector.values()))
+        legacy_refs = data.pop("source_refs", None)
+        legacy_vector = data.pop("source_revision_vector", None)
+        if legacy_refs is not None or legacy_vector is not None:
+            if not isinstance(legacy_refs, (list, tuple)) or len(legacy_refs) != 1 or not isinstance(legacy_refs[0], str) or not legacy_refs[0]:
+                raise ValueError("cadence_source_pin_incomplete")
+            if not isinstance(legacy_vector, dict) or len(legacy_vector) != 1:
+                raise ValueError("cadence_source_pin_incomplete")
+            vector_ref, vector_revision = next(iter(legacy_vector.items()))
+            if vector_ref != legacy_refs[0]:
+                raise ValueError("revision_vector_invalid")
+            data.setdefault("cadence_source_ref", legacy_refs[0])
+            data.setdefault("cadence_source_revision", vector_revision)
         return data
 
     @model_validator(mode="after")
@@ -84,9 +88,10 @@ class PopulationCadenceInput(ContinuityModel):
     def from_authority_event(cls, event: AuthorityEvent) -> "PopulationCadenceInput":
         if event.event_type != "population_cadence_event":
             raise ValueError("cadence_event_type_invalid")
-        payload = event.payload.get("population_cadence")
-        if not isinstance(payload, dict):
+        payload_value = event.payload.get("population_cadence")
+        if not isinstance(payload_value, dict):
             raise ValueError("cadence_source_pin_incomplete")
+        payload = dict(payload_value)
         if payload.get("revoked") is True or payload.get("status") in {"revoked", "stale", "expired"}:
             raise ValueError("cadence_authorization_revoked")
         envelope_scope = payload.pop("scope", None)
