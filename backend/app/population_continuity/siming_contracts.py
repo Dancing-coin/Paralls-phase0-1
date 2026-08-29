@@ -16,13 +16,12 @@ def _check_vector(value: dict[str, int]) -> None:
 
 
 class PopulationCadenceInput(ContinuityModel):
-    cadence_ref: str = Field(min_length=1)
-    cadence_owner_ref: str = Field(min_length=1)
+    cadence_id: str = Field(min_length=1)
     world_ref: str = Field(min_length=1)
-    mode_ref: str = Field(min_length=1)
-    mode_revision: str = Field(min_length=1)
-    source_refs: tuple[str, ...] = ()
-    source_revision_vector: dict[str, int] = Field(default_factory=dict)
+    world_mode_ref: str = Field(min_length=1)
+    world_mode_revision: str = Field(min_length=1)
+    cadence_source_ref: str = ""
+    cadence_source_revision: int = Field(default=0, ge=0)
     window_start: int = Field(ge=0)
     window_end: int = Field(ge=0)
     base_checkpoint_ref: str = Field(min_length=1)
@@ -42,37 +41,44 @@ class PopulationCadenceInput(ContinuityModel):
         if not isinstance(value, dict):
             return value
         data = dict(value)
-        if "mode_ref" not in data and "world_mode_ref" in data:
-            data["mode_ref"] = data.pop("world_mode_ref")
-        if "mode_revision" not in data and "world_mode_revision" in data:
-            data["mode_revision"] = data.pop("world_mode_revision")
-        if "cadence_ref" not in data and "cadence_id" in data:
-            data["cadence_ref"] = data.pop("cadence_id")
+        if "cadence_id" not in data and "cadence_ref" in data:
+            data["cadence_id"] = data.pop("cadence_ref")
+        if "world_mode_ref" not in data and "mode_ref" in data:
+            data["world_mode_ref"] = data.pop("mode_ref")
+        if "world_mode_revision" not in data and "mode_revision" in data:
+            data["world_mode_revision"] = data.pop("mode_revision")
+        if "cadence_source_ref" not in data and "source_refs" in data:
+            refs = data.pop("source_refs")
+            if isinstance(refs, (list, tuple)) and len(refs) == 1:
+                data["cadence_source_ref"] = refs[0]
+        if "cadence_source_revision" not in data and "source_revision_vector" in data:
+            vector = data.pop("source_revision_vector")
+            if isinstance(vector, dict) and len(vector) == 1:
+                data["cadence_source_revision"] = next(iter(vector.values()))
         return data
 
     @model_validator(mode="after")
     def validate_cadence(self) -> "PopulationCadenceInput":
         if self.window_end <= self.window_start:
             raise ValueError("cadence_window_invalid")
-        if not self.source_refs or not self.source_revision_vector:
+        if not self.cadence_source_ref:
             raise ValueError("cadence_source_pin_incomplete")
-        if len(set(self.source_refs)) != len(self.source_refs):
-            raise ValueError("cadence_source_ref_duplicate")
-        _check_vector(self.source_revision_vector)
+        if isinstance(self.cadence_source_revision, bool) or self.cadence_source_revision < 0:
+            raise ValueError("cadence_source_pin_incomplete")
         _check_vector(self.base_revision_vector)
         return self
 
     @property
-    def cadence_id(self) -> str:
-        return self.cadence_ref
+    def cadence_ref(self) -> str:
+        return self.cadence_id
 
     @property
-    def world_mode_ref(self) -> str:
-        return self.mode_ref
+    def source_refs(self) -> tuple[str, ...]:
+        return (self.cadence_source_ref,)
 
     @property
-    def world_mode_revision(self) -> str:
-        return self.mode_revision
+    def source_revision_vector(self) -> dict[str, int]:
+        return {self.cadence_source_ref: self.cadence_source_revision}
 
     @classmethod
     def from_authority_event(cls, event: AuthorityEvent) -> "PopulationCadenceInput":
@@ -83,10 +89,10 @@ class PopulationCadenceInput(ContinuityModel):
             raise ValueError("cadence_source_pin_incomplete")
         if payload.get("revoked") is True or payload.get("status") in {"revoked", "stale", "expired"}:
             raise ValueError("cadence_authorization_revoked")
-        cadence = cls.model_validate(payload)
-        if payload.get("scope") not in (None, cadence.report_scope):
+        envelope_scope = payload.pop("scope", None)
+        if envelope_scope not in (None, payload.get("report_scope")):
             raise ValueError("cadence_scope_incompatible")
-        return cadence
+        return cls.model_validate(payload)
 
 
 class PopulationProjection(ContinuityModel):
@@ -106,6 +112,13 @@ class PopulationReadSet(ContinuityModel):
     projections: tuple[PopulationProjection, ...] = ()
     read_set_digest: str = Field(min_length=1)
 
+    @model_validator(mode="after")
+    def validate_projection_refs(self) -> "PopulationReadSet":
+        refs = [projection.ref for projection in self.projections]
+        if len(refs) != len(set(refs)):
+            raise ValueError("read_set_projection_duplicate")
+        return self
+
     @classmethod
     def from_inputs(cls, cadence: PopulationCadenceInput, projections: Sequence[PopulationProjection]) -> "PopulationReadSet":
         ordered = tuple(sorted(projections, key=lambda item: item.ref))
@@ -121,6 +134,11 @@ class PopulationOwnerReceipt(ContinuityModel):
     committed: bool
     revision_vector: dict[str, int] = Field(default_factory=dict)
     zero_write: bool
+
+    @model_validator(mode="after")
+    def validate_receipt_vector(self) -> "PopulationOwnerReceipt":
+        _check_vector(self.revision_vector)
+        return self
 
 
 class PopulationBatchReport(ContinuityModel):

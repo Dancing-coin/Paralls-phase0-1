@@ -12,3 +12,16 @@
 
 边界：未修改 runtime orchestration、planner、CharacterAgentRuntime、activation 或 Harness profile；未引入第二 runtime/store/bus/clock/scheduler。
 
+## Round 1 修复
+
+- 恢复批准的 canonical cadence 字段：`cadence_id`、`world_mode_ref`、`world_mode_revision`、`cadence_source_ref`、`cadence_source_revision`；旧字段仅作为受控输入兼容，不改变 canonical 序列化。
+- 在 cadence 模型校验前剥离 envelope scope，并对不匹配 scope 返回 `cadence_scope_incompatible`。
+- 强制 cadence source pin 完整且 revision 合法；read-set 拒绝重复 projection ref。
+- owner receipt、memory candidate、seed、continuity command/receipt 与 projection revision vectors 统一拒绝负数、布尔值和空 key。
+- 新增 scope mismatch、重复 projection、非法 revision vector 回归测试。
+
+修复验证命令与结果：
+
+- `python -m pytest -q backend/tests/test_siming_population_contracts.py` -> 7 passed
+- `python -m pytest -q backend/tests/test_population_continuity.py` -> 15 passed
+- `git diff --check` -> passed

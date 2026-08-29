@@ -7,6 +7,11 @@ from pydantic import Field, model_validator
 from app.population_continuity.models import ContinuityModel
 
 
+def _check_vector(value: dict[str, int]) -> None:
+    if any(not key or isinstance(revision, bool) or revision < 0 for key, revision in value.items()):
+        raise ValueError("revision_vector_invalid")
+
+
 MemoryCandidateKind = Literal[
     "event_experience", "perceptual_observation", "factual_knowledge", "social_impression", "higher_order_belief"
 ]
@@ -29,6 +34,11 @@ class CharacterMemoryCandidate(ContinuityModel):
     materialization_policy: str = Field(min_length=1)
     dedup_key: str = Field(min_length=1)
     source_revision_vector: dict[str, int] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_source_vector(self) -> "CharacterMemoryCandidate":
+        _check_vector(self.source_revision_vector)
+        return self
 
 
 class CharacterSimulationSeedCandidate(ContinuityModel):
@@ -60,6 +70,7 @@ class CharacterSimulationSeedCandidate(ContinuityModel):
             raise ValueError("seed_tick_range_invalid")
         if len(set(self.source_owner_receipt_refs)) != len(self.source_owner_receipt_refs):
             raise ValueError("seed_owner_receipt_duplicate")
+        _check_vector(self.source_revision_vector)
         return self
 
 
@@ -84,6 +95,7 @@ class CharacterContinuityCommand(ContinuityModel):
             raise ValueError("command_memory_candidate_duplicate")
         if self.world_effect_required and not self.source_owner_receipt_refs:
             raise ValueError("owner_settlement_required")
+        _check_vector(self.source_revision_vector)
         return self
 
 
@@ -102,6 +114,11 @@ class CharacterContinuityReceipt(ContinuityModel):
     source_owner_receipt_refs: tuple[str, ...] = ()
     recorded_at: int = Field(default=0, ge=0)
 
+    @model_validator(mode="after")
+    def validate_receipt_vectors(self) -> "CharacterContinuityReceipt":
+        _check_vector(self.cursor_vector)
+        return self
+
 
 class CharacterMemoryMaterializationReceipt(ContinuityModel):
     candidate_id: str = Field(min_length=1)
@@ -110,4 +127,3 @@ class CharacterMemoryMaterializationReceipt(ContinuityModel):
     selected_pool: str | None = None
     memory_cursor: int = Field(default=0, ge=0)
     refusal_reason: str | None = None
-

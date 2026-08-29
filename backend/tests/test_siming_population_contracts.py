@@ -22,13 +22,12 @@ from app.population_continuity.siming_contracts import (
 
 def cadence(**updates: object) -> PopulationCadenceInput:
     values: dict[str, object] = {
-        "cadence_ref": "cadence:bakery:1",
-        "cadence_owner_ref": "owner:world-mode",
+        "cadence_id": "cadence:bakery:1",
         "world_ref": "world:bakery",
-        "mode_ref": "mode:bakery",
-        "mode_revision": "mode:v1",
-        "source_refs": ("source:world:bakery",),
-        "source_revision_vector": {"world:bakery": 1},
+        "world_mode_ref": "mode:bakery",
+        "world_mode_revision": "mode:v1",
+        "cadence_source_ref": "world:bakery",
+        "cadence_source_revision": 1,
         "window_start": 100,
         "window_end": 101,
         "base_checkpoint_ref": "checkpoint:bakery:1",
@@ -56,7 +55,10 @@ def projection(ref: str, **payload: object) -> PopulationProjection:
 
 
 def cadence_event(**payload: object) -> AuthorityEvent:
+    scope = payload.pop("scope", None)
     event_payload = {"population_cadence": cadence(**payload).model_dump()}
+    if scope is not None:
+        event_payload["population_cadence"]["scope"] = scope
     return AuthorityEvent(
         event_id="event:cadence:1",
         event_type="population_cadence_event",
@@ -77,7 +79,7 @@ def cadence_event(**payload: object) -> AuthorityEvent:
 
 def test_missing_cadence_source_pin_is_rejected() -> None:
     with pytest.raises(ValidationError, match="cadence_source_pin_incomplete"):
-        PopulationCadenceInput(**cadence().model_dump(exclude={"source_refs"}))
+        PopulationCadenceInput(**cadence().model_dump(exclude={"cadence_source_ref"}))
 
 
 def test_read_set_digest_is_stable_under_projection_reorder() -> None:
@@ -85,6 +87,38 @@ def test_read_set_digest_is_stable_under_projection_reorder() -> None:
     second = PopulationReadSet.from_inputs(cadence(), (projection("a", value=1), projection("b", value=2)))
     assert first.read_set_digest == second.read_set_digest
     assert first.projections == second.projections
+
+
+def test_scope_mismatch_is_rejected_structurally() -> None:
+    event = cadence_event(scope="public")
+    with pytest.raises(ValueError, match="cadence_scope_incompatible"):
+        PopulationCadenceInput.from_authority_event(event)
+
+
+def test_duplicate_projection_refs_are_rejected() -> None:
+    with pytest.raises(ValueError, match="read_set_projection_duplicate"):
+        PopulationReadSet.from_inputs(cadence(), (projection("a"), projection("a")))
+
+
+def test_revision_vectors_reject_negative_and_boolean_values() -> None:
+    with pytest.raises(ValidationError, match="revision_vector_invalid"):
+        CharacterMemoryCandidate(
+            candidate_id="memory-candidate:bad",
+            actor_ref="character:char_a",
+            candidate_kind="event_experience",
+            source_event_refs=("event:1",),
+            event_valid_at=100,
+            knowledge_available_at=100,
+            exposure_basis="affected_directly",
+            summary="bad",
+            confidence=0.5,
+            salience=0.5,
+            visibility_scope="actor_observable",
+            privacy_disposition="actor_private",
+            materialization_policy="pending",
+            dedup_key="event:1",
+            source_revision_vector={"world:bakery": -1},
+        )
 
 
 def test_actor_scoped_seed_is_pending_and_not_a_memory_record() -> None:
