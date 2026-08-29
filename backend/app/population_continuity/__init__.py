@@ -24,6 +24,7 @@ from .siming_contracts import PopulationBatchReport, PopulationCadenceInput, Pop
 __all__ = [
     "ProfileActivationAuthority",
     "PopulationPlanner",
+    "CharacterSeedPlanner",
     "ContinuityMergeAuthority",
     "WorldContinuityRuntime",
     "ActivationGrant",
@@ -52,3 +53,11 @@ __all__ = [
     "PopulationBatchReport",
     "PopulationCycleResult",
 ]
+
+
+def __getattr__(name: str):
+    if name == "CharacterSeedPlanner":
+        from .seed_planner import CharacterSeedPlanner
+
+        return CharacterSeedPlanner
+    raise AttributeError(name)

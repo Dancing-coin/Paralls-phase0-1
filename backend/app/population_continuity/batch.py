@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import asdict, dataclass
 
 from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.gameplay.event_store import GameplayEventStore
@@ -30,6 +31,7 @@ from .models import (
 from .social_input import FrozenSocialPlanningInput
 from .source_inputs import HouseholdScheduleInput, OrganizationScheduleInput, ProductionCompletedEvidenceInput
 from .capability_input import FrozenCapabilityEligibilityInput
+from .siming_contracts import PopulationBatchReport, PopulationReadSet
 
 
 class SocialPlanningResult:
@@ -37,6 +39,35 @@ class SocialPlanningResult:
         self.accepted = accepted
         self.plan = plan
         self.error_code = error_code
+
+
+@dataclass(frozen=True)
+class PopulationActivationCandidate:
+    candidate_ref: str
+    actor_ref: str
+    reason: str
+    activation_reason: str
+    budget: int
+    scope: str
+    source_revision_vector: dict[str, int]
+    fallback: str = "requeue"
+
+
+@dataclass(frozen=True)
+class PopulationOwnerBoundIntent:
+    candidate_ref: str
+    actor_ref: str
+    intent_kind: str
+    scope: str
+    payload: dict[str, object]
+    source_revision_vector: dict[str, int]
+
+
+@dataclass(frozen=True)
+class PopulationRejectedCandidate:
+    candidate_ref: str
+    reason: str
+    candidate_kind: str = ""
 
 
 def _digest(value: object) -> str:
@@ -111,6 +142,130 @@ class PopulationPlanner:
     def schedule_pending_digest(plan: PopulationWorldPlan) -> str:
         """Pin the exact admitted schedule plan; this is not a generic payload digest."""
         return _digest(plan.model_dump(mode="json"))
+
+    def plan_population_cycle(self, read_set: PopulationReadSet) -> PopulationBatchReport:
+        """Calculate one deterministic batch; this method has no write authority."""
+        cadence = read_set.cadence
+        batch_ref = f"population-batch:{cadence.cadence_id}:{read_set.read_set_digest[-12:]}"
+        rejected: list[PopulationRejectedCandidate] = []
+        if not self._valid_population_read_set(read_set):
+            for projection in read_set.projections:
+                rejected.append(PopulationRejectedCandidate(projection.ref, "stale_read_set"))
+            return self._population_report(
+                batch_ref=batch_ref,
+                read_set=read_set,
+                selected=(),
+                presentation={},
+                activations=(),
+                owner_intents=(),
+                rejected=tuple(rejected),
+                budget_used=0,
+                unprocessed=tuple(item.ref for item in read_set.projections),
+            )
+
+        ordered = sorted(
+            read_set.projections,
+            key=lambda item: (
+                -int(item.payload.get("priority", 0) or 0),
+                str(item.payload.get("actor_ref") or item.payload.get("profile_ref") or item.ref),
+                item.ref,
+            ),
+        )
+        selected: list[str] = []
+        unprocessed: list[str] = []
+        presentation: dict[str, object] = {}
+        activations: list[PopulationActivationCandidate] = []
+        owner_intents: list[PopulationOwnerBoundIntent] = []
+        budget_used = 0
+        for index, projection in enumerate(ordered):
+            payload = projection.payload
+            kind = str(payload.get("candidate_kind") or payload.get("kind") or payload.get("behavior_kind") or "routine_work")
+            cost = max(0, int(payload.get("budget_cost", 1 if kind in {"relationship_negotiation", "high_value_event", "b3_event"} else 0) or 0))
+            if len(selected) >= cadence.catch_up_limit or budget_used + cost > cadence.budget:
+                unprocessed.extend(item.ref for item in ordered[index:])
+                break
+            selected.append(projection.ref)
+            actor_ref = str(payload.get("actor_ref") or payload.get("profile_ref") or projection.ref)
+            scope = str(payload.get("actor_scope") or projection.scope)
+            source_vector = dict(projection.revision_vector)
+            if kind == "schedule_gated_supply":
+                owner_intents.append(PopulationOwnerBoundIntent(projection.ref, actor_ref, kind, scope, dict(payload), source_vector))
+                budget_used += cost
+            elif kind in {"relationship_negotiation", "high_value_event", "b3_event"} or str(payload.get("behavior_tier", "")).upper() in {"B2", "B3"}:
+                activations.append(PopulationActivationCandidate(
+                    candidate_ref=projection.ref,
+                    actor_ref=actor_ref,
+                    reason="high_value_b2_requires_activation" if kind == "relationship_negotiation" else "high_value_b3_requires_activation",
+                    activation_reason=str(payload.get("activation_reason") or kind),
+                    budget=cost or 1,
+                    scope=scope,
+                    source_revision_vector=source_vector,
+                    fallback=str(payload.get("fallback") or "requeue"),
+                ))
+                budget_used += cost
+            elif kind in {"new_story_action", "unknown", ""}:
+                rejected.append(PopulationRejectedCandidate(projection.ref, "capability_not_admitted", kind))
+            else:
+                presentation[projection.ref] = {
+                    "actor_ref": actor_ref,
+                    "behavior_kind": kind,
+                    "deterministic": True,
+                    "scope": scope,
+                    "source_revision_vector": source_vector,
+                }
+        return self._population_report(
+            batch_ref=batch_ref,
+            read_set=read_set,
+            selected=tuple(selected),
+            presentation=presentation,
+            activations=tuple(activations),
+            owner_intents=tuple(owner_intents),
+            rejected=tuple(rejected),
+            budget_used=budget_used,
+            unprocessed=tuple(unprocessed),
+        )
+
+    @staticmethod
+    def _valid_population_read_set(read_set: PopulationReadSet) -> bool:
+        cadence = read_set.cadence
+        canonical = PopulationReadSet.from_inputs(cadence, read_set.projections)
+        if canonical.read_set_digest != read_set.read_set_digest:
+            return False
+        return all(
+            projection.scope in {cadence.report_scope, "public", "actor:self"}
+            and projection.revision_vector == cadence.base_revision_vector
+            for projection in read_set.projections
+        )
+
+    @staticmethod
+    def _population_report(*, batch_ref: str, read_set: PopulationReadSet, selected: tuple[str, ...], presentation: dict[str, object], activations: tuple[PopulationActivationCandidate, ...], owner_intents: tuple[PopulationOwnerBoundIntent, ...], rejected: tuple[PopulationRejectedCandidate, ...], budget_used: int, unprocessed: tuple[str, ...]) -> PopulationBatchReport:
+        cadence = read_set.cadence
+        report = PopulationBatchReport(
+            batch_ref=batch_ref,
+            selected_cohort_refs=selected,
+            presentation_seeds=presentation,
+            activation_candidates=activations,
+            owner_bound_intents=owner_intents,
+            rejected_candidates=rejected,
+            budget_used=budget_used,
+            budget_remaining=max(0, cadence.budget - budget_used),
+            unprocessed_cohort_refs=unprocessed,
+            read_set_digest=read_set.read_set_digest,
+            result_digest="pending",
+        )
+        digest = _digest({
+            "batch_ref": batch_ref,
+            "selected_cohort_refs": selected,
+            "presentation_seeds": presentation,
+            "activation_candidates": [asdict(item) for item in activations],
+            "owner_bound_intents": [asdict(item) for item in owner_intents],
+            "rejected_candidates": [asdict(item) for item in rejected],
+            "budget_used": budget_used,
+            "budget_remaining": max(0, cadence.budget - budget_used),
+            "unprocessed_cohort_refs": unprocessed,
+            "read_set_digest": read_set.read_set_digest,
+        })
+        return report.model_copy(update={"result_digest": digest})
 
     def plan(
         self,
