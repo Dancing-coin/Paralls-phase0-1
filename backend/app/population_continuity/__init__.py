@@ -19,6 +19,7 @@ from .world import WorldContinuityRuntime
 from .social_input import FrozenSocialPlanningInput, SocialInputValidation
 from .source_inputs import HouseholdScheduleInput, OrganizationScheduleInput, FrozenSourceInput, SourceInputValidation
 from .capability_input import CapabilityInputValidation, FrozenCapabilityEligibilityInput
+from .siming_contracts import PopulationBatchReport, PopulationCadenceInput, PopulationCycleResult, PopulationOwnerReceipt, PopulationProjection, PopulationReadSet
 
 __all__ = [
     "ProfileActivationAuthority",
@@ -44,4 +45,10 @@ __all__ = [
     "SourceInputValidation",
     "CapabilityInputValidation",
     "FrozenCapabilityEligibilityInput",
+    "PopulationCadenceInput",
+    "PopulationProjection",
+    "PopulationReadSet",
+    "PopulationOwnerReceipt",
+    "PopulationBatchReport",
+    "PopulationCycleResult",
 ]
