@@ -6,7 +6,7 @@ from app.population_continuity.batch import ContinuityMergeAuthority, Population
 from app.population_continuity.seed_planner import CharacterSeedPlanner
 from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationCycleResult, PopulationProjection, PopulationReadSet, PopulationBatchReport
 from app.services.siming_event_consumer import SimingEventConsumer
-from app.services.siming_population_capability import PopulationSimulationCapability
+from app.services.siming_population_capability import PopulationSimulationCapability, default_population_read_set_builder
 from app.services.siming_runtime import SimingRuntime
 from app.population_continuity.owner_adapters import ScheduleGatedSupplyOwnerExecutor
 from app.population_continuity.vertical import BakeryDistrictPopulationFixture
@@ -151,6 +151,69 @@ def test_committed_owner_receipt_reaches_continuity_port() -> None:
     assert result.seed_candidates[0].owner_effect_status == "settled"
     assert result.seed_candidates[0].source_owner_receipt_refs == ("actor_gameplay.organization_domain",)
     assert continuity.commands[0].source_owner_receipt_refs == ("actor_gameplay.organization_domain",)
+
+
+def test_default_production_builder_supplies_bakery_owner_context() -> None:
+    fixture = BakeryDistrictPopulationFixture.create(
+        profile_dir=Path(__file__).parents[2] / "assets" / "characters" / "profiles"
+    )
+    activation = ProfileActivationAuthority(registry=fixture.registry, store=fixture.store)
+    planned, social, household, organization = fixture._plan_schedule_gated_supply(
+        batch_ref="batch:test:production", recipient_ref="character:char_a",
+        observed_at="2026-08-13T00:00:00Z",
+        activation_lock_refs=("lock:world:bakery-district:character:char_a",),
+    )
+    assert planned.plan is not None
+    _, _, pending_change_ref = fixture._admit_released_schedule_gated_supply(
+        activation=activation, batch_ref="batch:test:production",
+        recipient_ref="character:char_a", plan=planned.plan,
+    )
+    plan = planned.plan
+    candidate = plan.candidates[0]
+    cadence = cadence_input(
+        world_ref=plan.world_ref,
+        world_mode_ref="mode:bakery-district",
+        world_mode_revision=plan.mode_revision,
+        policy_revision=plan.policy_revision,
+        cadence_source_ref="gameplay:organization:org:bakery",
+        cadence_source_revision=4,
+        base_revision_vector={"gameplay:organization:org:bakery": 4},
+        report_scope=plan.report_scope,
+    )
+    event = cadence_event()
+    event = event.model_copy(
+        update={
+            "payload": {
+                "population_cadence": cadence.model_dump(mode="json"),
+                "population_world_plan": plan.model_dump(mode="json"),
+                "activation_pending_projection": activation.pending_projection(plan.world_ref),
+                "social_projection": social.model_dump(mode="json"),
+                "household_projection": household.model_dump(mode="json"),
+                "organization_projection": organization.model_dump(mode="json"),
+                "population_projections": [{
+                    "ref": "supply",
+                    "scope": plan.report_scope,
+                    "revision_vector": {"gameplay:organization:org:bakery": 4},
+                    "payload": {
+                        "actor_ref": candidate.profile_ref,
+                        "candidate_kind": "schedule_gated_supply",
+                        "state_deltas": {"task": "restock"},
+                    },
+                }],
+            }
+        }
+    )
+    read_set = default_population_read_set_builder(event, cadence)
+    owner = ScheduleGatedSupplyOwnerExecutor(
+        merger=ContinuityMergeAuthority(store=fixture.store, registry=fixture.registry, mode=fixture.mode),
+        context_builder=ScheduleGatedSupplyOwnerExecutor.context_from_intent_payload,
+    )
+    result = PopulationSimulationCapability(owner_executor=owner).run_cycle(cadence, read_set)
+    assert result.status == "accepted"
+    assert result.production_append_count == 1
+    assert result.owner_receipts[0].event_family == ScheduleGatedSupplyOwnerExecutor.EVENT_FAMILY
+    assert result.owner_receipts[0].committed
+    assert fixture.store.read_events()[-1].event_type == ScheduleGatedSupplyOwnerExecutor.EVENT_FAMILY
 
 
 def test_tick_routes_population_once() -> None:

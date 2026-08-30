@@ -5,6 +5,9 @@ from typing import Callable, Protocol, Sequence
 from app.character_agent.models.simulation_seed import CharacterContinuityCommand, CharacterContinuityReceipt
 from app.models.authority_event import AuthorityEvent
 from app.population_continuity.batch import PopulationOwnerBoundIntent, PopulationPlanner
+from app.population_continuity.models import PopulationWorldPlan
+from app.population_continuity.social_input import FrozenSocialPlanningInput
+from app.population_continuity.source_inputs import HouseholdScheduleInput, OrganizationScheduleInput
 from app.population_continuity.models import BatchIntentCandidate
 from app.population_continuity.seed_planner import CharacterSeedPlanner
 from app.population_continuity.siming_contracts import PopulationBatchReport, PopulationCadenceInput, PopulationCycleResult, PopulationOwnerReceipt, PopulationReadSet
@@ -22,14 +25,88 @@ ReadSetBuilder = Callable[[AuthorityEvent, PopulationCadenceInput], PopulationRe
 
 
 def default_population_read_set_builder(event: AuthorityEvent, cadence: PopulationCadenceInput) -> PopulationReadSet:
-    """Build only the scoped projection envelope carried by the authority event."""
+    """Build the scoped projection envelope and the fixed bakery owner context."""
     projections = tuple()
     raw = event.payload.get("population_projections")
     if raw is None:
         raw = [event.payload[key] for key in ("world_mode_projection", "organization_projection", "household_projection", "social_projection", "public_projection") if isinstance(event.payload.get(key), dict)]
     if isinstance(raw, (list, tuple)):
         from app.population_continuity.siming_contracts import PopulationProjection
+
         projections = tuple(PopulationProjection.model_validate(item) for item in raw if isinstance(item, dict))
+    def named_value(name: str, *aliases: str) -> object:
+        value = event.payload.get(name)
+        if value is None:
+            for projection in projections:
+                if projection.ref in aliases:
+                    value = projection.payload
+                    break
+        if isinstance(value, dict) and isinstance(value.get("payload"), dict):
+            value = value["payload"]
+        return value
+
+    plan_value = event.payload.get("population_world_plan") or event.payload.get("world_plan")
+    if plan_value is None:
+        for projection in projections:
+            if projection.ref in {"world_mode", "world-mode", "world_mode_projection"}:
+                plan_value = projection.payload.get("population_world_plan") or projection.payload.get("world_plan") or projection.payload.get("plan")
+                break
+    pending_value = event.payload.get("activation_pending_projection") or event.payload.get("activation_pending_context")
+    if isinstance(plan_value, dict) and isinstance(plan_value.get("payload"), dict):
+        plan_value = plan_value["payload"]
+    if isinstance(pending_value, dict) and isinstance(pending_value.get("payload"), dict):
+        pending_value = pending_value["payload"]
+    if isinstance(plan_value, dict) and isinstance(pending_value, dict):
+        try:
+            plan = PopulationWorldPlan.model_validate(plan_value)
+            pending_candidates = ((pending_value,) if "change_ref" in pending_value else tuple(
+                item for item in pending_value.values() if isinstance(item, dict)
+            ))
+            pending_rows = tuple(
+                row for row in pending_candidates
+                if isinstance(row, dict)
+                and row.get("kind") == "schedule_gated_supply"
+                and row.get("status") == "released"
+                and row.get("plan_digest") == PopulationPlanner.schedule_pending_digest(plan)
+            )
+            def source_value(name: str) -> object:
+                value = named_value(name, name.removesuffix("_projection"))
+                input_name = name.removesuffix("_projection") + "_input"
+                if isinstance(value, dict) and isinstance(value.get(input_name), dict):
+                    value = value[input_name]
+                return value
+            source_values = {
+                "social_input": FrozenSocialPlanningInput.model_validate(source_value("social_projection")),
+                "household_input": HouseholdScheduleInput.model_validate(source_value("household_projection")),
+                "organization_input": OrganizationScheduleInput.model_validate(source_value("organization_projection")),
+            }
+            if len(pending_rows) == 1:
+                pending = pending_rows[0]
+                for index, projection in enumerate(projections):
+                    payload = projection.payload
+                    if str(payload.get("candidate_kind") or payload.get("kind") or payload.get("behavior_kind") or "") != "schedule_gated_supply":
+                        continue
+                    actor_ref = str(payload.get("actor_ref") or payload.get("profile_ref") or "")
+                    candidate = plan.candidates[0]
+                    if (
+                        candidate.profile_ref != actor_ref
+                        or pending.get("profile_ref") != actor_ref
+                        or pending.get("world_ref") != plan.world_ref
+                        or pending.get("lock_ref") not in plan.activation_lock_refs
+                        or any(value.recipient_ref != actor_ref for value in source_values.values())
+                    ):
+                        continue
+                    context = {
+                        "plan": plan.model_dump(mode="json"),
+                        "pending_change_ref": pending.get("change_ref"),
+                        **{key: value.model_dump(mode="json") for key, value in source_values.items()},
+                    }
+                    projections = projections[:index] + (
+                        projection.model_copy(update={"payload": {**payload, "schedule_gated_supply_owner_context": context}}, deep=True),
+                    ) + projections[index + 1:]
+                    break
+        except (KeyError, TypeError, ValueError):
+            pass
     return PopulationReadSet.from_inputs(cadence, projections)
 
 
