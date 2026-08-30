@@ -23,6 +23,16 @@ def _projection_actor(projection: PopulationProjection) -> str:
 class CharacterSeedPlanner:
     """Derives pending actor inputs from an immutable population read set."""
 
+    ADMITTED_BEHAVIORS = frozenset(
+        {
+            "routine_work",
+            "schedule_gated_supply",
+            "relationship_negotiation",
+            "high_value_event",
+            "b3_event",
+        }
+    )
+
     def derive(
         self, read_set: PopulationReadSet, accepted_owner_receipts: Sequence[str]
     ) -> tuple[CharacterSimulationSeedCandidate, ...]:
@@ -32,7 +42,9 @@ class CharacterSeedPlanner:
         for projection in sorted(read_set.projections, key=lambda item: (_projection_actor(item), item.ref)):
             payload = projection.payload
             actor_ref = _projection_actor(projection)
-            kind = str(payload.get("candidate_kind") or payload.get("kind") or payload.get("behavior_kind") or "routine_work")
+            kind = str(payload.get("candidate_kind") or payload.get("kind") or payload.get("behavior_kind") or "")
+            if kind not in self.ADMITTED_BEHAVIORS or not actor_ref.startswith("character:"):
+                continue
             source_refs = self._source_refs(payload)
             owner_refs = self._owner_receipt_refs(payload)
             objective = kind == "schedule_gated_supply" or bool(payload.get("objective_effect")) or bool(payload.get("world_effect"))
@@ -67,14 +79,12 @@ class CharacterSeedPlanner:
             seed_id = f"seed:{actor_ref}:{projection.ref}"
             owner_status = "not_required"
             if objective:
-                owner_status = "settled" if accepted.intersection(owner_refs) or (not owner_refs and len(accepted) == 1) else "owner_settlement_required"
+                owner_status = "settled" if owner_refs.intersection(accepted) else "owner_settlement_required"
             settled_refs = tuple(sorted(owner_refs.intersection(accepted)))
-            if owner_status == "settled" and not settled_refs and len(accepted) == 1:
-                settled_refs = (next(iter(accepted)),)
             presentation = dict(payload.get("presentation_seed") or {})
             presentation.setdefault("behavior_kind", kind)
             presentation.setdefault("report_scope", cadence.report_scope)
-            presentation.setdefault("actor_scope", str(payload.get("actor_scope") or "actor:self"))
+            presentation["actor_scope"] = "actor:self"
             presentation.setdefault("exposure_basis", exposure_basis)
             seeds.append(
                 CharacterSimulationSeedCandidate(
@@ -90,7 +100,7 @@ class CharacterSeedPlanner:
                     drift_candidates=tuple(payload.get("drift_candidates") or ()),
                     activation_hints=tuple(str(item) for item in (payload.get("activation_hints") or ())),
                     presentation_seed=presentation,
-                    visibility_scope=str(payload.get("actor_scope") or "actor:self"),
+                    visibility_scope="actor:self",
                     privacy_disposition=str(payload.get("privacy_disposition") or "scoped"),
                     source_revision_vector=dict(projection.revision_vector),
                     ruleset_revision=cadence.ruleset_revision,

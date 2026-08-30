@@ -138,6 +138,19 @@ def _branch_work_wage_request_digest(request: BranchWorkWageRequest) -> str:
 class PopulationPlanner:
     """Pure proposal generator; it has no store and no append method."""
 
+    ADMITTED_BEHAVIORS = frozenset(
+        {
+            "routine_work",
+            "schedule_gated_supply",
+            "relationship_negotiation",
+            "high_value_event",
+            "b3_event",
+        }
+    )
+    ACTIVATION_BEHAVIORS = frozenset(
+        {"relationship_negotiation", "high_value_event", "b3_event"}
+    )
+
     @staticmethod
     def schedule_pending_digest(plan: PopulationWorldPlan) -> str:
         """Pin the exact admitted schedule plan; this is not a generic payload digest."""
@@ -179,8 +192,22 @@ class PopulationPlanner:
         budget_used = 0
         for index, projection in enumerate(ordered):
             payload = projection.payload
-            kind = str(payload.get("candidate_kind") or payload.get("kind") or payload.get("behavior_kind") or "routine_work")
-            cost = max(0, int(payload.get("budget_cost", 1 if kind in {"relationship_negotiation", "high_value_event", "b3_event"} else 0) or 0))
+            kind = str(payload.get("candidate_kind") or payload.get("kind") or payload.get("behavior_kind") or "")
+            if kind not in self.ADMITTED_BEHAVIORS:
+                rejected.append(PopulationRejectedCandidate(projection.ref, "capability_not_admitted", kind))
+                continue
+            default_cost = 1 if kind in self.ACTIVATION_BEHAVIORS else 0
+            try:
+                cost = max(0, int(payload.get("budget_cost", default_cost) or 0))
+            except (TypeError, ValueError):
+                rejected.append(PopulationRejectedCandidate(projection.ref, "budget_invalid", kind))
+                continue
+            if kind in self.ACTIVATION_BEHAVIORS and cost == 0:
+                cost = 1
+            fallback = str(payload.get("fallback") or "requeue")
+            if fallback not in {"no-op", "requeue"}:
+                rejected.append(PopulationRejectedCandidate(projection.ref, "fallback_invalid", kind))
+                continue
             if len(selected) >= cadence.catch_up_limit or budget_used + cost > cadence.budget:
                 unprocessed.extend(item.ref for item in ordered[index:])
                 break
@@ -197,14 +224,12 @@ class PopulationPlanner:
                     actor_ref=actor_ref,
                     reason="high_value_b2_requires_activation" if kind == "relationship_negotiation" else "high_value_b3_requires_activation",
                     activation_reason=str(payload.get("activation_reason") or kind),
-                    budget=cost or 1,
-                    scope=scope,
+                    budget=cost,
+                    scope="actor:self" if actor_ref.startswith("character:") else scope,
                     source_revision_vector=source_vector,
-                    fallback=str(payload.get("fallback") or "requeue"),
+                    fallback=fallback,
                 ))
                 budget_used += cost
-            elif kind in {"new_story_action", "unknown", ""}:
-                rejected.append(PopulationRejectedCandidate(projection.ref, "capability_not_admitted", kind))
             else:
                 presentation[projection.ref] = {
                     "actor_ref": actor_ref,
@@ -244,7 +269,7 @@ class PopulationPlanner:
             batch_ref=batch_ref,
             selected_cohort_refs=selected,
             presentation_seeds=presentation,
-            activation_candidates=activations,
+            activation_candidates=tuple(item.candidate_ref for item in activations),
             owner_bound_intents=owner_intents,
             rejected_candidates=rejected,
             budget_used=budget_used,

@@ -105,7 +105,55 @@ def test_routine_b0_behavior_never_requests_an_llm_activation() -> None:
 def test_high_value_b2_behavior_is_an_activation_candidate_with_budget_reason() -> None:
     report = PopulationPlanner().plan_population_cycle(read_set_with_candidate_kind("relationship_negotiation"))
     assert report.activation_candidates
-    assert report.activation_candidates[0].reason == "high_value_b2_requires_activation"
+    assert report.activation_candidates == ("candidate",)
+
+
+def test_unregistered_behavior_is_rejected_instead_of_becoming_presentation_seed() -> None:
+    report = PopulationPlanner().plan_population_cycle(
+        read_set_with_candidate_kind("invented_behavior")
+    )
+    assert report.presentation_seeds == {}
+    assert report.rejected_candidates[0].reason == "capability_not_admitted"
+
+
+def test_unknown_projection_is_not_turned_into_a_character_seed() -> None:
+    assert CharacterSeedPlanner().derive(
+        read_set_with_candidate_kind("invented_behavior"), ()
+    ) == ()
+
+
+def test_objective_seed_does_not_accept_an_unrelated_owner_receipt() -> None:
+    seed = CharacterSeedPlanner().derive(
+        read_set_with_supply_candidate().model_copy(
+            update={"projections": (projection("supply", actor_ref="character:char_a", candidate_kind="schedule_gated_supply", owner_receipt_ref="receipt:expected"),)},
+            deep=True,
+        ),
+        ("receipt:unrelated",),
+    )[0]
+    assert seed.owner_effect_status == "owner_settlement_required"
+    assert seed.source_owner_receipt_refs == ()
+
+
+def test_seed_visibility_is_actor_private_even_when_projection_scope_is_public() -> None:
+    read_set = read_set_with_public_frost().model_copy(
+        update={"projections": (PopulationProjection(ref="frost", scope="public", revision_vector={"world:bakery": 1}, payload={"actor_ref": "character:char_a", "candidate_kind": "routine_work", "exposure_basis": "public_propagation"}),)},
+        deep=True,
+    )
+    seed = CharacterSeedPlanner().derive(read_set, ())[0]
+    assert seed.visibility_scope == "actor:self"
+    assert seed.presentation_seed["actor_scope"] == "actor:self"
+
+
+def test_activation_fallback_and_budget_cost_are_closed() -> None:
+    invalid_read_set = PopulationReadSet.from_inputs(
+        cadence(),
+        (projection("candidate", actor_ref="character:char_a", candidate_kind="relationship_negotiation", fallback="discard", budget_cost=0),),
+    )
+    invalid = PopulationPlanner().plan_population_cycle(
+        invalid_read_set
+    )
+    assert invalid.activation_candidates == ()
+    assert invalid.rejected_candidates[0].reason == "fallback_invalid"
 
 
 def test_seed_planner_returns_typed_candidates() -> None:

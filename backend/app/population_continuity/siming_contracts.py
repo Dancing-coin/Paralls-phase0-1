@@ -156,7 +156,7 @@ class PopulationBatchReport(ContinuityModel):
     batch_ref: str = Field(min_length=1)
     selected_cohort_refs: tuple[str, ...] = ()
     presentation_seeds: dict[str, Any] = Field(default_factory=dict)
-    activation_candidates: tuple[Any, ...] = ()
+    activation_candidates: tuple[str, ...] = ()
     owner_bound_intents: tuple[Any, ...] = ()
     rejected_candidates: tuple[Any, ...] = ()
     budget_used: int = Field(ge=0)
