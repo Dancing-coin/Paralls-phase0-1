@@ -1257,7 +1257,7 @@ class CharacterAgentRuntime:
             )
         prior = self._continuity_receipts.get(command.idempotency_key)
         if isinstance(prior, CharacterContinuityReceipt):
-            return prior.model_copy(deep=True)
+            return prior.model_copy(update={"status": "idempotent_replay"}, deep=True)
         current_revision = self._continuity_revisions.get(actor_id, 0)
         if command.expected_character_revision != current_revision:
             return CharacterContinuityReceipt(

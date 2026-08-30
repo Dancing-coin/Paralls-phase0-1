@@ -37,7 +37,8 @@ class ScheduleGatedSupplyOwnerExecutor:
         try:
             result = self._merger.merge_released_schedule_gated_supply(plan=plan, pending_change_ref=pending_change_ref, social_input=social_input, household_input=household_input, organization_input=organization_input)
             receipt_ref = str(getattr(result, "owner_receipt_ref", "") or f"receipt:{intent.intent_ref}")
-            return PopulationOwnerReceipt(receipt_ref=receipt_ref, owner_ref=self.OWNER_REF, event_family=self.EVENT_FAMILY, committed=bool(result.committed), revision_vector=dict(result.revision_vector), zero_write=not bool(result.committed))
+            idempotency_status = str(getattr(result, "idempotency_status", "new_commit"))
+            return PopulationOwnerReceipt(receipt_ref=receipt_ref, owner_ref=self.OWNER_REF, event_family=self.EVENT_FAMILY, committed=bool(result.committed), revision_vector=dict(result.revision_vector), zero_write=not bool(result.committed) or idempotency_status == "duplicate_replayed", idempotency_status=idempotency_status)
         except Exception:
             return PopulationOwnerReceipt(receipt_ref=f"rejected:{intent.intent_ref}", owner_ref=self.OWNER_REF, event_family=self.EVENT_FAMILY, committed=False, revision_vector={}, zero_write=True)
 

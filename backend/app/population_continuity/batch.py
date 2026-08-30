@@ -1065,6 +1065,14 @@ class ContinuityMergeAuthority:
         """Consume one released activation-owned schedule admission, then the existing owner row."""
         from .activation import ProfileActivationAuthority
 
+        released_plan = plan.model_copy(
+            update={"activation_lock_refs": (), "activation_locks": ()}, deep=True
+        )
+        if self.store.get_by_idempotency(
+            OrganizationAuthority._PRINCIPAL, f"merge:{plan.batch_ref}"
+        ) is not None:
+            return self.merge_world_plan(released_plan)
+
         pending = ProfileActivationAuthority(
             registry=self.registry, store=self.store
         ).pending_projection(plan.world_ref).get(pending_change_ref)
@@ -1087,9 +1095,6 @@ class ContinuityMergeAuthority:
             or pending.get("lock_ref") not in plan.activation_lock_refs
         ):
             return self._failed(plan, "released_schedule_pending_invalid")
-        released_plan = plan.model_copy(
-            update={"activation_lock_refs": (), "activation_locks": ()}, deep=True
-        )
         return self.merge_schedule_gated_supply(
             plan=released_plan,
             social_input=social_input,

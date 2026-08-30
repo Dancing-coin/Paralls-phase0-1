@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from app.character_agent.models.simulation_seed import (
@@ -10,6 +10,9 @@ from app.character_agent.models.simulation_seed import (
     CharacterMemoryCandidate,
 )
 from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
+from app.character_agent.storage.graph_continuity_store import (
+    CharacterGraphContinuityStore,
+)
 from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.gameplay.bakery_mirror_source import BakeryMirrorSource
 from app.gameplay.bakery_reference_runtime import BakeryReferenceScenario
@@ -22,6 +25,7 @@ from app.models.authority_event import (
     AuthorityEventSource,
 )
 from app.models.player_input import DialogueSubmit
+from app.models.siming_heavenly_graph import HeavenlyGraphScope
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.session_input_router import SessionInputRouter
 from app.services.siming_audit_writer import SimingAuditWriter
@@ -30,6 +34,7 @@ from app.services.siming_event_pipeline import SimingEventPipeline
 from app.services.siming_event_producer import SimingEventProducer
 from app.services.siming_population_capability import PopulationSimulationCapability
 from app.services.siming_runtime import SimingRuntime
+from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
 
 from .activation import ProfileActivationAuthority
 from .activation_policy import ActivationPolicy
@@ -555,15 +560,23 @@ class BakeryDistrictPopulationFixture:
 @dataclass
 class _CharacterRuntimeContinuityPort:
     runtime: CharacterAgentRuntime
+    commands: list[CharacterContinuityCommand] = field(default_factory=list)
 
     def apply_command(self, command: CharacterContinuityCommand):
+        self.commands.append(command)
         return self.runtime.apply_character_continuity_command(command)
 
 
 class _RecordingPopulationSimulationCapability(PopulationSimulationCapability):
-    last_result: PopulationCycleResult | None = None
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.last_result: PopulationCycleResult | None = None
+        self.run_count = 0
+        self.cadence_ids: list[str] = []
 
     def run_cycle(self, cadence_input, read_set):
+        self.run_count += 1
+        self.cadence_ids.append(cadence_input.cadence_id)
         self.last_result = super().run_cycle(cadence_input, read_set)
         return self.last_result
 
@@ -575,9 +588,11 @@ class SimingLedPopulationFixture:
     pipeline: SimingEventPipeline
     capability: _RecordingPopulationSimulationCapability
     character_runtime: CharacterAgentRuntime
+    continuity_port: _CharacterRuntimeContinuityPort
     activation_policy: ActivationPolicy
     cadence_event: AuthorityEvent
     world_mode_receipt: object
+    bus_identity: int
 
     @classmethod
     def create(cls) -> "SimingLedPopulationFixture":
@@ -620,9 +635,10 @@ class SimingLedPopulationFixture:
         character_runtime = CharacterAgentRuntime(
             activation_authority=activation_authority
         )
+        continuity_port = _CharacterRuntimeContinuityPort(character_runtime)
         capability = _RecordingPopulationSimulationCapability(
             owner_executor=owner,
-            continuity_port=_CharacterRuntimeContinuityPort(character_runtime),
+            continuity_port=continuity_port,
         )
         bus = InMemoryAuthorityEventBus()
         pipeline = SimingEventPipeline(
@@ -649,9 +665,11 @@ class SimingLedPopulationFixture:
             pipeline=pipeline,
             capability=capability,
             character_runtime=character_runtime,
+            continuity_port=continuity_port,
             activation_policy=ActivationPolicy(),
             cadence_event=cadence_event,
             world_mode_receipt=world_mode_receipt,
+            bus_identity=id(bus),
         )
 
     @staticmethod
@@ -738,6 +756,144 @@ class SimingLedPopulationFixture:
             },
         )
 
+    def _run_player_dialogue(self, dialogue: DialogueSubmit) -> dict[str, object]:
+        from app import main
+        from app.ws_protocol import Envelope
+
+        debug_events: list[dict[str, object]] = []
+        saved = (
+            main.character_agent_runtime,
+            main.activation_policy,
+            main.runtime,
+            main._publish_debug_event,
+        )
+        main.character_agent_runtime = self.character_runtime
+        main.activation_policy = self.activation_policy
+        main.runtime = SessionInputRouter()
+        main._publish_debug_event = debug_events.append
+        try:
+            messages = main._handle_envelope(
+                Envelope(message_type="player_input", payload=dialogue.model_dump())
+            )
+        finally:
+            (
+                main.character_agent_runtime,
+                main.activation_policy,
+                main.runtime,
+                main._publish_debug_event,
+            ) = saved
+        activation_event = next(
+            event
+            for event in debug_events
+            if event.get("stage") == "activation_active"
+        )
+        timeline = self.character_runtime.get_session_timeline(dialogue.target_actor_id)
+        execution = next(
+            event
+            for event in reversed(timeline)
+            if event.get("event_type") == "character_agent_execution_request"
+        )
+        interpretation = next(
+            event
+            for event in reversed(timeline)
+            if event.get("event_type") == "character_interpretation_event"
+        )
+        ack = next(message for message in messages if message["message_type"] == "ack")
+        response = next(
+            message
+            for message in messages
+            if message["message_type"] == "dialogue_response"
+        )
+        return {
+            "activation": activation_event["detail"]["receipt"],
+            "decision": activation_event["detail"]["decision"],
+            "route": ack["payload"],
+            "dialogue_response": response["payload"],
+            "local_structured_intent": execution["payload"]["execution_semantics"][
+                "movement_intent"
+            ],
+            "cognition_status": interpretation["payload"]["cognition_status"],
+            "actual_player_input_path": True,
+        }
+
+    @staticmethod
+    def _character_continuity_store() -> CharacterGraphContinuityStore:
+        return CharacterGraphContinuityStore(
+            InMemoryHeavenlyGraphAdapter(),
+            scope_resolver=lambda actor_id: HeavenlyGraphScope(
+                world_id="world:bakery-district",
+                session_id="session:siming-led-population",
+                story_branch_id="branch:main",
+                graph_namespace="actor_private",
+                owner_actor_id=actor_id,
+            ),
+            require_complete_snapshot=True,
+        )
+
+    @staticmethod
+    def _continuity_projection(snapshot: dict[str, object]) -> dict[str, object]:
+        timeline = snapshot.get("session_timeline", [])
+        return {
+            key: snapshot.get(key)
+            for key in (
+                "dynamic_state",
+                "need_tension_state",
+                "continuity_revisions",
+                "continuity_receipts",
+                "materialization_receipts",
+                "pending_seed_candidates",
+                "seed_projection",
+            )
+        } | {
+            "session_timeline": [
+                {
+                    "event_type": event.get("event_type"),
+                    "producer_ts": event.get("producer_ts"),
+                    "payload": event.get("payload"),
+                }
+                for event in timeline
+                if isinstance(event, dict)
+            ]
+        }
+
+    def _replay_character_continuity(
+        self,
+        *,
+        main_command: CharacterContinuityCommand,
+        duplicate_command: CharacterContinuityCommand,
+        private_command: CharacterContinuityCommand,
+    ) -> dict[str, object]:
+        actor_id = main_command.actor_ref.removeprefix("character:")
+        full_store = self._character_continuity_store()
+        full_runtime = CharacterAgentRuntime(continuity_store=full_store)
+        full_runtime.apply_character_continuity_command(main_command)
+        full_runtime.materialize_pending_seed_memories(actor_id, producer_ts=101)
+        full_runtime.apply_character_continuity_command(duplicate_command)
+        full_runtime.apply_character_continuity_command(private_command)
+        full_runtime.materialize_pending_seed_memories(actor_id, producer_ts=102)
+        full_snapshot = full_store.read_snapshot(actor_id)
+
+        checkpoint_store = self._character_continuity_store()
+        checkpoint_runtime = CharacterAgentRuntime(continuity_store=checkpoint_store)
+        checkpoint_runtime.apply_character_continuity_command(main_command)
+        checkpoint_runtime.materialize_pending_seed_memories(actor_id, producer_ts=101)
+        tail_runtime = CharacterAgentRuntime(continuity_store=checkpoint_store)
+        tail_runtime.apply_character_continuity_command(duplicate_command)
+        tail_runtime.apply_character_continuity_command(private_command)
+        tail_runtime.materialize_pending_seed_memories(actor_id, producer_ts=102)
+        tail_snapshot = checkpoint_store.read_snapshot(actor_id)
+        if full_snapshot is None or tail_snapshot is None:
+            raise RuntimeError("character_continuity_replay_snapshot_missing")
+        full_projection = self._continuity_projection(full_snapshot)
+        tail_projection = self._continuity_projection(tail_snapshot)
+        return {
+            "full_hash": self.bakery._digest(full_projection),
+            "checkpoint_tail_hash": self.bakery._digest(tail_projection),
+            "equal": full_projection == tail_projection,
+            "independent": full_runtime is not tail_runtime
+            and checkpoint_runtime is not tail_runtime,
+        }
+
     def run(self) -> dict[str, object]:
         before_population = len(self.bakery.store.read_events())
         self.bus.publish(self.cadence_event)
@@ -763,28 +919,42 @@ class SimingLedPopulationFixture:
             target_actor_id=actor_id,
             content="Is the bread supply ready?",
         )
-        route = SessionInputRouter().accept_player_input(dialogue)
-        decision = self.activation_policy.evaluate(
-            actor_id=actor_id,
-            distance_m=2.0,
-            focused=True,
-            interaction_type="dialogue",
-            pending_seed=bool(pending_before_activation),
-            budget=1,
-        )
-        activation = self.character_runtime.activate_actor(
-            actor_id, decision, producer_ts=dialogue.producer_ts
-        )
+        player_handoff = self._run_player_dialogue(dialogue)
+        activation = player_handoff["activation"]
+        decision = player_handoff["decision"]
         identity_after = self.character_runtime.character_identity_digest(actor_id)
 
         main_event_count = len(self.bakery.store.read_events())
         main_timeline_count = len(self.character_runtime.get_session_timeline(actor_id))
+        continuity_before_duplicate = self.bakery._digest(
+            {
+                "revision": self.character_runtime._continuity_revisions.get(actor_id, 0),
+                "pending": self.character_runtime.get_pending_seed_candidates(actor_id),
+                "materialization_receipts": {
+                    key: value.model_dump(mode="json")
+                    for key, value in self.character_runtime._materialization_receipts.items()
+                },
+                "seed_projection": self.character_runtime.get_seed_projection(actor_id),
+            }
+        )
         self.bus.publish(self.cadence_event)
         duplicate = self.capability.last_result
+        continuity_after_duplicate = self.bakery._digest(
+            {
+                "revision": self.character_runtime._continuity_revisions.get(actor_id, 0),
+                "pending": self.character_runtime.get_pending_seed_candidates(actor_id),
+                "materialization_receipts": {
+                    key: value.model_dump(mode="json")
+                    for key, value in self.character_runtime._materialization_receipts.items()
+                },
+                "seed_projection": self.character_runtime.get_seed_projection(actor_id),
+            }
+        )
         duplicate_zero_write = (
             len(self.bakery.store.read_events()) == main_event_count
             and len(self.character_runtime.get_session_timeline(actor_id))
             == main_timeline_count
+            and continuity_before_duplicate == continuity_after_duplicate
         )
 
         stale_payload = self.cadence_event.model_dump(mode="json")
@@ -871,6 +1041,16 @@ class SimingLedPopulationFixture:
             == before_private_materialization
         )
 
+        duplicate_owner = duplicate.owner_receipts[0]
+        duplicate_continuity = duplicate.continuity_receipts[0]
+        main_command = self.continuity_port.commands[0]
+        duplicate_command = self.continuity_port.commands[1]
+        private_command_for_replay = private_command
+        replay_continuity = self._replay_character_continuity(
+            main_command=main_command,
+            duplicate_command=duplicate_command,
+            private_command=private_command_for_replay,
+        )
         events = self.bakery.store.read_events()
         replay = GameplayProjectionReplay(
             projector_id="siming-led-population-seed-continuity",
@@ -881,14 +1061,17 @@ class SimingLedPopulationFixture:
         tail = replay.checkpoint_plus_tail_replay(
             replay.create_checkpoint(events[:split]), events[split:]
         )
-        timeline_digest = self.bakery._digest(
-            self.character_runtime.get_session_timeline(actor_id)
-        )
         full_digest = self.bakery._digest(
-            {"gameplay": full.projection_hash, "character": timeline_digest}
+            {
+                "gameplay": full.projection_hash,
+                "character": replay_continuity["full_hash"],
+            }
         )
         tail_digest = self.bakery._digest(
-            {"gameplay": tail.projection_hash, "character": timeline_digest}
+            {
+                "gameplay": tail.projection_hash,
+                "character": replay_continuity["checkpoint_tail_hash"],
+            }
         )
         seed = cycle.seed_candidates[0]
         owner = cycle.owner_receipts[0]
@@ -936,26 +1119,58 @@ class SimingLedPopulationFixture:
                 "presentation_seed": projection.get("presentation_seed", {}),
             },
             "activation": {
-                "status": activation.status,
+                "status": activation["status"],
                 "same_character_identity": identity_before == identity_after,
                 "identity_digest": identity_after,
-                "decision": decision.model_dump(mode="json"),
-                "route": route,
+                "decision": decision,
+                "route": player_handoff["route"],
+                "actual_player_input_path": player_handoff["actual_player_input_path"],
+                "local_structured_intent": player_handoff["local_structured_intent"],
+                "cognition_status": player_handoff["cognition_status"],
                 "result_digest": self.bakery._digest(
-                    activation.model_dump(mode="json")
+                    activation
                 ),
             },
             "replay": {
-                "full_equals_checkpoint_tail": full_digest == tail_digest,
+                "full_equals_checkpoint_tail": replay_continuity["equal"]
+                and full_digest == tail_digest,
                 "full_hash": full_digest,
                 "checkpoint_tail_hash": tail_digest,
+                "character_full_hash": replay_continuity["full_hash"],
+                "character_checkpoint_tail_hash": replay_continuity[
+                    "checkpoint_tail_hash"
+                ],
+                "independent_character_rebuilds": replay_continuity["independent"],
             },
             "rejections": {
                 "stale_read_set_zero_write": stale_zero_write,
                 "private_memory_without_exposure_zero_write": private_zero_write,
                 "duplicate_seed_zero_write": duplicate_zero_write,
                 "unknown_behavior_zero_write": unknown_zero_write,
-                "duplicate_status": duplicate.status if duplicate is not None else "",
+                "duplicate_status": "accepted"
+                if duplicate is not None and duplicate.status == "accepted"
+                else (duplicate.status if duplicate is not None else ""),
+                "duplicate_owner_idempotency_status": duplicate_owner.idempotency_status,
+                "duplicate_continuity_status": duplicate_continuity.status,
+                "duplicate_continuity_projection_unchanged": continuity_before_duplicate
+                == continuity_after_duplicate,
                 "unknown_status": unknown.status if unknown is not None else "",
+            },
+            "architecture": {
+                "authority_bus_identity": self.bus_identity,
+                "pipeline_bus_identity": id(self.pipeline._bus),
+                "authority_bus_event_count": len(
+                    self.bus.list_events(include_realtime=True, current_only=False)
+                ),
+                "authority_bus_publish_count": len(
+                    self.bus.list_events(
+                        event_type="population_cadence_event",
+                        include_realtime=True,
+                        current_only=False,
+                    )
+                ),
+                "population_tick_count": self.capability.run_count,
+                "population_tick_cadence_ids": list(self.capability.cadence_ids),
+                "siming_runtime_identity": id(self.pipeline._runtime),
             },
         }

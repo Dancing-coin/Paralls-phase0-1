@@ -57,6 +57,17 @@ def main() -> int:
     }
     replay = evidence["replay"]
     rejections = evidence["rejections"]
+    architecture = evidence["architecture"]
+    single_bus = (
+        architecture["authority_bus_identity"]
+        == architecture["pipeline_bus_identity"]
+        and architecture["authority_bus_publish_count"] > 0
+    )
+    single_tick_path = (
+        architecture["population_tick_count"]
+        == architecture["authority_bus_publish_count"]
+        and len(set(architecture["population_tick_cadence_ids"])) == 1
+    )
     report = {
         "overall_passed": bool(
             focused
@@ -68,17 +79,27 @@ def main() -> int:
             and evidence["character"]["continuity_status"] == "committed"
             and evidence["activation"]["status"] == "active"
             and evidence["activation"]["same_character_identity"] is True
+            and evidence["activation"]["actual_player_input_path"] is True
+            and bool(evidence["activation"]["local_structured_intent"])
             and replay["full_equals_checkpoint_tail"] is True
+            and replay["independent_character_rebuilds"] is True
             and rejections["stale_read_set_zero_write"] is True
             and rejections["private_memory_without_exposure_zero_write"] is True
             and rejections["duplicate_seed_zero_write"] is True
             and rejections["unknown_behavior_zero_write"] is True
+            and rejections["duplicate_status"] == "accepted"
+            and rejections["duplicate_owner_idempotency_status"]
+            == "duplicate_replayed"
+            and rejections["duplicate_continuity_status"] == "idempotent_replay"
+            and rejections["duplicate_continuity_projection_unchanged"] is True
+            and single_bus
+            and single_tick_path
         ),
         "predecessors": predecessors,
         "harness_checks": {
             "focused_pytest": focused,
-            "single_authority_event_bus": True,
-            "single_siming_tick_path": True,
+            "single_authority_event_bus": single_bus,
+            "single_siming_tick_path": single_tick_path,
             "owner_mediated_settlement": evidence["owner"]["event_family"]
             == "gameplay.organization.commerce_commitment_accepted",
             "same_character_activation": evidence["activation"][
@@ -102,6 +123,7 @@ def main() -> int:
         "population": evidence["population"],
         "owner": evidence["owner"],
         "character": evidence["character"],
+        "architecture": architecture,
         "focused_log": focused_log,
     }
     return write_report("siming-led-population-seed-continuity", report)

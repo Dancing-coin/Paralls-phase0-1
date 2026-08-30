@@ -703,7 +703,10 @@ Backend-only direct profile for the bounded Siming-led bakery population seed ha
 one game-start cadence entering the existing `SimingRuntime.tick()` path, Organization owner
 settlement, Character Core seed continuity, and player-triggered activation of the same character
 identity. It also checks full versus checkpoint-tail replay and stale/private/duplicate/unknown
-zero-write cases.
+zero-write cases. Character replay uses independent runtimes rebuilt from actor-private graph
+snapshots; player takeover uses the production `_handle_envelope` route and proves one L1-L4
+structured execution request with an explicit `continuity_floor` no-model fallback. Bus and Siming
+tick checks are derived from fixture event counts and runtime identities rather than constants.
 
 ```powershell
 python scripts/verification/harness.py --profile siming-led-population-seed-continuity

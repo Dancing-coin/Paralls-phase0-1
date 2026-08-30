@@ -160,7 +160,10 @@ class PopulationSimulationCapability:
             )
             receipt = self._owner_executor.submit(intent, read_set=read_set)
             owner_receipts.append(receipt)
-            if receipt.committed and not receipt.zero_write:
+            if receipt.committed and (
+                not receipt.zero_write
+                or receipt.idempotency_status == "duplicate_replayed"
+            ):
                 owner_refs.append(receipt.receipt_ref)
                 owner_receipt_associations[bound.candidate_ref] = receipt.receipt_ref
 

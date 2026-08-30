@@ -145,6 +145,7 @@ class PopulationOwnerReceipt(ContinuityModel):
     committed: bool
     revision_vector: dict[str, int] = Field(default_factory=dict)
     zero_write: bool
+    idempotency_status: str = "new_commit"
 
     @model_validator(mode="after")
     def validate_receipt_vector(self) -> "PopulationOwnerReceipt":
