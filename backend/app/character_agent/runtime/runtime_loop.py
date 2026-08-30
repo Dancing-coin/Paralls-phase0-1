@@ -1031,8 +1031,9 @@ class CharacterAgentRuntime:
             return ActivationReceipt(committed=False, status="requeued", profile_ref=profile_ref, zero_write=True, stop_reason="unsupported_actor")
         if decision.actor_id != actor_id or decision.state != "active":
             return ActivationReceipt(committed=False, status="requeued", profile_ref=profile_ref, zero_write=True, stop_reason="activation_decision_not_active")
-        lock_ref = f"lock:{self._activation_world_ref}:{profile_ref}"
-        if lock_ref in authority._locks:
+        if authority.is_lock_active(
+            world_ref=self._activation_world_ref, profile_ref=profile_ref
+        ):
             return ActivationReceipt(committed=False, status="requeued", profile_ref=profile_ref, zero_write=True, stop_reason="activation_lock_conflict")
         stream = f"population:{self._activation_world_ref}"
         receipt = authority.lock(
@@ -1042,9 +1043,18 @@ class CharacterAgentRuntime:
         )
         if not receipt.committed:
             return receipt.model_copy(update={"status": "requeued", "stop_reason": "activation_lock_conflict"})
-        if decision.load_private_memory:
-            self.materialize_pending_seed_memories(actor_id, producer_ts)
-        return receipt
+        lock_ref = f"lock:{self._activation_world_ref}:{profile_ref}"
+        try:
+            if decision.load_private_memory:
+                self.materialize_pending_seed_memories(actor_id, producer_ts)
+        finally:
+            release = authority.release_lock(
+                lock_ref=lock_ref,
+                expected_revision=authority.store.get_stream_head(stream),
+            )
+        if not release.committed:
+            return release.model_copy(update={"status": "requeued"})
+        return release.model_copy(update={"status": "active"})
 
     def set_activation_authority(self, authority: ProfileActivationAuthority) -> None:
         self._activation_authority = authority

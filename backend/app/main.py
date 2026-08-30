@@ -1584,22 +1584,28 @@ def _activate_character_for_player_input(
     else:
         target_actor_id = event.target_object_id.removeprefix("character:")
         interaction_type, focused = event.interaction_type, True
-    if not character_agent_runtime.supports_actor(target_actor_id):
-        return
-    projection = character_agent_runtime.get_seed_projection(target_actor_id)
+    supported_actor = character_agent_runtime.supports_actor(target_actor_id)
+    projection = (
+        character_agent_runtime.get_seed_projection(target_actor_id)
+        if supported_actor
+        else {}
+    )
     decision = activation_policy.evaluate(
         actor_id=target_actor_id,
         distance_m=runtime.distance_between(event.actor_id, target_actor_id) or float("inf"),
         focused=focused,
         interaction_type=interaction_type,
         pending_seed=bool(projection.get("activation_hints"))
-        or bool(character_agent_runtime.get_pending_seed_candidates(target_actor_id)),
+        or (
+            supported_actor
+            and bool(character_agent_runtime.get_pending_seed_candidates(target_actor_id))
+        ),
         budget=int(
             character_agent_runtime.get_runtime_population_policy()[
                 "max_active_actors_per_tick"
             ]
         ),
-        supported_actor=True,
+        supported_actor=supported_actor,
     )
     receipt = (
         character_agent_runtime.activate_actor(

@@ -24,9 +24,16 @@ def test_activation_preserves_same_character_identity() -> None:
     assert instance.character_identity_digest("char_a") == before
 
 
-def test_activation_lock_conflict_requeues_without_duplicate_runtime_state() -> None:
+def test_activation_releases_lock_for_same_character_reactivation() -> None:
     instance = runtime()
-    instance.activate_actor("char_a", active_dialogue_decision(), producer_ts=101)
+    first = instance.activate_actor("char_a", active_dialogue_decision(), producer_ts=101)
     second = instance.activate_actor("char_a", active_dialogue_decision(), producer_ts=102)
-    assert second.status == "requeued"
-    assert second.stop_reason == "activation_lock_conflict"
+    assert first.committed and second.committed
+    assert second.status == "active"
+
+
+def test_runtime_does_not_reach_into_authority_private_lock_state() -> None:
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parents[1] / "app" / "character_agent" / "runtime" / "runtime_loop.py"
+    assert "authority._locks" not in source.read_text(encoding="utf-8")

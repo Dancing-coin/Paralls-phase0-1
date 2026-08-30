@@ -46,3 +46,22 @@ def test_structured_player_inputs_invoke_activation_once_without_requeueing_acti
     assert [decision.state for decision in decisions] == ["active", "activation_candidate", "active"]
     assert len(receipts) == 2
     assert all(receipt.committed for receipt in receipts)
+
+
+def test_unsupported_actor_produces_zero_write_requeue_audit(monkeypatch) -> None:
+    import app.main as main
+    from app.models.player_input import FocusTargetChange
+
+    main.reset_runtime_state()
+    audits = []
+    monkeypatch.setattr(main, "_publish_debug_event", audits.append)
+    main._activate_character_for_player_input(
+        FocusTargetChange(
+            player_id="p1", room_id="room_demo", actor_id="char_c", producer_ts=101,
+            target_actor_id="unknown_actor",
+        )
+    )
+
+    assert audits[-1]["stage"] == "activation_requeue"
+    assert audits[-1]["detail"]["decision"]["reason"] == "unsupported_actor"
+    assert audits[-1]["detail"]["receipt"] == {}
