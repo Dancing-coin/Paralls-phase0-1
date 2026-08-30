@@ -30,4 +30,18 @@ class CharacterContinuityService:
         return self._materialize(actor_id, producer_ts)
 
 
-__all__ = ["CharacterContinuityService"]
+class CharacterRuntimeContinuityPort:
+    """Narrow Siming adapter over the already-built Character Core runtime."""
+
+    def __init__(self, runtime: object) -> None:
+        self.runtime = runtime
+
+    def apply_command(self, command: CharacterContinuityCommand) -> CharacterContinuityReceipt:
+        return self.runtime.apply_character_continuity_command(command)
+
+    def current_revision(self, actor_ref: str) -> int:
+        actor_id = actor_ref.removeprefix("character:")
+        return int(self.runtime.get_continuity_revision(actor_id))
+
+
+__all__ = ["CharacterContinuityService", "CharacterRuntimeContinuityPort"]

@@ -159,9 +159,12 @@ from app.services.siming_story_obligation_runtime import SimingStoryObligationRu
 from app.services.siming_debug_projection import SimingDebugProjection
 from app.services.siming_runtime import SimingRuntime
 from app.services.siming_population_capability import PopulationSimulationCapability
+from app.character_agent.services.character_continuity import CharacterRuntimeContinuityPort
 from app.population_continuity.batch import ContinuityMergeAuthority
 from app.population_continuity.models import WorldModeProfile
 from app.population_continuity.owner_adapters import ScheduleGatedSupplyOwnerExecutor
+from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationProjection
+from app.population_continuity.world import WorldContinuityRuntime
 from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.services.character_agent_debug_projection import CharacterAgentDebugProjection
 from app.services.script_beat_projection import ScriptBeatProjection
@@ -338,7 +341,10 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
         siming_runtime=SimingRuntime(
             llm_provider=llm_provider,
             heavenly_support=support,
-            population_capability=PopulationSimulationCapability(owner_executor=population_owner),
+            population_capability=PopulationSimulationCapability(
+                owner_executor=population_owner,
+                continuity_port=CharacterRuntimeContinuityPort(character_agent_runtime),
+            ),
             behavior_turn_recorder=BehaviorTurnRecorder(heavenly_graph),
             behavior_turn_scope_resolver=siming_scope_for_event,
         ),
@@ -680,6 +686,7 @@ def reset_runtime_state() -> None:
     for event_type in FRONTEND_AUTHORITY_EVENT_TYPES:
         authority_event_bus.subscribe(event_type, frontend_authority_event_projector.handle_event)
     debug_stream.clear()
+    _publish_population_cadence_at_game_start()
 
 
 def _ack_siming_staging_request(event: AuthorityEvent) -> None:
@@ -721,6 +728,107 @@ def _ack_siming_staging_request(event: AuthorityEvent) -> None:
         reason="" if esm_accepted else "invalid_staging_contract",
         producer_ts=event.producer_ts + 2,
     )
+
+
+def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:
+    """Hand one committed world-mode projection to the existing Siming bus."""
+    if authority_event_bus.list_events(
+        event_type="population_cadence_event", include_realtime=True, current_only=False
+    ):
+        return None
+    mode = WorldModeProfile(
+        world_ref="world:bakery-district",
+        mode="simulation",
+        revision="mode:bakery-district:v1",
+        cadence_class="daily",
+        batch_limit=4,
+        wake_budget=4,
+        catch_up_limit=2,
+        allowed_intent_kinds=("work", "supply", "inspection"),
+        survival_mode="narrative",
+        degraded_threshold=3,
+    )
+    mode_receipt = WorldContinuityRuntime(
+        store=gameplay_event_store, mode=mode
+    ).resume()
+    if not mode_receipt.committed:
+        return None
+    source_ref = f"world:{mode.world_ref}"
+    source_revision = int(mode_receipt.revision_vector.get(source_ref, 0))
+    if source_revision <= 0:
+        return None
+    base_vector = {source_ref: source_revision}
+    mode_event_refs = list(mode_receipt.committed_event_ids)
+    projections = [
+        PopulationProjection(
+            ref="projection:world-mode:bakery-district",
+            scope="public",
+            revision_vector=base_vector,
+            payload={
+                "world_ref": mode.world_ref,
+                "mode": mode.mode,
+                "revision": mode.revision,
+                "committed_event_ids": mode_event_refs,
+            },
+        ),
+        PopulationProjection(
+            ref="projection:activation:bakery-district",
+            scope="public",
+            revision_vector=base_vector,
+            payload={"world_ref": mode.world_ref, "active_profiles": []},
+        ),
+        PopulationProjection(
+            ref="projection:organization-schedule:bakery-district",
+            scope="organization:summary",
+            revision_vector=base_vector,
+            payload={"world_ref": mode.world_ref, "organization_ref": "org:bakery", "schedule_rows": []},
+        ),
+    ]
+    cadence = PopulationCadenceInput(
+        cadence_id="cadence:bakery-district:game-start",
+        world_ref=mode.world_ref,
+        world_mode_ref="world-mode:bakery-district",
+        world_mode_revision=mode.revision,
+        cadence_source_ref=source_ref,
+        cadence_source_revision=source_revision,
+        window_start=source_revision,
+        window_end=source_revision + 1,
+        base_checkpoint_ref=f"checkpoint:game-start:{source_revision}",
+        base_checkpoint_digest=f"sha256:world-mode:{source_revision}",
+        base_revision_vector=base_vector,
+        policy_revision="policy:population:v1",
+        selector_revision="selector:population:v1",
+        ruleset_revision="rules:population:v1",
+        deterministic_seed="seed:bakery-district:game-start",
+        catch_up_limit=mode.catch_up_limit,
+        budget=mode.batch_limit,
+        report_scope="organization:summary",
+    )
+    event = AuthorityEvent(
+        event_id="event:population-cadence:bakery-district:game-start",
+        event_type="population_cadence_event",
+        producer_ts=source_revision,
+        room_id="room:bakery",
+        scene_id="scene:bakery",
+        zone_id="zone:bakery",
+        source=AuthorityEventSource(layer="L2", system="world_runtime.cadence"),
+        routing=AuthorityEventRouting(audience_mode="broadcast", routing_mode="event_type"),
+        priority="p2",
+        durability="realtime",
+        causation_id=mode_event_refs[0] if mode_event_refs else "game-start:bakery",
+        correlation_id="population:bakery-district:game-start",
+        payload={
+            "population_cadence": cadence.model_dump(mode="json"),
+            "population_projections": [projection.model_dump(mode="json") for projection in projections],
+        },
+    )
+    authority_event_bus.publish(event)
+    # The handoff is consumed immediately; its audit remains durable while
+    # startup observatory messages must not leak into the next player turn.
+    drain_observatory = getattr(siming_event_pipeline, "drain_observatory_messages", None)
+    if callable(drain_observatory):
+        drain_observatory()
+    return event
 
 
 def close_runtime_resources() -> None:
@@ -1309,7 +1417,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     },
                 )
             )
-            direct_content = await asyncio.to_thread(_dialogue_direct_content, event)
+            direct_content = await asyncio.to_thread(
+                _dialogue_direct_content_with_activation, event
+            )
             if direct_content:
                 response = await asyncio.to_thread(_direct_dialogue_response, event, direct_content)
                 if cancelled.is_set():
@@ -1422,7 +1532,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     continue
                 stream_event = _streamable_dialogue_submit(envelope)
                 if stream_event is not None:
-                    _activate_character_for_player_input(stream_event)
                     route = runtime.accept_player_input(stream_event)
                     if route["route"] == "character_service":
                         request_id = stream_event.request_id or f"dialogue:{uuid4()}"
@@ -1568,6 +1677,8 @@ def _handle_websocket_envelope(
 
 def _activate_character_for_player_input(
     event: DialogueSubmit | FocusTargetChange | InteractIntent,
+    *,
+    cognition_callback: Callable[[], object] | None = None,
 ) -> None:
     if isinstance(event, DialogueSubmit):
         target_actor_id, interaction_type, focused = (
@@ -1611,7 +1722,10 @@ def _activate_character_for_player_input(
     )
     receipt = (
         character_agent_runtime.activate_actor(
-            target_actor_id, decision, producer_ts=event.producer_ts
+            target_actor_id,
+            decision,
+            producer_ts=event.producer_ts,
+            cognition_callback=cognition_callback,
         )
         if decision.state == "active"
         else None
@@ -2383,9 +2497,18 @@ def _handle_envelope(
         ]
 
     event = _parse_player_input(envelope.payload)
-    if isinstance(event, (DialogueSubmit, FocusTargetChange, InteractIntent)):
-        _activate_character_for_player_input(event)
     route = runtime.accept_player_input(event)
+    activated_dialogue_response: DialogueResponse | None = None
+    if isinstance(event, DialogueSubmit) and route["route"] == "character_service":
+        def run_dialogue_cognition() -> None:
+            nonlocal activated_dialogue_response
+            activated_dialogue_response = _handle_player_dialogue_submit(event)
+
+        _activate_character_for_player_input(
+            event, cognition_callback=run_dialogue_cognition
+        )
+    elif isinstance(event, (FocusTargetChange, InteractIntent)):
+        _activate_character_for_player_input(event)
     messages: list[dict[str, object]] = [
         {
             "message_type": "ack",
@@ -2423,7 +2546,7 @@ def _handle_envelope(
                 detail=event.model_dump(),
             )
         )
-        response = _handle_player_dialogue_submit(event)
+        response = activated_dialogue_response or _handle_player_dialogue_submit(event)
         event_trace.record(response.output_type)
         messages.append(_as_envelope("dialogue_response", response.model_dump()))
         return _finalize_outbound_messages(messages)
@@ -3418,6 +3541,16 @@ def _handle_player_dialogue_submit(event: DialogueSubmit) -> DialogueResponse:
         response = character_service.handle_dialogue(event)
     _record_completed_dialogue_response(response)
     return response
+
+
+def _dialogue_direct_content_with_activation(event: DialogueSubmit) -> str:
+    content: list[str] = []
+
+    def run_cognition() -> None:
+        content.append(_dialogue_direct_content(event))
+
+    _activate_character_for_player_input(event, cognition_callback=run_cognition)
+    return content[0] if content else _dialogue_direct_content(event)
 
 
 def _dialogue_direct_content(event: DialogueSubmit) -> str:

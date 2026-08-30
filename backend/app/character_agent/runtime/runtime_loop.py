@@ -1020,8 +1020,18 @@ class CharacterAgentRuntime:
             raise ValueError(f"unsupported actor_id: {actor_id}")
         return self._profile_registry.authored_identity_digest(f"character:{actor_id}")
 
+    def get_continuity_revision(self, actor_id: str) -> int:
+        if not self.supports_actor(actor_id):
+            raise ValueError(f"unsupported actor_id: {actor_id}")
+        return int(self._continuity_revisions.get(actor_id, 0))
+
     def activate_actor(
-        self, actor_id: str, decision: ActivationDecision, *, producer_ts: int
+        self,
+        actor_id: str,
+        decision: ActivationDecision,
+        *,
+        producer_ts: int,
+        cognition_callback: Callable[[], object] | None = None,
     ) -> ActivationReceipt:
         profile_ref = f"character:{actor_id}"
         authority = self._activation_authority
@@ -1047,6 +1057,8 @@ class CharacterAgentRuntime:
         try:
             if decision.load_private_memory:
                 self.materialize_pending_seed_memories(actor_id, producer_ts)
+            if cognition_callback is not None:
+                cognition_callback()
         finally:
             release = authority.release_lock(
                 lock_ref=lock_ref,

@@ -20,6 +20,8 @@ class PopulationOwnerExecutor(Protocol):
 class CharacterContinuityPort(Protocol):
     def apply_command(self, command: CharacterContinuityCommand) -> CharacterContinuityReceipt: ...
 
+    def current_revision(self, actor_ref: str) -> int: ...
+
 
 ReadSetBuilder = Callable[[AuthorityEvent, PopulationCadenceInput], PopulationReadSet]
 
@@ -128,12 +130,13 @@ class PopulationSimulationCapability:
         if (
             canonical.read_set_digest != read_set.read_set_digest
             or any(
-                projection.scope not in {cadence_input.report_scope, "public", "actor:self"}
-                or projection.revision_vector != cadence_input.base_revision_vector
+                projection.revision_vector != cadence_input.base_revision_vector
                 for projection in read_set.projections
             )
         ):
             return self._requeue(batch_ref, read_set, "stale_read_set")
+        if any(not self._projection_scope_admitted(projection, cadence_input) for projection in read_set.projections):
+            return self._requeue(batch_ref, read_set, "projection_scope_denied")
 
         report = self._planner.plan_population_cycle(read_set)
         if any(getattr(item, "reason", "") == "stale_read_set" for item in report.rejected_candidates):
@@ -177,10 +180,13 @@ class PopulationSimulationCapability:
             for seed in seeds:
                 if not seed.actor_ref.startswith("character:"):
                     continue
+                if seed.owner_effect_status in {"owner_settlement_required", "rejected"}:
+                    continue
+                current_revision = self._current_revision(seed.actor_ref)
                 command = CharacterContinuityCommand(
                     command_id=f"continuity:{seed.seed_id}", actor_ref=seed.actor_ref,
                     source_owner_receipt_refs=seed.source_owner_receipt_refs,
-                    expected_character_revision=0, source_revision_vector=dict(seed.source_revision_vector),
+                    expected_character_revision=current_revision, source_revision_vector=dict(seed.source_revision_vector),
                     state_delta={
                         **dict(seed.state_deltas),
                         "presentation_seed": dict(seed.presentation_seed),
@@ -207,6 +213,36 @@ class PopulationSimulationCapability:
         if report.owner_bound_intents and (self._owner_executor is None or len(owner_refs) < len(report.owner_bound_intents)):
             status = "owner_settlement_required"
         return PopulationCycleResult(status=status, batch_ref=report.batch_ref, report=report, seed_candidates=seeds, owner_receipts=tuple(owner_receipts), continuity_receipts=tuple(continuity_receipts), production_append_count=sum(1 for item in owner_receipts if item.committed and not item.zero_write))
+
+    def _current_revision(self, actor_ref: str) -> int:
+        reader = getattr(self._continuity_port, "current_revision", None)
+        if callable(reader):
+            return int(reader(actor_ref))
+        reader = getattr(self._continuity_port, "get_continuity_revision", None)
+        if callable(reader):
+            return int(reader(actor_ref.removeprefix("character:")))
+        return 0
+
+    @staticmethod
+    def _projection_scope_admitted(projection, cadence: PopulationCadenceInput) -> bool:
+        if projection.scope not in {cadence.report_scope, "public", "actor:self"}:
+            return False
+        if projection.scope.startswith("actor:") and projection.scope != "actor:self":
+            return False
+        payload = projection.payload
+        for key in ("projection_scope", "source_scope", "branch_id", "story_branch_id", "visibility_scope"):
+            value = payload.get(key)
+            if not isinstance(value, str):
+                continue
+            normalized = value.strip().lower()
+            if normalized.startswith("branch:") and normalized != "branch:main":
+                return False
+            if normalized == "private" or normalized.startswith("private:"):
+                return False
+        actor_scope = payload.get("actor_scope")
+        if isinstance(actor_scope, str) and actor_scope.startswith("actor:") and actor_scope != "actor:self":
+            return False
+        return True
 
     @staticmethod
     def _requeue(batch_ref: str, read_set: PopulationReadSet, reason: str) -> PopulationCycleResult:

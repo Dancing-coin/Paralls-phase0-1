@@ -144,6 +144,7 @@ class SimingRuntime:
                     cadence = PopulationCadenceInput.from_authority_event(event)
                     read_set = self._population_read_set_builder(event, cadence)
                     cycle = self._population_capability.run_cycle(cadence, read_set)
+                    result.audit_records.append(self._population_cycle_audit(event, cycle))
                     result.audit_records.extend(audit for audit in cycle.audits if isinstance(audit, SimingAuditRecord))
                 except (TypeError, ValueError) as exc:
                     result.audit_records.append(self._audit(event, status="no_action", reason=f"population_requeue:{exc}"))
@@ -601,6 +602,37 @@ class SimingRuntime:
                 no_action_reason="no eligible intervention",
             )
         return result
+
+    def _population_cycle_audit(self, event: AuthorityEvent, cycle) -> SimingAuditRecord:
+        status = "recorded" if cycle.status == "accepted" else "no_action"
+        if cycle.status == "requeue":
+            status = "stale_candidate"
+        report = cycle.report
+        owner_committed = sum(1 for receipt in cycle.owner_receipts if receipt.committed and not receipt.zero_write)
+        owner_rejected = len(cycle.owner_receipts) - owner_committed
+        reason = (
+            "population_cycle"
+            f" status={cycle.status}"
+            f" batch={report.batch_ref}"
+            f" accepted={len(report.selected_cohort_refs)}"
+            f" requeue={len(report.unprocessed_cohort_refs) + len(report.rejected_candidates)}"
+            f" owners={len(cycle.owner_receipts)}"
+            f" owner_committed={owner_committed}"
+            f" owner_rejected={owner_rejected}"
+            f" seeds={len(cycle.seed_candidates)}"
+            f" receipts={len(cycle.continuity_receipts)}"
+            f" append={cycle.production_append_count}"
+            f" reason={cycle.reason or 'none'}"
+        )
+        return SimingAuditRecord(
+            audit_id=f"audit_{event.event_id}_population_cycle",
+            room_id=event.room_id,
+            correlation_id=event.correlation_id,
+            causation_id=event.event_id,
+            source_event_id=event.event_id,
+            status=status,
+            reason=reason,
+        )
 
     def record_authority_outcome(self, event: AuthorityEvent) -> None:
         if self._heavenly_support is not None:

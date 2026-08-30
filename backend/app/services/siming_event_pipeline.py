@@ -82,7 +82,12 @@ class SimingEventPipeline:
             self._audit_writer.record_checkpoint(checkpoint)
         if result.read_model is not None:
             self._audit_writer.record_read_model(result.read_model)
-        materialized_events = self._producer.materialize_outputs(result.outputs)
+        materialized_events = (
+            []
+            if event.event_type == "population_cadence_event"
+            and event.durability == "realtime"
+            else self._producer.materialize_outputs(result.outputs)
+        )
         graph_dispatches = [
             published_event
             for output, published_event in zip(result.outputs, materialized_events)
