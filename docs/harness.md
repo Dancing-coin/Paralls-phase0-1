@@ -131,6 +131,7 @@ python scripts/verification/harness.py --profile behavior-turn-runtime
 python scripts/verification/harness.py --profile character-continuity-recovery
 python scripts/verification/harness.py --profile authority-graph-projection
 python scripts/verification/harness.py --profile siming-behavior-turn-runtime
+python scripts/verification/harness.py --profile siming-led-population-seed-continuity
 python scripts/verification/harness.py --profile all
 ```
 
@@ -695,6 +696,25 @@ Godot closure.
 ```powershell
 python scripts/verification/harness.py --profile siming-behavior-turn-runtime
 ```
+
+### `siming-led-population-seed-continuity`
+
+Backend-only direct profile for the bounded Siming-led bakery population seed handoff. It proves
+one game-start cadence entering the existing `SimingRuntime.tick()` path, Organization owner
+settlement, Character Core seed continuity, and player-triggered activation of the same character
+identity. It also checks full versus checkpoint-tail replay and stale/private/duplicate/unknown
+zero-write cases.
+
+```powershell
+python scripts/verification/harness.py --profile siming-led-population-seed-continuity
+```
+
+Output:
+
+- `.harness/verification/siming-led-population-seed-continuity-report.json`
+
+The manifest intentionally keeps `include_in_profile_order=false` and `include_in_all=false`.
+Run it directly by name; aggregate profiles do not include this bounded evidence yet.
 
 ### `siming-heavenly-runtime`
 

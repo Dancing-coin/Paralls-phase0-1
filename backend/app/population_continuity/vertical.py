@@ -5,14 +5,34 @@ import json
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from app.character_agent.models.simulation_seed import (
+    CharacterContinuityCommand,
+    CharacterMemoryCandidate,
+)
+from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
 from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.gameplay.bakery_mirror_source import BakeryMirrorSource
 from app.gameplay.bakery_reference_runtime import BakeryReferenceScenario
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.organization_government_runtime import OrganizationAuthority
 from app.gameplay.replay import GameplayProjectionReplay
+from app.models.authority_event import (
+    AuthorityEvent,
+    AuthorityEventRouting,
+    AuthorityEventSource,
+)
+from app.models.player_input import DialogueSubmit
+from app.services.authority_event_bus import InMemoryAuthorityEventBus
+from app.services.session_input_router import SessionInputRouter
+from app.services.siming_audit_writer import SimingAuditWriter
+from app.services.siming_event_consumer import SimingEventConsumer
+from app.services.siming_event_pipeline import SimingEventPipeline
+from app.services.siming_event_producer import SimingEventProducer
+from app.services.siming_population_capability import PopulationSimulationCapability
+from app.services.siming_runtime import SimingRuntime
 
 from .activation import ProfileActivationAuthority
+from .activation_policy import ActivationPolicy
 from .batch import ContinuityMergeAuthority, PopulationPlanner
 from .models import (
     ActivationProposal,
@@ -23,6 +43,8 @@ from .models import (
 )
 from .social_input import FrozenSocialPlanningInput
 from .source_inputs import HouseholdScheduleInput, OrganizationScheduleInput
+from .owner_adapters import ScheduleGatedSupplyOwnerExecutor
+from .siming_contracts import PopulationCadenceInput, PopulationCycleResult
 from .world import WorldContinuityRuntime
 
 
@@ -527,4 +549,413 @@ class BakeryDistrictPopulationFixture:
                     f"gameplay:organization:{self.scenario.organization.organization_ref}"
                 )[-3:]
             ],
+        }
+
+
+@dataclass
+class _CharacterRuntimeContinuityPort:
+    runtime: CharacterAgentRuntime
+
+    def apply_command(self, command: CharacterContinuityCommand):
+        return self.runtime.apply_character_continuity_command(command)
+
+
+class _RecordingPopulationSimulationCapability(PopulationSimulationCapability):
+    last_result: PopulationCycleResult | None = None
+
+    def run_cycle(self, cadence_input, read_set):
+        self.last_result = super().run_cycle(cadence_input, read_set)
+        return self.last_result
+
+
+@dataclass
+class SimingLedPopulationFixture:
+    bakery: BakeryDistrictPopulationFixture
+    bus: InMemoryAuthorityEventBus
+    pipeline: SimingEventPipeline
+    capability: _RecordingPopulationSimulationCapability
+    character_runtime: CharacterAgentRuntime
+    activation_policy: ActivationPolicy
+    cadence_event: AuthorityEvent
+    world_mode_receipt: object
+
+    @classmethod
+    def create(cls) -> "SimingLedPopulationFixture":
+        bakery = BakeryDistrictPopulationFixture.create(
+            profile_dir=Path(__file__).resolve().parents[3]
+            / "assets"
+            / "characters"
+            / "profiles"
+        )
+        world_mode_receipt = WorldContinuityRuntime(
+            store=bakery.store, mode=bakery.mode
+        ).resume()
+        activation_authority = ProfileActivationAuthority(
+            registry=bakery.registry, store=bakery.store
+        )
+        planned, social, household, organization = (
+            bakery._plan_schedule_gated_supply(
+                batch_ref="batch:siming-led:game-start",
+                recipient_ref="character:char_a",
+                observed_at="2026-08-30T00:00:00Z",
+                activation_lock_refs=(
+                    "lock:world:bakery-district:character:char_a",
+                ),
+            )
+        )
+        if not planned.accepted or planned.plan is None:
+            raise RuntimeError("siming_led_population_plan_rejected")
+        _, _, pending_change_ref = bakery._admit_released_schedule_gated_supply(
+            activation=activation_authority,
+            batch_ref="batch:siming-led:game-start",
+            recipient_ref="character:char_a",
+            plan=planned.plan,
+        )
+        owner = ScheduleGatedSupplyOwnerExecutor(
+            merger=ContinuityMergeAuthority(
+                store=bakery.store, registry=bakery.registry, mode=bakery.mode
+            ),
+            context_builder=ScheduleGatedSupplyOwnerExecutor.context_from_intent_payload,
+        )
+        character_runtime = CharacterAgentRuntime(
+            activation_authority=activation_authority
+        )
+        capability = _RecordingPopulationSimulationCapability(
+            owner_executor=owner,
+            continuity_port=_CharacterRuntimeContinuityPort(character_runtime),
+        )
+        bus = InMemoryAuthorityEventBus()
+        pipeline = SimingEventPipeline(
+            bus=bus,
+            consumer=SimingEventConsumer(),
+            runtime=SimingRuntime(population_capability=capability),
+            producer=SimingEventProducer(bus),
+            audit_writer=SimingAuditWriter(),
+        )
+        bus.subscribe("population_cadence_event", pipeline.handle_event)
+        cadence_event = cls._build_cadence_event(
+            bakery=bakery,
+            plan=planned.plan,
+            pending_projection=activation_authority.pending_projection(
+                bakery.mode.world_ref
+            ),
+            social=social,
+            household=household,
+            organization=organization,
+        )
+        return cls(
+            bakery=bakery,
+            bus=bus,
+            pipeline=pipeline,
+            capability=capability,
+            character_runtime=character_runtime,
+            activation_policy=ActivationPolicy(),
+            cadence_event=cadence_event,
+            world_mode_receipt=world_mode_receipt,
+        )
+
+    @staticmethod
+    def _build_cadence_event(
+        *,
+        bakery: BakeryDistrictPopulationFixture,
+        plan: PopulationWorldPlan,
+        pending_projection: dict[str, dict[str, object]],
+        social: FrozenSocialPlanningInput,
+        household: HouseholdScheduleInput,
+        organization: OrganizationScheduleInput,
+    ) -> AuthorityEvent:
+        source_ref, source_revision = next(iter(plan.source_revision_vector.items()))
+        cadence = PopulationCadenceInput(
+            cadence_id="cadence:bakery-district:game-start",
+            world_ref=plan.world_ref,
+            world_mode_ref="world-mode:bakery-district",
+            world_mode_revision=plan.mode_revision,
+            cadence_source_ref=source_ref,
+            cadence_source_revision=source_revision,
+            window_start=100,
+            window_end=101,
+            base_checkpoint_ref=f"checkpoint:game-start:{len(bakery.store.read_events())}",
+            base_checkpoint_digest=bakery._digest(
+                [event.model_dump(mode="json") for event in bakery.store.read_events()]
+            ),
+            base_revision_vector=dict(plan.source_revision_vector),
+            policy_revision=plan.policy_revision,
+            selector_revision="selector:population:v1",
+            ruleset_revision="rules:population:v1",
+            deterministic_seed="seed:bakery-district:game-start",
+            catch_up_limit=1,
+            budget=1,
+            report_scope=plan.report_scope,
+        )
+        candidate = plan.candidates[0]
+        projection = {
+            "ref": "projection:bakery:supply:char_a",
+            "scope": plan.report_scope,
+            "revision_vector": dict(plan.source_revision_vector),
+            "payload": {
+                "actor_ref": candidate.profile_ref,
+                "candidate_kind": "schedule_gated_supply",
+                "priority": candidate.priority,
+                "state_deltas": {"dynamic_state": {"stress_load": 0.1}},
+                "presentation_seed": {"task": "replenish_family_food"},
+                "activation_hints": ["player_dialogue"],
+                "exposure_basis": "affected_directly",
+                "summary": "bakery supply commitment accepted",
+                "source_event_refs": ["event:bakery:game-start:supply"],
+            },
+        }
+        return AuthorityEvent(
+            event_id="event:population-cadence:bakery:game-start",
+            event_type="population_cadence_event",
+            producer_ts=100,
+            room_id="room:bakery",
+            scene_id="scene:bakery",
+            zone_id="zone:bakery-counter",
+            source=AuthorityEventSource(layer="L2", system="world_runtime.cadence"),
+            routing=AuthorityEventRouting(
+                audience_mode="broadcast", routing_mode="event_type"
+            ),
+            priority="p2",
+            durability="replayable",
+            causation_id="game-start:bakery",
+            correlation_id="population:bakery:game-start",
+            payload={
+                "population_cadence": cadence.model_dump(mode="json"),
+                "world_mode_projection": {
+                    "world_ref": bakery.mode.world_ref,
+                    "mode": bakery.mode.mode,
+                    "revision": bakery.mode.revision,
+                    "committed_event_ids": list(
+                        getattr(bakery, "world_mode_event_ids", ())
+                    ),
+                },
+                "population_world_plan": plan.model_dump(mode="json"),
+                "activation_pending_projection": pending_projection,
+                "social_projection": social.model_dump(mode="json"),
+                "household_projection": household.model_dump(mode="json"),
+                "organization_projection": organization.model_dump(mode="json"),
+                "population_projections": [projection],
+            },
+        )
+
+    def run(self) -> dict[str, object]:
+        before_population = len(self.bakery.store.read_events())
+        self.bus.publish(self.cadence_event)
+        cycle = self.capability.last_result
+        if cycle is None:
+            raise RuntimeError("siming_population_cycle_not_observed")
+
+        actor_id = "char_a"
+        identity_before = self.character_runtime.character_identity_digest(actor_id)
+        projection = self.character_runtime.get_seed_projection(actor_id)
+        pending_before_activation = self.character_runtime.get_pending_seed_candidates(
+            actor_id
+        )
+        continuity = cycle.continuity_receipts[0]
+        dialogue = DialogueSubmit(
+            player_id="player:1",
+            room_id="room:bakery",
+            scene_id="scene:bakery",
+            zone_id="zone:bakery-counter",
+            actor_id="player_avatar",
+            producer_ts=101,
+            request_id="request:bakery:dialogue:1",
+            target_actor_id=actor_id,
+            content="Is the bread supply ready?",
+        )
+        route = SessionInputRouter().accept_player_input(dialogue)
+        decision = self.activation_policy.evaluate(
+            actor_id=actor_id,
+            distance_m=2.0,
+            focused=True,
+            interaction_type="dialogue",
+            pending_seed=bool(pending_before_activation),
+            budget=1,
+        )
+        activation = self.character_runtime.activate_actor(
+            actor_id, decision, producer_ts=dialogue.producer_ts
+        )
+        identity_after = self.character_runtime.character_identity_digest(actor_id)
+
+        main_event_count = len(self.bakery.store.read_events())
+        main_timeline_count = len(self.character_runtime.get_session_timeline(actor_id))
+        self.bus.publish(self.cadence_event)
+        duplicate = self.capability.last_result
+        duplicate_zero_write = (
+            len(self.bakery.store.read_events()) == main_event_count
+            and len(self.character_runtime.get_session_timeline(actor_id))
+            == main_timeline_count
+        )
+
+        stale_payload = self.cadence_event.model_dump(mode="json")
+        stale_payload["event_id"] = "event:population-cadence:bakery:stale"
+        stale_payload["payload"]["population_cadence"]["base_revision_vector"] = {
+            next(iter(cycle.owner_receipts[0].revision_vector)): 999
+        }
+        before_stale = len(self.bakery.store.read_events())
+        self.bus.publish(AuthorityEvent.model_validate(stale_payload))
+        stale = self.capability.last_result
+        stale_zero_write = (
+            stale is not None
+            and stale.status == "requeue"
+            and len(self.bakery.store.read_events()) == before_stale
+        )
+
+        unknown_payload = self.cadence_event.model_dump(mode="json")
+        unknown_payload["event_id"] = "event:population-cadence:bakery:unknown"
+        unknown_payload["payload"]["population_projections"][0]["ref"] = (
+            "projection:bakery:unknown"
+        )
+        unknown_payload["payload"]["population_projections"][0]["payload"][
+            "candidate_kind"
+        ] = "unregistered_story_behavior"
+        before_unknown = len(self.bakery.store.read_events())
+        self.bus.publish(AuthorityEvent.model_validate(unknown_payload))
+        unknown = self.capability.last_result
+        unknown_zero_write = (
+            unknown is not None
+            and not unknown.seed_candidates
+            and len(self.bakery.store.read_events()) == before_unknown
+        )
+
+        private_candidate = CharacterMemoryCandidate(
+            candidate_id="memory:char_a:private-unexposed",
+            actor_ref="character:char_a",
+            candidate_kind="event_experience",
+            source_event_refs=("event:private:unexposed",),
+            event_valid_at=102,
+            event_recorded_at=102,
+            knowledge_available_at=102,
+            exposure_basis="not_observed",
+            summary="private event not exposed to char_a",
+            confidence=0.8,
+            salience=0.5,
+            visibility_scope="actor:self",
+            privacy_disposition="actor_private",
+            materialization_policy="on_activation",
+            dedup_key="char_a:private:unexposed",
+            source_revision_vector={"world:bakery": 102},
+        )
+        private_command = CharacterContinuityCommand(
+            command_id="continuity:char_a:private-unexposed",
+            actor_ref="character:char_a",
+            source_owner_receipt_refs=(cycle.owner_receipts[0].receipt_ref,),
+            expected_character_revision=1,
+            source_revision_vector={"world:bakery": 102},
+            memory_candidate_refs=(private_candidate.candidate_id,),
+            exposure_evidence={
+                "exposure_basis": private_candidate.exposure_basis,
+                "memory_candidates": [private_candidate.model_dump(mode="json")],
+            },
+            policy_revision="policy:character-continuity:v1",
+            idempotency_key="continuity:char_a:private-unexposed",
+        )
+        private_continuity = self.character_runtime.apply_character_continuity_command(
+            private_command
+        )
+        before_private_materialization = len(
+            self.character_runtime.get_session_timeline(actor_id)
+        )
+        private_materialization = self.character_runtime.materialize_pending_seed_memories(
+            actor_id, producer_ts=102
+        )
+        private_zero_write = (
+            private_continuity.status == "committed"
+            and any(
+                item.candidate_id == private_candidate.candidate_id
+                and item.status == "rejected"
+                and item.refusal_reason == "memory_materialization_denied"
+                for item in private_materialization
+            )
+            and len(self.character_runtime.get_session_timeline(actor_id))
+            == before_private_materialization
+        )
+
+        events = self.bakery.store.read_events()
+        replay = GameplayProjectionReplay(
+            projector_id="siming-led-population-seed-continuity",
+            projector_version="1",
+        )
+        full = replay.full_replay(events)
+        split = max(1, len(events) // 2)
+        tail = replay.checkpoint_plus_tail_replay(
+            replay.create_checkpoint(events[:split]), events[split:]
+        )
+        timeline_digest = self.bakery._digest(
+            self.character_runtime.get_session_timeline(actor_id)
+        )
+        full_digest = self.bakery._digest(
+            {"gameplay": full.projection_hash, "character": timeline_digest}
+        )
+        tail_digest = self.bakery._digest(
+            {"gameplay": tail.projection_hash, "character": timeline_digest}
+        )
+        seed = cycle.seed_candidates[0]
+        owner = cycle.owner_receipts[0]
+        return {
+            "cadence": {
+                "status": cycle.status,
+                "event_id": self.cadence_event.event_id,
+                "source_digest": self.bakery._digest(
+                    self.cadence_event.payload["population_cadence"]
+                ),
+                "revision_vector": dict(
+                    self.cadence_event.payload["population_cadence"][
+                        "base_revision_vector"
+                    ]
+                ),
+                "world_mode_committed": bool(
+                    getattr(self.world_mode_receipt, "committed", False)
+                ),
+            },
+            "population": {
+                "batch_ref": cycle.batch_ref,
+                "seed_count": len(cycle.seed_candidates),
+                "read_set_digest": cycle.report.read_set_digest,
+                "result_digest": cycle.report.result_digest,
+                "production_append_count": cycle.production_append_count,
+                "total_gameplay_append_count": len(self.bakery.store.read_events())
+                - before_population,
+            },
+            "owner": {
+                "owner_ref": owner.owner_ref,
+                "receipt_ref": owner.receipt_ref,
+                "event_family": owner.event_family,
+                "revision_vector": dict(owner.revision_vector),
+            },
+            "character": {
+                "continuity_status": continuity.status,
+                "seed_id": seed.seed_id,
+                "seed_digest": self.bakery._digest(seed.model_dump(mode="json")),
+                "projection_digest": self.bakery._digest(projection),
+                "pending_before_activation": len(pending_before_activation),
+                "state_cursor": continuity.cursor_vector.get("state_cursor", 0),
+                "memory_cursor_before_activation": continuity.cursor_vector.get(
+                    "memory_cursor", 0
+                ),
+                "presentation_seed": projection.get("presentation_seed", {}),
+            },
+            "activation": {
+                "status": activation.status,
+                "same_character_identity": identity_before == identity_after,
+                "identity_digest": identity_after,
+                "decision": decision.model_dump(mode="json"),
+                "route": route,
+                "result_digest": self.bakery._digest(
+                    activation.model_dump(mode="json")
+                ),
+            },
+            "replay": {
+                "full_equals_checkpoint_tail": full_digest == tail_digest,
+                "full_hash": full_digest,
+                "checkpoint_tail_hash": tail_digest,
+            },
+            "rejections": {
+                "stale_read_set_zero_write": stale_zero_write,
+                "private_memory_without_exposure_zero_write": private_zero_write,
+                "duplicate_seed_zero_write": duplicate_zero_write,
+                "unknown_behavior_zero_write": unknown_zero_write,
+                "duplicate_status": duplicate.status if duplicate is not None else "",
+                "unknown_status": unknown.status if unknown is not None else "",
+            },
         }

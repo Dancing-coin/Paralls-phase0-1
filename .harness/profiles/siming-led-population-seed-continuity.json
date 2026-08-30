@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "siming-led-population-seed-continuity",
+  "order": 118,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_siming_led_population_seed_continuity.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/siming-led-population-seed-continuity-report.json",
+  "description": "Siming-governed game-start population cadence to CharacterSimulationSeed and player activation handoff"
+}

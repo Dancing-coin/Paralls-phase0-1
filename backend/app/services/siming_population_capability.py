@@ -178,8 +178,24 @@ class PopulationSimulationCapability:
                     command_id=f"continuity:{seed.seed_id}", actor_ref=seed.actor_ref,
                     source_owner_receipt_refs=seed.source_owner_receipt_refs,
                     expected_character_revision=0, source_revision_vector=dict(seed.source_revision_vector),
-                    state_delta=dict(seed.state_deltas), memory_candidate_refs=tuple(item.candidate_id for item in seed.memory_candidates),
-                    exposure_evidence={"source_event_refs": list(seed.source_event_refs)}, policy_revision=read_set.cadence.policy_revision,
+                    state_delta={
+                        **dict(seed.state_deltas),
+                        "presentation_seed": dict(seed.presentation_seed),
+                        "activation_hints": list(seed.activation_hints),
+                    },
+                    memory_candidate_refs=tuple(item.candidate_id for item in seed.memory_candidates),
+                    exposure_evidence={
+                        "source_event_refs": list(seed.source_event_refs),
+                        "memory_candidates": [item.model_dump(mode="json") for item in seed.memory_candidates],
+                        "visibility_scope": seed.visibility_scope,
+                        "privacy_disposition": "actor_private",
+                        **(
+                            {"exposure_basis": seed.memory_candidates[0].exposure_basis}
+                            if seed.memory_candidates
+                            else {}
+                        ),
+                    },
+                    policy_revision="policy:character-continuity:v1",
                     idempotency_key=seed.idempotency_key, world_effect_required=seed.owner_effect_status == "settled",
                 )
                 continuity_receipts.append(self._continuity_port.apply_command(command))

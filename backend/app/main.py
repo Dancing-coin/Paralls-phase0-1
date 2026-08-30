@@ -1584,6 +1584,8 @@ def _activate_character_for_player_input(
     else:
         target_actor_id = event.target_object_id.removeprefix("character:")
         interaction_type, focused = event.interaction_type, True
+    if not target_actor_id:
+        return
     supported_actor = character_agent_runtime.supports_actor(target_actor_id)
     projection = (
         character_agent_runtime.get_seed_projection(target_actor_id)
