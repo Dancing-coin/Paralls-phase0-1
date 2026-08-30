@@ -1065,8 +1065,20 @@ class CharacterAgentRuntime:
                 expected_revision=authority.store.get_stream_head(stream),
             )
         if not release.committed:
-            return release.model_copy(update={"status": "requeued"})
-        return release.model_copy(update={"status": "active"})
+            return release.model_copy(
+                update={
+                    "status": "requeued",
+                    "lock_scope": "synchronous_callback",
+                    "lock_released": False,
+                }
+            )
+        return release.model_copy(
+            update={
+                "status": "active",
+                "lock_scope": "synchronous_callback",
+                "lock_released": True,
+            }
+        )
 
     def set_activation_authority(self, authority: ProfileActivationAuthority) -> None:
         self._activation_authority = authority

@@ -163,8 +163,8 @@ from app.services.siming_debug_projection import SimingDebugProjection
 from app.services.siming_runtime import SimingRuntime
 from app.services.siming_population_capability import PopulationSimulationCapability
 from app.character_agent.services.character_continuity import CharacterRuntimeContinuityPort
-from app.population_continuity.batch import ContinuityMergeAuthority, PopulationPlanner
-from app.population_continuity.models import ActivationProposal, ActivationReceipt, BatchIntentCandidate, PendingChange, WorldModeProfile
+from app.population_continuity.batch import ContinuityMergeAuthority
+from app.population_continuity.models import ActivationReceipt, BatchIntentCandidate, WorldModeProfile
 from app.population_continuity.owner_adapters import ScheduleGatedSupplyOwnerExecutor
 from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationProjection
 from app.population_continuity.world import WorldContinuityRuntime
@@ -800,7 +800,6 @@ def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:
     base_vector = {organization_stream: organization_input.source_revision_vector.get(organization_stream, 0)}
     if base_vector[organization_stream] <= 0:
         return None
-    lock_ref = f"lock:{mode.world_ref}:{recipient_ref}"
     candidate = BatchIntentCandidate(
         intent_ref="intent:runtime-start:bakery:supply",
         profile_ref=recipient_ref,
@@ -819,81 +818,16 @@ def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:
         policy_revision=mode.revision,
         package_revision="package:bakery-authored-agents:v1",
         idempotency_key="intent:runtime-start:bakery:supply",
-        correlation_id="population:bakery-district:game-start:v2",
+        correlation_id="population:bakery-district:game-start:v3",
         source_ref="population:siming",
         privacy_scope="organization:summary",
     )
-    planned = PopulationPlanner().plan_schedule_gated_supply(
-        store=gameplay_event_store,
-        batch_ref="batch:runtime-start:bakery",
-        world_ref=mode.world_ref,
-        mode=mode,
-        social_input=social_input,
-        household_input=household_input,
-        organization_input=organization_input,
-        candidate=candidate,
-        base_event_digest="sha256:runtime-start-base",
-        tail_boundary=len(gameplay_event_store.read_events()),
-        active_revision_refs=(mode.revision,),
-        deterministic_seed="seed:runtime-start:bakery",
-        report_scope="organization:summary",
-        activation_lock_refs=(lock_ref,),
+    tail_boundary = len(gameplay_event_store.read_events())
+    base_checkpoint_digest = _population_digest(
+        [event.model_dump(mode="json") for event in gameplay_event_store.read_events()]
     )
-    if not planned.accepted or planned.plan is None:
-        return None
-    activation_authority = getattr(character_agent_runtime, "_activation_authority", None)
-    if not isinstance(activation_authority, ProfileActivationAuthority):
-        return None
-    population_stream = f"population:{mode.world_ref}"
-    activation = activation_authority.commit(
-        ActivationProposal(
-            proposal_id="proposal:runtime-start:char-a",
-            profile_ref=recipient_ref,
-            world_ref=mode.world_ref,
-            package_revision="package:bakery-authored-agents:v1",
-            policy_revision=mode.revision,
-            activation_reason="runtime-start:bakery",
-            scope_grant=("actor:self", "organization:summary"),
-            cadence_class=mode.cadence_class,
-            expected_revisions={population_stream: gameplay_event_store.get_stream_head(population_stream)},
-            idempotency_key="activation:runtime-start:char-a",
-            correlation_id="population:bakery-district:game-start:v2",
-            source_ref="world_runtime.activation_authority",
-        )
-    )
-    if not activation.committed:
-        return None
-    active_projection = activation_authority.projection(mode.world_ref)
-    held_revision = gameplay_event_store.get_stream_head(population_stream)
-    locked = activation_authority.lock(
-        world_ref=mode.world_ref, profile_ref=recipient_ref, expected_revision=held_revision
-    )
-    if not locked.committed:
-        return None
-    pending_ref = "pending:runtime-start:bakery:schedule_gated_supply"
-    pending = activation_authority.record_pending(
-        PendingChange(
-            change_ref=pending_ref,
-            lock_ref=lock_ref,
-            profile_ref=recipient_ref,
-            expected_revision=held_revision,
-            payload={
-                "kind": "schedule_gated_supply",
-                "plan_digest": PopulationPlanner.schedule_pending_digest(planned.plan),
-            },
-            privacy_scope="actor:self",
-        )
-    )
-    if not pending.committed:
-        return None
-    released = activation_authority.release_lock(
-        lock_ref=lock_ref, expected_revision=gameplay_event_store.get_stream_head(population_stream)
-    )
-    if not released.committed:
-        return None
-    pending_projection = activation_authority.pending_projection(mode.world_ref)
     cadence = PopulationCadenceInput(
-        cadence_id="cadence:bakery-district:game-start:v2",
+        cadence_id="cadence:bakery-district:game-start:v3",
         world_ref=mode.world_ref,
         world_mode_ref="world-mode:bakery-district",
         world_mode_revision=mode.revision,
@@ -901,8 +835,8 @@ def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:
         cadence_source_revision=base_vector[organization_stream],
         window_start=world_source_revision,
         window_end=world_source_revision + 1,
-        base_checkpoint_ref=f"checkpoint:game-start:{len(gameplay_event_store.read_events())}",
-        base_checkpoint_digest=_population_digest([event.model_dump(mode="json") for event in gameplay_event_store.read_events()]),
+        base_checkpoint_ref=f"checkpoint:game-start:{tail_boundary}",
+        base_checkpoint_digest=base_checkpoint_digest,
         base_revision_vector=base_vector,
         policy_revision="policy:population:v1",
         selector_revision="selector:population:v1",
@@ -926,12 +860,22 @@ def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:
             "exposure_basis": "affected_directly",
             "summary": "bakery supply commitment accepted",
             "source_event_refs": list(schedule_result.committed_event_ids),
+            "schedule_gated_supply_source_context": {
+                "mode": mode.model_dump(mode="json"),
+                "candidate": candidate.model_dump(mode="json"),
+                "social_input": social_input.model_dump(mode="json"),
+                "household_input": household_input.model_dump(mode="json"),
+                "organization_input": organization_input.model_dump(mode="json"),
+                "base_event_digest": base_checkpoint_digest,
+                "base_checkpoint_sequence": 0,
+                "tail_boundary": tail_boundary,
+            },
         },
     )
     projections = [candidate_projection.model_dump(mode="json")]
     mode_event_refs = list(mode_receipt.committed_event_ids)
     event = AuthorityEvent(
-        event_id="event:population-cadence:bakery-district:game-start:v2",
+        event_id="event:population-cadence:bakery-district:game-start:v3",
         event_type="population_cadence_event",
         producer_ts=world_source_revision,
         room_id="room:bakery",
@@ -942,7 +886,7 @@ def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:
         priority="p2",
         durability="realtime",
         causation_id=mode_event_refs[0] if mode_event_refs else "game-start:bakery",
-        correlation_id="population:bakery-district:game-start:v2",
+        correlation_id="population:bakery-district:game-start:v3",
         payload={
             "population_cadence": cadence.model_dump(mode="json"),
             "world_mode_projection": {
@@ -951,9 +895,8 @@ def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:
                 "revision": mode.revision,
                 "committed_event_ids": mode_event_refs,
             },
-            "activation_projection": active_projection,
-            "population_world_plan": planned.plan.model_dump(mode="json"),
-            "activation_pending_projection": pending_projection,
+            "activation_projection": {},
+            "activation_pending_projection": {},
             "social_projection": social_input.model_dump(mode="json"),
             "household_projection": household_input.model_dump(mode="json"),
             "organization_projection": organization_input.model_dump(mode="json"),

@@ -201,6 +201,35 @@ def test_missing_continuity_revision_reader_requeues_before_owner_execution() ->
     assert owner.calls == 0
 
 
+@pytest.mark.parametrize("revision", [RuntimeError("reader failed"), -1, True, "invalid"])
+def test_invalid_continuity_revision_requeues_before_owner_execution(revision: object) -> None:
+    class RecordingOwner:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def submit(self, intent, *, read_set):
+            self.calls += 1
+            raise AssertionError("owner must not execute before actor revision admission")
+
+    class InvalidContinuity:
+        def current_revision(self, actor_ref: str):
+            if isinstance(revision, Exception):
+                raise revision
+            return revision
+
+        def apply_command(self, command):
+            raise AssertionError("invalid revision must not reach Character Core")
+
+    owner = RecordingOwner()
+    result = PopulationSimulationCapability(
+        owner_executor=owner, continuity_port=InvalidContinuity()
+    ).run_cycle(_cadence(), _supply_read_set(_cadence()))
+    assert result.status == "requeue"
+    assert result.reason == "continuity_revision_reader_invalid"
+    assert result.production_append_count == 0
+    assert owner.calls == 0
+
+
 @pytest.mark.parametrize("scope", ["branch:preview", "private:memory", "actor:char_b"])
 def test_non_mainline_or_cross_actor_scope_is_rejected_before_character_continuity(scope: str) -> None:
     class RecordingContinuity:
@@ -262,6 +291,13 @@ def test_forbidden_cadence_report_scope_is_rejected_before_planning(report_scope
     [
         {"privacy_disposition": "private"},
         {"privacy_scope": "private:memory"},
+        {"privacy_disposition": "branch:preview"},
+        {"privacy_scope": "branch:preview"},
+        {"source_event_refs": ["branch:preview:event"]},
+        {"source_event_refs": ["event:branch:preview:supply"]},
+        {"source_event_refs": ["event:character:char_b:supply"]},
+        {"metadata": {"privacy": {"disposition": "private"}}},
+        {"metadata": {"actor_refs": ["character:char_a", "character:char_b"]}},
         {"actor_ref": "character:char_b", "actor_scope": "actor:char_a"},
         {"branch_id": "branch:preview"},
     ],
@@ -311,11 +347,35 @@ def test_production_startup_cadence_contains_real_schedule_seed_and_owner_path()
     )
     assert "seeds=1" in cycle_audit.reason
     assert "owners=1" in cycle_audit.reason
+    assert "receipts=1" in cycle_audit.reason
+    assert event.payload["activation_projection"] == {}
+    assert event.payload["activation_pending_projection"] == {}
+    assert "population_world_plan" not in event.payload
     assert main.character_agent_runtime.get_seed_projection("char_a")
     assert any(
         stored.event_type == "gameplay.organization.commerce_commitment_accepted"
         for stored in main.gameplay_event_store.read_events()
     )
+
+
+def test_startup_publishes_cadence_without_population_planning_or_activation_admission(
+    monkeypatch,
+) -> None:
+    import app.main as main
+    from app.population_continuity.batch import PopulationPlanner
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("startup must leave population decisions to SimingRuntime.tick")
+
+    monkeypatch.setattr(PopulationPlanner, "plan_schedule_gated_supply", forbidden)
+    for name in ("commit", "lock", "record_pending", "release_lock"):
+        monkeypatch.setattr(main.ProfileActivationAuthority, name, forbidden)
+
+    main.reset_runtime_state()
+    events = main.authority_event_bus.list_events(
+        event_type="population_cadence_event", include_realtime=True, current_only=False
+    )
+    assert len(events) == 1
 
 
 def test_dialogue_activation_failure_short_circuits_cognition(monkeypatch) -> None:
@@ -457,6 +517,8 @@ def test_activation_cognition_callback_runs_while_public_activation_lock_is_held
         ),
     )
     assert receipt.status == "active"
+    assert receipt.lock_scope == "synchronous_callback"
+    assert receipt.lock_released is True
     assert seen == [True]
     assert runtime._activation_authority.is_lock_active(
         world_ref=runtime._activation_world_ref,

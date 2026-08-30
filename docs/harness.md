@@ -707,6 +707,10 @@ zero-write cases. Character replay uses independent runtimes rebuilt from actor-
 snapshots; player takeover uses the production `_handle_envelope` route and proves one L1-L4
 structured execution request with an explicit `continuity_floor` no-model fallback. Bus and Siming
 tick checks are derived from fixture event counts and runtime identities rather than constants.
+The production game-start helper freezes existing world-mode and Organization schedule inputs and
+publishes only the cadence; population planning, Organization settlement, and Character Core writes
+remain inside the resulting `SimingRuntime.tick()` call. Empty activation projections are preserved
+until a later structured player handoff requires the existing synchronous activation lock.
 
 ```powershell
 python scripts/verification/harness.py --profile siming-led-population-seed-continuity

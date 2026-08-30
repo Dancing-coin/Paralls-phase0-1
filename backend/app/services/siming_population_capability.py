@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+import re
 from typing import Callable, Protocol, Sequence
 
 from app.character_agent.models.simulation_seed import CharacterContinuityCommand, CharacterContinuityReceipt
@@ -24,6 +26,7 @@ class CharacterContinuityPort(Protocol):
 
 
 ReadSetBuilder = Callable[[AuthorityEvent, PopulationCadenceInput], PopulationReadSet]
+_CHARACTER_REF_PATTERN = re.compile(r"character:[a-z0-9_.-]+")
 
 
 def default_population_read_set_builder(event: AuthorityEvent, cadence: PopulationCadenceInput) -> PopulationReadSet:
@@ -143,12 +146,25 @@ class PopulationSimulationCapability:
             return self._requeue(batch_ref, read_set, "projection_scope_denied")
         if self._continuity_port is not None and not callable(
             getattr(self._continuity_port, "current_revision", None)
-        ) and not callable(getattr(self._continuity_port, "get_continuity_revision", None)):
+        ):
             return self._requeue(batch_ref, read_set, "continuity_revision_reader_missing")
 
         report = self._planner.plan_population_cycle(read_set)
         if any(getattr(item, "reason", "") == "stale_read_set" for item in report.rejected_candidates):
             return PopulationCycleResult(status="requeue", batch_ref=report.batch_ref, report=report, reason="stale_read_set", production_append_count=0)
+        actor_revisions: dict[str, int] = {}
+        if self._continuity_port is not None:
+            try:
+                actor_revisions = {
+                    actor_ref: self._current_revision(actor_ref)
+                    for actor_ref in self._planned_actor_refs(read_set)
+                }
+            except Exception:
+                return self._requeue(
+                    report.batch_ref,
+                    read_set,
+                    "continuity_revision_reader_invalid",
+                )
         owner_receipts: list[PopulationOwnerReceipt] = []
         owner_refs: list[str] = []
         owner_receipt_associations: dict[str, str] = {}
@@ -190,11 +206,10 @@ class PopulationSimulationCapability:
                     continue
                 if seed.owner_effect_status in {"owner_settlement_required", "rejected"}:
                     continue
-                current_revision = self._current_revision(seed.actor_ref)
                 command = CharacterContinuityCommand(
                     command_id=f"continuity:{seed.seed_id}", actor_ref=seed.actor_ref,
                     source_owner_receipt_refs=seed.source_owner_receipt_refs,
-                    expected_character_revision=current_revision, source_revision_vector=dict(seed.source_revision_vector),
+                    expected_character_revision=actor_revisions[seed.actor_ref], source_revision_vector=dict(seed.source_revision_vector),
                     state_delta={
                         **dict(seed.state_deltas),
                         "presentation_seed": dict(seed.presentation_seed),
@@ -224,12 +239,32 @@ class PopulationSimulationCapability:
 
     def _current_revision(self, actor_ref: str) -> int:
         reader = getattr(self._continuity_port, "current_revision", None)
-        if callable(reader):
-            return int(reader(actor_ref))
-        reader = getattr(self._continuity_port, "get_continuity_revision", None)
-        if callable(reader):
-            return int(reader(actor_ref.removeprefix("character:")))
-        raise ValueError("continuity_revision_reader_missing")
+        if not callable(reader):
+            raise ValueError("continuity_revision_reader_missing")
+        revision = reader(actor_ref)
+        if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
+            raise ValueError("continuity_revision_reader_invalid")
+        return revision
+
+    @staticmethod
+    def _planned_actor_refs(read_set: PopulationReadSet) -> tuple[str, ...]:
+        actors = {
+            str(
+                projection.payload.get("actor_ref")
+                or projection.payload.get("profile_ref")
+                or projection.payload.get("character_ref")
+                or ""
+            )
+            for projection in read_set.projections
+            if str(
+                projection.payload.get("candidate_kind")
+                or projection.payload.get("kind")
+                or projection.payload.get("behavior_kind")
+                or ""
+            )
+            in CharacterSeedPlanner.ADMITTED_BEHAVIORS
+        }
+        return tuple(sorted(actor for actor in actors if actor.startswith("character:")))
 
     @staticmethod
     def _projection_scope_admitted(projection, cadence: PopulationCadenceInput) -> bool:
@@ -239,49 +274,74 @@ class PopulationSimulationCapability:
             return False
         if not PopulationSimulationCapability._scope_admitted(projection.scope):
             return False
+        if PopulationSimulationCapability._forbidden_scope_marker(projection.ref):
+            return False
         payload = projection.payload
-        for key, value in payload.items():
-            normalized_key = str(key).strip().lower()
-            if normalized_key == "private" and (
-                value is True or str(value).strip().lower() in {"true", "private", "actor_private"}
-            ):
-                return False
-            if not isinstance(value, str):
-                continue
-            normalized = value.strip().lower()
-            if normalized_key in {"privacy_disposition", "privacy_scope"} and (
-                normalized in {"private", "actor_private"}
-                or normalized.startswith("private:")
-            ):
-                return False
-            if "branch" in normalized_key or normalized_key in {"story_branch", "story_branch_id"}:
-                if normalized and normalized != "branch:main":
-                    return False
-            if normalized_key in {"projection_scope", "source_scope", "visibility_scope", "actor_scope"}:
-                if normalized.startswith("private") or (
-                    normalized.startswith("branch:") and normalized != "branch:main"
+        actor_ref = payload.get("actor_ref") or payload.get("profile_ref") or payload.get("character_ref")
+        actor_text = str(actor_ref or "").strip().lower()
+        if actor_ref is not None and not actor_text.startswith("character:"):
+            return False
+        return PopulationSimulationCapability._payload_scope_admitted(
+            payload,
+            actor_ref=actor_text,
+        )
+
+    @staticmethod
+    def _payload_scope_admitted(
+        value: object,
+        *,
+        actor_ref: str,
+    ) -> bool:
+        if isinstance(value, Mapping):
+            for key, nested in value.items():
+                normalized_key = str(key).strip().lower()
+                if normalized_key == "private" and (
+                    nested is True
+                    or str(nested).strip().lower()
+                    in {"true", "private", "actor_private"}
                 ):
                     return False
-                if normalized_key == "actor_scope" and normalized != "actor:self":
+                if "branch" in normalized_key and nested not in (None, "", False):
                     return False
-        actor_scope = payload.get("actor_scope")
-        if isinstance(actor_scope, str) and actor_scope.startswith("actor:") and actor_scope != "actor:self":
+                if normalized_key == "actor_scope" and nested != "actor:self":
+                    return False
+                if not PopulationSimulationCapability._payload_scope_admitted(
+                    nested,
+                    actor_ref=actor_ref,
+                ):
+                    return False
+            return True
+        if isinstance(value, (list, tuple, set, frozenset)):
+            return all(
+                PopulationSimulationCapability._payload_scope_admitted(
+                    item,
+                    actor_ref=actor_ref,
+                )
+                for item in value
+            )
+        if not isinstance(value, str):
+            return True
+        normalized = value.strip().lower()
+        if PopulationSimulationCapability._forbidden_scope_marker(normalized):
             return False
-        actor_ref = payload.get("actor_ref") or payload.get("profile_ref") or payload.get("character_ref")
-        if actor_ref is not None:
-            actor_text = str(actor_ref).strip().lower()
-            if not actor_text.startswith("character:") or "private" in actor_text:
-                return False
-            for key in ("recipient_ref", "recipient_actor_ref", "target_actor_ref", "private_actor_ref", "owner_actor_ref"):
-                value = payload.get(key)
-                if value is None:
-                    continue
-                value_text = str(value).strip().lower()
-                if value_text.startswith("character:") and value_text != actor_text:
-                    return False
-                if value_text.startswith("private:"):
-                    return False
+        if actor_ref and any(
+            referenced_actor != actor_ref
+            for referenced_actor in _CHARACTER_REF_PATTERN.findall(normalized)
+        ):
+            return False
         return True
+
+    @staticmethod
+    def _forbidden_scope_marker(value: object) -> bool:
+        if not isinstance(value, str):
+            return False
+        normalized = value.strip().lower()
+        return (
+            normalized == "private"
+            or "actor_private" in normalized
+            or "private:" in normalized
+            or "branch:" in normalized
+        )
 
     @staticmethod
     def _scope_admitted(scope: object) -> bool:

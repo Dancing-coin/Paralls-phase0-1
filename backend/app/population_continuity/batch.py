@@ -237,7 +237,23 @@ class PopulationPlanner:
             scope = str(payload.get("actor_scope") or projection.scope)
             source_vector = dict(projection.revision_vector)
             if kind == "schedule_gated_supply":
-                owner_intents.append(PopulationOwnerBoundIntent(projection.ref, actor_ref, kind, scope, dict(payload), source_vector))
+                owner_payload = self._schedule_gated_supply_owner_payload(
+                    read_set=read_set,
+                    batch_ref=batch_ref,
+                    actor_ref=actor_ref,
+                    payload=payload,
+                )
+                if owner_payload is None:
+                    selected.pop()
+                    rejected.append(
+                        PopulationRejectedCandidate(
+                            projection.ref,
+                            "schedule_context_invalid",
+                            kind,
+                        )
+                    )
+                    continue
+                owner_intents.append(PopulationOwnerBoundIntent(projection.ref, actor_ref, kind, scope, owner_payload, source_vector))
                 budget_used += cost
             elif kind in {"relationship_negotiation", "high_value_event", "b3_event"} or str(payload.get("behavior_tier", "")).upper() in {"B2", "B3"}:
                 activations.append(PopulationActivationCandidate(
@@ -270,6 +286,120 @@ class PopulationPlanner:
             budget_used=budget_used,
             unprocessed=tuple(unprocessed),
         )
+
+    def _schedule_gated_supply_owner_payload(
+        self,
+        *,
+        read_set: PopulationReadSet,
+        batch_ref: str,
+        actor_ref: str,
+        payload: dict[str, object],
+    ) -> dict[str, object] | None:
+        raw = payload.get("schedule_gated_supply_source_context")
+        if raw is None:
+            return dict(payload)
+        if not isinstance(raw, dict) or set(raw) - {
+            "mode",
+            "candidate",
+            "social_input",
+            "household_input",
+            "organization_input",
+            "base_event_digest",
+            "base_checkpoint_sequence",
+            "tail_boundary",
+        }:
+            return None
+        try:
+            mode = WorldModeProfile.model_validate(raw["mode"])
+            candidate = BatchIntentCandidate.model_validate(raw["candidate"])
+            social = FrozenSocialPlanningInput.model_validate(raw["social_input"])
+            household = HouseholdScheduleInput.model_validate(raw["household_input"])
+            organization = OrganizationScheduleInput.model_validate(raw["organization_input"])
+            base_event_digest = str(raw["base_event_digest"])
+            base_checkpoint_sequence = int(raw.get("base_checkpoint_sequence", 0))
+            tail_boundary = int(raw["tail_boundary"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        cadence = read_set.cadence
+        if (
+            not base_event_digest
+            or isinstance(raw.get("base_checkpoint_sequence", 0), bool)
+            or isinstance(raw.get("tail_boundary"), bool)
+            or base_checkpoint_sequence < 0
+            or tail_boundary < base_checkpoint_sequence
+            or mode.world_ref != cadence.world_ref
+            or mode.revision != cadence.world_mode_revision
+            or candidate.intent_kind != "supply"
+            or candidate.profile_ref != actor_ref
+            or candidate.profile_ref != social.recipient_ref
+            or candidate.profile_ref != household.recipient_ref
+            or candidate.profile_ref != organization.recipient_ref
+            or candidate.privacy_scope != cadence.report_scope
+            or candidate.payload.get("organization_ref") != organization.organization_ref
+            or candidate.expected_revisions.get(
+                f"gameplay:organization:{organization.organization_ref}"
+            )
+            != organization.source_revision_vector.get(
+                f"gameplay:organization:{organization.organization_ref}"
+            )
+            or not any(
+                row.get("work_order_ref")
+                == candidate.payload.get("schedule_work_order_ref")
+                for row in organization.work_orders
+            )
+        ):
+            return None
+        source_vector: dict[str, int] = {}
+        for vector in (
+            social.source_revision_vector,
+            household.source_revision_vector,
+            organization.source_revision_vector,
+            candidate.expected_revisions,
+        ):
+            for stream_id, revision in vector.items():
+                if stream_id in source_vector and source_vector[stream_id] != revision:
+                    return None
+                source_vector[stream_id] = revision
+        if source_vector != cadence.base_revision_vector:
+            return None
+        plan = self.plan_world(
+            batch_ref=batch_ref,
+            world_ref=cadence.world_ref,
+            mode=mode,
+            candidates=(candidate,),
+            base_event_digest=base_event_digest,
+            base_checkpoint_sequence=base_checkpoint_sequence,
+            tail_boundary=tail_boundary,
+            active_revision_refs=(mode.revision,),
+            source_revision_vector=source_vector,
+            deterministic_seed=cadence.deterministic_seed,
+            report_scope=cadence.report_scope,
+        ).model_copy(
+            update={
+                "source_vectors": {
+                    "social": dict(social.source_revision_vector),
+                    "household": dict(household.source_revision_vector),
+                    "organization": dict(organization.source_revision_vector),
+                },
+                "social_input_digest": social.input_digest,
+                "social_recipient_ref": social.recipient_ref,
+                "household_input_digest": household.input_digest,
+                "household_recipient_ref": household.recipient_ref,
+                "organization_input_digest": organization.input_digest,
+                "organization_recipient_ref": organization.recipient_ref,
+                "organization_schedule_ref": organization.organization_ref,
+            },
+            deep=True,
+        )
+        enriched = dict(payload)
+        enriched.pop("schedule_gated_supply_source_context", None)
+        enriched["schedule_gated_supply_owner_context"] = {
+            "plan": plan.model_dump(mode="json"),
+            "social_input": social.model_dump(mode="json"),
+            "household_input": household.model_dump(mode="json"),
+            "organization_input": organization.model_dump(mode="json"),
+        }
+        return enriched
 
     @staticmethod
     def _valid_population_read_set(read_set: PopulationReadSet) -> bool:
@@ -1096,7 +1226,7 @@ class ContinuityMergeAuthority:
         work_order_ref = candidate.payload.get("schedule_work_order_ref")
         if not isinstance(work_order_ref, str) or not any(row.get("work_order_ref") == work_order_ref for row in organization_input.work_orders):
             return self._failed(plan, "schedule_work_order_missing")
-        for source in (household_input, organization_input):
+        for source in (social_input, household_input, organization_input):
             validation = source.validate_against(store=self.store)
             if not validation.accepted:
                 return self._failed(plan, validation.error_code or "schedule_source_invalid")

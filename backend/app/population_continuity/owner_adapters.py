@@ -34,7 +34,7 @@ class ScheduleGatedSupplyOwnerExecutor:
         social_input = context.get("social_input", self._social_input)
         household_input = context.get("household_input", self._household_input)
         organization_input = context.get("organization_input", self._organization_input)
-        if plan is None or not pending_change_ref or social_input is None or household_input is None or organization_input is None:
+        if plan is None or social_input is None or household_input is None or organization_input is None:
             return PopulationOwnerReceipt(receipt_ref=f"rejected:{intent.intent_ref}", owner_ref=self.OWNER_REF, event_family=self.EVENT_FAMILY, committed=False, revision_vector={}, zero_write=True)
         try:
             request_context_digest = "sha256:" + hashlib.sha256(
@@ -48,14 +48,23 @@ class ScheduleGatedSupplyOwnerExecutor:
                     default=str,
                 ).encode()
             ).hexdigest()
-            result = self._merger.merge_released_schedule_gated_supply(
-                plan=plan,
-                pending_change_ref=pending_change_ref,
-                social_input=social_input,
-                household_input=household_input,
-                organization_input=organization_input,
-                request_context_digest=request_context_digest,
-            )
+            if pending_change_ref:
+                result = self._merger.merge_released_schedule_gated_supply(
+                    plan=plan,
+                    pending_change_ref=pending_change_ref,
+                    social_input=social_input,
+                    household_input=household_input,
+                    organization_input=organization_input,
+                    request_context_digest=request_context_digest,
+                )
+            else:
+                result = self._merger.merge_schedule_gated_supply(
+                    plan=plan,
+                    social_input=social_input,
+                    household_input=household_input,
+                    organization_input=organization_input,
+                    owner_request_digest=request_context_digest,
+                )
             receipt_ref = str(getattr(result, "owner_receipt_ref", "") or f"receipt:{intent.intent_ref}")
             idempotency_status = str(getattr(result, "idempotency_status", "new_commit"))
             return PopulationOwnerReceipt(receipt_ref=receipt_ref, owner_ref=self.OWNER_REF, event_family=self.EVENT_FAMILY, committed=bool(result.committed), revision_vector=dict(result.revision_vector), zero_write=not bool(result.committed) or idempotency_status == "duplicate_replayed", idempotency_status=idempotency_status)
@@ -70,7 +79,7 @@ class ScheduleGatedSupplyOwnerExecutor:
         try:
             return {
                 "plan": PopulationWorldPlan.model_validate(context["plan"]),
-                "pending_change_ref": str(context["pending_change_ref"]),
+                "pending_change_ref": str(context.get("pending_change_ref") or ""),
                 "social_input": FrozenSocialPlanningInput.model_validate(context["social_input"]),
                 "household_input": HouseholdScheduleInput.model_validate(context["household_input"]),
                 "organization_input": OrganizationScheduleInput.model_validate(context["organization_input"]),

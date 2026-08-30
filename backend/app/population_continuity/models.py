@@ -56,6 +56,8 @@ class ActivationReceipt(ContinuityModel):
     zero_write: bool = False
     idempotency_status: str = "rejected"
     stop_reason: str | None = None
+    lock_scope: Literal["none", "synchronous_callback"] = "none"
+    lock_released: bool = False
 
 
 class ActivationDecision(ContinuityModel):
