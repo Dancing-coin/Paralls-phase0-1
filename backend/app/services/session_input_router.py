@@ -28,3 +28,10 @@ class SessionInputRouter:
 
     def get_actor_position(self, actor_id: str) -> tuple[float, float, float] | None:
         return self._actor_positions.get(actor_id)
+
+    def distance_between(self, first_actor_id: str, second_actor_id: str) -> float | None:
+        first = self.get_actor_position(first_actor_id)
+        second = self.get_actor_position(second_actor_id)
+        if first is None or second is None:
+            return None
+        return sum((left - right) ** 2 for left, right in zip(first, second)) ** 0.5

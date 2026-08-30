@@ -112,6 +112,8 @@ from app.services.interaction_orchestration_service import InteractionOrchestrat
 from app.services.per_character_percept_filter import filter_candidate_for_actor
 from app.services.phase0_authority_event_adapter import Phase0AuthorityEventAdapter
 from app.services.session_input_router import SessionInputRouter
+from app.population_continuity.activation import ProfileActivationAuthority
+from app.population_continuity.activation_policy import ActivationPolicy
 from app.services.gameplay_mirror_session_access_service import (
     GameplayMirrorActorRequest,
     GameplayMirrorSessionAccessError,
@@ -400,6 +402,7 @@ def reset_runtime_state() -> None:
     global heavenly_graph
     global _pending_siming_character_dispatch_messages
     global websocket_transport_closers
+    global activation_policy
 
     previous_graph = globals().get("heavenly_graph")
     if isinstance(previous_graph, SQLiteHeavenlyGraphAdapter):
@@ -416,6 +419,13 @@ def reset_runtime_state() -> None:
     runtime = SessionInputRouter()
     websocket_transport_closers = {}
     character_agent_runtime = runtime_state.character_agent_runtime
+    character_agent_runtime.set_activation_authority(
+        ProfileActivationAuthority(
+            registry=character_agent_runtime._profile_registry,
+            store=gameplay_event_store,
+        )
+    )
+    activation_policy = ActivationPolicy()
 
     def dialogue_context_provider(actor_id: str) -> dict[str, object]:
         if not character_agent_runtime.supports_actor(actor_id):
@@ -1412,6 +1422,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     continue
                 stream_event = _streamable_dialogue_submit(envelope)
                 if stream_event is not None:
+                    _activate_character_for_player_input(stream_event)
                     route = runtime.accept_player_input(stream_event)
                     if route["route"] == "character_service":
                         request_id = stream_event.request_id or f"dialogue:{uuid4()}"
@@ -1552,7 +1563,64 @@ def _handle_websocket_envelope(
     except TypeError as exc:
         if "unexpected keyword argument 'connection_context'" not in str(exc):
             raise
-        return _handle_envelope(envelope)
+    return _handle_envelope(envelope)
+
+
+def _activate_character_for_player_input(
+    event: DialogueSubmit | FocusTargetChange | InteractIntent,
+) -> None:
+    if isinstance(event, DialogueSubmit):
+        target_actor_id, interaction_type, focused = (
+            event.target_actor_id,
+            "dialogue",
+            True,
+        )
+    elif isinstance(event, FocusTargetChange):
+        target_actor_id, interaction_type, focused = (
+            event.target_actor_id or "",
+            "none",
+            bool(event.target_actor_id),
+        )
+    else:
+        target_actor_id = event.target_object_id.removeprefix("character:")
+        interaction_type, focused = event.interaction_type, True
+    if not character_agent_runtime.supports_actor(target_actor_id):
+        return
+    projection = character_agent_runtime.get_seed_projection(target_actor_id)
+    decision = activation_policy.evaluate(
+        actor_id=target_actor_id,
+        distance_m=runtime.distance_between(event.actor_id, target_actor_id) or float("inf"),
+        focused=focused,
+        interaction_type=interaction_type,
+        pending_seed=bool(projection.get("activation_hints"))
+        or bool(character_agent_runtime.get_pending_seed_candidates(target_actor_id)),
+        budget=int(
+            character_agent_runtime.get_runtime_population_policy()[
+                "max_active_actors_per_tick"
+            ]
+        ),
+        supported_actor=True,
+    )
+    receipt = (
+        character_agent_runtime.activate_actor(
+            target_actor_id, decision, producer_ts=event.producer_ts
+        )
+        if decision.state == "active"
+        else None
+    )
+    _publish_debug_event(
+        build_debug_event(
+            producer_ts=event.producer_ts,
+            domain="character",
+            stage=f"activation_{decision.state}",
+            actor_id=target_actor_id,
+            summary=f"角色激活策略：{decision.state}",
+            detail={
+                "decision": decision.model_dump(),
+                "receipt": receipt.model_dump() if receipt is not None else {},
+            },
+        )
+    )
 
 
 def _handle_envelope(
@@ -2307,6 +2375,8 @@ def _handle_envelope(
         ]
 
     event = _parse_player_input(envelope.payload)
+    if isinstance(event, (DialogueSubmit, FocusTargetChange, InteractIntent)):
+        _activate_character_for_player_input(event)
     route = runtime.accept_player_input(event)
     messages: list[dict[str, object]] = [
         {

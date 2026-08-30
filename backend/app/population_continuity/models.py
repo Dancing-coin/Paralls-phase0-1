@@ -58,6 +58,15 @@ class ActivationReceipt(ContinuityModel):
     stop_reason: str | None = None
 
 
+class ActivationDecision(ContinuityModel):
+    actor_id: str = Field(min_length=1)
+    state: Literal["dormant", "prewarm", "activation_candidate", "active", "requeue"]
+    reason: str = Field(min_length=1)
+    requires_activation_lock: bool = False
+    load_private_memory: bool = False
+    policy_revision: str = Field(min_length=1)
+
+
 class ActivationLock(ContinuityModel):
     lock_ref: str = Field(min_length=1)
     profile_ref: str = Field(min_length=1)

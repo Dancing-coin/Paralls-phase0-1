@@ -65,6 +65,8 @@ from app.character_agent.storage.graph_continuity_store import CharacterGraphCon
 from app.character_agent.storage.goal_state_store import CharacterGoalStateStore
 from app.character_agent.storage.need_tension_store import CharacterNeedTensionStore
 from app.character_agent.storage.unresolved_tension_store import CharacterUnresolvedTensionStore
+from app.population_continuity.activation import ProfileActivationAuthority
+from app.population_continuity.models import ActivationDecision, ActivationReceipt
 from app.character_agent.services.character_behavior_evaluation import CharacterBehaviorEvaluationService
 from app.character_agent.services.behavior_turn_projection import CharacterBehaviorTurnProjection
 from app.character_agent.services.character_continuity import CharacterContinuityService
@@ -94,6 +96,7 @@ class CharacterAgentRuntime:
         skill_service: CharacterSkillService | None = None,
         memory_store: CharacterMemoryStorePort | None = None,
         continuity_store: CharacterGraphContinuityStore | None = None,
+        activation_authority: ProfileActivationAuthority | None = None,
         behavior_turn_recorder: BehaviorTurnRecorder | None = None,
         behavior_turn_scope_resolver: Callable[[str], HeavenlyGraphScope] | None = None,
     ) -> None:
@@ -101,6 +104,8 @@ class CharacterAgentRuntime:
             raise ValueError("graph continuity store is required in production continuity mode")
         self._profile_registry = CharacterProfileRegistry.from_directory(self._PROFILE_DIRECTORY)
         self._supported_actor_ids = set(self._profile_registry.actor_ids())
+        self._activation_world_ref = "world:default"
+        self._activation_authority = activation_authority
         self._l1 = CharacterAgentL1Service()
         self._l2 = CharacterAgentL2Service(profile_registry=self._profile_registry)
         self._l3 = CharacterAgentL3Service()
@@ -1009,6 +1014,40 @@ class CharacterAgentRuntime:
 
     def supports_actor(self, actor_id: str) -> bool:
         return actor_id in self._supported_actor_ids
+
+    def character_identity_digest(self, actor_id: str) -> str:
+        if not self.supports_actor(actor_id):
+            raise ValueError(f"unsupported actor_id: {actor_id}")
+        return self._profile_registry.authored_identity_digest(f"character:{actor_id}")
+
+    def activate_actor(
+        self, actor_id: str, decision: ActivationDecision, *, producer_ts: int
+    ) -> ActivationReceipt:
+        profile_ref = f"character:{actor_id}"
+        authority = self._activation_authority
+        if authority is None:
+            return ActivationReceipt(committed=False, status="requeued", profile_ref=profile_ref, zero_write=True, stop_reason="activation_authority_unavailable")
+        if not self.supports_actor(actor_id):
+            return ActivationReceipt(committed=False, status="requeued", profile_ref=profile_ref, zero_write=True, stop_reason="unsupported_actor")
+        if decision.actor_id != actor_id or decision.state != "active":
+            return ActivationReceipt(committed=False, status="requeued", profile_ref=profile_ref, zero_write=True, stop_reason="activation_decision_not_active")
+        lock_ref = f"lock:{self._activation_world_ref}:{profile_ref}"
+        if lock_ref in authority._locks:
+            return ActivationReceipt(committed=False, status="requeued", profile_ref=profile_ref, zero_write=True, stop_reason="activation_lock_conflict")
+        stream = f"population:{self._activation_world_ref}"
+        receipt = authority.lock(
+            world_ref=self._activation_world_ref,
+            profile_ref=profile_ref,
+            expected_revision=authority.store.get_stream_head(stream),
+        )
+        if not receipt.committed:
+            return receipt.model_copy(update={"status": "requeued", "stop_reason": "activation_lock_conflict"})
+        if decision.load_private_memory:
+            self.materialize_pending_seed_memories(actor_id, producer_ts)
+        return receipt
+
+    def set_activation_authority(self, authority: ProfileActivationAuthority) -> None:
+        self._activation_authority = authority
 
     def record_character_perceived_event_without_cognition(self, event: CharacterPerceivedEvent) -> None:
         if not self.supports_actor(event.actor_id):
