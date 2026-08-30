@@ -48,7 +48,14 @@ class PopulationSimulationCapability:
             canonical = PopulationReadSet.from_inputs(cadence_input, read_set.projections)
         except Exception:
             return self._requeue(batch_ref, read_set, "stale_read_set")
-        if canonical.read_set_digest != read_set.read_set_digest:
+        if (
+            canonical.read_set_digest != read_set.read_set_digest
+            or any(
+                projection.scope not in {cadence_input.report_scope, "public", "actor:self"}
+                or projection.revision_vector != cadence_input.base_revision_vector
+                for projection in read_set.projections
+            )
+        ):
             return self._requeue(batch_ref, read_set, "stale_read_set")
 
         report = self._planner.plan_population_cycle(read_set)
@@ -56,6 +63,7 @@ class PopulationSimulationCapability:
             return PopulationCycleResult(status="requeue", batch_ref=report.batch_ref, report=report, reason="stale_read_set", production_append_count=0)
         owner_receipts: list[PopulationOwnerReceipt] = []
         owner_refs: list[str] = []
+        owner_receipt_associations: dict[str, str] = {}
         for bound in report.owner_bound_intents:
             if isinstance(bound, dict):
                 bound = PopulationOwnerBoundIntent(
@@ -77,8 +85,13 @@ class PopulationSimulationCapability:
             owner_receipts.append(receipt)
             if receipt.committed and not receipt.zero_write:
                 owner_refs.append(receipt.receipt_ref)
+                owner_receipt_associations[bound.candidate_ref] = receipt.receipt_ref
 
-        seeds = self._seed_planner.derive(read_set, owner_refs)
+        seeds = self._seed_planner.derive(
+            read_set,
+            owner_refs,
+            owner_receipt_associations=owner_receipt_associations,
+        )
         continuity_receipts: list[CharacterContinuityReceipt] = []
         if self._continuity_port is not None:
             for seed in seeds:

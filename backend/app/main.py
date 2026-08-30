@@ -157,6 +157,10 @@ from app.services.siming_story_obligation_runtime import SimingStoryObligationRu
 from app.services.siming_debug_projection import SimingDebugProjection
 from app.services.siming_runtime import SimingRuntime
 from app.services.siming_population_capability import PopulationSimulationCapability
+from app.population_continuity.batch import ContinuityMergeAuthority
+from app.population_continuity.models import WorldModeProfile
+from app.population_continuity.owner_adapters import ScheduleGatedSupplyOwnerExecutor
+from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.services.character_agent_debug_projection import CharacterAgentDebugProjection
 from app.services.script_beat_projection import ScriptBeatProjection
 from app.services.world_outcome_debug_projection import WorldOutcomeDebugProjection
@@ -269,6 +273,20 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
         behavior_turn_scope_resolver=actor_private_scope,
     )
     llm_provider = build_siming_llm_provider(runtime_settings)
+    population_owner = None
+    owner_store = globals().get("gameplay_event_store")
+    if isinstance(owner_store, GameplayEventStore):
+        profile_dir = Path(__file__).resolve().parents[2] / "assets" / "characters" / "profiles"
+        owner_registry = CharacterProfileRegistry.from_directory(profile_dir)
+        owner_mode = WorldModeProfile(
+            world_ref="world:bakery-district", mode="simulation", revision="mode:bakery-district:v1",
+            cadence_class="daily", batch_limit=4, wake_budget=4, catch_up_limit=2,
+            allowed_intent_kinds=("work", "supply", "inspection"), survival_mode="narrative", degraded_threshold=3,
+        )
+        population_owner = ScheduleGatedSupplyOwnerExecutor(
+            merger=ContinuityMergeAuthority(store=owner_store, registry=owner_registry, mode=owner_mode),
+            context_builder=ScheduleGatedSupplyOwnerExecutor.context_from_intent_payload,
+        )
 
     def actor_autonomy(proposal) -> bool:
         actor_id = proposal.target_actor_id
@@ -318,7 +336,7 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
         siming_runtime=SimingRuntime(
             llm_provider=llm_provider,
             heavenly_support=support,
-            population_capability=PopulationSimulationCapability(),
+            population_capability=PopulationSimulationCapability(owner_executor=population_owner),
             behavior_turn_recorder=BehaviorTurnRecorder(heavenly_graph),
             behavior_turn_scope_resolver=siming_scope_for_event,
         ),
@@ -392,6 +410,7 @@ def reset_runtime_state() -> None:
     previous_capabilities = globals().get("harness_capability_store")
     if isinstance(previous_capabilities, HarnessCapabilityStore):
         previous_capabilities.close()
+    gameplay_event_store = GameplayEventStore()
     runtime_state = build_runtime_state(settings)
     heavenly_graph = runtime_state.heavenly_graph
     runtime = SessionInputRouter()
@@ -497,7 +516,6 @@ def reset_runtime_state() -> None:
     character_runtime_state_service = CharacterRuntimeStateService()
     authority_event_adapter = Phase0AuthorityEventAdapter()
     authority_event_bus = InMemoryAuthorityEventBus()
-    gameplay_event_store = GameplayEventStore()
     install_phase3_mirror_sources(
         configurations=tuple(
             Phase3MirrorActorConfiguration.model_validate(item)

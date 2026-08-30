@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from app.character_agent.models.simulation_seed import CharacterMemoryCandidate, CharacterSimulationSeedCandidate
 
@@ -34,7 +34,11 @@ class CharacterSeedPlanner:
     )
 
     def derive(
-        self, read_set: PopulationReadSet, accepted_owner_receipts: Sequence[str]
+        self,
+        read_set: PopulationReadSet,
+        accepted_owner_receipts: Sequence[str],
+        *,
+        owner_receipt_associations: Mapping[str, str] | None = None,
     ) -> tuple[CharacterSimulationSeedCandidate, ...]:
         cadence = read_set.cadence
         accepted = frozenset(str(item) for item in accepted_owner_receipts)
@@ -47,6 +51,8 @@ class CharacterSeedPlanner:
                 continue
             source_refs = self._source_refs(payload)
             owner_refs = self._owner_receipt_refs(payload)
+            if owner_receipt_associations and projection.ref in owner_receipt_associations:
+                owner_refs = owner_refs | frozenset({str(owner_receipt_associations[projection.ref])})
             objective = kind == "schedule_gated_supply" or bool(payload.get("objective_effect")) or bool(payload.get("world_effect"))
             state_deltas = payload.get("state_deltas")
             if not isinstance(state_deltas, dict):
