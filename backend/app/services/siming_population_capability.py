@@ -113,6 +113,8 @@ def default_population_read_set_builder(event: AuthorityEvent, cadence: Populati
 
 
 class PopulationSimulationCapability:
+    _ADMITTED_SCOPES = frozenset({"organization:summary", "public", "actor:self"})
+
     def __init__(self, *, planner: PopulationPlanner | None = None, seed_planner: CharacterSeedPlanner | None = None, owner_executor: PopulationOwnerExecutor | None = None, continuity_port: CharacterContinuityPort | None = None) -> None:
         self._planner = planner or PopulationPlanner()
         self._seed_planner = seed_planner or CharacterSeedPlanner()
@@ -121,6 +123,8 @@ class PopulationSimulationCapability:
 
     def run_cycle(self, cadence_input: PopulationCadenceInput, read_set: PopulationReadSet) -> PopulationCycleResult:
         batch_ref = f"population-batch:{cadence_input.cadence_id}:requeue"
+        if not self._scope_admitted(cadence_input.report_scope):
+            return self._requeue(batch_ref, read_set, "projection_scope_denied")
         if read_set.cadence != cadence_input:
             return self._requeue(batch_ref, read_set, "stale_read_set")
         try:
@@ -137,6 +141,10 @@ class PopulationSimulationCapability:
             return self._requeue(batch_ref, read_set, "stale_read_set")
         if any(not self._projection_scope_admitted(projection, cadence_input) for projection in read_set.projections):
             return self._requeue(batch_ref, read_set, "projection_scope_denied")
+        if self._continuity_port is not None and not callable(
+            getattr(self._continuity_port, "current_revision", None)
+        ) and not callable(getattr(self._continuity_port, "get_continuity_revision", None)):
+            return self._requeue(batch_ref, read_set, "continuity_revision_reader_missing")
 
         report = self._planner.plan_population_cycle(read_set)
         if any(getattr(item, "reason", "") == "stale_read_set" for item in report.rejected_candidates):
@@ -221,28 +229,66 @@ class PopulationSimulationCapability:
         reader = getattr(self._continuity_port, "get_continuity_revision", None)
         if callable(reader):
             return int(reader(actor_ref.removeprefix("character:")))
-        return 0
+        raise ValueError("continuity_revision_reader_missing")
 
     @staticmethod
     def _projection_scope_admitted(projection, cadence: PopulationCadenceInput) -> bool:
+        if not PopulationSimulationCapability._scope_admitted(cadence.report_scope):
+            return False
         if projection.scope not in {cadence.report_scope, "public", "actor:self"}:
             return False
-        if projection.scope.startswith("actor:") and projection.scope != "actor:self":
+        if not PopulationSimulationCapability._scope_admitted(projection.scope):
             return False
         payload = projection.payload
-        for key in ("projection_scope", "source_scope", "branch_id", "story_branch_id", "visibility_scope"):
-            value = payload.get(key)
+        for key, value in payload.items():
+            normalized_key = str(key).strip().lower()
+            if normalized_key == "private" and (
+                value is True or str(value).strip().lower() in {"true", "private", "actor_private"}
+            ):
+                return False
             if not isinstance(value, str):
                 continue
             normalized = value.strip().lower()
-            if normalized.startswith("branch:") and normalized != "branch:main":
+            if normalized_key in {"privacy_disposition", "privacy_scope"} and (
+                normalized in {"private", "actor_private"}
+                or normalized.startswith("private:")
+            ):
                 return False
-            if normalized == "private" or normalized.startswith("private:"):
-                return False
+            if "branch" in normalized_key or normalized_key in {"story_branch", "story_branch_id"}:
+                if normalized and normalized != "branch:main":
+                    return False
+            if normalized_key in {"projection_scope", "source_scope", "visibility_scope", "actor_scope"}:
+                if normalized.startswith("private") or (
+                    normalized.startswith("branch:") and normalized != "branch:main"
+                ):
+                    return False
+                if normalized_key == "actor_scope" and normalized != "actor:self":
+                    return False
         actor_scope = payload.get("actor_scope")
         if isinstance(actor_scope, str) and actor_scope.startswith("actor:") and actor_scope != "actor:self":
             return False
+        actor_ref = payload.get("actor_ref") or payload.get("profile_ref") or payload.get("character_ref")
+        if actor_ref is not None:
+            actor_text = str(actor_ref).strip().lower()
+            if not actor_text.startswith("character:") or "private" in actor_text:
+                return False
+            for key in ("recipient_ref", "recipient_actor_ref", "target_actor_ref", "private_actor_ref", "owner_actor_ref"):
+                value = payload.get(key)
+                if value is None:
+                    continue
+                value_text = str(value).strip().lower()
+                if value_text.startswith("character:") and value_text != actor_text:
+                    return False
+                if value_text.startswith("private:"):
+                    return False
         return True
+
+    @staticmethod
+    def _scope_admitted(scope: object) -> bool:
+        if not isinstance(scope, str):
+            return False
+        normalized = scope.strip().lower()
+        return normalized in PopulationSimulationCapability._ADMITTED_SCOPES
 
     @staticmethod
     def _requeue(batch_ref: str, read_set: PopulationReadSet, reason: str) -> PopulationCycleResult:

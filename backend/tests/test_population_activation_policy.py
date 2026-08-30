@@ -43,8 +43,8 @@ def test_structured_player_inputs_invoke_activation_once_without_requeueing_acti
     main._handle_envelope(Envelope(message_type="player_input", payload={**base, "intent_type": "focus_target_change", "target_actor_id": "char_b"}))
     main._handle_envelope(Envelope(message_type="player_input", payload={**base, "intent_type": "interact_intent", "target_object_id": "character:char_c", "interaction_type": "consequential"}))
 
-    assert [decision.state for decision in decisions] == ["active", "activation_candidate", "active"]
-    assert len(receipts) == 2
+    assert [decision.state for decision in decisions] == ["active", "activation_candidate", "activation_candidate"]
+    assert len(receipts) == 1
     assert all(receipt.committed for receipt in receipts)
 
 

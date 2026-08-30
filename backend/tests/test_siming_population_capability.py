@@ -59,6 +59,9 @@ class RecordingContinuityPort:
             character_revision_after=1, source_owner_receipt_refs=command.source_owner_receipt_refs,
         )
 
+    def current_revision(self, actor_ref: str) -> int:
+        return 0
+
 
 def capability_with_bakery_owner() -> tuple[PopulationSimulationCapability, RecordingContinuityPort]:
     fixture = BakeryDistrictPopulationFixture.create(

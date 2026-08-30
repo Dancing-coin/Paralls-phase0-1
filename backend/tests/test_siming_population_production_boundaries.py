@@ -177,6 +177,30 @@ def test_continuity_command_uses_current_actor_revision_for_the_next_window() ->
     assert continuity.expected == [0, 1]
 
 
+def test_missing_continuity_revision_reader_requeues_before_owner_execution() -> None:
+    class RecordingOwner:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def submit(self, intent, *, read_set):
+            self.calls += 1
+            raise AssertionError("owner must not execute without a revision reader")
+
+    class ApplyOnlyContinuity:
+        def apply_command(self, command):
+            raise AssertionError("continuity command must not be built")
+
+    owner = RecordingOwner()
+    result = PopulationSimulationCapability(
+        owner_executor=owner, continuity_port=ApplyOnlyContinuity()
+    ).run_cycle(
+        _cadence(), _supply_read_set(_cadence())
+    )
+    assert result.status == "requeue"
+    assert result.reason == "continuity_revision_reader_missing"
+    assert owner.calls == 0
+
+
 @pytest.mark.parametrize("scope", ["branch:preview", "private:memory", "actor:char_b"])
 def test_non_mainline_or_cross_actor_scope_is_rejected_before_character_continuity(scope: str) -> None:
     class RecordingContinuity:
@@ -220,6 +244,186 @@ def test_branch_payload_is_rejected_even_when_projection_scope_is_public() -> No
     )
     assert result.status == "requeue"
     assert result.reason == "projection_scope_denied"
+
+
+@pytest.mark.parametrize("report_scope", ["branch:preview", "private:memory"])
+def test_forbidden_cadence_report_scope_is_rejected_before_planning(report_scope: str) -> None:
+    cadence = _cadence(report_scope=report_scope)
+    result = PopulationSimulationCapability().run_cycle(
+        cadence, PopulationReadSet.from_inputs(cadence, ())
+    )
+    assert result.status == "requeue"
+    assert result.reason == "projection_scope_denied"
+    assert result.production_append_count == 0
+
+
+@pytest.mark.parametrize(
+    "payload_marker",
+    [
+        {"privacy_disposition": "private"},
+        {"privacy_scope": "private:memory"},
+        {"actor_ref": "character:char_b", "actor_scope": "actor:char_a"},
+        {"branch_id": "branch:preview"},
+    ],
+)
+def test_forbidden_projection_payload_markers_are_rejected_before_continuity(
+    payload_marker: dict[str, object],
+) -> None:
+    cadence = _cadence()
+    projection = PopulationProjection(
+        ref="supply:forbidden-marker",
+        scope="public",
+        revision_vector=dict(cadence.base_revision_vector),
+        payload={
+            "actor_ref": "character:char_a",
+            "candidate_kind": "schedule_gated_supply",
+            **payload_marker,
+        },
+    )
+    result = PopulationSimulationCapability().run_cycle(
+        cadence, PopulationReadSet.from_inputs(cadence, (projection,))
+    )
+    assert result.status == "requeue"
+    assert result.reason == "projection_scope_denied"
+    assert result.production_append_count == 0
+
+
+def test_production_startup_cadence_contains_real_schedule_seed_and_owner_path() -> None:
+    import app.main as main
+
+    main.reset_runtime_state()
+    cadence_events = main.authority_event_bus.list_events(
+        event_type="population_cadence_event", include_realtime=True, current_only=False
+    )
+    assert len(cadence_events) == 1
+    event = cadence_events[0]
+    projections = event.payload["population_projections"]
+    assert any(
+        item.get("payload", {}).get("candidate_kind") == "schedule_gated_supply"
+        for item in projections
+    )
+    cycle_audit = next(
+        audit
+        for audit in main.siming_audit_writer.find_by_correlation(
+            room_id=event.room_id, correlation_id=event.correlation_id
+        )
+        if audit.reason.startswith("population_cycle")
+    )
+    assert "seeds=1" in cycle_audit.reason
+    assert "owners=1" in cycle_audit.reason
+    assert main.character_agent_runtime.get_seed_projection("char_a")
+    assert any(
+        stored.event_type == "gameplay.organization.commerce_commitment_accepted"
+        for stored in main.gameplay_event_store.read_events()
+    )
+
+
+def test_dialogue_activation_failure_short_circuits_cognition(monkeypatch) -> None:
+    import app.main as main
+    from app.models.player_input import DialogueSubmit
+    from app.population_continuity.models import ActivationReceipt
+
+    main.reset_runtime_state()
+    cognition_calls: list[object] = []
+    monkeypatch.setattr(
+        main.character_agent_runtime,
+        "activate_actor",
+        lambda *args, **kwargs: ActivationReceipt(
+            committed=False,
+            status="requeued",
+            profile_ref="character:char_a",
+            zero_write=True,
+            stop_reason="activation_lock_conflict",
+        ),
+    )
+    monkeypatch.setattr(
+        main.character_agent_runtime,
+        "ingest_character_perceived_event",
+        lambda event: cognition_calls.append(event) or [],
+    )
+    event = DialogueSubmit(
+        player_id="player:1",
+        room_id="room:bakery",
+        scene_id="scene:bakery",
+        zone_id="zone:bakery",
+        actor_id="char_c",
+        producer_ts=101,
+        request_id="request:activation-conflict",
+        target_actor_id="char_a",
+        content="hello",
+    )
+    messages = main._handle_envelope(
+        __import__("app.ws_protocol", fromlist=["Envelope"]).Envelope(
+            message_type="player_input", payload=event.model_dump()
+        )
+    )
+    assert cognition_calls == []
+    assert messages[0]["message_type"] == "ack"
+    assert messages[0]["payload"]["accepted"] is False
+    assert messages[0]["payload"]["route"] == "character_activation"
+
+
+def test_stream_fallback_cognition_is_executed_inside_activation_lock(monkeypatch) -> None:
+    import app.main as main
+    from app.models.player_input import DialogueSubmit
+
+    main.reset_runtime_state()
+    event = DialogueSubmit(
+        player_id="player:1",
+        room_id="room:bakery",
+        scene_id="scene:bakery",
+        zone_id="zone:bakery",
+        actor_id="char_c",
+        producer_ts=101,
+        request_id="request:stream-fallback",
+        target_actor_id="char_a",
+        content="hello",
+    )
+    observed: list[bool] = []
+
+    def stream_dialogue(_event, *, cancelled):
+        observed.append(
+            main.character_agent_runtime._activation_authority.is_lock_active(
+                world_ref=main.character_agent_runtime._activation_world_ref,
+                profile_ref="character:char_a",
+            )
+        )
+        yield {"event": "completed", "response": object(), "fallback_used": True}
+
+    monkeypatch.setattr(main, "_dialogue_direct_content", lambda _event: "")
+    monkeypatch.setattr(main.character_service, "stream_dialogue", stream_dialogue)
+    events = main._stream_dialogue_with_activation(event, lambda: False)
+    assert events
+    assert observed == [True]
+
+
+def test_interact_without_character_cognition_is_not_reported_as_active() -> None:
+    import app.main as main
+    from app.models.player_input import InteractIntent
+
+    main.reset_runtime_state()
+    decisions: list[object] = []
+    original = main.activation_policy.evaluate
+
+    def evaluate(**kwargs):
+        decision = original(**kwargs)
+        decisions.append(decision)
+        return decision
+
+    main.activation_policy.evaluate = evaluate
+    main._activate_character_for_player_input(
+        InteractIntent(
+            player_id="player:1",
+            room_id="room:bakery",
+            scene_id="scene:bakery",
+            zone_id="zone:bakery",
+            actor_id="char_c",
+            producer_ts=101,
+            target_object_id="character:char_a",
+            interaction_type="consequential",
+        )
+    )
+    assert decisions[0].state == "activation_candidate"
 
 
 def test_activation_cognition_callback_runs_while_public_activation_lock_is_held() -> None:

@@ -567,6 +567,9 @@ class _CharacterRuntimeContinuityPort:
         self.commands.append(command)
         return self.runtime.apply_character_continuity_command(command)
 
+    def current_revision(self, actor_ref: str) -> int:
+        return self.runtime.get_continuity_revision(actor_ref.removeprefix("character:"))
+
 
 class _RecordingPopulationSimulationCapability(PopulationSimulationCapability):
     def __init__(self, **kwargs):
