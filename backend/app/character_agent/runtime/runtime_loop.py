@@ -30,6 +30,12 @@ from app.character_agent.models.supervision import (
     CharacterSupervisionState,
     CharacterUnresolvedTension,
 )
+from app.character_agent.models.simulation_seed import (
+    CharacterContinuityCommand,
+    CharacterContinuityReceipt,
+    CharacterMemoryCandidate,
+    CharacterMemoryMaterializationReceipt,
+)
 from app.character_agent.mind.frame_builder import CharacterMindFrameBuilder
 from app.character_agent.mind.writeback_policy import MindWritebackPolicyRouter
 from app.character_agent.models.mind_frame import MindDeltaLedger
@@ -60,6 +66,7 @@ from app.character_agent.storage.need_tension_store import CharacterNeedTensionS
 from app.character_agent.storage.unresolved_tension_store import CharacterUnresolvedTensionStore
 from app.character_agent.services.character_behavior_evaluation import CharacterBehaviorEvaluationService
 from app.character_agent.services.behavior_turn_projection import CharacterBehaviorTurnProjection
+from app.character_agent.services.character_continuity import CharacterContinuityService
 from app.services.character_agent_debug_projection import CharacterAgentDebugProjection
 from app.services.behavior_turn_recorder import BehaviorTurnRecorder
 from app.models.siming_character_bridge import SimingCharacterCompatibilityInput
@@ -143,6 +150,15 @@ class CharacterAgentRuntime:
         self._unresolved_tension_store = CharacterUnresolvedTensionStore()
         self._behavior_evaluation = CharacterBehaviorEvaluationService()
         self._continuity_store = continuity_store
+        self._continuity_revisions: dict[str, int] = {}
+        self._continuity_receipts: dict[str, CharacterContinuityReceipt] = {}
+        self._materialization_receipts: dict[str, CharacterMemoryMaterializationReceipt] = {}
+        self._pending_seed_candidates: dict[str, dict[str, CharacterMemoryCandidate]] = {}
+        self._seed_projections: dict[str, dict[str, object]] = {}
+        self._continuity_service = CharacterContinuityService(
+            apply_command=self._apply_continuity_command,
+            materialize=self.materialize_pending_seed_memories,
+        )
         self._behavior_turn_projection = (
             CharacterBehaviorTurnProjection(
                 recorder=behavior_turn_recorder,
@@ -1045,6 +1061,241 @@ class CharacterAgentRuntime:
             if not event.get("event_id") or str(event["event_id"]) not in known_event_ids
         )
         return graph_timeline
+
+    def apply_character_continuity_command(
+        self, command: CharacterContinuityCommand
+    ) -> CharacterContinuityReceipt:
+        return self._continuity_service.apply_command(command)
+
+    def ingest_seed_projection(self, seed: object) -> list[CharacterGoalCommand]:
+        if hasattr(seed, "model_dump"):
+            payload = seed.model_dump(mode="json")
+        elif isinstance(seed, dict):
+            payload = deepcopy(seed)
+        else:
+            raise TypeError("seed_projection_invalid")
+        actor_ref = str(payload.get("actor_ref", "") or "")
+        actor_id = actor_ref.removeprefix("character:")
+        if not self.supports_actor(actor_id):
+            return []
+        self._seed_projections[actor_id] = deepcopy(payload)
+        state_delta = payload.get("state_deltas", {})
+        if isinstance(state_delta, dict):
+            need_delta = state_delta.get("need_tension")
+            if isinstance(need_delta, dict):
+                self._need_tension_store.merge_delta(actor_id, need_delta)
+            dynamic_delta = state_delta.get("dynamic_state")
+            if isinstance(dynamic_delta, dict):
+                self._dynamic_state_store.merge_delta(actor_id, dynamic_delta)
+        hints = payload.get("activation_hints", ())
+        if isinstance(hints, (list, tuple)) and hints:
+            self._wake_up_signals[actor_id] = {
+                "wake_up_requested": True,
+                "salience": float(payload.get("activation_salience", 0.0) or 0.0),
+                "producer_ts": int(payload.get("to_tick", 0) or 0),
+                "activation_hints": [str(item) for item in hints],
+            }
+        return []
+
+    def get_seed_projection(self, actor_id: str) -> dict[str, object]:
+        return deepcopy(self._seed_projections.get(actor_id, {}))
+
+    def get_pending_seed_candidates(self, actor_id: str) -> list[dict[str, object]]:
+        return [
+            candidate.model_dump(mode="json")
+            for candidate in self._pending_seed_candidates.get(actor_id, {}).values()
+        ]
+
+    def materialize_pending_seed_memories(
+        self, actor_id: str, producer_ts: int
+    ) -> list[CharacterMemoryMaterializationReceipt]:
+        candidates = self._pending_seed_candidates.get(actor_id, {})
+        receipts: list[CharacterMemoryMaterializationReceipt] = []
+        for candidate_id, candidate in list(candidates.items()):
+            prior = self._materialization_receipts.get(candidate_id)
+            if prior is not None:
+                receipts.append(
+                    prior.model_copy(update={"status": "idempotent_replay"})
+                )
+                continue
+            if candidate.exposure_basis not in {
+                "affected_directly",
+                "public_propagation",
+                "observed",
+                "participated",
+            }:
+                receipt = CharacterMemoryMaterializationReceipt(
+                    candidate_id=candidate_id,
+                    actor_ref=actor_id,
+                    status="rejected",
+                    refusal_reason="memory_materialization_denied",
+                )
+                self._materialization_receipts[candidate_id] = receipt
+                receipts.append(receipt)
+                continue
+            if producer_ts < candidate.knowledge_available_at:
+                receipt = CharacterMemoryMaterializationReceipt(
+                    candidate_id=candidate_id,
+                    actor_ref=actor_id,
+                    status="rejected",
+                    refusal_reason="temporal_knowledge_denied",
+                )
+                self._materialization_receipts[candidate_id] = receipt
+                receipts.append(receipt)
+                continue
+            event = self._session_store.append_event(
+                actor_id=actor_id,
+                event_type="character_agent_settlement_result",
+                producer_ts=producer_ts,
+                payload={
+                    "result_type": "simulation_memory_materialized",
+                    "summary": candidate.summary,
+                    "source_event_id": candidate.source_event_refs[0],
+                    "candidate_id": candidate_id,
+                },
+            )
+            self._memory_store.write_event(event)
+            receipt = CharacterMemoryMaterializationReceipt(
+                candidate_id=candidate_id,
+                actor_ref=actor_id,
+                status="committed",
+                selected_pool="event_memory"
+                if candidate.candidate_kind == "event_experience"
+                else "observation_memory",
+                memory_cursor=producer_ts,
+            )
+            self._materialization_receipts[candidate_id] = receipt
+            receipts.append(receipt)
+        self._persist_graph_continuity(actor_id=actor_id, producer_ts=producer_ts)
+        return receipts
+
+    def _apply_continuity_command(
+        self, command: CharacterContinuityCommand
+    ) -> CharacterContinuityReceipt:
+        actor_id = command.actor_ref.removeprefix("character:")
+        if not self.supports_actor(actor_id):
+            return CharacterContinuityReceipt(
+                receipt_ref=f"rejected:{command.command_id}",
+                command_id=command.command_id,
+                actor_ref=command.actor_ref,
+                status="rejected",
+                character_revision_before=0,
+                character_revision_after=0,
+                refusal_reason="unsupported_actor",
+            )
+        prior = self._continuity_receipts.get(command.idempotency_key)
+        if isinstance(prior, CharacterContinuityReceipt):
+            return prior.model_copy(deep=True)
+        current_revision = self._continuity_revisions.get(actor_id, 0)
+        if command.expected_character_revision != current_revision:
+            return CharacterContinuityReceipt(
+                receipt_ref=f"requeued:{command.command_id}",
+                command_id=command.command_id,
+                actor_ref=command.actor_ref,
+                status="requeued",
+                character_revision_before=current_revision,
+                character_revision_after=current_revision,
+                refusal_reason="character_revision_conflict",
+            )
+        if command.policy_revision != "policy:character-continuity:v1":
+            return self._continuity_refusal(command, current_revision, "schema_revision_unsupported")
+        if not command.source_revision_vector or any(int(v) < 0 for v in command.source_revision_vector.values()):
+            return self._continuity_refusal(command, current_revision, "source_revision_vector_invalid")
+        evidence = command.exposure_evidence
+        basis = evidence.get("exposure_basis")
+        if basis is not None and not isinstance(basis, str):
+            return self._continuity_refusal(command, current_revision, "exposure_evidence_invalid")
+        if evidence.get("visibility_scope", "actor:self") != "actor:self":
+            return self._continuity_refusal(command, current_revision, "visibility_denied")
+        if evidence.get("privacy_disposition", "actor_private") != "actor_private":
+            return self._continuity_refusal(command, current_revision, "privacy_denied")
+        if not command.source_owner_receipt_refs and command.state_delta.get("world_effect"):
+            return CharacterContinuityReceipt(
+                receipt_ref=f"rejected:{command.command_id}",
+                command_id=command.command_id,
+                actor_ref=command.actor_ref,
+                status="rejected",
+                character_revision_before=current_revision,
+                character_revision_after=current_revision,
+                refusal_reason="owner_settlement_required",
+            )
+        state_delta = deepcopy(command.state_delta)
+        presentation_seed = state_delta.pop("presentation_seed", None)
+        activation_hints = state_delta.pop("activation_hints", ())
+        supersedes = state_delta.get("supersedes")
+        need_delta = state_delta.pop("need_tension", None)
+        if isinstance(need_delta, dict):
+            self._need_tension_store.merge_delta(actor_id, need_delta)
+        dynamic_delta = state_delta.pop("dynamic_state", None)
+        if isinstance(dynamic_delta, dict):
+            self._dynamic_state_store.merge_delta(actor_id, dynamic_delta)
+        candidates = command.exposure_evidence.get("memory_candidates", [])
+        if not isinstance(candidates, list):
+            return self._continuity_refusal(command, current_revision, "memory_candidates_invalid")
+        if set(command.memory_candidate_refs) != {
+            str(item.get("candidate_id", "")) for item in candidates if isinstance(item, dict)
+        }:
+            return self._continuity_refusal(command, current_revision, "memory_candidate_refs_mismatch")
+        pending = self._pending_seed_candidates.setdefault(actor_id, {})
+        for raw in candidates:
+            if not isinstance(raw, dict):
+                return self._continuity_refusal(command, current_revision, "memory_candidate_invalid")
+            try:
+                candidate = CharacterMemoryCandidate.model_validate(raw)
+            except Exception:
+                return self._continuity_refusal(command, current_revision, "memory_candidate_schema_invalid")
+            if candidate.actor_ref != command.actor_ref or candidate.visibility_scope != "actor:self" or candidate.privacy_disposition != "actor_private":
+                return self._continuity_refusal(command, current_revision, "memory_candidate_scope_denied")
+            if candidate.event_valid_at > candidate.knowledge_available_at:
+                return self._continuity_refusal(command, current_revision, "memory_candidate_temporal_invalid")
+            if basis is not None and candidate.exposure_basis != basis:
+                return self._continuity_refusal(command, current_revision, "exposure_basis_mismatch")
+            pending[candidate.candidate_id] = candidate
+        projection = {
+            "actor_ref": command.actor_ref,
+            "state_deltas": deepcopy(state_delta),
+            "presentation_seed": deepcopy(presentation_seed) if isinstance(presentation_seed, dict) else {},
+            "activation_hints": list(activation_hints) if isinstance(activation_hints, (list, tuple)) else list(command.exposure_evidence.get("activation_hints", [])),
+            "memory_candidate_refs": list(command.memory_candidate_refs),
+            "supersedes": command.exposure_evidence.get("supersedes") or supersedes,
+        }
+        self.ingest_seed_projection(projection)
+        event = self._session_store.append_event(
+            actor_id=actor_id,
+            event_type="character_simulation_seed_event",
+            producer_ts=int(command.source_revision_vector.get("world:bakery", 0) or command.expected_character_revision),
+            payload=projection,
+        )
+        self._memory_store.write_event(event)
+        self._continuity_revisions[actor_id] = current_revision + 1
+        receipt = CharacterContinuityReceipt(
+            receipt_ref=f"continuity:{command.command_id}",
+            command_id=command.command_id,
+            actor_ref=command.actor_ref,
+            status="committed",
+            character_revision_before=current_revision,
+            character_revision_after=current_revision + 1,
+            seed_delta_refs=(f"seed-delta:{command.command_id}",),
+            materialization_status="pending",
+            cursor_vector={
+                "state_cursor": max(command.source_revision_vector.values(), default=current_revision),
+                "experience_cursor": max(command.source_revision_vector.values(), default=current_revision),
+                "memory_cursor": 0,
+            },
+            source_owner_receipt_refs=command.source_owner_receipt_refs,
+            recorded_at=max(command.source_revision_vector.values(), default=0),
+        )
+        self._continuity_receipts[command.idempotency_key] = receipt
+        self._persist_graph_continuity(actor_id=actor_id, producer_ts=receipt.recorded_at)
+        return receipt
+
+    def _continuity_refusal(self, command: CharacterContinuityCommand, revision: int, reason: str) -> CharacterContinuityReceipt:
+        return CharacterContinuityReceipt(
+            receipt_ref=f"rejected:{command.command_id}", command_id=command.command_id,
+            actor_ref=command.actor_ref, status="rejected",
+            character_revision_before=revision, character_revision_after=revision,
+            refusal_reason=reason,
+        )
 
     def apply_mind_delta_ledger(
         self,
@@ -3575,6 +3826,37 @@ class CharacterAgentRuntime:
             continuity = snapshot.get("continuity_state")
             if isinstance(continuity, dict) and continuity:
                 self._continuity_state[actor_id] = RuntimeContinuityState(**continuity)
+            revisions = snapshot.get("continuity_revisions")
+            if isinstance(revisions, int) and revisions >= 0:
+                self._continuity_revisions[actor_id] = revisions
+            receipts = snapshot.get("continuity_receipts")
+            if isinstance(receipts, dict):
+                for key, value in receipts.items():
+                    if isinstance(key, str) and isinstance(value, dict):
+                        try:
+                            self._continuity_receipts[key] = CharacterContinuityReceipt.model_validate(value)
+                        except Exception:
+                            continue
+            materialized = snapshot.get("materialization_receipts")
+            if isinstance(materialized, dict):
+                for key, value in materialized.items():
+                    if isinstance(key, str) and isinstance(value, dict):
+                        try:
+                            self._materialization_receipts[key] = CharacterMemoryMaterializationReceipt.model_validate(value)
+                        except Exception:
+                            continue
+            pending = snapshot.get("pending_seed_candidates")
+            if isinstance(pending, dict):
+                self._pending_seed_candidates[actor_id] = {}
+                for key, value in pending.items():
+                    if isinstance(key, str) and isinstance(value, dict):
+                        try:
+                            self._pending_seed_candidates[actor_id][key] = CharacterMemoryCandidate.model_validate(value)
+                        except Exception:
+                            continue
+            projection = snapshot.get("seed_projection")
+            if isinstance(projection, dict):
+                self._seed_projections[actor_id] = deepcopy(projection)
             timeline = snapshot.get("session_timeline")
             if isinstance(timeline, list):
                 self._graph_session_timelines[actor_id] = [
@@ -3602,6 +3884,22 @@ class CharacterAgentRuntime:
                 "goal_state_history": self.get_goal_state_history(actor_id),
                 "session_timeline": timeline,
                 "continuity_state": self.get_runtime_continuity_state(actor_id),
+                "continuity_revisions": self._continuity_revisions.get(actor_id, 0),
+                "continuity_receipts": {
+                    key: value.model_dump(mode="json")
+                    for key, value in self._continuity_receipts.items()
+                    if value.actor_ref.removeprefix("character:") == actor_id
+                },
+                "materialization_receipts": {
+                    key: value.model_dump(mode="json")
+                    for key, value in self._materialization_receipts.items()
+                    if value.actor_ref.removeprefix("character:") == actor_id
+                },
+                "pending_seed_candidates": {
+                    key: value.model_dump(mode="json")
+                    for key, value in self._pending_seed_candidates.get(actor_id, {}).items()
+                },
+                "seed_projection": self.get_seed_projection(actor_id),
             },
         )
 

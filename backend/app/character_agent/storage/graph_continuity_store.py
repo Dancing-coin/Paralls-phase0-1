@@ -32,6 +32,11 @@ class CharacterGraphContinuityStore:
             "goal_state_history",
             "session_timeline",
             "continuity_state",
+            "continuity_revisions",
+            "continuity_receipts",
+            "materialization_receipts",
+            "pending_seed_candidates",
+            "seed_projection",
         }
     )
 
