@@ -156,6 +156,27 @@ class PopulationPlanner:
         """Pin the exact admitted schedule plan; this is not a generic payload digest."""
         return _digest(plan.model_dump(mode="json"))
 
+    @staticmethod
+    def schedule_owner_request_digest(
+        *,
+        plan: PopulationWorldPlan,
+        pending_change_ref: str,
+        social_input: FrozenSocialPlanningInput,
+        household_input: HouseholdScheduleInput,
+        organization_input: OrganizationScheduleInput,
+        request_context_digest: str,
+    ) -> str:
+        return _digest(
+            {
+                "plan": plan.model_dump(mode="json"),
+                "pending_change_ref": pending_change_ref,
+                "social_input": social_input.model_dump(mode="json"),
+                "household_input": household_input.model_dump(mode="json"),
+                "organization_input": organization_input.model_dump(mode="json"),
+                "request_context_digest": request_context_digest,
+            }
+        )
+
     def plan_population_cycle(self, read_set: PopulationReadSet) -> PopulationBatchReport:
         """Calculate one deterministic batch; this method has no write authority."""
         cadence = read_set.cadence
@@ -871,7 +892,12 @@ class ContinuityMergeAuthority:
         # caller-selected stream/event payload into production truth.
         return self._failed(plan, "legacy_population_merge_retired")
 
-    def merge_world_plan(self, plan: PopulationWorldPlan) -> ContinuityMergeReceipt:
+    def merge_world_plan(
+        self,
+        plan: PopulationWorldPlan,
+        *,
+        owner_request_digest: str | None = None,
+    ) -> ContinuityMergeReceipt:
         if plan.world_ref != self.mode.world_ref or plan.policy_revision != self.mode.revision:
             return self._failed(plan, "stale_policy_revision")
         if plan.mode != self.mode.mode:
@@ -894,6 +920,15 @@ class ContinuityMergeAuthority:
                 owner_principal_ref, f"merge:{plan.batch_ref}"
             )
             if existing is not None:
+                event = self.store.get_event(existing.committed_event_ids[0])
+                stored_request_digest = event.payload.get(
+                    "population_owner_request_digest"
+                )
+                if stored_request_digest != owner_request_digest and (
+                    stored_request_digest is not None
+                    or owner_request_digest is not None
+                ):
+                    return self._failed(plan, "idempotency_key_reused")
                 replay = GameplayProjectionReplay(
                     projector_id="population-continuity",
                     projector_version="1",
@@ -959,6 +994,25 @@ class ContinuityMergeAuthority:
                 )
         except (KeyError, TypeError, ValueError):
             return self._failed(plan, "owner_mapping_rejected")
+        if owner_request_digest is not None:
+            fragment = fragment.model_copy(
+                update={
+                    "event_specs": {
+                        stream_id: tuple(
+                            (
+                                event_type,
+                                {
+                                    **payload,
+                                    "population_owner_request_digest": owner_request_digest,
+                                },
+                            )
+                            for event_type, payload in specs
+                        )
+                        for stream_id, specs in fragment.event_specs.items()
+                    }
+                },
+                deep=True,
+            )
         batch = build_multi_stream_atomic_event_batch_from_fragments(
             command_id=f"merge:{plan.batch_ref}",
             idempotency_principal_ref=fragment.owner_principal_ref,
@@ -1019,6 +1073,7 @@ class ContinuityMergeAuthority:
         social_input: FrozenSocialPlanningInput,
         household_input: HouseholdScheduleInput,
         organization_input: OrganizationScheduleInput,
+        owner_request_digest: str | None = None,
     ) -> ContinuityMergeReceipt:
         """Recheck frozen existing-owner sources before the approved supply merge."""
         candidate = plan.candidates[0]
@@ -1051,7 +1106,9 @@ class ContinuityMergeAuthority:
             for stream_id, revision in source.source_revision_vector.items()
         ):
             return self._failed(plan, "schedule_source_vector_conflict")
-        return self.merge_world_plan(plan)
+        return self.merge_world_plan(
+            plan, owner_request_digest=owner_request_digest
+        )
 
     def merge_released_schedule_gated_supply(
         self,
@@ -1061,6 +1118,7 @@ class ContinuityMergeAuthority:
         social_input: FrozenSocialPlanningInput,
         household_input: HouseholdScheduleInput,
         organization_input: OrganizationScheduleInput,
+        request_context_digest: str = "",
     ) -> ContinuityMergeReceipt:
         """Consume one released activation-owned schedule admission, then the existing owner row."""
         from .activation import ProfileActivationAuthority
@@ -1068,11 +1126,6 @@ class ContinuityMergeAuthority:
         released_plan = plan.model_copy(
             update={"activation_lock_refs": (), "activation_locks": ()}, deep=True
         )
-        if self.store.get_by_idempotency(
-            OrganizationAuthority._PRINCIPAL, f"merge:{plan.batch_ref}"
-        ) is not None:
-            return self.merge_world_plan(released_plan)
-
         pending = ProfileActivationAuthority(
             registry=self.registry, store=self.store
         ).pending_projection(plan.world_ref).get(pending_change_ref)
@@ -1095,11 +1148,26 @@ class ContinuityMergeAuthority:
             or pending.get("lock_ref") not in plan.activation_lock_refs
         ):
             return self._failed(plan, "released_schedule_pending_invalid")
+        owner_request_digest = PopulationPlanner.schedule_owner_request_digest(
+            plan=plan,
+            pending_change_ref=pending_change_ref,
+            social_input=social_input,
+            household_input=household_input,
+            organization_input=organization_input,
+            request_context_digest=request_context_digest,
+        )
+        if self.store.get_by_idempotency(
+            OrganizationAuthority._PRINCIPAL, f"merge:{plan.batch_ref}"
+        ) is not None:
+            return self.merge_world_plan(
+                released_plan, owner_request_digest=owner_request_digest
+            )
         return self.merge_schedule_gated_supply(
             plan=released_plan,
             social_input=social_input,
             household_input=household_input,
             organization_input=organization_input,
+            owner_request_digest=owner_request_digest,
         )
 
     def merge_released_survival_state_expiry(

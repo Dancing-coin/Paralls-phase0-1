@@ -394,11 +394,12 @@ class BakeryDistrictPopulationFixture:
             household_input=household_input,
             organization_input=organization_input,
         )
-        merged_duplicate = merger.merge_world_plan(
-            scheduled.plan.model_copy(
-                update={"activation_lock_refs": (), "activation_locks": ()},
-                deep=True,
-            )
+        merged_duplicate = merger.merge_released_schedule_gated_supply(
+            plan=scheduled.plan,
+            pending_change_ref=pending_change_ref,
+            social_input=social_input,
+            household_input=household_input,
+            organization_input=organization_input,
         )
         conflict_plan_result, conflict_social, conflict_household, conflict_organization = (
             self._plan_schedule_gated_supply(
