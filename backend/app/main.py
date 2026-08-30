@@ -156,6 +156,7 @@ from app.services.siming_story_node_staging import SimingStoryNodeStaging
 from app.services.siming_story_obligation_runtime import SimingStoryObligationRuntime
 from app.services.siming_debug_projection import SimingDebugProjection
 from app.services.siming_runtime import SimingRuntime
+from app.services.siming_population_capability import PopulationSimulationCapability
 from app.services.character_agent_debug_projection import CharacterAgentDebugProjection
 from app.services.script_beat_projection import ScriptBeatProjection
 from app.services.world_outcome_debug_projection import WorldOutcomeDebugProjection
@@ -317,6 +318,7 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
         siming_runtime=SimingRuntime(
             llm_provider=llm_provider,
             heavenly_support=support,
+            population_capability=PopulationSimulationCapability(),
             behavior_turn_recorder=BehaviorTurnRecorder(heavenly_graph),
             behavior_turn_scope_resolver=siming_scope_for_event,
         ),

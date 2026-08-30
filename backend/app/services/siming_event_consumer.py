@@ -11,9 +11,11 @@ class SimingEventConsumer:
         "conversation_resolution_event",
         "constraint_state_event",
         "siming_staging_ack",
+        "population_cadence_event",
     }
 
     def handle_event(self, event: AuthorityEvent) -> list[SimingInput]:
         if event.event_type not in self.ALLOWED_EVENT_TYPES:
             return []
-        return [SimingInput(input_type=event.event_type, source_event=event)]
+        input_type = "population_cadence_input" if event.event_type == "population_cadence_event" else event.event_type
+        return [SimingInput(input_type=input_type, source_event=event)]

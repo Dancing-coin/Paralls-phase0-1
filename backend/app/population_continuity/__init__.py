@@ -20,6 +20,7 @@ from .social_input import FrozenSocialPlanningInput, SocialInputValidation
 from .source_inputs import HouseholdScheduleInput, OrganizationScheduleInput, FrozenSourceInput, SourceInputValidation
 from .capability_input import CapabilityInputValidation, FrozenCapabilityEligibilityInput
 from .siming_contracts import PopulationBatchReport, PopulationCadenceInput, PopulationCycleResult, PopulationOwnerReceipt, PopulationProjection, PopulationReadSet
+from .owner_adapters import ScheduleGatedSupplyOwnerExecutor
 
 __all__ = [
     "ProfileActivationAuthority",
@@ -52,6 +53,7 @@ __all__ = [
     "PopulationOwnerReceipt",
     "PopulationBatchReport",
     "PopulationCycleResult",
+    "ScheduleGatedSupplyOwnerExecutor",
 ]
 
 

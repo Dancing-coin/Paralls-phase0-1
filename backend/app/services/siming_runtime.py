@@ -61,6 +61,8 @@ from app.services.siming_story_projection import SimingStoryProjection
 from app.services.behavior_turn_recorder import BehaviorTurnRecorder
 from app.models.behavior_turn import BehaviorTurnRecordRequest, BehaviorTurnStageRecord
 from app.models.siming_heavenly_graph import GraphProvenance, GraphRevisionVector, HeavenlyGraphScope
+from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationReadSet
+from app.services.siming_population_capability import PopulationSimulationCapability, ReadSetBuilder, default_population_read_set_builder
 
 
 class SimingRuntime:
@@ -86,6 +88,8 @@ class SimingRuntime:
         heavenly_support: SimingHeavenlyRuntimeSupport | None = None,
         behavior_turn_recorder: BehaviorTurnRecorder | None = None,
         behavior_turn_scope_resolver: object | None = None,
+        population_capability: PopulationSimulationCapability | None = None,
+        population_read_set_builder: ReadSetBuilder | None = None,
     ) -> None:
         self._feature_registry = feature_registry or SimingFeatureRegistry()
         self._llm_provider = llm_provider or DisabledSimingLlmCandidateProvider()
@@ -123,6 +127,8 @@ class SimingRuntime:
         self._active_turn_prepared: object | None = None
         self._recorded_behavior_turn_correlations: set[str] = set()
         self._behavior_turn_lock = RLock()
+        self._population_capability = population_capability
+        self._population_read_set_builder = population_read_set_builder or default_population_read_set_builder
 
     @property
     def heavenly_support(self) -> SimingHeavenlyRuntimeSupport | None:
@@ -133,6 +139,14 @@ class SimingRuntime:
         for siming_input in inputs:
             event = siming_input.source_event
             self._active_turn_event = event
+            if siming_input.input_type == "population_cadence_input" and self._population_capability is not None:
+                try:
+                    cadence = PopulationCadenceInput.from_authority_event(event)
+                    read_set = self._population_read_set_builder(event, cadence)
+                    cycle = self._population_capability.run_cycle(cadence, read_set)
+                    result.audit_records.extend(audit for audit in cycle.audits if isinstance(audit, SimingAuditRecord))
+                except (TypeError, ValueError) as exc:
+                    result.audit_records.append(self._audit(event, status="no_action", reason=f"population_requeue:{exc}"))
             if siming_input.input_type == "siming_staging_ack":
                 self._process_staging_ack(event, result)
                 continue
