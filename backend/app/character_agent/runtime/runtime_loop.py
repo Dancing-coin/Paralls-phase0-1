@@ -1068,6 +1068,10 @@ class CharacterAgentRuntime:
         return self._continuity_service.apply_command(command)
 
     def ingest_seed_projection(self, seed: object) -> list[CharacterGoalCommand]:
+        # Public callers must use apply_character_continuity_command; this parser is internal.
+        return []
+
+    def _ingest_seed_projection(self, seed: object) -> list[CharacterGoalCommand]:
         if hasattr(seed, "model_dump"):
             payload = seed.model_dump(mode="json")
         elif isinstance(seed, dict):
@@ -1143,31 +1147,49 @@ class CharacterAgentRuntime:
                 self._materialization_receipts[candidate_id] = receipt
                 receipts.append(receipt)
                 continue
+            event_type, payload = self._memory_materialization_event(candidate, actor_id, candidate_id)
             event = self._session_store.append_event(
                 actor_id=actor_id,
-                event_type="character_agent_settlement_result",
+                event_type=event_type,
                 producer_ts=producer_ts,
-                payload={
-                    "result_type": "simulation_memory_materialized",
-                    "summary": candidate.summary,
-                    "source_event_id": candidate.source_event_refs[0],
-                    "candidate_id": candidate_id,
-                },
+                payload=payload,
             )
             self._memory_store.write_event(event)
             receipt = CharacterMemoryMaterializationReceipt(
                 candidate_id=candidate_id,
                 actor_ref=actor_id,
                 status="committed",
-                selected_pool="event_memory"
-                if candidate.candidate_kind == "event_experience"
-                else "observation_memory",
+                selected_pool=self._memory_pool_for_candidate(candidate),
                 memory_cursor=producer_ts,
             )
             self._materialization_receipts[candidate_id] = receipt
             receipts.append(receipt)
         self._persist_graph_continuity(actor_id=actor_id, producer_ts=producer_ts)
         return receipts
+
+    def _memory_pool_for_candidate(self, candidate: CharacterMemoryCandidate) -> str:
+        return {
+            "event_experience": "event_memory",
+            "perceptual_observation": "observation_memory",
+            "factual_knowledge": "knowledge_memory",
+            "social_impression": "social_memory",
+            "higher_order_belief": "higher_order_memory",
+        }[candidate.candidate_kind]
+
+    def _memory_materialization_event(
+        self, candidate: CharacterMemoryCandidate, actor_id: str, candidate_id: str
+    ) -> tuple[str, dict[str, object]]:
+        source = candidate.source_event_refs[0]
+        base = {"summary": candidate.summary, "candidate_id": candidate_id, "source_ref_lineage": list(candidate.source_event_refs)}
+        if candidate.candidate_kind == "event_experience":
+            return "character_agent_settlement_result", {**base, "result_type": "simulation_memory_materialized", "change_summary": candidate.summary}
+        if candidate.candidate_kind == "perceptual_observation":
+            return "character_perceived_event", {**base, "percept_channel": "simulation", "source_candidate_event_id": source, "clarity_score": candidate.confidence, "certainty_score": candidate.confidence}
+        if candidate.candidate_kind == "factual_knowledge":
+            return "knowledge_belief_event", {**base, "proposition_key": candidate.dedup_key, "proposition": candidate.summary, "confidence": candidate.confidence}
+        if candidate.candidate_kind == "social_impression":
+            return "social_cognition_event", {**base, "entity_id": source, "trust_baseline": candidate.confidence, "suspicion_baseline": 1.0 - candidate.confidence, "unresolved_tension": 0.0}
+        return "higher_order_belief_event", {**base, "subject_actor_id": actor_id, "proposition_key": candidate.dedup_key, "meta_belief": candidate.summary, "confidence": candidate.confidence}
 
     def _apply_continuity_command(
         self, command: CharacterContinuityCommand
@@ -1201,6 +1223,8 @@ class CharacterAgentRuntime:
             return self._continuity_refusal(command, current_revision, "schema_revision_unsupported")
         if not command.source_revision_vector or any(int(v) < 0 for v in command.source_revision_vector.values()):
             return self._continuity_refusal(command, current_revision, "source_revision_vector_invalid")
+        if any(not str(ref).strip() for ref in command.source_owner_receipt_refs):
+            return self._continuity_refusal(command, current_revision, "owner_receipt_invalid")
         evidence = command.exposure_evidence
         basis = evidence.get("exposure_basis")
         if basis is not None and not isinstance(basis, str):
@@ -1224,11 +1248,7 @@ class CharacterAgentRuntime:
         activation_hints = state_delta.pop("activation_hints", ())
         supersedes = state_delta.get("supersedes")
         need_delta = state_delta.pop("need_tension", None)
-        if isinstance(need_delta, dict):
-            self._need_tension_store.merge_delta(actor_id, need_delta)
         dynamic_delta = state_delta.pop("dynamic_state", None)
-        if isinstance(dynamic_delta, dict):
-            self._dynamic_state_store.merge_delta(actor_id, dynamic_delta)
         candidates = command.exposure_evidence.get("memory_candidates", [])
         if not isinstance(candidates, list):
             return self._continuity_refusal(command, current_revision, "memory_candidates_invalid")
@@ -1236,7 +1256,7 @@ class CharacterAgentRuntime:
             str(item.get("candidate_id", "")) for item in candidates if isinstance(item, dict)
         }:
             return self._continuity_refusal(command, current_revision, "memory_candidate_refs_mismatch")
-        pending = self._pending_seed_candidates.setdefault(actor_id, {})
+        staged_candidates: list[CharacterMemoryCandidate] = []
         for raw in candidates:
             if not isinstance(raw, dict):
                 return self._continuity_refusal(command, current_revision, "memory_candidate_invalid")
@@ -1250,6 +1270,15 @@ class CharacterAgentRuntime:
                 return self._continuity_refusal(command, current_revision, "memory_candidate_temporal_invalid")
             if basis is not None and candidate.exposure_basis != basis:
                 return self._continuity_refusal(command, current_revision, "exposure_basis_mismatch")
+            if any(item.dedup_key == candidate.dedup_key for item in self._pending_seed_candidates.get(actor_id, {}).values() if item.candidate_id != candidate.candidate_id):
+                return self._continuity_refusal(command, current_revision, "memory_candidate_duplicate")
+            staged_candidates.append(candidate)
+        if isinstance(need_delta, dict):
+            self._need_tension_store.merge_delta(actor_id, need_delta)
+        if isinstance(dynamic_delta, dict):
+            self._dynamic_state_store.merge_delta(actor_id, dynamic_delta)
+        pending = self._pending_seed_candidates.setdefault(actor_id, {})
+        for candidate in staged_candidates:
             pending[candidate.candidate_id] = candidate
         projection = {
             "actor_ref": command.actor_ref,
@@ -1259,7 +1288,7 @@ class CharacterAgentRuntime:
             "memory_candidate_refs": list(command.memory_candidate_refs),
             "supersedes": command.exposure_evidence.get("supersedes") or supersedes,
         }
-        self.ingest_seed_projection(projection)
+        self._ingest_seed_projection(projection)
         event = self._session_store.append_event(
             actor_id=actor_id,
             event_type="character_simulation_seed_event",
