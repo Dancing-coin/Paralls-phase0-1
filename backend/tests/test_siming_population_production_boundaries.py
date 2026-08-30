@@ -274,6 +274,75 @@ def test_same_actor_seeds_advance_expected_revision_inside_one_cycle() -> None:
     assert result.status == "accepted"
 
 
+def test_historical_idempotent_replay_does_not_regress_next_actor_revision() -> None:
+    class CommittingOwner:
+        def submit(self, intent, *, read_set) -> PopulationOwnerReceipt:
+            return PopulationOwnerReceipt(
+                receipt_ref=f"receipt:{intent.intent_ref}",
+                owner_ref="owner:organization",
+                event_family="gameplay.organization.commerce_commitment_accepted",
+                committed=True,
+                revision_vector=dict(intent.expected_revisions),
+                zero_write=False,
+            )
+
+    class ReplayThenCommitContinuity:
+        def __init__(self) -> None:
+            self.revision = 2
+            self.expected: list[int] = []
+
+        def current_revision(self, actor_ref: str) -> int:
+            return self.revision
+
+        def apply_command(self, command) -> CharacterContinuityReceipt:
+            expected = command.expected_character_revision
+            self.expected.append(expected)
+            if len(self.expected) == 1:
+                return CharacterContinuityReceipt(
+                    receipt_ref=f"receipt:{command.command_id}",
+                    command_id=command.command_id,
+                    actor_ref=command.actor_ref,
+                    status="idempotent_replay",
+                    character_revision_before=0,
+                    character_revision_after=1,
+                )
+            if expected != self.revision:
+                return CharacterContinuityReceipt(
+                    receipt_ref=f"receipt:{command.command_id}",
+                    command_id=command.command_id,
+                    actor_ref=command.actor_ref,
+                    status="requeued",
+                    character_revision_before=self.revision,
+                    character_revision_after=self.revision,
+                    refusal_reason="character_revision_conflict",
+                )
+            before = self.revision
+            self.revision += 1
+            return CharacterContinuityReceipt(
+                receipt_ref=f"receipt:{command.command_id}",
+                command_id=command.command_id,
+                actor_ref=command.actor_ref,
+                status="committed",
+                character_revision_before=before,
+                character_revision_after=self.revision,
+            )
+
+    cadence = _cadence()
+    continuity = ReplayThenCommitContinuity()
+    result = PopulationSimulationCapability(
+        owner_executor=CommittingOwner(), continuity_port=continuity
+    ).run_cycle(
+        cadence,
+        _supply_read_set_many(cadence, "supply:1-old", "supply:2-new"),
+    )
+    assert continuity.expected == [2, 2]
+    assert [receipt.status for receipt in result.continuity_receipts] == [
+        "idempotent_replay",
+        "committed",
+    ]
+    assert result.status == "accepted"
+
+
 @pytest.mark.parametrize(
     ("receipt_status", "cycle_status"),
     [("requeued", "requeue"), ("rejected", "rejected")],

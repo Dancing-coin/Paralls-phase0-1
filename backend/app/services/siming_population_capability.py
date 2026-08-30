@@ -236,7 +236,10 @@ class PopulationSimulationCapability:
                 receipt = self._continuity_port.apply_command(command)
                 continuity_receipts.append(receipt)
                 if receipt.status in {"committed", "idempotent_replay"}:
-                    next_actor_revisions[seed.actor_ref] = receipt.character_revision_after
+                    next_actor_revisions[seed.actor_ref] = max(
+                        next_actor_revisions[seed.actor_ref],
+                        receipt.character_revision_after,
+                    )
                     continue
                 continuity_failure_status = (
                     "rejected" if receipt.status == "rejected" else "requeue"
