@@ -9,6 +9,7 @@ from app.character_agent.logic.drift_promotion_gate import DriftPromotionGate
 from app.character_agent.logic.need_tension_engine import NeedTensionEngine
 from app.character_agent.models.drift_candidate import DriftCandidateRecord
 from app.character_agent.models.need_tension import NeedTensionState
+from app.character_agent.models.dynamic_state import CharacterDynamicState
 from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.character_agent.profile.effective_profile import resolve_effective_profile
 from app.character_agent.models.cognition_delta import (
@@ -1273,6 +1274,16 @@ class CharacterAgentRuntime:
             if any(item.dedup_key == candidate.dedup_key for item in self._pending_seed_candidates.get(actor_id, {}).values() if item.candidate_id != candidate.candidate_id):
                 return self._continuity_refusal(command, current_revision, "memory_candidate_duplicate")
             staged_candidates.append(candidate)
+        try:
+            if isinstance(need_delta, dict):
+                staged_need = {**self._need_tension_store.read(actor_id), **deepcopy(need_delta), "actor_id": actor_id}
+                NeedTensionState(**staged_need)
+            if isinstance(dynamic_delta, dict):
+                probe = CharacterDynamicStateStore()
+                probe.write(actor_id, self._dynamic_state_store.read_record(actor_id).model_dump())
+                probe.merge_delta(actor_id, deepcopy(dynamic_delta))
+        except Exception:
+            return self._continuity_refusal(command, current_revision, "state_delta_invalid")
         if isinstance(need_delta, dict):
             self._need_tension_store.merge_delta(actor_id, need_delta)
         if isinstance(dynamic_delta, dict):
