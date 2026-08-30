@@ -252,7 +252,11 @@ def test_websocket_session_probe_delivers_committed_session_events_from_gameplay
     ack = received[0]
     session_events = [message for message in received if message["message_type"] == "embodied_interaction_session_event"]
     session_payloads = [message["payload"] for message in session_events]
-    bus_events = main.authority_event_bus.list_events()
+    bus_events = [
+        event
+        for event in main.authority_event_bus.list_events()
+        if event.payload.get("session_id") == "session:handshake:websocket"
+    ]
     store_events = main.gameplay_event_store.read_stream("session:session:handshake:websocket")
 
     assert ack == {
