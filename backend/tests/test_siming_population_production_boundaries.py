@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from app.character_agent.models.simulation_seed import CharacterContinuityReceipt
 from app.config import Settings
 from app.models.authority_event import AuthorityEvent, AuthorityEventRouting, AuthorityEventSource
 from app.models.siming_event import SimingInput
@@ -64,19 +65,47 @@ def _event(cadence: PopulationCadenceInput | None = None) -> AuthorityEvent:
 
 
 def _supply_read_set(cadence: PopulationCadenceInput, *, ref: str = "supply") -> PopulationReadSet:
-    projection = PopulationProjection(
-        ref=ref,
-        scope="organization:summary",
-        revision_vector=dict(cadence.base_revision_vector),
-        payload={
-            "actor_ref": "character:char_a",
-            "candidate_kind": "schedule_gated_supply",
-            "state_deltas": {"task": "restock"},
-            "source_event_refs": ("event:supply:projection",),
-            "exposure_basis": "affected_directly",
-        },
+    return _supply_read_set_many(cadence, ref)
+
+
+def _supply_read_set_many(cadence: PopulationCadenceInput, *refs: str) -> PopulationReadSet:
+    return PopulationReadSet.from_inputs(
+        cadence,
+        tuple(
+            PopulationProjection(
+                ref=ref,
+                scope="organization:summary",
+                revision_vector=dict(cadence.base_revision_vector),
+                payload={
+                    "actor_ref": "character:char_a",
+                    "candidate_kind": "schedule_gated_supply",
+                    "state_deltas": {"task": f"restock:{ref}"},
+                    "source_event_refs": (f"event:{ref}",),
+                    "exposure_basis": "affected_directly",
+                },
+            )
+            for ref in refs
+        ),
     )
-    return PopulationReadSet.from_inputs(cadence, (projection,))
+
+
+def _routine_read_set(cadence: PopulationCadenceInput, *refs: str) -> PopulationReadSet:
+    return PopulationReadSet.from_inputs(
+        cadence,
+        tuple(
+            PopulationProjection(
+                ref=ref,
+                scope="organization:summary",
+                revision_vector=dict(cadence.base_revision_vector),
+                payload={
+                    "actor_ref": "character:char_a",
+                    "candidate_kind": "routine_work",
+                    "state_deltas": {"task": ref},
+                },
+            )
+            for ref in refs
+        ),
+    )
 
 
 def test_production_population_capability_uses_the_built_character_runtime(tmp_path: Path) -> None:
@@ -153,12 +182,16 @@ def test_continuity_command_uses_current_actor_revision_for_the_next_window() ->
 
         def apply_command(self, command):
             self.expected.append(command.expected_character_revision)
+            before = self.revision
             self.revision += 1
-            return type(
-                "Receipt",
-                (),
-                {"status": "committed", "command_id": command.command_id},
-            )()
+            return CharacterContinuityReceipt(
+                receipt_ref=f"receipt:{command.command_id}",
+                command_id=command.command_id,
+                actor_ref=command.actor_ref,
+                status="committed",
+                character_revision_before=before,
+                character_revision_after=self.revision,
+            )
 
     owner = RecordingOwner()
     continuity = RecordingContinuity()
@@ -175,6 +208,102 @@ def test_continuity_command_uses_current_actor_revision_for_the_next_window() ->
     assert first.status == "accepted"
     assert second.status == "accepted"
     assert continuity.expected == [0, 1]
+
+
+def test_same_actor_seeds_advance_expected_revision_inside_one_cycle() -> None:
+    class CommittingOwner:
+        def submit(self, intent, *, read_set) -> PopulationOwnerReceipt:
+            return PopulationOwnerReceipt(
+                receipt_ref=f"receipt:{intent.intent_ref}",
+                owner_ref="owner:organization",
+                event_family="gameplay.organization.commerce_commitment_accepted",
+                committed=True,
+                revision_vector=dict(intent.expected_revisions),
+                zero_write=False,
+            )
+
+    class SequencedContinuity:
+        def __init__(self) -> None:
+            self.revision = 0
+            self.expected: list[int] = []
+
+        def current_revision(self, actor_ref: str) -> int:
+            return self.revision
+
+        def apply_command(self, command) -> CharacterContinuityReceipt:
+            expected = command.expected_character_revision
+            self.expected.append(expected)
+            if expected != self.revision:
+                return CharacterContinuityReceipt(
+                    receipt_ref=f"receipt:{command.command_id}",
+                    command_id=command.command_id,
+                    actor_ref=command.actor_ref,
+                    status="requeued",
+                    character_revision_before=self.revision,
+                    character_revision_after=self.revision,
+                    refusal_reason="character_revision_conflict",
+                )
+            before = self.revision
+            self.revision += 1
+            return CharacterContinuityReceipt(
+                receipt_ref=f"receipt:{command.command_id}",
+                command_id=command.command_id,
+                actor_ref=command.actor_ref,
+                status="committed",
+                character_revision_before=before,
+                character_revision_after=self.revision,
+            )
+
+    cadence = _cadence()
+    continuity = SequencedContinuity()
+    result = PopulationSimulationCapability(
+        owner_executor=CommittingOwner(), continuity_port=continuity
+    ).run_cycle(
+        cadence,
+        _supply_read_set_many(cadence, "supply:1", "supply:2"),
+    )
+    assert [seed.owner_effect_status for seed in result.seed_candidates] == [
+        "settled",
+        "settled",
+    ]
+    assert continuity.expected == [0, 1]
+    assert [receipt.status for receipt in result.continuity_receipts] == [
+        "committed",
+        "committed",
+    ]
+    assert result.status == "accepted"
+
+
+@pytest.mark.parametrize(
+    ("receipt_status", "cycle_status"),
+    [("requeued", "requeue"), ("rejected", "rejected")],
+)
+def test_continuity_failure_is_reflected_in_cycle_status(
+    receipt_status: str,
+    cycle_status: str,
+) -> None:
+    class FailingContinuity:
+        def current_revision(self, actor_ref: str) -> int:
+            return 0
+
+        def apply_command(self, command) -> CharacterContinuityReceipt:
+            return CharacterContinuityReceipt(
+                receipt_ref=f"receipt:{command.command_id}",
+                command_id=command.command_id,
+                actor_ref=command.actor_ref,
+                status=receipt_status,
+                character_revision_before=0,
+                character_revision_after=0,
+                refusal_reason="continuity_denied",
+            )
+
+    cadence = _cadence()
+    result = PopulationSimulationCapability(
+        continuity_port=FailingContinuity()
+    ).run_cycle(cadence, _routine_read_set(cadence, "routine:failure"))
+    assert result.status == cycle_status
+    assert result.reason == f"character_continuity_{receipt_status}"
+    assert result.production_append_count == 0
 
 
 def test_missing_continuity_revision_reader_requeues_before_owner_execution() -> None:

@@ -200,6 +200,9 @@ class PopulationSimulationCapability:
             owner_receipt_associations=owner_receipt_associations,
         )
         continuity_receipts: list[CharacterContinuityReceipt] = []
+        next_actor_revisions = dict(actor_revisions)
+        continuity_failure_status = ""
+        continuity_failure_reason = ""
         if self._continuity_port is not None:
             for seed in seeds:
                 if not seed.actor_ref.startswith("character:"):
@@ -209,7 +212,7 @@ class PopulationSimulationCapability:
                 command = CharacterContinuityCommand(
                     command_id=f"continuity:{seed.seed_id}", actor_ref=seed.actor_ref,
                     source_owner_receipt_refs=seed.source_owner_receipt_refs,
-                    expected_character_revision=actor_revisions[seed.actor_ref], source_revision_vector=dict(seed.source_revision_vector),
+                    expected_character_revision=next_actor_revisions[seed.actor_ref], source_revision_vector=dict(seed.source_revision_vector),
                     state_delta={
                         **dict(seed.state_deltas),
                         "presentation_seed": dict(seed.presentation_seed),
@@ -230,12 +233,23 @@ class PopulationSimulationCapability:
                     policy_revision="policy:character-continuity:v1",
                     idempotency_key=seed.idempotency_key, world_effect_required=seed.owner_effect_status == "settled",
                 )
-                continuity_receipts.append(self._continuity_port.apply_command(command))
+                receipt = self._continuity_port.apply_command(command)
+                continuity_receipts.append(receipt)
+                if receipt.status in {"committed", "idempotent_replay"}:
+                    next_actor_revisions[seed.actor_ref] = receipt.character_revision_after
+                    continue
+                continuity_failure_status = (
+                    "rejected" if receipt.status == "rejected" else "requeue"
+                )
+                continuity_failure_reason = f"character_continuity_{receipt.status}"
+                break
 
         status = "accepted"
         if report.owner_bound_intents and (self._owner_executor is None or len(owner_refs) < len(report.owner_bound_intents)):
             status = "owner_settlement_required"
-        return PopulationCycleResult(status=status, batch_ref=report.batch_ref, report=report, seed_candidates=seeds, owner_receipts=tuple(owner_receipts), continuity_receipts=tuple(continuity_receipts), production_append_count=sum(1 for item in owner_receipts if item.committed and not item.zero_write))
+        if continuity_failure_status:
+            status = continuity_failure_status
+        return PopulationCycleResult(status=status, batch_ref=report.batch_ref, report=report, seed_candidates=seeds, owner_receipts=tuple(owner_receipts), continuity_receipts=tuple(continuity_receipts), reason=continuity_failure_reason, production_append_count=sum(1 for item in owner_receipts if item.committed and not item.zero_write))
 
     def _current_revision(self, actor_ref: str) -> int:
         reader = getattr(self._continuity_port, "current_revision", None)
