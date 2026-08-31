@@ -151,6 +151,43 @@ class PopulationPlanner:
         {"relationship_negotiation", "high_value_event", "b3_event"}
     )
 
+    def plan_three_actor_cohort(self, read_set: PopulationReadSet) -> PopulationBatchReport:
+        """Classify the closed three-actor cohort without performing writes."""
+        actors = ("character:char_a", "character:char_b", "character:char_c")
+        by_actor = {str(p.payload.get("actor_ref") or p.payload.get("profile_ref")): p for p in read_set.projections}
+        ordered = tuple(by_actor[a] for a in actors if a in by_actor)
+        selected: list[str] = []
+        unprocessed: list[str] = []
+        presentation: dict[str, object] = {}
+        activations: list[PopulationActivationCandidate] = []
+        intents: list[PopulationOwnerBoundIntent] = []
+        budget_used = 0
+        for index, actor in enumerate(actors):
+            projection = by_actor.get(actor)
+            if projection is None:
+                continue
+            if budget_used >= read_set.cadence.budget:
+                unprocessed.extend(p.ref for p in ordered[index:])
+                break
+            payload = dict(projection.payload)
+            kind = str(payload.get("candidate_kind") or payload.get("kind") or payload.get("behavior_kind") or "")
+            expected = {actors[0]: "char_a_supply", actors[1]: "char_b_routine_work", actors[2]: "char_c_social_activation"}[actor]
+            if kind not in {expected, {"char_a_supply": "schedule_gated_supply", "char_b_routine_work": "routine_work", "char_c_social_activation": "relationship_negotiation"}[expected]}:
+                continue
+            selected.append(projection.ref)
+            budget_used += 1
+            if actor == actors[0]:
+                owner_payload = self._schedule_gated_supply_owner_payload(read_set=read_set, batch_ref=f"population-cohort:{read_set.cadence.cadence_id}", actor_ref=actor, payload=payload)
+                if owner_payload is None:
+                    continue
+                intents.append(PopulationOwnerBoundIntent(projection.ref, actor, "supply", projection.scope, owner_payload, dict(projection.revision_vector)))
+            elif actor == actors[1]:
+                presentation[actor] = {"actor_ref": actor, "behavior_kind": "routine_work", "deterministic": True, "scope": projection.scope, "source_revision_vector": dict(projection.revision_vector), "state_deltas": {}}
+            else:
+                activations.append(PopulationActivationCandidate(projection.ref, actor, "relationship_negotiation_requires_activation", str(payload.get("activation_reason") or "relationship_negotiation"), 1, "actor:self", dict(projection.revision_vector)))
+        report = self._population_report(batch_ref=f"population-cohort:{read_set.cadence.cadence_id}", read_set=read_set, selected=tuple(selected), presentation=presentation, activations=tuple(activations), owner_intents=tuple(intents), rejected=(), budget_used=budget_used, unprocessed=tuple(unprocessed))
+        return report.model_copy(update={"cohort_ref": f"cohort:{read_set.cadence.cadence_id}", "cohort_member_refs": actors, "presentation_seed_count": len(presentation), "activation_candidate_count": len(activations), "owner_intent_count": len(intents), "selected_count": len(selected), "unprocessed_count": len(unprocessed)})
+
     @staticmethod
     def schedule_pending_digest(plan: PopulationWorldPlan) -> str:
         """Pin the exact admitted schedule plan; this is not a generic payload digest."""

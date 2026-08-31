@@ -54,12 +54,16 @@ class CharacterSeedPlanner:
             if owner_receipt_associations and projection.ref in owner_receipt_associations:
                 owner_refs = owner_refs | frozenset({str(owner_receipt_associations[projection.ref])})
             objective = kind == "schedule_gated_supply" or bool(payload.get("objective_effect")) or bool(payload.get("world_effect"))
+            if kind == "routine_work":
+                objective = False
             state_deltas = payload.get("state_deltas")
-            if not isinstance(state_deltas, dict):
+            if kind == "routine_work":
+                state_deltas = {}
+            elif not isinstance(state_deltas, dict):
                 state_deltas = {"task": str(payload.get("task") or "supply") } if objective else {}
             exposure_basis = str(payload.get("exposure_basis") or payload.get("exposure") or "")
             memory_candidates: tuple[CharacterMemoryCandidate, ...] = ()
-            if exposure_basis in {"affected_directly", "public_propagation"}:
+            if kind != "relationship_negotiation" and exposure_basis in {"affected_directly", "public_propagation"}:
                 event_ref = source_refs[0] if source_refs else f"projection:{projection.ref}"
                 memory_candidates = (
                     CharacterMemoryCandidate(
