@@ -125,6 +125,18 @@ class PopulationSimulationCapability:
         self._continuity_port = continuity_port
 
     def run_cycle(self, cadence_input: PopulationCadenceInput, read_set: PopulationReadSet) -> PopulationCycleResult:
+        """Run the legacy population path, delegating closed cohorts to V1."""
+        if self._is_v1_cohort(read_set):
+            return self.run_cohort_cycle(cadence_input, read_set)
+        return self._run_cycle_impl(cadence_input, read_set)
+
+    def run_cohort_cycle(self, cadence_input: PopulationCadenceInput, read_set: PopulationReadSet) -> PopulationCycleResult:
+        """Run one Siming-governed three-actor cohort window."""
+        if not self._is_v1_cohort(read_set):
+            return self._run_cycle_impl(cadence_input, read_set)
+        return self._run_cycle_impl(cadence_input, read_set, cohort=True)
+
+    def _run_cycle_impl(self, cadence_input: PopulationCadenceInput, read_set: PopulationReadSet, *, cohort: bool = False) -> PopulationCycleResult:
         batch_ref = f"population-batch:{cadence_input.cadence_id}:requeue"
         if not self._scope_admitted(cadence_input.report_scope):
             return self._requeue(batch_ref, read_set, "projection_scope_denied")
@@ -149,7 +161,11 @@ class PopulationSimulationCapability:
         ):
             return self._requeue(batch_ref, read_set, "continuity_revision_reader_missing")
 
-        report = self._planner.plan_population_cycle(read_set)
+        report = (
+            self._planner.plan_three_actor_cohort(read_set)
+            if cohort
+            else self._planner.plan_population_cycle(read_set)
+        )
         if any(getattr(item, "reason", "") == "stale_read_set" for item in report.rejected_candidates):
             return PopulationCycleResult(status="requeue", batch_ref=report.batch_ref, report=report, reason="stale_read_set", production_append_count=0)
         actor_revisions: dict[str, int] = {}
@@ -175,7 +191,10 @@ class PopulationSimulationCapability:
                     intent_kind=str(bound.get("intent_kind", "")), scope=str(bound.get("scope", "")),
                     payload=dict(bound.get("payload") or {}), source_revision_vector=dict(bound.get("source_revision_vector") or {}),
                 )
-            if not isinstance(bound, PopulationOwnerBoundIntent) or bound.intent_kind != "schedule_gated_supply":
+            if not isinstance(bound, PopulationOwnerBoundIntent) or (
+                bound.intent_kind != "schedule_gated_supply"
+                and not (cohort and bound.intent_kind == "supply" and bound.actor_ref == "character:char_a")
+            ):
                 continue
             if self._owner_executor is None:
                 continue
@@ -199,11 +218,20 @@ class PopulationSimulationCapability:
             owner_refs,
             owner_receipt_associations=owner_receipt_associations,
         )
+        if cohort:
+            selected_refs = set(report.selected_cohort_refs)
+            seeds = tuple(
+                seed for seed in seeds
+                if any(seed.seed_id.endswith(f":{projection_ref}") for projection_ref in selected_refs)
+                and seed.actor_ref in {"character:char_a", "character:char_b"}
+            )
         continuity_receipts: list[CharacterContinuityReceipt] = []
         next_actor_revisions = dict(actor_revisions)
         continuity_failure_status = ""
         continuity_failure_reason = ""
-        if self._continuity_port is not None:
+        if self._continuity_port is not None and not (
+            cohort and report.owner_bound_intents and len(owner_refs) < len(report.owner_bound_intents)
+        ):
             for seed in seeds:
                 if not seed.actor_ref.startswith("character:"):
                     continue
@@ -252,7 +280,42 @@ class PopulationSimulationCapability:
             status = "owner_settlement_required"
         if continuity_failure_status:
             status = continuity_failure_status
-        return PopulationCycleResult(status=status, batch_ref=report.batch_ref, report=report, seed_candidates=seeds, owner_receipts=tuple(owner_receipts), continuity_receipts=tuple(continuity_receipts), reason=continuity_failure_reason, production_append_count=sum(1 for item in owner_receipts if item.committed and not item.zero_write))
+        if cohort:
+            report = report.model_copy(update={
+                "owner_committed_count": sum(1 for item in owner_receipts if item.committed and not item.zero_write),
+                "continuity_committed_count": sum(1 for item in continuity_receipts if item.status in {"committed", "idempotent_replay"}),
+                "continuity_requeue_count": sum(1 for item in continuity_receipts if item.status in {"requeued", "rejected"}),
+            })
+            audits = ({
+                "cohort_ref": report.cohort_ref,
+                "window": cadence_input.cadence_id.rsplit(":", 1)[-1],
+                "classification": {
+                    "selected": report.selected_count,
+                    "unprocessed": report.unprocessed_count,
+                    "rejected": len(report.rejected_candidates),
+                },
+                "owner": {"submitted": len(owner_receipts), "committed": report.owner_committed_count},
+                "continuity": {"submitted": len(continuity_receipts), "committed": report.continuity_committed_count},
+            },)
+        else:
+            audits = ()
+        return PopulationCycleResult(status=status, batch_ref=report.batch_ref, report=report, seed_candidates=seeds, owner_receipts=tuple(owner_receipts), continuity_receipts=tuple(continuity_receipts), audits=audits, reason=continuity_failure_reason, production_append_count=sum(1 for item in owner_receipts if item.committed and not item.zero_write))
+
+    @staticmethod
+    def _is_v1_cohort(read_set: PopulationReadSet) -> bool:
+        actors: dict[str, str] = {}
+        for projection in read_set.projections:
+            payload = projection.payload
+            actor = str(payload.get("actor_ref") or payload.get("profile_ref") or payload.get("character_ref") or "")
+            kind = str(payload.get("candidate_kind") or payload.get("kind") or payload.get("behavior_kind") or "")
+            if actor in {"character:char_a", "character:char_b", "character:char_c"}:
+                actors[actor] = kind
+        expected = {
+            "character:char_a": {"schedule_gated_supply", "char_a_supply"},
+            "character:char_b": {"routine_work", "char_b_routine_work"},
+            "character:char_c": {"relationship_negotiation", "char_c_social_activation"},
+        }
+        return set(actors) == set(expected) and all(actors[actor] in kinds for actor, kinds in expected.items())
 
     def _current_revision(self, actor_ref: str) -> int:
         reader = getattr(self._continuity_port, "current_revision", None)
