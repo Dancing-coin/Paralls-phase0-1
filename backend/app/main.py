@@ -48,6 +48,12 @@ from app.models.visual_fact import VisualFactEvent
 from app.models.world_result import WorldResultBase
 from app.gameplay.dispatcher import GameplayOutboxDispatcher
 from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.organization_government_runtime import GovernmentAuthority
+from app.gameplay.government_drought_advisory_presentation import (
+    GovernmentDroughtAdvisoryPresentationError,
+    GovernmentDroughtAdvisoryPresentationService,
+    GovernmentDroughtAdvisorySubscriptionRequest,
+)
 from app.gameplay.godot_mirror_delivery import (
     GameplayGodotProjectionRepository,
     GameplayGodotProjectionPublisher,
@@ -321,6 +327,7 @@ def reset_runtime_state() -> None:
     global gameplay_mirror_session_access_service
     global gameplay_mirror_connection_registry
     global gameplay_mirror_outbox_refresh_consumer
+    global government_drought_advisory_presentation_service
     global gameplay_godot_projection_publisher
     global embodied_execution_ingress
     global embodied_realization_route_gate
@@ -403,6 +410,9 @@ def reset_runtime_state() -> None:
                     principal_ref=profile.principal_ref,
                     allowed_actor_refs=profile.allowed_actor_refs,
                     credential_ttl_seconds=profile.credential_ttl_seconds,
+                    allowed_government_drought_advisory_jurisdiction_refs=(
+                        profile.allowed_government_drought_advisory_jurisdiction_refs
+                    ),
                 )
                 for profile in settings.gameplay_mirror_trusted_local_launch_profiles
             ),
@@ -438,6 +448,10 @@ def reset_runtime_state() -> None:
     authority_event_adapter = Phase0AuthorityEventAdapter()
     authority_event_bus = InMemoryAuthorityEventBus()
     gameplay_event_store = GameplayEventStore()
+    government_drought_advisory_presentation_service = GovernmentDroughtAdvisoryPresentationService(
+        government=GovernmentAuthority(store=gameplay_event_store),
+        deliver=gameplay_mirror_connection_registry.deliver_government_drought_advisory,
+    )
     install_phase3_mirror_sources(
         configurations=tuple(
             Phase3MirrorActorConfiguration.model_validate(item)
@@ -449,6 +463,7 @@ def reset_runtime_state() -> None:
     def refresh_then_fanout(transaction) -> None:
         gameplay_godot_projection_publisher.after_transaction_dispatched(transaction)
         gameplay_mirror_outbox_refresh_consumer.after_transaction_dispatched(transaction)
+        government_drought_advisory_presentation_service.after_transaction_dispatched(transaction)
 
     adventure_basic_mirror_runtime = None
     if settings.adventure_basic_mirror_live_scenario:
@@ -1345,7 +1360,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                         session_ref=connection_context.binding.session_ref,
                         connection_ref=connection_context.connection_ref,
                         connection_epoch=connection_context.binding.connection_epoch,
-                        deliver=mirror_delivery_queue.enqueue_projection,
+                        deliver=mirror_delivery_queue.enqueue_delivery,
                     )
             except (ValidationError, ValueError, TypeError) as exc:
                 source_type = "unknown"
@@ -1642,6 +1657,29 @@ def _handle_envelope(
                 },
             ),
             projection,
+        ]
+
+    if envelope.message_type == "gameplay_government_drought_advisory_subscribe":
+        try:
+            request = GovernmentDroughtAdvisorySubscriptionRequest.model_validate(envelope.payload)
+            projection = government_drought_advisory_presentation_service.subscribe(
+                context=connection_context,
+                jurisdiction_ref=request.jurisdiction_ref,
+            )
+        except (GovernmentDroughtAdvisoryPresentationError, ValidationError) as exc:
+            return _government_drought_advisory_presentation_error(
+                envelope.message_type, _error_code(exc)
+            )
+        return [
+            _as_envelope(
+                "ack",
+                {
+                    "accepted": True,
+                    "source_type": envelope.message_type,
+                    "route": "government_drought_advisory_presentation",
+                },
+            ),
+            _as_envelope("government_drought_advisory_projection", projection),
         ]
 
     if envelope.message_type == "gameplay_mirror_snapshot_request":
@@ -2576,6 +2614,7 @@ def _drop_mirror_transport_session(connection_context: WebSocketConnectionContex
     """Remove only disposable delivery state; committed gameplay data is intentionally untouched."""
 
     gameplay_mirror_subscription_registry.drop_session(session_ref=session_ref)
+    government_drought_advisory_presentation_service.drop_session(session_ref=session_ref)
     gameplay_mirror_connection_registry.unregister(
         session_ref=session_ref,
         connection_ref=connection_context.connection_ref,
@@ -2640,6 +2679,22 @@ def _gameplay_mirror_error(source_type: str, error_code: str) -> list[dict[str, 
                 "accepted": False,
                 "source_type": source_type,
                 "route": "gameplay_mirror",
+                "error_code": error_code,
+            },
+        )
+    ]
+
+
+def _government_drought_advisory_presentation_error(
+    source_type: str, error_code: str
+) -> list[dict[str, object]]:
+    return [
+        _as_envelope(
+            "ack",
+            {
+                "accepted": False,
+                "source_type": source_type,
+                "route": "government_drought_advisory_presentation",
                 "error_code": error_code,
             },
         )

@@ -25,6 +25,7 @@ class GameplayMirrorTrustedLocalLaunchProfileSettings(BaseModel):
     principal_ref: str
     allowed_actor_refs: tuple[str, ...]
     credential_ttl_seconds: int = Field(ge=1, le=300)
+    allowed_government_drought_advisory_jurisdiction_refs: tuple[str, ...] = ()
 
 
 class EmbodiedControllerTrustedLocalLaunchProfileSettings(BaseModel):

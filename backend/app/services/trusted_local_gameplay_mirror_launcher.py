@@ -16,12 +16,15 @@ class TrustedLocalGameplayMirrorLaunchProfile:
     principal_ref: str
     allowed_actor_refs: tuple[str, ...]
     credential_ttl_seconds: int
+    allowed_government_drought_advisory_jurisdiction_refs: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.profile_ref or not self.principal_ref or not self.allowed_actor_refs:
             raise ValueError("trusted_local_gameplay_mirror_launch_profile_subject_required")
         if any(not actor_ref for actor_ref in self.allowed_actor_refs):
             raise ValueError("trusted_local_gameplay_mirror_launch_profile_subject_required")
+        if any(not jurisdiction_ref for jurisdiction_ref in self.allowed_government_drought_advisory_jurisdiction_refs):
+            raise ValueError("trusted_local_gameplay_mirror_launch_profile_advisory_scope_invalid")
         if self.credential_ttl_seconds < 1:
             raise ValueError("trusted_local_gameplay_mirror_launch_profile_ttl_invalid")
 
@@ -48,6 +51,9 @@ class TrustedLocalGameplayMirrorEnrollmentIssuer:
         credential = self.auth_service.create_trusted_local_launch_credential(
             principal_ref=profile.principal_ref,
             allowed_actor_refs=profile.allowed_actor_refs,
+            allowed_government_drought_advisory_jurisdiction_refs=(
+                profile.allowed_government_drought_advisory_jurisdiction_refs
+            ),
             issued_at=now,
             expires_at=now + profile.credential_ttl_seconds,
         )

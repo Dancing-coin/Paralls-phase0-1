@@ -107,6 +107,20 @@ class GameplayMirrorDeliveryEnvelope(BaseModel):
         return self
 
 
+class GovernmentDroughtAdvisoryDeliveryEnvelope(BaseModel):
+    """Fixed project-scoped presentation message for a committed Government advisory."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    connection_epoch: int = Field(ge=1)
+    delivery_sequence: int = Field(ge=1)
+    projection_kind: Literal["government_drought_advisory.project.v1"]
+    jurisdiction_ref: str = Field(min_length=1)
+    advisory_refs: tuple[str, ...] = Field(min_length=1)
+    source_revision_vector: dict[str, int] = Field(min_length=1)
+    projection_hash: str = Field(min_length=1)
+
+
 class GameplayMirrorProtocolError(BaseModel):
     """Finite Phase 4 control/error vocabulary shared by typed protocol handlers."""
 

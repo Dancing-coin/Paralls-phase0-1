@@ -27,13 +27,14 @@ class WebSocketSessionEnrollment(BaseModel):
 
 
 class WebSocketSessionBinding(BaseModel):
-    """Opaque backend-issued session identity with a fixed multi-actor read scope."""
+    """Opaque backend-issued session identity with fixed actor and advisory read scopes."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     session_ref: str
     principal_ref: str
     allowed_actor_refs: tuple[str, ...]
+    allowed_government_drought_advisory_jurisdiction_refs: tuple[str, ...] = ()
     binding_state: Literal["bound_active", "renewal_due", "revoked", "expired", "disconnected"] = "bound_active"
     connection_epoch: int = Field(ge=0, default=0)
     lease_expires_at: int = Field(ge=0, default=0)
@@ -63,6 +64,7 @@ class _TrustedLocalSessionCredential(BaseModel):
 
     principal_ref: str
     allowed_actor_refs: tuple[str, ...]
+    allowed_government_drought_advisory_jurisdiction_refs: tuple[str, ...] = ()
     issued_at: int
     expires_at: int
     used: bool = False
@@ -107,17 +109,23 @@ class WebSocketSessionAuthService:
         *,
         principal_ref: str,
         allowed_actor_refs: tuple[str, ...],
+        allowed_government_drought_advisory_jurisdiction_refs: tuple[str, ...] = (),
         issued_at: int,
         expires_at: int,
     ) -> str:
         if not principal_ref or not allowed_actor_refs or any(not actor_ref for actor_ref in allowed_actor_refs):
             raise ValueError("trusted_local_session_subject_required")
+        if any(not jurisdiction_ref for jurisdiction_ref in allowed_government_drought_advisory_jurisdiction_refs):
+            raise ValueError("trusted_local_government_drought_advisory_scope_invalid")
         if expires_at < issued_at:
             raise ValueError("trusted_local_session_expiry_invalid")
         credential = f"trusted_local_launch:{token_urlsafe(24)}"
         self._trusted_credentials[credential] = _TrustedLocalSessionCredential(
             principal_ref=principal_ref,
             allowed_actor_refs=tuple(dict.fromkeys(allowed_actor_refs)),
+            allowed_government_drought_advisory_jurisdiction_refs=tuple(
+                dict.fromkeys(allowed_government_drought_advisory_jurisdiction_refs)
+            ),
             issued_at=issued_at,
             expires_at=expires_at,
         )
@@ -150,6 +158,9 @@ class WebSocketSessionAuthService:
             session_ref=f"ws_session:{token_urlsafe(24)}",
             principal_ref=credential.principal_ref,
             allowed_actor_refs=credential.allowed_actor_refs,
+            allowed_government_drought_advisory_jurisdiction_refs=(
+                credential.allowed_government_drought_advisory_jurisdiction_refs
+            ),
             connection_epoch=self._next_connection_epoch,
             lease_expires_at=credential.expires_at,
         )
@@ -185,6 +196,9 @@ class WebSocketSessionAuthService:
         credential = self.create_trusted_local_launch_credential(
             principal_ref=binding.principal_ref,
             allowed_actor_refs=self._renewal_scope_selector(binding),
+            allowed_government_drought_advisory_jurisdiction_refs=(
+                binding.allowed_government_drought_advisory_jurisdiction_refs
+            ),
             issued_at=now,
             expires_at=binding.lease_expires_at,
         )
