@@ -49,6 +49,29 @@ def main() -> int:
     }
     architecture = evidence["architecture"]
     rejections = evidence["rejections"]
+    w0 = evidence["w0"]
+    w1 = evidence["w1"]
+    character = evidence["character"]
+    w0_receipts = {item["actor_ref"]: item for item in w0["continuity_receipts"]}
+    w1_receipts = {item["actor_ref"]: item for item in w1["continuity_receipts"]}
+    w1_new_source = (
+        w0["window"] == "W0"
+        and w1["window"] == "W1"
+        and w0["cadence_id"] != w1["cadence_id"]
+        and w0["source_revision_vector"] != w1["source_revision_vector"]
+    )
+    actor_revision_progression = all(
+        w0_receipts[actor]["character_revision_before"]
+        < w1_receipts[actor]["character_revision_before"]
+        and w0_receipts[actor]["character_revision_after"]
+        <= w1_receipts[actor]["character_revision_after"]
+        for actor in ("character:char_a", "character:char_b")
+        if actor in w0_receipts and actor in w1_receipts
+    ) and all(actor in w0_receipts and actor in w1_receipts for actor in ("character:char_a", "character:char_b"))
+    no_char_c_command = all(
+        actor != "character:char_c" for actor in character["continuity_commands"]
+    )
+    char_b_pending_empty = character["char_b_pending_memory_count"] == 0
     single_bus = architecture["authority_bus_identity"] == architecture["pipeline_bus_identity"]
     single_tick = (
         architecture["population_tick_count"] == architecture["authority_bus_publish_count"]
@@ -66,6 +89,10 @@ def main() -> int:
             and evidence["owner"]["event_family"] == "gameplay.organization.commerce_commitment_accepted"
             and evidence["character"]["seeded_actors"] == ["character:char_a", "character:char_b"]
             and evidence["character"]["activation_only_actors"] == ["character:char_c"]
+            and char_b_pending_empty
+            and no_char_c_command
+            and w1_new_source
+            and actor_revision_progression
             and evidence["activation"]["same_character_identity"] is True
             and evidence["replay"]["full_equals_checkpoint_tail"] is True
             and single_bus
@@ -86,6 +113,10 @@ def main() -> int:
             "seeded_actors": evidence["character"]["seeded_actors"],
             "activation_only_actor": evidence["character"]["activation_only_actors"],
             "replay_equal": evidence["replay"]["full_equals_checkpoint_tail"],
+            "char_b_pending_memory_empty": char_b_pending_empty,
+            "char_c_continuity_command_absent": no_char_c_command,
+            "w1_new_source_revision_and_window": w1_new_source,
+            "per_actor_revision_monotonic": actor_revision_progression,
         },
         "w0": evidence["w0"],
         "w1": evidence["w1"],

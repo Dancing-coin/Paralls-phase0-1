@@ -1608,13 +1608,17 @@ class ThreeActorCohortContinuityFixture:
             "independent_character_rebuilds": True,
         }
 
-    def _window_summary(self, result: PopulationCycleResult) -> dict[str, object]:
+    def _window_summary(self, window: str, result: PopulationCycleResult) -> dict[str, object]:
         report = result.report
         selected = [self._actor_for_projection(ref) for ref in report.selected_cohort_refs]
         unprocessed = [self._actor_for_projection(ref) for ref in report.unprocessed_cohort_refs]
+        event = self.events[window]
         return {
             "status": result.status,
             "batch_ref": result.batch_ref,
+            "window": window,
+            "cadence_id": event.payload["population_cadence"]["cadence_id"],
+            "source_revision_vector": dict(event.payload["population_cadence"]["base_revision_vector"]),
             "selected": selected,
             "selected_projection_refs": list(report.selected_cohort_refs),
             "unprocessed": unprocessed,
@@ -1704,8 +1708,8 @@ class ThreeActorCohortContinuityFixture:
         duplicate_owner = duplicate.owner_receipts[0] if duplicate.owner_receipts else None
         duplicate_continuity = duplicate.continuity_receipts[0] if duplicate.continuity_receipts else None
         return {
-            "w0": self._window_summary(w0),
-            "w1": self._window_summary(w1),
+            "w0": self._window_summary("W0", w0),
+            "w1": self._window_summary("W1", w1),
             "owner": {
                 "actor_ref": "character:char_a",
                 "owner_ref": w0.owner_receipts[0].owner_ref if w0.owner_receipts else "",
@@ -1773,6 +1777,7 @@ class ThreeActorCohortContinuityFixture:
                     changed_zero_write,
                     missing_owner_zero_write,
                     unknown_zero_write,
+                    stale_zero_write,
                 )
             ),
             "architecture": {

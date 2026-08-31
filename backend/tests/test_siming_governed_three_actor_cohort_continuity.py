@@ -59,3 +59,5 @@ def test_zero_write_matrix_covers_budget_owner_and_scope_boundaries() -> None:
             "unknown_zero_write",
         )
     )
+    assert result["rejections"]["stale_zero_write"] is True
+    assert result["zero_write"] is True
