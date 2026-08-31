@@ -2051,3 +2051,21 @@ mapping, container state, active binding digests, source revision, and replay
 provenance before append. Bread and certified flour are proven through the same
 adapter. The prior custody blocker is retained only as historical lineage;
 August INF A-D remains `not complete`.
+
+## 2026-08-31 Return To August INF A-D
+
+The Closed Generic Gameplay Foundation v1 is now fully closed with
+`12 generic_implemented / 0 bounded_adapter / 0 blocked` and
+`generic_refactoring_complete=true`. Its manifests and mapping admissions are
+reusable platform evidence only; they do not create new August INF business
+rows or alter existing INF-1/2/3/4 dispositions.
+
+Execution therefore returns to the ordered August INF A-D Goal. A new row may
+be formed only from an explicit committed source event/state, one existing
+truth owner, and one exact outcome/event vector with owner-bound privacy,
+revision, idempotency, receipt, replay and lifecycle semantics. The fresh scan
+after foundation closure found no new INF tuple: INF-1 remains exhausted or
+owner-contract blocked, INF-2 generic payment/transfer remains blocked, INF-3
+has no unlisted target-owner edge, and INF-4 lacks committed
+population/attendance/group/social consequence evidence. August INF A-D stays
+`not complete`.

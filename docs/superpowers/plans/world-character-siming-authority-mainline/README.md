@@ -29,6 +29,11 @@ production-output custody. Quantity, holder, and container are derived from
 committed certification and immutable mapping evidence; no caller/default
 inference is allowed.
 
+The Foundation track is closed. The active continuation now returns to the
+August INF A-D Goal and its ordered INF-1 -> INF-2 -> INF-3 -> INF-4 scan;
+Foundation completion is reusable evidence only and is not an August INF
+business completion claim.
+
 The shared event-store substrate also has a verified snapshot-integrity
 closure: recovery cross-checks ledger events, transaction batches, append
 results, idempotency indexes, and outbox references before reopening. This is

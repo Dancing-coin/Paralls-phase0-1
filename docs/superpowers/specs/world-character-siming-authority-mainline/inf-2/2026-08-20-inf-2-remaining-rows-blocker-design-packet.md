@@ -221,3 +221,12 @@ require one fresh business decision plus one row-specific Owner-Admission
 Contract before any package, catalog, runtime, test, or Harness work. Do not
 open a fourth existing-owner discovery or introduce a generic settlement
 authority.
+
+## 2026-08-31 Foundation Return Scan
+
+The closed Foundation's new production-output custody family adds only
+Inventory-owned certified-output custody. It supplies no committed buyer,
+receiver, account, currency, price policy, or Economy root outcome. It
+therefore does not form a new INF-2 row or reopen Slot C. The INF-2 ordered
+continuation remains `no new legal Economy tuple`; generic payment, transfer,
+market pricing and settlement continue as pre-append zero-write dispositions.

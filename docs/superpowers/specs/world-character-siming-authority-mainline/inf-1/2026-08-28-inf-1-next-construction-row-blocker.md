@@ -97,3 +97,13 @@ No RED test, runtime, catalog, package, or Harness change is authorized by
 this recheck. The next candidate remains Organization grain intake, which is
 still blocked until a committed `facility_ref`/`project_ref` Construction
 binding and exact Construction-owned outcome are supplied.
+
+## 2026-08-31 Foundation-Closure Recheck
+
+The Closed Generic Gameplay Foundation v1 custody resolution was reviewed as
+part of the ordered INF continuation. Its new certified-output custody event
+and immutable holder/container mappings are Inventory-family evidence, not a
+new Construction source or Construction-owned outcome. They therefore do not
+form an INF-1 row and do not alter the existing blocker. INF-1 remains
+`no new legal row; preserve blocker and zero-write boundary`; the ordered scan
+continues to INF-2 after this disposition.

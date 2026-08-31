@@ -109,6 +109,11 @@ updated by the fresh verification run; serial family verifiers, compileall and
 diff-check are green. `generic_refactoring_complete=true`; August INF A-D
 remains `not complete`.
 
+The Foundation v1 work is now closed. Execution returns to the August INF A-D
+Goal in ordered lane sequence; Foundation family manifests and mappings are
+reusable evidence only, not additional August INF business rows, and do not
+alter the existing INF-1/2/3/4 dispositions.
+
 The aggregate report also enforces the custody blocker record with non-empty
 candidate values, source refs, business impact and recommended decision.
 

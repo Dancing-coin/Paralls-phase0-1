@@ -134,10 +134,40 @@ target-owner outcome was formed.
 
 ## 2026-08-31 Closed Generic Foundation Closure
 
-The closed generic foundation is complete at the matrix/governance level under
-the approved completion definition: each of the eleven writable families is
-implemented and verified with multiple immutable contents, while
-`production_output_custody@1` has a formal zero-write blocker. The exact
-status is `11 generic_implemented / 0 bounded_adapter / 1 blocked`.
-This does not assert twelve generic writers; `generic_refactoring_complete`
-remains false. August INF A-D remains `not complete`.
+Historical checkpoint superseded by the custody resolution below. The closed
+generic foundation is now complete at the implementation level: all twelve
+families are `generic_implemented`, with `0 bounded_adapter` and `0 blocked`.
+This foundation remains independent from the August INF A-D business ledger;
+August INF A-D remains `not complete`.
+
+## 2026-08-31 Production Output Custody Resolution
+
+`production_output_custody@1` is now implemented through the existing Inventory
+owner. Quantity is derived only from a committed
+`production_output_certified@1` event. Holder and destination container are
+derived only from immutable facility/recipe/output mapping admissions, and the
+owner verifies mapping, source revision/privacy, active binding digests,
+capacity, idempotency, append-derived receipt, provenance, and full/tail replay
+before append. Bread and certified-flour content instances pass through the
+same adapter. The former blocker remains only as historical lineage and does
+not authorize caller/default inference.
+
+The latest foundation status is `12 generic_implemented / 0 bounded_adapter /
+0 blocked`, `generic_refactoring_complete=true`, and
+`foundation_matrix_closure_complete=true`. No new August INF business fact is
+created by this foundation closure. The next execution step is therefore the
+ordered INF-1 -> INF-2 -> INF-3 -> INF-4 source/outcome scan below.
+
+## 2026-08-31 August INF Return Gate
+
+The custody manifests and mapping admissions are platform/family evidence, not
+new INF business rows. A fresh ordered scan must still find an explicit
+`committed source event/state -> existing truth owner -> exact outcome/event
+vector` before any August row is formed. Until then, the existing INF-1/2/3/4
+row-level dispositions remain unchanged and August INF A-D remains
+`not complete`.
+
+Verification after this return scan: INF/INFRA selection `1341 passed`,
+continuation gate `11 passed`, docs check passed, and `git diff --check`
+passed. These checks validate existing narrow rows and blocker fences; they
+do not create or imply a new August INF business row.

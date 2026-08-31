@@ -470,6 +470,16 @@ generic recovery path.
 The current INF/INFRA regression selection after INF-3AA replay-integrity
 repair is `1278 passed`. Remaining rows still require independently named
 source/owner/outcome tuples and retain their existing dispositions.
+
+## 2026-08-31 Return-Gate Clarification
+
+Closed Generic Gameplay Foundation v1 is now complete with `12 generic`
+families and no blocked family. This platform/family closure does not create
+new August INF business facts. The ordered INF continuation therefore resumes
+at INF-1 and proceeds through INF-2, INF-3 and INF-4; each new row still
+requires one committed source, one existing truth owner and one exact outcome
+vector. Existing INF-1/2/3/4 blockers remain row-level dispositions, not a
+platform blocker and not a reason to introduce generic routing or defaults.
 ## 2026-08-28 Four-Lane Gap Closure Evidence
 
 INF-1AM, INF-2AM, INF-3 grain harvest and INF-4AO are now `implemented narrow

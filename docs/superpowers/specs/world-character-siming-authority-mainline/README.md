@@ -50,6 +50,12 @@ family-specific source, digest, lifecycle and replay evidence. Production-output
 custody derives quantity from certified output and holder/container from an
 immutable mapping admission. August INF A-D stays `not complete`.
 
+The next execution step is the original August INF A-D ordered continuation
+(INF-1 -> INF-2 -> INF-3 -> INF-4). Foundation closure supplies reusable
+admission/evidence infrastructure only; it does not create new INF business
+facts or reopen generic payment, transform, consumer, population or social
+surfaces.
+
 ## Unknown Gameplay-Pack/Mod Rows
 
 The mainline does not need to hard-code every future game activity. Trusted

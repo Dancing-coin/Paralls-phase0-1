@@ -141,3 +141,13 @@ changed-duplicate requests remain zero-write before any target owner's
 - INF-3 candidate register and candidate plan
 - current completion audit, remaining-scope dependency design, continuation
   checkpoint, and `docs/harness.md`
+
+## 2026-08-31 Foundation Return Recheck
+
+The completed closed-family Foundation adds content-generic weather consumers,
+but its rain/drought/frost manifests exercise only already admitted Survival
+edges. No new Ecology source event, target owner, or exact outcome/event vector
+was committed for INF-3. `drought_process_advanced` remains process evidence
+only and cannot substitute for a weather-front source. INF-3 retains
+`owner-contract blocked` for unlisted edges and `unimplemented` for the
+prohibited process substitution; no runtime or catalog work follows.

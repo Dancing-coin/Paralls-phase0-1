@@ -98,3 +98,13 @@ RED tests, or Harness change follows from this document.
   INF-C5 fixed-base replay contract
 - current completion audit, remaining-scope dependency design, continuation
   checkpoint, and `docs/harness.md`
+
+## 2026-08-31 Foundation Return Recheck
+
+The completed closed-family Foundation adds reusable private-follow-on and
+owner-bound package evidence only. It does not commit a jurisdiction,
+participant, attendance, population, group, or new social-truth event for
+INF-4. Branch candidates remain request-only and cannot replace Production or
+domain truth. INF-4 B1-B5 retain their documented `owner-contract blocked` or
+`unimplemented` dispositions; no promotion, population writer, or generic
+social route follows from Foundation closure.

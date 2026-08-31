@@ -123,8 +123,8 @@ remain green after the latest rerun; no new target-owner edge is admitted.
 ## Closed Generic Gameplay Foundation v1 Family Matrix
 
 The separate family foundation is tracked independently from August INF A-D.
-Its immutable matrix contains all twelve requested families. All eleven
-All twelve families now have two-content genericity evidence through one
+Its immutable matrix contains all twelve requested families. All twelve
+families now have two-content genericity evidence through one
 owner-bound adapter. `production_output_custody@1` is resolved by certified
 output quantity and an immutable source-to-holder/container mapping admission.
 The historical blocker record remains for audit lineage; no caller/default
@@ -135,3 +135,13 @@ inference is permitted.
 The residual blocker register now records the resolved custody admission. The
 exact status is `12 generic_implemented / 0 bounded_adapter / 0 blocked` and
 `generic_refactoring_complete=true`. August INF A-D remains `not complete`.
+
+## 2026-08-31 August INF Return Scan
+
+The custody resolution added only closed-family package/mapping evidence; it
+did not add an August INF source-to-outcome fact. A fresh ordered scan found no
+new legal tuple. INF-1 remains exhausted or owner-contract blocked, INF-2
+generic payment/transfer remains blocked, INF-3 has no new target-owner edge,
+and INF-4 lacks committed population/attendance/group/social consequence
+evidence. Execution returns to the existing INF-1 -> INF-2 -> INF-3 -> INF-4
+continuation without modifying Foundation family rows or August status.
