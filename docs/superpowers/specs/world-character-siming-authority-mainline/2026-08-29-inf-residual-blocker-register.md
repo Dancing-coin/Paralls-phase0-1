@@ -133,3 +133,13 @@ quantity, an admitted source-to-holder mapping, and a deterministic unique
 destination container are absent. Each blocker records candidate values,
 source references, business impact, and the recommended upstream decision.
 All blocked paths remain zero-write; no caller/default inference is permitted.
+
+## 2026-08-31 Foundation Closure Semantics
+
+The residual blocker register is compatible with a completed foundation matrix.
+The Goal is complete at the governance/matrix level because every family is
+either implemented and verified or has a formal zero-write blocker. The exact
+status is `11 generic_implemented / 0 bounded_adapter / 1 blocked`; the sole
+blocked family is `production_output_custody@1`. This must not be read as twelve
+implemented writers, and `generic_refactoring_complete=false` remains
+intentional.

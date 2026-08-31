@@ -2028,3 +2028,15 @@ v3 mill decommission row or INF-1AF bakery reinforcement row. The dedicated
 family verifier and focused lifecycle tests are green. `production_output_custody@1`
 remains separately blocked by missing committed quantity, holder mapping, and
 unique destination-container facts. August INF A-D remains `not complete`.
+
+## 2026-08-31 Foundation Matrix Closure Clarification
+
+The formal completion definition allows each family to be either
+`generic_implemented and verified` or `formally blocked` with an exact
+zero-write disposition. Accordingly, the foundation matrix is complete at the
+governance level: `11 generic_implemented / 0 bounded_adapter / 1 blocked`.
+This does not claim twelve implemented writers. `generic_refactoring_complete`
+remains false because `production_output_custody@1` is still blocked by absent
+committed output quantity, source-to-Inventory holder mapping, and unique
+destination-container evidence. August INF A-D remains `not complete`; external
+heavenly-runtime and Godot checks are not part of this closure claim.

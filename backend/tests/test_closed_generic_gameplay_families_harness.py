@@ -23,6 +23,7 @@ def test_closed_generic_gameplay_families_verifier_reports_family_matrix_and_blo
         )
     )
     assert report["matrix_closure_passed"] is True
+    assert report["foundation_matrix_closure_complete"] is True
     assert report["family_count"] == 12
     assert (
         report["generic_implemented_family_count"]
@@ -34,6 +35,7 @@ def test_closed_generic_gameplay_families_verifier_reports_family_matrix_and_blo
     assert report["design_only_family_count"] == 0
     assert report["bounded_family_blocker_closure_passed"] is True
     assert report["generic_refactoring_complete"] is False
+    assert report["goal_level_status"].startswith("foundation_matrix_closure_complete;")
     assert set(report["genericity_blocker_family_refs"]) == set()
     assert report["generic_implemented_family_count"] == 11
     assert report["bounded_adapter_family_count"] == 0

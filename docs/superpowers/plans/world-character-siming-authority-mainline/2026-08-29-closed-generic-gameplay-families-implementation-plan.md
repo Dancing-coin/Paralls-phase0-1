@@ -114,6 +114,12 @@ previous helper-only verification gap.
 The current verified distribution is `11 generic_implemented / 0
 bounded_adapter / 1 blocked`, with repository pytest at `4260 passed`.
 
+Under the program completion definition, this is a complete foundation matrix:
+all writable families are implemented and verified, while the non-writable
+custody family has an exact formal zero-write blocker. The Goal is complete at
+the governance/matrix level only. `generic_refactoring_complete` remains false
+because the custody family is not a generic writer.
+
 Registry activation now uses the additive family descriptor set for family
 capabilities. It validates each selected family content model before mutation,
 rejects duplicate binding refs within a package, and rejects blocked custody
@@ -251,9 +257,10 @@ generic custody writer is added while this blocker stands.
   full run before this checkpoint; focused rerun remains green).
 
 The two formerly design-only promotions now have separate TDD adapters,
-focused tests and Harness evidence. The program remains active solely because
-the production-output custody family is formally blocked by missing committed
-facts; no silent migration or generic fallback is permitted.
+focused tests and Harness evidence. The foundation matrix is complete at the
+governance level under the formal completion definition; the custody family
+remains a separately tracked zero-write implementation blocker. No silent
+migration or generic fallback is permitted.
 
 ## Task 8: Gate later family additions
 

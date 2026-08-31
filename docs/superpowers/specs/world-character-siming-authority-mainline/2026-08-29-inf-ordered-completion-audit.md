@@ -131,3 +131,13 @@ depend on a second store.
 The latest INF-3/INF-4 focused rerun remains `236 passed`; INF-3AB, INF-4AP,
 and the continuation-gate Harness all pass. No additional committed source or
 target-owner outcome was formed.
+
+## 2026-08-31 Closed Generic Foundation Closure
+
+The closed generic foundation is complete at the matrix/governance level under
+the approved completion definition: each of the eleven writable families is
+implemented and verified with multiple immutable contents, while
+`production_output_custody@1` has a formal zero-write blocker. The exact
+status is `11 generic_implemented / 0 bounded_adapter / 1 blocked`.
+This does not assert twelve generic writers; `generic_refactoring_complete`
+remains false. August INF A-D remains `not complete`.

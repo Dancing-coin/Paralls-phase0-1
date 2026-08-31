@@ -133,6 +133,19 @@ content/source mismatch before append, and preserves the historical narrow
 weather methods. The committed-manifest dual-content and lifecycle tests are
 part of the genericity evidence; the focused family suite is `21 passed`.
 
+## 2026-08-31 Goal-Level Closure Decision
+
+Decision: **A — foundation matrix closure complete**. The formal completion
+definition treats an evidence-backed, zero-write blocker as a valid terminal
+family disposition. The Goal-level statement is therefore:
+`foundation matrix closure complete; 11 generic families implemented and
+verified; 1 formally blocked`.
+
+This is not a claim that all twelve family writers exist. The aggregate report
+continues to expose `generic_refactoring_complete=false` because
+`production_output_custody@1` has no legal writer until its three committed
+source facts are admitted. August INF A-D remains `not complete`.
+
 ## 2026-08-30 Declared Exchange Family Admission
 
 `declared_exchange@1` now has two additive immutable closed-generic manifests:
@@ -150,8 +163,9 @@ aggregate matrix therefore promotes the family to `generic_implemented`.
 
 ## 2026-08-30 Remaining Lifecycle Evidence
 
-`facility_lifecycle_transition@1` remains bounded after a committed-manifest
-inventory audit. The only committed lifecycle declaration is the v3 reinforced
+At this historical checkpoint, `facility_lifecycle_transition@1` remained
+bounded after a committed-manifest inventory audit. The only committed
+lifecycle declaration was the v3 reinforced
 mill decommission tuple; adjacent facility packages are identity transforms or
 service/output rows, not a second lifecycle tuple. The bakery reinforcement
 fixture is test-only and remains excluded from genericity evidence. The

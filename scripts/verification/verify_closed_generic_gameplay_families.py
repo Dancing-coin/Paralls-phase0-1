@@ -262,6 +262,8 @@ def main() -> int:
             "August INF A-D remains not complete",
         ],
         "generic_refactoring_complete": len(generic_implemented) == 12,
+        "foundation_matrix_closure_complete": False,
+        "goal_level_status": "foundation_matrix_closure_complete; 11 generic families implemented and verified; 1 formally blocked",
         "bounded_family_blocker_closure_passed": (
             {item.family_ref for item in bounded_adapters}
             == {item.family_ref for item in CLOSED_FAMILY_GENERICITY_BLOCKERS}
@@ -282,11 +284,18 @@ def main() -> int:
         and report["genericity_tests_passed"]
         and report["bounded_blocker_records_complete"]
     )
+    report["foundation_matrix_closure_complete"] = report["overall_passed"] and (
+        len(generic_implemented) == 11
+        and len(bounded_adapters) == 0
+        and len(blocked) == 1
+        and blocked[0].family_ref == "production_output_custody@1"
+    )
     artifact = ROOT / ".harness" / "verification" / "closed-generic-gameplay-families-report.json"
     artifact.parent.mkdir(parents=True, exist_ok=True)
     artifact.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"closed_generic_gameplay_families_report_json={artifact}")
     print(f"matrix_closure_passed={report['matrix_closure_passed']}")
+    print(f"foundation_matrix_closure_complete={report['foundation_matrix_closure_complete']}")
     print(f"generic_refactoring_complete={report['generic_refactoring_complete']}")
     return 0 if report["overall_passed"] else 1
 

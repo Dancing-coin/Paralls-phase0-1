@@ -41,12 +41,16 @@ This objective is not an open-ended generic writer or arbitrary cross-domain
 resolver. New content may expand inside an approved family; new facts, owners,
 event vectors, lifecycle semantics or cross-domain recipe types require a
 separate admission. August INF A-D remains an independent business ledger and
-The current matrix is `11 generic implementations / 0 bounded adapters / 1
-blocked`. All writable families have two or more distinct admitted content
-instances through one adapter with family-specific source, digest, lifecycle
-and replay evidence. Production-output custody remains zero-write until its
-committed facts are admitted. August INF A-D stays `not complete`; the family
-foundation does not count as August INF completion.
+is not completed by this foundation.
+
+Closed Generic Gameplay Foundation v1 is complete at the governance/matrix
+level: `11 generic implementations / 0 bounded adapters / 1 blocked`.
+All writable families have two or more distinct admitted content instances
+through one adapter with family-specific source, digest, lifecycle and replay
+evidence. `generic_refactoring_complete=false` remains intentional because
+the blocked custody family is not an implemented writer. Production-output
+custody remains zero-write until its committed facts are admitted. August INF
+A-D stays `not complete`.
 
 ## Unknown Gameplay-Pack/Mod Rows
 

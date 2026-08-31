@@ -22,9 +22,9 @@ def main() -> int:
         "boundaries": [
             "Ecology harvest is the only source owner",
             "Inventory remains custody owner",
-            "only the committed grain:wheat@1 source/content row is executable",
-            "no committed second harvest manifest/source pair exists; synthetic test mutations are not evidence",
-            "harvest_to_custody@1 remains bounded_adapter until two immutable manifest/source pairs are committed",
+            "the committed wheat and barley source/content rows are executable through one adapter",
+            "synthetic test mutations are not evidence; both immutable manifest/source pairs are committed",
+            "harvest_to_custody@1 is generic_implemented after two immutable manifest/source pairs and replay proof",
             "caller cannot choose custody coordinates",
             "existing grain_harvest_received@1 event, append-derived receipt, and replay readers",
             "historical INF-3AB row remains unchanged",
