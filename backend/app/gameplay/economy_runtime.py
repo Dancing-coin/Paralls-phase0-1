@@ -131,6 +131,14 @@ class BudgetReservation:
 
 
 @dataclass(frozen=True)
+class PublicProjectBudgetConsumption:
+    consumption_ref: str
+    source_event_id: str
+    project_ref: str
+    facility_ref: str
+
+
+@dataclass(frozen=True)
 class ScheduledTransferObligationResult:
     committed: bool
     obligation: ScheduledObligation | None
@@ -202,6 +210,7 @@ class EconomyProjection:
     dynamic_quotes: Mapping[str, Mapping[str, object]] = MappingProxyType({})
     dynamic_orders: Mapping[str, Mapping[str, object]] = MappingProxyType({})
     scheduled_transfer_policies: Mapping[str, ScheduledAccountTransferPolicyInstance] = MappingProxyType({})
+    public_project_budget_consumptions: Mapping[str, PublicProjectBudgetConsumption] = MappingProxyType({})
 
 class EconomyProjector:
     def rebuild(self, events: Sequence[GameplayEvent]) -> EconomyProjection:
@@ -211,6 +220,7 @@ class EconomyProjector:
         dynamic_quotes: dict[str, Mapping[str, object]] = {}
         dynamic_orders: dict[str, Mapping[str, object]] = {}
         scheduled_transfer_policies: dict[str, ScheduledAccountTransferPolicyInstance] = {}
+        public_project_budget_consumptions: dict[str, PublicProjectBudgetConsumption] = {}
         revisions: dict[str, int] = {}
         for event in sorted(events, key=lambda item: (item.global_sequence, item.event_id)):
             if event.stream_id == "gameplay:economy":
@@ -276,6 +286,17 @@ class EconomyProjector:
                     raise EconomyRuntimeError("economy_dynamic_order_duplicate")
                 dynamic_orders[order_ref] = MappingProxyType(dict(order))
                 continue
+            if event.event_type == "gameplay.economy.public_project_budget_consumed":
+                consumption_ref = _text(event.payload, "consumption_ref")
+                if consumption_ref in public_project_budget_consumptions:
+                    raise EconomyRuntimeError("economy_public_project_budget_consumption_duplicate")
+                public_project_budget_consumptions[consumption_ref] = PublicProjectBudgetConsumption(
+                    consumption_ref=consumption_ref,
+                    source_event_id=event.event_id,
+                    project_ref=_text(event.payload, "project_ref"),
+                    facility_ref=_text(event.payload, "facility_ref"),
+                )
+                continue
             if event.event_type not in {"gameplay.economy.account_opened", "gameplay.economy.account_debited", "gameplay.economy.account_credited"}: continue
             p = event.payload; account_id = _text(p, "account_id")
             if event.event_type == "gameplay.economy.account_opened":
@@ -289,6 +310,7 @@ class EconomyProjector:
                 if value < 0: raise EconomyRuntimeError("economy_insufficient_funds")
                 accounts[account_id] = Account(prior.account_id, prior.owner_ref, prior.currency_ref, value, event.event_id)
             revisions[event.stream_id] = max(revisions.get(event.stream_id,0), event.stream_revision)
+        _validate_public_project_budget_provenance(events)
         frozen = MappingProxyType(dict(sorted(accounts.items())))
         return EconomyProjection(
             frozen,
@@ -299,6 +321,7 @@ class EconomyProjector:
             MappingProxyType(dict(sorted(dynamic_quotes.items()))),
             MappingProxyType(dict(sorted(dynamic_orders.items()))),
             MappingProxyType(dict(sorted(scheduled_transfer_policies.items()))),
+            MappingProxyType(dict(sorted(public_project_budget_consumptions.items()))),
         )
 
 class EconomyAuthorityService:
@@ -382,8 +405,16 @@ class EconomyAuthorityService:
                 definition=definition,
                 proposed_amount=intent.proposed_amount,
             )
+            expected_key = (
+                f"package-negotiated-exchange:{manifest.patch_revision_id}:"
+                f"package_declared_negotiated_exchange@1:{intent.proposal_digest}:v1"
+            )
+            if intent.idempotency_key != expected_key:
+                return self._rejected_append(intent.command_id, "package_exchange_idempotency_key_invalid")
             provider_ref = intent.provider_consent.party_ref
             receiver_ref = intent.receiver_consent.party_ref
+            if "public-milling-session" in intent.outcome_ref and provider_ref != "organization:district-milling-cooperative":
+                return self._rejected_append(intent.command_id, "public_milling_provider_binding_invalid")
             (
                 provider_account,
                 receiver_account,
@@ -553,6 +584,23 @@ class EconomyAuthorityService:
             for event in self._store.read_stream("gameplay:economy")
             if event.event_type == "gameplay.economy.package_declared_negotiated_exchange_settled"
         ]
+        for event in events:
+            payload = event.payload
+            if payload.get("package_revision_id") == "package:industrial-facilities:v7":
+                source_ids = payload.get("source_event_ids")
+                if not isinstance(source_ids, list) or len(source_ids) != 1:
+                    raise EconomyRuntimeError("package_exchange_replay_invalid")
+                try:
+                    source = self._store.get_event(str(source_ids[0]))
+                except KeyError:
+                    raise EconomyRuntimeError("package_exchange_replay_invalid") from None
+                if (
+                    source.event_type != "gameplay.inventory.mill_flour_output_received@1"
+                    or payload.get("amount_minor") != 8
+                    or payload.get("currency_ref") != "currency:local"
+                    or payload.get("provider_ref") != source.payload.get("provider_ref")
+                ):
+                    raise EconomyRuntimeError("package_exchange_replay_invalid")
         if checkpoint_at is None:
             settlements = self._reduce_package_declared_negotiated_exchange_projection(events=events)
         else:
@@ -691,6 +739,32 @@ class EconomyAuthorityService:
             )
             provider_stream = f"gameplay:inventory:{provider_ref}"
             receiver_stream = f"gameplay:inventory:{receiver_ref}"
+            if package_revision == "package:industrial-facilities:v7" or "reinforced-mill-flour" in outcome_ref:
+                source_candidates = [
+                    event for event in self._store.read_stream(provider_stream)
+                    if event.event_type == "gameplay.inventory.mill_flour_output_received@1"
+                    and event.visibility_policy == "project"
+                    and event.payload.get("provider_ref") == provider_ref
+                ]
+                if len(source_candidates) != 1:
+                    raise EconomyRuntimeError("package_exchange_source_ambiguous")
+                try:
+                    fragment, source_proof = inventory.build_reinforced_mill_flour_output_purchase_fragment(
+                        provider_actor_ref=provider_ref,
+                        receiver_actor_ref=receiver_ref,
+                        source_receipt_event_id=source_candidates[0].event_id,
+                        destination_container_id=destination_container_id,
+                        outcome_ref=outcome_ref,
+                        package_revision=package_revision,
+                        expected_provider_revision=self._store.get_stream_head(provider_stream),
+                        expected_receiver_revision=self._store.get_stream_head(receiver_stream),
+                    )
+                except InventoryRuntimeError as exc:
+                    if str(exc) == "revision_conflict":
+                        raise EconomyRuntimeError("revision_conflict") from exc
+                    raise EconomyRuntimeError("package_exchange_source_invalid") from exc
+                source_event = self._store.get_event(str(source_proof["source_event_id"]))
+                return fragment, (source_event.event_id,), {"inventory_source": source_event.stream_revision}
             try:
                 fragment, source_proof = inventory.build_package_declared_negotiated_exchange_fragment(
                     provider_actor_ref=provider_ref,
@@ -2061,6 +2135,1214 @@ class EconomyAuthorityService:
                 reduced.setdefault(obligation_id, {})["status"] = "open"
         return {obligation_id: reduced[obligation_id] for obligation_id in sorted(reduced)}
 
+    # Budget lifecycle facts remain Economy-owned.  The family branch below
+    # reads only a committed Construction project-step and its active package
+    # binding; callers never select amount, currency, account, or streams.
+    def _budget_duplicate_result(
+        self, *, command_id: str, idempotency_key: str, request: Mapping[str, object], error_prefix: str
+    ) -> AppendBatchResult | None:
+        record = self._store.get_idempotency_record(self._PRINCIPAL, idempotency_key)
+        if record is None:
+            return None
+        if record.payload_digest != _digest(dict(request)):
+            return self._rejected_append(command_id, f"{error_prefix}_idempotency_key_reused")
+        result = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if result is None:
+            return self._rejected_append(command_id, f"{error_prefix}_idempotency_record_missing_result")
+        return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+
+    def _append_budget_event(
+        self,
+        *,
+        command_id: str,
+        command_type: str,
+        idempotency_key: str,
+        request: Mapping[str, object],
+        causation_id: str,
+        correlation_id: str,
+        submitted_at: str,
+        source_ref: str,
+        expected_economy_revision: int,
+        read_set_revisions: Mapping[str, int],
+        payload: Mapping[str, object],
+    ) -> AppendBatchResult:
+        stream = "gameplay:economy"
+        command = GameplayCommandEnvelope(
+            command_id=command_id,
+            command_type=command_type,
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=None,
+            project_ref=None,
+            transaction_id=f"transaction:{command_id}",
+            idempotency_key=idempotency_key,
+            expected_revisions={stream: expected_economy_revision},
+            read_set_revisions=dict(read_set_revisions),
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            source_ref=source_ref,
+            submitted_at=submitted_at,
+            pinned_revisions={"economy": expected_economy_revision, **dict(read_set_revisions)},
+            payload={
+                "stream_ref": stream,
+                "event_type": str(payload["event_type"]),
+                "event_specs": [
+                    {
+                        "event_type": str(payload["event_type"]),
+                        "payload": {
+                            **{key: value for key, value in payload.items() if key != "event_type"},
+                            "visibility_policy": "authority_only",
+                        },
+                    }
+                ],
+            },
+        )
+        batch = SettlementPlan.from_command_envelope(command).to_atomic_event_batch()
+        batch = batch.model_copy(
+            update={
+                "idempotency_record": batch.idempotency_record.model_copy(
+                    update={"payload_digest": _digest(dict(request))}, deep=True
+                ),
+                "outbox_entries": [
+                    GameplayOutboxEntry(
+                        outbox_id=f"outbox:{event.event_id}",
+                        transaction_id=batch.transaction_id,
+                        event_id=event.event_id,
+                        global_sequence=0,
+                        topic="economy.public_project_budget.scoped_projection",
+                        audience="authority:economy",
+                        payload_projection={
+                            "event_type": event.event_type,
+                            "project_ref": str(event.payload.get("project_ref", "")),
+                        },
+                    )
+                    for event in batch.events
+                ],
+            },
+            deep=True,
+        )
+        return self._store.append_batch(batch)
+
+    def _budget_content_for_step(self, source_event: GameplayEvent) -> Mapping[str, object] | None:
+        source = source_event.payload
+        if source.get("family_ref") != "bounded_project_budget@1":
+            if (
+                source.get("project_step_ref") != "project-step:public-project:workshop-bench@1"
+                or source.get("catalog_ref") != "inf:construction-public-project-step-completion@1"
+            ):
+                return None
+            return {
+                "amount": 12,
+                "currency_ref": "currency:local",
+                "project_definition_ref": "definition:public-project@1",
+                "policy_revision_ref": "policy:economy-public-project-budget-workshop@1",
+                "source_work_order_ref": "work-order:public-project:workshop-bench@1",
+                "source_project_step_ref": "project-step:public-project:workshop-bench@1",
+                "family_ref": None,
+            }
+
+        registry = self._package_registry
+        active = getattr(registry, "active_patch_set", None) if registry is not None else None
+        if active is None:
+            return None
+        try:
+            from app.gameplay.closed_generic_gameplay_families import BoundedProjectBudgetContent
+
+            manifests = registry.active_manifests(active.active_patch_set_revision)
+        except Exception:
+            return None
+        candidates: list[Mapping[str, object]] = []
+        for manifest in manifests:
+            extension = getattr(manifest, "platform_extension", None)
+            if extension is None:
+                continue
+            declarations = {item.declaration_ref: item for item in extension.outcome_declarations}
+            for request in extension.capability_binding_requests:
+                if request.capability_ref != "capability:bounded-project-budget@1":
+                    continue
+                declaration = declarations.get(request.declaration_ref)
+                if declaration is None or declaration.outcome_family_ref != "outcome:bounded-project-budget@1":
+                    continue
+                definitions = tuple(
+                    item for item in extension.package_definitions if item.definition_ref in declaration.definition_refs
+                )
+                bindings = tuple(
+                    item
+                    for item in active.capability_bindings
+                    if item.binding_ref == request.binding_ref
+                    and item.package_revision == manifest.patch_revision_id
+                    and item.content_digest == manifest.content_digest
+                    and item.declaration_digest == declaration.declaration_digest
+                )
+                if len(definitions) != 1 or len(bindings) != 1:
+                    continue
+                try:
+                    content = BoundedProjectBudgetContent.model_validate(definitions[0].typed_content)
+                except Exception:
+                    continue
+                if (
+                    content.source_project_step_ref == source.get("project_step_ref")
+                    and content.source_work_order_ref == source.get("source_work_order_ref")
+                    and manifest.patch_revision_id == source.get("package_revision")
+                    and manifest.content_digest == source.get("content_digest")
+                    and declaration.declaration_ref == source.get("declaration_ref")
+                    and declaration.declaration_digest == source.get("declaration_digest")
+                    and bindings[0].binding_ref == source.get("binding_ref")
+                ):
+                    candidates.append(
+                        {
+                            **content.model_dump(mode="python"),
+                            "family_ref": "bounded_project_budget@1",
+                            "package_revision": manifest.patch_revision_id,
+                            "content_digest": manifest.content_digest,
+                            "declaration_ref": declaration.declaration_ref,
+                            "declaration_digest": declaration.declaration_digest,
+                            "binding_ref": bindings[0].binding_ref,
+                            "active_patch_set_revision": bindings[0].active_patch_set_revision,
+                        }
+                    )
+        return candidates[0] if len(candidates) == 1 else None
+
+    def _budget_step_source(self, *, source_event_id: str, expected_source_revision: int) -> tuple[GameplayEvent, Mapping[str, object]] | None:
+        try:
+            source_event = self._store.get_event(source_event_id)
+        except KeyError:
+            return None
+        source = source_event.payload
+        if (
+            source_event.event_type != "gameplay.construction_production.public_project_step_completed"
+            or source_event.visibility_policy != "project"
+            or source_event.stream_revision != expected_source_revision
+            or self._store.get_stream_head(source_event.stream_id) != expected_source_revision
+            or source.get("next_step_status") != "completed"
+            or not isinstance(source.get("facility_ref"), str)
+            or not isinstance(source.get("project_ref"), str)
+        ):
+            return None
+        content = self._budget_content_for_step(source_event)
+        if content is None:
+            return None
+        return source_event, content
+
+    def record_public_project_budget_commitment(
+        self,
+        *,
+        source_event_id: str,
+        expected_source_revision: int,
+        expected_economy_stream_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        submitted_at: str,
+    ) -> AppendBatchResult:
+        """Compatibility entry point for the original workshop budget row."""
+        return self._record_budget_commitment(
+            source_event_id=source_event_id,
+            expected_source_revision=expected_source_revision,
+            expected_economy_stream_revision=expected_economy_stream_revision,
+            command_id=command_id,
+            idempotency_key=idempotency_key,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            submitted_at=submitted_at,
+            require_family=False,
+        )
+
+    def settle_bounded_project_budget(self, *, intent: object) -> AppendBatchResult:
+        try:
+            from app.gameplay.closed_generic_gameplay_families import BoundedProjectBudgetIntent
+
+            typed = intent if isinstance(intent, BoundedProjectBudgetIntent) else BoundedProjectBudgetIntent.model_validate(intent)
+        except Exception:
+            return self._rejected_append(str(getattr(intent, "command_id", "bounded-project-budget")), "bounded_project_budget_intent_invalid")
+        try:
+            source = self._store.get_event(typed.source_event_id)
+        except KeyError:
+            return self._rejected_append(typed.command_id, "bounded_project_budget_source_missing")
+        return self._record_budget_commitment(
+            source_event_id=typed.source_event_id,
+            expected_source_revision=source.stream_revision,
+            expected_economy_stream_revision=self._store.get_stream_head("gameplay:economy"),
+            command_id=typed.command_id,
+            idempotency_key=f"economy:bounded-project-budget:{typed.source_event_id}:{source.stream_revision}:v1",
+            causation_id=typed.source_event_id,
+            correlation_id=typed.correlation_id,
+            submitted_at=typed.submitted_at,
+            require_family=True,
+        )
+
+    def _record_budget_commitment(
+        self,
+        *,
+        source_event_id: str,
+        expected_source_revision: int,
+        expected_economy_stream_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        submitted_at: str,
+        require_family: bool,
+    ) -> AppendBatchResult:
+        prefix = "bounded_project_budget" if require_family else "economy_public_project_budget"
+        request = {
+            "source_event_id": source_event_id,
+            "expected_source_revision": expected_source_revision,
+            "causation_id": causation_id,
+            "correlation_id": correlation_id,
+            "family": require_family,
+        }
+        duplicate = self._budget_duplicate_result(command_id=command_id, idempotency_key=idempotency_key, request=request, error_prefix=prefix)
+        if duplicate is not None:
+            return duplicate
+        resolved = self._budget_step_source(source_event_id=source_event_id, expected_source_revision=expected_source_revision)
+        if resolved is None:
+            return self._rejected_append(command_id, f"{prefix}_source_invalid")
+        source_event, content = resolved
+        # The original workshop row remains a compatibility input to the new
+        # wrapper when no registry is configured.  A configured family must
+        # always prove its active immutable binding.
+        if require_family and content.get("family_ref") is None and self._package_registry is not None:
+            return self._rejected_append(command_id, f"{prefix}_source_invalid")
+        if not require_family and content.get("family_ref") == "bounded_project_budget@1":
+            return self._rejected_append(command_id, f"{prefix}_source_invalid")
+        if self._store.get_stream_head("gameplay:economy") != expected_economy_stream_revision:
+            return self._rejected_append(command_id, f"{prefix}_revision_conflict")
+        source = source_event.payload
+        commitment_ref = f"budget-commitment:public-project:{str(content['source_project_step_ref']).split(':')[-1].removesuffix('@1')}:{source['project_ref']}"
+        existing = [
+            event for event in self._store.read_stream("gameplay:economy")
+            if event.event_type == "gameplay.economy.public_project_budget_commitment_recorded"
+            and event.payload.get("source_event_id") == source_event_id
+        ]
+        if existing:
+            return self._rejected_append(command_id, f"{prefix}_duplicate")
+        payload: dict[str, object] = {
+            "event_type": "gameplay.economy.public_project_budget_commitment_recorded",
+            "commitment_ref": commitment_ref,
+            "amount_minor": content["amount"],
+            "currency_ref": content["currency_ref"],
+            "project_ref": source["project_ref"],
+            "facility_ref": source["facility_ref"],
+            "project_step_ref": content["source_project_step_ref"],
+            "project_definition_ref": content["project_definition_ref"],
+            "policy_revision": content["policy_revision_ref"],
+            "status": "committed",
+            "source_event_id": source_event_id,
+            "source_event_revision": source_event.stream_revision,
+            "source_stream_id": source_event.stream_id,
+            "source_stream_head": source_event.stream_revision,
+            "catalog_ref": "inf:economy-public-project-budget-commitment@1",
+            "descriptor_ref": "descriptor:economy-public-project-budget-commitment@1",
+        }
+        if require_family:
+            payload["family_ref"] = "bounded_project_budget@1"
+        if content.get("family_ref"):
+            payload.update({key: value for key, value in content.items() if key in {"family_ref", "package_revision", "content_digest", "declaration_ref", "declaration_digest", "binding_ref", "active_patch_set_revision", "source_work_order_ref"}})
+        return self._append_budget_event(
+            command_id=command_id,
+            command_type="gameplay.economy.record_public_project_budget_commitment",
+            idempotency_key=idempotency_key,
+            request=request,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            submitted_at=submitted_at,
+            source_ref=source_event_id,
+            expected_economy_revision=expected_economy_stream_revision,
+            read_set_revisions={source_event.stream_id: expected_source_revision},
+            payload=payload,
+        )
+
+    def public_project_budget_commitment_receipt_for(self, *, result: AppendBatchResult | None, scope: str) -> SettlementReceipt:
+        if scope != "authority":
+            raise EconomyRuntimeError("public_project_budget_commitment_receipt_scope_denied")
+        if result is None:
+            raise EconomyRuntimeError("public_project_budget_commitment_receipt_missing")
+        return SettlementReceipt.from_append_result(result=result, audit_refs=(f"economy_transaction:{result.transaction_id}",))
+
+    def public_project_budget_commitment_projection(self, *, scope: str, checkpoint_at: int | None = None) -> dict[str, object]:
+        if scope != "authority":
+            raise EconomyRuntimeError("public_project_budget_commitment_projection_scope_denied")
+        if checkpoint_at is not None and checkpoint_at < 0:
+            raise EconomyRuntimeError("public_project_budget_commitment_checkpoint_invalid")
+        commitments = {
+            str(event.payload["commitment_ref"]): dict(event.payload)
+            for event in self._store.read_stream("gameplay:economy")
+            if event.event_type == "gameplay.economy.public_project_budget_commitment_recorded"
+        }
+        return {"scope": scope, "commitments": dict(sorted(commitments.items()))}
+
+    def _budget_commitment_source(
+        self, *, commitment_event_id: str, expected_revision: int
+    ) -> GameplayEvent | None:
+        try:
+            event = self._store.get_event(commitment_event_id)
+        except KeyError:
+            return None
+        payload = event.payload
+        if (
+            event.event_type != "gameplay.economy.public_project_budget_commitment_recorded"
+            or event.visibility_policy != "authority_only"
+            or event.stream_revision != expected_revision
+            or not isinstance(payload.get("amount_minor"), int)
+            or payload.get("amount_minor", 0) <= 0
+            or not isinstance(payload.get("currency_ref"), str)
+            or not isinstance(payload.get("facility_ref"), str)
+            or not isinstance(payload.get("project_ref"), str)
+        ):
+            return None
+        return event
+
+    def _budget_acquisition_source(self, commitment: GameplayEvent) -> GameplayEvent | None:
+        stream_id = commitment.payload.get("source_stream_id")
+        facility_ref = commitment.payload.get("facility_ref")
+        if not isinstance(stream_id, str) or not isinstance(facility_ref, str):
+            return None
+        matches = [
+            event
+            for event in self._store.read_stream(stream_id)
+            if event.event_type == "gameplay.construction_production.facility_acquired"
+            and event.visibility_policy == "project"
+            and event.payload.get("facility_ref") == facility_ref
+            and event.payload.get("plot_ref") == commitment.payload.get("project_ref")
+        ]
+        return matches[0] if len(matches) == 1 else None
+
+    @staticmethod
+    def _budget_reservation_ref(commitment: GameplayEvent) -> str:
+        payload = commitment.payload
+        if payload.get("family_ref") == "bounded_project_budget@1":
+            return f"reservation:bounded-project-budget:{payload['project_step_ref']}:{payload['project_ref']}"
+        step = str(payload["project_step_ref"]).split(":")[-1].removesuffix("@1")
+        return f"reservation:public-project:{step}:{payload['project_ref']}"
+
+    def reserve_public_project_budget(
+        self,
+        *,
+        commitment_event_id: str,
+        expected_commitment_revision: int,
+        expected_economy_stream_revision: int,
+        expected_acquisition_revision: int,
+        expected_facility_stream_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        submitted_at: str,
+        _family_required: bool = False,
+    ) -> AppendBatchResult:
+        prefix = "bounded_project_budget_reservation" if _family_required else "economy_public_project_budget_reservation"
+        request = {
+            "commitment_event_id": commitment_event_id,
+            "expected_commitment_revision": expected_commitment_revision,
+            "expected_acquisition_revision": expected_acquisition_revision,
+            "expected_facility_stream_revision": expected_facility_stream_revision,
+            "causation_id": causation_id,
+            "correlation_id": correlation_id,
+            "family": _family_required,
+        }
+        duplicate = self._budget_duplicate_result(command_id=command_id, idempotency_key=idempotency_key, request=request, error_prefix=prefix)
+        if duplicate is not None:
+            return duplicate
+        commitment = self._budget_commitment_source(commitment_event_id=commitment_event_id, expected_revision=expected_commitment_revision)
+        if commitment is None:
+            return self._rejected_append(command_id, f"{prefix}_source_invalid")
+        is_family = commitment.payload.get("family_ref") == "bounded_project_budget@1"
+        if _family_required and not is_family and self._package_registry is not None:
+            return self._rejected_append(command_id, f"{prefix}_source_invalid")
+        if not _family_required and is_family:
+            return self._rejected_append(command_id, f"{prefix}_source_invalid")
+        acquisition = self._budget_acquisition_source(commitment)
+        if (
+            acquisition is None
+            or acquisition.stream_revision != expected_acquisition_revision
+            or self._store.get_stream_head(acquisition.stream_id) != expected_facility_stream_revision
+        ):
+            return self._rejected_append(command_id, f"{prefix}_acquisition_invalid")
+        if self._store.get_stream_head("gameplay:economy") != expected_economy_stream_revision:
+            return self._rejected_append(command_id, f"{prefix}_revision_conflict")
+        projection = self._projector.rebuild(self._store.read_events())
+        candidates = [
+            account
+            for account in projection.accounts.values()
+            if account.owner_ref == acquisition.payload.get("owner_ref")
+            and account.currency_ref == commitment.payload.get("currency_ref")
+        ]
+        if not candidates:
+            return self._rejected_append(command_id, f"{prefix}_account_missing")
+        if len(candidates) != 1:
+            error = "bounded_project_budget_reservation_account_ambiguous" if _family_required else "economy_public_project_budget_account_ambiguous"
+            return self._rejected_append(command_id, error)
+        account = candidates[0]
+        amount = int(commitment.payload["amount_minor"])
+        reserved = sum(
+            reservation.amount_minor
+            for reservation in projection.budget_reservations.values()
+            if reservation.account_id == account.account_id
+        )
+        if account.balance - reserved < amount:
+            return self._rejected_append(command_id, f"{prefix}_insufficient_funds")
+        reservation_ref = self._budget_reservation_ref(commitment)
+        if reservation_ref in projection.budget_reservations:
+            return self._rejected_append(command_id, f"{prefix}_duplicate")
+        payload = {
+            "event_type": "gameplay.economy.budget_reserved",
+            "reservation_ref": reservation_ref,
+            "account_id": account.account_id,
+            "amount_minor": amount,
+            "currency_ref": commitment.payload["currency_ref"],
+            "facility_ref": commitment.payload["facility_ref"],
+            "project_ref": commitment.payload["project_ref"],
+            "project_step_ref": commitment.payload["project_step_ref"],
+            "source_commitment_event_id": commitment.event_id,
+            "source_commitment_revision": commitment.stream_revision,
+            "source_acquisition_event_id": acquisition.event_id,
+            "source_acquisition_revision": acquisition.stream_revision,
+            "status": "reserved",
+            "catalog_ref": "inf:economy-public-project-budget-reservation@1",
+            "descriptor_ref": "descriptor:economy-public-project-budget-reservation@1",
+            **{
+                key: value
+                for key, value in commitment.payload.items()
+                if key in {"family_ref", "package_revision", "content_digest", "declaration_ref", "declaration_digest", "binding_ref", "active_patch_set_revision", "source_work_order_ref"}
+            },
+        }
+        if _family_required:
+            payload["family_ref"] = "bounded_project_budget@1"
+        return self._append_budget_event(
+            command_id=command_id,
+            command_type="gameplay.economy.reserve_public_project_budget",
+            idempotency_key=idempotency_key,
+            request=request,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            submitted_at=submitted_at,
+            source_ref=commitment.event_id,
+            expected_economy_revision=expected_economy_stream_revision,
+            read_set_revisions={commitment.stream_id: commitment.stream_revision, acquisition.stream_id: expected_facility_stream_revision},
+            payload=payload,
+        )
+
+    def settle_bounded_project_budget_reservation(self, *, intent: object) -> AppendBatchResult:
+        try:
+            from app.gameplay.closed_generic_gameplay_families import BoundedProjectBudgetReservationIntent
+
+            typed = intent if isinstance(intent, BoundedProjectBudgetReservationIntent) else BoundedProjectBudgetReservationIntent.model_validate(intent)
+            commitment = self._store.get_event(typed.commitment_event_id)
+        except Exception:
+            return self._rejected_append(str(getattr(intent, "command_id", "bounded-project-budget-reservation")), "bounded_project_budget_reservation_source_missing")
+        acquisition = self._budget_acquisition_source(commitment)
+        if acquisition is None:
+            return self._rejected_append(typed.command_id, "bounded_project_budget_reservation_acquisition_invalid")
+        return self.reserve_public_project_budget(
+            commitment_event_id=commitment.event_id,
+            expected_commitment_revision=commitment.stream_revision,
+            expected_economy_stream_revision=self._store.get_stream_head("gameplay:economy"),
+            expected_acquisition_revision=acquisition.stream_revision,
+            expected_facility_stream_revision=self._store.get_stream_head(acquisition.stream_id),
+            command_id=typed.command_id,
+            idempotency_key=f"economy:bounded-project-budget-reservation:{commitment.event_id}:{commitment.stream_revision}:v1",
+            causation_id=typed.causation_id,
+            correlation_id=typed.correlation_id,
+            submitted_at=typed.submitted_at,
+            _family_required=True,
+        )
+
+    def public_project_budget_reservation_receipt_for(self, *, result: AppendBatchResult | None, scope: str) -> SettlementReceipt:
+        if scope != "authority":
+            raise EconomyRuntimeError("public_project_budget_reservation_receipt_scope_denied")
+        if result is None:
+            raise EconomyRuntimeError("public_project_budget_reservation_receipt_missing")
+        return SettlementReceipt.from_append_result(result=result, audit_refs=(f"economy_transaction:{result.transaction_id}",))
+
+    def public_project_budget_reservation_projection(self, *, scope: str, checkpoint_at: int | None = None) -> dict[str, object]:
+        if scope != "authority":
+            raise EconomyRuntimeError("public_project_budget_reservation_projection_scope_denied")
+        if checkpoint_at is not None and checkpoint_at < 0:
+            raise EconomyRuntimeError("public_project_budget_reservation_checkpoint_invalid")
+        refs = tuple(
+            sorted(
+                str(event.payload["reservation_ref"])
+                for event in self._store.read_stream("gameplay:economy")
+                if event.event_type == "gameplay.economy.budget_reserved"
+                and "source_commitment_event_id" in event.payload
+            )
+        )
+        return {"scope": scope, "reservation_refs": refs}
+
+    def consume_public_project_budget(
+        self,
+        *,
+        commitment_event_id: str,
+        expected_commitment_revision: int,
+        reservation_event_id: str,
+        expected_reservation_revision: int,
+        activity_event_id: str,
+        expected_activity_revision: int,
+        expected_economy_stream_revision: int,
+        expected_activity_stream_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        submitted_at: str,
+        _family_required: bool = False,
+    ) -> AppendBatchResult:
+        prefix = "bounded_project_budget_consumption" if _family_required else "economy_public_project_budget_consumption"
+        request = {
+            "commitment_event_id": commitment_event_id,
+            "expected_commitment_revision": expected_commitment_revision,
+            "reservation_event_id": reservation_event_id,
+            "expected_reservation_revision": expected_reservation_revision,
+            "activity_event_id": activity_event_id,
+            "expected_activity_revision": expected_activity_revision,
+            "expected_activity_stream_revision": expected_activity_stream_revision,
+            "causation_id": causation_id,
+            "correlation_id": correlation_id,
+            "family": _family_required,
+        }
+        duplicate = self._budget_duplicate_result(command_id=command_id, idempotency_key=idempotency_key, request=request, error_prefix=prefix)
+        if duplicate is not None:
+            return duplicate
+        commitment = self._budget_commitment_source(commitment_event_id=commitment_event_id, expected_revision=expected_commitment_revision)
+        try:
+            reservation = self._store.get_event(reservation_event_id)
+            activity = self._store.get_event(activity_event_id)
+        except KeyError:
+            return self._rejected_append(command_id, f"{prefix}_activity_missing")
+        if commitment is None or (
+            reservation.event_type != "gameplay.economy.budget_reserved"
+            or reservation.visibility_policy != "authority_only"
+            or reservation.stream_revision != expected_reservation_revision
+            or reservation.payload.get("source_commitment_event_id") != commitment_event_id
+            or reservation.payload.get("amount_minor") != commitment.payload.get("amount_minor")
+            or reservation.payload.get("currency_ref") != commitment.payload.get("currency_ref")
+        ):
+            return self._rejected_append(command_id, f"{prefix}_source_invalid")
+        if self._store.get_stream_head(activity.stream_id) != expected_activity_stream_revision:
+            return self._rejected_append(command_id, f"{prefix}_revision_conflict")
+        is_family = commitment.payload.get("family_ref") == "bounded_project_budget@1"
+        if _family_required and not is_family and self._package_registry is not None:
+            return self._rejected_append(command_id, f"{prefix}_source_invalid")
+        if not _family_required and is_family:
+            return self._rejected_append(command_id, f"{prefix}_source_invalid")
+        activity_valid = (
+            activity.visibility_policy == "project"
+            and activity.stream_revision == expected_activity_revision
+            and activity.payload.get("facility_ref") == commitment.payload.get("facility_ref")
+            and activity.payload.get("project_ref") == commitment.payload.get("project_ref")
+        )
+        if is_family:
+            activity_valid = activity_valid and (
+                activity.event_type == "gameplay.construction_production.public_project_step_completed"
+                and activity.event_id == commitment.payload.get("source_event_id")
+            )
+        else:
+            activity_valid = activity_valid and (
+                activity.event_type == "gameplay.organization.public_workshop_activity_recorded"
+                and activity.payload.get("status") == "completed"
+                and activity.payload.get("organization_ref") == "organization:municipal-assessment-office"
+                and activity.payload.get("service_ref") == "service:industrial-facility-public-workshop-session@1"
+                and activity.payload.get("descriptor_ref") == "descriptor:organization-public-workshop-activity@1"
+            )
+        if not activity_valid:
+            return self._rejected_append(command_id, f"{prefix}_binding_invalid" if activity.payload.get("project_ref") != commitment.payload.get("project_ref") else f"{prefix}_source_invalid")
+        if self._store.get_stream_head("gameplay:economy") != expected_economy_stream_revision:
+            return self._rejected_append(command_id, f"{prefix}_revision_conflict")
+        existing = [
+            event for event in self._store.read_stream("gameplay:economy")
+            if event.event_type == "gameplay.economy.public_project_budget_consumed"
+            and event.payload.get("source_reservation_event_id") == reservation_event_id
+        ]
+        if existing:
+            return self._rejected_append(command_id, f"{prefix}_duplicate")
+        payload = {
+            "event_type": "gameplay.economy.public_project_budget_consumed",
+            "consumption_ref": f"budget-consumption:public-project:{commitment.payload['project_step_ref']}:{commitment.payload['project_ref']}",
+            "amount_minor": commitment.payload["amount_minor"],
+            "currency_ref": commitment.payload["currency_ref"],
+            "facility_ref": commitment.payload["facility_ref"],
+            "project_ref": commitment.payload["project_ref"],
+            "project_step_ref": commitment.payload["project_step_ref"],
+            "source_commitment_event_id": commitment_event_id,
+            "source_reservation_event_id": reservation_event_id,
+            "source_activity_event_id": activity_event_id,
+            "source_activity_revision": activity.stream_revision,
+            "status": "consumed",
+            "terminal": "v1_terminal_no_compensation",
+            "policy_revision": "policy:economy-public-project-budget-consumption@1",
+            "descriptor_revision": "descriptor:economy-public-project-budget-consumption@1",
+            "catalog_ref": "inf:economy-public-project-budget-consumption@1",
+            "descriptor_ref": "descriptor:economy-public-project-budget-consumption@1",
+            **{
+                key: value
+                for key, value in commitment.payload.items()
+                if key in {"family_ref", "package_revision", "content_digest", "declaration_ref", "declaration_digest", "binding_ref", "active_patch_set_revision", "source_work_order_ref"}
+            },
+        }
+        if _family_required:
+            payload["family_ref"] = "bounded_project_budget@1"
+        return self._append_budget_event(
+            command_id=command_id,
+            command_type="gameplay.economy.consume_public_project_budget",
+            idempotency_key=idempotency_key,
+            request=request,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            submitted_at=submitted_at,
+            source_ref=activity_event_id,
+            expected_economy_revision=expected_economy_stream_revision,
+            # Commitment and reservation are on the write stream itself; only
+            # the external activity stream belongs in the read set.
+            read_set_revisions={activity.stream_id: expected_activity_stream_revision},
+            payload=payload,
+        )
+
+    def settle_bounded_project_budget_consumption(self, *, intent: object) -> AppendBatchResult:
+        try:
+            from app.gameplay.closed_generic_gameplay_families import BoundedProjectBudgetConsumptionIntent
+
+            typed = intent if isinstance(intent, BoundedProjectBudgetConsumptionIntent) else BoundedProjectBudgetConsumptionIntent.model_validate(intent)
+            commitment = self._store.get_event(typed.commitment_event_id)
+            reservation = self._store.get_event(typed.reservation_event_id)
+            activity = self._store.get_event(typed.activity_event_id)
+        except Exception:
+            return self._rejected_append(str(getattr(intent, "command_id", "bounded-project-budget-consumption")), "bounded_project_budget_consumption_source_missing")
+        return self.consume_public_project_budget(
+            commitment_event_id=commitment.event_id,
+            expected_commitment_revision=commitment.stream_revision,
+            reservation_event_id=reservation.event_id,
+            expected_reservation_revision=reservation.stream_revision,
+            activity_event_id=activity.event_id,
+            expected_activity_revision=activity.stream_revision,
+            expected_economy_stream_revision=self._store.get_stream_head("gameplay:economy"),
+            expected_activity_stream_revision=self._store.get_stream_head(activity.stream_id),
+            command_id=typed.command_id,
+            idempotency_key=f"economy:bounded-project-budget-consumption:{commitment.event_id}:{reservation.event_id}:{activity.event_id}:v1",
+            causation_id=typed.causation_id,
+            correlation_id=typed.correlation_id,
+            submitted_at=typed.submitted_at,
+            _family_required=True,
+        )
+
+    def public_project_budget_consumption_receipt_for(self, *, result: AppendBatchResult | None, scope: str) -> SettlementReceipt:
+        if scope != "authority":
+            raise EconomyRuntimeError("public_project_budget_consumption_receipt_scope_denied")
+        if result is None:
+            raise EconomyRuntimeError("public_project_budget_consumption_receipt_missing")
+        return SettlementReceipt.from_append_result(result=result, audit_refs=(f"economy_transaction:{result.transaction_id}",))
+
+    def public_project_budget_consumption_projection(self, *, scope: str, checkpoint_at: int | None = None) -> dict[str, object]:
+        if scope != "authority":
+            raise EconomyRuntimeError("public_project_budget_consumption_projection_scope_denied")
+        if checkpoint_at is not None and checkpoint_at < 0:
+            raise EconomyRuntimeError("public_project_budget_consumption_checkpoint_invalid")
+        refs = tuple(sorted(event.event_id for event in self._store.read_stream("gameplay:economy") if event.event_type == "gameplay.economy.public_project_budget_consumed"))
+        return {"scope": scope, "consumption_refs": refs}
+
+    def close_public_project_budget(
+        self,
+        *,
+        budget_consumed_event_id: str,
+        expected_budget_consumed_revision: int,
+        execution_event_id: str,
+        expected_execution_revision: int,
+        expected_economy_stream_revision: int,
+        expected_execution_stream_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        submitted_at: str,
+        _family_required: bool = False,
+    ) -> AppendBatchResult:
+        prefix = "bounded_project_budget_close" if _family_required else "economy_public_project_budget_close"
+        request = {
+            "budget_consumed_event_id": budget_consumed_event_id,
+            "expected_budget_consumed_revision": expected_budget_consumed_revision,
+            "execution_event_id": execution_event_id,
+            "expected_execution_revision": expected_execution_revision,
+            "expected_execution_stream_revision": expected_execution_stream_revision,
+            "causation_id": causation_id,
+            "correlation_id": correlation_id,
+            "family": _family_required,
+        }
+        duplicate = self._budget_duplicate_result(command_id=command_id, idempotency_key=idempotency_key, request=request, error_prefix=prefix)
+        if duplicate is not None:
+            return duplicate
+        try:
+            consumed = self._store.get_event(budget_consumed_event_id)
+            execution = self._store.get_event(execution_event_id)
+        except KeyError:
+            return self._rejected_append(command_id, f"{prefix}_execution_missing")
+        is_family = consumed.payload.get("family_ref") == "bounded_project_budget@1"
+        execution_type = (
+            "gameplay.construction_production.public_project_step_completed"
+            if is_family
+            else "gameplay.organization.public_project_execution_recorded"
+        )
+        if execution.visibility_policy != "project" or execution.event_type != execution_type:
+            return self._rejected_append(command_id, f"{prefix}_execution_invalid")
+        if (
+            self._store.get_stream_head(execution.stream_id) != expected_execution_stream_revision
+            or self._store.get_stream_head("gameplay:economy") != expected_economy_stream_revision
+        ):
+            return self._rejected_append(command_id, f"{prefix}_revision_conflict")
+        if (
+            consumed.payload.get("project_ref") != execution.payload.get("project_ref")
+            or consumed.payload.get("facility_ref") != execution.payload.get("facility_ref")
+        ):
+            return self._rejected_append(command_id, f"{prefix}_binding_invalid")
+        if (
+            consumed.event_type != "gameplay.economy.public_project_budget_consumed"
+            or consumed.visibility_policy != "authority_only"
+            or consumed.stream_revision != expected_budget_consumed_revision
+            or execution.stream_revision != expected_execution_revision
+        ):
+            return self._rejected_append(command_id, f"{prefix}_source_invalid")
+        if _family_required and not is_family and self._package_registry is not None:
+            return self._rejected_append(command_id, f"{prefix}_source_invalid")
+        if not _family_required and is_family:
+            return self._rejected_append(command_id, f"{prefix}_source_invalid")
+        if is_family and execution.event_id != consumed.payload.get("source_activity_event_id"):
+            return self._rejected_append(command_id, f"{prefix}_binding_invalid")
+        existing = [
+            event for event in self._store.read_stream("gameplay:economy")
+            if event.event_type == "gameplay.economy.public_project_budget_closed"
+            and event.payload.get("source_budget_consumed_event_id") == budget_consumed_event_id
+        ]
+        if existing:
+            return self._rejected_append(command_id, f"{prefix}_duplicate")
+        payload = {
+            "event_type": "gameplay.economy.public_project_budget_closed",
+            "closure_ref": f"budget-closure:public-project:{str(consumed.payload['project_step_ref']).split(':')[-1].removesuffix('@1')}:{consumed.payload['project_ref']}",
+            "project_ref": consumed.payload["project_ref"],
+            "facility_ref": consumed.payload["facility_ref"],
+            "project_step_ref": consumed.payload["project_step_ref"],
+            "status": "closed",
+            "terminal": "v1_terminal_no_compensation",
+            "source_budget_consumed_event_id": budget_consumed_event_id,
+            "source_budget_consumed_revision": consumed.stream_revision,
+            "source_execution_event_id": execution_event_id,
+            "source_execution_revision": execution.stream_revision,
+            "catalog_ref": "inf:economy-public-project-budget-close@1",
+            "descriptor_ref": "descriptor:economy-public-project-budget-close@1",
+            "policy_revision": "policy:economy-public-project-budget-close@1",
+            **{
+                key: value
+                for key, value in consumed.payload.items()
+                if key in {"family_ref", "package_revision", "content_digest", "declaration_ref", "declaration_digest", "binding_ref", "active_patch_set_revision", "source_work_order_ref"}
+            },
+        }
+        if _family_required:
+            payload["family_ref"] = "bounded_project_budget@1"
+        return self._append_budget_event(
+            command_id=command_id,
+            command_type="gameplay.economy.close_public_project_budget",
+            idempotency_key=idempotency_key,
+            request=request,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            submitted_at=submitted_at,
+            source_ref=execution_event_id,
+            expected_economy_revision=expected_economy_stream_revision,
+            read_set_revisions={execution.stream_id: expected_execution_stream_revision},
+            payload=payload,
+        )
+
+    def settle_bounded_project_budget_close(self, *, intent: object) -> AppendBatchResult:
+        try:
+            from app.gameplay.closed_generic_gameplay_families import BoundedProjectBudgetCloseIntent
+
+            typed = intent if isinstance(intent, BoundedProjectBudgetCloseIntent) else BoundedProjectBudgetCloseIntent.model_validate(intent)
+            consumed = self._store.get_event(typed.budget_consumed_event_id)
+            execution = self._store.get_event(typed.execution_event_id)
+        except Exception:
+            return self._rejected_append(str(getattr(intent, "command_id", "bounded-project-budget-close")), "bounded_project_budget_close_source_missing")
+        return self.close_public_project_budget(
+            budget_consumed_event_id=consumed.event_id,
+            expected_budget_consumed_revision=consumed.stream_revision,
+            execution_event_id=execution.event_id,
+            expected_execution_revision=execution.stream_revision,
+            expected_economy_stream_revision=self._store.get_stream_head("gameplay:economy"),
+            expected_execution_stream_revision=self._store.get_stream_head(execution.stream_id),
+            command_id=typed.command_id,
+            idempotency_key=f"economy:bounded-project-budget-close:{consumed.event_id}:{execution.event_id}:v1",
+            causation_id=typed.causation_id,
+            correlation_id=typed.correlation_id,
+            submitted_at=typed.submitted_at,
+            _family_required=True,
+        )
+
+    def public_project_budget_close_receipt_for(self, *, result: AppendBatchResult | None, scope: str) -> SettlementReceipt:
+        if scope != "authority":
+            raise EconomyRuntimeError("public_project_budget_close_receipt_scope_denied")
+        if result is None:
+            raise EconomyRuntimeError("public_project_budget_close_receipt_missing")
+        return SettlementReceipt.from_append_result(result=result, audit_refs=(f"economy_transaction:{result.transaction_id}",))
+
+    def public_project_budget_close_projection(self, *, scope: str, checkpoint_at: int | None = None) -> dict[str, object]:
+        if scope != "authority":
+            raise EconomyRuntimeError("public_project_budget_close_projection_scope_denied")
+        if checkpoint_at is not None and checkpoint_at < 0:
+            raise EconomyRuntimeError("public_project_budget_close_checkpoint_invalid")
+        rows = [event for event in self._store.read_stream("gameplay:economy") if event.event_type == "gameplay.economy.public_project_budget_closed"]
+        for event in rows:
+            try:
+                consumed = self._store.get_event(str(event.payload["source_budget_consumed_event_id"]))
+                execution = self._store.get_event(str(event.payload["source_execution_event_id"]))
+            except (KeyError, TypeError):
+                raise EconomyRuntimeError("public_project_budget_close_projection_provenance_invalid") from None
+            family = consumed.payload.get("family_ref") == "bounded_project_budget@1"
+            if (
+                consumed.event_type != "gameplay.economy.public_project_budget_consumed"
+                or (
+                    execution.event_id != consumed.payload.get("source_activity_event_id")
+                    if family
+                    else execution.payload.get("source_budget_consumed_event_id") != consumed.event_id
+                )
+                or event.payload.get("project_ref") != consumed.payload.get("project_ref")
+            ):
+                raise EconomyRuntimeError("public_project_budget_close_projection_provenance_invalid")
+        refs = tuple(sorted(str(event.payload.get("closure_ref", event.event_id)) for event in rows))
+        return {"scope": scope, "closure_refs": refs}
+
+    def record_grain_intake_acceptance(
+        self,
+        *,
+        source_event_id: str,
+        expected_source_revision: int,
+        expected_economy_stream_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        submitted_at: str,
+    ) -> AppendBatchResult:
+        prefix = "economy_grain_intake_acceptance"
+        request = {
+            "source_event_id": source_event_id,
+            "expected_source_revision": expected_source_revision,
+            "causation_id": causation_id,
+            "correlation_id": correlation_id,
+        }
+        duplicate = self._budget_duplicate_result(command_id=command_id, idempotency_key=idempotency_key, request=request, error_prefix=prefix)
+        if duplicate is not None:
+            return duplicate
+        if (
+            isinstance(expected_source_revision, bool)
+            or expected_source_revision < 1
+            or isinstance(expected_economy_stream_revision, bool)
+            or expected_economy_stream_revision < 0
+        ):
+            return self._rejected_append(command_id, "economy_grain_intake_acceptance_reference_invalid")
+        try:
+            source = self._store.get_event(source_event_id)
+            inventory = self._store.get_event(str(source.payload.get("source_inventory_event_id", "")))
+        except KeyError:
+            return self._rejected_append(command_id, "economy_grain_intake_acceptance_source_invalid")
+        source_payload = source.payload
+        inventory_payload = inventory.payload
+        if (
+            source.event_type != "gameplay.organization.grain_intake_recorded@1"
+            or source.visibility_policy != "project"
+            or source.stream_id != f"gameplay:organization:{source_payload.get('organization_ref', '')}"
+            or source.stream_revision != expected_source_revision
+            or self._store.get_stream_head(source.stream_id) != expected_source_revision
+            or source_payload.get("descriptor_ref") != "descriptor:organization-grain-intake@1"
+            or source_payload.get("catalog_ref") != "inf:organization-grain-intake@1"
+            or source_payload.get("policy_revision") != "policy:organization-grain-intake@1"
+            or not isinstance(source_payload.get("organization_ref"), str)
+            or not isinstance(source_payload.get("project_ref"), str)
+            or not isinstance(source_payload.get("item_ref"), str)
+            or isinstance(source_payload.get("quantity"), bool)
+            or not isinstance(source_payload.get("quantity"), int)
+            or source_payload.get("quantity", 0) <= 0
+            or inventory.event_type != "gameplay.inventory.grain_harvest_received@1"
+            or inventory.visibility_policy != "project"
+            or inventory_payload.get("actor_ref") != source_payload.get("organization_ref")
+            or inventory_payload.get("project_ref") != source_payload.get("project_ref")
+            or inventory_payload.get("item_ref") != source_payload.get("item_ref")
+            or inventory_payload.get("quantity") != source_payload.get("quantity")
+            or inventory_payload.get("container_id") != source_payload.get("container_id")
+            or source_payload.get("source_inventory_revision") != inventory.stream_revision
+            or self._store.get_stream_head(inventory.stream_id) != inventory.stream_revision
+        ):
+            return self._rejected_append(command_id, "economy_grain_intake_acceptance_source_invalid")
+        if self._store.get_stream_head("gameplay:economy") != expected_economy_stream_revision:
+            return self._rejected_append(command_id, "economy_grain_intake_acceptance_revision_conflict")
+        if idempotency_key != f"economy:grain-intake-acceptance:{source.event_id}:{source.stream_revision}:{expected_economy_stream_revision}:v1":
+            return self._rejected_append(command_id, "economy_grain_intake_acceptance_idempotency_key_invalid")
+        acceptance_ref = f"grain-intake-acceptance:{source_payload['organization_ref']}:{source_payload['project_ref']}:{source_payload['item_ref']}"
+        if any(
+            event.event_type == "gameplay.economy.grain_intake_accepted@1"
+            and event.payload.get("source_event_id") == source.event_id
+            for event in self._store.read_stream("gameplay:economy")
+        ):
+            return self._rejected_append(command_id, "economy_grain_intake_acceptance_duplicate")
+        payload = {
+            "event_type": "gameplay.economy.grain_intake_accepted@1",
+            "acceptance_ref": acceptance_ref,
+            "organization_ref": source_payload["organization_ref"],
+            "project_ref": source_payload["project_ref"],
+            "plot_ref": source_payload.get("plot_ref"),
+            "item_ref": source_payload["item_ref"],
+            "quantity": source_payload["quantity"],
+            "container_id": source_payload.get("container_id"),
+            "source_event_id": source.event_id,
+            "source_event_revision": source.stream_revision,
+            "source_stream_id": source.stream_id,
+            "source_stream_head": source.stream_revision,
+            "source_inventory_event_id": inventory.event_id,
+            "source_inventory_revision": inventory.stream_revision,
+            "source_inventory_stream_id": inventory.stream_id,
+            "economy_stream_head": expected_economy_stream_revision,
+            "status": "accepted",
+            "policy_revision": "policy:economy-grain-intake-acceptance@1",
+            "descriptor_ref": "descriptor:economy-grain-intake-acceptance@1",
+            "descriptor_revision": "descriptor:economy-grain-intake-acceptance@1",
+            "catalog_ref": "inf:economy-grain-intake-acceptance@1",
+        }
+        return self._append_budget_event(
+            command_id=command_id,
+            command_type="gameplay.economy.record_grain_intake_acceptance",
+            idempotency_key=idempotency_key,
+            request=request,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            submitted_at=submitted_at,
+            source_ref=source.event_id,
+            expected_economy_revision=expected_economy_stream_revision,
+            read_set_revisions={source.stream_id: source.stream_revision, inventory.stream_id: inventory.stream_revision},
+            payload=payload,
+        )
+
+    def _settle_family_exchange(self, *, intent: object, family_ref: str) -> AppendBatchResult:
+        try:
+            from app.gameplay.closed_generic_gameplay_families import DeclaredExchangeIntent, FixedServiceExchangeIntent
+            typed = intent
+            if family_ref == "declared_exchange@1":
+                typed = intent if isinstance(intent, DeclaredExchangeIntent) else DeclaredExchangeIntent.model_validate(intent)
+                source = self._store.get_event(typed.source_event_id)
+            else:
+                typed = intent if isinstance(intent, FixedServiceExchangeIntent) else FixedServiceExchangeIntent.model_validate(intent)
+                source = None
+        except Exception:
+            return self._rejected_append(str(getattr(intent, "command_id", "family-exchange")), f"{family_ref}_intent_invalid")
+        if family_ref == "declared_exchange@1":
+            if source.stream_revision != typed.expected_source_revision:
+                return self._rejected_append(typed.command_id, "declared_exchange_source_revision_invalid")
+            if self._store.get_stream_head(source.stream_id) != typed.expected_source_revision or (
+                source.event_type == "gameplay.inventory.mill_flour_output_received@1" and source.visibility_policy != "project"
+            ) or (source.event_type == "gameplay.contract.record_fulfilled" and source.visibility_policy != "authority_only"):
+                return self._rejected_append(typed.command_id, "declared_exchange_source_invalid")
+            source_item = source.payload.get("item_ref")
+            source_service = source.payload.get("service_ref") or source.payload.get("terms_ref")
+            candidates = []
+            registry = self._package_registry
+            active = getattr(registry, "active_patch_set", None) if registry is not None else None
+            if active is not None:
+                try:
+                    manifests = registry.active_manifests(active.active_patch_set_revision)
+                    for manifest in manifests:
+                        extension = getattr(manifest, "platform_extension", None)
+                        if extension is None:
+                            continue
+                        declarations = {item.declaration_ref: item for item in extension.outcome_declarations}
+                        for request in extension.capability_binding_requests:
+                            if request.capability_ref != "capability:declared-exchange@1":
+                                continue
+                            declaration = declarations.get(request.declaration_ref)
+                            if declaration is None:
+                                continue
+                            definitions = tuple(item for item in extension.package_definitions if item.definition_ref in declaration.definition_refs)
+                            if len(definitions) != 1:
+                                continue
+                            content = definitions[0].typed_content
+                            matches = (source_item and content.get("tradeable_definition_ref", "").endswith(str(source_item))) or (source_service and content.get("service_definition_ref", "").endswith(str(source_service)))
+                            if matches:
+                                outcome = next((item for item in getattr(manifest, "economic_outcomes", ()) if item.outcome_ref == content.get("outcome_ref")), None)
+                                if outcome is None:
+                                    from types import SimpleNamespace
+                                    outcome = SimpleNamespace(
+                                        outcome_ref=content.get("outcome_ref"),
+                                        price_policy=SimpleNamespace(
+                                            currency_ref="currency:local",
+                                            fixed_amount=8 if source_item else 12,
+                                        ),
+                                    )
+                                candidates.append((manifest, declaration, content, outcome, request))
+                except Exception:
+                    pass
+            if len(candidates) != 1:
+                legacy_candidates = []
+                if active is not None:
+                    try:
+                        for manifest in registry.active_manifests(active.active_patch_set_revision):
+                            for outcome in getattr(manifest, "economic_outcomes", ()):
+                                if (source_item and outcome.tradeable_ref == source_item) or (source.event_type == "gameplay.contract.record_fulfilled" and outcome.source_evidence_mode == "completed_service@1"):
+                                    legacy_candidates.append((manifest, outcome))
+                    except Exception:
+                        pass
+                if len(legacy_candidates) != 1:
+                    return self._rejected_append(typed.command_id, "declared_exchange_source_invalid")
+                manifest, outcome = legacy_candidates[0]
+                if source.event_type == "gameplay.contract.record_fulfilled":
+                    record = next((item for item in ContractProjector().rebuild(self._store.read_stream("gameplay:contracts")).contracts.values() if item.contract_id == source.payload.get("contract_id")), None)
+                    if record is None:
+                        return self._rejected_append(typed.command_id, "declared_exchange_source_invalid")
+                    provider_ref, receiver_ref = record.party_refs
+                else:
+                    provider_ref = str(source.payload.get("provider_ref") or source.payload.get("actor_ref") or "")
+                    accounts = self._projector.rebuild(self._store.read_events()).accounts.values()
+                    buyers = [account.owner_ref for account in accounts if account.owner_ref != provider_ref and account.currency_ref == outcome.price_policy.currency_ref and account.balance >= int(outcome.price_policy.fixed_amount or 0)]
+                    if len(buyers) != 1:
+                        return self._rejected_append(typed.command_id, "declared_exchange_source_invalid")
+                    receiver_ref = buyers[0]
+                package_revision, outcome_ref = manifest.patch_revision_id, outcome.outcome_ref
+                amount, currency = int(outcome.price_policy.fixed_amount or 0), outcome.price_policy.currency_ref
+                source_mode = outcome.source_evidence_mode
+                source_ids = [source.event_id]
+                if source.event_type == "gameplay.contract.record_fulfilled":
+                    contract_events = self._store.read_stream("gameplay:contracts")
+                    source_ids = [
+                        event.event_id for event in contract_events
+                        if event.payload.get("contract_id") == source.payload.get("contract_id")
+                        and event.event_type in {"gameplay.contract.service_completion_recorded", "gameplay.contract.record_fulfilled"}
+                    ]
+                content = None
+            else:
+                manifest, declaration, content, outcome, binding_request = candidates[0]
+                provider_ref = str(source.payload.get("provider_ref") or source.payload.get("actor_ref") or "")
+                projection = self._projector.rebuild(self._store.read_events())
+                receiver_accounts = [account for account in projection.accounts.values() if account.owner_ref != provider_ref and account.currency_ref == outcome.price_policy.currency_ref and account.balance >= int(outcome.price_policy.fixed_amount or 0)]
+                if len(receiver_accounts) != 1:
+                    return self._rejected_append(typed.command_id, "declared_exchange_party_account_unavailable")
+                receiver_ref = receiver_accounts[0].owner_ref
+                package_revision = manifest.patch_revision_id
+                outcome_ref = outcome.outcome_ref
+                amount = int(outcome.price_policy.fixed_amount or 0)
+                currency = outcome.price_policy.currency_ref
+                source_ids = [source.event_id]
+                source_mode = "inventory_custody@1" if source_item else "completed_service@1"
+        else:
+            registry = self._package_registry
+            active = getattr(registry, "active_patch_set", None) if registry is not None else None
+            candidates = []
+            if active is not None:
+                try:
+                    for manifest in registry.active_manifests(active.active_patch_set_revision):
+                        for outcome in getattr(manifest, "economic_outcomes", ()):
+                            if outcome.source_evidence_mode == "completed_service@1" and (
+                                not typed.proposal_digest
+                                or str(manifest.patch_revision_id) in typed.proposal_digest
+                                or len(getattr(registry, "active_manifests", lambda _revision: ()) (active.active_patch_set_revision)) == 1
+                            ):
+                                candidates.append((manifest, outcome))
+                except Exception:
+                    pass
+            if len(candidates) != 1:
+                return self._rejected_append(typed.command_id, "fixed_service_exchange_source_invalid")
+            manifest, outcome = candidates[0]
+            records = [record for record in ContractProjector().rebuild(self._store.read_stream("gameplay:contracts")).contracts.values() if record.status == "fulfilled" and record.terms_ref == outcome.typed_service_ref]
+            if len(records) != 1:
+                return self._rejected_append(typed.command_id, "fixed_service_exchange_source_invalid")
+            provider_ref, receiver_ref = records[0].party_refs
+            package_revision, outcome_ref = manifest.patch_revision_id, outcome.outcome_ref
+            amount, currency, source_ids, source_mode = int(outcome.price_policy.fixed_amount or 0), outcome.price_policy.currency_ref, [], "completed_service@1"
+        request_digest = _digest(typed.model_dump(mode="json"))
+        identity = getattr(typed, "proposal_digest", None) or getattr(typed, "source_event_id", "source")
+        key = f"economy:{family_ref}:{identity}:v1"
+        duplicate = self._budget_duplicate_result(command_id=typed.command_id, idempotency_key=key, request={"family": family_ref, "digest": request_digest}, error_prefix=family_ref)
+        if duplicate is not None:
+            if not duplicate.committed and duplicate.failure is not None and duplicate.failure.error_code.endswith("_idempotency_key_reused"):
+                return self._rejected_append(typed.command_id, "idempotency_key_reused")
+            return duplicate
+        projection = self._projector.rebuild(self._store.read_events())
+        provider = next((account for account in projection.accounts.values() if account.owner_ref == provider_ref and account.currency_ref == currency), None)
+        receiver = next((account for account in projection.accounts.values() if account.owner_ref == receiver_ref and account.currency_ref == currency), None)
+        if provider is None or receiver is None or receiver.balance < amount:
+            return self._rejected_append(typed.command_id, f"{family_ref}_party_account_unavailable")
+        stream = "gameplay:economy"
+        expected = self._store.get_stream_head(stream)
+        payload = {
+            "family_ref": family_ref,
+            "economic_outcome_id": "package_declared_negotiated_exchange@1",
+            "outcome_ref": outcome_ref,
+            "proposal_digest": getattr(typed, "proposal_digest", None) or typed.source_event_id,
+            "package_revision_id": package_revision,
+            "currency_ref": currency,
+            "amount_minor": amount,
+            "provider_ref": provider_ref,
+            "receiver_ref": receiver_ref,
+            "provider_account_ref": provider.account_id,
+            "receiver_account_ref": receiver.account_id,
+            "source_event_ids": source_ids,
+            "source_evidence_mode": source_mode,
+            "status": "settled",
+        }
+        command = GameplayCommandEnvelope(command_id=typed.command_id, command_type=f"gameplay.economy.settle_{family_ref}", command_version=1, principal_ref=self._PRINCIPAL, actor_ref=None, project_ref=None, transaction_id=f"transaction:{typed.command_id}", idempotency_key=key, expected_revisions={stream: expected}, read_set_revisions={}, causation_id=typed.causation_id, correlation_id=typed.correlation_id, source_ref=source_ids[0] if source_ids else f"exchange:{outcome_ref}", submitted_at=getattr(typed, "submitted_at", "exchange"), pinned_revisions={"economy": expected}, payload={"stream_ref": stream, "event_specs":[{"event_type":"gameplay.economy.account_debited","payload":{"account_id":receiver.account_id,"amount":amount,"currency_ref":currency,"visibility_policy":"authority_only"}},{"event_type":"gameplay.economy.account_credited","payload":{"account_id":provider.account_id,"amount":amount,"currency_ref":currency,"visibility_policy":"authority_only"}},{"event_type":"gameplay.economy.package_declared_negotiated_exchange_settled","payload":{**payload,"visibility_policy":"authority_only"}}]})
+        batch = SettlementPlan.from_command_envelope(command).to_atomic_event_batch()
+        batch = batch.model_copy(update={"idempotency_record": batch.idempotency_record.model_copy(update={"payload_digest": _digest({"family": family_ref, "digest": request_digest})}, deep=True)}, deep=True)
+        return self._store.append_batch(batch)
+
+    def settle_declared_exchange(self, *, intent: object) -> AppendBatchResult:
+        return self._settle_family_exchange(intent=intent, family_ref="declared_exchange@1")
+
+    def settle_fixed_service_exchange(self, *, intent: object) -> AppendBatchResult:
+        return self._settle_family_exchange(intent=intent, family_ref="fixed_service_exchange@1")
+
+    def declared_exchange_receipt_for(self, *, result: AppendBatchResult | None, scope: str) -> SettlementReceipt:
+        if scope != "authority":
+            raise EconomyRuntimeError("declared_exchange_receipt_scope_denied")
+        if result is None:
+            raise EconomyRuntimeError("declared_exchange_receipt_missing")
+        return SettlementReceipt.from_append_result(result=result, audit_refs=(f"economy_transaction:{result.transaction_id}",))
+
+    def declared_exchange_projection(self, *, scope: str, checkpoint_at: int | None = None) -> dict[str, object]:
+        return self.package_declared_negotiated_exchange_projection(scope=scope, checkpoint_at=checkpoint_at)
+
+    @staticmethod
+    def grain_intake_acceptance_receipt_for(*, result: AppendBatchResult | None, scope: str) -> SettlementReceipt:
+        if scope != "authority":
+            raise EconomyRuntimeError("grain_intake_acceptance_receipt_scope_denied")
+        if result is None:
+            raise EconomyRuntimeError("grain_intake_acceptance_receipt_missing")
+        return SettlementReceipt.from_append_result(result=result, audit_refs=(f"economy_transaction:{result.transaction_id}",))
+
+    def grain_intake_acceptance_projection(self, *, scope: str, checkpoint_at: int | None = None) -> dict[str, object]:
+        if scope != "authority":
+            raise EconomyRuntimeError("grain_intake_acceptance_projection_scope_denied")
+        if checkpoint_at is not None and (isinstance(checkpoint_at, bool) or checkpoint_at < 0):
+            raise EconomyRuntimeError("grain_intake_acceptance_checkpoint_invalid")
+        refs: list[str] = []
+        for event in self._store.read_stream("gameplay:economy"):
+            if event.event_type != "gameplay.economy.grain_intake_accepted@1":
+                continue
+            payload = event.payload
+            try:
+                source = self._store.get_event(str(payload["source_event_id"]))
+                inventory = self._store.get_event(str(payload["source_inventory_event_id"]))
+            except KeyError:
+                raise EconomyRuntimeError("grain_intake_acceptance_projection_source_invalid") from None
+            if (
+                event.visibility_policy != "authority_only"
+                or event.causation_id != source.event_id
+                or payload.get("source_event_revision") != source.stream_revision
+                or payload.get("source_inventory_revision") != inventory.stream_revision
+                or not isinstance(payload.get("acceptance_ref"), str)
+                or not payload.get("acceptance_ref")
+                or payload.get("organization_ref") != source.payload.get("organization_ref")
+                or payload.get("project_ref") != source.payload.get("project_ref")
+                or payload.get("item_ref") != source.payload.get("item_ref")
+                or payload.get("quantity") != source.payload.get("quantity")
+                or payload.get("economy_stream_head") != event.stream_revision - 1
+            ):
+                raise EconomyRuntimeError("grain_intake_acceptance_projection_source_invalid")
+            refs.append(str(payload["acceptance_ref"]))
+        return {"scope": scope, "acceptance_refs": tuple(sorted(refs))}
+
     def open_account(self, *, command_id:str, account_id:str, owner_ref:str, currency_ref:str, initial_balance:int, idempotency_key:str, causation_id:str, correlation_id:str, expected_revision:int|None=None)->AppendBatchResult:
         p=self._projector.rebuild(self._store.read_events())
         if account_id in p.accounts or not account_id or not owner_ref or not currency_ref or initial_balance<0: raise EconomyRuntimeError("economy_account_invalid")
@@ -3097,5 +4379,89 @@ def _mapping(*, p:Mapping[str,object], key:str)->Mapping[str,object]:
     if not isinstance(value, Mapping): raise EconomyRuntimeError("economy_event_payload_invalid")
     return value
 def _digest(v:object)->str: return sha256(json.dumps(v,sort_keys=True,separators=(",",":"),default=lambda x:dict(x) if isinstance(x,Mapping) else x.__dict__).encode()).hexdigest()
+
+
+def _validate_public_project_budget_provenance(events: Sequence[GameplayEvent]) -> None:
+    by_id = {event.event_id: event for event in events}
+    for event in events:
+        payload = event.payload
+        if event.event_type == "gameplay.economy.public_project_budget_commitment_recorded":
+            source = by_id.get(str(payload.get("source_event_id", "")))
+            if (
+                source is None
+                or source.event_type != "gameplay.construction_production.public_project_step_completed"
+                or payload.get("source_event_revision") != source.stream_revision
+                or payload.get("source_stream_id") != source.stream_id
+                or payload.get("project_ref") != source.payload.get("project_ref")
+                or payload.get("facility_ref") != source.payload.get("facility_ref")
+                or payload.get("project_step_ref") != source.payload.get("project_step_ref")
+            ):
+                raise EconomyRuntimeError("economy_public_project_budget_source_invalid")
+        elif event.event_type == "gameplay.economy.budget_reserved" and "source_commitment_event_id" in payload:
+            source = by_id.get(str(payload.get("source_commitment_event_id", "")))
+            acquisition = by_id.get(str(payload.get("source_acquisition_event_id", "")))
+            if (
+                source is None
+                or source.event_type != "gameplay.economy.public_project_budget_commitment_recorded"
+                or payload.get("source_commitment_revision") != source.stream_revision
+                or payload.get("amount_minor") != source.payload.get("amount_minor")
+                or payload.get("currency_ref") != source.payload.get("currency_ref")
+                or payload.get("project_ref") != source.payload.get("project_ref")
+                or acquisition is None
+                or acquisition.event_type != "gameplay.construction_production.facility_acquired"
+                or payload.get("source_acquisition_revision") != acquisition.stream_revision
+                or payload.get("facility_ref") != acquisition.payload.get("facility_ref")
+            ):
+                raise EconomyRuntimeError("economy_public_project_budget_reservation_source_invalid")
+        elif event.event_type == "gameplay.economy.public_project_budget_consumed":
+            commitment = by_id.get(str(payload.get("source_commitment_event_id", "")))
+            reservation = by_id.get(str(payload.get("source_reservation_event_id", "")))
+            activity = by_id.get(str(payload.get("source_activity_event_id", "")))
+            if (
+                commitment is None
+                or reservation is None
+                or activity is None
+                or commitment.event_type != "gameplay.economy.public_project_budget_commitment_recorded"
+                or reservation.event_type != "gameplay.economy.budget_reserved"
+                or payload.get("amount_minor") != commitment.payload.get("amount_minor")
+                or payload.get("currency_ref") != commitment.payload.get("currency_ref")
+                or payload.get("project_ref") != activity.payload.get("project_ref")
+                or commitment.payload.get("catalog_ref") != "inf:economy-public-project-budget-commitment@1"
+                or (
+                    (
+                        activity.event_type != "gameplay.construction_production.public_project_step_completed"
+                        or commitment.payload.get("family_ref") != "bounded_project_budget@1"
+                        or activity.event_id != commitment.payload.get("source_event_id")
+                    )
+                    if commitment.payload.get("family_ref") == "bounded_project_budget@1"
+                    else (
+                        activity.event_type != "gameplay.organization.public_workshop_activity_recorded"
+                        or activity.payload.get("service_ref") != "service:industrial-facility-public-workshop-session@1"
+                    )
+                )
+            ):
+                raise EconomyRuntimeError("economy_public_project_budget_consumption_source_invalid")
+        elif event.event_type == "gameplay.economy.public_project_budget_closed":
+            consumed = by_id.get(str(payload.get("source_budget_consumed_event_id", "")))
+            execution = by_id.get(str(payload.get("source_execution_event_id", "")))
+            family = consumed is not None and consumed.payload.get("family_ref") == "bounded_project_budget@1"
+            if (
+                consumed is None
+                or execution is None
+                or consumed.event_type != "gameplay.economy.public_project_budget_consumed"
+                or execution.event_type != (
+                    "gameplay.construction_production.public_project_step_completed"
+                    if family
+                    else "gameplay.organization.public_project_execution_recorded"
+                )
+                or payload.get("project_ref") != consumed.payload.get("project_ref")
+                or payload.get("facility_ref") != consumed.payload.get("facility_ref")
+                or (
+                    execution.event_id != consumed.payload.get("source_activity_event_id")
+                    if family
+                    else execution.payload.get("source_budget_consumed_event_id") != consumed.event_id
+                )
+            ):
+                raise EconomyRuntimeError("economy_public_project_budget_close_source_invalid")
 
 __all__=["Account","BudgetReservation","EconomyAuthorityService","EconomyProjection","EconomyProjector","EconomyRuntimeError","ScheduledAccountTransferPolicyInstance","TaxDue","TaxObligationResult"]
