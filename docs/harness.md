@@ -723,6 +723,27 @@ Output:
 The manifest intentionally keeps `include_in_profile_order=false` and `include_in_all=false`.
 Run it directly by name; aggregate profiles do not include this bounded evidence yet.
 
+### `siming-governed-three-actor-cohort-continuity-v1`
+
+Backend-only direct profile for the bounded three-actor, two-cadence cohort.
+It proves W0/W1 routing through the existing `SimingRuntime.tick(...)` path:
+Organization Owner settlement for `char_a`, presentation-only Character Core
+continuity for `char_b`, and activation-only output for `char_c`, including
+replay and zero-write boundaries. This remains a bounded vertical and does not
+prove complete population, social, economic, civilization, or multi-region
+simulation.
+
+```powershell
+python scripts/verification/harness.py --profile siming-governed-three-actor-cohort-continuity-v1
+```
+
+Output:
+
+- `.harness/verification/siming-governed-three-actor-cohort-continuity-v1-report.json`
+
+The manifest intentionally keeps `include_in_profile_order=false` and
+`include_in_all=false`.
+
 ### `siming-heavenly-runtime`
 
 Godot-required live proof for the complete Siming heavenly runtime. It requires

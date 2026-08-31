@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "siming-governed-three-actor-cohort-continuity-v1",
+  "order": 119,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_siming_governed_three_actor_cohort_continuity.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/siming-governed-three-actor-cohort-continuity-v1-report.json",
+  "description": "Siming-governed three-actor two-cadence cohort continuity with one existing Organization Owner row"
+}
