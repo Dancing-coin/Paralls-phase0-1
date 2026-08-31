@@ -12,6 +12,13 @@ class ContinuityModel(StrictGameplayModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+CohortDisposition = Literal[
+    "char_a_supply",
+    "char_b_routine_work",
+    "char_c_social_activation",
+]
+
+
 class ActivationProposal(ContinuityModel):
     proposal_id: str = Field(min_length=1)
     profile_ref: str = Field(min_length=1)
@@ -33,6 +40,24 @@ class ActivationProposal(ContinuityModel):
         if len(set(self.scope_grant)) != len(self.scope_grant):
             raise ValueError("activation_scope_grant_duplicate")
         return self
+
+
+class PopulationCohortMember(ContinuityModel):
+    actor_ref: str = Field(min_length=1)
+    disposition: CohortDisposition
+    cost: int = Field(ge=0)
+    source_projection_ref: str = Field(min_length=1)
+
+
+class PopulationCohortReport(ContinuityModel):
+    cohort_ref: str = Field(min_length=1)
+    window: str = Field(min_length=1)
+    member_refs: tuple[str, ...] = Field(min_length=1)
+    selected_refs: tuple[str, ...] = Field(min_length=1)
+    unprocessed_refs: tuple[str, ...] = ()
+    budget: int = Field(ge=0)
+    selector_revision: str = Field(min_length=1)
+    ruleset_revision: str = Field(min_length=1)
 
 
 class ActivationGrant(ContinuityModel):

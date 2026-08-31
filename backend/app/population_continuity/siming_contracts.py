@@ -155,6 +155,8 @@ class PopulationOwnerReceipt(ContinuityModel):
 
 class PopulationBatchReport(ContinuityModel):
     batch_ref: str = Field(min_length=1)
+    cohort_ref: str | None = None
+    cohort_member_refs: tuple[str, ...] = ()
     selected_cohort_refs: tuple[str, ...] = ()
     presentation_seeds: dict[str, Any] = Field(default_factory=dict)
     activation_candidates: tuple[str, ...] = ()
@@ -163,6 +165,14 @@ class PopulationBatchReport(ContinuityModel):
     budget_used: int = Field(ge=0)
     budget_remaining: int = Field(ge=0)
     unprocessed_cohort_refs: tuple[str, ...] = ()
+    selected_count: int = Field(default=0, ge=0)
+    unprocessed_count: int = Field(default=0, ge=0)
+    presentation_seed_count: int = Field(default=0, ge=0)
+    activation_candidate_count: int = Field(default=0, ge=0)
+    owner_intent_count: int = Field(default=0, ge=0)
+    owner_committed_count: int = Field(default=0, ge=0)
+    continuity_committed_count: int = Field(default=0, ge=0)
+    continuity_requeue_count: int = Field(default=0, ge=0)
     read_set_digest: str = Field(min_length=1)
     result_digest: str = Field(min_length=1)
 
