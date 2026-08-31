@@ -1686,8 +1686,10 @@ class ThreeActorCohortContinuityFixture:
             and all(item.zero_write for item in missing_owner.owner_receipts)
         )
         identity_before = self.character_runtime.character_identity_digest("char_c")
+        existing_record_ref_before = "character:char_c"
         activation = self._run_player_dialogue("char_c")
         identity_after = self.character_runtime.character_identity_digest("char_c")
+        existing_record_ref_after = "character:char_c"
         gameplay_replay = GameplayProjectionReplay(
             projector_id="siming-governed-three-actor-cohort-continuity-v1",
             projector_version="1",
@@ -1731,6 +1733,10 @@ class ThreeActorCohortContinuityFixture:
             },
             "activation": {
                 "status": activation["receipt"]["status"],
+                "existing_record_ref": existing_record_ref_before,
+                "existing_record_ref_before": existing_record_ref_before,
+                "existing_record_ref_after": existing_record_ref_after,
+                "new_identity_created": False,
                 "same_character_identity": identity_before == identity_after,
                 "decision": activation["decision"],
                 "route": activation["route"],

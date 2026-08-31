@@ -40,6 +40,9 @@ def test_duplicate_w0_replays_owner_and_character_without_progression() -> None:
 def test_char_c_player_input_activates_existing_record_after_cohort_candidate() -> None:
     result = ThreeActorCohortContinuityFixture.create().run()
     assert result["activation"]["status"] == "active"
+    assert result["activation"]["existing_record_ref"] == "character:char_c"
+    assert result["activation"]["existing_record_ref_before"] == result["activation"]["existing_record_ref_after"]
+    assert result["activation"]["new_identity_created"] is False
     assert result["activation"]["same_character_identity"] is True
     assert result["activation"]["actual_player_input_path"] is True
 

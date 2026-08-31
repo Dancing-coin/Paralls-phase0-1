@@ -72,6 +72,16 @@ def main() -> int:
         actor != "character:char_c" for actor in character["continuity_commands"]
     )
     char_b_pending_empty = character["char_b_pending_memory_count"] == 0
+    same_existing_record = (
+        evidence["activation"]["existing_record_ref"] == "character:char_c"
+        and evidence["activation"]["existing_record_ref_before"]
+        == evidence["activation"]["existing_record_ref_after"]
+        and evidence["activation"]["new_identity_created"] is False
+    )
+    zero_write_keys = tuple(
+        key for key, value in rejections.items() if key.endswith("_zero_write")
+    )
+    zero_write_checks = all(rejections[key] is True for key in zero_write_keys)
     single_bus = architecture["authority_bus_identity"] == architecture["pipeline_bus_identity"]
     single_tick = (
         architecture["population_tick_count"] == architecture["authority_bus_publish_count"]
@@ -94,6 +104,7 @@ def main() -> int:
             and w1_new_source
             and actor_revision_progression
             and evidence["activation"]["same_character_identity"] is True
+            and same_existing_record
             and evidence["replay"]["full_equals_checkpoint_tail"] is True
             and single_bus
             and single_tick
@@ -102,7 +113,8 @@ def main() -> int:
             and rejections["duplicate_owner_idempotency_status"]
             == "duplicate_replayed"
             and rejections["duplicate_continuity_status"] == "idempotent_replay"
-            and all(rejections.values())
+            and rejections["changed_duplicate_status"] == "owner_settlement_required"
+            and zero_write_checks
         ),
         "predecessors": predecessors,
         "harness_checks": {
@@ -117,6 +129,8 @@ def main() -> int:
             "char_c_continuity_command_absent": no_char_c_command,
             "w1_new_source_revision_and_window": w1_new_source,
             "per_actor_revision_monotonic": actor_revision_progression,
+            "same_existing_character_record": same_existing_record,
+            "zero_write_fields": list(zero_write_keys),
         },
         "w0": evidence["w0"],
         "w1": evidence["w1"],
