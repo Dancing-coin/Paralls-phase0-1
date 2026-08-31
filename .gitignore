@@ -4,6 +4,8 @@
 
 # Local agent/runtime state
 .harness/verification/
+.runtime/
+backend/.runtime/
 .claude/
 .sixth/
 .goal/
