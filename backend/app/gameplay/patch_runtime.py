@@ -722,6 +722,10 @@ class ReadOnlyCapabilityBinding:
     descriptor_ref: str
     descriptor_revision: str
     active_patch_set_revision: str
+    declaration_ref: str | None = None
+    family_ref: str | None = None
+    definition_ref: str | None = None
+    family_content_digest: str | None = None
 
 
 @dataclass(frozen=True)
@@ -958,7 +962,7 @@ class GameplayPatchRegistry:
 
     @staticmethod
     def _binding_snapshot_payload(binding: ReadOnlyCapabilityBinding) -> dict[str, str]:
-        return {
+        payload = {
             "binding_ref": binding.binding_ref,
             "package_revision": binding.package_revision,
             "content_digest": binding.content_digest,
@@ -967,6 +971,15 @@ class GameplayPatchRegistry:
             "descriptor_revision": binding.descriptor_revision,
             "active_patch_set_revision": binding.active_patch_set_revision,
         }
+        if binding.family_ref is not None:
+            payload["family_ref"] = binding.family_ref
+        if binding.declaration_ref is not None:
+            payload["declaration_ref"] = binding.declaration_ref
+        if binding.definition_ref is not None:
+            payload["definition_ref"] = binding.definition_ref
+        if binding.family_content_digest is not None:
+            payload["family_content_digest"] = binding.family_content_digest
+        return payload
 
     @staticmethod
     def _resolve_capability_bindings(
@@ -977,23 +990,58 @@ class GameplayPatchRegistry:
         # a descriptor, owner, stream, event, receipt, or settlement fragment.
         from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog
 
-        descriptors = GovernedAuthorityContractCatalog.descriptors()
+        descriptors = GovernedAuthorityContractCatalog.all_descriptors()
         bindings: list[ReadOnlyCapabilityBinding] = []
         for manifest in selected:
+            expected_content_digest = getattr(manifest, "expected_content_digest", None)
+            if callable(expected_content_digest) and manifest.content_digest != expected_content_digest():
+                raise GameplayPatchRuntimeError("patch_capability_binding_content_digest_mismatch")
             extension = manifest.platform_extension
             if extension is None:
                 continue
+            seen_binding_refs: set[str] = set()
             declarations = {
                 declaration.declaration_ref: declaration
                 for declaration in extension.outcome_declarations
             }
+            from app.gameplay.closed_generic_gameplay_families import CLOSED_GAMEPLAY_FAMILIES
+
+            family_by_outcome = {
+                family.outcome_family_ref: family
+                for family in CLOSED_GAMEPLAY_FAMILIES
+                if family.status != "blocked"
+            }
+            for declaration in extension.outcome_declarations:
+                family = family_by_outcome.get(declaration.outcome_family_ref)
+                if family is None:
+                    continue
+                family_requests = tuple(
+                    request
+                    for request in extension.capability_binding_requests
+                    if request.declaration_ref == declaration.declaration_ref
+                )
+                if not family_requests:
+                    raise GameplayPatchRuntimeError("patch_capability_binding_missing")
+                if len(family_requests) != 1:
+                    raise GameplayPatchRuntimeError("patch_capability_binding_ambiguous")
+                if family_requests[0].capability_ref != family.capability_ref:
+                    raise GameplayPatchRuntimeError("patch_capability_binding_mismatch")
             for request in extension.capability_binding_requests:
+                if request.binding_ref in seen_binding_refs:
+                    raise GameplayPatchRuntimeError("patch_capability_binding_ambiguous")
+                seen_binding_refs.add(request.binding_ref)
                 declaration = declarations[request.declaration_ref]
                 capability_matches = tuple(
                     descriptor
                     for descriptor in descriptors
                     if descriptor.capability_ref == request.capability_ref
                 )
+                if not capability_matches and request.capability_ref != "capability:recipe-production@1":
+                    capability_matches = tuple(
+                        descriptor
+                        for descriptor in GovernedAuthorityContractCatalog.all_descriptors()
+                        if descriptor.capability_ref == request.capability_ref
+                    )
                 if not capability_matches:
                     raise GameplayPatchRuntimeError("patch_capability_binding_unknown")
                 matches = tuple(
@@ -1006,6 +1054,77 @@ class GameplayPatchRegistry:
                 if len(matches) != 1:
                     raise GameplayPatchRuntimeError("patch_capability_binding_ambiguous")
                 descriptor = matches[0]
+                if descriptor.family_ref:
+                    from app.gameplay.closed_generic_gameplay_families import CLOSED_GAMEPLAY_FAMILIES
+
+                    family = next(
+                        (item for item in CLOSED_GAMEPLAY_FAMILIES if item.family_ref == descriptor.family_ref),
+                        None,
+                    )
+                    if family is not None and family.status == "blocked":
+                        raise GameplayPatchRuntimeError("patch_capability_binding_family_blocked")
+                declaration_payload = getattr(declaration, "model_dump", None)
+                payload: Mapping[str, object] | None = None
+                if callable(declaration_payload):
+                    payload = declaration.model_dump(mode="json", exclude={"declaration_digest"})
+                    if declaration.declaration_digest != _canonical_digest(payload):
+                        raise GameplayPatchRuntimeError(
+                            "patch_capability_binding_declaration_digest_mismatch"
+                        )
+                validated_family_content: object | None = None
+                family_definition_ref: str | None = None
+                if descriptor.family_ref == "recipe_production@1":
+                    from app.gameplay.recipe_production_family import RecipeProductionContent
+
+                    definitions = tuple(
+                        definition
+                        for definition in extension.package_definitions
+                        if definition.definition_ref in declaration.definition_refs
+                    )
+                    if len(definitions) != 1:
+                        raise GameplayPatchRuntimeError("patch_capability_binding_content_invalid")
+                    family_definition_ref = definitions[0].definition_ref
+                    try:
+                        validated_family_content = RecipeProductionContent.from_package_definition(definitions[0])
+                    except (TypeError, ValueError, ValidationError) as exc:
+                        raise GameplayPatchRuntimeError("patch_capability_binding_content_invalid") from exc
+                elif descriptor.family_ref:
+                    from app.gameplay.closed_generic_gameplay_families import content_model_for_family
+
+                    definitions = tuple(
+                        definition
+                        for definition in extension.package_definitions
+                        if definition.definition_ref in declaration.definition_refs
+                    )
+                    if len(definitions) != 1:
+                        raise GameplayPatchRuntimeError("patch_capability_binding_content_invalid")
+                    family_definition_ref = definitions[0].definition_ref
+                    try:
+                        validated_family_content = content_model_for_family(descriptor.family_ref).model_validate(
+                            definitions[0].typed_content
+                        )
+                    except (KeyError, TypeError, ValueError, ValidationError) as exc:
+                        raise GameplayPatchRuntimeError("patch_capability_binding_content_invalid") from exc
+                if descriptor.family_ref and validated_family_content is not None and payload is not None:
+                    from app.gameplay.closed_generic_gameplay_families import admit_family_binding
+
+                    try:
+                        admit_family_binding(
+                            family_ref=descriptor.family_ref,
+                            package_revision=manifest.patch_revision_id,
+                            content_digest=_canonical_digest(
+                                validated_family_content.model_dump(mode="json", exclude_none=True)
+                            ),
+                            declaration_ref=declaration.declaration_ref,
+                            declaration_digest=declaration.declaration_digest,
+                            declaration_payload=payload,
+                            descriptor_ref=descriptor.descriptor_ref,
+                            descriptor_revision=descriptor.descriptor_revision,
+                            active_set_revision=active_patch_set_revision,
+                            typed_content=validated_family_content.model_dump(mode="json", exclude_none=True),
+                        )
+                    except (KeyError, TypeError, ValueError, ValidationError) as exc:
+                        raise GameplayPatchRuntimeError("patch_capability_binding_content_invalid") from exc
                 predicate_families = tuple(
                     requirement.predicate_family_ref
                     for requirement in request.typed_read_requirements
@@ -1020,10 +1139,20 @@ class GameplayPatchRegistry:
                         binding_ref=request.binding_ref,
                         package_revision=manifest.patch_revision_id,
                         content_digest=manifest.content_digest,
+                        declaration_ref=(
+                            declaration.declaration_ref if descriptor.family_ref is not None else None
+                        ),
                         declaration_digest=declaration.declaration_digest,
                         descriptor_ref=descriptor.descriptor_ref,
                         descriptor_revision=descriptor.descriptor_revision,
                         active_patch_set_revision=active_patch_set_revision,
+                        family_ref=descriptor.family_ref,
+                        definition_ref=family_definition_ref,
+                        family_content_digest=(
+                            _canonical_digest(validated_family_content.model_dump(mode="json", exclude_none=True))
+                            if validated_family_content is not None
+                            else None
+                        ),
                     )
                 )
         return tuple(bindings)

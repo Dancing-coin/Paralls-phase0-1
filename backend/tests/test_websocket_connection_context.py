@@ -3,6 +3,59 @@ from app.gameplay.runtime_state import CharacterGameRuntimeStateBuilder, StateGr
 from app.gameplay.state_group_views import StateGroupConsumerViewPolicy, StateGroupViewProjector
 from app.services.websocket_session_auth_service import WebSocketConnectionContext
 from app.ws_protocol import Envelope
+from app.gameplay.models import AtomicEventBatch, GameplayEvent, GameplayOutboxEntry, IdempotencyRecord
+
+
+def _commit_project_drought_advisory(store, *, jurisdiction_ref: str) -> None:
+    stream_id = f"gameplay:government:advisory:{jurisdiction_ref}"
+    event = GameplayEvent(
+        event_id=f"event:government:drought-advisory:{jurisdiction_ref}",
+        event_type="gameplay.government.drought_advisory_issued",
+        schema_version=1,
+        stream_id=stream_id,
+        stream_revision=0,
+        global_sequence=0,
+        transaction_id=f"tx:government:drought-advisory:{jurisdiction_ref}",
+        command_id=f"command:government:drought-advisory:{jurisdiction_ref}",
+        causation_id=f"cause:government:drought-advisory:{jurisdiction_ref}",
+        correlation_id=f"corr:government:drought-advisory:{jurisdiction_ref}",
+        visibility_policy="project",
+        payload={
+            "advisory_ref": f"advisory:drought:{jurisdiction_ref}",
+            "jurisdiction_ref": jurisdiction_ref,
+            "weather_ref": "weather:drought",
+            "ecology_stream_id": f"gameplay:ecology:region:{jurisdiction_ref}",
+            "ecology_event_revision": 2,
+        },
+    )
+    batch = AtomicEventBatch(
+        transaction_id=event.transaction_id,
+        command_id=event.command_id,
+        expected_stream_revisions={stream_id: 0},
+        idempotency_record=IdempotencyRecord(
+            principal_ref="authority:government",
+            idempotency_key=f"government:drought-advisory:{jurisdiction_ref}",
+            payload_digest=f"sha256:government-drought-advisory:{jurisdiction_ref}",
+        ),
+        events=[event],
+        outbox_entries=[
+            GameplayOutboxEntry(
+                outbox_id=f"outbox:{event.event_id}",
+                transaction_id=event.transaction_id,
+                event_id=event.event_id,
+                global_sequence=0,
+                topic="world.government.drought_advisory_projection",
+                audience="project",
+                payload_projection={
+                    "advisory_ref": event.payload["advisory_ref"],
+                    "jurisdiction_ref": jurisdiction_ref,
+                    "event_type": event.event_type,
+                },
+            )
+        ],
+        result_digest=f"sha256:government-drought-advisory:{jurisdiction_ref}",
+    )
+    assert store.append_batch(batch).committed
 
 
 def test_websocket_session_bind_keeps_backend_granted_multi_actor_scope_on_connection() -> None:
@@ -60,6 +113,95 @@ def test_websocket_session_bind_rejects_non_loopback_peer_without_client_scope_f
 
     assert messages[0]["payload"]["accepted"] is False
     assert messages[0]["payload"]["error_code"] == "trusted_local_launch_requires_loopback"
+
+
+def test_government_drought_advisory_websocket_subscription_uses_only_bound_jurisdiction_scope() -> None:
+    import app.main as main
+
+    jurisdiction_ref = "jurisdiction:websocket-advisory"
+    reset_runtime_state()
+    _commit_project_drought_advisory(main.gameplay_event_store, jurisdiction_ref=jurisdiction_ref)
+    credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
+        principal_ref="principal:player:advisory",
+        allowed_actor_refs=("actor:unrelated",),
+        allowed_government_drought_advisory_jurisdiction_refs=(jurisdiction_ref,),
+        issued_at=10,
+        expires_at=20,
+    )
+    context = WebSocketConnectionContext(remote_host="127.0.0.1", observed_at=11)
+    _handle_envelope(
+        Envelope(
+            message_type="websocket_session_bind",
+            payload={"credential_kind": "trusted_local_launch", "credential": credential, "protocol_version": 1},
+        ),
+        connection_context=context,
+    )
+
+    accepted = _handle_envelope(
+        Envelope(
+            message_type="gameplay_government_drought_advisory_subscribe",
+            payload={"jurisdiction_ref": jurisdiction_ref},
+        ),
+        connection_context=context,
+    )
+    foreign = _handle_envelope(
+        Envelope(
+            message_type="gameplay_government_drought_advisory_subscribe",
+            payload={"jurisdiction_ref": "jurisdiction:foreign"},
+        ),
+        connection_context=context,
+    )
+
+    assert accepted[0]["payload"]["accepted"] is True
+    assert accepted[1]["message_type"] == "government_drought_advisory_projection"
+    assert accepted[1]["payload"]["jurisdiction_ref"] == jurisdiction_ref
+    assert foreign[0]["payload"]["accepted"] is False
+    assert foreign[0]["payload"]["error_code"] == "government_drought_advisory_scope_unauthorized"
+
+
+def test_dispatched_government_advisory_outbox_delivers_only_to_the_bound_presentation_session() -> None:
+    import app.main as main
+
+    jurisdiction_ref = "jurisdiction:websocket-dispatch"
+    reset_runtime_state()
+    _commit_project_drought_advisory(main.gameplay_event_store, jurisdiction_ref=jurisdiction_ref)
+    credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
+        principal_ref="principal:player:dispatch",
+        allowed_actor_refs=("actor:unrelated",),
+        allowed_government_drought_advisory_jurisdiction_refs=(jurisdiction_ref,),
+        issued_at=10,
+        expires_at=20,
+    )
+    context = WebSocketConnectionContext(remote_host="127.0.0.1", observed_at=11, connection_ref="connection:dispatch")
+    _handle_envelope(
+        Envelope(
+            message_type="websocket_session_bind",
+            payload={"credential_kind": "trusted_local_launch", "credential": credential, "protocol_version": 1},
+        ),
+        connection_context=context,
+    )
+    assert context.binding is not None
+    _handle_envelope(
+        Envelope(
+            message_type="gameplay_government_drought_advisory_subscribe",
+            payload={"jurisdiction_ref": jurisdiction_ref},
+        ),
+        connection_context=context,
+    )
+    sent: list[dict[str, object]] = []
+    main.gameplay_mirror_connection_registry.register(
+        session_ref=context.binding.session_ref,
+        connection_ref=context.connection_ref,
+        connection_epoch=context.binding.connection_epoch,
+        deliver=sent.append,
+    )
+
+    dispatched = main.gameplay_outbox_dispatcher.dispatch_pending()
+
+    assert dispatched.published_count == 1
+    assert sent[0]["message_type"] == "government_drought_advisory_delivery"
+    assert sent[0]["payload"]["jurisdiction_ref"] == jurisdiction_ref
+    assert "actor_ref" not in str(sent[0])
 
 
 def test_embodied_controller_bind_uses_connection_peer_host_not_default_loopback() -> None:

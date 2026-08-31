@@ -8,12 +8,33 @@ import json
 from types import MappingProxyType
 from typing import Mapping, Sequence
 
+from pydantic import ConfigDict, Field
+
+from app.gameplay.contract_runtime import ContractProjector
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.models import AppendBatchResult, GameplayEvent, OwnerAuthorizedFragment
+from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
+from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailure, OwnerAuthorizedFragment, StrictGameplayModel
+from app.gameplay.settlement_plan import SettlementPlan as EventStoreSettlementPlan
+from app.gameplay.shared_contracts import GameplayCommandEnvelope
 
 
 class OwnershipRuntimeError(ValueError):
     pass
+
+
+class MunicipalDroughtAssessmentCertificateIntentV1(StrictGameplayModel):
+    """Caller request for the fixed completed-assessment certificate row."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    advisory_event_id: str = Field(min_length=1)
+    expected_contract_revision: int = Field(ge=1)
+    expected_ownership_revision: int = Field(ge=0)
+    command_id: str = Field(min_length=1)
+    idempotency_key: str = Field(min_length=1)
+    causation_id: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+    submitted_at: str = Field(min_length=1)
 
 
 @dataclass(frozen=True)
@@ -35,10 +56,34 @@ class OwnershipProjection:
 class OwnershipProjector:
     _EVENT_TYPES = {"gameplay.ownership.right_granted", "gameplay.ownership.right_transferred"}
 
-    def rebuild(self, events: Sequence[GameplayEvent]) -> OwnershipProjection:
-        rights: dict[str, OwnershipRight] = {}
-        by_asset: dict[str, str] = {}
-        revisions: dict[str, int] = {}
+    def rebuild(
+        self, events: Sequence[GameplayEvent], *, checkpoint_at: int | None = None
+    ) -> OwnershipProjection:
+        if checkpoint_at is None:
+            return self._reduce(events)
+        if checkpoint_at < 0:
+            raise OwnershipRuntimeError("ownership_checkpoint_invalid")
+        prefix = self._reduce(
+            [event for event in events if event.global_sequence <= checkpoint_at]
+        )
+        return self._reduce(
+            [event for event in events if event.global_sequence > checkpoint_at],
+            rights=dict(prefix.rights),
+            by_asset=dict(prefix.active_right_by_asset),
+            revisions=dict(prefix.source_revision_vector),
+        )
+
+    def _reduce(
+        self,
+        events: Sequence[GameplayEvent],
+        *,
+        rights: dict[str, OwnershipRight] | None = None,
+        by_asset: dict[str, str] | None = None,
+        revisions: dict[str, int] | None = None,
+    ) -> OwnershipProjection:
+        rights = dict(rights or {})
+        by_asset = dict(by_asset or {})
+        revisions = dict(revisions or {})
         for event in sorted(events, key=lambda value: (value.global_sequence, value.event_id)):
             if event.event_type not in self._EVENT_TYPES:
                 continue
@@ -66,12 +111,22 @@ class OwnershipProjector:
 
 class OwnershipAuthorityService:
     _PRINCIPAL = "actor_gameplay.ownership_domain"
+    _MUNICIPAL_TERMS = "service:municipal-drought-assessment@1"
+    _MUNICIPAL_EVIDENCE = "evidence:municipal-drought-assessment@1"
+    _MUNICIPAL_HOLDER = "organization:district-works"
+    _MUNICIPAL_CERTIFICATE_ASSET_PREFIX = "asset:municipal-drought-assessment-certificate:"
+    _MUNICIPAL_CERTIFICATE_RIGHT_PREFIX = "right:municipal-drought-assessment-certificate:"
 
     def __init__(self, *, store: GameplayEventStore) -> None:
         self._store = store
         self._projector = OwnershipProjector()
 
     def grant_initial_title(self, *, command_id: str, asset_ref: str, holder_ref: str, right_id: str, idempotency_key: str, causation_id: str, correlation_id: str) -> AppendBatchResult:
+        if (
+            asset_ref.startswith(self._MUNICIPAL_CERTIFICATE_ASSET_PREFIX)
+            or right_id.startswith(self._MUNICIPAL_CERTIFICATE_RIGHT_PREFIX)
+        ):
+            raise OwnershipRuntimeError("municipal_certificate_row_required")
         command = {"kind": "grant", "command_id": command_id, "asset_ref": asset_ref, "holder_ref": holder_ref, "right_id": right_id}
         digest = _digest(command)
         duplicate = self._duplicate(idempotency_key, digest)
@@ -83,6 +138,11 @@ class OwnershipAuthorityService:
         return self._append(command_id, idempotency_key, digest, "gameplay.ownership.right_granted", {"right_id": right_id, "asset_ref": asset_ref, "holder_ref": holder_ref}, causation_id, correlation_id, projection)
 
     def transfer_title(self, *, command_id: str, asset_ref: str, right_id: str, from_holder_ref: str, to_holder_ref: str, idempotency_key: str, causation_id: str, correlation_id: str) -> AppendBatchResult:
+        if (
+            asset_ref.startswith(self._MUNICIPAL_CERTIFICATE_ASSET_PREFIX)
+            or right_id.startswith(self._MUNICIPAL_CERTIFICATE_RIGHT_PREFIX)
+        ):
+            raise OwnershipRuntimeError("municipal_certificate_title_transfer_forbidden")
         command = {"kind": "transfer", "command_id": command_id, "asset_ref": asset_ref, "right_id": right_id, "from_holder_ref": from_holder_ref, "to_holder_ref": to_holder_ref}
         digest = _digest(command)
         duplicate = self._duplicate(idempotency_key, digest)
@@ -95,6 +155,100 @@ class OwnershipAuthorityService:
         if right.holder_ref != from_holder_ref or not to_holder_ref:
             raise OwnershipRuntimeError("ownership_right_holder_mismatch")
         return self._append(command_id, idempotency_key, digest, "gameplay.ownership.right_transferred", {"right_id": right_id, "asset_ref": asset_ref, "from_holder_ref": from_holder_ref, "to_holder_ref": to_holder_ref}, causation_id, correlation_id, projection)
+
+    def grant_municipal_drought_assessment_certificate(
+        self, intent: MunicipalDroughtAssessmentCertificateIntentV1
+    ) -> AppendBatchResult:
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, intent.idempotency_key)
+        if existing is not None:
+            if len(existing.committed_event_ids) == 1:
+                prior = self._store.get_event(existing.committed_event_ids[0])
+                if (
+                    prior.event_type == "gameplay.ownership.right_granted"
+                    and prior.payload.get("advisory_event_id") == intent.advisory_event_id
+                    and prior.causation_id == intent.causation_id
+                    and prior.correlation_id == intent.correlation_id
+                ):
+                    return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._rejected_append(intent.command_id, "idempotency_key_reused")
+        try:
+            advisory = self._store.get_event(intent.advisory_event_id)
+        except KeyError:
+            return self._rejected_append(intent.command_id, "municipal_certificate_advisory_missing")
+        jurisdiction_ref = advisory.payload.get("jurisdiction_ref")
+        if (
+            advisory.event_type != "gameplay.government.drought_advisory_issued"
+            or advisory.visibility_policy != "project"
+            or not isinstance(jurisdiction_ref, str)
+            or not jurisdiction_ref
+        ):
+            return self._rejected_append(intent.command_id, "municipal_certificate_advisory_invalid")
+        contract_id = f"contract:municipal-drought-assessment:{jurisdiction_ref}:{intent.advisory_event_id}"
+        contract_stream = "gameplay:contracts"
+        if self._store.get_stream_head(contract_stream) != intent.expected_contract_revision:
+            return self._rejected_append(intent.command_id, "municipal_certificate_contract_revision_conflict")
+        contracts = ContractProjector().rebuild(self._store.read_stream(contract_stream))
+        contract = contracts.contracts.get(contract_id)
+        if (
+            contract is None
+            or contract.contract_type != "simple_service"
+            or contract.terms_ref != self._MUNICIPAL_TERMS
+            or contract.party_refs != ("organization:municipal-assessment-office", self._MUNICIPAL_HOLDER)
+            or contract.completion_evidence_kind != self._MUNICIPAL_EVIDENCE
+            or contract.completion_evidence_ref is None
+            or contract.status != "fulfilled"
+        ):
+            return self._rejected_append(intent.command_id, "municipal_certificate_contract_invalid")
+        ownership_stream = "gameplay:ownership"
+        if self._store.get_stream_head(ownership_stream) != intent.expected_ownership_revision:
+            return self._rejected_append(intent.command_id, "revision_conflict")
+        asset_ref = f"asset:municipal-drought-assessment-certificate:{contract_id}"
+        right_id = f"right:municipal-drought-assessment-certificate:{contract_id}"
+        projection = self._projector.rebuild(self._store.read_events())
+        if right_id in projection.rights or asset_ref in projection.active_right_by_asset:
+            return self._rejected_append(intent.command_id, "municipal_certificate_already_granted")
+        canonical_key = f"ownership:municipal-drought-assessment-certificate:{contract_id}:{intent.expected_contract_revision}:{intent.expected_ownership_revision}:v1"
+        if intent.idempotency_key != canonical_key:
+            return self._rejected_append(intent.command_id, "municipal_certificate_idempotency_key_invalid")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:contract-completed-municipal-drought-assessment-certificate@1",
+                contract_kind="settlement",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(ownership_stream,),
+                event_types=("gameplay.ownership.right_granted",),
+                projection_scope="authority_only",
+            )
+        except GovernedAuthorityContractError as exc:
+            return self._rejected_append(intent.command_id, str(exc))
+        command = GameplayCommandEnvelope(
+            command_id=intent.command_id,
+            command_type="gameplay.ownership.grant_municipal_drought_assessment_certificate",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=None,
+            project_ref=None,
+            transaction_id=f"transaction:{intent.command_id}",
+            idempotency_key=intent.idempotency_key,
+            expected_revisions={ownership_stream: intent.expected_ownership_revision},
+            read_set_revisions={contract_stream: intent.expected_contract_revision},
+            causation_id=intent.causation_id,
+            correlation_id=intent.correlation_id,
+            source_ref=intent.advisory_event_id,
+            submitted_at=intent.submitted_at,
+            pinned_revisions={"contract": intent.expected_contract_revision, "ownership": intent.expected_ownership_revision},
+            payload={
+                "stream_ref": ownership_stream,
+                "event_type": "gameplay.ownership.right_granted",
+                "visibility_policy": "authority_only",
+                "right_id": right_id,
+                "asset_ref": asset_ref,
+                "holder_ref": self._MUNICIPAL_HOLDER,
+                "contract_id": contract_id,
+                "advisory_event_id": intent.advisory_event_id,
+            },
+        )
+        return self._store.append_batch(EventStoreSettlementPlan.from_command_envelope(command).to_atomic_event_batch())
 
     def build_package_declared_negotiated_exchange_fragment(
         self,
@@ -121,6 +275,8 @@ class OwnershipAuthorityService:
             or not package_revision
         ):
             raise OwnershipRuntimeError("ownership_package_exchange_invalid")
+        if asset_ref.startswith(self._MUNICIPAL_CERTIFICATE_ASSET_PREFIX):
+            raise OwnershipRuntimeError("municipal_certificate_title_transfer_forbidden")
         projection = self._projector.rebuild(self._store.read_events())
         stream_id = "gameplay:ownership"
         if projection.source_revision_vector.get(stream_id, 0) != expected_revision:
@@ -131,6 +287,8 @@ class OwnershipAuthorityService:
         right = projection.rights.get(right_id)
         if right is None or right.holder_ref != provider_holder_ref:
             raise OwnershipRuntimeError("ownership_right_holder_mismatch")
+        if right.right_id.startswith(self._MUNICIPAL_CERTIFICATE_RIGHT_PREFIX):
+            raise OwnershipRuntimeError("municipal_certificate_title_transfer_forbidden")
         return OwnerAuthorizedFragment(
             fragment_id=(
                 "fragment:ownership:package-declared-negotiated-exchange:"
@@ -178,6 +336,16 @@ class OwnershipAuthorityService:
         event = {"event_id": f"evt:{command_id}:ownership", "event_type": event_type, "schema_version": 1, "stream_id": stream_id, "stream_revision": 0, "global_sequence": 0, "transaction_id": transaction_id, "command_id": command_id, "causation_id": causation_id, "correlation_id": correlation_id, "visibility_policy": "authority_only", "payload": payload}
         return self._store.append_batch({"transaction_id": transaction_id, "command_id": command_id, "expected_stream_revisions": {stream_id: projection.source_revision_vector.get(stream_id, 0)}, "pinned_revisions": {"ownership": projection.source_revision_vector.get(stream_id, 0)}, "events": [event], "idempotency_record": {"principal_ref": self._PRINCIPAL, "idempotency_key": idempotency_key, "payload_digest": digest}, "outbox_entries": [], "result_digest": _digest(event), "projection_refresh_hints": []})
 
+    @staticmethod
+    def _rejected_append(command_id: str, error_code: str) -> AppendBatchResult:
+        return AppendBatchResult(
+            committed=False,
+            transaction_id=f"transaction:{command_id}",
+            command_id=command_id,
+            idempotency_status="rejected",
+            failure=GameplayFailure(error_code=error_code, message=error_code, failed_stage="municipal_certificate_admission"),
+        )
+
 
 def _text(payload: Mapping[str, object], key: str) -> str:
     value = payload.get(key)
@@ -196,4 +364,4 @@ def _digest(value: object) -> str:
     return sha256(json.dumps(value, default=default, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
-__all__ = ["OwnershipAuthorityService", "OwnershipProjection", "OwnershipProjector", "OwnershipRight", "OwnershipRuntimeError"]
+__all__ = ["MunicipalDroughtAssessmentCertificateIntentV1", "OwnershipAuthorityService", "OwnershipProjection", "OwnershipProjector", "OwnershipRight", "OwnershipRuntimeError"]

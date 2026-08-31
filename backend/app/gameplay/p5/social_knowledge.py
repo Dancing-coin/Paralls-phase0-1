@@ -4,14 +4,19 @@ import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from hashlib import sha256
-from typing import Any
+from typing import Any, Mapping
 
 from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
 from app.gameplay.models import GameplayOutboxEntry
+from app.gameplay.patch_runtime import GameplayPatchRegistry
 from app.gameplay.p5.contracts import P5ResolutionRequest, P5ResolutionResult, build_directed_relationship_ref
 from app.gameplay.p5.registry import P5PolicyRegistry
-from app.gameplay.shared_contracts import GameplayCommandEnvelope, SettlementPlan
-from app.gameplay.settlement_plan import SettlementPlan as EventStoreSettlementPlan
+from app.gameplay.shared_contracts import GameplayCommandEnvelope, SettlementPlan, SettlementReceipt
+from app.gameplay.settlement_plan import (
+    SettlementPlan as EventStoreSettlementPlan,
+    build_multi_stream_atomic_event_batch,
+)
 
 
 _PRINCIPAL = "authority:p5:social"
@@ -19,6 +24,18 @@ _RELATIONSHIP_EVENT = "gameplay.social.relationship_fact_recorded"
 _KNOWLEDGE_EVENT = "gameplay.social.knowledge_observed"
 _REVOCATION_EVENT = "gameplay.social.visibility_revoked"
 _HOUSEHOLD_MEMBERSHIP_EVENT = "gameplay.social.household_membership_recorded"
+_HANDSHAKE_SHARED_EXPERIENCE_EVENT = "gameplay.social.handshake_shared_experience_recorded"
+_HANDSHAKE_COMMITTED_EVENT = "embodied.interaction_session.committed"
+_HANDSHAKE_SHARED_EXPERIENCE_POLICY = "policy:social-handshake-shared-experience@1"
+_HANDSHAKE_SHARED_EXPERIENCE_DESCRIPTOR = "descriptor:social-handshake-shared-experience@1"
+_HANDSHAKE_SHARED_EXPERIENCE_CATALOG = "inf:social-handshake-shared-experience@1"
+_PUBLIC_MILLING_ACK_EVENT = "gameplay.social.public_milling_notice_acknowledged"
+_PUBLIC_MILLING_ACK_POLICY = "policy:social-public-milling-notice-acknowledgment@1"
+_PUBLIC_MILLING_ACK_DESCRIPTOR = "descriptor:social-public-milling-notice-acknowledgment@1"
+_PUBLIC_MILLING_ACK_CATALOG = "inf:social-public-milling-notice-acknowledgment@1"
+_PUBLIC_MILLING_PROVIDER = "organization:district-milling-cooperative"
+_PUBLIC_MILLING_TERMS = "service:industrial-facility-public-milling-session@1"
+_PUBLIC_MILLING_PACKAGE = "package:industrial-facilities:v6"
 
 
 def _digest(payload: object) -> str:
@@ -87,6 +104,24 @@ class SocialRecipientView:
 
 
 @dataclass(frozen=True)
+class SharedExperienceRecipientView:
+    participant_ref: str
+    shared_experience_refs: tuple[str, ...]
+    experiences: tuple[Mapping[str, object], ...]
+    source_revision_vector: dict[str, int]
+    projection_hash: str
+
+
+@dataclass(frozen=True)
+class PublicMillingNoticeSocialAcknowledgmentView:
+    participant_ref: str
+    acknowledgment_refs: tuple[str, ...]
+    acknowledgments: tuple[Mapping[str, object], ...]
+    source_revision_vector: dict[str, int]
+    projection_hash: str
+
+
+@dataclass(frozen=True)
 class HouseholdRecipientView:
     owner_principal_ref: str
     household_memberships: tuple[dict[str, object], ...]
@@ -107,9 +142,16 @@ class SocialInputValidation:
 
 
 class SocialFactAuthority:
-    def __init__(self, *, registry: P5PolicyRegistry, store: GameplayEventStore) -> None:
+    def __init__(
+        self,
+        *,
+        registry: P5PolicyRegistry,
+        store: GameplayEventStore,
+        package_registry: GameplayPatchRegistry | None = None,
+    ) -> None:
         self._registry = registry
         self._store = store
+        self._package_registry = package_registry
 
     def record_household_membership(
         self,
@@ -229,6 +271,1163 @@ class SocialFactAuthority:
             source_revision_vector=dict(sorted(source_revision_vector.items())),
             projection_hash=_digest(projection),
         )
+
+    def record_completed_handshake_shared_experience(
+        self,
+        *,
+        session_event_id: str,
+        expected_session_revision: int,
+        expected_target_revisions: tuple[int, int],
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ) -> SocialFactAuthorityResult:
+        """Record only the exact completed two-party handshake history pair."""
+        if (
+            not session_event_id
+            or expected_session_revision < 1
+            or len(expected_target_revisions) != 2
+            or any(value < 0 or isinstance(value, bool) for value in expected_target_revisions)
+            or not command_id
+            or not idempotency_key
+            or not causation_id
+            or not correlation_id
+        ):
+            return self._rejected("handshake_shared_experience_reference_invalid")
+        if (
+            self._registry.registry_ref != "registry:p5:social"
+            or self._registry.registry_revision != "registry:p5:social:v2"
+        ):
+            return self._rejected("handshake_shared_experience_registry_invalid")
+        try:
+            event_entry = self._registry.require_event(_HANDSHAKE_SHARED_EXPERIENCE_EVENT, 1)
+            self._registry.require_schema(event_entry.schema_ref, event_entry.schema_version)
+        except ValueError:
+            return self._rejected("handshake_shared_experience_registry_invalid")
+        try:
+            committed = self._store.get_event(session_event_id)
+        except KeyError:
+            return self._rejected("handshake_shared_experience_source_missing")
+        source_stream = committed.stream_id
+        source_events = tuple(sorted(self._store.read_stream(source_stream), key=lambda event: event.stream_revision))
+        expected_types = (
+            "embodied.interaction_session.proposed",
+            "embodied.interaction_session.accepted",
+            "embodied.interaction_session.authorized",
+            "embodied.interaction_session.realizing",
+            "embodied.interaction_session.participant_observed",
+            "embodied.interaction_session.participant_observed",
+            _HANDSHAKE_COMMITTED_EVENT,
+        )
+        if (
+            committed.event_type != _HANDSHAKE_COMMITTED_EVENT
+            or committed.stream_revision != expected_session_revision
+            or self._store.get_stream_head(source_stream) != expected_session_revision
+            or tuple(event.event_type for event in source_events) != expected_types
+            or tuple(event.stream_revision for event in source_events) != tuple(range(1, 8))
+            or any(event.visibility_policy != "session_public_safe" for event in source_events)
+        ):
+            return self._rejected("handshake_shared_experience_source_invalid")
+        proposed, accepted, authorized, realizing, first_observed, second_observed, terminal = source_events
+        proposal = proposed.payload
+        participants = proposal.get("participant_refs")
+        if (
+            proposal.get("semantic_action") != "handshake"
+            or not isinstance(participants, list)
+            or len(participants) != 2
+            or len(set(participants)) != 2
+            or any(not isinstance(ref, str) or not ref.startswith("character:") for ref in participants)
+            or proposal.get("initiator_ref") != participants[0]
+            or proposal.get("target_refs") != [participants[1]]
+            or accepted.payload.get("participant_ref") != participants[1]
+            or authorized.payload.get("state") != "authorized"
+            or realizing.payload.get("state") != "realizing"
+            or terminal.payload.get("state") != "committed"
+            or terminal.payload.get("session_id") != proposal.get("session_id")
+            or terminal.payload.get("settlement_ref") != f"settlement:{proposal.get('session_id')}"
+            or {first_observed.payload.get("participant_ref"), second_observed.payload.get("participant_ref")} != set(participants)
+            or first_observed.payload.get("terminal_status") != "completed"
+            or second_observed.payload.get("terminal_status") != "completed"
+        ):
+            return self._rejected("handshake_shared_experience_source_invalid")
+        participant_refs = (str(participants[0]), str(participants[1]))
+        target_streams = tuple(f"gameplay:social:shared-experience:{participant_ref}" for participant_ref in participant_refs)
+        try:
+            for stream_id in target_streams:
+                self._registry.require_stream(stream_id, event_entry.stream_grammar_ref)
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref=_HANDSHAKE_SHARED_EXPERIENCE_CATALOG,
+                contract_kind="contract_admission",
+                owner_ref=_PRINCIPAL,
+                stream_ids=target_streams,
+                event_types=(_HANDSHAKE_SHARED_EXPERIENCE_EVENT,),
+                projection_scope="actor_private",
+            )
+        except (ValueError, GovernedAuthorityContractError):
+            return self._rejected("handshake_shared_experience_catalog_invalid")
+        canonical_key = (
+            f"social:handshake-shared-experience:{session_event_id}:"
+            f"{expected_session_revision}:{expected_target_revisions[0]}:{expected_target_revisions[1]}:v1"
+        )
+        if idempotency_key != canonical_key:
+            return self._rejected("handshake_shared_experience_idempotency_key_invalid")
+        existing = self._store.get_by_idempotency(_PRINCIPAL, idempotency_key)
+        if existing is not None:
+            previous_events = tuple(event for event in self._store.read_events() if event.event_id in set(existing.committed_event_ids))
+            if (
+                len(previous_events) == 2
+                and all(event.event_type == _HANDSHAKE_SHARED_EXPERIENCE_EVENT for event in previous_events)
+                and all(event.payload.get("session_event_id") == session_event_id for event in previous_events)
+                and all(event.causation_id == causation_id and event.correlation_id == correlation_id for event in previous_events)
+            ):
+                receipt = SettlementReceipt.from_append_result(
+                    result=existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
+                    audit_refs=(f"social_handshake_shared_experience:{existing.transaction_id}",),
+                )
+                return self._committed_result(receipt, settlement_plan=None)
+            return self._rejected("handshake_shared_experience_idempotency_key_reused")
+        if tuple(self._store.get_stream_head(stream_id) for stream_id in target_streams) != expected_target_revisions:
+            return self._rejected("handshake_shared_experience_revision_conflict")
+        shared_experience_ref = f"shared-experience:{proposal.get('session_id')}"
+        event_specs: dict[str, tuple[tuple[str, Mapping[str, object]], ...]] = {}
+        visibility: dict[str, tuple[str, ...]] = {}
+        for participant_ref, counterpart_ref, target_stream in (
+            (participant_refs[0], participant_refs[1], target_streams[0]),
+            (participant_refs[1], participant_refs[0], target_streams[1]),
+        ):
+            event_specs[target_stream] = ((
+                _HANDSHAKE_SHARED_EXPERIENCE_EVENT,
+                {
+                    "shared_experience_ref": shared_experience_ref,
+                    "session_id": proposal.get("session_id"),
+                    "session_event_id": session_event_id,
+                    "session_event_revision": expected_session_revision,
+                    "source_stream_id": source_stream,
+                    "source_event_ids": [event.event_id for event in source_events],
+                    "source_event_revisions": [event.stream_revision for event in source_events],
+                    "participant_ref": participant_ref,
+                    "counterpart_ref": counterpart_ref,
+                    "interaction_kind": "handshake",
+                    "status": "completed",
+                    "policy_revision": _HANDSHAKE_SHARED_EXPERIENCE_POLICY,
+                    "descriptor_ref": _HANDSHAKE_SHARED_EXPERIENCE_DESCRIPTOR,
+                    "descriptor_revision": _HANDSHAKE_SHARED_EXPERIENCE_DESCRIPTOR,
+                    "catalog_ref": _HANDSHAKE_SHARED_EXPERIENCE_CATALOG,
+                    "terminal": "v1_terminal_no_compensation",
+                },
+            ),)
+            visibility[target_stream] = (f"actor:{participant_ref}",)
+        envelope = GameplayCommandEnvelope(
+            command_id=command_id,
+            command_type="gameplay.social.record_completed_handshake_shared_experience",
+            command_version=1,
+            principal_ref=_PRINCIPAL,
+            actor_ref=participant_refs[0],
+            project_ref=None,
+            transaction_id=f"transaction:{command_id}",
+            idempotency_key=idempotency_key,
+            expected_revisions={stream_id: revision for stream_id, revision in zip(target_streams, expected_target_revisions, strict=True)},
+            read_set_revisions={source_stream: expected_session_revision},
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            source_ref=session_event_id,
+            submitted_at="interaction-session-committed",
+            pinned_revisions={"session": expected_session_revision, "descriptor": 1},
+            payload={},
+        )
+        batch = build_multi_stream_atomic_event_batch(
+            command_id=envelope.command_id,
+            principal_ref=envelope.principal_ref,
+            expected_revisions=envelope.expected_revisions,
+            read_stream_revisions=envelope.read_set_revisions,
+            event_specs=event_specs,
+            event_visibility_policies=visibility,
+            idempotency_key=envelope.idempotency_key,
+            causation_id=envelope.causation_id,
+            correlation_id=envelope.correlation_id,
+            pinned_revisions=envelope.pinned_revisions,
+        )
+        result = self._store.append_batch(batch)
+        if not result.committed:
+            return self._rejected(result.failure.error_code if result.failure is not None else "append_batch_failed")
+        receipt = SettlementReceipt.from_append_result(
+            result=result,
+            audit_refs=(f"social_handshake_shared_experience:{result.transaction_id}",),
+            pinned_revisions=envelope.pinned_revisions,
+        )
+        settlement_plan = SettlementPlan(
+            plan_id=f"settlement:{command_id}",
+            command_id=command_id,
+            expected_revision_vector=dict(envelope.expected_revisions),
+            proposals=(),
+            event_mapping={_HANDSHAKE_SHARED_EXPERIENCE_EVENT: target_streams},
+            idempotency_key=idempotency_key,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+        )
+        return self._committed_result(receipt, settlement_plan=settlement_plan)
+
+    def handshake_shared_experience_view_for(
+        self, *, participant_ref: str, checkpoint_at: int | None = None
+    ) -> SharedExperienceRecipientView:
+        if not participant_ref.startswith("character:"):
+            raise ValueError("handshake_shared_experience_participant_invalid")
+        if checkpoint_at is not None and checkpoint_at < 0:
+            raise ValueError("handshake_shared_experience_checkpoint_invalid")
+        stream_id = f"gameplay:social:shared-experience:{participant_ref}"
+        events = [
+            event
+            for event in self._store.read_stream(stream_id)
+            if event.event_type == _HANDSHAKE_SHARED_EXPERIENCE_EVENT
+            and event.visibility_policy == f"actor:{participant_ref}"
+        ]
+        max_sequence = max((event.global_sequence for event in self._store.read_events()), default=0)
+        if checkpoint_at is not None and checkpoint_at > max_sequence:
+            raise ValueError("handshake_shared_experience_checkpoint_invalid")
+        ordered = sorted(events, key=lambda event: (event.global_sequence, event.event_id))
+        if checkpoint_at is None:
+            reduced = ordered
+        else:
+            prefix = [event for event in ordered if event.global_sequence <= checkpoint_at]
+            tail = [event for event in ordered if event.global_sequence > checkpoint_at]
+            reduced = [*prefix, *tail]
+        experiences = tuple(dict(event.payload) for event in reduced)
+        source_revision_vector = {stream_id: self._store.get_stream_head(stream_id)}
+        for payload in experiences:
+            source_stream = payload.get("source_stream_id")
+            source_revision = payload.get("session_event_revision")
+            if isinstance(source_stream, str) and isinstance(source_revision, int):
+                source_revision_vector[source_stream] = source_revision
+        projection = {
+            "participant_ref": participant_ref,
+            "shared_experience_refs": tuple(str(payload["shared_experience_ref"]) for payload in experiences),
+            "experiences": experiences,
+            "source_revision_vector": dict(sorted(source_revision_vector.items())),
+        }
+        return SharedExperienceRecipientView(
+            participant_ref=participant_ref,
+            shared_experience_refs=tuple(str(payload["shared_experience_ref"]) for payload in experiences),
+            experiences=experiences,
+            source_revision_vector=dict(sorted(source_revision_vector.items())),
+            projection_hash=_digest(projection),
+        )
+
+    def record_public_milling_notice_social_acknowledgment(
+        self,
+        *,
+        notice_event_id: str,
+        expected_notice_revision: int,
+        expected_target_revisions: tuple[int, int],
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        family_ref: str | None = None,
+    ) -> SocialFactAuthorityResult:
+        """Record exactly one private acknowledgment for each milling party."""
+        if (
+            not notice_event_id
+            or expected_notice_revision < 1
+            or len(expected_target_revisions) != 2
+            or any(value < 0 or isinstance(value, bool) for value in expected_target_revisions)
+            or not command_id
+            or not idempotency_key
+            or not causation_id
+            or not correlation_id
+        ):
+            return self._rejected("public_milling_notice_social_acknowledgment_reference_invalid")
+        if (
+            self._registry.registry_ref != "registry:p5:social"
+            or self._registry.registry_revision != "registry:p5:social:v3"
+        ):
+            return self._rejected("public_milling_notice_social_acknowledgment_registry_invalid")
+        try:
+            event_entry = self._registry.require_event(_PUBLIC_MILLING_ACK_EVENT, 1)
+            schema_pin = self._registry.require_schema(event_entry.schema_ref, event_entry.schema_version)
+        except ValueError:
+            return self._rejected("public_milling_notice_social_acknowledgment_registry_invalid")
+        try:
+            notice = self._store.get_event(notice_event_id)
+        except KeyError:
+            return self._rejected("public_milling_notice_social_acknowledgment_source_missing")
+        source, failure = self._public_milling_notice_source(notice, expected_notice_revision)
+        if failure is not None:
+            return self._rejected(failure)
+        receiver_ref = str(source["receiver_ref"])
+        participant_refs = (_PUBLIC_MILLING_PROVIDER, receiver_ref)
+        target_streams = tuple(
+            f"gameplay:social:public-milling-notice-acknowledgment:{participant_ref}"
+            for participant_ref in participant_refs
+        )
+        try:
+            for target_stream in target_streams:
+                self._registry.require_stream(target_stream, event_entry.stream_grammar_ref)
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref=_PUBLIC_MILLING_ACK_CATALOG,
+                contract_kind="contract_admission",
+                owner_ref=_PRINCIPAL,
+                stream_ids=target_streams,
+                event_types=(_PUBLIC_MILLING_ACK_EVENT,),
+                projection_scope="actor_private",
+            )
+        except (ValueError, GovernedAuthorityContractError):
+            return self._rejected("public_milling_notice_social_acknowledgment_catalog_invalid")
+        canonical_key = (
+            f"social:public-milling-notice-ack:{notice_event_id}:{expected_notice_revision}:"
+            f"{expected_target_revisions[0]}:{expected_target_revisions[1]}:v1"
+        )
+        if idempotency_key != canonical_key:
+            return self._rejected("public_milling_notice_social_acknowledgment_idempotency_key_invalid")
+        existing = self._store.get_by_idempotency(_PRINCIPAL, idempotency_key)
+        if existing is not None:
+            previous_events = tuple(
+                event
+                for event in self._store.read_events()
+                if event.event_id in set(existing.committed_event_ids)
+            )
+            if (
+                len(previous_events) == 2
+                and all(event.event_type == _PUBLIC_MILLING_ACK_EVENT for event in previous_events)
+                and all(event.payload.get("source_notice_event_id") == notice_event_id for event in previous_events)
+                and all(
+                    event.causation_id == causation_id and event.correlation_id == correlation_id
+                    for event in previous_events
+                )
+            ):
+                receipt = SettlementReceipt.from_append_result(
+                    result=existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
+                    audit_refs=(f"social_public_milling_notice_ack:{existing.transaction_id}",),
+                )
+                return self._committed_result(receipt, settlement_plan=None)
+            return self._rejected("public_milling_notice_social_acknowledgment_idempotency_key_reused")
+        if tuple(self._store.get_stream_head(stream_id) for stream_id in target_streams) != expected_target_revisions:
+            return self._rejected("public_milling_notice_social_acknowledgment_revision_conflict")
+        event_specs: dict[str, tuple[tuple[str, Mapping[str, object]], ...]] = {}
+        visibility: dict[str, tuple[str, ...]] = {}
+        for participant_ref, target_stream in zip(participant_refs, target_streams, strict=True):
+            acknowledgment_ref = f"social-ack:public-milling-notice:{notice_event_id}:{participant_ref}"
+            event_specs[target_stream] = (
+                (
+                    _PUBLIC_MILLING_ACK_EVENT,
+                    {
+                        "acknowledgment_ref": acknowledgment_ref,
+                        "notice_event_id": notice_event_id,
+                        "source_notice_event_id": notice_event_id,
+                        "source_notice_revision": expected_notice_revision,
+                        "source_notice_stream_id": notice.stream_id,
+                        "participant_ref": participant_ref,
+                        "status": "acknowledged",
+                        "notice_kind": "public_milling_session_completed",
+                        "organization_ref": _PUBLIC_MILLING_PROVIDER,
+                        "facility_ref": source["facility_ref"],
+                        "project_ref": source["project_ref"],
+                        "jurisdiction_ref": source["jurisdiction_ref"],
+                        "source_activity_event_id": source["source_activity_event_id"],
+                        "source_activity_revision": source["source_activity_revision"],
+                        "source_contract_created_event_id": source["source_contract_created_event_id"],
+                        "source_contract_created_revision": source["source_contract_created_revision"],
+                        "source_contract_fulfilled_event_id": source["source_contract_fulfilled_event_id"],
+                        "source_contract_fulfilled_revision": source["source_contract_fulfilled_revision"],
+                        "source_acquisition_event_id": source["source_acquisition_event_id"],
+                        "source_acquisition_revision": source["source_acquisition_revision"],
+                        "policy_revision": _PUBLIC_MILLING_ACK_POLICY,
+                        "descriptor_ref": _PUBLIC_MILLING_ACK_DESCRIPTOR,
+                        "descriptor_revision": _PUBLIC_MILLING_ACK_DESCRIPTOR,
+                        "catalog_ref": _PUBLIC_MILLING_ACK_CATALOG,
+                        "schema_ref": schema_pin.schema_ref,
+                        "schema_version": schema_pin.schema_version,
+                        "schema_digest": schema_pin.schema_digest,
+                        "registry_ref": self._registry.registry_ref,
+                        "registry_revision": self._registry.registry_revision,
+                        "registry_digest": self._registry.registry_digest,
+                        "terminal": "v1_terminal_no_compensation",
+                        **({"family_ref": family_ref} if family_ref is not None else {}),
+                    },
+                ),
+            )
+            visibility[target_stream] = (f"actor:{participant_ref}",)
+        envelope = GameplayCommandEnvelope(
+            command_id=command_id,
+            command_type="gameplay.social.record_public_milling_notice_social_acknowledgment",
+            command_version=1,
+            principal_ref=_PRINCIPAL,
+            actor_ref=participant_refs[0],
+            project_ref=str(source["project_ref"]),
+            transaction_id=f"transaction:{command_id}",
+            idempotency_key=idempotency_key,
+            expected_revisions={
+                stream_id: revision
+                for stream_id, revision in zip(target_streams, expected_target_revisions, strict=True)
+            },
+            read_set_revisions={
+                str(notice.stream_id): expected_notice_revision,
+                str(source["source_activity_stream_id"]): int(source["source_activity_revision"]),
+                "gameplay:contracts": int(source["contract_head"]),
+            },
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            source_ref=notice_event_id,
+            submitted_at="public-milling-notice-recorded",
+            pinned_revisions={
+                "notice": expected_notice_revision,
+                "activity": int(source["source_activity_revision"]),
+                "contract_created": int(source["source_contract_created_revision"]),
+                "contract_fulfilled": int(source["source_contract_fulfilled_revision"]),
+                "acquisition": int(source["source_acquisition_revision"]),
+                "descriptor": 1,
+                "schema": schema_pin.schema_version,
+            },
+            payload={},
+        )
+        batch = build_multi_stream_atomic_event_batch(
+            command_id=envelope.command_id,
+            principal_ref=envelope.principal_ref,
+            expected_revisions=envelope.expected_revisions,
+            read_stream_revisions=envelope.read_set_revisions,
+            event_specs=event_specs,
+            event_visibility_policies=visibility,
+            idempotency_key=envelope.idempotency_key,
+            causation_id=envelope.causation_id,
+            correlation_id=envelope.correlation_id,
+            pinned_revisions=envelope.pinned_revisions,
+        )
+        result = self._store.append_batch(batch)
+        if not result.committed:
+            return self._rejected(
+                result.failure.error_code if result.failure is not None else "append_batch_failed"
+            )
+        receipt = SettlementReceipt.from_append_result(
+            result=result,
+            audit_refs=(f"social_public_milling_notice_ack:{result.transaction_id}",),
+            pinned_revisions=envelope.pinned_revisions,
+        )
+        settlement_plan = SettlementPlan(
+            plan_id=f"settlement:{command_id}",
+            command_id=command_id,
+            expected_revision_vector=dict(envelope.expected_revisions),
+            proposals=(),
+            event_mapping={_PUBLIC_MILLING_ACK_EVENT: target_streams},
+            idempotency_key=idempotency_key,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+        )
+        return self._committed_result(receipt, settlement_plan=settlement_plan)
+
+    def settle_private_follow_on(self, *, intent: object) -> SocialFactAuthorityResult:
+        """Record the fixed two-party actor-private follow-on from a notice."""
+        from app.gameplay.closed_generic_gameplay_families import PrivateFollowOnIntent
+
+        try:
+            typed_intent = intent if isinstance(intent, PrivateFollowOnIntent) else PrivateFollowOnIntent.model_validate(intent)
+            notice = self._store.get_event(typed_intent.notice_event_id)
+        except Exception:
+            return self._rejected("private_follow_on_source_missing")
+        if self._package_registry is not None:
+            resolved, failure = self._resolve_private_follow_on_row(
+                notice=notice,
+                expected_notice_revision=typed_intent.expected_notice_revision,
+            )
+            if failure is not None or resolved is None:
+                return self._rejected(failure or "private_follow_on_source_conflict")
+            manifest, declaration, binding, content, source = resolved
+            return self._record_private_follow_on_generic(
+                notice=notice,
+                expected_notice_revision=typed_intent.expected_notice_revision,
+                command_id=typed_intent.command_id,
+                correlation_id=typed_intent.correlation_id,
+                manifest=manifest,
+                declaration=declaration,
+                binding=binding,
+                content=content,
+                source=source,
+            )
+        source, failure = self._public_milling_notice_source(notice, typed_intent.expected_notice_revision)
+        if failure is not None or source is None:
+            return self._rejected("private_follow_on_source_conflict")
+        participants = (_PUBLIC_MILLING_PROVIDER, str(source["receiver_ref"]))
+        prior_event = next(
+            (
+                event for event in self._store.read_events()
+                if event.event_type == _PUBLIC_MILLING_ACK_EVENT
+                and event.payload.get("family_ref") == "private_follow_on@1"
+                and event.payload.get("source_notice_event_id") == notice.event_id
+            ),
+            None,
+        )
+        if prior_event is not None:
+            prior_batch = next(
+                (batch for batch in self._store.read_transactions() if any(item.event_id == prior_event.event_id for item in batch.events)),
+                None,
+            )
+            prior_result = self._store.get_by_idempotency(
+                _PRINCIPAL,
+                prior_batch.idempotency_record.idempotency_key if prior_batch is not None else "",
+            )
+            if prior_result is not None and prior_event.correlation_id == typed_intent.correlation_id:
+                receipt = SettlementReceipt.from_append_result(
+                    result=prior_result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
+                    audit_refs=(f"private_follow_on:{prior_result.transaction_id}",),
+                )
+                return self._committed_result(receipt, settlement_plan=None)
+            return self._rejected("private_follow_on_idempotency_key_reused")
+        target_revisions = tuple(
+            self._store.get_stream_head(f"gameplay:social:public-milling-notice-acknowledgment:{participant}")
+            for participant in participants
+        )
+        key = (
+            f"social:public-milling-notice-ack:{notice.event_id}:{notice.stream_revision}:"
+            f"{target_revisions[0]}:{target_revisions[1]}:v1"
+        )
+        result = self.record_public_milling_notice_social_acknowledgment(
+            notice_event_id=notice.event_id,
+            expected_notice_revision=notice.stream_revision,
+            expected_target_revisions=target_revisions,
+            command_id=typed_intent.command_id,
+            idempotency_key=key,
+            causation_id=notice.event_id,
+            correlation_id=typed_intent.correlation_id,
+            family_ref="private_follow_on@1",
+        )
+        return result
+
+    def _resolve_private_follow_on_row(
+        self,
+        *,
+        notice: object,
+        expected_notice_revision: int,
+    ) -> tuple[tuple[object, object, object, object, dict[str, object]] | None, str | None]:
+        from app.gameplay.closed_generic_gameplay_families import PrivateFollowOnContent
+
+        active = self._package_registry.active_patch_set if self._package_registry is not None else None
+        if active is None:
+            return None, "private_follow_on_package_inactive"
+        try:
+            manifests = self._package_registry.active_manifests(active.active_patch_set_revision)
+        except Exception:
+            return None, "private_follow_on_package_inactive"
+        source, failure = self._private_follow_on_source(notice, expected_notice_revision)
+        if failure is not None or source is None:
+            return None, "private_follow_on_source_conflict"
+        source_family_ref = str(source["source_fact_family_ref"])
+        candidates: list[tuple[object, object, object, PrivateFollowOnContent, dict[str, object]]] = []
+        for manifest in manifests:
+            extension = manifest.platform_extension
+            if extension is None:
+                continue
+            declarations = {item.declaration_ref: item for item in extension.outcome_declarations}
+            for request in extension.capability_binding_requests:
+                if request.capability_ref != "capability:private-follow-on@1":
+                    continue
+                declaration = declarations.get(request.declaration_ref)
+                if declaration is None or declaration.outcome_family_ref != "outcome:private-follow-on@1":
+                    continue
+                bindings = tuple(
+                    binding
+                    for binding in active.capability_bindings
+                    if binding.binding_ref == request.binding_ref
+                    and binding.package_revision == manifest.patch_revision_id
+                    and binding.descriptor_ref == "descriptor:private-follow-on@1"
+                    and binding.active_patch_set_revision == active.active_patch_set_revision
+                )
+                if len(bindings) != 1:
+                    continue
+                definitions = tuple(
+                    item for item in extension.package_definitions
+                    if item.definition_ref in declaration.definition_refs
+                )
+                if len(definitions) != 1:
+                    continue
+                try:
+                    content = PrivateFollowOnContent.model_validate(definitions[0].typed_content)
+                except Exception:
+                    continue
+                if content.source_fact_family_ref != source_family_ref:
+                    continue
+                candidates.append((manifest, declaration, bindings[0], content, source))
+        if not candidates:
+            return None, "private_follow_on_content_invalid"
+        if len(candidates) != 1:
+            return None, "private_follow_on_binding_ambiguous"
+        return candidates[0], None
+
+    def _private_follow_on_source(
+        self,
+        notice: object,
+        expected_notice_revision: int,
+    ) -> tuple[dict[str, object] | None, str | None]:
+        if notice.event_type == "gameplay.government.public_milling_notice_recorded":
+            source, failure = self._public_milling_notice_source(notice, expected_notice_revision)
+            if source is not None:
+                source = {
+                    **source,
+                    "provider_ref": _PUBLIC_MILLING_PROVIDER,
+                    "notice_kind": notice.payload.get("notice_kind"),
+                    "source_fact_family_ref": "fact:government-public-milling-notice@1",
+                }
+            return source, failure
+        if notice.event_type == "gameplay.government.public_workshop_notice_recorded":
+            return self._public_workshop_notice_source(notice, expected_notice_revision)
+        return None, "private_follow_on_source_conflict"
+
+    def _record_private_follow_on_generic(
+        self,
+        *,
+        notice: object,
+        expected_notice_revision: int,
+        command_id: str,
+        correlation_id: str,
+        manifest: object,
+        declaration: object,
+        binding: object,
+        content: object,
+        source: dict[str, object],
+    ) -> SocialFactAuthorityResult:
+        participant_refs = (str(source["provider_ref"]), str(source["receiver_ref"]))
+        prior_event = next(
+            (
+                event for event in self._store.read_events()
+                if event.event_type == _PUBLIC_MILLING_ACK_EVENT
+                and event.payload.get("family_ref") == "private_follow_on@1"
+                and event.payload.get("source_notice_event_id") == notice.event_id
+            ),
+            None,
+        )
+        if prior_event is not None:
+            prior_batch = next(
+                (
+                    batch for batch in self._store.read_transactions()
+                    if any(item.event_id == prior_event.event_id for item in batch.events)
+                ),
+                None,
+            )
+            prior_result = self._store.get_by_idempotency(
+                _PRINCIPAL,
+                prior_batch.idempotency_record.idempotency_key if prior_batch is not None else "",
+            )
+            if prior_result is not None and prior_event.correlation_id == correlation_id:
+                receipt = SettlementReceipt.from_append_result(
+                    result=prior_result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
+                    audit_refs=(f"private_follow_on:{prior_result.transaction_id}",),
+                )
+                return self._committed_result(receipt, settlement_plan=None)
+            return self._rejected("private_follow_on_idempotency_key_reused")
+        target_revisions = tuple(
+            self._store.get_stream_head(
+                f"gameplay:social:public-milling-notice-acknowledgment:{participant}"
+            )
+            for participant in participant_refs
+        )
+        idempotency_key = (
+            f"social:public-milling-notice-ack:{notice.event_id}:{notice.stream_revision}:"
+            f"{target_revisions[0]}:{target_revisions[1]}:v1"
+        )
+        existing = self._store.get_by_idempotency(_PRINCIPAL, idempotency_key)
+        if existing is not None:
+            prior_events = tuple(
+                event
+                for event in self._store.read_events()
+                if event.event_id in set(existing.committed_event_ids)
+            )
+            if (
+                len(prior_events) == 2
+                and all(event.event_type == _PUBLIC_MILLING_ACK_EVENT for event in prior_events)
+                and all(event.payload.get("source_notice_event_id") == notice.event_id for event in prior_events)
+                and all(event.causation_id == notice.event_id for event in prior_events)
+                and all(event.correlation_id == correlation_id for event in prior_events)
+            ):
+                receipt = SettlementReceipt.from_append_result(
+                    result=existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
+                    audit_refs=(f"private_follow_on:{existing.transaction_id}",),
+                )
+                return self._committed_result(receipt, settlement_plan=None)
+            return self._rejected("private_follow_on_idempotency_key_reused")
+        event_specs: dict[str, tuple[tuple[str, Mapping[str, object]], ...]] = {}
+        visibility: dict[str, tuple[str, ...]] = {}
+        for participant_ref, counterpart_ref in zip(
+            participant_refs,
+            (participant_refs[1], participant_refs[0]),
+            strict=True,
+        ):
+            target_stream = f"gameplay:social:public-milling-notice-acknowledgment:{participant_ref}"
+            event_specs[target_stream] = (
+                (
+                    _PUBLIC_MILLING_ACK_EVENT,
+                    {
+                        "acknowledgment_ref": f"social-ack:public-milling-notice:{notice.event_id}:{participant_ref}",
+                        "notice_event_id": notice.event_id,
+                        "source_notice_event_id": notice.event_id,
+                        "source_notice_revision": expected_notice_revision,
+                        "source_notice_stream_id": notice.stream_id,
+                        "source_notice_event_type": notice.event_type,
+                        "source_fact_family_ref": content.source_fact_family_ref,
+                        "marker_definition_ref": content.marker_definition_ref,
+                        "participant_binding_ref": content.participant_binding_ref,
+                        "participant_ref": participant_ref,
+                        "counterpart_ref": counterpart_ref,
+                        "status": "acknowledged",
+                        "notice_kind": source["notice_kind"],
+                        "organization_ref": source["provider_ref"],
+                        "facility_ref": source["facility_ref"],
+                        "project_ref": source["project_ref"],
+                        "jurisdiction_ref": source["jurisdiction_ref"],
+                        "source_activity_event_id": source["source_activity_event_id"],
+                        "source_activity_revision": source["source_activity_revision"],
+                        "source_contract_created_event_id": source["source_contract_created_event_id"],
+                        "source_contract_created_revision": source["source_contract_created_revision"],
+                        "source_contract_fulfilled_event_id": source["source_contract_fulfilled_event_id"],
+                        "source_contract_fulfilled_revision": source["source_contract_fulfilled_revision"],
+                        "source_acquisition_event_id": source["source_acquisition_event_id"],
+                        "source_acquisition_revision": source["source_acquisition_revision"],
+                        "policy_revision": content.policy_revision_ref,
+                        "descriptor_ref": "descriptor:private-follow-on@1",
+                        "descriptor_revision": "descriptor:private-follow-on@1",
+                        "catalog_ref": "inf:private-follow-on@1",
+                        "schema_ref": "schema:p5:social:public-milling-notice-acknowledged",
+                        "schema_version": 1,
+                        "schema_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                        "registry_ref": self._registry.registry_ref,
+                        "registry_revision": self._registry.registry_revision,
+                        "registry_digest": self._registry.registry_digest,
+                        "package_revision": manifest.patch_revision_id,
+                        "content_digest": manifest.content_digest,
+                        "declaration_ref": declaration.declaration_ref,
+                        "declaration_digest": declaration.declaration_digest,
+                        "active_patch_set_revision": binding.active_patch_set_revision,
+                        "terminal": "v1_terminal_no_compensation",
+                        "family_ref": "private_follow_on@1",
+                    },
+                ),
+            )
+            visibility[target_stream] = (f"actor:{participant_ref}",)
+        envelope = GameplayCommandEnvelope(
+            command_id=command_id,
+            command_type="gameplay.social.settle_private_follow_on",
+            command_version=1,
+            principal_ref=_PRINCIPAL,
+            actor_ref=participant_refs[0],
+            project_ref=str(source["project_ref"]),
+            transaction_id=f"transaction:{command_id}",
+            idempotency_key=idempotency_key,
+            expected_revisions={
+                f"gameplay:social:public-milling-notice-acknowledgment:{participant}": revision
+                for participant, revision in zip(participant_refs, target_revisions, strict=True)
+            },
+            read_set_revisions={
+                str(notice.stream_id): expected_notice_revision,
+                str(source["source_activity_stream_id"]): int(source["source_activity_revision"]),
+                "gameplay:contracts": int(source["contract_head"]),
+            },
+            causation_id=notice.event_id,
+            correlation_id=correlation_id,
+            source_ref=notice.event_id,
+            submitted_at="private-follow-on-source-notice",
+            pinned_revisions={
+                "notice": expected_notice_revision,
+                "activity": int(source["source_activity_revision"]),
+                "contract_created": int(source["source_contract_created_revision"]),
+                "contract_fulfilled": int(source["source_contract_fulfilled_revision"]),
+                "acquisition": int(source["source_acquisition_revision"]),
+                "descriptor": 1,
+            },
+            payload={},
+        )
+        batch = build_multi_stream_atomic_event_batch(
+            command_id=envelope.command_id,
+            principal_ref=envelope.principal_ref,
+            expected_revisions=envelope.expected_revisions,
+            read_stream_revisions=envelope.read_set_revisions,
+            event_specs=event_specs,
+            event_visibility_policies=visibility,
+            idempotency_key=envelope.idempotency_key,
+            causation_id=envelope.causation_id,
+            correlation_id=correlation_id,
+            pinned_revisions=envelope.pinned_revisions,
+        )
+        result = self._store.append_batch(batch)
+        if not result.committed:
+            return self._rejected(result.failure.error_code if result.failure is not None else "append_batch_failed")
+        receipt = SettlementReceipt.from_append_result(
+            result=result,
+            audit_refs=(f"private_follow_on:{result.transaction_id}",),
+            pinned_revisions=envelope.pinned_revisions,
+        )
+        settlement_plan = SettlementPlan(
+            plan_id=f"settlement:{command_id}",
+            command_id=command_id,
+            expected_revision_vector=dict(envelope.expected_revisions),
+            proposals=(),
+            event_mapping={_PUBLIC_MILLING_ACK_EVENT: tuple(envelope.expected_revisions)},
+            idempotency_key=idempotency_key,
+            causation_id=envelope.causation_id,
+            correlation_id=correlation_id,
+        )
+        return self._committed_result(receipt, settlement_plan=settlement_plan)
+
+    def public_milling_notice_social_acknowledgment_view_for(
+        self, *, participant_ref: str, checkpoint_at: int | None = None
+    ) -> PublicMillingNoticeSocialAcknowledgmentView:
+        if not participant_ref or checkpoint_at is not None and checkpoint_at < 0:
+            raise ValueError("public_milling_notice_social_acknowledgment_scope_invalid")
+        stream_id = f"gameplay:social:public-milling-notice-acknowledgment:{participant_ref}"
+        events = sorted(
+            (
+                event
+                for event in self._store.read_stream(stream_id)
+                if event.event_type == _PUBLIC_MILLING_ACK_EVENT
+                and event.visibility_policy == f"actor:{participant_ref}"
+            ),
+            key=lambda event: (event.global_sequence, event.event_id),
+        )
+        max_sequence = max((event.global_sequence for event in self._store.read_events()), default=0)
+        if checkpoint_at is not None and checkpoint_at > max_sequence:
+            raise ValueError("public_milling_notice_social_acknowledgment_checkpoint_invalid")
+        for event in events:
+            try:
+                notice = self._store.get_event(str(event.payload.get("source_notice_event_id")))
+            except KeyError as exc:
+                raise ValueError("public_milling_notice_social_acknowledgment_replay_invalid") from exc
+            source, failure = self._private_follow_on_source(
+                notice,
+                int(event.payload.get("source_notice_revision", -1)),
+            )
+            if (
+                failure is not None
+                or event.payload.get("participant_ref") != participant_ref
+                or event.payload.get("source_notice_event_id") != notice.event_id
+                or event.payload.get("facility_ref") != source["facility_ref"]
+                or event.payload.get("project_ref") != source["project_ref"]
+                or event.payload.get("jurisdiction_ref") != source["jurisdiction_ref"]
+                or event.payload.get("source_activity_event_id") != source["source_activity_event_id"]
+                or event.payload.get("source_contract_created_event_id")
+                != source["source_contract_created_event_id"]
+                or event.payload.get("source_contract_fulfilled_event_id")
+                != source["source_contract_fulfilled_event_id"]
+                or event.payload.get("source_acquisition_event_id")
+                != source["source_acquisition_event_id"]
+                or (
+                    event.payload.get("source_fact_family_ref") is not None
+                    and (
+                        event.payload.get("source_fact_family_ref") != source.get("source_fact_family_ref")
+                        or event.payload.get("policy_revision") != "policy:social-private-follow-on@1"
+                        or event.payload.get("descriptor_ref") != "descriptor:private-follow-on@1"
+                        or event.payload.get("descriptor_revision") != "descriptor:private-follow-on@1"
+                        or event.payload.get("catalog_ref") != "inf:private-follow-on@1"
+                    )
+                )
+                or (
+                    event.payload.get("source_fact_family_ref") is None
+                    and (
+                        event.payload.get("policy_revision") != _PUBLIC_MILLING_ACK_POLICY
+                        or event.payload.get("descriptor_ref") != _PUBLIC_MILLING_ACK_DESCRIPTOR
+                        or event.payload.get("descriptor_revision") != _PUBLIC_MILLING_ACK_DESCRIPTOR
+                        or event.payload.get("catalog_ref") != _PUBLIC_MILLING_ACK_CATALOG
+                    )
+                )
+            ):
+                raise ValueError("public_milling_notice_social_acknowledgment_replay_invalid")
+        acknowledgments = tuple(dict(event.payload) for event in events)
+        refs = tuple(str(item["acknowledgment_ref"]) for item in acknowledgments)
+        source_revision_vector = {stream_id: self._store.get_stream_head(stream_id)}
+        if events:
+            notice = self._store.get_event(str(events[0].payload["source_notice_event_id"]))
+            source_revision_vector[notice.stream_id] = notice.stream_revision
+            source, _ = self._public_milling_notice_source(notice, notice.stream_revision)
+            if source is not None:
+                source_revision_vector[str(source["source_activity_stream_id"])] = int(
+                    source["source_activity_revision"]
+                )
+                source_revision_vector["gameplay:contracts"] = int(source["contract_head"])
+        projection = {
+            "participant_ref": participant_ref,
+            "acknowledgment_refs": refs,
+            "acknowledgments": acknowledgments,
+            "source_revision_vector": dict(sorted(source_revision_vector.items())),
+        }
+        return PublicMillingNoticeSocialAcknowledgmentView(
+            participant_ref=participant_ref,
+            acknowledgment_refs=refs,
+            acknowledgments=acknowledgments,
+            source_revision_vector=dict(sorted(source_revision_vector.items())),
+            projection_hash=_digest(projection),
+        )
+
+    def _public_milling_notice_source(
+        self, notice: object, expected_notice_revision: int
+    ) -> tuple[dict[str, object] | None, str | None]:
+        if notice.event_type != "gameplay.government.public_milling_notice_recorded":
+            return None, "public_milling_notice_social_acknowledgment_source_invalid"
+        if notice.visibility_policy != "project":
+            return None, "public_milling_notice_social_acknowledgment_source_private"
+        if (
+            notice.stream_revision != expected_notice_revision
+            or self._store.get_stream_head(notice.stream_id) != expected_notice_revision
+            or not notice.stream_id.startswith("gameplay:government:public-notice:")
+        ):
+            return None, "public_milling_notice_social_acknowledgment_source_stale"
+        payload = notice.payload
+        if (
+            payload.get("notice_kind") != "public_milling_session_completed"
+            or payload.get("status") != "completed"
+            or payload.get("organization_ref") != _PUBLIC_MILLING_PROVIDER
+            or payload.get("policy_revision") != "policy:government-public-milling-notice@1"
+            or payload.get("descriptor_ref") != "descriptor:government-public-milling-notice@1"
+            or payload.get("descriptor_revision") != "descriptor:government-public-milling-notice@1"
+            or payload.get("catalog_ref") != "inf:government-public-milling-notice@1"
+        ):
+            return None, "public_milling_notice_social_acknowledgment_source_invalid"
+        required = (
+            "source_activity_event_id",
+            "source_contract_created_event_id",
+            "source_contract_fulfilled_event_id",
+            "facility_ref",
+            "project_ref",
+            "jurisdiction_ref",
+        )
+        if any(not isinstance(payload.get(key), str) or not payload.get(key) for key in required):
+            return None, "public_milling_notice_social_acknowledgment_binding_invalid"
+        try:
+            activity = self._store.get_event(str(payload["source_activity_event_id"]))
+            created = self._store.get_event(str(payload["source_contract_created_event_id"]))
+            fulfilled = self._store.get_event(str(payload["source_contract_fulfilled_event_id"]))
+            acquisition = self._store.get_event(str(created.payload["acquisition_event_id"]))
+        except (KeyError, TypeError):
+            return None, "public_milling_notice_social_acknowledgment_source_invalid"
+        if (
+            activity.event_type != "gameplay.organization.public_milling_activity_recorded"
+            or activity.visibility_policy != "project"
+            or activity.payload.get("organization_ref") != _PUBLIC_MILLING_PROVIDER
+            or activity.payload.get("activity_kind") != "public_milling_session"
+            or activity.payload.get("status") != "completed"
+            or activity.event_id != payload["source_activity_event_id"]
+            or activity.stream_revision != payload.get("source_activity_revision")
+            or self._store.get_stream_head(activity.stream_id) != activity.stream_revision
+            or activity.payload.get("facility_ref") != payload["facility_ref"]
+            or activity.payload.get("project_ref") != payload["project_ref"]
+            or activity.payload.get("source_contract_created_event_id") != created.event_id
+            or activity.payload.get("source_contract_fulfilled_event_id") != fulfilled.event_id
+        ):
+            return None, "public_milling_notice_social_acknowledgment_source_invalid"
+        party_refs = created.payload.get("party_refs")
+        receiver_ref = acquisition.payload.get("owner_ref")
+        if (
+            created.event_type != "gameplay.contract.record_created"
+            or created.visibility_policy != "authority_only"
+            or created.payload.get("terms_ref") != _PUBLIC_MILLING_TERMS
+            or created.payload.get("package_revision") != _PUBLIC_MILLING_PACKAGE
+            or created.payload.get("facility_kind") != "mill_reinforced"
+            or created.payload.get("facility_ref") != payload["facility_ref"]
+            or created.payload.get("project_ref") != payload["project_ref"]
+            or not isinstance(party_refs, list)
+            or len(party_refs) != 2
+            or party_refs[0] != _PUBLIC_MILLING_PROVIDER
+            or not isinstance(party_refs[1], str)
+            or party_refs[1] != receiver_ref
+            or receiver_ref == _PUBLIC_MILLING_PROVIDER
+        ):
+            return None, (
+                "public_milling_notice_social_acknowledgment_party_binding_invalid"
+                if isinstance(party_refs, list) and len(party_refs) != 2
+                else "public_milling_notice_social_acknowledgment_binding_conflict"
+            )
+        if (
+            fulfilled.event_type != "gameplay.contract.record_fulfilled"
+            or fulfilled.visibility_policy != "authority_only"
+            or fulfilled.payload.get("contract_created_event_id") != created.event_id
+            or fulfilled.payload.get("contract_id") != created.payload.get("contract_id")
+            or acquisition.event_type != "gameplay.construction_production.facility_acquired"
+            or acquisition.visibility_policy != "project"
+            or acquisition.payload.get("facility_ref") != payload["facility_ref"]
+            or acquisition.payload.get("plot_ref") != payload["project_ref"]
+            or acquisition.payload.get("jurisdiction_ref") != payload["jurisdiction_ref"]
+            or not isinstance(receiver_ref, str)
+            or not receiver_ref.startswith(("organization:", "org:"))
+        ):
+            return None, "public_milling_notice_social_acknowledgment_binding_conflict"
+        return {
+            "receiver_ref": receiver_ref,
+            "facility_ref": payload["facility_ref"],
+            "project_ref": payload["project_ref"],
+            "jurisdiction_ref": payload["jurisdiction_ref"],
+            "source_activity_event_id": activity.event_id,
+            "source_activity_revision": activity.stream_revision,
+            "source_activity_stream_id": activity.stream_id,
+            "source_contract_created_event_id": created.event_id,
+            "source_contract_created_revision": created.stream_revision,
+            "source_contract_fulfilled_event_id": fulfilled.event_id,
+            "source_contract_fulfilled_revision": fulfilled.stream_revision,
+            "source_acquisition_event_id": acquisition.event_id,
+            "source_acquisition_revision": acquisition.stream_revision,
+            "contract_head": self._store.get_stream_head("gameplay:contracts"),
+        }, None
+
+    def _public_workshop_notice_source(
+        self, notice: object, expected_notice_revision: int
+    ) -> tuple[dict[str, object] | None, str | None]:
+        if (
+            notice.event_type != "gameplay.government.public_workshop_notice_recorded"
+            or notice.visibility_policy != "project"
+            or notice.stream_revision != expected_notice_revision
+            or self._store.get_stream_head(notice.stream_id) != expected_notice_revision
+            or not notice.stream_id.startswith("gameplay:government:public-notice:")
+        ):
+            return None, "private_follow_on_source_conflict"
+        payload = notice.payload
+        if (
+            payload.get("notice_kind") != "public_workshop_session_completed"
+            or payload.get("status") != "completed"
+            or payload.get("organization_ref") != "organization:municipal-assessment-office"
+            or payload.get("policy_revision") != "policy:government-public-workshop-notice@1"
+            or payload.get("descriptor_ref") != "descriptor:government-public-workshop-notice@1"
+            or payload.get("descriptor_revision") != "descriptor:government-public-workshop-notice@1"
+        ):
+            return None, "private_follow_on_source_conflict"
+        required = ("source_activity_event_id", "facility_ref", "project_ref", "jurisdiction_ref")
+        if any(not isinstance(payload.get(key), str) or not payload.get(key) for key in required):
+            return None, "private_follow_on_source_conflict"
+        try:
+            activity = self._store.get_event(str(payload["source_activity_event_id"]))
+            created = self._store.get_event(str(activity.payload["source_contract_created_event_id"]))
+            fulfilled = self._store.get_event(str(activity.payload["source_contract_fulfilled_event_id"]))
+            acquisition = self._store.get_event(str(created.payload["acquisition_event_id"]))
+        except (KeyError, TypeError):
+            return None, "private_follow_on_source_conflict"
+        receiver_ref = acquisition.payload.get("owner_ref")
+        party_refs = created.payload.get("party_refs")
+        if (
+            activity.event_type != "gameplay.organization.public_workshop_activity_recorded"
+            or activity.visibility_policy != "project"
+            or activity.payload.get("organization_ref") != "organization:municipal-assessment-office"
+            or activity.payload.get("activity_kind") != "public_workshop_session"
+            or activity.payload.get("status") != "completed"
+            or activity.event_id != payload["source_activity_event_id"]
+            or activity.stream_revision != payload.get("source_activity_revision")
+            or self._store.get_stream_head(activity.stream_id) != activity.stream_revision
+            or activity.payload.get("facility_ref") != payload["facility_ref"]
+            or activity.payload.get("project_ref") != payload["project_ref"]
+            or created.event_type != "gameplay.contract.record_created"
+            or created.visibility_policy != "authority_only"
+            or created.payload.get("terms_ref") != "service:industrial-facility-public-workshop-session@1"
+            or not isinstance(party_refs, list)
+            or len(party_refs) != 2
+            or party_refs[0] != "organization:municipal-assessment-office"
+            or not isinstance(party_refs[1], str)
+            or party_refs[1] != receiver_ref
+            or fulfilled.event_type != "gameplay.contract.record_fulfilled"
+            or fulfilled.visibility_policy != "authority_only"
+            or fulfilled.payload.get("contract_created_event_id") != created.event_id
+            or acquisition.event_type != "gameplay.construction_production.facility_acquired"
+            or acquisition.visibility_policy != "project"
+            or acquisition.payload.get("facility_ref") != payload["facility_ref"]
+            or acquisition.payload.get("plot_ref") != payload["project_ref"]
+            or acquisition.payload.get("jurisdiction_ref") != payload["jurisdiction_ref"]
+            or not isinstance(receiver_ref, str)
+            or not receiver_ref.startswith(("organization:", "org:"))
+        ):
+            return None, "private_follow_on_source_conflict"
+        return {
+            "provider_ref": "organization:municipal-assessment-office",
+            "receiver_ref": receiver_ref,
+            "facility_ref": payload["facility_ref"],
+            "project_ref": payload["project_ref"],
+            "jurisdiction_ref": payload["jurisdiction_ref"],
+            "notice_kind": payload["notice_kind"],
+            "source_fact_family_ref": "fact:government-public-workshop-notice@1",
+            "source_activity_event_id": activity.event_id,
+            "source_activity_revision": activity.stream_revision,
+            "source_activity_stream_id": activity.stream_id,
+            "source_contract_created_event_id": created.event_id,
+            "source_contract_created_revision": created.stream_revision,
+            "source_contract_fulfilled_event_id": fulfilled.event_id,
+            "source_contract_fulfilled_revision": fulfilled.stream_revision,
+            "source_acquisition_event_id": acquisition.event_id,
+            "source_acquisition_revision": acquisition.stream_revision,
+            "contract_head": self._store.get_stream_head("gameplay:contracts"),
+        }, None
+
+    def _public_workshop_notice_source(
+        self, notice: object, expected_notice_revision: int
+    ) -> tuple[dict[str, object] | None, str | None]:
+        """Resolve the committed workshop notice chain for the generic follow-on."""
+        if notice.event_type != "gameplay.government.public_workshop_notice_recorded":
+            return None, "public_workshop_notice_social_acknowledgment_source_invalid"
+        if notice.visibility_policy != "project":
+            return None, "public_workshop_notice_social_acknowledgment_source_private"
+        if (
+            notice.stream_revision != expected_notice_revision
+            or self._store.get_stream_head(notice.stream_id) != expected_notice_revision
+            or not notice.stream_id.startswith("gameplay:government:public-notice:")
+        ):
+            return None, "public_workshop_notice_social_acknowledgment_source_stale"
+        payload = notice.payload
+        if (
+            payload.get("notice_kind") != "public_workshop_session_completed"
+            or payload.get("status") != "completed"
+            or payload.get("organization_ref") != "organization:municipal-assessment-office"
+            or payload.get("policy_revision") != "policy:government-public-workshop-notice@1"
+            or payload.get("descriptor_ref") != "descriptor:government-public-workshop-notice@1"
+            or payload.get("descriptor_revision") != "descriptor:government-public-workshop-notice@1"
+        ):
+            return None, "public_workshop_notice_social_acknowledgment_source_invalid"
+        required = ("source_activity_event_id", "facility_ref", "project_ref", "jurisdiction_ref")
+        if any(not isinstance(payload.get(key), str) or not payload.get(key) for key in required):
+            return None, "public_workshop_notice_social_acknowledgment_binding_invalid"
+        try:
+            activity = self._store.get_event(str(payload["source_activity_event_id"]))
+            created = self._store.get_event(str(activity.payload["source_contract_created_event_id"]))
+            fulfilled = self._store.get_event(str(activity.payload["source_contract_fulfilled_event_id"]))
+            acquisition = self._store.get_event(str(created.payload["acquisition_event_id"]))
+        except (KeyError, TypeError):
+            return None, "public_workshop_notice_social_acknowledgment_source_invalid"
+        parties = created.payload.get("party_refs")
+        receiver_ref = acquisition.payload.get("owner_ref")
+        if (
+            activity.event_type != "gameplay.organization.public_workshop_activity_recorded"
+            or activity.visibility_policy != "project"
+            or not isinstance(activity.payload.get("source_contract_fulfilled_revision"), int)
+            or activity.payload.get("organization_ref") != payload["organization_ref"]
+            or activity.payload.get("activity_kind") != "public_workshop_session"
+            or activity.payload.get("status") != "completed"
+            or activity.payload.get("facility_ref") != payload["facility_ref"]
+            or activity.payload.get("project_ref") != payload["project_ref"]
+            or created.event_type != "gameplay.contract.record_created"
+            or created.visibility_policy != "authority_only"
+            or created.payload.get("terms_ref") != "service:industrial-facility-public-workshop-session@1"
+            or fulfilled.event_type != "gameplay.contract.record_fulfilled"
+            or fulfilled.visibility_policy != "authority_only"
+            or fulfilled.payload.get("contract_created_event_id") != created.event_id
+            or acquisition.event_type != "gameplay.construction_production.facility_acquired"
+            or acquisition.visibility_policy != "project"
+            or acquisition.payload.get("facility_ref") != payload["facility_ref"]
+            or acquisition.payload.get("plot_ref") != payload["project_ref"]
+            or not isinstance(parties, list)
+            or len(parties) != 2
+            or not isinstance(parties[0], str)
+            or not isinstance(parties[1], str)
+            or parties[0] != payload["organization_ref"]
+            or parties[1] != receiver_ref
+            or receiver_ref == payload["organization_ref"]
+        ):
+            return None, "public_workshop_notice_social_acknowledgment_source_invalid"
+        return {
+            "provider_ref": str(payload["organization_ref"]),
+            "receiver_ref": str(receiver_ref),
+            "notice_kind": payload["notice_kind"],
+            "source_fact_family_ref": "fact:government-public-workshop-notice@1",
+            "facility_ref": payload["facility_ref"],
+            "project_ref": payload["project_ref"],
+            "jurisdiction_ref": payload["jurisdiction_ref"],
+            "source_activity_event_id": activity.event_id,
+            "source_activity_revision": activity.stream_revision,
+            "source_activity_stream_id": activity.stream_id,
+            "source_contract_created_event_id": created.event_id,
+            "source_contract_created_revision": created.stream_revision,
+            "source_contract_fulfilled_event_id": fulfilled.event_id,
+            "source_contract_fulfilled_revision": fulfilled.stream_revision,
+            "source_acquisition_event_id": acquisition.event_id,
+            "source_acquisition_revision": acquisition.stream_revision,
+            "contract_head": self._store.get_stream_head("gameplay:contracts"),
+        }, None
 
     def resolve(
         self,
@@ -693,6 +1892,8 @@ class SocialFactAuthority:
 
 __all__ = [
     "HouseholdRecipientView",
+    "PublicMillingNoticeSocialAcknowledgmentView",
+    "SharedExperienceRecipientView",
     "SocialFactAuthority",
     "SocialFactAuthorityResult",
     "SocialRecipientView",

@@ -111,7 +111,7 @@ def test_character_director_state_keeps_dialogue_pair_ledger_outside_script_beat
     assert '_state_frame_value("recent_dialogue_pairs", [])' in dialogue_pair_block
     assert "recent_script_beats" not in dialogue_pair_block
     assert "recent_dialogue_pairs = _merge_dialogue_pair_rows(" in script_beat_handler_block
-    assert 'payload.get("dialogue_pairs", [])' in script_beat_handler_block
+    assert 'presentation_beat.get("dialogue_pairs", [])' in script_beat_handler_block
     assert (
         '\t\trecent_script_beats = _dictionary_array(recent_script_beats.slice(recent_script_beats.size() - MAX_EVENT_HISTORY, recent_script_beats.size()))\n'
         '\t\trecent_dialogue_pairs = _merge_dialogue_pair_rows('
@@ -119,7 +119,7 @@ def test_character_director_state_keeps_dialogue_pair_ledger_outside_script_beat
     assert (
         '\trecent_dialogue_pairs = _merge_dialogue_pair_rows(\n'
         '\t\trecent_dialogue_pairs,\n'
-        '\t\tpayload.get("dialogue_pairs", [])\n'
+        '\t\tpresentation_beat.get("dialogue_pairs", [])\n'
         '\t)\n\t_request_observatory_refresh()'
     ) in script_beat_handler_block
 

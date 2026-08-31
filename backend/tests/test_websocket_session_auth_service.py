@@ -28,6 +28,22 @@ def test_trusted_local_session_binding_is_opaque_server_owned_and_multi_actor() 
     assert service.resolve_binding(result.binding.session_ref) == result.binding
 
 
+def test_trusted_local_binding_preserves_only_server_issued_drought_advisory_jurisdiction_scope() -> None:
+    service = WebSocketSessionAuthService()
+    credential = service.create_trusted_local_launch_credential(
+        principal_ref="principal:player:1",
+        allowed_actor_refs=("actor:a",),
+        allowed_government_drought_advisory_jurisdiction_refs=("jurisdiction:one", "jurisdiction:one"),
+        issued_at=10,
+        expires_at=20,
+    )
+
+    result = service.bind_session(_enrollment(credential), remote_host="127.0.0.1", now=11)
+
+    assert result.accepted and result.binding is not None
+    assert result.binding.allowed_government_drought_advisory_jurisdiction_refs == ("jurisdiction:one",)
+
+
 def test_trusted_local_session_binding_rejects_remote_peer_expiry_and_replay() -> None:
     service = WebSocketSessionAuthService()
     credential = service.create_trusted_local_launch_credential(

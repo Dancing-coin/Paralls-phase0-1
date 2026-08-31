@@ -342,3 +342,41 @@ def test_filtered_view_sync_adapter_uses_exact_base_checksum_and_removes_omitted
     assert delta_payload["removed_group_ids"] == ["core.resources"]
     assert delta_payload["confirmed_prediction_ids"] == ["prediction:stamina:one"]
     assert delta_payload["rejected_predictions"] == ["prediction:stamina:two"]
+
+
+def test_connection_registry_delivers_fixed_government_advisory_without_an_actor_facade() -> None:
+    registry = GameplayMirrorConnectionRegistry()
+    sent: list[dict[str, object]] = []
+    registry.register(
+        session_ref="session:government-advisory",
+        connection_ref="connection:government-advisory",
+        connection_epoch=4,
+        deliver=sent.append,
+    )
+
+    registry.deliver_government_drought_advisory(
+        "session:government-advisory",
+        {
+            "projection_kind": "government_drought_advisory.project.v1",
+            "jurisdiction_ref": "jurisdiction:government-advisory",
+            "advisory_refs": ["advisory:drought:one"],
+            "source_revision_vector": {"gameplay:government:advisory:government-advisory": 1},
+            "projection_hash": "sha256:advisory",
+        },
+    )
+
+    assert sent == [
+        {
+            "message_type": "government_drought_advisory_delivery",
+            "payload": {
+                "connection_epoch": 4,
+                "delivery_sequence": 1,
+                "projection_kind": "government_drought_advisory.project.v1",
+                "jurisdiction_ref": "jurisdiction:government-advisory",
+                "advisory_refs": ["advisory:drought:one"],
+                "source_revision_vector": {"gameplay:government:advisory:government-advisory": 1},
+                "projection_hash": "sha256:advisory",
+            },
+        }
+    ]
+    assert "actor_ref" not in str(sent)

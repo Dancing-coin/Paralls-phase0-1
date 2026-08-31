@@ -11,13 +11,14 @@ from typing import Literal, Mapping
 
 from pydantic import ConfigDict, Field
 
+from app.gameplay.contract_runtime import ContractProjector
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.ecology_consumer_admission import EcologyConsumerAdmissionCheck
 from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
 from app.gameplay.models import AppendBatchResult, GameplayFailure, GameplayOutboxEntry, OwnerAuthorizedFragment, StrictGameplayModel
 from app.gameplay.settlement_plan import SettlementPlan as EventStoreSettlementPlan
 from app.gameplay.settlement_plan import build_atomic_event_batch, build_multi_stream_atomic_event_batch_from_fragments
-from app.gameplay.shared_contracts import GameplayCommandEnvelope
+from app.gameplay.shared_contracts import GameplayCommandEnvelope, SettlementReceipt
 
 
 class Organization(StrictGameplayModel):
@@ -70,6 +71,54 @@ class OrganizationScheduleRecipientView(StrictGameplayModel):
 
     def validate_against(self, *, store: GameplayEventStore) -> bool:
         return all(store.get_stream_head(stream_id) == revision for stream_id, revision in self.source_revision_vector.items())
+
+
+class OrganizationWorkContributionAcceptanceView(StrictGameplayModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    owner_principal_ref: str
+    organization_ref: str
+    acceptance_rows: tuple[dict[str, object], ...] = ()
+    source_revision_vector: dict[str, int] = Field(default_factory=dict)
+    projection_hash: str = ""
+
+    def validate_against(self, *, store: GameplayEventStore) -> bool:
+        return all(store.get_stream_head(stream_id) == revision for stream_id, revision in self.source_revision_vector.items())
+
+
+class OrganizationWorkOrderFulfillmentView(StrictGameplayModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    owner_principal_ref: str
+    organization_ref: str
+    fulfillment_rows: tuple[dict[str, object], ...] = ()
+    source_revision_vector: dict[str, int] = Field(default_factory=dict)
+    projection_hash: str = ""
+
+    def validate_against(self, *, store: GameplayEventStore) -> bool:
+        return all(store.get_stream_head(stream_id) == revision for stream_id, revision in self.source_revision_vector.items())
+
+
+@dataclass(frozen=True)
+class OrganizationPublicWorkshopActivityView:
+    organization_ref: str
+    activities: tuple[Mapping[str, object], ...]
+    source_revision_vector: Mapping[str, int]
+    projection_hash: str
+
+
+@dataclass(frozen=True)
+class OrganizationPublicProjectExecutionView:
+    organization_ref: str
+    executions: tuple[Mapping[str, object], ...]
+    source_revision_vector: Mapping[str, int]
+    projection_hash: str
+
+
+@dataclass(frozen=True)
+class OrganizationGrainIntakeView:
+    organization_ref: str
+    intakes: tuple[Mapping[str, object], ...]
+    source_revision_vector: Mapping[str, int]
+    projection_hash: str
 
 
 class OrganizationOperatingWindowView(StrictGameplayModel):
@@ -188,6 +237,93 @@ class GovernmentCommercialInspectionPolicyView(StrictGameplayModel):
     active_policy_refs: tuple[str, ...] = ()
     source_revision_vector: dict[str, int] = Field(default_factory=dict)
     projection_hash: str = Field(min_length=1)
+
+
+class GovernmentDroughtAdvisoryIntentV1(StrictGameplayModel):
+    """Caller intent for the fixed Government drought-advisory row."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    weather_event_id: str = Field(min_length=1)
+    expected_ecology_revision: int = Field(ge=1)
+    expected_region_revision: int = Field(ge=0)
+    expected_government_revision: int = Field(ge=0)
+    command_id: str = Field(min_length=1)
+    idempotency_key: str = Field(min_length=1)
+    causation_id: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+    submitted_at: str = Field(min_length=1)
+
+
+class GovernmentDroughtAssessmentAcknowledgmentIntentV1(StrictGameplayModel):
+    """Caller request for the fixed certificate-to-Government acknowledgment row."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    certificate_event_id: str = Field(min_length=1)
+    expected_certificate_revision: int = Field(ge=1)
+    expected_ownership_revision: int = Field(ge=1)
+    expected_contract_revision: int = Field(ge=1)
+    expected_advisory_revision: int = Field(ge=1)
+    expected_government_revision: int = Field(ge=1)
+    command_id: str = Field(min_length=1)
+    idempotency_key: str = Field(min_length=1)
+    causation_id: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+    submitted_at: str = Field(min_length=1)
+
+
+class GovernmentPublicProjectExecutionAcknowledgmentIntentV1(StrictGameplayModel):
+    """Caller request for the exact INF-4AJ execution acknowledgment row."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    execution_event_id: str = Field(min_length=1)
+    expected_execution_revision: int = Field(ge=1)
+    expected_execution_stream_revision: int = Field(ge=1)
+    expected_government_revision: int = Field(ge=0)
+    command_id: str = Field(min_length=1)
+    idempotency_key: str = Field(min_length=1)
+    causation_id: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+    submitted_at: str = Field(min_length=1)
+
+
+class GovernmentDroughtAdvisoryView(StrictGameplayModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    jurisdiction_ref: str = Field(min_length=1)
+    advisory_refs: tuple[str, ...] = ()
+    source_revision_vector: dict[str, int] = Field(default_factory=dict)
+    advisory_source_vectors: dict[str, dict[str, int]] = Field(default_factory=dict)
+    projection_hash: str = Field(min_length=1)
+
+
+class GovernmentDroughtAssessmentAcknowledgmentView(StrictGameplayModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    jurisdiction_ref: str = Field(min_length=1)
+    acknowledgment_refs: tuple[str, ...] = ()
+    source_revision_vector: dict[str, int] = Field(default_factory=dict)
+    projection_hash: str = Field(min_length=1)
+
+
+class GovernmentPublicProjectExecutionAcknowledgmentView(StrictGameplayModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    jurisdiction_ref: str = Field(min_length=1)
+    acknowledgment_refs: tuple[str, ...] = ()
+    source_revision_vector: dict[str, int] = Field(default_factory=dict)
+    projection_hash: str = Field(min_length=1)
+
+
+@dataclass(frozen=True)
+class GovernmentPublicWorkshopNoticeView:
+    jurisdiction_ref: str
+    notice_refs: tuple[str, ...]
+    notices: tuple[Mapping[str, object], ...]
+    source_revision_vector: Mapping[str, int]
+    projection_hash: str
 
 
 class BranchScenarioReceipt(StrictGameplayModel):
@@ -408,6 +544,7 @@ class BranchInspectionRemediationProposal:
 class GovernmentAuthority:
     _PRINCIPAL = "actor_gameplay.government_domain"
     _BRANCH_STREAM_PREFIX = "gameplay:government_branch:"
+    _MUNICIPAL_ACK_POLICY = "policy:government-drought-assessment-acknowledgment@1"
 
     def __init__(self, *, store: GameplayEventStore) -> None:
         self._store = store
@@ -511,6 +648,512 @@ class GovernmentAuthority:
         )
 
     @staticmethod
+    def drought_advisory_stream_id(*, jurisdiction_ref: str) -> str:
+        return f"gameplay:government:advisory:{jurisdiction_ref}"
+
+    def issue_drought_advisory(
+        self, intent: GovernmentDroughtAdvisoryIntentV1
+    ) -> AppendBatchResult:
+        command_id = intent.command_id
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, intent.idempotency_key)
+        if existing is not None:
+            if len(existing.committed_event_ids) != 1:
+                return self._rejected_append(command_id, "idempotency_key_reused")
+            prior = self._store.get_event(existing.committed_event_ids[0])
+            if (
+                prior.event_type == "gameplay.government.drought_advisory_issued"
+                and prior.payload.get("weather_event_id") == intent.weather_event_id
+                and prior.causation_id == intent.causation_id
+                and prior.correlation_id == intent.correlation_id
+            ):
+                return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._rejected_append(command_id, "idempotency_key_reused")
+        try:
+            weather_event = self._store.get_event(intent.weather_event_id)
+        except KeyError:
+            return self._rejected_append(command_id, "government_drought_advisory_source_missing")
+        payload = weather_event.payload
+        source_region_ref = payload.get("source_region_ref")
+        target_region_ref = payload.get("target_region_ref")
+        if (
+            weather_event.event_type != "gameplay.ecology.weather_front.propagated"
+            or payload.get("weather_ref") != "weather:drought"
+            or not isinstance(source_region_ref, str)
+            or not source_region_ref
+            or not isinstance(target_region_ref, str)
+            or not target_region_ref
+            or weather_event.stream_id != f"gameplay:ecology:{source_region_ref}"
+            or weather_event.stream_revision != intent.expected_ecology_revision
+        ):
+            return self._rejected_append(command_id, "government_drought_advisory_source_invalid")
+        if weather_event.visibility_policy != "project":
+            return self._rejected_append(command_id, "government_drought_advisory_source_private")
+        if self._store.get_stream_head(weather_event.stream_id) != intent.expected_ecology_revision:
+            return self._rejected_append(command_id, "government_drought_advisory_source_revision_conflict")
+        target_region_revision = payload.get("target_region_revision")
+        if (
+            not isinstance(target_region_revision, int)
+            or isinstance(target_region_revision, bool)
+            or target_region_revision != intent.expected_region_revision
+        ):
+            return self._rejected_append(command_id, "government_drought_advisory_region_revision_conflict")
+        region_stream = f"gameplay:ecology:{target_region_ref}"
+        region_event = next(
+            (
+                event
+                for event in reversed(self._store.read_stream(region_stream))
+                if event.event_type == "gameplay.ecology.region.recorded"
+                and event.visibility_policy == "project"
+                and event.payload.get("record_ref") == target_region_ref
+            ),
+            None,
+        )
+        region_record = region_event.payload.get("record") if region_event is not None else None
+        if not isinstance(region_record, dict):
+            return self._rejected_append(command_id, "government_drought_advisory_region_missing")
+        jurisdiction_ref = region_record.get("jurisdiction_ref")
+        region_revision = region_record.get("revision")
+        if (
+            not isinstance(jurisdiction_ref, str)
+            or not jurisdiction_ref
+            or not isinstance(region_revision, int)
+            or isinstance(region_revision, bool)
+            or region_revision != intent.expected_region_revision
+        ):
+            return self._rejected_append(command_id, "government_drought_advisory_region_revision_conflict")
+        stream_id = self.drought_advisory_stream_id(jurisdiction_ref=jurisdiction_ref)
+        canonical_key = (
+            f"government:drought-advisory:{intent.weather_event_id}:{intent.expected_ecology_revision}:"
+            f"{target_region_ref}:{intent.expected_region_revision}:{jurisdiction_ref}:"
+            f"{intent.expected_government_revision}:descriptor:government-drought-advisory@1"
+        )
+        if intent.idempotency_key != canonical_key:
+            return self._rejected_append(command_id, "government_drought_advisory_idempotency_key_invalid")
+        if self._store.get_stream_head(stream_id) != intent.expected_government_revision:
+            return self._rejected_append(command_id, "revision_conflict")
+        if any(
+            event.event_type == "gameplay.government.drought_advisory_issued"
+            and event.payload.get("weather_event_id") == intent.weather_event_id
+            for event in self._store.read_stream(stream_id)
+        ):
+            return self._rejected_append(command_id, "government_drought_advisory_already_issued")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:weather-front-government-drought-advisory@1",
+                contract_kind="ecology_consumer",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(stream_id,),
+                event_types=("gameplay.government.drought_advisory_issued",),
+                projection_scope="project",
+            )
+        except GovernedAuthorityContractError as error:
+            return self._rejected_append(command_id, str(error))
+        advisory_ref = f"advisory:drought:{jurisdiction_ref}:{intent.weather_event_id}"
+        region_stream_head = self._store.get_stream_head(region_stream)
+        command = GameplayCommandEnvelope(
+            command_id=command_id,
+            command_type="gameplay.government.issue_drought_advisory",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=None,
+            project_ref=None,
+            transaction_id=f"transaction:{command_id}",
+            idempotency_key=intent.idempotency_key,
+            expected_revisions={stream_id: intent.expected_government_revision},
+            read_set_revisions={weather_event.stream_id: intent.expected_ecology_revision, region_stream: region_stream_head},
+            causation_id=intent.causation_id,
+            correlation_id=intent.correlation_id,
+            source_ref=intent.weather_event_id,
+            submitted_at=intent.submitted_at,
+            pinned_revisions={
+                "ecology_weather": intent.expected_ecology_revision,
+                "ecology_region": intent.expected_region_revision,
+                "ecology_region_stream": region_stream_head,
+                "government_advisory": intent.expected_government_revision,
+            },
+            payload={
+                "stream_ref": stream_id,
+                "event_type": "gameplay.government.drought_advisory_issued",
+                "visibility_policy": "project",
+                "advisory_ref": advisory_ref,
+                "jurisdiction_ref": jurisdiction_ref,
+                "target_region_ref": target_region_ref,
+                "target_region_revision": intent.expected_region_revision,
+                "weather_event_id": intent.weather_event_id,
+                "ecology_stream_id": weather_event.stream_id,
+                "ecology_event_revision": intent.expected_ecology_revision,
+                "weather_ref": "weather:drought",
+                "expected_government_revision": intent.expected_government_revision,
+                "descriptor_ref": "descriptor:government-drought-advisory@1",
+                "descriptor_revision": "descriptor:government-drought-advisory@1",
+                "catalog_ref": "inf:weather-front-government-drought-advisory@1",
+                "policy_ref": "policy:government-drought-advisory@1",
+                "policy_revision": "policy:government-drought-advisory@1",
+            },
+        )
+        batch = EventStoreSettlementPlan.from_command_envelope(command).to_atomic_event_batch()
+        event = batch.events[0]
+        batch = batch.model_copy(
+            update={
+                "outbox_entries": [
+                    GameplayOutboxEntry(
+                        outbox_id=f"outbox:{event.event_id}",
+                        transaction_id=batch.transaction_id,
+                        event_id=event.event_id,
+                        global_sequence=0,
+                        topic="world.government.drought_advisory_projection",
+                        audience="project",
+                        payload_projection={
+                            "advisory_ref": advisory_ref,
+                            "jurisdiction_ref": jurisdiction_ref,
+                            "target_region_ref": target_region_ref,
+                            "event_type": event.event_type,
+                        },
+                    )
+                ]
+            },
+            deep=True,
+        )
+        return self._store.append_batch(batch)
+
+    def drought_advisory_view_for(
+        self, *, jurisdiction_ref: str, checkpoint_at: int | None = None
+    ) -> GovernmentDroughtAdvisoryView:
+        stream_id = self.drought_advisory_stream_id(jurisdiction_ref=jurisdiction_ref)
+        events = self._store.read_stream(stream_id)
+        checkpoint_at = 0 if checkpoint_at is None else checkpoint_at
+        if checkpoint_at < 0 or checkpoint_at > len(events):
+            raise ValueError("government_drought_advisory_checkpoint_out_of_range")
+
+        def apply(
+            state: tuple[tuple[str, str, int, int], ...], event: object
+        ) -> tuple[tuple[str, str, int, int], ...]:
+            payload = event.payload
+            if event.event_type == "gameplay.government.drought_assessment_acknowledged":
+                if (
+                    event.visibility_policy != "authority_only"
+                    or payload.get("jurisdiction_ref") != jurisdiction_ref
+                ):
+                    raise ValueError("government_drought_advisory_projection_invalid")
+                return state
+            ecology_stream_id = payload.get("ecology_stream_id")
+            ecology_event_revision = payload.get("ecology_event_revision")
+            if (
+                event.event_type != "gameplay.government.drought_advisory_issued"
+                or event.visibility_policy != "project"
+                or payload.get("jurisdiction_ref") != jurisdiction_ref
+                or payload.get("weather_ref") != "weather:drought"
+                or not isinstance(payload.get("advisory_ref"), str)
+                or not payload.get("advisory_ref")
+                or not isinstance(ecology_stream_id, str)
+                or not ecology_stream_id
+                or not isinstance(ecology_event_revision, int)
+                or isinstance(ecology_event_revision, bool)
+            ):
+                raise ValueError("government_drought_advisory_projection_invalid")
+            return state + (
+                (
+                    str(payload["advisory_ref"]),
+                    ecology_stream_id,
+                    ecology_event_revision,
+                    event.stream_revision,
+                ),
+            )
+
+        state: tuple[tuple[str, str, int, int], ...] = ()
+        for event in events[:checkpoint_at]:
+            state = apply(state, event)
+        for event in events[checkpoint_at:]:
+            state = apply(state, event)
+        advisory_refs = tuple(item[0] for item in state)
+        revisions = {
+            stream_id: max((government_revision for *_prefix, government_revision in state), default=0)
+        }
+        if revisions[stream_id] == 0:
+            revisions = {}
+        advisory_source_vectors = {
+            advisory_ref: {ecology_stream_id: ecology_revision, stream_id: government_revision}
+            for advisory_ref, ecology_stream_id, ecology_revision, government_revision in state
+        }
+        for _advisory_ref, ecology_stream_id, ecology_revision, _government_revision in state:
+            revisions[ecology_stream_id] = max(revisions.get(ecology_stream_id, 0), ecology_revision)
+        projection = {
+            "jurisdiction_ref": jurisdiction_ref,
+            "advisory_refs": advisory_refs,
+            "source_revision_vector": revisions,
+            "advisory_source_vectors": advisory_source_vectors,
+        }
+        return GovernmentDroughtAdvisoryView(
+            jurisdiction_ref=jurisdiction_ref,
+            advisory_refs=advisory_refs,
+            source_revision_vector=revisions,
+            advisory_source_vectors=advisory_source_vectors,
+            projection_hash="sha256:" + hashlib.sha256(
+                json.dumps(projection, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest(),
+        )
+
+    def is_project_visible_drought_advisory_event(
+        self, *, event_id: str, jurisdiction_ref: str
+    ) -> bool:
+        """Read-only fixed event check for the advisory presentation extension."""
+
+        try:
+            event = self._store.get_event(event_id)
+        except KeyError:
+            return False
+        return (
+            event.event_type == "gameplay.government.drought_advisory_issued"
+            and event.visibility_policy == "project"
+            and event.payload.get("jurisdiction_ref") == jurisdiction_ref
+            and event.payload.get("weather_ref") == "weather:drought"
+        )
+
+    def drought_advisory_receipt_for(
+        self, *, result: AppendBatchResult, scope: Literal["project"]
+    ) -> AppendBatchResult:
+        if scope != "project":
+            raise ValueError("government_drought_advisory_receipt_scope_denied")
+        if not result.committed or len(result.committed_event_ids) != 1:
+            raise ValueError("government_drought_advisory_receipt_missing")
+        event = self._store.get_event(result.committed_event_ids[0])
+        if event.event_type != "gameplay.government.drought_advisory_issued" or event.visibility_policy != "project":
+            raise ValueError("government_drought_advisory_receipt_invalid")
+        return result
+
+    def acknowledge_municipal_drought_assessment_certificate(
+        self, intent: GovernmentDroughtAssessmentAcknowledgmentIntentV1
+    ) -> AppendBatchResult:
+        request_digest = hashlib.sha256(
+            json.dumps(intent.model_dump(mode="json"), sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, intent.idempotency_key)
+        if existing is not None:
+            if len(existing.committed_event_ids) == 1:
+                prior = self._store.get_event(existing.committed_event_ids[0])
+                if (
+                    prior.event_type == "gameplay.government.drought_assessment_acknowledged"
+                    and prior.command_id == intent.command_id
+                    and prior.causation_id == intent.causation_id
+                    and prior.correlation_id == intent.correlation_id
+                    and prior.payload.get("certificate_event_id") == intent.certificate_event_id
+                    and prior.payload.get("acknowledgment_request_digest") == request_digest
+                ):
+                    return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._rejected_append(intent.command_id, "idempotency_key_reused")
+        try:
+            certificate = self._store.get_event(intent.certificate_event_id)
+        except KeyError:
+            return self._rejected_append(intent.command_id, "government_drought_acknowledgment_certificate_missing")
+        certificate_payload = certificate.payload
+        contract_id = certificate_payload.get("contract_id")
+        advisory_event_id = certificate_payload.get("advisory_event_id")
+        if (
+            certificate.event_type != "gameplay.ownership.right_granted"
+            or certificate.stream_id != "gameplay:ownership"
+            or certificate.stream_revision != intent.expected_certificate_revision
+            or certificate.visibility_policy != "authority_only"
+            or not isinstance(contract_id, str)
+            or not isinstance(advisory_event_id, str)
+            or not contract_id
+            or not advisory_event_id
+            or certificate_payload.get("holder_ref") != "organization:district-works"
+            or certificate_payload.get("asset_ref")
+            != f"asset:municipal-drought-assessment-certificate:{contract_id}"
+            or certificate_payload.get("right_id")
+            != f"right:municipal-drought-assessment-certificate:{contract_id}"
+            or self._store.get_stream_head("gameplay:ownership") != intent.expected_ownership_revision
+        ):
+            return self._rejected_append(intent.command_id, "government_drought_acknowledgment_certificate_invalid")
+        jurisdiction_ref = None
+        try:
+            advisory = self._store.get_event(advisory_event_id)
+        except KeyError:
+            return self._rejected_append(intent.command_id, "government_drought_acknowledgment_advisory_missing")
+        if (
+            advisory.event_type != "gameplay.government.drought_advisory_issued"
+            or advisory.visibility_policy != "project"
+            or not isinstance(advisory.payload.get("jurisdiction_ref"), str)
+            or not advisory.payload.get("jurisdiction_ref")
+            or advisory.stream_revision != intent.expected_advisory_revision
+        ):
+            return self._rejected_append(intent.command_id, "government_drought_acknowledgment_advisory_invalid")
+        jurisdiction_ref = str(advisory.payload["jurisdiction_ref"])
+        advisory_stream = self.drought_advisory_stream_id(jurisdiction_ref=jurisdiction_ref)
+        if (
+            advisory.stream_id != advisory_stream
+            or self._store.get_stream_head(advisory_stream) != intent.expected_government_revision
+        ):
+            return self._rejected_append(intent.command_id, "government_drought_acknowledgment_revision_conflict")
+        if self._store.get_stream_head("gameplay:contracts") != intent.expected_contract_revision:
+            return self._rejected_append(intent.command_id, "government_drought_acknowledgment_contract_revision_conflict")
+        contracts = ContractProjector().rebuild(self._store.read_stream("gameplay:contracts"))
+        contract = contracts.contracts.get(contract_id)
+        if (
+            contract is None
+            or contract.contract_type != "simple_service"
+            or contract.terms_ref != "service:municipal-drought-assessment@1"
+            or contract.party_refs != (
+                "organization:municipal-assessment-office",
+                "organization:district-works",
+            )
+            or contract.completion_evidence_kind != "evidence:municipal-drought-assessment@1"
+            or contract.completion_evidence_ref is None
+            or contract.status != "fulfilled"
+            or contract.source_event_id != certificate_payload.get("contract_created_event_id", contract.source_event_id)
+        ):
+            return self._rejected_append(intent.command_id, "government_drought_acknowledgment_contract_invalid")
+        created_candidates = [
+            event
+            for event in self._store.read_stream("gameplay:contracts")
+            if event.event_type == "gameplay.contract.record_created"
+            and event.payload.get("contract_id") == contract_id
+        ]
+        if len(created_candidates) != 1:
+            return self._rejected_append(intent.command_id, "government_drought_acknowledgment_contract_source_missing")
+        created_contract = created_candidates[0]
+        if (
+            created_contract.event_type != "gameplay.contract.record_created"
+            or created_contract.visibility_policy != "authority_only"
+            or created_contract.payload.get("contract_id") != contract_id
+            or created_contract.payload.get("advisory_event_id") != advisory_event_id
+            or created_contract.payload.get("jurisdiction_ref") != jurisdiction_ref
+            or created_contract.payload.get("terms_ref") != "service:municipal-drought-assessment@1"
+        ):
+            return self._rejected_append(intent.command_id, "government_drought_acknowledgment_contract_source_invalid")
+        canonical_key = (
+            "government:drought-assessment-acknowledgment:"
+            f"{intent.certificate_event_id}:{intent.expected_certificate_revision}:"
+            f"{intent.expected_contract_revision}:{intent.expected_advisory_revision}:"
+            f"{intent.expected_government_revision}:v1"
+        )
+        if intent.idempotency_key != canonical_key:
+            return self._rejected_append(intent.command_id, "government_drought_acknowledgment_idempotency_key_invalid")
+        if any(
+            event.event_type == "gameplay.government.drought_assessment_acknowledged"
+            and event.payload.get("certificate_event_id") == intent.certificate_event_id
+            for event in self._store.read_stream(advisory_stream)
+        ):
+            return self._rejected_append(intent.command_id, "government_drought_acknowledgment_already_recorded")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:ownership-certificate-government-drought-assessment-acknowledgment@1",
+                contract_kind="settlement",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(advisory_stream,),
+                event_types=("gameplay.government.drought_assessment_acknowledged",),
+                projection_scope="authority_only",
+            )
+        except GovernedAuthorityContractError as error:
+            return self._rejected_append(intent.command_id, str(error))
+        acknowledgment_ref = f"acknowledgment:municipal-drought-assessment:{certificate.event_id}"
+        command = GameplayCommandEnvelope(
+            command_id=intent.command_id,
+            command_type="gameplay.government.acknowledge_municipal_drought_assessment_certificate",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=None,
+            project_ref=None,
+            transaction_id=f"transaction:{intent.command_id}",
+            idempotency_key=intent.idempotency_key,
+            expected_revisions={advisory_stream: intent.expected_government_revision},
+            read_set_revisions={
+                "gameplay:ownership": intent.expected_ownership_revision,
+                "gameplay:contracts": intent.expected_contract_revision,
+            },
+            causation_id=intent.causation_id,
+            correlation_id=intent.correlation_id,
+            source_ref=intent.certificate_event_id,
+            submitted_at=intent.submitted_at,
+            pinned_revisions={
+                "certificate": intent.expected_certificate_revision,
+                "ownership": intent.expected_ownership_revision,
+                "contract": intent.expected_contract_revision,
+                "advisory": intent.expected_advisory_revision,
+                "government": intent.expected_government_revision,
+            },
+            payload={
+                "stream_ref": advisory_stream,
+                "event_type": "gameplay.government.drought_assessment_acknowledged",
+                "visibility_policy": "authority_only",
+                "acknowledgment_ref": acknowledgment_ref,
+                "certificate_event_id": intent.certificate_event_id,
+                "certificate_revision": intent.expected_certificate_revision,
+                "ownership_revision": intent.expected_ownership_revision,
+                "right_id": certificate_payload["right_id"],
+                "asset_ref": certificate_payload["asset_ref"],
+                "contract_id": contract_id,
+                "contract_revision": intent.expected_contract_revision,
+                "advisory_event_id": advisory_event_id,
+                "advisory_ref": advisory.payload.get("advisory_ref"),
+                "advisory_revision": intent.expected_advisory_revision,
+                "jurisdiction_ref": jurisdiction_ref,
+                "government_revision": intent.expected_government_revision,
+                "policy_ref": self._MUNICIPAL_ACK_POLICY,
+                "descriptor_ref": "descriptor:government-drought-assessment-acknowledgment@1",
+                "descriptor_revision": "descriptor:government-drought-assessment-acknowledgment@1",
+                "catalog_ref": "inf:ownership-certificate-government-drought-assessment-acknowledgment@1",
+                "acknowledgment_request_digest": request_digest,
+            },
+        )
+        return self._store.append_batch(EventStoreSettlementPlan.from_command_envelope(command).to_atomic_event_batch())
+
+    def drought_assessment_acknowledgment_view_for(
+        self, *, jurisdiction_ref: str, checkpoint_at: int | None = None
+    ) -> GovernmentDroughtAssessmentAcknowledgmentView:
+        stream_id = self.drought_advisory_stream_id(jurisdiction_ref=jurisdiction_ref)
+        events = self._store.read_stream(stream_id)
+        checkpoint_at = 0 if checkpoint_at is None else checkpoint_at
+        if checkpoint_at < 0:
+            raise ValueError("government_drought_acknowledgment_checkpoint_out_of_range")
+        state: list[str] = []
+        revisions: dict[str, int] = {}
+
+        def apply(event: object) -> None:
+            if event.event_type != "gameplay.government.drought_assessment_acknowledged":
+                return
+            payload = event.payload
+            ownership_revision = payload.get("ownership_revision")
+            contract_revision = payload.get("contract_revision")
+            advisory_revision = payload.get("advisory_revision")
+            if (
+                event.visibility_policy != "authority_only"
+                or payload.get("jurisdiction_ref") != jurisdiction_ref
+                or not isinstance(payload.get("acknowledgment_ref"), str)
+                or not payload.get("acknowledgment_ref")
+                or not isinstance(ownership_revision, int)
+                or isinstance(ownership_revision, bool)
+                or not isinstance(contract_revision, int)
+                or isinstance(contract_revision, bool)
+                or not isinstance(advisory_revision, int)
+                or isinstance(advisory_revision, bool)
+            ):
+                raise ValueError("government_drought_acknowledgment_projection_invalid")
+            state.append(str(payload["acknowledgment_ref"]))
+            revisions["gameplay:ownership"] = max(revisions.get("gameplay:ownership", 0), ownership_revision)
+            revisions["gameplay:contracts"] = max(revisions.get("gameplay:contracts", 0), contract_revision)
+            revisions[stream_id] = max(revisions.get(stream_id, 0), event.stream_revision)
+
+        for event in (event for event in events if event.global_sequence <= checkpoint_at):
+            apply(event)
+        for event in (event for event in events if event.global_sequence > checkpoint_at):
+            apply(event)
+        refs = tuple(state)
+        projection = {
+            "jurisdiction_ref": jurisdiction_ref,
+            "acknowledgment_refs": refs,
+            "source_revision_vector": revisions,
+        }
+        return GovernmentDroughtAssessmentAcknowledgmentView(
+            jurisdiction_ref=jurisdiction_ref,
+            acknowledgment_refs=refs,
+            source_revision_vector=projection["source_revision_vector"],
+            projection_hash="sha256:" + hashlib.sha256(
+                json.dumps(projection, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest(),
+        )
+
+    @staticmethod
     def _apply_commercial_inspection_policy_event(
         active: dict[str, str], revision: int, event, organization_ref: str
     ) -> tuple[dict[str, str], int]:
@@ -581,6 +1224,548 @@ class GovernmentAuthority:
             command_id=command_id,
             idempotency_status="rejected",
             failure=GameplayFailure(error_code=reason, message=reason, failed_stage="government_policy_admission"),
+        )
+
+    def record_public_workshop_notice(
+        self,
+        *,
+        activity_event_id: str,
+        expected_activity_revision: int,
+        expected_government_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        submitted_at: str,
+    ) -> AppendBatchResult:
+        """Publish one project notice for the exact completed workshop activity."""
+        if not activity_event_id or expected_activity_revision < 1 or expected_government_revision < 0:
+            return self._rejected_append(command_id, "public_workshop_notice_reference_invalid")
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            prior = next((event for event in self._store.read_events() if event.event_id in set(existing.committed_event_ids)), None)
+            if prior is not None and prior.event_type == "gameplay.government.public_workshop_notice_recorded":
+                if prior.payload.get("source_activity_event_id") == activity_event_id and prior.causation_id == causation_id and prior.correlation_id == correlation_id:
+                    return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._rejected_append(command_id, "public_workshop_notice_idempotency_key_reused")
+        try:
+            activity = self._store.get_event(activity_event_id)
+        except KeyError:
+            return self._rejected_append(command_id, "public_workshop_notice_source_missing")
+        if (
+            activity.event_type != "gameplay.organization.public_workshop_activity_recorded"
+            or activity.visibility_policy != "project"
+            or activity.stream_revision != expected_activity_revision
+            or self._store.get_stream_head(activity.stream_id) != expected_activity_revision
+            or activity.payload.get("activity_kind") != "public_workshop_session"
+            or activity.payload.get("status") != "completed"
+        ):
+            if activity.visibility_policy != "project":
+                return self._rejected_append(command_id, "public_workshop_notice_source_private")
+            return self._rejected_append(command_id, "public_workshop_notice_source_invalid")
+        organization_ref = activity.payload.get("organization_ref")
+        facility_ref = activity.payload.get("facility_ref")
+        project_ref = activity.payload.get("project_ref")
+        if (
+            organization_ref != "organization:municipal-assessment-office"
+            or not isinstance(facility_ref, str)
+            or not facility_ref
+            or not isinstance(project_ref, str)
+            or not project_ref
+        ):
+            return self._rejected_append(command_id, "public_workshop_notice_binding_invalid")
+        contracts = ContractProjector().rebuild(self._store.read_stream("gameplay:contracts"))
+        created_event_id = activity.payload.get("source_contract_created_event_id")
+        fulfilled_id = activity.payload.get("source_contract_fulfilled_event_id")
+        if not isinstance(created_event_id, str) or not isinstance(fulfilled_id, str):
+            return self._rejected_append(command_id, "public_workshop_notice_source_invalid")
+        try:
+            created = self._store.get_event(created_event_id)
+            fulfilled = self._store.get_event(fulfilled_id)
+        except KeyError:
+            return self._rejected_append(command_id, "public_workshop_notice_source_invalid")
+        contract_id = created.payload.get("contract_id")
+        acquisition_event_id = created.payload.get("acquisition_event_id")
+        if (
+            created.event_type != "gameplay.contract.record_created"
+            or created.visibility_policy != "authority_only"
+            or not isinstance(contract_id, str)
+            or not contract_id
+            or not isinstance(acquisition_event_id, str)
+            or not acquisition_event_id
+        ):
+            return self._rejected_append(command_id, "public_workshop_notice_source_invalid")
+        contract_record = next(
+            (record for record in contracts.contracts.values() if record.contract_id == contract_id),
+            None,
+        )
+        if (
+            fulfilled.event_type != "gameplay.contract.record_fulfilled"
+            or fulfilled.visibility_policy != "authority_only"
+            or fulfilled.payload.get("contract_created_event_id") != created_event_id
+            or fulfilled.stream_revision != activity.payload.get("source_contract_fulfilled_revision")
+            or contract_record is None
+            or contract_record.status != "fulfilled"
+            or contract_record.terms_ref != "service:industrial-facility-public-workshop-session@1"
+        ):
+            return self._rejected_append(command_id, "public_workshop_notice_source_invalid")
+        try:
+            acquisition = self._store.get_event(acquisition_event_id)
+        except KeyError:
+            return self._rejected_append(command_id, "public_workshop_notice_source_invalid")
+        jurisdiction_ref = acquisition.payload.get("jurisdiction_ref")
+        if (
+            acquisition.event_type != "gameplay.construction_production.facility_acquired"
+            or acquisition.visibility_policy != "project"
+            or acquisition.payload.get("facility_ref") != facility_ref
+            or acquisition.payload.get("plot_ref") != project_ref
+            or not isinstance(jurisdiction_ref, str)
+            or not jurisdiction_ref
+        ):
+            return self._rejected_append(command_id, "public_workshop_notice_binding_invalid")
+        stream_id = f"gameplay:government:public-notice:{jurisdiction_ref}"
+        if self._store.get_stream_head(stream_id) != expected_government_revision:
+            return self._rejected_append(command_id, "public_workshop_notice_revision_conflict")
+        canonical_key = f"government:public-workshop-notice:{activity_event_id}:{expected_activity_revision}:{expected_government_revision}:v1"
+        if idempotency_key != canonical_key:
+            return self._rejected_append(command_id, "public_workshop_notice_idempotency_key_invalid")
+        if any(
+            event.event_type == "gameplay.government.public_workshop_notice_recorded"
+            and event.payload.get("source_activity_event_id") == activity_event_id
+            for event in self._store.read_stream(stream_id)
+        ):
+            return self._rejected_append(command_id, "public_workshop_notice_duplicate")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:government-public-workshop-notice@1",
+                contract_kind="contract_admission",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(stream_id,),
+                event_types=("gameplay.government.public_workshop_notice_recorded",),
+                projection_scope="project",
+            )
+        except GovernedAuthorityContractError as error:
+            return self._rejected_append(command_id, str(error))
+        notice_ref = f"notice:public-workshop-session:{activity_event_id}"
+        command = GameplayCommandEnvelope(
+            command_id=command_id,
+            command_type="gameplay.government.record_public_workshop_notice",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=None,
+            project_ref=project_ref,
+            transaction_id=f"transaction:{command_id}",
+            idempotency_key=idempotency_key,
+            expected_revisions={stream_id: expected_government_revision},
+            read_set_revisions={activity.stream_id: expected_activity_revision, "gameplay:contracts": self._store.get_stream_head("gameplay:contracts")},
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            source_ref=activity_event_id,
+            submitted_at=submitted_at,
+            pinned_revisions={
+                "activity": expected_activity_revision,
+                "government": expected_government_revision,
+                "contract": self._store.get_stream_head("gameplay:contracts"),
+            },
+            payload={
+                "stream_ref": stream_id,
+                "event_type": "gameplay.government.public_workshop_notice_recorded",
+                "visibility_policy": "project",
+                "notice_ref": notice_ref,
+                "notice_kind": "public_workshop_session_completed",
+                "status": "completed",
+                "jurisdiction_ref": jurisdiction_ref,
+                "organization_ref": organization_ref,
+                "facility_ref": facility_ref,
+                "project_ref": project_ref,
+                "source_activity_event_id": activity_event_id,
+                "source_activity_revision": expected_activity_revision,
+                "policy_revision": "policy:government-public-workshop-notice@1",
+                "descriptor_ref": "descriptor:government-public-workshop-notice@1",
+                "descriptor_revision": "descriptor:government-public-workshop-notice@1",
+            },
+        )
+        batch = EventStoreSettlementPlan.from_command_envelope(command).to_atomic_event_batch()
+        event = batch.events[0]
+        batch = batch.model_copy(
+            update={
+                "outbox_entries": [
+                    GameplayOutboxEntry(
+                        outbox_id=f"outbox:{event.event_id}",
+                        transaction_id=batch.transaction_id,
+                        event_id=event.event_id,
+                        global_sequence=0,
+                        topic="world.government.public_workshop_notice_projection",
+                        audience="project",
+                        payload_projection={
+                            "notice_ref": notice_ref,
+                            "notice_kind": "public_workshop_session_completed",
+                            "jurisdiction_ref": jurisdiction_ref,
+                            "organization_ref": organization_ref,
+                            "facility_ref": facility_ref,
+                            "project_ref": project_ref,
+                            "status": "completed",
+                        },
+                    )
+                ]
+            },
+            deep=True,
+        )
+        return self._store.append_batch(batch)
+
+    def record_public_milling_notice(
+        self,
+        *,
+        activity_event_id: str,
+        expected_activity_revision: int,
+        expected_government_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        submitted_at: str,
+    ) -> AppendBatchResult:
+        """Publish one project notice for the exact completed milling activity."""
+        if not activity_event_id or expected_activity_revision < 1 or expected_government_revision < 0:
+            return self._rejected_append(command_id, "public_milling_notice_reference_invalid")
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            prior = next((event for event in self._store.read_events() if event.event_id in set(existing.committed_event_ids)), None)
+            if prior is not None and prior.event_type == "gameplay.government.public_milling_notice_recorded" and prior.payload.get("source_activity_event_id") == activity_event_id and prior.causation_id == causation_id and prior.correlation_id == correlation_id:
+                return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._rejected_append(command_id, "public_milling_notice_idempotency_key_reused")
+        try:
+            activity = self._store.get_event(activity_event_id)
+        except KeyError:
+            return self._rejected_append(command_id, "public_milling_notice_source_missing")
+        if activity.event_type != "gameplay.organization.public_milling_activity_recorded" or activity.visibility_policy != "project" or activity.stream_revision != expected_activity_revision or self._store.get_stream_head(activity.stream_id) != expected_activity_revision or activity.payload.get("organization_ref") != "organization:district-milling-cooperative" or activity.payload.get("activity_kind") != "public_milling_session" or activity.payload.get("status") != "completed":
+            if activity.visibility_policy != "project":
+                return self._rejected_append(command_id, "public_milling_notice_source_private")
+            return self._rejected_append(command_id, "public_milling_notice_source_invalid")
+        facility_ref = activity.payload.get("facility_ref")
+        project_ref = activity.payload.get("project_ref")
+        fulfilled_id = activity.payload.get("source_contract_fulfilled_event_id")
+        created_id = activity.payload.get("source_contract_created_event_id")
+        if not isinstance(facility_ref, str) or not facility_ref or not isinstance(project_ref, str) or not project_ref or not isinstance(fulfilled_id, str) or not isinstance(created_id, str):
+            return self._rejected_append(command_id, "public_milling_notice_binding_invalid")
+        try:
+            fulfilled = self._store.get_event(fulfilled_id)
+            created = self._store.get_event(created_id)
+        except KeyError:
+            return self._rejected_append(command_id, "public_milling_notice_source_invalid")
+        if fulfilled.event_type != "gameplay.contract.record_fulfilled" or fulfilled.visibility_policy != "authority_only" or fulfilled.payload.get("contract_created_event_id") != created_id or created.event_type != "gameplay.contract.record_created" or created.visibility_policy != "authority_only" or created.payload.get("terms_ref") != "service:industrial-facility-public-milling-session@1" or created.payload.get("package_revision") != "package:industrial-facilities:v6" or created.payload.get("facility_kind") != "mill_reinforced" or created.payload.get("facility_ref") != facility_ref or created.payload.get("project_ref") != project_ref:
+            return self._rejected_append(command_id, "public_milling_notice_source_invalid")
+        acquisition_id = created.payload.get("acquisition_event_id")
+        try:
+            acquisition = self._store.get_event(str(acquisition_id))
+        except (KeyError, TypeError):
+            return self._rejected_append(command_id, "public_milling_notice_acquisition_missing")
+        jurisdiction_ref = acquisition.payload.get("jurisdiction_ref")
+        if acquisition.event_type != "gameplay.construction_production.facility_acquired" or acquisition.visibility_policy != "project" or acquisition.payload.get("facility_ref") != facility_ref or acquisition.payload.get("plot_ref") != project_ref or not isinstance(jurisdiction_ref, str) or not jurisdiction_ref:
+            return self._rejected_append(command_id, "public_milling_notice_binding_invalid")
+        stream_id = f"gameplay:government:public-notice:{jurisdiction_ref}"
+        if self._store.get_stream_head(stream_id) != expected_government_revision:
+            return self._rejected_append(command_id, "public_milling_notice_revision_conflict")
+        canonical_key = f"government:public-milling-notice:{activity_event_id}:{expected_activity_revision}:{expected_government_revision}:v1"
+        if idempotency_key != canonical_key:
+            return self._rejected_append(command_id, "public_milling_notice_idempotency_key_invalid")
+        if any(event.event_type == "gameplay.government.public_milling_notice_recorded" and event.payload.get("source_activity_event_id") == activity_event_id for event in self._store.read_stream(stream_id)):
+            return self._rejected_append(command_id, "public_milling_notice_duplicate")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(contract_ref="inf:government-public-milling-notice@1", contract_kind="contract_admission", owner_ref=self._PRINCIPAL, stream_ids=(stream_id,), event_types=("gameplay.government.public_milling_notice_recorded",), projection_scope="project")
+        except GovernedAuthorityContractError as error:
+            return self._rejected_append(command_id, str(error))
+        notice_ref = f"notice:public-milling-session:{activity_event_id}"
+        command = GameplayCommandEnvelope(command_id=command_id, command_type="gameplay.government.record_public_milling_notice", command_version=1, principal_ref=self._PRINCIPAL, actor_ref=None, project_ref=project_ref, transaction_id=f"transaction:{command_id}", idempotency_key=idempotency_key, expected_revisions={stream_id: expected_government_revision}, read_set_revisions={activity.stream_id: expected_activity_revision, "gameplay:contracts": self._store.get_stream_head("gameplay:contracts")}, causation_id=causation_id, correlation_id=correlation_id, source_ref=activity_event_id, submitted_at=submitted_at, pinned_revisions={"activity": expected_activity_revision, "government": expected_government_revision, "contract_created": created.stream_revision, "contract_fulfilled": fulfilled.stream_revision, "acquisition": acquisition.stream_revision}, payload={"stream_ref": stream_id, "event_type": "gameplay.government.public_milling_notice_recorded", "visibility_policy": "project", "notice_ref": notice_ref, "notice_kind": "public_milling_session_completed", "status": "completed", "jurisdiction_ref": jurisdiction_ref, "organization_ref": "organization:district-milling-cooperative", "facility_ref": facility_ref, "project_ref": project_ref, "source_activity_event_id": activity_event_id, "source_activity_revision": expected_activity_revision, "source_contract_created_event_id": created.event_id, "source_contract_created_revision": created.stream_revision, "source_contract_fulfilled_event_id": fulfilled.event_id, "source_contract_fulfilled_revision": fulfilled.stream_revision, "policy_revision": "policy:government-public-milling-notice@1", "descriptor_ref": "descriptor:government-public-milling-notice@1", "descriptor_revision": "descriptor:government-public-milling-notice@1", "catalog_ref": "inf:government-public-milling-notice@1"})
+        batch = EventStoreSettlementPlan.from_command_envelope(command).to_atomic_event_batch()
+        event = batch.events[0]
+        batch = batch.model_copy(update={"outbox_entries": [GameplayOutboxEntry(outbox_id=f"outbox:{event.event_id}", transaction_id=batch.transaction_id, event_id=event.event_id, global_sequence=0, topic="world.government.public_milling_notice_projection", audience="project", payload_projection={"notice_ref": notice_ref, "notice_kind": "public_milling_session_completed", "jurisdiction_ref": jurisdiction_ref, "organization_ref": "organization:district-milling-cooperative", "facility_ref": facility_ref, "project_ref": project_ref, "status": "completed"})]}, deep=True)
+        return self._store.append_batch(batch)
+
+    def public_milling_notice_view_for(self, *, jurisdiction_ref: str, checkpoint_at: int | None = None) -> GovernmentPublicWorkshopNoticeView:
+        if not jurisdiction_ref or checkpoint_at is not None and checkpoint_at < 0:
+            raise ValueError("public_milling_notice_scope_invalid")
+        stream_id = f"gameplay:government:public-notice:{jurisdiction_ref}"
+        events = sorted(self._store.read_stream(stream_id), key=lambda value: (value.global_sequence, value.event_id))
+        def valid(event: object) -> bool:
+            payload = event.payload
+            return (
+                event.event_type == "gameplay.government.public_milling_notice_recorded"
+                and event.visibility_policy == "project"
+                and event.stream_id == stream_id
+                and payload.get("notice_kind") == "public_milling_session_completed"
+                and payload.get("status") == "completed"
+                and payload.get("jurisdiction_ref") == jurisdiction_ref
+                and payload.get("organization_ref") == "organization:district-milling-cooperative"
+                and payload.get("policy_revision") == "policy:government-public-milling-notice@1"
+                and payload.get("descriptor_ref") == "descriptor:government-public-milling-notice@1"
+                and payload.get("descriptor_revision") == "descriptor:government-public-milling-notice@1"
+                and payload.get("catalog_ref") == "inf:government-public-milling-notice@1"
+                and all(isinstance(payload.get(key), str) and payload.get(key) for key in ("source_activity_event_id", "source_contract_created_event_id", "source_contract_fulfilled_event_id", "facility_ref", "project_ref"))
+            )
+        for event in events:
+            if event.event_type == "gameplay.government.public_milling_notice_recorded" and not valid(event):
+                raise ValueError("public_milling_notice_replay_invalid")
+        notices = tuple(dict(event.payload) for event in events if valid(event))
+        refs = tuple(str(item["notice_ref"]) for item in notices)
+        vector = {stream_id: self._store.get_stream_head(stream_id)}
+        projection = {"jurisdiction_ref": jurisdiction_ref, "notice_refs": refs, "notices": notices, "source_revision_vector": vector}
+        return GovernmentPublicWorkshopNoticeView(jurisdiction_ref=jurisdiction_ref, notice_refs=refs, notices=notices, source_revision_vector=vector, projection_hash="sha256:" + hashlib.sha256(json.dumps(projection, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest())
+
+    def public_workshop_notice_view_for(
+        self, *, jurisdiction_ref: str, checkpoint_at: int | None = None
+    ) -> GovernmentPublicWorkshopNoticeView:
+        if not jurisdiction_ref:
+            raise ValueError("public_workshop_notice_jurisdiction_invalid")
+        stream_id = f"gameplay:government:public-notice:{jurisdiction_ref}"
+        events = sorted(self._store.read_stream(stream_id), key=lambda value: (value.global_sequence, value.event_id))
+        if checkpoint_at is not None and checkpoint_at < 0:
+            raise ValueError("public_workshop_notice_checkpoint_invalid")
+        boundary = checkpoint_at
+
+        def reduce_rows(rows: list[object], initial: tuple[Mapping[str, object], ...] = ()) -> tuple[Mapping[str, object], ...]:
+            state = list(initial)
+            for event in rows:
+                if (
+                    event.event_type == "gameplay.government.public_workshop_notice_recorded"
+                    and event.visibility_policy == "project"
+                    and event.payload.get("jurisdiction_ref") == jurisdiction_ref
+                ):
+                    state.append(dict(event.payload))
+            return tuple(state)
+
+        if boundary is None:
+            notices = reduce_rows(events)
+            selected = events
+        else:
+            prefix = [event for event in events if event.global_sequence <= boundary]
+            tail = [event for event in events if event.global_sequence > boundary]
+            checkpoint_state = reduce_rows(prefix)
+            notices = reduce_rows(tail, checkpoint_state)
+            selected = events
+        notice_refs = tuple(str(item["notice_ref"]) for item in notices)
+        source_revision_vector = {stream_id: max((event.stream_revision for event in selected), default=0)}
+        projection = {
+            "jurisdiction_ref": jurisdiction_ref,
+            "notice_refs": notice_refs,
+            "notices": notices,
+            "source_revision_vector": source_revision_vector,
+        }
+        return GovernmentPublicWorkshopNoticeView(
+            jurisdiction_ref=jurisdiction_ref,
+            notice_refs=notice_refs,
+            notices=notices,
+            source_revision_vector=source_revision_vector,
+            projection_hash="sha256:" + hashlib.sha256(
+                json.dumps(projection, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+            ).hexdigest(),
+        )
+
+    def acknowledge_public_project_execution(
+        self, intent: GovernmentPublicProjectExecutionAcknowledgmentIntentV1
+    ) -> AppendBatchResult:
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, intent.idempotency_key)
+        if existing is not None:
+            if len(existing.committed_event_ids) == 1:
+                prior = self._store.get_event(existing.committed_event_ids[0])
+                if (
+                    prior.event_type == "gameplay.government.public_project_execution_acknowledged"
+                    and prior.payload.get("source_execution_event_id") == intent.execution_event_id
+                    and prior.payload.get("source_execution_revision") == intent.expected_execution_revision
+                    and prior.causation_id == intent.causation_id
+                    and prior.correlation_id == intent.correlation_id
+                ):
+                    return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._rejected_append(intent.command_id, "public_project_execution_acknowledgment_idempotency_key_reused")
+        try:
+            execution = self._store.get_event(intent.execution_event_id)
+        except KeyError:
+            return self._rejected_append(intent.command_id, "public_project_execution_acknowledgment_source_missing")
+        if (
+            execution.event_type != "gameplay.organization.public_project_execution_recorded"
+            or execution.visibility_policy != "project"
+            or execution.stream_revision != intent.expected_execution_revision
+            or execution.payload.get("status") != "funded_and_executed"
+            or execution.payload.get("organization_ref") != "organization:municipal-assessment-office"
+        ):
+            return self._rejected_append(intent.command_id, "public_project_execution_acknowledgment_source_invalid")
+        if self._store.get_stream_head(execution.stream_id) != intent.expected_execution_stream_revision:
+            return self._rejected_append(intent.command_id, "public_project_execution_acknowledgment_revision_conflict")
+        facility_ref = execution.payload.get("facility_ref")
+        project_ref = execution.payload.get("project_ref")
+        consumed_id = execution.payload.get("source_budget_consumed_event_id")
+        consumed_revision = execution.payload.get("source_budget_consumed_revision")
+        if not all(isinstance(value, str) and value for value in (facility_ref, project_ref, consumed_id)) or not isinstance(consumed_revision, int):
+            return self._rejected_append(intent.command_id, "public_project_execution_acknowledgment_binding_invalid")
+        try:
+            consumed = self._store.get_event(consumed_id)
+            activity = self._store.get_event(str(execution.payload.get("source_activity_event_id")))
+        except KeyError:
+            return self._rejected_append(intent.command_id, "public_project_execution_acknowledgment_source_invalid")
+        if (
+            consumed.event_type != "gameplay.economy.public_project_budget_consumed"
+            or consumed.visibility_policy != "authority_only"
+            or consumed.stream_revision != consumed_revision
+            or consumed.payload.get("catalog_ref") != "inf:economy-public-project-budget-consumption@1"
+            or consumed.payload.get("source_activity_event_id") != activity.event_id
+            or consumed.payload.get("project_ref") != project_ref
+            or consumed.payload.get("facility_ref") != facility_ref
+            or activity.event_type != "gameplay.organization.public_workshop_activity_recorded"
+            or activity.visibility_policy != "project"
+            or activity.payload.get("project_ref") != project_ref
+            or activity.payload.get("facility_ref") != facility_ref
+        ):
+            return self._rejected_append(intent.command_id, "public_project_execution_acknowledgment_source_invalid")
+        try:
+            reservation = self._store.get_event(str(consumed.payload.get("source_reservation_event_id")))
+            acquisition = self._store.get_event(str(reservation.payload.get("source_acquisition_event_id")))
+        except KeyError:
+            return self._rejected_append(intent.command_id, "public_project_execution_acknowledgment_source_invalid")
+        jurisdiction_ref = acquisition.payload.get("jurisdiction_ref")
+        if (
+            reservation.event_type != "gameplay.economy.budget_reserved"
+            or reservation.visibility_policy != "authority_only"
+            or reservation.payload.get("project_ref") != project_ref
+            or reservation.payload.get("facility_ref") != facility_ref
+            or acquisition.event_type != "gameplay.construction_production.facility_acquired"
+            or acquisition.visibility_policy != "project"
+            or acquisition.payload.get("facility_ref") != facility_ref
+            or acquisition.payload.get("plot_ref") != project_ref
+            or not isinstance(jurisdiction_ref, str)
+            or not jurisdiction_ref
+        ):
+            return self._rejected_append(intent.command_id, "public_project_execution_acknowledgment_binding_invalid")
+        stream_id = f"gameplay:government:public-project:{jurisdiction_ref}"
+        if self._store.get_stream_head(stream_id) != intent.expected_government_revision:
+            return self._rejected_append(intent.command_id, "public_project_execution_acknowledgment_revision_conflict")
+        key = (
+            f"government:public-project-execution-ack:{intent.execution_event_id}:"
+            f"{intent.expected_execution_revision}:{intent.expected_execution_stream_revision}:"
+            f"{intent.expected_government_revision}:v1"
+        )
+        if intent.idempotency_key != key:
+            return self._rejected_append(intent.command_id, "public_project_execution_acknowledgment_idempotency_key_invalid")
+        if any(
+            event.event_type == "gameplay.government.public_project_execution_acknowledged"
+            and event.payload.get("source_execution_event_id") == intent.execution_event_id
+            for event in self._store.read_stream(stream_id)
+        ):
+            return self._rejected_append(intent.command_id, "public_project_execution_acknowledgment_duplicate")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:government-public-project-execution-acknowledgment@1",
+                contract_kind="contract_admission",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(stream_id,),
+                event_types=("gameplay.government.public_project_execution_acknowledged",),
+                projection_scope="authority_only",
+            )
+        except GovernedAuthorityContractError as error:
+            return self._rejected_append(intent.command_id, str(error))
+        acknowledgment_ref = f"acknowledgment:public-project-execution:{intent.execution_event_id}"
+        command = GameplayCommandEnvelope(
+            command_id=intent.command_id,
+            command_type="gameplay.government.acknowledge_public_project_execution",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=None,
+            project_ref=None,
+            transaction_id=f"transaction:{intent.command_id}",
+            idempotency_key=intent.idempotency_key,
+            expected_revisions={stream_id: intent.expected_government_revision},
+            read_set_revisions={execution.stream_id: intent.expected_execution_stream_revision, "gameplay:economy": self._store.get_stream_head("gameplay:economy")},
+            causation_id=intent.causation_id,
+            correlation_id=intent.correlation_id,
+            source_ref=intent.execution_event_id,
+            submitted_at=intent.submitted_at,
+            pinned_revisions={"execution": intent.expected_execution_revision, "execution_stream": intent.expected_execution_stream_revision, "government": intent.expected_government_revision, "budget_consumed": consumed_revision},
+            payload={
+                "stream_ref": stream_id,
+                "event_type": "gameplay.government.public_project_execution_acknowledged",
+                "visibility_policy": "authority_only",
+                "acknowledgment_ref": acknowledgment_ref,
+                "status": "acknowledged",
+                "jurisdiction_ref": jurisdiction_ref,
+                "facility_ref": facility_ref,
+                "project_ref": project_ref,
+                "source_execution_event_id": intent.execution_event_id,
+                "source_execution_revision": intent.expected_execution_revision,
+                "source_budget_consumed_event_id": consumed_id,
+                "source_budget_consumed_revision": consumed_revision,
+                "policy_revision": "policy:government-public-project-execution-acknowledgment@1",
+                "descriptor_ref": "descriptor:government-public-project-execution-acknowledgment@1",
+                "descriptor_revision": "descriptor:government-public-project-execution-acknowledgment@1",
+                "catalog_ref": "inf:government-public-project-execution-acknowledgment@1",
+                "terminal": "v1_terminal_no_compensation",
+            },
+        )
+        batch = EventStoreSettlementPlan.from_command_envelope(command).to_atomic_event_batch()
+        event = batch.events[0]
+        batch = batch.model_copy(update={"outbox_entries": [GameplayOutboxEntry(
+            outbox_id=f"outbox:{event.event_id}", transaction_id=batch.transaction_id,
+            event_id=event.event_id, global_sequence=0,
+            topic="government.public_project_execution.authority_projection", audience="authority:government",
+            payload_projection={"acknowledgment_ref": acknowledgment_ref, "jurisdiction_ref": jurisdiction_ref, "status": "acknowledged"},
+        )]}, deep=True)
+        return self._store.append_batch(batch)
+
+    def public_project_execution_acknowledgment_view_for(
+        self, *, jurisdiction_ref: str, checkpoint_at: int | None = None
+    ) -> GovernmentPublicProjectExecutionAcknowledgmentView:
+        if not jurisdiction_ref or checkpoint_at is not None and checkpoint_at < 0:
+            raise ValueError("public_project_execution_acknowledgment_checkpoint_invalid")
+        stream_id = f"gameplay:government:public-project:{jurisdiction_ref}"
+        events = self._store.read_stream(stream_id)
+        if checkpoint_at is not None and checkpoint_at > max((event.global_sequence for event in self._store.read_events()), default=0):
+            raise ValueError("public_project_execution_acknowledgment_checkpoint_invalid")
+        rows = [
+            event for event in events
+            if event.event_type == "gameplay.government.public_project_execution_acknowledged"
+            and event.visibility_policy == "authority_only"
+            and event.payload.get("jurisdiction_ref") == jurisdiction_ref
+        ]
+        for event in rows:
+            payload = event.payload
+            try:
+                execution = self._store.get_event(str(payload.get("source_execution_event_id")))
+                consumed = self._store.get_event(str(payload.get("source_budget_consumed_event_id")))
+                reservation = self._store.get_event(str(consumed.payload.get("source_reservation_event_id")))
+                acquisition = self._store.get_event(str(reservation.payload.get("source_acquisition_event_id")))
+            except KeyError as exc:
+                raise ValueError("public_project_execution_acknowledgment_replay_provenance_invalid") from exc
+            if (
+                execution.event_type != "gameplay.organization.public_project_execution_recorded"
+                or execution.visibility_policy != "project"
+                or execution.stream_revision != payload.get("source_execution_revision")
+                or execution.payload.get("status") != "funded_and_executed"
+                or execution.payload.get("source_budget_consumed_event_id") != consumed.event_id
+                or execution.payload.get("facility_ref") != payload.get("facility_ref")
+                or execution.payload.get("project_ref") != payload.get("project_ref")
+                or consumed.event_type != "gameplay.economy.public_project_budget_consumed"
+                or consumed.visibility_policy != "authority_only"
+                or consumed.stream_revision != payload.get("source_budget_consumed_revision")
+                or consumed.payload.get("catalog_ref") != "inf:economy-public-project-budget-consumption@1"
+                or consumed.payload.get("facility_ref") != payload.get("facility_ref")
+                or consumed.payload.get("project_ref") != payload.get("project_ref")
+                or reservation.event_type != "gameplay.economy.budget_reserved"
+                or reservation.visibility_policy != "authority_only"
+                or reservation.payload.get("facility_ref") != payload.get("facility_ref")
+                or reservation.payload.get("project_ref") != payload.get("project_ref")
+                or acquisition.event_type != "gameplay.construction_production.facility_acquired"
+                or acquisition.visibility_policy != "project"
+                or acquisition.payload.get("facility_ref") != payload.get("facility_ref")
+                or acquisition.payload.get("plot_ref") != payload.get("project_ref")
+                or acquisition.payload.get("jurisdiction_ref") != jurisdiction_ref
+            ):
+                raise ValueError("public_project_execution_acknowledgment_replay_provenance_invalid")
+        refs = tuple(str(event.payload["acknowledgment_ref"]) for event in rows)
+        vector = {stream_id: self._store.get_stream_head(stream_id), "gameplay:economy": self._store.get_stream_head("gameplay:economy")}
+        value = {"jurisdiction_ref": jurisdiction_ref, "acknowledgment_refs": refs, "source_revision_vector": vector}
+        return GovernmentPublicProjectExecutionAcknowledgmentView(
+            jurisdiction_ref=jurisdiction_ref,
+            acknowledgment_refs=refs,
+            source_revision_vector=vector,
+            projection_hash="sha256:" + hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest(),
         )
 
     @staticmethod
@@ -1627,8 +2812,9 @@ class OrganizationAuthority:
     _PRINCIPAL = "actor_gameplay.organization_domain"
     _BRANCH_STREAM_PREFIX = "gameplay:organization_branch:"
 
-    def __init__(self, *, store: GameplayEventStore) -> None:
+    def __init__(self, *, store: GameplayEventStore, package_registry: object | None = None) -> None:
         self._store = store
+        self._package_registry = package_registry
 
     @staticmethod
     def _weather_front_supply_rejected(command_id: str, reason: str) -> AppendBatchResult:
@@ -1658,6 +2844,1736 @@ class OrganizationAuthority:
                 message=reason,
                 failed_stage="organization_operating_window",
             ),
+        )
+
+    @staticmethod
+    def _work_contribution_rejected(command_id: str, reason: str) -> AppendBatchResult:
+        return AppendBatchResult(
+            committed=False,
+            transaction_id=f"transaction:{command_id}",
+            command_id=command_id,
+            idempotency_status="rejected",
+            failure=GameplayFailure(
+                error_code=reason,
+                message=reason,
+                failed_stage="organization_work_contribution_admission",
+            ),
+        )
+
+    @staticmethod
+    def _public_workshop_activity_rejected(command_id: str, reason: str) -> AppendBatchResult:
+        return AppendBatchResult(
+            committed=False,
+            transaction_id=f"transaction:{command_id}",
+            command_id=command_id,
+            idempotency_status="rejected",
+            failure=GameplayFailure(
+                error_code=reason,
+                message=reason,
+                failed_stage="organization_public_workshop_activity",
+            ),
+        )
+
+    @staticmethod
+    def _public_project_execution_rejected(command_id: str, reason: str) -> AppendBatchResult:
+        return AppendBatchResult(
+            committed=False,
+            transaction_id=f"transaction:{command_id}",
+            command_id=command_id,
+            idempotency_status="rejected",
+            failure=GameplayFailure(
+                error_code=reason,
+                message=reason,
+                failed_stage="organization_public_project_execution",
+            ),
+        )
+
+    @staticmethod
+    def _grain_intake_rejected(command_id: str, reason: str) -> AppendBatchResult:
+        return AppendBatchResult(
+            committed=False,
+            transaction_id=f"transaction:{command_id}",
+            command_id=command_id,
+            idempotency_status="rejected",
+            failure=GameplayFailure(
+                error_code=reason,
+                message=reason,
+                failed_stage="organization_grain_intake",
+            ),
+        )
+
+    def record_grain_intake_from_inventory(
+        self,
+        *,
+        inventory_event_id: str,
+        expected_inventory_revision: int,
+        expected_organization_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        submitted_at: str,
+        family_ref: str | None = None,
+    ) -> AppendBatchResult:
+        """Record one fixed milling-cooperative grain intake fact."""
+        organization_ref = "organization:district-milling-cooperative"
+        inventory_stream = f"gameplay:inventory:{organization_ref}"
+        organization_stream = f"gameplay:organization:{organization_ref}"
+        event_type = "gameplay.organization.grain_intake_recorded@1"
+        if (
+            not inventory_event_id
+            or expected_inventory_revision < 1
+            or expected_organization_revision < 0
+            or not command_id
+            or not idempotency_key
+            or not causation_id
+            or not correlation_id
+            or not submitted_at
+        ):
+            return self._grain_intake_rejected(command_id, "organization_grain_intake_reference_invalid")
+        request_digest = hashlib.sha256(
+            json.dumps(
+                {
+                    "inventory_event_id": inventory_event_id,
+                    "expected_inventory_revision": expected_inventory_revision,
+                    "expected_organization_revision": expected_organization_revision,
+                    "command_id": command_id,
+                    "idempotency_key": idempotency_key,
+                    "causation_id": causation_id,
+                    "correlation_id": correlation_id,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        existing = self._store.get_idempotency_record(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            prior = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+            if prior is not None and existing.payload_digest == request_digest:
+                return prior.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._grain_intake_rejected(command_id, "idempotency_key_reused")
+        try:
+            inventory_event = self._store.get_event(inventory_event_id)
+        except KeyError:
+            return self._grain_intake_rejected(command_id, "organization_grain_intake_source_missing")
+        if (
+            inventory_event.event_type != "gameplay.inventory.grain_harvest_received@1"
+            or inventory_event.stream_id != inventory_stream
+            or inventory_event.visibility_policy != "project"
+            or inventory_event.stream_revision != expected_inventory_revision
+            or self._store.get_stream_head(inventory_stream) != expected_inventory_revision
+            or inventory_event.payload.get("actor_ref") != organization_ref
+            or inventory_event.payload.get("holder_ref") != organization_ref
+            or inventory_event.payload.get("container_id") != "container:district-milling-cooperative:grain-intake"
+            or inventory_event.payload.get("item_ref") != "grain:wheat@1"
+            or inventory_event.payload.get("definition_id") != "grain:wheat@1"
+            or inventory_event.payload.get("quantity") != 10
+            or not isinstance(inventory_event.payload.get("project_ref"), str)
+            or not inventory_event.payload.get("project_ref")
+            or not isinstance(inventory_event.payload.get("plot_ref"), str)
+            or not inventory_event.payload.get("plot_ref")
+        ):
+            return self._grain_intake_rejected(command_id, "organization_grain_intake_source_invalid")
+        if self._store.get_stream_head(organization_stream) != expected_organization_revision:
+            return self._grain_intake_rejected(command_id, "organization_grain_intake_revision_conflict")
+        canonical_key = (
+            f"organization:grain-intake:{inventory_event.event_id}:"
+            f"{expected_inventory_revision}:{expected_organization_revision}:v1"
+        )
+        if idempotency_key != canonical_key or causation_id != inventory_event.event_id:
+            return self._grain_intake_rejected(command_id, "organization_grain_intake_idempotency_key_invalid")
+        if any(
+            event.event_type == event_type
+            and event.payload.get("source_inventory_event_id") == inventory_event.event_id
+            for event in self._store.read_stream(organization_stream)
+        ):
+            return self._grain_intake_rejected(command_id, "organization_grain_intake_duplicate")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:organization-grain-intake@1",
+                contract_kind="contract_admission",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(organization_stream,),
+                event_types=(event_type,),
+                projection_scope="project",
+            )
+        except GovernedAuthorityContractError as exc:
+            return self._grain_intake_rejected(command_id, str(exc))
+        command = GameplayCommandEnvelope(
+            command_id=command_id,
+            command_type="gameplay.organization.record_grain_intake_from_inventory",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=None,
+            project_ref=str(inventory_event.payload["project_ref"]),
+            transaction_id=f"transaction:{command_id}",
+            idempotency_key=idempotency_key,
+            expected_revisions={organization_stream: expected_organization_revision},
+            read_set_revisions={inventory_stream: expected_inventory_revision},
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            source_ref=inventory_event.event_id,
+            submitted_at=submitted_at,
+            pinned_revisions={
+                "inventory_source": expected_inventory_revision,
+                "organization": expected_organization_revision,
+            },
+            payload={
+                "stream_ref": organization_stream,
+                "event_type": event_type,
+                "visibility_policy": "project",
+                "organization_ref": organization_ref,
+                "project_ref": inventory_event.payload["project_ref"],
+                "plot_ref": inventory_event.payload["plot_ref"],
+                "item_ref": "grain:wheat@1",
+                "quantity": 10,
+                "container_id": "container:district-milling-cooperative:grain-intake",
+                "source_inventory_event_id": inventory_event.event_id,
+                "source_inventory_revision": expected_inventory_revision,
+                "policy_revision": "policy:organization-grain-intake@1",
+                "descriptor_ref": "descriptor:organization-grain-intake@1",
+                "descriptor_revision": "descriptor:organization-grain-intake@1",
+                "catalog_ref": "inf:organization-grain-intake@1",
+                "terminal": "v1_terminal_no_compensation",
+                **({"family_ref": family_ref} if family_ref is not None else {}),
+            },
+        )
+        batch = EventStoreSettlementPlan.from_command_envelope(command).to_atomic_event_batch()
+        event = batch.events[0]
+        batch = batch.model_copy(
+            update={
+                "idempotency_record": batch.idempotency_record.model_copy(
+                    update={"payload_digest": request_digest}, deep=True
+                ),
+                "outbox_entries": [
+                    GameplayOutboxEntry(
+                        outbox_id=f"outbox:{event.event_id}",
+                        transaction_id=batch.transaction_id,
+                        event_id=event.event_id,
+                        global_sequence=0,
+                        topic="world.organization.grain_intake.scoped_projection",
+                        audience="project",
+                        payload_projection={
+                            "organization_ref": organization_ref,
+                            "project_ref": inventory_event.payload["project_ref"],
+                            "item_ref": "grain:wheat@1",
+                            "quantity": 10,
+                        },
+                    )
+                ],
+            },
+            deep=True,
+        )
+        return self._store.append_batch(batch)
+
+    def settle_domain_acceptance_marker(self, *, intent: object) -> AppendBatchResult:
+        """Record one Organization marker from an admitted committed source fact."""
+        from app.gameplay.closed_generic_gameplay_families import DomainAcceptanceMarkerIntent
+
+        try:
+            typed_intent = intent if isinstance(intent, DomainAcceptanceMarkerIntent) else DomainAcceptanceMarkerIntent.model_validate(intent)
+            source = self._store.get_event(typed_intent.source_event_id)
+        except Exception:
+            return self._grain_intake_rejected(str(getattr(intent, "command_id", "domain-acceptance")), "domain_acceptance_marker_source_missing")
+        if self._package_registry is not None:
+            return self._settle_domain_acceptance_marker_generic(
+                intent=typed_intent,
+                source=source,
+            )
+        organization_ref = "organization:district-milling-cooperative"
+        inventory_stream = f"gameplay:inventory:{organization_ref}"
+        organization_stream = f"gameplay:organization:{organization_ref}"
+        if (
+            source.event_type != "gameplay.inventory.grain_harvest_received@1"
+            or source.stream_id != inventory_stream
+            or source.visibility_policy != "project"
+        ):
+            return self._grain_intake_rejected(typed_intent.command_id, "domain_acceptance_marker_source_conflict")
+        prior_event = next(
+            (
+                event
+                for event in self._store.read_stream(organization_stream)
+                if event.event_type == "gameplay.organization.grain_intake_recorded@1"
+                and event.payload.get("source_inventory_event_id") == source.event_id
+            ),
+            None,
+        )
+        if prior_event is not None:
+            prior_batch = next(
+                (batch for batch in self._store.read_transactions() if any(event.event_id == prior_event.event_id for event in batch.events)),
+                None,
+            )
+            prior_result = self._store.get_by_idempotency(
+                self._PRINCIPAL,
+                prior_batch.idempotency_record.idempotency_key if prior_batch is not None else "",
+            )
+            if prior_event.correlation_id == typed_intent.correlation_id and prior_result is not None:
+                return prior_result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._grain_intake_rejected(typed_intent.command_id, "idempotency_key_reused")
+        return self.record_grain_intake_from_inventory(
+            inventory_event_id=source.event_id,
+            expected_inventory_revision=source.stream_revision,
+            expected_organization_revision=self._store.get_stream_head(organization_stream),
+            command_id=typed_intent.command_id,
+            idempotency_key=(
+                f"organization:grain-intake:{source.event_id}:{source.stream_revision}:"
+                f"{self._store.get_stream_head(organization_stream)}:v1"
+            ),
+            causation_id=source.event_id,
+            correlation_id=typed_intent.correlation_id,
+            submitted_at="2026-08-30T00:00:00Z",
+            family_ref="domain_acceptance_marker@1",
+        )
+
+    def _settle_domain_acceptance_marker_generic(
+        self,
+        *,
+        intent: object,
+        source: object,
+    ) -> AppendBatchResult:
+        from app.gameplay.closed_generic_gameplay_families import (
+            DomainAcceptanceMarkerContent,
+            DomainAcceptanceMarkerIntent,
+        )
+
+        typed_intent = intent if isinstance(intent, DomainAcceptanceMarkerIntent) else DomainAcceptanceMarkerIntent.model_validate(intent)
+        organization_ref = "organization:district-milling-cooperative"
+        inventory_stream = f"gameplay:inventory:{organization_ref}"
+        organization_stream = f"gameplay:organization:{organization_ref}"
+        event_type = "gameplay.organization.grain_intake_recorded@1"
+        if (
+            source.event_type != "gameplay.inventory.harvest_received@1"
+            or source.stream_id != inventory_stream
+            or source.visibility_policy != "project"
+            or self._store.get_stream_head(inventory_stream) != source.stream_revision
+            or source.payload.get("family_ref") != "harvest_to_custody@1"
+            or source.payload.get("actor_ref") != organization_ref
+            or source.payload.get("holder_ref") != organization_ref
+            or not isinstance(source.payload.get("project_ref"), str)
+            or not source.payload.get("project_ref")
+            or not isinstance(source.payload.get("plot_ref"), str)
+            or not source.payload.get("plot_ref")
+            or not isinstance(source.payload.get("item_ref"), str)
+            or not source.payload.get("item_ref")
+            or not isinstance(source.payload.get("quantity"), int)
+            or isinstance(source.payload.get("quantity"), bool)
+            or source.payload.get("quantity", 0) <= 0
+            or not isinstance(source.payload.get("container_id"), str)
+            or not source.payload.get("container_id")
+            or source.payload.get("terminal") != "v1_terminal_no_compensation"
+        ):
+            return self._grain_intake_rejected(
+                typed_intent.command_id,
+                "domain_acceptance_marker_source_conflict",
+            )
+        active = getattr(self._package_registry, "active_patch_set", None)
+        if active is None:
+            return self._grain_intake_rejected(
+                typed_intent.command_id,
+                "domain_acceptance_marker_package_inactive",
+            )
+        try:
+            manifests = self._package_registry.active_manifests(
+                active.active_patch_set_revision
+            )
+            descriptor = GovernedAuthorityContractCatalog.require_descriptor(
+                "descriptor:domain-acceptance-marker@1"
+            )
+        except (GovernedAuthorityContractError, ValueError):
+            return self._grain_intake_rejected(
+                typed_intent.command_id,
+                "domain_acceptance_marker_descriptor_invalid",
+            )
+        if (
+            descriptor.owner_ref != self._PRINCIPAL
+            or descriptor.source_stream_pattern != "gameplay:organization:{organization_ref}"
+            or descriptor.target_stream_pattern
+            != "gameplay:organization:{organization_ref}"
+            or descriptor.target_event_types != (event_type,)
+            or descriptor.privacy_scope != "project"
+            or descriptor.terminal_semantics_ref
+            != "lifecycle:terminal-no-compensation@1"
+            or descriptor.reversal_semantics_ref != "lifecycle:none@1"
+            or descriptor.compensation_semantics_ref != "lifecycle:none@1"
+        ):
+            return self._grain_intake_rejected(
+                typed_intent.command_id,
+                "domain_acceptance_marker_descriptor_invalid",
+            )
+        source_item_ref = f"item:{source.payload['item_ref']}"
+        candidates: list[tuple[object, object, object, DomainAcceptanceMarkerContent]] = []
+        for manifest in manifests:
+            extension = manifest.platform_extension
+            if extension is None:
+                continue
+            declarations = {
+                declaration.declaration_ref: declaration
+                for declaration in extension.outcome_declarations
+            }
+            for request in extension.capability_binding_requests:
+                if request.capability_ref != "capability:domain-acceptance-marker@1":
+                    continue
+                declaration = declarations.get(request.declaration_ref)
+                if (
+                    declaration is None
+                    or declaration.outcome_family_ref
+                    != "outcome:domain-acceptance-marker@1"
+                ):
+                    continue
+                bindings = tuple(
+                    binding
+                    for binding in active.capability_bindings
+                    if binding.binding_ref == request.binding_ref
+                    and binding.package_revision == manifest.patch_revision_id
+                    and binding.descriptor_ref
+                    == "descriptor:domain-acceptance-marker@1"
+                    and binding.active_patch_set_revision
+                    == active.active_patch_set_revision
+                )
+                if len(bindings) != 1:
+                    continue
+                definitions = tuple(
+                    definition
+                    for definition in extension.package_definitions
+                    if definition.definition_ref in declaration.definition_refs
+                )
+                if len(definitions) != 1:
+                    continue
+                try:
+                    content = DomainAcceptanceMarkerContent.model_validate(
+                        definitions[0].typed_content
+                    )
+                except Exception:
+                    continue
+                if (
+                    content.source_fact_family_ref
+                    != "fact:inventory-harvest-to-custody@1"
+                    or content.source_item_definition_ref != source_item_ref
+                ):
+                    continue
+                candidates.append((manifest, declaration, bindings[0], content))
+        if not candidates:
+            return self._grain_intake_rejected(
+                typed_intent.command_id,
+                "domain_acceptance_marker_content_unknown",
+            )
+        if len(candidates) != 1:
+            return self._grain_intake_rejected(
+                typed_intent.command_id,
+                "domain_acceptance_marker_binding_ambiguous",
+            )
+        manifest, declaration, binding, content = candidates[0]
+        prior_event = next(
+            (
+                event
+                for event in self._store.read_stream(organization_stream)
+                if event.event_type == event_type
+                and event.payload.get("family_ref") == "domain_acceptance_marker@1"
+                and event.payload.get("source_inventory_event_id") == source.event_id
+            ),
+            None,
+        )
+        if prior_event is not None:
+            prior_batch = next(
+                (
+                    batch
+                    for batch in self._store.read_transactions()
+                    if any(item.event_id == prior_event.event_id for item in batch.events)
+                ),
+                None,
+            )
+            prior_result = self._store.get_by_idempotency(
+                self._PRINCIPAL,
+                prior_batch.idempotency_record.idempotency_key
+                if prior_batch is not None
+                else "",
+            )
+            if (
+                prior_result is not None
+                and prior_event.correlation_id == typed_intent.correlation_id
+            ):
+                return prior_result.model_copy(
+                    update={"idempotency_status": "duplicate_replayed"},
+                    deep=True,
+                )
+            return self._grain_intake_rejected(
+                typed_intent.command_id,
+                "domain_acceptance_marker_idempotency_key_reused",
+            )
+        organization_revision = self._store.get_stream_head(organization_stream)
+        idempotency_key = (
+            f"organization:domain-acceptance-marker:{binding.binding_ref}:"
+            f"{manifest.patch_revision_id}:{source.event_id}:{source.stream_revision}:"
+            f"{organization_revision}:v1"
+        )
+        request_digest = hashlib.sha256(
+            json.dumps(
+                {
+                    "source_event_id": typed_intent.source_event_id,
+                    "command_id": typed_intent.command_id,
+                    "idempotency_key": idempotency_key,
+                    "causation_id": source.event_id,
+                    "correlation_id": typed_intent.correlation_id,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        existing = self._store.get_idempotency_record(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            prior = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+            if prior is not None and existing.payload_digest == request_digest:
+                return prior.model_copy(
+                    update={"idempotency_status": "duplicate_replayed"},
+                    deep=True,
+                )
+            return self._grain_intake_rejected(
+                typed_intent.command_id,
+                "domain_acceptance_marker_idempotency_key_reused",
+            )
+        if self._store.get_stream_head(organization_stream) != organization_revision:
+            return self._grain_intake_rejected(
+                typed_intent.command_id,
+                "domain_acceptance_marker_revision_conflict",
+            )
+        if typed_intent.source_event_id != source.event_id:
+            return self._grain_intake_rejected(
+                typed_intent.command_id,
+                "domain_acceptance_marker_source_conflict",
+            )
+        command = GameplayCommandEnvelope(
+            command_id=typed_intent.command_id,
+            command_type="gameplay.organization.settle_domain_acceptance_marker",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=None,
+            project_ref=str(source.payload["project_ref"]),
+            transaction_id=f"transaction:{typed_intent.command_id}",
+            idempotency_key=idempotency_key,
+            expected_revisions={organization_stream: organization_revision},
+            read_set_revisions={inventory_stream: source.stream_revision},
+            causation_id=source.event_id,
+            correlation_id=typed_intent.correlation_id,
+            source_ref=source.event_id,
+            submitted_at="domain-acceptance-marker-source",
+            pinned_revisions={
+                "inventory_source": source.stream_revision,
+                "organization": organization_revision,
+            },
+            payload={
+                "stream_ref": organization_stream,
+                "event_type": event_type,
+                "visibility_policy": "project",
+                "organization_ref": organization_ref,
+                "project_ref": source.payload["project_ref"],
+                "plot_ref": source.payload["plot_ref"],
+                "item_ref": source.payload["item_ref"],
+                "quantity": source.payload["quantity"],
+                "container_id": source.payload["container_id"],
+                "source_inventory_event_id": source.event_id,
+                "source_inventory_revision": source.stream_revision,
+                "source_fact_family_ref": content.source_fact_family_ref,
+                "source_item_definition_ref": content.source_item_definition_ref,
+                "marker_definition_ref": content.marker_definition_ref,
+                "policy_revision": content.policy_revision_ref,
+                "descriptor_ref": "descriptor:domain-acceptance-marker@1",
+                "descriptor_revision": "descriptor:domain-acceptance-marker@1",
+                "catalog_ref": "inf:domain-acceptance-marker@1",
+                "package_revision": manifest.patch_revision_id,
+                "content_digest": manifest.content_digest,
+                "declaration_ref": declaration.declaration_ref,
+                "declaration_digest": declaration.declaration_digest,
+                "binding_ref": binding.binding_ref,
+                "active_patch_set_revision": binding.active_patch_set_revision,
+                "terminal": "v1_terminal_no_compensation",
+                "family_ref": "domain_acceptance_marker@1",
+            },
+        )
+        batch = EventStoreSettlementPlan.from_command_envelope(
+            command
+        ).to_atomic_event_batch()
+        event = batch.events[0]
+        batch = batch.model_copy(
+            update={
+                "idempotency_record": batch.idempotency_record.model_copy(
+                    update={"payload_digest": request_digest},
+                    deep=True,
+                ),
+                "outbox_entries": [
+                    GameplayOutboxEntry(
+                        outbox_id=f"outbox:{event.event_id}",
+                        transaction_id=batch.transaction_id,
+                        event_id=event.event_id,
+                        global_sequence=0,
+                        topic="world.organization.domain_acceptance_marker.scoped_projection",
+                        audience="project",
+                        payload_projection={
+                            "organization_ref": organization_ref,
+                            "project_ref": source.payload["project_ref"],
+                            "item_ref": source.payload["item_ref"],
+                            "quantity": source.payload["quantity"],
+                            "marker_definition_ref": content.marker_definition_ref,
+                        },
+                    )
+                ],
+            },
+            deep=True,
+        )
+        return self._store.append_batch(batch)
+
+    def domain_acceptance_marker_view_for(
+        self,
+        *,
+        organization_ref: str,
+        checkpoint_at: int | None = None,
+    ) -> OrganizationGrainIntakeView:
+        if organization_ref != "organization:district-milling-cooperative":
+            raise ValueError("domain_acceptance_marker_scope_invalid")
+        events = sorted(
+            self._store.read_events(),
+            key=lambda event: (event.global_sequence, event.event_id),
+        )
+        max_sequence = max((event.global_sequence for event in events), default=0)
+        if checkpoint_at is not None and (
+            checkpoint_at < 0 or checkpoint_at > max_sequence
+        ):
+            raise ValueError("domain_acceptance_marker_checkpoint_invalid")
+        events_by_id = {event.event_id: event for event in events}
+        ordered = (
+            events
+            if checkpoint_at is None
+            else [
+                *[event for event in events if event.global_sequence <= checkpoint_at],
+                *[event for event in events if event.global_sequence > checkpoint_at],
+            ]
+        )
+        rows: list[Mapping[str, object]] = []
+        stream_id = f"gameplay:organization:{organization_ref}"
+        for event in ordered:
+            if (
+                event.event_type != "gameplay.organization.grain_intake_recorded@1"
+                or event.payload.get("family_ref") != "domain_acceptance_marker@1"
+            ):
+                continue
+            source = events_by_id.get(event.payload.get("source_inventory_event_id"))
+            valid = (
+                event.stream_id == stream_id
+                and event.visibility_policy == "project"
+                and event.payload.get("organization_ref") == organization_ref
+                and event.payload.get("descriptor_ref")
+                == "descriptor:domain-acceptance-marker@1"
+                and event.payload.get("descriptor_revision")
+                == "descriptor:domain-acceptance-marker@1"
+                and event.payload.get("catalog_ref")
+                == "inf:domain-acceptance-marker@1"
+                and event.payload.get("terminal") == "v1_terminal_no_compensation"
+                and isinstance(event.payload.get("source_item_definition_ref"), str)
+                and event.payload.get("source_item_definition_ref")
+                == f"item:{event.payload.get('item_ref')}"
+                and isinstance(event.payload.get("quantity"), int)
+                and not isinstance(event.payload.get("quantity"), bool)
+                and event.payload.get("quantity", 0) > 0
+                and source is not None
+                and source.event_type == "gameplay.inventory.harvest_received@1"
+                and source.stream_id
+                == f"gameplay:inventory:{organization_ref}"
+                and source.visibility_policy == "project"
+                and source.stream_revision
+                == event.payload.get("source_inventory_revision")
+                and source.payload.get("family_ref") == "harvest_to_custody@1"
+                and source.payload.get("actor_ref") == organization_ref
+                and source.payload.get("holder_ref") == organization_ref
+                and source.payload.get("item_ref") == event.payload.get("item_ref")
+                and source.payload.get("quantity") == event.payload.get("quantity")
+                and source.payload.get("container_id") == event.payload.get("container_id")
+                and source.payload.get("project_ref") == event.payload.get("project_ref")
+                and source.payload.get("plot_ref") == event.payload.get("plot_ref")
+            )
+            if not valid:
+                raise ValueError("domain_acceptance_marker_replay_invalid")
+            rows.append(dict(event.payload))
+        source_revision_vector = {stream_id: self._store.get_stream_head(stream_id)}
+        for row in rows:
+            source_ref = row.get("source_inventory_event_id")
+            source = events_by_id.get(source_ref)
+            if source is not None:
+                source_revision_vector[source.stream_id] = max(
+                    source_revision_vector.get(source.stream_id, 0),
+                    source.stream_revision,
+                )
+        payload = {
+            "organization_ref": organization_ref,
+            "intakes": rows,
+            "source_revision_vector": source_revision_vector,
+        }
+        return OrganizationGrainIntakeView(
+            organization_ref=organization_ref,
+            intakes=tuple(rows),
+            source_revision_vector=source_revision_vector,
+            projection_hash="sha256:"
+            + hashlib.sha256(
+                json.dumps(
+                    payload,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    default=str,
+                ).encode("utf-8")
+            ).hexdigest(),
+        )
+
+    @staticmethod
+    def grain_intake_receipt_for(*, result: AppendBatchResult, scope: str) -> SettlementReceipt:
+        if scope != "project":
+            raise ValueError("organization_grain_intake_receipt_scope_denied")
+        if not result.committed or len(result.committed_event_ids) != 1:
+            raise ValueError("organization_grain_intake_receipt_missing")
+        return SettlementReceipt.from_append_result(
+            result=result,
+            audit_refs=(f"organization_grain_intake:{result.transaction_id}",),
+        )
+
+    def grain_intake_view_for(
+        self, *, organization_ref: str, checkpoint_at: int | None = None
+    ) -> OrganizationGrainIntakeView:
+        if organization_ref != "organization:district-milling-cooperative":
+            raise ValueError("organization_grain_intake_scope_invalid")
+        events = sorted(self._store.read_events(), key=lambda event: (event.global_sequence, event.event_id))
+        max_sequence = max((event.global_sequence for event in events), default=0)
+        if checkpoint_at is not None and (checkpoint_at < 0 or checkpoint_at > max_sequence):
+            raise ValueError("organization_grain_intake_checkpoint_invalid")
+        events_by_id = {event.event_id: event for event in events}
+        ordered = events if checkpoint_at is None else [
+            *[event for event in events if event.global_sequence <= checkpoint_at],
+            *[event for event in events if event.global_sequence > checkpoint_at],
+        ]
+        rows: list[Mapping[str, object]] = []
+        stream_id = f"gameplay:organization:{organization_ref}"
+        for event in ordered:
+            if (
+                event.event_type != "gameplay.organization.grain_intake_recorded@1"
+                or event.payload.get("descriptor_ref")
+                == "descriptor:domain-acceptance-marker@1"
+            ):
+                continue
+            source = events_by_id.get(event.payload.get("source_inventory_event_id"))
+            valid = (
+                event.stream_id == stream_id
+                and event.visibility_policy == "project"
+                and event.payload.get("organization_ref") == organization_ref
+                and event.payload.get("item_ref") == "grain:wheat@1"
+                and event.payload.get("quantity") == 10
+                and event.payload.get("container_id") == "container:district-milling-cooperative:grain-intake"
+                and source is not None
+                and source.event_type == "gameplay.inventory.grain_harvest_received@1"
+                and source.visibility_policy == "project"
+                and source.stream_revision == event.payload.get("source_inventory_revision")
+                and source.payload.get("actor_ref") == organization_ref
+                and source.payload.get("project_ref") == event.payload.get("project_ref")
+                and source.payload.get("plot_ref") == event.payload.get("plot_ref")
+            )
+            if not valid:
+                raise ValueError("organization_grain_intake_replay_invalid")
+            rows.append(dict(event.payload))
+        source_revision_vector = {stream_id: self._store.get_stream_head(stream_id)}
+        for row in rows:
+            source_ref = row.get("source_inventory_event_id")
+            source = events_by_id.get(source_ref)
+            if source is not None:
+                source_revision_vector[source.stream_id] = max(
+                    source_revision_vector.get(source.stream_id, 0), source.stream_revision
+                )
+        payload = {
+            "organization_ref": organization_ref,
+            "intakes": rows,
+            "source_revision_vector": source_revision_vector,
+        }
+        return OrganizationGrainIntakeView(
+            organization_ref=organization_ref,
+            intakes=tuple(rows),
+            source_revision_vector=source_revision_vector,
+            projection_hash="sha256:" + hashlib.sha256(
+                json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+            ).hexdigest(),
+        )
+
+    def record_public_workshop_activity(
+        self,
+        *,
+        contract_fulfilled_event_id: str,
+        expected_contract_revision: int,
+        expected_organization_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        submitted_at: str,
+    ) -> AppendBatchResult:
+        """Record only the provider's completed public-workshop activity."""
+        if expected_contract_revision < 1 or expected_organization_revision < 0 or not contract_fulfilled_event_id:
+            return self._public_workshop_activity_rejected(command_id, "public_workshop_activity_reference_invalid")
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            prior = next(
+                (event for event in self._store.read_events() if event.event_id in set(existing.committed_event_ids)),
+                None,
+            )
+            if prior is not None and prior.event_type == "gameplay.organization.public_workshop_activity_recorded":
+                if prior.payload.get("source_contract_fulfilled_event_id") == contract_fulfilled_event_id and prior.causation_id == causation_id and prior.correlation_id == correlation_id:
+                    return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._public_workshop_activity_rejected(command_id, "public_workshop_activity_idempotency_key_reused")
+        try:
+            fulfilled = self._store.get_event(contract_fulfilled_event_id)
+        except KeyError:
+            return self._public_workshop_activity_rejected(command_id, "public_workshop_activity_source_missing")
+        if (
+            fulfilled.event_type != "gameplay.contract.record_fulfilled"
+            or fulfilled.stream_id != "gameplay:contracts"
+            or fulfilled.stream_revision != expected_contract_revision
+            or self._store.get_stream_head("gameplay:contracts") != expected_contract_revision
+            or fulfilled.visibility_policy != "authority_only"
+        ):
+            return self._public_workshop_activity_rejected(command_id, "public_workshop_activity_source_invalid")
+        contract_id = fulfilled.payload.get("contract_id")
+        created_event_id = fulfilled.payload.get("contract_created_event_id")
+        if not isinstance(contract_id, str) or not contract_id or not isinstance(created_event_id, str) or not created_event_id:
+            return self._public_workshop_activity_rejected(command_id, "public_workshop_activity_source_invalid")
+        try:
+            created = self._store.get_event(created_event_id)
+        except KeyError:
+            return self._public_workshop_activity_rejected(command_id, "public_workshop_activity_source_invalid")
+        contracts = ContractProjector().rebuild(self._store.read_stream("gameplay:contracts"))
+        record = contracts.contracts.get(contract_id)
+        if (
+            created.event_type != "gameplay.contract.record_created"
+            or created.stream_revision < 1
+            or created.visibility_policy != "authority_only"
+            or created.payload.get("terms_ref") != "service:industrial-facility-public-workshop-session@1"
+            or record is None
+            or record.status != "fulfilled"
+            or record.completion_evidence_ref is None
+        ):
+            return self._public_workshop_activity_rejected(command_id, "public_workshop_activity_source_invalid")
+        parties = created.payload.get("party_refs")
+        if not isinstance(parties, list) or len(parties) != 2 or parties[0] != "organization:municipal-assessment-office":
+            return self._public_workshop_activity_rejected(command_id, "public_workshop_activity_binding_invalid")
+        organization_ref = str(parties[0])
+        facility_ref = created.payload.get("facility_ref")
+        project_ref = created.payload.get("project_ref")
+        if not isinstance(facility_ref, str) or not facility_ref or not isinstance(project_ref, str) or not project_ref:
+            return self._public_workshop_activity_rejected(command_id, "public_workshop_activity_binding_invalid")
+        stream_id = f"gameplay:organization:{organization_ref}"
+        if self._store.get_stream_head(stream_id) != expected_organization_revision:
+            return self._public_workshop_activity_rejected(command_id, "public_workshop_activity_revision_conflict")
+        completion = next(
+            (
+                event
+                for event in self._store.read_stream("gameplay:contracts")
+                if event.event_type == "gameplay.contract.service_completion_recorded"
+                and event.payload.get("contract_id") == contract_id
+            ),
+            None,
+        )
+        if completion is None or completion.payload.get("completion_evidence_ref") != record.completion_evidence_ref:
+            return self._public_workshop_activity_rejected(command_id, "public_workshop_activity_source_invalid")
+        canonical_key = f"organization:public-workshop-activity:{contract_id}:{expected_contract_revision}:{expected_organization_revision}:v1"
+        if idempotency_key != canonical_key:
+            return self._public_workshop_activity_rejected(command_id, "public_workshop_activity_idempotency_key_invalid")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:organization-public-workshop-activity@1",
+                contract_kind="contract_admission",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(stream_id,),
+                event_types=("gameplay.organization.public_workshop_activity_recorded",),
+                projection_scope="project",
+            )
+        except GovernedAuthorityContractError as exc:
+            return self._public_workshop_activity_rejected(command_id, str(exc))
+        activity_ref = f"activity:public-workshop-session:{contract_id}"
+        command = GameplayCommandEnvelope(
+            command_id=command_id,
+            command_type="gameplay.organization.record_public_workshop_activity",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=None,
+            project_ref=project_ref,
+            transaction_id=f"transaction:{command_id}",
+            idempotency_key=idempotency_key,
+            expected_revisions={stream_id: expected_organization_revision},
+            read_set_revisions={"gameplay:contracts": expected_contract_revision},
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            source_ref=contract_fulfilled_event_id,
+            submitted_at=submitted_at,
+            pinned_revisions={
+                "contract": expected_contract_revision,
+                "contract_created": created.stream_revision,
+                "service_completion": completion.stream_revision,
+                "organization": expected_organization_revision,
+            },
+            payload={
+                "stream_ref": stream_id,
+                "event_type": "gameplay.organization.public_workshop_activity_recorded",
+                "visibility_policy": "project",
+                "activity_ref": activity_ref,
+                "activity_kind": "public_workshop_session",
+                "status": "completed",
+                "organization_ref": organization_ref,
+                "facility_ref": facility_ref,
+                "project_ref": project_ref,
+                "service_ref": "service:industrial-facility-public-workshop-session@1",
+                "source_contract_created_event_id": created.event_id,
+                "source_contract_created_revision": created.stream_revision,
+                "source_service_completion_event_id": completion.event_id,
+                "source_service_completion_revision": completion.stream_revision,
+                "source_contract_fulfilled_event_id": fulfilled.event_id,
+                "source_contract_fulfilled_revision": fulfilled.stream_revision,
+                "policy_revision": "policy:organization-public-workshop-activity@1",
+                "descriptor_ref": "descriptor:organization-public-workshop-activity@1",
+                "catalog_ref": "inf:organization-public-workshop-activity@1",
+                "descriptor_revision": "descriptor:organization-public-workshop-activity@1",
+            },
+        )
+        batch = EventStoreSettlementPlan.from_command_envelope(command).to_atomic_event_batch()
+        event = batch.events[0]
+        batch = batch.model_copy(
+            update={
+                "outbox_entries": [
+                    GameplayOutboxEntry(
+                        outbox_id=f"outbox:{event.event_id}",
+                        transaction_id=batch.transaction_id,
+                        event_id=event.event_id,
+                        global_sequence=0,
+                        topic="world.organization.public_workshop_activity.scoped_projection",
+                        audience="project",
+                        payload_projection={
+                            "activity_ref": activity_ref,
+                            "organization_ref": organization_ref,
+                            "facility_ref": facility_ref,
+                            "project_ref": project_ref,
+                            "status": "completed",
+                        },
+                    )
+                ]
+            },
+            deep=True,
+        )
+        return self._store.append_batch(batch)
+
+    def record_public_milling_activity(
+        self,
+        *,
+        contract_fulfilled_event_id: str,
+        expected_contract_revision: int,
+        expected_organization_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        submitted_at: str,
+    ) -> AppendBatchResult:
+        """Record only the fixed district milling service activity."""
+        if expected_contract_revision < 1 or expected_organization_revision < 0 or not contract_fulfilled_event_id:
+            return self._public_workshop_activity_rejected(command_id, "public_milling_activity_reference_invalid")
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            prior = next((event for event in self._store.read_events() if event.event_id in set(existing.committed_event_ids)), None)
+            if prior is not None and prior.event_type == "gameplay.organization.public_milling_activity_recorded" and prior.payload.get("source_contract_fulfilled_event_id") == contract_fulfilled_event_id and prior.causation_id == causation_id and prior.correlation_id == correlation_id:
+                return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._public_workshop_activity_rejected(command_id, "public_milling_activity_idempotency_key_reused")
+        try:
+            fulfilled = self._store.get_event(contract_fulfilled_event_id)
+        except KeyError:
+            return self._public_workshop_activity_rejected(command_id, "public_milling_activity_source_missing")
+        if fulfilled.event_type != "gameplay.contract.record_fulfilled" or fulfilled.stream_id != "gameplay:contracts" or fulfilled.stream_revision != expected_contract_revision or self._store.get_stream_head("gameplay:contracts") != expected_contract_revision or fulfilled.visibility_policy != "authority_only":
+            return self._public_workshop_activity_rejected(command_id, "public_milling_activity_source_invalid")
+        contract_id = fulfilled.payload.get("contract_id")
+        created_event_id = fulfilled.payload.get("contract_created_event_id")
+        if not isinstance(contract_id, str) or not contract_id or not isinstance(created_event_id, str) or not created_event_id:
+            return self._public_workshop_activity_rejected(command_id, "public_milling_activity_source_invalid")
+        try:
+            created = self._store.get_event(created_event_id)
+        except KeyError:
+            return self._public_workshop_activity_rejected(command_id, "public_milling_activity_source_invalid")
+        contracts = ContractProjector().rebuild(self._store.read_stream("gameplay:contracts"))
+        record = contracts.contracts.get(contract_id)
+        parties = created.payload.get("party_refs")
+        if (
+            created.event_type != "gameplay.contract.record_created"
+            or created.visibility_policy != "authority_only"
+            or created.payload.get("terms_ref") != "service:industrial-facility-public-milling-session@1"
+            or created.payload.get("package_revision") != "package:industrial-facilities:v6"
+            or created.payload.get("facility_kind") != "mill_reinforced"
+            or record is None or record.status != "fulfilled" or record.completion_evidence_ref is None
+            or not isinstance(parties, list) or parties != ["organization:district-milling-cooperative", created.payload.get("receiver_ref", parties[1] if len(parties) > 1 else None)]
+        ):
+            return self._public_workshop_activity_rejected(command_id, "public_milling_activity_source_invalid")
+        organization_ref = "organization:district-milling-cooperative"
+        facility_ref = created.payload.get("facility_ref")
+        project_ref = created.payload.get("project_ref")
+        if not isinstance(facility_ref, str) or not facility_ref or not isinstance(project_ref, str) or not project_ref:
+            return self._public_workshop_activity_rejected(command_id, "public_milling_activity_binding_invalid")
+        stream_id = f"gameplay:organization:{organization_ref}"
+        if self._store.get_stream_head(stream_id) != expected_organization_revision:
+            return self._public_workshop_activity_rejected(command_id, "public_milling_activity_revision_conflict")
+        completion = next((event for event in self._store.read_stream("gameplay:contracts") if event.event_type == "gameplay.contract.service_completion_recorded" and event.payload.get("contract_id") == contract_id), None)
+        if completion is None or completion.payload.get("completion_evidence_ref") != record.completion_evidence_ref:
+            return self._public_workshop_activity_rejected(command_id, "public_milling_activity_source_invalid")
+        canonical_key = f"organization:public-milling-activity:{contract_id}:{expected_contract_revision}:{expected_organization_revision}:v1"
+        if idempotency_key != canonical_key:
+            return self._public_workshop_activity_rejected(command_id, "public_milling_activity_idempotency_key_invalid")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(contract_ref="inf:organization-public-milling-activity@1", contract_kind="contract_admission", owner_ref=self._PRINCIPAL, stream_ids=(stream_id,), event_types=("gameplay.organization.public_milling_activity_recorded",), projection_scope="project")
+        except GovernedAuthorityContractError as exc:
+            return self._public_workshop_activity_rejected(command_id, str(exc))
+        activity_ref = f"activity:public-milling-session:{contract_id}"
+        command = GameplayCommandEnvelope(command_id=command_id, command_type="gameplay.organization.record_public_milling_activity", command_version=1, principal_ref=self._PRINCIPAL, actor_ref=None, project_ref=project_ref, transaction_id=f"transaction:{command_id}", idempotency_key=idempotency_key, expected_revisions={stream_id: expected_organization_revision}, read_set_revisions={"gameplay:contracts": expected_contract_revision}, causation_id=causation_id, correlation_id=correlation_id, source_ref=contract_fulfilled_event_id, submitted_at=submitted_at, pinned_revisions={"contract": expected_contract_revision, "contract_created": created.stream_revision, "service_completion": completion.stream_revision, "organization": expected_organization_revision}, payload={"stream_ref": stream_id, "event_type": "gameplay.organization.public_milling_activity_recorded", "visibility_policy": "project", "activity_ref": activity_ref, "activity_kind": "public_milling_session", "status": "completed", "organization_ref": organization_ref, "facility_ref": facility_ref, "project_ref": project_ref, "service_ref": "service:industrial-facility-public-milling-session@1", "source_contract_created_event_id": created.event_id, "source_contract_created_revision": created.stream_revision, "source_service_completion_event_id": completion.event_id, "source_service_completion_revision": completion.stream_revision, "source_contract_fulfilled_event_id": fulfilled.event_id, "source_contract_fulfilled_revision": fulfilled.stream_revision, "package_revision": "package:industrial-facilities:v6", "policy_revision": "policy:organization-public-milling-activity@1", "descriptor_ref": "descriptor:organization-public-milling-activity@1", "descriptor_revision": "descriptor:organization-public-milling-activity@1", "catalog_ref": "inf:organization-public-milling-activity@1"})
+        batch = EventStoreSettlementPlan.from_command_envelope(command).to_atomic_event_batch()
+        event = batch.events[0]
+        batch = batch.model_copy(update={"outbox_entries": [GameplayOutboxEntry(outbox_id=f"outbox:{event.event_id}", transaction_id=batch.transaction_id, event_id=event.event_id, global_sequence=0, topic="world.organization.public_milling_activity.scoped_projection", audience="project", payload_projection={"activity_ref": activity_ref, "organization_ref": organization_ref, "facility_ref": facility_ref, "project_ref": project_ref, "status": "completed"})]}, deep=True)
+        return self._store.append_batch(batch)
+
+    def public_milling_activity_view_for(self, *, organization_ref: str, checkpoint_at: int | None = None) -> OrganizationPublicWorkshopActivityView:
+        if organization_ref != "organization:district-milling-cooperative" or (checkpoint_at is not None and checkpoint_at < 0):
+            raise ValueError("public_milling_activity_scope_invalid")
+        events = sorted(self._store.read_stream(f"gameplay:organization:{organization_ref}"), key=lambda value: (value.global_sequence, value.event_id))
+        def valid(event: object) -> bool:
+            payload = event.payload
+            return (
+                event.event_type == "gameplay.organization.public_milling_activity_recorded"
+                and event.visibility_policy == "project"
+                and event.stream_id == f"gameplay:organization:{organization_ref}"
+                and payload.get("organization_ref") == organization_ref
+                and payload.get("activity_kind") == "public_milling_session"
+                and payload.get("status") == "completed"
+                and payload.get("service_ref") == "service:industrial-facility-public-milling-session@1"
+                and payload.get("package_revision") == "package:industrial-facilities:v6"
+                and payload.get("policy_revision") == "policy:organization-public-milling-activity@1"
+                and payload.get("descriptor_ref") == "descriptor:organization-public-milling-activity@1"
+                and payload.get("descriptor_revision") == "descriptor:organization-public-milling-activity@1"
+                and payload.get("catalog_ref") == "inf:organization-public-milling-activity@1"
+                and all(isinstance(payload.get(key), str) and payload.get(key) for key in ("source_contract_created_event_id", "source_service_completion_event_id", "source_contract_fulfilled_event_id", "facility_ref", "project_ref"))
+            )
+        for event in events:
+            if event.event_type == "gameplay.organization.public_milling_activity_recorded" and not valid(event):
+                raise ValueError("public_milling_activity_replay_invalid")
+        rows = [dict(event.payload) for event in events if valid(event)]
+        if checkpoint_at is not None:
+            prefix = [event for event in events if event.global_sequence <= checkpoint_at]
+            tail = [event for event in events if event.global_sequence > checkpoint_at]
+            rows = [dict(event.payload) for event in prefix if valid(event)] + [dict(event.payload) for event in tail if valid(event)]
+        payload = {"organization_ref": organization_ref, "activities": tuple(rows)}
+        return OrganizationPublicWorkshopActivityView(organization_ref=organization_ref, activities=tuple(rows), source_revision_vector={f"gameplay:organization:{organization_ref}": self._store.get_stream_head(f"gameplay:organization:{organization_ref}")}, projection_hash="sha256:" + hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest())
+
+    def public_workshop_activity_view_for(
+        self, *, organization_ref: str, checkpoint_at: int | None = None
+    ) -> OrganizationPublicWorkshopActivityView:
+        if not organization_ref:
+            raise ValueError("public_workshop_activity_organization_invalid")
+        stream_id = f"gameplay:organization:{organization_ref}"
+        events = sorted(self._store.read_stream(stream_id), key=lambda value: (value.global_sequence, value.event_id))
+        if checkpoint_at is not None and checkpoint_at < 0:
+            raise ValueError("public_workshop_activity_checkpoint_invalid")
+
+        def reduce_rows(rows: list[object], initial: tuple[Mapping[str, object], ...] = ()) -> tuple[Mapping[str, object], ...]:
+            state = list(initial)
+            for event in rows:
+                if (
+                    event.event_type == "gameplay.organization.public_workshop_activity_recorded"
+                    and event.visibility_policy == "project"
+                    and event.payload.get("organization_ref") == organization_ref
+                ):
+                    state.append(dict(event.payload))
+            return tuple(state)
+
+        if checkpoint_at is None:
+            activities = reduce_rows(events)
+        else:
+            prefix = [event for event in events if event.global_sequence <= checkpoint_at]
+            tail = [event for event in events if event.global_sequence > checkpoint_at]
+            checkpoint_state = reduce_rows(prefix)
+            activities = reduce_rows(tail, checkpoint_state)
+        payload = {"organization_ref": organization_ref, "activities": activities}
+        projection_hash = "sha256:" + hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+        ).hexdigest()
+        return OrganizationPublicWorkshopActivityView(
+            organization_ref=organization_ref,
+            activities=activities,
+            source_revision_vector={stream_id: self._store.get_stream_head(stream_id)},
+            projection_hash=projection_hash,
+        )
+
+    def record_public_project_execution(
+        self,
+        *,
+        activity_event_id: str,
+        budget_consumed_event_id: str,
+        expected_activity_revision: int,
+        expected_budget_consumed_revision: int,
+        expected_economy_stream_revision: int,
+        expected_organization_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        submitted_at: str,
+    ) -> AppendBatchResult:
+        if (
+            not activity_event_id
+            or not budget_consumed_event_id
+            or expected_activity_revision < 1
+            or expected_budget_consumed_revision < 1
+            or expected_economy_stream_revision < 0
+            or expected_organization_revision < 0
+        ):
+            return self._public_project_execution_rejected(
+                command_id, "public_project_execution_reference_invalid"
+            )
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            prior = next(
+                (event for event in self._store.read_events() if event.event_id in set(existing.committed_event_ids)),
+                None,
+            )
+            if prior is not None and prior.event_type == "gameplay.organization.public_project_execution_recorded":
+                if (
+                    prior.payload.get("source_activity_event_id") == activity_event_id
+                    and prior.payload.get("source_budget_consumed_event_id") == budget_consumed_event_id
+                    and prior.payload.get("source_activity_revision") == expected_activity_revision
+                    and prior.payload.get("source_budget_consumed_revision") == expected_budget_consumed_revision
+                    and prior.payload.get("economy_stream_head") == expected_economy_stream_revision
+                    and prior.payload.get("organization_stream_head") == expected_organization_revision
+                    and prior.causation_id == causation_id
+                    and prior.correlation_id == correlation_id
+                ):
+                    return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._public_project_execution_rejected(
+                command_id, "public_project_execution_idempotency_key_reused"
+            )
+        try:
+            activity = self._store.get_event(activity_event_id)
+        except KeyError:
+            return self._public_project_execution_rejected(
+                command_id, "public_project_execution_activity_missing"
+            )
+        try:
+            consumed = self._store.get_event(budget_consumed_event_id)
+        except KeyError:
+            return self._public_project_execution_rejected(
+                command_id, "public_project_execution_budget_consumed_missing"
+            )
+        stream_id = activity.stream_id
+        organization_ref = str(activity.payload.get("organization_ref", ""))
+        facility_ref = str(activity.payload.get("facility_ref", ""))
+        project_ref = str(activity.payload.get("project_ref", ""))
+        if (
+            stream_id != f"gameplay:organization:{organization_ref}"
+            or organization_ref != "organization:municipal-assessment-office"
+            or not facility_ref
+            or not project_ref
+        ):
+            return self._public_project_execution_rejected(
+                command_id, "public_project_execution_binding_invalid"
+            )
+        if self._store.get_stream_head("gameplay:economy") != expected_economy_stream_revision:
+            return self._public_project_execution_rejected(
+                command_id, "public_project_execution_revision_conflict"
+            )
+        if self._store.get_stream_head(stream_id) != expected_organization_revision:
+            return self._public_project_execution_rejected(
+                command_id, "public_project_execution_revision_conflict"
+            )
+        if (
+            activity.event_type != "gameplay.organization.public_workshop_activity_recorded"
+            or activity.visibility_policy != "project"
+            or activity.stream_revision != expected_activity_revision
+            or activity.payload.get("activity_kind") != "public_workshop_session"
+            or activity.payload.get("status") != "completed"
+            or activity.payload.get("organization_ref") != organization_ref
+            or activity.payload.get("service_ref") != "service:industrial-facility-public-workshop-session@1"
+            or activity.payload.get("policy_revision") != "policy:organization-public-workshop-activity@1"
+            or activity.payload.get("descriptor_ref") != "descriptor:organization-public-workshop-activity@1"
+            or activity.payload.get("facility_ref") != facility_ref
+            or activity.payload.get("project_ref") != project_ref
+            or not activity.payload.get("source_contract_fulfilled_event_id")
+            or not activity.payload.get("contract_id")
+        ):
+            return self._public_project_execution_rejected(
+                command_id, "public_project_execution_activity_invalid"
+            )
+        if (
+            consumed.payload.get("project_ref") != project_ref
+            or consumed.payload.get("facility_ref") != facility_ref
+        ):
+            return self._public_project_execution_rejected(
+                command_id, "public_project_execution_binding_invalid"
+            )
+        if (
+            consumed.event_type != "gameplay.economy.public_project_budget_consumed"
+            or consumed.visibility_policy != "authority_only"
+            or consumed.stream_id != "gameplay:economy"
+            or consumed.stream_revision != expected_budget_consumed_revision
+            or consumed.payload.get("catalog_ref") != "inf:economy-public-project-budget-consumption@1"
+            or consumed.payload.get("policy_revision") != "policy:economy-public-project-budget-consumption@1"
+            or consumed.payload.get("descriptor_ref") != "descriptor:economy-public-project-budget-consumption@1"
+            or consumed.payload.get("descriptor_revision") != "descriptor:economy-public-project-budget-consumption@1"
+            or consumed.payload.get("status") != "consumed"
+            or consumed.payload.get("terminal") != "v1_terminal_no_compensation"
+            or consumed.payload.get("amount_minor") != 12
+            or consumed.payload.get("currency_ref") != "currency:local"
+            or consumed.payload.get("source_activity_event_id") != activity_event_id
+            or consumed.payload.get("source_activity_revision") != expected_activity_revision
+            or consumed.payload.get("project_ref") != project_ref
+            or consumed.payload.get("facility_ref") != facility_ref
+        ):
+            return self._public_project_execution_rejected(
+                command_id, "public_project_execution_budget_consumed_invalid"
+            )
+        try:
+            from app.gameplay.economy_runtime import EconomyProjector
+
+            source_commitment = self._store.get_event(str(consumed.payload.get("source_commitment_event_id")))
+            source_reservation = self._store.get_event(str(consumed.payload.get("source_reservation_event_id")))
+            economy_projection = EconomyProjector().rebuild(self._store.read_events())
+            consumption_ref = consumed.payload.get("consumption_ref")
+            verified_consumption = economy_projection.public_project_budget_consumptions.get(consumption_ref)
+            if (
+                verified_consumption is None
+                or verified_consumption.source_event_id != consumed.event_id
+                or source_commitment.event_type != "gameplay.economy.public_project_budget_commitment_recorded"
+                or source_reservation.event_type != "gameplay.economy.budget_reserved"
+                or source_reservation.payload.get("source_commitment_event_id") != source_commitment.event_id
+            ):
+                return self._public_project_execution_rejected(
+                    command_id, "public_project_execution_budget_consumed_invalid"
+                )
+        except Exception:
+            return self._public_project_execution_rejected(
+                command_id, "public_project_execution_budget_consumed_invalid"
+            )
+        if any(
+            event.event_type == "gameplay.organization.public_project_execution_recorded"
+            and event.payload.get("source_activity_event_id") == activity_event_id
+            and event.payload.get("source_budget_consumed_event_id") == budget_consumed_event_id
+            for event in self._store.read_stream(stream_id)
+        ):
+            return self._public_project_execution_rejected(
+                command_id, "public_project_execution_idempotency_key_reused"
+            )
+        canonical_key = (
+            f"organization:public-project-execution:{activity_event_id}:{expected_activity_revision}:"
+            f"{budget_consumed_event_id}:{expected_budget_consumed_revision}:{expected_economy_stream_revision}:"
+            f"{expected_organization_revision}:v1"
+        )
+        if idempotency_key != canonical_key:
+            return self._public_project_execution_rejected(
+                command_id, "public_project_execution_idempotency_key_invalid"
+            )
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:organization-public-project-execution@1",
+                contract_kind="contract_admission",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(stream_id,),
+                event_types=("gameplay.organization.public_project_execution_recorded",),
+                projection_scope="project",
+            )
+        except GovernedAuthorityContractError as exc:
+            return self._public_project_execution_rejected(command_id, str(exc))
+        execution_ref = f"execution:public-workshop-project-step:{activity_event_id}"
+        command = GameplayCommandEnvelope(
+            command_id=command_id,
+            command_type="gameplay.organization.record_public_project_execution",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=None,
+            project_ref=project_ref,
+            transaction_id=f"transaction:{command_id}",
+            idempotency_key=idempotency_key,
+            expected_revisions={stream_id: expected_organization_revision},
+            read_set_revisions={
+                stream_id: expected_organization_revision,
+                "gameplay:economy": expected_economy_stream_revision,
+            },
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            source_ref=budget_consumed_event_id,
+            submitted_at=submitted_at,
+            pinned_revisions={
+                "activity": expected_activity_revision,
+                "budget_consumed": expected_budget_consumed_revision,
+                "economy": expected_economy_stream_revision,
+                "organization": expected_organization_revision,
+            },
+            payload={
+                "stream_ref": stream_id,
+                "event_type": "gameplay.organization.public_project_execution_recorded",
+                "visibility_policy": "project",
+                "execution_ref": execution_ref,
+                "execution_kind": "public_workshop_project_step",
+                "status": "funded_and_executed",
+                "organization_ref": organization_ref,
+                "facility_ref": facility_ref,
+                "project_ref": project_ref,
+                "activity_ref": str(activity.payload.get("activity_ref")),
+                "source_activity_event_id": activity_event_id,
+                "source_activity_revision": expected_activity_revision,
+                "source_activity_provider_ref": organization_ref,
+                "source_activity_service_ref": "service:industrial-facility-public-workshop-session@1",
+                "source_activity_policy_revision": "policy:organization-public-workshop-activity@1",
+                "source_activity_descriptor_ref": "descriptor:organization-public-workshop-activity@1",
+                "source_activity_catalog_ref": "inf:organization-public-workshop-activity@1",
+                "source_budget_consumed_event_id": budget_consumed_event_id,
+                "source_budget_consumed_revision": expected_budget_consumed_revision,
+                "source_budget_consumed_catalog_ref": "inf:economy-public-project-budget-consumption@1",
+                "source_budget_consumed_policy_revision": "policy:economy-public-project-budget-consumption@1",
+                "source_budget_consumed_descriptor_ref": "descriptor:economy-public-project-budget-consumption@1",
+                "source_budget_consumed_terminal": "v1_terminal_no_compensation",
+                "economy_stream_head": expected_economy_stream_revision,
+                "organization_stream_head": expected_organization_revision,
+                "policy_revision": "policy:organization-public-project-execution@1",
+                "descriptor_ref": "descriptor:organization-public-project-execution@1",
+                "descriptor_revision": "descriptor:organization-public-project-execution@1",
+            },
+        )
+        batch = EventStoreSettlementPlan.from_command_envelope(command).to_atomic_event_batch()
+        event = batch.events[0]
+        batch = batch.model_copy(
+            update={
+                "outbox_entries": [
+                    GameplayOutboxEntry(
+                        outbox_id=f"outbox:{event.event_id}",
+                        transaction_id=batch.transaction_id,
+                        event_id=event.event_id,
+                        global_sequence=0,
+                        topic="world.organization.public_project_execution.scoped_projection",
+                        audience="project",
+                        payload_projection={
+                            "execution_ref": execution_ref,
+                            "organization_ref": organization_ref,
+                            "facility_ref": facility_ref,
+                            "project_ref": project_ref,
+                            "status": "funded_and_executed",
+                        },
+                    )
+                ]
+            },
+            deep=True,
+        )
+        return self._store.append_batch(batch)
+
+    def public_project_execution_view_for(
+        self, *, organization_ref: str, checkpoint_at: int | None = None
+    ) -> OrganizationPublicProjectExecutionView:
+        if not organization_ref:
+            raise ValueError("public_project_execution_organization_invalid")
+        stream_id = f"gameplay:organization:{organization_ref}"
+        events = sorted(self._store.read_stream(stream_id), key=lambda value: (value.global_sequence, value.event_id))
+        if checkpoint_at is not None and checkpoint_at < 0:
+            raise ValueError("public_project_execution_checkpoint_invalid")
+
+        def reduce_rows(rows: list[object], initial: tuple[Mapping[str, object], ...] = ()) -> tuple[Mapping[str, object], ...]:
+            state = list(initial)
+            for event in rows:
+                if (
+                    event.event_type == "gameplay.organization.public_project_execution_recorded"
+                    and event.visibility_policy == "project"
+                    and event.payload.get("organization_ref") == organization_ref
+                ):
+                    try:
+                        activity = self._store.get_event(str(event.payload.get("source_activity_event_id")))
+                        consumed = self._store.get_event(str(event.payload.get("source_budget_consumed_event_id")))
+                    except KeyError as exc:
+                        raise ValueError("public_project_execution_replay_provenance_invalid") from exc
+                    if (
+                        activity.event_type != "gameplay.organization.public_workshop_activity_recorded"
+                        or activity.visibility_policy != "project"
+                        or activity.event_id != event.payload.get("source_activity_event_id")
+                        or activity.stream_revision != event.payload.get("source_activity_revision")
+                        or activity.payload.get("organization_ref") != organization_ref
+                        or activity.payload.get("facility_ref") != event.payload.get("facility_ref")
+                        or activity.payload.get("project_ref") != event.payload.get("project_ref")
+                        or consumed.event_type != "gameplay.economy.public_project_budget_consumed"
+                        or consumed.visibility_policy != "authority_only"
+                        or consumed.event_id != event.payload.get("source_budget_consumed_event_id")
+                        or consumed.stream_revision != event.payload.get("source_budget_consumed_revision")
+                        or consumed.payload.get("source_activity_event_id") != activity.event_id
+                        or consumed.payload.get("facility_ref") != event.payload.get("facility_ref")
+                        or consumed.payload.get("project_ref") != event.payload.get("project_ref")
+                    ):
+                        raise ValueError("public_project_execution_replay_provenance_invalid")
+                    state.append(dict(event.payload))
+            return tuple(state)
+
+        if checkpoint_at is None:
+            executions = reduce_rows(events)
+        else:
+            prefix = [event for event in events if event.global_sequence <= checkpoint_at]
+            tail = [event for event in events if event.global_sequence > checkpoint_at]
+            checkpoint_state = reduce_rows(prefix)
+            executions = reduce_rows(tail, checkpoint_state)
+        source_revision_vector = {
+            stream_id: self._store.get_stream_head(stream_id),
+            "gameplay:economy": self._store.get_stream_head("gameplay:economy"),
+        }
+        payload = {
+            "organization_ref": organization_ref,
+            "executions": executions,
+            "source_revision_vector": source_revision_vector,
+        }
+        projection_hash = "sha256:" + hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+        ).hexdigest()
+        return OrganizationPublicProjectExecutionView(
+            organization_ref=organization_ref,
+            executions=executions,
+            source_revision_vector=source_revision_vector,
+            projection_hash=projection_hash,
+        )
+
+    @staticmethod
+    def public_project_execution_receipt_for(
+        *, result: AppendBatchResult, scope: str
+    ) -> SettlementReceipt:
+        if scope != "project":
+            raise ValueError("public_project_execution_receipt_scope_denied")
+        if not result.committed or len(result.committed_event_ids) != 1:
+            raise ValueError("public_project_execution_receipt_missing")
+        return SettlementReceipt.from_append_result(
+            result=result,
+            audit_refs=(f"organization_public_project_execution:{result.transaction_id}",),
+        )
+
+    def accept_production_work_contribution(
+        self,
+        *,
+        organization_ref: str,
+        source_evidence_event_id: str,
+        expected_source_stream_revision: int,
+        expected_organization_stream_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ) -> AppendBatchResult:
+        """Accept one completed Production contribution authorized by one org schedule."""
+        if not organization_ref.startswith("org:") or expected_source_stream_revision < 1 or expected_organization_stream_revision < 0:
+            return self._work_contribution_rejected(command_id, "organization_work_contribution_reference_invalid")
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            prior = next((event for event in self._store.read_events() if event.event_id in set(existing.committed_event_ids)), None)
+            if prior is not None and prior.event_type == "gameplay.organization.production_work_contribution_accepted" and (
+                prior.payload.get("organization_ref") == organization_ref
+                and prior.payload.get("source_evidence_event_id") == source_evidence_event_id
+                and prior.payload.get("source_evidence_revision") == expected_source_stream_revision
+                and prior.causation_id == causation_id
+                and prior.correlation_id == correlation_id
+            ):
+                return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._work_contribution_rejected(command_id, "organization_work_contribution_idempotency_key_reused")
+        try:
+            source_event = self._store.get_event(source_evidence_event_id)
+        except KeyError:
+            return self._work_contribution_rejected(command_id, "organization_work_contribution_source_missing")
+        source = source_event.payload
+        if (
+            source_event.event_type != "gameplay.construction_production.work_completion_evidence_recorded"
+            or source_event.stream_revision != expected_source_stream_revision
+            or self._store.get_stream_head(source_event.stream_id) != expected_source_stream_revision
+            or not source_event.visibility_policy.startswith("actor:")
+            or source.get("evidence_kind") != "production-completed"
+            or source.get("outcome") != "completed"
+            or source.get("verification_state") != "verified"
+        ):
+            return self._work_contribution_rejected(command_id, "organization_work_contribution_source_invalid")
+        recipient_ref = str(source.get("actor_ref", ""))
+        assignment_ref = str(source.get("assignment_ref", ""))
+        work_order_ref = str(source.get("work_order_ref", ""))
+        facility_ref = str(source.get("facility_ref", ""))
+        if not recipient_ref.startswith("character:") or not assignment_ref or not work_order_ref:
+            return self._work_contribution_rejected(command_id, "organization_work_contribution_source_binding_invalid")
+        if not facility_ref:
+            return self._work_contribution_rejected(command_id, "organization_work_contribution_source_binding_invalid")
+        acquisition_matches = [
+            event
+            for event in self._store.read_stream(source_event.stream_id)
+            if event.event_type == "gameplay.construction_production.facility_acquired"
+            and event.visibility_policy == "project"
+            and event.payload.get("facility_ref") == facility_ref
+            and event.payload.get("owner_ref") == organization_ref
+        ]
+        if len(acquisition_matches) != 1:
+            return self._work_contribution_rejected(
+                command_id,
+                "organization_work_contribution_facility_owner_missing"
+                if not acquisition_matches
+                else "organization_work_contribution_facility_owner_ambiguous",
+            )
+        acquisition_event = acquisition_matches[0]
+        organization_stream_id = f"gameplay:organization:{organization_ref}"
+        schedule_candidates = []
+        observed_at = str(source.get("observed_at", ""))
+        try:
+            observed = datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+        except ValueError:
+            return self._work_contribution_rejected(command_id, "organization_work_contribution_source_time_invalid")
+        for event in self._store.read_stream(organization_stream_id):
+            payload = event.payload
+            if (
+                event.event_type == "gameplay.organization.work_order_recorded"
+                and event.visibility_policy == "organization:summary"
+                and payload.get("organization_ref") == organization_ref
+                and payload.get("recipient_ref") == recipient_ref
+                and payload.get("assignment_ref") == assignment_ref
+                and payload.get("work_order_ref") == work_order_ref
+            ):
+                try:
+                    starts = datetime.fromisoformat(str(payload.get("effective_from", "")).replace("Z", "+00:00"))
+                    ends_raw = payload.get("effective_to")
+                    ends = datetime.fromisoformat(str(ends_raw).replace("Z", "+00:00")) if ends_raw else None
+                except ValueError:
+                    continue
+                if starts <= observed and (ends is None or observed < ends):
+                    schedule_candidates.append(event)
+        if len(schedule_candidates) != 1:
+            return self._work_contribution_rejected(
+                command_id,
+                "organization_work_contribution_schedule_missing" if not schedule_candidates else "organization_work_contribution_schedule_ambiguous",
+            )
+        schedule_event = schedule_candidates[0]
+        if self._store.get_stream_head(organization_stream_id) != expected_organization_stream_revision:
+            return self._work_contribution_rejected(command_id, "organization_work_contribution_revision_conflict")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:organization-production-work-contribution-acceptance@1",
+                contract_kind="contract_admission",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(organization_stream_id,),
+                event_types=("gameplay.organization.production_work_contribution_accepted",),
+                projection_scope="project",
+            )
+        except GovernedAuthorityContractError as error:
+            return self._work_contribution_rejected(command_id, str(error))
+        acceptance_key = (
+            f"organization:production-work-contribution:{organization_ref}:{source_evidence_event_id}:"
+            f"{expected_source_stream_revision}:{schedule_event.event_id}:{schedule_event.stream_revision}:v1"
+        )
+        if idempotency_key != acceptance_key:
+            return self._work_contribution_rejected(command_id, "organization_work_contribution_idempotency_key_invalid")
+        command = GameplayCommandEnvelope(
+            command_id=command_id,
+            command_type="gameplay.organization.accept_production_work_contribution",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=recipient_ref,
+            project_ref=None,
+            transaction_id=f"transaction:{command_id}",
+            idempotency_key=idempotency_key,
+            expected_revisions={organization_stream_id: expected_organization_stream_revision},
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            source_ref=source_evidence_event_id,
+            submitted_at=observed_at,
+            pinned_revisions={"source_evidence": expected_source_stream_revision, "schedule": schedule_event.stream_revision},
+            payload={
+                "stream_ref": organization_stream_id,
+                "event_type": "gameplay.organization.production_work_contribution_accepted",
+                "visibility_policy": "organization:summary",
+                "organization_ref": organization_ref,
+                "recipient_ref": recipient_ref,
+                "assignment_ref": assignment_ref,
+                "work_order_ref": work_order_ref,
+                "run_ref": source.get("run_ref"),
+                "facility_ref": facility_ref,
+                "project_ref": acquisition_event.payload.get("plot_ref"),
+                "acquisition_event_id": acquisition_event.event_id,
+                "acquisition_event_revision": acquisition_event.stream_revision,
+                "contribution_digest": source.get("contribution_digest"),
+                "source_evidence_event_id": source_evidence_event_id,
+                "source_evidence_revision": expected_source_stream_revision,
+                "schedule_event_id": schedule_event.event_id,
+                "schedule_event_revision": schedule_event.stream_revision,
+                "policy_revision": "policy:organization-production-work-contribution-acceptance@1",
+                "descriptor_ref": "descriptor:organization-production-work-contribution-acceptance@1",
+                "descriptor_revision": "descriptor:organization-production-work-contribution-acceptance@1",
+            },
+        )
+        batch = EventStoreSettlementPlan.from_command_envelope(command).to_atomic_event_batch()
+        event = batch.events[0]
+        batch = batch.model_copy(update={"outbox_entries": [GameplayOutboxEntry(
+            outbox_id=f"outbox:{event.event_id}",
+            transaction_id=batch.transaction_id,
+            event_id=event.event_id,
+            global_sequence=0,
+            topic="world.organization.work_contribution.scoped_projection",
+            audience="organization:summary",
+            payload_projection={"organization_ref": organization_ref, "run_ref": source.get("run_ref"), "work_order_ref": work_order_ref},
+        )]}, deep=True)
+        return self._store.append_batch(batch)
+
+    def work_contribution_acceptance_view_for(
+        self, *, organization_ref: str, reader_scope: str = "organization:summary"
+    ) -> OrganizationWorkContributionAcceptanceView:
+        stream_id = f"gameplay:organization:{organization_ref}"
+        rows = [
+            dict(event.payload)
+            for event in self._store.read_stream(stream_id)
+            if event.event_type == "gameplay.organization.production_work_contribution_accepted"
+            and event.visibility_policy == "organization:summary"
+            and reader_scope in {"organization:summary", self._PRINCIPAL}
+        ]
+        rows.sort(key=lambda row: json.dumps(row, sort_keys=True, separators=(",", ":"), default=str))
+        revision = self._store.get_stream_head(stream_id)
+        projection = {"owner_principal_ref": self._PRINCIPAL, "organization_ref": organization_ref, "acceptance_rows": rows, "source_revision_vector": {stream_id: revision}}
+        return OrganizationWorkContributionAcceptanceView(
+            owner_principal_ref=self._PRINCIPAL,
+            organization_ref=organization_ref,
+            acceptance_rows=tuple(rows),
+            source_revision_vector={stream_id: revision},
+            projection_hash="sha256:" + hashlib.sha256(json.dumps(projection, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")).hexdigest(),
+        )
+
+    def fulfill_production_work_order(
+        self,
+        *,
+        organization_ref: str,
+        accepted_event_id: str,
+        expected_accepted_revision: int,
+        expected_organization_stream_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ) -> AppendBatchResult:
+        """Terminally fulfill exactly one previously accepted INF-4V work order."""
+        if not organization_ref.startswith("org:") or expected_accepted_revision < 1 or expected_organization_stream_revision < 0:
+            return self._work_contribution_rejected(command_id, "organization_work_order_fulfillment_reference_invalid")
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            prior = next((event for event in self._store.read_events() if event.event_id in set(existing.committed_event_ids)), None)
+            if prior is not None and prior.event_type == "gameplay.organization.work_order_fulfilled" and (
+                prior.payload.get("accepted_event_id") == accepted_event_id
+                and prior.payload.get("accepted_event_revision") == expected_accepted_revision
+                and prior.payload.get("organization_ref") == organization_ref
+                and prior.causation_id == causation_id
+                and prior.correlation_id == correlation_id
+            ):
+                return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._work_contribution_rejected(command_id, "organization_work_order_fulfillment_idempotency_key_reused")
+        try:
+            accepted_event = self._store.get_event(accepted_event_id)
+        except KeyError:
+            return self._work_contribution_rejected(command_id, "organization_work_order_fulfillment_source_missing")
+        accepted = accepted_event.payload
+        organization_stream_id = f"gameplay:organization:{organization_ref}"
+        if (
+            accepted_event.event_type != "gameplay.organization.production_work_contribution_accepted"
+            or accepted_event.visibility_policy != "organization:summary"
+            or accepted_event.stream_id != organization_stream_id
+            or accepted_event.stream_revision != expected_accepted_revision
+            or accepted.get("organization_ref") != organization_ref
+            or accepted.get("policy_revision") != "policy:organization-production-work-contribution-acceptance@1"
+            or accepted.get("descriptor_ref") != "descriptor:organization-production-work-contribution-acceptance@1"
+            or accepted.get("descriptor_revision") != "descriptor:organization-production-work-contribution-acceptance@1"
+            or not accepted.get("acquisition_event_id")
+            or not isinstance(accepted.get("acquisition_event_revision"), int)
+            or not accepted.get("project_ref")
+            or not accepted.get("facility_ref")
+            or not accepted.get("assignment_ref")
+            or not accepted.get("work_order_ref")
+        ):
+            return self._work_contribution_rejected(command_id, "organization_work_order_fulfillment_source_invalid")
+        if self._store.get_stream_head(organization_stream_id) != expected_organization_stream_revision:
+            return self._work_contribution_rejected(command_id, "organization_work_order_fulfillment_revision_conflict")
+        fulfillment_key = f"organization:production-work-order-fulfillment:{accepted_event_id}:{expected_accepted_revision}:v1"
+        if idempotency_key != fulfillment_key:
+            return self._work_contribution_rejected(command_id, "organization_work_order_fulfillment_idempotency_key_invalid")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:organization-production-work-order-fulfillment@1",
+                contract_kind="lifecycle",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(organization_stream_id,),
+                event_types=("gameplay.organization.work_order_fulfilled",),
+                projection_scope="project",
+            )
+        except GovernedAuthorityContractError as error:
+            return self._work_contribution_rejected(command_id, str(error))
+        command = GameplayCommandEnvelope(
+            command_id=command_id,
+            command_type="gameplay.organization.fulfill_production_work_order",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=str(accepted["recipient_ref"]),
+            project_ref=str(accepted["project_ref"]),
+            transaction_id=f"transaction:{command_id}",
+            idempotency_key=idempotency_key,
+            expected_revisions={organization_stream_id: expected_organization_stream_revision},
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            source_ref=accepted_event_id,
+            submitted_at=f"event:{accepted_event_id}",
+            pinned_revisions={"accepted": expected_accepted_revision},
+            payload={
+                "stream_ref": organization_stream_id,
+                "event_type": "gameplay.organization.work_order_fulfilled",
+                "visibility_policy": "organization:summary",
+                "organization_ref": organization_ref,
+                "project_ref": accepted["project_ref"],
+                "facility_ref": accepted["facility_ref"],
+                "recipient_ref": accepted["recipient_ref"],
+                "assignment_ref": accepted["assignment_ref"],
+                "work_order_ref": accepted["work_order_ref"],
+                "run_ref": accepted["run_ref"],
+                "prior_status": "accepted",
+                "next_status": "fulfilled",
+                "accepted_event_id": accepted_event_id,
+                "accepted_event_revision": expected_accepted_revision,
+                "source_evidence_event_id": accepted["source_evidence_event_id"],
+                "source_evidence_revision": accepted["source_evidence_revision"],
+                "acquisition_event_id": accepted["acquisition_event_id"],
+                "acquisition_event_revision": accepted["acquisition_event_revision"],
+                "schedule_event_id": accepted["schedule_event_id"],
+                "schedule_event_revision": accepted["schedule_event_revision"],
+                "policy_revision": "policy:organization-production-work-order-fulfillment@1",
+                "descriptor_ref": "descriptor:organization-production-work-order-fulfillment@1",
+                "descriptor_revision": "descriptor:organization-production-work-order-fulfillment@1",
+            },
+        )
+        batch = EventStoreSettlementPlan.from_command_envelope(command).to_atomic_event_batch()
+        event = batch.events[0]
+        batch = batch.model_copy(update={"outbox_entries": [GameplayOutboxEntry(
+            outbox_id=f"outbox:{event.event_id}",
+            transaction_id=batch.transaction_id,
+            event_id=event.event_id,
+            global_sequence=0,
+            topic="world.organization.work_order.scoped_projection",
+            audience="organization:summary",
+            payload_projection={"organization_ref": organization_ref, "work_order_ref": accepted["work_order_ref"], "status": "fulfilled"},
+        )]}, deep=True)
+        return self._store.append_batch(batch)
+
+    def work_order_fulfillment_view_for(
+        self, *, organization_ref: str, reader_scope: str = "organization:summary"
+    ) -> OrganizationWorkOrderFulfillmentView:
+        stream_id = f"gameplay:organization:{organization_ref}"
+        rows = [
+            dict(event.payload)
+            for event in self._store.read_stream(stream_id)
+            if event.event_type == "gameplay.organization.work_order_fulfilled"
+            and event.visibility_policy == "organization:summary"
+            and reader_scope in {"organization:summary", self._PRINCIPAL}
+        ]
+        rows.sort(key=lambda row: json.dumps(row, sort_keys=True, separators=(",", ":"), default=str))
+        revision = self._store.get_stream_head(stream_id)
+        projection = {"owner_principal_ref": self._PRINCIPAL, "organization_ref": organization_ref, "fulfillment_rows": rows, "source_revision_vector": {stream_id: revision}}
+        return OrganizationWorkOrderFulfillmentView(
+            owner_principal_ref=self._PRINCIPAL,
+            organization_ref=organization_ref,
+            fulfillment_rows=tuple(rows),
+            source_revision_vector={stream_id: revision},
+            projection_hash="sha256:" + hashlib.sha256(json.dumps(projection, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")).hexdigest(),
         )
 
     @classmethod
@@ -3350,4 +6266,36 @@ class OrganizationAuthority:
         return projection
 
 
-__all__ = ["AttendanceEvidence", "BranchInspectionRemediationProposal", "BranchScenarioReceipt", "CommerceBudgetAuthorization", "GovernmentAuthority", "GovernmentBranchPromotionReceipt", "GovernmentBranchPromotionResult", "Inspection", "OperatingPlan", "Organization", "OrganizationAuthority", "OrganizationBranchPromotionReceipt", "OrganizationBranchPromotionResult", "OrganizationCommerceProjection", "OrganizationOperatingWindowView", "OrganizationScheduleRecipientView", "Permit", "RoleAssignment", "ShiftOffer", "TaxAssessment", "WorkOrder", "WorkerContributionRef"]
+__all__ = [
+    "AttendanceEvidence",
+    "BranchInspectionRemediationProposal",
+    "BranchScenarioReceipt",
+    "CommerceBudgetAuthorization",
+    "GovernmentAuthority",
+    "GovernmentBranchPromotionReceipt",
+    "GovernmentBranchPromotionResult",
+    "GovernmentCommercialInspectionPolicy",
+    "GovernmentCommercialInspectionPolicyView",
+    "GovernmentDroughtAdvisoryIntentV1",
+    "GovernmentDroughtAdvisoryView",
+    "GovernmentDroughtAssessmentAcknowledgmentIntentV1",
+    "GovernmentPublicProjectExecutionAcknowledgmentIntentV1",
+    "GovernmentDroughtAssessmentAcknowledgmentView",
+    "GovernmentPublicProjectExecutionAcknowledgmentView",
+    "Inspection",
+    "OperatingPlan",
+    "Organization",
+    "OrganizationAuthority",
+    "OrganizationBranchPromotionReceipt",
+    "OrganizationBranchPromotionResult",
+    "OrganizationCommerceProjection",
+    "OrganizationOperatingWindowView",
+    "OrganizationPublicWorkshopActivityView",
+    "OrganizationScheduleRecipientView",
+    "Permit",
+    "RoleAssignment",
+    "ShiftOffer",
+    "TaxAssessment",
+    "WorkOrder",
+    "WorkerContributionRef",
+]

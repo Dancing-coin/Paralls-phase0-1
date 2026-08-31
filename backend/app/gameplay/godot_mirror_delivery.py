@@ -13,7 +13,11 @@ from app.gameplay.models import AtomicEventBatch
 from app.gameplay.runtime_state import CharacterGameRuntimeState, StateGroupProjectionEnvelope
 from app.gameplay.state_group_sync import CharacterGameRuntimeDelta, CharacterGameRuntimeSnapshot, StateGroupSyncService
 from app.gameplay.state_group_views import CharacterGameRuntimeStateView
-from app.ws_protocol import GameplayMirrorDeliveryEnvelope, GameplayMirrorReceipt
+from app.ws_protocol import (
+    GameplayMirrorDeliveryEnvelope,
+    GameplayMirrorReceipt,
+    GovernmentDroughtAdvisoryDeliveryEnvelope,
+)
 
 
 class GameplayMirrorDeliveryError(ValueError):
@@ -50,6 +54,19 @@ class GameplayMirrorOutboundQueue:
             raise GameplayMirrorConnectionError("mirror_backpressure")
         self._dirty_by_actor[actor_ref] = payload
         return False
+
+    def enqueue_delivery(self, payload: dict[str, object]) -> bool:
+        """Queue only the two fixed backend presentation message families."""
+
+        message_type = payload.get("message_type")
+        if message_type == "gameplay_mirror_delivery":
+            return self.enqueue_projection(payload)
+        if message_type != "government_drought_advisory_delivery":
+            raise GameplayMirrorConnectionError("mirror_delivery_message_invalid")
+        if len(self._projections) >= self._projection_capacity:
+            raise GameplayMirrorConnectionError("mirror_backpressure")
+        self._projections.append(payload)
+        return True
 
     def pop_next(self) -> dict[str, object] | None:
         if self._controls:
@@ -300,6 +317,33 @@ class GameplayMirrorConnectionRegistry:
         connection.receipt_ledger.record_sent(sequence)
         connection.next_delivery_sequence += 1
         connection.deliver({"message_type": "gameplay_mirror_delivery", "payload": envelope.model_dump(mode="json")})
+
+    def deliver_government_drought_advisory(
+        self, session_ref: str, payload: dict[str, object]
+    ) -> None:
+        """Deliver the sole non-actor presentation family without forging actor scope."""
+
+        connection = self._connections.get(session_ref)
+        if connection is None:
+            raise GameplayMirrorConnectionError("mirror_connection_unavailable")
+        sequence = connection.next_delivery_sequence
+        envelope = GovernmentDroughtAdvisoryDeliveryEnvelope(
+            connection_epoch=connection.connection_epoch,
+            delivery_sequence=sequence,
+            projection_kind=str(payload.get("projection_kind", "")),
+            jurisdiction_ref=str(payload.get("jurisdiction_ref", "")),
+            advisory_refs=tuple(payload.get("advisory_refs", ())),
+            source_revision_vector=dict(payload.get("source_revision_vector", {})),
+            projection_hash=str(payload.get("projection_hash", "")),
+        )
+        connection.receipt_ledger.record_sent(sequence)
+        connection.next_delivery_sequence += 1
+        connection.deliver(
+            {
+                "message_type": "government_drought_advisory_delivery",
+                "payload": envelope.model_dump(mode="json"),
+            }
+        )
 
     def acknowledge(self, *, session_ref: str, receipt: GameplayMirrorReceipt) -> bool:
         connection = self._connections.get(session_ref)

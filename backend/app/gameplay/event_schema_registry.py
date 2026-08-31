@@ -26,6 +26,69 @@ PHASE2A_WORK_INTENT_EVENT_SCHEMAS = (
 )
 
 
+INF4AI_P5_ACTOR_PRIVATE_EVENT_SCHEMAS = (
+    EventSchemaRegistration(
+        "gameplay.social.handshake_shared_experience_recorded",
+        1,
+        "sha256:963801afdb239c431578691d933c51e120dd02dd36f0c2c460f894ecec5b1810",
+    ),
+)
+
+INF4AO_P5_ACTOR_PRIVATE_EVENT_SCHEMAS = (
+    EventSchemaRegistration(
+        "gameplay.social.public_milling_notice_acknowledged",
+        1,
+        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    ),
+)
+
+
+INF3_GRAIN_HARVEST_EVENT_SCHEMAS = (
+    EventSchemaRegistration(
+        "gameplay.ecology.grain_crop.admitted",
+        1,
+        "sha256:inf3:ecology:grain-crop-admitted:v1",
+    ),
+    EventSchemaRegistration(
+        "gameplay.ecology.grain_harvested",
+        1,
+        "sha256:inf3:ecology:grain-harvested:v1",
+    ),
+)
+
+INF3AB_GRAIN_CUSTODY_EVENT_SCHEMAS = (
+    EventSchemaRegistration(
+        "gameplay.inventory.grain_harvest_received@1",
+        1,
+        "sha256:inf3ab:inventory:grain-harvest-received:v1",
+    ),
+)
+
+INF4AP_GRAIN_INTAKE_EVENT_SCHEMAS = (
+    EventSchemaRegistration(
+        "gameplay.organization.grain_intake_recorded@1",
+        1,
+        "sha256:inf4ap:organization:grain-intake-recorded:v1",
+    ),
+)
+
+CLOSED_GENERIC_DOMAIN_ACCEPTANCE_EVENT_SCHEMAS = (
+    EventSchemaRegistration(
+        "gameplay.organization.domain_acceptance_marked@1",
+        1,
+        "sha256:closed-generic:organization:domain-acceptance-marked:v1",
+    ),
+)
+
+INF2AN_GRAIN_INTAKE_ACCEPTANCE_EVENT_SCHEMAS = (
+    EventSchemaRegistration(
+        "gameplay.economy.grain_intake_accepted@1",
+        1,
+        "sha256:inf2an:economy:grain-intake-accepted:v1",
+    ),
+)
+
+
 class EventSchemaRegistry:
     def __init__(self) -> None:
         self._registrations: dict[tuple[str, int], EventSchemaRegistration] = {}
@@ -98,6 +161,90 @@ class EventSchemaRegistry:
 
 def register_phase2a_work_intent_event_schemas(registry: EventSchemaRegistry) -> None:
     for registration in PHASE2A_WORK_INTENT_EVENT_SCHEMAS:
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError as exc:
+            existing = registry.get(registration.event_type, registration.schema_version)
+            if existing != registration:
+                raise exc
+
+
+def register_inf4ai_p5_actor_private_event_schemas(registry: EventSchemaRegistry) -> None:
+    """Install the one source-controlled INF-4AI schema into an existing registry."""
+
+    for registration in INF4AI_P5_ACTOR_PRIVATE_EVENT_SCHEMAS:
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError as exc:
+            existing = registry.get(registration.event_type, registration.schema_version)
+            if existing != registration:
+                raise exc
+
+
+def register_inf4ao_p5_actor_private_event_schemas(registry: EventSchemaRegistry) -> None:
+    """Install the exact INF-4AO social acknowledgment schema."""
+
+    for registration in INF4AO_P5_ACTOR_PRIVATE_EVENT_SCHEMAS:
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError as exc:
+            existing = registry.get(registration.event_type, registration.schema_version)
+            if existing != registration:
+                raise exc
+
+
+def register_inf3_grain_harvest_event_schemas(registry: EventSchemaRegistry) -> None:
+    """Install the fixed INF-3 Ecology grain row schemas."""
+
+    for registration in INF3_GRAIN_HARVEST_EVENT_SCHEMAS:
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError as exc:
+            existing = registry.get(registration.event_type, registration.schema_version)
+            if existing != registration:
+                raise exc
+
+
+def register_inf3ab_grain_custody_event_schemas(registry: EventSchemaRegistry) -> None:
+    """Install the fixed Ecology-to-Inventory grain custody schema."""
+
+    for registration in INF3AB_GRAIN_CUSTODY_EVENT_SCHEMAS:
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError as exc:
+            existing = registry.get(registration.event_type, registration.schema_version)
+            if existing != registration:
+                raise exc
+
+
+def register_inf4ap_grain_intake_event_schemas(registry: EventSchemaRegistry) -> None:
+    """Install the fixed Inventory-to-Organization grain intake schema."""
+
+    for registration in INF4AP_GRAIN_INTAKE_EVENT_SCHEMAS:
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError as exc:
+            existing = registry.get(registration.event_type, registration.schema_version)
+            if existing != registration:
+                raise exc
+
+
+def register_closed_generic_domain_acceptance_event_schemas(registry: EventSchemaRegistry) -> None:
+    for registration in CLOSED_GENERIC_DOMAIN_ACCEPTANCE_EVENT_SCHEMAS:
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError as exc:
+            existing = registry.get(registration.event_type, registration.schema_version)
+            if existing != registration:
+                raise exc
+
+
+def register_inf2an_grain_intake_acceptance_event_schemas(
+    registry: EventSchemaRegistry,
+) -> None:
+    """Install the fixed Organization-to-Economy grain acceptance schema."""
+
+    for registration in INF2AN_GRAIN_INTAKE_ACCEPTANCE_EVENT_SCHEMAS:
         try:
             registry.register(registration)
         except EventSchemaRegistryError as exc:

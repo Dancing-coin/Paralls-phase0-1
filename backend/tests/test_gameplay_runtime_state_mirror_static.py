@@ -72,6 +72,33 @@ def test_gameplay_mirror_bridge_requires_a_new_handoff_enrollment_after_disconne
     assert "_session_enrollment.clear()" in source
 
 
+def test_government_drought_advisory_presentation_is_jurisdiction_scoped_and_read_only() -> None:
+    bridge = (ROOT / "scripts" / "interaction" / "GameplayMirrorBridge.gd").read_text(encoding="utf-8")
+    consumer = (ROOT / "scripts" / "interaction" / "GovernmentDroughtAdvisoryPresentationConsumer.gd").read_text(encoding="utf-8")
+    bus = (ROOT / "scripts" / "autoload" / "LocalPresentationBus.gd").read_text(encoding="utf-8")
+
+    assert "allowed_government_drought_advisory_jurisdiction_refs" in bridge
+    assert '"gameplay_government_drought_advisory_subscribe"' in bridge
+    assert "government_drought_advisory_delivery_received" in bridge
+    assert "signal government_drought_advisory_projection_received(payload)" in bus
+    assert "government_drought_advisory.project.v1" in consumer
+    assert "jurisdiction_ref_mismatch" in consumer
+    assert "authority_mutation\": false" in consumer
+    assert "actor_ref" not in consumer
+    assert "authority_command" not in consumer
+
+
+def test_godot_mirror_probe_executes_the_government_advisory_scope_boundary() -> None:
+    probe = (ROOT / "scripts" / "verification" / "GameplayMirrorBridgeProbe.gd").read_text(encoding="utf-8")
+
+    assert "GovernmentDroughtAdvisoryPresentationConsumer.gd" in probe
+    assert "allowed_government_drought_advisory_jurisdiction_refs" in probe
+    assert "government_drought_advisory_projection_received" in probe
+    assert "government_drought_advisory_delivery_received" in probe
+    assert "jurisdiction:hidden" in probe
+    assert "advisory_consumer.last_delivery_sequence == 1" in probe
+
+
 def test_live_mirror_verifier_covers_authority_prediction_confirmation_and_rejection() -> None:
     verifier = (ROOT / "scripts" / "verification" / "verify_live_gameplay_mirror_delivery.py").read_text(encoding="utf-8")
     probe = (ROOT / "scripts" / "verification" / "LiveGameplayMirrorDeliveryProbe.gd").read_text(encoding="utf-8")

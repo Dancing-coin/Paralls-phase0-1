@@ -51,6 +51,141 @@ def test_snapshot_load_fails_closed_for_corrupt_or_unsupported_data(tmp_path) ->
         GameplayEventStore.load_snapshot(unsupported)
 
 
+def test_snapshot_load_rejects_transaction_result_that_does_not_match_committed_batch() -> None:
+    store = GameplayEventStore()
+    store.append_batch(
+        _batch(
+            events=[_event("evt:integrity", stream_id="stream:integrity")],
+            outbox_entries=[_outbox("evt:integrity")],
+            expected={"stream:integrity": 0},
+        )
+    )
+    snapshot = store.export_snapshot()
+    snapshot["transaction_results"][0]["committed_event_ids"] = ["evt:forged"]
+
+    with pytest.raises(GameplayEventStoreSnapshotError, match="gameplay_snapshot_transaction_result_invalid"):
+        GameplayEventStore.from_snapshot(snapshot)
+
+
+def test_snapshot_load_rejects_outbox_entry_bound_to_the_wrong_transaction() -> None:
+    store = GameplayEventStore()
+    store.append_batch(
+        _batch(
+            events=[_event("evt:outbox-integrity", stream_id="stream:outbox-integrity")],
+            outbox_entries=[_outbox("evt:outbox-integrity")],
+            expected={"stream:outbox-integrity": 0},
+        )
+    )
+    snapshot = store.export_snapshot()
+    snapshot["outbox"][0]["transaction_id"] = "tx:forged"
+
+    with pytest.raises(GameplayEventStoreSnapshotError, match="gameplay_snapshot_outbox_invalid"):
+        GameplayEventStore.from_snapshot(snapshot)
+
+
+def test_snapshot_load_rejects_transaction_event_payload_that_differs_from_ledger_event() -> None:
+    store = GameplayEventStore()
+    store.append_batch(
+        _batch(
+            events=[_event("evt:event-integrity", stream_id="stream:event-integrity")],
+            outbox_entries=[_outbox("evt:event-integrity")],
+            expected={"stream:event-integrity": 0},
+        )
+    )
+    snapshot = store.export_snapshot()
+    snapshot["transactions"][0]["events"][0]["payload"]["slot"] = "tampered"
+
+    with pytest.raises(GameplayEventStoreSnapshotError, match="gameplay_snapshot_transaction_invalid"):
+        GameplayEventStore.from_snapshot(snapshot)
+
+
+def test_snapshot_load_rejects_batch_idempotency_record_that_differs_from_index() -> None:
+    store = GameplayEventStore()
+    store.append_batch(
+        _batch(
+            events=[_event("evt:idempotency-integrity", stream_id="stream:idempotency-integrity")],
+            outbox_entries=[_outbox("evt:idempotency-integrity")],
+            expected={"stream:idempotency-integrity": 0},
+        )
+    )
+    snapshot = store.export_snapshot()
+    snapshot["transactions"][0]["idempotency_record"]["payload_digest"] = "digest:forged"
+
+    with pytest.raises(GameplayEventStoreSnapshotError, match="gameplay_snapshot_transaction_invalid"):
+        GameplayEventStore.from_snapshot(snapshot)
+
+
+def test_snapshot_load_rejects_batch_expected_revision_that_does_not_precede_committed_events() -> None:
+    store = GameplayEventStore()
+    store.append_batch(
+        _batch(
+            events=[_event("evt:revision-integrity", stream_id="stream:revision-integrity")],
+            outbox_entries=[_outbox("evt:revision-integrity")],
+            expected={"stream:revision-integrity": 0},
+        )
+    )
+    snapshot = store.export_snapshot()
+    snapshot["transactions"][0]["expected_stream_revisions"]["stream:revision-integrity"] = 7
+
+    with pytest.raises(GameplayEventStoreSnapshotError, match="gameplay_snapshot_transaction_invalid"):
+        GameplayEventStore.from_snapshot(snapshot)
+
+
+def test_snapshot_load_rejects_missing_transaction_outbox_entry() -> None:
+    store = GameplayEventStore()
+    store.append_batch(
+        _batch(
+            events=[_event("evt:outbox-coverage", stream_id="stream:outbox-coverage")],
+            outbox_entries=[_outbox("evt:outbox-coverage")],
+            expected={"stream:outbox-coverage": 0},
+        )
+    )
+    snapshot = store.export_snapshot()
+    snapshot["transactions"][0]["outbox_entries"] = []
+
+    with pytest.raises(GameplayEventStoreSnapshotError, match="gameplay_snapshot_transaction_invalid"):
+        GameplayEventStore.from_snapshot(snapshot)
+
+
+def test_snapshot_load_rejects_transactions_out_of_global_sequence_order() -> None:
+    store = GameplayEventStore()
+    store.append_batch(
+        _batch(
+            tx="tx:sequence:first",
+            command_id="cmd:sequence:first",
+            key="key:sequence:first",
+            events=[_event("evt:sequence:first", stream_id="stream:sequence:first", tx="tx:sequence:first", command_id="cmd:sequence:first")],
+            outbox_entries=[_outbox("evt:sequence:first", tx="tx:sequence:first")],
+            expected={"stream:sequence:first": 0},
+        )
+    )
+    store.append_batch(
+        _batch(
+            tx="tx:sequence:second",
+            command_id="cmd:sequence:second",
+            key="key:sequence:second",
+            events=[_event("evt:sequence:second", stream_id="stream:sequence:second", tx="tx:sequence:second", command_id="cmd:sequence:second")],
+            outbox_entries=[_outbox("evt:sequence:second", tx="tx:sequence:second")],
+            expected={"stream:sequence:second": 0},
+        )
+    )
+    snapshot = store.export_snapshot()
+    snapshot["transactions"].reverse()
+
+    with pytest.raises(GameplayEventStoreSnapshotError, match="gameplay_snapshot_transaction_invalid"):
+        GameplayEventStore.from_snapshot(snapshot)
+
+
+def test_snapshot_load_rejects_non_contiguous_event_sequences_inside_a_batch() -> None:
+    store = GameplayEventStore()
+    store.append_batch(_batch())
+    snapshot = store.export_snapshot()
+    snapshot["transactions"][0]["events"].reverse()
+
+    with pytest.raises(GameplayEventStoreSnapshotError, match="gameplay_snapshot_transaction_invalid"):
+        GameplayEventStore.from_snapshot(snapshot)
+
+
 def test_durable_store_persists_commit_and_rolls_back_when_snapshot_write_fails(tmp_path, monkeypatch) -> None:
     path = tmp_path / "durable-store.json"
     store = DurableGameplayEventStore(path)

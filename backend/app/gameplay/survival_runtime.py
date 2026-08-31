@@ -125,12 +125,17 @@ class SurvivalProjector:
     _OBLIGATION_CANCELLED = "gameplay.survival.obligation_cancelled"
     _OBLIGATION_COMPENSATED = "gameplay.survival.obligation_compensated"
 
-    def rebuild(self, events: Sequence[GameplayEvent]) -> SurvivalProjection:
-        needs: dict[tuple[str, str], NeedState] = {}
-        latest_plan: ConsumptionPlan | None = None
-        revisions: dict[str, int] = {}
-        states: dict[tuple[str, str], SurvivalState] = {}
-        open_obligations: dict[str, int] = {}
+    def rebuild(
+        self,
+        events: Sequence[GameplayEvent],
+        *,
+        checkpoint: SurvivalProjection | None = None,
+    ) -> SurvivalProjection:
+        needs: dict[tuple[str, str], NeedState] = dict(checkpoint.needs) if checkpoint else {}
+        latest_plan: ConsumptionPlan | None = checkpoint.latest_plan if checkpoint else None
+        revisions: dict[str, int] = dict(checkpoint.source_revision_vector) if checkpoint else {}
+        states: dict[tuple[str, str], SurvivalState] = dict(checkpoint.states) if checkpoint else {}
+        open_obligations: dict[str, int] = dict(checkpoint.open_obligations) if checkpoint else {}
         for event in sorted(events, key=lambda value: (value.global_sequence, value.event_id)):
             if event.event_type not in {
                 self._TICK,
@@ -226,9 +231,10 @@ class SurvivalProjector:
 class SurvivalAuthority:
     _PRINCIPAL = "actor_gameplay.survival_domain"
 
-    def __init__(self, *, store: GameplayEventStore) -> None:
+    def __init__(self, *, store: GameplayEventStore, package_registry: object | None = None) -> None:
         self._store = store
         self._projector = SurvivalProjector()
+        self._package_registry = package_registry
 
     def commit_obligation_batch(self, batch: AtomicEventBatch) -> AppendBatchResult:
         """Commit only a Survival-owned lifecycle plan."""
@@ -263,8 +269,14 @@ class SurvivalAuthority:
             failure=GameplayFailure(error_code=error_code, message=error_code, failed_stage="survival_obligation_commit"),
         )
 
-    def projector(self) -> SurvivalProjection:
-        return self._projector.rebuild(self._store.read_events())
+    def projector(self, *, checkpoint_at: int | None = None) -> SurvivalProjection:
+        events = self._store.read_events()
+        if checkpoint_at is None:
+            return self._projector.rebuild(events)
+        if checkpoint_at < 0:
+            raise ValueError("survival_checkpoint_invalid")
+        checkpoint = self._projector.rebuild(events[:checkpoint_at])
+        return self._projector.rebuild(events[checkpoint_at:], checkpoint=checkpoint)
 
     def project_states(self, *, scope: Literal["public", "authority"] = "public") -> dict[str, tuple[dict[str, object], ...]]:
         rows: dict[str, list[dict[str, object]]] = {}
@@ -293,6 +305,7 @@ class SurvivalAuthority:
         definition: StateDefinition,
         expiry_policy: SurvivalStateExpiryPolicy | None = None,
         source_evidence_refs: tuple[str, ...] = (),
+        provenance_payload: Mapping[str, object] = MappingProxyType({}),
     ) -> AppendBatchResult:
         """Commit an owner-admitted semantic proposal; the evaluator never writes."""
         if command.principal_ref != self._PRINCIPAL or command.actor_ref is None:
@@ -376,6 +389,7 @@ class SurvivalAuthority:
                     "source_ref": command.source_ref,
                     "source_evidence_refs": list(source_evidence_refs),
                     "state_application_digest": proposal_digest,
+                    **dict(provenance_payload),
                 },
             )
         ]
@@ -436,7 +450,11 @@ class SurvivalAuthority:
         return self._store.append_batch(batch)
 
     def apply_weather_front_cold_exposure(
-        self, *, command: GameplayCommandEnvelope
+        self,
+        *,
+        command: GameplayCommandEnvelope,
+        content: OwnerBoundEnvironmentConsumerContent | None = None,
+        provenance_payload: Mapping[str, object] = MappingProxyType({}),
     ) -> AppendBatchResult:
         """Apply the one admitted Ecology evidence row through existing Survival events."""
         if (
@@ -535,33 +553,46 @@ class SurvivalAuthority:
             )
         except GovernedAuthorityContractError as error:
             return self._rejected(command, str(error))
+        effect_ref = content.effect_ref if content is not None else "effect:cold_exposure"
+        state_ref = content.state_ref if content is not None else "state:cold"
+        magnitude = content.magnitude if content is not None else 100
+        stack_key = content.stack_key if content is not None else "cold"
+        stack_policy = content.stack_policy if content is not None else "add"
+        stack_limit = content.stack_limit if content is not None else 2
+        expiry_policy = content.expiry_policy if content is not None else "scheduled"
+        expires_after_ticks = content.expires_after_ticks if content is not None else 1
         return self.apply_effect_state(
             command=command,
             application=EffectApplication(
-                effect_ref="effect:cold_exposure",
+                effect_ref=effect_ref,
                 target_component_ref=actor_ref,
-                magnitude=100,
-                stack_key="cold",
-                expires_at_tick=tick + 1,
+                magnitude=magnitude,
+                stack_key=stack_key,
+                expires_at_tick=tick + expires_after_ticks if expiry_policy == "scheduled" else None,
                 causal_chain_id=f"weather-front-cold:{weather_event_id}:{assignment_event_id}",
             ),
             resistance=ResistanceProfile(
-                effect_ref="effect:cold_exposure",
+                effect_ref=effect_ref,
                 source_ref=actor_ref,
                 modifier_basis_points=0,
                 revision=1,
             ),
             definition=StateDefinition(
-                state_ref="state:cold",
-                stack_policy="add",
-                stack_limit=2,
-                expiry_policy="scheduled",
+                state_ref=state_ref,
+                stack_policy=stack_policy,
+                stack_limit=stack_limit,
+                expiry_policy=expiry_policy,
             ),
             source_evidence_refs=(weather_event_id, assignment_event_id),
+            provenance_payload=provenance_payload,
         )
 
     def apply_weather_front_heat_exposure(
-        self, *, command: GameplayCommandEnvelope
+        self,
+        *,
+        command: GameplayCommandEnvelope,
+        content: OwnerBoundEnvironmentConsumerContent | None = None,
+        provenance_payload: Mapping[str, object] = MappingProxyType({}),
     ) -> AppendBatchResult:
         """Apply the one admitted heat weather evidence row through Survival."""
         if (
@@ -660,33 +691,46 @@ class SurvivalAuthority:
             )
         except GovernedAuthorityContractError as error:
             return self._rejected(command, str(error))
+        effect_ref = content.effect_ref if content is not None else "effect:heat_exposure"
+        state_ref = content.state_ref if content is not None else "state:overheated"
+        magnitude = content.magnitude if content is not None else 100
+        stack_key = content.stack_key if content is not None else "heat"
+        stack_policy = content.stack_policy if content is not None else "add"
+        stack_limit = content.stack_limit if content is not None else 2
+        expiry_policy = content.expiry_policy if content is not None else "scheduled"
+        expires_after_ticks = content.expires_after_ticks if content is not None else 1
         return self.apply_effect_state(
             command=command,
             application=EffectApplication(
-                effect_ref="effect:heat_exposure",
+                effect_ref=effect_ref,
                 target_component_ref=actor_ref,
-                magnitude=100,
-                stack_key="heat",
-                expires_at_tick=tick + 1,
+                magnitude=magnitude,
+                stack_key=stack_key,
+                expires_at_tick=tick + expires_after_ticks if expiry_policy == "scheduled" else None,
                 causal_chain_id=f"weather-front-heat:{weather_event_id}:{assignment_event_id}",
             ),
             resistance=ResistanceProfile(
-                effect_ref="effect:heat_exposure",
+                effect_ref=effect_ref,
                 source_ref=actor_ref,
                 modifier_basis_points=0,
                 revision=1,
             ),
             definition=StateDefinition(
-                state_ref="state:overheated",
-                stack_policy="add",
-                stack_limit=2,
-                expiry_policy="scheduled",
+                state_ref=state_ref,
+                stack_policy=stack_policy,
+                stack_limit=stack_limit,
+                expiry_policy=expiry_policy,
             ),
             source_evidence_refs=(weather_event_id, assignment_event_id),
+            provenance_payload=provenance_payload,
         )
 
     def apply_weather_front_dehydration_exposure(
-        self, *, command: GameplayCommandEnvelope
+        self,
+        *,
+        command: GameplayCommandEnvelope,
+        content: OwnerBoundEnvironmentConsumerContent | None = None,
+        provenance_payload: Mapping[str, object] = MappingProxyType({}),
     ) -> AppendBatchResult:
         """Apply the approved drought weather-front row through existing Survival events."""
         if (
@@ -793,30 +837,453 @@ class SurvivalAuthority:
             )
         except GovernedAuthorityContractError as error:
             return self._rejected(command, str(error))
+        effect_ref = content.effect_ref if content is not None else "effect:dehydration_exposure"
+        state_ref = content.state_ref if content is not None else "state:dehydrated"
+        magnitude = content.magnitude if content is not None else 100
+        stack_key = content.stack_key if content is not None else "dehydration"
+        stack_policy = content.stack_policy if content is not None else "add"
+        stack_limit = content.stack_limit if content is not None else 2
+        expiry_policy = content.expiry_policy if content is not None else "scheduled"
+        expires_after_ticks = content.expires_after_ticks if content is not None else 1
         return self.apply_effect_state(
             command=command,
             application=EffectApplication(
-                effect_ref="effect:dehydration_exposure",
+                effect_ref=effect_ref,
                 target_component_ref=actor_ref,
-                magnitude=100,
-                stack_key="dehydration",
-                expires_at_tick=tick + 1,
+                magnitude=magnitude,
+                stack_key=stack_key,
+                expires_at_tick=tick + expires_after_ticks if expiry_policy == "scheduled" else None,
                 causal_chain_id=f"weather-front-dehydration:{weather_event_id}:{assignment_event_id}",
             ),
             resistance=ResistanceProfile(
-                effect_ref="effect:dehydration_exposure",
+                effect_ref=effect_ref,
                 source_ref=actor_ref,
                 modifier_basis_points=0,
                 revision=1,
             ),
             definition=StateDefinition(
-                state_ref="state:dehydrated",
-                stack_policy="add",
-                stack_limit=2,
-                expiry_policy="scheduled",
+                state_ref=state_ref,
+                stack_policy=stack_policy,
+                stack_limit=stack_limit,
+                expiry_policy=expiry_policy,
             ),
             source_evidence_refs=(weather_event_id, assignment_event_id),
+            provenance_payload=provenance_payload,
         )
+
+    def apply_weather_front_rain_hydration(
+        self,
+        *,
+        command: GameplayCommandEnvelope,
+        content: OwnerBoundEnvironmentConsumerContent | None = None,
+        provenance_payload: Mapping[str, object] = MappingProxyType({}),
+    ) -> AppendBatchResult:
+        """Apply the exact rain -> hydration consumer row through Survival."""
+        if (
+            command.command_type != "gameplay.survival.apply_weather_front_hydration"
+            or command.principal_ref != self._PRINCIPAL
+            or command.source_ref != "authority:ecology"
+            or command.actor_ref is None
+            or command.payload.get("visibility_scope") != "project"
+        ):
+            return self._rejected(command, "weather_front_hydration_authority_required")
+        actor_ref = command.actor_ref
+        world_ref = command.payload.get("world_ref")
+        weather_event_id = command.payload.get("weather_event_id")
+        assignment_event_id = command.payload.get("region_assignment_event_id")
+        if not all(isinstance(value, str) and value for value in (world_ref, weather_event_id, assignment_event_id)):
+            return self._rejected(command, "weather_front_hydration_evidence_required")
+        if command.idempotency_key != f"weather-front-hydration:{weather_event_id}:{actor_ref}:v1":
+            return self._rejected(command, "weather_front_hydration_idempotency_key_invalid")
+        try:
+            weather_event = self._store.get_event(weather_event_id)
+            assignment_event = self._store.get_event(assignment_event_id)
+        except KeyError:
+            return self._rejected(command, "weather_front_hydration_evidence_missing")
+        target_region_ref = weather_event.payload.get("target_region_ref")
+        ecology_stream = weather_event.stream_id
+        population_stream = f"population:{world_ref}"
+        if (
+            weather_event.event_type != "gameplay.ecology.weather_front.propagated"
+            or not ecology_stream.startswith("gameplay:ecology:")
+            or weather_event.visibility_policy != "project"
+            or weather_event.payload.get("weather_ref") != "weather:rain"
+            or not isinstance(target_region_ref, str)
+            or not target_region_ref
+            or assignment_event.event_type != "population.activation.region_assigned"
+            or assignment_event.stream_id != population_stream
+            or assignment_event.visibility_policy != "project"
+            or assignment_event.payload.get("profile_ref") != actor_ref
+            or assignment_event.payload.get("region_ref") != target_region_ref
+            or assignment_event.payload.get("privacy_scope") != "project"
+        ):
+            return self._rejected(command, "weather_front_hydration_evidence_invalid")
+        lifecycle = {
+            "population.activation.committed": "active",
+            "population.activation.suspended": "suspended",
+            "population.activation.requeued": "requeued",
+            "population.activation.locked": "locked",
+        }
+        status = None
+        for event in self._store.read_stream(population_stream):
+            if event.payload.get("profile_ref") == actor_ref and event.event_type in lifecycle:
+                status = lifecycle[event.event_type]
+        if status != "active":
+            return self._rejected(command, "weather_front_hydration_profile_not_active")
+        survival_stream = f"gameplay:survival:{actor_ref}"
+        if (
+            set(command.expected_revisions) != {survival_stream}
+            or set(command.read_set_revisions) != {ecology_stream, population_stream}
+            or command.read_set_revisions[ecology_stream] != weather_event.stream_revision
+            or command.read_set_revisions[population_stream] != assignment_event.stream_revision
+        ):
+            return self._rejected(command, "weather_front_hydration_revision_vector_invalid")
+        if self._store.get_by_idempotency(self._PRINCIPAL, command.idempotency_key) is None:
+            admission_check = EcologyConsumerAdmissionCheck.verify(
+                store=self._store,
+                contract_ref="inf:weather-front-survival-hydration@1",
+                target_owner_ref=self._PRINCIPAL,
+                target_stream_ids=(survival_stream,),
+                target_event_types=("gameplay.survival.state_applied", "gameplay.survival.obligation_opened"),
+                projection_scope="project",
+                source_event_id=weather_event.event_id,
+                source_stream_id=ecology_stream,
+                source_revision=weather_event.stream_revision,
+                target_expected_revisions=dict(command.expected_revisions),
+                idempotency_key=command.idempotency_key,
+            )
+            if not admission_check.accepted:
+                return self._rejected(command, admission_check.error_code or "weather_front_hydration_admission_invalid")
+        try:
+            tick = int(weather_event.payload["tick"])
+        except (KeyError, TypeError, ValueError):
+            return self._rejected(command, "weather_front_hydration_evidence_invalid")
+        if tick < 0 or isinstance(weather_event.payload.get("tick"), bool):
+            return self._rejected(command, "weather_front_hydration_evidence_invalid")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:weather-front-survival-hydration@1",
+                contract_kind="ecology_consumer",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(survival_stream,),
+                event_types=("gameplay.survival.state_applied", "gameplay.survival.obligation_opened"),
+                projection_scope="project",
+            )
+        except GovernedAuthorityContractError as error:
+            return self._rejected(command, str(error))
+        effect_ref = content.effect_ref if content is not None else "effect:hydration"
+        state_ref = content.state_ref if content is not None else "state:hydrated"
+        magnitude = content.magnitude if content is not None else 100
+        stack_key = content.stack_key if content is not None else "hydration"
+        stack_policy = content.stack_policy if content is not None else "refresh"
+        stack_limit = content.stack_limit if content is not None else 1
+        expiry_policy = content.expiry_policy if content is not None else "scheduled"
+        expires_after_ticks = content.expires_after_ticks if content is not None else 1
+        return self.apply_effect_state(
+            command=command,
+            application=EffectApplication(
+                effect_ref=effect_ref,
+                target_component_ref=actor_ref,
+                magnitude=magnitude,
+                stack_key=stack_key,
+                expires_at_tick=tick + expires_after_ticks if expiry_policy == "scheduled" else None,
+                causal_chain_id=f"weather-front-hydration:{weather_event_id}:{assignment_event_id}",
+            ),
+            resistance=ResistanceProfile(
+                effect_ref=effect_ref,
+                source_ref=actor_ref,
+                modifier_basis_points=0,
+                revision=1,
+            ),
+            definition=StateDefinition(
+                state_ref=state_ref,
+                stack_policy=stack_policy,
+                stack_limit=stack_limit,
+                expiry_policy=expiry_policy,
+            ),
+            source_evidence_refs=(weather_event_id, assignment_event_id),
+            provenance_payload=provenance_payload,
+        )
+
+    def settle_owner_bound_environment_consumer(self, *, intent: object) -> AppendBatchResult:
+        """Build one admitted environment consumer from committed evidence only."""
+        from app.gameplay.closed_generic_gameplay_families import OwnerBoundEnvironmentConsumerIntent
+
+        try:
+            typed_intent = intent if isinstance(intent, OwnerBoundEnvironmentConsumerIntent) else OwnerBoundEnvironmentConsumerIntent.model_validate(intent)
+            weather = self._store.get_event(typed_intent.weather_event_id)
+            assignment = self._store.get_event(typed_intent.region_assignment_event_id)
+        except Exception:
+            return self._rejected_append(str(getattr(intent, "command_id", "environment-consumer")), "owner_bound_environment_consumer_source_missing")
+        resolved_content, row_error = self._resolve_owner_bound_environment_row(weather)
+        if row_error is not None or resolved_content is None:
+            return self._rejected_append(typed_intent.command_id, row_error or "owner_bound_environment_consumer_binding_invalid")
+        manifest, declaration, binding, content = resolved_content
+        weather_ref = weather.payload.get("weather_ref")
+        if (
+            weather.event_type != "gameplay.ecology.weather_front.propagated"
+            or weather.visibility_policy != "project"
+            or not isinstance(weather_ref, str)
+            or (content.weather_ref is not None and weather_ref != content.weather_ref)
+            or assignment.event_type != "population.activation.region_assigned"
+            or assignment.visibility_policy != "project"
+            or not isinstance(assignment.payload.get("profile_ref"), str)
+            or not isinstance(assignment.payload.get("world_ref"), str)
+            or assignment.payload.get("region_ref") != weather.payload.get("target_region_ref")
+        ):
+            return self._rejected_append(typed_intent.command_id, "owner_bound_environment_consumer_source_conflict")
+        actor_ref = str(assignment.payload["profile_ref"])
+        world_ref = str(assignment.payload["world_ref"])
+        survival_stream = f"gameplay:survival:{actor_ref}"
+        idempotency_key = f"owner-bound-environment-consumer:{manifest.patch_revision_id}:{weather.event_id}:{actor_ref}:v1"
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            prior = next(
+                (event for event in self._store.read_events() if event.event_id in set(existing.committed_event_ids)),
+                None,
+            )
+            if prior is not None and prior.causation_id == weather.event_id and prior.correlation_id == typed_intent.correlation_id:
+                return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._rejected_append(typed_intent.command_id, "idempotency_key_reused")
+        command = GameplayCommandEnvelope(
+            command_id=typed_intent.command_id,
+            command_type="gameplay.survival.apply_owner_bound_environment_consumer",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=actor_ref,
+            project_ref="project:weather-survival",
+            transaction_id=f"transaction:{typed_intent.command_id}",
+            idempotency_key=idempotency_key,
+            expected_revisions={survival_stream: self._store.get_stream_head(survival_stream)},
+            read_set_revisions={
+                weather.stream_id: weather.stream_revision,
+                assignment.stream_id: assignment.stream_revision,
+            },
+            causation_id=weather.event_id,
+            correlation_id=typed_intent.correlation_id,
+            source_ref="authority:ecology",
+            submitted_at="2026-08-30T00:00:00Z",
+            payload={
+                "world_ref": world_ref,
+                "weather_event_id": weather.event_id,
+                "region_assignment_event_id": assignment.event_id,
+                "visibility_scope": "project",
+            },
+        )
+        return self._apply_owner_bound_environment_content(
+            command=command,
+            content=content,
+            provenance_payload={
+                "family_ref": "owner_bound_environment_consumer@1",
+                "package_revision": manifest.patch_revision_id,
+                "content_digest": manifest.content_digest,
+                "declaration_ref": declaration.declaration_ref,
+                "declaration_digest": declaration.declaration_digest,
+                "descriptor_ref": binding.descriptor_ref,
+                "descriptor_revision": binding.descriptor_revision,
+                "active_patch_set_revision": binding.active_patch_set_revision,
+                "policy_revision": content.policy_revision_ref,
+            },
+        )
+
+    def _apply_owner_bound_environment_content(
+        self,
+        *,
+        command: GameplayCommandEnvelope,
+        content: OwnerBoundEnvironmentConsumerContent,
+        provenance_payload: Mapping[str, object],
+    ) -> AppendBatchResult:
+        actor_ref = command.actor_ref
+        world_ref = command.payload.get("world_ref")
+        weather_event_id = command.payload.get("weather_event_id")
+        assignment_event_id = command.payload.get("region_assignment_event_id")
+        if (
+            command.command_type != "gameplay.survival.apply_owner_bound_environment_consumer"
+            or command.principal_ref != self._PRINCIPAL
+            or command.source_ref != "authority:ecology"
+            or not isinstance(actor_ref, str)
+            or not isinstance(world_ref, str)
+            or not isinstance(weather_event_id, str)
+            or not isinstance(assignment_event_id, str)
+            or command.payload.get("visibility_scope") != "project"
+        ):
+            return self._rejected(command, "owner_bound_environment_consumer_authority_required")
+        try:
+            weather = self._store.get_event(weather_event_id)
+            assignment = self._store.get_event(assignment_event_id)
+        except KeyError:
+            return self._rejected(command, "owner_bound_environment_consumer_source_missing")
+        weather_ref = weather.payload.get("weather_ref")
+        source_name = weather_ref.removeprefix("weather:") if isinstance(weather_ref, str) else ""
+        expected_source_family_ref = f"event:weather-front-{source_name}@1"
+        target_region_ref = weather.payload.get("target_region_ref")
+        population_stream = f"population:{world_ref}"
+        target_definition = content.target_state_definition_ref
+        target_state_ref = (
+            target_definition.removeprefix("definition:survival-").split("@", 1)[0]
+            if target_definition.startswith("definition:survival-")
+            else target_definition.removeprefix("state:").split("@", 1)[0]
+        )
+        content_state_ref = content.state_ref.removeprefix("state:").split("@", 1)[0]
+        if not target_state_ref or target_state_ref != content_state_ref:
+            return self._rejected(command, "owner_bound_environment_consumer_content_invalid")
+        if (
+            weather.event_type != "gameplay.ecology.weather_front.propagated"
+            or not weather.stream_id.startswith("gameplay:ecology:")
+            or weather.visibility_policy != "project"
+            or not isinstance(weather_ref, str)
+            or not source_name
+            or content.source_event_family_ref != expected_source_family_ref
+            or (content.weather_ref is not None and content.weather_ref != weather_ref)
+            or not isinstance(target_region_ref, str)
+            or assignment.event_type != "population.activation.region_assigned"
+            or assignment.stream_id != population_stream
+            or assignment.visibility_policy != "project"
+            or assignment.payload.get("profile_ref") != actor_ref
+            or assignment.payload.get("region_ref") != target_region_ref
+            or assignment.payload.get("privacy_scope") != "project"
+        ):
+            return self._rejected(command, "owner_bound_environment_consumer_source_conflict")
+        status_events = {
+            "population.activation.committed": "active",
+            "population.activation.suspended": "suspended",
+            "population.activation.requeued": "requeued",
+            "population.activation.locked": "locked",
+        }
+        status = None
+        for event in self._store.read_stream(population_stream):
+            if event.payload.get("profile_ref") == actor_ref and event.event_type in status_events:
+                status = status_events[event.event_type]
+        if status != "active":
+            return self._rejected(command, "owner_bound_environment_consumer_profile_not_active")
+        survival_stream = f"gameplay:survival:{actor_ref}"
+        if (
+            set(command.expected_revisions) != {survival_stream}
+            or set(command.read_set_revisions) != {weather.stream_id, population_stream}
+            or command.read_set_revisions[weather.stream_id] != weather.stream_revision
+            or command.read_set_revisions[population_stream] != assignment.stream_revision
+        ):
+            return self._rejected(command, "owner_bound_environment_consumer_revision_vector_invalid")
+        admission_check = EcologyConsumerAdmissionCheck.verify(
+            store=self._store,
+            contract_ref="inf:owner-bound-environment-consumer@1",
+            target_owner_ref=self._PRINCIPAL,
+            target_stream_ids=(survival_stream,),
+            target_event_types=("gameplay.survival.state_applied",),
+            projection_scope="project",
+            source_event_id=weather.event_id,
+            source_stream_id=weather.stream_id,
+            source_revision=weather.stream_revision,
+            target_expected_revisions=dict(command.expected_revisions),
+            idempotency_key=command.idempotency_key,
+        )
+        if not admission_check.accepted:
+            return self._rejected(command, admission_check.error_code or "owner_bound_environment_consumer_admission_invalid")
+        try:
+            tick = weather.payload["tick"]
+            if not isinstance(tick, int) or isinstance(tick, bool) or tick < 0:
+                raise ValueError
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:owner-bound-environment-consumer@1",
+                contract_kind="ecology_consumer",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(survival_stream,),
+                event_types=("gameplay.survival.state_applied",),
+                projection_scope="project",
+            )
+        except (KeyError, TypeError, ValueError, GovernedAuthorityContractError) as error:
+            return self._rejected(command, str(error) or "owner_bound_environment_consumer_source_invalid")
+        return self.apply_effect_state(
+            command=command,
+            application=EffectApplication(
+                effect_ref=content.effect_ref,
+                target_component_ref=actor_ref,
+                magnitude=content.magnitude,
+                stack_key=content.stack_key,
+                expires_at_tick=tick + content.expires_after_ticks if content.expiry_policy == "scheduled" else None,
+                causal_chain_id=f"owner-bound-environment-consumer:{weather.event_id}:{assignment.event_id}",
+            ),
+            resistance=ResistanceProfile(
+                effect_ref=content.effect_ref,
+                source_ref=actor_ref,
+                modifier_basis_points=0,
+                revision=1,
+            ),
+            definition=StateDefinition(
+                state_ref=content.state_ref,
+                stack_policy=content.stack_policy,
+                stack_limit=content.stack_limit,
+                expiry_policy=content.expiry_policy,
+            ),
+            source_evidence_refs=(weather.event_id, assignment.event_id),
+            provenance_payload=provenance_payload,
+        )
+
+    def _resolve_owner_bound_environment_row(
+        self, weather: GameplayEvent
+    ) -> tuple[tuple[object, object, object, OwnerBoundEnvironmentConsumerContent] | None, str | None]:
+        registry = self._package_registry
+        active = getattr(registry, "active_patch_set", None) if registry is not None else None
+        if active is None:
+            return None, "owner_bound_environment_consumer_package_inactive"
+        try:
+            manifests = registry.active_manifests(active.active_patch_set_revision)
+        except Exception:
+            return None, "owner_bound_environment_consumer_package_inactive"
+        from app.gameplay.closed_generic_gameplay_families import OwnerBoundEnvironmentConsumerContent
+
+        candidates: list[tuple[object, object, object, OwnerBoundEnvironmentConsumerContent]] = []
+        content_shape_match = False
+        weather_ref = weather.payload.get("weather_ref")
+        source_name = weather_ref.removeprefix("weather:") if isinstance(weather_ref, str) else ""
+        source_event_family_ref = f"event:weather-front-{source_name}@1"
+        for manifest in manifests:
+            extension = manifest.platform_extension
+            if extension is None:
+                continue
+            declarations = {item.declaration_ref: item for item in extension.outcome_declarations}
+            for request in extension.capability_binding_requests:
+                if request.capability_ref != "capability:owner-bound-environment-consumer@1":
+                    continue
+                declaration = declarations.get(request.declaration_ref)
+                if declaration is None:
+                    continue
+                bindings = tuple(
+                    binding for binding in active.capability_bindings
+                    if binding.binding_ref == request.binding_ref
+                    and binding.package_revision == manifest.patch_revision_id
+                    and binding.descriptor_ref == "descriptor:owner-bound-environment-consumer@1"
+                    and binding.active_patch_set_revision == active.active_patch_set_revision
+                )
+                if len(bindings) != 1:
+                    continue
+                definitions = tuple(
+                    item for item in extension.package_definitions
+                    if item.definition_ref in declaration.definition_refs
+                )
+                if len(definitions) != 1:
+                    continue
+                try:
+                    content = OwnerBoundEnvironmentConsumerContent.model_validate(
+                        definitions[0].typed_content
+                    )
+                except Exception:
+                    continue
+                if content.source_event_family_ref != source_event_family_ref:
+                    continue
+                if content.weather_ref is not None and content.weather_ref != weather_ref:
+                    continue
+                content_shape_match = True
+                candidates.append((manifest, declaration, bindings[0], content))
+        if not candidates:
+            return None, (
+                "owner_bound_environment_consumer_content_invalid"
+                if content_shape_match
+                else "owner_bound_environment_consumer_source_conflict"
+            )
+        if len(candidates) != 1:
+            return None, "owner_bound_environment_consumer_binding_ambiguous"
+        return candidates[0], None
 
     @staticmethod
     def _state_application_digest(

@@ -361,6 +361,45 @@ def test_registered_state_dispatch_routes_fatigue_to_existing_owner() -> None:
     ]
 
 
+def test_registered_state_dispatch_rejects_fatigue_nonproject_privacy_without_append() -> None:
+    store = GameplayEventStore()
+    registry = _survival_registry()
+    command, application, resistance, _ = _survival_registered_submission()
+    command = command.model_copy(
+        update={
+            "command_id": "command:registered-fatigue-private",
+            "idempotency_key": "registered-fatigue-private",
+            "effect_ref": "effect:fatigue_exposure",
+            "state_ref": "state:fatigued",
+            "privacy_scope": "private_evidence",
+        }
+    )
+    application = application.model_copy(
+        update={"effect_ref": "effect:fatigue_exposure", "stack_key": "fatigue"}
+    )
+    resistance = resistance.model_copy(update={"effect_ref": "effect:fatigue_exposure"})
+    state = StateDefinition(
+        state_ref="state:fatigued",
+        stack_policy="refresh",
+        stack_limit=1,
+        expiry_policy="scheduled",
+        transform_targets=("state:recovering",),
+    )
+
+    result = SemanticSettlementAuthority(store=store, registry=registry).settle_registered_state(
+        command,
+        application=application,
+        resistance=resistance,
+        state=state,
+    )
+
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "semantic_registered_state_route_mismatch"
+    assert store.read_events() == []
+    assert store.list_outbox() == []
+
+
 def test_registered_state_owner_matrix_contains_exact_seven_apply_rows() -> None:
     registry = _survival_registry()
     rows = registry.registered_state_owner_rows()

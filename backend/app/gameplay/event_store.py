@@ -435,6 +435,112 @@ class GameplayEventStore:
             stream_heads[event.stream_id] = expected
         if {event.event_id for batch in transactions for event in batch.events} != {event.event_id for event in events}:
             raise GameplayEventStoreSnapshotError("gameplay_snapshot_transaction_invalid")
+
+        # A snapshot is an atomic ledger image: results, idempotency records,
+        # and outbox entries must all describe the same committed transactions.
+        # Without these checks a tampered snapshot could restore events while
+        # silently changing duplicate/replay behavior or receipt evidence.
+        transaction_ids = [batch.transaction_id for batch in transactions]
+        if len(set(transaction_ids)) != len(transaction_ids):
+            raise GameplayEventStoreSnapshotError("gameplay_snapshot_transaction_invalid")
+        event_by_id = {event.event_id: event for event in events}
+        snapshot_outbox_by_id = {entry.outbox_id: entry for entry in outbox}
+        transaction_by_id = {batch.transaction_id: batch for batch in transactions}
+        transaction_sequence_keys: list[int] = []
+        for batch in transactions:
+            batch_sequences = [event.global_sequence for event in batch.events]
+            if batch_sequences != list(range(batch_sequences[0], batch_sequences[-1] + 1)):
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_transaction_invalid")
+            transaction_sequence_keys.append(batch_sequences[0])
+        if transaction_sequence_keys != sorted(transaction_sequence_keys):
+            raise GameplayEventStoreSnapshotError("gameplay_snapshot_transaction_invalid")
+        result_by_transaction: dict[str, AppendBatchResult] = {}
+        for result in results:
+            if result.transaction_id in result_by_transaction:
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_transaction_result_invalid")
+            result_by_transaction[result.transaction_id] = result
+        if set(result_by_transaction) != set(transaction_by_id):
+            raise GameplayEventStoreSnapshotError("gameplay_snapshot_transaction_result_invalid")
+        for entry in outbox:
+            event = event_by_id.get(entry.event_id)
+            if (
+                event is None
+                or entry.transaction_id != event.transaction_id
+                or entry.global_sequence != event.global_sequence
+            ):
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_outbox_invalid")
+        for transaction_id, batch in transaction_by_id.items():
+            ledger_events = tuple(event_by_id.get(event.event_id) for event in batch.events)
+            if any(event is None for event in ledger_events) or any(
+                event.model_dump(mode="json") != ledger_event.model_dump(mode="json")
+                for event, ledger_event in zip(batch.events, ledger_events)
+                if ledger_event is not None
+            ):
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_transaction_invalid")
+            first_stream_revisions: dict[str, int] = {}
+            for event in batch.events:
+                first_stream_revisions.setdefault(event.stream_id, event.stream_revision)
+            if any(
+                stream_id not in batch.expected_stream_revisions
+                or batch.expected_stream_revisions[stream_id] != revision - 1
+                for stream_id, revision in first_stream_revisions.items()
+            ):
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_transaction_invalid")
+            batch_outbox_ids = {entry.outbox_id for entry in batch.outbox_entries}
+            batch_event_ids = {event.event_id for event in batch.events}
+            if any(entry.event_id not in batch_event_ids for entry in batch.outbox_entries):
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_transaction_invalid")
+            if any(
+                (
+                    snapshot_outbox_by_id.get(entry.outbox_id) is None
+                    or snapshot_outbox_by_id[entry.outbox_id].model_dump(
+                        mode="json",
+                        include={"outbox_id", "transaction_id", "event_id", "topic", "audience", "payload_projection"},
+                    )
+                    != entry.model_dump(
+                        mode="json",
+                        include={"outbox_id", "transaction_id", "event_id", "topic", "audience", "payload_projection"},
+                    )
+                )
+                for entry in batch.outbox_entries
+            ) or batch_outbox_ids != {
+                entry.outbox_id
+                for entry in outbox
+                if entry.transaction_id == transaction_id
+            }:
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_transaction_invalid")
+            result = result_by_transaction[transaction_id]
+            if not result.committed or result.failure is not None or result.command_id != batch.command_id:
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_transaction_result_invalid")
+            committed_event_ids = tuple(event.event_id for event in batch.events)
+            if tuple(result.committed_event_ids) != committed_event_ids:
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_transaction_result_invalid")
+            expected_revisions: dict[str, int] = {}
+            for event in batch.events:
+                expected_revisions[event.stream_id] = event.stream_revision
+            if result.resulting_stream_revisions != expected_revisions:
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_transaction_result_invalid")
+            if result.global_sequence_range != (
+                batch.events[0].global_sequence,
+                batch.events[-1].global_sequence,
+            ):
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_transaction_result_invalid")
+            if result.projection_refresh_hints != batch.projection_refresh_hints:
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_transaction_result_invalid")
+
+        outbox_ids: set[str] = set()
+        for entry in outbox:
+            if entry.outbox_id in outbox_ids:
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_outbox_invalid")
+            outbox_ids.add(entry.outbox_id)
+            event = event_by_id.get(entry.event_id)
+            if (
+                event is None
+                or entry.transaction_id != event.transaction_id
+                or entry.global_sequence != event.global_sequence
+            ):
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_outbox_invalid")
+
         snapshot_registry: EventSchemaRegistry | None = None
         if snapshot.get("snapshot_schema_version") == 2:
             registry_snapshot = snapshot.get("event_schema_registry")
@@ -465,16 +571,32 @@ class GameplayEventStore:
         store._projection_checkpoints = {checkpoint.checkpoint_id: checkpoint for checkpoint in checkpoints}
         if len(store._projection_checkpoints) != len(checkpoints):
             raise GameplayEventStoreSnapshotError("gameplay_snapshot_projection_checkpoint_invalid")
+        idempotency_transaction_ids: set[str] = set()
+        idempotency_keys: set[tuple[str, str]] = set()
         for value in idempotency:
             if not isinstance(value, dict):
                 raise GameplayEventStoreSnapshotError("gameplay_snapshot_idempotency_invalid")
             record = IdempotencyRecord.model_validate(value.get("record"))
             result = AppendBatchResult.model_validate(value.get("result"))
             key = (str(value.get("principal_ref", "")), str(value.get("idempotency_key", "")))
-            if not all(key) or key != (record.principal_ref, record.idempotency_key) or not result.committed:
+            if (
+                not all(key)
+                or key in idempotency_keys
+                or key != (record.principal_ref, record.idempotency_key)
+                or not result.committed
+                or result.transaction_id not in transaction_by_id
+                or transaction_by_id[result.transaction_id].idempotency_record != record
+                or result.model_dump(mode="json") != result_by_transaction[result.transaction_id].model_dump(mode="json")
+            ):
+                if result.transaction_id in transaction_by_id and transaction_by_id[result.transaction_id].idempotency_record != record:
+                    raise GameplayEventStoreSnapshotError("gameplay_snapshot_transaction_invalid")
                 raise GameplayEventStoreSnapshotError("gameplay_snapshot_idempotency_invalid")
+            idempotency_keys.add(key)
+            idempotency_transaction_ids.add(result.transaction_id)
             store._idempotency_records[key] = record
             store._idempotency_results[key] = result
+        if idempotency_transaction_ids != set(transaction_by_id):
+            raise GameplayEventStoreSnapshotError("gameplay_snapshot_idempotency_invalid")
         return store
 
     def _replace_outbox(self, updated: GameplayOutboxEntry) -> None:

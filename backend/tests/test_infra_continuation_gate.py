@@ -51,6 +51,7 @@ def test_inf3_continuation_gate_exposes_exact_registered_consumer_edges() -> Non
         "ecology-weather:front-to-organization-supply-fanout:v1",
         "ecology-weather:front-to-economy-quote:v1",
         "ecology-weather:front-to-economy-quote-fanout:v1",
+        "ecology-weather:front-to-water-resource-recovery:v1",
     )
 
 

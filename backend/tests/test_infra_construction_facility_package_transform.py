@@ -119,6 +119,31 @@ def test_package_transform_rejections_are_zero_write(setup_kwargs, updates, erro
     assert _zero_write(store) == before
 
 
+def test_package_transform_rejects_non_oven_and_stale_acquisition_evidence_without_write() -> None:
+    store, authority, _registry, source_id = _setup()
+    source = store.get_event(source_id)
+    store._events_by_id[source_id] = source.model_copy(
+        update={"payload": {**source.payload, "facility_kind": "bakery"}},
+        deep=True,
+    )
+    before = _zero_write(store)
+    non_oven = authority.transform_facility_from_package(_intent(source_id))
+    assert not non_oven.committed
+    assert non_oven.failure is not None
+    assert non_oven.failure.error_code == "construction_facility_transform_source_invalid"
+    assert _zero_write(store) == before
+
+    store, authority, _registry, source_id = _setup()
+    source = store.get_event(source_id)
+    store._events_by_id[source_id] = source.model_copy(update={"stream_revision": 0}, deep=True)
+    before = _zero_write(store)
+    stale = authority.transform_facility_from_package(_intent(source_id))
+    assert not stale.committed
+    assert stale.failure is not None
+    assert stale.failure.error_code == "construction_facility_transform_source_revision_conflict"
+    assert _zero_write(store) == before
+
+
 def test_package_transform_exact_duplicate_replays_and_changed_duplicate_is_zero_write() -> None:
     store, authority, _registry, source_id = _setup()
     first = authority.transform_facility_from_package(_intent(source_id))

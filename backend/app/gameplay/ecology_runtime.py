@@ -34,6 +34,12 @@ from app.gameplay.settlement_plan import build_multi_stream_atomic_event_batch_f
 from app.gameplay.shared_contracts import GameplayCommandEnvelope, ScheduledObligation
 
 
+_GRAIN_HARVEST_VARIANTS = {
+    "grain:wheat": ("grain:wheat@1", 10),
+    "grain:barley": ("grain:barley@1", 8),
+}
+
+
 def _ecology_admission_only(method):
     """Bind the one-time issuer outside the public ecology method surface."""
 
@@ -559,6 +565,7 @@ class EcologyHazardAuthority:
                 "ecology-weather:front-to-organization-supply-fanout:v1",
                 "ecology-weather:front-to-economy-quote:v1",
                 "ecology-weather:front-to-economy-quote-fanout:v1",
+                "ecology-weather:front-to-water-resource-recovery:v1",
             ),
             "consumer_admission_fence": "exact_ecology_registered_identity",
             "regional_propagation": {
@@ -1721,6 +1728,369 @@ class EcologyHazardAuthority:
             },
         )
 
+    @staticmethod
+    def _grain_variant(
+        *,
+        species: str,
+    ) -> tuple[str, int]:
+        try:
+            return _GRAIN_HARVEST_VARIANTS[species]
+        except KeyError as exc:
+            raise ValueError("grain_harvest_species_unadmitted") from exc
+
+    def _admit_grain_variant(
+        self,
+        *,
+        envelope: GameplayCommandEnvelope,
+        crop_ref: str,
+        region_ref: str,
+        plot_ref: str,
+        species: str,
+    ) -> AppendBatchResult:
+        item_definition, yield_quantity = self._grain_variant(species=species)
+        variant_ref = species.removeprefix("grain:")
+        row_ref = "ecology:grain-crop-admission@1" if species == "grain:wheat" else f"ecology:{variant_ref}-crop-admission@1"
+        source_rule_ref = "ecology:grain-crop-admission:v1" if species == "grain:wheat" else f"ecology:{variant_ref}-crop-admission:v1"
+        projection_topic = "ecology.grain_crop.scoped_projection" if species == "grain:wheat" else f"ecology.{variant_ref}_crop.scoped_projection"
+        if envelope.principal_ref != self._PRINCIPAL or envelope.source_ref != self._PRINCIPAL:
+            return self._rejected(envelope, "grain_crop_admission_authority_required")
+        try:
+            visibility_scope = self._visibility_scope(envelope)
+        except ValueError:
+            return self._rejected(envelope, "grain_crop_admission_privacy_denied")
+        if visibility_scope != "project":
+            return self._rejected(envelope, "grain_crop_admission_privacy_denied")
+        if (
+            envelope.project_ref != envelope.payload.get("project_ref", envelope.project_ref)
+            or not isinstance(envelope.project_ref, str)
+            or not envelope.project_ref
+            or envelope.payload.get("crop_ref") != crop_ref
+            or envelope.payload.get("region_ref") != region_ref
+            or envelope.payload.get("plot_ref") != plot_ref
+            or not crop_ref.startswith("crop:")
+            or not region_ref
+            or not plot_ref.startswith("plot:")
+        ):
+            return self._rejected(envelope, "grain_crop_admission_binding_invalid")
+        stream_id = self.ecology_stream_id(region_ref=region_ref)
+        if envelope.expected_revisions != {stream_id: self.store.get_stream_head(stream_id)}:
+            return self._rejected(envelope, "grain_crop_admission_revision_conflict")
+        required_key = (
+            f"ecology:grain-crop-admission:{envelope.project_ref}:{crop_ref}:v1"
+            if species == "grain:wheat"
+            else f"ecology:{variant_ref}-crop-admission:{envelope.project_ref}:{crop_ref}:v1"
+        )
+        if envelope.idempotency_key != required_key:
+            return self._rejected(envelope, "grain_crop_admission_idempotency_key_invalid")
+        existing = self.store.get_by_idempotency(self._PRINCIPAL, envelope.idempotency_key)
+        if existing is not None:
+            prior_events = [
+                event
+                for event in self.store.read_events()
+                if event.event_id in set(existing.committed_event_ids)
+            ]
+            if (
+                len(prior_events) == 1
+                and prior_events[0].event_type == "gameplay.ecology.grain_crop.admitted"
+                and prior_events[0].payload.get("crop_ref") == crop_ref
+                and prior_events[0].payload.get("region_ref") == region_ref
+                and prior_events[0].payload.get("plot_ref") == plot_ref
+                and prior_events[0].payload.get("project_ref") == envelope.project_ref
+                and prior_events[0].payload.get("species") == species
+                and prior_events[0].causation_id == envelope.causation_id
+                and prior_events[0].correlation_id == envelope.correlation_id
+            ):
+                return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._rejected(envelope, "grain_crop_admission_idempotency_key_reused")
+        if any(
+            event.event_type == "gameplay.ecology.grain_crop.admitted"
+            and event.visibility_policy == "project"
+            and event.payload.get("project_ref") == envelope.project_ref
+            and event.payload.get("crop_ref") == crop_ref
+            for event in self.store.read_stream(stream_id)
+        ):
+            return self._rejected(envelope, "grain_crop_admission_duplicate")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:ecology-grain-harvest@1",
+                contract_kind="ecology_consumer",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(stream_id,),
+                event_types=("gameplay.ecology.grain_crop.admitted",),
+                projection_scope="project",
+            )
+            payload = {
+                "row_ref": row_ref,
+                "project_ref": envelope.project_ref,
+                "crop_ref": crop_ref,
+                "region_ref": region_ref,
+                "plot_ref": plot_ref,
+                "species": species,
+                "maturity_status": "mature",
+                "yield_quantity": yield_quantity,
+                "item_definition": item_definition,
+                "policy_revision": "policy:ecology-grain-harvest@1",
+                "predicate_ref": "predicate:ecology-mature-grain-crop@1",
+                "descriptor_ref": "descriptor:ecology-grain-harvest@1",
+                "descriptor_revision": "descriptor:ecology-grain-harvest@1",
+                "catalog_ref": "inf:ecology-grain-harvest@1",
+            }
+            fragment = OwnerAuthorizedFragment(
+                fragment_id=f"fragment:ecology:{species.removeprefix('grain:')}-crop-admission:{envelope.project_ref}:{crop_ref}",
+                owner_principal_ref=self._PRINCIPAL,
+                source_rule_ref=source_rule_ref,
+                expected_revisions={stream_id: self.store.get_stream_head(stream_id)},
+                pinned_revisions={"target_stream": self.store.get_stream_head(stream_id)},
+                event_specs={stream_id: (("gameplay.ecology.grain_crop.admitted", payload),)},
+                event_visibility_policies={stream_id: ("project",)},
+            )
+            batch = build_multi_stream_atomic_event_batch_from_fragments(
+                command_id=envelope.command_id,
+                idempotency_principal_ref=self._PRINCIPAL,
+                idempotency_key=envelope.idempotency_key,
+                causation_id=envelope.causation_id,
+                correlation_id=envelope.correlation_id,
+                fragments=(fragment,),
+            )
+            event = batch.events[0]
+            batch = batch.model_copy(
+                update={
+                    "outbox_entries": [
+                        GameplayOutboxEntry(
+                            outbox_id=f"outbox:{event.event_id}",
+                            transaction_id=batch.transaction_id,
+                            event_id=event.event_id,
+                            global_sequence=0,
+                            topic=projection_topic,
+                            audience="project",
+                            payload_projection={
+                                "project_ref": envelope.project_ref,
+                                "crop_ref": crop_ref,
+                                "region_ref": region_ref,
+                                "plot_ref": plot_ref,
+                                "row_ref": payload["row_ref"],
+                            },
+                        )
+                    ]
+                },
+                deep=True,
+            )
+        except (ValueError, GovernedAuthorityContractError) as exc:
+            return self._rejected(envelope, str(exc))
+        return self.store.append_batch(batch)
+
+    def _harvest_grain_variant(
+        self,
+        *,
+        envelope: GameplayCommandEnvelope,
+        species: str,
+    ) -> AppendBatchResult:
+        item_definition, yield_quantity = self._grain_variant(species=species)
+        variant_ref = species.removeprefix("grain:")
+        row_ref = "ecology:grain-harvest@1" if species == "grain:wheat" else f"ecology:{variant_ref}-harvest@1"
+        source_rule_ref = "ecology:grain-harvest:v1" if species == "grain:wheat" else f"ecology:{variant_ref}-harvest:v1"
+        projection_topic = "ecology.grain_harvest.scoped_projection" if species == "grain:wheat" else f"ecology.{variant_ref}_harvest.scoped_projection"
+        if envelope.principal_ref != self._PRINCIPAL or envelope.source_ref != self._PRINCIPAL:
+            return self._rejected(envelope, "grain_harvest_authority_required")
+        try:
+            visibility_scope = self._visibility_scope(envelope)
+        except ValueError:
+            return self._rejected(envelope, "grain_harvest_privacy_denied")
+        if visibility_scope != "project":
+            return self._rejected(envelope, "grain_harvest_privacy_denied")
+        target_region_ref = envelope.payload.get("target_region_ref")
+        if (
+            not isinstance(target_region_ref, str)
+            or not target_region_ref
+            or envelope.payload.get("project_ref", envelope.project_ref) != envelope.project_ref
+        ):
+            return self._rejected(envelope, "grain_harvest_binding_invalid")
+        existing = self.store.get_by_idempotency(self._PRINCIPAL, envelope.idempotency_key)
+        if existing is not None:
+            prior_events = [
+                event for event in self.store.read_events()
+                if event.event_id in set(existing.committed_event_ids)
+            ]
+            if (
+                len(prior_events) == 1
+                and prior_events[0].event_type == "gameplay.ecology.grain_harvested"
+                and prior_events[0].payload.get("project_ref") == envelope.project_ref
+                and prior_events[0].payload.get("species") == species
+                and prior_events[0].correlation_id == envelope.correlation_id
+                and prior_events[0].causation_id == envelope.causation_id
+            ):
+                return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._rejected(envelope, "grain_harvest_idempotency_key_reused")
+        stream_id = self.ecology_stream_id(region_ref=target_region_ref)
+        if envelope.expected_revisions != {stream_id: self.store.get_stream_head(stream_id)}:
+            return self._rejected(envelope, "grain_harvest_revision_conflict")
+        admission_events = [
+            event
+            for event in self.store.read_stream(stream_id)
+            if event.event_type == "gameplay.ecology.grain_crop.admitted"
+            and event.payload.get("project_ref") == envelope.project_ref
+            and event.payload.get("region_ref") == target_region_ref
+        ]
+        project_admissions = [event for event in admission_events if event.visibility_policy == "project"]
+        if not project_admissions:
+            if admission_events:
+                return self._rejected(envelope, "grain_harvest_source_privacy_denied")
+            return self._rejected(envelope, "grain_harvest_source_missing")
+        if any(
+            event.payload.get("species") != species
+            or event.payload.get("maturity_status") != "mature"
+            or event.payload.get("yield_quantity") != yield_quantity
+            or event.payload.get("item_definition") != item_definition
+            or event.payload.get("plot_ref", "") == ""
+            for event in project_admissions
+        ):
+            return self._rejected(envelope, "grain_harvest_source_invalid")
+        if len(project_admissions) != 1:
+            return self._rejected(envelope, "grain_harvest_source_ambiguous")
+        admission = project_admissions[0]
+        if self.store.get_stream_head(stream_id) != admission.stream_revision:
+            return self._rejected(envelope, "grain_harvest_source_revision_conflict")
+        required_key = (
+            f"ecology:grain-harvest:{admission.event_id}:{admission.stream_revision}:v1"
+            if species == "grain:wheat"
+            else f"ecology:{variant_ref}-harvest:{admission.event_id}:{admission.stream_revision}:v1"
+        )
+        if envelope.idempotency_key != required_key or envelope.causation_id != admission.event_id:
+            return self._rejected(envelope, "grain_harvest_idempotency_key_invalid")
+        if any(
+            event.event_type == "gameplay.ecology.grain_harvested"
+            and event.payload.get("crop_admission_event_id") == admission.event_id
+            for event in self.store.read_stream(stream_id)
+        ):
+            return self._rejected(envelope, "grain_harvest_duplicate")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:ecology-grain-harvest@1",
+                contract_kind="ecology_consumer",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(stream_id,),
+                event_types=("gameplay.ecology.grain_harvested",),
+                projection_scope="project",
+            )
+            payload = {
+                "row_ref": row_ref,
+                "project_ref": envelope.project_ref,
+                "crop_admission_event_id": admission.event_id,
+                "crop_admission_event_revision": admission.stream_revision,
+                "source_stream_revision": self.store.get_stream_head(stream_id),
+                "crop_ref": admission.payload["crop_ref"],
+                "region_ref": target_region_ref,
+                "plot_ref": admission.payload["plot_ref"],
+                "species": species,
+                "maturity_status": "mature",
+                "yield_quantity": yield_quantity,
+                "item_definition": item_definition,
+                "terminal": "v1_terminal_no_compensation",
+                "policy_revision": "policy:ecology-grain-harvest@1",
+                "predicate_ref": "predicate:ecology-mature-grain-crop@1",
+                "descriptor_ref": "descriptor:ecology-grain-harvest@1",
+                "descriptor_revision": "descriptor:ecology-grain-harvest@1",
+                "catalog_ref": "inf:ecology-grain-harvest@1",
+                "causal_parent_refs": [admission.event_id],
+            }
+            fragment = OwnerAuthorizedFragment(
+                fragment_id=f"fragment:ecology:{species.removeprefix('grain:')}-harvest:{admission.event_id}:{admission.stream_revision}",
+                owner_principal_ref=self._PRINCIPAL,
+                source_rule_ref=source_rule_ref,
+                expected_revisions={stream_id: self.store.get_stream_head(stream_id)},
+                read_set_revisions={stream_id: admission.stream_revision},
+                pinned_revisions={
+                    "crop_admission_event": admission.stream_revision,
+                    "target_stream": self.store.get_stream_head(stream_id),
+                },
+                event_specs={stream_id: (("gameplay.ecology.grain_harvested", payload),)},
+                event_visibility_policies={stream_id: ("project",)},
+            )
+            batch = build_multi_stream_atomic_event_batch_from_fragments(
+                command_id=envelope.command_id,
+                idempotency_principal_ref=self._PRINCIPAL,
+                idempotency_key=envelope.idempotency_key,
+                causation_id=envelope.causation_id,
+                correlation_id=envelope.correlation_id,
+                fragments=(fragment,),
+            )
+            event = batch.events[0]
+            batch = batch.model_copy(
+                update={
+                    "outbox_entries": [
+                        GameplayOutboxEntry(
+                            outbox_id=f"outbox:{event.event_id}",
+                            transaction_id=batch.transaction_id,
+                            event_id=event.event_id,
+                            global_sequence=0,
+                            topic=projection_topic,
+                            audience="project",
+                            payload_projection={
+                                "project_ref": envelope.project_ref,
+                                "crop_ref": payload["crop_ref"],
+                                "plot_ref": payload["plot_ref"],
+                                "yield_quantity": yield_quantity,
+                                "row_ref": payload["row_ref"],
+                            },
+                        )
+                    ]
+                },
+                deep=True,
+            )
+        except (ValueError, GovernedAuthorityContractError) as exc:
+            return self._rejected(envelope, str(exc))
+        return self.store.append_batch(batch)
+
+    def admit_grain_crop(
+        self,
+        *,
+        envelope: GameplayCommandEnvelope,
+        crop_ref: str,
+        region_ref: str,
+        plot_ref: str,
+    ) -> AppendBatchResult:
+        """Commit one admitted project-visible wheat crop admission row."""
+        return self._admit_grain_variant(
+            envelope=envelope,
+            crop_ref=crop_ref,
+            region_ref=region_ref,
+            plot_ref=plot_ref,
+            species="grain:wheat",
+        )
+
+    def admit_barley_crop(
+        self,
+        *,
+        envelope: GameplayCommandEnvelope,
+        crop_ref: str,
+        region_ref: str,
+        plot_ref: str,
+    ) -> AppendBatchResult:
+        """Commit one admitted project-visible barley crop admission row."""
+        return self._admit_grain_variant(
+            envelope=envelope,
+            crop_ref=crop_ref,
+            region_ref=region_ref,
+            plot_ref=plot_ref,
+            species="grain:barley",
+        )
+
+    def harvest_grain_crop(
+        self,
+        *,
+        envelope: GameplayCommandEnvelope,
+    ) -> AppendBatchResult:
+        """Harvest exactly one admitted mature wheat crop into an Ecology fact."""
+        return self._harvest_grain_variant(envelope=envelope, species="grain:wheat")
+
+    def harvest_barley_crop(
+        self,
+        *,
+        envelope: GameplayCommandEnvelope,
+    ) -> AppendBatchResult:
+        """Harvest exactly one admitted mature barley crop into an Ecology fact."""
+        return self._harvest_grain_variant(envelope=envelope, species="grain:barley")
+
 
     def settle_frost(self, *, hazard: HazardRecord, crop: CropRecord, resistance: ResistanceProfile) -> HazardSettlementResult:
         existing = self.store.get_by_idempotency("authority:ecology", hazard.idempotency_key)
@@ -1772,6 +2142,362 @@ class EcologyHazardAuthority:
         )
         return HazardSettlementResult(committed=result.committed, error_code=result.failure.error_code if result.failure else None, committed_event_ids=tuple(result.committed_event_ids), idempotency_status=result.idempotency_status)
 
+    def recover_rain_crop_health(
+        self, *, envelope: GameplayCommandEnvelope
+    ) -> AppendBatchResult:
+        """Recover one uniquely selected damaged crop from one rain front."""
+        if envelope.principal_ref != self._PRINCIPAL or envelope.source_ref is None:
+            return self._rejected(envelope, "rain_crop_recovery_authority_required")
+        try:
+            visibility_scope = self._visibility_scope(envelope)
+        except ValueError:
+            return self._rejected(envelope, "rain_crop_recovery_privacy_denied")
+        if visibility_scope != "project":
+            return self._rejected(envelope, "rain_crop_recovery_privacy_denied")
+        weather_event_id = envelope.payload.get("weather_event_id")
+        target_region_ref = envelope.payload.get("target_region_ref")
+        if (
+            not isinstance(weather_event_id, str)
+            or not weather_event_id
+            or envelope.source_ref != weather_event_id
+            or envelope.causation_id != weather_event_id
+            or not isinstance(target_region_ref, str)
+            or not target_region_ref
+        ):
+            return self._rejected(envelope, "rain_crop_recovery_reference_invalid")
+        existing = self.store.get_by_idempotency(self._PRINCIPAL, envelope.idempotency_key)
+        if existing is not None:
+            prior_events = [event for event in self.store.read_events() if event.event_id in set(existing.committed_event_ids)]
+            if (
+                len(prior_events) == 1
+                and prior_events[0].payload.get("row_ref") == "ecology:weather-rain-crop-recovery@1"
+                and prior_events[0].payload.get("weather_event_id") == weather_event_id
+                and prior_events[0].payload.get("target_region_ref") == target_region_ref
+                and prior_events[0].causation_id == envelope.causation_id
+                and prior_events[0].correlation_id == envelope.correlation_id
+            ):
+                return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._rejected(envelope, "rain_crop_recovery_idempotency_key_reused")
+        try:
+            weather_event = self.store.get_event(weather_event_id)
+        except KeyError:
+            return self._rejected(envelope, "rain_crop_recovery_source_missing")
+        if (
+            weather_event.event_type != "gameplay.ecology.weather_front.propagated"
+            or weather_event.visibility_policy != "project"
+            or weather_event.payload.get("weather_ref") != "weather:rain"
+            or weather_event.payload.get("target_region_ref") != target_region_ref
+            or weather_event.stream_revision < 1
+        ):
+            return self._rejected(envelope, "rain_crop_recovery_source_invalid")
+        source_stream = weather_event.stream_id
+        if self.store.get_stream_head(source_stream) != weather_event.stream_revision:
+            return self._rejected(envelope, "rain_crop_recovery_source_revision_conflict")
+        target_stream = self.ecology_stream_id(region_ref=target_region_ref)
+        if envelope.expected_revisions != {target_stream: self.store.get_stream_head(target_stream)}:
+            return self._rejected(envelope, "rain_crop_recovery_revision_conflict")
+        projection = self.regional_projection(scope="authority")
+        candidates = [
+            value for value in projection["crops"].values()
+            if value.get("region_ref") == target_region_ref and value.get("health", 100) < 100
+        ]
+        if len(candidates) != 1:
+            return self._rejected(
+                envelope,
+                "rain_crop_recovery_crop_missing" if not candidates else "rain_crop_recovery_crop_ambiguous",
+            )
+        crop = candidates[0]
+        crop_ref = str(crop.get("crop_ref", ""))
+        if not crop_ref or crop.get("region_ref") != target_region_ref:
+            return self._rejected(envelope, "rain_crop_recovery_binding_invalid")
+        prior_revision = crop.get("revision")
+        if not isinstance(prior_revision, int) or isinstance(prior_revision, bool) or prior_revision < 0:
+            return self._rejected(envelope, "rain_crop_recovery_crop_invalid")
+        required_key = f"ecology:weather-rain-crop-recovery:{weather_event_id}:{crop_ref}:{prior_revision}:v1"
+        if envelope.idempotency_key != required_key:
+            return self._rejected(envelope, "rain_crop_recovery_idempotency_key_invalid")
+        if any(
+            event.event_type == "gameplay.ecology.crop.recorded"
+            and event.payload.get("row_ref") == "ecology:weather-rain-crop-recovery@1"
+            and event.payload.get("weather_event_id") == weather_event_id
+            and event.payload.get("crop_ref") == crop_ref
+            for event in self.store.read_stream(target_stream)
+        ):
+            return self._rejected(envelope, "rain_crop_recovery_duplicate")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:ecology-weather-rain-crop-recovery@1",
+                contract_kind="ecology_consumer",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(target_stream,),
+                event_types=("gameplay.ecology.crop.recorded",),
+                projection_scope="project",
+            )
+        except GovernedAuthorityContractError as error:
+            return self._rejected(envelope, str(error))
+        updated = dict(crop)
+        updated["health"] = min(100, int(crop["health"]) + 5)
+        updated["revision"] = prior_revision + 1
+        updated.pop("causal_parent_refs", None)
+        updated.pop("evidence_refs", None)
+        payload = {
+            "record_ref": crop_ref,
+            "record": updated,
+            "source_revision": updated["revision"],
+            "causal_parent_refs": [weather_event_id],
+            "row_ref": "ecology:weather-rain-crop-recovery@1",
+            "weather_event_id": weather_event_id,
+            "weather_event_revision": weather_event.stream_revision,
+            "target_region_ref": target_region_ref,
+            "crop_ref": crop_ref,
+            "crop_prior_revision": prior_revision,
+            "crop_prior_health": int(crop["health"]),
+            "crop_next_revision": updated["revision"],
+            "crop_next_health": updated["health"],
+            "recovery_delta": 5,
+            "policy_revision": "policy:ecology-weather-rain-crop-recovery@1",
+            "predicate_ref": "predicate:ecology-weather-front-rain-and-crop-damaged@1",
+            "descriptor_ref": "descriptor:ecology-weather-rain-crop-recovery@1",
+            "descriptor_revision": "descriptor:ecology-weather-rain-crop-recovery@1",
+            "catalog_ref": "inf:ecology-weather-rain-crop-recovery@1",
+            "terminal": "v1_terminal_no_compensation",
+        }
+        command = envelope.model_copy(update={
+            "command_type": "gameplay.ecology.recover_rain_crop_health",
+            "expected_revisions": {target_stream: self.store.get_stream_head(target_stream)},
+            "read_set_revisions": {source_stream: weather_event.stream_revision, target_stream: self.store.get_stream_head(target_stream)},
+            "pinned_revisions": {"weather_event": weather_event.stream_revision, "crop": prior_revision, "target_stream": self.store.get_stream_head(target_stream)},
+            "payload": {"stream_ref": target_stream, "event_type": "gameplay.ecology.crop.recorded", "visibility_policy": "project", "event_specs": [{"event_type": "gameplay.ecology.crop.recorded", "payload": payload}]},
+        }, deep=True)
+        fragment = OwnerAuthorizedFragment(
+            fragment_id=f"fragment:ecology:weather-rain-crop-recovery:{weather_event_id}:{crop_ref}:{prior_revision}",
+            owner_principal_ref=self._PRINCIPAL,
+            source_rule_ref="ecology:weather-rain-crop-recovery:v1",
+            expected_revisions={target_stream: self.store.get_stream_head(target_stream)},
+            read_set_revisions={source_stream: weather_event.stream_revision},
+            pinned_revisions={"weather_event": weather_event.stream_revision, "crop": prior_revision},
+            event_specs={target_stream: (("gameplay.ecology.crop.recorded", payload),)},
+            event_visibility_policies={target_stream: ("project",)},
+        )
+        batch = build_multi_stream_atomic_event_batch_from_fragments(
+            command_id=command.command_id,
+            idempotency_principal_ref=self._PRINCIPAL,
+            idempotency_key=envelope.idempotency_key,
+            causation_id=envelope.causation_id,
+            correlation_id=envelope.correlation_id,
+            fragments=(fragment,),
+        )
+        event = batch.events[0]
+        batch = batch.model_copy(update={"outbox_entries": [GameplayOutboxEntry(
+            outbox_id=f"outbox:{event.event_id}", transaction_id=batch.transaction_id,
+            event_id=event.event_id, global_sequence=0,
+            topic="ecology.weather_rain_crop_recovery.scoped_projection", audience="project",
+            payload_projection={"crop_ref": crop_ref, "target_region_ref": target_region_ref, "row_ref": payload["row_ref"]},
+        )]}, deep=True)
+        return self.store.append_batch(batch)
+
+    def recover_rain_water_resource(
+        self, *, envelope: GameplayCommandEnvelope
+    ) -> AppendBatchResult:
+        """Recover one uniquely eligible water resource from one rain front."""
+        if envelope.principal_ref != self._PRINCIPAL:
+            return self._rejected(envelope, "rain_water_resource_authority_required")
+        try:
+            visibility_scope = self._visibility_scope(envelope)
+        except ValueError:
+            return self._rejected(envelope, "rain_water_resource_privacy_denied")
+        if visibility_scope != "project":
+            return self._rejected(envelope, "rain_water_resource_privacy_denied")
+        weather_event_id = envelope.payload.get("weather_event_id")
+        target_region_ref = envelope.payload.get("target_region_ref")
+        if (
+            not isinstance(weather_event_id, str)
+            or not weather_event_id
+            or envelope.source_ref != weather_event_id
+            or envelope.causation_id != weather_event_id
+            or not isinstance(target_region_ref, str)
+            or not target_region_ref
+        ):
+            return self._rejected(envelope, "rain_water_resource_reference_invalid")
+        existing = self.store.get_by_idempotency(self._PRINCIPAL, envelope.idempotency_key)
+        if existing is not None:
+            prior_events = [event for event in self.store.read_events() if event.event_id in set(existing.committed_event_ids)]
+            if (
+                len(prior_events) == 1
+                and prior_events[0].payload.get("row_ref") == "ecology:weather-rain-water-resource-recovery@1"
+                and prior_events[0].payload.get("weather_event_id") == weather_event_id
+                and prior_events[0].payload.get("target_region_ref") == target_region_ref
+                and prior_events[0].causation_id == envelope.causation_id
+                and prior_events[0].correlation_id == envelope.correlation_id
+            ):
+                return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._rejected(envelope, "rain_water_resource_idempotency_key_reused")
+        try:
+            weather_event = self.store.get_event(weather_event_id)
+        except KeyError:
+            return self._rejected(envelope, "rain_water_resource_source_missing")
+        if (
+            weather_event.event_type != "gameplay.ecology.weather_front.propagated"
+            or weather_event.visibility_policy != "project"
+            or weather_event.payload.get("weather_ref") != "weather:rain"
+            or weather_event.payload.get("target_region_ref") != target_region_ref
+            or weather_event.stream_revision < 1
+        ):
+            return self._rejected(envelope, "rain_water_resource_source_invalid")
+        source_stream = weather_event.stream_id
+        if self.store.get_stream_head(source_stream) != weather_event.stream_revision:
+            return self._rejected(envelope, "rain_water_resource_source_revision_conflict")
+        target_stream = self.ecology_stream_id(region_ref=target_region_ref)
+        if envelope.expected_revisions != {target_stream: self.store.get_stream_head(target_stream)}:
+            return self._rejected(envelope, "rain_water_resource_revision_conflict")
+        projection = self.regional_projection(scope="authority")
+        candidates = [
+            value
+            for value in projection["resources"].values()
+            if value.get("region_ref") == target_region_ref
+            and value.get("substance_ref") == "substance:water"
+            and isinstance(value.get("quantity"), int)
+            and 0 <= int(value["quantity"]) < 100
+        ]
+        if len(candidates) != 1:
+            return self._rejected(
+                envelope,
+                "rain_water_resource_missing" if not candidates else "rain_water_resource_ambiguous",
+            )
+        resource = candidates[0]
+        resource_ref = str(resource.get("node_ref", ""))
+        prior_revision = resource.get("revision")
+        if (
+            not resource_ref
+            or resource.get("region_ref") != target_region_ref
+            or resource.get("substance_ref") != "substance:water"
+            or not isinstance(prior_revision, int)
+            or isinstance(prior_revision, bool)
+            or prior_revision < 0
+        ):
+            return self._rejected(envelope, "rain_water_resource_binding_invalid")
+        latest_resource_events = [
+            event
+            for event in self.store.read_stream(target_stream)
+            if event.event_type == "gameplay.ecology.resource.recorded"
+            and event.payload.get("record_ref") == resource_ref
+        ]
+        latest_resource_event = latest_resource_events[-1] if latest_resource_events else None
+        if latest_resource_event is None or latest_resource_event.visibility_policy != "project":
+            return self._rejected(envelope, "rain_water_resource_private")
+        required_key = (
+            f"ecology:weather-rain-water-resource-recovery:{weather_event_id}:"
+            f"{resource_ref}:{prior_revision}:v1"
+        )
+        if envelope.idempotency_key != required_key:
+            return self._rejected(envelope, "rain_water_resource_idempotency_key_invalid")
+        if any(
+            event.event_type == "gameplay.ecology.resource.recorded"
+            and event.payload.get("row_ref") == "ecology:weather-rain-water-resource-recovery@1"
+            and event.payload.get("weather_event_id") == weather_event_id
+            and event.payload.get("resource_ref") == resource_ref
+            for event in self.store.read_stream(target_stream)
+        ):
+            return self._rejected(envelope, "rain_water_resource_duplicate")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:ecology-weather-rain-water-resource-recovery@1",
+                contract_kind="ecology_consumer",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(target_stream,),
+                event_types=("gameplay.ecology.resource.recorded",),
+                projection_scope="project",
+            )
+        except GovernedAuthorityContractError as error:
+            return self._rejected(envelope, str(error))
+        updated = dict(resource)
+        prior_quantity = int(resource["quantity"])
+        updated["quantity"] = min(100, prior_quantity + 10)
+        updated["revision"] = prior_revision + 1
+        updated.pop("causal_parent_refs", None)
+        updated.pop("evidence_refs", None)
+        payload = {
+            "record_ref": resource_ref,
+            "record": updated,
+            "source_revision": updated["revision"],
+            "causal_parent_refs": [weather_event_id],
+            "row_ref": "ecology:weather-rain-water-resource-recovery@1",
+            "weather_event_id": weather_event_id,
+            "weather_event_revision": weather_event.stream_revision,
+            "target_region_ref": target_region_ref,
+            "resource_ref": resource_ref,
+            "resource_prior_revision": prior_revision,
+            "resource_prior_quantity": prior_quantity,
+            "resource_next_revision": updated["revision"],
+            "resource_next_quantity": updated["quantity"],
+            "recovery_delta": 10,
+            "quantity_cap": 100,
+            "policy_revision": "policy:ecology-weather-rain-water-resource-recovery@1",
+            "predicate_ref": "predicate:ecology-weather-front-rain-and-water-resource@1",
+            "descriptor_ref": "descriptor:ecology-weather-rain-water-resource-recovery@1",
+            "descriptor_revision": "descriptor:ecology-weather-rain-water-resource-recovery@1",
+            "catalog_ref": "inf:ecology-weather-rain-water-resource-recovery@1",
+            "terminal": "v1_terminal_no_compensation",
+        }
+        command = envelope.model_copy(
+            update={
+                "command_type": "gameplay.ecology.recover_rain_water_resource",
+                "expected_revisions": {target_stream: self.store.get_stream_head(target_stream)},
+                "read_set_revisions": {
+                    source_stream: weather_event.stream_revision,
+                    target_stream: self.store.get_stream_head(target_stream),
+                },
+                "pinned_revisions": {
+                    "weather_event": weather_event.stream_revision,
+                    "resource": prior_revision,
+                    "target_stream": self.store.get_stream_head(target_stream),
+                },
+                "payload": {
+                    "stream_ref": target_stream,
+                    "event_type": "gameplay.ecology.resource.recorded",
+                    "visibility_policy": "project",
+                    "event_specs": [{"event_type": "gameplay.ecology.resource.recorded", "payload": payload}],
+                },
+            },
+            deep=True,
+        )
+        fragment = OwnerAuthorizedFragment(
+            fragment_id=f"fragment:ecology:weather-rain-water-resource-recovery:{weather_event_id}:{resource_ref}:{prior_revision}",
+            owner_principal_ref=self._PRINCIPAL,
+            source_rule_ref="ecology:weather-rain-water-resource-recovery:v1",
+            expected_revisions={target_stream: self.store.get_stream_head(target_stream)},
+            read_set_revisions={source_stream: weather_event.stream_revision},
+            pinned_revisions={"weather_event": weather_event.stream_revision, "resource": prior_revision},
+            event_specs={target_stream: (("gameplay.ecology.resource.recorded", payload),)},
+            event_visibility_policies={target_stream: ("project",)},
+        )
+        batch = build_multi_stream_atomic_event_batch_from_fragments(
+            command_id=command.command_id,
+            idempotency_principal_ref=self._PRINCIPAL,
+            idempotency_key=envelope.idempotency_key,
+            causation_id=envelope.causation_id,
+            correlation_id=envelope.correlation_id,
+            fragments=(fragment,),
+        )
+        event = batch.events[0]
+        batch = batch.model_copy(
+            update={
+                "outbox_entries": [
+                    GameplayOutboxEntry(
+                        outbox_id=f"outbox:{event.event_id}",
+                        transaction_id=batch.transaction_id,
+                        event_id=event.event_id,
+                        global_sequence=0,
+                        topic="ecology.weather_rain_water_resource_recovery.scoped_projection",
+                        audience="project",
+                        payload_projection={"resource_ref": resource_ref, "target_region_ref": target_region_ref, "row_ref": payload["row_ref"]},
+                    )
+                ]
+            },
+            deep=True,
+        )
+        return self.store.append_batch(batch)
+
     def frost_source(
         self, *, hazard_ref: str, scope: Literal["public", "authority"] = "public"
     ) -> FrostSourceResult:
@@ -1816,6 +2542,8 @@ class EcologyHazardAuthority:
             "resources": {},
             "crops": {},
             "hazards": {},
+            "grain_crops": {},
+            "grain_harvests": {},
             "processes": {},
             "drought_processes": {},
             "frontiers": {},
@@ -1877,7 +2605,76 @@ class EcologyHazardAuthority:
                     if scope == "authority":
                         process["policy_revision"] = str(event.payload.get("policy_revision", ""))
                         process["elapsed_ticks"] = int(event.payload.get("elapsed_ticks", 0))
-                    records["drought_processes"][region_ref] = process
+                records["drought_processes"][region_ref] = process
+                continue
+            if event.event_type in {
+                "gameplay.ecology.grain_crop.admitted",
+                "gameplay.ecology.grain_harvested",
+            }:
+                payload = event.payload
+                crop_ref = payload.get("crop_ref")
+                region_ref = payload.get("region_ref")
+                project_ref = payload.get("project_ref")
+                plot_ref = payload.get("plot_ref")
+                if (
+                    event.visibility_policy != "project"
+                    or not isinstance(crop_ref, str)
+                    or not isinstance(region_ref, str)
+                    or not isinstance(project_ref, str)
+                    or not isinstance(plot_ref, str)
+                    or not plot_ref.startswith("plot:")
+                    or payload.get("species") not in _GRAIN_HARVEST_VARIANTS
+                    or payload.get("maturity_status") != "mature"
+                    or payload.get("yield_quantity") != _GRAIN_HARVEST_VARIANTS[payload.get("species")][1]
+                    or payload.get("policy_revision") != "policy:ecology-grain-harvest@1"
+                    or payload.get("predicate_ref") != "predicate:ecology-mature-grain-crop@1"
+                    or payload.get("descriptor_ref") != "descriptor:ecology-grain-harvest@1"
+                    or payload.get("descriptor_revision") != "descriptor:ecology-grain-harvest@1"
+                    or payload.get("catalog_ref") != "inf:ecology-grain-harvest@1"
+                ):
+                    raise ValueError("grain_harvest_replay_provenance_invalid")
+                if event.event_type == "gameplay.ecology.grain_crop.admitted":
+                    records["grain_crops"][crop_ref] = {
+                        "crop_ref": crop_ref,
+                        "region_ref": region_ref,
+                        "project_ref": project_ref,
+                        "plot_ref": plot_ref,
+                        "species": payload["species"],
+                        "maturity_status": "mature",
+                        "yield_quantity": payload["yield_quantity"],
+                        "admission_event_id": event.event_id,
+                        "admission_event_revision": event.stream_revision,
+                    }
+                else:
+                    admission_id = payload.get("crop_admission_event_id")
+                    try:
+                        admission = self.store.get_event(str(admission_id))
+                    except KeyError as exc:
+                        raise ValueError("grain_harvest_replay_provenance_invalid") from exc
+                    if (
+                        payload.get("item_definition") != _GRAIN_HARVEST_VARIANTS[payload["species"]][0]
+                        or payload.get("terminal") != "v1_terminal_no_compensation"
+                        or payload.get("source_stream_revision") != admission.stream_revision
+                        or admission.event_type != "gameplay.ecology.grain_crop.admitted"
+                        or admission.visibility_policy != "project"
+                        or admission.stream_id != event.stream_id
+                        or admission.payload.get("project_ref") != project_ref
+                        or admission.payload.get("crop_ref") != crop_ref
+                        or admission.payload.get("region_ref") != region_ref
+                        or admission.payload.get("plot_ref") != plot_ref
+                        or tuple(payload.get("causal_parent_refs", ())) != (admission.event_id,)
+                    ):
+                        raise ValueError("grain_harvest_replay_provenance_invalid")
+                    records["grain_harvests"][crop_ref] = {
+                        "crop_ref": crop_ref,
+                        "region_ref": region_ref,
+                        "project_ref": project_ref,
+                        "plot_ref": plot_ref,
+                        "item_definition": payload["item_definition"],
+                        "yield_quantity": payload["yield_quantity"],
+                        "harvest_event_id": event.event_id,
+                        "harvest_event_revision": event.stream_revision,
+                    }
                 continue
             suffix = ".recorded"
             if not event.event_type.startswith(prefix):
@@ -1899,6 +2696,93 @@ class EcologyHazardAuthority:
             record = event.payload.get("record")
             if collection is None or not isinstance(record_ref, str) or not isinstance(record, dict):
                 continue
+            if event.payload.get("row_ref") == "ecology:weather-rain-crop-recovery@1":
+                try:
+                    weather = self.store.get_event(str(event.payload.get("weather_event_id")))
+                except KeyError as exc:
+                    raise ValueError("rain_crop_recovery_replay_provenance_invalid") from exc
+                prior = records["crops"].get(record_ref)
+                if (
+                    record_kind != "crop"
+                    or event.visibility_policy != "project"
+                    or weather.event_type != "gameplay.ecology.weather_front.propagated"
+                    or weather.visibility_policy != "project"
+                    or weather.stream_revision != event.payload.get("weather_event_revision")
+                    or weather.payload.get("weather_ref") != "weather:rain"
+                    or weather.payload.get("target_region_ref") != event.payload.get("target_region_ref")
+                    or event.payload.get("crop_ref") != record_ref
+                    or not isinstance(prior, dict)
+                    or prior.get("region_ref") != event.payload.get("target_region_ref")
+                    or prior.get("revision") != event.payload.get("crop_prior_revision")
+                    or prior.get("health") != event.payload.get("crop_prior_health")
+                    or not isinstance(prior.get("health"), int)
+                    or not 0 <= int(prior["health"]) < 100
+                    or record.get("revision") != event.payload.get("crop_next_revision")
+                    or record.get("health") != event.payload.get("crop_next_health")
+                    or record.get("region_ref") != event.payload.get("target_region_ref")
+                    or event.payload.get("recovery_delta") != 5
+                    or record.get("revision") != int(prior["revision"]) + 1
+                    or record.get("health") != min(100, int(prior["health"]) + 5)
+                    or event.payload.get("policy_revision") != "policy:ecology-weather-rain-crop-recovery@1"
+                    or event.payload.get("predicate_ref") != "predicate:ecology-weather-front-rain-and-crop-damaged@1"
+                    or event.payload.get("catalog_ref") != "inf:ecology-weather-rain-crop-recovery@1"
+                    or tuple(event.payload.get("causal_parent_refs", ())) != (weather.event_id,)
+                ):
+                    raise ValueError("rain_crop_recovery_replay_provenance_invalid")
+            if event.payload.get("row_ref") == "ecology:weather-rain-water-resource-recovery@1":
+                try:
+                    weather = self.store.get_event(str(event.payload.get("weather_event_id")))
+                except KeyError as exc:
+                    raise ValueError("rain_water_resource_recovery_replay_provenance_invalid") from exc
+                prior = records["resources"].get(record_ref)
+                source_resource_events = [
+                    source_event
+                    for source_event in self.store.read_stream(event.stream_id)
+                    if source_event.global_sequence < event.global_sequence
+                    and source_event.event_type == "gameplay.ecology.resource.recorded"
+                    and source_event.payload.get("record_ref") == record_ref
+                    and isinstance(source_event.payload.get("record"), dict)
+                    and source_event.payload["record"].get("revision")
+                    == event.payload.get("resource_prior_revision")
+                ]
+                source_resource_event = (
+                    source_resource_events[-1] if len(source_resource_events) == 1 else None
+                )
+                if (
+                    record_kind != "resource"
+                    or event.visibility_policy != "project"
+                    or weather.event_type != "gameplay.ecology.weather_front.propagated"
+                    or weather.visibility_policy != "project"
+                    or weather.stream_revision != event.payload.get("weather_event_revision")
+                    or weather.payload.get("weather_ref") != "weather:rain"
+                    or weather.payload.get("target_region_ref") != event.payload.get("target_region_ref")
+                    or event.payload.get("resource_ref") != record_ref
+                    or not isinstance(prior, dict)
+                    or source_resource_event is None
+                    or source_resource_event.visibility_policy != "project"
+                    or prior.get("region_ref") != event.payload.get("target_region_ref")
+                    or prior.get("substance_ref") != "substance:water"
+                    or prior.get("revision") != event.payload.get("resource_prior_revision")
+                    or prior.get("quantity") != event.payload.get("resource_prior_quantity")
+                    or not isinstance(prior.get("quantity"), int)
+                    or not 0 <= int(prior["quantity"]) < 100
+                    or record.get("revision") != event.payload.get("resource_next_revision")
+                    or record.get("quantity") != event.payload.get("resource_next_quantity")
+                    or record.get("region_ref") != event.payload.get("target_region_ref")
+                    or record.get("substance_ref") != "substance:water"
+                    or event.payload.get("recovery_delta") != 10
+                    or event.payload.get("quantity_cap") != 100
+                    or record.get("revision") != int(prior["revision"]) + 1
+                    or record.get("quantity") != min(100, int(prior["quantity"]) + 10)
+                    or event.payload.get("policy_revision") != "policy:ecology-weather-rain-water-resource-recovery@1"
+                    or event.payload.get("predicate_ref") != "predicate:ecology-weather-front-rain-and-water-resource@1"
+                    or event.payload.get("descriptor_ref") != "descriptor:ecology-weather-rain-water-resource-recovery@1"
+                    or event.payload.get("descriptor_revision") != "descriptor:ecology-weather-rain-water-resource-recovery@1"
+                    or event.payload.get("catalog_ref") != "inf:ecology-weather-rain-water-resource-recovery@1"
+                    or event.payload.get("terminal") != "v1_terminal_no_compensation"
+                    or tuple(event.payload.get("causal_parent_refs", ())) != (weather.event_id,)
+                ):
+                    raise ValueError("rain_water_resource_recovery_replay_provenance_invalid")
             view = dict(record)
             if scope == "authority":
                 view["causal_parent_refs"] = list(event.payload.get("causal_parent_refs", ()))
@@ -2929,6 +3813,8 @@ class EcologyHazardAuthority:
         return None
 
     def regional_replay(self, *, checkpoint_at: int | None = None):
+        # Validate row-specific regional provenance before hashing either replay path.
+        self.regional_projection(scope="authority")
         replay = GameplayProjectionReplay(projector_id="infra-regional-ecology-truth", projector_version="1")
         events = self.store.read_events()
         if checkpoint_at is None:

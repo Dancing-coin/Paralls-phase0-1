@@ -9,11 +9,29 @@ from types import MappingProxyType
 from typing import Mapping, Sequence
 
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.models import AppendBatchResult, GameplayEvent, OwnerAuthorizedFragment
+from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailure, OwnerAuthorizedFragment
+from app.gameplay.shared_contracts import SettlementReceipt
 
 
 class InventoryRuntimeError(ValueError):
     pass
+
+
+_REINFORCED_MILL_FLOUR_PROVIDER = "organization:district-milling-cooperative"
+_REINFORCED_MILL_FLOUR_PROVIDER_CONTAINER = "container:district-milling-cooperative:mill-output"
+_REINFORCED_MILL_FLOUR_ITEM = "item:industrial-facilities:flour@1"
+_REINFORCED_MILL_FLOUR_RECIPE = "recipe:industrial-facilities:mill-flour@1"
+_REINFORCED_MILL_FLOUR_OUTPUT_EVENT = "gameplay.inventory.mill_flour_output_received@1"
+_REINFORCED_MILL_FLOUR_SOURCE_EVENT = (
+    "gameplay.construction_production.mill_flour_output_certified@1"
+)
+_GRAIN_HARVEST_PROVIDER = "organization:district-milling-cooperative"
+_GRAIN_HARVEST_CONTAINER = "container:district-milling-cooperative:grain-intake"
+_GRAIN_HARVEST_ITEM = "grain:wheat@1"
+_GRAIN_HARVEST_SPECIES = "grain:wheat"
+_GRAIN_HARVEST_EVENT = "gameplay.inventory.grain_harvest_received@1"
+_GRAIN_HARVEST_SOURCE_EVENT = "gameplay.ecology.grain_harvested"
+_HARVEST_TO_CUSTODY_EVENT = "gameplay.inventory.harvest_received@1"
 
 
 @dataclass(frozen=True)
@@ -105,6 +123,21 @@ class InventoryProjection:
 
 
 @dataclass(frozen=True)
+class GrainHarvestCustodyView:
+    holder_ref: str
+    rows: tuple[Mapping[str, object], ...]
+    source_revision_vector: Mapping[str, int]
+    projection_hash: str
+
+
+@dataclass(frozen=True)
+class HarvestToCustodyView:
+    rows: tuple[Mapping[str, object], ...]
+    source_revision_vector: Mapping[str, int]
+    projection_hash: str
+
+
+@dataclass(frozen=True)
 class EncumbranceProjection:
     carrier_ref: str
     carried_weight: int
@@ -162,7 +195,9 @@ class InventoryProjector:
         capacity_reservations: dict[str, CommerceCapacityReservation] = {}
         reserved_quantities: dict[str, int] = {}
         revisions: dict[str, int] = {}
-        for event in sorted(events, key=lambda item: (item.global_sequence, item.event_id)):
+        ordered_events = sorted(events, key=lambda item: (item.global_sequence, item.event_id))
+        events_by_id = {event.event_id: event for event in ordered_events}
+        for event in ordered_events:
             if not event.event_type.startswith("gameplay.inventory."):
                 continue
             payload = event.payload
@@ -192,6 +227,90 @@ class InventoryProjector:
                     raise InventoryRuntimeError("inventory_item_duplicate")
                 self._registry.item(definition_id)
                 items[item_id] = InventoryItem(item_id, definition_id, _positive(payload, "quantity"), event.event_id)
+            elif event.event_type == _REINFORCED_MILL_FLOUR_OUTPUT_EVENT:
+                if (
+                    _text(payload, "provider_ref") != _REINFORCED_MILL_FLOUR_PROVIDER
+                    or _text(payload, "item_ref") != _REINFORCED_MILL_FLOUR_ITEM
+                    or _text(payload, "definition_id") != _REINFORCED_MILL_FLOUR_ITEM
+                    or _positive(payload, "quantity") != 10
+                    or _text(payload, "container_id") != _REINFORCED_MILL_FLOUR_PROVIDER_CONTAINER
+                    or _text(payload, "recipe_ref") != _REINFORCED_MILL_FLOUR_RECIPE
+                    or _text(payload, "source_certification_event_id") == ""
+                ):
+                    raise InventoryRuntimeError("inventory_output_invalid")
+                item_id = _text(payload, "item_id")
+                container_id = _text(payload, "container_id")
+                if item_id in items or container_id not in containers:
+                    raise InventoryRuntimeError("inventory_output_invalid")
+                self._registry.item(_REINFORCED_MILL_FLOUR_ITEM)
+                items[item_id] = InventoryItem(
+                    item_id,
+                    _REINFORCED_MILL_FLOUR_ITEM,
+                    10,
+                    event.event_id,
+                )
+                locations[item_id] = container_id
+            elif event.event_type == _HARVEST_TO_CUSTODY_EVENT:
+                source_event = events_by_id.get(payload.get("source_harvest_event_id"))
+                if (
+                    event.visibility_policy != "project"
+                    or _text(payload, "actor_ref") == ""
+                    or _text(payload, "holder_ref") != _text(payload, "actor_ref")
+                    or _text(payload, "item_ref") != _text(payload, "definition_id")
+                    or _positive(payload, "quantity") <= 0
+                    or _text(payload, "container_id") == ""
+                    or _text(payload, "source_harvest_event_id") == ""
+                    or source_event is None
+                    or source_event.event_type != _GRAIN_HARVEST_SOURCE_EVENT
+                    or source_event.visibility_policy != "project"
+                    or source_event.stream_revision != payload.get("source_harvest_revision")
+                    or source_event.payload.get("project_ref") != payload.get("project_ref")
+                    or source_event.payload.get("plot_ref") != payload.get("plot_ref")
+                    or f"definition:{source_event.payload.get('species')}@1" != payload.get("crop_definition_ref")
+                    or source_event.payload.get("item_definition") != payload.get("item_ref")
+                    or source_event.payload.get("yield_quantity") != payload.get("quantity")
+                ):
+                    raise InventoryRuntimeError("harvest_to_custody_replay_invalid")
+                item_id = _text(payload, "item_id")
+                container_id = _text(payload, "container_id")
+                if item_id in items or container_id not in containers:
+                    raise InventoryRuntimeError("harvest_to_custody_event_invalid")
+                self._registry.item(_text(payload, "item_ref"))
+                items[item_id] = InventoryItem(
+                    item_id,
+                    _text(payload, "item_ref"),
+                    _positive(payload, "quantity"),
+                    event.event_id,
+                )
+                locations[item_id] = container_id
+            elif event.event_type == _GRAIN_HARVEST_EVENT:
+                source_event = events_by_id.get(payload.get("source_harvest_event_id"))
+                if (
+                    event.visibility_policy != "project"
+                    or _text(payload, "actor_ref") != _GRAIN_HARVEST_PROVIDER
+                    or _text(payload, "holder_ref") != _GRAIN_HARVEST_PROVIDER
+                    or _text(payload, "item_ref") != _GRAIN_HARVEST_ITEM
+                    or _text(payload, "definition_id") != _GRAIN_HARVEST_ITEM
+                    or _positive(payload, "quantity") != 10
+                    or _text(payload, "container_id") != _GRAIN_HARVEST_CONTAINER
+                    or _text(payload, "source_harvest_event_id") == ""
+                    or source_event is None
+                    or source_event.event_type != _GRAIN_HARVEST_SOURCE_EVENT
+                    or source_event.visibility_policy != "project"
+                    or source_event.stream_revision != payload.get("source_harvest_revision")
+                    or source_event.payload.get("project_ref") != payload.get("project_ref")
+                    or source_event.payload.get("plot_ref") != payload.get("plot_ref")
+                    or source_event.payload.get("item_definition") != _GRAIN_HARVEST_ITEM
+                    or source_event.payload.get("yield_quantity") != 10
+                ):
+                    raise InventoryRuntimeError("inventory_grain_harvest_replay_invalid")
+                item_id = _text(payload, "item_id")
+                container_id = _text(payload, "container_id")
+                if item_id in items or container_id not in containers:
+                    raise InventoryRuntimeError("inventory_grain_harvest_event_invalid")
+                self._registry.item(_GRAIN_HARVEST_ITEM)
+                items[item_id] = InventoryItem(item_id, _GRAIN_HARVEST_ITEM, 10, event.event_id)
+                locations[item_id] = container_id
             elif event.event_type == "gameplay.inventory.output_received":
                 _text(payload, "source_ref")
                 _text(payload, "item_ref")
@@ -423,10 +542,17 @@ class InventoryAuthorityService:
 
     _PRINCIPAL = "actor_gameplay.inventory_domain"
 
-    def __init__(self, *, store: GameplayEventStore, registry: InventoryDefinitionRegistry) -> None:
+    def __init__(
+        self,
+        *,
+        store: GameplayEventStore,
+        registry: InventoryDefinitionRegistry,
+        package_registry: object | None = None,
+    ) -> None:
         self._store = store
         self._registry = registry
         self._projector = InventoryProjector(registry)
+        self._package_registry = package_registry
 
     def build_commerce_custody_fragment(
         self,
@@ -819,6 +945,778 @@ class InventoryAuthorityService:
             correlation_id,
         )
 
+    def record_reinforced_mill_flour_output_receipt(
+        self,
+        *,
+        certification_event_id: str,
+        expected_certification_revision: int,
+        expected_inventory_stream_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ) -> AppendBatchResult:
+        provider_ref = _REINFORCED_MILL_FLOUR_PROVIDER
+        provider_stream = f"gameplay:inventory:{provider_ref}"
+        if (
+            not certification_event_id
+            or expected_certification_revision < 1
+            or expected_inventory_stream_revision < 0
+            or not command_id
+            or not idempotency_key
+            or not causation_id
+            or not correlation_id
+        ):
+            return self._rejected_append(
+                command_id,
+                "inventory_mill_flour_output_reference_invalid",
+            )
+        request_digest = _digest(
+            {
+                "certification_event_id": certification_event_id,
+                "expected_certification_revision": expected_certification_revision,
+                "expected_inventory_stream_revision": expected_inventory_stream_revision,
+                "command_id": command_id,
+                "idempotency_key": idempotency_key,
+                "causation_id": causation_id,
+                "correlation_id": correlation_id,
+            }
+        )
+        key = f"{provider_ref}:{idempotency_key}"
+        existing = self._store.get_idempotency_record(self._PRINCIPAL, key)
+        if existing is not None:
+            if existing.payload_digest != request_digest:
+                return self._rejected_append(command_id, "idempotency_key_reused")
+            replay = self._store.get_by_idempotency(self._PRINCIPAL, key)
+            if replay is None:
+                return self._rejected_append(
+                    command_id,
+                    "inventory_mill_flour_output_receipt_missing",
+                )
+            return replay.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        try:
+            certification = self._store.get_event(certification_event_id)
+        except KeyError:
+            return self._rejected_append(
+                command_id,
+                "inventory_mill_flour_output_source_missing",
+            )
+        if self._store.get_stream_head(provider_stream) != expected_inventory_stream_revision:
+            return self._rejected_append(command_id, "revision_conflict")
+        if not self._is_valid_reinforced_mill_flour_certification(
+            certification_event=certification,
+            expected_certification_revision=expected_certification_revision,
+        ):
+            return self._rejected_append(
+                command_id,
+                "inventory_mill_flour_output_source_invalid",
+            )
+        projection = self._projector.rebuild(provider_ref, self._store.read_events())
+        container = projection.containers.get(_REINFORCED_MILL_FLOUR_PROVIDER_CONTAINER)
+        if container is None or container.sealed or container.carrier_item_id:
+            return self._rejected_append(
+                command_id,
+                "inventory_mill_flour_output_source_invalid",
+            )
+        item_id = self._reinforced_mill_flour_item_id(certification_event_id)
+        if item_id in projection.items or any(
+            event.event_type == _REINFORCED_MILL_FLOUR_OUTPUT_EVENT
+            and event.payload.get("source_certification_event_id") == certification_event_id
+            and event.payload.get("actor_ref") == provider_ref
+            for event in self._store.read_stream(provider_stream)
+        ):
+            return self._rejected_append(
+                command_id,
+                "inventory_mill_flour_output_duplicate",
+            )
+        self._require_capacity(
+            projection,
+            _REINFORCED_MILL_FLOUR_PROVIDER_CONTAINER,
+            InventoryItem(item_id, _REINFORCED_MILL_FLOUR_ITEM, 10, "pending"),
+        )
+        payload = {
+            "actor_ref": provider_ref,
+            "provider_ref": provider_ref,
+            "project_ref": certification.payload["project_ref"],
+            "facility_ref": certification.payload["facility_ref"],
+            "run_ref": certification.payload["run_ref"],
+            "recipe_ref": _REINFORCED_MILL_FLOUR_RECIPE,
+            "item_ref": _REINFORCED_MILL_FLOUR_ITEM,
+            "item_id": item_id,
+            "definition_id": _REINFORCED_MILL_FLOUR_ITEM,
+            "quantity": 10,
+            "container_id": _REINFORCED_MILL_FLOUR_PROVIDER_CONTAINER,
+            "source_certification_event_id": certification.event_id,
+            "source_certification_revision": certification.stream_revision,
+            "source_run_finished_event_id": certification.payload["source_run_finished_event_id"],
+            "source_reinforcement_event_id": certification.payload["source_reinforcement_event_id"],
+        }
+        event = {
+            "event_id": f"evt:{command_id}:inventory:1",
+            "event_type": _REINFORCED_MILL_FLOUR_OUTPUT_EVENT,
+            "schema_version": 1,
+            "stream_id": provider_stream,
+            "stream_revision": 0,
+            "global_sequence": 0,
+            "transaction_id": f"tx:{command_id}",
+            "command_id": command_id,
+            "causation_id": causation_id,
+            "correlation_id": correlation_id,
+            "visibility_policy": "project",
+            "payload": payload,
+        }
+        return self._store.append_batch(
+            {
+                "transaction_id": f"tx:{command_id}",
+                "command_id": command_id,
+                "expected_stream_revisions": {
+                    provider_stream: expected_inventory_stream_revision
+                },
+                "read_stream_revisions": {
+                    certification.stream_id: expected_certification_revision
+                },
+                "pinned_revisions": {
+                    "inventory": expected_inventory_stream_revision,
+                    "construction_source": expected_certification_revision,
+                },
+                "events": [event],
+                "idempotency_record": {
+                    "principal_ref": self._PRINCIPAL,
+                    "idempotency_key": key,
+                    "payload_digest": request_digest,
+                },
+                "owner_fragments": [],
+                "outbox_entries": [],
+                "result_digest": _digest(event),
+                "projection_refresh_hints": [],
+            }
+        )
+
+    def record_grain_harvest_custody_receipt(
+        self,
+        *,
+        harvest_event_id: str,
+        expected_harvest_revision: int,
+        expected_inventory_stream_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        family_ref: str | None = None,
+    ) -> AppendBatchResult:
+        """Record exactly one fixed district grain-harvest custody lot."""
+        provider_stream = f"gameplay:inventory:{_GRAIN_HARVEST_PROVIDER}"
+        if (
+            not harvest_event_id
+            or expected_harvest_revision < 1
+            or expected_inventory_stream_revision < 0
+            or not command_id
+            or not idempotency_key
+            or not causation_id
+            or not correlation_id
+        ):
+            return self._rejected_append(command_id, "inventory_grain_harvest_reference_invalid")
+        request_digest = _digest(
+            {
+                "harvest_event_id": harvest_event_id,
+                "expected_harvest_revision": expected_harvest_revision,
+                "expected_inventory_stream_revision": expected_inventory_stream_revision,
+                "command_id": command_id,
+                "idempotency_key": idempotency_key,
+                "causation_id": causation_id,
+                "correlation_id": correlation_id,
+            }
+        )
+        key = f"{_GRAIN_HARVEST_PROVIDER}:{idempotency_key}"
+        existing = self._store.get_idempotency_record(self._PRINCIPAL, key)
+        if existing is not None:
+            if existing.payload_digest != request_digest:
+                return self._rejected_append(command_id, "idempotency_key_reused")
+            replay = self._store.get_by_idempotency(self._PRINCIPAL, key)
+            if replay is None:
+                return self._rejected_append(command_id, "inventory_grain_harvest_receipt_missing")
+            return replay.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        try:
+            harvest = self._store.get_event(harvest_event_id)
+        except KeyError:
+            return self._rejected_append(command_id, "inventory_grain_harvest_source_missing")
+        if (
+            harvest.event_type != _GRAIN_HARVEST_SOURCE_EVENT
+            or harvest.visibility_policy != "project"
+            or harvest.stream_revision != expected_harvest_revision
+            or self._store.get_stream_head(harvest.stream_id) != expected_harvest_revision
+            or harvest.payload.get("species") != _GRAIN_HARVEST_SPECIES
+            or harvest.payload.get("item_definition") != _GRAIN_HARVEST_ITEM
+            or harvest.payload.get("yield_quantity") != 10
+            or harvest.payload.get("terminal") != "v1_terminal_no_compensation"
+            or not isinstance(harvest.payload.get("project_ref"), str)
+            or not harvest.payload.get("project_ref")
+            or not isinstance(harvest.payload.get("plot_ref"), str)
+            or not harvest.payload.get("plot_ref")
+        ):
+            return self._rejected_append(command_id, "inventory_grain_harvest_source_invalid")
+        if self._store.get_stream_head(provider_stream) != expected_inventory_stream_revision:
+            return self._rejected_append(command_id, "revision_conflict")
+        if idempotency_key != (
+            f"inventory:grain-harvest-custody:{harvest.event_id}:"
+            f"{harvest.stream_revision}:{expected_inventory_stream_revision}:v1"
+        ) or causation_id != harvest.event_id:
+            return self._rejected_append(command_id, "inventory_grain_harvest_idempotency_key_invalid")
+        projection = self._projector.rebuild(_GRAIN_HARVEST_PROVIDER, self._store.read_events())
+        container = projection.containers.get(_GRAIN_HARVEST_CONTAINER)
+        if container is None or container.sealed or container.carrier_item_id:
+            return self._rejected_append(command_id, "inventory_grain_harvest_container_unavailable")
+        item_id = f"item:grain-harvest:{harvest.event_id}"
+        if item_id in projection.items or any(
+            event.event_type == _GRAIN_HARVEST_EVENT
+            and event.payload.get("source_harvest_event_id") == harvest.event_id
+            for event in self._store.read_stream(provider_stream)
+        ):
+            return self._rejected_append(command_id, "inventory_grain_harvest_duplicate")
+        try:
+            self._registry.item(_GRAIN_HARVEST_ITEM)
+            self._require_capacity(
+                projection,
+                _GRAIN_HARVEST_CONTAINER,
+                InventoryItem(item_id, _GRAIN_HARVEST_ITEM, 10, "pending"),
+            )
+        except InventoryRuntimeError as exc:
+            return self._rejected_append(command_id, str(exc))
+        event = {
+            "event_id": f"evt:{command_id}:inventory:1",
+            "event_type": _GRAIN_HARVEST_EVENT,
+            "schema_version": 1,
+            "stream_id": provider_stream,
+            "stream_revision": 0,
+            "global_sequence": 0,
+            "transaction_id": f"tx:{command_id}",
+            "command_id": command_id,
+            "causation_id": causation_id,
+            "correlation_id": correlation_id,
+            "visibility_policy": "project",
+            "payload": {
+                "actor_ref": _GRAIN_HARVEST_PROVIDER,
+                "holder_ref": _GRAIN_HARVEST_PROVIDER,
+                "project_ref": harvest.payload["project_ref"],
+                "plot_ref": harvest.payload["plot_ref"],
+                "item_ref": _GRAIN_HARVEST_ITEM,
+                "item_id": item_id,
+                "definition_id": _GRAIN_HARVEST_ITEM,
+                "quantity": 10,
+                "container_id": _GRAIN_HARVEST_CONTAINER,
+                "source_harvest_event_id": harvest.event_id,
+                "source_harvest_revision": harvest.stream_revision,
+                "policy_revision": "policy:inventory-grain-harvest-custody@1",
+                "descriptor_ref": "descriptor:inventory-grain-harvest-custody@1",
+                "descriptor_revision": "descriptor:inventory-grain-harvest-custody@1",
+                "catalog_ref": "inf:inventory-grain-harvest-custody@1",
+                "terminal": "v1_terminal_no_compensation",
+                **({"family_ref": family_ref} if family_ref is not None else {}),
+            },
+        }
+        return self._store.append_batch(
+            {
+                "transaction_id": f"tx:{command_id}",
+                "command_id": command_id,
+                "expected_stream_revisions": {provider_stream: expected_inventory_stream_revision},
+                "read_stream_revisions": {harvest.stream_id: expected_harvest_revision},
+                "pinned_revisions": {
+                    "inventory": expected_inventory_stream_revision,
+                    "harvest": expected_harvest_revision,
+                },
+                "events": [event],
+                "idempotency_record": {
+                    "principal_ref": self._PRINCIPAL,
+                    "idempotency_key": key,
+                    "payload_digest": request_digest,
+                },
+                "owner_fragments": [],
+                "outbox_entries": [],
+                "result_digest": _digest(event),
+                "projection_refresh_hints": [],
+            }
+        )
+
+    def settle_harvest_to_custody(self, *, intent: object) -> AppendBatchResult:
+        """Settle one admitted harvest content instance without caller coordinates."""
+        from app.gameplay.closed_generic_gameplay_families import HarvestToCustodyIntent
+
+        try:
+            typed_intent = intent if isinstance(intent, HarvestToCustodyIntent) else HarvestToCustodyIntent.model_validate(intent)
+        except Exception:
+            return self._rejected_append(str(getattr(intent, "command_id", "harvest-to-custody")), "harvest_to_custody_intent_invalid")
+        registry = self._package_registry
+        active = getattr(registry, "active_patch_set", None) if registry is not None else None
+        if active is None:
+            return self._rejected_append(typed_intent.command_id, "harvest_to_custody_package_inactive")
+        try:
+            manifests = registry.active_manifests(active.active_patch_set_revision)
+            harvest = self._store.get_event(typed_intent.harvest_event_id)
+        except Exception:
+            return self._rejected_append(typed_intent.command_id, "harvest_to_custody_source_missing")
+        if (
+            harvest.event_type != _GRAIN_HARVEST_SOURCE_EVENT
+            or harvest.visibility_policy != "project"
+            or harvest.stream_revision != typed_intent.expected_harvest_revision
+            or self._store.get_stream_head(harvest.stream_id) != typed_intent.expected_harvest_revision
+            or not isinstance(harvest.payload.get("project_ref"), str)
+            or not harvest.payload.get("project_ref")
+            or not isinstance(harvest.payload.get("plot_ref"), str)
+            or not harvest.payload.get("plot_ref")
+            or not isinstance(harvest.payload.get("species"), str)
+            or not isinstance(harvest.payload.get("item_definition"), str)
+            or not isinstance(harvest.payload.get("yield_quantity"), int)
+            or isinstance(harvest.payload.get("yield_quantity"), bool)
+            or harvest.payload.get("yield_quantity", 0) <= 0
+            or harvest.payload.get("terminal") != "v1_terminal_no_compensation"
+        ):
+            return self._rejected_append(typed_intent.command_id, "harvest_to_custody_source_invalid")
+
+        from app.gameplay.closed_generic_gameplay_families import HarvestToCustodyContent
+
+        candidates: list[tuple[object, object, object, HarvestToCustodyContent]] = []
+        for manifest in manifests:
+            extension = manifest.platform_extension
+            if extension is None:
+                continue
+            declarations = {item.declaration_ref: item for item in extension.outcome_declarations}
+            for request in extension.capability_binding_requests:
+                if request.capability_ref != "capability:harvest-to-custody@1":
+                    continue
+                declaration = declarations.get(request.declaration_ref)
+                bindings = tuple(
+                    binding
+                    for binding in active.capability_bindings
+                    if binding.binding_ref == request.binding_ref
+                    and binding.package_revision == manifest.patch_revision_id
+                    and binding.descriptor_ref == "descriptor:inventory-harvest-to-custody@1"
+                    and binding.active_patch_set_revision == active.active_patch_set_revision
+                )
+                if declaration is None or len(bindings) != 1:
+                    continue
+                definitions = tuple(
+                    definition
+                    for definition in extension.package_definitions
+                    if definition.definition_ref in declaration.definition_refs
+                )
+                if len(definitions) != 1:
+                    continue
+                try:
+                    content = HarvestToCustodyContent.model_validate(definitions[0].typed_content)
+                except Exception:
+                    continue
+                if (
+                    content.crop_definition_ref == f"definition:{harvest.payload['species']}@1"
+                    and content.item_definition_ref == f"item:{harvest.payload['item_definition']}"
+                ):
+                    candidates.append((manifest, declaration, bindings[0], content))
+        if not candidates:
+            return self._rejected_append(typed_intent.command_id, "harvest_to_custody_content_unknown")
+        if len(candidates) != 1:
+            return self._rejected_append(typed_intent.command_id, "harvest_to_custody_binding_ambiguous")
+        manifest, declaration, binding, content = candidates[0]
+        item_ref = content.item_definition_ref.removeprefix("item:")
+        try:
+            holder_ref = _resolve_harvest_binding(content.holder_binding_ref, prefix="binding:holder:")
+            container_id = _resolve_harvest_binding(content.container_binding_ref, prefix="binding:container:")
+        except InventoryRuntimeError as exc:
+            return self._rejected_append(typed_intent.command_id, str(exc))
+        provider_stream = f"gameplay:inventory:{holder_ref}"
+        quantity = int(harvest.payload["yield_quantity"])
+        item_id = f"item:harvest:{harvest.event_id}"
+        key = (
+            f"inventory:harvest-to-custody:{binding.binding_ref}:{manifest.patch_revision_id}:"
+            f"{harvest.event_id}:{harvest.stream_revision}:{typed_intent.expected_inventory_stream_revision}:v1"
+        )
+        request_digest = _digest(
+            {
+                "harvest_event_id": typed_intent.harvest_event_id,
+                "expected_harvest_revision": typed_intent.expected_harvest_revision,
+                "expected_inventory_stream_revision": typed_intent.expected_inventory_stream_revision,
+                "command_id": typed_intent.command_id,
+                "idempotency_key": key,
+                "causation_id": typed_intent.harvest_event_id,
+                "correlation_id": typed_intent.correlation_id,
+            }
+        )
+        existing = self._store.get_idempotency_record(self._PRINCIPAL, f"{holder_ref}:{key}")
+        if existing is not None:
+            if existing.payload_digest != request_digest:
+                return self._rejected_append(typed_intent.command_id, "idempotency_key_reused")
+            replay = self._store.get_by_idempotency(self._PRINCIPAL, f"{holder_ref}:{key}")
+            if replay is None:
+                return self._rejected_append(typed_intent.command_id, "harvest_to_custody_receipt_missing")
+            return replay.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        if self._store.get_stream_head(provider_stream) != typed_intent.expected_inventory_stream_revision:
+            return self._rejected_append(typed_intent.command_id, "revision_conflict")
+        projection = self._projector.rebuild(holder_ref, self._store.read_events())
+        container = projection.containers.get(container_id)
+        if container is None or container.sealed or container.carrier_item_id:
+            return self._rejected_append(typed_intent.command_id, "harvest_to_custody_container_unavailable")
+        if item_id in projection.items or any(
+            event.event_type == _HARVEST_TO_CUSTODY_EVENT
+            and event.payload.get("source_harvest_event_id") == harvest.event_id
+            for event in self._store.read_stream(provider_stream)
+        ):
+            return self._rejected_append(typed_intent.command_id, "harvest_to_custody_duplicate")
+        try:
+            self._registry.item(item_ref)
+            self._require_capacity(
+                projection,
+                container_id,
+                InventoryItem(item_id, item_ref, quantity, "pending"),
+            )
+        except InventoryRuntimeError as exc:
+            return self._rejected_append(typed_intent.command_id, str(exc))
+        event = {
+            "event_id": f"evt:{typed_intent.command_id}:inventory:1",
+            "event_type": _HARVEST_TO_CUSTODY_EVENT,
+            "schema_version": 1,
+            "stream_id": provider_stream,
+            "stream_revision": 0,
+            "global_sequence": 0,
+            "transaction_id": f"tx:{typed_intent.command_id}",
+            "command_id": typed_intent.command_id,
+            "causation_id": typed_intent.harvest_event_id,
+            "correlation_id": typed_intent.correlation_id,
+            "visibility_policy": "project",
+            "payload": {
+                "actor_ref": holder_ref,
+                "holder_ref": holder_ref,
+                "project_ref": harvest.payload["project_ref"],
+                "plot_ref": harvest.payload["plot_ref"],
+                "crop_definition_ref": content.crop_definition_ref,
+                "item_ref": item_ref,
+                "item_id": item_id,
+                "definition_id": item_ref,
+                "quantity": quantity,
+                "container_id": container_id,
+                "source_harvest_event_id": harvest.event_id,
+                "source_harvest_revision": harvest.stream_revision,
+                "policy_revision": content.policy_revision_ref,
+                "descriptor_ref": "descriptor:inventory-harvest-to-custody@1",
+                "descriptor_revision": "descriptor:inventory-harvest-to-custody@1",
+                "catalog_ref": "inf:inventory-harvest-to-custody@1",
+                "package_revision": manifest.patch_revision_id,
+                "declaration_ref": declaration.declaration_ref,
+                "binding_ref": binding.binding_ref,
+                "active_patch_set_revision": active.active_patch_set_revision,
+                "terminal": "v1_terminal_no_compensation",
+                "family_ref": "harvest_to_custody@1",
+            },
+        }
+        return self._store.append_batch(
+            {
+                "transaction_id": f"tx:{typed_intent.command_id}",
+                "command_id": typed_intent.command_id,
+                "expected_stream_revisions": {provider_stream: typed_intent.expected_inventory_stream_revision},
+                "read_stream_revisions": {harvest.stream_id: typed_intent.expected_harvest_revision},
+                "pinned_revisions": {
+                    "inventory": typed_intent.expected_inventory_stream_revision,
+                    "harvest": typed_intent.expected_harvest_revision,
+                },
+                "events": [event],
+                "idempotency_record": {
+                    "principal_ref": self._PRINCIPAL,
+                    "idempotency_key": f"{holder_ref}:{key}",
+                    "payload_digest": request_digest,
+                },
+                "owner_fragments": [],
+                "outbox_entries": [],
+                "result_digest": _digest(event),
+                "projection_refresh_hints": [],
+            }
+        )
+
+    def grain_harvest_custody_receipt_for(
+        self, *, result: AppendBatchResult, scope: str
+    ) -> SettlementReceipt:
+        if scope != "project":
+            raise InventoryRuntimeError("inventory_grain_harvest_receipt_scope_denied")
+        if not result.committed or len(result.committed_event_ids) != 1:
+            raise InventoryRuntimeError("inventory_grain_harvest_receipt_missing")
+        return SettlementReceipt.from_append_result(
+            result=result,
+            audit_refs=(f"inventory_grain_harvest:{result.transaction_id}",),
+        )
+
+    def grain_harvest_custody_view_for(
+        self, *, checkpoint_at: int | None = None
+    ) -> GrainHarvestCustodyView:
+        if checkpoint_at is not None and checkpoint_at < 0:
+            raise InventoryRuntimeError("inventory_grain_harvest_checkpoint_invalid")
+        events = sorted(self._store.read_events(), key=lambda event: (event.global_sequence, event.event_id))
+        max_sequence = max((event.global_sequence for event in events), default=0)
+        if checkpoint_at is not None and checkpoint_at > max_sequence:
+            raise InventoryRuntimeError("inventory_grain_harvest_checkpoint_invalid")
+        events_by_id = {event.event_id: event for event in events}
+        ordered = events if checkpoint_at is None else [
+            *[event for event in events if event.global_sequence <= checkpoint_at],
+            *[event for event in events if event.global_sequence > checkpoint_at],
+        ]
+        rows: list[Mapping[str, object]] = []
+        for event in ordered:
+            if event.event_type != _GRAIN_HARVEST_EVENT:
+                continue
+            source = events_by_id.get(event.payload.get("source_harvest_event_id"))
+            try:
+                valid = (
+                    event.visibility_policy == "project"
+                    and event.stream_id == f"gameplay:inventory:{_GRAIN_HARVEST_PROVIDER}"
+                    and _text(event.payload, "actor_ref") == _GRAIN_HARVEST_PROVIDER
+                    and _text(event.payload, "holder_ref") == _GRAIN_HARVEST_PROVIDER
+                    and _text(event.payload, "container_id") == _GRAIN_HARVEST_CONTAINER
+                    and _text(event.payload, "item_ref") == _GRAIN_HARVEST_ITEM
+                    and _text(event.payload, "definition_id") == _GRAIN_HARVEST_ITEM
+                    and _positive(event.payload, "quantity") == 10
+                    and source is not None
+                    and source.event_type == _GRAIN_HARVEST_SOURCE_EVENT
+                    and source.visibility_policy == "project"
+                    and source.stream_revision == event.payload.get("source_harvest_revision")
+                    and source.payload.get("project_ref") == event.payload.get("project_ref")
+                    and source.payload.get("plot_ref") == event.payload.get("plot_ref")
+                    and source.payload.get("item_definition") == _GRAIN_HARVEST_ITEM
+                    and source.payload.get("yield_quantity") == 10
+                )
+            except InventoryRuntimeError:
+                valid = False
+            if not valid:
+                raise InventoryRuntimeError("inventory_grain_harvest_replay_invalid")
+            rows.append(dict(event.payload))
+        source_revision_vector = {
+            f"gameplay:inventory:{_GRAIN_HARVEST_PROVIDER}": self._store.get_stream_head(
+                f"gameplay:inventory:{_GRAIN_HARVEST_PROVIDER}"
+            )
+        }
+        for row in rows:
+            source_ref = row.get("source_harvest_event_id")
+            source = events_by_id.get(source_ref)
+            if source is not None:
+                source_revision_vector[source.stream_id] = max(
+                    source_revision_vector.get(source.stream_id, 0), source.stream_revision
+                )
+        payload = {
+            "holder_ref": _GRAIN_HARVEST_PROVIDER,
+            "rows": rows,
+            "source_revision_vector": source_revision_vector,
+        }
+        return GrainHarvestCustodyView(
+            holder_ref=_GRAIN_HARVEST_PROVIDER,
+            rows=tuple(rows),
+            source_revision_vector=source_revision_vector,
+            projection_hash="sha256:" + sha256(
+                json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+            ).hexdigest(),
+        )
+
+    def harvest_to_custody_view_for(
+        self, *, checkpoint_at: int | None = None
+    ) -> HarvestToCustodyView:
+        if checkpoint_at is not None and checkpoint_at < 0:
+            raise InventoryRuntimeError("harvest_to_custody_checkpoint_invalid")
+        events = sorted(self._store.read_events(), key=lambda event: (event.global_sequence, event.event_id))
+        max_sequence = max((event.global_sequence for event in events), default=0)
+        if checkpoint_at is not None and checkpoint_at > max_sequence:
+            raise InventoryRuntimeError("harvest_to_custody_checkpoint_invalid")
+        events_by_id = {event.event_id: event for event in events}
+        rows: list[Mapping[str, object]] = []
+        source_revision_vector: dict[str, int] = {}
+        for event in events:
+            if event.event_type != _HARVEST_TO_CUSTODY_EVENT:
+                continue
+            source = events_by_id.get(event.payload.get("source_harvest_event_id"))
+            payload = event.payload
+            if (
+                event.visibility_policy != "project"
+                or not isinstance(payload.get("holder_ref"), str)
+                or not payload["holder_ref"]
+                or payload.get("actor_ref") != payload.get("holder_ref")
+                or not isinstance(payload.get("item_ref"), str)
+                or payload.get("item_ref") != payload.get("definition_id")
+                or not isinstance(payload.get("quantity"), int)
+                or isinstance(payload.get("quantity"), bool)
+                or payload["quantity"] <= 0
+                or not isinstance(payload.get("container_id"), str)
+                or not payload["container_id"]
+                or source is None
+                or source.event_type != _GRAIN_HARVEST_SOURCE_EVENT
+                or source.visibility_policy != "project"
+                or source.stream_revision != payload.get("source_harvest_revision")
+                or source.payload.get("project_ref") != payload.get("project_ref")
+                or source.payload.get("plot_ref") != payload.get("plot_ref")
+                or source.payload.get("item_definition") != payload.get("item_ref")
+                or source.payload.get("yield_quantity") != payload.get("quantity")
+                or f"definition:{source.payload.get('species')}@1" != payload.get("crop_definition_ref")
+            ):
+                raise InventoryRuntimeError("harvest_to_custody_replay_invalid")
+            rows.append(dict(payload))
+            source_revision_vector[event.stream_id] = max(
+                source_revision_vector.get(event.stream_id, 0), event.stream_revision
+            )
+            source_revision_vector[source.stream_id] = max(
+                source_revision_vector.get(source.stream_id, 0), source.stream_revision
+            )
+        payload = {
+            "rows": rows,
+            "source_revision_vector": source_revision_vector,
+        }
+        return HarvestToCustodyView(
+            rows=tuple(rows),
+            source_revision_vector=source_revision_vector,
+            projection_hash="sha256:" + sha256(
+                json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+            ).hexdigest(),
+        )
+
+    def reinforced_mill_flour_output_receipt_for(
+        self, *, result: AppendBatchResult, scope: str
+    ) -> SettlementReceipt:
+        if scope != "project":
+            raise InventoryRuntimeError("inventory_mill_flour_output_receipt_scope_denied")
+        if not result.committed or len(result.committed_event_ids) != 1:
+            raise InventoryRuntimeError("inventory_mill_flour_output_receipt_missing")
+        return SettlementReceipt.from_append_result(
+            result=result,
+            audit_refs=(f"inventory_mill_flour_output:{result.transaction_id}",),
+        )
+
+    def build_reinforced_mill_flour_output_purchase_fragment(
+        self,
+        *,
+        provider_actor_ref: str,
+        receiver_actor_ref: str,
+        source_receipt_event_id: str,
+        destination_container_id: str,
+        outcome_ref: str,
+        package_revision: str,
+        expected_provider_revision: int,
+        expected_receiver_revision: int,
+    ) -> tuple[OwnerAuthorizedFragment, dict[str, object]]:
+        if (
+            provider_actor_ref != _REINFORCED_MILL_FLOUR_PROVIDER
+            or not receiver_actor_ref
+            or not source_receipt_event_id
+            or not destination_container_id
+            or not outcome_ref
+            or not (
+                package_revision == "package:industrial-facilities:v7"
+                or package_revision.startswith("package:declared-exchange:")
+            )
+        ):
+            raise InventoryRuntimeError("inventory_package_exchange_invalid")
+        all_events = self._store.read_events()
+        provider = self._projector.rebuild(provider_actor_ref, all_events)
+        receiver = self._projector.rebuild(receiver_actor_ref, all_events)
+        provider_stream = f"gameplay:inventory:{provider_actor_ref}"
+        receiver_stream = f"gameplay:inventory:{receiver_actor_ref}"
+        if provider.source_revision_vector.get(provider_stream, 0) != expected_provider_revision:
+            raise InventoryRuntimeError("revision_conflict")
+        if receiver.source_revision_vector.get(receiver_stream, 0) != expected_receiver_revision:
+            raise InventoryRuntimeError("revision_conflict")
+        destination = receiver.containers.get(destination_container_id)
+        if destination is None:
+            raise InventoryRuntimeError("inventory_container_unknown")
+        if destination.sealed:
+            raise InventoryRuntimeError("inventory_access_denied")
+        if destination.carrier_item_id:
+            raise InventoryRuntimeError("inventory_container_access_requires_equipment")
+        source_receipt = self._store.get_event(source_receipt_event_id)
+        if (
+            source_receipt.event_type != _REINFORCED_MILL_FLOUR_OUTPUT_EVENT
+            or source_receipt.visibility_policy != "project"
+        ):
+            raise InventoryRuntimeError("inventory_package_exchange_source_ambiguous")
+        if self._store.get_stream_head(provider_stream) != source_receipt.stream_revision:
+            raise InventoryRuntimeError("revision_conflict")
+        if (
+            source_receipt.payload.get("actor_ref") != provider_actor_ref
+            or source_receipt.payload.get("provider_ref") != provider_actor_ref
+            or source_receipt.payload.get("item_ref") != _REINFORCED_MILL_FLOUR_ITEM
+            or source_receipt.payload.get("definition_id") != _REINFORCED_MILL_FLOUR_ITEM
+            or source_receipt.payload.get("quantity") != 10
+            or source_receipt.payload.get("container_id")
+            != _REINFORCED_MILL_FLOUR_PROVIDER_CONTAINER
+            or source_receipt.payload.get("recipe_ref") != _REINFORCED_MILL_FLOUR_RECIPE
+        ):
+            raise InventoryRuntimeError("inventory_package_exchange_source_ambiguous")
+        matches = [
+            item
+            for item in provider.items.values()
+            if item.source_event_id == source_receipt_event_id
+            and item.definition_id == _REINFORCED_MILL_FLOUR_ITEM
+            and item.quantity == 10
+            and item.available_quantity == 10
+            and provider.locations.get(item.item_id)
+            == _REINFORCED_MILL_FLOUR_PROVIDER_CONTAINER
+        ]
+        if len(matches) != 1:
+            raise InventoryRuntimeError("inventory_package_exchange_source_ambiguous")
+        item = matches[0]
+        self._require_capacity(receiver, destination_container_id, item)
+        fragment = OwnerAuthorizedFragment(
+            fragment_id=(
+                "fragment:inventory:reinforced-mill-flour-output-purchase:"
+                f"{provider_actor_ref}:{receiver_actor_ref}:{source_receipt_event_id}"
+            ),
+            owner_principal_ref=self._PRINCIPAL,
+            source_rule_ref="inventory:reinforced-mill-flour-output-purchase@1",
+            expected_revisions={
+                provider_stream: expected_provider_revision,
+                receiver_stream: expected_receiver_revision,
+            },
+            pinned_revisions={
+                f"inventory:{provider_actor_ref}": expected_provider_revision,
+                f"inventory:{receiver_actor_ref}": expected_receiver_revision,
+                "inventory_source": source_receipt.stream_revision,
+            },
+            event_specs={
+                provider_stream: (
+                    (
+                        "gameplay.inventory.item_transferred_out",
+                        {
+                            "source_ref": _REINFORCED_MILL_FLOUR_ITEM,
+                            "actor_ref": provider_actor_ref,
+                            "item_id": item.item_id,
+                            "from_container_id": _REINFORCED_MILL_FLOUR_PROVIDER_CONTAINER,
+                            "to_actor_ref": receiver_actor_ref,
+                            "outcome_ref": outcome_ref,
+                            "package_revision": package_revision,
+                            "source_event_id": source_receipt.event_id,
+                            "source_selection_rule_ref": "exchange:reinforced-mill-certified-output@1",
+                        },
+                    ),
+                ),
+                receiver_stream: (
+                    (
+                        "gameplay.inventory.item_transferred_in",
+                        {
+                            "source_ref": _REINFORCED_MILL_FLOUR_ITEM,
+                            "actor_ref": receiver_actor_ref,
+                            "item_id": item.item_id,
+                            "definition_id": item.definition_id,
+                            "quantity": item.quantity,
+                            "to_container_id": destination_container_id,
+                            "from_actor_ref": provider_actor_ref,
+                            "outcome_ref": outcome_ref,
+                            "package_revision": package_revision,
+                            "source_event_id": source_receipt.event_id,
+                            "source_selection_rule_ref": "exchange:reinforced-mill-certified-output@1",
+                        },
+                    ),
+                ),
+            },
+            event_visibility_policies={
+                provider_stream: ("authority_only",),
+                receiver_stream: ("authority_only",),
+            },
+        )
+        return fragment, {
+            "source_event_id": source_receipt.event_id,
+            "source_event_revision": source_receipt.stream_revision,
+            "item_id": item.item_id,
+            "definition_id": item.definition_id,
+        }
+
     def build_package_declared_negotiated_exchange_fragment(
         self,
         *,
@@ -963,6 +1861,100 @@ class InventoryAuthorityService:
         return self._store.append_batch({"transaction_id": transaction_id, "command_id": command_id, "expected_stream_revisions": {stream_id: self._store.get_stream_head(stream_id)}, "pinned_revisions": {"inventory": self._store.get_stream_head(stream_id)}, "events": serialized, "idempotency_record": {"principal_ref": self._PRINCIPAL, "idempotency_key": f"{actor_ref}:{idempotency_key}", "payload_digest": _digest(serialized)}, "outbox_entries": [], "result_digest": _digest(serialized), "projection_refresh_hints": []})
 
     @staticmethod
+    def _reinforced_mill_flour_item_id(certification_event_id: str) -> str:
+        return f"item:industrial-facilities:flour:certified:{_digest(certification_event_id)[:16]}"
+
+    def _is_valid_reinforced_mill_flour_certification(
+        self,
+        *,
+        certification_event: GameplayEvent,
+        expected_certification_revision: int,
+    ) -> bool:
+        payload = certification_event.payload
+        events_by_id = {
+            event.event_id: event for event in self._store.read_events()
+        }
+        started = events_by_id.get(str(payload.get("source_run_started_event_id", "")))
+        finished = events_by_id.get(str(payload.get("source_run_finished_event_id", "")))
+        reinforcement = events_by_id.get(
+            str(payload.get("source_reinforcement_event_id", ""))
+        )
+        acquisition = (
+            events_by_id.get(str(reinforcement.payload.get("acquisition_event_id", "")))
+            if reinforcement is not None
+            else None
+        )
+        stream_id = certification_event.stream_id
+        return (
+            certification_event.event_type == _REINFORCED_MILL_FLOUR_SOURCE_EVENT
+            and certification_event.visibility_policy == "project"
+            and certification_event.stream_revision == expected_certification_revision
+            and self._store.get_stream_head(certification_event.stream_id)
+            == expected_certification_revision
+            and stream_id == "gameplay:construction_production:facility:mill-reinforcement:1"
+            and payload.get("facility_ref") == "facility:mill-reinforcement:1"
+            and bool(payload.get("project_ref"))
+            and payload.get("recipe_ref") == _REINFORCED_MILL_FLOUR_RECIPE
+            and payload.get("output_item") == _REINFORCED_MILL_FLOUR_ITEM
+            and payload.get("quantity") == 10
+            and started is not None
+            and started.event_type == "gameplay.construction_production.run_started"
+            and started.stream_id == stream_id
+            and started.stream_revision == payload.get("source_run_started_revision")
+            and finished is not None
+            and finished.event_type == "gameplay.construction_production.run_finished"
+            and finished.stream_id == stream_id
+            and finished.stream_revision == payload.get("source_run_finished_revision")
+            and finished.payload.get("run_ref") == payload.get("run_ref")
+            and finished.payload.get("recipe_ref") == _REINFORCED_MILL_FLOUR_RECIPE
+            and finished.payload.get("output_item") == _REINFORCED_MILL_FLOUR_ITEM
+            and reinforcement is not None
+            and reinforcement.event_type
+            == "gameplay.construction_production.facility_transformed"
+            and reinforcement.stream_id == stream_id
+            and reinforcement.stream_revision
+            == payload.get("source_reinforcement_revision")
+            and reinforcement.visibility_policy == "project"
+            and reinforcement.payload.get("facility_ref")
+            == payload.get("facility_ref")
+            and reinforcement.payload.get("project_ref")
+            == payload.get("project_ref")
+            and reinforcement.payload.get("prior_kind") == "mill"
+            and reinforcement.payload.get("next_kind") == "mill_reinforced"
+            and reinforcement.payload.get("package_revision")
+            == "package:industrial-facilities:v2"
+            and reinforcement.payload.get("content_digest")
+            == "sha256:8deea88c5e49c2aa06f30bbf1bd78ed103e26d8fb31769fe5564dbb7cc279896"
+            and reinforcement.payload.get("declaration_ref")
+            == "declaration:industrial-facilities-mill-to-mill-reinforced@1"
+            and reinforcement.payload.get("declaration_digest")
+            == "sha256:73d3313283bf584254281a2ca1b60d888585f6ba89e6370a30d622e4529b1bc8"
+            and acquisition is not None
+            and acquisition.event_type
+            == "gameplay.construction_production.facility_acquired"
+            and acquisition.stream_id == stream_id
+            and acquisition.visibility_policy == "project"
+            and acquisition.payload.get("facility_ref")
+            == payload.get("facility_ref")
+            and acquisition.payload.get("plot_ref")
+            == payload.get("project_ref")
+        )
+
+    @staticmethod
+    def _rejected_append(command_id: str, error_code: str) -> AppendBatchResult:
+        return AppendBatchResult(
+            committed=False,
+            transaction_id=f"tx:{command_id}",
+            command_id=command_id,
+            idempotency_status="rejected",
+            failure=GameplayFailure(
+                error_code=error_code,
+                message=error_code,
+                failed_stage="inventory_commit",
+            ),
+        )
+
+    @staticmethod
     def _serialize_events(command_id: str, actor_ref: str, events: Sequence[tuple[str, Mapping[str, object]]], causation_id: str, correlation_id: str) -> list[dict[str, object]]:
         stream_id = f"gameplay:inventory:{actor_ref}"
         transaction_id = f"tx:{command_id}"
@@ -989,6 +1981,15 @@ def _text(payload: Mapping[str, object], key: str) -> str:
     value = payload.get(key)
     if not isinstance(value, str) or not value:
         raise InventoryRuntimeError("inventory_event_payload_invalid")
+    return value
+
+
+def _resolve_harvest_binding(binding_ref: str, *, prefix: str) -> str:
+    if not binding_ref.startswith(prefix) or not binding_ref.endswith("@1"):
+        raise InventoryRuntimeError("harvest_to_custody_binding_invalid")
+    value = binding_ref[len(prefix) : -2]
+    if not value:
+        raise InventoryRuntimeError("harvest_to_custody_binding_invalid")
     return value
 
 
