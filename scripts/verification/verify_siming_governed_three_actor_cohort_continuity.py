@@ -57,6 +57,9 @@ def main() -> int:
     w1_new_source = (
         w0["window"] == "W0"
         and w1["window"] == "W1"
+        and w0["cohort_ref"] == w0["published_cohort_ref"] == "cohort:bakery:W0"
+        and w1["cohort_ref"] == w1["published_cohort_ref"] == "cohort:bakery:W1"
+        and w0["report_scope"] == w1["report_scope"] == "organization:summary"
         and w0["cadence_id"] != w1["cadence_id"]
         and w0["source_revision_vector"] != w1["source_revision_vector"]
     )

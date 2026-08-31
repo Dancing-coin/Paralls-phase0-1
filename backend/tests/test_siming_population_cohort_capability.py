@@ -8,13 +8,22 @@ from app.population_continuity.siming_contracts import (
 from app.services.siming_population_capability import PopulationSimulationCapability
 
 
-def _read_set(window: str = "W0", budget: int = 3, revision: int = 1):
+def _read_set(
+    window: str = "W0",
+    budget: int = 3,
+    revision: int = 1,
+    *,
+    selector_revision: str = "selector:cohort-bakery:v1",
+    ruleset_revision: str = "rules:cohort-bakery:v1",
+    policy_revision: str = "mode:v1",
+    catch_up_limit: int = 3,
+):
     cadence = PopulationCadenceInput(
-        cadence_id=f"cadence:cohort:{window}", world_ref="world:bakery", world_mode_ref="mode:bakery",
-        world_mode_revision="mode:v1", cadence_source_ref="world:bakery", cadence_source_revision=1,
+        cadence_id=f"cadence:cohort:bakery:{window}", world_ref="world:bakery", world_mode_ref="mode:bakery",
+        world_mode_revision="mode:v1", cadence_source_ref="world:bakery", cadence_source_revision=revision,
         window_start=0, window_end=1, base_checkpoint_ref="checkpoint:1", base_checkpoint_digest="sha256:cp",
-        base_revision_vector={"world:bakery": revision}, policy_revision="policy:v1", selector_revision="selector:v1",
-        ruleset_revision="ruleset:v1", deterministic_seed=f"seed:{window}", catch_up_limit=3, budget=budget,
+        base_revision_vector={"world:bakery": revision}, policy_revision=policy_revision, selector_revision=selector_revision,
+        ruleset_revision=ruleset_revision, deterministic_seed=f"seed:{window}", catch_up_limit=catch_up_limit, budget=budget,
         report_scope="organization:summary",
     )
     rows = (
@@ -67,6 +76,7 @@ def test_w0_routes_owner_char_a_and_core_char_a_char_b_only():
     assert result.status == "accepted"
     assert [call.profile_ref for call in owner.calls] == ["character:char_a"]
     assert [command.actor_ref for command in continuity.commands] == ["character:char_a", "character:char_b"]
+    assert result.report.cohort_ref == "cohort:bakery:W0"
 
 
 def test_missing_owner_receipt_blocks_all_cohort_core_commands():
@@ -113,3 +123,61 @@ def test_cohort_projection_exposure_cannot_create_char_b_memory_candidate():
     result = PopulationSimulationCapability(owner_executor=owner, continuity_port=continuity).run_cohort_cycle(cadence, read_set)
     routine = next(seed for seed in result.seed_candidates if seed.actor_ref == "character:char_b")
     assert routine.memory_candidates == ()
+
+
+def test_changed_v1_pins_requeue_before_owner_and_character_core():
+    for changed in (
+        {"selector_revision": "selector:forged"},
+        {"ruleset_revision": "rules:forged"},
+        {"policy_revision": "policy:forged"},
+    ):
+        cadence, read_set = _read_set(**changed)
+        owner, continuity = _Owner(), _Continuity()
+        result = PopulationSimulationCapability(owner_executor=owner, continuity_port=continuity).run_cohort_cycle(cadence, read_set)
+        assert result.status == "requeue"
+        assert result.reason == "stale_read_set"
+        assert owner.calls == []
+        assert continuity.commands == []
+
+
+def test_missing_duplicate_or_mismatched_fixed_actor_requeues_zero_write():
+    cadence, base = _read_set()
+    variants = (
+        base.projections[:2],
+        (base.projections[0], base.projections[0].model_copy(update={"ref": "projection:char_a:W0:duplicate"}), base.projections[2]),
+        tuple(
+            projection.model_copy(update={"ref": "projection:char_x:W0"})
+            if projection.payload["actor_ref"] == "character:char_c"
+            else projection
+            for projection in base.projections
+        ),
+        tuple(
+            projection.model_copy(update={"payload": {**projection.payload, "actor_ref": "character:unknown"}})
+            if projection.payload["actor_ref"] == "character:char_c"
+            else projection
+            for projection in base.projections
+        ),
+    )
+    for rows in variants:
+        read_set = PopulationReadSet.from_inputs(cadence, rows)
+        owner, continuity = _Owner(), _Continuity()
+        result = PopulationSimulationCapability(owner_executor=owner, continuity_port=continuity).run_cohort_cycle(cadence, read_set)
+        assert result.status == "requeue"
+        assert result.reason == "cohort_input_invalid"
+        assert owner.calls == []
+        assert continuity.commands == []
+
+
+def test_catch_up_zero_leaves_all_fixed_actors_unprocessed():
+    cadence, read_set = _read_set(catch_up_limit=0)
+    owner, continuity = _Owner(), _Continuity()
+    result = PopulationSimulationCapability(owner_executor=owner, continuity_port=continuity).run_cohort_cycle(cadence, read_set)
+    assert result.status == "accepted"
+    assert result.report.selected_cohort_refs == ()
+    assert result.report.unprocessed_cohort_refs == (
+        "projection:char_a:W0",
+        "projection:char_b:W0",
+        "projection:char_c:W0",
+    )
+    assert owner.calls == []
+    assert continuity.commands == []

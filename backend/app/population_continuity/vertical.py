@@ -209,6 +209,7 @@ class BakeryDistrictPopulationFixture:
             recipient_ref=recipient_ref,
             organization_input=organization_input,
             work_order_ref=work_order_ref,
+            privacy_scope=report_scope,
         )
         return (
             PopulationPlanner().plan_schedule_gated_supply(
@@ -244,6 +245,7 @@ class BakeryDistrictPopulationFixture:
         recipient_ref: str,
         organization_input: OrganizationScheduleInput,
         work_order_ref: str,
+        privacy_scope: str = "actor:self",
     ) -> BatchIntentCandidate:
         return BatchIntentCandidate(
             intent_ref=f"intent:{batch_ref}:supply",
@@ -265,7 +267,7 @@ class BakeryDistrictPopulationFixture:
             idempotency_key=f"intent:{batch_ref}:supply",
             correlation_id=f"correlation:{batch_ref}",
             source_ref="population:district-planner",
-            privacy_scope="actor:self",
+            privacy_scope=privacy_scope,
         )
 
     def _admit_released_schedule_gated_supply(
@@ -1371,7 +1373,7 @@ class ThreeActorCohortContinuityFixture:
             batch_ref=batch_ref,
             recipient_ref="character:char_a",
             observed_at=observed_at,
-            report_scope="actor:self",
+            report_scope="organization:summary",
             activation_lock_refs=(lock_ref,),
         )
         if not planned.accepted or planned.plan is None:
@@ -1404,7 +1406,7 @@ class ThreeActorCohortContinuityFixture:
             deterministic_seed=f"seed:cohort:bakery:{window}",
             catch_up_limit=3,
             budget=3,
-            report_scope="actor:self",
+            report_scope="organization:summary",
         )
         candidate = plan.candidates[0]
         source_context = {
@@ -1421,7 +1423,7 @@ class ThreeActorCohortContinuityFixture:
         projections = (
             PopulationProjection(
                 ref=f"projection:char_a:{window}",
-                scope="actor:self",
+                scope="organization:summary",
                 revision_vector=base_vector,
                 payload={
                     "actor_ref": "character:char_a",
@@ -1441,7 +1443,7 @@ class ThreeActorCohortContinuityFixture:
             ),
             PopulationProjection(
                 ref=f"projection:char_b:{window}",
-                scope="actor:self",
+                scope="public",
                 revision_vector=base_vector,
                 payload={
                     "actor_ref": "character:char_b",
@@ -1454,7 +1456,7 @@ class ThreeActorCohortContinuityFixture:
             ),
             PopulationProjection(
                 ref=f"projection:char_c:{window}",
-                scope="actor:self",
+                scope="organization:summary",
                 revision_vector=base_vector,
                 payload={
                     "actor_ref": "character:char_c",
@@ -1617,6 +1619,9 @@ class ThreeActorCohortContinuityFixture:
             "status": result.status,
             "batch_ref": result.batch_ref,
             "window": window,
+            "cohort_ref": report.cohort_ref,
+            "published_cohort_ref": event.payload["cohort_ref"],
+            "report_scope": event.payload["population_cadence"]["report_scope"],
             "cadence_id": event.payload["population_cadence"]["cadence_id"],
             "source_revision_vector": dict(event.payload["population_cadence"]["base_revision_vector"]),
             "selected": selected,

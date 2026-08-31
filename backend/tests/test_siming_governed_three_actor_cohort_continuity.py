@@ -11,6 +11,9 @@ def test_two_window_three_actor_cohort_closes_under_siming_governance() -> None:
         "character:char_c",
     ]
     assert result["w1"]["selected"] == result["w0"]["selected"]
+    assert result["w0"]["cohort_ref"] == result["w0"]["published_cohort_ref"] == "cohort:bakery:W0"
+    assert result["w1"]["cohort_ref"] == result["w1"]["published_cohort_ref"] == "cohort:bakery:W1"
+    assert result["w0"]["report_scope"] == result["w1"]["report_scope"] == "organization:summary"
     assert result["owner"]["actor_ref"] == "character:char_a"
     assert result["owner"]["event_family"] == (
         "gameplay.organization.commerce_commitment_accepted"

@@ -117,6 +117,9 @@ def default_population_read_set_builder(event: AuthorityEvent, cadence: Populati
 
 class PopulationSimulationCapability:
     _ADMITTED_SCOPES = frozenset({"organization:summary", "public", "actor:self"})
+    _V1_SELECTOR = "selector:cohort-bakery:v1"
+    _V1_RULESET = "rules:cohort-bakery:v1"
+    _V1_ACTORS = ("character:char_a", "character:char_b", "character:char_c")
 
     def __init__(self, *, planner: PopulationPlanner | None = None, seed_planner: CharacterSeedPlanner | None = None, owner_executor: PopulationOwnerExecutor | None = None, continuity_port: CharacterContinuityPort | None = None) -> None:
         self._planner = planner or PopulationPlanner()
@@ -126,14 +129,21 @@ class PopulationSimulationCapability:
 
     def run_cycle(self, cadence_input: PopulationCadenceInput, read_set: PopulationReadSet) -> PopulationCycleResult:
         """Run the legacy population path, delegating closed cohorts to V1."""
-        if self._is_v1_cohort(read_set):
+        if self._looks_like_v1_cohort(read_set):
             return self.run_cohort_cycle(cadence_input, read_set)
         return self._run_cycle_impl(cadence_input, read_set)
 
     def run_cohort_cycle(self, cadence_input: PopulationCadenceInput, read_set: PopulationReadSet) -> PopulationCycleResult:
         """Run one Siming-governed three-actor cohort window."""
-        if not self._is_v1_cohort(read_set):
+        if not self._looks_like_v1_cohort(read_set):
             return self._run_cycle_impl(cadence_input, read_set)
+        reason = self._v1_admission_reason(read_set)
+        if reason:
+            return self._requeue(
+                f"population-batch:{cadence_input.cadence_id}:requeue",
+                read_set,
+                reason,
+            )
         return self._run_cycle_impl(cadence_input, read_set, cohort=True)
 
     def _run_cycle_impl(self, cadence_input: PopulationCadenceInput, read_set: PopulationReadSet, *, cohort: bool = False) -> PopulationCycleResult:
@@ -308,19 +318,60 @@ class PopulationSimulationCapability:
 
     @staticmethod
     def _is_v1_cohort(read_set: PopulationReadSet) -> bool:
+        return PopulationSimulationCapability._v1_admission_reason(read_set) == ""
+
+    @staticmethod
+    def _looks_like_v1_cohort(read_set: PopulationReadSet) -> bool:
+        cadence = read_set.cadence
+        return cadence.cadence_id.startswith("cadence:cohort:") or (
+            cadence.selector_revision == PopulationSimulationCapability._V1_SELECTOR
+            or cadence.ruleset_revision == PopulationSimulationCapability._V1_RULESET
+        )
+
+    @staticmethod
+    def _v1_admission_reason(read_set: PopulationReadSet) -> str:
+        cadence = read_set.cadence
+        parts = cadence.cadence_id.split(":")
+        if (
+            len(parts) != 4
+            or parts[:3] != ["cadence", "cohort", "bakery"]
+            or parts[3] not in {"W0", "W1"}
+            or cadence.selector_revision != PopulationSimulationCapability._V1_SELECTOR
+            or cadence.ruleset_revision != PopulationSimulationCapability._V1_RULESET
+            or cadence.policy_revision != cadence.world_mode_revision
+        ):
+            return "stale_read_set"
+        if cadence.report_scope != "organization:summary" or len(read_set.projections) != 3:
+            return "cohort_input_invalid"
+        window = parts[3]
+        expected_kinds = {
+            "character:char_a": "schedule_gated_supply",
+            "character:char_b": "routine_work",
+            "character:char_c": "relationship_negotiation",
+        }
         actors: dict[str, str] = {}
         for projection in read_set.projections:
             payload = projection.payload
-            actor = str(payload.get("actor_ref") or payload.get("profile_ref") or payload.get("character_ref") or "")
+            aliases = {
+                str(payload.get(key)).strip()
+                for key in ("actor_ref", "profile_ref", "character_ref")
+                if payload.get(key) not in (None, "")
+            }
+            if len(aliases) != 1:
+                return "cohort_input_invalid"
+            actor = next(iter(aliases))
             kind = str(payload.get("candidate_kind") or payload.get("kind") or payload.get("behavior_kind") or "")
-            if actor in {"character:char_a", "character:char_b", "character:char_c"}:
-                actors[actor] = kind
-        expected = {
-            "character:char_a": {"schedule_gated_supply"},
-            "character:char_b": {"routine_work"},
-            "character:char_c": {"relationship_negotiation"},
-        }
-        return set(actors) == set(expected) and all(actors[actor] in kinds for actor, kinds in expected.items())
+            expected_ref = f"projection:{actor.removeprefix('character:')}:{window}"
+            if (
+                actor not in expected_kinds
+                or actor in actors
+                or projection.ref != expected_ref
+                or kind != expected_kinds[actor]
+                or projection.scope not in {"organization:summary", "public"}
+            ):
+                return "cohort_input_invalid"
+            actors[actor] = kind
+        return "" if tuple(sorted(actors)) == tuple(sorted(expected_kinds)) else "cohort_input_invalid"
 
     def _current_revision(self, actor_ref: str) -> int:
         reader = getattr(self._continuity_port, "current_revision", None)

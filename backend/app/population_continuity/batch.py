@@ -154,7 +154,44 @@ class PopulationPlanner:
     def plan_three_actor_cohort(self, read_set: PopulationReadSet) -> PopulationBatchReport:
         """Classify the closed three-actor cohort without performing writes."""
         actors = ("character:char_a", "character:char_b", "character:char_c")
-        by_actor = {str(p.payload.get("actor_ref") or p.payload.get("profile_ref")): p for p in read_set.projections}
+        cohort_ref = self._cohort_ref(read_set.cadence.cadence_id)
+        by_actor: dict[str, object] = {}
+        invalid: list[PopulationRejectedCandidate] = []
+        for projection in read_set.projections:
+            aliases = {
+                str(projection.payload.get(key)).strip()
+                for key in ("actor_ref", "profile_ref", "character_ref")
+                if projection.payload.get(key) not in (None, "")
+            }
+            actor = next(iter(aliases), "") if len(aliases) == 1 else ""
+            ref_parts = projection.ref.split(":")
+            ref_actor = f"character:{ref_parts[1]}" if len(ref_parts) > 2 and ref_parts[0] == "projection" else ""
+            if len(aliases) != 1 or actor not in actors or ref_actor != actor:
+                invalid.append(PopulationRejectedCandidate(projection.ref, "cohort_actor_ref_invalid", str(actor)))
+                continue
+            if actor in by_actor:
+                invalid.append(PopulationRejectedCandidate(projection.ref, "cohort_actor_duplicate", actor))
+                continue
+            by_actor[actor] = projection
+        if invalid or len(read_set.projections) != len(actors) or set(by_actor) != set(actors):
+            unprocessed = tuple(projection.ref for projection in read_set.projections)
+            return self._population_report(
+                batch_ref=f"population-cohort:{read_set.cadence.cadence_id}",
+                read_set=read_set,
+                selected=(),
+                presentation={},
+                activations=(),
+                owner_intents=(),
+                rejected=tuple(invalid),
+                budget_used=0,
+                unprocessed=unprocessed,
+            ).model_copy(
+                update={
+                    "cohort_ref": cohort_ref,
+                    "cohort_member_refs": actors,
+                    "unprocessed_count": len(unprocessed),
+                }
+            )
         selected: list[str] = []
         unprocessed: list[str] = []
         presentation: dict[str, object] = {}
@@ -166,6 +203,9 @@ class PopulationPlanner:
             projection = by_actor.get(actor)
             if projection is None:
                 continue
+            if len(selected) >= read_set.cadence.catch_up_limit:
+                unprocessed.extend(by_actor[a].ref for a in actors[index:])
+                break
             if budget_used >= read_set.cadence.budget:
                 unprocessed.extend(by_actor[a].ref for a in actors[index:] if a in by_actor)
                 break
@@ -192,7 +232,12 @@ class PopulationPlanner:
                 budget_used += 1
                 activations.append(PopulationActivationCandidate(projection.ref, actor, "relationship_negotiation_requires_activation", str(payload.get("activation_reason") or "relationship_negotiation"), 1, "actor:self", dict(projection.revision_vector)))
         report = self._population_report(batch_ref=f"population-cohort:{read_set.cadence.cadence_id}", read_set=read_set, selected=tuple(selected), presentation=presentation, activations=tuple(activations), owner_intents=tuple(intents), rejected=tuple(rejected), budget_used=budget_used, unprocessed=tuple(unprocessed))
-        return report.model_copy(update={"cohort_ref": f"cohort:{read_set.cadence.cadence_id}", "cohort_member_refs": actors, "presentation_seed_count": len(presentation), "activation_candidate_count": len(activations), "owner_intent_count": len(intents), "selected_count": len(selected), "unprocessed_count": len(unprocessed)})
+        return report.model_copy(update={"cohort_ref": cohort_ref, "cohort_member_refs": actors, "presentation_seed_count": len(presentation), "activation_candidate_count": len(activations), "owner_intent_count": len(intents), "selected_count": len(selected), "unprocessed_count": len(unprocessed)})
+
+    @staticmethod
+    def _cohort_ref(cadence_id: str) -> str:
+        prefix = "cadence:"
+        return cadence_id.removeprefix(prefix) if cadence_id.startswith(prefix) else cadence_id
 
     @staticmethod
     def schedule_pending_digest(plan: PopulationWorldPlan) -> str:
