@@ -1,6 +1,6 @@
 # Siming-Governed Three-Actor Cohort Continuity V1 Design
 
-Status: `awaiting-user-review`
+Status: `approved; implementation plan follows`
 
 Date: `2026-08-31`
 
