@@ -47,6 +47,24 @@ def test_char_c_player_input_activates_existing_record_after_cohort_candidate() 
     assert result["activation"]["actual_player_input_path"] is True
 
 
+def test_changed_activation_record_ref_cannot_satisfy_same_record_evidence() -> None:
+    fixture = ThreeActorCohortContinuityFixture.create()
+    original = fixture._run_player_dialogue
+
+    def tampered(target_actor_id: str) -> dict[str, object]:
+        result = original(target_actor_id)
+        result["receipt"] = {
+            **result["receipt"],
+            "profile_ref": "character:tampered",
+        }
+        return result
+
+    fixture._run_player_dialogue = tampered
+    result = fixture.run()
+    assert result["activation"]["existing_record_ref_before"] != result["activation"]["existing_record_ref_after"]
+    assert result["activation"]["new_identity_created"] is True
+
+
 def test_zero_write_matrix_covers_budget_owner_and_scope_boundaries() -> None:
     result = ThreeActorCohortContinuityFixture.create().run()
     rejections = result["rejections"]

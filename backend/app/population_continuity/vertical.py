@@ -1686,10 +1686,24 @@ class ThreeActorCohortContinuityFixture:
             and all(item.zero_write for item in missing_owner.owner_receipts)
         )
         identity_before = self.character_runtime.character_identity_digest("char_c")
-        existing_record_ref_before = "character:char_c"
+        continuity_before = self.character_runtime.get_runtime_continuity_state("char_c")
+        existing_record_ref_before = f"character:{continuity_before['actor_id']}"
+        known_actor_refs_before = {
+            f"character:{actor_id}" for actor_id in self.character_runtime._supported_actor_ids
+        }
         activation = self._run_player_dialogue("char_c")
         identity_after = self.character_runtime.character_identity_digest("char_c")
-        existing_record_ref_after = "character:char_c"
+        activation_receipt = activation["receipt"]
+        existing_record_ref_after = str(activation_receipt.get("profile_ref", ""))
+        continuity_after = self.character_runtime.get_runtime_continuity_state("char_c")
+        known_actor_refs_after = {
+            f"character:{actor_id}" for actor_id in self.character_runtime._supported_actor_ids
+        }
+        new_identity_created = (
+            known_actor_refs_after != known_actor_refs_before
+            or existing_record_ref_after not in known_actor_refs_before
+            or continuity_after.get("actor_id") != continuity_before.get("actor_id")
+        )
         gameplay_replay = GameplayProjectionReplay(
             projector_id="siming-governed-three-actor-cohort-continuity-v1",
             projector_version="1",
@@ -1736,7 +1750,7 @@ class ThreeActorCohortContinuityFixture:
                 "existing_record_ref": existing_record_ref_before,
                 "existing_record_ref_before": existing_record_ref_before,
                 "existing_record_ref_after": existing_record_ref_after,
-                "new_identity_created": False,
+                "new_identity_created": new_identity_created,
                 "same_character_identity": identity_before == identity_after,
                 "decision": activation["decision"],
                 "route": activation["route"],

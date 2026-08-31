@@ -73,7 +73,10 @@ def main() -> int:
     )
     char_b_pending_empty = character["char_b_pending_memory_count"] == 0
     same_existing_record = (
-        evidence["activation"]["existing_record_ref"] == "character:char_c"
+        evidence["activation"]["existing_record_ref"]
+        == f"character:{evidence['activation']['decision']['actor_id']}"
+        and evidence["activation"]["existing_record_ref"]
+        == evidence["activation"]["existing_record_ref_before"]
         and evidence["activation"]["existing_record_ref_before"]
         == evidence["activation"]["existing_record_ref_after"]
         and evidence["activation"]["new_identity_created"] is False
