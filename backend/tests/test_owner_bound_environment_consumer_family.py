@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from hashlib import sha256
 import json
 
@@ -681,6 +682,47 @@ def test_owner_bound_environment_consumer_rejects_ambiguous_matching_bindings_wi
     assert tuple(store.read_events()) == before
 
 
+def test_owner_bound_environment_consumer_rejects_tampered_activation_content_pin_without_write() -> None:
+    store, weather_id, assignment_id = _seed(source_weather_ref="weather:rain")
+    authority = _authority(
+        _manifest(
+            package_revision="package:environment-rain@1",
+            definition_ref="definition:environment-rain@1",
+            source_event_family_ref="event:weather-front-rain@1",
+            target_state_definition_ref="definition:survival-hydrated@1",
+            policy_revision_ref="policy:weather-front-survival-hydration@1",
+        ),
+        store=store,
+    )
+    registry = authority._package_registry
+    active = registry.active_patch_set
+    assert active is not None
+    registry._active = replace(
+        active,
+        capability_bindings=(
+            replace(
+                active.capability_bindings[0],
+                family_content_digest="sha256:" + "f" * 64,
+            ),
+        ),
+    )
+    before = tuple(store.read_events())
+
+    result = authority.settle_owner_bound_environment_consumer(
+        intent=OwnerBoundEnvironmentConsumerIntent(
+            weather_event_id=weather_id,
+            region_assignment_event_id=assignment_id,
+            command_id="command:environment-tampered-pin",
+            correlation_id="corr:environment-tampered-pin",
+        )
+    )
+
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "owner_bound_environment_consumer_binding_invalid"
+    assert tuple(store.read_events()) == before
+
+
 def test_owner_bound_environment_consumer_intent_rejects_caller_target_coordinates() -> None:
     with pytest.raises(Exception):
         OwnerBoundEnvironmentConsumerIntent.model_validate(
@@ -731,3 +773,71 @@ def test_owner_bound_environment_consumer_replays_duplicate_and_matches_tail() -
     assert tuple(store.read_events()) == before
     assert full.states == tail.states
     assert full.source_revision_vector == tail.source_revision_vector
+
+
+def test_owner_bound_environment_consumer_replay_rejects_tampered_family_provenance() -> None:
+    store, weather_id, assignment_id = _seed(source_weather_ref="weather:rain")
+    authority = _authority(
+        _manifest(
+            package_revision="package:environment-replay-provenance@1",
+            definition_ref="definition:environment-replay-provenance@1",
+            source_event_family_ref="event:weather-front-rain@1",
+            target_state_definition_ref="definition:survival-hydrated@1",
+            policy_revision_ref="policy:weather-front-survival-hydration@1",
+        ),
+        store=store,
+    )
+    result = authority.settle_owner_bound_environment_consumer(
+        intent=OwnerBoundEnvironmentConsumerIntent(
+            weather_event_id=weather_id,
+            region_assignment_event_id=assignment_id,
+            command_id="command:environment-replay-provenance",
+            correlation_id="corr:environment-replay-provenance",
+        )
+    )
+    assert result.committed, result.failure
+    event_id = result.committed_event_ids[0]
+    event = store.get_event(event_id)
+    mutated = event.model_copy(
+        update={"payload": {**event.payload, "content_digest": "sha256:" + "f" * 64}},
+        deep=True,
+    )
+    store._events[store._events.index(event)] = mutated
+    store._events_by_id[event_id] = mutated
+
+    with pytest.raises(Exception, match="owner_bound_environment_consumer_replay_invalid"):
+        authority.projector()
+
+
+def test_owner_bound_environment_consumer_replay_rejects_broken_obligation_linkage() -> None:
+    store, weather_id, assignment_id = _seed(source_weather_ref="weather:rain")
+    authority = _authority(
+        _manifest(
+            package_revision="package:environment-replay-lifecycle@1",
+            definition_ref="definition:environment-replay-lifecycle@1",
+            source_event_family_ref="event:weather-front-rain@1",
+            target_state_definition_ref="definition:survival-hydrated@1",
+            policy_revision_ref="policy:weather-front-survival-hydration@1",
+        ),
+        store=store,
+    )
+    result = authority.settle_owner_bound_environment_consumer(
+        intent=OwnerBoundEnvironmentConsumerIntent(
+            weather_event_id=weather_id,
+            region_assignment_event_id=assignment_id,
+            command_id="command:environment-replay-lifecycle",
+            correlation_id="corr:environment-replay-lifecycle",
+        )
+    )
+    assert result.committed, result.failure
+    obligation_id = result.committed_event_ids[1]
+    event = store.get_event(obligation_id)
+    mutated = event.model_copy(
+        update={"payload": {**event.payload, "obligation_id": "obligation:forged"}},
+        deep=True,
+    )
+    store._events[store._events.index(event)] = mutated
+    store._events_by_id[obligation_id] = mutated
+
+    with pytest.raises(Exception, match="owner_bound_environment_consumer_replay_invalid"):
+        authority.projector()

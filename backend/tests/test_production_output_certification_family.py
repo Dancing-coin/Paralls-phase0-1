@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from hashlib import sha256
 import json
 
@@ -177,3 +178,28 @@ def test_output_certification_replays_duplicate_and_matches_checkpoint_tail() ->
     assert changed.failure is not None and changed.failure.error_code == "idempotency_key_reused"
     assert tuple(store.read_events()) == before
     assert full.production_output_certifications == tail.production_output_certifications
+
+
+def test_output_certification_rejects_tampered_activation_content_pin_without_writing() -> None:
+    store, authority, finished_id = _setup()
+    registry = authority._package_registry
+    active = registry.active_patch_set
+    assert active is not None
+    assert len(active.capability_bindings) == 1
+    registry._active = replace(
+        active,
+        capability_bindings=(
+            replace(
+                active.capability_bindings[0],
+                family_content_digest="sha256:" + "f" * 64,
+            ),
+        ),
+    )
+    before = tuple(store.read_events())
+
+    result = authority.settle_production_output_certification(intent=_intent(finished_id))
+
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "production_output_certification_binding_invalid"
+    assert tuple(store.read_events()) == before

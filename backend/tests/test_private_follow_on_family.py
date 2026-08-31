@@ -285,6 +285,149 @@ def test_private_follow_on_generic_contents_replay_and_changed_duplicate_are_zer
         )
         assert full == tail
         assert len(full.acknowledgments) == 1
+        assert "gameplay:contracts" in full.source_revision_vector
+        assert any(
+            key.startswith("gameplay:organization:")
+            for key in full.source_revision_vector
+        )
+
+
+def test_private_follow_on_derives_alternate_provider_from_committed_notice_chain() -> None:
+    store, notice = _workshop_notice()
+    alternate_provider = "organization:river-workshop"
+    activity = store.get_event(str(notice.payload["source_activity_event_id"]))
+    created = store.get_event(str(activity.payload["source_contract_created_event_id"]))
+    alternate_notice = notice.model_copy(
+        update={
+            "payload": {
+                **notice.payload,
+                "organization_ref": alternate_provider,
+            }
+        },
+        deep=True,
+    )
+    alternate_activity = activity.model_copy(
+        update={
+            "stream_id": f"gameplay:organization:{alternate_provider}",
+            "payload": {
+                **activity.payload,
+                "organization_ref": alternate_provider,
+            }
+        },
+        deep=True,
+    )
+    alternate_created = created.model_copy(
+        update={
+            "payload": {
+                **created.payload,
+                "party_refs": [
+                    alternate_provider,
+                    created.payload["party_refs"][1],
+                ],
+            }
+        },
+        deep=True,
+    )
+    for event in (alternate_notice, alternate_activity, alternate_created):
+        store._events_by_id[event.event_id] = event
+    store._events = [
+        {
+            alternate_notice.event_id: alternate_notice,
+            alternate_activity.event_id: alternate_activity,
+            alternate_created.event_id: alternate_created,
+        }.get(event.event_id, event)
+        for event in store._events
+    ]
+    store._stream_heads[f"gameplay:organization:{alternate_provider}"] = (
+        alternate_activity.stream_revision
+    )
+
+    authority, _registry = _family_authority(store)
+    result = authority.settle_private_follow_on(
+        intent=PrivateFollowOnIntent(
+            notice_event_id=alternate_notice.event_id,
+            expected_notice_revision=alternate_notice.stream_revision,
+            command_id="command:private-follow-on:alternate-provider",
+            correlation_id="corr:private-follow-on:alternate-provider",
+        )
+    )
+
+    assert result.receipt is not None
+    events = [
+        store.get_event(event_id) for event_id in result.receipt.committed_event_ids
+    ]
+    assert {
+        event.payload["participant_ref"] for event in events
+    } == {alternate_provider, "organization:mill"}
+
+
+def test_private_follow_on_derives_alternate_milling_provider_from_committed_notice_chain() -> None:
+    store, notice = _notice()
+    alternate_provider = "organization:river-mill"
+    activity = store.get_event(str(notice.payload["source_activity_event_id"]))
+    created = store.get_event(str(activity.payload["source_contract_created_event_id"]))
+    alternate_notice = notice.model_copy(
+        update={
+            "payload": {
+                **notice.payload,
+                "organization_ref": alternate_provider,
+            }
+        },
+        deep=True,
+    )
+    alternate_activity = activity.model_copy(
+        update={
+            "stream_id": f"gameplay:organization:{alternate_provider}",
+            "payload": {
+                **activity.payload,
+                "organization_ref": alternate_provider,
+            },
+        },
+        deep=True,
+    )
+    alternate_created = created.model_copy(
+        update={
+            "payload": {
+                **created.payload,
+                "party_refs": [
+                    alternate_provider,
+                    created.payload["party_refs"][1],
+                ],
+            }
+        },
+        deep=True,
+    )
+    for event in (alternate_notice, alternate_activity, alternate_created):
+        store._events_by_id[event.event_id] = event
+    store._events = [
+        {
+            alternate_notice.event_id: alternate_notice,
+            alternate_activity.event_id: alternate_activity,
+            alternate_created.event_id: alternate_created,
+        }.get(event.event_id, event)
+        for event in store._events
+    ]
+    store._stream_heads[f"gameplay:organization:{alternate_provider}"] = (
+        alternate_activity.stream_revision
+    )
+
+    authority, _registry = _family_authority(store)
+    result = authority.settle_private_follow_on(
+        intent=PrivateFollowOnIntent(
+            notice_event_id=alternate_notice.event_id,
+            expected_notice_revision=alternate_notice.stream_revision,
+            command_id="command:private-follow-on:alternate-milling-provider",
+            correlation_id="corr:private-follow-on:alternate-milling-provider",
+        )
+    )
+
+    assert result.receipt is not None
+    events = [
+        store.get_event(event_id) for event_id in result.receipt.committed_event_ids
+    ]
+    assert {
+        event.payload["participant_ref"] for event in events
+    } == {alternate_provider, "org:mill:1"}
 
 
 def test_private_follow_on_activation_rejects_changed_manifest_digest_before_active_set() -> None:

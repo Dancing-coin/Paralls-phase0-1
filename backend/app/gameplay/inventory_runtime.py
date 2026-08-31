@@ -10,6 +10,7 @@ from typing import Mapping, Sequence
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailure, OwnerAuthorizedFragment
+from app.gameplay.patch_runtime import _canonical_digest
 from app.gameplay.shared_contracts import SettlementReceipt
 
 
@@ -32,6 +33,38 @@ _GRAIN_HARVEST_SPECIES = "grain:wheat"
 _GRAIN_HARVEST_EVENT = "gameplay.inventory.grain_harvest_received@1"
 _GRAIN_HARVEST_SOURCE_EVENT = "gameplay.ecology.grain_harvested"
 _HARVEST_TO_CUSTODY_EVENT = "gameplay.inventory.harvest_received@1"
+
+
+@dataclass(frozen=True)
+class HarvestCustodyBindingContract:
+    """Immutable source-to-Inventory destination contract for this family."""
+
+    species: str
+    item_definition: str
+    holder_binding_ref: str
+    container_binding_ref: str
+    holder_ref: str
+    container_id: str
+
+
+_HARVEST_CUSTODY_BINDING_CONTRACTS: tuple[HarvestCustodyBindingContract, ...] = (
+    HarvestCustodyBindingContract(
+        species="grain:wheat",
+        item_definition="grain:wheat@1",
+        holder_binding_ref="binding:holder:organization:district-milling-cooperative@1",
+        container_binding_ref="binding:container:container:district-milling-cooperative:grain-intake@1",
+        holder_ref="organization:district-milling-cooperative",
+        container_id="container:district-milling-cooperative:grain-intake",
+    ),
+    HarvestCustodyBindingContract(
+        species="grain:barley",
+        item_definition="grain:barley@1",
+        holder_binding_ref="binding:holder:organization:district-milling-cooperative@1",
+        container_binding_ref="binding:container:container:district-milling-cooperative:barley-intake@1",
+        holder_ref="organization:district-milling-cooperative",
+        container_id="container:district-milling-cooperative:barley-intake",
+    ),
+)
 
 
 @dataclass(frozen=True)
@@ -254,6 +287,13 @@ class InventoryProjector:
                 source_event = events_by_id.get(payload.get("source_harvest_event_id"))
                 if (
                     event.visibility_policy != "project"
+                    or payload.get("family_ref") != "harvest_to_custody@1"
+                    or not _sha256_text(payload, "content_digest")
+                    or not _sha256_text(payload, "declaration_digest")
+                    or not _prefixed_text(payload, "package_revision", "package:")
+                    or not _prefixed_text(payload, "declaration_ref", "declaration:")
+                    or not _prefixed_text(payload, "binding_ref", "binding:")
+                    or not _prefixed_text(payload, "active_patch_set_revision", "sha256:")
                     or _text(payload, "actor_ref") == ""
                     or _text(payload, "holder_ref") != _text(payload, "actor_ref")
                     or _text(payload, "item_ref") != _text(payload, "definition_id")
@@ -1275,6 +1315,7 @@ class InventoryAuthorityService:
         from app.gameplay.closed_generic_gameplay_families import HarvestToCustodyContent
 
         candidates: list[tuple[object, object, object, HarvestToCustodyContent]] = []
+        binding_invalid = False
         for manifest in manifests:
             extension = manifest.platform_extension
             if extension is None:
@@ -1309,18 +1350,41 @@ class InventoryAuthorityService:
                     content.crop_definition_ref == f"definition:{harvest.payload['species']}@1"
                     and content.item_definition_ref == f"item:{harvest.payload['item_definition']}"
                 ):
+                    declaration_payload = declaration.model_dump(mode="json", exclude={"declaration_digest"})
+                    expected_family_digest = _canonical_digest(
+                        content.model_dump(mode="json", exclude_none=True)
+                    )
+                    if (
+                        bindings[0].active_patch_set_revision != active.active_patch_set_revision
+                        or bindings[0].descriptor_ref != "descriptor:inventory-harvest-to-custody@1"
+                        or bindings[0].descriptor_revision != "descriptor:inventory-harvest-to-custody@1"
+                        or bindings[0].content_digest != manifest.content_digest
+                        or bindings[0].family_content_digest != expected_family_digest
+                        or bindings[0].declaration_ref != declaration.declaration_ref
+                        or bindings[0].declaration_digest != declaration.declaration_digest
+                        or declaration.declaration_digest != _canonical_digest(declaration_payload)
+                    ):
+                        binding_invalid = True
+                        continue
                     candidates.append((manifest, declaration, bindings[0], content))
         if not candidates:
+            if binding_invalid:
+                return self._rejected_append(typed_intent.command_id, "harvest_to_custody_binding_invalid")
             return self._rejected_append(typed_intent.command_id, "harvest_to_custody_content_unknown")
         if len(candidates) != 1:
             return self._rejected_append(typed_intent.command_id, "harvest_to_custody_binding_ambiguous")
         manifest, declaration, binding, content = candidates[0]
         item_ref = content.item_definition_ref.removeprefix("item:")
         try:
-            holder_ref = _resolve_harvest_binding(content.holder_binding_ref, prefix="binding:holder:")
-            container_id = _resolve_harvest_binding(content.container_binding_ref, prefix="binding:container:")
+            destination = _resolve_harvest_custody_contract(
+                species=str(harvest.payload["species"]),
+                item_definition=str(harvest.payload["item_definition"]),
+                content=content,
+            )
         except InventoryRuntimeError as exc:
             return self._rejected_append(typed_intent.command_id, str(exc))
+        holder_ref = destination.holder_ref
+        container_id = destination.container_id
         provider_stream = f"gameplay:inventory:{holder_ref}"
         quantity = int(harvest.payload["yield_quantity"])
         item_id = f"item:harvest:{harvest.event_id}"
@@ -1398,9 +1462,22 @@ class InventoryAuthorityService:
                 "descriptor_revision": "descriptor:inventory-harvest-to-custody@1",
                 "catalog_ref": "inf:inventory-harvest-to-custody@1",
                 "package_revision": manifest.patch_revision_id,
+                "content_digest": manifest.content_digest,
                 "declaration_ref": declaration.declaration_ref,
+                "declaration_digest": declaration.declaration_digest,
                 "binding_ref": binding.binding_ref,
                 "active_patch_set_revision": active.active_patch_set_revision,
+                "provenance_digest": _canonical_digest(
+                    {
+                        "package_revision": manifest.patch_revision_id,
+                        "content_digest": manifest.content_digest,
+                        "declaration_ref": declaration.declaration_ref,
+                        "declaration_digest": declaration.declaration_digest,
+                        "binding_ref": binding.binding_ref,
+                        "active_patch_set_revision": active.active_patch_set_revision,
+                        "family_ref": "harvest_to_custody@1",
+                    }
+                ),
                 "terminal": "v1_terminal_no_compensation",
                 "family_ref": "harvest_to_custody@1",
             },
@@ -1528,6 +1605,25 @@ class InventoryAuthorityService:
             payload = event.payload
             if (
                 event.visibility_policy != "project"
+                or payload.get("family_ref") != "harvest_to_custody@1"
+                or not _sha256_text(payload, "content_digest")
+                or not _sha256_text(payload, "declaration_digest")
+                or not _prefixed_text(payload, "package_revision", "package:")
+                or not _prefixed_text(payload, "declaration_ref", "declaration:")
+                or not _prefixed_text(payload, "binding_ref", "binding:")
+                or not _prefixed_text(payload, "active_patch_set_revision", "sha256:")
+                or payload.get("provenance_digest")
+                != _canonical_digest(
+                    {
+                        "package_revision": payload.get("package_revision"),
+                        "content_digest": payload.get("content_digest"),
+                        "declaration_ref": payload.get("declaration_ref"),
+                        "declaration_digest": payload.get("declaration_digest"),
+                        "binding_ref": payload.get("binding_ref"),
+                        "active_patch_set_revision": payload.get("active_patch_set_revision"),
+                        "family_ref": payload.get("family_ref"),
+                    }
+                )
                 or not isinstance(payload.get("holder_ref"), str)
                 or not payload["holder_ref"]
                 or payload.get("actor_ref") != payload.get("holder_ref")
@@ -1991,6 +2087,36 @@ def _resolve_harvest_binding(binding_ref: str, *, prefix: str) -> str:
     if not value:
         raise InventoryRuntimeError("harvest_to_custody_binding_invalid")
     return value
+
+
+def _resolve_harvest_custody_contract(
+    *,
+    species: str,
+    item_definition: str,
+    content: object,
+) -> HarvestCustodyBindingContract:
+    for contract in _HARVEST_CUSTODY_BINDING_CONTRACTS:
+        if (
+            contract.species == species
+            and contract.item_definition == item_definition
+            and getattr(content, "holder_binding_ref", None) == contract.holder_binding_ref
+            and getattr(content, "container_binding_ref", None) == contract.container_binding_ref
+        ):
+            return contract
+    raise InventoryRuntimeError("harvest_to_custody_binding_invalid")
+
+
+def _prefixed_text(payload: Mapping[str, object], key: str, prefix: str) -> bool:
+    value = payload.get(key)
+    return isinstance(value, str) and bool(value) and value.startswith(prefix)
+
+
+def _sha256_text(payload: Mapping[str, object], key: str) -> bool:
+    value = payload.get(key)
+    if not isinstance(value, str) or not value.startswith("sha256:"):
+        return False
+    digest = value.removeprefix("sha256:")
+    return len(digest) == 64 and all(char in "0123456789abcdef" for char in digest)
 
 
 def _nonnegative(payload: Mapping[str, object], key: str) -> int:

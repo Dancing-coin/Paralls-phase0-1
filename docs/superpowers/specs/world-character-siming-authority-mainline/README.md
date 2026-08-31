@@ -41,14 +41,12 @@ This objective is not an open-ended generic writer or arbitrary cross-domain
 resolver. New content may expand inside an approved family; new facts, owners,
 event vectors, lifecycle semantics or cross-domain recipe types require a
 separate admission. August INF A-D remains an independent business ledger and
-The current matrix is `6 generic implementations / 5 bounded adapters / 1
-blocked`. The matrix and narrow-row tests are closed, but the generic
-refactoring is incomplete because the remaining bounded families still need
-their second admitted content instance or an exact family-local blocker, with
-family-specific source proof, digest, lifecycle and replay validation.
-Production-output custody remains zero-write until its committed facts are
-admitted. August INF A-D stays `not complete`; the family foundation does not
-count as August INF completion.
+The current matrix is `11 generic implementations / 0 bounded adapters / 1
+blocked`. All writable families have two or more distinct admitted content
+instances through one adapter with family-specific source, digest, lifecycle
+and replay evidence. Production-output custody remains zero-write until its
+committed facts are admitted. August INF A-D stays `not complete`; the family
+foundation does not count as August INF completion.
 
 ## Unknown Gameplay-Pack/Mod Rows
 

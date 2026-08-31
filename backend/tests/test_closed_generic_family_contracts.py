@@ -9,10 +9,12 @@ from app.gameplay.closed_generic_gameplay_families import (
     CLOSED_FAMILY_GENERICITY_BLOCKERS,
     CLOSED_GAMEPLAY_FAMILIES,
     ClosedFamilyBinding,
+    FacilityLifecycleTransitionContent,
     ProductionOutputCustodyContent,
     admit_family_binding,
     content_model_for_family,
     select_family_binding,
+    family_binding_is_valid,
 )
 from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog
 from app.gameplay.patch_runtime import GameplayPatchRuntimeError, GameplayPatchRegistry, PackageDefinition, _canonical_digest
@@ -74,8 +76,8 @@ def test_closed_family_content_models_are_frozen_and_reject_authority_coordinate
 def test_current_family_adapters_are_explicitly_classified() -> None:
     bounded = {item.family_ref for item in CLOSED_GAMEPLAY_FAMILIES if item.status == "bounded_adapter"}
     generic = {item.family_ref for item in CLOSED_GAMEPLAY_FAMILIES if item.status == "generic_implemented"}
-    assert bounded == {"bounded_project_budget@1"}
-    assert generic == set(EXPECTED_FAMILIES) - {"production_output_custody@1", "bounded_project_budget@1"}
+    assert bounded == set()
+    assert generic == set(EXPECTED_FAMILIES) - {"production_output_custody@1"}
     assert {item.family_ref for item in CLOSED_FAMILY_GENERICITY_BLOCKERS} == bounded
 
 
@@ -100,6 +102,79 @@ def test_family_binding_admission_recomputes_content_and_declaration_digests() -
     declaration_payload = {"declaration_ref": "declaration:recipe@1", "outcome_family_ref": "outcome:recipe-production@1", "definition_refs": ["definition:bakery@1"], "eligibility_refs": [], "policy_revision_ref": "policy:recipe@1", "source_package_revision": "package:recipe@1"}
     with pytest.raises(ValueError, match="closed_family_content_digest_mismatch"):
         admit_family_binding(family_ref="recipe_production@1", package_revision="package:recipe@1", content_digest="sha256:" + "0" * 64, declaration_ref="declaration:recipe@1", declaration_digest=_canonical_digest(declaration_payload), declaration_payload=declaration_payload, descriptor_ref="descriptor:construction-recipe-production@1", descriptor_revision="descriptor:construction-recipe-production@1", active_set_revision="sha256:" + "2" * 64, typed_content=typed_content)
+
+
+def test_family_binding_runtime_validation_requires_manifest_and_definition_pins() -> None:
+    content = FacilityLifecycleTransitionContent(
+        facility_definition_ref="definition:bakery-reinforced@1",
+        facility_kind="bakery_reinforced",
+        from_lifecycle="active",
+        to_lifecycle="decommissioned",
+        policy_revision_ref="policy:facility-lifecycle@1",
+    )
+    declaration_payload = {
+        "declaration_ref": "declaration:lifecycle@1",
+        "outcome_family_ref": "outcome:facility-lifecycle-transition@1",
+        "definition_refs": ["definition:lifecycle@1"],
+        "eligibility_refs": [],
+        "policy_revision_ref": "policy:facility-lifecycle@1",
+        "source_package_revision": "package:lifecycle@1",
+    }
+    definition = SimpleNamespace(
+        definition_ref="definition:lifecycle@1",
+        source_package_revision="package:lifecycle@1",
+        typed_content=content.model_dump(mode="json"),
+    )
+    declaration = SimpleNamespace(
+        declaration_ref="declaration:lifecycle@1",
+        outcome_family_ref="outcome:facility-lifecycle-transition@1",
+        source_package_revision="package:lifecycle@1",
+        definition_refs=(definition.definition_ref,),
+        declaration_digest=_canonical_digest(declaration_payload),
+    )
+    request = SimpleNamespace(
+        capability_ref="capability:facility-lifecycle-transition@1",
+        declaration_ref=declaration.declaration_ref,
+        source_package_revision="package:lifecycle@1",
+        typed_read_requirements=(SimpleNamespace(predicate_family_ref="predicate:construction-facility-acquired@1"),),
+        proposal_effect_types=("effect:facility-lifecycle-transition@1",),
+    )
+    family = next(item for item in CLOSED_GAMEPLAY_FAMILIES if item.family_ref == "facility_lifecycle_transition@1")
+    manifest = SimpleNamespace(patch_revision_id="package:lifecycle@1", content_digest="sha256:" + "a" * 64)
+    binding = SimpleNamespace(
+        family_ref=family.family_ref,
+        package_revision=manifest.patch_revision_id,
+        content_digest=manifest.content_digest,
+        family_content_digest=_canonical_digest(content.model_dump(mode="json")),
+        declaration_ref=declaration.declaration_ref,
+        declaration_digest=declaration.declaration_digest,
+        descriptor_ref=family.descriptor_ref,
+        descriptor_revision=family.descriptor_ref,
+        active_patch_set_revision="sha256:" + "b" * 64,
+        definition_ref=definition.definition_ref,
+    )
+    assert family_binding_is_valid(
+        family_ref=family.family_ref,
+        manifest=manifest,
+        declaration=declaration,
+        declaration_payload=declaration_payload,
+        request=request,
+        definition=definition,
+        binding=binding,
+        active_set_revision=binding.active_patch_set_revision,
+        typed_content=content,
+    )
+    assert not family_binding_is_valid(
+        family_ref=family.family_ref,
+        manifest=manifest,
+        declaration=declaration,
+        declaration_payload=declaration_payload,
+        request=request,
+        definition=definition,
+        binding=binding.__class__(**{**binding.__dict__, "family_content_digest": "sha256:" + "c" * 64}),
+        active_set_revision=binding.active_patch_set_revision,
+        typed_content=content,
+    )
 
 
 def test_registry_rejects_blocked_custody_family_before_active_set_mutation() -> None:

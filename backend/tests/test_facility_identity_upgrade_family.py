@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from hashlib import sha256
 import json
 
@@ -207,3 +208,28 @@ def test_identity_upgrade_full_and_checkpoint_tail_replay_match() -> None:
 
     assert full.facilities == tail.facilities
     assert full.source_revision_vector == tail.source_revision_vector
+
+
+def test_identity_upgrade_rejects_tampered_activation_binding_without_writing() -> None:
+    store, authority, facility = _setup()
+    source_id = store.read_stream(f"gameplay:construction_production:{facility.facility_ref}")[0].event_id
+    registry = authority._package_registry
+    active = registry.active_patch_set
+    assert active is not None
+    assert len(active.capability_bindings) == 1
+    registry._active = replace(
+        active,
+        capability_bindings=(
+            replace(active.capability_bindings[0], family_ref="recipe_production@1"),
+        ),
+    )
+    before = tuple(store.read_events())
+
+    result = authority.settle_facility_identity_upgrade(
+        intent=_intent(facility).model_copy(update={"acquisition_event_id": source_id})
+    )
+
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "facility_identity_upgrade_binding_invalid"
+    assert tuple(store.read_events()) == before

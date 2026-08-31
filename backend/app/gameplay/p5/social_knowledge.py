@@ -861,7 +861,7 @@ class SocialFactAuthority:
             if source is not None:
                 source = {
                     **source,
-                    "provider_ref": _PUBLIC_MILLING_PROVIDER,
+                    "provider_ref": source["provider_ref"],
                     "notice_kind": notice.payload.get("notice_kind"),
                     "source_fact_family_ref": "fact:government-public-milling-notice@1",
                 }
@@ -1132,7 +1132,7 @@ class SocialFactAuthority:
         if events:
             notice = self._store.get_event(str(events[0].payload["source_notice_event_id"]))
             source_revision_vector[notice.stream_id] = notice.stream_revision
-            source, _ = self._public_milling_notice_source(notice, notice.stream_revision)
+            source, _ = self._private_follow_on_source(notice, notice.stream_revision)
             if source is not None:
                 source_revision_vector[str(source["source_activity_stream_id"])] = int(
                     source["source_activity_revision"]
@@ -1169,7 +1169,8 @@ class SocialFactAuthority:
         if (
             payload.get("notice_kind") != "public_milling_session_completed"
             or payload.get("status") != "completed"
-            or payload.get("organization_ref") != _PUBLIC_MILLING_PROVIDER
+            or not isinstance(payload.get("organization_ref"), str)
+            or not payload.get("organization_ref").startswith(("organization:", "org:"))
             or payload.get("policy_revision") != "policy:government-public-milling-notice@1"
             or payload.get("descriptor_ref") != "descriptor:government-public-milling-notice@1"
             or payload.get("descriptor_revision") != "descriptor:government-public-milling-notice@1"
@@ -1196,7 +1197,9 @@ class SocialFactAuthority:
         if (
             activity.event_type != "gameplay.organization.public_milling_activity_recorded"
             or activity.visibility_policy != "project"
-            or activity.payload.get("organization_ref") != _PUBLIC_MILLING_PROVIDER
+            or activity.stream_id
+            != f"gameplay:organization:{payload['organization_ref']}"
+            or activity.payload.get("organization_ref") != payload["organization_ref"]
             or activity.payload.get("activity_kind") != "public_milling_session"
             or activity.payload.get("status") != "completed"
             or activity.event_id != payload["source_activity_event_id"]
@@ -1220,10 +1223,10 @@ class SocialFactAuthority:
             or created.payload.get("project_ref") != payload["project_ref"]
             or not isinstance(party_refs, list)
             or len(party_refs) != 2
-            or party_refs[0] != _PUBLIC_MILLING_PROVIDER
+            or party_refs[0] != payload["organization_ref"]
             or not isinstance(party_refs[1], str)
             or party_refs[1] != receiver_ref
-            or receiver_ref == _PUBLIC_MILLING_PROVIDER
+            or receiver_ref == payload["organization_ref"]
         ):
             return None, (
                 "public_milling_notice_social_acknowledgment_party_binding_invalid"
@@ -1245,94 +1248,11 @@ class SocialFactAuthority:
         ):
             return None, "public_milling_notice_social_acknowledgment_binding_conflict"
         return {
+            "provider_ref": str(payload["organization_ref"]),
             "receiver_ref": receiver_ref,
             "facility_ref": payload["facility_ref"],
             "project_ref": payload["project_ref"],
             "jurisdiction_ref": payload["jurisdiction_ref"],
-            "source_activity_event_id": activity.event_id,
-            "source_activity_revision": activity.stream_revision,
-            "source_activity_stream_id": activity.stream_id,
-            "source_contract_created_event_id": created.event_id,
-            "source_contract_created_revision": created.stream_revision,
-            "source_contract_fulfilled_event_id": fulfilled.event_id,
-            "source_contract_fulfilled_revision": fulfilled.stream_revision,
-            "source_acquisition_event_id": acquisition.event_id,
-            "source_acquisition_revision": acquisition.stream_revision,
-            "contract_head": self._store.get_stream_head("gameplay:contracts"),
-        }, None
-
-    def _public_workshop_notice_source(
-        self, notice: object, expected_notice_revision: int
-    ) -> tuple[dict[str, object] | None, str | None]:
-        if (
-            notice.event_type != "gameplay.government.public_workshop_notice_recorded"
-            or notice.visibility_policy != "project"
-            or notice.stream_revision != expected_notice_revision
-            or self._store.get_stream_head(notice.stream_id) != expected_notice_revision
-            or not notice.stream_id.startswith("gameplay:government:public-notice:")
-        ):
-            return None, "private_follow_on_source_conflict"
-        payload = notice.payload
-        if (
-            payload.get("notice_kind") != "public_workshop_session_completed"
-            or payload.get("status") != "completed"
-            or payload.get("organization_ref") != "organization:municipal-assessment-office"
-            or payload.get("policy_revision") != "policy:government-public-workshop-notice@1"
-            or payload.get("descriptor_ref") != "descriptor:government-public-workshop-notice@1"
-            or payload.get("descriptor_revision") != "descriptor:government-public-workshop-notice@1"
-        ):
-            return None, "private_follow_on_source_conflict"
-        required = ("source_activity_event_id", "facility_ref", "project_ref", "jurisdiction_ref")
-        if any(not isinstance(payload.get(key), str) or not payload.get(key) for key in required):
-            return None, "private_follow_on_source_conflict"
-        try:
-            activity = self._store.get_event(str(payload["source_activity_event_id"]))
-            created = self._store.get_event(str(activity.payload["source_contract_created_event_id"]))
-            fulfilled = self._store.get_event(str(activity.payload["source_contract_fulfilled_event_id"]))
-            acquisition = self._store.get_event(str(created.payload["acquisition_event_id"]))
-        except (KeyError, TypeError):
-            return None, "private_follow_on_source_conflict"
-        receiver_ref = acquisition.payload.get("owner_ref")
-        party_refs = created.payload.get("party_refs")
-        if (
-            activity.event_type != "gameplay.organization.public_workshop_activity_recorded"
-            or activity.visibility_policy != "project"
-            or activity.payload.get("organization_ref") != "organization:municipal-assessment-office"
-            or activity.payload.get("activity_kind") != "public_workshop_session"
-            or activity.payload.get("status") != "completed"
-            or activity.event_id != payload["source_activity_event_id"]
-            or activity.stream_revision != payload.get("source_activity_revision")
-            or self._store.get_stream_head(activity.stream_id) != activity.stream_revision
-            or activity.payload.get("facility_ref") != payload["facility_ref"]
-            or activity.payload.get("project_ref") != payload["project_ref"]
-            or created.event_type != "gameplay.contract.record_created"
-            or created.visibility_policy != "authority_only"
-            or created.payload.get("terms_ref") != "service:industrial-facility-public-workshop-session@1"
-            or not isinstance(party_refs, list)
-            or len(party_refs) != 2
-            or party_refs[0] != "organization:municipal-assessment-office"
-            or not isinstance(party_refs[1], str)
-            or party_refs[1] != receiver_ref
-            or fulfilled.event_type != "gameplay.contract.record_fulfilled"
-            or fulfilled.visibility_policy != "authority_only"
-            or fulfilled.payload.get("contract_created_event_id") != created.event_id
-            or acquisition.event_type != "gameplay.construction_production.facility_acquired"
-            or acquisition.visibility_policy != "project"
-            or acquisition.payload.get("facility_ref") != payload["facility_ref"]
-            or acquisition.payload.get("plot_ref") != payload["project_ref"]
-            or acquisition.payload.get("jurisdiction_ref") != payload["jurisdiction_ref"]
-            or not isinstance(receiver_ref, str)
-            or not receiver_ref.startswith(("organization:", "org:"))
-        ):
-            return None, "private_follow_on_source_conflict"
-        return {
-            "provider_ref": "organization:municipal-assessment-office",
-            "receiver_ref": receiver_ref,
-            "facility_ref": payload["facility_ref"],
-            "project_ref": payload["project_ref"],
-            "jurisdiction_ref": payload["jurisdiction_ref"],
-            "notice_kind": payload["notice_kind"],
-            "source_fact_family_ref": "fact:government-public-workshop-notice@1",
             "source_activity_event_id": activity.event_id,
             "source_activity_revision": activity.stream_revision,
             "source_activity_stream_id": activity.stream_id,
@@ -1363,7 +1283,8 @@ class SocialFactAuthority:
         if (
             payload.get("notice_kind") != "public_workshop_session_completed"
             or payload.get("status") != "completed"
-            or payload.get("organization_ref") != "organization:municipal-assessment-office"
+            or not isinstance(payload.get("organization_ref"), str)
+            or not payload.get("organization_ref").startswith(("organization:", "org:"))
             or payload.get("policy_revision") != "policy:government-public-workshop-notice@1"
             or payload.get("descriptor_ref") != "descriptor:government-public-workshop-notice@1"
             or payload.get("descriptor_revision") != "descriptor:government-public-workshop-notice@1"
@@ -1384,6 +1305,8 @@ class SocialFactAuthority:
         if (
             activity.event_type != "gameplay.organization.public_workshop_activity_recorded"
             or activity.visibility_policy != "project"
+            or activity.stream_id
+            != f"gameplay:organization:{payload['organization_ref']}"
             or not isinstance(activity.payload.get("source_contract_fulfilled_revision"), int)
             or activity.payload.get("organization_ref") != payload["organization_ref"]
             or activity.payload.get("activity_kind") != "public_workshop_session"

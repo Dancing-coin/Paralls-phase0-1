@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -267,7 +268,9 @@ def test_harvest_to_custody_requires_admitted_package_binding() -> None:
     )
     before = tuple(store.read_events())
 
-    result = inventory.settle_harvest_to_custody(intent=_intent(source, store))
+    result = inventory.settle_harvest_to_custody(
+        intent=_intent(source, store, holder_ref="organization:forged-holder")
+    )
 
     assert not result.committed
     assert result.failure is not None
@@ -314,6 +317,39 @@ def test_harvest_to_custody_replays_duplicate_and_preserves_grain_row_replay() -
     assert full == tail
 
 
+def test_harvest_to_custody_replay_rejects_tampered_family_provenance() -> None:
+    manifest = _manifest(
+        package_revision="package:harvest-wheat-replay-provenance@1",
+        definition_ref="definition:harvest-wheat-replay-provenance@1",
+        crop_definition_ref="definition:grain:wheat@1",
+        item_definition_ref="item:grain:wheat@1",
+        holder_binding_ref=_holder_binding("organization:district-milling-cooperative"),
+        container_binding_ref=_container_binding("container:district-milling-cooperative:grain-intake"),
+        policy_revision_ref="policy:inventory-grain-harvest-custody@1",
+    )
+    store, source = _source()
+    inventory = _inventory(
+        store,
+        manifest,
+        runtime_item_definitions=("grain:wheat@1",),
+        holder_ref="organization:district-milling-cooperative",
+        container_id="container:district-milling-cooperative:grain-intake",
+    )
+    result = inventory.settle_harvest_to_custody(intent=_intent(source, store))
+    assert result.committed, result.failure
+    event_id = result.committed_event_ids[0]
+    event = store.get_event(event_id)
+    mutated = event.model_copy(
+        update={"payload": {**event.payload, "content_digest": "sha256:" + "f" * 64}},
+        deep=True,
+    )
+    store._events[store._events.index(event)] = mutated
+    store._events_by_id[event_id] = mutated
+
+    with pytest.raises(Exception, match="harvest_to_custody_replay_invalid"):
+        inventory.harvest_to_custody_view_for()
+
+
 def test_harvest_to_custody_rejects_ambiguous_matching_bindings_without_write() -> None:
     store, source = _source()
     inventory = _inventory(
@@ -347,6 +383,74 @@ def test_harvest_to_custody_rejects_ambiguous_matching_bindings_without_write() 
     assert not result.committed
     assert result.failure is not None
     assert result.failure.error_code == "harvest_to_custody_binding_ambiguous"
+    assert tuple(store.read_events()) == before
+
+
+def test_harvest_to_custody_rejects_tampered_activation_content_pin_without_write() -> None:
+    manifest = _manifest(
+        package_revision="package:harvest-wheat-family@1",
+        definition_ref="definition:harvest-wheat-family@1",
+        crop_definition_ref="definition:grain:wheat@1",
+        item_definition_ref="item:grain:wheat@1",
+        holder_binding_ref=_holder_binding("organization:district-milling-cooperative"),
+        container_binding_ref=_container_binding("container:district-milling-cooperative:grain-intake"),
+        policy_revision_ref="policy:inventory-grain-harvest-custody@1",
+    )
+    store, source = _source()
+    inventory = _inventory(
+        store,
+        manifest,
+        runtime_item_definitions=("grain:wheat@1",),
+        holder_ref="organization:district-milling-cooperative",
+        container_id="container:district-milling-cooperative:grain-intake",
+    )
+    registry = inventory._package_registry
+    active = registry.active_patch_set
+    assert active is not None
+    registry._active = replace(
+        active,
+        capability_bindings=(
+            replace(
+                active.capability_bindings[0],
+                family_content_digest="sha256:" + "f" * 64,
+            ),
+        ),
+    )
+    before = tuple(store.read_events())
+
+    result = inventory.settle_harvest_to_custody(intent=_intent(source, store))
+
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "harvest_to_custody_binding_invalid"
+    assert tuple(store.read_events()) == before
+
+
+def test_harvest_to_custody_rejects_package_selected_owner_and_container_without_write() -> None:
+    manifest = _manifest(
+        package_revision="package:harvest-forged-destination@1",
+        definition_ref="definition:harvest-forged-destination@1",
+        crop_definition_ref="definition:grain:wheat@1",
+        item_definition_ref="item:grain:wheat@1",
+        holder_binding_ref=_holder_binding("organization:forged-holder"),
+        container_binding_ref=_container_binding("container:forged-holder:grain-intake"),
+        policy_revision_ref="policy:inventory-grain-harvest-custody@1",
+    )
+    store, source = _source()
+    inventory = _inventory(
+        store,
+        manifest,
+        runtime_item_definitions=("grain:wheat@1",),
+        holder_ref="organization:forged-holder",
+        container_id="container:forged-holder:grain-intake",
+    )
+    before = tuple(store.read_events())
+
+    result = inventory.settle_harvest_to_custody(intent=_intent(source, store))
+
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "harvest_to_custody_binding_invalid"
     assert tuple(store.read_events()) == before
 
 

@@ -260,21 +260,26 @@ def _generic_custody(*, species: str, project_ref: str, plot_ref: str) -> tuple[
     assert admitted.committed, admitted.failure
     assert harvested.committed, harvested.failure
     source = store.get_event(harvested.committed_event_ids[0])
+    holder_ref = "organization:district-milling-cooperative"
+    container_id = (
+        f"container:district-milling-cooperative:"
+        f"{'grain-intake' if species == 'grain:wheat' else 'barley-intake'}"
+    )
     manifest = _harvest_manifest(
         package_revision=f"package:domain-acceptance-source:{species.replace(':', '-') }@1",
         definition_ref=f"definition:domain-acceptance-source:{species.replace(':', '-') }@1",
         crop_definition_ref=f"definition:{species}@1",
         item_definition_ref=f"item:{species}@1",
-        holder_binding_ref="binding:holder:organization:district-milling-cooperative@1",
-        container_binding_ref=f"binding:container:container:district-milling-cooperative:{'grain-intake' if species == 'grain:wheat' else 'barley-intake'}@1",
+        holder_binding_ref=f"binding:holder:{holder_ref}@1",
+        container_binding_ref=f"binding:container:{container_id}@1",
         policy_revision_ref="policy:inventory-grain-harvest-custody@1",
     )
     inventory = _generic_inventory(
         store,
         manifest,
         runtime_item_definitions=(f"{species}@1",),
-        holder_ref="organization:district-milling-cooperative",
-        container_id=f"container:district-milling-cooperative:{'grain-intake' if species == 'grain:wheat' else 'barley-intake'}",
+        holder_ref=holder_ref,
+        container_id=container_id,
     )
     from app.gameplay.closed_generic_gameplay_families import HarvestToCustodyIntent
 
@@ -291,6 +296,57 @@ def _generic_custody(*, species: str, project_ref: str, plot_ref: str) -> tuple[
     )
     assert result.committed, result.failure
     return store, store.get_event(result.committed_event_ids[0])
+
+
+def test_domain_acceptance_marker_derives_an_alternate_organization_from_source() -> None:
+    store, source = _generic_custody(
+        species="grain:barley",
+        project_ref="project:domain-acceptance-alternate-owner",
+        plot_ref="plot:domain-acceptance-alternate-owner",
+    )
+    alternate_holder = "organization:river-granary"
+    alternate_container = f"container:river-granary:barley-intake"
+    source = source.model_copy(
+        update={
+            "stream_id": f"gameplay:inventory:{alternate_holder}",
+            "payload": {
+                **source.payload,
+                "actor_ref": alternate_holder,
+                "holder_ref": alternate_holder,
+                "container_id": alternate_container,
+            },
+        },
+        deep=True,
+    )
+    store._events_by_id[source.event_id] = source
+    store._events = [
+        source if event.event_id == source.event_id else event
+        for event in store._events
+    ]
+    store._stream_heads[f"gameplay:inventory:{alternate_holder}"] = source.stream_revision
+
+    authority, _registry = _domain_authority(store)
+    result = authority.settle_domain_acceptance_marker(
+        intent=DomainAcceptanceMarkerIntent(
+            source_event_id=source.event_id,
+            command_id="command:domain-acceptance:alternate-owner",
+            correlation_id="corr:domain-acceptance:alternate-owner",
+        )
+    )
+
+    assert result.committed, result.failure
+    event = store.get_event(result.committed_event_ids[0])
+    assert event.stream_id == f"gameplay:organization:{alternate_holder}"
+    assert event.payload["organization_ref"] == alternate_holder
+    assert event.payload["container_id"] == alternate_container
+    full = authority.domain_acceptance_marker_view_for(
+        organization_ref=alternate_holder
+    )
+    tail = authority.domain_acceptance_marker_view_for(
+        organization_ref=alternate_holder,
+        checkpoint_at=source.global_sequence,
+    )
+    assert full == tail
 
 
 def _domain_authority(store: object) -> tuple[OrganizationAuthority, GameplayPatchRegistry]:

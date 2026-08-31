@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -306,3 +307,30 @@ def test_lifecycle_transition_full_and_checkpoint_tail_replay_match() -> None:
 
     assert full.facilities == tail.facilities
     assert full.source_revision_vector == tail.source_revision_vector
+
+
+def test_lifecycle_transition_rejects_tampered_activation_binding_without_writing() -> None:
+    store, authority, facility = _setup()
+    acquisition_id = store.read_stream(
+        f"gameplay:construction_production:{facility.facility_ref}"
+    )[0].event_id
+    registry = authority._package_registry
+    active = registry.active_patch_set
+    assert active is not None
+    assert len(active.capability_bindings) == 1
+    registry._active = replace(
+        active,
+        capability_bindings=(
+            replace(active.capability_bindings[0], declaration_ref="declaration:forged@1"),
+        ),
+    )
+    before = tuple(store.read_events())
+
+    result = authority.settle_facility_lifecycle_transition(
+        intent=_intent(facility, acquisition_id)
+    )
+
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "facility_lifecycle_transition_binding_invalid"
+    assert tuple(store.read_events()) == before

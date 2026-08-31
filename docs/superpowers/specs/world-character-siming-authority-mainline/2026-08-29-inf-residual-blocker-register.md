@@ -123,19 +123,10 @@ remain green after the latest rerun; no new target-owner edge is admitted.
 ## Closed Generic Gameplay Foundation v1 Family Matrix
 
 The separate family foundation is tracked independently from August INF A-D.
-Its immutable matrix contains all twelve requested families. Six families now
-have two-content genericity evidence through one adapter:
-`recipe_production@1`, `facility_identity_upgrade@1`,
-`production_output_certification@1`, `fixed_service_exchange@1`,
-`declared_exchange@1`, and `owner_bound_environment_consumer@1`.
-`harvest_to_custody@1`,
-`bounded_project_budget@1`, `domain_acceptance_marker@1`, and
-`private_follow_on@1` remain bounded single-row adapters with explicit
-family-local blockers:
-`blocker:harvest-to-custody-genericity@1`,
-`blocker:bounded-project-budget-genericity@1`,
-`blocker:domain-acceptance-marker-genericity@1`, and
-`blocker:private-follow-on-genericity@1`. The non-writable
+Its immutable matrix contains all twelve requested families. All eleven
+writable families now have two-content genericity evidence through one adapter,
+including `harvest_to_custody@1`, `bounded_project_budget@1`,
+`domain_acceptance_marker@1`, and `private_follow_on@1`. The non-writable
 `production_output_custody@1` family remains formally blocked by
 `blocker:production-output-custody-committed-facts@1`: committed output
 quantity, an admitted source-to-holder mapping, and a deterministic unique

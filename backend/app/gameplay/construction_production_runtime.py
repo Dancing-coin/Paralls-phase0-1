@@ -26,6 +26,53 @@ _MILL_FLOUR_RECIPE_REF = "recipe:industrial-facilities:mill-flour@1"
 _MILL_FLOUR_OUTPUT_ITEM = "item:industrial-facilities:flour@1"
 
 
+def _closed_family_binding_is_valid(
+    *,
+    family_ref: str,
+    manifest: object,
+    declaration: object,
+    request: object,
+    definition: object,
+    binding: object,
+    active_set_revision: str,
+    typed_content: object,
+) -> bool:
+    """Verify every activation pin before a Construction append."""
+    from app.gameplay.closed_generic_gameplay_families import CLOSED_GAMEPLAY_FAMILIES
+    from app.gameplay.patch_runtime import _canonical_digest
+
+    family = next((item for item in CLOSED_GAMEPLAY_FAMILIES if item.family_ref == family_ref), None)
+    if family is None:
+        return False
+    declaration_payload = declaration.model_dump(mode="json", exclude={"declaration_digest"})
+    content_payload = typed_content.model_dump(mode="json", exclude_none=True)
+    return bool(
+        request.capability_ref == family.capability_ref
+        and request.declaration_ref == declaration.declaration_ref
+        and request.source_package_revision == manifest.patch_revision_id
+        and declaration.outcome_family_ref == family.outcome_family_ref
+        and declaration.source_package_revision == manifest.patch_revision_id
+        and tuple(
+            requirement.predicate_family_ref
+            for requirement in request.typed_read_requirements
+        ) == family.predicate_family_refs
+        and request.proposal_effect_types == family.effect_types
+        and definition.source_package_revision == manifest.patch_revision_id
+        and binding.package_revision == manifest.patch_revision_id
+        and binding.content_digest == manifest.content_digest
+        and binding.family_ref == family_ref
+        and binding.declaration_ref == declaration.declaration_ref
+        and binding.declaration_digest == declaration.declaration_digest
+        and declaration.declaration_digest == _canonical_digest(declaration_payload)
+        and binding.definition_ref == definition.definition_ref
+        and binding.descriptor_ref == family.descriptor_ref
+        and binding.descriptor_revision == family.descriptor_ref
+        and binding.active_patch_set_revision == active_set_revision
+        and binding.family_content_digest == _canonical_digest(content_payload)
+        and _canonical_digest(content_payload) == binding.family_content_digest
+    )
+
+
 def _canonical_hazard_admission_channel():
     """Create an opaque, closure-owned ecology admission channel."""
 
@@ -1435,6 +1482,12 @@ class ConstructionProductionAuthority:
         projection = self.projector()
         facility = projection.facilities.get(facility_ref)
         run = projection.runs.get(run_ref)
+        started_events = [
+            event for event in self._store.read_stream(stream_id)
+            if event.event_type == "gameplay.construction_production.run_started"
+            and event.payload.get("run_ref") == run_ref
+        ]
+        started = started_events[-1] if started_events else None
         if (
             facility is None
             or run is None
@@ -1442,10 +1495,13 @@ class ConstructionProductionAuthority:
             or run.facility_ref != facility_ref
             or finished.payload.get("recipe_ref") != run.recipe_ref
             or finished.payload.get("output_item") != run.output_item
+            or started is None
+            or started.payload.get("output_item") != finished.payload.get("output_item")
+            or started.payload.get("recipe_ref") != finished.payload.get("recipe_ref")
             or facility.revision != typed_intent.expected_facility_revision
         ):
             return self._rejected_append(typed_intent.command_id, "production_output_certification_source_conflict")
-        candidates: list[tuple[object, object, object, ProductionOutputCertificationContent]] = []
+        candidates: list[tuple[object, object, object, object, object, ProductionOutputCertificationContent]] = []
         for manifest in manifests:
             extension = manifest.platform_extension
             if extension is None:
@@ -1466,12 +1522,28 @@ class ConstructionProductionAuthority:
                 except Exception:
                     continue
                 if content.recipe_ref == run.recipe_ref and content.output_item_definition_ref == run.output_item:
-                    candidates.append((manifest, declaration, bindings[0], content))
+                    candidates.append((manifest, declaration, bindings[0], request, definitions[0], content))
         if not candidates:
+            if finished.payload.get("output_item") != run.output_item or finished.payload.get("recipe_ref") != run.recipe_ref:
+                return self._rejected_append(typed_intent.command_id, "production_output_certification_source_conflict")
             return self._rejected_append(typed_intent.command_id, "production_output_certification_content_unknown")
         if len(candidates) != 1:
             return self._rejected_append(typed_intent.command_id, "production_output_certification_binding_ambiguous")
-        manifest, declaration, binding, content = candidates[0]
+        manifest, declaration, binding, request, definition, content = candidates[0]
+        if not _closed_family_binding_is_valid(
+            family_ref="production_output_certification@1",
+            manifest=manifest,
+            declaration=declaration,
+            request=request,
+            definition=definition,
+            binding=binding,
+            active_set_revision=active.active_patch_set_revision,
+            typed_content=content,
+        ):
+            return self._rejected_append(
+                typed_intent.command_id,
+                "production_output_certification_binding_invalid",
+            )
         idempotency_key = (
             f"construction:production-output-certification:{binding.binding_ref}:{manifest.patch_revision_id}:"
             f"{finished.event_id}:{finished.stream_revision}:{content.quantity}:v1"
@@ -2633,7 +2705,7 @@ class ConstructionProductionAuthority:
             or acquisition.payload.get("facility_ref") != typed_intent.facility_ref
         ):
             return self._rejected_append(typed_intent.command_id, "facility_identity_upgrade_source_conflict")
-        candidates: list[tuple[object, object, object, FacilityIdentityUpgradeContent]] = []
+        candidates: list[tuple[object, object, object, object, object, FacilityIdentityUpgradeContent]] = []
         for manifest in manifests:
             extension = manifest.platform_extension
             if extension is None:
@@ -2657,12 +2729,23 @@ class ConstructionProductionAuthority:
                 except Exception:
                     continue
                 if content.source_kind == acquisition.payload.get("facility_kind"):
-                    candidates.append((manifest, declaration, bindings[0], content))
+                    candidates.append((manifest, declaration, bindings[0], request, definitions[0], content))
         if not candidates:
             return self._rejected_append(typed_intent.command_id, "facility_identity_upgrade_source_conflict")
         if len(candidates) != 1:
             return self._rejected_append(typed_intent.command_id, "facility_identity_upgrade_binding_ambiguous")
-        manifest, declaration, binding, content = candidates[0]
+        manifest, declaration, binding, request, definition, content = candidates[0]
+        if not _closed_family_binding_is_valid(
+            family_ref="facility_identity_upgrade@1",
+            manifest=manifest,
+            declaration=declaration,
+            request=request,
+            definition=definition,
+            binding=binding,
+            active_set_revision=active.active_patch_set_revision,
+            typed_content=content,
+        ):
+            return self._rejected_append(typed_intent.command_id, "facility_identity_upgrade_binding_invalid")
         if acquisition.payload.get("facility_kind") != content.source_kind:
             return self._rejected_append(typed_intent.command_id, "facility_identity_upgrade_source_conflict")
         try:
@@ -3023,7 +3106,7 @@ class ConstructionProductionAuthority:
             or acquisition.payload.get("facility_kind") != facility.facility_kind
         ):
             return self._rejected_append(typed_intent.command_id, "facility_lifecycle_transition_source_conflict")
-        candidates: list[tuple[object, object, object, FacilityLifecycleTransitionContent]] = []
+        candidates: list[tuple[object, object, object, object, object, FacilityLifecycleTransitionContent]] = []
         for manifest in manifests:
             extension = manifest.platform_extension
             if extension is None:
@@ -3044,12 +3127,26 @@ class ConstructionProductionAuthority:
                 except Exception:
                     continue
                 if content.facility_kind == acquisition.payload.get("facility_kind"):
-                    candidates.append((manifest, declaration, bindings[0], content))
+                    candidates.append((manifest, declaration, bindings[0], request, definitions[0], content))
         if not candidates:
             return self._rejected_append(typed_intent.command_id, "facility_lifecycle_transition_source_conflict")
         if len(candidates) != 1:
             return self._rejected_append(typed_intent.command_id, "facility_lifecycle_transition_binding_ambiguous")
-        manifest, declaration, binding, content = candidates[0]
+        manifest, declaration, binding, request, definition, content = candidates[0]
+        if not _closed_family_binding_is_valid(
+            family_ref="facility_lifecycle_transition@1",
+            manifest=manifest,
+            declaration=declaration,
+            request=request,
+            definition=definition,
+            binding=binding,
+            active_set_revision=active.active_patch_set_revision,
+            typed_content=content,
+        ):
+            return self._rejected_append(
+                typed_intent.command_id,
+                "facility_lifecycle_transition_binding_invalid",
+            )
         if (
             acquisition.payload.get("facility_kind") != content.facility_kind
             or content.to_lifecycle != "decommissioned"
@@ -4160,7 +4257,7 @@ class ConstructionProductionAuthority:
 
         from app.gameplay.patch_runtime import GameplayPatchRuntimeError
 
-        candidates: list[tuple[object, object, RecipeProductionContent]] = []
+        candidates: list[tuple[object, object, object, object, object, RecipeProductionContent]] = []
         for manifest in manifests:
             extension = manifest.platform_extension
             if extension is None:
@@ -4192,13 +4289,24 @@ class ConstructionProductionAuthority:
                     and content.recipe_ref == typed_intent.recipe_ref
                     and content.facility_kind == facility.facility_kind
                 ):
-                    candidates.append((manifest, binding_matches[0], content))
+                    candidates.append((manifest, binding_matches[0], declaration, request, definitions[0], content))
 
         if not candidates:
             return self._rejected_append(command_id, "recipe_production_content_unknown")
         if len(candidates) != 1:
             return self._rejected_append(command_id, "recipe_production_binding_ambiguous")
-        manifest, binding, content = candidates[0]
+        manifest, binding, declaration, request, definition, content = candidates[0]
+        if not _closed_family_binding_is_valid(
+            family_ref="recipe_production@1",
+            manifest=manifest,
+            declaration=declaration,
+            request=request,
+            definition=definition,
+            binding=binding,
+            active_set_revision=active.active_patch_set_revision,
+            typed_content=content,
+        ):
+            return self._rejected_append(command_id, "recipe_production_binding_invalid")
         try:
             GovernedAuthorityContractCatalog.require_operation(
                 contract_ref="inf:construction-recipe-production@1",

@@ -3137,7 +3137,17 @@ class OrganizationAuthority:
         )
 
         typed_intent = intent if isinstance(intent, DomainAcceptanceMarkerIntent) else DomainAcceptanceMarkerIntent.model_validate(intent)
-        organization_ref = "organization:district-milling-cooperative"
+        source_holder_ref = source.payload.get("holder_ref")
+        if (
+            not isinstance(source_holder_ref, str)
+            or not source_holder_ref
+            or not source_holder_ref.startswith(("organization:", "org:"))
+        ):
+            return self._grain_intake_rejected(
+                typed_intent.command_id,
+                "domain_acceptance_marker_source_conflict",
+            )
+        organization_ref = source_holder_ref
         inventory_stream = f"gameplay:inventory:{organization_ref}"
         organization_stream = f"gameplay:organization:{organization_ref}"
         event_type = "gameplay.organization.grain_intake_recorded@1"
@@ -3148,7 +3158,6 @@ class OrganizationAuthority:
             or self._store.get_stream_head(inventory_stream) != source.stream_revision
             or source.payload.get("family_ref") != "harvest_to_custody@1"
             or source.payload.get("actor_ref") != organization_ref
-            or source.payload.get("holder_ref") != organization_ref
             or not isinstance(source.payload.get("project_ref"), str)
             or not source.payload.get("project_ref")
             or not isinstance(source.payload.get("plot_ref"), str)
@@ -3427,7 +3436,10 @@ class OrganizationAuthority:
         organization_ref: str,
         checkpoint_at: int | None = None,
     ) -> OrganizationGrainIntakeView:
-        if organization_ref != "organization:district-milling-cooperative":
+        if (
+            not organization_ref
+            or not organization_ref.startswith(("organization:", "org:"))
+        ):
             raise ValueError("domain_acceptance_marker_scope_invalid")
         events = sorted(
             self._store.read_events(),

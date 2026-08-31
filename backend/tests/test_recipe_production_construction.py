@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+from dataclasses import replace
 
 import pytest
 from pydantic import ValidationError
@@ -292,3 +293,25 @@ def test_recipe_production_intent_cannot_carry_authority_coordinates() -> None:
                 "idempotency_key": "caller-chosen",
             }
         )
+
+
+def test_recipe_production_rejects_tampered_activation_definition_pin_without_writing() -> None:
+    store, authority, facility = _authority()
+    registry = authority._package_registry
+    active = registry.active_patch_set
+    assert active is not None
+    assert len(active.capability_bindings) == 1
+    registry._active = replace(
+        active,
+        capability_bindings=(
+            replace(active.capability_bindings[0], definition_ref="definition:forged@1"),
+        ),
+    )
+    before = tuple(store.read_events())
+
+    result = authority.settle_recipe_production_start(intent=_intent(facility=facility))
+
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "recipe_production_binding_invalid"
+    assert tuple(store.read_events()) == before

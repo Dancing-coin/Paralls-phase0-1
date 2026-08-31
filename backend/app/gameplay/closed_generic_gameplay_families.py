@@ -541,6 +541,51 @@ def select_family_binding(bindings: tuple[ClosedFamilyBinding, ...]) -> ClosedFa
     return bindings[0]
 
 
+def family_binding_is_valid(
+    *,
+    family_ref: str,
+    manifest: object,
+    declaration: object,
+    declaration_payload: Mapping[str, object],
+    request: object,
+    definition: object,
+    binding: object,
+    active_set_revision: str,
+    typed_content: ClosedFamilyContent,
+) -> bool:
+    """Validate an activation-derived family binding before owner execution."""
+    family = next((item for item in CLOSED_GAMEPLAY_FAMILIES if item.family_ref == family_ref), None)
+    if family is None or family.status == "blocked":
+        return False
+    try:
+        content_payload = typed_content.model_dump(mode="json", exclude_none=True)
+        definition_payload = dict(definition.typed_content)
+        return bool(
+            request.capability_ref == family.capability_ref
+            and request.declaration_ref == declaration.declaration_ref
+            and request.source_package_revision == manifest.patch_revision_id
+            and declaration.outcome_family_ref == family.outcome_family_ref
+            and declaration.source_package_revision == manifest.patch_revision_id
+            and tuple(item.predicate_family_ref for item in request.typed_read_requirements) == family.predicate_family_refs
+            and tuple(request.proposal_effect_types) == family.effect_types
+            and definition.source_package_revision == manifest.patch_revision_id
+            and binding.family_ref == family_ref
+            and binding.package_revision == manifest.patch_revision_id
+            and binding.content_digest == manifest.content_digest
+            and binding.family_content_digest == _canonical_digest(content_payload)
+            and _canonical_digest(definition_payload) == binding.family_content_digest
+            and binding.definition_ref == definition.definition_ref
+            and binding.declaration_ref == declaration.declaration_ref
+            and binding.declaration_digest == declaration.declaration_digest
+            and declaration.declaration_digest == _canonical_digest(dict(declaration_payload))
+            and binding.descriptor_ref == family.descriptor_ref
+            and binding.descriptor_revision == family.descriptor_ref
+            and binding.active_patch_set_revision == active_set_revision
+        )
+    except (AttributeError, TypeError, ValueError):
+        return False
+
+
 PRODUCTION_OUTPUT_CUSTODY_BLOCKER = ClosedFamilyBlocker(
     blocker_ref="blocker:production-output-custody-committed-facts@1",
     family_ref="production_output_custody@1",
@@ -760,5 +805,6 @@ __all__ = [
     "PRIVATE_FOLLOW_ON_BLOCKER",
     "admit_family_binding",
     "select_family_binding",
+    "family_binding_is_valid",
     "content_model_for_family",
 ]

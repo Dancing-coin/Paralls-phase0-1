@@ -85,6 +85,7 @@ def main() -> int:
         "harvest_to_custody@1": "backend/tests/test_harvest_to_custody_family.py:test_harvest_to_custody_consumes_wheat_and_barley_with_one_adapter",
         "fixed_service_exchange@1": "backend/tests/test_fixed_service_exchange_family.py:test_fixed_service_exchange_uses_same_adapter_for_distinct_completed_service_packages",
         "declared_exchange@1": "backend/tests/test_declared_exchange_family.py:test_declared_exchange_family_admits_distinct_content_and_replays_through_one_adapter",
+        "bounded_project_budget@1": "backend/tests/test_bounded_project_budget_family.py:test_bounded_project_budget_completes_each_admitted_content_lifecycle",
         "owner_bound_environment_consumer@1": "backend/tests/test_owner_bound_environment_consumer_family.py:test_owner_bound_environment_consumer_loads_two_committed_manifests_from_disk_through_one_adapter",
         "private_follow_on@1": "backend/tests/test_private_follow_on_family.py:test_private_follow_on_supports_milling_and_workshop_contents_through_one_adapter",
         "domain_acceptance_marker@1": "backend/tests/test_domain_acceptance_marker_family.py:test_domain_acceptance_marker_generic_adapter_consumes_wheat_and_barley_source_content",

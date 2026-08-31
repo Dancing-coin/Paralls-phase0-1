@@ -34,11 +34,9 @@ def test_closed_generic_gameplay_families_verifier_reports_family_matrix_and_blo
     assert report["design_only_family_count"] == 0
     assert report["bounded_family_blocker_closure_passed"] is True
     assert report["generic_refactoring_complete"] is False
-    assert set(report["genericity_blocker_family_refs"]) == {
-        family["family_ref"]
-        for family in report["families"]
-        if family["status"] == "bounded_adapter"
-    }
+    assert set(report["genericity_blocker_family_refs"]) == set()
+    assert report["generic_implemented_family_count"] == 11
+    assert report["bounded_adapter_family_count"] == 0
     assert "facility_lifecycle_transition@1" in report["genericity_evidence_family_refs"]
     assert report["genericity_tests_passed"] is True
     assert report["committed_manifest_digests_valid"] is True

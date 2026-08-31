@@ -86,15 +86,9 @@ custody remain separate family tasks.
 ## Closed Generic Gameplay Foundation v1: Full Matrix Checkpoint
 
 The closed-family contract matrix now records all twelve requested families.
-`recipe_production@1`, `facility_identity_upgrade@1`,
-`production_output_certification@1`, and `fixed_service_exchange@1` have two
-distinct admitted content instances through one adapter and are verified by
-focused tests plus dedicated family evidence. `facility_lifecycle_transition@1`,
-`owner_bound_environment_consumer@1`, `harvest_to_custody@1`,
-`bounded_project_budget@1`, `domain_acceptance_marker@1`,
-`private_follow_on@1`, `bounded_project_budget@1`, `harvest_to_custody@1`,
-`domain_acceptance_marker@1`, and `facility_lifecycle_transition@1` remain
-bounded adapters with family-local genericity blockers. `production_output_custody@1` remains the
+All eleven writable families now have two or more distinct immutable content
+instances through one owner-bound adapter, with focused source, digest,
+lifecycle and replay evidence. `production_output_custody@1` remains the
 formal zero-write committed-facts blocker. This program remains separate from
 August INF A-D, which stays `not complete`.
 
@@ -105,21 +99,19 @@ for real package activation. When a declaration payload is available, its
 canonical declaration digest is recomputed and compared before the active set
 can mutate; typed content is likewise validated and canonically digested.
 The aggregate Harness now records the committed manifest paths for each of
-the six generic families. This strengthens admission evidence and includes
-the declared-exchange family admission below.
+the eleven writable generic families. This strengthens admission evidence and
+includes the declared-exchange family admission below.
 
-Current status is `8 generic_implemented / 3 bounded_adapter / 1 blocked`.
-The bounded families retain evidence-backed blockers for missing second
-committed content/source chains or missing family-specific lifecycle semantics;
-`production_output_custody@1` remains zero-write blocked by missing quantity,
-holder mapping and unique destination-container facts. Repository pytest is
-`4229 passed`; serial family verifiers, compileall and diff-check are green.
-`generic_refactoring_complete` remains `false`, and August INF A-D remains
-`not complete`.
+Current status is `11 generic_implemented / 0 bounded_adapter / 1 blocked`.
+The remaining blocker is only `production_output_custody@1`, which is
+zero-write blocked by missing quantity, holder mapping and unique
+destination-container facts. Repository pytest is `4260 passed`; serial family
+verifiers, compileall and diff-check are green. `generic_refactoring_complete`
+remains `false` because the non-writable custody family is still blocked, and
+August INF A-D remains `not complete`.
 
-The aggregate report also enforces `bounded_blocker_records_complete=true`:
-all five bounded families must have non-empty candidate values, source refs,
-business impact and recommended decision, with exact family-ref closure.
+The aggregate report also enforces the custody blocker record with non-empty
+candidate values, source refs, business impact and recommended decision.
 
 For generic-family manifests, the aggregate verifier also checks the exact
 family binding capability, declaration outcome family, predicate vector and

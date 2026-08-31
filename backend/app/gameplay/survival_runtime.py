@@ -15,6 +15,7 @@ from app.gameplay.ecology_consumer_admission import EcologyConsumerAdmissionChec
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
 from app.gameplay.models import AtomicEventBatch, AppendBatchResult, GameplayEvent, GameplayOutboxEntry, OwnerAuthorizedFragment, StrictGameplayModel
+from app.gameplay.patch_runtime import _canonical_digest
 from app.gameplay.semantic_registry import SemanticRegistry, SemanticRegistryError
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.gameplay.semantic_effects import EffectApplication, EffectLifecycleEvaluator, ResistanceProfile, StateDefinition
@@ -155,8 +156,30 @@ class SurvivalProjector:
             if event.event_type == self._STATE_APPLIED:
                 actor_ref = str(payload.get("actor_ref", ""))
                 state_payload = payload.get("state")
-                if not actor_ref or not isinstance(state_payload, dict):
+                if (
+                    not actor_ref
+                    or not isinstance(state_payload, dict)
+                    or payload.get("family_ref") not in {None, "owner_bound_environment_consumer@1"}
+                ):
                     raise ValueError("survival_event_payload_invalid")
+                if payload.get("family_ref") == "owner_bound_environment_consumer@1":
+                    provenance_payload = {
+                        "family_ref": payload.get("family_ref"),
+                        "package_revision": payload.get("package_revision"),
+                        "content_digest": payload.get("content_digest"),
+                        "declaration_ref": payload.get("declaration_ref"),
+                        "declaration_digest": payload.get("declaration_digest"),
+                        "descriptor_ref": payload.get("descriptor_ref"),
+                        "descriptor_revision": payload.get("descriptor_revision"),
+                        "active_patch_set_revision": payload.get("active_patch_set_revision"),
+                        "policy_revision": payload.get("policy_revision"),
+                    }
+                    if (
+                        not isinstance(payload.get("content_digest"), str)
+                        or not isinstance(payload.get("declaration_digest"), str)
+                        or payload.get("provenance_digest") != _canonical_digest(provenance_payload)
+                    ):
+                        raise ValueError("owner_bound_environment_consumer_replay_invalid")
                 state = SurvivalState.model_validate(state_payload)
                 states[(actor_ref, state.state_ref)] = state
                 revisions[event.stream_id] = max(revisions.get(event.stream_id, 0), event.stream_revision)
@@ -219,6 +242,11 @@ class SurvivalProjector:
                         raise ValueError("survival_event_payload_invalid")
                     latest_plan = ConsumptionPlan.model_validate(plan_payload)
             revisions[event.stream_id] = max(revisions.get(event.stream_id, 0), event.stream_revision)
+        if any(
+            state.expiry_obligation_id is not None and state.expiry_obligation_id not in open_obligations
+            for state in states.values()
+        ):
+            raise ValueError("owner_bound_environment_consumer_replay_invalid")
         return SurvivalProjection(
             needs=MappingProxyType(dict(sorted(needs.items()))),
             latest_plan=latest_plan,
@@ -389,6 +417,19 @@ class SurvivalAuthority:
                     "source_ref": command.source_ref,
                     "source_evidence_refs": list(source_evidence_refs),
                     "state_application_digest": proposal_digest,
+                    "provenance_digest": _canonical_digest(
+                        {
+                            "family_ref": "owner_bound_environment_consumer@1",
+                            "package_revision": provenance_payload.get("package_revision"),
+                            "content_digest": provenance_payload.get("content_digest"),
+                            "declaration_ref": provenance_payload.get("declaration_ref"),
+                            "declaration_digest": provenance_payload.get("declaration_digest"),
+                            "descriptor_ref": provenance_payload.get("descriptor_ref"),
+                            "descriptor_revision": provenance_payload.get("descriptor_revision"),
+                            "active_patch_set_revision": provenance_payload.get("active_patch_set_revision"),
+                            "policy_revision": provenance_payload.get("policy_revision"),
+                        }
+                    ),
                     **dict(provenance_payload),
                 },
             )
@@ -1233,6 +1274,7 @@ class SurvivalAuthority:
         from app.gameplay.closed_generic_gameplay_families import OwnerBoundEnvironmentConsumerContent
 
         candidates: list[tuple[object, object, object, OwnerBoundEnvironmentConsumerContent]] = []
+        binding_invalid = False
         content_shape_match = False
         weather_ref = weather.payload.get("weather_ref")
         source_name = weather_ref.removeprefix("weather:") if isinstance(weather_ref, str) else ""
@@ -1273,9 +1315,27 @@ class SurvivalAuthority:
                     continue
                 if content.weather_ref is not None and content.weather_ref != weather_ref:
                     continue
+                declaration_payload = declaration.model_dump(mode="json", exclude={"declaration_digest"})
+                expected_family_digest = _canonical_digest(
+                    content.model_dump(mode="json", exclude_none=True)
+                )
+                if (
+                    bindings[0].active_patch_set_revision != active.active_patch_set_revision
+                    or bindings[0].descriptor_ref != "descriptor:owner-bound-environment-consumer@1"
+                    or bindings[0].descriptor_revision != "descriptor:owner-bound-environment-consumer@1"
+                    or bindings[0].content_digest != manifest.content_digest
+                    or bindings[0].family_content_digest != expected_family_digest
+                    or bindings[0].declaration_ref != declaration.declaration_ref
+                    or bindings[0].declaration_digest != declaration.declaration_digest
+                    or declaration.declaration_digest != _canonical_digest(declaration_payload)
+                ):
+                    binding_invalid = True
+                    continue
                 content_shape_match = True
                 candidates.append((manifest, declaration, bindings[0], content))
         if not candidates:
+            if binding_invalid:
+                return None, "owner_bound_environment_consumer_binding_invalid"
             return None, (
                 "owner_bound_environment_consumer_content_invalid"
                 if content_shape_match

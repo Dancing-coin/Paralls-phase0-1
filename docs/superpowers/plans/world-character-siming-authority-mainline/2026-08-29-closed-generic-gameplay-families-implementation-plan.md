@@ -16,15 +16,11 @@ The full objective is active. `recipe_production@1` content, descriptor,
 binding and Construction start adapter are implemented and verified. The
 closed-family matrix now defines all twelve required family records with
 immutable content-model, owner, contract, descriptor, stream, event, privacy,
-predicate, effect and package-slot pins. Six families currently meet the
-multi-content genericity gate: `recipe_production@1`,
-`facility_identity_upgrade@1`, `production_output_certification@1`, and
-`fixed_service_exchange@1`, `declared_exchange@1`, and
-`owner_bound_environment_consumer@1`. The other writable families remain
-bounded adapters with explicit genericity blockers. `production_output_custody@1` is
-formally blocked by missing committed output quantity, source-to-holder mapping
-and unique destination-container evidence; that does not reduce the scope of
-the overall program.
+predicate, effect and package-slot pins. All eleven writable families meet the
+multi-content genericity gate through one owner-bound adapter. The
+`production_output_custody@1` family is formally blocked by missing committed
+output quantity, source-to-holder mapping and unique destination-container
+evidence; that does not reduce the scope of the overall program.
 
 ## Program Completion Definition
 
@@ -39,12 +35,10 @@ counted as generic because its first narrow example is implemented.
 
 ## Genericization Recovery Gate
 
-The current matrix is a mixed result: `6 generic_implemented`, `5
-bounded_adapter`, and `1 blocked`. Five bounded entries now each have an
-explicit genericity blocker record in `CLOSED_FAMILY_GENERICITY_BLOCKERS`;
-they are not omitted or silently treated as complete. A bounded adapter may reuse an
-existing owner append path, but it is not evidence that package content changes
-the execution semantics. Before any family can become `generic_implemented`,
+The current matrix is `11 generic_implemented` and `1 blocked`. A bounded
+adapter may reuse an existing owner append path, but it is not evidence that
+package content changes the execution semantics. Before any family can become
+`generic_implemented`,
 the owner must prove all of the following with two semantically distinct,
 immutable package contents through the same family adapter:
 
@@ -60,11 +54,10 @@ immutable package contents through the same family adapter:
 - historical rows retain their original behavior and do not become the second
   instance by alias or renamed fixture.
 
-The currently bounded adapters remain intentionally classified this way because
-they still contain row constants such as grain provider/container, district
-milling organization, public milling notice, or the single municipal budget
-project. Removing a constant is insufficient unless the above evidence is also
-added.
+The promoted adapters derive their execution coordinates from committed source
+evidence and selected immutable content; historical row constants remain only
+in compatibility paths. Removing a constant alone is insufficient without the
+evidence above.
 
 The family contract matrix and boundary Harness are now implemented at the
 read-only admission boundary. The immutable
@@ -92,38 +85,34 @@ retains the existing append/replay receipt path, and rejects caller-selected
 party, account, price, currency, event, and idempotency coordinates.
 
 `harvest_to_custody@1`, `domain_acceptance_marker@1`, and
-`private_follow_on@1` remain bounded wrappers, while
-`owner_bound_environment_consumer@1` is promoted with
+`private_follow_on@1` are now promoted with
 owner-bound wrappers over exact committed Ecology/Population,
 Inventory/Organization, and Social evidence. Their fixed receipts and
 full/checkpoint-tail readers remain separate from production output custody.
 
-The current continuation has promoted `facility_identity_upgrade@1` and
-`facility_lifecycle_transition@1` to independently verified family adapters.
-Their source/target/lifecycle semantics are closed to typed package content;
-all historical oven, bakery, mill reinforcement, and mill decommission rows
-remain unchanged compatibility partitions. `production_output_certification@1`
-is the next legal promotion; its separate replay reducer is not yet added.
+The current continuation has promoted all eleven writable families to
+independently verified family adapters. Their source, content, and lifecycle
+semantics are closed to typed package content; all historical oven, bakery,
+mill, exchange, harvest, weather, organization, social and budget rows remain
+unchanged compatibility partitions.
 
-The declarative matrix/Harness checkpoint classifies six non-custody entries
-as `generic_implemented`, five as `bounded_adapter` with explicit genericity
-blockers, and `production_output_custody@1` as `blocked` by missing committed
-facts. The program remains active until each bounded adapter has independent
-multi-content proof or an approved family blocker, and the custody blocker is
-resolved or formally retained with required zero-write evidence.
+The declarative matrix/Harness checkpoint classifies all eleven writable
+entries as `generic_implemented` and `production_output_custody@1` as
+`blocked` by missing committed facts. The program remains active until the
+custody blocker is resolved or formally retained with required zero-write
+evidence.
 
-The family verifier now emits both sets explicitly: `genericity_evidence` maps
-each generic family to its two-content focused test, while
-`genericity_blockers` maps every bounded family to its evidence-backed blocker.
-The Harness fails if either set drifts from the matrix status.
+The family verifier emits `genericity_evidence` for each writable family and a
+single formal custody blocker. The Harness fails if evidence or blocker state
+drifts from the matrix status.
 
 The activation path now invokes the same immutable family binding helper used
 by focused admission tests. It recomputes typed-content and declaration
 payload digests before an active-set mutation and records committed-manifest
 evidence for each generic family in the aggregate report. This closes the
-previous helper-only verification gap; it does not promote any bounded adapter.
-The current verified distribution remains `8 generic_implemented / 3
-bounded_adapter / 1 blocked`, with repository pytest at `4230 passed`.
+previous helper-only verification gap.
+The current verified distribution is `11 generic_implemented / 0
+bounded_adapter / 1 blocked`, with repository pytest at `4260 passed`.
 
 Registry activation now uses the additive family descriptor set for family
 capabilities. It validates each selected family content model before mutation,
