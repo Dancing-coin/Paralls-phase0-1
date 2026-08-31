@@ -7,7 +7,9 @@ class_name GameplayMirrorBridge
 var _session_enrollment: Dictionary = {}
 var _bound_session_ref := ""
 var _allowed_actor_refs: Array[String] = []
+var _allowed_government_drought_advisory_jurisdiction_refs: Array[String] = []
 var _consumers_by_actor: Dictionary = {}
+var _government_drought_advisory_consumers: Dictionary = {}
 var _supports_receipt := false
 
 
@@ -21,6 +23,10 @@ func _ready() -> void:
 		bus.gameplay_mirror_delivery_received.connect(_on_delivery)
 	if bus and bus.has_signal("gameplay_mirror_resync_required_received"):
 		bus.gameplay_mirror_resync_required_received.connect(_on_resync_required)
+	if bus and bus.has_signal("government_drought_advisory_projection_received"):
+		bus.government_drought_advisory_projection_received.connect(_on_government_drought_advisory_projection)
+	if bus and bus.has_signal("government_drought_advisory_delivery_received"):
+		bus.government_drought_advisory_delivery_received.connect(_on_government_drought_advisory_delivery)
 	if bus and bus.has_signal("backend_disconnected"):
 		bus.backend_disconnected.connect(_on_backend_disconnected)
 
@@ -64,6 +70,16 @@ func unregister_consumer(actor_ref: String) -> void:
 	_consumers_by_actor.erase(actor_ref)
 
 
+func register_government_drought_advisory_consumer(jurisdiction_ref: String, consumer: GovernmentDroughtAdvisoryPresentationConsumer) -> void:
+	if jurisdiction_ref.is_empty() or consumer == null:
+		return
+	_government_drought_advisory_consumers[jurisdiction_ref] = consumer
+
+
+func unregister_government_drought_advisory_consumer(jurisdiction_ref: String) -> void:
+	_government_drought_advisory_consumers.erase(jurisdiction_ref)
+
+
 func bind_session() -> int:
 	if _session_enrollment.is_empty():
 		return ERR_UNCONFIGURED
@@ -96,15 +112,26 @@ func unsubscribe(actor_ref: String) -> int:
 	return _bridge().send_envelope({"message_type": "gameplay_mirror_unsubscribe", "payload": {"actor_ref": actor_ref}})
 
 
+func request_government_drought_advisory_subscription(jurisdiction_ref: String) -> int:
+	if not _allowed_government_drought_advisory_jurisdiction_refs.has(jurisdiction_ref):
+		return ERR_UNAUTHORIZED
+	return _bridge().send_envelope({"message_type": "gameplay_government_drought_advisory_subscribe", "payload": {"jurisdiction_ref": jurisdiction_ref}})
+
+
 func _on_session_bound(payload: Dictionary) -> void:
 	_bound_session_ref = str(payload.get("session_ref", ""))
 	_session_enrollment.clear()
 	_allowed_actor_refs.clear()
+	_allowed_government_drought_advisory_jurisdiction_refs.clear()
 	_supports_receipt = bool((payload.get("capability_profile", {}) as Dictionary).get("supports_receipt", false))
 	for value: Variant in payload.get("allowed_actor_refs", []):
 		var actor_ref := str(value)
 		if not actor_ref.is_empty():
 			_allowed_actor_refs.append(actor_ref)
+	for value: Variant in payload.get("allowed_government_drought_advisory_jurisdiction_refs", []):
+		var jurisdiction_ref := str(value)
+		if not jurisdiction_ref.is_empty():
+			_allowed_government_drought_advisory_jurisdiction_refs.append(jurisdiction_ref)
 
 
 func _on_projection(payload: Dictionary) -> void:
@@ -149,13 +176,44 @@ func _on_resync_required(payload: Dictionary) -> void:
 	request_snapshot(actor_ref)
 
 
+func _on_government_drought_advisory_projection(payload: Dictionary) -> void:
+	var jurisdiction_ref := str(payload.get("jurisdiction_ref", ""))
+	if jurisdiction_ref.is_empty() or not _allowed_government_drought_advisory_jurisdiction_refs.has(jurisdiction_ref):
+		return
+	var consumer: GovernmentDroughtAdvisoryPresentationConsumer = _government_drought_advisory_consumers.get(jurisdiction_ref)
+	if consumer != null:
+		consumer.consume_projection(payload)
+
+
+func _on_government_drought_advisory_delivery(payload: Dictionary) -> void:
+	var jurisdiction_ref := str(payload.get("jurisdiction_ref", ""))
+	if jurisdiction_ref.is_empty() or not _allowed_government_drought_advisory_jurisdiction_refs.has(jurisdiction_ref):
+		return
+	var consumer: GovernmentDroughtAdvisoryPresentationConsumer = _government_drought_advisory_consumers.get(jurisdiction_ref)
+	if consumer == null:
+		return
+	var result := consumer.consume_delivery(payload)
+	if _supports_receipt and bool(result.get("accepted", false)):
+		_bridge().send_envelope({
+			"message_type": "gameplay_mirror_receipt",
+			"payload": {
+				"connection_epoch": int(payload.get("connection_epoch", 0)),
+				"delivery_sequence": int(payload.get("delivery_sequence", 0)),
+			},
+		})
+
+
 func _on_backend_disconnected(_code: int) -> void:
 	_bound_session_ref = ""
 	_allowed_actor_refs.clear()
+	_allowed_government_drought_advisory_jurisdiction_refs.clear()
 	_supports_receipt = false
 	for consumer: Variant in _consumers_by_actor.values():
 		if consumer is GameplayRuntimeStateMirrorConsumer:
 			(consumer as GameplayRuntimeStateMirrorConsumer).clear_projection()
+	for consumer: Variant in _government_drought_advisory_consumers.values():
+		if consumer is GovernmentDroughtAdvisoryPresentationConsumer:
+			(consumer as GovernmentDroughtAdvisoryPresentationConsumer).clear_projection()
 
 
 func _bridge() -> Node:

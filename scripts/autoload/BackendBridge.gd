@@ -270,6 +270,12 @@ func _dispatch_message(raw_text: String) -> void:
         "gameplay_mirror_resync_required":
             _bus_log("gameplay_mirror_resync_required")
             _bus_emit("gameplay_mirror_resync_required_received", [payload])
+        "government_drought_advisory_projection":
+            _bus_log("government_drought_advisory_projection")
+            _bus_emit("government_drought_advisory_projection_received", [payload])
+        "government_drought_advisory_delivery":
+            _bus_log("government_drought_advisory_delivery")
+            _bus_emit("government_drought_advisory_delivery_received", [payload])
         _:
             _bus_log("backend_message:%s" % message_type)
 

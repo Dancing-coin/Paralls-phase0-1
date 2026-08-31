@@ -17,6 +17,7 @@ var recent_scheduling_rounds: Array[Dictionary] = []
 var recent_script_beats: Array[Dictionary] = []
 var recent_dialogue_pairs: Array[Dictionary] = []
 var _state_refresh_queued := false
+var _observatory_refresh_queued := false
 
 const MAX_EVENT_HISTORY := 24
 const DEFAULT_OBSERVATORY_ACTOR_IDS := ["char_c", "char_a", "char_b"]
@@ -202,10 +203,28 @@ func get_latest_bottom_strip_entries() -> Array[Dictionary]:
 
 func get_dialogue_pair_entries() -> Array[Dictionary]:
 	var rows := _dictionary_array(_state_frame_value("recent_dialogue_pairs", []))
+	rows = _attach_siming_pressure_context(rows, _latest_siming_pressure_context())
 	rows.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
 		return str(a.get("pair_key", "")) < str(b.get("pair_key", ""))
 	)
 	return rows
+
+
+func _latest_siming_pressure_context() -> String:
+	for event in get_recent_siming_events():
+		var summary := str(event.get("reason_summary", "") or event.get("summary", "") or "")
+		if not summary.is_empty():
+			return summary
+	var beats := get_recent_script_beats()
+	for index in range(beats.size() - 1, -1, -1):
+		var summaries: Variant = beats[index].get("siming_summaries", [])
+		if summaries is Array:
+			for item in summaries:
+				if item is Dictionary:
+					var summary := str((item as Dictionary).get("reason_summary", "") or (item as Dictionary).get("summary", "") or "")
+					if not summary.is_empty():
+						return summary
+	return ""
 
 
 func resolve_target_node(target_ref: String) -> Node3D:
@@ -254,6 +273,10 @@ func _on_siming_debug_event_received(payload: Dictionary) -> void:
 	recent_siming_events.append(payload.duplicate(true))
 	if recent_siming_events.size() > MAX_EVENT_HISTORY:
 		recent_siming_events = _dictionary_array(recent_siming_events.slice(recent_siming_events.size() - MAX_EVENT_HISTORY, recent_siming_events.size()))
+	recent_dialogue_pairs = _attach_siming_pressure_context(
+		recent_dialogue_pairs,
+		str(payload.get("reason_summary", "") or payload.get("summary", "") or "")
+	)
 	_queue_state_refresh()
 
 
@@ -278,14 +301,15 @@ func _on_scheduling_round_trace_received(payload: Dictionary) -> void:
 func _on_script_beat_event_received(payload: Dictionary) -> void:
 	if freeze_mode:
 		return
-	recent_script_beats.append(payload.duplicate(true))
+	var presentation_beat := _presentation_script_beat(payload)
+	recent_script_beats.append(presentation_beat)
 	if recent_script_beats.size() > MAX_EVENT_HISTORY:
 		recent_script_beats = _dictionary_array(recent_script_beats.slice(recent_script_beats.size() - MAX_EVENT_HISTORY, recent_script_beats.size()))
 	recent_dialogue_pairs = _merge_dialogue_pair_rows(
 		recent_dialogue_pairs,
-		payload.get("dialogue_pairs", [])
+		presentation_beat.get("dialogue_pairs", [])
 	)
-	_queue_state_refresh()
+	_request_observatory_refresh()
 
 
 func _queue_state_refresh() -> void:
@@ -293,6 +317,18 @@ func _queue_state_refresh() -> void:
 		return
 	_state_refresh_queued = true
 	call_deferred("_emit_state_changed")
+
+
+func _request_observatory_refresh() -> void:
+	if _observatory_refresh_queued:
+		return
+	_observatory_refresh_queued = true
+	call_deferred("_emit_observatory_state_changed")
+
+
+func _emit_observatory_state_changed() -> void:
+	_observatory_refresh_queued = false
+	emit_signal("observatory_state_changed")
 
 
 func _emit_state_changed() -> void:
@@ -396,6 +432,82 @@ func _normalize_dialogue_pair_entry(entry: Dictionary) -> Dictionary:
 	return entry
 
 
+func _presentation_script_beat(payload: Dictionary) -> Dictionary:
+	var siming_summaries := _presentation_siming_summaries(payload.get("siming_summaries", []))
+	return {
+		"beat_id": str(payload.get("beat_id", "") or ""),
+		"producer_ts": int(payload.get("producer_ts", 0)),
+		"dramatic_summary": str(payload.get("dramatic_summary", "") or payload.get("summary", "") or ""),
+		"dialogue_pairs": _presentation_dialogue_pairs(payload.get("dialogue_pairs", []), siming_summaries),
+		"actor_summaries": _presentation_actor_summaries(payload.get("actor_summaries", [])),
+		"siming_summaries": siming_summaries,
+	}
+
+
+func _presentation_actor_summaries(value: Variant) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	if value is Array:
+		for item in value:
+			if not (item is Dictionary):
+				continue
+			var row := item as Dictionary
+			rows.append({
+				"actor_id": str(row.get("actor_id", "") or ""),
+				"stage": str(row.get("stage", "") or ""),
+				"summary": str(row.get("summary", "") or ""),
+				"focus_target": str(row.get("focus_target", "") or ""),
+				"intent_label": str(row.get("intent_label", "") or ""),
+			})
+	return rows
+
+
+func _presentation_siming_summaries(value: Variant) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	if value is Array:
+		for item in value:
+			if not (item is Dictionary):
+				continue
+			var row := item as Dictionary
+			rows.append({
+				"stage": str(row.get("stage", "") or ""),
+				"summary": str(row.get("summary", "") or ""),
+				"target_ref": str(row.get("target_ref", "") or ""),
+				"reason_summary": str(row.get("reason_summary", "") or ""),
+				"downstream_status": str(row.get("downstream_status", "") or ""),
+			})
+	return rows
+
+
+func _presentation_dialogue_pairs(value: Variant, siming_summaries: Array[Dictionary]) -> Array[Dictionary]:
+	var rows := _dictionary_array(value)
+	var pressure_context := ""
+	for summary in siming_summaries:
+		pressure_context = str(summary.get("reason_summary", "") or summary.get("summary", "") or "")
+		if not pressure_context.is_empty():
+			break
+	if pressure_context.is_empty():
+		for event in recent_siming_events:
+			pressure_context = str(event.get("reason_summary", "") or event.get("summary", "") or "")
+			if not pressure_context.is_empty():
+				break
+	for row in rows:
+		if str(row.get("siming_pressure_context", "") or "").is_empty() and not pressure_context.is_empty():
+			row["siming_pressure_context"] = pressure_context
+	return rows
+
+
+func _attach_siming_pressure_context(rows: Array[Dictionary], pressure_context: String) -> Array[Dictionary]:
+	if pressure_context.is_empty():
+		return rows
+	var updated: Array[Dictionary] = []
+	for source_row in rows:
+		var row := source_row.duplicate(true)
+		if str(row.get("siming_pressure_context", "") or "").is_empty():
+			row["siming_pressure_context"] = pressure_context
+		updated.append(row)
+	return updated
+
+
 func _merge_dialogue_pair_rows(existing_rows: Array[Dictionary], incoming_rows_value: Variant) -> Array[Dictionary]:
 	var pairs_by_key := {}
 	for row in existing_rows:
@@ -411,6 +523,11 @@ func _merge_dialogue_pair_rows(existing_rows: Array[Dictionary], incoming_rows_v
 			var incoming_pair_key := str(incoming_row.get("pair_key", "") or "")
 			if incoming_pair_key.is_empty():
 				continue
+			var existing_row: Dictionary = (pairs_by_key.get(incoming_pair_key, {}) as Dictionary).duplicate(true)
+			for field_name in ["speaker_perceived_summary", "listener_perceived_summary", "speaker_interpreted_summary", "listener_interpreted_summary", "speaker_said", "listener_said"]:
+				var incoming_value: Variant = incoming_row.get(field_name, "")
+				if incoming_value is String and incoming_value.is_empty() and str(existing_row.get(field_name, "") or "") != "":
+					incoming_row[field_name] = existing_row[field_name]
 			pairs_by_key[incoming_pair_key] = incoming_row
 	var merged_rows: Array[Dictionary] = []
 	for pair_key in pairs_by_key.keys():

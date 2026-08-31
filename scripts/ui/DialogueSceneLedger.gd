@@ -66,6 +66,27 @@ func _resolve_siming_pressure_context(row: Dictionary) -> String:
 		var text := str(candidate)
 		if text != "":
 			return text
+	var state := _get_state()
+	if state != null and state.has_method("get_latest_siming_summaries"):
+		var summaries: Variant = state.call("get_latest_siming_summaries", 3)
+		if summaries is Array:
+			for summary in summaries:
+				var text := str(summary)
+				if not text.is_empty():
+					return text
+	if state != null and state.has_method("get_recent_script_beats"):
+		var beats: Variant = state.call("get_recent_script_beats")
+		if beats is Array:
+			for beat in beats:
+				if not (beat is Dictionary):
+					continue
+				var siming_rows: Variant = (beat as Dictionary).get("siming_summaries", [])
+				if siming_rows is Array:
+					for siming_row in siming_rows:
+						if siming_row is Dictionary:
+							var text := str((siming_row as Dictionary).get("reason_summary", "") or (siming_row as Dictionary).get("summary", "") or "")
+							if not text.is_empty():
+								return text
 	return "暂无"
 
 
