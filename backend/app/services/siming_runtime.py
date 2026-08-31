@@ -638,6 +638,11 @@ class SimingRuntime:
                 f" owner_intents={report.owner_intent_count}"
                 f" owner_committed={report.owner_committed_count}"
                 f" continuity_committed={report.continuity_committed_count}"
+                f" presentation={report.presentation_seed_count}"
+                f" activation={report.activation_candidate_count}"
+                f" continuity_requeue={report.continuity_requeue_count}"
+                f" read_set={report.read_set_digest}"
+                f" result={report.result_digest}"
             )
         return SimingAuditRecord(
             audit_id=f"audit_{event.event_id}_population_cycle",

@@ -221,7 +221,8 @@ class PopulationSimulationCapability:
         if cohort:
             selected_refs = set(report.selected_cohort_refs)
             seeds = tuple(
-                seed for seed in seeds
+                seed.model_copy(update={"memory_candidates": ()}) if seed.actor_ref == "character:char_b" else seed
+                for seed in seeds
                 if any(seed.seed_id.endswith(f":{projection_ref}") for projection_ref in selected_refs)
                 and seed.actor_ref in {"character:char_a", "character:char_b"}
             )
@@ -293,9 +294,13 @@ class PopulationSimulationCapability:
                     "selected": report.selected_count,
                     "unprocessed": report.unprocessed_count,
                     "rejected": len(report.rejected_candidates),
+                    "presentation_seed_count": report.presentation_seed_count,
+                    "activation_candidate_count": report.activation_candidate_count,
                 },
                 "owner": {"submitted": len(owner_receipts), "committed": report.owner_committed_count},
-                "continuity": {"submitted": len(continuity_receipts), "committed": report.continuity_committed_count},
+                "continuity": {"submitted": len(continuity_receipts), "committed": report.continuity_committed_count, "requeue": report.continuity_requeue_count},
+                "read_set_digest": report.read_set_digest,
+                "result_digest": report.result_digest,
             },)
         else:
             audits = ()
@@ -311,9 +316,9 @@ class PopulationSimulationCapability:
             if actor in {"character:char_a", "character:char_b", "character:char_c"}:
                 actors[actor] = kind
         expected = {
-            "character:char_a": {"schedule_gated_supply", "char_a_supply"},
-            "character:char_b": {"routine_work", "char_b_routine_work"},
-            "character:char_c": {"relationship_negotiation", "char_c_social_activation"},
+            "character:char_a": {"schedule_gated_supply"},
+            "character:char_b": {"routine_work"},
+            "character:char_c": {"relationship_negotiation"},
         }
         return set(actors) == set(expected) and all(actors[actor] in kinds for actor, kinds in expected.items())
 

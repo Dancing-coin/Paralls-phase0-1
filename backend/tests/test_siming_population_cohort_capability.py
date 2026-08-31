@@ -26,10 +26,12 @@ def _read_set(window: str = "W0", budget: int = 3, revision: int = 1):
 
 
 class _Owner:
-    def __init__(self, committed=True): self.calls, self.committed = [], committed
+    def __init__(self, committed=True): self.calls, self.committed, self.keys = [], committed, set()
     def submit(self, intent, *, read_set):
         self.calls.append(intent)
-        return PopulationOwnerReceipt(receipt_ref=f"receipt:{intent.intent_ref}", owner_ref="owner:organization", event_family="gameplay.organization.commerce_commitment_accepted", committed=self.committed, revision_vector={"world:bakery": 2}, zero_write=not self.committed, idempotency_status="new_commit" if self.committed else "idempotency_key_reused")
+        duplicate = intent.idempotency_key in self.keys
+        self.keys.add(intent.idempotency_key)
+        return PopulationOwnerReceipt(receipt_ref=f"receipt:{intent.intent_ref}", owner_ref="owner:organization", event_family="gameplay.organization.commerce_commitment_accepted", committed=self.committed, revision_vector={"world:bakery": 2}, zero_write=not self.committed, idempotency_status="duplicate_replayed" if duplicate else ("new_commit" if self.committed else "idempotency_key_reused"))
 
 
 class _Continuity:
@@ -37,8 +39,25 @@ class _Continuity:
     def current_revision(self, actor_ref): return self.revisions[actor_ref]
     def apply_command(self, command):
         self.commands.append(command)
-        before = self.revisions[command.actor_ref]; self.revisions[command.actor_ref] += 1
+        before = self.revisions[command.actor_ref]
+        duplicate = any(item.command_id == command.command_id for item in self.commands[:-1])
+        if duplicate:
+            return CharacterContinuityReceipt(receipt_ref=f"receipt:{command.command_id}", command_id=command.command_id, actor_ref=command.actor_ref, status="idempotent_replay", character_revision_before=before, character_revision_after=before)
+        self.revisions[command.actor_ref] += 1
         return CharacterContinuityReceipt(receipt_ref=f"receipt:{command.command_id}", command_id=command.command_id, actor_ref=command.actor_ref, status="committed", character_revision_before=before, character_revision_after=before + 1)
+
+
+class CohortCapabilityFixture:
+    def __init__(self):
+        self.owner, self.continuity = _Owner(), _Continuity()
+        self.capability = PopulationSimulationCapability(owner_executor=self.owner, continuity_port=self.continuity)
+
+    @classmethod
+    def create(cls): return cls()
+
+    def run_window(self, window="W0", *, revision=1):
+        cadence, read_set = _read_set(window, revision=revision)
+        return self.capability.run_cohort_cycle(cadence, read_set)
 
 
 def test_w0_routes_owner_char_a_and_core_char_a_char_b_only():
@@ -65,3 +84,32 @@ def test_budget_two_leaves_char_c_unprocessed_and_never_core_command():
     result = PopulationSimulationCapability(owner_executor=owner, continuity_port=continuity).run_cohort_cycle(cadence, read_set)
     assert result.report.unprocessed_cohort_refs == ("projection:char_c:W0",)
     assert all(command.actor_ref != "character:char_c" for command in continuity.commands)
+
+
+def test_w1_uses_new_source_revision_and_per_actor_monotonic_revision():
+    fixture = CohortCapabilityFixture.create()
+    assert fixture.run_window("W0").status == "accepted"
+    assert fixture.run_window("W1", revision=2).status == "accepted"
+    assert [command.expected_character_revision for command in fixture.continuity.commands if command.actor_ref == "character:char_a"] == [0, 1]
+    assert [command.expected_character_revision for command in fixture.continuity.commands if command.actor_ref == "character:char_b"] == [0, 1]
+
+
+def test_duplicate_replay_and_changed_source_are_distinct():
+    fixture = CohortCapabilityFixture.create()
+    fixture.run_window("W0")
+    duplicate = fixture.run_window("W0")
+    assert duplicate.owner_receipts[0].idempotency_status == "duplicate_replayed"
+    assert duplicate.continuity_receipts[0].status == "idempotent_replay"
+
+    changed = fixture.run_window("W1", revision=3)
+    assert changed.status == "accepted"
+
+
+def test_cohort_projection_exposure_cannot_create_char_b_memory_candidate():
+    cadence, read_set = _read_set()
+    rows = tuple(p.model_copy(update={"payload": {**p.payload, "exposure_basis": "affected_directly"}}) if p.payload["actor_ref"] == "character:char_b" else p for p in read_set.projections)
+    read_set = read_set.from_inputs(cadence, rows)
+    owner, continuity = _Owner(), _Continuity()
+    result = PopulationSimulationCapability(owner_executor=owner, continuity_port=continuity).run_cohort_cycle(cadence, read_set)
+    routine = next(seed for seed in result.seed_candidates if seed.actor_ref == "character:char_b")
+    assert routine.memory_candidates == ()
