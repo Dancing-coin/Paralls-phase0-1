@@ -49,7 +49,7 @@ def test_closed_family_contracts_pin_family_specific_replay_readers() -> None:
         "facility_identity_upgrade@1": "ConstructionProductionAuthority.projector",
         "facility_lifecycle_transition@1": "ConstructionProductionAuthority.projector",
         "production_output_certification@1": "ConstructionProductionAuthority.projector",
-        "production_output_custody@1": "InventoryProjector.rebuild",
+            "production_output_custody@1": "InventoryAuthorityService.production_output_custody_view_for",
         "declared_exchange@1": "EconomyAuthorityService.declared_exchange_projection",
         "fixed_service_exchange@1": "EconomyAuthorityService.package_declared_negotiated_exchange_projection",
         "bounded_project_budget@1": "EconomyAuthorityService.public_project_budget_commitment_projection",
@@ -77,15 +77,15 @@ def test_current_family_adapters_are_explicitly_classified() -> None:
     bounded = {item.family_ref for item in CLOSED_GAMEPLAY_FAMILIES if item.status == "bounded_adapter"}
     generic = {item.family_ref for item in CLOSED_GAMEPLAY_FAMILIES if item.status == "generic_implemented"}
     assert bounded == set()
-    assert generic == set(EXPECTED_FAMILIES) - {"production_output_custody@1"}
+    assert generic == set(EXPECTED_FAMILIES)
     assert {item.family_ref for item in CLOSED_FAMILY_GENERICITY_BLOCKERS} == bounded
 
 
-def test_custody_family_is_explicitly_blocked_without_a_writer() -> None:
+def test_custody_family_is_explicitly_promoted_with_an_owner_bound_writer() -> None:
     custody = next(item for item in CLOSED_GAMEPLAY_FAMILIES if item.family_ref == "production_output_custody@1")
-    assert custody.status == "blocked"
-    assert custody.blocker_ref == "blocker:production-output-custody-committed-facts@1"
-    assert custody.adapter_ref is None
+    assert custody.status == "generic_implemented"
+    assert custody.blocker_ref is None
+    assert custody.adapter_ref == "InventoryAuthorityService.settle_production_output_custody"
 
 
 def test_family_binding_selection_requires_exactly_one_candidate() -> None:
@@ -177,11 +177,11 @@ def test_family_binding_runtime_validation_requires_manifest_and_definition_pins
     )
 
 
-def test_registry_rejects_blocked_custody_family_before_active_set_mutation() -> None:
+def test_registry_accepts_admitted_custody_family_binding() -> None:
     content = ProductionOutputCustodyContent(output_item_definition_ref="item:bread@1", holder_binding_ref="binding:holder@1", container_binding_ref="binding:container@1", policy_revision_ref="policy:custody@1")
     definition = PackageDefinition(definition_ref="definition:custody@1", definition_schema_ref="schema:production-output-custody@1", source_package_revision="package:custody@1", typed_content=content.model_dump(mode="json"))
     declaration = SimpleNamespace(declaration_ref="declaration:custody@1", outcome_family_ref="outcome:production-output-custody@1", definition_refs=(definition.definition_ref,), declaration_digest="sha256:" + "1" * 64)
     request = SimpleNamespace(binding_ref="binding:custody@1", capability_ref="capability:production-output-custody@1", declaration_ref=declaration.declaration_ref, typed_read_requirements=(SimpleNamespace(predicate_family_ref="predicate:construction-production-output-certified@1"),), proposal_effect_types=("effect:production-output-custody@1",))
     manifest = SimpleNamespace(patch_revision_id="package:custody@1", content_digest="sha256:" + "2" * 64, platform_extension=SimpleNamespace(outcome_declarations=(declaration,), capability_binding_requests=(request,), package_definitions=(definition,)))
-    with pytest.raises(GameplayPatchRuntimeError, match="patch_capability_binding_family_blocked"):
-        GameplayPatchRegistry._resolve_capability_bindings((manifest,), "active-set@1")
+    bindings = GameplayPatchRegistry._resolve_capability_bindings((manifest,), "active-set@1")
+    assert bindings[0].family_ref == "production_output_custody@1"

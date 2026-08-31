@@ -253,12 +253,12 @@ exchange/project, ecology, and owner-local follow-on families all remain in
 scope. They stay separate because their truth owners and lifecycle semantics
 differ.
 
-The custody follow-on is currently evidence-blocked, not implementation-ready:
-the committed Construction completion event lacks output quantity, no approved
-source-to-Inventory holder mapping exists, and Inventory does not guarantee one
-eligible destination container. The family must remain zero-write until those
-literal facts and pins are committed; it cannot infer them from facility owner,
-fixtures, or the caller.
+The custody follow-on was initially evidence-blocked. It is now admitted through
+the committed `production_output_certified@1` quantity and two immutable
+facility/recipe/output-to-holder/container mapping rows. The family still cannot
+infer coordinates from facility owner, fixtures, or the caller; it requires the
+matching mapping admission and rejects zero, multiple, stale, or tampered
+bindings before append.
 
 This sequencing gives content authors useful extension without pretending that
 all future world facts share one operation. The framework is extensible by

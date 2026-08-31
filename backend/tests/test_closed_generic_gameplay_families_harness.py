@@ -31,13 +31,13 @@ def test_closed_generic_gameplay_families_verifier_reports_family_matrix_and_blo
         + report["blocked_family_count"]
         == 12
     )
-    assert report["blocked_family_count"] == 1
+    assert report["blocked_family_count"] == 0
     assert report["design_only_family_count"] == 0
     assert report["bounded_family_blocker_closure_passed"] is True
-    assert report["generic_refactoring_complete"] is False
+    assert report["generic_refactoring_complete"] is True
     assert report["goal_level_status"].startswith("foundation_matrix_closure_complete;")
     assert set(report["genericity_blocker_family_refs"]) == set()
-    assert report["generic_implemented_family_count"] == 11
+    assert report["generic_implemented_family_count"] == 12
     assert report["bounded_adapter_family_count"] == 0
     assert "facility_lifecycle_transition@1" in report["genericity_evidence_family_refs"]
     assert report["genericity_tests_passed"] is True
@@ -49,3 +49,5 @@ def test_closed_generic_gameplay_families_verifier_reports_family_matrix_and_blo
         "docs/superpowers/specs/world-character-siming-authority-mainline/closed-generic/facility-lifecycle-transition/package-facility-lifecycle-transition-mill-v1.manifest.json",
     ]
     assert report["custody_blocker"]["blocker_ref"] == "blocker:production-output-custody-committed-facts@1"
+    assert report["custody_blocker_status"] == "resolved"
+    assert report["custody_resolution"]["adapter_ref"] == "InventoryAuthorityService.settle_production_output_custody"

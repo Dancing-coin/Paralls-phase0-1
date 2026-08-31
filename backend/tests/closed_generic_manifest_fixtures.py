@@ -31,6 +31,12 @@ MANIFEST_PATHS = {
     "production-output-certification-mill-demo-v1": BASE_DIR
     / "production-output-certification"
     / "package-production-output-certification-mill-demo-v1.manifest.json",
+    "production-output-custody-bread": BASE_DIR
+    / "production-output-custody"
+    / "package-production-output-custody-bread.manifest.json",
+    "production-output-custody-flour": BASE_DIR
+    / "production-output-custody"
+    / "package-production-output-custody-flour.manifest.json",
     "facility-lifecycle-transition-mill-v1": BASE_DIR
     / "facility-lifecycle-transition"
     / "package-facility-lifecycle-transition-mill-v1.manifest.json",

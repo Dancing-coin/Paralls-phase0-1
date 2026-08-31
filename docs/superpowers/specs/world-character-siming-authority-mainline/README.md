@@ -43,14 +43,12 @@ event vectors, lifecycle semantics or cross-domain recipe types require a
 separate admission. August INF A-D remains an independent business ledger and
 is not completed by this foundation.
 
-Closed Generic Gameplay Foundation v1 is complete at the governance/matrix
-level: `11 generic implementations / 0 bounded adapters / 1 blocked`.
-All writable families have two or more distinct admitted content instances
-through one adapter with family-specific source, digest, lifecycle and replay
-evidence. `generic_refactoring_complete=false` remains intentional because
-the blocked custody family is not an implemented writer. Production-output
-custody remains zero-write until its committed facts are admitted. August INF
-A-D stays `not complete`.
+Closed Generic Gameplay Foundation v1 is complete at the implementation level:
+`12 generic implementations / 0 bounded adapters / 0 blocked`. All families
+have two or more distinct admitted content instances through one adapter with
+family-specific source, digest, lifecycle and replay evidence. Production-output
+custody derives quantity from certified output and holder/container from an
+immutable mapping admission. August INF A-D stays `not complete`.
 
 ## Unknown Gameplay-Pack/Mod Rows
 

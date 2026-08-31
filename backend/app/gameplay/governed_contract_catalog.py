@@ -1452,7 +1452,7 @@ class GovernedAuthorityContractCatalog:
             "facility_identity_upgrade@1": "ConstructionProductionAuthority.projector",
             "facility_lifecycle_transition@1": "ConstructionProductionAuthority.projector",
             "production_output_certification@1": "ConstructionProductionAuthority.projector",
-            "production_output_custody@1": "InventoryProjector.rebuild",
+            "production_output_custody@1": "InventoryAuthorityService.production_output_custody_view_for",
             "declared_exchange@1": "EconomyAuthorityService.declared_exchange_projection",
             "fixed_service_exchange@1": "EconomyAuthorityService.package_declared_negotiated_exchange_projection",
             "bounded_project_budget@1": "EconomyAuthorityService.public_project_budget_commitment_projection",

@@ -11,6 +11,8 @@ from typing import Mapping, Sequence
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailure, OwnerAuthorizedFragment
 from app.gameplay.patch_runtime import _canonical_digest
+from app.gameplay.settlement_plan import SettlementPlan
+from app.gameplay.shared_contracts import GameplayCommandEnvelope
 from app.gameplay.shared_contracts import SettlementReceipt
 
 
@@ -47,6 +49,20 @@ class HarvestCustodyBindingContract:
     container_id: str
 
 
+@dataclass(frozen=True)
+class ProductionOutputCustodyBindingContract:
+    """Immutable, owner-admitted mapping from certified production to custody."""
+
+    facility_kind: str
+    recipe_ref: str
+    output_item_ref: str
+    holder_binding_ref: str
+    container_binding_ref: str
+    holder_ref: str
+    container_id: str
+    mapping_revision: str
+
+
 _HARVEST_CUSTODY_BINDING_CONTRACTS: tuple[HarvestCustodyBindingContract, ...] = (
     HarvestCustodyBindingContract(
         species="grain:wheat",
@@ -63,6 +79,29 @@ _HARVEST_CUSTODY_BINDING_CONTRACTS: tuple[HarvestCustodyBindingContract, ...] = 
         container_binding_ref="binding:container:container:district-milling-cooperative:barley-intake@1",
         holder_ref="organization:district-milling-cooperative",
         container_id="container:district-milling-cooperative:barley-intake",
+    ),
+)
+
+_PRODUCTION_OUTPUT_CUSTODY_BINDING_CONTRACTS: tuple[ProductionOutputCustodyBindingContract, ...] = (
+    ProductionOutputCustodyBindingContract(
+        facility_kind="bakery",
+        recipe_ref="recipe:flour-to-bread@1",
+        output_item_ref="item:bread@1",
+        holder_binding_ref="binding:holder:organization:bakery@1",
+        container_binding_ref="binding:container:container:organization:bakery:production-output@1",
+        holder_ref="organization:bakery",
+        container_id="container:organization:bakery:production-output",
+        mapping_revision="mapping:production-output-custody:bakery@1",
+    ),
+    ProductionOutputCustodyBindingContract(
+        facility_kind="mill",
+        recipe_ref="recipe:industrial-facilities:mill-flour@1",
+        output_item_ref="item:industrial-facilities:flour@1",
+        holder_binding_ref="binding:holder:org:mill:1@1",
+        container_binding_ref="binding:container:container:org:mill:1:stores@1",
+        holder_ref="org:mill:1",
+        container_id="container:org:mill:1:stores",
+        mapping_revision="mapping:production-output-custody:mill@1",
     ),
 )
 
@@ -350,6 +389,55 @@ class InventoryProjector:
                     raise InventoryRuntimeError("inventory_grain_harvest_event_invalid")
                 self._registry.item(_GRAIN_HARVEST_ITEM)
                 items[item_id] = InventoryItem(item_id, _GRAIN_HARVEST_ITEM, 10, event.event_id)
+                locations[item_id] = container_id
+            elif event.event_type == "gameplay.inventory.production_output_received@1":
+                source = events_by_id.get(str(payload.get("source_certification_event_id", "")))
+                provenance = {
+                    "family_ref": payload.get("family_ref"),
+                    "package_revision": payload.get("package_revision"),
+                    "content_digest": payload.get("content_digest"),
+                    "declaration_ref": payload.get("declaration_ref"),
+                    "declaration_digest": payload.get("declaration_digest"),
+                    "binding_ref": payload.get("binding_ref"),
+                    "active_patch_set_revision": payload.get("active_patch_set_revision"),
+                    "mapping_revision": payload.get("mapping_revision"),
+                }
+                if (
+                    event.visibility_policy != "project"
+                    or payload.get("family_ref") != "production_output_custody@1"
+                    or not _sha256_text(payload, "content_digest")
+                    or not _sha256_text(payload, "declaration_digest")
+                    or not _prefixed_text(payload, "package_revision", "package:")
+                    or not _prefixed_text(payload, "declaration_ref", "declaration:")
+                    or not _prefixed_text(payload, "binding_ref", "binding:")
+                    or not _prefixed_text(payload, "active_patch_set_revision", "sha256:")
+                    or not _prefixed_text(payload, "mapping_revision", "mapping:")
+                    or payload.get("provenance_digest") != _canonical_digest(provenance)
+                    or source is None
+                    or source.event_type != "gameplay.construction_production.production_output_certified@1"
+                    or source.visibility_policy != "project"
+                    or payload.get("source_certification_revision") != source.stream_revision
+                    or payload.get("item_ref") != source.payload.get("output_item")
+                    or payload.get("quantity") != source.payload.get("quantity")
+                    or payload.get("project_ref") != source.payload.get("project_ref")
+                    or payload.get("facility_ref") != source.payload.get("facility_ref")
+                    or not isinstance(payload.get("item_id"), str)
+                    or not payload.get("item_id")
+                    or not isinstance(payload.get("holder_ref"), str)
+                    or not isinstance(payload.get("container_id"), str)
+                ):
+                    raise InventoryRuntimeError("production_output_custody_replay_invalid")
+                item_id = _text(payload, "item_id")
+                container_id = _text(payload, "container_id")
+                if item_id in items or container_id not in containers:
+                    raise InventoryRuntimeError("production_output_custody_event_invalid")
+                self._registry.item(_text(payload, "item_ref"))
+                items[item_id] = InventoryItem(
+                    item_id,
+                    _text(payload, "item_ref"),
+                    _positive(payload, "quantity"),
+                    event.event_id,
+                )
                 locations[item_id] = container_id
             elif event.event_type == "gameplay.inventory.output_received":
                 _text(payload, "source_ref")
@@ -1504,6 +1592,246 @@ class InventoryAuthorityService:
                 "projection_refresh_hints": [],
             }
         )
+
+    def settle_production_output_custody(self, *, intent: object) -> AppendBatchResult:
+        """Custody adapter sourced from certified output and admitted mappings."""
+        from app.gameplay.closed_generic_gameplay_families import (
+            ProductionOutputCustodyContent,
+            ProductionOutputCustodyIntent,
+            family_binding_is_valid,
+        )
+
+        try:
+            typed = intent if isinstance(intent, ProductionOutputCustodyIntent) else ProductionOutputCustodyIntent.model_validate(intent)
+        except Exception:
+            return self._rejected_append(str(getattr(intent, "command_id", "production-output-custody")), "production_output_custody_intent_invalid")
+        registry = self._package_registry
+        active = getattr(registry, "active_patch_set", None) if registry is not None else None
+        if active is None:
+            return self._rejected_append(typed.command_id, "production_output_custody_package_inactive")
+        try:
+            certification = self._store.get_event(typed.certification_event_id)
+        except KeyError:
+            return self._rejected_append(typed.command_id, "production_output_custody_source_missing")
+        if (
+            certification.event_type != "gameplay.construction_production.production_output_certified@1"
+            or certification.visibility_policy != "project"
+            or certification.stream_revision != typed.expected_certification_revision
+            or self._store.get_stream_head(certification.stream_id) != typed.expected_certification_revision
+            or certification.payload.get("family_ref") != "production_output_certification@1"
+            or not isinstance(certification.payload.get("recipe_ref"), str)
+            or not isinstance(certification.payload.get("output_item"), str)
+            or isinstance(certification.payload.get("quantity"), bool)
+            or not isinstance(certification.payload.get("quantity"), int)
+            or certification.payload.get("quantity", 0) <= 0
+        ):
+            return self._rejected_append(typed.command_id, "production_output_custody_source_invalid")
+        source_stream = certification.stream_id
+        facility_ref = certification.payload.get("facility_ref")
+        acquisitions = [
+            event for event in self._store.read_stream(source_stream)
+            if event.event_type == "gameplay.construction_production.facility_acquired"
+            and event.visibility_policy == "project"
+            and event.payload.get("facility_ref") == facility_ref
+        ]
+        if len(acquisitions) != 1:
+            return self._rejected_append(typed.command_id, "production_output_custody_holder_mapping_invalid")
+        acquisition = acquisitions[0]
+        candidates: list[tuple[object, object, object, object, ProductionOutputCustodyContent]] = []
+        for manifest in registry.active_manifests(active.active_patch_set_revision):
+            extension = manifest.platform_extension
+            if extension is None:
+                continue
+            declarations = {item.declaration_ref: item for item in extension.outcome_declarations}
+            for request in extension.capability_binding_requests:
+                if request.capability_ref != "capability:production-output-custody@1":
+                    continue
+                declaration = declarations.get(request.declaration_ref)
+                if declaration is None or declaration.outcome_family_ref != "outcome:production-output-custody@1":
+                    continue
+                definitions = tuple(item for item in extension.package_definitions if item.definition_ref in declaration.definition_refs)
+                bindings = tuple(
+                    item for item in active.capability_bindings
+                    if item.binding_ref == request.binding_ref
+                    and item.package_revision == manifest.patch_revision_id
+                    and item.content_digest == manifest.content_digest
+                    and item.declaration_digest == declaration.declaration_digest
+                )
+                if len(definitions) != 1 or len(bindings) != 1:
+                    continue
+                try:
+                    content = ProductionOutputCustodyContent.model_validate(definitions[0].typed_content)
+                except Exception:
+                    continue
+                if content.output_item_definition_ref == certification.payload.get("output_item"):
+                    candidates.append((manifest, declaration, request, definitions[0], bindings[0], content))
+        if not candidates:
+            return self._rejected_append(typed.command_id, "production_output_custody_content_unknown")
+        if len(candidates) != 1:
+            return self._rejected_append(typed.command_id, "production_output_custody_binding_ambiguous")
+        manifest, declaration, request, definition, binding, content = candidates[0]
+        if not family_binding_is_valid(
+            family_ref="production_output_custody@1",
+            manifest=manifest,
+            declaration=declaration,
+            declaration_payload=declaration.model_dump(mode="json", exclude={"declaration_digest"}),
+            request=request,
+            definition=definition,
+            binding=binding,
+            active_set_revision=active.active_patch_set_revision,
+            typed_content=content,
+        ):
+            return self._rejected_append(typed.command_id, "production_output_custody_binding_invalid")
+        mapping = next(
+            (
+                item for item in _PRODUCTION_OUTPUT_CUSTODY_BINDING_CONTRACTS
+                if item.facility_kind == acquisition.payload.get("facility_kind")
+                and item.recipe_ref == certification.payload.get("recipe_ref")
+                and item.output_item_ref == certification.payload.get("output_item")
+                and item.holder_binding_ref == content.holder_binding_ref
+                and item.container_binding_ref == content.container_binding_ref
+                and item.holder_ref == acquisition.payload.get("owner_ref")
+            ),
+            None,
+        )
+        if mapping is None:
+            return self._rejected_append(typed.command_id, "production_output_custody_holder_mapping_invalid")
+        holder_stream = f"gameplay:inventory:{mapping.holder_ref}"
+        prior_events = [
+            event for event in self._store.read_stream(holder_stream)
+            if event.event_type == "gameplay.inventory.production_output_received@1"
+            and event.payload.get("source_certification_event_id") == certification.event_id
+        ]
+        if prior_events:
+            prior_event = prior_events[-1]
+            prior_batch = next(
+                (
+                    batch for batch in self._store.read_transactions()
+                    if any(item.event_id == prior_event.event_id for item in batch.events)
+                ),
+                None,
+            )
+            if prior_batch is not None:
+                prior_result = self._store.get_by_idempotency(
+                    self._PRINCIPAL, prior_batch.idempotency_record.idempotency_key
+                )
+                if prior_result is not None and prior_event.correlation_id == typed.correlation_id:
+                    return prior_result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+                if prior_result is not None:
+                    return self._rejected_append(typed.command_id, "production_output_custody_idempotency_key_reused")
+        if self._store.get_stream_head(holder_stream) != typed.expected_inventory_stream_revision:
+            return self._rejected_append(typed.command_id, "production_output_custody_revision_conflict")
+        projection = self._projector.rebuild(mapping.holder_ref, self._store.read_events())
+        destination = projection.containers.get(mapping.container_id)
+        if destination is None or destination.sealed or destination.carrier_item_id:
+            return self._rejected_append(typed.command_id, "production_output_custody_container_unavailable")
+        item_id = f"item:production-output:{certification.event_id}"
+        idempotency_key = (
+            f"inventory:production-output-custody:{binding.binding_ref}:{manifest.patch_revision_id}:"
+            f"{certification.event_id}:{certification.stream_revision}:{typed.expected_inventory_stream_revision}:v1"
+        )
+        request_payload = {
+            "certification_event_id": certification.event_id,
+            "expected_certification_revision": certification.stream_revision,
+            "expected_inventory_stream_revision": typed.expected_inventory_stream_revision,
+            "correlation_id": typed.correlation_id,
+        }
+        key = f"{mapping.holder_ref}:{idempotency_key}"
+        existing = self._store.get_idempotency_record(self._PRINCIPAL, key)
+        request_digest = _canonical_digest(request_payload)
+        if existing is not None:
+            if existing.payload_digest != request_digest:
+                return self._rejected_append(typed.command_id, "production_output_custody_idempotency_key_reused")
+            prior = self._store.get_by_idempotency(self._PRINCIPAL, key)
+            return prior.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True) if prior is not None else self._rejected_append(typed.command_id, "production_output_custody_receipt_missing")
+        if item_id in projection.items or any(
+            event.event_type == "gameplay.inventory.production_output_received@1"
+            and event.payload.get("source_certification_event_id") == certification.event_id
+            for event in self._store.read_stream(holder_stream)
+        ):
+            return self._rejected_append(typed.command_id, "production_output_custody_duplicate")
+        item_ref = str(certification.payload["output_item"])
+        try:
+            self._registry.item(item_ref)
+            self._require_capacity(
+                projection,
+                mapping.container_id,
+                InventoryItem(item_id, item_ref, int(certification.payload["quantity"]), "pending"),
+            )
+        except InventoryRuntimeError as exc:
+            return self._rejected_append(typed.command_id, str(exc))
+        provenance = {
+            "family_ref": "production_output_custody@1",
+            "package_revision": manifest.patch_revision_id,
+            "content_digest": manifest.content_digest,
+            "declaration_ref": declaration.declaration_ref,
+            "declaration_digest": declaration.declaration_digest,
+            "binding_ref": binding.binding_ref,
+            "active_patch_set_revision": active.active_patch_set_revision,
+            "mapping_revision": mapping.mapping_revision,
+        }
+        command = GameplayCommandEnvelope(
+            command_id=typed.command_id,
+            command_type="gameplay.inventory.production_output_custody",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=mapping.holder_ref,
+            project_ref=str(certification.payload.get("project_ref")),
+            transaction_id=f"transaction:{typed.command_id}",
+            idempotency_key=key,
+            expected_revisions={holder_stream: typed.expected_inventory_stream_revision},
+            read_set_revisions={source_stream: certification.stream_revision},
+            causation_id=certification.event_id,
+            correlation_id=typed.correlation_id,
+            source_ref=certification.event_id,
+            submitted_at=typed.submitted_at,
+            pinned_revisions={"certification": certification.stream_revision, "inventory": typed.expected_inventory_stream_revision},
+            payload={
+                "stream_ref": holder_stream,
+                "event_type": "gameplay.inventory.production_output_received@1",
+                "visibility_policy": "project",
+                "event_specs": [{
+                    "event_type": "gameplay.inventory.production_output_received@1",
+                    "payload": {
+                        "actor_ref": mapping.holder_ref,
+                        "holder_ref": mapping.holder_ref,
+                        "container_id": mapping.container_id,
+                        "item_ref": item_ref,
+                        "item_id": item_id,
+                        "definition_id": item_ref,
+                        "quantity": int(certification.payload["quantity"]),
+                        "facility_ref": certification.payload["facility_ref"],
+                        "project_ref": certification.payload["project_ref"],
+                        "recipe_ref": certification.payload["recipe_ref"],
+                        "source_certification_event_id": certification.event_id,
+                        "source_certification_revision": certification.stream_revision,
+                        "mapping_revision": mapping.mapping_revision,
+                        **provenance,
+                        "provenance_digest": _canonical_digest(provenance),
+                        "terminal": "v1_terminal_no_compensation",
+                    },
+                }],
+            },
+        )
+        batch = SettlementPlan.from_command_envelope(command).to_atomic_event_batch()
+        batch = batch.model_copy(update={"idempotency_record": batch.idempotency_record.model_copy(update={"payload_digest": request_digest}, deep=True)}, deep=True)
+        return self._store.append_batch(batch)
+
+    def production_output_custody_receipt_for(self, *, result: AppendBatchResult | None, scope: str) -> SettlementReceipt:
+        if scope != "project":
+            raise InventoryRuntimeError("production_output_custody_receipt_scope_denied")
+        if result is None:
+            raise InventoryRuntimeError("production_output_custody_receipt_missing")
+        return SettlementReceipt.from_append_result(result=result, audit_refs=(f"production_output_custody:{result.transaction_id}",))
+
+    def production_output_custody_view_for(self, *, checkpoint_at: int | None = None) -> dict[str, object]:
+        if checkpoint_at is not None and checkpoint_at < 0:
+            raise InventoryRuntimeError("production_output_custody_checkpoint_invalid")
+        rows = []
+        for event in self._store.read_events():
+            if event.event_type == "gameplay.inventory.production_output_received@1":
+                rows.append(dict(event.payload))
+        return {"scope": "project", "rows": tuple(rows)}
 
     def grain_harvest_custody_receipt_for(
         self, *, result: AppendBatchResult, scope: str

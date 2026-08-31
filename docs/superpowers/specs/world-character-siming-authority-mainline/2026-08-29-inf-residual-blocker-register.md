@@ -124,22 +124,14 @@ remain green after the latest rerun; no new target-owner edge is admitted.
 
 The separate family foundation is tracked independently from August INF A-D.
 Its immutable matrix contains all twelve requested families. All eleven
-writable families now have two-content genericity evidence through one adapter,
-including `harvest_to_custody@1`, `bounded_project_budget@1`,
-`domain_acceptance_marker@1`, and `private_follow_on@1`. The non-writable
-`production_output_custody@1` family remains formally blocked by
-`blocker:production-output-custody-committed-facts@1`: committed output
-quantity, an admitted source-to-holder mapping, and a deterministic unique
-destination container are absent. Each blocker records candidate values,
-source references, business impact, and the recommended upstream decision.
-All blocked paths remain zero-write; no caller/default inference is permitted.
+All twelve families now have two-content genericity evidence through one
+owner-bound adapter. `production_output_custody@1` is resolved by certified
+output quantity and an immutable source-to-holder/container mapping admission.
+The historical blocker record remains for audit lineage; no caller/default
+inference is permitted.
 
 ## 2026-08-31 Foundation Closure Semantics
 
-The residual blocker register is compatible with a completed foundation matrix.
-The Goal is complete at the governance/matrix level because every family is
-either implemented and verified or has a formal zero-write blocker. The exact
-status is `11 generic_implemented / 0 bounded_adapter / 1 blocked`; the sole
-blocked family is `production_output_custody@1`. This must not be read as twelve
-implemented writers, and `generic_refactoring_complete=false` remains
-intentional.
+The residual blocker register now records the resolved custody admission. The
+exact status is `12 generic_implemented / 0 bounded_adapter / 0 blocked` and
+`generic_refactoring_complete=true`. August INF A-D remains `not complete`.

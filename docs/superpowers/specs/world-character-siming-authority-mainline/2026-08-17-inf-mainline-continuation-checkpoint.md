@@ -2040,3 +2040,14 @@ remains false because `production_output_custody@1` is still blocked by absent
 committed output quantity, source-to-Inventory holder mapping, and unique
 destination-container evidence. August INF A-D remains `not complete`; external
 heavenly-runtime and Godot checks are not part of this closure claim.
+
+## 2026-08-31 Production Output Custody Resolution
+
+`production_output_custody@1` is now generic_implemented. Quantity is derived
+only from a committed `production_output_certified@1` event. Holder and
+destination container are selected only through the immutable
+facility/recipe/output mapping admission, and the Inventory owner verifies the
+mapping, container state, active binding digests, source revision, and replay
+provenance before append. Bread and certified flour are proven through the same
+adapter. The prior custody blocker is retained only as historical lineage;
+August INF A-D remains `not complete`.

@@ -22,13 +22,12 @@ It introduces reusable family contracts for package content while retaining
 row-specific owner authority. It must not be counted as an August INF business
 row or used to bypass owner-admission gates.
 
-Closed Generic Gameplay Foundation v1 is complete at the governance/matrix
-level: `11 generic implementations / 0 bounded adapters / 1 blocked`.
-Matrix closure and the two-content genericity gate are verified for every
-writable family. The blocked custody family and its exact missing committed
-facts are tracked in the companion plan and residual blocker register; no
-fallback writer or inferred coordinates are allowed. `generic_refactoring_complete`
-remains false because the blocked family is not an implemented writer.
+Closed Generic Gameplay Foundation v1 is complete at the implementation level:
+`12 generic implementations / 0 bounded adapters / 0 blocked`. Matrix closure
+and the two-content genericity gate are verified for every family, including
+production-output custody. Quantity, holder, and container are derived from
+committed certification and immutable mapping evidence; no caller/default
+inference is allowed.
 
 The shared event-store substrate also has a verified snapshot-integrity
 closure: recovery cross-checks ledger events, transaction batches, append

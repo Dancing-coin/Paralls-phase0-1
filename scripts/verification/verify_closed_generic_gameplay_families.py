@@ -82,6 +82,7 @@ def main() -> int:
         "facility_identity_upgrade@1": "backend/tests/test_facility_identity_upgrade_family.py:test_identity_upgrade_family_consumes_multiple_admitted_content_instances_through_one_adapter",
         "facility_lifecycle_transition@1": "backend/tests/test_facility_lifecycle_transition_family.py:test_lifecycle_transition_genericity_uses_two_committed_content_rows",
         "production_output_certification@1": "backend/tests/test_production_output_certification_family.py:test_output_certification_family_consumes_multiple_admitted_content_instances_through_one_adapter",
+        "production_output_custody@1": "backend/tests/test_production_output_custody_family.py:test_production_output_custody_consumes_two_certified_contents_through_one_adapter",
         "harvest_to_custody@1": "backend/tests/test_harvest_to_custody_family.py:test_harvest_to_custody_consumes_wheat_and_barley_with_one_adapter",
         "fixed_service_exchange@1": "backend/tests/test_fixed_service_exchange_family.py:test_fixed_service_exchange_uses_same_adapter_for_distinct_completed_service_packages",
         "declared_exchange@1": "backend/tests/test_declared_exchange_family.py:test_declared_exchange_family_admits_distinct_content_and_replays_through_one_adapter",
@@ -106,6 +107,10 @@ def main() -> int:
         "production_output_certification@1": [
             "docs/superpowers/specs/world-character-siming-authority-mainline/closed-generic/production-output-certification/package-production-output-certification-demo-v1.manifest.json",
             "docs/superpowers/specs/world-character-siming-authority-mainline/closed-generic/production-output-certification/package-production-output-certification-mill-demo-v1.manifest.json",
+        ],
+        "production_output_custody@1": [
+            "docs/superpowers/specs/world-character-siming-authority-mainline/closed-generic/production-output-custody/package-production-output-custody-bread.manifest.json",
+            "docs/superpowers/specs/world-character-siming-authority-mainline/closed-generic/production-output-custody/package-production-output-custody-flour.manifest.json",
         ],
         "harvest_to_custody@1": [
             "docs/superpowers/specs/world-character-siming-authority-mainline/closed-generic/harvest-to-custody/package-harvest-wheat-family.manifest.json",
@@ -241,6 +246,15 @@ def main() -> int:
         "design_only_family_count": len(design_only),
         "families": rows,
         "custody_blocker": PRODUCTION_OUTPUT_CUSTODY_BLOCKER.model_dump(mode="json"),
+        "custody_blocker_status": "resolved",
+        "custody_resolution": {
+            "source_event_family": "gameplay.construction_production.production_output_certified@1",
+            "mapping_revision_refs": [
+                "mapping:production-output-custody:bakery@1",
+                "mapping:production-output-custody:mill@1",
+            ],
+            "adapter_ref": "InventoryAuthorityService.settle_production_output_custody",
+        },
         "genericity_blockers": [item.model_dump(mode="json") for item in CLOSED_FAMILY_GENERICITY_BLOCKERS],
         "genericity_blocker_family_refs": sorted(item.family_ref for item in CLOSED_FAMILY_GENERICITY_BLOCKERS),
         "genericity_evidence_family_refs": sorted(genericity_evidence),
@@ -263,7 +277,7 @@ def main() -> int:
         ],
         "generic_refactoring_complete": len(generic_implemented) == 12,
         "foundation_matrix_closure_complete": False,
-        "goal_level_status": "foundation_matrix_closure_complete; 11 generic families implemented and verified; 1 formally blocked",
+        "goal_level_status": "foundation_matrix_closure_complete; 12 generic families implemented and verified; 0 blocked",
         "bounded_family_blocker_closure_passed": (
             {item.family_ref for item in bounded_adapters}
             == {item.family_ref for item in CLOSED_FAMILY_GENERICITY_BLOCKERS}
@@ -271,7 +285,7 @@ def main() -> int:
         "matrix_closure_passed": (
             len(CLOSED_GAMEPLAY_FAMILIES) == 12
             and len(generic_implemented) + len(bounded_adapters) + len(blocked) == 12
-            and len(blocked) == 1
+            and len(blocked) == 0
             and len(design_only) == 0
         ),
     }
@@ -285,10 +299,9 @@ def main() -> int:
         and report["bounded_blocker_records_complete"]
     )
     report["foundation_matrix_closure_complete"] = report["overall_passed"] and (
-        len(generic_implemented) == 11
+        len(generic_implemented) == 12
         and len(bounded_adapters) == 0
-        and len(blocked) == 1
-        and blocked[0].family_ref == "production_output_custody@1"
+        and len(blocked) == 0
     )
     artifact = ROOT / ".harness" / "verification" / "closed-generic-gameplay-families-report.json"
     artifact.parent.mkdir(parents=True, exist_ok=True)

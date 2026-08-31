@@ -16,11 +16,10 @@ The full objective is active. `recipe_production@1` content, descriptor,
 binding and Construction start adapter are implemented and verified. The
 closed-family matrix now defines all twelve required family records with
 immutable content-model, owner, contract, descriptor, stream, event, privacy,
-predicate, effect and package-slot pins. All eleven writable families meet the
+predicate, effect and package-slot pins. All twelve families meet the
 multi-content genericity gate through one owner-bound adapter. The
-`production_output_custody@1` family is formally blocked by missing committed
-output quantity, source-to-holder mapping and unique destination-container
-evidence; that does not reduce the scope of the overall program.
+`production_output_custody@1` family now derives quantity from committed
+certification and holder/container from an immutable mapping admission.
 
 ## Program Completion Definition
 
@@ -35,7 +34,7 @@ counted as generic because its first narrow example is implemented.
 
 ## Genericization Recovery Gate
 
-The current matrix is `11 generic_implemented` and `1 blocked`. A bounded
+The current matrix is `12 generic_implemented` and `0 blocked`. A bounded
 adapter may reuse an existing owner append path, but it is not evidence that
 package content changes the execution semantics. Before any family can become
 `generic_implemented`,
@@ -96,29 +95,25 @@ semantics are closed to typed package content; all historical oven, bakery,
 mill, exchange, harvest, weather, organization, social and budget rows remain
 unchanged compatibility partitions.
 
-The declarative matrix/Harness checkpoint classifies all eleven writable
-entries as `generic_implemented` and `production_output_custody@1` as
-`blocked` by missing committed facts. The program remains active until the
-custody blocker is resolved or formally retained with required zero-write
-evidence.
+The declarative matrix/Harness checkpoint classifies all twelve entries as
+`generic_implemented`; the former custody blocker is resolved by committed
+certification and immutable mapping evidence.
 
-The family verifier emits `genericity_evidence` for each writable family and a
-single formal custody blocker. The Harness fails if evidence or blocker state
-drifts from the matrix status.
+The family verifier emits `genericity_evidence` for all twelve families. The
+Harness fails if evidence or matrix status drifts.
 
 The activation path now invokes the same immutable family binding helper used
 by focused admission tests. It recomputes typed-content and declaration
 payload digests before an active-set mutation and records committed-manifest
 evidence for each generic family in the aggregate report. This closes the
 previous helper-only verification gap.
-The current verified distribution is `11 generic_implemented / 0
-bounded_adapter / 1 blocked`, with repository pytest at `4260 passed`.
+The current verified distribution is `12 generic_implemented / 0
+bounded_adapter / 0 blocked`, with the custody-focused verification added to
+the repository suite.
 
 Under the program completion definition, this is a complete foundation matrix:
-all writable families are implemented and verified, while the non-writable
-custody family has an exact formal zero-write blocker. The Goal is complete at
-the governance/matrix level only. `generic_refactoring_complete` remains false
-because the custody family is not a generic writer.
+all twelve families are implemented and verified. `generic_refactoring_complete`
+is true. The former custody blocker remains only as historical audit lineage.
 
 Registry activation now uses the additive family descriptor set for family
 capabilities. It validates each selected family content model before mutation,
@@ -201,16 +196,16 @@ recipe and INF descriptor monkeypatch/regression semantics remain unchanged.
 - [x] Add RED-to-green blocker tests and independent Harness evidence for missing source provenance.
 - [x] Do not migrate the existing mill flour custody row automatically; prove it remains a distinct historical partition.
 
-**Current blocker (2026-08-29):** The existing committed Construction
+**Historical blocker (resolved 2026-08-31):** The existing committed Construction
 `run_finished` event exposes `output_item` but no committed output quantity.
 `facility_acquired.owner_ref` is not an admitted Inventory holder mapping, and
 the Inventory projection has no guaranteed unique open destination container.
-Therefore an owner-bound `production_output_custody@1` write cannot yet derive
-its item quantity, holder or container without caller input or a default. The
-task remains pending; the minimum unblock is a committed source-to-holder
-mapping, a quantity-bearing source/recipe provenance pin, and an exact unique
-container rule, each with its own revision/privacy contract. No runtime or
-generic custody writer is added while this blocker stands.
+The blocker was resolved by using the committed
+`production_output_certified@1` quantity and two immutable mapping rows for
+facility/recipe/output -> holder/container. `InventoryAuthorityService` now
+selects exactly one active custody binding, validates the mapping and container
+state, and appends `production_output_received@1` through the canonical spine.
+No caller/default inference is used.
 
 ## Task 6: Add the fixed exchange family gate
 

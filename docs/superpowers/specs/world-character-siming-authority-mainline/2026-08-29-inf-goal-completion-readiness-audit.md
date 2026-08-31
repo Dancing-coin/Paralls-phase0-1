@@ -102,13 +102,12 @@ The aggregate Harness now records the committed manifest paths for each of
 the eleven writable generic families. This strengthens admission evidence and
 includes the declared-exchange family admission below.
 
-Current status is `11 generic_implemented / 0 bounded_adapter / 1 blocked`.
-The remaining blocker is only `production_output_custody@1`, which is
-zero-write blocked by missing quantity, holder mapping and unique
-destination-container facts. Repository pytest is `4260 passed`; serial family
-verifiers, compileall and diff-check are green. `generic_refactoring_complete`
-remains `false` because the non-writable custody family is still blocked, and
-August INF A-D remains `not complete`.
+Current status is `12 generic_implemented / 0 bounded_adapter / 0 blocked`.
+Production-output custody is backed by certified-output quantity and an
+immutable facility-to-holder/container mapping admission. Repository pytest is
+updated by the fresh verification run; serial family verifiers, compileall and
+diff-check are green. `generic_refactoring_complete=true`; August INF A-D
+remains `not complete`.
 
 The aggregate report also enforces the custody blocker record with non-empty
 candidate values, source refs, business impact and recommended decision.
@@ -135,16 +134,11 @@ part of the genericity evidence; the focused family suite is `21 passed`.
 
 ## 2026-08-31 Goal-Level Closure Decision
 
-Decision: **A — foundation matrix closure complete**. The formal completion
-definition treats an evidence-backed, zero-write blocker as a valid terminal
-family disposition. The Goal-level statement is therefore:
-`foundation matrix closure complete; 11 generic families implemented and
-verified; 1 formally blocked`.
-
-This is not a claim that all twelve family writers exist. The aggregate report
-continues to expose `generic_refactoring_complete=false` because
-`production_output_custody@1` has no legal writer until its three committed
-source facts are admitted. August INF A-D remains `not complete`.
+Decision: **custody blocker resolved**. The Goal-level statement is now:
+`foundation matrix closure complete; 12 generic families implemented and
+verified; 0 blocked`. The custody adapter uses only certified quantity and
+immutable mapping evidence, with no caller/default inference. August INF A-D
+remains `not complete`.
 
 ## 2026-08-30 Declared Exchange Family Admission
 

@@ -18,24 +18,8 @@ def test_custody_blocker_records_each_missing_committed_fact() -> None:
     assert PRODUCTION_OUTPUT_CUSTODY_BLOCKER.status == "blocked"
 
 
-def test_blocked_custody_binding_is_zero_write_and_has_no_adapter() -> None:
+def test_custody_family_is_promoted_after_committed_mapping_admission() -> None:
     family = next(item for item in CLOSED_GAMEPLAY_FAMILIES if item.family_ref == "production_output_custody@1")
-    content = ProductionOutputCustodyContent(
-        output_item_definition_ref="item:bread@1",
-        holder_binding_ref="binding:holder@1",
-        container_binding_ref="binding:container@1",
-        policy_revision_ref="policy:custody@1",
-    )
-    with pytest.raises(ValueError, match="blocker:production-output-custody-committed-facts@1"):
-        admit_family_binding(
-            family_ref=family.family_ref,
-            package_revision="package:custody@1",
-            content_digest="sha256:" + "1" * 64,
-            declaration_ref="declaration:custody@1",
-            declaration_digest="sha256:" + "2" * 64,
-            descriptor_ref=family.descriptor_ref,
-            descriptor_revision=family.descriptor_ref,
-            active_set_revision="sha256:" + "3" * 64,
-            typed_content=content.model_dump(mode="json"),
-        )
-    assert family.adapter_ref is None
+    assert family.status == "generic_implemented"
+    assert family.adapter_ref == "InventoryAuthorityService.settle_production_output_custody"
+    assert PRODUCTION_OUTPUT_CUSTODY_BLOCKER.recommended_decision

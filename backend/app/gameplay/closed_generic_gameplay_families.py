@@ -134,6 +134,19 @@ class ProductionOutputCustodyContent(ClosedFamilyContent):
         return self
 
 
+class ProductionOutputCustodyIntent(StrictGameplayModel):
+    """Certified-output request; Inventory derives all custody coordinates."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    certification_event_id: str = Field(min_length=1)
+    expected_certification_revision: int = Field(ge=1)
+    expected_inventory_stream_revision: int = Field(ge=0)
+    command_id: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+    submitted_at: str = Field(min_length=1)
+
+
 class DeclaredExchangeContent(ClosedFamilyContent):
     outcome_ref: str = Field(min_length=1)
     tradeable_definition_ref: str | None = None
@@ -468,7 +481,7 @@ CLOSED_GAMEPLAY_FAMILIES: tuple[ClosedGameplayFamily, ...] = (
     ClosedGameplayFamily("facility_identity_upgrade@1", "inf:construction-facility-identity-upgrade@1", "settlement", "descriptor:construction-facility-identity-upgrade@1", "actor_gameplay.construction_production_domain", "gameplay:construction_production:{facility_ref}", ("gameplay.construction_production.facility_transformed",), "project", "capability:facility-identity-upgrade@1", "outcome:facility-identity-upgrade@1", ("predicate:construction-facility-acquired@1",), ("effect:facility-identity-upgrade@1",), ("slot:source-definition@1", "slot:target-definition@1", "slot:policy@1", "slot:qualification@1"), FacilityIdentityUpgradeContent, status="generic_implemented", adapter_ref="ConstructionProductionAuthority.settle_facility_identity_upgrade"),
     ClosedGameplayFamily("facility_lifecycle_transition@1", "inf:construction-facility-lifecycle-transition@1", "lifecycle", "descriptor:construction-facility-lifecycle-transition@1", "actor_gameplay.construction_production_domain", "gameplay:construction_production:{facility_ref}", ("gameplay.construction_production.facility_decommissioned",), "project", "capability:facility-lifecycle-transition@1", "outcome:facility-lifecycle-transition@1", ("predicate:construction-facility-acquired@1",), ("effect:facility-lifecycle-transition@1",), ("slot:facility-definition@1", "slot:lifecycle@1", "slot:policy@1"), FacilityLifecycleTransitionContent, status="generic_implemented", adapter_ref="ConstructionProductionAuthority.settle_facility_lifecycle_transition"),
     ClosedGameplayFamily("production_output_certification@1", "inf:construction-production-output-certification@1", "lifecycle", "descriptor:construction-production-output-certification@1", "actor_gameplay.construction_production_domain", "gameplay:construction_production:{facility_ref}", ("gameplay.construction_production.production_output_certified@1",), "project", "capability:production-output-certification@1", "outcome:production-output-certification@1", ("predicate:construction-production-run-completed@1",), ("effect:production-output-certification@1",), ("slot:recipe@1", "slot:output-item@1", "slot:quantity@1", "slot:policy@1"), ProductionOutputCertificationContent, status="generic_implemented", adapter_ref="ConstructionProductionAuthority.settle_production_output_certification"),
-    ClosedGameplayFamily("production_output_custody@1", "inf:inventory-production-output-custody@1", "contract_admission", "descriptor:inventory-production-output-custody@1", "actor_gameplay.inventory_domain", "gameplay:inventory:{holder_ref}", ("gameplay.inventory.production_output_received@1",), "project", "capability:production-output-custody@1", "outcome:production-output-custody@1", ("predicate:construction-production-output-certified@1",), ("effect:production-output-custody@1",), ("slot:output-item@1", "slot:holder@1", "slot:container@1", "slot:policy@1"), ProductionOutputCustodyContent, status="blocked", blocker_ref="blocker:production-output-custody-committed-facts@1"),
+    ClosedGameplayFamily("production_output_custody@1", "inf:inventory-production-output-custody@1", "contract_admission", "descriptor:inventory-production-output-custody@1", "actor_gameplay.inventory_domain", "gameplay:inventory:{holder_ref}", ("gameplay.inventory.production_output_received@1",), "project", "capability:production-output-custody@1", "outcome:production-output-custody@1", ("predicate:construction-production-output-certified@1",), ("effect:production-output-custody@1",), ("slot:output-item@1", "slot:holder@1", "slot:container@1", "slot:policy@1"), ProductionOutputCustodyContent, status="generic_implemented", adapter_ref="InventoryAuthorityService.settle_production_output_custody"),
     ClosedGameplayFamily("declared_exchange@1", "inf:economy-declared-exchange@1", "settlement", "descriptor:economy-declared-exchange@1", "actor_gameplay.economy_domain", "gameplay:economy", ("gameplay.economy.package_declared_negotiated_exchange_settled",), "authority_only", "capability:declared-exchange@1", "outcome:declared-exchange@1", ("predicate:declared-source-evidence@1",), ("effect:declared-exchange@1",), ("slot:outcome@1", "slot:tradeable-or-service@1", "slot:policy@1", "slot:eligibility@1"), DeclaredExchangeContent, status="generic_implemented", adapter_ref="EconomyAuthorityService.settle_declared_exchange"),
     ClosedGameplayFamily("fixed_service_exchange@1", "inf:economy-fixed-service-exchange@1", "settlement", "descriptor:economy-fixed-service-exchange@1", "actor_gameplay.economy_domain", "gameplay:economy", ("gameplay.economy.package_declared_negotiated_exchange_settled",), "authority_only", "capability:fixed-service-exchange@1", "outcome:fixed-service-exchange@1", ("predicate:completed-service@1",), ("effect:fixed-service-exchange@1",), ("slot:service@1", "slot:provider-rule@1", "slot:receiver-rule@1", "slot:price-policy@1", "slot:policy@1"), FixedServiceExchangeContent, status="generic_implemented", adapter_ref="EconomyAuthorityService.settle_fixed_service_exchange"),
     ClosedGameplayFamily("bounded_project_budget@1", "inf:economy-bounded-project-budget@1", "lifecycle", "descriptor:economy-bounded-project-budget@1", "actor_gameplay.economy_domain", "gameplay:economy", ("gameplay.economy.public_project_budget_commitment_recorded", "gameplay.economy.budget_reserved", "gameplay.economy.public_project_budget_consumed", "gameplay.economy.public_project_budget_closed"), "authority_only", "capability:bounded-project-budget@1", "outcome:bounded-project-budget@1", ("predicate:project-budget-source@1",), ("effect:bounded-project-budget@1",), ("slot:project@1", "slot:currency@1", "slot:amount@1", "slot:policy@1", "slot:source-work-order@1", "slot:source-project-step@1"), BoundedProjectBudgetContent, status="generic_implemented", adapter_ref="EconomyAuthorityService.settle_bounded_project_budget"),
@@ -781,6 +794,7 @@ __all__ = [
     "FacilityIdentityUpgradeIntent",
     "FacilityLifecycleTransitionIntent",
     "ProductionOutputCertificationIntent",
+    "ProductionOutputCustodyIntent",
     "DeclaredExchangeIntent",
     "FixedServiceExchangeIntent",
     "HarvestToCustodyIntent",
