@@ -1,6 +1,13 @@
 # INF-1 Specification Tree
 
-Status: `approved INF-1 narrow verticals, including four Survival rows, two closed Survival state-action rows, one Construction maintenance-state row, one closed Economy wage-obligation row, one closed Ecology frost crop-state row, one closed Ecology drought state row, and two exact weather-front Survival edges, are verified; August INF-1 closure remains incomplete`
+Status: `approved INF-1 narrow verticals are verified through INF-1AM; remaining unformed Construction slots are owner-contract blocked or duplicate/closed; August INF-1 closure remains incomplete`
+
+The approved [formal blocker disposition contract](../2026-08-26-august-inf-formal-blocker-disposition-contract.md)
+keeps the Goal active while preserving INF-1AH as the implemented narrow
+vertical. INF-1AI, INF-1AJ, INF-1AK, INF-1AL, and INF-1AM are the latest sequential Construction
+follow-on rows; unformed Construction slots remain owner-contract blocked or
+duplicate/closed; no fourth owner discovery or inferred Construction outcome is
+permitted.
 
 Date: `2026-08-12`
 
@@ -76,6 +83,51 @@ This tree is aligned with:
 39. [INF-1AG package-content/read-only-binding sequencing design](2026-08-18-inf-1ag-package-content-readonly-binding-sequencing-design.md) - P1 verifies candidate-time structural validation plus activation-time exact-one descriptor binding/pin retention; it is historical sequencing evidence for the exact frozen `oven -> kiln` row only
 40. [INF-1AG industrial facilities v1 freeze record](2026-08-19-inf-1ag-industrial-facilities-v1-freeze-record.md) - frozen canonical v2 manifest bytes plus verified declaration/content digest claims for the exact implemented row; no additional candidate, descriptor, catalog row, or Construction write path is admitted
 41. [INF-1AG Construction descriptor/catalog admission packet](2026-08-19-inf-1ag-construction-owner-operation-descriptor-admission-packet.md) - approved immutable descriptor and existing-Construction contract row with focused binding evidence; the subsequent narrow vertical is separately verified
+42. [INF-1AG industrial facilities v2 mill freeze record](2026-08-20-inf-1ag-industrial-facilities-v2-mill-freeze-record.md) - frozen canonical v2 package, exact immutable mill descriptor/catalog admission, and verified one-row Construction vertical
+43. [INF-1AH mill reinforced decommission Owner-Admission Contract design](2026-08-20-inf-1ah-mill-reinforced-decommission-owner-admission-design.md) - exact active `mill_reinforced -> decommissioned` lifecycle row with fixed active-run zero-write rejection; implementation closure is recorded below
+44. [INF-1AH minimum business decision and admission closure packet](2026-08-20-inf-1ah-minimum-business-decision-admission-closure-packet.md) - historical literal-field closure for the distinct frozen v3 decommission package; v2 remains source evidence only
+45. [INF-1AH industrial facilities v3 decommission freeze record](2026-08-20-inf-1ah-industrial-facilities-v3-decommission-freeze-record.md) - frozen digest-verified v3 content and exact read-only binding; the later runtime closure does not modify either frozen package
+46. [INF-1AH Construction descriptor/catalog admission packet](2026-08-20-inf-1ah-construction-owner-operation-descriptor-catalog-admission-packet.md) - exact immutable descriptor/catalog admission and read-only v3 binding evidence, preserved as the runtime's prerequisite
+47. [INF-1AH package freeze and future admission checklist](2026-08-20-inf-1ah-decommission-package-freeze-checklist.md) - fixed/mechanical/missing field classification and future gate order
+48. [INF-1AH lifecycle runtime closure](2026-08-21-inf-1ah-mill-decommission-lifecycle-runtime-closure.md) - verified owner-bound projection, verifier, fixed reducer, append receipt, replay, and terminal zero-write evidence
+49. [INF-1AI facility operational verification](2026-08-27-inf-1ai-facility-operational-verification-owner-admission-design.md) - implemented exact completed Production run -> Construction verification projection; no output, payment, maintenance, or generic transform semantics
+49. [INF-1 owner-admission candidate register](2026-08-20-inf-1-owner-admission-candidate-register.md) - August Construction candidate inventory: one implemented row plus two non-formed slots; not an INF-1 completion denominator
+
+## 2026-08-20 Mill Reinforcement Narrow Vertical
+
+Status: `implemented narrow vertical: exact frozen mill -> mill_reinforced row verified`.
+
+The next INF-1AG row is now an implemented narrow vertical for the exact
+`mill -> mill_reinforced` Construction facility identity contract. Its contract and
+implementation evidence are recorded in the existing
+[INF-1AG candidate design](2026-08-17-inf-1ag-construction-candidate-owner-admission-design.md)
+and [plan](../../../plans/world-character-siming-authority-mainline/inf-1/2026-08-17-inf-1ag-construction-candidate-owner-admission-plan.md).
+The v2 package is frozen with verified digests, resolves exactly one immutable
+descriptor, and is covered by focused tests plus its independent Harness. It
+does not modify frozen v1 or authorize a generic transform, another catalog
+row, or another INF runtime.
+
+## 2026-08-20 INF-1AH Decommission Design
+
+The selected row is now `implemented narrow vertical`: the exact
+active `mill_reinforced -> facility_decommissioned@1` lifecycle transition. It uses
+only `ConstructionProductionAuthority`, the committed acquisition and frozen
+v2 reinforcement facts, a project-scoped facility stream, and append/replay
+boundaries already owned by Construction. It must preserve facility kind and
+all non-Construction facts. The active-run rule is fixed: a committed started
+`ProductionRun` rejects before append without cancellation, reservation
+release, output disposal, refund, compensation, or a substitute event. The
+[minimum business decision and admission closure packet](2026-08-20-inf-1ah-minimum-business-decision-admission-closure-packet.md)
+records the literals that produced the distinct frozen v3 record. Its exact
+descriptor/catalog admission and read-only binding pins are verified. This
+historical design gate is now followed by the separately implemented
+row-specific lifecycle-status projection and business-event runtime.
+
+The exact descriptor/catalog literals and activation boundary were
+isolated in the [INF-1AH descriptor/catalog admission packet](2026-08-20-inf-1ah-construction-owner-operation-descriptor-catalog-admission-packet.md).
+The [lifecycle runtime closure](2026-08-21-inf-1ah-mill-decommission-lifecycle-runtime-closure.md)
+is implemented and verified. Neither record admits a generic lifecycle action
+or another Construction write path.
 
 ## Current implementation boundary
 
@@ -115,20 +167,151 @@ complete.
 
 ## INF-1AG Current Row Status
 
-The exact frozen `oven -> kiln` row is implemented and verified through the
-existing `ConstructionProductionAuthority`. Its typed proposal contains no
-owner, stream, event, privacy, receipt, fragment, target, or package choice.
-The authority resolves the active immutable binding, validates the committed
-project-visible `facility_acquired` evidence and its facility/project/revision
-pins, then appends one project-scoped `facility_transformed` event through
-`GameplayCommandEnvelope -> SettlementPlan -> GameplayEventStore.append_batch()`.
+## 2026-08-20 Descriptor/Binding Admission Approval (Historical Gate)
 
-Focused evidence is `11 passed`; the independent
+The exact descriptor and immutable Construction catalog row from the
+[admission packet](2026-08-19-inf-1ag-construction-owner-operation-descriptor-admission-packet.md)
+were explicitly approved for admission work. The allowed scope was limited
+to the existing `GameplayPatchRegistry` candidate/activation boundary:
+candidate structural and digest validation, exact-one read-only descriptor
+resolution, package/content/declaration/descriptor/active-set pin retention,
+and full/checkpoint-tail replay. The catalog remains immutable/read-only.
+
+Admission evidence did not create or invoke a Construction business event.
+The later runtime approval is a separate gate and is recorded below.
+
+The dedicated admission Harness was
+`infra-construction-facility-descriptor-binding-admission`; its zero-write,
+privacy, revision, idempotency, receipt, exact-one resolution, and replay
+selectors cover only the frozen package binding and existing descriptor.
+
+## 2026-08-20 Construction Runtime Approval
+
+The exact frozen `oven -> kiln` row is implemented and verified through the
+existing `ConstructionProductionAuthority`, using only the admitted descriptor,
+`GameplayCommandEnvelope -> SettlementPlan -> GameplayEventStore.append_batch()`,
+and the existing replay/projection spine. The row-specific verifier binds the
+committed project-visible `facility_acquired` event to `facility_ref` and
+`project_ref`, pins package/declaration/descriptor and stream revisions, and
+rejects unknown, inactive, digest-mismatched, ambiguous, stale, private,
+conflicting, duplicate, or revision-conflicting inputs before any append.
+
+Focused evidence is `12 passed`; the independent
 `infra-construction-facility-package-transform` Harness is green. It proves
-success, append-derived receipt, exact/changed idempotency, inactive/unadmitted/
-ambiguous/digest-conflicting package binding, private and project-conflicting
-evidence, revision zero-write, full replay, checkpoint-tail replay, and v1
-terminal/no-compensation behavior. The frozen manifest remains unchanged.
-This does not admit a generic Construction transform, payment, material,
-fanout, compensation, router, registry, writer, or second runtime. August INF
-A-D remains `not complete`.
+success, append-derived project receipt, exact/changed idempotency, package and
+binding zero-write cases, privacy and binding fences, full replay,
+checkpoint-tail replay, and v1 terminal/no-compensation behavior. This is one
+implemented narrow vertical only; generic Construction transforms and all
+other INF rows remain separately gated. August INF A-D remains `not complete`.
+
+INF-1AI's committed operational-verification record is consumed read-only by
+the separately owned INF-2AE commissioning-review exchange. That handoff does
+not change Construction ownership or admit a cross-domain Construction write.
+
+Verification caveat: the exact INF-1AG focused suite and both dedicated Harness
+profiles are green. After repairing stale selector and predecessor evidence
+references, a fresh all-INF inventory reran all 124 profiles and every profile
+passed. Full pytest remains `3561 passed, 1 failed` because the host denies
+writing the workspace-parent `.env`; this is an environment limitation, not an
+INF-1AG code failure.
+
+## INF-1AJ Facility Public-Use Enablement
+
+`INF-1AJ` is an implemented narrow Construction vertical. One committed,
+project-visible `facility_operationally_verified@1` event for an `oven` enables
+the Construction-owned `public_use_status=enabled` projection and increments
+the facility revision. The fixed project stream/event, owner-derived
+idempotency, append-derived receipt, source/stream revision fence, terminal
+no-disable/no-compensation rule, and full/checkpoint-tail replay are covered by
+the independent `inf1aj-facility-public-use` Harness and focused tests.
+
+The row does not imply licensing, technology, maintenance, weather immunity,
+production output, inventory, payment, material, social, or generic
+facility-kind availability. Other facility kinds remain zero-write for this
+capability.
+
+## INF-1AK Public-Project Step Completion
+
+`INF-1AK` is an implemented narrow Construction extension. It consumes only
+the committed Organization `work_order_fulfilled@1` event for the literal
+`work-order:public-project:workshop-bench@1` and records one fixed
+`project-step:public-project:workshop-bench@1` completion on the matching
+Construction facility/project stream. Source/target heads, facility/project
+binding, project privacy, owner-derived idempotency, append receipt,
+zero-write rules, and full/checkpoint-tail replay are covered by the
+independent `inf1ak-public-project-step-completion` Harness.
+
+This row does not change facility kind, condition, public-use status, output,
+inventory, material, payment, wage, permit, technology, weather, maintenance,
+social, population, or generic task semantics.
+
+Implementation plan: [INF-1AJ Facility Public-Use Enablement](../../../plans/world-character-siming-authority-mainline/inf-1/2026-08-27-inf-1aj-facility-public-use-plan.md).
+
+## 2026-08-28 Current Lane Checkpoint
+
+INF-1's approved Construction rows remain implemented and verified through
+INF-1AM. Remaining shapes are `duplicate/closed` or `owner-contract blocked`
+because no additional committed Construction source and exact outcome tuple
+exists. No new Construction row is inferred from production, maintenance,
+repair, transform, or output facts. Current verification is `1232 passed` for
+the filename-scoped INF/INFRA collection, `1246 passed` for the keyword
+selection, and `4004 passed` for the repository-root suite. Goal remains
+active; August INF A-D remains not complete.
+
+## INF-1AL Mill-Reinforced Public-Use Enablement
+
+`INF-1AL` is an implemented narrow existing-row extension. A committed,
+project-visible Construction `facility_operationally_verified@1` event for a
+current active `mill_reinforced` facility is accepted only with exactly one
+earlier frozen v2 `mill -> mill_reinforced` provenance event. Construction then
+records one project-scoped `facility_public_use_enabled@1` fact. It changes
+only `public_use_status` and facility revision; it does not imply output,
+inventory, material, payment, permit, technology, weather, maintenance,
+social, population, or generic facility availability.
+
+The row has an independent descriptor/catalog partition,
+owner-derived idempotency, append-derived receipt, zero-write rejection,
+and full/checkpoint-tail replay evidence in the
+[INF-1AL contract](2026-08-28-inf-1al-mill-reinforced-public-use-owner-admission-design.md),
+[implementation plan](../../../plans/world-character-siming-authority-mainline/inf-1/2026-08-28-inf-1al-mill-reinforced-public-use-plan.md),
+and `inf1al-mill-reinforced-public-use` Harness. INF-1AJ remains the separate
+oven-only row; no generic public-use operation is admitted.
+
+Current INF-1 verification is `1235 passed` in the filename-scoped INF/INFRA
+collection, `1249 passed` in the keyword-selected collection, and `4007 passed`
+for the repository-root suite. INF-1AM is the latest implemented
+existing-row extension; all remaining unformed Construction shapes remain
+duplicate/closed or owner-contract blocked.
+
+## INF-1AM Reinforced Mill Flour Output Certification
+
+`INF-1AM` is an implemented narrow Construction row. One committed,
+project-visible acquisition, the exact frozen v2 `mill -> mill_reinforced`
+provenance, and one completed run using
+`recipe:industrial-facilities:mill-flour@1` with
+`item:industrial-facilities:flour@1` produce one project-visible
+`mill_flour_output_certified@1` fact with fixed quantity `10`.
+
+The row is terminal per run and records only Construction certification. Its
+owner-derived idempotency, append-derived project receipt,
+full/checkpoint-tail replay, source/revision/privacy fences, and zero-write
+boundaries are covered by the `inf1am-mill-flour-output-certification`
+Harness. It does not create Inventory or Economy truth and is not a generic
+production-output API.
+
+## 2026-08-28 Next Construction Row Blocker
+
+The post-INF-1AM audit found no second unclaimed Construction source/outcome
+tuple in the existing committed evidence. Acquisition, repair, transform,
+decommission, run completion, maintenance, operational verification,
+public-use, project-step, and flour-output shapes are already closed by
+existing Construction owner paths; production-completed work evidence has no
+unclaimed Construction target semantic.
+
+The only current new direction, Organization grain intake, lacks a committed
+`facility_ref`/`project_ref` binding and an exact Construction-owned outcome,
+so it cannot select a Construction stream or justify a caller-shaped action.
+The precise missing fields and zero-write boundary are recorded in
+[the next-row blocker](2026-08-28-inf-1-next-construction-row-blocker.md).
+No RED tests, runtime, catalog, or Harness were added because no unique row
+exists to implement without inventing facts or generic behavior.

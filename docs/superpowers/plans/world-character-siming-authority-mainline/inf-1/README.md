@@ -46,8 +46,11 @@ remaining implicit inside the larger post-P5 foundation tree.
 31. [INF-1AE Construction action owner-contract audit plan](2026-08-17-inf-1ae-construction-action-owner-contract-audit-plan.md) - repair narrow vertical implemented and verified; transform/payment remain blocked
 32. [INF-1AF Construction facility transform owner-contract audit plan](2026-08-17-inf-1af-construction-facility-transform-owner-contract-audit-plan.md) - generic transforms remain zero-write; one separately approved exact Construction contract is implemented
 33. [INF-1AF bakery reinforcement Owner-Admission Contract plan](2026-08-17-inf-1af-bakery-reinforcement-owner-admission-plan.md) - implemented narrow vertical with RED tests, fixed catalog entry, existing owner path, and independent Harness
-34. [INF-1AG Construction candidate Owner-Admission plan](2026-08-17-inf-1ag-construction-candidate-owner-admission-plan.md) - candidate-design evidence only; a new plan awaits one explicit literal facility-kind pair and policy/terminal business choice
+34. [INF-1AG Construction candidate Owner-Admission plan](2026-08-17-inf-1ag-construction-candidate-owner-admission-plan.md) - completed exact frozen `oven -> kiln` row; generic facility transforms remain owner-contract blocked
 35. [INF-1AG package-content/read-only-binding sequencing plan](2026-08-18-inf-1ag-package-content-readonly-binding-sequencing-plan.md) - P1 implementation and verification close the non-empty candidate sequencing conflict; real package freeze, business descriptor admission, and Construction vertical remain separate approvals
+36. [INF-1AH mill reinforced decommission Owner-Admission plan](2026-08-20-inf-1ah-mill-reinforced-decommission-owner-admission-plan.md) - implemented and verified exact `mill_reinforced -> decommissioned` lifecycle vertical; no generic lifecycle or cross-domain behavior
+37. [INF-1AH industrial facilities v3 decommission freeze record](../../../specs/world-character-siming-authority-mainline/inf-1/2026-08-20-inf-1ah-industrial-facilities-v3-decommission-freeze-record.md) - historical frozen v3 prerequisite; descriptor/catalog admission and the separate row-specific lifecycle runtime are verified
+38. [INF-1AI facility operational verification plan](2026-08-27-inf-1ai-facility-operational-verification-plan.md) - implemented fixed completed-run verification projection with replay and zero-write evidence
 
 ## Plan-of-record requirements
 

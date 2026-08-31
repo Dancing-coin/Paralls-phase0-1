@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-weather-front-government-drought-advisory",
+  "order": 234,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_weather_front_government_drought_advisory.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-weather-front-government-drought-advisory-report.json",
+  "description": "INF-3R fixed project-scoped weather:drought front to existing Government advisory row"
+}

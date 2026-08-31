@@ -12,7 +12,7 @@ def main() -> int:
         "authority_owned_closed_registration": "test_economy_wage_registration_is_authority_owned_and_closed",
         "retry_owner_fragment": "test_economy_wage_retry_is_owner_fragment_event_derived",
         "cancel_owner_fragment": "test_economy_wage_cancel_is_owner_fragment_event_derived",
-        "expiry_owner_fragment_and_receipt": "test_economy_wage_expiry_is_owner_fragment_event_derived_and_receipted",
+        "expiry_owner_fragment_and_receipt": "test_economy_wage_expiry_plan_is_zero_write_and_owner_commit_is_append_derived",
         "expiry_idempotency_revision_terminal_zero_write": "test_economy_wage_expiry_is_idempotent_and_rejects_stale_or_terminal_without_writes",
         "expiry_privacy_checkpoint_tail_replay": "test_economy_wage_expiry_is_project_scoped_and_checkpoint_tail_replayable",
         "retry_idempotency_revision_zero_write": "test_economy_wage_retry_is_idempotent_and_stale_retry_is_zero_write",

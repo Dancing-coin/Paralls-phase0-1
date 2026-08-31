@@ -1,6 +1,6 @@
 # INF-1AG Industrial Facilities V1 Freeze Record
 
-Status: `package content frozen and canonical digests verified; exact descriptor/binding admission and Construction narrow vertical implemented and verified`
+Status: `package frozen and digest-verified; exact descriptor/binding admission and Construction narrow vertical implemented and verified`
 
 Date: `2026-08-19`
 
@@ -47,15 +47,10 @@ and are never silently repaired or overwritten.
 
 ## Boundary After Freeze
 
-No `GameplayPatchRegistry` candidate was installed, no active set was
-composed, and no Construction descriptor/catalog row was added. The current
-read-only catalog resolves zero descriptors for
-`capability:construction-facility-package-declared-transform@1`; an activation
-attempt would fail closed with `patch_capability_binding_unknown` before active
-set mutation.
-
-The next minimum approval is the exact immutable INF-1AG
-`OwnerOperationDescriptor` catalog row and its read-only binding admission.
-Construction verifier/reducer/append work, RED tests, and Harness remain
-separate later approvals. This freeze does not implement INF-1AG or advance
-August INF A-D completion.
+The exact immutable `OwnerOperationDescriptor` and governed Construction
+catalog row are admitted through the existing read-only binding path. The
+owner-bound verifier/reducer and append vertical consume this frozen record
+only; they do not modify the manifest or select authority coordinates. The
+focused runtime suite and independent Harness provide the resulting evidence.
+This freeze record does not broaden INF-1AG beyond the one `oven -> kiln` row
+and does not advance August INF A-D completion.

@@ -17,19 +17,21 @@ def main() -> int:
         checks[name] = result.returncode == 0
         logs.append(str(log_path.relative_to(root)).replace("\\", "/"))
     obligation_test_path = root / "backend" / "tests" / "test_infra_time_obligation.py"
+    economy_test_path = root / "backend" / "tests" / "test_infra_economy_wage_obligation.py"
+    production_test_path = root / "backend" / "tests" / "test_infra_multi_domain_obligation.py"
     obligation_cases = {
-        "caller_driven_lifecycle_and_receipt": "test_due_obligation_lifecycle_is_caller_driven_and_receipted",
-        "duplicate_idempotency": "test_due_obligation_duplicate_replays_without_second_write",
-        "revision_conflict_zero_write": "test_obligation_revision_conflict_is_zero_write",
-        "closed_and_unauthorized_zero_write": "test_closed_or_unauthorized_fragment_is_zero_write",
-        "privacy_and_checkpoint_tail_replay": "test_obligation_full_and_checkpoint_tail_replay_match_and_scope_is_filtered",
-        "economy_owner_due_fragment": "test_economy_due_fragment_settles_only_through_coordinator",
-        "survival_owner_due_fragment": "test_survival_due_fragment_rejects_bad_mode_without_writing",
-        "production_owner_due_fragment": "test_production_due_fragment_checks_finish_before_coordinator_write",
+        "caller_driven_lifecycle_and_receipt": (economy_test_path, "test_economy_wage_due_is_clock_selected_and_owner_settled"),
+        "duplicate_idempotency": (production_test_path, "test_production_due_policy_duplicate_replays_without_second_write"),
+        "revision_conflict_zero_write": (obligation_test_path, "test_obligation_revision_conflict_is_zero_write"),
+        "closed_and_unauthorized_zero_write": (obligation_test_path, "test_closed_or_unauthorized_fragment_is_zero_write"),
+        "privacy_and_checkpoint_tail_replay": (obligation_test_path, "test_obligation_full_and_checkpoint_tail_replay_match_and_scope_is_filtered"),
+        "economy_owner_due_fragment": (obligation_test_path, "test_economy_due_fragment_settles_only_through_coordinator"),
+        "survival_owner_due_fragment": (obligation_test_path, "test_survival_due_fragment_rejects_bad_mode_without_writing"),
+        "production_owner_due_fragment": (obligation_test_path, "test_production_due_fragment_checks_finish_before_coordinator_write"),
     }
-    for name, test_name in obligation_cases.items():
+    for name, (case_path, test_name) in obligation_cases.items():
         log_path = verification_dir(root) / f"infra-time-obligation-{name}.log"
-        result = run_command([python, "-m", "pytest", "-q", str(obligation_test_path), "-k", test_name], root, log_path)
+        result = run_command([python, "-m", "pytest", "-q", str(case_path), "-k", test_name], root, log_path)
         checks[name] = result.returncode == 0
         logs.append(str(log_path.relative_to(root)).replace("\\", "/"))
     activation_test_path = root / "backend" / "tests" / "test_population_continuity.py"
@@ -49,6 +51,8 @@ def main() -> int:
         "focused_test_files": [
             str(test_path.relative_to(root)).replace("\\", "/"),
             str(obligation_test_path.relative_to(root)).replace("\\", "/"),
+            str(economy_test_path.relative_to(root)).replace("\\", "/"),
+            str(production_test_path.relative_to(root)).replace("\\", "/"),
             str(activation_test_path.relative_to(root)).replace("\\", "/"),
         ],
         "evidence": logs,

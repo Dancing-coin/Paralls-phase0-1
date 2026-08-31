@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf4ai-p5-actor-private-expression",
+  "order": 247,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf4ai_p5_actor_private_expression.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf4ai-p5-actor-private-expression-report.json",
+  "description": "INF-4AI exact completed handshake to actor-private Social shared experience"
+}

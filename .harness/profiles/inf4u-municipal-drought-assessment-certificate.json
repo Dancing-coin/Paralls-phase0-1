@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf4u-municipal-drought-assessment-certificate",
+  "order": 238,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf4u_municipal_drought_assessment_certificate.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf4u-municipal-drought-assessment-certificate-report.json",
+  "description": "INF-4U exact completed municipal assessment to Ownership certificate title"
+}

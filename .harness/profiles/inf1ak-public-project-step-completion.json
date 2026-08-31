@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf1ak-public-project-step-completion",
+  "order": 179,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf1ak_public_project_step_completion.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf1ak-public-project-step-completion-report.json",
+  "description": "INF-1AK exact Organization fulfilled public-project work order to Construction project-step completion"
+}

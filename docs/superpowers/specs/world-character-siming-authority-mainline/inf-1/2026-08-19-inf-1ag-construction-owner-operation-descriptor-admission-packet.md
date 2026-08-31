@@ -1,6 +1,6 @@
 # INF-1AG Construction Owner-Operation Descriptor Admission Packet
 
-Status: `approved and implemented static immutable admission; exact Construction narrow vertical subsequently implemented and verified`
+Status: `approved and implemented static immutable admission; exact Construction narrow vertical implemented and verified`
 
 Date: `2026-08-19`
 
@@ -146,7 +146,7 @@ The exact descriptor and contract row above are present in the existing
 read-only catalog. The focused catalog/binding suite proves the frozen package
 resolves exactly one descriptor and retains the package/content/declaration/
 descriptor/active-set pins in a temporary registry; no Construction append is
-performed. The suite is `16 passed`.
+performed by that admission profile. The suite is `16 passed`.
 
 The owner-bound Construction verifier/reducer and narrow append vertical were
 subsequently approved and implemented with focused RED-to-green coverage and

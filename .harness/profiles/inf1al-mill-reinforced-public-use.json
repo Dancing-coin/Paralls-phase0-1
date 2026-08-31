@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf1al-mill-reinforced-public-use",
+  "order": 179,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf1al_mill_reinforced_public_use.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf1al-mill-reinforced-public-use-report.json",
+  "description": "INF-1AL exact completed mill_reinforced run to Construction public-use status"
+}

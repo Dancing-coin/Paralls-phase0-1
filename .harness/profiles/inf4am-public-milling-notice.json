@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf4am-public-milling-notice",
+  "order": 182,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf4am_public_milling_notice.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf4am-public-milling-notice-report.json",
+  "description": "INF-4AM exact milling activity to Government project notice"
+}

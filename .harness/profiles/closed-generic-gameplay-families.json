@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "closed-generic-gameplay-families",
+  "order": 999,
+  "include_in_profile_order": false,
+  "include_in_all": true,
+  "script": "scripts/verification/verify_closed_generic_gameplay_families.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/closed-generic-gameplay-families-report.json",
+  "description": "Closed generic gameplay family matrix, immutable catalog boundary, and production custody blocker evidence"
+}

@@ -42,6 +42,13 @@ python scripts/verification/harness.py --profile infra-payroll-operating-window-
 python scripts/verification/harness.py --profile infra-event-derived-bounded-due-lifecycle-view
 python scripts/verification/harness.py --profile infra-economy-government-tax-payment
 python scripts/verification/harness.py --profile infra-package-declared-negotiated-exchange
+python scripts/verification/harness.py --profile infra-construction-mill-decommission-descriptor-admission
+python scripts/verification/harness.py --profile infra-construction-mill-decommission
+python scripts/verification/harness.py --profile infra-weather-front-government-drought-advisory-presentation
+python scripts/verification/harness.py --profile inf2am-reinforced-mill-flour-output-purchase
+python scripts/verification/harness.py --profile inf2ad-municipal-drought-assessment-exchange
+python scripts/verification/harness.py --profile inf3s-government-drought-assessment-contract
+python scripts/verification/harness.py --profile inf4u-municipal-drought-assessment-certificate
 ```
 
 `phase2-bakery-authored-agents` is retained as a historical sample profile only. Its direct-batch
@@ -3074,6 +3081,19 @@ new runtime, retry, compensation, or any other target edge.
 
 - `.harness/verification/infra-weather-front-survival-dehydration-report.json`
 
+### `infra-weather-front-government-drought-advisory`
+
+Backend-only INF-3R proof for one fixed project-visible `weather:drought`
+front to existing Government advisory issuance. Independent selectors prove the
+fixed Government append receipt, source/privacy/region/jurisdiction and
+revision zero-write fences, immutable catalog admission, exact/changed
+idempotency including exact retry after source advancement, and
+full/checkpoint-tail advisory replay. It does not issue water
+restrictions, payment, material, production, population, compensation, retry,
+revocation, fanout, a generic Government policy API, or an Ecology router.
+
+- `.harness/verification/infra-weather-front-government-drought-advisory-report.json`
+
 ## Evidence Rules
 
 - Static checks prove only static wiring.
@@ -3154,3 +3174,71 @@ generic promotion, router, registry, payroll, payment, compensation, or any
 other branch target.
 
 - `.harness/verification/infra-branch-work-wage-owner-admission-report.json`
+
+### `inf4ao-public-milling-social-ack`
+
+Backend-only INF-4AO proof for the exact completed project-visible public
+milling notice -> existing `SocialFactAuthority` actor-private acknowledgment
+histories. The source Contract and acquisition derive exactly two participants:
+the fixed district milling cooperative provider and the Contract's
+acquisition-derived receiver. Selectors cover static event/schema/catalog
+admission, source/provenance/revision validation, append-derived receipt,
+privacy, zero-write unknown/private/stale/multiple/binding-conflict paths,
+duplicate semantics, and full/checkpoint-tail replay. This is one fixed Social
+row and does not admit a generic social API, relationship/reputation writer,
+attendance, population, payment, or world mutation.
+
+- `.harness/verification/inf4ao-public-milling-social-ack-report.json`
+
+### `inf4ai-p5-actor-private-expression`
+
+Backend-only INF-4AI proof for the exact completed mutual two-party
+`handshake` session -> existing `SocialFactAuthority` actor-private shared
+experience pair. Selectors cover static P5 event/schema registration,
+read-only descriptor/catalog scope, source-vector verification, append-derived
+receipt, zero-write incomplete-source handling, privacy, duplicate semantics,
+and full/checkpoint-tail replay. This is one fixed Social row; it is not a
+generic InteractionSession adapter, relationship-score writer, attendance,
+population, or social registry.
+
+- `.harness/verification/inf4ai-p5-actor-private-expression-report.json`
+
+### `inf2ah-public-project-budget-reservation`
+
+Backend-only INF-2AH proof for the exact INF-2AF public-project budget
+commitment -> one owner-derived Economy reservation. Selectors cover unique
+owner-account resolution, missing/multiple/insufficient account zero-write,
+source and facility revision pins, authority-only privacy, append-derived
+receipt, exact/changed idempotency, and full/checkpoint-tail replay. This is
+one fixed 12-unit `currency:local` reservation row; it does not admit generic
+budget reservation, account selection, payment, transfer, release,
+reimbursement, or a second owner/runtime.
+
+- `.harness/verification/inf2ah-public-project-budget-reservation-report.json`
+
+### `inf2am-reinforced-mill-flour-output-purchase`
+
+Backend-only INF-2AM proof for the exact project-visible INF-1AM certified
+reinforced-mill flour output -> Inventory custody -> fixed v7 Economy
+purchase. Selectors cover immutable package/catalog admission, fixed
+provider/container/item/quantity pins, separate project Inventory and
+authority Economy receipts, owner-derived receiver/account resolution,
+fixed 8 `currency:local` pricing, zero-write source/privacy/account/price
+conflicts, exact duplicate replay, and full/checkpoint-tail replay. It does
+not admit generic output, market pricing, arbitrary payment, transfer,
+compensation, reversal, or a new owner/runtime.
+
+- `.harness/verification/inf2am-reinforced-mill-flour-output-purchase-report.json`
+
+### `inf2an-grain-intake-acceptance`
+
+Backend-only INF-2AN proof for the exact project-visible Organization grain
+intake record and Inventory provenance yielding one authority-only Economy
+`grain_intake_accepted@1` marker. Selectors cover source/privacy/revision
+fences, fixed organization/item/container/quantity pins, duplicate and
+changed-duplicate zero-write, append-derived authority receipt, forged replay
+rejection, and full/checkpoint-tail replay. It does not debit or credit an
+account and does not admit generic payment, transfer, pricing, settlement, or
+another runtime.
+
+- `.harness/verification/inf2an-grain-intake-acceptance-report.json`

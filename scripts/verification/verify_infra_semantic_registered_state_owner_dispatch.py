@@ -11,7 +11,7 @@ def main() -> int:
     test_path = root / "backend" / "tests" / "test_infra_semantic_registered_state_owner_dispatch.py"
     cases = {
         "survival_dispatch": "test_registered_state_dispatch_routes_survival_to_existing_owner",
-        "registered_owner_matrix": "test_registered_state_owner_matrix_contains_exact_four_rows",
+        "registered_owner_matrix": "test_registered_state_owner_matrix_contains_exact_seven_apply_rows",
         "construction_dispatch": "test_registered_state_dispatch_routes_construction_to_existing_owner",
         "unknown_route_zero_write": "test_registered_state_dispatch_rejects_unknown_row_without_write",
         "route_mismatch_zero_write": "test_registered_state_dispatch_rejects_wrong_route_without_write",

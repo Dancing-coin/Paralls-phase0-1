@@ -37,6 +37,9 @@ PHASE0_VERIFY_ENV = {
     "SIMING_LLM_MODE": "disabled",
 }
 PHASE0_PYTEST_TIMEOUT_SECONDS = float(os.environ.get("PHASE0_PYTEST_TIMEOUT_SECONDS", "1200"))
+# Phase0's imported throne-hall asset exceeds the available D3D12 test-device
+# budget. The compatibility driver preserves scene/script semantics for probes.
+PHASE0_GODOT_RENDER_ARGS = ("--rendering-driver", "opengl3")
 
 
 def _read_character_agent_execution_result(log_dir: Path, project_root: Path, python_exe: str, godot_exe: Path) -> dict[str, object]:
@@ -132,6 +135,7 @@ def main() -> int:
                 str(project_root),
                 "--scene",
                 "res://scenes/phase0/MainDemo.tscn",
+                *PHASE0_GODOT_RENDER_ARGS,
                 "--quit-after",
                 SCENE_LOAD_QUIT_AFTER,
                 "--verbose",
@@ -160,6 +164,7 @@ def main() -> int:
                 str(project_root),
                 "--scene",
                 "res://scenes/phase0/MainDemo.tscn",
+                *PHASE0_GODOT_RENDER_ARGS,
                 "--verbose",
                 "--render-thread",
                 "safe",
@@ -184,6 +189,7 @@ def main() -> int:
                 str(project_root),
                 "--scene",
                 "res://scenes/phase0/MainDemo.tscn",
+                *PHASE0_GODOT_RENDER_ARGS,
                 "--quit-after",
                 FOCUS_AUTOTEST_QUIT_AFTER,
                 "--verbose",

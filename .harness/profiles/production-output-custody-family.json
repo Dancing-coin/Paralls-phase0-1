@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "production-output-custody-family",
+  "order": 997,
+  "include_in_profile_order": false,
+  "include_in_all": true,
+  "script": "scripts/verification/verify_production_output_custody_family.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/production-output-custody-family-report.json",
+  "description": "Production output custody blocker and zero-write evidence"
+}

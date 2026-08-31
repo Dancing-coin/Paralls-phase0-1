@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "declared-exchange-family",
+  "order": 994,
+  "include_in_profile_order": false,
+  "include_in_all": true,
+  "script": "scripts/verification/verify_declared_exchange_family.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/declared-exchange-family-report.json",
+  "description": "Economy declared exchange family wrapper and replay boundary verification"
+}

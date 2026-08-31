@@ -62,6 +62,12 @@ migration. Candidate manifests and
 active-set identity have durable JSON snapshot recovery; this
 does not constitute a production patch registry.
 
+The shared durable-store recovery path also validates the full ledger/index
+relationship before reopening: transaction-embedded events, append results,
+idempotency records and outbox entries must agree with the canonical event
+ledger. Corrupt or partial snapshots fail closed, protecting replay,
+duplicate handling and append-derived receipt evidence for all owner rows.
+
 ## Approved Design Decisions
 
 - Backend authority owns gameplay truth; Godot mirrors, presents, predicts, and
@@ -110,10 +116,10 @@ does not constitute a production patch registry.
 19. [Package contract closure and manifest adapter](2026-08-17-package-contract-closure-and-manifest-adapter-design.md) `design-only; implementation gated`
 20. [Federated Gameplay Extension Platform](2026-08-18-federated-gameplay-extension-platform-design.md) `INF-P P1 binding sequencing implemented and verified; package and row gates remain separate`
 21. [Federated Gameplay Extension Platform approval packet](2026-08-18-federated-gameplay-extension-platform-approval-packet.md) `platform contract approved; downstream implementation separately gated`
-22. [Federated Gameplay Extension Platform approval-readiness audit](2026-08-18-federated-gameplay-extension-platform-approval-readiness-audit.md) `design approved and complete; schema implementation approval pending`
-23. [Federated Gameplay Extension Platform schema decision design](2026-08-18-federated-gameplay-extension-platform-schema-decision-design.md) `design approved and complete; schema implementation approval pending`
-24. [Federated Gameplay Extension Platform schema mapping and migration errata](2026-08-18-federated-gameplay-extension-platform-schema-mapping-and-migration-errata-design.md) `design approved and complete; schema implementation approval pending`
-25. [Federated Gameplay Extension Platform schema-closure addendum](2026-08-18-federated-gameplay-extension-platform-schema-closure-addendum.md) `design approved and complete; schema implementation approval pending`
+22. [Federated Gameplay Extension Platform approval-readiness audit](2026-08-18-federated-gameplay-extension-platform-approval-readiness-audit.md) `design approved; INF-P schema/P1 mechanics implemented and verified`
+23. [Federated Gameplay Extension Platform schema decision design](2026-08-18-federated-gameplay-extension-platform-schema-decision-design.md) `historical design gate; superseded by verified INF-P implementation`
+24. [Federated Gameplay Extension Platform schema mapping and migration errata](2026-08-18-federated-gameplay-extension-platform-schema-mapping-and-migration-errata-design.md) `approved mapping; INF-P mechanics implemented and verified`
+25. [Federated Gameplay Extension Platform schema-closure addendum](2026-08-18-federated-gameplay-extension-platform-schema-closure-addendum.md) `approved closure; INF-P mechanics implemented and verified`
 20. [adventure-basic reference package](2026-07-23-adventure-basic-reference-pack-design.md)
 21. [Verification and acceptance matrix](2026-07-23-verification-and-acceptance-matrix-design.md)
 22. [Specification and runtime baseline](2026-07-29-gameplay-foundation-spec-and-runtime-baseline.md)

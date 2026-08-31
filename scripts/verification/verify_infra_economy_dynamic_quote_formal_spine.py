@@ -7,6 +7,6 @@ def main() -> int:
     checks={}; evidence=[]
     for key, selector in cases.items():
         log=verification_dir(root)/f"infra-economy-dynamic-quote-formal-spine-{key}.log"; result=run_command([python,"-m","pytest","-q",f"{tests}::{selector}"],root,log); checks[key]=result.returncode==0; evidence.append(str(log.relative_to(root)).replace("\\","/"))
-    write_json(verification_dir(root)/"infra-economy-dynamic-quote-formal-spine-report.json",{"profile":"infra-economy-dynamic-quote-formal-spine","overall_passed":all(checks.values()),"checks":checks,"evidence":evidence,"limitations":["This package creates no consumer admission. INF-3J separately binds one fixed Ecology source to this already formalized quote owner."]})
+    write_json(verification_dir(root)/"infra-economy-dynamic-quote-formal-spine-report.json",{"profile":"infra-economy-dynamic-quote-formal-spine","overall_passed":all(checks.values()),"checks":checks,"focused_test_files":[str(tests.relative_to(root)).replace("\\","/")],"evidence":evidence,"limitations":["This package creates no consumer admission. INF-3J separately binds one fixed Ecology source to this already formalized quote owner."]})
     return 0 if all(checks.values()) else 1
 if __name__=="__main__": raise SystemExit(main())

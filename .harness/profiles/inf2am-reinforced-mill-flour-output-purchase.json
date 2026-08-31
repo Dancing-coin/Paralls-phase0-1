@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf2am-reinforced-mill-flour-output-purchase",
+  "order": 181,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf2am_reinforced_mill_flour_output_purchase.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf2am-reinforced-mill-flour-output-purchase-report.json",
+  "description": "INF-2AM exact INF-1AM certified flour receipt to fixed v7 Economy purchase"
+}

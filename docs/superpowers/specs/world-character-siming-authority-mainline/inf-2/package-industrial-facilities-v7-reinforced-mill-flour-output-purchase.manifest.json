@@ -1,0 +1,115 @@
+{
+  "author_id": "author:repo",
+  "content_digest": "sha256:ccb86e79a2d66fdfa45ccdd5f2089934b36daf1ca9d9d80a4c33ff156d61c48d",
+  "dependencies": [],
+  "economic_outcomes": [
+    {
+      "capability_ref": "capability:package-declared-negotiated-exchange@1",
+      "compensation_policy_ref": "none",
+      "consent_rule_ref": "consent:mutual@1",
+      "economic_outcome_id": "package_declared_negotiated_exchange@1",
+      "eligibility_refs": ["construction:mill-flour-output-certified@1"],
+      "outcome_ref": "outcome:industrial-facility-reinforced-mill-flour-output-purchase@1",
+      "price_policy": {
+        "currency_ref": "currency:local",
+        "fixed_amount": 8,
+        "maximum_amount": null,
+        "minimum_amount": null,
+        "price_policy_revision": "policy:industrial-facility-reinforced-mill-flour-output-purchase-price@1"
+      },
+      "privacy_policy_ref": "authority_only",
+      "source_evidence_kind": "inventory_custody@1",
+      "source_evidence_mode": "inventory_custody@1",
+      "source_owner_ref": "actor_gameplay.inventory_domain",
+      "source_selection_rule_ref": "exchange:unique-owned-source@1",
+      "tradeable_ref": "item:industrial-facilities:flour@1",
+      "typed_service_ref": null
+    }
+  ],
+  "event_schemas": [],
+  "granted_effect_types": [],
+  "manifest_schema_version": 2,
+  "patch_id": "package:industrial-facilities",
+  "patch_revision_id": "package:industrial-facilities:v7",
+  "patch_version": "7.0.0",
+  "platform_extension": {
+    "capability_binding_requests": [
+      {
+        "binding_ref": "binding:industrial-facility-reinforced-mill-flour-output-purchase@1",
+        "capability_ref": "capability:package-declared-negotiated-exchange@1",
+        "declaration_ref": "declaration:industrial-facility-reinforced-mill-flour-output-purchase@1",
+        "proposal_effect_types": ["effect:industrial-facility-reinforced-mill-flour-output-purchase@1"],
+        "source_package_revision": "package:industrial-facilities:v7",
+        "typed_read_requirements": [
+          {
+            "predicate_family_ref": "predicate:construction-reinforced-mill-flour-output-certified@1",
+            "requirement_ref": "requirement:construction-reinforced-mill-flour-output-certified@1",
+            "subject_slot_ref": "slot:facility-project@1"
+          }
+        ]
+      }
+    ],
+    "dependency_and_conflict_refs": [],
+    "outcome_declarations": [
+      {
+        "declaration_digest": "sha256:2017389705c033fd8944faebdaef33c06463942adc242b0198897f8f78188812",
+        "declaration_ref": "declaration:industrial-facility-reinforced-mill-flour-output-purchase@1",
+        "definition_refs": [
+          "definition:industrial-facilities-reinforced-mill-flour-output-purchase@1",
+          "definition:industrial-facilities-reinforced-mill-flour-output-source@1"
+        ],
+        "eligibility_refs": ["construction:mill-flour-output-certified@1"],
+        "outcome_family_ref": "outcome:industrial-facility-reinforced-mill-flour-output-purchase@1",
+        "policy_revision_ref": "policy:industrial-facility-reinforced-mill-flour-output-purchase-price@1",
+        "source_package_revision": "package:industrial-facilities:v7"
+      }
+    ],
+    "package_definitions": [
+      {
+        "definition_ref": "definition:industrial-facilities-reinforced-mill-flour-output-purchase@1",
+        "definition_schema_ref": "schema:industrial-facility-reinforced-mill-flour-output-purchase@1",
+        "source_package_revision": "package:industrial-facilities:v7",
+        "typed_content": {
+          "item_ref": "item:industrial-facilities:flour@1",
+          "price_minor": 8,
+          "quantity": 10,
+          "recipe_ref": "recipe:industrial-facilities:mill-flour@1"
+        }
+      },
+      {
+        "definition_ref": "definition:industrial-facilities-reinforced-mill-flour-output-source@1",
+        "definition_schema_ref": "schema:industrial-facility-reinforced-mill-flour-output-source@1",
+        "source_package_revision": "package:industrial-facilities:v7",
+        "typed_content": {
+          "container_ref": "container:district-milling-cooperative:mill-output",
+          "facility_kind": "mill_reinforced",
+          "source_event": "gameplay.construction_production.mill_flour_output_certified@1",
+          "source_mode": "inventory_custody@1",
+          "status": "certified"
+        }
+      }
+    ],
+    "package_identity": {
+      "package_id": "package:industrial-facilities",
+      "package_revision": "package:industrial-facilities:v7",
+      "package_version": "7.0.0"
+    },
+    "platform_schema_version": "1.0",
+    "replay_reader_refs": [],
+    "verification_profile_refs": ["verification:inf2am-reinforced-mill-flour-output-purchase@1"]
+  },
+  "requested_capabilities": [
+    {
+      "call_sites": ["reinforced-mill-flour-output-purchase"],
+      "capability_id": "capability:package-declared-negotiated-exchange",
+      "capability_version": "1",
+      "reason": "fixed reinforced mill flour output purchase",
+      "requested_effect_types": []
+    }
+  ],
+  "rules": [],
+  "state_group_ids": [],
+  "state_group_migrations": [],
+  "trust_policy_ref": "trust:repo",
+  "verification_profiles": ["verification:inf2am-reinforced-mill-flour-output-purchase@1"]
+}

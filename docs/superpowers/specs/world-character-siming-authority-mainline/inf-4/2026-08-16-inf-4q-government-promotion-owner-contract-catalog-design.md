@@ -1,6 +1,6 @@
 # INF-4Q Government Promotion Owner-Contract Catalog Design
 
-Status: `planned; RED admission test required before runtime change`
+Status: `implemented and independently verified for the fixed Government passed-inspection promotion row; broader INF-4 remains incomplete`
 
 INF-4Q does not widen branch promotion. It brings the already verified single
 Government passed-inspection promotion row under the immutable governed

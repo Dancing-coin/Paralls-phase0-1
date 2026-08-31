@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf-municipal-drought-closed-loop",
+  "order": 240,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf_municipal_drought_closed_loop.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf-municipal-drought-closed-loop-report.json",
+  "description": "Cross-row evidence: drought advisory through Contract admission/fulfillment, Economy settlement, and Ownership certificate"
+}

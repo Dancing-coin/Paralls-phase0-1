@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-construction-facility-operational-verification",
+  "order": 242,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_construction_facility_operational_verification.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-construction-facility-operational-verification-report.json",
+  "description": "INF-1AI exact completed Construction production run to facility operational verification"
+}

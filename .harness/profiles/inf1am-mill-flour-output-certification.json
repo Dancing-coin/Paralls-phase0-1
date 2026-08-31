@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf1am-mill-flour-output-certification",
+  "order": 180,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf1am_mill_flour_output_certification.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf1am-mill-flour-output-certification-report.json",
+  "description": "INF-1AM exact active reinforced-mill completed run to project flour-output certification"
+}

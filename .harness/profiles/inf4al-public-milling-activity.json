@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf4al-public-milling-activity",
+  "order": 181,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf4al_public_milling_activity.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf4al-public-milling-activity-report.json",
+  "description": "INF-4AL exact fulfilled public milling service to Organization activity"
+}

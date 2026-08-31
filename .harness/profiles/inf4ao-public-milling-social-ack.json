@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf4ao-public-milling-social-ack",
+  "order": 248,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf4ao_public_milling_social_ack.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf4ao-public-milling-social-ack-report.json",
+  "description": "INF-4AO exact completed public milling notice to two actor-private Social acknowledgments"
+}

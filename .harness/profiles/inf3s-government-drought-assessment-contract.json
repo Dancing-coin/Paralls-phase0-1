@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf3s-government-drought-assessment-contract",
+  "order": 237,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf3s_government_drought_assessment_contract.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf3s-government-drought-assessment-contract-report.json",
+  "description": "INF-3S exact Government drought advisory to fixed Contract municipal assessment admission"
+}

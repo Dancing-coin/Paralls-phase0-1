@@ -33,6 +33,7 @@ def main() -> int:
         "profile": "infra-governed-authority-contract-catalog",
         "overall_passed": all(checks.values()),
         "checks": checks,
+        "focused_test_files": sorted({str(test_file.relative_to(root)).replace("\\", "/") for test_file, _selector in cases.values()}),
         "evidence": evidence,
         "run_id": f"infra-governed-authority-contract-catalog-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
         "commit": evidence_revision(root),

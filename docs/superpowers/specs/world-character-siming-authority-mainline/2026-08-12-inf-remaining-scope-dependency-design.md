@@ -1,6 +1,6 @@
 # INF Remaining Scope Dependency Design
 
-Status: `已批准的 INF 窄纵切完成并验证；八月 INF 主线仍未完成`
+Status: `已批准的 INF 窄纵切完成并验证；八月 INF A-D 仍为 execution-active/not complete`
 
 Date: `2026-08-12`
 
@@ -36,11 +36,79 @@ it to admit another declaration.
 Current INF-1AG status is `implemented and verified: exact frozen
 package-declared oven-to-kiln narrow vertical`. The approved descriptor and
 existing-Construction catalog contract are recorded in [the admission packet](inf-1/2026-08-19-inf-1ag-construction-owner-operation-descriptor-admission-packet.md).
-The owner-bound verifier/reducer and append spine are covered by `11 passed`
+The owner-bound verifier/reducer and append spine are covered by `12 passed`
 focused tests and the green independent
 `infra-construction-facility-package-transform` Harness. This is not a
 generic Construction transform and does not close the remaining INF-1 rows or
 August INF A-D.
+
+### 2026-08-19 INF-1 Remaining Construction Candidate Gate
+
+The next documentation-only candidate pass reuses only known Construction
+facts and is not a fourth existing-owner discovery. It closes no new row:
+`run_started -> run_finished` and the fixed maintenance-state dispel vector
+are already owned outcomes, while the only non-duplicate facility observation
+is `facility_acquired(facility_kind=mill)`. No formal target kind semantic,
+capability/outcome id, immutable package declaration, policy revision, or
+non-empty owner-derived eligibility vector exists for that source. It remains
+`design pending` and zero-write. The minimum next business approval must name
+those literal fields before any row-specific contract, package freeze, RED
+test, Harness, catalog row, verifier, reducer, or append path can begin.
+
+The later `mill` pre-contract design stage fixes only the existing source,
+owner, stream, event family, project privacy, receipt/replay, and
+authority-derived idempotency boundary. It explicitly leaves target kind and
+semantic, capability/outcome ids, package/declaration/content/policy identity,
+eligibility proof mappings, descriptor/catalog pins, and lifecycle choice to a
+separate literal business approval. It is not package content, a freeze, or an
+implementation gate.
+
+The next exact candidate was an approved row-specific contract for
+`mill -> mill_reinforced`. Its status is `implemented narrow vertical: exact
+frozen mill -> mill_reinforced row verified`. It fixes only a Construction facility identity and
+revision transition from project-visible acquisition evidence. Its v2 package,
+declaration/content digest and descriptor/catalog pins are frozen and verified
+for that exact row. Its one `construction:facility-acquired@1` proof cannot imply weather,
+maintenance, material, inventory, payment, production, recipe, permit or
+technology facts. The fixed Construction narrow vertical has focused and
+independent Harness evidence; no other manifest/package, catalog, RED test,
+or Harness row is implied.
+
+### 2026-08-27 INF-3V Rain Hydration Closure
+
+`INF-3V` is an implemented narrow Survival consumer row. A committed,
+project-visible Ecology `weather_front.propagated` event carrying exactly
+`weather:rain`, plus the matching active profile-region assignment, is the
+only source for the existing Survival `state:hydrated` and scheduled expiry
+vector. Source and assignment heads, project privacy, actor binding, and the
+owner-derived idempotency key are checked before append; the existing
+`state_applied` plus `obligation_opened` events retain append-derived receipt
+and full/checkpoint-tail replay. Focused tests and the independent Harness are
+green. `drought_process_advanced` and every other weather value are rejected
+zero-write, and no generic consumer/fanout/router/compensation path is added.
+
+The selected INF-1AH row is now an implemented narrow vertical: an active
+`mill_reinforced`
+facility may become `decommissioned` through one fixed
+`gameplay.construction_production.facility_decommissioned@1` event on the
+existing project-scoped facility stream. The contract requires both committed
+acquisition and frozen v2 reinforcement evidence, facility/project/privacy and
+revision pins, and `construction:facility-mill-reinforced@1`. It changes only
+the Construction lifecycle status, not kind or any other-domain fact. It is
+blocked before runtime implementation by an explicit replayable lifecycle-
+status projection field and a separately approved runtime gate. The new v3
+package is frozen/digest-verified, and its exact descriptor/catalog admission
+and read-only binding pins are verified. The row-specific projection, verifier,
+fixed reducer, append receipt, full/tail replay, and terminal zero-write
+evidence are also verified. A started
+`ProductionRun` is already a fixed zero-write rejection with no automatic
+cancellation, reservation release, output disposal, refund, or compensation.
+The [INF-1AH minimum business decision and admission closure packet](inf-1/2026-08-20-inf-1ah-minimum-business-decision-admission-closure-packet.md)
+records the completed literal decision and v3 freeze. Frozen v2 cannot be
+changed, reused, or inferred as the new package.
+The [exact descriptor/catalog admission packet](inf-1/2026-08-20-inf-1ah-construction-owner-operation-descriptor-catalog-admission-packet.md)
+records the now-verified immutable descriptor/catalog and read-only binding
+admission; no generic lifecycle runtime or other Construction row is implied.
 
 The remaining-scope matrix must not assume that the core already knows every
 human-world income, expense, service, or exchange. A gameplay package/mod may
@@ -313,3 +381,441 @@ Organization owns one supply commerce settlement/event/projection/receipt/writeb
 contract, but no generic promotion authority exists. Work may
 continue only on already-owned bounded INF rows; the deferral does not permit
 creating a population/NPC/social truth owner or a second event store.
+
+## 2026-08-20 Contract Pre-Close Synchronization
+
+The [August INF A-D contract pre-close plan](2026-08-20-august-inf-ad-contract-preclose-plan.md)
+and four candidate registers now provide the documentation-only gate.
+INF-1AH is now one implemented and verified Construction narrow vertical; its
+distinct v3 package and descriptor/catalog admission remain frozen
+prerequisites. INF-2, INF-3, and INF-4 have no additional
+complete committed source-to-owner fact after their terminal discovery audits;
+their three-slot registers record exact missing fields and preserve zero-write.
+Existing narrow rows remain evidence references, not new rows. No generic
+payment/transfer, consumer, promotion, router, registry, coordinator, writer,
+or second runtime is authorized.
+
+## 2026-08-26 Formal Blocker Disposition Approval
+
+The approved [August INF A-D formal blocker disposition contract](2026-08-26-august-inf-formal-blocker-disposition-contract.md)
+restores the mainline Goal to `active`; it does not mark August INF A-D
+complete. The ordered lane disposition is fixed: verified INF-1 rows remain
+implemented while unformed Construction slots are owner-contract blocked or
+duplicate/closed; INF-2 Slot A is closed only for the exact INF-2AG
+public-workshop service row while Slots B/C and generic
+payment/transfer/settlement remain blocked or unimplemented; unlisted INF-3
+target-owner edges remain blocked and
+`drought_process_advanced` cannot replace weather-front evidence; INF-4
+branch-only evidence cannot replace committed Production/domain truth and
+population/social/group truth remains blocked or unimplemented.
+
+No fourth existing-owner discovery is permitted. No generic owner, payment,
+transfer, transform, promotion, router, registry, coordinator, writer,
+settlement authority, second runtime/store/bus/clock/scheduler, package,
+catalog, test, Harness, verifier, reducer, projector, or append path follows
+from this disposition. The next admissible row remains one explicit committed
+source event/state -> one existing truth owner -> one exact outcome/event
+vector with complete privacy, revision, idempotency, receipt, replay, and
+terminal/correction/compensation semantics.
+
+## 2026-08-26 Autonomous Resolution And Owner Matrix
+
+The approved [autonomous row-resolution mandate](2026-08-26-autonomous-row-resolution-mandate-design.md)
+replaces per-row waiting with product-oriented, evidence-led selection. Before
+authoring any row, the main thread must compare it against the
+[owner-operation conflict matrix](2026-08-26-owner-operation-conflict-matrix-design.md)
+and its [baseline](2026-08-26-owner-operation-conflict-matrix-baseline.md).
+The preflight prevents duplicate fact claims, owner overlap, incompatible
+event/stream reuse, privacy/receipt/replay/lifecycle conflict, and frozen-pin
+reinterpretation. It may create a strictly row-specific new truth owner only
+for an unowned product fact with a disjoint fixed contract; no generic
+authority or runtime-writable registry is permitted.
+
+### INF-3R autonomous Government advisory row
+
+The first matrix-selected new row is the exact project-visible
+`weather:drought` front -> existing Government drought advisory issuance. It
+pins the Ecology weather event, target Region revision and jurisdiction record,
+then appends one project-scoped advisory event through the existing Government
+owner. It does not turn drought into a restriction, permit/tax change, payment,
+material, production, population, compensation, retry, revocation, fanout, or
+generic Government policy. Focused tests and the independent
+`infra-weather-front-government-drought-advisory` Harness are required evidence.
+
+### INF-3R advisory presentation extension
+
+The advisory's product-visible read loop is implemented through the fixed
+`presentation:government:drought-advisory@1` extension. A trusted backend
+binding grants named jurisdictions only; it cannot reuse actor scope, select a
+foreign jurisdiction, or read any other event family. The existing dispatcher
+invokes the read-only presentation service only after the committed advisory
+outbox is fully dispatched. It rebuilds the existing Government full/tail view
+and uses the existing WebSocket connection/receipt ledger. No event, owner,
+router, bus, store, compensation, or generic subscription capability is added.
+
+### INF-3S advisory-to-contract extension
+
+One committed, project-visible Government drought advisory now admits one
+authority-only Contract-owned municipal assessment service record. Its static
+terms/evidence and parties are fixed, and it uses the canonical envelope/plan
+append spine with full/checkpoint-tail Contract replay. The subsequent Contract
+completion and INF-2AD Economy settlement remain distinct rows. No advisory
+payment trigger, generic contract writer, router, policy or fanout is created.
+
+### INF-3T municipal assessment Contract fulfillment
+
+The previously unimplemented Contract completion link is now closed as one
+exact existing-owner row: the active INF-3S municipal assessment Contract and
+its pinned advisory origin -> Contract-owned `service_completion_recorded` then
+`record_fulfilled`. The fixed policy principal and derived evidence ref never
+come from the caller. This does not authorize generic service completion or
+make payment/certificate issuance automatic; INF-2AD and INF-4U retain their
+separate owner facts, receipts, privacy and replay boundaries.
+
+### INF-1AI facility operational verification
+
+The expanded autonomous mandate closed one previously missing Construction
+feedback fact: a committed project-visible completed `run_finished` plus its
+run-start provenance and current facility projection -> one
+`facility_operationally_verified@1` record on the existing Construction stream.
+Production keeps run/output truth; this record is a separate Construction
+projection. It has no output, inventory, payment, maintenance, permit, weather,
+social, compensation or generic transform meaning.
+
+### INF-2AE facility commissioning review exchange
+
+The expanded mandate also closed one concrete INF-2 economic loop. The exact
+INF-1AI verification source binds a fixed Contract-owned commissioning-review
+service, whose fulfilled record is consumed by an immutable v4 package for one
+12-unit `currency:local` Economy exchange. Contract and Economy retain separate
+authority, receipt, privacy, idempotency and replay boundaries; generic payment,
+transfer and open account selection remain blocked.
+
+### INF-3U certificate-to-Government acknowledgment
+
+The authority-only INF-4U certificate now admits one exact existing Government
+acknowledgment fact on the originating advisory stream. This is a terminal
+authority-only administrative closure; it does not widen certificate truth into
+the project advisory view, WebSocket presentation, restriction, permit, tax,
+payment, or any generic Government policy/lifecycle.
+
+### 2026-08-27 INF-4V production work-contribution acceptance
+
+The autonomous mandate closed one additional INF-4 fact needed by the product
+loop: existing Organization accepts a committed Production completion only
+when an organization-summary schedule/work-order event grants the matching
+assignment and interval. The row writes no wage, payment, output, inventory,
+social, population, or branch-promotion fact. Focused tests, independent
+Harness, owner receipt, privacy/revision fences, and full/checkpoint-tail replay
+are verified; generic work acceptance remains closed.
+
+### 2026-08-27 INF-4W production work-order fulfillment
+
+The accepted INF-4V work-history fact now closes one distinct terminal
+Organization work-order state. The verifier rereads the exact accepted event,
+retains all source/schedule/facility/project pins, and appends one
+`work_order_fulfilled` event through the existing owner spine. No reopen,
+cancellation, compensation, wage/payment, output, material, social,
+population, branch, or generic task lifecycle is introduced.
+
+### 2026-08-27 INF-2AE verification closure
+
+INF-2AE is recorded as one implemented narrow vertical: INF-1AI's committed
+operational-verification fact feeds the exact Contract-owned commissioning
+review, and the immutable v4 package feeds one fixed Economy exchange. The
+fresh 7-test focused suite, independent Harness, continuation gate, and docs
+checks are green. Remaining INF-2 candidate slots and generic
+payment/transfer/settlement remain candidate-only or blocked; this row does
+not authorize a generic service, payment, account, or settlement path.
+
+### 2026-08-27 INF-1AJ facility public-use enablement
+
+The ordered pass then closed one Construction product gap: an exact
+project-visible operationally verified `oven` may enable the Construction
+projection's public-use status. The row changes only that status and facility
+revision, uses the existing Construction owner and project stream, and has
+owner-derived idempotency, append receipt, and full/checkpoint-tail replay.
+Other facility kinds and all licensing, maintenance, weather, payment,
+material, output, inventory, social, and generic availability semantics remain
+unsupported.
+
+### 2026-08-27 INF-1AK public-project step completion
+
+The exact fulfilled Organization work order
+`work-order:public-project:workshop-bench@1` now closes one fixed Construction
+project-step projection. The source and target owner streams remain separate;
+Construction records only `project-step:public-project:workshop-bench@1` and
+increments the facility revision. No generic project/task lifecycle,
+payment/wage, output, inventory, material, permit, technology, weather,
+maintenance, social, or population fact is introduced.
+
+### 2026-08-27 INF-2AF public-project budget commitment
+
+The fixed Construction project-step completion now yields one Economy-owned,
+authority-only budget commitment of `12 currency:local`. This is planning
+metadata only: it performs no account debit/credit, transfer, material, or
+inventory write. Source/head/revision, privacy, idempotency, receipt and replay
+fences are independently verified; generic payment and budget reservation
+remain blocked.
+
+## 2026-08-29 Ordered Resolution Correction
+
+The previous INF-2AM blocker text is historical. INF-1AM now provides the
+missing fixed Construction output certificate, and INF-2AM is implemented as
+the separate Inventory custody plus v7 Economy purchase vertical. INF-3AB is
+also implemented as a fixed Ecology-to-Inventory custody row with explicit
+holder, container, item definition, quantity and owner-derived item id; no
+default or generic route is admitted.
+
+INF-4AP then records the resulting fixed organization grain intake as a
+project-visible Organization fact. It does not broaden activity, production,
+payment, transfer, attendance, or social semantics.
+
+### 2026-08-27 INF-2AG Public Workshop Service Exchange
+
+The exact INF-1AJ project-visible `facility_public_use_enabled@1` fact now
+feeds one fixed Contract `public-workshop-session` service and its fulfillment,
+then the immutable v5 package settles one Economy-owned 12-unit local-currency
+exchange. The Contract and Economy owners retain independent receipts and
+replay; the package is a new immutable revision and does not modify v1-v4.
+This closes one product-facing Slot-A service row only. Generic service,
+payment, transfer, market pricing, account selection, compensation, and all
+remaining INF-2 candidate slots stay blocked or unimplemented.
+
+The earlier Slot-A `TBD` disposition is historical and is superseded only for
+this exact INF-2AG row. Slots B/C and generic payment/transfer/settlement still
+retain their original candidate-only or owner-contract-blocked status.
+
+### 2026-08-27 INF-2AH Public-Project Budget Reservation
+
+The exact INF-2AF authority-only public-project commitment now has one
+Economy-owned follow-on: the owner rereads the matching project-visible
+Construction acquisition, derives exactly one existing `currency:local` account
+for the committed acquisition owner, and appends one fixed 12-unit
+`budget_reserved@1` event. Missing, multiple, private, stale, mismatched or
+insufficient account evidence is zero-write. This is a row-specific reservation
+fact, not generic budget reservation, payment, transfer, release or
+reimbursement.
+
+### 2026-08-27 INF-4Y/INF-4Z Evidence Reconciliation
+
+The bounded INF-4Y-A civilization-capability read owner and its two approved
+consumer bindings are already verified: an authority-scoped capability view
+gates only the existing Organization supply fragment and Government inspection
+fragment, with opaque capability provenance and independent target receipts and
+replay. INF-4Z bounded population world-mode planning, INF-4Z-A reference-data
+license/read admission, and the Production completed-evidence -> Economy wage
+consumer likewise have independent reports. These slices do not create
+population/NPC/social truth, civilization progression, generic capability
+routing, or branch promotion; all unlisted inputs remain zero-write.
+
+### 2026-08-27 INF-4AG Public Workshop Activity Closure
+
+The fulfilled INF-2AG public-workshop Contract now yields one Organization-
+owned project activity record on the provider stream. It pins Contract
+creation/completion/fulfillment, provider, facility, project, privacy,
+revision, and owner receipt, with full/checkpoint-tail replay. This closes one
+feedback fact only; attendance, relationship, reputation, population, social,
+payment, material, output, and generic activity remain blocked or unimplemented.
+
+The current ordered scan includes the implemented INF-4AI actor-private
+handshake closure after INF-4AH. A future
+Social/attendance row requires an explicit committed knower/participant source,
+an existing SocialFactAuthority event/stream contract, and its own privacy and
+replay semantics; the public notice cannot supply those facts.
+
+### 2026-08-27 INF-4AI Handshake Candidate Boundary (Historical, Superseded)
+
+The autonomous scan identified a product-relevant source: one committed,
+mutually accepted, completed two-party `handshake` session. A strictly
+row-specific SocialFactAuthority shared-experience history fact was designed.
+The former P5 event/schema and actor-private descriptor gap is now closed by
+the exact static vocabulary, closed catalog scope, owner implementation,
+focused tests and independent Harness recorded below. Reusing the existing
+relationship event remains rejected because its timestamp/confidence semantics
+are absent from the source. This historical candidate record is not a current
+blocker and does not authorize a generic social writer or new registry.
+
+### 2026-08-27 INF-4AH Public Workshop Notice Closure
+
+The exact project-scoped INF-4AG provider activity now produces one
+Government-owned public workshop notice on the jurisdiction stream derived
+from committed acquisition evidence. The notice retains only activity kind,
+status, organization, facility, project and jurisdiction; Contract, account,
+payment and participant details remain private. Full/checkpoint-tail replay,
+receipt, privacy, revision and idempotency are independently verified. Generic
+notifications, public social truth, attendance and population outcomes remain
+blocked or unimplemented.
+
+### 2026-08-27 INF-4AI Closure Refresh
+
+The exact P5 actor-private expression gap is now closed for INF-4AI. The
+existing immutable event-schema registry has the fixed handshake event, the
+read-only governed catalog has the closed `actor_private` scope, and
+SocialFactAuthority verifies the committed seven-event handshake vector before
+one two-stream append. Dedicated tests, P5/catalog regressions, and the
+independent Harness are green. This closes one shared foundation row only;
+generic social/session mappings and all other unlisted rows remain gated.
+
+## 2026-08-28 Ordered Scan And Verification Refresh
+
+The current INF/INFRA test selection passes with `1223 passed` (`2521`
+deselected). The repository `all` Harness passes every local, INF, Godot, and
+mainline profile; only the external `siming-heavenly-runtime` preflight is
+unavailable because heavenly mode, online endpoint/model, and API key are not
+configured. No live heavenly runtime call was attempted. This is an environment
+limitation, not a code failure.
+
+INF-4AK is the latest exact tuple formed after INF-2AK and INF-4AJ. No further exact
+tuple was formed after INF-4AK. INF-1 remaining Construction shapes, INF-2 Slots B/C and
+generic settlement, INF-3 unlisted target edges, and INF-4 generic branch,
+population, attendance and social/group consequences retain their existing
+row-level blocker dispositions. Goal remains `active`; August INF A-D remains
+`not complete`.
+
+### 2026-08-28 INF-3W Rain Crop Recovery
+
+The former rain crop-recovery blocker is now one exact Ecology-owned row. The
+committed `weather:rain` front supplies target-region identity; Ecology derives
+the unique damaged crop, applies the fixed `+5` recovery policy, and writes one
+provenance-pinned project-visible crop record. No `drought_process_advanced`
+source, generic crop selector/recovery, fanout, material, inventory, output,
+payment, or compensation behavior is admitted.
+
+### 2026-08-27 INF-4AJ Public-Project Execution Closure
+
+The exact project-visible INF-4AG activity plus exact INF-2AI consumed marker
+now yield one Organization-owned project execution fact,
+`gameplay.organization.public_project_execution_recorded@1`. It is fixed at
+`funded_and_executed`, project-scoped, append-receipted and terminal with no
+payment, debit, release, refund, material, inventory, output, attendance,
+social or population semantics.
+The shared store recovery contract additionally pins transaction order to the
+canonical global sequence and rejects non-contiguous batch event sequences.
+This is reusable evidence protection for INF full/checkpoint-tail replay, not a
+new business capability.
+
+### 2026-08-27 Shared Event-Store Integrity Closure
+
+The common durable event-store seam now validates the complete ledger/index
+relationship before replay or duplicate handling resumes. Transaction-embedded
+events, append results, idempotency records and outbox entries must agree with
+the canonical committed events, command identities, stream revisions and
+global sequences; forged or missing cross-index records fail closed. This
+reduces repeated evidence risk across INF rows without adding a new owner,
+generic authority, or business vertical.
+
+### 2026-08-28 INF-2AI Closure
+
+The exact completed INF-4AG public-workshop activity and INF-2AH reservation
+now yield one Economy-owned, authority-only
+`public_project_budget_consumed@1` marker. It preserves project/facility and
+source revision pins and is terminal with no debit, release, refund, transfer,
+or compensation. Slots B/C and generic budget/payment remain blocked.
+
+## 2026-08-28 Current Ordered-Scan Evidence
+
+The current direct backend filename collection of `test_inf*.py` and
+`test_infra*.py` contains `1209 tests collected` and passes `1209 passed`;
+the broader INF/INFRA selection remains recorded at `1223 passed`, and the
+latest full repository run passes `4001 passed`. No new exact
+source-owner-outcome tuple formed after INF-4AK. Remaining entries retain
+their row-level blocker, candidate-only, or duplicate/closed disposition.
+Goal remains `active`; August INF A-D remains `not complete`.
+
+## 2026-08-28 Ordered-Scan Verification Refresh
+
+The current ordered scan remains exhaustive for the committed facts available
+to the existing owners. No new exact `committed source -> existing owner ->
+exact outcome` tuple formed after INF-3W. INF-1 remains exhausted except for
+newly supplied Construction business semantics; INF-2 Slots B/C remain
+missing their distinct source/party/account/policy tuples; INF-3 has no
+additional target-owner edge; and INF-4 remains blocked for branch-only,
+population, attendance, social, and group consequences without committed
+domain truth.
+
+Fresh verification is `1246 passed` for the keyword-selected INF/INFRA
+collection and `4004 passed` for the repository-root suite. The filename
+scoped INF/INFRA run is `1232 passed`. The external heavenly-runtime
+preflight remains an environment limitation, not a code failure. Goal stays
+`active`; August INF A-D stays `not complete`.
+
+## 2026-08-28 INF-1AL Existing-Row Extension
+
+The autonomous row-resolution pass formed and verified one additional
+Construction `existing_row_extension`: committed project-visible operational
+verification for an active `mill_reinforced` facility, with the frozen v2
+reinforcement provenance, produces one Construction public-use enablement
+fact. Its descriptor, catalog, event payload, idempotency key, receipt and
+full/checkpoint-tail replay are fixed to this partition. INF-1AJ remains
+oven-only; this does not create generic facility-kind availability or a
+generic Construction action.
+
+## 2026-08-28 INF-2AL Existing-Owner Service Exchange
+
+The exact INF-1AL `mill_reinforced` public-use event now closes one former
+INF-2 Slot-B gap: it creates and fulfills the fixed public-milling Contract,
+then the existing Economy owner settles package v6 at 8 `currency:local`.
+The row has separate Contract/Economy receipts, privacy, revisions,
+idempotency and full/checkpoint-tail replay. Slot B is closed only for this
+named service partition; Slot C and generic payment/transfer/settlement remain
+blocked.
+
+Fresh regression evidence is `1240 passed` for the filename-scoped INF/INFRA
+collection and `4012 passed` for the repository-root suite. INF-2AL closes one
+named service partition only; Slot C and all generic economic authorities stay
+blocked.
+
+## 2026-08-28 INF-4AL Existing-Owner Activity Extension
+
+The exact fulfilled INF-2AL milling service is now consumed by one
+Organization-owned `public_milling_activity_recorded@1` row. This closes only
+that fixed provider/facility/project activity partition; it does not imply
+attendance, participant, social, population, payment, output or generic
+activity truth. INF-2 Slot C and all other unlisted rows remain blocked.
+
+## 2026-08-28 INF-4AM Existing-Owner Notice Extension
+
+The exact INF-4AL milling activity now has one fixed Government consumer:
+`public_milling_notice_recorded@1` on the acquisition-derived public-notice
+stream. This closes only that activity-to-notice partition; permits,
+certificates, payment, attendance, social, population and generic notification
+truth remain blocked.
+
+## 2026-08-28 INF-3AA Rain Water Resource Recovery
+
+The ordered scan formed one exact existing-owner Ecology row without opening
+the blocked material path: committed project-visible `weather:rain` front plus
+one target-region water `ResourceNode` -> fixed `+10` resource recovery capped
+at `100`. The row uses an explicit provenance partition on the existing
+`resource.recorded` family, owner-derived idempotency and append receipt, and
+full/checkpoint-tail replay. It does not create grain, Inventory, Economy,
+fanout, or generic resource recovery. INF-2AM remains blocked on separate
+grain/output business facts.
+
+## 2026-08-28 INF-2AM Mill-Output Economic Source Boundary
+
+The autonomous Slot-C review narrowed the only plausible direction to a fixed
+reinforced-mill flour custody source followed by a fixed Economy purchase. It
+remains blocked, not because the package-exchange spine is absent, but because
+the product source is incomplete. The committed Construction recipe snapshot
+contains recipe ref, output item, and duration, but no input-custody evidence;
+an empty-input flour recipe would invent material truth. The current generic
+Inventory output receipt also accepts caller-provided source, item, definition,
+container, and quantity.
+
+The next row therefore requires an explicit production-input/custody business
+contract as well as the mill recipe, flour definition, output quantity,
+owner-derived containers, parties/accounts, price policy, and Economy root
+outcome. Existing delivery, exchange, archive-token, and bakery fixture facts
+cannot substitute. `INF-2AM` is recorded as `owner-contract blocked`; no
+generic output, market, payment, transfer, or second writer is admitted.
+# 2026-08-28 Four-Lane Gap Closure Update
+
+The latest autonomous continuation pass removed four ordinary blockers through
+strict row-specific owner facts: Construction flour-output certification
+(INF-1AM), Inventory plus Economy certified-lot purchase (INF-2AM), Ecology
+mature grain harvest, and Social actor-private public-milling acknowledgment
+(INF-4AO). Each remains a fixed partition with independent privacy, revision,
+idempotency, receipt and replay evidence; unlisted rows and generic authorities
+remain blocked.

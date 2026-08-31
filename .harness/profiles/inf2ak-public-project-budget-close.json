@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf2ak-public-project-budget-close",
+  "order": 251,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf2ak_public_project_budget_close.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf2ak-public-project-budget-close-report.json",
+  "description": "INF-2AK exact consumed public-project budget plus funded execution to Economy close marker"
+}

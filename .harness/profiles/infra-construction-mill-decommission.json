@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-construction-mill-decommission",
+  "order": 171,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_construction_mill_decommission.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-construction-mill-decommission-report.json",
+  "description": "INF-1AH owner-bound mill_reinforced to decommissioned lifecycle event, replay, and terminal zero-write evidence"
+}

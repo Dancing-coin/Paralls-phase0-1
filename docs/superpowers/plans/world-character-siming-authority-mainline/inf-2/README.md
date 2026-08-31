@@ -2,6 +2,13 @@
 
 Status: `approved INF-2 narrow verticals verified; INF-2V bounded payroll/operating-window re-closure verified; broader INF-2 remains incomplete`
 
+- [INF-2AD municipal drought assessment service exchange plan](2026-08-26-inf-2ad-municipal-drought-assessment-service-exchange-plan.md) - implemented fixed package content under existing Contract and Economy owners; not generic service payment.
+- [INF-2AE facility commissioning review exchange plan](2026-08-27-inf-2ae-facility-commissioning-review-exchange-plan.md) - implemented fixed Contract source, immutable v4 package, and Economy exchange with independent receipts/replay.
+- [INF-2AG public-workshop service exchange plan](2026-08-27-inf-2ag-public-workshop-service-exchange-plan.md) - implemented fixed INF-1AJ source, immutable v5 package, Contract fulfillment and Economy exchange with independent receipts/replay.
+- [INF-2AH public-project budget reservation plan](2026-08-27-inf-2ah-public-project-budget-reservation-plan.md) - implemented fixed INF-2AF commitment -> unique owner-derived Economy reservation with privacy/replay evidence.
+- [INF-2AI public-project budget consumption plan](2026-08-28-inf-2ai-public-project-budget-consumption-plan.md) - implemented exact activity plus reservation -> Economy consumed marker.
+- [INF-2AK public-project budget close plan](2026-08-28-inf-2ak-public-project-budget-close-plan.md) - implemented exact consumed marker plus funded execution -> Economy terminal close marker with fixed provenance and replay.
+
 1. [INF-2 implementation plan](2026-08-12-inf-2-time-obligation-and-cross-domain-settlement-implementation-plan.md)
 2. [INF-2R expansion implementation plan](2026-08-12-inf-2r-multi-domain-obligation-policy-expansion-implementation-plan.md)
 3. [INF-2X obligation lifecycle and policy registration implementation plan](2026-08-12-inf-2x-obligation-lifecycle-and-policy-registration-implementation-plan.md)
@@ -34,7 +41,7 @@ Status: `approved INF-2 narrow verticals verified; INF-2V bounded payroll/operat
 30. [INF-2C3 append-derived settlement recipe plan](2026-08-16-inf-2c3-append-derived-settlement-recipe-implementation-plan.md) - implemented pure owner-fragment batch/receipt composition and integrated it into obligation planning.
 31. [INF-2AA Commerce delivery payment plan](2026-08-16-inf-2aa-commerce-delivery-payment-plan.md) - implemented and independently verified one commitment-bound Economy payment and compensation row; no arbitrary payment or generic settlement.
 32. [INF-2AB tax payment owner-contract audit plan](2026-08-17-inf-2ab-tax-payment-owner-contract-audit-plan.md) - read-only discovery is retained as terminal evidence for the old lane; the separately approved Treasury/Economy vertical is implemented under its owner-admission plan.
-33. [INF-2AC arbitrary payment owner-contract audit plan](2026-08-17-inf-2ac-arbitrary-payment-owner-contract-audit-plan.md) - terminal existing-owner evidence; the approved candidate remains not implemented.
+33. [INF-2AC arbitrary payment owner-contract audit plan](2026-08-17-inf-2ac-arbitrary-payment-owner-contract-audit-plan.md) - terminal evidence for generic arbitrary payment; the separately approved package-declared negotiated-exchange row is implemented narrowly.
 34. [INF-2AB Treasury collector owner-admission plan](2026-08-17-inf-2ab-treasury-collector-owner-admission-plan.md) - completed narrow vertical: required source pins, fixed Economy payer binding, identity-only Treasury admission, atomic settle/compensate/reopen, focused tests, and independent Harness evidence are verified.
 35. [INF-2AC package-declared negotiated-exchange owner-admission plan](2026-08-17-inf-2ac-package-declared-negotiated-exchange-owner-admission-plan.md) - implemented narrow vertical for one immutable-package outcome; no generic payment, transfer, market-pricing, or compensation authority.
 

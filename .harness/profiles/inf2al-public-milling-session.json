@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf2al-public-milling-session",
+  "order": 180,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf2al_public_milling_session.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf2al-public-milling-session-report.json",
+  "description": "INF-2AL exact mill-reinforced public-use service exchange"
+}

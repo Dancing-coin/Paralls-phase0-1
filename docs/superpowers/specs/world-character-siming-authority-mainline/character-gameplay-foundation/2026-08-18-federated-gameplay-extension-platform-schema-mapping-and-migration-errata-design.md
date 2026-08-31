@@ -275,20 +275,22 @@ The future implementation must preserve the existing
 replay readers. A new schema file, registry, compiler store, generic writer,
 or second runtime is not an allowed touchpoint.
 
-Implementation may be considered only after a separate file-by-file schema-v2
-implementation plan receives its own approval, followed by separate exact
-manifest-schema, package-content-freeze/digest, row-binding, and runtime
-approvals. The platform design is complete; all downstream tasks are
-independent and unapproved, and all INF rows remain paused.
+This was the pre-implementation gate. Later explicit INF-P authorization
+implemented the approved schema-v2 and P1 mechanics with focused tests and an
+independent Harness. Package content freeze/digest, row binding, and every
+business runtime remain independently governed, but INF rows are no longer
+globally paused: only their own row-specific contracts and source facts decide
+whether they can advance.
 
 ## Current Disposition
 
 ```text
 platform design: approved and complete
-schema implementation: approval pending
-package freeze/digest: independent and not approved
-August INF A-D: paused; not complete
+INF-P schema/P1 mechanics: implemented and verified
+package freeze/digest: row-specific and independently governed
+August INF A-D: active; not complete
 ```
 
-This errata is approved design evidence. It does not claim that any field,
-reader, compiler, catalog row, package, or runtime path exists.
+This errata is approved design evidence. It does not itself claim a business
+descriptor/catalog row, package, or INF runtime path; those later facts must
+be read from their row-specific contracts and verification evidence.

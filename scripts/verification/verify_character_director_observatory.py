@@ -40,6 +40,7 @@ OBSERVATORY_VERIFY_ENV = {
     "SIMING_HEAVENLY_MODE": "off",
     "SIMING_LLM_MODE": "disabled",
 }
+OBSERVATORY_GODOT_RENDER_ARGS = ("--rendering-driver", "opengl3")
 
 
 def main() -> int:
@@ -71,6 +72,7 @@ def main() -> int:
                 str(project_root),
                 "--scene",
                 "res://scenes/phase0/CharacterDirectorObservatoryProbe.tscn",
+                *OBSERVATORY_GODOT_RENDER_ARGS,
                 "--verbose",
                 "--render-thread",
                 "safe",

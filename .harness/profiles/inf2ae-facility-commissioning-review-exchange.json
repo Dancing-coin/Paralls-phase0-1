@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf2ae-facility-commissioning-review-exchange",
+  "order": 243,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf2ae_facility_commissioning_review_exchange.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf2ae-facility-commissioning-review-exchange-report.json",
+  "description": "INF-2AE exact operational verification to fixed commissioning review Contract and Economy exchange"
+}

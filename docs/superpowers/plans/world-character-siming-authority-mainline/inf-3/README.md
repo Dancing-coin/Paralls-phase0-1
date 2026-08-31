@@ -2,6 +2,10 @@
 
 Status: `INF-3X implemented-and-verified; bounded event-derived Ecology-only propagation, three exact Construction consumer edges, fixed Organization/Economy edges, one exact drought weather-front -> existing Survival dehydration edge, their finite owner-contract matrix, and a finite read-only consumer admission check are implemented-and-verified; generic ecology fanout and broader domain consumers remain planned`
 
+- [INF-3W weather rain crop recovery](2026-08-28-inf-3w-weather-rain-crop-recovery-plan.md) - implemented unique damaged crop, fixed +5 recovery partition; no generic crop recovery.
+
+- [INF-3 rain crop-health recovery blocker plan](2026-08-28-inf-3-weather-rain-crop-health-recovery-owner-admission-blocker-plan.md) - source/selector/predicate/policy/provenance/lifecycle decisions remain required; no runtime change.
+
 1. [INF-3 implementation plan](2026-08-12-inf-3-ecology-disaster-authority-implementation-plan.md)
 2. [INF-3R expansion implementation plan](2026-08-12-inf-3r-regional-ecology-propagation-expansion-implementation-plan.md) - verified one fixed frost-to-due-production-finish edge only
 3. [INF-3R-A frost-production admission implementation plan](2026-08-13-inf-3r-a-frost-production-admission-implementation-plan.md) - verified existing-owner source/target read contracts only
@@ -24,6 +28,11 @@ Status: `INF-3X implemented-and-verified; bounded event-derived Ecology-only pro
 20. [INF-C4 ecology consumer admission contract plan](../2026-08-16-inf-c4-ecology-consumer-admission-contract-implementation-plan.md) - completed finite read-only pre-fragment checks reused by existing Construction and Organization owners; no consumer registry or target-domain writer.
 21. [INF-3Q unlisted consumer owner-contract audit plan](2026-08-17-inf-3q-unlisted-consumer-owner-contract-audit-plan.md) - durable blocker evidence; all other unlisted ecology consumer edges remain blocked.
 22. [INF-3Q drought-to-dehydration Owner-Admission Contract plan](2026-08-17-inf-3q-drought-survival-dehydration-owner-admission-plan.md) - implemented after explicit row approval with RED-to-green tests, independent Harness, fixed source/target pins, replay/privacy/receipt evidence, and no compensation or fanout.
+23. [INF-3R Government advisory presentation plan](2026-08-26-inf-3r-government-drought-advisory-presentation-plan.md) - completed fixed project/jurisdiction read-side delivery over the existing WebSocket/outbox spine; no new truth owner or generic subscription path.
+24. [INF-3S Government advisory assessment contract plan](2026-08-26-inf-3s-government-drought-assessment-contract-plan.md) - implemented fixed Contract admission through the canonical append spine; no generic contract writer or payment.
+25. [INF-3T municipal assessment fulfillment plan](2026-08-26-inf-3t-municipal-drought-assessment-fulfillment-plan.md) - implemented fixed Contract completion/fulfilled vector from the exact active INF-3S Contract; its generic Contract create/complete/fulfill/terminate entries reject this terms ref.
+26. [INF-3U municipal certificate Government acknowledgment plan](2026-08-27-inf-3u-municipal-certificate-government-acknowledgment-plan.md) - implemented fixed authority-only certificate acknowledgment on the originating advisory; no project view/presentation widening.
+27. [INF-3V weather rain -> Survival hydration plan](2026-08-27-inf-3v-weather-rain-survival-hydration-plan.md) - implemented exact `weather:rain` -> `state:hydrated` consumer with active assignment pins; no generic weather consumer.
 
 INF-3Q evidence: [independent dehydration Harness report](../../../../../.harness/verification/infra-weather-front-survival-dehydration-report.json).
 

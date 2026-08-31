@@ -2,6 +2,7 @@ extends Node
 
 const MIRROR_BRIDGE := preload("res://scripts/interaction/GameplayMirrorBridge.gd")
 const MIRROR_CONSUMER := preload("res://scripts/interaction/GameplayRuntimeStateMirrorConsumer.gd")
+const ADVISORY_CONSUMER := preload("res://scripts/interaction/GovernmentDroughtAdvisoryPresentationConsumer.gd")
 
 
 func _ready() -> void:
@@ -11,15 +12,19 @@ func _ready() -> void:
 func _run_probe() -> void:
 	var bridge = MIRROR_BRIDGE.new()
 	var consumer = MIRROR_CONSUMER.new()
+	var advisory_consumer = ADVISORY_CONSUMER.new()
 	add_child(bridge)
 	add_child(consumer)
+	add_child(advisory_consumer)
 	bridge.register_consumer("actor:visible", consumer)
+	bridge.register_government_drought_advisory_consumer("jurisdiction:visible", advisory_consumer)
 	var bus := get_node_or_null("/root/LocalPresentationBus")
 	var ok := bus != null and bridge.bind_session() == ERR_UNCONFIGURED
 	if bus:
 		bus.emit_signal("websocket_session_bound_received", {
 			"session_ref": "ws_session:probe",
 			"allowed_actor_refs": ["actor:visible"],
+			"allowed_government_drought_advisory_jurisdiction_refs": ["jurisdiction:visible"],
 		})
 		bus.emit_signal("gameplay_runtime_state_projection_received", _projection("actor:hidden", "facade:hidden"))
 		ok = ok and consumer.accepted_projection_count == 0
@@ -27,9 +32,18 @@ func _run_probe() -> void:
 		ok = ok and consumer.accepted_projection_count == 1
 		ok = ok and consumer.actor_ref == "actor:visible"
 		ok = ok and consumer.visible_groups.get("core.resources", {}).get("payload", {}).get("current", 0) == 7
+		bus.emit_signal("government_drought_advisory_projection_received", _advisory_projection("jurisdiction:hidden"))
+		ok = ok and advisory_consumer.accepted_projection_count == 0
+		bus.emit_signal("government_drought_advisory_projection_received", _advisory_projection("jurisdiction:visible"))
+		ok = ok and advisory_consumer.accepted_projection_count == 1
+		ok = ok and advisory_consumer.advisory_refs == ["advisory:drought:visible"]
+		bus.emit_signal("government_drought_advisory_delivery_received", _advisory_delivery("jurisdiction:visible", 1, 1))
+		ok = ok and advisory_consumer.last_delivery_sequence == 1
 		bus.emit_signal("backend_disconnected", 1006)
 		ok = ok and consumer.actor_ref.is_empty()
 		ok = ok and consumer.visible_groups.is_empty()
+		ok = ok and advisory_consumer.jurisdiction_ref.is_empty()
+		ok = ok and advisory_consumer.advisory_refs.is_empty()
 		ok = ok and not bridge.has_pending_enrollment()
 		ok = ok and bridge.bind_session() == ERR_UNCONFIGURED
 	var delivery_consumer = MIRROR_CONSUMER.new()
@@ -80,6 +94,7 @@ func _run_probe() -> void:
 		"accepted_projection_count": consumer.accepted_projection_count,
 		"actor_ref_after_disconnect": consumer.actor_ref,
 		"visible_groups_after_disconnect": consumer.visible_groups,
+		"advisory_refs_after_disconnect": advisory_consumer.advisory_refs,
 	}
 	var artifact := _write_json(".harness/verification/gameplay-mirror-bridge-godot-runtime.json", report)
 	print("gameplay_mirror_bridge_probe:artifact=%s" % artifact)
@@ -103,6 +118,23 @@ func _delivery(epoch: int, sequence: int, delivery_kind: String, facade_revision
 		"delivery_sequence": sequence,
 		"payload": _projection("actor:visible", facade_revision),
 	}
+
+
+func _advisory_projection(jurisdiction_ref: String) -> Dictionary:
+	return {
+		"projection_kind": "government_drought_advisory.project.v1",
+		"jurisdiction_ref": jurisdiction_ref,
+		"advisory_refs": ["advisory:drought:visible"],
+		"source_revision_vector": {"gameplay:government:advisory:visible": 1},
+		"projection_hash": "sha256:advisory-visible",
+	}
+
+
+func _advisory_delivery(jurisdiction_ref: String, epoch: int, sequence: int) -> Dictionary:
+	var payload := _advisory_projection(jurisdiction_ref)
+	payload["connection_epoch"] = epoch
+	payload["delivery_sequence"] = sequence
+	return payload
 
 
 func _write_json(relative_path: String, payload: Dictionary) -> String:

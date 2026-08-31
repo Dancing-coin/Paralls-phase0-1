@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "private-follow-on-family",
+  "order": 991,
+  "include_in_profile_order": false,
+  "include_in_all": true,
+  "script": "scripts/verification/verify_private_follow_on_family.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/private-follow-on-family-report.json",
+  "description": "Actor-private two-party follow-on family verification"
+}

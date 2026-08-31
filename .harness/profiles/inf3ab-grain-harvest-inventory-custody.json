@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf3ab-grain-harvest-inventory-custody",
+  "order": 255,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf3ab_grain_harvest_inventory_custody.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf3ab-grain-harvest-inventory-custody-report.json",
+  "description": "INF-3AB exact Ecology grain harvest to fixed Inventory custody row"
+}

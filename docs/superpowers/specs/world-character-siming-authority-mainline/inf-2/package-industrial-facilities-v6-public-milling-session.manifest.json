@@ -1,0 +1,96 @@
+{
+  "author_id": "author:repo",
+  "content_digest": "sha256:389f485869fc35684b2cdf80b84fba1245535416bdd2afa4f490c3767d9cd243",
+  "dependencies": [],
+  "economic_outcomes": [
+    {
+      "capability_ref": "capability:package-declared-negotiated-exchange@1",
+      "compensation_policy_ref": "none",
+      "consent_rule_ref": "consent:mutual@1",
+      "economic_outcome_id": "package_declared_negotiated_exchange@1",
+      "eligibility_refs": ["construction:facility-mill-reinforced-public-use-enabled@1"],
+      "outcome_ref": "outcome:industrial-facility-public-milling-session-settlement@1",
+      "price_policy": {
+        "currency_ref": "currency:local",
+        "fixed_amount": 8,
+        "maximum_amount": null,
+        "minimum_amount": null,
+        "price_policy_revision": "policy:industrial-facility-public-milling-session-price@1"
+      },
+      "privacy_policy_ref": "authority_only",
+      "source_evidence_kind": "completed_service@1",
+      "source_evidence_mode": "completed_service@1",
+      "source_owner_ref": "actor_gameplay.contract_domain",
+      "source_selection_rule_ref": "exchange:unique-owned-source@1",
+      "tradeable_ref": null,
+      "typed_service_ref": "service:industrial-facility-public-milling-session@1"
+    }
+  ],
+  "event_schemas": [],
+  "granted_effect_types": [],
+  "manifest_schema_version": 2,
+  "patch_id": "package:industrial-facilities",
+  "patch_revision_id": "package:industrial-facilities:v6",
+  "patch_version": "6.0.0",
+  "platform_extension": {
+    "capability_binding_requests": [],
+    "dependency_and_conflict_refs": [],
+    "outcome_declarations": [
+      {
+        "declaration_digest": "sha256:899988c037e90a9c93ccd5e5348178ad3f54aa018fdd26af3c9aa90870803205",
+        "declaration_ref": "declaration:industrial-facility-public-milling-session@1",
+        "definition_refs": [
+          "definition:industrial-facility-public-milling-session@1",
+          "definition:industrial-facility-public-milling-source@1"
+        ],
+        "eligibility_refs": ["construction:facility-mill-reinforced-public-use-enabled@1"],
+        "outcome_family_ref": "outcome:industrial-facility-public-milling-session-settlement@1",
+        "policy_revision_ref": "policy:industrial-facility-public-milling-session-price@1",
+        "source_package_revision": "package:industrial-facilities:v6"
+      }
+    ],
+    "package_definitions": [
+      {
+        "definition_ref": "definition:industrial-facility-public-milling-session@1",
+        "definition_schema_ref": "schema:industrial-facility-public-milling-session@1",
+        "source_package_revision": "package:industrial-facilities:v6",
+        "typed_content": {
+          "duration_ticks": 1,
+          "service_kind": "public_milling_session",
+          "service_ref": "service:industrial-facility-public-milling-session@1"
+        }
+      },
+      {
+        "definition_ref": "definition:industrial-facility-public-milling-source@1",
+        "definition_schema_ref": "schema:industrial-facility-facility@1",
+        "source_package_revision": "package:industrial-facilities:v6",
+        "typed_content": {
+          "facility_kind": "mill_reinforced",
+          "public_use_status": "enabled"
+        }
+      }
+    ],
+    "package_identity": {
+      "package_id": "package:industrial-facilities",
+      "package_revision": "package:industrial-facilities:v6",
+      "package_version": "6.0.0"
+    },
+    "platform_schema_version": "1.0",
+    "replay_reader_refs": [],
+    "verification_profile_refs": []
+  },
+  "requested_capabilities": [
+    {
+      "call_sites": ["public-milling-session-settlement"],
+      "capability_id": "capability:package-declared-negotiated-exchange",
+      "capability_version": "1",
+      "reason": "fixed public milling session settlement",
+      "requested_effect_types": []
+    }
+  ],
+  "rules": [],
+  "state_group_ids": [],
+  "state_group_migrations": [],
+  "trust_policy_ref": "trust:repo",
+  "verification_profiles": []
+}

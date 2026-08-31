@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "facility-lifecycle-transition-family",
+  "order": 997,
+  "include_in_profile_order": false,
+  "include_in_all": true,
+  "script": "scripts/verification/verify_facility_lifecycle_transition_family.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/facility-lifecycle-transition-family-report.json",
+  "description": "Generic dual-content Construction facility lifecycle transition family verification"
+}

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "bounded-project-budget-family",
+  "order": 994,
+  "include_in_profile_order": false,
+  "include_in_all": true,
+  "script": "scripts/verification/verify_bounded_project_budget_family.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/bounded-project-budget-family-report.json",
+  "description": "Bounded project budget lifecycle family adapter and replay verification"
+}

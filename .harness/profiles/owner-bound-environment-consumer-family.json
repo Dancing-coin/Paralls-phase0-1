@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "owner-bound-environment-consumer-family",
+  "order": 993,
+  "include_in_profile_order": false,
+  "include_in_all": true,
+  "script": "scripts/verification/verify_owner_bound_environment_consumer_family.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/owner-bound-environment-consumer-family-report.json",
+  "description": "Fixed Ecology weather-front to Survival owner-bound environment consumer family verification"
+}

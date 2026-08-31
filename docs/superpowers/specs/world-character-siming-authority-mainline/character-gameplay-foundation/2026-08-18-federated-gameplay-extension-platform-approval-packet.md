@@ -15,8 +15,10 @@ approved owner operation families**. It does not automatically admit new
 facts, new owners, arbitrary settlement, or arbitrary multi-owner event
 vectors.
 
-August INF A-D execution is paused. No row-specific work, package freeze, or
-canonical digest calculation is part of this approval packet.
+At the time this platform packet was authored, August INF A-D execution was
+paused. The later verified INF-P mechanics and independently approved
+row-specific work are recorded in the current audit; this packet still never
+substitutes for business-row approval or completion evidence.
 
 ## Normative Decisions For Approval
 

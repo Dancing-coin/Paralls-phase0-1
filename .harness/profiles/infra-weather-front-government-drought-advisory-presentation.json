@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-weather-front-government-drought-advisory-presentation",
+  "order": 235,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_weather_front_government_drought_advisory_presentation.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-weather-front-government-drought-advisory-presentation-report.json",
+  "description": "INF-3R fixed project/jurisdiction Government drought advisory WebSocket/Godot presentation"
+}

@@ -32,12 +32,16 @@ def _project_resources(project_root: Path) -> list[tuple[Path, str]]:
         for path in paths:
             if not path.is_file() or path.suffix not in {".godot", ".tscn", ".gd", ".tres"}:
                 continue
-            text = read_text(path)
-            for match in RESOURCE_PATTERN.finditer(text):
-                resource = match.group(1)
-                if resource.startswith(GENERATED_ARTIFACT_ROOT):
-                    continue
-                resources.append((path, "res://" + resource))
+            # MainDemo and generated scene sources can be very large. Resource
+            # references are line-local in Godot text formats, so scan without
+            # materializing an entire scene in memory.
+            with path.open(encoding="utf-8", errors="replace") as handle:
+                for line in handle:
+                    for match in RESOURCE_PATTERN.finditer(line):
+                        resource = match.group(1)
+                        if resource.startswith(GENERATED_ARTIFACT_ROOT):
+                            continue
+                        resources.append((path, "res://" + resource))
     return resources
 
 

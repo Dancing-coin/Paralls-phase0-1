@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf3v-weather-front-survival-hydration",
+  "order": 181,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf3v_weather_front_survival_hydration.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf3v-weather-front-survival-hydration-report.json",
+  "description": "INF-3V exact weather:rain front to Survival hydration state"
+}

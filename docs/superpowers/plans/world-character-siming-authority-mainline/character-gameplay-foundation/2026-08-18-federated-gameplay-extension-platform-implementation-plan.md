@@ -4,10 +4,11 @@ Status: `INF-P P1 binding sequencing implemented and verified; package content a
 
 Date: `2026-08-18`
 
-This plan turns the Federated Gameplay Extension Platform design into an
-ordered approval and implementation sequence. It stops before every mutable
-runtime surface until the platform schema, canonicalization, and immutable
-admission boundary receive explicit approval.
+This plan records the Federated Gameplay Extension Platform's ordered approval
+and implementation sequence. Its original stop gates were satisfied by the
+later explicit INF-P authorization; the resulting schema/P1 mechanics are
+implemented and verified below. The plan still stops at business package,
+descriptor, and row-specific runtime boundaries.
 
 ## Guardrails
 
@@ -44,7 +45,7 @@ Review and approve or reject:
 Deliverable: approval packet and explicit gate-by-gate user disposition. No
 code or schema edit. Disposition is approved and recorded in the packet.
 
-### Phase 1 - Platform schema decision (current; design-only)
+### Phase 1 - Platform schema decision (completed by INF-P implementation)
 
 Only after Phase 0 approval, decide whether the existing
 `GameplayPatchManifest` can receive the logical sections through a compatible
@@ -54,10 +55,11 @@ and backward-compatibility behavior.
 Deliverables: [schema decision design](../../../../specs/world-character-siming-authority-mainline/character-gameplay-foundation/2026-08-18-federated-gameplay-extension-platform-schema-decision-design.md)
 and [schema decision implementation plan](2026-08-18-federated-gameplay-extension-platform-schema-decision-implementation-plan.md)
 covering compatibility, logical fields, version migration, validation order,
-and verification planning. These deliverables are not schema implementation
-approval. Still no runtime write path, catalog row, RED tests, or Harness.
+and verification planning. The later INF-P implementation result is recorded
+in the final section of this plan and its independent Harness; this phase did
+not authorize any business catalog row or business write path.
 
-### Phase 2 - Canonicalization and digest decision
+### Phase 2 - Canonicalization and digest decision (completed by INF-P)
 
 Freeze the canonicalization algorithm, semantic array ordering, duplicate
 handling, digest exclusion rules, dependency/schema digest inputs, and the
@@ -67,7 +69,7 @@ Deliverable: approved canonicalization record and deterministic fixtures plan.
 Do not calculate or record `package:industrial-facilities:v1`'s digest before
 the complete manifest is frozen under the approved schema.
 
-### Phase 3 - Immutable admission boundary
+### Phase 3 - Immutable admission boundary (completed by INF-P/P1)
 
 Design and approve candidate validation, active-set selection, disable and
 upgrade evidence, dependency/conflict checks, package revision pinning, and
@@ -79,7 +81,7 @@ contract fields.
 
 Deliverable: immutable admission contract. No generic runtime registry.
 
-### Phase 3A - Binding Boundary Approval Gate
+### Phase 3A - Binding Boundary Approval Gate (completed by INF-P/P1)
 
 This is a separate approval gate, not an implementation substep. Approve the
 read-only binding relation from a package declaration to exactly one immutable
@@ -136,27 +138,28 @@ checkpoint, and verification record. Report the row separately as fully
 implemented and verified, implemented narrow vertical, owner-contract blocked,
 or unimplemented. Preserve environment-limited failures as limits, not passes.
 
-## Stop Conditions
+## Historical Stop Conditions
 
-Stop before implementation if the platform schema, canonicalization,
-immutable admission boundary, package digest, owner contract, or replay/privacy
-contract is not approved. Missing fields are blockers; defaults and implicit
-policy are forbidden. A platform design approval does not itself unblock
-INF-1AG or any other row.
+At the original design gate, implementation had to stop if the platform schema,
+canonicalization, immutable admission boundary, package digest, owner contract,
+or replay/privacy contract was not approved. Missing fields were blockers;
+defaults and implicit policy were forbidden. Those platform gates are now
+closed by the verified INF-P result; the same rule still applies independently
+to every business row.
 
-The independent platform design task is complete. August INF A-D remains
-paused. Do not enter row-specific package content, package freeze, digest
-derivation, catalog admission, RED tests, Harness, row binding, or runtime
-implementation from this completed design plan. A later file-by-file
-schema-v2 implementation plan is independently gated and not yet approved.
+The independent platform design task is complete and its mechanics are
+implemented. August INF A-D is active but not complete. Do not infer a
+business package, descriptor, catalog row, or runtime from this platform plan;
+each requires its own exact row contract and evidence.
 
 ## Evidence Requirements
 
-For any future implementation, retain the focused test result, independent
+For any future business-row implementation, retain the focused test result, independent
 Harness report, append-derived receipt evidence, owner projection/outbox,
 full replay, checkpoint-tail replay, privacy/revision/idempotency evidence,
 and zero-write rejection evidence. Documentation-only progress in Phases 0-3A
-must be reported as such; Phases 4-7 remain paused for this task.
+must be reported as such. Phases 4-7 are now governed by their own row-specific
+approvals and may not reuse platform evidence as business completion.
 
 ## INF-P Implementation Result
 

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf3t-municipal-drought-assessment-fulfillment",
+  "order": 239,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf3t_municipal_drought_assessment_fulfillment.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf3t-municipal-drought-assessment-fulfillment-report.json",
+  "description": "INF-3T exact active INF-3S municipal assessment Contract to fixed Contract completion and fulfillment"
+}

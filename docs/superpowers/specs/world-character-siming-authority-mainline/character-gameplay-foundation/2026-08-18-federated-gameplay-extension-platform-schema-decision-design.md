@@ -1,14 +1,17 @@
 # Federated Gameplay Extension Platform Schema Decision Design
 
-Status: `design approved and complete; schema implementation approval pending`
+Status: `historical design gate; superseded by verified INF-P schema/P1 implementation; no August completion implied`
 
 Date: `2026-08-18`
 
-This document is the next design phase after approval of the Federated
-Gameplay Extension Platform semantics. It defines a compatible logical schema
-decision, field ownership, version migration, and verification plan. It does
-not edit `GameplayPatchManifest`, add a manifest field, change a registry,
-create a compiler, or add tests/Harness/runtime behavior.
+This document is the historical design phase after approval of the Federated
+Gameplay Extension Platform semantics. It defines the compatible logical schema
+decision, field ownership, version migration, and verification plan later used
+by INF-P implementation. It did not edit `GameplayPatchManifest`, add a
+manifest field, change a registry, create a compiler, or add
+tests/Harness/runtime behavior at this design stage. The verified INF-P/P1
+result is recorded in the platform implementation plan and audit; it does not
+make any INF-1/2/3/4 business row implicit.
 
 ## Governing Constraints
 

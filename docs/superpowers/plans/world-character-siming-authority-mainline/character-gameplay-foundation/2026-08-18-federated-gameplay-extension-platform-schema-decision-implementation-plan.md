@@ -1,14 +1,17 @@
 # Federated Gameplay Extension Platform Schema Decision Implementation Plan
 
-Status: `design approved and complete; schema implementation approval pending`
+Status: `historical design gate; superseded by verified INF-P schema/P1 implementation; no August completion implied`
 
 Date: `2026-08-18`
 
-This is the Phase 1 plan after the Federated Gameplay Extension Platform
-contract was approved. It plans the schema decision and its evidence only. It
-does not authorize editing `GameplayPatchManifest`, adding fields to runtime
-models, changing the patch registry, freezing a package, calculating a digest,
-or implementing compiler/catalog/verifier/reducer/runtime behavior.
+This is the historical Phase 1 plan after the Federated Gameplay Extension
+Platform contract was approved. It planned the schema decision and its evidence
+only. It did not authorize editing `GameplayPatchManifest`, adding fields to
+runtime models, changing the patch registry, freezing a package, calculating a
+digest, or implementing compiler/catalog/verifier/reducer/runtime behavior at
+that design stage. Later explicit INF-P authorization implemented the approved
+existing manifest v2 and P1 read-only binding mechanics; this plan remains the
+trace of that pre-implementation gate and does not grant a business row.
 
 ## Scope
 

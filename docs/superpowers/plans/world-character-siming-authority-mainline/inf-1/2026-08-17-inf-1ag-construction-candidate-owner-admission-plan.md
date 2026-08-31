@@ -1,6 +1,6 @@
 # INF-1AG Construction Candidate Owner-Admission Plan
 
-Status: `implemented and verified: exact frozen package-declared oven-to-kiln narrow vertical`
+Status: `implemented narrow vertical: exact frozen mill -> mill_reinforced row verified; frozen oven-to-kiln row also remains verified`
 
 ## Completed Design Steps
 
@@ -42,14 +42,15 @@ in the [2026-08-19 freeze record](../../../specs/world-character-siming-authorit
 The explicitly approved outer and inner version fields both equal `1.0.0`, and
 the canonical declaration/content digests were independently verified. The
 current repository's executable `package:frost-farm:v1` still cannot
-substitute. The next gate is the exact immutable descriptor/catalog row and
-binding admission; verifier, reducer, RED test, Harness profile, and
-Construction runtime implementation remain separate approvals.
+substitute. The exact immutable descriptor/catalog row and binding admission,
+verifier, reducer, RED-to-green tests, Harness profile, and Construction
+runtime are now complete in their separately approved sequence for this row.
 
-## Approved INF-1AG Row Plan (Design-Only Gate)
+## Approved INF-1AG Row Plan (Completed Exact Runtime Gate)
 
-This is the implementation plan for the exact approved row, recorded before
-implementation authorization. It does not create any executable artifact.
+This was the implementation plan for the exact approved row. The manifest,
+descriptor/catalog admission, verifier, reducer, append path, focused tests,
+and independent Harness are now complete for this one row only.
 
 ### Fixed row
 
@@ -78,19 +79,20 @@ It was derived from the complete normalized immutable
 `GameplayPatchManifest` canonical JSON; neither caller, package author, agent,
 nor this plan selected it.
 
-### Ordered Future Implementation Stages
+### Ordered Implementation Stages and Evidence
 
 The exact descriptor and governed contract metadata were approved and
 implemented in the existing immutable catalog, with focused binding evidence.
 The [admission packet](../../../specs/world-character-siming-authority-mainline/inf-1/2026-08-19-inf-1ag-construction-owner-operation-descriptor-admission-packet.md)
-records the fixed fields. This does not authorize the owner-bound verifier,
-reducer, RED/Harness vertical, or append work.
+records the fixed fields. The later runtime approval authorized only the
+owner-bound verifier, reducer, RED-to-green tests, Harness, and append spine
+listed below.
 
 1. **Manifest freeze gate:** `Complete.` The manifest, explicit equal version
    fields, and exact digest claims are recorded in the 2026-08-19 freeze
    record. Missing, inactive, malformed, or mismatched digest claims remain
    zero-write.
-2. **Row-specific eligibility verifier:** implement only the
+2. **Row-specific eligibility verifier:** **Complete.** Implemented only the
    `construction:facility-acquired@1` proof mapping to the existing
    `ConstructionProductionAuthority` and committed
    `facility_acquired@1`. Bind `facility_ref` to the committed
@@ -100,25 +102,25 @@ reducer, RED/Harness vertical, or append work.
    head, `source_kind=oven`, project privacy, package revision, policy revision,
    and derived proof digest. Unknown, missing, ambiguous, stale, private,
    forged, or mismatched evidence is zero-write.
-3. **Construction declaration reducer:** add one declaration-validated branch
+3. **Construction declaration reducer:** **Complete.** Added one declaration-validated branch
    for the exact `oven -> kiln` row to the existing
    `ConstructionProductionAuthority`. Keep the owner-fixed stream,
    `facility_transformed@1` event family, one revision advance, project-scoped
    outbox, authority-derived idempotency key, and append-derived receipt. Do
    not loosen the existing bakery-only guard into a generic transform.
-4. **Immutable catalog row:** add only the exact capability row after the
+4. **Immutable catalog row:** **Complete.** Added only the exact capability row after the
    digest gate, with owner/stream/event/privacy/receipt/replay/terminal fields
    fixed by this contract. The package declaration cannot write or modify the
    catalog.
-5. **RED-to-green tests:** only after the digest and user reconfirmation, write
+5. **RED-to-green tests:** **Complete.** After digest and approval, focused
    focused tests for success, exact/changed duplicate behavior, unknown or
    inactive package, digest mismatch, unknown kind, missing/ambiguous/stale/
    private/forged acquisition proof, facility/project binding conflict,
    source/facility/stream revision conflict, receipt/privacy, full replay,
    checkpoint-tail replay, prior transform, and terminal no-compensation.
-6. **Independent Harness:** add one profile for the exact capability and
+6. **Independent Harness:** **Complete.** Added one profile for the exact capability and
    independently assert each zero-write and replay/privacy/receipt boundary.
-7. **Append-spine implementation:** route the typed facility intent through
+7. **Append-spine implementation:** **Complete.** Routed the typed facility intent through
    the existing `GameplayCommandEnvelope -> SettlementPlan ->
    GameplayEventStore.append_batch()` path. The Treasury, Economy, Inventory,
    Production, payment, material, permit, technology, and generic action
@@ -143,7 +145,7 @@ stream revisions, declaration/content/descriptor pins, and the fixed
 idempotency key. It writes one project-scoped `facility_transformed` event via
 `GameplayCommandEnvelope -> SettlementPlan -> GameplayEventStore.append_batch()`.
 
-Focused evidence is `11 passed` in
+Focused evidence is `12 passed` in
 `backend/tests/test_infra_construction_facility_package_transform.py`; the
 independent `infra-construction-facility-package-transform` Harness is green.
 It covers success, zero-write invalid source/package/binding/digest/privacy/
@@ -151,12 +153,128 @@ revision cases, receipt, idempotency, full replay, checkpoint-tail replay, and
 terminal/no-compensation semantics. This completion applies only to the frozen
 `oven -> kiln` row, never to a generic transform family.
 
+Verification caveat: the exact INF-1AG focused suite, descriptor/binding
+admission Harness, Construction transform Harness, and continuation gate are
+green. After stale selector and predecessor evidence repairs, a fresh all-INF
+inventory reran all 124 profiles and every profile passed. Full pytest remains
+`3561 passed, 1 failed` due to the host permission error writing the
+workspace-parent `.env`; this is an environment limitation, not an INF-1AG
+runtime failure.
+
 ## Prohibited Scope
 
 This plan does not authorize a new owner, generic action/transform, caller
 selection of owner/stream/event/revision/privacy/receipt/fragment, a runtime-
 writable package registry, catalog writer, router, coordinator, second runtime,
 or settlement authority. A package declaration is immutable data only.
+
+## 2026-08-19 Remaining Construction Candidate-Design Pass
+
+Status: `documentation-only complete; no new exact row submitted for approval`
+
+1. Re-read only `ConstructionProductionAuthority`, its committed facility/run/
+   maintenance projection facts, immutable package/platform records, and the
+   existing INF-1 formal audits.
+2. Exclude the completed facility repair, `bakery -> bakery_reinforced`,
+   frozen `oven -> kiln`, due-production completion, work-completion evidence,
+   and maintenance-state dispel paths from a new row.
+3. Record the one remaining source observation: project-visible
+   `facility_acquired(facility_kind=mill)` plus current facility/project and
+   stream revision pins.
+4. Stop before contract design because no formal target kind semantic,
+   capability/outcome id, immutable package declaration, policy revision, or
+   owner-derived eligibility vector exists for `mill`.
+5. Synchronize the candidate design, completion audit, remaining-scope matrix,
+   and continuation checkpoint. Do not create a manifest, catalog row, RED
+   test, Harness profile, verifier, reducer, event, or write path.
+
+The minimal next approval is one literal `mill -> target_kind` business
+semantic together with one immutable package/declaration/policy identity,
+non-empty existing-owner eligibility evidence, and an explicit terminal or
+alternative lifecycle choice. The fixed Construction owner/stream/event/
+privacy/receipt/replay fence is available only after those facts are approved;
+it is not a generic transform admission.
+
+## 2026-08-20 Mill Pre-Contract Design Plan
+
+Status: `documentation-only complete; awaiting literal contract approval`
+
+1. Preserve the fixed base: `mill`, committed project-visible
+   `facility_acquired@1`, `ConstructionProductionAuthority`, the facility
+   stream, `facility_transformed@1`, and project privacy.
+2. Record rather than infer the unresolved business fields: target kind and
+   semantic; capability/outcome identities; package/version/declaration/content
+   identities; policy; non-empty eligibility/predicate/evidence mappings;
+   row-specific descriptor/catalog pins; and terminal/reversal/compensation
+   choice.
+3. Record that source event/facility/stream revisions and facility/project
+   binding are owner-derived fences, and that receipt, replay and idempotency
+   shape remain fixed by the existing Construction contract without being
+   caller-selected.
+4. Keep all missing, ambiguous, stale, private, conflicting, duplicate, or
+   caller-coordinated requests zero-write.
+5. Stop. Do not create a package, calculate a digest, install a descriptor or
+   catalog row, add RED tests/Harness, or write a Construction reducer/append
+   path until one complete literal `mill -> target_kind` contract is approved.
+
+## 2026-08-20 Mill Reinforcement Implementation Plan (Completed)
+
+Status: `implemented narrow vertical: exact frozen mill-to-mill_reinforced row verified`
+
+### Fixed approved row contract
+
+```text
+capability_id       = capability:construction-facility-mill-reinforcement@1
+outcome_family_ref  = outcome:construction-facility-mill-reinforcement@1
+package_revision    = package:industrial-facilities:v2
+source_kind         = mill
+target_kind         = mill_reinforced
+policy_revision     = policy:industrial-facilities:mill-to-mill-reinforced@1
+eligibility_ref     = construction:facility-acquired@1
+```
+
+The full contract and all exact proposed refs are in the formal INF-1AG design.
+The row changes only facility kind and revision. It must not cause weather,
+maintenance, material, inventory, payment, production-output, recipe, permit,
+technology or any cross-domain effect.
+
+### Completed gates
+
+1. **Package-content decision:** fixed v2 package-local identity,
+   definition/typed-content, and explicit empty arrays without modifying v1.
+2. **Package freeze/digest gate:** froze immutable v2 bytes with untrusted
+   digest claims; adapter validates normalized declaration digest, then content
+   digest; retain the frozen record. Any digest failure is zero-write.
+3. **Static admission gate:** installed only
+   `descriptor:construction-facility-mill-reinforcement@1` and
+   `inf:construction-facility-mill-reinforcement@1` in the existing immutable
+   catalog; activation resolves exactly one binding and persists all pins.
+4. **Focused RED tests:** added failure tests for every digest/binding/
+   source/privacy/revision/idempotency rejection, then success, receipt, full
+   replay, checkpoint-tail replay and terminal behavior.
+5. **Independent Harness:** added a row-specific profile covering the same
+   success and zero-write selectors; it must not reuse v1 evidence as proof.
+6. **Narrow owner implementation:** added a row-specific proof verifier and a
+   projector/reducer branch accepting only the fixed complete mill vector;
+   route through `GameplayCommandEnvelope -> SettlementPlan ->
+   GameplayEventStore.append_batch()`.
+7. **Verification and documentation:** ran focused tests, its Harness,
+   continuation gate and required replay checks; then synchronize formal docs
+   without claiming generic transform or August INF A-D completion.
+
+No stage may be reordered or partially substituted. In particular, content
+must not be frozen with an empty binding, the active package cannot choose an
+authority coordinate, and a reducer cannot be generalized to arbitrary kinds.
+
+### Completion boundary
+
+The frozen v2 record uses equal `2.0.0` versions, `author:repo`, `trust:repo`,
+the two exact facility definitions, and explicitly empty unrelated arrays. It
+is verified by adapter-derived declaration/content digests and exact-one
+descriptor binding. Evidence is `53 passed` relevant tests (with a repository-
+local `--basetemp`) and the green independent
+`infra-construction-mill-reinforcement` Harness. This completion admits only
+the exact row, not arbitrary transforms or another INF row.
 
 ## 2026-08-18 Sequencing Closure
 

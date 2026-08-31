@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf3aa-weather-rain-water-resource-recovery",
+  "order": 253,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf3aa_weather_rain_water_resource_recovery.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf3aa-weather-rain-water-resource-recovery-report.json",
+  "description": "INF-3AA exact weather rain front to unique water resource recovery"
+}

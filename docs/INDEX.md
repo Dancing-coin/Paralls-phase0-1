@@ -34,6 +34,7 @@
 - `docs/架构/运行时/模块/模型服务通道.md`：模型 provider readiness、adapter 和真实调用证明边界。
 - `docs/架构/运行时/模块/Harness验证证据.md`：Harness profile 与证据产物模块文档。
 - `docs/8月分析/README.md`：基于当前实现、正式 spec/plan 与 Harness 证据的增量设计指导；其中第二阶段推进目录定义已有角色的多智能体协作边界。
+- `docs/9月分析/README.md`：初代产品初稿入口，记录小镇、个人区域、锚点朋友、朋友圈桌游和剧本角色增量方向；该目录是提议性分析材料，不授权实现。
 - `docs/8月分析/第二阶段推进/README.md`：`bakery-authored-agents` 的增量指导入口；正式 SDD/plan 见下方 Phase Two tree。
 - `docs/art-resource-swap-workflow.md`：美术资源替换与更新工作流手册，定义 art pack、adapter scene、runtime shell 和 binding profile 的接入方式。
 - `docs/demo-script.md`：预期 demo 节拍和可观察证明路径。

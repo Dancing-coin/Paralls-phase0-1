@@ -1,0 +1,77 @@
+{
+  "manifest_schema_version": 2,
+  "patch_id": "package:bounded-project-budget-workshop",
+  "patch_version": "1.0.0",
+  "patch_revision_id": "package:bounded-project-budget:workshop-v1@1",
+  "content_digest": "sha256:3bf41edeb46d8a8084cdee325420bf690eee557882b7c307e86db85511683a81",
+  "author_id": "author:repo",
+  "trust_policy_ref": "trust:repo",
+  "dependencies": [],
+  "state_group_ids": [],
+  "state_group_migrations": [],
+  "event_schemas": [],
+  "rules": [],
+  "requested_capabilities": [],
+  "economic_outcomes": [],
+  "granted_effect_types": [],
+  "verification_profiles": [],
+  "platform_extension": {
+    "platform_schema_version": "1.0",
+    "package_identity": {
+      "package_id": "package:bounded-project-budget-workshop",
+      "package_version": "1.0.0",
+      "package_revision": "package:bounded-project-budget:workshop-v1@1"
+    },
+    "package_definitions": [
+      {
+        "definition_ref": "definition:bounded-project-budget-workshop@1",
+        "definition_schema_ref": "schema:bounded-project-budget@1",
+        "source_package_revision": "package:bounded-project-budget:workshop-v1@1",
+        "typed_content": {
+          "project_definition_ref": "definition:public-project@1",
+          "currency_ref": "currency:local",
+          "amount": 12,
+          "policy_revision_ref": "policy:economy-public-project-budget-workshop@1",
+          "source_work_order_ref": "work-order:public-project:workshop-bench@1",
+          "source_project_step_ref": "project-step:public-project:workshop-bench@1"
+        }
+      }
+    ],
+    "outcome_declarations": [
+      {
+        "declaration_ref": "declaration:bounded-project-budget-workshop@1",
+        "outcome_family_ref": "outcome:bounded-project-budget@1",
+        "definition_refs": [
+          "definition:bounded-project-budget-workshop@1"
+        ],
+        "eligibility_refs": [
+          "predicate:project-budget-source@1"
+        ],
+        "policy_revision_ref": "policy:economy-public-project-budget-workshop@1",
+        "source_package_revision": "package:bounded-project-budget:workshop-v1@1",
+        "declaration_digest": "sha256:21e55d22d03b697da448256b7b13639c60209239bb492d942ad4f93eb5ea2bc2"
+      }
+    ],
+    "capability_binding_requests": [
+      {
+        "binding_ref": "binding:bounded-project-budget-workshop@1",
+        "capability_ref": "capability:bounded-project-budget@1",
+        "source_package_revision": "package:bounded-project-budget:workshop-v1@1",
+        "declaration_ref": "declaration:bounded-project-budget-workshop@1",
+        "typed_read_requirements": [
+          {
+            "requirement_ref": "requirement:bounded-project-budget-workshop-source@1",
+            "predicate_family_ref": "predicate:project-budget-source@1",
+            "subject_slot_ref": "slot:source-project-step@1"
+          }
+        ],
+        "proposal_effect_types": [
+          "effect:bounded-project-budget@1"
+        ]
+      }
+    ],
+    "dependency_and_conflict_refs": [],
+    "replay_reader_refs": [],
+    "verification_profile_refs": []
+  }
+}

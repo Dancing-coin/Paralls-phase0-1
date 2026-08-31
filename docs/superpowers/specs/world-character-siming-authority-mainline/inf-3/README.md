@@ -1,6 +1,12 @@
 # INF-3 Specification Tree
 
-Status: `INF-3 narrow ecology lifecycle, seasonal process, bounded and event-derived Ecology-only propagation, fixed Construction fanout, fixed Organization/Economy consumer edges, one fixed drought weather-front -> existing Survival dehydration edge, a finite weather-front owner-contract matrix, and a finite read-only consumer admission check are implemented-and-verified; generic propagation and broader domain fanout remain incomplete`
+Status: `INF-3 finite ecology lifecycle, propagation, grain harvest, grain custody and recovery rows are implemented and verified; remaining unlisted edges are formally blocked; generic propagation and broader domain fanout remain incomplete`
+
+The approved [formal blocker disposition contract](../2026-08-26-august-inf-formal-blocker-disposition-contract.md)
+keeps the Goal active while unlisted target-owner edges remain blocked.
+`drought_process_advanced` cannot substitute for the committed weather-front
+source; no generic consumer registry, router, fanout, retry, or compensation
+path is admitted.
 
 1. [INF-3 ecology and disaster authority design](2026-08-12-inf-3-ecology-disaster-authority-design.md)
 2. [INF-3R regional ecology propagation expansion design](2026-08-12-inf-3r-regional-ecology-propagation-expansion-design.md) - verified one fixed frost-to-due-production-finish edge only
@@ -24,9 +30,141 @@ Status: `INF-3 narrow ecology lifecycle, seasonal process, bounded and event-der
 20. [INF-C4 ecology consumer admission contract](../2026-08-16-inf-c4-ecology-consumer-admission-contract-design.md) - verified finite read-only pre-fragment checks reused by existing Construction and Organization owners; not a consumer registry or target-domain writer
 21. [INF-3Q unlisted consumer owner-contract audit](2026-08-17-inf-3q-unlisted-consumer-owner-contract-audit.md) - durable blocker evidence for why this exact row required admission; all other unlisted consumer edges remain blocked
 22. [INF-3Q drought-to-dehydration Owner-Admission Contract](2026-08-17-inf-3q-drought-survival-dehydration-owner-admission-design.md) - verified one exact `weather:drought -> Survival dehydrated` edge with project source/assignment pins, fixed Survival apply/open events, receipt/replay, and no compensation or fanout
+23. [INF-3R drought-to-Government advisory Owner-Admission Contract](2026-08-26-inf-3r-drought-government-advisory-owner-admission-design.md) - verified exact project-visible drought front -> existing Government advisory issuance; no restriction, payment, material, population, compensation, or fanout semantics
+24. [INF-3R Government advisory presentation contract](2026-08-26-inf-3r-government-drought-advisory-presentation-contract.md) - fixed project/jurisdiction read-side delivery through server-issued WebSocket scope; no actor-scope substitution or truth write
+25. [INF-3S Government advisory municipal assessment contract](2026-08-26-inf-3s-government-drought-advisory-municipal-assessment-contract-design.md) - implemented fixed authority-only Contract admission; no payment, generic contract writer, or advisory fanout
+26. [INF-3T municipal assessment fulfillment contract](2026-08-26-inf-3t-municipal-drought-assessment-fulfillment-owner-admission-design.md) - implemented exact active municipal assessment Contract -> fixed Contract completion/fulfillment pair; no payment, generic contract completion, or fanout
+27. [INF-3U municipal certificate Government acknowledgment contract](2026-08-27-inf-3u-municipal-certificate-government-acknowledgment-owner-admission-design.md) - implemented exact certificate -> authority-only Government advisory acknowledgment; no project scope widening or Government policy outcome
 
 INF-3Q evidence: [independent dehydration Harness report](../../../../../.harness/verification/infra-weather-front-survival-dehydration-report.json).
 
+INF-3R evidence: [independent Government advisory Harness report](../../../../../.harness/verification/infra-weather-front-government-drought-advisory-report.json).
+
+INF-3R presentation evidence: [independent Government advisory presentation Harness report](../../../../../.harness/verification/infra-weather-front-government-drought-advisory-presentation-report.json).
+
+INF-3T evidence: [independent municipal assessment fulfillment Harness report](../../../../../.harness/verification/inf3t-municipal-drought-assessment-fulfillment-report.json).
+
+Municipal drought closed-loop evidence: [independent chain Harness report](../../../../../.harness/verification/inf-municipal-drought-closed-loop-report.json).
+
+INF-3U evidence: [independent Government acknowledgment Harness report](../../../../../.harness/verification/inf3u-municipal-certificate-government-acknowledgment-report.json).
+
 INF-3L/INF-3N/INF-3O evidence is [weather-front owner-contract matrix report](../../../../../.harness/verification/infra-ecology-weather-front-owner-contract-matrix-report.json). It enforces the existing Construction, Organization and Economy weather-front rows, including the fixed two-quote Economy fanout and fixed two-Organization supply fanout, as a finite catalog; all edges remain fixed and owner-bound.
 
-Evidence: [ecology focused Harness report](../../../../../.harness/verification/infra-ecology-disaster-report.json), [INF-3R-A admission report](../../../../../.harness/verification/infra-frost-production-admission-report.json), [INF-3R-B recipe report](../../../../../.harness/verification/infra-frost-production-recipe-admission-report.json), [INF-3R edge report](../../../../../.harness/verification/infra-regional-ecology-report.json), [INF-3X truth report](../../../../../.harness/verification/infra-regional-ecology-truth-report.json), [seasonal process report](../../../../../.harness/verification/infra-ecology-seasonal-process-report.json), [weather-front report](../../../../../.harness/verification/infra-ecology-weather-front-propagation-report.json), [INF-3D path report](../../../../../.harness/verification/infra-ecology-weather-front-path-propagation-report.json), [INF-3E fanout report](../../../../../.harness/verification/infra-ecology-weather-front-fanout-report.json), [INF-3F wave-fanout report](../../../../../.harness/verification/infra-ecology-weather-front-wave-fanout-report.json), [INF-3M event-derived planner report](../../../../../.harness/verification/infra-ecology-weather-front-event-derived-planner-report.json), [INF-3G report](../../../../../.harness/verification/infra-ecology-weather-front-construction-edge-report.json), [INF-3H report](../../../../../.harness/verification/infra-ecology-weather-front-construction-fanout-report.json), [INF-3I report](../../../../../.harness/verification/infra-ecology-weather-front-organization-supply-edge-report.json), [INF-3J report](../../../../../.harness/verification/infra-ecology-weather-front-economy-quote-edge-report.json), [INF-3N report](../../../../../.harness/verification/infra-ecology-weather-front-economy-quote-fanout-report.json), [INF-3O report](../../../../../.harness/verification/infra-ecology-weather-front-organization-supply-fanout-report.json), [INF-C4 admission report](../../../../../.harness/verification/infra-ecology-consumer-admission-contract-report.json), [INF-3Y report](../../../../../.harness/verification/infra-hazard-propagation-report.json), [seasonal maintenance report](../../../../../.harness/verification/infra-seasonal-construction-maintenance-report.json), and [continuation gate report](../../../../../.harness/verification/infra-continuation-gate-report.json). INF-3I, INF-3J, INF-3N and INF-3O add exact owner-bound consumer edges only. INF-C4 validates finite existing rows before their owner work. None of these authorize a generic consumer registry, arbitrary fanout, or arbitrary cross-domain settlement.
+ Evidence: [ecology focused Harness report](../../../../../.harness/verification/infra-ecology-disaster-report.json), [INF-3R-A admission report](../../../../../.harness/verification/infra-frost-production-admission-report.json), [INF-3R-B recipe report](../../../../../.harness/verification/infra-frost-production-recipe-admission-report.json), [INF-3R edge report](../../../../../.harness/verification/infra-regional-ecology-report.json), [INF-3X truth report](../../../../../.harness/verification/infra-regional-ecology-truth-report.json), [seasonal process report](../../../../../.harness/verification/infra-ecology-seasonal-process-report.json), [weather-front report](../../../../../.harness/verification/infra-ecology-weather-front-propagation-report.json), [INF-3D path report](../../../../../.harness/verification/infra-ecology-weather-front-path-propagation-report.json), [INF-3E fanout report](../../../../../.harness/verification/infra-ecology-weather-front-fanout-report.json), [INF-3F wave-fanout report](../../../../../.harness/verification/infra-ecology-weather-front-wave-fanout-report.json), [INF-3M event-derived planner report](../../../../../.harness/verification/infra-ecology-weather-front-event-derived-planner-report.json), [INF-3G report](../../../../../.harness/verification/infra-ecology-weather-front-construction-edge-report.json), [INF-3H report](../../../../../.harness/verification/infra-ecology-weather-front-construction-fanout-report.json), [INF-3I report](../../../../../.harness/verification/infra-ecology-weather-front-organization-supply-edge-report.json), [INF-3J report](../../../../../.harness/verification/infra-ecology-weather-front-economy-quote-edge-report.json), [INF-3N report](../../../../../.harness/verification/infra-ecology-weather-front-economy-quote-fanout-report.json), [INF-3O report](../../../../../.harness/verification/infra-ecology-weather-front-organization-supply-fanout-report.json), [INF-C4 admission report](../../../../../.harness/verification/infra-ecology-consumer-admission-contract-report.json), [INF-3Y report](../../../../../.harness/verification/infra-hazard-propagation-report.json), [seasonal maintenance report](../../../../../.harness/verification/infra-seasonal-construction-maintenance-report.json), and [continuation gate report](../../../../../.harness/verification/infra-continuation-gate-report.json). INF-3I, INF-3J, INF-3N and INF-3O add exact owner-bound consumer edges only. INF-C4 validates finite existing rows before their owner work. None of these authorize a generic consumer registry, arbitrary fanout, or arbitrary cross-domain settlement.
+
+The [2026-08-20 candidate register](2026-08-20-inf-3-owner-admission-candidate-register.md) and [plan](../../../plans/world-character-siming-authority-mainline/inf-3/2026-08-20-inf-3-owner-admission-candidate-plan.md) preserve the finite map and list three blocked/unformed slots. No new Ecology source-to-owner edge is approval-ready; drought-process substitution and additional weather consumers remain zero-write.
+
+## INF-3V Weather Rain -> Survival Hydration
+
+`INF-3V` is an implemented narrow existing-owner consumer edge. A committed,
+project-visible Ecology `weather_front.propagated` event with the exact
+`weather:rain` source and a matching active profile-region assignment produces
+the existing Survival `state:hydrated` plus scheduled obligation vector.
+Focused tests and the independent `inf3v-weather-front-survival-hydration`
+Harness cover source/assignment privacy, revisions, duplicate, receipt,
+full/checkpoint-tail replay, expiry, and explicit rejection of
+`drought_process_advanced`. No generic weather consumer, fanout, router,
+compensation or cross-domain writer is admitted.
+
+Status: `implemented narrow vertical; Goal active; August INF A-D not complete`.
+
+The focused suite and independent Harness are green (`20 passed` including
+the catalog regression). The row is a disjoint `weather:rain` partition;
+existing cold, heat, and drought rows remain separate and no unlisted weather
+edge is inferred.
+
+## INF-3W Weather Rain -> Crop Recovery
+
+`INF-3W` is an implemented narrow Ecology row. One committed project-visible
+`weather:rain` front recovers exactly one owner-derived unique damaged crop in
+its target region by fixed `+5` health capped at `100`. The event uses the
+existing `crop.recorded` family only through its fixed provenance partition.
+Zero/multiple crops, healthy crops, wrong/private/stale weather, changed
+duplicates and `drought_process_advanced` source substitution are zero-write.
+It creates no fanout, inventory, production, payment, material, or generic
+crop recovery behavior.
+
+## INF-3 Rain Crop-Recovery Disposition (Historical, Superseded)
+
+The earlier review recorded this shape as `owner-contract blocked` while the
+crop selector, damaged predicate, recovery policy, provenance partition, and
+repeat rule were still missing. That blocker is historical and was superseded
+by the implemented INF-3W exact unique-crop row documented above. The original
+blocker packet remains an audit trail only; it does not describe the current
+INF-3W disposition. `drought_process_advanced` remains inadmissible as a
+source or substitute.
+
+## 2026-08-28 Current Lane Checkpoint
+
+INF-3's finite ecology lifecycle, weather-front map, drought Government
+advisory, rain hydration, and rain crop-recovery rows remain implemented and
+verified. No additional target-owner edge is formed from current committed
+facts. `drought_process_advanced` cannot substitute for a weather-front
+source, and generic consumer, fanout, retry, compensation, or router behavior
+remains blocked. Current verification is `1246 passed` for the keyword-selected
+INF/INFRA collection and `4004 passed` for the repository-root suite. Goal
+remains active; August INF A-D remains not complete.
+
+## 2026-08-28 INF-3 Grain Harvest
+
+`INF-3 Grain Harvest` is an implemented narrow Ecology vertical. One committed,
+project-visible `grain_crop.admitted` source with fixed
+`species=grain:wheat`, `maturity_status=mature`, `yield_quantity=10`, and
+exact plot/project binding yields one Ecology-owned `grain_harvested` event
+with fixed `item_definition=grain:wheat@1`. The owner-derived idempotency key,
+project privacy, exact revision pins, append receipt, full/checkpoint-tail
+replay, and zero-write unknown/private/stale/ambiguous/duplicate paths are
+verified by the focused suite and the independent `inf3-grain-harvest`
+Harness.
+
+This row does not add an Inventory writer, Economy writer, generic harvest API,
+material conversion system, fanout, router, or compensation path. The earlier
+[grain harvest blocker](2026-08-28-inf-3-grain-harvest-custody-source-blocker.md)
+is retained as historical traceability only.
+
+## 2026-08-28 INF-3AA Rain Water Resource Recovery
+
+`INF-3AA` is an implemented narrow Ecology vertical. One committed,
+project-visible `weather:rain` front plus exactly one target-region
+`substance:water` ResourceNode below the fixed cap records one `resource.recorded`
+recovery with `+10` quantity capped at `100`. The owner-derived source/resource
+revision fence, project privacy, idempotency, append receipt, zero-write cases,
+and full/checkpoint-tail replay are covered by the focused suite and the
+independent `inf3aa-weather-rain-water-resource-recovery` Harness. Seasonal
+regeneration, drought process, crop recovery, material conversion, Inventory,
+Economy, fanout, and generic resource recovery remain separate and unchanged.
+
+The replay reader also rejects forged `descriptor_revision` or terminal pins;
+full and checkpoint-tail replay therefore fail closed on contract metadata
+tampering as well as source/resource tampering.
+
+The recovery additionally rejects authority-only source resources before append,
+and replay revalidates the project-visible prior resource record. Private source
+provenance therefore cannot become a project-scoped recovery fact.
+
+## 2026-08-29 INF-3AB Grain Custody Disposition
+
+The next candidate, `grain_harvested@1 -> Inventory custody`, is now an
+implemented narrow vertical. It uses the fixed holder
+`organization:district-milling-cooperative`, fixed destination
+`container:district-milling-cooperative:grain-intake`, registered item
+`grain:wheat@1`, quantity `10`, owner-derived item id, project privacy, and
+append-derived receipt. No caller value, fixture, plot name, or generic output
+receipt fills these fields. The original blocker and next gates are retained
+as historical traceability in the
+[INF-3AB blocker](2026-08-29-inf-3ab-grain-harvest-inventory-custody-blocker.md)
+and its [plan](../../../plans/world-character-siming-authority-mainline/inf-3/2026-08-29-inf-3ab-grain-harvest-inventory-custody-blocker-plan.md).
+The row-specific `grain_harvest_custody_view_for()` reader validates the source
+event and produces equal full/checkpoint-tail projection digests.
+
+The closed `harvest_to_custody@1` family is not promoted by this row. Only the
+committed wheat source/content tuple exists; no second immutable harvest
+manifest or Ecology source fact is present. Synthetic in-memory source
+mutation is explicitly excluded from genericity evidence, and the aggregate
+family verifier keeps the family `bounded_adapter` until two real,
+digest-valid manifest/source pairs pass the same adapter.
+## 2026-08-28 Grain Harvest Closure
+
+The fixed mature wheat admission and terminal `grain_harvested` Ecology row
+are implemented and verified. The row is project-visible, owner-bound and
+replay-safe, and creates no Inventory, Economy or generic harvest authority.

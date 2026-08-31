@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "domain-acceptance-marker-family",
+  "order": 992,
+  "include_in_profile_order": false,
+  "include_in_all": true,
+  "script": "scripts/verification/verify_domain_acceptance_marker_family.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/domain-acceptance-marker-family-report.json",
+  "description": "Organization domain acceptance marker family verification"
+}

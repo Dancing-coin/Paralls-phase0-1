@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf4ap-grain-intake-activity",
+  "order": 256,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf4ap_grain_intake_activity.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf4ap-grain-intake-activity-report.json",
+  "description": "INF-4AP exact Inventory grain custody to Organization grain intake record"
+}

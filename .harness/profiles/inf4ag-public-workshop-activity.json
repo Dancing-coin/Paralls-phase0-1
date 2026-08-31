@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf4ag-public-workshop-activity",
+  "order": 245,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf4ag_public_workshop_activity.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf4ag-public-workshop-activity-report.json",
+  "description": "INF-4AG exact fulfilled public-workshop Contract to Organization project activity record"
+}

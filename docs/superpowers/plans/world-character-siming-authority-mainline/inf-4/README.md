@@ -2,6 +2,8 @@
 
 Status: `narrow predecessor verticals implemented and verified; August INF-4 mainline remains incomplete`
 
+- [INF-4AK public-project execution acknowledgment](2026-08-28-inf-4ak-public-project-execution-acknowledgment-plan.md) - implemented exact INF-4AJ execution -> Government authority-only acknowledgment.
+
 1. [INF-4 implementation plan](2026-08-12-inf-4-population-branch-preview-implementation-plan.md)
 2. [INF-4R expansion implementation plan](2026-08-12-inf-4r-population-world-mode-and-civilization-interface-expansion-implementation-plan.md)
 3. [INF-4X household and organization source projection implementation plan](2026-08-12-inf-4x-household-organization-source-projection-implementation-plan.md)
@@ -75,8 +77,38 @@ implemented narrowly. It reuses the existing Production completed-evidence
 source and Economy wage owner, explicitly rejects branch-as-Production
 substitution, and adds no branch promotion writer or combined receipt.
 
+[INF-4U municipal assessment certificate plan](2026-08-26-inf-4u-municipal-drought-assessment-certificate-plan.md)
+implements one exact completed municipal assessment -> Ownership certificate
+initial title row. It is independent of branch promotion and does not create a
+generic certificate or transfer authority.
+
 User-directed deferral (2026-08-15): complete group simulation is deferred,
 not closed. Promotion is unsupported and zero-write except for INF-4N's
 separately approved Government passed-inspection row and INF-4O's separately
 approved Organization supply row; all other existing-owner production-equivalent
 contracts still require their own formal package.
+
+The [INF-4V production work-contribution acceptance plan](2026-08-27-inf-4v-production-work-contribution-acceptance-plan.md)
+is implemented and verified. It records one organization-summary accepted
+work-history fact from committed Production completion evidence; it does not
+create wage/payment, output, inventory, social, population, branch-promotion,
+material, or generic work-contribution semantics.
+
+- [INF-4AG public-workshop activity plan](2026-08-27-inf-4ag-public-workshop-activity-plan.md) - implemented exact fulfilled INF-2AG Contract -> Organization project activity record; no social/population writer.
+- [INF-4AH public-workshop notice plan](2026-08-27-inf-4ah-public-workshop-notice-plan.md) - implemented exact INF-4AG activity -> Government project notice; no generic notification/social writer.
+- [INF-4AJ public-project execution plan](2026-08-27-inf-4aj-public-project-execution-plan.md) - implemented exact INF-4AG activity + INF-2AI consumed budget -> Organization project execution; no generic project lifecycle writer.
+
+## 2026-08-27 Verification Refresh
+
+The INF-4AH plan is verified by its focused `3 passed` suite and independent
+Harness. No subsequent row is selected because attendance, participant,
+social, and population outcomes still lack a committed source and exact
+target-owner contract. Goal remains active; August INF A-D remains not
+complete.
+
+## 2026-08-27 Verification Refresh
+
+INF-4AJ is verified by its focused `5 passed` suite and independent Harness.
+It is the next exact row after INF-2AI: the existing Organization owner records
+only the fixed project-scoped `funded_and_executed` consequence for matching
+INF-4AG and INF-2AI sources.

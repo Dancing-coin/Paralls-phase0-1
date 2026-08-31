@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf2ad-municipal-drought-assessment-exchange",
+  "order": 236,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf2ad_municipal_drought_assessment_exchange.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf2ad-municipal-drought-assessment-exchange-report.json",
+  "description": "INF-2AD exact completed municipal drought assessment service to existing Economy settlement"
+}

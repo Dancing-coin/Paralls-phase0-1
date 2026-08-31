@@ -34,6 +34,10 @@ def main() -> int:
         "profile": "infra-ecology-semantic-adapter-matrix-admission",
         "overall_passed": all(checks.values()),
         "checks": checks,
+        "focused_test_files": [
+            str(matrix_path.relative_to(root)).replace("\\", "/"),
+            str(ecology_path.relative_to(root)).replace("\\", "/"),
+        ],
         "evidence": logs,
         "run_id": f"infra-ecology-semantic-adapter-matrix-admission-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
         "commit": evidence_revision(root),

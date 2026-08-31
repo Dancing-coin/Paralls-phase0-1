@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "fixed-service-exchange-family",
+  "order": 995,
+  "include_in_profile_order": false,
+  "include_in_all": true,
+  "script": "scripts/verification/verify_fixed_service_exchange_family.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/fixed-service-exchange-family-report.json",
+  "description": "Economy fixed service exchange family verification"
+}

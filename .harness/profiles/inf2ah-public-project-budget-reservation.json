@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf2ah-public-project-budget-reservation",
+  "order": 248,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf2ah_public_project_budget_reservation.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf2ah-public-project-budget-reservation-report.json",
+  "description": "INF-2AH exact public-project budget commitment to owner-derived Economy reservation"
+}

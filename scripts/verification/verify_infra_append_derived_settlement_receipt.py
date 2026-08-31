@@ -31,6 +31,10 @@ def main() -> int:
         "profile": "infra-append-derived-settlement-receipt",
         "overall_passed": all(checks.values()),
         "checks": checks,
+        "focused_test_files": [
+            str(receipt_path.relative_to(root)).replace("\\", "/"),
+            str(obligation_path.relative_to(root)).replace("\\", "/"),
+        ],
         "evidence": logs,
         "run_id": f"infra-append-derived-settlement-receipt-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
         "commit": evidence_revision(root),

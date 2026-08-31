@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf4w-production-work-order-fulfillment",
+  "order": 177,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inf4w_production_work_order_fulfillment.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf4w-production-work-order-fulfillment-report.json",
+  "description": "INF-4W exact INF-4V accepted contribution to Organization work-order fulfillment"
+}

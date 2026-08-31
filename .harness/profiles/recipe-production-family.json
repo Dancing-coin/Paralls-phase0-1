@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "recipe-production-family",
+  "order": 995,
+  "include_in_profile_order": false,
+  "include_in_all": true,
+  "script": "scripts/verification/verify_recipe_production_family.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/recipe-production-family-report.json",
+  "description": "Recipe production family schema, binding, owner adapter, and replay verification"
+}

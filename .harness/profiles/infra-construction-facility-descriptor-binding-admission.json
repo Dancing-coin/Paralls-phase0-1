@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "infra-construction-facility-descriptor-binding-admission",
+  "order": 169,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_infra_construction_facility_descriptor_binding_admission.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-construction-facility-descriptor-binding-admission-report.json",
+  "description": "INF-1AG exact immutable Construction descriptor/catalog and read-only package binding admission"
+}

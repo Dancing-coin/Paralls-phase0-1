@@ -69,6 +69,7 @@ def main() -> int:
         "profile": "infra-ecology-weather-front-owner-contract-matrix",
         "overall_passed": all(checks.values()),
         "checks": checks,
+        "focused_test_files": sorted({str(path.relative_to(root)).replace("\\", "/") for path, _selector in cases.values()}),
         "evidence": evidence,
         "run_id": f"infra-ecology-weather-front-owner-contract-matrix-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
         "commit": evidence_revision(root),

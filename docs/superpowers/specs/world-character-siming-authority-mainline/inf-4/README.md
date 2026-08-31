@@ -1,6 +1,11 @@
 # INF-4 Specification Tree
 
-Status: `narrow predecessor verticals implemented and verified; August INF-4 mainline remains incomplete`
+Status: `narrow predecessor and actor-private milling rows implemented and verified; no new branch consequence is approval-ready and remaining population/social slots are formally blocked; August INF-4 mainline remains incomplete`
+
+The approved [formal blocker disposition contract](../2026-08-26-august-inf-formal-blocker-disposition-contract.md)
+keeps the Goal active while branch-only evidence remains non-authoritative.
+Population/social/group truth is blocked or unimplemented; no generic promotion,
+settlement, router, coordinator, or branch-to-Production merge is admitted.
 
 1. [INF-4 population and branch preview design](2026-08-12-inf-4-population-branch-preview-design.md)
 2. [INF-4R population world-mode and civilization-interface expansion design](2026-08-12-inf-4r-population-world-mode-and-civilization-interface-expansion-design.md)
@@ -81,3 +86,225 @@ mainline closure record.  Promotion remains unsupported for every row except
 the separately admitted INF-4N Government passed-inspection, INF-4S Government
 failed-inspection, and INF-4O Organization supply contracts; all other
 promotion inputs remain zero-write.
+
+The [2026-08-20 candidate register](2026-08-20-inf-4-owner-admission-candidate-register.md)
+and [plan](../../../plans/world-character-siming-authority-mainline/inf-4/2026-08-20-inf-4-owner-admission-candidate-plan.md)
+record one blocked new consequence slot and two existing-row references. No
+branch preview becomes population/social truth, generic promotion, or a new
+settlement owner.
+
+[INF-4U municipal assessment certificate contract](2026-08-26-inf-4u-municipal-drought-assessment-certificate-owner-admission-design.md)
+is an implemented exact completed assessment -> Ownership title row. It does
+not change the remaining branch, population, social or group-truth blockers.
+
+INF-4Y-A and its two named capability-gated consumer bindings remain verified
+bounded read/admission slices. INF-4Z and INF-4Z-A likewise retain their
+bounded population-planning and reference-data evidence. None of these slices
+creates a population/NPC/social truth owner or generic branch promotion path.
+
+## INF-4V Production Work-Contribution Acceptance
+
+`INF-4V` is an implemented narrow Organization vertical. One committed,
+actor-scoped Construction `work_completion_evidence_recorded` event is
+accepted only when one committed `organization:summary` work-order schedule
+matches its recipient, assignment, work order, and effective interval. The
+existing Organization owner appends exactly one
+`gameplay.organization.production_work_contribution_accepted` event with
+owner-derived idempotency and append receipt. Focused tests and the independent
+`inf4v-production-work-contribution-acceptance` Harness cover privacy,
+revision, duplicate, receipt, and full/checkpoint-tail replay boundaries.
+
+This fact is work-history acceptance only. It does not create wage/payment,
+production output, inventory, social, population, branch-promotion, material,
+or generic work-contribution semantics.
+
+## INF-4AG Public Workshop Activity
+
+`INF-4AG` is an implemented narrow Organization row. It consumes exactly one
+fulfilled INF-2AG public-workshop Contract and records one project-scoped
+provider activity with facility/project pins. It does not create attendance,
+relationship, reputation, population, payment, material, output, or generic
+activity semantics. Focused tests and the independent Harness cover source,
+privacy, revision, idempotency, receipt, zero-write, and full/checkpoint-tail
+replay.
+
+## INF-4AH Public Workshop Notice
+
+`INF-4AH` is an implemented narrow Government row. It consumes exactly one
+project-scoped INF-4AG provider activity and records one fixed Government
+project notice on the acquisition-derived jurisdiction stream. The notice
+payload excludes Contract, account, payment and participant details. Focused
+tests and the independent Harness cover provenance, privacy, revision,
+idempotency, receipt and full/checkpoint-tail replay. Generic notifications,
+social facts, attendance and population truth remain outside the row.
+
+The latest refresh passes the focused INF-4AH suite (`3 passed`) and its
+independent Harness. No subsequent INF-4 row is formed: participant,
+attendance, social, and population outcomes still lack a committed canonical
+source and a fixed existing-owner outcome. These are row-level blockers, not
+a Goal-level block; Goal is active and August INF A-D is not complete.
+
+## INF-4AJ Public Project Execution
+
+`INF-4AJ` is an implemented narrow Organization row. It consumes exactly one
+project-visible INF-4AG public-workshop activity and one authority-only INF-2AI
+consumed-budget marker for the same fixed facility/project, then records one
+project-scoped `funded_and_executed` execution fact. It does not create payment,
+debit, release, refund, material, inventory, output, attendance, social,
+population, or generic project/task semantics. Focused tests and the
+independent Harness cover provenance, privacy, revision, idempotency, receipt,
+zero-write and replay.
+
+## INF-4AK Public Project Execution Acknowledgment
+
+`INF-4AK` is an implemented narrow Government vertical. One exact
+project-visible INF-4AJ `funded_and_executed` event, its authority-only
+INF-2AI consumed marker, and reservation/acquisition provenance yield one
+authority-only Government administrative acknowledgment on the acquisition-
+derived jurisdiction stream. It does not create a permit, certificate,
+payment, material, output, attendance, social, population, compensation, or
+generic project lifecycle.
+
+## INF-4AI Candidate Blocker (Historical, Superseded)
+
+The committed completed mutual `handshake` source initially exposed an
+expression gap: P5 lacked the immutable event/schema registration and the
+governed catalog lacked actor-private scope. That historical blocker was
+closed by the exact static vocabulary, closed catalog scope, owner adapter,
+focused tests and independent Harness recorded below. It must not be read as
+the current INF-4AI status.
+
+The [INF-4AI actor-private expression amendment](../character-gameplay-foundation/2026-08-27-inf-4ai-p5-actor-private-expression-amendment-design.md)
+records the exact vocabulary and closed actor-private catalog boundary now
+implemented for this row. It does not authorize a generic social route or a
+new owner.
+
+## INF-4AI Closure (Historical Evidence Snapshot)
+
+INF-4AI is an implemented narrow Social vertical. A committed, mutually
+accepted, completed two-party `handshake` produces exactly two actor-private
+shared-experience history events under the existing SocialFactAuthority. The
+focused suite (`8 passed`), P5/embodied/catalog regressions (`39 passed`),
+independent Harness, privacy, zero-write, receipt, and full/checkpoint-tail
+replay are green. Relationship scoring, reputation, attendance, population,
+and generic session/social expansion remain outside the row. The counts in
+this historical snapshot are retained for provenance; the current refresh is
+recorded in the closure below.
+
+## INF-4AI Closure
+
+INF-4AI is now an implemented narrow Social vertical. A committed, mutually
+accepted, completed two-party `handshake` produces exactly two actor-private
+shared-experience history events under the existing SocialFactAuthority. The
+focused suite (`8 passed`), P5/catalog regression (`31 passed`), independent
+Harness, privacy, zero-write, receipt, and full/checkpoint-tail replay are
+green. Relationship scoring, reputation, attendance, population, and generic
+session/social expansion remain outside the row.
+
+Current evidence refresh: the dedicated INF-4AI suite remains `8 passed`, the
+combined INF-4AI/P5/catalog check is `34 passed`, and the INF/INFRA selection is
+`1223 passed`. The independent Harness, docs Harness and continuation gate are
+green. The external heavenly-runtime preflight remains an environment-only
+limitation. Generic social/session expansion remains blocked and August INF
+A-D remains `not complete`.
+
+## INF-4W Production Work-Order Fulfillment
+
+`INF-4W` is an implemented narrow Organization lifecycle row. It consumes
+exactly one committed INF-4V accepted contribution and appends one terminal
+`gameplay.organization.work_order_fulfilled` event, preserving accepted,
+source, schedule, facility, project, recipient, assignment, and work-order
+revision pins. Focused tests and the independent
+`inf4w-production-work-order-fulfillment` Harness cover source validation,
+zero-write, idempotency, receipt, privacy, and full/checkpoint-tail replay.
+It does not create wage/payment, output, inventory, material, social,
+population, branch, cancellation, reopening, or compensation semantics.
+
+The latest direct backend filename collection passes `1209 tests`; the
+broader INF/INFRA selection remains recorded at `1223 passed`, and the latest
+full repository run passes `4001 tests`. Older aggregate counts remain
+historical snapshots. The INF-4AI platform gate is closed for its exact row; generic
+social/session, attendance, population and group-truth expansion remains
+blocked, and August INF A-D remains `not complete`.
+
+## 2026-08-28 Current Lane Checkpoint
+
+INF-4's committed Production wage/work-history rows, municipal certificate,
+public-workshop activity/notice, actor-private handshake expression, funded
+execution and Government acknowledgment remain implemented and verified.
+Branch-only evidence cannot replace Production/domain truth; population,
+attendance, social/group and generic promotion outcomes remain blocked or
+unimplemented. Current verification is `1246 passed` for the keyword-selected
+INF/INFRA collection and `4004 passed` for the repository-root suite. Goal
+remains active; August INF A-D remains not complete.
+
+Current INF-4 evidence after INF-4AO is covered by the dedicated actor-private
+acknowledgment Harness and the repository-wide regression. The latest rows are
+the exact public-milling activity, notice, and actor-private acknowledgment
+partitions; generic activity, attendance, social, population and group truth
+remain blocked.
+
+## INF-4AL Public Milling Activity
+
+`INF-4AL` is an implemented narrow Organization row. The exact fulfilled
+INF-2AL milling Contract for provider `organization:district-milling-cooperative`
+records one project-scoped `public_milling_activity_recorded@1` fact with the
+committed facility/project binding. It does not create attendance,
+participant, relationship, reputation, population, social, payment, material,
+output or generic activity truth. Independent Harness evidence covers source,
+privacy, revision, idempotency, receipt and full/checkpoint-tail replay.
+
+## INF-4AM Public Milling Notice
+
+`INF-4AM` is an implemented narrow Government row. The exact INF-4AL public
+milling activity becomes one project-scoped acquisition-jurisdiction notice,
+`public_milling_notice_recorded@1`. It does not create permit, certificate,
+payment, attendance, participant, social, population, material, output or
+generic notification truth. Source, jurisdiction, privacy, revision,
+idempotency, receipt and full/checkpoint-tail replay are independently proven.
+
+Current INF-4 verification after INF-4AM is `1245 passed` for the filename-
+scoped INF/INFRA collection and `4017 passed` for the repository-root suite.
+Generic notification, permit, certificate, attendance, social and population
+truth remain blocked.
+
+INF-4AL/INF-4AM replay readers now reject forged canonical activity/notice
+partitions. The related regression is `35 passed`; the current INF/INFRA
+filename collection is `1247 passed` and the repository-root suite is `4019
+passed`. This replay repair does not broaden activity, notification, social or
+population authority.
+
+## INF-4AO Public Milling Social Acknowledgment
+
+`INF-4AO` is an implemented narrow Social vertical. One committed,
+project-visible `public_milling_notice_recorded@1` fact for the completed
+public milling service is consumed by the existing `SocialFactAuthority`.
+Participants are derived only from the fixed milling Contract: provider
+`organization:district-milling-cooperative` and the acquisition owner/receiver
+recorded as the Contract's second party. Exactly two actor-private
+`gameplay.social.public_milling_notice_acknowledged@1` history events are
+appended, one per participant.
+
+Focused tests and the independent Harness cover source/provenance/revision
+pins, static schema and catalog admission, append-derived receipt, privacy,
+unknown/private/stale/multiple/binding-conflict zero-write, duplicate and
+changed-duplicate behavior, and full/checkpoint-tail replay. This row does not
+add a generic social API or mutate the notice, Contract, Economy, Organization,
+Construction, acquisition, relationship, reputation, attendance, population,
+or world facts.
+## INF-4AO Public Milling Social Acknowledgment
+
+The exact committed public-milling notice now yields two actor-private Social
+acknowledgment history facts for the fixed provider and committed receiver.
+Focused tests and the independent Harness prove source, privacy, revision,
+idempotency, receipt and replay fences. Generic social, attendance,
+population, group and branch promotion semantics remain blocked.
+
+## INF-4AP Grain Intake Activity
+
+`INF-4AP` is an implemented narrow Organization row. The exact project-visible
+INF-3AB grain custody event produces one fixed `grain_intake_recorded@1` fact
+for `organization:district-milling-cooperative`. It does not move Inventory
+custody or create production, payment, attendance, social, population, group,
+or generic activity semantics. Its owner-derived receipt and full/tail replay
+are covered by the independent `inf4ap-grain-intake-activity` Harness.

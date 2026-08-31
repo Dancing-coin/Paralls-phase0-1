@@ -68,6 +68,17 @@ domain-effect revocation, grant/modifier lifecycle effects, data-transform
 stateful migration beyond the bounded resource-bounds clamp, cross-version
 reader/rollback compatibility, privacy views, or live delivery.
 
+## 2026-08-27 Shared Persistence Integrity Closure
+
+The common event-store recovery seam is hardened and verified. Snapshot loading
+rejects mismatches between the event ledger and embedded transaction batches,
+append results, idempotency indexes, or outbox references before the restored
+store becomes usable. Focused RED-to-green coverage is in
+`backend/tests/test_gameplay_event_store_persistence.py` and remains within
+the existing event-store regression band. Batch ordering and contiguous global
+event sequence checks also preserve deterministic full/checkpoint-tail replay.
+This does not broaden patch capabilities or add a persistence surface.
+
 ## Work
 
 1. Extend the implemented immutable manifest/runtime core with group

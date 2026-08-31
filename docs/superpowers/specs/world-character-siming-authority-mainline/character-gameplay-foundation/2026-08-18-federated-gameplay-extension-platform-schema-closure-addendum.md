@@ -265,17 +265,17 @@ than infer a manifest, use a newer package, or create a replacement registry.
 ## Approved Design Completion
 
 The platform contract, schema mapping/migration errata, and this schema-
-closure addendum are explicitly approved and complete as design-only work.
-The next artifact, only when separately authorized, is a file-by-file
-`schema-v2 implementation plan` naming exact edits, focused RED tests,
-Harness selectors, and rollout gates. That plan requires independent approval
-before any schema/runtime change. Package-content freeze/digest, row binding,
-and INF runtime recovery are separate, unapproved future tasks.
+closure addendum remain the approved design evidence. Their separate
+implementation gate was later passed by explicit INF-P authorization: the
+existing manifest v2 boundary, canonicalization/digest validation, immutable
+candidate/active lifecycle, and P1 binding sequencing are implemented and
+verified. Package content freeze/digest, row binding, and each INF runtime
+remain separate row-specific tasks.
 
 ```text
 platform design: approved and complete
-schema implementation: approval pending
-package content freeze/digest: independent and not approved
-row binding and INF runtime: independent and not approved
-August INF A-D: paused; not complete
+INF-P schema/P1 mechanics: implemented and verified
+package content freeze/digest: row-specific and independently governed
+row binding and INF runtime: independent per row
+August INF A-D: active; not complete
 ```

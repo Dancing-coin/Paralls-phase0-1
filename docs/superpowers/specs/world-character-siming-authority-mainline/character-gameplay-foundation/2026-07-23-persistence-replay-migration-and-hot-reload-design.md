@@ -36,6 +36,24 @@ replay. This is not a persistent executable-upcaster manifest, a complete
 event-family registration rollout, general patch/state-group migration, global
 multi-projector readiness orchestration, or a production startup control plane.
 
+## 2026-08-27 Cross-INF Snapshot Integrity Closure
+
+`GameplayEventStore.from_snapshot()` now treats a durable snapshot as one
+atomic ledger image. Recovery compares embedded transaction events with the
+canonical event ledger, requires exactly one committed append result per
+transaction with matching command, event IDs, stream revisions, global sequence
+range and projection hints, and requires each idempotency index entry to match
+both its transaction batch and canonical result. Outbox entries must reference
+the same committed event transaction and global sequence, with unique IDs.
+Duplicate, missing, or conflicting cross-index records fail closed before a
+store is returned. This reusable invariant protects replay, duplicate handling
+and append-derived receipts for every INF row without adding an owner, store,
+writer, or business event; internally consistent v1/v2 snapshots remain
+readable. Recovery also requires transaction batches to remain in ascending
+global sequence order and each batch's embedded events to be contiguous in the
+canonical ledger. This prevents preserving the same event IDs while changing
+replay order or checkpoint-tail boundaries.
+
 ## Purpose
 
 定义完整事件溯源在持久化、启动恢复、projection rebuild、event schema 演进、checkpoint 加速和 gameplay patch 热加载中的实现约束。目标是保证历史事件永远可解释、当前投影可重建、升级失败可阻断，而不是把“最新 snapshot 能读出来”误认为权威持久化已经成立。

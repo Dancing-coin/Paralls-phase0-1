@@ -1,0 +1,100 @@
+{
+  "author_id": "author:repo",
+  "content_digest": "sha256:ca32adc490f076207fd9c708ac8ffad4d7702449860dae1911d25ec30d0b0805",
+  "dependencies": [],
+  "economic_outcomes": [
+    {
+      "capability_ref": "capability:package-declared-negotiated-exchange@1",
+      "compensation_policy_ref": "none",
+      "consent_rule_ref": "consent:mutual@1",
+      "economic_outcome_id": "package_declared_negotiated_exchange@1",
+      "eligibility_refs": ["construction:facility-public-use-enabled@1"],
+      "outcome_ref": "outcome:industrial-facility-public-workshop-session-settlement@1",
+      "price_policy": {
+        "currency_ref": "currency:local",
+        "fixed_amount": 12,
+        "maximum_amount": null,
+        "minimum_amount": null,
+        "price_policy_revision": "policy:industrial-facility-public-workshop-session-price@1"
+      },
+      "privacy_policy_ref": "authority_only",
+      "source_evidence_kind": "completed_service@1",
+      "source_evidence_mode": "completed_service@1",
+      "source_owner_ref": "actor_gameplay.contract_domain",
+      "source_selection_rule_ref": "exchange:unique-owned-source@1",
+      "tradeable_ref": null,
+      "typed_service_ref": "service:industrial-facility-public-workshop-session@1"
+    }
+  ],
+  "event_schemas": [],
+  "granted_effect_types": [],
+  "manifest_schema_version": 2,
+  "patch_id": "package:declared-exchange-service-v5",
+  "patch_revision_id": "package:declared-exchange:service-v5@1",
+  "patch_version": "1.0.0",
+  "platform_extension": {
+    "capability_binding_requests": [
+      {
+        "binding_ref": "binding:declared-exchange-service-v5@1",
+        "capability_ref": "capability:declared-exchange@1",
+        "declaration_ref": "declaration:declared-exchange-service-v5@1",
+        "proposal_effect_types": ["effect:declared-exchange@1"],
+        "source_package_revision": "package:declared-exchange:service-v5@1",
+        "typed_read_requirements": [
+          {
+            "predicate_family_ref": "predicate:declared-source-evidence@1",
+            "requirement_ref": "requirement:declared-exchange-source@1",
+            "subject_slot_ref": "slot:tradeable-or-service@1"
+          }
+        ]
+      }
+    ],
+    "dependency_and_conflict_refs": [],
+    "outcome_declarations": [
+      {
+        "declaration_digest": "sha256:5a2dde6f6ce367d1336f33bf8144d7133ce6c5643af6a395867e0db60cef9e96",
+        "declaration_ref": "declaration:declared-exchange-service-v5@1",
+        "definition_refs": ["definition:declared-exchange-service-v5@1"],
+        "eligibility_refs": ["construction:facility-public-use-enabled@1"],
+        "outcome_family_ref": "outcome:declared-exchange@1",
+        "policy_revision_ref": "policy:industrial-facility-public-workshop-session-price@1",
+        "source_package_revision": "package:declared-exchange:service-v5@1"
+      }
+    ],
+    "package_definitions": [
+      {
+        "definition_ref": "definition:declared-exchange-service-v5@1",
+        "definition_schema_ref": "schema:declared-exchange@1",
+        "source_package_revision": "package:declared-exchange:service-v5@1",
+        "typed_content": {
+          "eligibility_refs": ["construction:facility-public-use-enabled@1"],
+          "outcome_ref": "outcome:industrial-facility-public-workshop-session-settlement@1",
+          "policy_revision_ref": "policy:industrial-facility-public-workshop-session-price@1",
+          "service_definition_ref": "definition:service:industrial-facility-public-workshop-session@1"
+        }
+      }
+    ],
+    "package_identity": {
+      "package_id": "package:declared-exchange-service-v5",
+      "package_revision": "package:declared-exchange:service-v5@1",
+      "package_version": "1.0.0"
+    },
+    "platform_schema_version": "1.0",
+    "replay_reader_refs": [],
+    "verification_profile_refs": []
+  },
+  "requested_capabilities": [
+    {
+      "call_sites": ["declared-exchange-service-v5"],
+      "capability_id": "capability:package-declared-negotiated-exchange",
+      "capability_version": "1",
+      "reason": "legacy package settlement spine for declared exchange family",
+      "requested_effect_types": []
+    }
+  ],
+  "rules": [],
+  "state_group_ids": [],
+  "state_group_migrations": [],
+  "trust_policy_ref": "trust:repo",
+  "verification_profiles": []
+}

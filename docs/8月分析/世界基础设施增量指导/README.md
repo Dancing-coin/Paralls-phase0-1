@@ -14,6 +14,13 @@ INF-2AA 另完成一个严格的 Economy-owned commerce delivery payment/compens
 INF-C4 随后把已登记 weather-front consumer 的共同 source pin、target owner/stream/event/scope、revision、idempotency 与 receipt/replay reader 校验收敛为只读 `EcologyConsumerAdmissionCheck`；Construction 与 Organization 仍各自验证 opaque admission、构造 fragment 并经唯一 append spine 提交。该层拒绝未知/伪造/private/stale 输入且零写，但不建立 consumer registry、generic fanout 或 Ecology 对目标领域的写权。
 INF-C5 (INF-4) 现已完成：`FixedBaseBranchReplayContract` 将既有 isolated branch 的 fixed base revision、calibration/source digest、family/candidate deterministic ordering 与 full/checkpoint-tail projection digest 收敛为纯只读合同；既有 Organization supply promotion admission 在 owner 构造 fragment 前重读并验证该合同。其独立证据为 `infra-fixed-base-branch-replay-contract`；不开放 generic branch settlement、generic promotion 或 branch writer。
 
+2026-08-28：INF-2AI 在既有 Economy owner 上完成一个严格的公共项目预算消费
+窄切。它只消费已完成的 INF-4AG public-workshop activity 对应的 INF-2AH
+固定预留，并记录一个 authority-only `public_project_budget_consumed@1`
+marker；不扣款、不释放、不退款、不转账，也不建立通用预算生命周期。其
+contract、plan、focused tests、独立 Harness 与 replay/privacy/zero-write
+证据均已同步到主线文档。
+
 当前实现映射：见 [../12-实现收口与证据映射.md](../12-实现收口与证据映射.md#世界基础设施增量指导)。INF-1 至 INF-4 的文档化纵切已有独立 spec、plan、测试和 Harness 证据：语义/实体/因果、caller-driven obligation、frost/crop 生态灾害、以及隔离人口分支预览。它们不等同于通用元规则语言、完整生态传导、完整群体模拟或文明演进；这些广域能力仍是后续设计与 owner-scoped 实现工作。
 
 八月 INF 主线的未完成项必须显式保留，不能被 `INF-*X/Y/Z` 窄包名称遮蔽：
@@ -370,3 +377,8 @@ INF-4Q 的独立证据为
 3. [12-时间调度跨域结算与回放.md](12-时间调度跨域结算与回放.md)
 4. [14-群体模拟世界模式与文明演进.md](14-群体模拟世界模式与文明演进.md)
 5. [18-生态环境与灾害系统.md](18-生态环境与灾害系统.md)
+
+2026-08-29 实现映射补充：INF-1AM、INF-2AM、INF-3 grain harvest/INF-3AB、
+INF-4AO/INF-4AP 已纳入主线验证账本。它们都是 existing-owner 的窄纵切，
+不开放 generic transform、payment、transfer、activity、social 或 settlement；
+August INF A-D 仍未完成。

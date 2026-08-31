@@ -1,6 +1,6 @@
 # INF-1AG Package-Content And Read-Only-Binding Sequencing Design
 
-Status: `P1 sequencing amendment implemented and verified; package freeze complete, descriptor/binding admission remains separately gated`
+Status: `P1 sequencing amendment implemented and verified; exact package, descriptor binding, and Construction row subsequently completed`
 
 Date: `2026-08-18`
 
@@ -156,9 +156,9 @@ approvals.
 
 ```text
 INF-P P1 sequencing amendment:       implemented and verified; not reopened
-INF-1AG row contract:                approved design only; not implemented
+INF-1AG row contract:                implemented and verified for frozen oven-to-kiln row
 real industrial package freeze:      complete; exact canonical digests verified
-descriptor/catalog admission:       not approved
-binding activation/runtime:         platform-only verified; row binding not approved
+descriptor/catalog admission:       implemented and verified for exact descriptor
+binding activation/runtime:         implemented and verified for frozen row only
 August INF A-D:                     not complete
 ```
