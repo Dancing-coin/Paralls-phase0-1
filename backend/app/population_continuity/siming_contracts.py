@@ -8,6 +8,7 @@ from pydantic import Field, model_validator
 
 from app.models.authority_event import AuthorityEvent
 from app.population_continuity.models import ContinuityModel
+from app.population_continuity.decision_surface import PopulationDecision
 
 
 def _check_vector(value: dict[str, int]) -> None:
@@ -187,3 +188,4 @@ class PopulationCycleResult(ContinuityModel):
     audits: tuple[Any, ...] = ()
     reason: str = ""
     production_append_count: int = Field(ge=0)
+    decision: PopulationDecision | None = None
