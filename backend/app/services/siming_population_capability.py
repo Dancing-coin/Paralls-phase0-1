@@ -13,7 +13,7 @@ from app.population_continuity.source_inputs import HouseholdScheduleInput, Orga
 from app.population_continuity.models import BatchIntentCandidate
 from app.population_continuity.seed_planner import CharacterSeedPlanner
 from app.population_continuity.siming_contracts import PopulationBatchReport, PopulationCadenceInput, PopulationCycleResult, PopulationOwnerReceipt, PopulationReadSet
-from app.population_continuity.decision_surface import PopulationCapabilityDescriptor, PopulationDecisionPlanner, PopulationDecisionPolicy
+from app.population_continuity.decision_surface import PopulationCapabilityDescriptor, PopulationDecision, PopulationDecisionPlanner, PopulationDecisionPolicy
 
 
 class PopulationOwnerExecutor(Protocol):
@@ -197,6 +197,34 @@ class PopulationSimulationCapability:
             allowed_character_core_refs=allowed_core_refs,
         )
         return result.model_copy(update={"decision": decision})
+
+    def replan_from_receipts(
+        self,
+        previous_decision: PopulationDecision | None,
+        receipts: Sequence[PopulationOwnerReceipt],
+        next_read_set: PopulationReadSet,
+        policy: PopulationDecisionPolicy,
+        capabilities: tuple[PopulationCapabilityDescriptor, ...],
+    ) -> PopulationCycleResult:
+        """Re-evaluate only after prior Owner receipts have reached a terminal success."""
+        if any(not receipt.committed or receipt.zero_write for receipt in receipts):
+            return self._requeue(
+                f"population-decision:{next_read_set.cadence.cadence_id}:requeue",
+                next_read_set,
+                "owner_rejected",
+            )
+        if previous_decision is None:
+            return self._requeue(
+                f"population-decision:{next_read_set.cadence.cadence_id}:requeue",
+                next_read_set,
+                "previous_decision_missing",
+            )
+        return self.run_decision_cycle(
+            next_read_set.cadence,
+            next_read_set,
+            policy,
+            capabilities,
+        )
 
     def run_cycle(self, cadence_input: PopulationCadenceInput, read_set: PopulationReadSet) -> PopulationCycleResult:
         """Run the legacy population path, delegating closed cohorts to V1."""
