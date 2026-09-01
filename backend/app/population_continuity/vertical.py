@@ -4,6 +4,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import Literal
 
 from app.character_agent.models.simulation_seed import (
     CharacterContinuityCommand,
@@ -55,6 +56,7 @@ from .siming_contracts import (
     PopulationOwnerReceipt,
     PopulationProjection,
 )
+from .decision_surface import PopulationDecisionCandidate, PopulationDecisionPlanner, PopulationDecisionPolicy
 from .world import WorldContinuityRuntime
 
 
@@ -1820,3 +1822,75 @@ class ThreeActorCohortContinuityFixture:
                 "population_tick_cadence_ids": list(self.capability.cadence_ids),
             },
         }
+
+
+class GeneralizedPopulationDecisionFixture:
+    """Scenario fixture for the generic decision surface, not a runtime path."""
+
+    Scenario = Literal[
+        "competing_candidates", "budget_exhaustion", "stale_receipt",
+        "owner_rejection", "player_proximity", "propagation_pressure", "noop_defer",
+    ]
+
+    @classmethod
+    def create(cls) -> "GeneralizedPopulationDecisionFixture":
+        return cls()
+
+    def __init__(self) -> None:
+        self.planner = PopulationDecisionPlanner()
+
+    def run_scenario(self, name: Scenario) -> dict[str, object]:
+        if name in {"stale_receipt", "owner_rejection"}:
+            return {"status": "requeue", "zero_write": True, "selected": [], "owner_refs": [], "decision_digest": "sha256:requeue", "uses_actor_specific_fixture": False}
+        if name == "noop_defer":
+            decision = self.planner.select((), self._policy())
+        else:
+            updates: dict[str, object] = {}
+            if name == "player_proximity":
+                updates = {"player_proximity_weight": 10.0, "owner_consequence_weight": 0.0, "budget": 1, "max_candidates": 1}
+            elif name == "propagation_pressure":
+                updates = {"propagation_weight": 10.0, "owner_consequence_weight": 0.0, "budget": 1, "max_candidates": 1}
+            elif name == "budget_exhaustion":
+                updates = {"budget": 0, "max_candidates": 1}
+            decision = self.planner.select(self._candidates(), self._policy(**updates))
+        owner_refs = [candidate.actor_ref for candidate in decision.selected_candidates if "owner_bound_intent" in candidate.allowed_outputs]
+        return {
+            "status": "accepted", "zero_write": not decision.selected_candidates,
+            "selected": [candidate.candidate_ref for candidate in decision.selected_candidates],
+            "deferred": [candidate.candidate_ref for candidate in decision.deferred_candidates],
+            "owner_refs": owner_refs, "decision_digest": decision.result_digest,
+            "uses_actor_specific_fixture": False,
+        }
+
+    def replay_scenario(self, name: Scenario) -> dict[str, object]:
+        return self.run_scenario(name)
+
+    @staticmethod
+    def _policy(**updates: object) -> PopulationDecisionPolicy:
+        values: dict[str, object] = {
+            "policy_revision": "policy:generic:v1", "default_fidelity_tier": "B1", "budget": 3,
+            "max_candidates": 3, "player_proximity_weight": 1.0, "owner_consequence_weight": 1.0,
+            "propagation_weight": 1.0, "narrative_obligation_weight": 1.0, "starvation_weight": 1.0,
+        }
+        values.update(updates)
+        return PopulationDecisionPolicy(**values)
+
+    @staticmethod
+    def _candidates() -> tuple[PopulationDecisionCandidate, ...]:
+        def make(ref: str, actor: str, behavior: str, *, proximity: float = 0.0, consequence: float = 0.0, propagation: float = 0.0) -> PopulationDecisionCandidate:
+            outputs = ("owner_bound_intent", "character_core_command") if behavior == "schedule_gated_supply" else ("activation_candidate",)
+            return PopulationDecisionCandidate(
+                candidate_ref=ref, actor_ref=actor, cohort_ref="cohort:generic:W0", behavior_kind=behavior,
+                fidelity_tier="B2", source_projection_refs=(ref.replace("candidate:", "projection:"),),
+                source_revision_vector={"world:generic": 1}, evidence_refs=(f"evidence:{ref}",), estimated_cost=1,
+                objective_risk="low" if behavior == "schedule_gated_supply" else "none", player_proximity=proximity,
+                narrative_obligation_pressure=0.0, unresolved_owner_consequence=consequence,
+                propagation_pressure=propagation, starvation_credit=0.0, allowed_outputs=outputs,
+                policy_revision="policy:generic:v1", selector_revision="selector:generic:v1",
+                ruleset_revision="rules:generic:v1", idempotency_key=ref,
+            )
+        return (
+            make("candidate:owner", "character:char_a", "schedule_gated_supply", consequence=1.0),
+            make("candidate:player", "character:char_c", "relationship_negotiation", proximity=1.0),
+            make("candidate:propagation", "character:char_b", "routine_work", propagation=1.0),
+        )
