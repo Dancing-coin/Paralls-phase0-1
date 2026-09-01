@@ -1891,6 +1891,11 @@ def _activate_character_for_player_input(
     return receipt
 
 
+def activation_lock_is_active(actor_id: str) -> bool:
+    """Read activation state through Character Core's public runtime seam."""
+    return character_agent_runtime.activation_lock_is_active(actor_id)
+
+
 def _activation_requeue_messages(
     event: DialogueSubmit,
     receipt: ActivationReceipt | None,

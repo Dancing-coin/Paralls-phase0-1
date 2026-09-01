@@ -49,7 +49,12 @@ from .models import (
 from .social_input import FrozenSocialPlanningInput
 from .source_inputs import HouseholdScheduleInput, OrganizationScheduleInput
 from .owner_adapters import ScheduleGatedSupplyOwnerExecutor
-from .siming_contracts import PopulationCadenceInput, PopulationCycleResult
+from .siming_contracts import (
+    PopulationCadenceInput,
+    PopulationCycleResult,
+    PopulationOwnerReceipt,
+    PopulationProjection,
+)
 from .world import WorldContinuityRuntime
 
 
@@ -204,6 +209,7 @@ class BakeryDistrictPopulationFixture:
             recipient_ref=recipient_ref,
             organization_input=organization_input,
             work_order_ref=work_order_ref,
+            privacy_scope=report_scope,
         )
         return (
             PopulationPlanner().plan_schedule_gated_supply(
@@ -239,6 +245,7 @@ class BakeryDistrictPopulationFixture:
         recipient_ref: str,
         organization_input: OrganizationScheduleInput,
         work_order_ref: str,
+        privacy_scope: str = "actor:self",
     ) -> BatchIntentCandidate:
         return BatchIntentCandidate(
             intent_ref=f"intent:{batch_ref}:supply",
@@ -260,7 +267,7 @@ class BakeryDistrictPopulationFixture:
             idempotency_key=f"intent:{batch_ref}:supply",
             correlation_id=f"correlation:{batch_ref}",
             source_ref="population:district-planner",
-            privacy_scope="actor:self",
+            privacy_scope=privacy_scope,
         )
 
     def _admit_released_schedule_gated_supply(
@@ -583,6 +590,90 @@ class _RecordingPopulationSimulationCapability(PopulationSimulationCapability):
         self.cadence_ids.append(cadence_input.cadence_id)
         self.last_result = super().run_cycle(cadence_input, read_set)
         return self.last_result
+
+    def run_cohort_cycle(self, cadence_input, read_set):
+        self.run_count += 1
+        self.cadence_ids.append(cadence_input.cadence_id)
+        self.last_result = super().run_cohort_cycle(cadence_input, read_set)
+        return self.last_result
+
+
+class _RecordingCohortPopulationSimulationCapability(
+    _RecordingPopulationSimulationCapability
+):
+    """Record the one production entry point used by SimingRuntime.tick."""
+
+
+class _RejectedPopulationOwnerExecutor:
+    """Test-only Owner seam for proving the receipt gate is fail-closed."""
+
+    def submit(self, intent, *, read_set):
+        return PopulationOwnerReceipt(
+            receipt_ref=f"rejected:{intent.intent_ref}",
+            owner_ref=ScheduleGatedSupplyOwnerExecutor.OWNER_REF,
+            event_family=ScheduleGatedSupplyOwnerExecutor.EVENT_FAMILY,
+            committed=False,
+            revision_vector={},
+            zero_write=True,
+            idempotency_status="rejected",
+        )
+
+
+class _CohortOwnerExecutor(ScheduleGatedSupplyOwnerExecutor):
+    """Use the existing Organization merge surface while replaying old sources."""
+
+    def submit(self, intent, *, read_set):
+        context = self.context_from_intent_payload(intent, read_set)
+        if not context:
+            return super().submit(intent, read_set=read_set)
+        existing = self._merger.store.get_by_idempotency(
+            OrganizationAuthority._PRINCIPAL,
+            f"merge:{context['plan'].batch_ref}",
+        )
+        if existing is None:
+            return super().submit(intent, read_set=read_set)
+        try:
+            request_context_digest = "sha256:" + hashlib.sha256(
+                json.dumps(
+                    {"intent": intent.model_dump(mode="json"), "read_set": read_set.model_dump(mode="json")},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    default=str,
+                ).encode()
+            ).hexdigest()
+            owner_request_digest = request_context_digest if not context.get(
+                "pending_change_ref"
+            ) else PopulationPlanner.schedule_owner_request_digest(
+                    plan=context["plan"],
+                    pending_change_ref=str(context.get("pending_change_ref") or ""),
+                    social_input=context["social_input"],
+                    household_input=context["household_input"],
+                    organization_input=context["organization_input"],
+                    request_context_digest=request_context_digest,
+                )
+            committed_event = self._merger.store.get_event(existing.committed_event_ids[0])
+            if committed_event.payload.get("population_owner_request_digest") != owner_request_digest:
+                status = "idempotency_key_reused"
+                return PopulationOwnerReceipt(
+                    receipt_ref=f"rejected:{intent.intent_ref}", owner_ref=self.OWNER_REF,
+                    event_family=self.EVENT_FAMILY, committed=False, revision_vector={}, zero_write=True,
+                    idempotency_status=status,
+                )
+            return PopulationOwnerReceipt(
+                receipt_ref=self.OWNER_REF,
+                owner_ref=self.OWNER_REF,
+                event_family=self.EVENT_FAMILY,
+                committed=True,
+                revision_vector=dict(existing.resulting_stream_revisions),
+                zero_write=True,
+                idempotency_status="duplicate_replayed",
+            )
+        except Exception:
+            return PopulationOwnerReceipt(
+                receipt_ref=f"rejected:{intent.intent_ref}", owner_ref=self.OWNER_REF,
+                event_family=self.EVENT_FAMILY, committed=False, revision_vector={}, zero_write=True,
+                idempotency_status="rejected",
+            )
 
 
 @dataclass
@@ -1176,5 +1267,556 @@ class SimingLedPopulationFixture:
                 "population_tick_count": self.capability.run_count,
                 "population_tick_cadence_ids": list(self.capability.cadence_ids),
                 "siming_runtime_identity": id(self.pipeline._runtime),
+            },
+        }
+
+
+@dataclass
+class ThreeActorCohortContinuityFixture:
+    """Bounded W0/W1 production proof for the closed Siming cohort contract."""
+
+    bakery: BakeryDistrictPopulationFixture
+    bus: InMemoryAuthorityEventBus
+    pipeline: SimingEventPipeline
+    capability: _RecordingCohortPopulationSimulationCapability
+    character_runtime: CharacterAgentRuntime
+    continuity_port: _CharacterRuntimeContinuityPort
+    activation_authority: ProfileActivationAuthority
+    activation_policy: ActivationPolicy
+    world_mode_receipt: object
+    bus_identity: int
+    events: dict[str, AuthorityEvent] = field(default_factory=dict)
+    results: dict[str, PopulationCycleResult] = field(default_factory=dict)
+
+    @classmethod
+    def create(cls) -> "ThreeActorCohortContinuityFixture":
+        bakery = BakeryDistrictPopulationFixture.create(
+            profile_dir=Path(__file__).resolve().parents[3]
+            / "assets"
+            / "characters"
+            / "profiles"
+        )
+        world_mode_receipt = WorldContinuityRuntime(
+            store=bakery.store, mode=bakery.mode
+        ).resume()
+        activation_authority = ProfileActivationAuthority(
+            registry=bakery.registry, store=bakery.store
+        )
+        character_runtime = CharacterAgentRuntime(
+            activation_authority=activation_authority
+        )
+        continuity_port = _CharacterRuntimeContinuityPort(character_runtime)
+        owner = _CohortOwnerExecutor(
+            merger=ContinuityMergeAuthority(
+                store=bakery.store, registry=bakery.registry, mode=bakery.mode
+            ),
+            context_builder=ScheduleGatedSupplyOwnerExecutor.context_from_intent_payload,
+        )
+        capability = _RecordingCohortPopulationSimulationCapability(
+            owner_executor=owner,
+            continuity_port=continuity_port,
+        )
+        bus = InMemoryAuthorityEventBus()
+        pipeline = SimingEventPipeline(
+            bus=bus,
+            consumer=SimingEventConsumer(),
+            runtime=SimingRuntime(population_capability=capability),
+            producer=SimingEventProducer(bus),
+            audit_writer=SimingAuditWriter(),
+        )
+        bus.subscribe("population_cadence_event", pipeline.handle_event)
+        return cls(
+            bakery=bakery,
+            bus=bus,
+            pipeline=pipeline,
+            capability=capability,
+            character_runtime=character_runtime,
+            continuity_port=continuity_port,
+            activation_authority=activation_authority,
+            activation_policy=ActivationPolicy(),
+            world_mode_receipt=world_mode_receipt,
+            bus_identity=id(bus),
+        )
+
+    @staticmethod
+    def _actor_for_projection(ref: str) -> str:
+        return {
+            "projection:char_a:W0": "character:char_a",
+            "projection:char_b:W0": "character:char_b",
+            "projection:char_c:W0": "character:char_c",
+            "projection:char_a:W1": "character:char_a",
+            "projection:char_b:W1": "character:char_b",
+            "projection:char_c:W1": "character:char_c",
+        }.get(ref, ref)
+
+    @staticmethod
+    def _character_continuity_store() -> CharacterGraphContinuityStore:
+        return SimingLedPopulationFixture._character_continuity_store()
+
+    @staticmethod
+    def _continuity_projection(snapshot: dict[str, object] | None) -> dict[str, object]:
+        if snapshot is None:
+            return {}
+        return SimingLedPopulationFixture._continuity_projection(snapshot)
+
+    def _build_window_event(self, window: str) -> AuthorityEvent:
+        if window not in {"W0", "W1"}:
+            raise ValueError("cohort_window_invalid")
+        if window == "W1" and "W0" not in self.results:
+            raise RuntimeError("cohort_w0_required_before_w1")
+        observed_at = (
+            "2026-08-31T00:00:00Z" if window == "W0" else "2026-08-31T01:00:00Z"
+        )
+        batch_ref = f"batch:cohort:bakery:{window}"
+        lock_ref = f"lock:{self.bakery.mode.world_ref}:character:char_a"
+        planned, social, household, organization = self.bakery._plan_schedule_gated_supply(
+            batch_ref=batch_ref,
+            recipient_ref="character:char_a",
+            observed_at=observed_at,
+            report_scope="organization:summary",
+            activation_lock_refs=(lock_ref,),
+        )
+        if not planned.accepted or planned.plan is None:
+            raise RuntimeError("cohort_schedule_plan_rejected")
+        _, _, pending_change_ref = self.bakery._admit_released_schedule_gated_supply(
+            activation=self.activation_authority,
+            batch_ref=batch_ref,
+            recipient_ref="character:char_a",
+            plan=planned.plan,
+        )
+        plan = planned.plan
+        stream_ref, stream_revision = next(iter(plan.source_revision_vector.items()))
+        cadence = PopulationCadenceInput(
+            cadence_id=f"cadence:cohort:bakery:{window}",
+            world_ref=plan.world_ref,
+            world_mode_ref="world-mode:bakery-district",
+            world_mode_revision=plan.mode_revision,
+            cadence_source_ref=stream_ref,
+            cadence_source_revision=stream_revision,
+            window_start=100 if window == "W0" else 200,
+            window_end=101 if window == "W0" else 201,
+            base_checkpoint_ref=f"checkpoint:cohort:{window}:{len(self.bakery.store.read_events())}",
+            base_checkpoint_digest=self.bakery._digest(
+                [event.model_dump(mode="json") for event in self.bakery.store.read_events()]
+            ),
+            base_revision_vector=dict(plan.source_revision_vector),
+            policy_revision=plan.policy_revision,
+            selector_revision="selector:cohort-bakery:v1",
+            ruleset_revision="rules:cohort-bakery:v1",
+            deterministic_seed=f"seed:cohort:bakery:{window}",
+            catch_up_limit=3,
+            budget=3,
+            report_scope="organization:summary",
+        )
+        candidate = plan.candidates[0]
+        source_context = {
+            "mode": self.bakery.mode.model_dump(mode="json"),
+            "candidate": candidate.model_dump(mode="json"),
+            "social_input": social.model_dump(mode="json"),
+            "household_input": household.model_dump(mode="json"),
+            "organization_input": organization.model_dump(mode="json"),
+            "base_event_digest": plan.base_event_digest,
+            "base_checkpoint_sequence": plan.base_checkpoint_sequence,
+            "tail_boundary": plan.tail_boundary,
+        }
+        base_vector = dict(plan.source_revision_vector)
+        projections = (
+            PopulationProjection(
+                ref=f"projection:char_a:{window}",
+                scope="organization:summary",
+                revision_vector=base_vector,
+                payload={
+                    "actor_ref": "character:char_a",
+                    "candidate_kind": "schedule_gated_supply",
+                    "priority": 3,
+                    "state_deltas": {"dynamic_state": {"stress_load": 0.1}},
+                    "presentation_seed": {
+                        "task": "replenish_family_food",
+                        "window": window,
+                    },
+                    "activation_hints": ["player_dialogue"],
+                    "exposure_basis": "affected_directly",
+                    "summary": f"bakery supply commitment accepted {window}",
+                    "source_event_refs": [f"event:bakery:{window}:supply"],
+                    "schedule_gated_supply_source_context": source_context,
+                },
+            ),
+            PopulationProjection(
+                ref=f"projection:char_b:{window}",
+                scope="public",
+                revision_vector=base_vector,
+                payload={
+                    "actor_ref": "character:char_b",
+                    "candidate_kind": "routine_work",
+                    "priority": 2,
+                    "presentation_seed": {"behavior_kind": "routine_work", "window": window},
+                    "activation_hints": [],
+                    "summary": f"routine bakery work {window}",
+                },
+            ),
+            PopulationProjection(
+                ref=f"projection:char_c:{window}",
+                scope="organization:summary",
+                revision_vector=base_vector,
+                payload={
+                    "actor_ref": "character:char_c",
+                    "candidate_kind": "relationship_negotiation",
+                    "priority": 1,
+                    "activation_reason": "relationship_negotiation",
+                    "activation_hints": ["player_dialogue"],
+                    "summary": f"social pressure candidate {window}",
+                },
+            ),
+        )
+        return AuthorityEvent(
+            event_id=f"event:population-cadence:cohort:bakery:{window}",
+            event_type="population_cadence_event",
+            producer_ts=100 if window == "W0" else 200,
+            room_id="room:bakery",
+            scene_id="scene:bakery",
+            zone_id="zone:bakery-counter",
+            source=AuthorityEventSource(layer="L2", system="world_runtime.cadence"),
+            routing=AuthorityEventRouting(audience_mode="broadcast", routing_mode="event_type"),
+            priority="p2",
+            durability="replayable",
+            causation_id=f"cohort:{window}",
+            correlation_id=f"population:cohort:{window}",
+            payload={
+                "window": window,
+                "cohort_ref": f"cohort:bakery:{window}",
+                "population_cadence": cadence.model_dump(mode="json"),
+                "world_mode_projection": {
+                    "world_ref": self.bakery.mode.world_ref,
+                    "mode": self.bakery.mode.mode,
+                    "revision": self.bakery.mode.revision,
+                    "committed_event_ids": list(getattr(self.bakery, "world_mode_event_ids", ())),
+                },
+                "population_world_plan": plan.model_dump(mode="json"),
+                "activation_pending_projection": self.activation_authority.pending_projection(
+                    self.bakery.mode.world_ref
+                ),
+                "social_projection": social.model_dump(mode="json"),
+                "household_projection": household.model_dump(mode="json"),
+                "organization_projection": organization.model_dump(mode="json"),
+                "population_projections": [item.model_dump(mode="json") for item in projections],
+                "pending_change_ref": pending_change_ref,
+            },
+        )
+
+    def run_window(self, window: str, *, owner_committed: bool | None = None) -> PopulationCycleResult:
+        event = self.events.get(window)
+        if event is None:
+            event = self._build_window_event(window)
+            self.events[window] = event
+        prior_owner = self.capability._owner_executor
+        if owner_committed is False:
+            self.capability._owner_executor = _RejectedPopulationOwnerExecutor()
+        try:
+            published = event.model_copy(
+                update={
+                    "event_id": f"{event.event_id}:publish:{self.capability.run_count + 1}"
+                }
+            )
+            self.bus.publish(published)
+        finally:
+            self.capability._owner_executor = prior_owner
+        result = self.capability.last_result
+        if result is None:
+            raise RuntimeError("cohort_population_cycle_not_observed")
+        self.results[window] = result
+        return result
+
+    def _run_variant(self, event: AuthorityEvent, mutate) -> tuple[PopulationCycleResult, bool]:
+        variant = event.model_copy(deep=True)
+        mutate(variant.payload)
+        before_events = len(self.bakery.store.read_events())
+        self.bus.publish(variant)
+        result = self.capability.last_result
+        if result is None:
+            raise RuntimeError("cohort_variant_cycle_not_observed")
+        return result, len(self.bakery.store.read_events()) == before_events
+
+    def _run_player_dialogue(self, target_actor_id: str) -> dict[str, object]:
+        from app import main
+        from app.ws_protocol import Envelope
+
+        dialogue = DialogueSubmit(
+            player_id="player:1",
+            room_id="room:bakery",
+            scene_id="scene:bakery",
+            zone_id="zone:bakery-counter",
+            actor_id="player_avatar",
+            producer_ts=300,
+            request_id="request:cohort:char_c",
+            target_actor_id=target_actor_id,
+            content="What is happening at the bakery?",
+        )
+        debug_events: list[dict[str, object]] = []
+        saved = (main.character_agent_runtime, main.activation_policy, main.runtime, main._publish_debug_event)
+        main.character_agent_runtime = self.character_runtime
+        main.activation_policy = self.activation_policy
+        main.runtime = SessionInputRouter()
+        main._publish_debug_event = debug_events.append
+        try:
+            messages = main._handle_envelope(
+                Envelope(message_type="player_input", payload=dialogue.model_dump())
+            )
+        finally:
+            (main.character_agent_runtime, main.activation_policy, main.runtime, main._publish_debug_event) = saved
+        activation_event = next(item for item in debug_events if item.get("stage") == "activation_active")
+        ack = next(message for message in messages if message["message_type"] == "ack")
+        return {
+            "receipt": activation_event["detail"]["receipt"],
+            "decision": activation_event["detail"]["decision"],
+            "route": ack["payload"],
+            "actual_player_input_path": True,
+        }
+
+    def _replay_all_characters(self) -> dict[str, object]:
+        commands = tuple(self.continuity_port.commands)
+        actors = ("char_a", "char_b", "char_c")
+
+        def snapshots(command_slice: tuple[CharacterContinuityCommand, ...]):
+            store = self._character_continuity_store()
+            runtime = CharacterAgentRuntime(continuity_store=store)
+            for command in command_slice:
+                runtime.apply_character_continuity_command(command)
+            return {
+                actor: self._continuity_projection(store.read_snapshot(actor))
+                if store.read_snapshot(actor) is not None
+                else {}
+                for actor in actors
+            }
+
+        full_projection = snapshots(commands)
+        split = max(1, len(commands) // 2) if commands else 0
+        checkpoint_store = self._character_continuity_store()
+        checkpoint_runtime = CharacterAgentRuntime(continuity_store=checkpoint_store)
+        for command in commands[:split]:
+            checkpoint_runtime.apply_character_continuity_command(command)
+        tail_runtime = CharacterAgentRuntime(continuity_store=checkpoint_store)
+        for command in commands[split:]:
+            tail_runtime.apply_character_continuity_command(command)
+        tail_projection = {
+            actor: self._continuity_projection(checkpoint_store.read_snapshot(actor))
+            if checkpoint_store.read_snapshot(actor) is not None
+            else {}
+            for actor in actors
+        }
+        return {
+            "character_full_hash": self.bakery._digest(full_projection),
+            "character_checkpoint_tail_hash": self.bakery._digest(tail_projection),
+            "character_equal": full_projection == tail_projection,
+            "independent_character_rebuilds": True,
+        }
+
+    def _window_summary(self, window: str, result: PopulationCycleResult) -> dict[str, object]:
+        report = result.report
+        selected = [self._actor_for_projection(ref) for ref in report.selected_cohort_refs]
+        unprocessed = [self._actor_for_projection(ref) for ref in report.unprocessed_cohort_refs]
+        event = self.events[window]
+        return {
+            "status": result.status,
+            "batch_ref": result.batch_ref,
+            "window": window,
+            "cohort_ref": report.cohort_ref,
+            "published_cohort_ref": event.payload["cohort_ref"],
+            "report_scope": event.payload["population_cadence"]["report_scope"],
+            "cadence_id": event.payload["population_cadence"]["cadence_id"],
+            "source_revision_vector": dict(event.payload["population_cadence"]["base_revision_vector"]),
+            "selected": selected,
+            "selected_projection_refs": list(report.selected_cohort_refs),
+            "unprocessed": unprocessed,
+            "unprocessed_projection_refs": list(report.unprocessed_cohort_refs),
+            "read_set_digest": report.read_set_digest,
+            "result_digest": report.result_digest,
+            "owner_receipts": [item.model_dump(mode="json") for item in result.owner_receipts],
+            "continuity_receipts": [item.model_dump(mode="json") for item in result.continuity_receipts],
+            "activation_candidates": list(report.activation_candidates),
+            "presentation_seed_count": report.presentation_seed_count,
+            "owner_intent_count": report.owner_intent_count,
+            "continuity_committed_count": report.continuity_committed_count,
+        }
+
+    def run(self) -> dict[str, object]:
+        w0 = self.run_window("W0")
+        duplicate = self.run_window("W0")
+        changed, changed_zero_write = self._run_variant(
+            self.events["W0"],
+            lambda payload: payload["population_projections"][1]["payload"].update(
+                {"summary": "changed duplicate payload"}
+            ),
+        )
+        stale, stale_zero_write = self._run_variant(
+            self.events["W0"],
+            lambda payload: payload["population_cadence"].update(
+                {"base_revision_vector": {"gameplay:organization:org:bakery": 999}}
+            ),
+        )
+        branch, branch_zero_write = self._run_variant(
+            self.events["W0"],
+            lambda payload: payload["population_projections"][0]["payload"].update(
+                {"branch_ref": "branch:forbidden"}
+            ),
+        )
+        private, private_zero_write = self._run_variant(
+            self.events["W0"],
+            lambda payload: payload["population_projections"][1]["payload"].update(
+                {"nested": {"private": True}}
+            ),
+        )
+        nested, nested_zero_write = self._run_variant(
+            self.events["W0"],
+            lambda payload: payload["population_projections"][2]["payload"].update(
+                {"nested": {"actor_ref": "character:char_a"}}
+            ),
+        )
+        budget, budget_zero_write = self._run_variant(
+            self.events["W0"],
+            lambda payload: payload["population_cadence"].update({"budget": 2}),
+        )
+        unknown, unknown_zero_write = self._run_variant(
+            self.events["W0"],
+            lambda payload: [
+                item["payload"].update({"candidate_kind": "unregistered_story_behavior"})
+                for item in payload["population_projections"]
+            ],
+        )
+        w1 = self.run_window("W1")
+        missing_fixture = type(self).create()
+        missing_owner = missing_fixture.run_window("W0", owner_committed=False)
+        missing_owner_zero_write = (
+            missing_owner.status == "owner_settlement_required"
+            and not missing_fixture.continuity_port.commands
+            and all(item.zero_write for item in missing_owner.owner_receipts)
+        )
+        identity_before = self.character_runtime.character_identity_digest("char_c")
+        continuity_before = self.character_runtime.get_runtime_continuity_state("char_c")
+        existing_record_ref_before = f"character:{continuity_before['actor_id']}"
+        known_actor_refs_before = {
+            f"character:{actor_id}" for actor_id in self.character_runtime._supported_actor_ids
+        }
+        activation = self._run_player_dialogue("char_c")
+        identity_after = self.character_runtime.character_identity_digest("char_c")
+        activation_receipt = activation["receipt"]
+        existing_record_ref_after = str(activation_receipt.get("profile_ref", ""))
+        continuity_after = self.character_runtime.get_runtime_continuity_state("char_c")
+        known_actor_refs_after = {
+            f"character:{actor_id}" for actor_id in self.character_runtime._supported_actor_ids
+        }
+        new_identity_created = (
+            known_actor_refs_after != known_actor_refs_before
+            or existing_record_ref_after not in known_actor_refs_before
+            or continuity_after.get("actor_id") != continuity_before.get("actor_id")
+        )
+        gameplay_replay = GameplayProjectionReplay(
+            projector_id="siming-governed-three-actor-cohort-continuity-v1",
+            projector_version="1",
+        )
+        events = self.bakery.store.read_events()
+        full = gameplay_replay.full_replay(events)
+        split = max(1, len(events) // 2)
+        tail = gameplay_replay.checkpoint_plus_tail_replay(
+            gameplay_replay.create_checkpoint(events[:split]), events[split:]
+        )
+        character_replay = self._replay_all_characters()
+        full_hash = self.bakery._digest(
+            {"gameplay": full.projection_hash, "character": character_replay["character_full_hash"]}
+        )
+        tail_hash = self.bakery._digest(
+            {"gameplay": tail.projection_hash, "character": character_replay["character_checkpoint_tail_hash"]}
+        )
+        duplicate_owner = duplicate.owner_receipts[0] if duplicate.owner_receipts else None
+        duplicate_continuity = duplicate.continuity_receipts[0] if duplicate.continuity_receipts else None
+        return {
+            "w0": self._window_summary("W0", w0),
+            "w1": self._window_summary("W1", w1),
+            "owner": {
+                "actor_ref": "character:char_a",
+                "owner_ref": w0.owner_receipts[0].owner_ref if w0.owner_receipts else "",
+                "receipt_ref": w0.owner_receipts[0].receipt_ref if w0.owner_receipts else "",
+                "event_family": w0.owner_receipts[0].event_family if w0.owner_receipts else "",
+                "revision_vector": dict(w0.owner_receipts[0].revision_vector) if w0.owner_receipts else {},
+            },
+            "character": {
+                "seeded_actors": ["character:char_a", "character:char_b"],
+                "activation_only_actors": ["character:char_c"],
+                "continuity_commands": [command.actor_ref for command in self.continuity_port.commands],
+                "revisions": {
+                    actor: self.character_runtime.get_continuity_revision(actor.removeprefix("character:"))
+                    for actor in ("character:char_a", "character:char_b", "character:char_c")
+                },
+                "char_b_pending_memory_count": len(
+                    self.character_runtime.get_pending_seed_candidates("char_b")
+                ),
+            },
+            "activation": {
+                "status": activation["receipt"]["status"],
+                "existing_record_ref": existing_record_ref_before,
+                "existing_record_ref_before": existing_record_ref_before,
+                "existing_record_ref_after": existing_record_ref_after,
+                "new_identity_created": new_identity_created,
+                "same_character_identity": identity_before == identity_after,
+                "decision": activation["decision"],
+                "route": activation["route"],
+                "actual_player_input_path": activation["actual_player_input_path"],
+            },
+            "replay": {
+                "full_equals_checkpoint_tail": full.projection_hash == tail.projection_hash
+                and character_replay["character_equal"]
+                and full_hash == tail_hash,
+                "full_hash": full_hash,
+                "checkpoint_tail_hash": tail_hash,
+                "character_full_hash": character_replay["character_full_hash"],
+                "character_checkpoint_tail_hash": character_replay["character_checkpoint_tail_hash"],
+                "independent_character_rebuilds": character_replay["independent_character_rebuilds"],
+            },
+            "rejections": {
+                "branch_zero_write": branch_zero_write and branch.status == "requeue",
+                "private_zero_write": private_zero_write and private.status == "requeue",
+                "nested_scope_zero_write": nested_zero_write and nested.status == "requeue",
+                "budget_unprocessed_zero_write": budget_zero_write
+                and budget.report.unprocessed_cohort_refs == ("projection:char_c:W0",)
+                and not any(command.actor_ref == "character:char_c" for command in self.continuity_port.commands),
+                "duplicate_mismatch_zero_write": changed_zero_write
+                and changed.production_append_count == 0
+                and not any(seed.owner_effect_status == "settled" for seed in changed.seed_candidates),
+                "changed_duplicate_status": changed.status,
+                "changed_duplicate_idempotency_status": (
+                    changed.owner_receipts[0].idempotency_status
+                    if changed.owner_receipts
+                    else ""
+                ),
+                "missing_owner_zero_write": missing_owner_zero_write,
+                "duplicate_owner_idempotency_status": duplicate_owner.idempotency_status if duplicate_owner else "",
+                "duplicate_continuity_status": duplicate_continuity.status if duplicate_continuity else "",
+                "unknown_zero_write": unknown_zero_write and unknown.production_append_count == 0,
+                "stale_zero_write": stale_zero_write and stale.status == "requeue",
+            },
+            "zero_write": all(
+                (
+                    branch_zero_write,
+                    private_zero_write,
+                    nested_zero_write,
+                    budget_zero_write,
+                    changed_zero_write,
+                    missing_owner_zero_write,
+                    unknown_zero_write,
+                    stale_zero_write,
+                )
+            ),
+            "architecture": {
+                "authority_bus_identity": self.bus_identity,
+                "pipeline_bus_identity": id(self.pipeline._bus),
+                "siming_runtime_identity": id(self.pipeline._runtime),
+                "authority_bus_publish_count": len(
+                    self.bus.list_events(
+                        event_type="population_cadence_event",
+                        include_realtime=True,
+                        current_only=False,
+                    )
+                ),
+                "population_tick_count": self.capability.run_count,
+                "population_tick_cadence_ids": list(self.capability.cadence_ids),
             },
         }

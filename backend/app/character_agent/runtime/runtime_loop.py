@@ -1025,6 +1025,19 @@ class CharacterAgentRuntime:
             raise ValueError(f"unsupported actor_id: {actor_id}")
         return int(self._continuity_revisions.get(actor_id, 0))
 
+    def activation_lock_is_active(self, actor_id: str) -> bool:
+        """Expose the existing activation lock without leaking authority state."""
+        if not self.supports_actor(actor_id):
+            raise ValueError(f"unsupported actor_id: {actor_id}")
+        authority = self._activation_authority
+        return bool(
+            authority is not None
+            and authority.is_lock_active(
+                world_ref=self._activation_world_ref,
+                profile_ref=f"character:{actor_id}",
+            )
+        )
+
     def activate_actor(
         self,
         actor_id: str,

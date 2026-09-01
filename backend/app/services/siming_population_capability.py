@@ -117,6 +117,9 @@ def default_population_read_set_builder(event: AuthorityEvent, cadence: Populati
 
 class PopulationSimulationCapability:
     _ADMITTED_SCOPES = frozenset({"organization:summary", "public", "actor:self"})
+    _V1_SELECTOR = "selector:cohort-bakery:v1"
+    _V1_RULESET = "rules:cohort-bakery:v1"
+    _V1_ACTORS = ("character:char_a", "character:char_b", "character:char_c")
 
     def __init__(self, *, planner: PopulationPlanner | None = None, seed_planner: CharacterSeedPlanner | None = None, owner_executor: PopulationOwnerExecutor | None = None, continuity_port: CharacterContinuityPort | None = None) -> None:
         self._planner = planner or PopulationPlanner()
@@ -125,6 +128,25 @@ class PopulationSimulationCapability:
         self._continuity_port = continuity_port
 
     def run_cycle(self, cadence_input: PopulationCadenceInput, read_set: PopulationReadSet) -> PopulationCycleResult:
+        """Run the legacy population path, delegating closed cohorts to V1."""
+        if self._looks_like_v1_cohort(read_set):
+            return self.run_cohort_cycle(cadence_input, read_set)
+        return self._run_cycle_impl(cadence_input, read_set)
+
+    def run_cohort_cycle(self, cadence_input: PopulationCadenceInput, read_set: PopulationReadSet) -> PopulationCycleResult:
+        """Run one Siming-governed three-actor cohort window."""
+        if not self._looks_like_v1_cohort(read_set):
+            return self._run_cycle_impl(cadence_input, read_set)
+        reason = self._v1_admission_reason(read_set)
+        if reason:
+            return self._requeue(
+                f"population-batch:{cadence_input.cadence_id}:requeue",
+                read_set,
+                reason,
+            )
+        return self._run_cycle_impl(cadence_input, read_set, cohort=True)
+
+    def _run_cycle_impl(self, cadence_input: PopulationCadenceInput, read_set: PopulationReadSet, *, cohort: bool = False) -> PopulationCycleResult:
         batch_ref = f"population-batch:{cadence_input.cadence_id}:requeue"
         if not self._scope_admitted(cadence_input.report_scope):
             return self._requeue(batch_ref, read_set, "projection_scope_denied")
@@ -149,7 +171,11 @@ class PopulationSimulationCapability:
         ):
             return self._requeue(batch_ref, read_set, "continuity_revision_reader_missing")
 
-        report = self._planner.plan_population_cycle(read_set)
+        report = (
+            self._planner.plan_three_actor_cohort(read_set)
+            if cohort
+            else self._planner.plan_population_cycle(read_set)
+        )
         if any(getattr(item, "reason", "") == "stale_read_set" for item in report.rejected_candidates):
             return PopulationCycleResult(status="requeue", batch_ref=report.batch_ref, report=report, reason="stale_read_set", production_append_count=0)
         actor_revisions: dict[str, int] = {}
@@ -175,7 +201,10 @@ class PopulationSimulationCapability:
                     intent_kind=str(bound.get("intent_kind", "")), scope=str(bound.get("scope", "")),
                     payload=dict(bound.get("payload") or {}), source_revision_vector=dict(bound.get("source_revision_vector") or {}),
                 )
-            if not isinstance(bound, PopulationOwnerBoundIntent) or bound.intent_kind != "schedule_gated_supply":
+            if not isinstance(bound, PopulationOwnerBoundIntent) or (
+                bound.intent_kind != "schedule_gated_supply"
+                and not (cohort and bound.intent_kind == "supply" and bound.actor_ref == "character:char_a")
+            ):
                 continue
             if self._owner_executor is None:
                 continue
@@ -199,11 +228,21 @@ class PopulationSimulationCapability:
             owner_refs,
             owner_receipt_associations=owner_receipt_associations,
         )
+        if cohort:
+            selected_refs = set(report.selected_cohort_refs)
+            seeds = tuple(
+                seed.model_copy(update={"memory_candidates": ()}) if seed.actor_ref == "character:char_b" else seed
+                for seed in seeds
+                if any(seed.seed_id.endswith(f":{projection_ref}") for projection_ref in selected_refs)
+                and seed.actor_ref in {"character:char_a", "character:char_b"}
+            )
         continuity_receipts: list[CharacterContinuityReceipt] = []
         next_actor_revisions = dict(actor_revisions)
         continuity_failure_status = ""
         continuity_failure_reason = ""
-        if self._continuity_port is not None:
+        if self._continuity_port is not None and not (
+            cohort and report.owner_bound_intents and len(owner_refs) < len(report.owner_bound_intents)
+        ):
             for seed in seeds:
                 if not seed.actor_ref.startswith("character:"):
                     continue
@@ -252,7 +291,87 @@ class PopulationSimulationCapability:
             status = "owner_settlement_required"
         if continuity_failure_status:
             status = continuity_failure_status
-        return PopulationCycleResult(status=status, batch_ref=report.batch_ref, report=report, seed_candidates=seeds, owner_receipts=tuple(owner_receipts), continuity_receipts=tuple(continuity_receipts), reason=continuity_failure_reason, production_append_count=sum(1 for item in owner_receipts if item.committed and not item.zero_write))
+        if cohort:
+            report = report.model_copy(update={
+                "owner_committed_count": sum(1 for item in owner_receipts if item.committed and not item.zero_write),
+                "continuity_committed_count": sum(1 for item in continuity_receipts if item.status in {"committed", "idempotent_replay"}),
+                "continuity_requeue_count": sum(1 for item in continuity_receipts if item.status in {"requeued", "rejected"}),
+            })
+            audits = ({
+                "cohort_ref": report.cohort_ref,
+                "window": cadence_input.cadence_id.rsplit(":", 1)[-1],
+                "classification": {
+                    "selected": report.selected_count,
+                    "unprocessed": report.unprocessed_count,
+                    "rejected": len(report.rejected_candidates),
+                    "presentation_seed_count": report.presentation_seed_count,
+                    "activation_candidate_count": report.activation_candidate_count,
+                },
+                "owner": {"submitted": len(owner_receipts), "committed": report.owner_committed_count},
+                "continuity": {"submitted": len(continuity_receipts), "committed": report.continuity_committed_count, "requeue": report.continuity_requeue_count},
+                "read_set_digest": report.read_set_digest,
+                "result_digest": report.result_digest,
+            },)
+        else:
+            audits = ()
+        return PopulationCycleResult(status=status, batch_ref=report.batch_ref, report=report, seed_candidates=seeds, owner_receipts=tuple(owner_receipts), continuity_receipts=tuple(continuity_receipts), audits=audits, reason=continuity_failure_reason, production_append_count=sum(1 for item in owner_receipts if item.committed and not item.zero_write))
+
+    @staticmethod
+    def _is_v1_cohort(read_set: PopulationReadSet) -> bool:
+        return PopulationSimulationCapability._v1_admission_reason(read_set) == ""
+
+    @staticmethod
+    def _looks_like_v1_cohort(read_set: PopulationReadSet) -> bool:
+        cadence = read_set.cadence
+        return cadence.cadence_id.startswith("cadence:cohort:") or (
+            cadence.selector_revision == PopulationSimulationCapability._V1_SELECTOR
+            or cadence.ruleset_revision == PopulationSimulationCapability._V1_RULESET
+        )
+
+    @staticmethod
+    def _v1_admission_reason(read_set: PopulationReadSet) -> str:
+        cadence = read_set.cadence
+        parts = cadence.cadence_id.split(":")
+        if (
+            len(parts) != 4
+            or parts[:3] != ["cadence", "cohort", "bakery"]
+            or parts[3] not in {"W0", "W1"}
+            or cadence.selector_revision != PopulationSimulationCapability._V1_SELECTOR
+            or cadence.ruleset_revision != PopulationSimulationCapability._V1_RULESET
+            or cadence.policy_revision != cadence.world_mode_revision
+        ):
+            return "stale_read_set"
+        if cadence.report_scope != "organization:summary" or len(read_set.projections) != 3:
+            return "cohort_input_invalid"
+        window = parts[3]
+        expected_kinds = {
+            "character:char_a": "schedule_gated_supply",
+            "character:char_b": "routine_work",
+            "character:char_c": "relationship_negotiation",
+        }
+        actors: dict[str, str] = {}
+        for projection in read_set.projections:
+            payload = projection.payload
+            aliases = {
+                str(payload.get(key)).strip()
+                for key in ("actor_ref", "profile_ref", "character_ref")
+                if payload.get(key) not in (None, "")
+            }
+            if len(aliases) != 1:
+                return "cohort_input_invalid"
+            actor = next(iter(aliases))
+            kind = str(payload.get("candidate_kind") or payload.get("kind") or payload.get("behavior_kind") or "")
+            expected_ref = f"projection:{actor.removeprefix('character:')}:{window}"
+            if (
+                actor not in expected_kinds
+                or actor in actors
+                or projection.ref != expected_ref
+                or kind != expected_kinds[actor]
+                or projection.scope not in {"organization:summary", "public"}
+            ):
+                return "cohort_input_invalid"
+            actors[actor] = kind
+        return "" if tuple(sorted(actors)) == tuple(sorted(expected_kinds)) else "cohort_input_invalid"
 
     def _current_revision(self, actor_ref: str) -> int:
         reader = getattr(self._continuity_port, "current_revision", None)

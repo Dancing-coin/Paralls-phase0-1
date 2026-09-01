@@ -43,5 +43,9 @@ class CharacterRuntimeContinuityPort:
         actor_id = actor_ref.removeprefix("character:")
         return int(self.runtime.get_continuity_revision(actor_id))
 
+    def activation_lock_is_active(self, actor_ref: str) -> bool:
+        actor_id = actor_ref.removeprefix("character:")
+        return bool(self.runtime.activation_lock_is_active(actor_id))
+
 
 __all__ = ["CharacterContinuityService", "CharacterRuntimeContinuityPort"]

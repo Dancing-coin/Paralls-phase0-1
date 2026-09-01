@@ -143,7 +143,12 @@ class SimingRuntime:
                 try:
                     cadence = PopulationCadenceInput.from_authority_event(event)
                     read_set = self._population_read_set_builder(event, cadence)
-                    cycle = self._population_capability.run_cycle(cadence, read_set)
+                    runner = getattr(self._population_capability, "run_cohort_cycle", None)
+                    cycle = (
+                        runner(cadence, read_set)
+                        if callable(runner)
+                        else self._population_capability.run_cycle(cadence, read_set)
+                    )
                     result.audit_records.append(self._population_cycle_audit(event, cycle))
                     result.audit_records.extend(audit for audit in cycle.audits if isinstance(audit, SimingAuditRecord))
                 except (TypeError, ValueError) as exc:
@@ -624,6 +629,21 @@ class SimingRuntime:
             f" append={cycle.production_append_count}"
             f" reason={cycle.reason or 'none'}"
         )
+        if report.cohort_ref:
+            reason += (
+                f" cohort={report.cohort_ref}"
+                f" window={event.payload.get('window') or event.payload.get('cadence_id') or 'unknown'}"
+                f" classified={report.selected_count}"
+                f" unprocessed={report.unprocessed_count}"
+                f" owner_intents={report.owner_intent_count}"
+                f" owner_committed={report.owner_committed_count}"
+                f" continuity_committed={report.continuity_committed_count}"
+                f" presentation={report.presentation_seed_count}"
+                f" activation={report.activation_candidate_count}"
+                f" continuity_requeue={report.continuity_requeue_count}"
+                f" read_set={report.read_set_digest}"
+                f" result={report.result_digest}"
+            )
         return SimingAuditRecord(
             audit_id=f"audit_{event.event_id}_population_cycle",
             room_id=event.room_id,
