@@ -185,6 +185,63 @@ class PopulationSimulationCapability:
                         read_set,
                         "capability_owner_override_denied",
                     )
+        unknown_selected = tuple(
+            candidate
+            for candidate in decision.selected_candidates
+            if candidate.behavior_kind not in PopulationPlanner.ADMITTED_BEHAVIORS
+        )
+        if unknown_selected:
+            if any(
+                output in {"owner_bound_intent", "character_core_command"}
+                for candidate in unknown_selected
+                for output in candidate.allowed_outputs
+            ):
+                return self._requeue(
+                    f"population-decision:{cadence_input.cadence_id}:requeue",
+                    read_set,
+                    "capability_output_unsupported",
+                )
+            if len(unknown_selected) != len(decision.selected_candidates):
+                return self._requeue(
+                    f"population-decision:{cadence_input.cadence_id}:requeue",
+                    read_set,
+                    "mixed_generic_output_unsupported",
+                )
+            presentation = {
+                candidate.actor_ref: {
+                    "actor_ref": candidate.actor_ref,
+                    "behavior_kind": candidate.behavior_kind,
+                    "fidelity_tier": candidate.fidelity_tier,
+                    "source_projection_refs": list(candidate.source_projection_refs),
+                }
+                for candidate in unknown_selected
+                if "presentation_seed" in candidate.allowed_outputs
+            }
+            activations = tuple(
+                candidate.source_projection_refs[0]
+                for candidate in unknown_selected
+                if "activation_candidate" in candidate.allowed_outputs and candidate.source_projection_refs
+            )
+            report = PopulationBatchReport(
+                batch_ref=f"population-decision:{cadence_input.cadence_id}",
+                selected_cohort_refs=tuple(candidate.actor_ref for candidate in unknown_selected),
+                presentation_seeds=presentation,
+                activation_candidates=activations,
+                selected_count=len(unknown_selected),
+                presentation_seed_count=len(presentation),
+                activation_candidate_count=len(activations),
+                budget_used=decision.budget_used,
+                budget_remaining=decision.budget_remaining,
+                read_set_digest=read_set.read_set_digest,
+                result_digest=decision.result_digest,
+            )
+            return PopulationCycleResult(
+                status="accepted",
+                batch_ref=report.batch_ref,
+                report=report,
+                decision=decision,
+                production_append_count=0,
+            )
         selected_read_set = PopulationReadSet.from_inputs(cadence_input, selected_projections)
         allowed_core_refs = {
             candidate.actor_ref
