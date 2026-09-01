@@ -6,7 +6,7 @@ import json
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Literal, Mapping
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_serializer, model_validator
 
 from app.population_continuity.models import ContinuityModel
 
@@ -62,6 +62,10 @@ class PopulationDecisionCandidate(ContinuityModel):
         object.__setattr__(self, "source_revision_vector", MappingProxyType(dict(self.source_revision_vector)))
         return self
 
+    @field_serializer("source_revision_vector")
+    def serialize_source_revision_vector(self, value: Mapping[str, int]) -> dict[str, int]:
+        return dict(value)
+
 
 class PopulationDecision(ContinuityModel):
     selected_candidates: tuple[PopulationDecisionCandidate, ...] = ()
@@ -76,6 +80,10 @@ class PopulationDecision(ContinuityModel):
     def freeze_fidelity_counts(self) -> "PopulationDecision":
         object.__setattr__(self, "fidelity_counts", MappingProxyType(dict(self.fidelity_counts)))
         return self
+
+    @field_serializer("fidelity_counts")
+    def serialize_fidelity_counts(self, value: Mapping[str, int]) -> dict[str, int]:
+        return dict(value)
 
     decision_reason_codes: tuple[str, ...] = ()
     read_set_digest: str = Field(min_length=1)
