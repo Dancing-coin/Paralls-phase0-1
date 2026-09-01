@@ -127,12 +127,6 @@ def _digest(value: object) -> str:
 class PopulationDecisionPlanner:
     """Pure candidate evaluator and deterministic selector."""
 
-    _BEHAVIOR_OUTPUTS: dict[str, tuple[PopulationOutputKind, ...]] = {
-        "schedule_gated_supply": ("owner_bound_intent", "character_core_command"),
-        "routine_work": ("presentation_seed",),
-        "relationship_negotiation": ("activation_candidate",),
-    }
-
     def evaluate(
         self,
         read_set: "PopulationReadSet",
@@ -163,10 +157,22 @@ class PopulationDecisionPlanner:
                 ),
                 None,
             )
-            if descriptor is None or behavior not in self._BEHAVIOR_OUTPUTS:
+            if descriptor is None:
                 continue
-            outputs = self._BEHAVIOR_OUTPUTS[behavior]
-            if not set(outputs).issubset(set(descriptor.allowed_output_kinds)):
+            outputs = descriptor.allowed_output_kinds
+            if not outputs:
+                continue
+            try:
+                estimated_cost = max(0, int(payload.get("budget_cost", 1) or 1))
+                objective_risk = str(payload.get("objective_risk") or ("low" if "owner_bound_intent" in outputs else "none"))
+                signals = {
+                    "player_proximity": float(payload.get("player_proximity", 0.0) or 0.0),
+                    "narrative_obligation_pressure": float(payload.get("narrative_obligation_pressure", 0.0) or 0.0),
+                    "unresolved_owner_consequence": float(payload.get("unresolved_owner_consequence", 0.0) or 0.0),
+                    "propagation_pressure": float(payload.get("propagation_pressure", 0.0) or 0.0),
+                    "starvation_credit": float(payload.get("starvation_credit", 0.0) or 0.0),
+                }
+            except (TypeError, ValueError):
                 continue
             cohort_ref = str(payload.get("cohort_ref") or self._cohort_ref(read_set))
             candidates.append(
@@ -179,13 +185,9 @@ class PopulationDecisionPlanner:
                     source_projection_refs=(projection.ref,),
                     source_revision_vector=dict(projection.revision_vector),
                     evidence_refs=tuple(str(item) for item in (payload.get("evidence_refs") or ())),
-                    estimated_cost=max(0, int(payload.get("budget_cost", 1) or 1)),
-                    objective_risk=str(payload.get("objective_risk") or ("low" if "owner_bound_intent" in outputs else "none")),
-                    player_proximity=float(payload.get("player_proximity", 0.0) or 0.0),
-                    narrative_obligation_pressure=float(payload.get("narrative_obligation_pressure", 0.0) or 0.0),
-                    unresolved_owner_consequence=float(payload.get("unresolved_owner_consequence", 0.0) or 0.0),
-                    propagation_pressure=float(payload.get("propagation_pressure", 0.0) or 0.0),
-                    starvation_credit=float(payload.get("starvation_credit", 0.0) or 0.0),
+                    estimated_cost=estimated_cost,
+                    objective_risk=objective_risk,
+                    **signals,
                     allowed_outputs=outputs,
                     policy_revision=policy.policy_revision,
                     selector_revision=read_set.cadence.selector_revision,

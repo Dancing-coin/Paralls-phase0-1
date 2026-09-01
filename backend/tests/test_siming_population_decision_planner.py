@@ -147,3 +147,17 @@ def test_policy_weight_changes_selection_without_changing_authority_outputs() ->
 def test_unknown_capability_and_private_projection_are_rejected_without_writes() -> None:
     unknown = candidate("candidate:unknown", actor="character:char_a", behavior="unknown_behavior")
     assert PopulationDecisionPlanner().filter_registered((unknown,), capabilities()) == ()
+
+
+def test_registered_behavior_can_extend_without_actor_specific_mapping() -> None:
+    descriptor = PopulationCapabilityDescriptor(
+        capability_id="cap:custom:v1", accepted_behavior_kinds=("custom_observation",),
+        required_scopes=("public",), required_source_domains=("organization",),
+        target_owner="character:core", allowed_output_kinds=("presentation_seed",),
+        capability_revision="cap:custom:v1", policy_revision="policy:test:v1", enabled=True,
+    )
+    projection = read_set().projections[1].model_copy(update={"payload": {**read_set().projections[1].payload, "candidate_kind": "custom_observation"}})
+    custom_read_set = read_set().model_copy(update={"projections": (projection,)}, deep=True)
+    result = PopulationDecisionPlanner().evaluate(custom_read_set, (descriptor,), policy())
+    assert len(result) == 1
+    assert result[0].behavior_kind == "custom_observation"
