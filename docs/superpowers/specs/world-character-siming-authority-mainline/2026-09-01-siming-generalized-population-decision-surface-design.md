@@ -1,6 +1,6 @@
 # Siming Generalized Population Decision Surface
 
-Status: `draft for review`
+Status: `approved; implementation plan follows`
 
 Date: `2026-09-01`
 
