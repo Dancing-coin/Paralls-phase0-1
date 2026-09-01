@@ -54,3 +54,18 @@ def test_decision_budget_and_digests_are_explicit() -> None:
     )
     assert decision.budget_remaining == 3
     assert decision.read_set_digest == "sha256:read"
+
+
+def test_nested_mappings_are_immutable() -> None:
+    candidate = PopulationDecisionCandidate(**candidate_payload())
+    decision = PopulationDecision(
+        budget_used=0,
+        budget_remaining=3,
+        fidelity_counts={"B2": 1},
+        read_set_digest="sha256:read",
+        result_digest="sha256:result",
+    )
+    with pytest.raises(TypeError):
+        candidate.source_revision_vector["world:bakery"] = 2
+    with pytest.raises(TypeError):
+        decision.fidelity_counts["B0"] = 1

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import math
-from typing import Literal
+from types import MappingProxyType
+from typing import Literal, Mapping
 
 from pydantic import Field, model_validator
 
@@ -23,7 +24,7 @@ class PopulationDecisionCandidate(ContinuityModel):
     behavior_kind: str = Field(min_length=1)
     fidelity_tier: Literal["B0", "B1", "B2", "B3"]
     source_projection_refs: tuple[str, ...] = ()
-    source_revision_vector: dict[str, int] = {}
+    source_revision_vector: Mapping[str, int] = Field(default_factory=dict)
     evidence_refs: tuple[str, ...] = ()
     estimated_cost: int = Field(ge=0)
     objective_risk: Literal["none", "low", "medium", "high"]
@@ -53,6 +54,7 @@ class PopulationDecisionCandidate(ContinuityModel):
             raise ValueError("decision_signal_not_finite")
         if any(not key or isinstance(value, bool) or value < 0 for key, value in self.source_revision_vector.items()):
             raise ValueError("revision_vector_invalid")
+        object.__setattr__(self, "source_revision_vector", MappingProxyType(dict(self.source_revision_vector)))
         return self
 
 
@@ -63,7 +65,13 @@ class PopulationDecision(ContinuityModel):
     unprocessed_refs: tuple[str, ...] = ()
     budget_used: int = Field(ge=0)
     budget_remaining: int = Field(ge=0)
-    fidelity_counts: dict[str, int] = {}
+    fidelity_counts: Mapping[str, int] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def freeze_fidelity_counts(self) -> "PopulationDecision":
+        object.__setattr__(self, "fidelity_counts", MappingProxyType(dict(self.fidelity_counts)))
+        return self
+
     decision_reason_codes: tuple[str, ...] = ()
     read_set_digest: str = Field(min_length=1)
     result_digest: str = Field(min_length=1)
