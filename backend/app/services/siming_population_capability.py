@@ -13,6 +13,7 @@ from app.population_continuity.source_inputs import HouseholdScheduleInput, Orga
 from app.population_continuity.models import BatchIntentCandidate
 from app.population_continuity.seed_planner import CharacterSeedPlanner
 from app.population_continuity.siming_contracts import PopulationBatchReport, PopulationCadenceInput, PopulationCycleResult, PopulationOwnerReceipt, PopulationReadSet
+from app.population_continuity.decision_surface import PopulationCapabilityDescriptor, PopulationDecision, PopulationDecisionPlanner, PopulationDecisionPolicy
 
 
 class PopulationOwnerExecutor(Protocol):
@@ -121,11 +122,166 @@ class PopulationSimulationCapability:
     _V1_RULESET = "rules:cohort-bakery:v1"
     _V1_ACTORS = ("character:char_a", "character:char_b", "character:char_c")
 
-    def __init__(self, *, planner: PopulationPlanner | None = None, seed_planner: CharacterSeedPlanner | None = None, owner_executor: PopulationOwnerExecutor | None = None, continuity_port: CharacterContinuityPort | None = None) -> None:
+    def __init__(self, *, planner: PopulationPlanner | None = None, seed_planner: CharacterSeedPlanner | None = None, owner_executor: PopulationOwnerExecutor | None = None, continuity_port: CharacterContinuityPort | None = None, decision_planner: PopulationDecisionPlanner | None = None) -> None:
         self._planner = planner or PopulationPlanner()
         self._seed_planner = seed_planner or CharacterSeedPlanner()
         self._owner_executor = owner_executor
         self._continuity_port = continuity_port
+        self._decision_planner = decision_planner or PopulationDecisionPlanner()
+
+    def run_decision_cycle(
+        self,
+        cadence_input: PopulationCadenceInput,
+        read_set: PopulationReadSet,
+        policy: PopulationDecisionPolicy,
+        capabilities: tuple[PopulationCapabilityDescriptor, ...],
+    ) -> PopulationCycleResult:
+        """Evaluate and settle a generic decision through existing authority paths."""
+        if read_set.cadence != cadence_input:
+            return self._requeue(f"population-batch:{cadence_input.cadence_id}:requeue", read_set, "stale_read_set")
+        candidates = self._decision_planner.evaluate(read_set, capabilities, policy)
+        candidates = self._decision_planner.filter_registered(candidates, capabilities)
+        decision = self._decision_planner.select(candidates, policy).model_copy(
+            update={"read_set_digest": read_set.read_set_digest}
+        )
+        selected_refs = {
+            projection_ref
+            for candidate in decision.selected_candidates
+            for projection_ref in candidate.source_projection_refs
+        }
+        selected_projections = tuple(
+            projection for projection in read_set.projections if projection.ref in selected_refs
+        )
+        if not selected_projections:
+            report = PopulationBatchReport(
+                batch_ref=f"population-decision:{cadence_input.cadence_id}",
+                selected_count=0,
+                budget_used=decision.budget_used,
+                budget_remaining=decision.budget_remaining,
+                read_set_digest=read_set.read_set_digest,
+                result_digest=decision.result_digest,
+            )
+            return PopulationCycleResult(
+                status="accepted",
+                batch_ref=report.batch_ref,
+                report=report,
+                decision=decision,
+                production_append_count=0,
+            )
+        for candidate in decision.selected_candidates:
+            projection = next(
+                (item for item in read_set.projections if item.ref in candidate.source_projection_refs),
+                None,
+            )
+            descriptor = next(
+                (item for item in capabilities if candidate.behavior_kind in item.accepted_behavior_kinds),
+                None,
+            )
+            if projection is not None and descriptor is not None:
+                requested_owner = projection.payload.get("owner_ref") or projection.payload.get("target_owner")
+                if requested_owner is not None and str(requested_owner) != descriptor.target_owner:
+                    return self._requeue(
+                        f"population-decision:{cadence_input.cadence_id}:requeue",
+                        read_set,
+                        "capability_owner_override_denied",
+                    )
+        unknown_selected = tuple(
+            candidate
+            for candidate in decision.selected_candidates
+            if candidate.behavior_kind not in PopulationPlanner.ADMITTED_BEHAVIORS
+        )
+        if unknown_selected:
+            if any(
+                output in {"owner_bound_intent", "character_core_command"}
+                for candidate in unknown_selected
+                for output in candidate.allowed_outputs
+            ):
+                return self._requeue(
+                    f"population-decision:{cadence_input.cadence_id}:requeue",
+                    read_set,
+                    "capability_output_unsupported",
+                )
+            if len(unknown_selected) != len(decision.selected_candidates):
+                return self._requeue(
+                    f"population-decision:{cadence_input.cadence_id}:requeue",
+                    read_set,
+                    "mixed_generic_output_unsupported",
+                )
+            presentation = {
+                candidate.actor_ref: {
+                    "actor_ref": candidate.actor_ref,
+                    "behavior_kind": candidate.behavior_kind,
+                    "fidelity_tier": candidate.fidelity_tier,
+                    "source_projection_refs": list(candidate.source_projection_refs),
+                }
+                for candidate in unknown_selected
+                if "presentation_seed" in candidate.allowed_outputs
+            }
+            activations = tuple(
+                candidate.source_projection_refs[0]
+                for candidate in unknown_selected
+                if "activation_candidate" in candidate.allowed_outputs and candidate.source_projection_refs
+            )
+            report = PopulationBatchReport(
+                batch_ref=f"population-decision:{cadence_input.cadence_id}",
+                selected_cohort_refs=tuple(candidate.actor_ref for candidate in unknown_selected),
+                presentation_seeds=presentation,
+                activation_candidates=activations,
+                selected_count=len(unknown_selected),
+                presentation_seed_count=len(presentation),
+                activation_candidate_count=len(activations),
+                budget_used=decision.budget_used,
+                budget_remaining=decision.budget_remaining,
+                read_set_digest=read_set.read_set_digest,
+                result_digest=decision.result_digest,
+            )
+            return PopulationCycleResult(
+                status="accepted",
+                batch_ref=report.batch_ref,
+                report=report,
+                decision=decision,
+                production_append_count=0,
+            )
+        selected_read_set = PopulationReadSet.from_inputs(cadence_input, selected_projections)
+        allowed_core_refs = {
+            candidate.actor_ref
+            for candidate in decision.selected_candidates
+            if "character_core_command" in candidate.allowed_outputs
+        }
+        result = self._run_cycle_impl(
+            cadence_input,
+            selected_read_set,
+            allowed_character_core_refs=allowed_core_refs,
+        )
+        return result.model_copy(update={"decision": decision})
+
+    def replan_from_receipts(
+        self,
+        previous_decision: PopulationDecision | None,
+        receipts: Sequence[PopulationOwnerReceipt],
+        next_read_set: PopulationReadSet,
+        policy: PopulationDecisionPolicy,
+        capabilities: tuple[PopulationCapabilityDescriptor, ...],
+    ) -> PopulationCycleResult:
+        """Re-evaluate only after prior Owner receipts have reached a terminal success."""
+        if any(not receipt.committed or receipt.zero_write for receipt in receipts):
+            return self._requeue(
+                f"population-decision:{next_read_set.cadence.cadence_id}:requeue",
+                next_read_set,
+                "owner_rejected",
+            )
+        if previous_decision is None:
+            return self._requeue(
+                f"population-decision:{next_read_set.cadence.cadence_id}:requeue",
+                next_read_set,
+                "previous_decision_missing",
+            )
+        return self.run_decision_cycle(
+            next_read_set.cadence,
+            next_read_set,
+            policy,
+            capabilities,
+        )
 
     def run_cycle(self, cadence_input: PopulationCadenceInput, read_set: PopulationReadSet) -> PopulationCycleResult:
         """Run the legacy population path, delegating closed cohorts to V1."""
@@ -146,7 +302,14 @@ class PopulationSimulationCapability:
             )
         return self._run_cycle_impl(cadence_input, read_set, cohort=True)
 
-    def _run_cycle_impl(self, cadence_input: PopulationCadenceInput, read_set: PopulationReadSet, *, cohort: bool = False) -> PopulationCycleResult:
+    def _run_cycle_impl(
+        self,
+        cadence_input: PopulationCadenceInput,
+        read_set: PopulationReadSet,
+        *,
+        cohort: bool = False,
+        allowed_character_core_refs: set[str] | None = None,
+    ) -> PopulationCycleResult:
         batch_ref = f"population-batch:{cadence_input.cadence_id}:requeue"
         if not self._scope_admitted(cadence_input.report_scope):
             return self._requeue(batch_ref, read_set, "projection_scope_denied")
@@ -245,6 +408,8 @@ class PopulationSimulationCapability:
         ):
             for seed in seeds:
                 if not seed.actor_ref.startswith("character:"):
+                    continue
+                if allowed_character_core_refs is not None and seed.actor_ref not in allowed_character_core_refs:
                     continue
                 if seed.owner_effect_status in {"owner_settlement_required", "rejected"}:
                     continue

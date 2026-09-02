@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "siming-generalized-population-decision",
+  "order": 120,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_siming_generalized_population_decision.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/siming-generalized-population-decision-report.json",
+  "description": "Invariant and scenario proof for generalized Siming population candidate selection"
+}

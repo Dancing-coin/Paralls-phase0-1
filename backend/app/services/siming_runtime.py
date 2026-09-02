@@ -62,6 +62,7 @@ from app.services.behavior_turn_recorder import BehaviorTurnRecorder
 from app.models.behavior_turn import BehaviorTurnRecordRequest, BehaviorTurnStageRecord
 from app.models.siming_heavenly_graph import GraphProvenance, GraphRevisionVector, HeavenlyGraphScope
 from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationReadSet
+from app.population_continuity.decision_surface import PopulationCapabilityDescriptor, PopulationDecisionPolicy
 from app.services.siming_population_capability import PopulationSimulationCapability, ReadSetBuilder, default_population_read_set_builder
 
 
@@ -143,12 +144,28 @@ class SimingRuntime:
                 try:
                     cadence = PopulationCadenceInput.from_authority_event(event)
                     read_set = self._population_read_set_builder(event, cadence)
-                    runner = getattr(self._population_capability, "run_cohort_cycle", None)
-                    cycle = (
-                        runner(cadence, read_set)
-                        if callable(runner)
-                        else self._population_capability.run_cycle(cadence, read_set)
-                    )
+                    generic_payload = event.payload.get("population_decision")
+                    if isinstance(generic_payload, dict) and callable(
+                        getattr(self._population_capability, "run_decision_cycle", None)
+                    ):
+                        policy_payload = generic_payload.get("policy") or generic_payload.get("decision_policy")
+                        capability_payload = generic_payload.get("capabilities") or ()
+                        policy = PopulationDecisionPolicy.model_validate(policy_payload)
+                        capabilities = tuple(
+                            PopulationCapabilityDescriptor.model_validate(item)
+                            for item in capability_payload
+                            if isinstance(item, dict)
+                        )
+                        cycle = self._population_capability.run_decision_cycle(
+                            cadence, read_set, policy, capabilities
+                        )
+                    else:
+                        runner = getattr(self._population_capability, "run_cohort_cycle", None)
+                        cycle = (
+                            runner(cadence, read_set)
+                            if callable(runner)
+                            else self._population_capability.run_cycle(cadence, read_set)
+                        )
                     result.audit_records.append(self._population_cycle_audit(event, cycle))
                     result.audit_records.extend(audit for audit in cycle.audits if isinstance(audit, SimingAuditRecord))
                 except (TypeError, ValueError) as exc:
