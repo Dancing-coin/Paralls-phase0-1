@@ -33,6 +33,10 @@ class BakeryMirrorSource:
             raise BakeryMirrorSourceError("bakery_output_commit_missing")
         output_events = [event for event in events if event.event_type == "gameplay.inventory.output_received"]
         facility_events = [event for event in events if event.event_type == "gameplay.construction_production.facility_acquired"]
+        period_events = [event for event in events if event.event_type == "gameplay.economy.business_period_closed"]
+        sale_events = [event for event in events if event.event_type == "gameplay.economy.sale_posted"]
+        permit_events = [event for event in events if event.event_type == "gameplay.government.permit_verified"]
+        failure_events = [event for event in events if event.event_type == "gameplay.construction_production.run_failed@1"]
         if not output_events or not facility_events:
             raise BakeryMirrorSourceError("bakery_committed_facts_missing")
         source_revision_vector = MappingProxyType(_revision_vector(events))
@@ -46,6 +50,12 @@ class BakeryMirrorSource:
                 "output_item": self.scenario.recipe.output_item,
                 "output_state": "sold" if any(event.event_type == "gameplay.economy.sale_posted" for event in events) else "received",
                 "output_count": len(output_events),
+                "period_count": len(period_events),
+                "sale_count": len(sale_events),
+                "permit_count": len(permit_events),
+                "failure_count": len(failure_events),
+                "recovery_count": sum(1 for event in events if event.event_type == "gameplay.inventory.reservation_released"),
+                "period_refs": tuple(event.payload.get("period_ref", "") for event in period_events),
                 "source_event_digest": source_digest,
             }
         )

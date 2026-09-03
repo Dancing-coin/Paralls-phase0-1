@@ -5,7 +5,6 @@ import pytest
 from app.gameplay.bakery_reference_runtime import BakeryReferenceScenario
 from app.gameplay.construction_production_runtime import ConstructionProductionAuthority
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.inventory_runtime import InventoryDefinitionRegistry, InventoryProjector, ItemDefinition
 from app.gameplay.recipe_production_family import RecipeProductionFailureIntent
 
 

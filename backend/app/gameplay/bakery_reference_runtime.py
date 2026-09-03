@@ -227,7 +227,7 @@ class BakeryReferenceScenario:
                     )
                 )
                 self._require_result(failure)
-                return BusinessPeriod(
+                failed_period = BusinessPeriod(
                     period_ref=f"period:bakery:{sequence}:failed",
                     sequence=sequence,
                     policy_revision="policy:v1",
@@ -235,6 +235,29 @@ class BakeryReferenceScenario:
                     cost=4,
                     tax=0,
                 )
+                self._require_result(
+                    government_authority.settle_tax_assessment(
+                        organization_ref=self.organization.organization_ref,
+                        period_ref=failed_period.period_ref,
+                        revenue=0,
+                        rate=0.1,
+                        policy_revision=failed_period.policy_revision,
+                        command_id=f"tax-assessment:tax:{failed_period.period_ref}",
+                        idempotency_key=f"tax-assessment:tax:{failed_period.period_ref}",
+                        causation_id=f"causation:tax:{sequence}",
+                        correlation_id=f"correlation:{self.organization.organization_ref}:{sequence}",
+                    )
+                )
+                self._require_result(
+                    economy_authority.settle_period_close(
+                        failed_period,
+                        command_id=f"period-close:{failed_period.period_ref}",
+                        idempotency_key=f"period-close:{failed_period.period_ref}",
+                        causation_id=f"causation:period:{sequence}",
+                        correlation_id=f"correlation:{self.organization.organization_ref}:{sequence}",
+                    )
+                )
+                return EconomyAuthority.close_period(failed_period)
             self._require_result(
                 production_authority.settle_finish_run(
                     production_authority.projector().runs[run_ref],
