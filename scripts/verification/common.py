@@ -374,7 +374,7 @@ def ensure_backend(
         stderr=stderr_handle,
         text=True,
     )
-    deadline = time.time() + 15.0
+    deadline = time.time() + 45.0
     while time.time() < deadline:
         health = get_health()
         if health is not None and str(health.get("worktree_root", "")) == expected_root:

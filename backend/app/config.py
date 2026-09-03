@@ -59,6 +59,7 @@ class Settings(BaseModel):
     character_model_api_key: str | None = Field(default=None, repr=False, exclude=True)
     character_model_model: str | None = None
     character_model_timeout_seconds: float = Field(default=20.0, gt=0)
+    character_model_require_online: bool = False
     siming_llm_mode: Literal["disabled", "http"] = "disabled"
     siming_llm_api_key: str | None = Field(default=None, repr=False, exclude=True)
     siming_llm_endpoint: str = "https://api.openai.com/v1/responses"
@@ -253,6 +254,7 @@ settings = Settings(
     character_model_api_key=_env_optional("CHARACTER_MODEL_API_KEY"),
     character_model_model=_env_optional("CHARACTER_MODEL_MODEL"),
     character_model_timeout_seconds=float(_env_value("CHARACTER_MODEL_TIMEOUT_SECONDS", "20.0") or "20.0"),
+    character_model_require_online=_env_value("CHARACTER_MODEL_REQUIRE_ONLINE", "0") == "1",
     siming_llm_mode=_env_value("SIMING_LLM_MODE", "disabled") or "disabled",
     siming_llm_api_key=_env_value("SIMING_LLM_API_KEY"),
     siming_llm_endpoint=_env_value("SIMING_LLM_ENDPOINT", "https://api.openai.com/v1/responses")

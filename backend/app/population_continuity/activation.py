@@ -275,6 +275,10 @@ class ProfileActivationAuthority:
             self._locks[lock_ref] = lock
         return result
 
+    def is_lock_active(self, *, world_ref: str, profile_ref: str) -> bool:
+        lock = self._locks.get(f"lock:{world_ref}:{profile_ref}")
+        return lock is not None and lock.status == "active"
+
     def record_pending(self, change: PendingChange) -> ActivationReceipt:
         lock = self._locks.get(change.lock_ref)
         if lock is None or lock.status != "active" or lock.profile_ref != change.profile_ref:

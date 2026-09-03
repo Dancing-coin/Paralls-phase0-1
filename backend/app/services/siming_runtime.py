@@ -1,3 +1,6 @@
+import os
+from threading import RLock
+
 from app.models.authority_event import AuthorityEvent
 from app.models.siming_event import (
     FairnessStateSnapshot,
@@ -55,6 +58,11 @@ from app.world_runtime.intelligence_upgrade import CanonicalPerceptBundle
 from app.services.siming_heavenly_runtime_support import SimingHeavenlyRuntimeSupport
 from app.models.siming_resource_capability import StagingRequest
 from app.services.siming_story_projection import SimingStoryProjection
+from app.services.behavior_turn_recorder import BehaviorTurnRecorder
+from app.models.behavior_turn import BehaviorTurnRecordRequest, BehaviorTurnStageRecord
+from app.models.siming_heavenly_graph import GraphProvenance, GraphRevisionVector, HeavenlyGraphScope
+from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationReadSet
+from app.services.siming_population_capability import PopulationSimulationCapability, ReadSetBuilder, default_population_read_set_builder
 
 
 class SimingRuntime:
@@ -78,6 +86,10 @@ class SimingRuntime:
         group_bridge: GroupSimulationBridgePort | None = None,
         read_model_builder: SimingReadModelBuilder | None = None,
         heavenly_support: SimingHeavenlyRuntimeSupport | None = None,
+        behavior_turn_recorder: BehaviorTurnRecorder | None = None,
+        behavior_turn_scope_resolver: object | None = None,
+        population_capability: PopulationSimulationCapability | None = None,
+        population_read_set_builder: ReadSetBuilder | None = None,
     ) -> None:
         self._feature_registry = feature_registry or SimingFeatureRegistry()
         self._llm_provider = llm_provider or DisabledSimingLlmCandidateProvider()
@@ -106,9 +118,17 @@ class SimingRuntime:
         self._group_bridge = group_bridge or StubGroupSimulationBridge()
         self._read_model_builder = read_model_builder or SimingReadModelBuilder()
         self._heavenly_support = heavenly_support
+        self._behavior_turn_recorder = behavior_turn_recorder
+        self._behavior_turn_scope_resolver = behavior_turn_scope_resolver
         self._heavenly_story_projection = SimingStoryProjection()
         self._observatory_projection = SimingDebugProjection()
         self._pending_observatory_messages: list[dict[str, object]] = []
+        self._active_turn_event: AuthorityEvent | None = None
+        self._active_turn_prepared: object | None = None
+        self._recorded_behavior_turn_correlations: set[str] = set()
+        self._behavior_turn_lock = RLock()
+        self._population_capability = population_capability
+        self._population_read_set_builder = population_read_set_builder or default_population_read_set_builder
 
     @property
     def heavenly_support(self) -> SimingHeavenlyRuntimeSupport | None:
@@ -118,6 +138,21 @@ class SimingRuntime:
         result = SimingTickResult()
         for siming_input in inputs:
             event = siming_input.source_event
+            self._active_turn_event = event
+            if siming_input.input_type == "population_cadence_input" and self._population_capability is not None:
+                try:
+                    cadence = PopulationCadenceInput.from_authority_event(event)
+                    read_set = self._population_read_set_builder(event, cadence)
+                    runner = getattr(self._population_capability, "run_cohort_cycle", None)
+                    cycle = (
+                        runner(cadence, read_set)
+                        if callable(runner)
+                        else self._population_capability.run_cycle(cadence, read_set)
+                    )
+                    result.audit_records.append(self._population_cycle_audit(event, cycle))
+                    result.audit_records.extend(audit for audit in cycle.audits if isinstance(audit, SimingAuditRecord))
+                except (TypeError, ValueError) as exc:
+                    result.audit_records.append(self._audit(event, status="no_action", reason=f"population_requeue:{exc}"))
             if siming_input.input_type == "siming_staging_ack":
                 self._process_staging_ack(event, result)
                 continue
@@ -167,6 +202,7 @@ class SimingRuntime:
                 if self._heavenly_support is not None
                 else None
             )
+            self._active_turn_prepared = prepared
             if (
                 prepared is not None
                 and prepared.mode == "active"
@@ -176,6 +212,7 @@ class SimingRuntime:
                 outputs, audits = self._process_graph_owned_event(event, prepared)
                 result.outputs.extend(outputs)
                 result.audit_records.extend(audits)
+                self._record_behavior_turn(event, prepared, result)
                 continue
             if prepared is not None and prepared.mode == "shadow":
                 result.audit_records.append(
@@ -571,6 +608,52 @@ class SimingRuntime:
             )
         return result
 
+    def _population_cycle_audit(self, event: AuthorityEvent, cycle) -> SimingAuditRecord:
+        status = "recorded" if cycle.status == "accepted" else "no_action"
+        if cycle.status == "requeue":
+            status = "stale_candidate"
+        report = cycle.report
+        owner_committed = sum(1 for receipt in cycle.owner_receipts if receipt.committed and not receipt.zero_write)
+        owner_rejected = len(cycle.owner_receipts) - owner_committed
+        reason = (
+            "population_cycle"
+            f" status={cycle.status}"
+            f" batch={report.batch_ref}"
+            f" accepted={len(report.selected_cohort_refs)}"
+            f" requeue={len(report.unprocessed_cohort_refs) + len(report.rejected_candidates)}"
+            f" owners={len(cycle.owner_receipts)}"
+            f" owner_committed={owner_committed}"
+            f" owner_rejected={owner_rejected}"
+            f" seeds={len(cycle.seed_candidates)}"
+            f" receipts={len(cycle.continuity_receipts)}"
+            f" append={cycle.production_append_count}"
+            f" reason={cycle.reason or 'none'}"
+        )
+        if report.cohort_ref:
+            reason += (
+                f" cohort={report.cohort_ref}"
+                f" window={event.payload.get('window') or event.payload.get('cadence_id') or 'unknown'}"
+                f" classified={report.selected_count}"
+                f" unprocessed={report.unprocessed_count}"
+                f" owner_intents={report.owner_intent_count}"
+                f" owner_committed={report.owner_committed_count}"
+                f" continuity_committed={report.continuity_committed_count}"
+                f" presentation={report.presentation_seed_count}"
+                f" activation={report.activation_candidate_count}"
+                f" continuity_requeue={report.continuity_requeue_count}"
+                f" read_set={report.read_set_digest}"
+                f" result={report.result_digest}"
+            )
+        return SimingAuditRecord(
+            audit_id=f"audit_{event.event_id}_population_cycle",
+            room_id=event.room_id,
+            correlation_id=event.correlation_id,
+            causation_id=event.event_id,
+            source_event_id=event.event_id,
+            status=status,
+            reason=reason,
+        )
+
     def record_authority_outcome(self, event: AuthorityEvent) -> None:
         if self._heavenly_support is not None:
             self._heavenly_support.record_authority_outcome(event)
@@ -886,6 +969,8 @@ class SimingRuntime:
         event: AuthorityEvent,
         snapshot: FairnessStateSnapshot,
     ) -> tuple[list[InterventionCandidate], list[SimingAuditRecord]]:
+        if os.getenv("SIMING_LLM_ADVISORY_DISABLED", "").strip() == "1":
+            return [], []
         try:
             return (
                 self._llm_provider.generate_candidates(
@@ -1264,6 +1349,61 @@ class SimingRuntime:
             guardrail_summary=guardrail_summary,
             checkpoint_summary=checkpoint_summary,
         )
+        if self._active_turn_event is not None:
+            self._record_behavior_turn(self._active_turn_event, self._active_turn_prepared, result)
+
+    def _record_behavior_turn(self, event: AuthorityEvent, prepared: object | None, result: SimingTickResult) -> None:
+        if self._behavior_turn_recorder is None:
+            return
+        with self._behavior_turn_lock:
+            self._record_behavior_turn_locked(event, prepared, result)
+
+    def _record_behavior_turn_locked(self, event: AuthorityEvent, prepared: object | None, result: SimingTickResult) -> None:
+        if event.correlation_id in self._recorded_behavior_turn_correlations:
+            return
+        resolver = self._behavior_turn_scope_resolver
+        if callable(resolver):
+            scope = resolver(event)
+        else:
+            scope = HeavenlyGraphScope(
+                world_id="world:demo",
+                session_id="session:demo",
+                story_branch_id="branch:main",
+            )
+        output_payload = [output.model_dump(mode="json") for output in result.outputs if output.correlation_id == event.correlation_id]
+        audit_payload = [audit.model_dump(mode="json") for audit in result.audit_records if audit.correlation_id == event.correlation_id]
+        prepared_payload = prepared.model_dump(mode="json") if hasattr(prepared, "model_dump") else {}
+        self._behavior_turn_recorder.record(
+            BehaviorTurnRecordRequest(
+                turn_id=f"siming:{event.correlation_id}",
+                scope=scope,
+                valid_at=event.producer_ts,
+                recorded_at=event.producer_ts,
+                policy_revision="policy:siming-runtime:v1",
+                source_revision_vector=GraphRevisionVector(source_revision=event.producer_ts),
+                scope_digest="scope:siming-authority",
+                provenance=GraphProvenance(
+                    source_kind="authority_event",
+                    source_ref=event.event_id,
+                    causation_id=event.causation_id,
+                    correlation_id=event.correlation_id,
+                    producer_system="siming_runtime",
+                ),
+                transaction_id=f"siming-behavior-turn:{event.correlation_id}",
+                idempotency_key=f"siming-behavior-turn:{event.correlation_id}",
+                stages=(
+                    BehaviorTurnStageRecord(stage="context", source_refs=(event.event_id,), payload=event.payload),
+                    BehaviorTurnStageRecord(stage="interpretation", source_refs=(event.event_id,), payload={"prepared_context": prepared_payload}),
+                    BehaviorTurnStageRecord(stage="goal", source_refs=tuple(audit.audit_id for audit in result.audit_records), payload={"event_family": event.event_type}),
+                    BehaviorTurnStageRecord(stage="intent", source_refs=tuple(output.output_type for output in result.outputs), payload={"candidate_count": len(output_payload)}),
+                    BehaviorTurnStageRecord(stage="execution", source_refs=tuple(output.output_type for output in result.outputs), payload={"outputs": output_payload}),
+                    BehaviorTurnStageRecord(stage="settlement", outcome="committed" if event.event_type.endswith("result_event") else "recorded", source_refs=(event.event_id,), payload={"event_type": event.event_type}),
+                    BehaviorTurnStageRecord(stage="evaluation", source_refs=tuple(audit.audit_id for audit in result.audit_records), payload={"audits": audit_payload}),
+                    BehaviorTurnStageRecord(stage="policy", source_refs=tuple(audit.audit_id for audit in result.audit_records), payload={"policy_revision": "policy:siming-runtime:v1"}),
+                ),
+            )
+        )
+        self._recorded_behavior_turn_correlations.add(event.correlation_id)
 
     def _narrative_summary_for(
         self, narrative: NarrativeCoreResult

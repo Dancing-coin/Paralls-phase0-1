@@ -1,4 +1,7 @@
 import asyncio
+import hashlib
+import json
+import os
 from collections.abc import Callable
 from secrets import compare_digest
 from dataclasses import dataclass
@@ -7,6 +10,7 @@ from pathlib import Path
 from threading import RLock
 from time import time
 from uuid import uuid4
+
 
 from fastapi import FastAPI, Header, HTTPException, Request, WebSocket
 from fastapi.responses import HTMLResponse, Response
@@ -73,6 +77,7 @@ from app.gameplay.adventure_basic_mirror_runtime import (
     AdventureBasicMirrorRuntimeError,
 )
 from app.gameplay.inventory_runtime import ContainerSpec, InventoryAuthorityService, InventoryDefinitionRegistry, ItemDefinition
+from app.gameplay.organization_government_runtime import OrganizationAuthority
 from app.services.candidate_percept_service import compile_candidate_percepts
 from app.services.character_service import CharacterService
 from app.services.character_perceived_input_service import CharacterPerceivedInputService
@@ -82,6 +87,9 @@ from app.character_agent.storage.memory_store import CharacterAgentMemoryStore
 from app.character_agent.storage.memory_store_router import CharacterMemoryStoreRouter
 from app.models.siming_heavenly_graph import HeavenlyGraphScope
 from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
+from app.services.behavior_turn_recorder import BehaviorTurnRecorder
+from app.services.authority_graph_projector import HeavenlyAuthorityEventProjector
+from app.character_agent.storage.graph_continuity_store import CharacterGraphContinuityStore
 from app.services.character_runtime_state_service import CharacterRuntimeStateService
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.conversation_relation_service import ConversationRelationService
@@ -95,6 +103,9 @@ from app.services.default_scene_pickup_policy import DefaultScenePickupPolicySer
 from app.services.embodied_evidence_ledger import EmbodiedEvidenceLedger
 from app.services.embodied_handoff_authority_service import EmbodiedHandoffAuthorityService
 from app.services.embodied_interaction_session_service import EmbodiedInteractionSessionService
+from app.services.embodied_harness_task import EmbodiedHarnessTaskCoordinator
+from app.services.harness_execution_trace import HarnessExecutionTraceService
+from app.services.harness_capability_store import HarnessCapabilityStore
 from app.services.event_trace_service import EventTraceService
 from app.services.fact_handlers.visual_fact_handler import (
     VisualFactHandlerContext,
@@ -110,6 +121,8 @@ from app.services.interaction_orchestration_service import InteractionOrchestrat
 from app.services.per_character_percept_filter import filter_candidate_for_actor
 from app.services.phase0_authority_event_adapter import Phase0AuthorityEventAdapter
 from app.services.session_input_router import SessionInputRouter
+from app.population_continuity.activation import ProfileActivationAuthority
+from app.population_continuity.activation_policy import ActivationPolicy
 from app.services.gameplay_mirror_session_access_service import (
     GameplayMirrorActorRequest,
     GameplayMirrorSessionAccessError,
@@ -154,6 +167,16 @@ from app.services.siming_story_node_staging import SimingStoryNodeStaging
 from app.services.siming_story_obligation_runtime import SimingStoryObligationRuntime
 from app.services.siming_debug_projection import SimingDebugProjection
 from app.services.siming_runtime import SimingRuntime
+from app.services.siming_population_capability import PopulationSimulationCapability
+from app.character_agent.services.character_continuity import CharacterRuntimeContinuityPort
+from app.population_continuity.batch import ContinuityMergeAuthority
+from app.population_continuity.models import ActivationReceipt, BatchIntentCandidate, WorldModeProfile
+from app.population_continuity.owner_adapters import ScheduleGatedSupplyOwnerExecutor
+from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationProjection
+from app.population_continuity.world import WorldContinuityRuntime
+from app.population_continuity.social_input import FrozenSocialPlanningInput
+from app.population_continuity.source_inputs import HouseholdScheduleInput, OrganizationScheduleInput
+from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.services.character_agent_debug_projection import CharacterAgentDebugProjection
 from app.services.script_beat_projection import ScriptBeatProjection
 from app.services.world_outcome_debug_projection import WorldOutcomeDebugProjection
@@ -205,6 +228,15 @@ def actor_private_scope(actor_id: str) -> HeavenlyGraphScope:
     )
 
 
+def siming_scope_for_event(event: AuthorityEvent) -> HeavenlyGraphScope:
+    payload = event.payload if isinstance(event.payload, dict) else {}
+    return HeavenlyGraphScope(
+        world_id=str(payload.get("world_id", "world:demo") or "world:demo"),
+        session_id=str(payload.get("session_id", "session:demo") or "session:demo"),
+        story_branch_id=str(payload.get("story_branch_id", "branch:main") or "branch:main"),
+    )
+
+
 class FrontendSimingCharacterDispatchAdapter(SimingCharacterDispatchAdapter):
     def dispatch(self, event: AuthorityEvent) -> SimingCharacterDispatchResult:
         result = super().dispatch(event)
@@ -227,17 +259,46 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
     graph_path = Path(runtime_settings.heavenly_graph_path)
     graph_path.parent.mkdir(parents=True, exist_ok=True)
     heavenly_graph = SQLiteHeavenlyGraphAdapter(graph_path)
+    require_graph_continuity = os.environ.get("CHARACTER_GRAPH_REQUIRE_CONTINUITY", "").strip() == "1"
+    character_agent_storage_root = (
+        None
+        if graph_path.name == ":memory:" or require_graph_continuity
+        else graph_path.parent / f"{graph_path.name}.character-agent"
+    )
+    continuity_store = CharacterGraphContinuityStore(
+        heavenly_graph,
+        scope_resolver=actor_private_scope,
+        require_complete_snapshot=True,
+    )
     graph_memory = CharacterGraphMemoryStore(
         heavenly_graph,
         scope_resolver=actor_private_scope,
+        continuity_reader=continuity_store.read_snapshot,
+        require_continuity_snapshot=require_graph_continuity,
     )
     memory_router = CharacterMemoryStoreRouter(
         light_store=CharacterAgentMemoryStore(),
         graph_store=graph_memory,
         heavy_actor_ids=frozenset(runtime_settings.character_graph_memory_heavy_actor_ids),
     )
-    character_agent_runtime = CharacterAgentRuntime(memory_store=memory_router)
+    character_agent_runtime = CharacterAgentRuntime(
+        storage_root=character_agent_storage_root,
+        memory_store=memory_router,
+        continuity_store=continuity_store,
+        behavior_turn_recorder=BehaviorTurnRecorder(heavenly_graph),
+        behavior_turn_scope_resolver=actor_private_scope,
+    )
     llm_provider = build_siming_llm_provider(runtime_settings)
+    population_owner = None
+    owner_store = globals().get("gameplay_event_store")
+    if isinstance(owner_store, GameplayEventStore):
+        profile_dir = Path(__file__).resolve().parents[2] / "assets" / "characters" / "profiles"
+        owner_registry = CharacterProfileRegistry.from_directory(profile_dir)
+        owner_mode = _bakery_population_mode()
+        population_owner = ScheduleGatedSupplyOwnerExecutor(
+            merger=ContinuityMergeAuthority(store=owner_store, registry=owner_registry, mode=owner_mode),
+            context_builder=ScheduleGatedSupplyOwnerExecutor.context_from_intent_payload,
+        )
 
     def actor_autonomy(proposal) -> bool:
         actor_id = proposal.target_actor_id
@@ -287,6 +348,12 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
         siming_runtime=SimingRuntime(
             llm_provider=llm_provider,
             heavenly_support=support,
+            population_capability=PopulationSimulationCapability(
+                owner_executor=population_owner,
+                continuity_port=CharacterRuntimeContinuityPort(character_agent_runtime),
+            ),
+            behavior_turn_recorder=BehaviorTurnRecorder(heavenly_graph),
+            behavior_turn_scope_resolver=siming_scope_for_event,
         ),
     )
 
@@ -336,6 +403,9 @@ def reset_runtime_state() -> None:
     global adventure_basic_mirror_runtime
     global embodied_evidence_ledger
     global embodied_interaction_session_service
+    global embodied_harness_task_coordinator
+    global harness_execution_trace
+    global harness_capability_store
     global embodied_handoff_authority_service
     global embodied_carry_place_authority_service
     global default_scene_pickup_policy_service
@@ -346,16 +416,30 @@ def reset_runtime_state() -> None:
     global heavenly_graph
     global _pending_siming_character_dispatch_messages
     global websocket_transport_closers
+    global activation_policy
 
     previous_graph = globals().get("heavenly_graph")
     if isinstance(previous_graph, SQLiteHeavenlyGraphAdapter):
         previous_graph.close()
+    previous_trace = globals().get("harness_execution_trace")
+    if isinstance(previous_trace, HarnessExecutionTraceService):
+        previous_trace.close()
+    previous_capabilities = globals().get("harness_capability_store")
+    if isinstance(previous_capabilities, HarnessCapabilityStore):
+        previous_capabilities.close()
+    gameplay_event_store = GameplayEventStore()
     runtime_state = build_runtime_state(settings)
     heavenly_graph = runtime_state.heavenly_graph
     runtime = SessionInputRouter()
     websocket_transport_closers = {}
-    character_agent_runtime = CharacterAgentRuntime()
     character_agent_runtime = runtime_state.character_agent_runtime
+    character_agent_runtime.set_activation_authority(
+        ProfileActivationAuthority(
+            registry=character_agent_runtime._profile_registry,
+            store=gameplay_event_store,
+        )
+    )
+    activation_policy = ActivationPolicy()
 
     def dialogue_context_provider(actor_id: str) -> dict[str, object]:
         if not character_agent_runtime.supports_actor(actor_id):
@@ -375,7 +459,19 @@ def reset_runtime_state() -> None:
     else:
         character_perceived_input_service.clear()
     esm_service = ESMService()
-    interaction_orchestration_service = InteractionOrchestrationService(esm_service=esm_service)
+    harness_ledger_parent = (
+        None
+        if Path(settings.heavenly_graph_path).name == ":memory:"
+        else Path(settings.heavenly_graph_path).resolve().parent
+    )
+    harness_ledger_stem = Path(settings.heavenly_graph_path).resolve().stem
+    harness_execution_trace = HarnessExecutionTraceService(
+        ledger_path=(harness_ledger_parent / f"{harness_ledger_stem}.harness-task-ledger.sqlite3") if harness_ledger_parent else None
+    )
+    interaction_orchestration_service = InteractionOrchestrationService(
+        esm_service=esm_service,
+        harness_trace=harness_execution_trace,
+    )
     embodied_controller_auth_service = EmbodiedControllerAuthService()
     embodied_evidence_ledger = EmbodiedEvidenceLedger()
     default_scene_archive_door_embodied_service = DefaultSceneArchiveDoorEmbodiedService(
@@ -447,7 +543,6 @@ def reset_runtime_state() -> None:
     character_runtime_state_service = CharacterRuntimeStateService()
     authority_event_adapter = Phase0AuthorityEventAdapter()
     authority_event_bus = InMemoryAuthorityEventBus()
-    gameplay_event_store = GameplayEventStore()
     government_drought_advisory_presentation_service = GovernmentDroughtAdvisoryPresentationService(
         government=GovernmentAuthority(store=gameplay_event_store),
         deliver=gameplay_mirror_connection_registry.deliver_government_drought_advisory,
@@ -483,6 +578,17 @@ def reset_runtime_state() -> None:
         store=gameplay_event_store,
         dispatcher=gameplay_outbox_dispatcher,
         evidence_ledger=embodied_evidence_ledger,
+    )
+    harness_capability_store = (
+        None
+        if harness_ledger_parent is None
+        else HarnessCapabilityStore(harness_ledger_parent / f"{harness_ledger_stem}.harness-capabilities.sqlite3")
+    )
+    embodied_harness_task_coordinator = EmbodiedHarnessTaskCoordinator(
+        session_service=embodied_interaction_session_service,
+        evidence_ledger=embodied_evidence_ledger,
+        trace=harness_execution_trace,
+        capability_store=harness_capability_store,
     )
     embodied_handoff_authority_service = EmbodiedHandoffAuthorityService(
         store=gameplay_event_store,
@@ -578,6 +684,15 @@ def reset_runtime_state() -> None:
         authority_event_bus.subscribe(event_type, siming_event_pipeline.handle_event)
     authority_event_bus.subscribe("siming.staging_request", _ack_siming_staging_request)
     frontend_authority_event_projector = FrontendAuthorityEventProjector()
+    authority_graph_projector = HeavenlyAuthorityEventProjector(
+        heavenly_graph,
+        scope_resolver=lambda event: HeavenlyGraphScope(
+            world_id=event.payload.get("world_id", "world:demo") if isinstance(event.payload.get("world_id", "world:demo"), str) else "world:demo",
+            session_id=event.payload.get("session_id", "session:demo") if isinstance(event.payload.get("session_id", "session:demo"), str) else "session:demo",
+            story_branch_id=event.payload.get("story_branch_id", "branch:main") if isinstance(event.payload.get("story_branch_id", "branch:main"), str) else "branch:main",
+        ),
+    )
+    authority_event_bus.subscribe("*", authority_graph_projector.project)
     character_agent_l4_executor = CharacterAgentL4Executor()
     character_agent_l4_adapter = CharacterAgentL4Adapter(executor=character_agent_l4_executor)
     character_agent_debug_projection = CharacterAgentDebugProjection()
@@ -587,6 +702,7 @@ def reset_runtime_state() -> None:
     for event_type in FRONTEND_AUTHORITY_EVENT_TYPES:
         authority_event_bus.subscribe(event_type, frontend_authority_event_projector.handle_event)
     debug_stream.clear()
+    _publish_population_cadence_at_game_start()
 
 
 def _ack_siming_staging_request(event: AuthorityEvent) -> None:
@@ -628,6 +744,221 @@ def _ack_siming_staging_request(event: AuthorityEvent) -> None:
         reason="" if esm_accepted else "invalid_staging_contract",
         producer_ts=event.producer_ts + 2,
     )
+
+
+def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:
+    """Hand one committed world-mode projection to the existing Siming bus."""
+    if authority_event_bus.list_events(
+        event_type="population_cadence_event", include_realtime=True, current_only=False
+    ):
+        return None
+    mode = _bakery_population_mode()
+    mode_receipt = WorldContinuityRuntime(
+        store=gameplay_event_store, mode=mode
+    ).resume()
+    if not mode_receipt.committed:
+        return None
+    world_source_ref = f"world:{mode.world_ref}"
+    world_source_revision = int(mode_receipt.revision_vector.get(world_source_ref, 0))
+    if world_source_revision <= 0:
+        return None
+    recipient_ref = "character:char_a"
+    observed_at = "2026-08-30T00:00:00Z"
+    organization = OrganizationAuthority(store=gameplay_event_store)
+    schedule_result = organization.record_schedule(
+        command_id="runtime-start:organization-schedule:bakery",
+        organization_ref="org:bakery",
+        recipient_ref=recipient_ref,
+        membership_ref="membership:runtime-start:char-a",
+        assignment_ref="assignment:runtime-start:char-a",
+        role="baker",
+        shift_ref="shift:runtime-start",
+        operating_window_ref="window:runtime-start",
+        work_order_ref="work:bread",
+        effective_from=observed_at,
+        effective_to=None,
+        visibility_scope="organization:summary",
+    )
+    if not schedule_result.committed:
+        return None
+    organization_view = organization.schedule_view_for(
+        organization_ref="org:bakery", recipient_ref=recipient_ref, observed_at=observed_at
+    )
+    organization_input = OrganizationScheduleInput.freeze(
+        recipient_ref=recipient_ref, observed_at=observed_at, view=organization_view
+    )
+    empty_household_rows: tuple[dict[str, object], ...] = ()
+    household_digest = "sha256:" + hashlib.sha256(
+        json.dumps(
+            {"household_memberships": empty_household_rows, "source_revision_vector": {}},
+            sort_keys=True, separators=(",", ":"), default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+    household_input = HouseholdScheduleInput(
+        recipient_ref=recipient_ref,
+        observed_at=observed_at,
+        owner_principal_ref="authority:p5:social",
+        projection_digest=household_digest,
+        source_revision_vector={},
+        household_memberships=empty_household_rows,
+    )
+    social_input = FrozenSocialPlanningInput(
+        recipient_ref=recipient_ref,
+        observed_at=observed_at,
+        projection_digest="sha256:runtime-start-social",
+        source_revision_vector={},
+        relationship_facts=(),
+        knowledge_facts=(),
+        reputation={},
+    )
+    organization_stream = f"gameplay:organization:{organization_input.organization_ref}"
+    base_vector = {organization_stream: organization_input.source_revision_vector.get(organization_stream, 0)}
+    if base_vector[organization_stream] <= 0:
+        return None
+    candidate = BatchIntentCandidate(
+        intent_ref="intent:runtime-start:bakery:supply",
+        profile_ref=recipient_ref,
+        intent_kind="supply",
+        payload={
+            "organization_ref": organization_input.organization_ref,
+            "counterparty_organization_ref": "org:supplier",
+            "commitment_ref": "commitment:runtime-start:bakery:supply",
+            "organization_grant_refs": [],
+            "budget_reservation_refs": [],
+            "schedule_work_order_ref": "work:bread",
+        },
+        priority=2,
+        claim_refs=("claim:supply",),
+        expected_revisions=dict(base_vector),
+        policy_revision=mode.revision,
+        package_revision="package:bakery-authored-agents:v1",
+        idempotency_key="intent:runtime-start:bakery:supply",
+        correlation_id="population:bakery-district:game-start:v3",
+        source_ref="population:siming",
+        privacy_scope="organization:summary",
+    )
+    tail_boundary = len(gameplay_event_store.read_events())
+    base_checkpoint_digest = _population_digest(
+        [event.model_dump(mode="json") for event in gameplay_event_store.read_events()]
+    )
+    cadence = PopulationCadenceInput(
+        cadence_id="cadence:bakery-district:game-start:v3",
+        world_ref=mode.world_ref,
+        world_mode_ref="world-mode:bakery-district",
+        world_mode_revision=mode.revision,
+        cadence_source_ref=organization_stream,
+        cadence_source_revision=base_vector[organization_stream],
+        window_start=world_source_revision,
+        window_end=world_source_revision + 1,
+        base_checkpoint_ref=f"checkpoint:game-start:{tail_boundary}",
+        base_checkpoint_digest=base_checkpoint_digest,
+        base_revision_vector=base_vector,
+        policy_revision="policy:population:v1",
+        selector_revision="selector:population:v1",
+        ruleset_revision="rules:population:v1",
+        deterministic_seed="seed:bakery-district:game-start",
+        catch_up_limit=mode.catch_up_limit,
+        budget=mode.batch_limit,
+        report_scope="organization:summary",
+    )
+    candidate_projection = PopulationProjection(
+        ref="projection:bakery:supply:char_a",
+        scope="organization:summary",
+        revision_vector=base_vector,
+        payload={
+            "actor_ref": recipient_ref,
+            "candidate_kind": "schedule_gated_supply",
+            "priority": candidate.priority,
+            "state_deltas": {"dynamic_state": {"stress_load": 0.1}},
+            "presentation_seed": {"task": "replenish_family_food"},
+            "activation_hints": ["player_dialogue"],
+            "exposure_basis": "affected_directly",
+            "summary": "bakery supply commitment accepted",
+            "source_event_refs": list(schedule_result.committed_event_ids),
+            "schedule_gated_supply_source_context": {
+                "mode": mode.model_dump(mode="json"),
+                "candidate": candidate.model_dump(mode="json"),
+                "social_input": social_input.model_dump(mode="json"),
+                "household_input": household_input.model_dump(mode="json"),
+                "organization_input": organization_input.model_dump(mode="json"),
+                "base_event_digest": base_checkpoint_digest,
+                "base_checkpoint_sequence": 0,
+                "tail_boundary": tail_boundary,
+            },
+        },
+    )
+    projections = [candidate_projection.model_dump(mode="json")]
+    mode_event_refs = list(mode_receipt.committed_event_ids)
+    event = AuthorityEvent(
+        event_id="event:population-cadence:bakery-district:game-start:v3",
+        event_type="population_cadence_event",
+        producer_ts=world_source_revision,
+        room_id="room:bakery",
+        scene_id="scene:bakery",
+        zone_id="zone:bakery",
+        source=AuthorityEventSource(layer="L2", system="world_runtime.cadence"),
+        routing=AuthorityEventRouting(audience_mode="broadcast", routing_mode="event_type"),
+        priority="p2",
+        durability="realtime",
+        causation_id=mode_event_refs[0] if mode_event_refs else "game-start:bakery",
+        correlation_id="population:bakery-district:game-start:v3",
+        payload={
+            "population_cadence": cadence.model_dump(mode="json"),
+            "world_mode_projection": {
+                "world_ref": mode.world_ref,
+                "mode": mode.mode,
+                "revision": mode.revision,
+                "committed_event_ids": mode_event_refs,
+            },
+            "activation_projection": {},
+            "activation_pending_projection": {},
+            "social_projection": social_input.model_dump(mode="json"),
+            "household_projection": household_input.model_dump(mode="json"),
+            "organization_projection": organization_input.model_dump(mode="json"),
+            "population_projections": projections,
+        },
+    )
+    authority_event_bus.publish(event)
+    # The handoff is consumed immediately; its audit remains durable while
+    # startup observatory messages must not leak into the next player turn.
+    drain_observatory = getattr(siming_event_pipeline, "drain_observatory_messages", None)
+    if callable(drain_observatory):
+        drain_observatory()
+    return event
+
+
+def _bakery_population_mode() -> WorldModeProfile:
+    return WorldModeProfile(
+        world_ref="world:bakery-district",
+        mode="simulation",
+        revision="mode:bakery-district:v1",
+        cadence_class="daily",
+        batch_limit=4,
+        wake_budget=4,
+        catch_up_limit=2,
+        allowed_intent_kinds=("work", "supply", "inspection"),
+        survival_mode="narrative",
+        degraded_threshold=3,
+    )
+
+
+def _population_digest(value: object) -> str:
+    return "sha256:" + hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
+
+
+def close_runtime_resources() -> None:
+    """Close process-owned persistent runtime resources without rebuilding state."""
+    previous_graph = globals().get("heavenly_graph")
+    if isinstance(previous_graph, SQLiteHeavenlyGraphAdapter):
+        previous_graph.close()
+    previous_trace = globals().get("harness_execution_trace")
+    if isinstance(previous_trace, HarnessExecutionTraceService):
+        previous_trace.close()
+    previous_capabilities = globals().get("harness_capability_store")
+    if isinstance(previous_capabilities, HarnessCapabilityStore):
+        previous_capabilities.close()
 
 
 def _publish_runtime_staging_ack(
@@ -1203,24 +1534,54 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     },
                 )
             )
-            direct_content = await asyncio.to_thread(_dialogue_direct_content, event)
-            if direct_content:
-                response = await asyncio.to_thread(_direct_dialogue_response, event, direct_content)
-                if cancelled.is_set():
+            loop = asyncio.get_running_loop()
+            stream_queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+
+            def emit_stream_event(stream_event: dict[str, object]) -> None:
+                loop.call_soon_threadsafe(stream_queue.put_nowait, stream_event)
+
+            worker = asyncio.create_task(
+                asyncio.to_thread(
+                    _stream_dialogue_with_activation,
+                    event,
+                    cancelled.is_set,
+                    emit=emit_stream_event,
+                )
+            )
+            stream = None
+            while True:
+                stream_event = await stream_queue.get()
+                event_kind = str(stream_event.get("event", "") or "")
+                if event_kind == "activation_result":
+                    if not bool(stream_event.get("committed")):
+                        await send(_dialogue_stream_end(request_id, "requeued", partial_chars, fallback_used))
+                        return
+                    if stream is None:
+                        raise ValueError("character dialogue stream ended without a completion event")
+                    continue
+                if event_kind == "activation_error":
+                    await send(_dialogue_stream_end(request_id, "failed", partial_chars, fallback_used))
+                    return
+                if event_kind == "direct":
+                    direct_content = str(stream_event.get("content", "") or "")
+                    response = await asyncio.to_thread(_direct_dialogue_response, event, direct_content)
+                    if cancelled.is_set():
+                        await send(_dialogue_stream_end(request_id, "cancelled", partial_chars, fallback_used))
+                        return
+                    _record_completed_dialogue_response(response)
+                    event_trace.record(response.output_type)
+                    await send(_as_envelope("dialogue_response", response.model_dump()))
+                    await send(_dialogue_stream_end(request_id, "completed", len(response.content), fallback_used))
+                    await send_batch(_observatory_messages_from_outbound([]))
+                    return
+                if event_kind == "cancelled":
                     await send(_dialogue_stream_end(request_id, "cancelled", partial_chars, fallback_used))
                     return
-                _record_completed_dialogue_response(response)
-                event_trace.record(response.output_type)
-                await send(_as_envelope("dialogue_response", response.model_dump()))
-                await send(_dialogue_stream_end(request_id, "completed", len(response.content), fallback_used))
-                await send_batch(_observatory_messages_from_outbound([]))
-                return
-
-            stream = character_service.stream_dialogue(event, cancelled=cancelled.is_set)
-            while True:
-                has_event, stream_event = await asyncio.to_thread(_next_dialogue_stream_event, stream)
-                if not has_event:
-                    raise ValueError("character dialogue stream ended without a completion event")
+                if event_kind not in {"delta", "completed"}:
+                    if worker.done():
+                        raise ValueError("character dialogue stream ended without a completion event")
+                    continue
+                stream = stream or iter((stream_event,))
                 if cancelled.is_set() or stream_event["event"] == "cancelled":
                     await send(_dialogue_stream_end(request_id, "cancelled", partial_chars, fallback_used))
                     return
@@ -1275,6 +1636,17 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             )
             await send_batch(_drop_matching_authority_ack(outbound, authority_ack))
         except (ValidationError, ValueError, TypeError) as exc:
+            await send(_as_error_ack(source_type=envelope.message_type, route="raw_fact_followup_failed", error=exc))
+        except Exception as exc:
+            _publish_debug_event(
+                build_debug_event(
+                    producer_ts=0,
+                    domain="backend",
+                    stage="raw_fact_followup_failed",
+                    summary="raw fact follow-up failed after authority acknowledgement",
+                    detail={"error_type": type(exc).__name__, "error": str(exc)},
+                )
+            )
             await send(_as_error_ack(source_type=envelope.message_type, route="raw_fact_followup_failed", error=exc))
 
     mirror_delivery_task = asyncio.create_task(send_mirror_deliveries())
@@ -1432,7 +1804,8 @@ def _handle_raw_fact_followup(
     connection_context: WebSocketConnectionContext,
 ) -> list[dict[str, object]]:
     with _raw_fact_followup_lock:
-        return _handle_envelope(envelope, connection_context=connection_context)
+        result = _handle_envelope(envelope, connection_context=connection_context)
+        return result
 
 
 def _handle_websocket_envelope(
@@ -1444,7 +1817,123 @@ def _handle_websocket_envelope(
     except TypeError as exc:
         if "unexpected keyword argument 'connection_context'" not in str(exc):
             raise
-        return _handle_envelope(envelope)
+    return _handle_envelope(envelope)
+
+
+def _activate_character_for_player_input(
+    event: DialogueSubmit | FocusTargetChange | InteractIntent,
+    *,
+    cognition_callback: Callable[[], object] | None = None,
+) -> ActivationReceipt | None:
+    if isinstance(event, DialogueSubmit):
+        target_actor_id, interaction_type, focused = (
+            event.target_actor_id,
+            "dialogue",
+            True,
+        )
+    elif isinstance(event, FocusTargetChange):
+        target_actor_id, interaction_type, focused = (
+            event.target_actor_id or "",
+            "none",
+            bool(event.target_actor_id),
+        )
+    else:
+        target_actor_id = event.target_object_id.removeprefix("character:")
+        interaction_type, focused = event.interaction_type, True
+    if not target_actor_id:
+        return None
+    activation_authority = getattr(character_agent_runtime, "_activation_authority", None)
+    if activation_authority is None:
+        store = globals().get("gameplay_event_store")
+        if isinstance(store, GameplayEventStore) and hasattr(
+            character_agent_runtime, "set_activation_authority"
+        ):
+            character_agent_runtime.set_activation_authority(
+                ProfileActivationAuthority(
+                    registry=character_agent_runtime._profile_registry,
+                    store=store,
+                )
+            )
+    supported_actor = character_agent_runtime.supports_actor(target_actor_id)
+    projection = (
+        character_agent_runtime.get_seed_projection(target_actor_id)
+        if supported_actor
+        else {}
+    )
+    policy_interaction_type = interaction_type
+    if isinstance(event, InteractIntent) and cognition_callback is None:
+        policy_interaction_type = "none"
+    decision = activation_policy.evaluate(
+        actor_id=target_actor_id,
+        distance_m=runtime.distance_between(event.actor_id, target_actor_id) or float("inf"),
+        focused=focused,
+        interaction_type=policy_interaction_type,
+        pending_seed=bool(projection.get("activation_hints"))
+        or (
+            supported_actor
+            and bool(character_agent_runtime.get_pending_seed_candidates(target_actor_id))
+        ),
+        budget=int(
+            character_agent_runtime.get_runtime_population_policy()[
+                "max_active_actors_per_tick"
+            ]
+        ),
+        supported_actor=supported_actor,
+    )
+    receipt = (
+        character_agent_runtime.activate_actor(
+            target_actor_id,
+            decision,
+            producer_ts=event.producer_ts,
+            cognition_callback=cognition_callback,
+        )
+        if decision.state == "active"
+        else None
+    )
+    _publish_debug_event(
+        build_debug_event(
+            producer_ts=event.producer_ts,
+            domain="character",
+            stage=f"activation_{decision.state}",
+            actor_id=target_actor_id,
+            summary=f"角色激活策略：{decision.state}",
+            detail={
+                "decision": decision.model_dump(),
+                "receipt": receipt.model_dump() if receipt is not None else {},
+            },
+        )
+    )
+    return receipt
+
+
+def activation_lock_is_active(actor_id: str) -> bool:
+    """Read activation state through Character Core's public runtime seam."""
+    return character_agent_runtime.activation_lock_is_active(actor_id)
+
+
+def _activation_requeue_messages(
+    event: DialogueSubmit,
+    receipt: ActivationReceipt | None,
+    *,
+    reason: str = "activation_not_owned",
+) -> list[dict[str, object]]:
+    error_code = str(receipt.stop_reason or reason) if receipt is not None else reason
+    return _finalize_outbound_messages(
+        [
+            _as_envelope(
+                "ack",
+                {
+                    "accepted": False,
+                    "source_type": "player_input",
+                    "route": "character_activation",
+                    "request_id": event.request_id,
+                    "intent_type": event.intent_type,
+                    "producer_ts": event.producer_ts,
+                    "error_code": error_code,
+                },
+            )
+        ]
+    )
 
 
 def _handle_envelope(
@@ -1814,6 +2303,18 @@ def _handle_envelope(
         )
         if not result.accepted:
             return EmbodiedExecutionIngress.protocol_error(envelope.message_type, result.error_code)
+        session_id = str(envelope.payload.get("session_id", "") or "")
+        if session_id:
+            task_result = embodied_harness_task_coordinator.record_terminal_observation(
+                task_id=session_id,
+                participant_ref=str(envelope.payload.get("actor_id", "") or ""),
+                attempt_ref=str(envelope.payload.get("interaction_attempt_id", "") or ""),
+                terminal_status=str(envelope.payload.get("terminal_status", "failed") or "failed"),
+                payload_digest=str(envelope.payload.get("payload_digest", "") or ""),
+                producer_ts=int(envelope.payload.get("observed_at", 0) or 0),
+            )
+            if not task_result.accepted:
+                return EmbodiedExecutionIngress.protocol_error(envelope.message_type, task_result.error_code)
         return result.outbound
 
     if envelope.message_type == "embodied_presentation_observed":
@@ -2211,6 +2712,24 @@ def _handle_envelope(
 
     event = _parse_player_input(envelope.payload)
     route = runtime.accept_player_input(event)
+    activated_dialogue_response: DialogueResponse | None = None
+    if isinstance(event, DialogueSubmit) and route["route"] == "character_service":
+        def run_dialogue_cognition() -> None:
+            nonlocal activated_dialogue_response
+            activated_dialogue_response = _handle_player_dialogue_submit(event)
+
+        try:
+            activation_receipt = _activate_character_for_player_input(
+                event, cognition_callback=run_dialogue_cognition
+            )
+        except Exception as exc:
+            return _activation_requeue_messages(
+                event, None, reason=f"activation_failed:{type(exc).__name__}"
+            )
+        if activation_receipt is None or not activation_receipt.committed:
+            return _activation_requeue_messages(event, activation_receipt)
+    elif isinstance(event, (FocusTargetChange, InteractIntent)):
+        _activate_character_for_player_input(event)
     messages: list[dict[str, object]] = [
         {
             "message_type": "ack",
@@ -2248,7 +2767,7 @@ def _handle_envelope(
                 detail=event.model_dump(),
             )
         )
-        response = _handle_player_dialogue_submit(event)
+        response = activated_dialogue_response or _handle_player_dialogue_submit(event)
         event_trace.record(response.output_type)
         messages.append(_as_envelope("dialogue_response", response.model_dump()))
         return _finalize_outbound_messages(messages)
@@ -2495,7 +3014,8 @@ def _handle_envelope(
             messages.append(_as_envelope("self_body_perceived_event", self_body_perceived.model_dump()))
             self_body_commands = character_agent_runtime.ingest_self_body_perceived_event(self_body_perceived)
             messages.extend(_as_character_agent_execution_envelopes(self_body_commands))
-            character_agent_runtime.run_scheduled_background_cognition_ticks(self_body_perceived.producer_ts)
+            if os.environ.get("SIMING_HEAVENLY_AUTOTEST_SETUP") != "1":
+                character_agent_runtime.run_scheduled_background_cognition_ticks(self_body_perceived.producer_ts)
             if event.actor_id != "char_c":
                 messages.extend(
                     _as_character_agent_suggestion_envelopes(
@@ -2737,7 +3257,7 @@ def _handle_embodied_interaction_session_probe(envelope: Envelope) -> list[dict[
         return EmbodiedExecutionIngress.protocol_error(envelope.message_type, "invalid_participant_private_terms")
 
     bus_start = len(authority_event_bus.list_events())
-    proposed = embodied_interaction_session_service.propose(
+    task_result = embodied_harness_task_coordinator.run_handshake(
         session_id=session_id,
         semantic_action=semantic_action,
         initiator_ref=initiator_ref,
@@ -2749,34 +3269,21 @@ def _handle_embodied_interaction_session_probe(envelope: Envelope) -> list[dict[
         causation_id=str(payload.get("causation_id", "") or f"cmd:{session_id}:propose"),
         correlation_id=str(payload.get("correlation_id", "") or f"corr:{session_id}"),
         participant_private_terms=participant_private_terms,
+        complete=False,
     )
-    if not proposed.accepted:
-        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, proposed.error_code)
-
-    for participant_ref in participant_refs:
-        if participant_ref == initiator_ref:
-            continue
-        accepted = embodied_interaction_session_service.accept(
-            session_id=session_id,
-            participant_ref=participant_ref,
-            causation_id=f"cmd:{session_id}:accept:{participant_ref}",
-            payload_digest=f"digest:accept:{session_id}:{participant_ref}",
-        )
-        if not accepted.accepted:
-            return EmbodiedExecutionIngress.protocol_error(envelope.message_type, accepted.error_code)
-
-    realizing = embodied_interaction_session_service.start_realizing(
-        session_id=session_id,
-        causation_id=f"cmd:{session_id}:realize",
-    )
-    if not realizing.accepted:
-        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, realizing.error_code)
+    if not task_result.accepted:
+        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, task_result.error_code)
 
     session_messages = [
         outbound
         for event in authority_event_bus.list_events()[bus_start:]
         if (outbound := _embodied_session_event_envelope_from_authority_event(event)) is not None
     ]
+    embodied_harness_task_coordinator.record_godot_projection(
+        session_id,
+        session_messages,
+        producer_ts=int(payload.get("producer_ts", 0) or 0),
+    )
     return [
         _as_envelope(
             "ack",
@@ -3272,6 +3779,70 @@ def _handle_player_dialogue_submit(event: DialogueSubmit) -> DialogueResponse:
         response = character_service.handle_dialogue(event)
     _record_completed_dialogue_response(response)
     return response
+
+
+def _dialogue_direct_content_with_activation(event: DialogueSubmit) -> str:
+    events = _stream_dialogue_with_activation(event, lambda: False)
+    direct = next(
+        (
+            str(item.get("content", "") or "")
+            for item in events
+            if item.get("event") == "direct"
+        ),
+        "",
+    )
+    return direct
+
+
+def _stream_dialogue_with_activation(
+    event: DialogueSubmit,
+    cancelled: Callable[[], bool],
+    *,
+    emit: Callable[[dict[str, object]], None] | None = None,
+) -> list[dict[str, object]]:
+    events: list[dict[str, object]] = []
+
+    def publish(item: dict[str, object]) -> None:
+        if emit is None:
+            events.append(item)
+        else:
+            emit(item)
+
+    def run_cognition() -> None:
+        direct_content = _dialogue_direct_content(event)
+        if direct_content:
+            publish({"event": "direct", "content": direct_content})
+            return
+        for stream_event in character_service.stream_dialogue(
+            event, cancelled=cancelled
+        ):
+            if isinstance(stream_event, dict):
+                publish(dict(stream_event))
+
+    try:
+        receipt = _activate_character_for_player_input(
+            event, cognition_callback=run_cognition
+        )
+    except Exception as exc:
+        publish(
+            {
+                "event": "activation_error",
+                "reason": f"activation_failed:{type(exc).__name__}",
+            }
+        )
+        return events
+    publish(
+        {
+            "event": "activation_result",
+            "committed": bool(receipt is not None and receipt.committed),
+            "reason": (
+                receipt.stop_reason
+                if receipt is not None and receipt.stop_reason
+                else "activation_not_owned"
+            ),
+        }
+    )
+    return events
 
 
 def _dialogue_direct_content(event: DialogueSubmit) -> str:
@@ -4310,7 +4881,8 @@ def _projection_view_refs(
 
 def _character_agent_messages_from_fact_candidates(event: RawFactEvent) -> list[dict[str, object]]:
     character_agent_messages: list[dict[str, object]] = []
-    for candidate in compile_candidate_percepts(event):
+    candidates = compile_candidate_percepts(event)
+    for candidate in candidates:
         _publish_debug_event(
             build_debug_event(
                 producer_ts=candidate.producer_ts,
@@ -4328,6 +4900,8 @@ def _character_agent_messages_from_fact_candidates(event: RawFactEvent) -> list[
             candidate_actor_ids.append(event.source.actor_id)
 
         for actor_id in candidate_actor_ids:
+            if os.environ.get("SIMING_HEAVENLY_AUTOTEST_SETUP") == "1" and actor_id == "char_c":
+                continue
             perceived = filter_candidate_for_actor(
                 candidate,
                 actor_id=actor_id,
@@ -4353,7 +4927,8 @@ def _character_agent_messages_from_fact_candidates(event: RawFactEvent) -> list[
             )
             character_agent_commands = character_agent_runtime.ingest_character_perceived_event(perceived)
             character_agent_messages.extend(_as_character_agent_execution_envelopes(character_agent_commands))
-            character_agent_runtime.run_scheduled_background_cognition_ticks(perceived.producer_ts)
+            if os.environ.get("SIMING_HEAVENLY_AUTOTEST_SETUP") != "1":
+                character_agent_runtime.run_scheduled_background_cognition_ticks(perceived.producer_ts)
             character_agent_messages.extend(
                 _as_character_agent_suggestion_envelopes(
                     character_agent_runtime.drain_suggestion_packets(actor_id)
@@ -4723,6 +5298,8 @@ def _candidate_messages(candidate: object) -> list[dict[str, object]]:
     from app.models.runtime_state import ConversationCandidateEvent
 
     if not isinstance(candidate, ConversationCandidateEvent):
+        return []
+    if os.environ.get("SIMING_HEAVENLY_AUTOTEST_SETUP") == "1":
         return []
     if not conversation_relation_service.should_emit_candidate(candidate):
         return []

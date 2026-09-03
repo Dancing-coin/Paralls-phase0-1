@@ -14,6 +14,7 @@ def test_main_demo_contains_heavenly_runtime_probe() -> None:
     scene = Path("scenes/phase0/MainDemo.tscn").read_text(encoding="utf-8")
 
     assert "SimingHeavenlyRuntimeProbe.gd" in scene
+    assert '[node name="SimingHeavenlyRuntimeProbe" type="Node" parent="."]' in scene
 
 
 def test_staging_request_reaches_the_opt_in_godot_probe() -> None:
@@ -37,6 +38,7 @@ def test_staging_request_reaches_the_opt_in_godot_probe() -> None:
     assert "var source_ref_lineage: Array[String]" in probe
     assert "siming_heavenly_restart_ready" in probe
     assert "siming_heavenly_godot_complete" in probe
+    assert "_post_restart_reaction_window" in probe
 
 
 def test_probe_waits_for_backend_reconnect_before_triggering_the_post_restart_tick() -> None:
@@ -78,14 +80,12 @@ def test_headless_autotest_capture_advances_a_scene_frame() -> None:
     assert "await get_tree().process_frame" in capture_helper
 
 
-def test_heavenly_probe_syncs_player_to_authoritative_interaction_range() -> None:
+def test_heavenly_probe_avoids_setup_move_round_trip() -> None:
     probe = Path("scripts/verification/SimingHeavenlyRuntimeProbe.gd").read_text(
         encoding="utf-8"
     )
 
-    assert "_move_player_to_interact_position()" in probe
-    assert "_emit_move_intent_request" in probe
-    assert "_move_request_acknowledged" in probe
+    assert "ESM accepts an interaction without a position claim" in probe
     assert "suspend_near_object_visual_fact = true" in probe
     assert "suspend_spatial_access_fact = true" in probe
 
@@ -95,7 +95,7 @@ def test_heavenly_probe_allows_online_decision_latency() -> None:
         encoding="utf-8"
     )
 
-    assert "RUNTIME_EVENT_TIMEOUT_MS := 60000" in probe
+    assert "RUNTIME_EVENT_TIMEOUT_MS := 600000" in probe
     assert '"_destruction_applied"), RUNTIME_EVENT_TIMEOUT_MS' in probe
 
 
@@ -132,3 +132,12 @@ def test_heavenly_probe_binds_the_explicit_observation_to_char_b() -> None:
 
     assert 'emitter.set("actor_id", "char_b")' in observation
     assert "_destruction_correlation_id" in observation
+
+
+def test_heavenly_live_scene_suppresses_controller_setup_perception() -> None:
+    source = Path("scripts/phase0/MainDemoController.gd").read_text(encoding="utf-8")
+
+    assert 'SIMING_HEAVENLY_AUTOTEST") == "1"' in source
+    assert "suspend_near_object_visual_fact = true" in source
+    assert "suspend_spatial_access_fact = true" in source
+    assert "_set_autotest_actor_local_perception_enabled(false)" in source

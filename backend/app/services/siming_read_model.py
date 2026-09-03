@@ -115,6 +115,13 @@ class SimingReadModelBuilder:
         intervention_surface = {
             "audit_statuses": [audit.status for audit in audit_records],
         }
+        population_summaries = [
+            audit.reason
+            for audit in audit_records
+            if audit.reason.startswith("population_cycle")
+        ][:1]
+        if population_summaries:
+            intervention_surface["population_cycle_summaries"] = population_summaries
         if quality_summary:
             intervention_surface.update(quality_summary)
         if guardrail_summary:

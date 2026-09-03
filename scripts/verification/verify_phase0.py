@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
@@ -99,6 +101,11 @@ def main() -> int:
     python_exe = resolve_python_exe(args.python_exe)
 
     backend_process = None
+    graph_temp_dir = tempfile.mkdtemp(prefix="phase0-graph-", dir=str(log_dir))
+    phase0_env = {
+        **PHASE0_VERIFY_ENV,
+        "PARALLS_HEAVENLY_GRAPH_PATH": str(Path(graph_temp_dir) / "siming-heavenly.sqlite3"),
+    }
     health: dict[str, object] = {}
     try:
         pytest_log = log_dir / "phase0-pytest.log"
@@ -115,7 +122,7 @@ def main() -> int:
             [python_exe, "-m", "pytest", "-v", "backend/tests"],
             project_root,
             pytest_log,
-            env={"PYTHONPATH": pytest_pythonpath, **PHASE0_VERIFY_ENV},
+            env={"PYTHONPATH": pytest_pythonpath, **phase0_env},
             timeout_seconds=PHASE0_PYTEST_TIMEOUT_SECONDS,
         )
 
@@ -123,7 +130,7 @@ def main() -> int:
             project_root,
             python_exe,
             prefer_fresh_backend=True,
-            env=PHASE0_VERIFY_ENV,
+            env=phase0_env,
         )
         ensure_godot_import(project_root, godot_exe, "phase0-godot-import.log")
 
@@ -177,6 +184,7 @@ def main() -> int:
                 "PHASE0_AUTOTEST": "1",
                 "PHASE0_FOCUS_AUTOTEST": "",
                 "PHASE0_AUTOTEST_SCREENSHOT": str(main_screenshot),
+                "PARALLS_HEAVENLY_GRAPH_PATH": phase0_env["PARALLS_HEAVENLY_GRAPH_PATH"],
             },
         )
 
@@ -204,6 +212,7 @@ def main() -> int:
                 "PHASE0_AUTOTEST": "",
                 "PHASE0_FOCUS_AUTOTEST": "1",
                 "PHASE0_AUTOTEST_SCREENSHOT": str(focus_screenshot),
+                "PARALLS_HEAVENLY_GRAPH_PATH": phase0_env["PARALLS_HEAVENLY_GRAPH_PATH"],
             },
         )
 
@@ -330,6 +339,7 @@ def main() -> int:
         return 0 if report["overall_strict_phase0_passed"] else 1
     finally:
         stop_backend(backend_process)
+        shutil.rmtree(graph_temp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

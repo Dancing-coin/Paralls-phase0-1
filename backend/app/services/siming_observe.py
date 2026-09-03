@@ -10,6 +10,7 @@ class SimingObservePipeline:
         "character_behavior_event",
         "conversation_resolution_event",
         "constraint_state_event",
+        "population_cadence_event",
     }
 
     def observe(self, events: list[AuthorityEvent]) -> list[ObservedSimingEvent]:

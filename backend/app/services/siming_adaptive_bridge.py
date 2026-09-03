@@ -10,10 +10,12 @@ from app.models.siming_adaptive_bridge import (
     SimingLlmProposalAudit,
 )
 from app.models.siming_heavenly_graph import (
+    GraphReaderContext,
     GraphProvenance,
     GraphValidity,
     HeavenlyGraphNode,
     HeavenlyGraphWriteBatch,
+    NodeLookupQuery,
 )
 from app.models.siming_heavenly_memory import SimingCompiledContext
 from app.models.siming_story_graph import StoryNodeBlueprint
@@ -279,11 +281,24 @@ class SimingAdaptiveBridge:
         self,
         proposal: AdaptiveBridgeNodeProposal,
     ) -> AdaptiveBridgeValidationResult | None:
-        node = self._graph.get_node(
-            node_id=self._audit_node_id(proposal),
-            scope=self._scope,
-            valid_at=self._valid_at,
+        result = self._graph.query_semantic(
+            NodeLookupQuery(
+                context=GraphReaderContext(
+                    reader_principal="reader:siming",
+                    allowed_visibility_scopes=("siming_internal", "authority_only", "branch_only"),
+                    world_id=self._scope.world_id,
+                    session_id=self._scope.session_id,
+                    story_branch_id=self._scope.story_branch_id,
+                    valid_at=self._valid_at,
+                    recorded_at=self._recorded_at,
+                    policy_revision="policy:v1",
+                ),
+                scope=self._scope,
+                node_ids=[self._audit_node_id(proposal)],
+                limit=1,
+            )
         )
+        node = result.nodes[0] if result.nodes else None
         if node is None:
             return None
         if node.node_type != self._AUDIT_NODE_TYPE:

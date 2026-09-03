@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
+import tempfile
 from pathlib import Path
 
 from common import (
@@ -55,12 +57,17 @@ def main() -> int:
     python_exe = resolve_python_exe(args.python_exe)
 
     backend_process = None
+    graph_temp_dir = tempfile.mkdtemp(prefix="observatory-graph-", dir=str(log_dir))
+    observatory_env = {
+        **OBSERVATORY_VERIFY_ENV,
+        "PARALLS_HEAVENLY_GRAPH_PATH": str(Path(graph_temp_dir) / "siming-heavenly.sqlite3"),
+    }
     try:
         health, backend_process = ensure_backend(
             project_root,
             python_exe,
             prefer_fresh_backend=True,
-            env=OBSERVATORY_VERIFY_ENV,
+            env=observatory_env,
         )
         ensure_godot_import(project_root, godot_exe, "character-director-observatory-godot-import.log")
         main_log = log_dir / "character-director-observatory-main.log"
@@ -87,6 +94,7 @@ def main() -> int:
                 "PHASE0_OBSERVATORY_STREAM": "1",
                 "CHARACTER_MODEL_PROVIDER_KIND": "local",
                 "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
+                "PARALLS_HEAVENLY_GRAPH_PATH": observatory_env["PARALLS_HEAVENLY_GRAPH_PATH"],
             },
         )
         log_text = read_text(main_log)
@@ -192,6 +200,7 @@ def main() -> int:
         return 0 if payload["overall_character_director_observatory_passed"] else 1
     finally:
         stop_backend(backend_process)
+        shutil.rmtree(graph_temp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

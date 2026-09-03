@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import asdict, dataclass
 
 from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.gameplay.event_store import GameplayEventStore
@@ -30,6 +31,7 @@ from .models import (
 from .social_input import FrozenSocialPlanningInput
 from .source_inputs import HouseholdScheduleInput, OrganizationScheduleInput, ProductionCompletedEvidenceInput
 from .capability_input import FrozenCapabilityEligibilityInput
+from .siming_contracts import PopulationBatchReport, PopulationReadSet
 
 
 class SocialPlanningResult:
@@ -37,6 +39,35 @@ class SocialPlanningResult:
         self.accepted = accepted
         self.plan = plan
         self.error_code = error_code
+
+
+@dataclass(frozen=True)
+class PopulationActivationCandidate:
+    candidate_ref: str
+    actor_ref: str
+    reason: str
+    activation_reason: str
+    budget: int
+    scope: str
+    source_revision_vector: dict[str, int]
+    fallback: str = "requeue"
+
+
+@dataclass(frozen=True)
+class PopulationOwnerBoundIntent:
+    candidate_ref: str
+    actor_ref: str
+    intent_kind: str
+    scope: str
+    payload: dict[str, object]
+    source_revision_vector: dict[str, int]
+
+
+@dataclass(frozen=True)
+class PopulationRejectedCandidate:
+    candidate_ref: str
+    reason: str
+    candidate_kind: str = ""
 
 
 def _digest(value: object) -> str:
@@ -107,10 +138,398 @@ def _branch_work_wage_request_digest(request: BranchWorkWageRequest) -> str:
 class PopulationPlanner:
     """Pure proposal generator; it has no store and no append method."""
 
+    ADMITTED_BEHAVIORS = frozenset(
+        {
+            "routine_work",
+            "schedule_gated_supply",
+            "relationship_negotiation",
+            "high_value_event",
+            "b3_event",
+        }
+    )
+    ACTIVATION_BEHAVIORS = frozenset(
+        {"relationship_negotiation", "high_value_event", "b3_event"}
+    )
+
+    def plan_three_actor_cohort(self, read_set: PopulationReadSet) -> PopulationBatchReport:
+        """Classify the closed three-actor cohort without performing writes."""
+        actors = ("character:char_a", "character:char_b", "character:char_c")
+        cohort_ref = self._cohort_ref(read_set.cadence.cadence_id)
+        by_actor: dict[str, object] = {}
+        invalid: list[PopulationRejectedCandidate] = []
+        for projection in read_set.projections:
+            aliases = {
+                str(projection.payload.get(key)).strip()
+                for key in ("actor_ref", "profile_ref", "character_ref")
+                if projection.payload.get(key) not in (None, "")
+            }
+            actor = next(iter(aliases), "") if len(aliases) == 1 else ""
+            ref_parts = projection.ref.split(":")
+            ref_actor = f"character:{ref_parts[1]}" if len(ref_parts) > 2 and ref_parts[0] == "projection" else ""
+            if len(aliases) != 1 or actor not in actors or ref_actor != actor:
+                invalid.append(PopulationRejectedCandidate(projection.ref, "cohort_actor_ref_invalid", str(actor)))
+                continue
+            if actor in by_actor:
+                invalid.append(PopulationRejectedCandidate(projection.ref, "cohort_actor_duplicate", actor))
+                continue
+            by_actor[actor] = projection
+        if invalid or len(read_set.projections) != len(actors) or set(by_actor) != set(actors):
+            unprocessed = tuple(projection.ref for projection in read_set.projections)
+            return self._population_report(
+                batch_ref=f"population-cohort:{read_set.cadence.cadence_id}",
+                read_set=read_set,
+                selected=(),
+                presentation={},
+                activations=(),
+                owner_intents=(),
+                rejected=tuple(invalid),
+                budget_used=0,
+                unprocessed=unprocessed,
+            ).model_copy(
+                update={
+                    "cohort_ref": cohort_ref,
+                    "cohort_member_refs": actors,
+                    "unprocessed_count": len(unprocessed),
+                }
+            )
+        selected: list[str] = []
+        unprocessed: list[str] = []
+        presentation: dict[str, object] = {}
+        activations: list[PopulationActivationCandidate] = []
+        intents: list[PopulationOwnerBoundIntent] = []
+        budget_used = 0
+        rejected: list[PopulationRejectedCandidate] = []
+        for index, actor in enumerate(actors):
+            projection = by_actor.get(actor)
+            if projection is None:
+                continue
+            if len(selected) >= read_set.cadence.catch_up_limit:
+                unprocessed.extend(by_actor[a].ref for a in actors[index:])
+                break
+            if budget_used >= read_set.cadence.budget:
+                unprocessed.extend(by_actor[a].ref for a in actors[index:] if a in by_actor)
+                break
+            payload = dict(projection.payload)
+            kind = str(payload.get("candidate_kind") or payload.get("kind") or payload.get("behavior_kind") or "")
+            expected = {actors[0]: "char_a_supply", actors[1]: "char_b_routine_work", actors[2]: "char_c_social_activation"}[actor]
+            if kind not in {expected, {"char_a_supply": "schedule_gated_supply", "char_b_routine_work": "routine_work", "char_c_social_activation": "relationship_negotiation"}[expected]}:
+                rejected.append(PopulationRejectedCandidate(projection.ref, "cohort_behavior_mismatch", kind))
+                continue
+            if actor == actors[0]:
+                owner_payload = self._schedule_gated_supply_owner_payload(read_set=read_set, batch_ref=f"population-cohort:{read_set.cadence.cadence_id}", actor_ref=actor, payload=payload)
+                if owner_payload is None:
+                    rejected.append(PopulationRejectedCandidate(projection.ref, "schedule_context_invalid", kind))
+                    continue
+                selected.append(projection.ref)
+                budget_used += 1
+                intents.append(PopulationOwnerBoundIntent(projection.ref, actor, "supply", projection.scope, owner_payload, dict(projection.revision_vector)))
+            elif actor == actors[1]:
+                selected.append(projection.ref)
+                budget_used += 1
+                presentation[actor] = {"actor_ref": actor, "behavior_kind": "routine_work", "deterministic": True, "scope": projection.scope, "source_revision_vector": dict(projection.revision_vector), "state_deltas": {}, "activation_hints": tuple(str(item) for item in (payload.get("activation_hints") or ())) }
+            else:
+                selected.append(projection.ref)
+                budget_used += 1
+                activations.append(PopulationActivationCandidate(projection.ref, actor, "relationship_negotiation_requires_activation", str(payload.get("activation_reason") or "relationship_negotiation"), 1, "actor:self", dict(projection.revision_vector)))
+        report = self._population_report(batch_ref=f"population-cohort:{read_set.cadence.cadence_id}", read_set=read_set, selected=tuple(selected), presentation=presentation, activations=tuple(activations), owner_intents=tuple(intents), rejected=tuple(rejected), budget_used=budget_used, unprocessed=tuple(unprocessed))
+        return report.model_copy(update={"cohort_ref": cohort_ref, "cohort_member_refs": actors, "presentation_seed_count": len(presentation), "activation_candidate_count": len(activations), "owner_intent_count": len(intents), "selected_count": len(selected), "unprocessed_count": len(unprocessed)})
+
+    @staticmethod
+    def _cohort_ref(cadence_id: str) -> str:
+        prefix = "cadence:"
+        return cadence_id.removeprefix(prefix) if cadence_id.startswith(prefix) else cadence_id
+
     @staticmethod
     def schedule_pending_digest(plan: PopulationWorldPlan) -> str:
         """Pin the exact admitted schedule plan; this is not a generic payload digest."""
         return _digest(plan.model_dump(mode="json"))
+
+    @staticmethod
+    def schedule_owner_request_digest(
+        *,
+        plan: PopulationWorldPlan,
+        pending_change_ref: str,
+        social_input: FrozenSocialPlanningInput,
+        household_input: HouseholdScheduleInput,
+        organization_input: OrganizationScheduleInput,
+        request_context_digest: str,
+    ) -> str:
+        return _digest(
+            {
+                "plan": plan.model_dump(mode="json"),
+                "pending_change_ref": pending_change_ref,
+                "social_input": social_input.model_dump(mode="json"),
+                "household_input": household_input.model_dump(mode="json"),
+                "organization_input": organization_input.model_dump(mode="json"),
+                "request_context_digest": request_context_digest,
+            }
+        )
+
+    def plan_population_cycle(self, read_set: PopulationReadSet) -> PopulationBatchReport:
+        """Calculate one deterministic batch; this method has no write authority."""
+        cadence = read_set.cadence
+        batch_ref = f"population-batch:{cadence.cadence_id}:{read_set.read_set_digest[-12:]}"
+        rejected: list[PopulationRejectedCandidate] = []
+        if not self._valid_population_read_set(read_set):
+            for projection in read_set.projections:
+                rejected.append(PopulationRejectedCandidate(projection.ref, "stale_read_set"))
+            return self._population_report(
+                batch_ref=batch_ref,
+                read_set=read_set,
+                selected=(),
+                presentation={},
+                activations=(),
+                owner_intents=(),
+                rejected=tuple(rejected),
+                budget_used=0,
+                unprocessed=tuple(item.ref for item in read_set.projections),
+            )
+
+        ordered = sorted(
+            read_set.projections,
+            key=lambda item: (
+                -int(item.payload.get("priority", 0) or 0),
+                str(item.payload.get("actor_ref") or item.payload.get("profile_ref") or item.ref),
+                item.ref,
+            ),
+        )
+        selected: list[str] = []
+        unprocessed: list[str] = []
+        presentation: dict[str, object] = {}
+        activations: list[PopulationActivationCandidate] = []
+        owner_intents: list[PopulationOwnerBoundIntent] = []
+        budget_used = 0
+        for index, projection in enumerate(ordered):
+            payload = projection.payload
+            kind = str(payload.get("candidate_kind") or payload.get("kind") or payload.get("behavior_kind") or "")
+            if kind not in self.ADMITTED_BEHAVIORS:
+                rejected.append(PopulationRejectedCandidate(projection.ref, "capability_not_admitted", kind))
+                continue
+            default_cost = 1 if kind in self.ACTIVATION_BEHAVIORS else 0
+            try:
+                cost = max(0, int(payload.get("budget_cost", default_cost) or 0))
+            except (TypeError, ValueError):
+                rejected.append(PopulationRejectedCandidate(projection.ref, "budget_invalid", kind))
+                continue
+            if kind in self.ACTIVATION_BEHAVIORS and cost == 0:
+                cost = 1
+            fallback = str(payload.get("fallback") or "requeue")
+            if fallback not in {"no-op", "requeue"}:
+                rejected.append(PopulationRejectedCandidate(projection.ref, "fallback_invalid", kind))
+                continue
+            if len(selected) >= cadence.catch_up_limit or budget_used + cost > cadence.budget:
+                unprocessed.extend(item.ref for item in ordered[index:])
+                break
+            selected.append(projection.ref)
+            actor_ref = str(payload.get("actor_ref") or payload.get("profile_ref") or projection.ref)
+            scope = str(payload.get("actor_scope") or projection.scope)
+            source_vector = dict(projection.revision_vector)
+            if kind == "schedule_gated_supply":
+                owner_payload = self._schedule_gated_supply_owner_payload(
+                    read_set=read_set,
+                    batch_ref=batch_ref,
+                    actor_ref=actor_ref,
+                    payload=payload,
+                )
+                if owner_payload is None:
+                    selected.pop()
+                    rejected.append(
+                        PopulationRejectedCandidate(
+                            projection.ref,
+                            "schedule_context_invalid",
+                            kind,
+                        )
+                    )
+                    continue
+                owner_intents.append(PopulationOwnerBoundIntent(projection.ref, actor_ref, kind, scope, owner_payload, source_vector))
+                budget_used += cost
+            elif kind in {"relationship_negotiation", "high_value_event", "b3_event"} or str(payload.get("behavior_tier", "")).upper() in {"B2", "B3"}:
+                activations.append(PopulationActivationCandidate(
+                    candidate_ref=projection.ref,
+                    actor_ref=actor_ref,
+                    reason="high_value_b2_requires_activation" if kind == "relationship_negotiation" else "high_value_b3_requires_activation",
+                    activation_reason=str(payload.get("activation_reason") or kind),
+                    budget=cost,
+                    scope="actor:self" if actor_ref.startswith("character:") else scope,
+                    source_revision_vector=source_vector,
+                    fallback=fallback,
+                ))
+                budget_used += cost
+            else:
+                presentation[projection.ref] = {
+                    "actor_ref": actor_ref,
+                    "behavior_kind": kind,
+                    "deterministic": True,
+                    "scope": scope,
+                    "source_revision_vector": source_vector,
+                }
+        return self._population_report(
+            batch_ref=batch_ref,
+            read_set=read_set,
+            selected=tuple(selected),
+            presentation=presentation,
+            activations=tuple(activations),
+            owner_intents=tuple(owner_intents),
+            rejected=tuple(rejected),
+            budget_used=budget_used,
+            unprocessed=tuple(unprocessed),
+        )
+
+    def _schedule_gated_supply_owner_payload(
+        self,
+        *,
+        read_set: PopulationReadSet,
+        batch_ref: str,
+        actor_ref: str,
+        payload: dict[str, object],
+    ) -> dict[str, object] | None:
+        raw = payload.get("schedule_gated_supply_source_context")
+        if raw is None:
+            return dict(payload)
+        if not isinstance(raw, dict) or set(raw) - {
+            "mode",
+            "candidate",
+            "social_input",
+            "household_input",
+            "organization_input",
+            "base_event_digest",
+            "base_checkpoint_sequence",
+            "tail_boundary",
+        }:
+            return None
+        try:
+            mode = WorldModeProfile.model_validate(raw["mode"])
+            candidate = BatchIntentCandidate.model_validate(raw["candidate"])
+            social = FrozenSocialPlanningInput.model_validate(raw["social_input"])
+            household = HouseholdScheduleInput.model_validate(raw["household_input"])
+            organization = OrganizationScheduleInput.model_validate(raw["organization_input"])
+            base_event_digest = str(raw["base_event_digest"])
+            base_checkpoint_sequence = int(raw.get("base_checkpoint_sequence", 0))
+            tail_boundary = int(raw["tail_boundary"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        cadence = read_set.cadence
+        if (
+            not base_event_digest
+            or isinstance(raw.get("base_checkpoint_sequence", 0), bool)
+            or isinstance(raw.get("tail_boundary"), bool)
+            or base_checkpoint_sequence < 0
+            or tail_boundary < base_checkpoint_sequence
+            or mode.world_ref != cadence.world_ref
+            or mode.revision != cadence.world_mode_revision
+            or candidate.intent_kind != "supply"
+            or candidate.profile_ref != actor_ref
+            or candidate.profile_ref != social.recipient_ref
+            or candidate.profile_ref != household.recipient_ref
+            or candidate.profile_ref != organization.recipient_ref
+            or candidate.privacy_scope != cadence.report_scope
+            or candidate.payload.get("organization_ref") != organization.organization_ref
+            or candidate.expected_revisions.get(
+                f"gameplay:organization:{organization.organization_ref}"
+            )
+            != organization.source_revision_vector.get(
+                f"gameplay:organization:{organization.organization_ref}"
+            )
+            or not any(
+                row.get("work_order_ref")
+                == candidate.payload.get("schedule_work_order_ref")
+                for row in organization.work_orders
+            )
+        ):
+            return None
+        source_vector: dict[str, int] = {}
+        for vector in (
+            social.source_revision_vector,
+            household.source_revision_vector,
+            organization.source_revision_vector,
+            candidate.expected_revisions,
+        ):
+            for stream_id, revision in vector.items():
+                if stream_id in source_vector and source_vector[stream_id] != revision:
+                    return None
+                source_vector[stream_id] = revision
+        if source_vector != cadence.base_revision_vector:
+            return None
+        plan = self.plan_world(
+            batch_ref=batch_ref,
+            world_ref=cadence.world_ref,
+            mode=mode,
+            candidates=(candidate,),
+            base_event_digest=base_event_digest,
+            base_checkpoint_sequence=base_checkpoint_sequence,
+            tail_boundary=tail_boundary,
+            active_revision_refs=(mode.revision,),
+            source_revision_vector=source_vector,
+            deterministic_seed=cadence.deterministic_seed,
+            report_scope=cadence.report_scope,
+        ).model_copy(
+            update={
+                "source_vectors": {
+                    "social": dict(social.source_revision_vector),
+                    "household": dict(household.source_revision_vector),
+                    "organization": dict(organization.source_revision_vector),
+                },
+                "social_input_digest": social.input_digest,
+                "social_recipient_ref": social.recipient_ref,
+                "household_input_digest": household.input_digest,
+                "household_recipient_ref": household.recipient_ref,
+                "organization_input_digest": organization.input_digest,
+                "organization_recipient_ref": organization.recipient_ref,
+                "organization_schedule_ref": organization.organization_ref,
+            },
+            deep=True,
+        )
+        enriched = dict(payload)
+        enriched.pop("schedule_gated_supply_source_context", None)
+        enriched["schedule_gated_supply_owner_context"] = {
+            "plan": plan.model_dump(mode="json"),
+            "social_input": social.model_dump(mode="json"),
+            "household_input": household.model_dump(mode="json"),
+            "organization_input": organization.model_dump(mode="json"),
+        }
+        return enriched
+
+    @staticmethod
+    def _valid_population_read_set(read_set: PopulationReadSet) -> bool:
+        cadence = read_set.cadence
+        canonical = PopulationReadSet.from_inputs(cadence, read_set.projections)
+        if canonical.read_set_digest != read_set.read_set_digest:
+            return False
+        return all(
+            projection.scope in {cadence.report_scope, "public", "actor:self"}
+            and projection.revision_vector == cadence.base_revision_vector
+            for projection in read_set.projections
+        )
+
+    @staticmethod
+    def _population_report(*, batch_ref: str, read_set: PopulationReadSet, selected: tuple[str, ...], presentation: dict[str, object], activations: tuple[PopulationActivationCandidate, ...], owner_intents: tuple[PopulationOwnerBoundIntent, ...], rejected: tuple[PopulationRejectedCandidate, ...], budget_used: int, unprocessed: tuple[str, ...]) -> PopulationBatchReport:
+        cadence = read_set.cadence
+        report = PopulationBatchReport(
+            batch_ref=batch_ref,
+            selected_cohort_refs=selected,
+            presentation_seeds=presentation,
+            activation_candidates=tuple(item.candidate_ref for item in activations),
+            owner_bound_intents=owner_intents,
+            rejected_candidates=rejected,
+            budget_used=budget_used,
+            budget_remaining=max(0, cadence.budget - budget_used),
+            unprocessed_cohort_refs=unprocessed,
+            read_set_digest=read_set.read_set_digest,
+            result_digest="pending",
+        )
+        digest = _digest({
+            "batch_ref": batch_ref,
+            "selected_cohort_refs": selected,
+            "presentation_seeds": presentation,
+            "activation_candidates": [asdict(item) for item in activations],
+            "owner_bound_intents": [asdict(item) for item in owner_intents],
+            "rejected_candidates": [asdict(item) for item in rejected],
+            "budget_used": budget_used,
+            "budget_remaining": max(0, cadence.budget - budget_used),
+            "unprocessed_cohort_refs": unprocessed,
+            "read_set_digest": read_set.read_set_digest,
+        })
+        return report.model_copy(update={"result_digest": digest})
 
     def plan(
         self,
@@ -691,7 +1110,12 @@ class ContinuityMergeAuthority:
         # caller-selected stream/event payload into production truth.
         return self._failed(plan, "legacy_population_merge_retired")
 
-    def merge_world_plan(self, plan: PopulationWorldPlan) -> ContinuityMergeReceipt:
+    def merge_world_plan(
+        self,
+        plan: PopulationWorldPlan,
+        *,
+        owner_request_digest: str | None = None,
+    ) -> ContinuityMergeReceipt:
         if plan.world_ref != self.mode.world_ref or plan.policy_revision != self.mode.revision:
             return self._failed(plan, "stale_policy_revision")
         if plan.mode != self.mode.mode:
@@ -714,6 +1138,15 @@ class ContinuityMergeAuthority:
                 owner_principal_ref, f"merge:{plan.batch_ref}"
             )
             if existing is not None:
+                event = self.store.get_event(existing.committed_event_ids[0])
+                stored_request_digest = event.payload.get(
+                    "population_owner_request_digest"
+                )
+                if stored_request_digest != owner_request_digest and (
+                    stored_request_digest is not None
+                    or owner_request_digest is not None
+                ):
+                    return self._failed(plan, "idempotency_key_reused")
                 replay = GameplayProjectionReplay(
                     projector_id="population-continuity",
                     projector_version="1",
@@ -779,6 +1212,25 @@ class ContinuityMergeAuthority:
                 )
         except (KeyError, TypeError, ValueError):
             return self._failed(plan, "owner_mapping_rejected")
+        if owner_request_digest is not None:
+            fragment = fragment.model_copy(
+                update={
+                    "event_specs": {
+                        stream_id: tuple(
+                            (
+                                event_type,
+                                {
+                                    **payload,
+                                    "population_owner_request_digest": owner_request_digest,
+                                },
+                            )
+                            for event_type, payload in specs
+                        )
+                        for stream_id, specs in fragment.event_specs.items()
+                    }
+                },
+                deep=True,
+            )
         batch = build_multi_stream_atomic_event_batch_from_fragments(
             command_id=f"merge:{plan.batch_ref}",
             idempotency_principal_ref=fragment.owner_principal_ref,
@@ -839,6 +1291,7 @@ class ContinuityMergeAuthority:
         social_input: FrozenSocialPlanningInput,
         household_input: HouseholdScheduleInput,
         organization_input: OrganizationScheduleInput,
+        owner_request_digest: str | None = None,
     ) -> ContinuityMergeReceipt:
         """Recheck frozen existing-owner sources before the approved supply merge."""
         candidate = plan.candidates[0]
@@ -861,7 +1314,7 @@ class ContinuityMergeAuthority:
         work_order_ref = candidate.payload.get("schedule_work_order_ref")
         if not isinstance(work_order_ref, str) or not any(row.get("work_order_ref") == work_order_ref for row in organization_input.work_orders):
             return self._failed(plan, "schedule_work_order_missing")
-        for source in (household_input, organization_input):
+        for source in (social_input, household_input, organization_input):
             validation = source.validate_against(store=self.store)
             if not validation.accepted:
                 return self._failed(plan, validation.error_code or "schedule_source_invalid")
@@ -871,7 +1324,9 @@ class ContinuityMergeAuthority:
             for stream_id, revision in source.source_revision_vector.items()
         ):
             return self._failed(plan, "schedule_source_vector_conflict")
-        return self.merge_world_plan(plan)
+        return self.merge_world_plan(
+            plan, owner_request_digest=owner_request_digest
+        )
 
     def merge_released_schedule_gated_supply(
         self,
@@ -881,10 +1336,14 @@ class ContinuityMergeAuthority:
         social_input: FrozenSocialPlanningInput,
         household_input: HouseholdScheduleInput,
         organization_input: OrganizationScheduleInput,
+        request_context_digest: str = "",
     ) -> ContinuityMergeReceipt:
         """Consume one released activation-owned schedule admission, then the existing owner row."""
         from .activation import ProfileActivationAuthority
 
+        released_plan = plan.model_copy(
+            update={"activation_lock_refs": (), "activation_locks": ()}, deep=True
+        )
         pending = ProfileActivationAuthority(
             registry=self.registry, store=self.store
         ).pending_projection(plan.world_ref).get(pending_change_ref)
@@ -907,14 +1366,26 @@ class ContinuityMergeAuthority:
             or pending.get("lock_ref") not in plan.activation_lock_refs
         ):
             return self._failed(plan, "released_schedule_pending_invalid")
-        released_plan = plan.model_copy(
-            update={"activation_lock_refs": (), "activation_locks": ()}, deep=True
+        owner_request_digest = PopulationPlanner.schedule_owner_request_digest(
+            plan=plan,
+            pending_change_ref=pending_change_ref,
+            social_input=social_input,
+            household_input=household_input,
+            organization_input=organization_input,
+            request_context_digest=request_context_digest,
         )
+        if self.store.get_by_idempotency(
+            OrganizationAuthority._PRINCIPAL, f"merge:{plan.batch_ref}"
+        ) is not None:
+            return self.merge_world_plan(
+                released_plan, owner_request_digest=owner_request_digest
+            )
         return self.merge_schedule_gated_supply(
             plan=released_plan,
             social_input=social_input,
             household_input=household_input,
             organization_input=organization_input,
+            owner_request_digest=owner_request_digest,
         )
 
     def merge_released_survival_state_expiry(

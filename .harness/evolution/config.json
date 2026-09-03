@@ -7,14 +7,17 @@
     "change-lifecycle",
     "harness-reference",
     "phase0",
-    "phase1-slice"
+    "phase1-slice",
+    "character-behavior-evaluation",
+    "character-policy-calibration"
   ],
   "allowed_mutation_types": [
     "validator",
     "profile_policy",
     "failure_digest",
     "docs_gate",
-    "rule_evidence"
+    "rule_evidence",
+    "character_policy_calibration"
   ],
   "promotion_requires_profiles": [
     "docs",

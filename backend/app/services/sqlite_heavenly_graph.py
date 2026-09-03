@@ -4,8 +4,18 @@ from threading import RLock
 from pathlib import Path
 
 from app.models.siming_heavenly_graph import (
+    GraphBranchDiffQuery,
+    GraphBranchDiffResult,
+    GraphBranchForkRequest,
+    GraphBranchLifecycleMarker,
+    GraphBranchLifecycleRequest,
+    GraphCorrectionRequest,
+    GraphReaderContext,
+    HeavenlyGraphQueryResult,
+    HeavenlyGraphSemanticQuery,
     HeavenlyGraphNode,
     HeavenlyGraphRelation,
+    HeavenlyGraphScope,
     HeavenlyGraphSnapshot,
     HeavenlyGraphWriteBatch,
     HeavenlyGraphWriteResult,
@@ -14,6 +24,7 @@ from app.models.siming_heavenly_graph import (
     HeavenlySubgraphResult,
 )
 from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
+from app.services.heavenly_graph_consistency import HeavenlyGraphConsistencyReport
 from app.services.siming_heavenly_graph_port import HeavenlyGraphError
 
 
@@ -35,26 +46,95 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
 
     def write_batch(self, batch: HeavenlyGraphWriteBatch) -> HeavenlyGraphWriteResult:
         with self._lock:
-            result = super().write_batch(batch)
-            if result.applied:
+            snapshot = self._snapshot_mutable_state()
+            try:
+                result = super().write_batch(batch)
+                if result.applied:
+                    self._persist()
+                return result
+            except Exception:
+                self._restore_mutable_state(snapshot)
+                raise
+
+    def fork_branch(self, request: GraphBranchForkRequest) -> HeavenlyGraphWriteResult:
+        with self._lock:
+            snapshot = self._snapshot_mutable_state()
+            try:
+                result = super().fork_branch(request)
                 self._persist()
-            return result
+                return result
+            except Exception:
+                self._restore_mutable_state(snapshot)
+                raise
+
+    def lifecycle_branch(self, request: GraphBranchLifecycleRequest) -> HeavenlyGraphWriteResult:
+        with self._lock:
+            snapshot = self._snapshot_mutable_state()
+            try:
+                result = super().lifecycle_branch(request)
+                self._persist()
+                return result
+            except Exception:
+                self._restore_mutable_state(snapshot)
+                raise
+
+    def diff_branches(self, query: GraphBranchDiffQuery) -> GraphBranchDiffResult:
+        with self._lock:
+            return super().diff_branches(query)
+
+    def correct(self, request: GraphCorrectionRequest) -> HeavenlyGraphWriteResult:
+        with self._lock:
+            snapshot = self._snapshot_mutable_state()
+            try:
+                result = super().correct(request)
+                if result.applied:
+                    self._persist()
+                return result
+            except Exception:
+                self._restore_mutable_state(snapshot)
+                raise
 
     def create_checkpoint(self, **kwargs: object):
         with self._lock:
-            checkpoint = super().create_checkpoint(**kwargs)
-            self._persist()
-            return checkpoint
+            snapshot = self._snapshot_mutable_state()
+            try:
+                checkpoint = super().create_checkpoint(**kwargs)
+                self._persist()
+                return checkpoint
+            except Exception:
+                self._restore_mutable_state(snapshot)
+                raise
 
     def query_nodes(self, query: HeavenlyNodeQuery) -> list[HeavenlyGraphNode]:
         with self._lock:
             return super().query_nodes(query)
+
+    def query_node_history(self, query: HeavenlyNodeQuery) -> list[HeavenlyGraphNode]:
+        with self._lock:
+            return super().query_node_history(query)
 
     def query_relations(
         self, query: HeavenlyRelationQuery
     ) -> list[HeavenlyGraphRelation]:
         with self._lock:
             return super().query_relations(query)
+
+    def query_semantic(
+        self, query: HeavenlyGraphSemanticQuery
+    ) -> HeavenlyGraphQueryResult:
+        """Keep facade reads serialized with SQLite-backed graph mutations."""
+        with self._lock:
+            return super().query_semantic(query)
+
+    def audit_consistency(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        reader_context: GraphReaderContext,
+    ) -> HeavenlyGraphConsistencyReport:
+        """Keep historical audit reads serialized with SQLite mutations."""
+        with self._lock:
+            return super().audit_consistency(scope=scope, reader_context=reader_context)
 
     def query_subgraph(self, **kwargs: object) -> HeavenlySubgraphResult:
         with self._lock:
@@ -63,6 +143,14 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
     def read_checkpoint(self, checkpoint_ref: str) -> HeavenlyGraphSnapshot:
         with self._lock:
             return super().read_checkpoint(checkpoint_ref)
+
+    def replay_from_checkpoint(
+        self,
+        checkpoint_ref: str,
+        tail_batches: list[HeavenlyGraphWriteBatch],
+    ) -> HeavenlyGraphSnapshot:
+        with self._lock:
+            return super().replay_from_checkpoint(checkpoint_ref, tail_batches)
 
     def _migrate(self) -> None:
         connection = self._connection
@@ -91,6 +179,17 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
                 checkpoint_ref TEXT PRIMARY KEY, scope_json TEXT NOT NULL,
                 checkpoint_id TEXT NOT NULL, snapshot_json TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS graph_stream_revisions (
+                scope_json TEXT PRIMARY KEY,
+                node_revision INTEGER NOT NULL,
+                relation_revision INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS graph_branch_state (
+                scope_json TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                revision INTEGER NOT NULL,
+                markers_json TEXT NOT NULL
+            );
             """
         )
         connection.commit()
@@ -105,7 +204,7 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
         connection = self._connection
         try:
             connection.execute("BEGIN IMMEDIATE")
-            for table in ("graph_nodes", "graph_relations", "graph_idempotency", "graph_checkpoints"):
+            for table in ("graph_nodes", "graph_relations", "graph_idempotency", "graph_checkpoints", "graph_stream_revisions", "graph_branch_state"):
                 connection.execute(f"DELETE FROM {table}")
             for (scope_key, node_id), versions in self._nodes.items():
                 for node in versions:
@@ -127,6 +226,25 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
                 connection.execute(
                     "INSERT INTO graph_checkpoints VALUES (?, ?, ?, ?)",
                     (checkpoint_ref, self._scope_json(snapshot.checkpoint.scope), snapshot.checkpoint.checkpoint_id, self._payload_json(snapshot)),
+                )
+            for scope_key, (node_revision, relation_revision) in self._scope_stream_revisions.items():
+                connection.execute(
+                    "INSERT INTO graph_stream_revisions VALUES (?, ?, ?)",
+                    (self._scope_json_from_key(scope_key), node_revision, relation_revision),
+                )
+            for scope_key, status in self._branch_status.items():
+                connection.execute(
+                    "INSERT INTO graph_branch_state VALUES (?, ?, ?, ?)",
+                    (
+                        self._scope_json_from_key(scope_key),
+                        status,
+                        self._branch_revisions.get(scope_key, 0),
+                        json.dumps(
+                            [marker.model_dump(mode="json") for marker in self._branch_markers.get(scope_key, [])],
+                            sort_keys=True,
+                            separators=(",", ":"),
+                        ),
+                    ),
                 )
             connection.commit()
         except Exception:
@@ -150,7 +268,57 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
             scope = HeavenlyGraphScope.model_validate_json(scope_json)
             self._idempotency[(self._scope_key(scope), key)] = (payload_hash, HeavenlyGraphWriteResult.model_validate_json(result_json))
         for checkpoint_ref, _, _, snapshot_json in self._connection.execute("SELECT checkpoint_ref, scope_json, checkpoint_id, snapshot_json FROM graph_checkpoints"):
+            payload = json.loads(snapshot_json)
             snapshot = HeavenlyGraphSnapshot.model_validate_json(snapshot_json)
+            # Checkpoints written before schema v1's replay frontier fields
+            # existed deserialize those fields as empty defaults.  Empty is a
+            # valid frontier for a genuinely empty graph, so only the payload
+            # shape can distinguish legacy data. Recover the missing portions
+            # from the immutable source history loaded above and leave the
+            # durable checkpoint row unchanged.
+            frontier_update: dict[str, object] = {}
+            if "replay_nodes" not in payload or "replay_relations" not in payload:
+                history_nodes, history_relations = self._revision_history_at(
+                    snapshot.checkpoint.scope,
+                    recorded_at=snapshot.checkpoint.recorded_at,
+                )
+                if "replay_nodes" not in payload:
+                    frontier_update["replay_nodes"] = history_nodes
+                if "replay_relations" not in payload:
+                    frontier_update["replay_relations"] = history_relations
+            if frontier_update:
+                snapshot = snapshot.model_copy(update=frontier_update, deep=True)
             key = (self._scope_key(snapshot.checkpoint.scope), snapshot.checkpoint.checkpoint_id)
             self._checkpoints[key] = snapshot
             self._checkpoint_refs[checkpoint_ref] = key
+        for scope_json, node_revision, relation_revision in self._connection.execute(
+            "SELECT scope_json, node_revision, relation_revision FROM graph_stream_revisions"
+        ):
+            from app.models.siming_heavenly_graph import HeavenlyGraphScope
+            scope = HeavenlyGraphScope.model_validate_json(scope_json)
+            self._scope_stream_revisions[self._scope_key(scope)] = (
+                node_revision,
+                relation_revision,
+            )
+        for scope_json, status, revision, markers_json in self._connection.execute(
+            "SELECT scope_json, status, revision, markers_json FROM graph_branch_state"
+        ):
+            from app.models.siming_heavenly_graph import HeavenlyGraphScope
+            scope = HeavenlyGraphScope.model_validate_json(scope_json)
+            key = self._scope_key(scope)
+            self._branch_status[key] = status
+            self._branch_revisions[key] = revision
+            self._branch_markers[key] = [GraphBranchLifecycleMarker.model_validate(item) for item in json.loads(markers_json)]
+        # Databases created before the stream-counter table can still be read;
+        # establish a conservative floor before the first new commit.
+        for (scope_key, _), versions in self._nodes.items():
+            self._scope_stream_revisions.setdefault(
+                scope_key,
+                (sum(len(items) for (key, _), items in self._nodes.items() if key == scope_key), 0),
+            )
+        for (scope_key, _), versions in self._relations.items():
+            node_revision, relation_revision = self._scope_stream_revisions.get(scope_key, (0, 0))
+            self._scope_stream_revisions[scope_key] = (
+                node_revision,
+                max(relation_revision, sum(len(items) for (key, _), items in self._relations.items() if key == scope_key)),
+            )

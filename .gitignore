@@ -34,3 +34,5 @@ __pycache__/
 
 docs/architecture
 /.codegraph/codegraph.db
+/backend/.runtime/*
+.runtime

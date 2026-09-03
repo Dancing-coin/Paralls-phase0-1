@@ -18,6 +18,10 @@ python scripts/verification/harness.py --profile harness-lifecycle
 python scripts/verification/harness.py --profile change-lifecycle
 python scripts/verification/harness.py --profile harness-reference
 python scripts/verification/harness.py --profile harness-evolution
+python scripts/verification/harness.py --profile harness-execution-contract
+python scripts/verification/harness.py --profile harness-embodied-task
+python scripts/verification/harness.py --profile character-behavior-evaluation
+python scripts/verification/harness.py --profile character-policy-calibration
 python scripts/verification/harness.py --profile phase0
 python scripts/verification/harness.py --profile phase1-slice
 python scripts/verification/harness.py --profile phase2a-actor-to-gameplay-participation
@@ -130,6 +134,11 @@ python scripts/verification/harness.py --profile siming-actor-memory-read
 python scripts/verification/harness.py --profile siming-story-runtime
 python scripts/verification/harness.py --profile siming-resource-staging
 python scripts/verification/harness.py --profile siming-adaptive-bridge
+python scripts/verification/harness.py --profile behavior-turn-runtime
+python scripts/verification/harness.py --profile character-continuity-recovery
+python scripts/verification/harness.py --profile authority-graph-projection
+python scripts/verification/harness.py --profile siming-behavior-turn-runtime
+python scripts/verification/harness.py --profile siming-led-population-seed-continuity
 python scripts/verification/harness.py --profile all
 ```
 
@@ -405,6 +414,31 @@ Output:
 - `.harness/verification/harness-evolution-report.md`
 - optional `.harness/evolution/candidates/<id>.json` in propose mode
 
+### `character-behavior-evaluation`
+
+Backend-only replay of one character turn. It proves the durable evidence chain
+from L2 context and interpretation through goal/intent, execution request,
+authoritative settlement, behavior score, and source-linked candidate policy.
+Candidates are `candidate_only`; this profile never mutates authored character
+profiles.
+
+Output:
+
+- `.harness/verification/character-behavior-evaluation-report.json`
+- `.harness/verification/character-behavior-evaluation-report.md`
+
+### `character-policy-calibration`
+
+Backend-only calibration proof for context-recall and recovery candidates. It
+checks that a low-scoring turn yields a deterministic policy candidate with
+`context_hash`, selected memory refs, and an explicit hypothesis while keeping
+profile mutation outside runtime evaluation.
+
+Output:
+
+- `.harness/verification/character-policy-calibration-report.json`
+- `.harness/verification/character-policy-calibration-report.md`
+
 ### `phase0`
 
 Strict Phase 0 runtime validation. This starts or reuses the backend, runs backend tests, launches the Godot Phase 0 scene, captures logs/screenshots, and evaluates the full Phase 0 acceptance loop.
@@ -471,6 +505,44 @@ Output:
 - `.harness/verification/l1-space-model-backend-contract.json` for backend contract proof
 - `.harness/verification/harness-run-report.json`
 - `.harness/verification/harness-run-report.md`
+
+### `harness-execution-contract`
+
+Backend-only Harness contract proof for the domain-neutral task lifecycle and
+trace seam. It verifies the declared execution phases, deterministic failure
+disposition mapping, terminal-phase write rejection, and preservation of
+`task_id`/`run_id`/`correlation_id` across an append-only process-local trace.
+It does not execute Gameplay or ESM commands, persist tasks, or provide
+automatic retries.
+
+Run:
+
+```powershell
+python scripts/verification/harness.py --profile harness-execution-contract
+```
+
+Output:
+
+- `.harness/verification/harness-execution-contract-report.json`
+- `.harness/verification/harness-execution-contract-report.md`
+
+### `harness-embodied-task`
+
+Backend proof that the Harness contract is consumed by the real embodied
+interaction session path. It covers the Gameplay authority append, outbox and
+evidence correlation, domain failure mapping, persistent terminal recovery,
+phase capability ordering, metadata redaction, and safe Godot projection refs.
+The existing `embodied-interaction-session` profile remains the runtime/Godot
+proof; this profile verifies the Harness control/evidence layer around it.
+
+```powershell
+python scripts/verification/harness.py --profile harness-embodied-task
+```
+
+Output:
+
+- `.harness/verification/harness-embodied-task-report.json`
+- `.harness/verification/harness-embodied-task-report.md`
 
 ### `siming-backend-chain`
 
@@ -556,6 +628,128 @@ restart-durable Heavenly Graph adapters.
 ```powershell
 python scripts/verification/harness.py --profile siming-heavenly-graph-foundation
 ```
+
+### `heavenly-graph-semantic-foundation`
+
+Graph-only proof for the semantic Heavenly Graph foundation. This focused
+profile uses a verifier-owned temporary SQLite database and checks adapter
+parity, semantic metadata, explicit scope denial, bounded reads, stale-write
+rejection, append-only correction chains, branch isolation, and checkpoint
+replay digest equivalence. It does not use role, Siming runtime, LLM, or Godot
+evidence.
+
+Semantic relations may carry explicit source and target endpoint scopes.
+Cross-namespace relations are admitted only when both endpoint scopes are
+present and each endpoint passes referential-integrity and visibility checks.
+Legacy same-scope relations remain compatible when those fields are absent.
+
+```powershell
+python scripts/verification/harness.py --profile heavenly-graph-semantic-foundation
+```
+
+Output:
+
+- `.harness/verification/heavenly-graph-semantic-foundation-report.json`
+- `.harness/verification/heavenly-graph-semantic-foundation-report.md`
+
+### `behavior-turn-runtime`
+
+Backend proof for the first shared typed behavior turn（行为回合）runtime
+vertical. It records one character-owned eight-stage chain, preserves accepted
+and rejected Authority settlement outcomes as actor-private projections, and
+proves scope isolation plus idempotent recorder replay.
+
+This profile does not prove character restart continuity, Siming turn
+integration, six-domain Authority projection, online LLM execution, or Godot
+presentation.
+
+```powershell
+python scripts/verification/harness.py --profile behavior-turn-runtime
+```
+
+Output:
+
+- `.harness/verification/behavior-turn-runtime-report.json`
+- `.harness/verification/behavior-turn-runtime-report.md`
+
+### `character-continuity-recovery`
+
+Backend proof that dynamic state, need/tension, goal state, continuity state,
+working memory, and the next session input rebuild from an actor-private graph
+snapshot after the legacy session timeline file is removed. This profile does
+not prove Siming, six-domain Authority projection, online LLM, or Godot closure.
+
+```powershell
+python scripts/verification/harness.py --profile character-continuity-recovery
+```
+
+### `authority-graph-projection`
+
+Backend proof for committed Authority events projected into Heavenly Graph
+across ESM/world, Inventory, Ownership, Economy, Survival/body, and
+resource/scene domains, retaining owner, source vector, settlement, and replay
+linkage. It does not prove online LLM or Godot closure.
+
+```powershell
+python scripts/verification/harness.py --profile authority-graph-projection
+```
+
+### `siming-behavior-turn-runtime`
+
+Backend proof that `SimingRuntime.tick(...)` uses the shared eight-stage
+behavior-turn contract on its decision path. It does not prove online LLM or
+Godot closure.
+
+```powershell
+python scripts/verification/harness.py --profile siming-behavior-turn-runtime
+```
+
+### `siming-led-population-seed-continuity`
+
+Backend-only direct profile for the bounded Siming-led bakery population seed handoff. It proves
+one game-start cadence entering the existing `SimingRuntime.tick()` path, Organization owner
+settlement, Character Core seed continuity, and player-triggered activation of the same character
+identity. It also checks full versus checkpoint-tail replay and stale/private/duplicate/unknown
+zero-write cases. Character replay uses independent runtimes rebuilt from actor-private graph
+snapshots; player takeover uses the production `_handle_envelope` route and proves one L1-L4
+structured execution request with an explicit `continuity_floor` no-model fallback. Bus and Siming
+tick checks are derived from fixture event counts and runtime identities rather than constants.
+The production game-start helper freezes existing world-mode and Organization schedule inputs and
+publishes only the cadence; population planning, Organization settlement, and Character Core writes
+remain inside the resulting `SimingRuntime.tick()` call. Empty activation projections are preserved
+until a later structured player handoff requires the existing synchronous activation lock.
+
+```powershell
+python scripts/verification/harness.py --profile siming-led-population-seed-continuity
+```
+
+Output:
+
+- `.harness/verification/siming-led-population-seed-continuity-report.json`
+
+The manifest intentionally keeps `include_in_profile_order=false` and `include_in_all=false`.
+Run it directly by name; aggregate profiles do not include this bounded evidence yet.
+
+### `siming-governed-three-actor-cohort-continuity-v1`
+
+Backend-only direct profile for the bounded three-actor, two-cadence cohort.
+It proves W0/W1 routing through the existing `SimingRuntime.tick(...)` path:
+Organization Owner settlement for `char_a`, presentation-only Character Core
+continuity for `char_b`, and activation-only output for `char_c`, including
+replay and zero-write boundaries. This remains a bounded vertical and does not
+prove complete population, social, economic, civilization, or multi-region
+simulation.
+
+```powershell
+python scripts/verification/harness.py --profile siming-governed-three-actor-cohort-continuity-v1
+```
+
+Output:
+
+- `.harness/verification/siming-governed-three-actor-cohort-continuity-v1-report.json`
+
+The manifest intentionally keeps `include_in_profile_order=false` and
+`include_in_all=false`.
 
 ### `siming-heavenly-runtime`
 

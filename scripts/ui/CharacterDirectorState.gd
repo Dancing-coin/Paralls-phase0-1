@@ -16,6 +16,7 @@ var recent_world_outcomes: Array[Dictionary] = []
 var recent_scheduling_rounds: Array[Dictionary] = []
 var recent_script_beats: Array[Dictionary] = []
 var recent_dialogue_pairs: Array[Dictionary] = []
+var _observatory_refresh_queued := false
 var _state_refresh_queued := false
 var _observatory_refresh_queued := false
 
@@ -41,6 +42,19 @@ func _ready() -> void:
 		bus.scheduling_round_trace_received.connect(_on_scheduling_round_trace_received)
 	if bus.has_signal("script_beat_event_received"):
 		bus.script_beat_event_received.connect(_on_script_beat_event_received)
+
+
+func _request_observatory_refresh() -> void:
+	if _observatory_refresh_queued:
+		return
+	_observatory_refresh_queued = true
+	call_deferred("_emit_observatory_state_changed")
+
+
+func _emit_observatory_state_changed() -> void:
+	_observatory_refresh_queued = false
+	if not freeze_mode:
+		emit_signal("observatory_state_changed")
 
 
 func set_observatory_enabled(enabled: bool) -> void:
@@ -312,6 +326,44 @@ func _on_script_beat_event_received(payload: Dictionary) -> void:
 	_request_observatory_refresh()
 
 
+func _presentation_script_beat(payload: Dictionary) -> Dictionary:
+	return {
+		"beat_id": str(payload.get("beat_id", "") or ""),
+		"producer_ts": int(payload.get("producer_ts", 0) or 0),
+		"causation_id": str(payload.get("causation_id", "") or ""),
+		"correlation_id": str(payload.get("correlation_id", "") or ""),
+		"participants": _string_array(payload.get("participants", [])),
+		"dramatic_summary": str(payload.get("dramatic_summary", "") or ""),
+		"actor_event_refs": _string_array(payload.get("actor_event_refs", [])),
+		"siming_event_refs": _string_array(payload.get("siming_event_refs", [])),
+		"world_event_refs": _string_array(payload.get("world_event_refs", [])),
+		"actor_summaries": _presentation_actor_summaries(payload.get("actor_summaries", [])),
+		"siming_summaries": _dictionary_array(payload.get("siming_summaries", [])),
+		"world_summaries": _dictionary_array(payload.get("world_summaries", [])),
+		"dialogue_pairs": _dictionary_array(payload.get("dialogue_pairs", [])),
+	}
+
+
+func _presentation_actor_summaries(value: Variant) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = []
+	if not (value is Array):
+		return rows
+	for row_value in value:
+		if not (row_value is Dictionary):
+			continue
+		var row: Dictionary = row_value
+		rows.append(
+			{
+				"actor_id": str(row.get("actor_id", "") or ""),
+				"stage": str(row.get("stage", "") or ""),
+				"summary": str(row.get("summary", "") or ""),
+				"focus_target": str(row.get("focus_target", "") or ""),
+				"intent_label": str(row.get("intent_label", "") or ""),
+			}
+		)
+	return rows
+
+
 func _queue_state_refresh() -> void:
 	if _state_refresh_queued:
 		return
@@ -529,6 +581,13 @@ func _merge_dialogue_pair_rows(existing_rows: Array[Dictionary], incoming_rows_v
 				if incoming_value is String and incoming_value.is_empty() and str(existing_row.get(field_name, "") or "") != "":
 					incoming_row[field_name] = existing_row[field_name]
 			pairs_by_key[incoming_pair_key] = incoming_row
+			var existing_row: Dictionary = pairs_by_key.get(incoming_pair_key, {})
+			for field_name in incoming_row.keys():
+				var incoming_value: Variant = incoming_row.get(field_name)
+				if existing_row.has(field_name) and incoming_value is String and incoming_value.is_empty():
+					continue
+				existing_row[field_name] = incoming_value
+			pairs_by_key[incoming_pair_key] = existing_row
 	var merged_rows: Array[Dictionary] = []
 	for pair_key in pairs_by_key.keys():
 		merged_rows.append((pairs_by_key[pair_key] as Dictionary).duplicate(true))

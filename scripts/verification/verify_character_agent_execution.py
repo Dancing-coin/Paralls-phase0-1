@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
@@ -49,12 +51,15 @@ def main() -> int:
     python_exe = resolve_python_exe(args.python_exe)
 
     backend_process = None
+    graph_temp_dir = tempfile.mkdtemp(prefix="character-agent-execution-graph-", dir=str(log_dir))
+    execution_env = dict(CHARACTER_EXECUTION_VERIFY_ENV)
+    execution_env["PARALLS_HEAVENLY_GRAPH_PATH"] = str(Path(graph_temp_dir) / "siming-heavenly.sqlite3")
     try:
         health, backend_process = ensure_backend(
             project_root,
             python_exe,
             prefer_fresh_backend=True,
-            env=CHARACTER_EXECUTION_VERIFY_ENV,
+            env=execution_env,
         )
         ensure_godot_import(project_root, godot_exe, "character-agent-execution-godot-import.log")
 
@@ -84,6 +89,7 @@ def main() -> int:
                 "PHASE0_DEBUG_LOGGING": "1",
                 "CHARACTER_MODEL_PROVIDER_KIND": "local",
                 "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
+                "PARALLS_HEAVENLY_GRAPH_PATH": execution_env["PARALLS_HEAVENLY_GRAPH_PATH"],
             },
         )
 
@@ -163,6 +169,7 @@ def main() -> int:
         return 0 if overall_passed else 1
     finally:
         stop_backend(backend_process)
+        shutil.rmtree(graph_temp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

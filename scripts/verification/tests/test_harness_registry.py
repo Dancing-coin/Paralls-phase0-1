@@ -25,6 +25,10 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "change-lifecycle",
         "harness-reference",
         "harness-evolution",
+        "harness-execution-contract",
+        "character-behavior-evaluation",
+        "harness-embodied-task",
+        "character-policy-calibration",
         "phase0",
         "siming-backend-chain",
         "character-model-live",
@@ -58,11 +62,16 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "siming-adaptive-bridge",
         "gameplay-foundation-contract",
         "siming-heavenly-runtime",
+        "behavior-turn-runtime",
         "gameplay-event-replay",
+        "heavenly-graph-semantic-foundation",
+        "character-continuity-recovery",
         "gameplay-foundation-event-spine",
+        "authority-graph-projection",
         "gameplay-state-groups",
         "embodied-interaction-session",
         "gameplay-resource-body",
+        "siming-behavior-turn-runtime",
         "embodied-handoff-authority",
         "gameplay-effective-stats",
         "embodied-grab-carry-place-authority",
@@ -96,6 +105,8 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["change-lifecycle"]["script"] == "scripts/verification/check_change_lifecycle.py"
     assert registry.profiles["harness-reference"]["script"] == "scripts/verification/check_harness_reference.py"
     assert registry.profiles["harness-evolution"]["script"] == "scripts/verification/check_harness_evolution.py"
+    assert registry.profiles["harness-execution-contract"]["script"] == "scripts/verification/verify_harness_execution_contract.py"
+    assert registry.profiles["harness-embodied-task"]["script"] == "scripts/verification/verify_harness_embodied_task.py"
     assert registry.profiles["siming-backend-chain"]["script"] == "scripts/verification/verify_siming_backend_chain.py"
     assert registry.profiles["siming-backend-chain"]["include_in_all"] is False
     assert registry.profiles["character-model-live"]["script"] == "scripts/verification/verify_character_model_live.py"
@@ -114,6 +125,10 @@ def test_load_profile_registry_reads_project_profiles() -> None:
     assert registry.profiles["embodied-interaction-contracts"]["script"] == "scripts/verification/verify_embodied_interaction_contracts.py"
     assert registry.profiles["siming-actor-memory-read"]["script"] == "scripts/verification/verify_siming_actor_memory_read.py"
     assert registry.profiles["siming-story-runtime"]["script"] == "scripts/verification/verify_siming_story_runtime.py"
+    assert registry.profiles["behavior-turn-runtime"]["script"] == "scripts/verification/verify_behavior_turn_runtime.py"
+    assert registry.profiles["character-continuity-recovery"]["script"] == "scripts/verification/verify_character_continuity_recovery.py"
+    assert registry.profiles["authority-graph-projection"]["script"] == "scripts/verification/verify_authority_graph_projection.py"
+    assert registry.profiles["siming-behavior-turn-runtime"]["script"] == "scripts/verification/verify_siming_behavior_turn_runtime.py"
     assert registry.profiles["embodied-affordance-registry"]["script"] == "scripts/verification/verify_embodied_affordance_registry.py"
     assert registry.profiles["embodied-bridge-attestation"]["script"] == "scripts/verification/verify_embodied_bridge_attestation.py"
     assert registry.profiles["embodied-action-controller"]["script"] == "scripts/verification/verify_embodied_action_controller.py"
@@ -156,7 +171,9 @@ def test_load_rule_registry_reads_versioned_rule_manifests() -> None:
         "docs-rules",
         "drift-rules",
         "godot-project-rules",
+        "harness-embodied-task-rules",
         "harness-evolution-rules",
+        "harness-execution-contract-rules",
         "harness-lifecycle-rules",
         "harness-reference-rules",
         "post-p5-capability-foundation-docs-rules",

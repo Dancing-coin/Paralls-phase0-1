@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "name": "character-policy-calibration",
+  "order": 48,
+  "script": "scripts/verification/verify_character_policy_calibration.py",
+  "requires_godot": false,
+  "result_artifact": ".harness/verification/character-policy-calibration-report.json",
+  "description": "Candidate-only character recall and recovery policy calibration with no automatic profile mutation"
+}

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "name": "harness-embodied-task-rules",
+  "profile": "harness-embodied-task",
+  "description": "Mechanical invariants enforced by scripts/verification/verify_harness_embodied_task.py",
+  "rules": [
+    {
+      "id": "real_session_authority",
+      "title": "Real embodied session runs through Gameplay authority",
+      "evidence": [".harness/verification/harness-embodied-task-report.json:results.real_session_authority"]
+    },
+    {
+      "id": "failure_and_recovery",
+      "title": "Failure mapping, recovery, and terminal idempotency are verified",
+      "evidence": [".harness/verification/harness-embodied-task-report.json:results.failure_and_recovery"]
+    },
+    {
+      "id": "capability_and_redaction",
+      "title": "Capability phase ordering and metadata redaction are verified",
+      "evidence": [".harness/verification/harness-embodied-task-report.json:results.capability_and_redaction"]
+    },
+    {
+      "id": "godot_projection_evidence",
+      "title": "Godot projection refs are correlated without private payloads",
+      "evidence": [".harness/verification/harness-embodied-task-report.json:results.godot_projection_evidence"]
+    }
+  ]
+}

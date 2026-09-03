@@ -10,6 +10,7 @@ from app.character_agent.models.memory_record_bundle import CharacterMemoryRecor
 from app.character_agent.models.social_memory import CharacterSocialMemoryRecord
 from app.models.character_agent_runtime import CharacterInterpretation
 from app.services.character_agent_l3 import CharacterAgentL3Service
+from app.character_agent.gateway.memory_recall import CharacterMemoryRecallPolicy
 
 
 class _RecordingGateway:
@@ -196,6 +197,85 @@ def test_l3_planner_uses_model_gateway_for_candidate_generation() -> None:
     assert gateway.requests[0]["task_kind"] == "l3_planning"
     assert "ask_probe" in plan["candidates"]
     assert decision.selected_intent == "ask_probe"
+
+
+def test_l3_planner_uses_recalled_memory_for_model_and_local_filter() -> None:
+    gateway = _recording_gateway_for_candidates(["observe"], selected_intent="observe")
+    planner = CharacterAgentL3Service(
+        gateway=gateway,
+        memory_recall_policy=CharacterMemoryRecallPolicy(pool_limit=1),
+    )
+
+    planner.build_intent_plan(
+        interpretation=_interpretation(),
+        snapshot={"current_focus_target": "obj_letter"},
+        current_goal_state={"primary_goal": "understand the letter"},
+        memory_bundle={
+            "working_memory": [],
+            "event_memories": [
+                {
+                    "memory_id": "event:letter",
+                    "actor_id": "char_b",
+                    "event_id": "letter",
+                    "source_event_id": "letter",
+                    "world_ts": 10,
+                    "event_type": "character_perceived_event",
+                    "summary": "the sealed letter was destroyed",
+                    "clarity_score": 0.9,
+                    "certainty_score": 0.9,
+                    "refs": [],
+                },
+                {
+                    "memory_id": "event:weather",
+                    "actor_id": "char_b",
+                    "event_id": "weather",
+                    "source_event_id": "weather",
+                    "world_ts": 99,
+                    "event_type": "character_perceived_event",
+                    "summary": "the northern rain became heavier",
+                    "clarity_score": 1.0,
+                    "certainty_score": 1.0,
+                    "refs": [],
+                },
+            ],
+        },
+        control_mode="agent_full_auto",
+    )
+
+    context = gateway.requests[0]["context"]
+    assert [entry["memory_id"] for entry in context["memory"]["event_memories"]] == ["event:letter"]
+    assert context["memory_recall"]["selected_memory_refs"] == ["event:event:letter"]
+
+
+def test_l3_planner_consumes_one_shot_recovery_policy_from_runtime_memory() -> None:
+    gateway = _recording_gateway_for_candidates(
+        ["share_info", "observe"],
+        selected_intent="share_info",
+    )
+    planner = CharacterAgentL3Service(gateway=gateway)
+
+    plan = planner.build_intent_plan(
+        interpretation=_interpretation(),
+        control_mode="agent_full_auto",
+        memory_bundle={
+            "working_memory": [
+                {
+                    "event_type": "character_policy_candidate_event",
+                    "producer_ts": 99,
+                    "payload": {
+                        "candidate_id": "candidate:recovery:1",
+                        "status": "candidate_only",
+                        "policy_type": "recovery_policy",
+                        "failed_intent": "share_info",
+                    },
+                }
+            ]
+        },
+    )
+
+    assert plan["behavior_policy"]["candidate_id"] == "candidate:recovery:1"
+    assert "share_info" not in plan["candidates"]
+    assert plan["model_output"]["selected_intent"] == "share_info"
 
 
 def test_l3_planner_passes_bounded_skill_affordance_to_model_without_overriding_selection() -> None:

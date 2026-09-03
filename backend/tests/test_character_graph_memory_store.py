@@ -437,3 +437,75 @@ def test_sqlite_restart_recalls_durable_records(tmp_path: Path) -> None:
         ] == [1, 1, 1, 1, 1]
     finally:
         reopened.close()
+
+
+def test_retrieval_bundle_prefers_graph_continuity_working_memory() -> None:
+    graph = InMemoryHeavenlyGraphAdapter()
+    store = CharacterGraphMemoryStore(
+        graph,
+        scope_resolver=_scope,
+        continuity_reader=lambda actor_id: {
+            "working_memory": {
+                "recent_perceived_events": [{"event_type": "graph_rehydrated"}],
+            }
+        },
+    )
+
+    bundle = store.retrieval_bundle("char_b")
+
+    assert bundle["working_memory"] == [{"event_type": "graph_rehydrated"}]
+
+
+def test_production_graph_memory_rejects_missing_continuity_snapshot() -> None:
+    graph = InMemoryHeavenlyGraphAdapter()
+    store = CharacterGraphMemoryStore(
+        graph,
+        scope_resolver=_scope,
+        continuity_reader=lambda _actor_id: {},
+        require_continuity_snapshot=True,
+    )
+
+    try:
+        store.retrieval_bundle("char_b")
+    except RuntimeError as exc:
+        assert "graph continuity snapshot is required" in str(exc)
+    else:  # pragma: no cover
+        raise AssertionError("missing production continuity snapshot was silently downgraded")
+
+
+def test_sqlite_restart_rehydrate_replays_source_event_without_idempotency_conflict(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "character-memory-rehydrate.sqlite3"
+    event = _event(
+        "relational_belief_event",
+        "evt:rehydrate",
+        100,
+        {"entity_id": "char_a", "belief_type": "trust_level", "value": "noticed"},
+    )
+    later_event = _event(
+        "relational_belief_event",
+        "evt:rehydrate:later",
+        200,
+        {"entity_id": "char_a", "belief_type": "trust_level", "value": "trusted"},
+    )
+    first_graph = SQLiteHeavenlyGraphAdapter(path)
+    first_store = CharacterGraphMemoryStore(first_graph, scope_resolver=_scope)
+    first_store.write_event(event)
+    first_store.write_event(later_event)
+    first_graph.close()
+
+    second_graph = SQLiteHeavenlyGraphAdapter(path)
+    try:
+        CharacterGraphMemoryStore(second_graph, scope_resolver=_scope).write_event(event)
+        nodes = second_graph.query_nodes(
+            HeavenlyNodeQuery(
+                scope=_scope("char_b"),
+                valid_at=100,
+                node_types=["actor_memory:social"],
+                limit=None,
+            )
+        )
+        assert len(nodes) == 1
+    finally:
+        second_graph.close()

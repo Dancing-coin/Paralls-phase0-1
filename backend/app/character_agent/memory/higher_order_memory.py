@@ -22,6 +22,8 @@ class CharacterHigherOrderMemory:
         confidence: float,
         source_event_id: str,
         producer_ts: int,
+        summary: str = "",
+        source_event_refs: list[str] | None = None,
     ) -> dict[str, object]:
         entry = {
             "memory_id": source_event_id or f"higher_order:{actor_id}:{subject_actor_id}:{producer_ts}",
@@ -32,6 +34,8 @@ class CharacterHigherOrderMemory:
             "confidence": confidence,
             "source_event_id": source_event_id,
             "producer_ts": producer_ts,
+            "summary": summary,
+            "source_event_refs": list(source_event_refs or []),
         }
         entries = self._entries_by_actor.setdefault(actor_id, [])
         for index, existing in enumerate(entries):

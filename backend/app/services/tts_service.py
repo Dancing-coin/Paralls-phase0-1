@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 import struct
 from dataclasses import dataclass
 from typing import Protocol
@@ -186,6 +187,8 @@ class TTSService:
     def synthesize(self, actor_id: str, content: str) -> DialogueAudio:
         voice_id = self._legacy_voice_id(actor_id)
         if self._configuration.tts_mode == "stub":
+            if os.getenv("TTS_REQUIRE_REAL", "").strip() == "1":
+                raise TTSProviderError("real TTS provider required; stub mode is disabled")
             return self._stub_audio(actor_id=actor_id, voice_id=voice_id)
 
         try:
@@ -203,6 +206,8 @@ class TTSService:
             if len(encoded_payload) > self._configuration.tts_max_encoded_payload_bytes:
                 raise TTSProviderError("provider WAV exceeds the configured encoded payload budget")
         except (TTSProviderError, TTSVoiceProfileError):
+            if os.getenv("TTS_REQUIRE_REAL", "").strip() == "1":
+                raise
             return self._fallback_audio(actor_id=actor_id, voice_id=voice_id)
 
         return DialogueAudio(

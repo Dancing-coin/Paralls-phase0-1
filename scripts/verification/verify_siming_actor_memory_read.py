@@ -74,7 +74,7 @@ def main() -> int:
             "gateway_completeness": gateway_result.completeness,
             "gateway_observation_revision": gateway_result.revision_vector.observation,
         }
-        app_main.heavenly_graph.close()
+        app_main.close_runtime_resources()
 
     trace_path = log_dir / "siming-actor-memory-read-trace.json"
     write_json(trace_path, trace)

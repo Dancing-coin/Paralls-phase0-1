@@ -210,6 +210,8 @@ class CharacterAgentMemoryStore:
                 shared_secret_refs=[],
                 source_event_id=source_event_id,
                 producer_ts=producer_ts,
+                summary=str(payload.get("summary", "") or ""),
+                source_event_refs=[str(ref) for ref in payload.get("source_ref_lineage", []) if str(ref)] if isinstance(payload.get("source_ref_lineage", []), list) else [],
             )
         elif event_type == "knowledge_belief_event":
             source_event_id = str(event.get("event_id", "") or "")
@@ -265,6 +267,8 @@ class CharacterAgentMemoryStore:
                 confidence=float(payload.get("confidence", 0.0) or 0.0),
                 source_event_id=source_event_id,
                 producer_ts=producer_ts,
+                summary=str(payload.get("summary", "") or ""),
+                source_event_refs=[str(ref) for ref in payload.get("source_ref_lineage", []) if str(ref)] if isinstance(payload.get("source_ref_lineage", []), list) else [],
             )
 
     def retrieval_bundle(self, actor_id: str) -> dict[str, list[dict[str, object]]]:

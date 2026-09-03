@@ -17,6 +17,8 @@ from app.character_agent.skills.store import SkillEvidenceStore
 from app.models.player_input import InteractIntent
 from app.models.world_result import ConstraintStateResult
 from app.services.esm_service import ESMService
+from app.services.harness_execution_trace import HarnessExecutionTraceService
+from app.services.harness_failure_adapters import adapt_failure
 from app.services.physical_interaction_channel import (
     PhysicalContactObservation,
     PhysicalEffectKind,
@@ -47,6 +49,7 @@ class StructuredInteractionRequest(BaseModel):
     scene_id: str = "scene_demo"
     zone_id: str = "zone_focus"
     producer_ts: int = 0
+    task_id: str = ""
     target_object_id: str = ""
     actor_position: tuple[float, float, float] | None = None
     perception_ready: bool = True
@@ -169,11 +172,13 @@ class InteractionOrchestrationService:
         physical_channel: PhysicalInteractionChannel | None = None,
         skill_evidence_extractor: SkillEvidenceExtractor | None = None,
         skill_evidence_store: SkillEvidenceStore | None = None,
+        harness_trace: HarnessExecutionTraceService | None = None,
     ) -> None:
         self._esm = esm_service or ESMService()
         self._physical = physical_channel or PhysicalInteractionChannel()
         self._skill_evidence_extractor = skill_evidence_extractor or SkillEvidenceExtractor()
         self.skill_evidence_store = skill_evidence_store or SkillEvidenceStore()
+        self.harness_trace = harness_trace or HarnessExecutionTraceService()
         self.trace: list[dict[str, object]] = []
 
     def plan(self, request: StructuredInteractionRequest) -> InteractionOrchestrationPlan:
@@ -262,6 +267,17 @@ class InteractionOrchestrationService:
         )
 
     def execute(self, request: StructuredInteractionRequest) -> InteractionOrchestrationResult:
+        task_id = request.task_id or f"interaction:{request.intent.intent_id}"
+        try:
+            self.harness_trace.get_envelope(task_id)
+        except ValueError:
+            self.harness_trace.start(
+                task_id=task_id,
+                run_id=f"run:{task_id}",
+                correlation_id=f"corr:{request.intent.intent_id}",
+                causation_id=f"cause:{request.intent.intent_id}",
+            )
+            self.harness_trace.transition(task_id, "running", producer_ts=request.producer_ts)
         plan = self.plan(request)
         if plan.policy in {"requires-active-perception", "requires-authority-confirmation"}:
             action_settlement_result = map_action_settlement_result(
@@ -284,7 +300,7 @@ class InteractionOrchestrationService:
             )
             self._record_skill_evidence(result)
             self._trace(result)
-            return result
+            return self._finish_harness_task(task_id, result)
         if plan.policy == "denied-by-constraint":
             constraint = self._constraint_result(request, "denied_by_constraint", plan.degrade_reason)
             channel_results = [
@@ -317,7 +333,7 @@ class InteractionOrchestrationService:
             )
             self._record_skill_evidence(result)
             self._trace(result)
-            return result
+            return self._finish_harness_task(task_id, result)
 
         channel_results: list[ChannelResultEnvelope] = []
         unified_results: list[dict[str, Any]] = []
@@ -372,6 +388,27 @@ class InteractionOrchestrationService:
         )
         self._record_skill_evidence(result)
         self._trace(result)
+        return self._finish_harness_task(task_id, result)
+
+    def _finish_harness_task(
+        self,
+        task_id: str,
+        result: InteractionOrchestrationResult,
+    ) -> InteractionOrchestrationResult:
+        metadata = {
+            "result_id": result.result_id,
+            "status": result.status,
+            "channel_result_refs": [entry.result_id for entry in result.channel_results],
+            "trace_refs": list(result.trace_refs),
+        }
+        envelope = self.harness_trace.get_envelope(task_id)
+        if envelope.phase != "running":
+            return result
+        if result.status == "completed":
+            self.harness_trace.transition(task_id, "committed", producer_ts=0, metadata=metadata)
+        else:
+            failure_kind = "constraint_conflict" if result.status == "denied" else "dependency_missing"
+            self.harness_trace.transition(task_id, "failed", producer_ts=0, failure_kind=failure_kind, metadata=metadata)
         return result
 
     def _record_skill_evidence(self, result: InteractionOrchestrationResult) -> None:

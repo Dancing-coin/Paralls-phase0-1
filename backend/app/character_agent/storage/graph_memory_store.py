@@ -18,12 +18,15 @@ from app.character_agent.models.working_memory_state import CharacterWorkingMemo
 from app.character_agent.models.dynamic_state import CharacterDynamicState
 from app.character_agent.storage.memory_store import CharacterAgentMemoryStore
 from app.models.siming_heavenly_graph import (
+    GraphReaderContext,
     GraphProvenance,
+    GraphSemanticMetadata,
     GraphValidity,
     HeavenlyGraphNode,
     HeavenlyGraphRelation,
     HeavenlyGraphScope,
     HeavenlyGraphWriteBatch,
+    NodeLookupQuery,
     HeavenlyNodeQuery,
     HeavenlyRelationQuery,
 )
@@ -54,9 +57,13 @@ class CharacterGraphMemoryStore:
         graph: HeavenlyGraphPort,
         *,
         scope_resolver: Callable[[str], HeavenlyGraphScope],
+        continuity_reader: Callable[[str], dict[str, object] | None] | None = None,
+        require_continuity_snapshot: bool = False,
     ) -> None:
         self._graph = graph
         self._scope_resolver = scope_resolver
+        self._continuity_reader = continuity_reader
+        self._require_continuity_snapshot = require_continuity_snapshot
         self._lock = RLock()
         self._normalizer = CharacterAgentMemoryStore()
         self._source_batches: dict[
@@ -79,8 +86,18 @@ class CharacterGraphMemoryStore:
             if cached is not None and cached[0] == event:
                 self._graph.write_batch(cached[1])
                 return
+            if source_event_id and self._graph.has_idempotency_key(
+                scope=scope,
+                idempotency_key=f"character-memory:{actor_id}:{source_event_id}",
+            ):
+                return
+            already_deposited = bool(source_event_id) and self._has_source_event(
+                scope,
+                source_event_id,
+                recorded_at=int(event.get("producer_ts", 0) or 0),
+            )
             self._normalizer.write_event(event)
-            if source_event_id:
+            if source_event_id and not already_deposited:
                 batch = self._deposit_bundle(
                     actor_id,
                     scope,
@@ -89,6 +106,26 @@ class CharacterGraphMemoryStore:
                 )
                 if batch is not None:
                     self._source_batches[source_key] = (deepcopy(event), batch)
+
+    def _has_source_event(
+        self,
+        scope: HeavenlyGraphScope,
+        source_event_id: str,
+        *,
+        recorded_at: int,
+    ) -> bool:
+        result = self._graph.query_semantic(
+            NodeLookupQuery(
+                context=self._reader_context(scope, valid_at=self._MAX_TIME, recorded_at=recorded_at if recorded_at > 0 else None),
+                scope=scope,
+                node_types=[f"actor_memory:{pool}" for pool, _field, _model in self.POOLS],
+                limit=1000,
+            )
+        )
+        return any(
+            node.provenance.source_ref == source_event_id
+            for node in result.nodes
+        )
 
     def retrieval_record_bundle(
         self,
@@ -105,17 +142,17 @@ class CharacterGraphMemoryStore:
         )
         values: dict[str, list[MemoryRecord]] = {}
         for pool, field, model in self.POOLS:
-            nodes = self._graph.query_nodes(
-                HeavenlyNodeQuery(
+            result = self._graph.query_semantic(
+                NodeLookupQuery(
+                    context=self._reader_context(scope, valid_at=recall_time),
                     scope=scope,
-                    valid_at=recall_time,
                     node_types=[f"actor_memory:{pool}"],
-                    limit=None,
+                    limit=1000,
                 )
             )
             records = [
                 model.model_validate(node.attributes["record"])
-                for node in nodes
+                for node in result.nodes
                 if "record" in node.attributes
             ]
             values[field] = sorted(
@@ -138,7 +175,21 @@ class CharacterGraphMemoryStore:
         higher_order_memories = [
             item.model_dump() for item in records.higher_order_memories
         ]
-        working_memory = self._normalizer.retrieval_bundle(actor_id)["working_memory"]
+        continuity = self._continuity_reader(actor_id) if self._continuity_reader else None
+        graph_working_memory = continuity.get("working_memory") if isinstance(continuity, dict) else None
+        if self._require_continuity_snapshot and isinstance(continuity, dict) and not isinstance(graph_working_memory, dict):
+            raise RuntimeError(
+                f"graph continuity snapshot is required before reading working memory for {actor_id}"
+            )
+        if isinstance(graph_working_memory, dict):
+            working_memory = self._working_memory_compatibility_view(
+                graph_working_memory,
+                event_memories=event_memories,
+                observation_memories=observation_memories,
+                session_timeline=continuity.get("session_timeline", []) if isinstance(continuity, dict) else [],
+            )
+        else:
+            working_memory = self._normalizer.retrieval_bundle(actor_id)["working_memory"]
         return {
             "working_memory": working_memory,
             "event_memories": event_memories,
@@ -146,13 +197,83 @@ class CharacterGraphMemoryStore:
             "knowledge_memories": knowledge_memories,
             "social_memories": social_memories,
             "higher_order_memories": higher_order_memories,
-            "episodic_memories": self._normalizer._legacy_episodic_memories(
-                event_memories
-            ),
-            "relational_memories": self._normalizer._legacy_relational_memories(
-                knowledge_memories
-            ),
+            "episodic_memories": self._episodic_compatibility_view(event_memories),
+            "relational_memories": self._relational_compatibility_view(knowledge_memories),
         }
+
+    @staticmethod
+    def _working_memory_compatibility_view(
+        state: dict[str, object],
+        *,
+        event_memories: list[dict[str, object]],
+        observation_memories: list[dict[str, object]],
+        session_timeline: object,
+    ) -> list[dict[str, object]]:
+        values: list[dict[str, object]] = []
+        for key in ("recent_perceived_events", "recent_esm_results", "recent_siming_catalysts"):
+            entries = state.get(key, [])
+            if isinstance(entries, list):
+                values.extend(entry for entry in entries if isinstance(entry, dict))
+        values.extend(
+            {"event_type": str(entry.get("event_type", "")), **entry}
+            for entry in event_memories
+            if entry.get("event_type")
+        )
+        values.extend(
+            {"event_type": "character_perceived_event", **entry}
+            for entry in observation_memories
+        )
+        if isinstance(session_timeline, list):
+            values.extend(
+                {"event_type": str(entry.get("event_type", "")), **entry}
+                for entry in session_timeline
+                if isinstance(entry, dict) and entry.get("event_type")
+            )
+        return values
+
+    @staticmethod
+    def _episodic_compatibility_view(
+        event_memories: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        return [
+            {
+                "summary": str(entry.get("summary", "") or ""),
+                "source_event_id": str(entry.get("source_event_id", "") or ""),
+                "producer_ts": int(entry.get("world_ts", 0) or 0),
+                "tags": [],
+            }
+            for entry in event_memories
+        ]
+
+    @classmethod
+    def _relational_compatibility_view(
+        cls,
+        knowledge_memories: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        result: list[dict[str, object]] = []
+        for entry in knowledge_memories:
+            key = str(entry.get("proposition_key", "") or "")
+            if not key.startswith("social:"):
+                continue
+            parts = key.split(":", 2)
+            if len(parts) != 3 or not parts[1] or not parts[2]:
+                continue
+            entity_id, belief_type = parts[1], parts[2]
+            proposition = str(entry.get("proposition", "") or "")
+            prefix = f"{entity_id}:{belief_type}="
+            value = proposition[len(prefix):] if proposition.startswith(prefix) else (
+                proposition.split("=", 1)[1] if "=" in proposition else ""
+            )
+            result.append(
+                {
+                    "entity_id": entity_id,
+                    "belief_type": belief_type,
+                    "value": value,
+                    "source_event_id": str(entry.get("source_event_id", "") or ""),
+                    "producer_ts": int(entry.get("producer_ts", 0) or 0),
+                }
+            )
+        return result
 
     def working_memory_state(
         self,
@@ -171,6 +292,26 @@ class CharacterGraphMemoryStore:
         if scope.graph_namespace != "actor_private" or scope.owner_actor_id != actor_id:
             raise ValueError("actor-private scope owner must match event actor")
         return scope
+
+    @staticmethod
+    def _reader_context(
+        scope: HeavenlyGraphScope,
+        *,
+        valid_at: int,
+        recorded_at: int | None = None,
+    ) -> GraphReaderContext:
+        owner = scope.owner_actor_id
+        principal = owner or "reader:character-agent"
+        return GraphReaderContext(
+            reader_principal=principal,
+            allowed_visibility_scopes=("actor_private",),
+            world_id=scope.world_id,
+            session_id=scope.session_id,
+            story_branch_id=scope.story_branch_id,
+            valid_at=valid_at,
+            recorded_at=recorded_at,
+            policy_revision="policy:v1",
+        )
 
     def _deposit_bundle(
         self,
@@ -247,6 +388,7 @@ class CharacterGraphMemoryStore:
             supersedes_revision=prior.revision if prior else None,
             attributes={"record": record.model_dump(mode="json")},
             provenance=self._provenance(record, actor_id=record.actor_id),
+            semantic_metadata=self._memory_metadata(record, "authority"),
         )
 
     def _reference_anchor(
@@ -289,6 +431,7 @@ class CharacterGraphMemoryStore:
             supersedes_revision=prior_anchor.revision if prior_anchor else None,
             attributes={"reference_id": reference_id},
             provenance=self._provenance(record, actor_id=record.actor_id),
+            semantic_metadata=self._memory_metadata(record, "projection"),
         )
         return anchor, HeavenlyGraphRelation(
             relation_id=relation_id,
@@ -302,6 +445,19 @@ class CharacterGraphMemoryStore:
             supersedes_revision=prior_relation.revision if prior_relation else None,
             provenance=self._provenance(record, actor_id=record.actor_id),
             attributes={},
+            semantic_metadata=self._memory_metadata(record, "projection"),
+        )
+
+    @staticmethod
+    def _memory_metadata(record: MemoryRecord, derivation_kind: str) -> GraphSemanticMetadata:
+        source_ref = record.source_event_id or record.memory_id
+        return GraphSemanticMetadata(
+            record_kind="fact" if derivation_kind == "authority" else "projection",
+            visibility_scope="actor_private",
+            derivation_kind=derivation_kind,
+            source_event_refs=(source_ref,),
+            policy_revision="policy:v1",
+            scope_digest="scope:actor-private",
         )
 
     def _record_reference(self, record: MemoryRecord) -> tuple[str, str] | None:

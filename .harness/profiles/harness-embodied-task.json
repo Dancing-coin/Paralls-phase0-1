@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "harness-embodied-task",
+  "order": 47,
+  "script": "scripts/verification/verify_harness_embodied_task.py",
+  "requires_godot": true,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/harness-embodied-task-report.json",
+  "description": "Backend proof for the real embodied session task chain, authority/evidence correlation, recovery, capability phases, and trace privacy"
+}

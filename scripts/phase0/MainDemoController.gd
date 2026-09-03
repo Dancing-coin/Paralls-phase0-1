@@ -116,6 +116,14 @@ func _ready() -> void:
 	autotest_enabled = OS.get_environment("PHASE0_AUTOTEST") == "1"
 	focus_autotest_enabled = OS.get_environment("PHASE0_FOCUS_AUTOTEST") == "1"
 	scene_load_probe_only = OS.get_environment("PHASE0_SCENE_LOAD_ONLY") == "1"
+	if OS.get_environment("SIMING_HEAVENLY_AUTOTEST") == "1":
+		# The Heavenly live probe owns its setup traffic. Apply suppression before
+		# the backend connection callback can emit automatic perception facts.
+		suspend_near_object_visual_fact = true
+		suspend_spatial_access_fact = true
+		_set_autotest_actor_local_perception_enabled(false)
+		if OS.get_environment("SIMING_HEAVENLY_AUTOTEST_SETUP") == "1":
+			autotest_transport_quiescent = true
 	var bus := _get_bus()
 	if bus:
 		if bus.has_method("set_debug_logging_enabled"):
@@ -318,6 +326,10 @@ func _on_backend_connected(_payload: String) -> void:
 		return
 	backend_connected_once = true
 	pending_backend_reconnect = false
+	if OS.get_environment("SIMING_HEAVENLY_AUTOTEST") == "1":
+		# The Heavenly probe owns the setup sequence and will issue explicit
+		# interaction/perception events after the scene is ready.
+		return
 	_request_backend_health()
 	_emit_spatial_access_zone_entry()
 	if pending_focus_sync:
@@ -413,6 +425,8 @@ func _on_debug_event_logged(message: String) -> void:
 
 func _process(_delta: float) -> void:
 	if autotest_shutdown_in_progress or autotest_transport_quiescent:
+		return
+	if OS.get_environment("SIMING_HEAVENLY_AUTOTEST_SETUP") == "1":
 		return
 	if focus_override_active:
 		if not suspend_spatial_access_fact:

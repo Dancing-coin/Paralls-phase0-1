@@ -8,6 +8,7 @@ from app.models.authority_event import (
 from app.models.siming_event import SimingInput, SimingOutput
 from app.models.siming_adaptive_bridge import AdaptiveBridgeNodeProposal
 from app.models.siming_heavenly_graph import HeavenlyGraphScope
+from app.models.siming_heavenly_graph import BehaviorTurnQuery, GraphReaderContext
 from app.models.siming_heavenly_memory import (
     SimingCompiledContext,
     SimingContextRequest,
@@ -27,6 +28,8 @@ from app.services.siming_heavenly_runtime_support import (
     PreparedHeavenlyDecision,
 )
 from app.services.siming_runtime import SimingRuntime
+from app.services.behavior_turn_recorder import BehaviorTurnRecorder
+from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
 
 
 def _event(event_type: str, *, payload: dict[str, object]) -> AuthorityEvent:
@@ -331,3 +334,41 @@ def test_recovery_dispatches_only_a_nonterminal_correlation(
     assert [output.output_type for output in result.outputs].count(
         "dispatch_intent"
     ) == expected_dispatches
+
+
+def test_siming_tick_records_shared_behavior_turn_chain() -> None:
+    graph = InMemoryHeavenlyGraphAdapter()
+    scope = HeavenlyGraphScope(
+        world_id="world:demo",
+        session_id="session:demo",
+        story_branch_id="branch:main",
+    )
+    event = _event("visual_fact_event", payload={"established_fact_id": "fact:1"})
+    runtime = SimingRuntime(
+        behavior_turn_recorder=BehaviorTurnRecorder(graph),
+        behavior_turn_scope_resolver=lambda _event: scope,
+    )
+    runtime.tick([SimingInput(input_type="visual_fact_event", source_event=event)])
+    result = graph.query_semantic(
+        BehaviorTurnQuery(
+            context=GraphReaderContext(
+                reader_principal="reader:siming",
+                allowed_visibility_scopes=("siming_internal",),
+                world_id="world:demo",
+                session_id="session:demo",
+                story_branch_id="branch:main",
+                valid_at=100,
+                recorded_at=100,
+                policy_revision="policy:siming-runtime:v1",
+            ),
+            scope=scope,
+            correlation_id="corr:destroy:1",
+        )
+    )
+    stage_nodes = [
+        node for node in result.nodes if node.attributes.get("entity_kind") == "stage"
+    ]
+    assert [node.attributes["stage"] for node in stage_nodes] == [
+        "context", "interpretation", "goal", "intent", "execution",
+        "settlement", "evaluation", "policy",
+    ]

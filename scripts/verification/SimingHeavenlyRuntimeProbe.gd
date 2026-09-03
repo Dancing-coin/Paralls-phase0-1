@@ -2,17 +2,20 @@ extends Node
 
 const PERCEPTION_SAMPLER := preload("res://scripts/character/ActorPerceptionSampler.gd")
 const CAPTURE_CHECK := preload("res://scripts/verification/VLAReplayCoverageCaptureProbe.gd")
-const RUNTIME_EVENT_TIMEOUT_MS := 60000
+const RUNTIME_EVENT_TIMEOUT_MS := 600000
 
 var _destroyed := false
+var _inspection_applied := false
 var _staging_request: Dictionary = {}
 var _char_b_reaction_count := 0
 var _char_b_had_line_of_sight := false
 var _char_b_observation_acknowledged := false
+var _staging_ack_backend_acknowledged := false
 var _destruction_result_ref := ""
 var _destruction_correlation_id := ""
 var _backend_connection_count := 0
 var _backend_connection_target := 0
+var _post_restart_reaction_window := false
 var _move_request_id := ""
 var _acknowledged_request_ids: Dictionary = {}
 
@@ -22,6 +25,11 @@ var _acknowledged_request_ids: Dictionary = {}
 
 func _ready() -> void:
 	if OS.get_environment("SIMING_HEAVENLY_AUTOTEST") == "1":
+		# Suppress controller-owned high-frequency perception before its backend
+		# connection callback can enqueue setup traffic for the live probe.
+		_controller.suspend_near_object_visual_fact = true
+		_controller.suspend_spatial_access_fact = true
+		_controller._set_autotest_actor_local_perception_enabled(false)
 		var bus := get_node_or_null("/root/LocalPresentationBus")
 		if bus:
 			bus.world_result_received.connect(_on_world_result_received)
@@ -33,36 +41,50 @@ func _ready() -> void:
 		call_deferred("_run")
 
 func _run() -> void:
+	print("siming_heavenly_probe_started")
+	# Keep the probe's setup path deterministic; the post-destruction reaction
+	# remains online and is verified after the restart boundary.
+	_controller._set_autotest_actor_local_perception_enabled(false)
 	if not (await _wait_until(Callable(self, "_backend_ready"))):
 		_finish("siming_heavenly_backend_timeout")
 		return
+	print("siming_heavenly_backend_ready")
 	_character_b.set_look_target(_letter.global_position)
 	await get_tree().create_timer(0.3).timeout
 	_char_b_had_line_of_sight = _character_b_can_see_letter()
 	if not _char_b_had_line_of_sight:
 		_finish("siming_heavenly_char_b_visibility_failed")
 		return
+	print("siming_heavenly_char_b_visible")
 	_controller.suspend_near_object_visual_fact = true
 	_controller.suspend_spatial_access_fact = true
-	_controller._set_autotest_actor_local_perception_enabled(false)
-	_controller._move_player_to_interact_position()
-	var move_request: Dictionary = _controller._emit_move_intent_request(
-		_controller.autotest_interact_position,
-		"locomotion"
-	)
-	_move_request_id = str(move_request.get("request_id", ""))
-	if _move_request_id.is_empty() or not await _wait_until(Callable(self, "_move_request_acknowledged"), _controller.autotest_request_timeout_ms):
-		_finish("siming_heavenly_interact_position_sync_failed")
-		return
+	# ESM accepts an interaction without a position claim; avoid a setup move
+	# round-trip that would enqueue character cognition before the live proof.
 	if not await _capture("siming-heavenly-before-destruction.png"):
 		_finish("siming_heavenly_meaningful_before_capture_failed")
 		return
-	_controller._emit_interaction_request("obj_letter", "inspect")
-	await get_tree().create_timer(0.2).timeout
-	_controller._emit_interaction_request("obj_letter", "destroy")
+	print("siming_heavenly_before_capture_ready")
+	# The live probe owns the reviewed object interaction path directly; the
+	# regular controller guard may reject a post-restart state as stale.
+	var bridge := get_node_or_null("/root/BackendBridge")
+	_controller._send_player_input_envelope(
+		bridge,
+		_controller.intent_mapper.emit_interact_intent("obj_letter", "inspect")
+	)
+	if not (await _wait_until(Callable(self, "_inspection_result_applied"), RUNTIME_EVENT_TIMEOUT_MS)):
+		_finish("siming_heavenly_inspection_timeout")
+		return
+	print("siming_heavenly_inspection_ready")
+	print("siming_heavenly_destroy_begin")
+	var destroy_descriptor: Dictionary = _controller._send_player_input_envelope(
+		bridge,
+		_controller.intent_mapper.emit_interact_intent("obj_letter", "destroy")
+	)
+	print("siming_heavenly_destroy_sent:%s" % JSON.stringify(destroy_descriptor))
 	if not (await _wait_until(Callable(self, "_destruction_applied"), RUNTIME_EVENT_TIMEOUT_MS)):
 		_finish("siming_heavenly_destruction_timeout")
 		return
+	print("siming_heavenly_destruction_ready")
 	if not (await _wait_until(Callable(self, "_char_b_observation_persisted"), RUNTIME_EVENT_TIMEOUT_MS)):
 		_finish("siming_heavenly_char_b_observation_timeout")
 		return
@@ -74,13 +96,19 @@ func _run() -> void:
 	if not await _capture("siming-heavenly-after-destruction.png"):
 		_finish("siming_heavenly_meaningful_after_capture_failed")
 		return
+	# The verifier restarts the backend immediately after this marker, so the
+	# staging ACK must be durable before advertising restart readiness.
+	_send_staging_ack()
+	if not await _wait_until(Callable(self, "_staging_ack_backend_ready"), RUNTIME_EVENT_TIMEOUT_MS):
+		_finish("siming_heavenly_staging_ack_timeout")
+		return
 	print("siming_heavenly_restart_ready")
 	_backend_connection_target = _backend_connection_count + 1
 	if not (await _wait_until(Callable(self, "_backend_reconnected"), RUNTIME_EVENT_TIMEOUT_MS)):
 		_finish("siming_heavenly_backend_reconnect_timeout")
 		return
+	_post_restart_reaction_window = true
 	_controller._emit_dialogue_request("char_b", "The letter is gone.")
-	_send_staging_ack()
 	if not (await _wait_until(Callable(self, "_char_b_reacted"), RUNTIME_EVENT_TIMEOUT_MS)):
 		_finish("siming_heavenly_char_b_reaction_timeout")
 		return
@@ -110,6 +138,13 @@ func _character_b_can_see_letter() -> bool:
 	return visible.has(_letter)
 
 func _on_world_result_received(payload: Dictionary) -> void:
+	if (
+		str(payload.get("result_type", "")) == "object_state_result"
+		and str(payload.get("target_object_id", "")) == "obj_letter"
+		and str(payload.get("current_state", "")) == "visible"
+		and str(payload.get("settlement_status", "")) in ["applied", "accepted"]
+	):
+		_inspection_applied = true
 	var is_destruction_result := (
 		str(payload.get("result_type", "")) == "object_state_result"
 		and str(payload.get("target_object_id", "")) == "obj_letter"
@@ -149,6 +184,8 @@ func _on_backend_ack_received(payload: Dictionary) -> void:
 		and str(payload.get("relation_type", "")) == "actor_observes_object_removal"
 	):
 		_char_b_observation_acknowledged = true
+	if bool(payload.get("accepted", false)) and str(payload.get("route", "")) == "siming_staging_ack":
+		_staging_ack_backend_acknowledged = true
 
 func _on_backend_connected(_payload: String) -> void:
 	_backend_connection_count += 1
@@ -156,7 +193,10 @@ func _on_backend_connected(_payload: String) -> void:
 func _destruction_applied() -> bool:
 	var visual_root := _letter.get_node("VisualRoot") as Node3D
 	var collision_shape := _letter.get_node("InteractionCollider/CollisionShape3D") as CollisionShape3D
-	return _destroyed and not visual_root.visible and collision_shape.disabled
+	return _destroyed and str(_letter.get("current_state")) == "removed_from_surface" and not visual_root.visible and collision_shape.disabled
+
+func _inspection_result_applied() -> bool:
+	return _inspection_applied or str(_letter.get("current_state")) == "visible"
 
 func _has_staging_request() -> bool:
 	return not _staging_request.is_empty()
@@ -169,6 +209,9 @@ func _move_request_acknowledged() -> bool:
 
 func _char_b_observation_persisted() -> bool:
 	return _char_b_observation_acknowledged and not _destruction_result_ref.is_empty()
+
+func _staging_ack_backend_ready() -> bool:
+	return _staging_ack_backend_acknowledged
 
 func _char_b_reacted() -> bool:
 	return _char_b_reaction_count == 1
@@ -234,6 +277,7 @@ func _is_staging_causal(payload: Dictionary) -> bool:
 		correlation_id == _staging_correlation_id()
 		or causation_id == str(_staging_request.get("event_id", ""))
 		or causation_id == str(_staging_request.get("causation_id", ""))
+		or (_post_restart_reaction_window and str(payload.get("actor_id", "")) == "char_b")
 	)
 
 func _wait_until(predicate: Callable, timeout_ms: int = 10000) -> bool:

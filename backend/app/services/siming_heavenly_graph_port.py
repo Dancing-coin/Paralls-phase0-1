@@ -1,6 +1,14 @@
 from typing import Protocol
 
 from app.models.siming_heavenly_graph import (
+    GraphBranchDiffQuery,
+    GraphBranchDiffResult,
+    GraphBranchForkRequest,
+    GraphBranchLifecycleRequest,
+    GraphCorrectionRequest,
+    GraphReaderContext,
+    HeavenlyGraphQueryResult,
+    HeavenlyGraphSemanticQuery,
     HeavenlyGraphCheckpointRef,
     HeavenlyGraphNode,
     HeavenlyGraphRelation,
@@ -13,6 +21,7 @@ from app.models.siming_heavenly_graph import (
     HeavenlySubgraphDirection,
     HeavenlySubgraphResult,
 )
+from app.services.heavenly_graph_consistency import HeavenlyGraphConsistencyReport
 
 
 class HeavenlyGraphError(RuntimeError):
@@ -20,7 +29,18 @@ class HeavenlyGraphError(RuntimeError):
 
 
 class HeavenlyGraphRevisionConflict(HeavenlyGraphError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        expected_revision_vector: object | None = None,
+        current_revision_vector: object | None = None,
+        affected_refs: list[str] | tuple[str, ...] = (),
+    ) -> None:
+        super().__init__(message)
+        self.expected_revision_vector = expected_revision_vector
+        self.current_revision_vector = current_revision_vector
+        self.affected_refs = tuple(affected_refs)
 
 
 class HeavenlyGraphIdempotencyConflict(HeavenlyGraphError):
@@ -40,6 +60,48 @@ class HeavenlyGraphCheckpointNotFound(HeavenlyGraphError):
 
 
 class HeavenlyGraphPort(Protocol):
+    def audit_consistency(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        reader_context: GraphReaderContext,
+    ) -> HeavenlyGraphConsistencyReport:
+        raise NotImplementedError
+    def fork_branch(
+        self, request: GraphBranchForkRequest
+    ) -> HeavenlyGraphWriteResult:
+        raise NotImplementedError
+
+    def diff_branches(
+        self, query: GraphBranchDiffQuery
+    ) -> GraphBranchDiffResult:
+        raise NotImplementedError
+
+    def lifecycle_branch(
+        self, request: GraphBranchLifecycleRequest
+    ) -> HeavenlyGraphWriteResult:
+        raise NotImplementedError
+
+    def correct(
+        self,
+        request: GraphCorrectionRequest,
+    ) -> HeavenlyGraphWriteResult:
+        raise NotImplementedError
+
+    def query_semantic(
+        self,
+        query: HeavenlyGraphSemanticQuery,
+    ) -> HeavenlyGraphQueryResult:
+        raise NotImplementedError
+
+    def has_idempotency_key(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        idempotency_key: str,
+    ) -> bool:
+        raise NotImplementedError
+
     def write_batch(
         self,
         batch: HeavenlyGraphWriteBatch,
@@ -106,5 +168,12 @@ class HeavenlyGraphPort(Protocol):
     def read_checkpoint(
         self,
         checkpoint_ref: str,
+    ) -> HeavenlyGraphSnapshot:
+        raise NotImplementedError
+
+    def replay_from_checkpoint(
+        self,
+        checkpoint_ref: str,
+        tail_batches: list[HeavenlyGraphWriteBatch],
     ) -> HeavenlyGraphSnapshot:
         raise NotImplementedError

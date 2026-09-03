@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from app.models.siming_heavenly_graph import (
     GraphProvenance,
+    GraphReaderContext,
+    GraphSemanticMetadata,
     GraphValidity,
     HeavenlyGraphNode,
     HeavenlyGraphScope,
     HeavenlyGraphWriteBatch,
     HeavenlyGraphWriteResult,
+    NodeLookupQuery,
     HeavenlyNodeQuery,
 )
 from app.models.siming_story_graph import (
@@ -85,12 +88,7 @@ class SimingStoryObligationRuntime:
         valid_at: int,
         recorded_at: int | None = None,
     ) -> NarrativeObligation | None:
-        node = self._graph.get_node(
-            node_id=self._obligation_node_id(obligation_id),
-            scope=scope,
-            valid_at=valid_at,
-            recorded_at=recorded_at,
-        )
+        node = self._semantic_node(scope, self._obligation_node_id(obligation_id), valid_at, recorded_at)
         if node is None or node.node_type != self._OBLIGATION_NODE_TYPE:
             return None
         return NarrativeObligation.model_validate(node.attributes)
@@ -113,11 +111,7 @@ class SimingStoryObligationRuntime:
             valid_at=recorded_at,
         )
         source = NarrativeObligation.model_validate(source_prior.attributes)
-        replacement_prior = self._graph.get_node(
-            node_id=self._obligation_node_id(replacement.obligation_id),
-            scope=scope,
-            valid_at=recorded_at,
-        )
+        replacement_prior = self._semantic_node(scope, self._obligation_node_id(replacement.obligation_id), recorded_at, None)
         transformed_refs = sorted(
             set([*source.transformed_to_refs, replacement.obligation_id])
         )
@@ -230,12 +224,7 @@ class SimingStoryObligationRuntime:
         valid_at: int,
         recorded_at: int | None = None,
     ) -> NarrativeAttractor | None:
-        node = self._graph.get_node(
-            node_id=self._attractor_node_id(attractor_id),
-            scope=scope,
-            valid_at=valid_at,
-            recorded_at=recorded_at,
-        )
+        node = self._semantic_node(scope, self._attractor_node_id(attractor_id), valid_at, recorded_at)
         if node is None or node.node_type != self._ATTRACTOR_NODE_TYPE:
             return None
         return NarrativeAttractor.model_validate(node.attributes)
@@ -298,11 +287,7 @@ class SimingStoryObligationRuntime:
         valid_at: int,
     ) -> bool:
         return any(
-            self._graph.get_node(
-                node_id=fact_ref,
-                scope=scope,
-                valid_at=valid_at,
-            )
+            self._semantic_node(scope, fact_ref, valid_at, None)
             is None
             for fact_ref in attractor.required_fact_refs
         )
@@ -341,17 +326,25 @@ class SimingStoryObligationRuntime:
         scope: HeavenlyGraphScope,
         valid_at: int,
     ) -> list[RuntimeStoryNode]:
-        return [
-            RuntimeStoryNode.model_validate(node.attributes)
-            for node in self._graph.query_nodes(
+        result = self._graph.query_semantic(
+            NodeLookupQuery(
+                context=self._reader_context(scope, valid_at, None),
+                scope=scope,
+                node_types=[self._RUNTIME_NODE_TYPE],
+                limit=1000,
+            )
+        )
+        nodes = result.nodes
+        if not nodes:
+            nodes = self._graph.query_nodes(
                 HeavenlyNodeQuery(
                     scope=scope,
                     valid_at=valid_at,
                     node_types=[self._RUNTIME_NODE_TYPE],
-                    limit=None,
+                    limit=1000,
                 )
             )
-        ]
+        return [RuntimeStoryNode.model_validate(node.attributes) for node in nodes]
 
     @staticmethod
     def _obligation_node_id(obligation_id: str) -> str:
@@ -368,11 +361,7 @@ class SimingStoryObligationRuntime:
         obligation_id: str,
         valid_at: int,
     ) -> HeavenlyGraphNode:
-        node = self._graph.get_node(
-            node_id=self._obligation_node_id(obligation_id),
-            scope=scope,
-            valid_at=valid_at,
-        )
+        node = self._semantic_node(scope, self._obligation_node_id(obligation_id), valid_at, None)
         if node is None or node.node_type != self._OBLIGATION_NODE_TYPE:
             raise StoryObligationError(f"unknown obligation {obligation_id!r}")
         return node
@@ -384,11 +373,7 @@ class SimingStoryObligationRuntime:
         attractor_id: str,
         valid_at: int,
     ) -> HeavenlyGraphNode:
-        node = self._graph.get_node(
-            node_id=self._attractor_node_id(attractor_id),
-            scope=scope,
-            valid_at=valid_at,
-        )
+        node = self._semantic_node(scope, self._attractor_node_id(attractor_id), valid_at, None)
         if node is None or node.node_type != self._ATTRACTOR_NODE_TYPE:
             raise StoryObligationError(f"unknown attractor {attractor_id!r}")
         return node
@@ -412,6 +397,14 @@ class SimingStoryObligationRuntime:
             supersedes_revision=None if prior is None else prior.revision,
             provenance=provenance,
             attributes=obligation.model_dump(mode="json"),
+            semantic_metadata=GraphSemanticMetadata(
+                record_kind="projection",
+                visibility_scope="siming_internal",
+                derivation_kind="projection",
+                source_event_refs=(provenance.source_ref,),
+                policy_revision="policy:v1",
+                scope_digest="scope:siming-heavenly",
+            ),
         )
 
     def _attractor_graph_node(
@@ -433,4 +426,55 @@ class SimingStoryObligationRuntime:
             supersedes_revision=None if prior is None else prior.revision,
             provenance=provenance,
             attributes=attractor.model_dump(mode="json"),
+            semantic_metadata=GraphSemanticMetadata(
+                record_kind="projection",
+                visibility_scope="siming_internal",
+                derivation_kind="projection",
+                source_event_refs=(provenance.source_ref,),
+                policy_revision="policy:v1",
+                scope_digest="scope:siming-heavenly",
+            ),
+        )
+
+    def _semantic_node(self, scope: HeavenlyGraphScope, node_id: str, valid_at: int, recorded_at: int | None) -> HeavenlyGraphNode | None:
+        result = self._graph.query_semantic(
+            NodeLookupQuery(
+                context=GraphReaderContext(
+                    reader_principal="reader:siming",
+                    allowed_visibility_scopes=("siming_internal", "authority_only", "branch_only"),
+                    world_id=scope.world_id,
+                    session_id=scope.session_id,
+                    story_branch_id=scope.story_branch_id,
+                    valid_at=valid_at,
+                    recorded_at=recorded_at,
+                    policy_revision="policy:v1",
+                ),
+                scope=scope,
+                node_ids=[node_id],
+                limit=1,
+            )
+        )
+        if result.nodes:
+            return result.nodes[0]
+        # Compatibility for pre-semantic story fixtures; newly written nodes
+        # always carry policy:v1 metadata and are served by the facade above.
+        legacy = self._graph.get_node(
+            node_id=node_id,
+            scope=scope,
+            valid_at=valid_at,
+            recorded_at=recorded_at,
+        )
+        return legacy if legacy is not None and legacy.semantic_metadata.policy_revision == "policy:legacy" else None
+
+    @staticmethod
+    def _reader_context(scope: HeavenlyGraphScope, valid_at: int, recorded_at: int | None) -> GraphReaderContext:
+        return GraphReaderContext(
+            reader_principal="reader:siming",
+            allowed_visibility_scopes=("siming_internal", "authority_only", "branch_only"),
+            world_id=scope.world_id,
+            session_id=scope.session_id,
+            story_branch_id=scope.story_branch_id,
+            valid_at=valid_at,
+            recorded_at=recorded_at,
+            policy_revision="policy:v1",
         )

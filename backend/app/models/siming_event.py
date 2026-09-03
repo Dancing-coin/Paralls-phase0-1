@@ -18,6 +18,7 @@ SimingInputType = Literal[
     "conversation_resolution_event",
     "constraint_state_event",
     "siming_staging_ack",
+    "population_cadence_input",
 ]
 
 SimingOutputType = Literal[

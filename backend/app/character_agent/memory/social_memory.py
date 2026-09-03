@@ -19,6 +19,8 @@ class CharacterSocialMemory:
         shared_secret_refs: list[str],
         source_event_id: str,
         producer_ts: int,
+        summary: str = "",
+        source_event_refs: list[str] | None = None,
     ) -> dict[str, object]:
         entries = self._entries_by_actor.setdefault(actor_id, [])
         entry = {
@@ -33,6 +35,8 @@ class CharacterSocialMemory:
             "shared_secret_refs": list(shared_secret_refs),
             "source_event_id": source_event_id,
             "producer_ts": producer_ts,
+            "summary": summary,
+            "source_event_refs": list(source_event_refs or []),
         }
         for idx, existing in enumerate(entries):
             if existing["entity_id"] == entity_id:

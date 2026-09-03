@@ -1,6 +1,6 @@
 extends Node
 
-const BACKEND_URL := "ws://127.0.0.1:8000/ws"
+const BACKEND_URL := "ws://127.0.0.1:8000/ws?stream_mode=runtime_only"
 const EXECUTION_PAYLOAD_DIRECT_MARKER := "character_agent_execution_probe:execution_payload_direct=true"
 const CONSUMER_SEEN_MARKER := "character_agent_execution_probe:consumer_seen=true"
 const ALL_CHECKS_COMPLETE_MARKER := "character_agent_execution_probe:all_checks_complete=true"
@@ -107,7 +107,10 @@ func _run_probe() -> void:
 		return
 	_raw_fact_sent = true
 
-	var execution_ok := await _wait_for_execution_contract(10000)
+	# The raw-fact websocket sends its authority ack first and computes the
+	# character follow-up on a worker; allow the structured execution envelope
+	# its full backend budget before declaring the probe failed.
+	var execution_ok := await _wait_for_execution_contract(30000)
 	if not execution_ok:
 		push_error("character_agent_execution_probe:execution_contract_timeout")
 		get_tree().quit(1)

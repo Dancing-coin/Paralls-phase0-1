@@ -1,9 +1,25 @@
+import json
+import sqlite3
 from pathlib import Path
 from threading import Event, Thread
 
-from heavenly_graph_contract import HeavenlyGraphContract, graph_node, graph_scope
+from heavenly_graph_contract import (
+    HeavenlyGraphContract,
+    graph_node,
+    graph_relation,
+    graph_scope,
+)
 
-from app.models.siming_heavenly_graph import HeavenlyGraphWriteBatch, HeavenlyNodeQuery
+from app.models.siming_heavenly_graph import (
+    GraphCorrectionRequest,
+    GraphReaderContext,
+    GraphSemanticMetadata,
+    HeavenlyGraphWriteBatch,
+    HeavenlyNodeQuery,
+    NodeLookupQuery,
+)
+from app.services.heavenly_graph_consistency import HeavenlyGraphConsistencyAudit
+from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
 from app.services.siming_heavenly_graph_port import HeavenlyGraphPort
 from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
 
@@ -11,6 +27,48 @@ from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
 class TestSQLiteHeavenlyGraphContract(HeavenlyGraphContract):
     def make_graph(self) -> HeavenlyGraphPort:
         return SQLiteHeavenlyGraphAdapter(":memory:")
+
+
+def test_sqlite_and_in_memory_share_semantic_query_and_consistency_contract(
+    tmp_path: Path,
+) -> None:
+    scope = graph_scope()
+    context = GraphReaderContext(
+        reader_principal="reader:contract",
+        allowed_visibility_scopes=("public",),
+        world_id=scope.world_id,
+        session_id=scope.session_id,
+        story_branch_id=scope.story_branch_id,
+        valid_at=20,
+        recorded_at=20,
+        policy_revision="policy:legacy",
+    )
+    batch = HeavenlyGraphWriteBatch(
+        transaction_id="graph_tx:adapter-parity",
+        idempotency_key="authority:event:adapter-parity",
+        scope=scope,
+        nodes=[graph_node(node_id="fact:adapter-parity")],
+    )
+    memory = InMemoryHeavenlyGraphAdapter()
+    sqlite = SQLiteHeavenlyGraphAdapter(tmp_path / "adapter-parity.sqlite3")
+    try:
+        memory.write_batch(batch)
+        sqlite.write_batch(batch)
+        query = NodeLookupQuery(
+            context=context,
+            scope=scope,
+            node_ids=["fact:adapter-parity"],
+        )
+        memory_result = memory.query_semantic(query)
+        sqlite_result = sqlite.query_semantic(query)
+        memory_report = HeavenlyGraphConsistencyAudit(memory).audit(scope, context)
+        sqlite_report = HeavenlyGraphConsistencyAudit(sqlite).audit(scope, context)
+    finally:
+        sqlite.close()
+
+    assert memory_result == sqlite_result
+    assert memory_report == sqlite_report
+    assert memory_report.errors == []
 
 
 def test_sqlite_restart_restores_node_revision(tmp_path: Path) -> None:
@@ -33,6 +91,257 @@ def test_sqlite_restart_restores_node_revision(tmp_path: Path) -> None:
 
     assert node is not None
     assert node.revision == 1
+
+
+def test_sqlite_restart_restores_checkpoint_replay_metadata(tmp_path: Path) -> None:
+    path = tmp_path / "heavenly-checkpoint.sqlite3"
+    scope = graph_scope()
+    first = SQLiteHeavenlyGraphAdapter(path)
+    first.write_batch(
+        HeavenlyGraphWriteBatch(
+            transaction_id="graph_tx:restart:checkpoint",
+            idempotency_key="authority:event:restart:checkpoint",
+            scope=scope,
+            nodes=[graph_node(node_id="fact:checkpoint")],
+        )
+    )
+    checkpoint = first.create_checkpoint(
+        checkpoint_id="checkpoint:restart",
+        scope=scope,
+        valid_at=20,
+        recorded_at=20,
+    )
+    expected = first.read_checkpoint(checkpoint.checkpoint_ref)
+    first.close()
+
+    reopened = SQLiteHeavenlyGraphAdapter(path)
+    restored = reopened.read_checkpoint(checkpoint.checkpoint_ref)
+    reopened.close()
+
+    assert restored.checkpoint == expected.checkpoint
+    assert restored.nodes == expected.nodes
+    assert restored.replay_nodes == expected.replay_nodes
+    assert restored.replay_relations == expected.replay_relations
+
+
+def _remove_replay_frontier(path: Path, checkpoint_ref: str) -> None:
+    """Simulate a pre-frontier checkpoint payload without changing source rows."""
+
+    connection = sqlite3.connect(path)
+    try:
+        row = connection.execute(
+            "SELECT snapshot_json FROM graph_checkpoints WHERE checkpoint_ref = ?",
+            (checkpoint_ref,),
+        ).fetchone()
+        assert row is not None
+        payload = json.loads(row[0])
+        payload.pop("replay_nodes", None)
+        payload.pop("replay_relations", None)
+        connection.execute(
+            "UPDATE graph_checkpoints SET snapshot_json = ? WHERE checkpoint_ref = ?",
+            (json.dumps(payload, sort_keys=True, separators=(",", ":")), checkpoint_ref),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_sqlite_restart_replays_future_valid_predecessor_chain(tmp_path: Path) -> None:
+    path = tmp_path / "heavenly-replay-future.sqlite3"
+    scope = graph_scope()
+    first = SQLiteHeavenlyGraphAdapter(path)
+    seed = graph_node(node_id="fact:future-chain", state="old", valid_from=0, recorded_at=10)
+    anchor = graph_node(node_id="fact:future-anchor", valid_from=0, recorded_at=10)
+    relation = graph_relation(
+        relation_id="relation:future-chain",
+        source_node_id=anchor.node_id,
+        target_node_id=seed.node_id,
+        valid_from=0,
+        recorded_at=10,
+    )
+    first.write_batch(
+        HeavenlyGraphWriteBatch(
+            transaction_id="graph_tx:sqlite-restart:future:seed",
+            idempotency_key="authority:event:sqlite-restart:future:seed",
+            scope=scope,
+            nodes=[seed, anchor],
+            relations=[relation],
+        )
+    )
+    future = graph_node(
+        node_id=seed.node_id,
+        state="scheduled",
+        valid_from=50,
+        recorded_at=15,
+        revision=2,
+        supersedes_revision=1,
+        source_ref="authority:event:sqlite-restart:future:2",
+    )
+    first.write_batch(
+        HeavenlyGraphWriteBatch(
+            transaction_id="graph_tx:sqlite-restart:future:second",
+            idempotency_key="authority:event:sqlite-restart:future:second",
+            scope=scope,
+            nodes=[future],
+        )
+    )
+    checkpoint = first.create_checkpoint(
+        checkpoint_id="checkpoint:sqlite-restart:future",
+        scope=scope,
+        valid_at=20,
+        recorded_at=20,
+    )
+    first.close()
+
+    # The payload mutation models a checkpoint written before replay frontier
+    # fields existed. SQLite must recover the frontier from durable source rows.
+    _remove_replay_frontier(path, checkpoint.checkpoint_ref)
+    reopened = SQLiteHeavenlyGraphAdapter(path)
+    restored = reopened.read_checkpoint(checkpoint.checkpoint_ref)
+    assert [node.revision for node in restored.replay_nodes if node.node_id == seed.node_id] == [1, 2]
+    assert [relation.revision for relation in restored.replay_relations] == [1]
+
+    tail = graph_node(
+        node_id=seed.node_id,
+        state="settled",
+        valid_from=0,
+        recorded_at=30,
+        revision=3,
+        supersedes_revision=2,
+        source_ref="authority:event:sqlite-restart:future:3",
+    )
+    tail_batch = HeavenlyGraphWriteBatch(
+        transaction_id="graph_tx:sqlite-restart:future:tail",
+        idempotency_key="authority:event:sqlite-restart:future:tail",
+        scope=scope,
+        nodes=[tail],
+    )
+    reopened.write_batch(tail_batch)
+    full_ref = reopened.create_checkpoint(
+        checkpoint_id="checkpoint:sqlite-restart:future:full",
+        scope=scope,
+        valid_at=20,
+        recorded_at=40,
+    )
+    full = reopened.read_checkpoint(full_ref.checkpoint_ref)
+    checkpoint_before_replay = reopened.read_checkpoint(checkpoint.checkpoint_ref)
+    source_before_replay = reopened.get_node(
+        node_id=seed.node_id, scope=scope, valid_at=20, recorded_at=40
+    )
+    replayed = reopened.replay_from_checkpoint(checkpoint.checkpoint_ref, [tail_batch])
+    assert replayed.nodes == full.nodes
+    assert replayed.relations == full.relations
+    assert replayed.checkpoint.replay_digest == full.checkpoint.replay_digest
+    assert reopened.read_checkpoint(checkpoint.checkpoint_ref) == checkpoint_before_replay
+    assert reopened.get_node(
+        node_id=seed.node_id, scope=scope, valid_at=20, recorded_at=40
+    ) == source_before_replay
+    reopened.close()
+
+
+def test_sqlite_restart_replays_retracted_predecessor_chain(tmp_path: Path) -> None:
+    path = tmp_path / "heavenly-replay-retracted.sqlite3"
+    scope = graph_scope()
+    first = SQLiteHeavenlyGraphAdapter(path)
+    seed = graph_node(
+        node_id="fact:retracted-chain",
+        state="old",
+        valid_from=0,
+        recorded_at=10,
+        source_ref="authority:event:sqlite-restart:retracted:1",
+    ).model_copy(
+        update={
+            "semantic_metadata": GraphSemanticMetadata(
+                source_event_refs=("authority:event:sqlite-restart:retracted:1",),
+                policy_revision="policy:legacy",
+                scope_digest="scope:legacy",
+            )
+        },
+        deep=True,
+    )
+    anchor = graph_node(node_id="fact:retracted-anchor", valid_from=0, recorded_at=10)
+    relation = graph_relation(
+        relation_id="relation:retracted-chain",
+        source_node_id=anchor.node_id,
+        target_node_id=seed.node_id,
+        valid_from=0,
+        recorded_at=10,
+    )
+    first.write_batch(
+        HeavenlyGraphWriteBatch(
+            transaction_id="graph_tx:sqlite-restart:retracted:seed",
+            idempotency_key="authority:event:sqlite-restart:retracted:seed",
+            scope=scope,
+            nodes=[seed, anchor],
+            relations=[relation],
+        )
+    )
+    first.correct(
+        GraphCorrectionRequest(
+            target_kind="node",
+            target_id=seed.node_id,
+            target_revision=1,
+            correction_kind="retracted",
+            source_refs=["authority:event:sqlite-restart:retracted:2"],
+            semantic_metadata=GraphSemanticMetadata(
+                source_event_refs=("authority:event:sqlite-restart:retracted:1",),
+                policy_revision="policy:legacy",
+                scope_digest="scope:legacy",
+            ),
+            scope=scope,
+        )
+    )
+    checkpoint = first.create_checkpoint(
+        checkpoint_id="checkpoint:sqlite-restart:retracted",
+        scope=scope,
+        valid_at=20,
+        recorded_at=20,
+    )
+    first.close()
+
+    _remove_replay_frontier(path, checkpoint.checkpoint_ref)
+    reopened = SQLiteHeavenlyGraphAdapter(path)
+    restored = reopened.read_checkpoint(checkpoint.checkpoint_ref)
+    assert [node.node_id for node in restored.nodes] == [anchor.node_id]
+    assert [node.revision for node in restored.replay_nodes if node.node_id == seed.node_id] == [1, 2]
+    assert [relation.revision for relation in restored.replay_relations] == [1]
+
+    tail = graph_node(
+        node_id=seed.node_id,
+        state="restated",
+        valid_from=0,
+        recorded_at=30,
+        revision=3,
+        supersedes_revision=2,
+        source_ref="authority:event:sqlite-restart:retracted:3",
+    )
+    tail_batch = HeavenlyGraphWriteBatch(
+        transaction_id="graph_tx:sqlite-restart:retracted:tail",
+        idempotency_key="authority:event:sqlite-restart:retracted:tail",
+        scope=scope,
+        nodes=[tail],
+    )
+    reopened.write_batch(tail_batch)
+    full_ref = reopened.create_checkpoint(
+        checkpoint_id="checkpoint:sqlite-restart:retracted:full",
+        scope=scope,
+        valid_at=20,
+        recorded_at=40,
+    )
+    full = reopened.read_checkpoint(full_ref.checkpoint_ref)
+    checkpoint_before_replay = reopened.read_checkpoint(checkpoint.checkpoint_ref)
+    source_before_replay = reopened.get_node(
+        node_id=seed.node_id, scope=scope, valid_at=20, recorded_at=40
+    )
+    replayed = reopened.replay_from_checkpoint(checkpoint.checkpoint_ref, [tail_batch])
+    assert replayed.nodes == full.nodes
+    assert replayed.relations == full.relations
+    assert replayed.checkpoint.replay_digest == full.checkpoint.replay_digest
+    assert reopened.read_checkpoint(checkpoint.checkpoint_ref) == checkpoint_before_replay
+    assert reopened.get_node(
+        node_id=seed.node_id, scope=scope, valid_at=20, recorded_at=40
+    ) == source_before_replay
+    reopened.close()
 
 
 def test_sqlite_query_holds_lock_against_concurrent_write(tmp_path: Path, monkeypatch) -> None:

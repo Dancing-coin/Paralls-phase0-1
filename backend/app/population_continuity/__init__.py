@@ -19,10 +19,13 @@ from .world import WorldContinuityRuntime
 from .social_input import FrozenSocialPlanningInput, SocialInputValidation
 from .source_inputs import HouseholdScheduleInput, OrganizationScheduleInput, FrozenSourceInput, SourceInputValidation
 from .capability_input import CapabilityInputValidation, FrozenCapabilityEligibilityInput
+from .siming_contracts import PopulationBatchReport, PopulationCadenceInput, PopulationCycleResult, PopulationOwnerReceipt, PopulationProjection, PopulationReadSet
+from .owner_adapters import ScheduleGatedSupplyOwnerExecutor
 
 __all__ = [
     "ProfileActivationAuthority",
     "PopulationPlanner",
+    "CharacterSeedPlanner",
     "ContinuityMergeAuthority",
     "WorldContinuityRuntime",
     "ActivationGrant",
@@ -44,4 +47,19 @@ __all__ = [
     "SourceInputValidation",
     "CapabilityInputValidation",
     "FrozenCapabilityEligibilityInput",
+    "PopulationCadenceInput",
+    "PopulationProjection",
+    "PopulationReadSet",
+    "PopulationOwnerReceipt",
+    "PopulationBatchReport",
+    "PopulationCycleResult",
+    "ScheduleGatedSupplyOwnerExecutor",
 ]
+
+
+def __getattr__(name: str):
+    if name == "CharacterSeedPlanner":
+        from .seed_planner import CharacterSeedPlanner
+
+        return CharacterSeedPlanner
+    raise AttributeError(name)

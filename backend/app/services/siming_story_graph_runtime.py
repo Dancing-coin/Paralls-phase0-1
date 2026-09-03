@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from app.models.siming_heavenly_graph import (
     GraphProvenance,
+    GraphReaderContext,
+    GraphSemanticMetadata,
+    GraphSemanticMetadata,
     GraphValidity,
     HeavenlyGraphNode,
     HeavenlyGraphScope,
     HeavenlyGraphWriteBatch,
     HeavenlyGraphWriteResult,
+    NodeLookupQuery,
     HeavenlyNodeQuery,
 )
 from app.models.siming_heavenly_memory import (
@@ -81,6 +85,14 @@ class SimingStoryGraphRuntime:
             revision=1,
             provenance=provenance,
             attributes=blueprint.model_dump(mode="json"),
+            semantic_metadata=GraphSemanticMetadata(
+                record_kind="projection",
+                visibility_scope="siming_internal",
+                derivation_kind="projection",
+                source_event_refs=(provenance.source_ref,),
+                policy_revision="policy:v1",
+                scope_digest="scope:siming-heavenly",
+            ),
         )
         return self._graph.write_batch(
             HeavenlyGraphWriteBatch(
@@ -99,12 +111,7 @@ class SimingStoryGraphRuntime:
         valid_at: int,
         recorded_at: int | None = None,
     ) -> StoryNodeBlueprint | None:
-        node = self._graph.get_node(
-            node_id=self._blueprint_node_id(blueprint_id),
-            scope=scope,
-            valid_at=valid_at,
-            recorded_at=recorded_at,
-        )
+        node = self._semantic_node(scope, self._blueprint_node_id(blueprint_id), valid_at, recorded_at)
         if node is None or node.node_type != self._BLUEPRINT_NODE_TYPE:
             return None
         return StoryNodeBlueprint.model_validate(node.attributes)
@@ -181,12 +188,7 @@ class SimingStoryGraphRuntime:
         valid_at: int,
         recorded_at: int | None = None,
     ) -> RuntimeStoryNode | None:
-        node = self._graph.get_node(
-            node_id=node_id,
-            scope=scope,
-            valid_at=valid_at,
-            recorded_at=recorded_at,
-        )
+        node = self._semantic_node(scope, node_id, valid_at, recorded_at)
         if node is None or node.node_type != self._RUNTIME_NODE_TYPE:
             return None
         return RuntimeStoryNode.model_validate(node.attributes)
@@ -235,6 +237,14 @@ class SimingStoryGraphRuntime:
             revision=1,
             provenance=provenance,
             attributes=outcome.model_dump(mode="json"),
+            semantic_metadata=GraphSemanticMetadata(
+                record_kind="projection",
+                visibility_scope="siming_internal",
+                derivation_kind="projection",
+                source_event_refs=(provenance.source_ref,),
+                policy_revision="policy:v1",
+                scope_digest="scope:siming-heavenly",
+            ),
         )
         return self._transition(
             scope=scope,
@@ -396,6 +406,14 @@ class SimingStoryGraphRuntime:
                     revision=1,
                     provenance=provenance,
                     attributes=memory_entry.model_dump(mode="json"),
+                    semantic_metadata=GraphSemanticMetadata(
+                        record_kind="fact",
+                        visibility_scope="siming_internal",
+                        derivation_kind="authority",
+                        source_event_refs=(outcome.authority_result_ref,),
+                        policy_revision="policy:v1",
+                        scope_digest="scope:siming-heavenly",
+                    ),
                 ),
                 HeavenlyGraphNode(
                     node_id=self._outcome_node_id(outcome.authority_result_ref),
@@ -410,6 +428,14 @@ class SimingStoryGraphRuntime:
                         "affected_node_ids": sorted(set(affected_ids)),
                         "transaction_id": transaction_id,
                     },
+                    semantic_metadata=GraphSemanticMetadata(
+                        record_kind="projection",
+                        visibility_scope="siming_internal",
+                        derivation_kind="projection",
+                        source_event_refs=(outcome.authority_result_ref,),
+                        policy_revision="policy:v1",
+                        scope_digest="scope:siming-heavenly",
+                    ),
                 ),
             ]
         )
@@ -515,17 +541,24 @@ class SimingStoryGraphRuntime:
         scope: HeavenlyGraphScope,
         valid_at: int,
     ) -> list[RuntimeStoryNode]:
-        return [
-            RuntimeStoryNode.model_validate(node.attributes)
-            for node in self._graph.query_nodes(
-                HeavenlyNodeQuery(
-                    scope=scope,
+        result = self._graph.query_semantic(
+            NodeLookupQuery(
+                context=GraphReaderContext(
+                    reader_principal="reader:siming",
+                    allowed_visibility_scopes=("siming_internal", "authority_only", "branch_only"),
+                    world_id=scope.world_id,
+                    session_id=scope.session_id,
+                    story_branch_id=scope.story_branch_id,
                     valid_at=valid_at,
-                    node_types=[self._RUNTIME_NODE_TYPE],
-                    limit=None,
-                )
+                    recorded_at=None,
+                    policy_revision="policy:v1",
+                ),
+                scope=scope,
+                node_types=[self._RUNTIME_NODE_TYPE],
+                limit=1000,
             )
-        ]
+        )
+        return [RuntimeStoryNode.model_validate(node.attributes) for node in result.nodes]
 
     @staticmethod
     def _effect_targets(
@@ -575,11 +608,7 @@ class SimingStoryGraphRuntime:
         node_id: str,
         valid_at: int,
     ) -> HeavenlyGraphNode:
-        node = self._graph.get_node(
-            node_id=node_id,
-            scope=scope,
-            valid_at=valid_at,
-        )
+        node = self._semantic_node(scope, node_id, valid_at, None)
         if node is None or node.node_type != self._RUNTIME_NODE_TYPE:
             raise StoryGraphError(f"unknown runtime story node {node_id!r}")
         return node
@@ -604,4 +633,42 @@ class SimingStoryGraphRuntime:
             supersedes_revision=None if prior is None else prior.revision,
             provenance=provenance,
             attributes=runtime_node.model_dump(mode="json"),
+            semantic_metadata=GraphSemanticMetadata(
+                record_kind="projection",
+                visibility_scope="siming_internal",
+                derivation_kind="projection",
+                source_event_refs=(provenance.source_ref,),
+                policy_revision="policy:v1",
+                scope_digest="scope:siming-heavenly",
+            ),
         )
+
+    def _semantic_node(self, scope: HeavenlyGraphScope, node_id: str, valid_at: int, recorded_at: int | None) -> HeavenlyGraphNode | None:
+        result = self._graph.query_semantic(
+            NodeLookupQuery(
+                context=GraphReaderContext(
+                    reader_principal="reader:siming",
+                    allowed_visibility_scopes=("siming_internal", "authority_only", "branch_only"),
+                    world_id=scope.world_id,
+                    session_id=scope.session_id,
+                    story_branch_id=scope.story_branch_id,
+                    valid_at=valid_at,
+                    recorded_at=recorded_at,
+                    policy_revision="policy:v1",
+                ),
+                scope=scope,
+                node_ids=[node_id],
+                limit=1,
+            )
+        )
+        if result.nodes:
+            return result.nodes[0]
+        # Legacy story fixtures predate semantic policy metadata; preserve their
+        # read compatibility while new records use the bounded semantic path.
+        legacy = self._graph.get_node(
+            node_id=node_id,
+            scope=scope,
+            valid_at=valid_at,
+            recorded_at=recorded_at,
+        )
+        return legacy if legacy is not None and legacy.semantic_metadata.policy_revision == "policy:legacy" else None

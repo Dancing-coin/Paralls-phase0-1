@@ -101,6 +101,26 @@ def test_live_profile_uses_real_rendering_for_meaningful_captures() -> None:
 
     assert '"--headless"' not in source
     assert '"--render-thread", "safe"' in source
+    assert '"--rendering-method", "gl_compatibility"' in source
+
+
+def test_live_profile_passes_online_character_model_configuration() -> None:
+    source = (project_root() / "scripts" / "verification" / "verify_siming_heavenly_runtime.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert '"CHARACTER_MODEL_PROVIDER_KIND": "deepseek"' in source
+    assert '"CHARACTER_MODEL_API_KEY": _env("SIMING_LLM_API_KEY")' in source
+    assert '"CHARACTER_MODEL_REQUIRE_ONLINE": "1"' in source
+    assert '"CHARACTER_GRAPH_REQUIRE_CONTINUITY": "1"' in source
+    assert '"CHARACTER_MODEL_ENDPOINT": _env("SIMING_LLM_ENDPOINT")' in source
+    assert '"CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only"' in source
+    assert '"SIMING_LLM_ADVISORY_DISABLED": "1"' in source
+    assert '"SIMING_LLM_ADVISORY_DISABLED": ""' in source
+    assert source.index('_ensure_live_backend(root, python_exe, runtime_env)') < source.index(
+        '_ensure_live_backend(root, python_exe, online_character_env)'
+    )
+    assert 'for suffix in ("", "-wal", "-shm", "-journal")' in source
 
 
 def test_live_verifier_checks_durable_restart_boundary_before_stopping_backend() -> None:
@@ -111,6 +131,17 @@ def test_live_verifier_checks_durable_restart_boundary_before_stopping_backend()
     assert source.index("_wait_for_restart_boundary(db_path)") < source.index(
         "stop_backend(backend_process)"
     )
+    assert '"siming_heavenly_restart_ready", 900' in source
+    assert '"siming_heavenly_godot_complete", 900' in source
+
+
+def test_godot_probe_waits_for_staging_ack_with_runtime_timeout() -> None:
+    source = (project_root() / "scripts" / "verification" / "SimingHeavenlyRuntimeProbe.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert '_wait_until(Callable(self, "_staging_ack_backend_ready"), RUNTIME_EVENT_TIMEOUT_MS)' in source
+    assert '_wait_until(Callable(self, "_staging_ack_backend_ready"), _controller.autotest_request_timeout_ms)' not in source
 
 
 def test_collect_result_ids_derives_phase_seven_proof_from_graph_semantics() -> None:

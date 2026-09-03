@@ -14,6 +14,8 @@ class CharacterHigherOrderMemoryRecord(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     source_event_id: str
     producer_ts: int
+    summary: str = ""
+    source_event_refs: list[str] = Field(default_factory=list)
 
 
 __all__ = ["CharacterHigherOrderMemoryRecord"]

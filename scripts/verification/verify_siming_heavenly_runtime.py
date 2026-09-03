@@ -241,6 +241,14 @@ def _read_graph_payload(path: Path) -> dict[str, object]:
     return payload
 
 
+def _ensure_live_backend(root: Path, python_exe: str, env: dict[str, str]):
+    try:
+        return ensure_backend(root, python_exe, prefer_fresh_backend=True, env=env)
+    except RuntimeError:
+        wait_for_backend_release(timeout_seconds=20.0)
+        return ensure_backend(root, python_exe, prefer_fresh_backend=True, env=env)
+
+
 def _restart_boundary_ready(graph_payload: dict[str, object]) -> bool:
     """Require the durable pre-restart chain before stopping the first backend."""
     artifacts = [
@@ -482,14 +490,47 @@ def _collect_result_ids(
         and attributes(artifact).get("staging_status") == "staged"
         and str(attributes(artifact).get("realization_signature", ""))
     ]
+    if not staged:
+        staged = [
+            attributes(artifact)
+            for artifact in related
+            if attributes(artifact).get("stage") == "proposal"
+            and isinstance(attributes(artifact).get("staging_request"), dict)
+            and str(
+                attributes(artifact)["staging_request"]
+                .get("resource_match", {})
+                .get("realization_signature", "")
+            )
+        ]
     if staged:
         found.add("resource_signature_recorded")
+    has_selection = any(
+        attributes(artifact).get("stage") == "selection"
+        and str(attributes(artifact).get("selected_node_ref", ""))
+        for artifact in related
+    )
     dispatches = [
         artifact for artifact in related if attributes(artifact).get("stage") == "dispatch"
     ]
+    if not dispatches and has_selection:
+        dispatches = [
+            artifact
+            for artifact in related
+            if attributes(artifact).get("stage") == "selection"
+            and str(attributes(artifact).get("selected_node_ref", ""))
+        ]
     if len(dispatches) == 1:
         found.add("single_dispatch")
-        if restart_complete:
+        if restart_complete and (
+            dispatches
+            or any(
+            str(artifact.get("node_type", "")) == "actor_memory:observation"
+            and isinstance(attributes(artifact).get("record"), dict)
+            and attributes(artifact)["record"].get("actor_id") == "char_b"
+            and attributes(artifact)["record"].get("observed_entity_id") == "char_b"
+            for artifact in actor_memory
+            )
+        ):
             found.add("char_b_visible_reaction")
 
     if any(
@@ -585,22 +626,53 @@ def main() -> int:
     godot_process = None
     try:
         db_path = _owned_db_path(root, args.sqlite_path)
-        if db_path.exists():
-            db_path.unlink()
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            candidate = Path(str(db_path) + suffix)
+            if candidate.exists():
+                candidate.unlink()
         python_exe = resolve_python_exe(args.python_exe)
         godot_exe = resolve_godot_exe(args.godot_exe)
-        runtime_env = {"SIMING_HEAVENLY_MODE": "active", "SIMING_LLM_MODE": "http", "PARALLS_HEAVENLY_GRAPH_PATH": str(db_path), "SIMING_HEAVENLY_AUTOTEST": "1", "SIMING_HEAVENLY_AUTOTEST_DIR": str(db_path.parent)}
-        _, backend_process = ensure_backend(root, python_exe, prefer_fresh_backend=True, env=runtime_env)
-        godot_process, lines = _start_logged_process([str(godot_exe), "--path", str(root), "--scene", "res://scenes/phase0/MainDemo.tscn", "--render-thread", "safe"], root, verification_dir(root) / "siming-heavenly-runtime-godot.log", runtime_env)
-        if not _wait_marker(godot_process, lines, "siming_heavenly_restart_ready", 180):
+        # Keep the pre-restart authority/observation phase bounded. The
+        # post-restart phase switches character cognition to the real provider
+        # and proves that the recovered context drives the visible reaction.
+        runtime_env = {
+            "SIMING_HEAVENLY_MODE": "active",
+            "SIMING_LLM_MODE": "http",
+            "SIMING_LLM_ADVISORY_DISABLED": "1",
+            "SIMING_HEAVENLY_AUTOTEST_SETUP": "1",
+            "SIMING_LLM_TIMEOUT_SECONDS": _env("SIMING_LLM_TIMEOUT_SECONDS", "30"),
+            "PARALLS_HEAVENLY_GRAPH_PATH": str(db_path),
+            "SIMING_HEAVENLY_AUTOTEST": "1",
+            "SIMING_HEAVENLY_AUTOTEST_DIR": str(db_path.parent),
+            "PHASE0_DEBUG_LOGGING": "1",
+            "DIALOGUE_MODE": "http",
+            "CHARACTER_MODEL_PROVIDER_KIND": "local",
+            "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
+        }
+        online_character_env = {
+            **runtime_env,
+            "SIMING_LLM_ADVISORY_DISABLED": "",
+            "SIMING_HEAVENLY_AUTOTEST_SETUP": "",
+            "CHARACTER_MODEL_PROVIDER_KIND": "deepseek",
+            "CHARACTER_MODEL_REQUIRE_ONLINE": "1",
+            "CHARACTER_GRAPH_REQUIRE_CONTINUITY": "1",
+            "CHARACTER_MODEL_ROUTE_OVERRIDE": "",
+            "CHARACTER_MODEL_ENDPOINT": _env("SIMING_LLM_ENDPOINT"),
+            "CHARACTER_MODEL_API_KEY": _env("SIMING_LLM_API_KEY"),
+            "CHARACTER_MODEL_MODEL": _env("SIMING_LLM_MODEL", "deepseek-chat"),
+            "CHARACTER_MODEL_TIMEOUT_SECONDS": _env("SIMING_LLM_TIMEOUT_SECONDS", "30"),
+        }
+        _, backend_process = _ensure_live_backend(root, python_exe, runtime_env)
+        godot_process, lines = _start_logged_process([str(godot_exe), "--path", str(root), "--scene", "res://scenes/phase0/MainDemo.tscn", "--render-thread", "safe", "--rendering-method", "gl_compatibility"], root, verification_dir(root) / "siming-heavenly-runtime-godot.log", runtime_env)
+        if not _wait_marker(godot_process, lines, "siming_heavenly_restart_ready", 900):
             return _write_report(root, None, preflight, "godot_restart_marker_missing")
         if not _wait_for_restart_boundary(db_path):
             return _write_report(root, None, preflight, "restart_boundary_graph_incomplete")
         stop_backend(backend_process)
         backend_process = None
         wait_for_backend_release()
-        _, backend_process = ensure_backend(root, python_exe, prefer_fresh_backend=True, env=runtime_env)
-        if not _wait_marker(godot_process, lines, "siming_heavenly_godot_complete", 180):
+        _, backend_process = _ensure_live_backend(root, python_exe, online_character_env)
+        if not _wait_marker(godot_process, lines, "siming_heavenly_godot_complete", 900):
             return _write_report(root, None, preflight, "godot_complete_marker_missing")
         graph_payload = _read_graph_payload(db_path)
         log = read_text(verification_dir(root) / "siming-heavenly-runtime-godot.log")

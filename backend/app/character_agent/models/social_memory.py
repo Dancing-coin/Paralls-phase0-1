@@ -17,3 +17,5 @@ class CharacterSocialMemoryRecord(BaseModel):
     shared_secret_refs: list[str] = Field(default_factory=list)
     source_event_id: str
     producer_ts: int
+    summary: str = ""
+    source_event_refs: list[str] = Field(default_factory=list)

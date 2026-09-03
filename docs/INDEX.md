@@ -38,6 +38,8 @@
 - `docs/8月分析/第二阶段推进/README.md`：`bakery-authored-agents` 的增量指导入口；正式 SDD/plan 见下方 Phase Two tree。
 - `docs/art-resource-swap-workflow.md`：美术资源替换与更新工作流手册，定义 art pack、adapter scene、runtime shell 和 binding profile 的接入方式。
 - `docs/demo-script.md`：预期 demo 节拍和可观察证明路径。
+- `docs/production-readiness.md`：生产级在线 provider、图谱连续性、Authority 与 Godot 发布门禁。
+- `docs/knowledge-graph-future-optimization.md`：当前运行时可用领域知识图谱的通用化、规模化、运维和治理后期优化项。
 
 ## 活跃设计与计划
 
@@ -153,6 +155,8 @@ fake or disabled provider.
 
 使用 `python scripts/verification/harness.py --profile <name>`。
 
+- `heavenly-graph-semantic-foundation`：graph-only backend profile，使用 verifier-owned temporary SQLite，证明语义 metadata、adapter parity、scope denial、bounded results、stale-write rejection、correction chain、branch isolation 和 checkpoint replay digest；不采纳 role、Siming runtime、LLM 或 Godot 证据。
+
 - `docs`：文档新鲜度和索引检查。
 - `boundaries`：静态 Harness Engineering 边界检查。
 - `drift`：清理状态和本地产物漂移检查。
@@ -176,6 +180,10 @@ fake or disabled provider.
 - `siming-global-situation-layer`：后端证明，覆盖 Siming global situation snapshots，来源为 public L1/world/authority/evidence/参考性 refs，并保持 `siming_mm:*` context isolation。
 - `siming-story-runtime`：后端图谱证明，覆盖 authored possibility 与 branch runtime story node 分离、Authority-confirmed 的终局玩家关闭、O2 到 O6 的义务转换、以及新因果基础的替代吸引子路径；不宣称它已绕过 `SimingRuntime.tick(...)` 发布决策。
 - `siming-adaptive-bridge`：后端确定性证明，覆盖 typed proposal 对既有事实、`char_b` 五池观察、开放 O6 和资源包的约束；拒绝终局路径复活，不写角色私有记忆，只提交 latent runtime node；不宣称已完成在线 LLM 调用。
+- `behavior-turn-runtime`：后端角色纵切证明，覆盖共享 typed behavior turn（行为回合）的八阶段链、accepted/rejected Authority 结果投影、actor-private scope 隔离和幂等 replay；不宣称角色重启连续性、司命接入、六域 Authority 投影、在线 LLM 或 Godot 已完成。
+- `character-continuity-recovery`：后端角色连续性证明，覆盖 graph-backed dynamic state、need/tension、goal、supervision/continuity、working memory 与 session next-input 在旧 session 文件丢失后的重建；不宣称司命、六域 Authority、在线 LLM 或 Godot 已完成。
+- `authority-graph-projection`：后端 Authority 投影证明，覆盖 ESM/world、Inventory、Ownership、Economy、Survival/body、资源/场景六类 committed event 到 Heavenly Graph 的 owner/source vector/settlement/replay 投影；不宣称在线 LLM 或 Godot 已完成。
+- `siming-behavior-turn-runtime`：后端司命行为回合证明，覆盖 `SimingRuntime.tick(...)` 在唯一决策路径记录共享八阶段链；不宣称在线 LLM 或 Godot 已完成。
 - `interaction-orchestration-service`：后端证明，覆盖 structured interaction policies、semantic ESM path、physical seam、degrade paths 和 unified result merge。
 - `esm-physical-channel-world-actuation`：后端与 Godot 运行时证明，覆盖 physical effect refs、contact/body/object/environment observations、constraint gating 和 orchestration merge。
 - `non-runtime-production-pipeline`：离线生产证明，覆盖 scene semantic extraction、spatial baking、multimodal classification readiness、review gating 和 approved replay dataset artifacts。
@@ -216,6 +224,7 @@ fake or disabled provider.
 - `python scripts/verification/verify_l1_world_fact_runtime.py`
 - `python scripts/verification/verify_mainline_unified_runtime.py`
 - `python scripts/verification/verify_model_provider_readiness.py`
+- `python scripts/verification/verify_heavenly_graph_semantic_foundation.py`
 - `python scripts/verification/verify_character_model_live.py`
 - `python scripts/verification/verify_llm_integration_closure.py`
 - `python scripts/verification/verify_godot_sampling_production_grade_providers.py`
@@ -273,6 +282,8 @@ fake or disabled provider.
 
 - `.harness/verification/mainline-unified-runtime-report.json`
 - `.harness/verification/mainline-unified-runtime-report.md`
+- `.harness/verification/heavenly-graph-semantic-foundation-report.json`
+- `.harness/verification/heavenly-graph-semantic-foundation-report.md`
 
 Harness profile 和规则 manifest 是项目输入：
 

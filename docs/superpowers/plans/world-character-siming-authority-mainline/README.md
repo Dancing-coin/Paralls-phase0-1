@@ -93,6 +93,7 @@ foundation evidence reused by INF rows, not an August INF business row.
 9. [embodied-interaction-product-foundation/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/world-character-siming-authority-mainline/embodied-interaction-product-foundation/README.md>)
 10. [phase-two-bakery-authored-agents/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/README.md>)
 11. [phase-three-population-continuity/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/world-character-siming-authority-mainline/phase-three-population-continuity/README.md>)
+12a. [2026-08-29-siming-led-population-simulation-implementation-plan.md](2026-08-29-siming-led-population-simulation-implementation-plan.md) - Siming-governed game-start population cadence, seed continuity, and player activation handoff
 12. [phase-four-dynamic-economy-institutions/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/world-character-siming-authority-mainline/phase-four-dynamic-economy-institutions/README.md>)
 13. [phase-five-rpg-social-gameplay/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/world-character-siming-authority-mainline/phase-five-rpg-social-gameplay/README.md>)
 14. [phase-six-creator-control-plane/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/plans/world-character-siming-authority-mainline/phase-six-creator-control-plane/README.md>)

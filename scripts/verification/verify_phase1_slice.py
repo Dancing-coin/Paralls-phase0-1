@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -47,12 +49,17 @@ def main() -> int:
     run_id = datetime.now().strftime("phase1-slice-%Y%m%d-%H%M%S-%f")
 
     backend_process = None
+    graph_temp_dir = tempfile.mkdtemp(prefix="phase1-slice-graph-", dir=str(log_dir))
+    phase1_env = {
+        **PHASE1_SLICE_VERIFY_ENV,
+        "PARALLS_HEAVENLY_GRAPH_PATH": str(Path(graph_temp_dir) / "siming-heavenly.sqlite3"),
+    }
     try:
         health, backend_process = ensure_backend(
             project_root,
             python_exe,
             prefer_fresh_backend=True,
-            env=PHASE1_SLICE_VERIFY_ENV,
+            env=phase1_env,
         )
 
         pytest_log = log_dir / "phase1-slice-pytest.log"
@@ -104,6 +111,7 @@ def main() -> int:
             env={
                 "PHASE1_SLICE_PROBE_MODE": "main",
                 "PHASE1_SLICE_PROBE_RUN_ID": f"{run_id}-main",
+                "PARALLS_HEAVENLY_GRAPH_PATH": phase1_env["PARALLS_HEAVENLY_GRAPH_PATH"],
             },
         )
         if main_result.returncode != 0:
@@ -128,6 +136,7 @@ def main() -> int:
             env={
                 "PHASE1_SLICE_PROBE_MODE": "focus",
                 "PHASE1_SLICE_PROBE_RUN_ID": f"{run_id}-focus",
+                "PARALLS_HEAVENLY_GRAPH_PATH": phase1_env["PARALLS_HEAVENLY_GRAPH_PATH"],
             },
         )
         if focus_result.returncode != 0:
@@ -170,6 +179,7 @@ def main() -> int:
         return 0 if report["overall_phase1_slice_passed"] else 1
     finally:
         stop_backend(backend_process)
+        shutil.rmtree(graph_temp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

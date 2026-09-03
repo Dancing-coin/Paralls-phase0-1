@@ -86,6 +86,41 @@ def test_dispatch_ledger_survives_sqlite_restart(
         second_state.close()
 
 
+def test_character_runtime_state_rehydrates_from_the_runtime_graph_directory(tmp_path) -> None:
+    settings = config_module.Settings(
+        siming_heavenly_mode="active",
+        heavenly_graph_path=str(tmp_path / "runtime.sqlite3"),
+    )
+    first_state = main.build_runtime_state(settings)
+    try:
+        first_state.character_agent_runtime.record_settlement_result(
+            actor_id="char_b",
+            producer_ts=120,
+            payload={
+                "result_type": "action_resolution_result",
+                "change_summary": "the letter was removed",
+                "causation_id": "cause:letter:remove",
+                "correlation_id": "corr:letter:remove",
+            },
+        )
+    finally:
+        first_state.close()
+
+    second_state = main.build_runtime_state(settings)
+    try:
+        timeline = second_state.character_agent_runtime.get_session_timeline("char_b")
+        memory = second_state.character_agent_runtime.get_memory_bundle("char_b")
+        assert timeline
+        assert any(entry["event_type"] == "character_agent_settlement_result" for entry in timeline)
+        assert memory["working_memory"]
+        assert any(
+            entry.get("summary") == "the letter was removed"
+            for entry in memory["event_memories"]
+        )
+    finally:
+        second_state.close()
+
+
 def test_unconfirmed_dispatch_confirms_only_when_authority_ledger_has_its_event(
     tmp_path,
 ) -> None:
