@@ -16,6 +16,10 @@ The fixed employee path now records Economy-owned wage accrual and payment
 facts through existing wage/account APIs; the read-only mirror reports wage
 parity without owning payroll truth.
 
+The employee path also admits one fixed existing Contract `simple_service`
+employment record per employee before wage accrual, retaining Contract as the
+source of labor terms rather than adding bakery-owned contract state.
+
 Simulation-mode periods also exercise the existing Survival owner tick; the
 default narrative/disabled modes remain non-authority presentation choices.
 

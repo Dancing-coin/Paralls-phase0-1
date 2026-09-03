@@ -25,6 +25,7 @@ def main() -> int:
         "outputs": payload["output_count"] == 3,
         "wages_balanced": payload["wage_accrual_count"] == payload["wage_paid_count"],
         "survival_projection_available": payload["survival_tick_count"] >= 0,
+        "contract_projection_available": payload["employment_contract_count"] >= 0,
         "committed_only": payload["failure_count"] == 0,
     }
     report = {

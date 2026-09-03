@@ -18,6 +18,7 @@ from app.gameplay.inventory_runtime import (
     ItemDefinition,
 )
 from app.gameplay.organization_government_runtime import GovernmentAuthority, Organization, OrganizationAuthority, Permit, RoleAssignment
+from app.gameplay.contract_runtime import ContractAuthorityService, ContractTermsDefinition, ContractTermsRegistry
 from app.gameplay.survival_runtime import NeedDefinition, NeedState, SurvivalAuthority, SurvivalMode, SurvivalPolicy
 from app.character_agent.profile.registry import CharacterProfileRegistry
 
@@ -271,6 +272,19 @@ class BakeryReferenceScenario:
             if self.employee_refs:
                 account_service = EconomyAuthorityService(store=store)
                 for employee_ref in self.employee_refs:
+                    contract_service = self._contract_service(store)
+                    self._require_result(
+                        contract_service.create_contract(
+                            command_id=f"contract-create:bakery-employment:{employee_ref}",
+                            contract_id=f"contract:bakery-employment:{employee_ref}",
+                            contract_type="simple_service",
+                            terms_ref="terms:bakery:employment:v1",
+                            party_refs=(self.organization.organization_ref, employee_ref),
+                            idempotency_key=f"contract-create:bakery-employment:{employee_ref}",
+                            causation_id="causation:bakery:employment",
+                            correlation_id="correlation:bakery:employment",
+                        )
+                    )
                     self._ensure_account(
                         store,
                         account_service,
@@ -491,6 +505,19 @@ class BakeryReferenceScenario:
             )
             BakeryReferenceScenario._require_result(result)
             projection = EconomyProjector().rebuild(store.read_events())
+
+    @staticmethod
+    def _contract_service(store: GameplayEventStore) -> ContractAuthorityService:
+        terms = ContractTermsRegistry()
+        terms.register(
+            ContractTermsDefinition(
+                "terms:bakery:employment:v1",
+                "simple_service",
+                2,
+                "production-work",
+            )
+        )
+        return ContractAuthorityService(store=store, terms_registry=terms, policy_authorities=set())
 
     @staticmethod
     def _ensure_account(

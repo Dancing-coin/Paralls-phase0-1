@@ -40,6 +40,7 @@ class BakeryMirrorSource:
         wage_accrual_events = [event for event in events if event.event_type == "gameplay.economy.wage_accrued"]
         wage_paid_events = [event for event in events if event.event_type == "gameplay.economy.wage_paid"]
         survival_events = [event for event in events if event.event_type == "gameplay.survival.need_tick"]
+        contract_events = [event for event in events if event.event_type == "gameplay.contract.record_created"]
         if not output_events or not facility_events:
             raise BakeryMirrorSourceError("bakery_committed_facts_missing")
         source_revision_vector = MappingProxyType(_revision_vector(events))
@@ -61,6 +62,7 @@ class BakeryMirrorSource:
                 "wage_accrual_count": len(wage_accrual_events),
                 "wage_paid_count": len(wage_paid_events),
                 "survival_tick_count": len(survival_events),
+                "employment_contract_count": len(contract_events),
                 "period_refs": tuple(event.payload.get("period_ref", "") for event in period_events),
                 "source_event_digest": source_digest,
             }
