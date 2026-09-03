@@ -703,6 +703,10 @@ def reset_runtime_state() -> None:
         authority_event_bus.subscribe(event_type, frontend_authority_event_projector.handle_event)
     debug_stream.clear()
     _publish_population_cadence_at_game_start()
+    # Startup composition is already committed; drain its presentation outbox
+    # before handing the fresh runtime to callers so later dispatch tests see
+    # only newly committed player-facing events.
+    gameplay_outbox_dispatcher.dispatch_pending()
 
 
 def _ack_siming_staging_request(event: AuthorityEvent) -> None:
