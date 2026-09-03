@@ -8,6 +8,9 @@ explicit Inventory reservation-release recovery. Task 3 exposes committed-only
 period, facility, output, sale, permit and failure/recovery state through the
 read-only Bakery mirror and Harness.
 
+The default scenario now binds its organization owner to the committed,
+repository-visible `character:char_a` profile; no synthetic owner ref is used.
+
 Task 4 replay evidence covers full replay and checkpoint-tail replay equality,
 including tampered-checkpoint rejection. Final repository regression and Godot
 desktop evidence remain the release gate before declaring the Goal complete.

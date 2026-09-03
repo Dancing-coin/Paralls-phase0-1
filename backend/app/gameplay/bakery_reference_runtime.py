@@ -37,8 +37,8 @@ class BakeryReferenceScenario:
     @classmethod
     def default(cls) -> "BakeryReferenceScenario":
         return cls(
-            owner_character_ref="character:bakery-owner",
-            organization=Organization(organization_ref="org:bakery", jurisdiction_ref="jurisdiction:demo", owner_character_ref="character:bakery-owner"),
+            owner_character_ref="character:char_a",
+            organization=Organization(organization_ref="org:bakery", jurisdiction_ref="jurisdiction:demo", owner_character_ref="character:char_a"),
             facility=Facility(facility_ref="facility:bakery", plot_ref="plot:bakery", facility_kind="bakery", condition=1),
             recipe=Recipe(
                 recipe_ref="recipe:bread:v1",

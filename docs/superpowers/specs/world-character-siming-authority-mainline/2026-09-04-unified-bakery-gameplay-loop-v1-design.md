@@ -22,7 +22,7 @@ owner fragments, append-derived receipts and source revision pins.
 
 ## Scope
 
-- one real owner CharacterRecord and one `org:bakery` organization;
+- one real `character:char_a` owner CharacterRecord and one `org:bakery` organization;
 - three consecutive periods with deterministic period refs;
 - fixed flour input, bread output, permit, wage/tax policies and aggregate demand;
 - profile-backed employee work contributions and verified completion evidence feed
