@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "backend"))
 
 from app.gameplay.bakery_mirror_source import BakeryMirrorSource
 from app.gameplay.bakery_reference_runtime import BakeryReferenceScenario
 from app.gameplay.event_store import GameplayEventStore
-
-
-ROOT = Path(__file__).resolve().parents[2]
-
 
 def main() -> int:
     store = GameplayEventStore()
