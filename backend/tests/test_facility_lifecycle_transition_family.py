@@ -12,6 +12,7 @@ from app.gameplay.construction_production_runtime import (
     ConstructionProductionAuthority,
     Facility,
     Plot,
+    Recipe,
 )
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.patch_runtime import (
@@ -144,19 +145,24 @@ def _bakery_setup() -> tuple[GameplayEventStore, ConstructionProductionAuthority
     return store, authority, facility
 
 
-def _intent(facility: Facility, acquisition_event_id: str) -> object:
+def _intent(facility: Facility, acquisition_event_id: str, *, expected_stream_revision: int = 1) -> object:
     from app.gameplay.closed_generic_gameplay_families import FacilityLifecycleTransitionIntent
 
     return FacilityLifecycleTransitionIntent(
         facility_ref=facility.facility_ref,
         acquisition_event_id=acquisition_event_id,
-        expected_stream_revision=1,
+        expected_stream_revision=expected_stream_revision,
         expected_facility_revision=0,
         command_id="command:facility-lifecycle",
         causation_id="causation:facility-lifecycle",
         correlation_id="correlation:facility-lifecycle",
         submitted_at="2026-08-30T00:00:00Z",
     )
+
+
+def _zero_write(store: GameplayEventStore) -> dict[str, object]:
+    snapshot = store.export_snapshot()
+    return {key: snapshot[key] for key in ("events", "outbox", "idempotency")}
 
 
 def test_lifecycle_transition_family_commits_the_exact_admitted_mill_content_row() -> None:
@@ -233,6 +239,33 @@ def test_lifecycle_transition_family_commits_fixed_terminal_event() -> None:
     assert event.payload["prior_lifecycle_status"] == "active"
     assert event.payload["next_lifecycle_status"] == "decommissioned"
     assert authority.projector().facilities[facility.facility_ref].lifecycle_status == "decommissioned"
+
+
+def test_lifecycle_transition_rejects_active_run_without_writing() -> None:
+    store, authority, facility = _setup()
+    acquisition_id = store.read_stream(f"gameplay:construction_production:{facility.facility_ref}")[0].event_id
+    started = authority.settle_start_run(
+        facility=facility,
+        recipe=Recipe(recipe_ref="recipe:mill:active-run", output_item="item:mill:active-run", duration_ticks=4),
+        run_ref="run:facility-lifecycle:active-run",
+        tick=0,
+        command_id="command:lifecycle-transition:start-run",
+        idempotency_key="idempotency:lifecycle-transition:start-run",
+        causation_id="causation:lifecycle-transition:start-run",
+        correlation_id="correlation:lifecycle-transition:start-run",
+    )
+    assert started.committed
+    before = _zero_write(store)
+
+    result = authority.settle_facility_lifecycle_transition(
+        intent=_intent(facility, acquisition_id, expected_stream_revision=2)
+    )
+
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "construction_mill_decommission_active_run"
+    assert _zero_write(store) == before
+    assert authority.projector().runs["run:facility-lifecycle:active-run"].status == "started"
 
 
 def test_lifecycle_transition_rejects_wrong_facility_kind_without_writing() -> None:

@@ -56,6 +56,7 @@ def test_catalog_materializes_only_existing_cross_inf_owner_contracts() -> None:
             "inf:ecology-frost-state-expiry@1",
         "inf:economy-commerce-delivery-payment@1",
         "inf:economy-government-tax-payment@1",
+        "inf:economy-production-output-market-eligibility@1",
         "inf:economy-public-project-budget-close@1",
         "inf:economy-public-project-budget-commitment@1",
         "inf:economy-public-project-budget-consumption@1",
@@ -110,6 +111,7 @@ def test_catalog_materializes_only_existing_cross_inf_owner_contracts() -> None:
         ("actor_gameplay.ownership_domain", "authority_only"),
         ("authority:ecology", "project"),
         ("authority:ecology", "project"),
+        ("actor_gameplay.economy_domain", "authority_only"),
         ("actor_gameplay.economy_domain", "authority_only"),
         ("actor_gameplay.economy_domain", "authority_only"),
         ("actor_gameplay.economy_domain", "authority_only"),
@@ -324,6 +326,7 @@ def test_catalog_pins_admitted_construction_and_government_descriptors() -> None
                 "descriptor:organization-grain-intake@1",
                     "descriptor:economy-grain-intake-acceptance@1",
                     "descriptor:construction-recipe-production@1",
+                    "descriptor:construction-blueprint-placement@1",
         }
     ) == (
             OwnerOperationDescriptor(
@@ -335,6 +338,34 @@ def test_catalog_pins_admitted_construction_and_government_descriptors() -> None
             allowed_proposal_effect_types=(
                     "effect:construction-facility-package-declared-transform@1",
                 ),
+            ),
+            OwnerOperationDescriptor(
+                descriptor_ref="descriptor:economy-production-output-market-eligibility@1",
+                family_ref=None,
+                descriptor_revision="descriptor:economy-production-output-market-eligibility@1",
+                capability_ref="capability:economy-production-output-market-eligibility@1",
+                outcome_family_ref="outcome:economy-production-output-market-eligibility@1",
+                allowed_predicate_family_refs=("predicate:inventory-production-output-custody@1",),
+                allowed_proposal_effect_types=("effect:economy-production-output-market-eligibility@1",),
+                owner_ref="actor_gameplay.economy_domain",
+                accepted_intent_schema_ref="schema:economy-production-output-market-eligibility-intent@1",
+                source_event_types=("gameplay.inventory.production_output_received@1",),
+                source_stream_pattern="gameplay:inventory:{holder_ref}",
+                source_revision_fence_ref="revision:inventory-production-output-custody@1",
+                target_stream_pattern="gameplay:economy",
+                target_event_types=("gameplay.economy.production_output_market_eligible@1",),
+                privacy_scope="authority_only",
+                idempotency_rule_ref="idempotency:economy-production-output-market-eligibility@1",
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_refs=(
+                    "reader:economy-production-output-market-eligibility-checkpoint-tail@1",
+                    "reader:economy-production-output-market-eligibility-full@1",
+                ),
+                terminal_semantics_ref="lifecycle:terminal-no-compensation@1",
+                reversal_semantics_ref="lifecycle:none@1",
+                compensation_semantics_ref="lifecycle:none@1",
+                allowed_recipe_family_refs=(),
+                package_slot_refs=(),
             ),
             OwnerOperationDescriptor(
                 descriptor_ref="descriptor:construction-facility-mill-reinforcement@1",

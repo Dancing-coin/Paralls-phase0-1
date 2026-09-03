@@ -46,6 +46,11 @@ def _manifest(*, outcome_ref: str, tradeable_ref: str | None, typed_service_ref:
             fixed_amount=amount,
         ),
         consent_rule_ref="consent:mutual@1",
+        eligibility_refs=(),
+        privacy_policy_ref="authority_only",
+        compensation_policy_ref="none",
+        source_selection_rule_ref="exchange:unique-owned-source@1",
+        capability_ref="capability:package-declared-negotiated-exchange@1",
     )
     draft = GameplayPatchManifest(
         manifest_schema_version=1,
@@ -66,6 +71,38 @@ def _manifest(*, outcome_ref: str, tradeable_ref: str | None, typed_service_ref:
         economic_outcomes=(definition,),
     )
     return draft.model_copy(update={"content_digest": draft.expected_content_digest()})
+
+
+@pytest.mark.parametrize(
+    "field",
+    ("privacy_policy_ref", "compensation_policy_ref", "source_selection_rule_ref", "capability_ref"),
+)
+def test_package_exchange_policy_and_capability_fields_cannot_be_omitted(field: str) -> None:
+    definition = _manifest(
+        outcome_ref="outcome:package-explicit-fields",
+        tradeable_ref="item:package-explicit-fields@1",
+        typed_service_ref=None,
+        source_mode="inventory_custody@1",
+    ).economic_outcomes[0]
+    payload = definition.model_dump(mode="json")
+    payload.pop(field)
+
+    with pytest.raises(Exception):
+        PackageDeclaredNegotiatedExchangeDefinition.model_validate(payload)
+
+
+def test_package_exchange_eligibility_refs_cannot_be_omitted() -> None:
+    definition = _manifest(
+        outcome_ref="outcome:package-explicit-eligibility",
+        tradeable_ref="item:package-explicit-eligibility@1",
+        typed_service_ref=None,
+        source_mode="inventory_custody@1",
+    ).economic_outcomes[0]
+    payload = definition.model_dump(mode="json")
+    payload.pop("eligibility_refs")
+
+    with pytest.raises(Exception):
+        PackageDeclaredNegotiatedExchangeDefinition.model_validate(payload)
 
 
 def _intent(*, outcome_ref: str, proposal_digest: str = "proposal:exchange:1", amount: int | None = None) -> PackageDeclaredNegotiatedExchangeIntentV1:

@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
 
 import pytest
 
-from app.gameplay.closed_generic_gameplay_families import DeclaredExchangeIntent
+from app.gameplay.closed_generic_gameplay_families import DeclaredExchangeContent, DeclaredExchangeIntent
 from app.gameplay.economy_runtime import EconomyRuntimeError
-from app.gameplay.patch_runtime import GameplayPatchManifest, GameplayPatchRegistry
+from app.gameplay.patch_runtime import (
+    GameplayPatchManifest,
+    GameplayPatchRegistry,
+    PackageDeclaredNegotiatedExchangeDefinition,
+)
 from test_inf2ad_municipal_drought_assessment_exchange import (
     OUTCOME as MUNICIPAL_OUTCOME,
     PROVIDER as MUNICIPAL_PROVIDER,
@@ -161,7 +166,7 @@ def _family_manifest(*, binding_requests: list[dict[str, object]]) -> GameplayPa
                     "source_package_revision": package_revision,
                     "typed_content": {
                         "outcome_ref": "outcome:declared-exchange-item@1",
-                        "tradeable_definition_ref": "definition:industrial-facilities-flour@1",
+                        "tradeable_definition_ref": "definition:item:industrial-facilities:flour@1",
                         "policy_revision_ref": "policy:declared-exchange@1",
                         "eligibility_refs": ["eligibility:declared-exchange@1"],
                     },
@@ -311,6 +316,128 @@ def test_declared_exchange_uses_same_adapter_for_distinct_committed_item_and_ser
     assert settlement.payload["source_event_ids"] == expected_source_event_ids
 
 
+def test_declared_exchange_retains_and_revalidates_immutable_binding_pins() -> None:
+    prepared = _prepared_case()
+    store, source_economy, source = prepared
+    economy = _family_economy(
+        source_economy,
+        store=store,
+        paths=(FAMILY_MANIFEST_DIR / "package-declared-exchange-item-v7.manifest.json",),
+    )
+    result = economy.settle_declared_exchange(intent=_intent(source))
+    assert result.committed
+    settlement = next(
+        store.get_event(event_id)
+        for event_id in result.committed_event_ids
+        if store.get_event(event_id).event_type
+        == "gameplay.economy.package_declared_negotiated_exchange_settled"
+    )
+    for key in (
+        "package_revision",
+        "content_digest",
+        "declaration_ref",
+        "declaration_digest",
+        "binding_ref",
+        "active_patch_set_revision",
+    ):
+        assert settlement.payload[key]
+    forged = settlement.model_copy(
+        update={"payload": {**settlement.payload, "binding_ref": "binding:forged@1"}},
+        deep=True,
+    )
+    store._events_by_id[settlement.event_id] = forged
+    store._events = [forged if event.event_id == settlement.event_id else event for event in store._events]
+
+    with pytest.raises(Exception, match="package_exchange_replay_invalid"):
+        economy.package_declared_negotiated_exchange_projection(scope="authority")
+
+
+def test_declared_exchange_replay_rejects_stale_active_set_pin() -> None:
+    store, source_economy, source = _prepared_case()
+    economy = _family_economy(
+        source_economy,
+        store=store,
+        paths=(FAMILY_MANIFEST_DIR / "package-declared-exchange-item-v7.manifest.json",),
+    )
+    result = economy.settle_declared_exchange(intent=_intent(source))
+    assert result.committed
+    settlement = next(
+        store.get_event(event_id)
+        for event_id in result.committed_event_ids
+        if store.get_event(event_id).event_type
+        == "gameplay.economy.package_declared_negotiated_exchange_settled"
+    )
+    forged = settlement.model_copy(
+        update={"payload": {**settlement.payload, "active_patch_set_revision": "sha256:stale"}},
+        deep=True,
+    )
+    store._events_by_id[settlement.event_id] = forged
+    store._events = [forged if event.event_id == settlement.event_id else event for event in store._events]
+
+    with pytest.raises(Exception, match="package_exchange_replay_invalid"):
+        economy.package_declared_negotiated_exchange_projection(scope="authority")
+
+
+def test_declared_exchange_replay_rejects_missing_binding_pin() -> None:
+    store, source_economy, source = _prepared_case()
+    economy = _family_economy(
+        source_economy,
+        store=store,
+        paths=(FAMILY_MANIFEST_DIR / "package-declared-exchange-item-v7.manifest.json",),
+    )
+    result = economy.settle_declared_exchange(intent=_intent(source))
+    assert result.committed
+    settlement = next(
+        store.get_event(event_id)
+        for event_id in result.committed_event_ids
+        if store.get_event(event_id).event_type
+        == "gameplay.economy.package_declared_negotiated_exchange_settled"
+    )
+    forged = settlement.model_copy(
+        update={"payload": {key: value for key, value in settlement.payload.items() if key != "binding_ref"}},
+        deep=True,
+    )
+    store._events_by_id[settlement.event_id] = forged
+    store._events = [forged if event.event_id == settlement.event_id else event for event in store._events]
+
+    with pytest.raises(Exception, match="package_exchange_replay_invalid"):
+        economy.package_declared_negotiated_exchange_projection(scope="authority")
+
+
+def test_declared_exchange_content_eligibility_refs_cannot_be_omitted() -> None:
+    payload = {
+        "outcome_ref": "outcome:declared-exchange-content@1",
+        "tradeable_definition_ref": "definition:item:declared-exchange-content@1",
+        "policy_revision_ref": "policy:declared-exchange-content@1",
+    }
+
+    with pytest.raises(Exception):
+        DeclaredExchangeContent.model_validate(payload)
+
+
+def test_declared_exchange_replay_rejects_unadmitted_active_binding() -> None:
+    store, source_economy, source = _prepared_case()
+    economy = _family_economy(
+        source_economy,
+        store=store,
+        paths=(FAMILY_MANIFEST_DIR / "package-declared-exchange-item-v7.manifest.json",),
+    )
+    result = economy.settle_declared_exchange(intent=_intent(source))
+    assert result.committed
+    settlement = next(
+        store.get_event(event_id)
+        for event_id in result.committed_event_ids
+        if store.get_event(event_id).event_type
+        == "gameplay.economy.package_declared_negotiated_exchange_settled"
+    )
+    active = economy._package_registry.active_patch_set
+    assert active is not None
+    economy._package_registry._active = replace(active, capability_bindings=())
+
+    with pytest.raises(Exception, match="package_exchange_replay_invalid"):
+        economy.package_declared_negotiated_exchange_projection(scope="authority")
+
+
 @pytest.mark.parametrize(
     ("setup", "family_manifest", "expected_package_revision", "expected_source_mode"),
     [
@@ -367,6 +494,154 @@ def test_declared_exchange_family_admits_distinct_content_and_replays_through_on
     replay = economy.settle_declared_exchange(intent=_intent(source))
     assert replay.committed
     assert replay.idempotency_status == "duplicate_replayed"
+    assert store.export_snapshot() == before
+
+
+def test_declared_exchange_missing_economic_outcome_fails_closed_without_defaults() -> None:
+    store, source_economy, source = _prepared_case()
+    manifest = _family_manifest(
+        binding_requests=[
+            {
+                "binding_ref": "binding:declared-exchange-admission-test@1",
+                "capability_ref": "capability:declared-exchange@1",
+                "source_package_revision": "package:declared-exchange-admission-test@1",
+                "declaration_ref": "declaration:declared-exchange-admission-test@1",
+                "typed_read_requirements": [
+                    {
+                        "requirement_ref": "requirement:declared-exchange-source@1",
+                        "predicate_family_ref": "predicate:declared-source-evidence@1",
+                        "subject_slot_ref": "slot:tradeable-or-service@1",
+                    }
+                ],
+                "proposal_effect_types": ["effect:declared-exchange@1"],
+            }
+        ]
+    )
+    registry = GameplayPatchRegistry(trusted_authors=frozenset({"author:repo"}))
+    registry.install(manifest)
+    registry.activate((manifest.patch_revision_id,))
+    economy = source_economy.__class__(
+        store=store,
+        package_registry=registry,
+        inventory_registry=getattr(source_economy, "_inventory_registry", None),
+        inventory_authority=getattr(source_economy, "_inventory_authority", None),
+        contract_authority=getattr(source_economy, "_contract_authority", None),
+    )
+    before = store.export_snapshot()
+
+    result = economy.settle_declared_exchange(intent=_intent(source))
+
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "declared_exchange_source_invalid"
+    assert store.export_snapshot() == before
+
+
+def test_declared_exchange_bounded_price_without_authorized_amount_fails_closed() -> None:
+    store, source_economy, source = _prepared_case()
+    manifest = _family_manifest(
+        binding_requests=[
+            {
+                "binding_ref": "binding:declared-exchange-admission-test@1",
+                "capability_ref": "capability:declared-exchange@1",
+                "source_package_revision": "package:declared-exchange-admission-test@1",
+                "declaration_ref": "declaration:declared-exchange-admission-test@1",
+                "typed_read_requirements": [
+                    {
+                        "requirement_ref": "requirement:declared-exchange-source@1",
+                        "predicate_family_ref": "predicate:declared-source-evidence@1",
+                        "subject_slot_ref": "slot:tradeable-or-service@1",
+                    }
+                ],
+                "proposal_effect_types": ["effect:declared-exchange@1"],
+            }
+        ]
+    )
+    outcome = PackageDeclaredNegotiatedExchangeDefinition.model_validate(
+        {
+            "economic_outcome_id": "package_declared_negotiated_exchange@1",
+            "outcome_ref": "outcome:declared-exchange-item@1",
+            "tradeable_ref": "item:industrial-facilities:flour@1",
+            "source_evidence_mode": "inventory_custody@1",
+            "source_owner_ref": "actor_gameplay.inventory_domain",
+            "source_evidence_kind": "inventory_custody@1",
+            "price_policy": {
+                "price_policy_revision": "policy:declared-exchange-bounded-price@1",
+                "currency_ref": "currency:local",
+                "minimum_amount": 1,
+                "maximum_amount": 2,
+            },
+            "consent_rule_ref": "consent:mutual@1",
+            "eligibility_refs": (),
+            "privacy_policy_ref": "authority_only",
+            "compensation_policy_ref": "none",
+            "source_selection_rule_ref": "exchange:unique-owned-source@1",
+            "capability_ref": "capability:package-declared-negotiated-exchange@1",
+        }
+    )
+    manifest = manifest.model_copy(update={"economic_outcomes": (outcome,)}, deep=True)
+    manifest = manifest.model_copy(update={"content_digest": manifest.expected_content_digest()}, deep=True)
+    registry = GameplayPatchRegistry(trusted_authors=frozenset({"author:repo"}))
+    registry.install(manifest)
+    registry.activate((manifest.patch_revision_id,))
+    economy = source_economy.__class__(
+        store=store,
+        package_registry=registry,
+        inventory_registry=getattr(source_economy, "_inventory_registry", None),
+        inventory_authority=getattr(source_economy, "_inventory_authority", None),
+        contract_authority=getattr(source_economy, "_contract_authority", None),
+    )
+    before = store.export_snapshot()
+
+    result = economy.settle_declared_exchange(intent=_intent(source))
+
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "declared_exchange_source_invalid"
+    assert store.export_snapshot() == before
+
+
+def test_declared_exchange_rejects_noncanonical_definition_prefix_match() -> None:
+    store, source_economy, source = _prepared_case()
+    manifest = GameplayPatchManifest.model_validate_json(
+        (FAMILY_MANIFEST_DIR / "package-declared-exchange-item-v7.manifest.json").read_text(encoding="utf-8")
+    )
+    definition = manifest.platform_extension.package_definitions[0]
+    forged_definition = definition.model_copy(
+        update={
+            "typed_content": {
+                **definition.typed_content,
+                "tradeable_definition_ref": "definition:forged-prefix:item:industrial-facilities:flour@1",
+            }
+        },
+        deep=True,
+    )
+    manifest = manifest.model_copy(
+        update={
+            "platform_extension": manifest.platform_extension.model_copy(
+                update={"package_definitions": (forged_definition,)}, deep=True
+            )
+        },
+        deep=True,
+    )
+    manifest = manifest.model_copy(update={"content_digest": manifest.expected_content_digest()}, deep=True)
+    registry = GameplayPatchRegistry(trusted_authors=frozenset({"author:repo"}))
+    registry.install(manifest)
+    registry.activate((manifest.patch_revision_id,))
+    economy = source_economy.__class__(
+        store=store,
+        package_registry=registry,
+        inventory_registry=getattr(source_economy, "_inventory_registry", None),
+        inventory_authority=getattr(source_economy, "_inventory_authority", None),
+        contract_authority=getattr(source_economy, "_contract_authority", None),
+    )
+    before = store.export_snapshot()
+
+    result = economy.settle_declared_exchange(intent=_intent(source))
+
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "declared_exchange_source_invalid"
     assert store.export_snapshot() == before
 
 

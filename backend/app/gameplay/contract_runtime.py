@@ -1323,6 +1323,27 @@ class ContractAuthorityService:
     def _append(self, command_id: str, idempotency_key: str, digest: str, events: list[dict[str, object]], revision: int) -> AppendBatchResult:
         return self._store.append_batch({"transaction_id": f"tx:{command_id}", "command_id": command_id, "expected_stream_revisions": {self._STREAM: revision}, "pinned_revisions": {self._STREAM: revision}, "events": events, "idempotency_record": {"principal_ref": self._PRINCIPAL, "idempotency_key": idempotency_key, "payload_digest": digest}, "outbox_entries": [], "result_digest": digest, "projection_refresh_hints": []})
 
+    def accept_ogs_social_conflict_eligibility(self, *, source_event: object, expected_source_revision: int, command_id: str, idempotency_key: str, expected_contract_revision: int, causation_id: str, correlation_id: str) -> AppendBatchResult:
+        """Record a Contract-owned eligibility marker from one exact Social case.
+
+        This does not create a contract, obligation, payment, or penalty. The
+        target Contract owner may later admit a separate terms-specific row.
+        """
+        from app.gameplay.organization_government_social_recipes import validate_ogs_recipe_source
+        if getattr(source_event, "event_type", None) != "gameplay.social.norm_conflict_recorded@1" or getattr(source_event, "visibility_policy", None) != "project":
+            return self._rejected_append(command_id, "ogs_social_recipe_source_invalid")
+        source_revision = int(getattr(source_event, "stream_revision", 0))
+        source_stream = str(getattr(source_event, "stream_id", ""))
+        if source_revision != expected_source_revision or self._store.get_stream_head(source_stream) != expected_source_revision:
+            return self._rejected_append(command_id, "ogs_social_recipe_source_stale")
+        recipe = validate_ogs_recipe_source(recipe_ref="recipe:social-conflict-contract-eligibility@1", source_owner_ref="authority:p5:social", source_event_type=source_event.event_type, source_privacy_scope="project", source_revision=source_revision, expected_source_revision=expected_source_revision)
+        if self._store.get_stream_head(self._STREAM) != expected_contract_revision:
+            return self._rejected_append(command_id, "ogs_social_recipe_contract_revision_conflict")
+        payload = {"acceptance_ref": f"acceptance:{recipe.recipe_ref}:{source_event.event_id}", "recipe_ref": recipe.recipe_ref, "source_event_id": source_event.event_id, "source_stream_id": source_stream, "source_stream_revision": source_revision, "source_owner_ref": recipe.source_owner_ref, "target_owner_ref": recipe.target_owner_ref}
+        digest = _digest({"kind": "ogs_social_recipe_acceptance", **payload})
+        event = self._event(command_id, 1, "gameplay.contract.ogs_social_conflict_eligibility_accepted@1", payload, causation_id, correlation_id)
+        return self._append(command_id, idempotency_key, digest, [event], expected_contract_revision)
+
     @staticmethod
     def _rejected_append(command_id: str, error_code: str) -> AppendBatchResult:
         return AppendBatchResult(

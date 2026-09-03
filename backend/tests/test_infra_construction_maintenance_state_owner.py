@@ -481,3 +481,37 @@ def test_construction_maintenance_owner_row_full_and_checkpoint_tail_projection_
 
     assert full.maintenance_states == checkpoint.maintenance_states
     assert full.source_revision_vector == checkpoint.source_revision_vector
+
+
+def test_construction_maintenance_state_replay_rejects_stream_or_privacy_tamper() -> None:
+    store = GameplayEventStore()
+    registry = _registry()
+    _seed_construction_stream(store)
+    assert _submit(SemanticSettlementAuthority(store=store, registry=registry), registry).committed
+    event = store.read_events()[-1]
+    wrong_stream = event.model_copy(update={"stream_id": "gameplay:construction_production:facility:other"}, deep=True)
+    with pytest.raises(ValueError, match="construction_maintenance_state_source_conflict"):
+        ConstructionProductionAuthority(store=store)._projector.rebuild([*store.read_events()[:-1], wrong_stream])
+    private = event.model_copy(update={"visibility_policy": "authority_only"}, deep=True)
+    with pytest.raises(ValueError, match="construction_maintenance_state_source_conflict"):
+        ConstructionProductionAuthority(store=store)._projector.rebuild([*store.read_events()[:-1], private])
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"next_stacks": 0},
+        {"next_stacks": -1},
+        {"effective_magnitude": -1},
+        {"state_ref": ""},
+    ],
+)
+def test_construction_maintenance_state_replay_rejects_malformed_values(mutation: dict[str, object]) -> None:
+    store = GameplayEventStore()
+    registry = _registry()
+    _seed_construction_stream(store)
+    assert _submit(SemanticSettlementAuthority(store=store, registry=registry), registry).committed
+    event = store.read_events()[-1]
+    tampered = event.model_copy(update={"payload": {**event.payload, **mutation}}, deep=True)
+    with pytest.raises(ValueError, match="construction_maintenance_state_invalid"):
+        ConstructionProductionAuthority(store=store)._projector.rebuild([*store.read_events()[:-1], tampered])

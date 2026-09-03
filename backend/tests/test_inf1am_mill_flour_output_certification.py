@@ -22,7 +22,14 @@ def _completed_case():
     reinforcement = authority.reinforce_mill_from_package(_intent(acquisition_id))
     assert reinforcement.committed
     facility = authority.projector().facilities[FACILITY]
-    recipe = Recipe(recipe_ref=RECIPE, inputs={"item:industrial-facilities:grain@1": 20}, output_item=ITEM, duration_ticks=1)
+    recipe = Recipe(
+        recipe_ref=RECIPE,
+        inputs={"item:industrial-facilities:grain@1": 20},
+        output_item=ITEM,
+        duration_ticks=1,
+        failure_policy_mode="terminal",
+        failure_policy_revision="policy:failure:terminal@1",
+    )
     assert authority.settle_start_run(
         facility=facility,
         recipe=recipe,

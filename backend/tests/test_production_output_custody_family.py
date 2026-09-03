@@ -16,11 +16,14 @@ from app.gameplay.inventory_runtime import (
     InventoryAuthorityService,
     InventoryDefinitionRegistry,
     ItemDefinition,
+    InventoryRuntimeError,
 )
 from app.gameplay.patch_runtime import GameplayPatchManifest, GameplayPatchRegistry
 from closed_generic_manifest_fixtures import load_manifest
 from test_production_output_certification_family import (
     _intent as certification_intent,
+    _kiln_intent,
+    _kiln_setup,
     _mill_intent,
     _mill_setup,
     _setup,
@@ -230,6 +233,12 @@ def test_production_output_custody_consumes_two_certified_contents_through_one_a
     assert event.payload["holder_ref"] == holder_ref
     assert event.payload["container_id"] == container_id
     assert event.payload["family_ref"] == "production_output_custody@1"
+    assert event.payload["source_certification_provenance"]["package_revision"] == certification.payload["package_revision"]
+    assert event.payload["source_certification_provenance"]["content_digest"] == certification.payload["content_digest"]
+    assert event.payload["source_certification_provenance"]["declaration_digest"] == certification.payload["declaration_digest"]
+    view = inventory.production_output_custody_view_for()
+    tail_view = inventory.production_output_custody_view_for(checkpoint_at=certification.stream_revision)
+    assert view["rows"] == tail_view["rows"]
     replay = inventory.settle_production_output_custody(
         intent=ProductionOutputCustodyIntent(
             certification_event_id=certification.event_id,
@@ -244,3 +253,100 @@ def test_production_output_custody_consumes_two_certified_contents_through_one_a
     )
     assert replay.committed
     assert replay.idempotency_status == "duplicate_replayed"
+
+
+def test_production_output_custody_reader_rejects_checkpoint_beyond_store_head() -> None:
+    inventory = InventoryAuthorityService(
+        store=GameplayEventStore(),
+        registry=InventoryDefinitionRegistry(),
+    )
+
+    with pytest.raises(InventoryRuntimeError, match="production_output_custody_checkpoint_invalid"):
+        inventory.production_output_custody_view_for(checkpoint_at=1)
+
+
+def test_production_output_custody_rejects_certification_without_provenance_before_append() -> None:
+    store, construction, finished_event_id = _setup()
+    certification = construction.settle_production_output_certification(
+        intent=certification_intent(finished_event_id)
+    )
+    assert certification.committed
+    certification_event = store.get_event(certification.committed_event_ids[0])
+    tampered = certification_event.model_copy(
+        update={
+            "payload": {
+                key: value
+                for key, value in certification_event.payload.items()
+                if key not in {"package_revision", "content_digest", "declaration_digest", "descriptor_ref", "descriptor_revision"}
+            }
+        },
+        deep=True,
+    )
+    store._events[store._events.index(certification_event)] = tampered
+    store._events_by_id[certification_event.event_id] = tampered
+    inventory = _inventory_for_certification(
+        store,
+        package_registry=construction._package_registry,
+        holder_ref="organization:bakery",
+        item_ref="item:bread@1",
+        container_id="container:organization:bakery:production-output",
+    )
+    result = inventory.settle_production_output_custody(
+        intent=ProductionOutputCustodyIntent(
+            certification_event_id=certification_event.event_id,
+            expected_certification_revision=certification_event.stream_revision,
+            expected_inventory_stream_revision=store.get_stream_head("gameplay:inventory:organization:bakery"),
+            command_id="custody:missing-source-provenance",
+            correlation_id="custody:missing-source-provenance",
+            submitted_at="2026-08-31T00:00:00Z",
+        )
+    )
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "production_output_custody_source_invalid"
+
+
+def test_production_output_custody_supports_kiln_certified_output_with_same_adapter() -> None:
+    store, construction, finished_event_id = _kiln_setup()
+    certification_manifest = load_manifest("production-output-certification-kiln-demo-v1")
+    custody_manifest = _custody_manifest(
+        package_id="production-output-custody-kiln",
+        package_revision="package:production-output-custody:kiln@1",
+        definition_ref="definition:production-output-custody-kiln@1",
+        output_item_ref="item:brick@1",
+        holder_binding_ref="binding:holder:organization:kiln@1",
+        container_binding_ref="binding:container:container:organization:kiln:production-output@1",
+        policy_revision="policy:inventory-production-output-custody@1",
+    )
+    registry = _family_registry(certification_manifest, custody_manifest)
+    construction = ConstructionProductionAuthority(store=store, package_registry=registry)
+    certification = construction.settle_production_output_certification(
+        intent=_kiln_intent(finished_event_id)
+    )
+    assert certification.committed, certification.failure
+    certification_event = store.get_event(certification.committed_event_ids[0])
+    inventory = _inventory_for_certification(
+        store,
+        package_registry=registry,
+        holder_ref="organization:kiln",
+        item_ref="item:brick@1",
+        container_id="container:organization:kiln:production-output",
+    )
+    result = inventory.settle_production_output_custody(
+        intent=ProductionOutputCustodyIntent(
+            certification_event_id=certification_event.event_id,
+            expected_certification_revision=certification_event.stream_revision,
+            expected_inventory_stream_revision=store.get_stream_head("gameplay:inventory:organization:kiln"),
+            command_id="custody:production-output-kiln",
+            correlation_id="custody:production-output-kiln",
+            submitted_at="2026-09-02T00:00:00Z",
+        )
+    )
+    assert result.committed, result.failure
+    event = store.get_event(result.committed_event_ids[0])
+    assert event.payload["item_ref"] == "item:brick@1"
+    assert event.payload["holder_ref"] == "organization:kiln"
+    assert event.payload["container_id"] == "container:organization:kiln:production-output"
+    assert inventory.production_output_custody_view_for()["rows"] == inventory.production_output_custody_view_for(
+        checkpoint_at=certification_event.global_sequence
+    )["rows"]

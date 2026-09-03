@@ -241,3 +241,29 @@ def test_mill_decommission_duplicate_replay_and_checkpoint_tail_are_terminal() -
     assert full.source_revision_vector == tail.source_revision_vector
     assert not hasattr(authority, "reactivate_mill")
     assert not hasattr(authority, "compensate_mill_decommission")
+
+
+def test_mill_decommission_replay_rejects_stream_or_privacy_tamper() -> None:
+    store, authority, _registry, acquisition_id, reinforcement_id = _setup()
+    result = authority.decommission_reinforced_mill(_intent(acquisition_id, reinforcement_id))
+    assert result.committed
+    event = store.get_event(result.committed_event_ids[0])
+    wrong_stream = event.model_copy(update={"stream_id": "gameplay:construction_production:facility:other"}, deep=True)
+    with pytest.raises(ValueError, match="facility_decommission_source_conflict"):
+        authority._projector.rebuild([*store.read_events()[:-1], wrong_stream])
+    private = event.model_copy(update={"visibility_policy": "authority_only"}, deep=True)
+    with pytest.raises(ValueError, match="facility_decommission_source_conflict"):
+        authority._projector.rebuild([*store.read_events()[:-1], private])
+
+
+def test_mill_decommission_replay_rejects_unresolved_source_event_pins() -> None:
+    store, authority, _registry, acquisition_id, reinforcement_id = _setup()
+    result = authority.decommission_reinforced_mill(_intent(acquisition_id, reinforcement_id))
+    assert result.committed
+    event = store.get_event(result.committed_event_ids[0])
+    tampered = event.model_copy(
+        update={"payload": {**event.payload, "reinforcement_event_id": "event:missing-reinforcement"}},
+        deep=True,
+    )
+    with pytest.raises(ValueError, match="facility_decommission_source_conflict"):
+        authority._projector.rebuild([*store.read_events()[:-1], tampered])

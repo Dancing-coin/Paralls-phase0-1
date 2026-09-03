@@ -171,6 +171,34 @@ def test_package_transform_full_and_checkpoint_tail_replay_match_and_is_terminal
     assert not hasattr(authority, "reverse_facility_package_transform")
 
 
+def test_package_transform_replay_rejects_stream_or_privacy_tamper() -> None:
+    store, authority, _registry, source_id = _setup()
+    result = authority.transform_facility_from_package(_intent(source_id))
+    assert result.committed
+    event = store.get_event(result.committed_event_ids[0])
+    wrong_stream = event.model_copy(
+        update={"stream_id": "gameplay:construction_production:facility:other"}, deep=True
+    )
+    with pytest.raises(ValueError, match="facility_transform_source_conflict"):
+        authority._projector.rebuild([*store.read_events()[:-1], wrong_stream])
+    private = event.model_copy(update={"visibility_policy": "authority_only"}, deep=True)
+    with pytest.raises(ValueError, match="facility_transform_source_conflict"):
+        authority._projector.rebuild([*store.read_events()[:-1], private])
+
+
+def test_package_transform_replay_rejects_unresolved_acquisition_source_pin() -> None:
+    store, authority, _registry, source_id = _setup()
+    result = authority.transform_facility_from_package(_intent(source_id))
+    assert result.committed
+    event = store.get_event(result.committed_event_ids[0])
+    tampered = event.model_copy(
+        update={"payload": {**event.payload, "acquisition_event_id": "event:missing-acquisition"}},
+        deep=True,
+    )
+    with pytest.raises(ValueError, match="facility_transform_source_conflict"):
+        authority._projector.rebuild([*store.read_events()[:-1], tampered])
+
+
 @pytest.mark.parametrize("mutation, error", [
     ("unadmitted", "construction_facility_transform_binding_unadmitted"),
     ("multiple", "construction_facility_transform_binding_ambiguous"),

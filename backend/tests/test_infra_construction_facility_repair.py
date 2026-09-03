@@ -96,6 +96,37 @@ def test_facility_repair_changed_duplicate_is_zero_write() -> None:
     assert _zero_write(store) == before
 
 
+def test_facility_repair_replay_rejects_stream_or_privacy_tamper() -> None:
+    store, authority = _seed()
+    result = _repair(authority)
+    assert result.committed
+    event = store.get_event(result.committed_event_ids[0])
+    wrong_stream = event.model_copy(update={"stream_id": "gameplay:construction_production:facility:other"}, deep=True)
+    with pytest.raises(ValueError, match="facility_repair_source_conflict"):
+        authority._projector.rebuild([*store.read_events()[:-1], wrong_stream])
+    private = event.model_copy(update={"visibility_policy": "authority_only"}, deep=True)
+    with pytest.raises(ValueError, match="facility_repair_source_conflict"):
+        authority._projector.rebuild([*store.read_events()[:-1], private])
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        {"next_condition": 1.5},
+        {"next_condition": -0.1},
+        {"facility_revision": 3},
+    ],
+)
+def test_facility_repair_replay_rejects_condition_or_revision_tamper(mutation: dict[str, object]) -> None:
+    store, authority = _seed()
+    result = _repair(authority)
+    assert result.committed
+    event = store.get_event(result.committed_event_ids[0])
+    tampered = event.model_copy(update={"payload": {**event.payload, **mutation}}, deep=True)
+    with pytest.raises(ValueError, match="facility_repair_conflict"):
+        authority._projector.rebuild([*store.read_events()[:-1], tampered])
+
+
 @pytest.mark.parametrize(
     ("updates", "error_code"),
     [
