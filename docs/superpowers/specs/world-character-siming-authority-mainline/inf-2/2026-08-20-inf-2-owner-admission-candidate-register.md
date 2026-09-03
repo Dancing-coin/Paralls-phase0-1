@@ -1,6 +1,6 @@
 # INF-2 Owner-Admission Candidate Register
 
-Status: `INF-2AN latest grain-intake acceptance vertical implemented and verified; remaining candidate slots retain their formal dispositions`
+Status: `INF-2AO latest production-output eligibility vertical implemented and verified; remaining candidate slots retain their formal dispositions`
 
 ## Shared Contract Requirements
 
@@ -113,3 +113,15 @@ terminal/reversal/compensation semantics. Test recipes, archive-token custody,
 INF-2AA delivery, and INF-2AC package exchange are duplicate or
 non-authoritative sources. Slot C remains `owner-contract blocked` and generic
 payment/transfer/settlement remains zero-write.
+
+## Candidate INF-2AO (implemented narrow vertical)
+
+The exact committed Inventory `production_output_custody@1` event now yields
+one authority-only Economy `production_output_market_eligible@1` marker. The
+marker is account-neutral and copies only source-derived item, quantity,
+holder, container, facility, project, recipe and mapping pins. It has no price,
+currency, account, buyer, receiver, payment, transfer or market-order
+semantics. Focused tests, immutable catalog/schema admission, owner-derived
+idempotency, append-derived receipt and full/checkpoint-tail replay are
+verified by the dedicated Harness. This closes INF-2AO only; generic economic
+and settlement classes remain blocked.

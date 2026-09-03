@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "ecology-generic-platform",
+  "order": 350,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_ecology_generic_platform.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/ecology-generic-platform-report.json",
+  "description": "General Ecology typed content, owner runtime, hazards, propagation and consumer admission"
+}

@@ -136,6 +136,11 @@ The residual blocker register now records the resolved custody admission. The
 exact status is `12 generic_implemented / 0 bounded_adapter / 0 blocked` and
 `generic_refactoring_complete=true`. August INF A-D remains `not complete`.
 
+The expanded implemented-row index in the ordered completion audit is the
+current reconciliation for rows that already have independent contract and
+Harness evidence but were omitted from the compact top ledger. It changes no
+row semantics and does not reduce the blockers below.
+
 ## 2026-08-31 August INF Return Scan
 
 The custody resolution added only closed-family package/mapping evidence; it
@@ -145,3 +150,79 @@ generic payment/transfer remains blocked, INF-3 has no new target-owner edge,
 and INF-4 lacks committed population/attendance/group/social consequence
 evidence. Execution returns to the existing INF-1 -> INF-2 -> INF-3 -> INF-4
 continuation without modifying Foundation family rows or August status.
+
+## 2026-08-31 INF-2AO Resolution
+
+The previous return scan is superseded for one exact Economy marker: committed
+Inventory `production_output_custody@1` now yields
+`production_output_market_eligible@1`. This row is account-neutral and does
+not settle payment, transfer or pricing. Its source, target stream/event,
+authority-only privacy, revision, idempotency, receipt, replay and zero-write
+contract are recorded in the INF-2AO design. Remaining INF-2 generic payment,
+transfer, market-pricing and Slot-C settlement classes remain blocked.
+
+## 2026-09-01 INF-2AO Verification and Ordered Scan
+
+INF-2AO is verified and no longer a blocker. Its focused suite (`11 passed`),
+registered Harness profile, INF-2 regression collection (`83 passed`), and
+INF/INFRA collection (`1395 passed`) are green. The unified Harness is green
+for all local profiles; the only non-zero child is the pre-existing external
+`siming-heavenly-runtime` preflight, blocked by missing live credentials/mode.
+
+The subsequent INF-3 -> INF-4 scan produced no new admissible tuple. Existing
+unlisted weather consumers and population/attendance/social/group consequences
+remain formally blocked or unimplemented; no facts were inferred from names,
+fixtures, branch previews, or generic family content.
+
+## INF-2AO Downstream Market Outcome Boundary
+
+The new `production_output_market_eligible@1` marker was checked for a
+follow-on owner operation. It contains only source-derived custody provenance
+and an eligibility status. No committed buyer, receiver, account, currency,
+price policy, order identity, or terminal settlement outcome exists, and no
+existing owner contract maps this marker to one. Consequently any sale,
+listing, transfer, quote, payment, or reservation candidate remains
+`owner-contract blocked` and must zero-write until a distinct committed source
+and exact existing-owner outcome are supplied.
+
+Bounded price ranges without an explicit owner-authorized amount are likewise
+zero-write; no minimum, maximum, zero, or legacy amount may be selected.
+
+This applies equally to fixed-service exchange content; a bounded service
+policy is not executable without an owner-authorized amount slot.
+
+## 2026-09-01 Continuation Evidence Recheck
+
+The autonomous continuation re-ran the ordered INF-1 -> INF-2 -> INF-3 ->
+INF-4 scan against the current committed projections and immutable catalog.
+Foundation custody resolution and INF-2AO remain verified evidence, not new
+August business rows. No lane produced a new exact source -> existing owner ->
+outcome vector. The residual dispositions above therefore remain unchanged:
+they are formal row-level blockers with fixed zero-write behavior, not code or
+test failures. A new row may proceed only after its missing business literals
+are present in committed evidence or an explicitly selected row contract.
+
+### Field-Level Evidence Recheck
+
+The current owner payloads were inspected directly to make the blockers
+actionable:
+
+| Existing fact | Committed fields available | Fields still absent for a new row |
+| --- | --- | --- |
+| `organization.grain_intake_recorded@1` | organization, project, plot, item, quantity, container, source Inventory event/revision, owner policy/descriptor/catalog pins | Construction `facility_ref`/facility-stream binding; new Construction outcome; Economy buyer/receiver, account, currency, price/order and settlement lifecycle; Government/Social jurisdiction or participant consequence |
+| `inventory.production_output_received@1` and `production_output_market_eligible@1` | certified item/quantity, holder/container, facility/project/recipe, mapping and source revision pins | committed buyer/receiver, account, currency, price, order identity or terminal market/settlement outcome |
+| `ecology.weather_front.propagated` | project-visible weather source, region/subject and source revision pins | any unlisted target owner plus exact event vector and lifecycle contract |
+
+These omissions are observed from committed owner payloads and replay readers,
+not inferred from names or fixtures. They therefore preserve the existing
+zero-write dispositions and identify the smallest business facts needed before
+another row can be formed.
+
+### Immutable Manifest Inventory Recheck
+
+The repository currently contains `31` immutable manifest files. The
+industrial-facilities revisions `v1` through `v7` and the municipal/family
+manifests are all accounted for by already implemented August rows or by the
+separate closed Foundation matrix. No unaccounted manifest declares a new
+August source/outcome pair. Manifest presence alone is not treated as a new
+committed gameplay fact or as authorization for a generic follow-on.

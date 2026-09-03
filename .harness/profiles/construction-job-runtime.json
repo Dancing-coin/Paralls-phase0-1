@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "construction-job-runtime",
+  "order": 331,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_construction_job_runtime.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/construction-job-runtime-report.json",
+  "description": "Construction plot-scoped job lifecycle, deterministic occupancy and replay gate"
+}

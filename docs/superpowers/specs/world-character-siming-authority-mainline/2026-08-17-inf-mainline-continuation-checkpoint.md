@@ -1960,10 +1960,10 @@ external environment-limited failure is the heavenly-runtime preflight, with
 no live call attempted. Goal remains active and August INF A-D
 remains `not complete`.
 
-## 2026-08-29 INF Regression Refresh
+## 2026-08-29 INF Regression Refresh (historical snapshot)
 
-The keyword-selected INF/INFRA corpus passes `1339 passed` (`2758
-deselected`). The latest full repository run passes `4081 passed`; docs,
+The keyword-selected INF/INFRA corpus passed `1339 passed` (`2758
+deselected`). The latest full repository run at that checkpoint passed `4081 passed`; docs,
 continuation and diff checks are green. Goal remains active and August INF A-D
 remains `not complete`.
 
@@ -2069,3 +2069,280 @@ owner-contract blocked, INF-2 generic payment/transfer remains blocked, INF-3
 has no unlisted target-owner edge, and INF-4 lacks committed
 population/attendance/group/social consequence evidence. August INF A-D stays
 `not complete`.
+
+## 2026-08-31 INF-2AO Continuation
+
+Autonomous row resolution formed one distinct INF-2 marker from the newly
+committed Inventory custody source:
+
+```text
+Inventory production_output_custody@1
+-> Economy production_output_market_eligible@1
+```
+
+The marker is authority-only, account-neutral, terminal/no-compensation and
+uses the existing Economy append/replay spine. It adds no payment, transfer,
+price, currency, buyer or account fact. INF-2AO is implemented and verified;
+generic payment/transfer/settlement remains blocked, and the ordered scan
+continues to INF-3 after INF-2AO.
+
+## 2026-09-01 INF-2AO Harness Registration Closure
+
+The dedicated INF-2AO profile is validly registered (`schema_version=1`,
+`include_in_all=true`) and passes through the unified Harness. Evidence:
+focused `11 passed`, INF-2 collection `83 passed`, INF/INFRA selection
+`1336 passed`, continuation gate passed, docs/compileall/diff checks passed.
+
+Fixed-service exchange replay now validates immutable package/content/
+declaration/active-set pins when present; legacy no-pin events remain historical
+compatibility records.
+
+Generic declared-exchange replay now rejects a binding missing from the current
+active-set capability bindings, even when the manifest request still exists.
+
+It also validates exact outcome ref, currency and fixed amount for pinned
+fixed-service settlements; forged target economics fail closed during replay.
+The only non-zero full-Harness result is the known external
+`siming-heavenly-runtime` credential/mode preflight. The ordered continuation
+scan found no new explicit committed source -> existing owner -> exact outcome
+vector in INF-3 or INF-4. Goal remains active; August INF A-D remains
+`not complete`.
+
+The INF-2AO marker was separately audited for downstream use. Because it is
+eligibility-only and carries no committed party, account, currency, price,
+order, or settlement outcome, any listing/sale/transfer/payment follow-on is
+recorded as a row-level owner-contract blocker rather than an implicit market
+capability.
+
+The same continuation also hardened the generic declared-exchange adapter:
+missing immutable economic outcomes now reject before account lookup/append;
+currency and amount are never inferred from source kind or defaults. The
+dedicated zero-write regression and full repository suite are green.
+
+## 2026-09-01 Autonomous Continuation Recheck
+
+Current evidence remains stable after the latest autonomous verification pass:
+Foundation aggregate passed, `infra-continuation-gate` passed, local Harness
+profiles passed, INF/INFRA regression passed (`1395` tests), and the full
+repository suite passed (`4291` tests). No frozen package or digest was
+rewritten. The ordered scan found no additional admissible August row, so the
+next action remains one explicit committed source/owner/outcome tuple per
+lane. Goal is `active`; August INF A-D is `not complete`.
+
+Bounded price ranges without an explicit owner-authorized amount are also
+zero-write; no range endpoint or legacy fallback is selected.
+
+The fixed-service branch now enforces the same fail-closed boundary.
+
+Package exchange policy/capability references are explicit required schema
+fields; missing metadata cannot receive implicit defaults.
+
+`eligibility_refs` must also be supplied explicitly, including as `[]` when no
+eligibility references apply.
+
+Declared-exchange definition matching is also exact-identity only; forged
+prefix/suffix definitions fail before append. Completed-service rows resolve
+their service ref from the committed Contract projection tied to
+`record_fulfilled`, preserving owner provenance.
+
+Inventory custody replay is likewise hardened: `production_output_custody_view_for`
+rejects checkpoint values beyond the store head and revalidates certification,
+stream, subject and mapping pins during full/checkpoint-tail reconstruction.
+
+## 2026-09-01 State Stability Recheck
+
+No new commit, immutable package revision, owner catalog entry, committed
+source event, or projection fact has appeared since the preceding continuation
+scan. The field-level blocker evidence remains current: Organization grain
+intake still has no Construction facility binding or economic settlement
+tuple; Inventory market eligibility still has no buyer/account/price/order;
+Ecology has no new target-owner edge; and INF-4 has no new Production/domain
+population, attendance, group, or social truth. This is a verified stable
+wait on business facts, not a code or test failure; Goal remains active and
+August INF A-D remains not complete.
+
+The current Harness registry audit found `132` INF/INFRA-prefixed profiles and
+zero missing verifier scripts. This confirms registration completeness only;
+it does not promote substrate profiles or historical blockers into new August
+business rows. No new committed source/owner/outcome tuple was discovered.
+
+A review of the uncommitted gameplay diff found only INF-2AO implementation and
+Foundation exchange/custody validation hardening. No additional event family,
+owner operation, catalog row, or August source/outcome vector is present in the
+worktree beyond the rows already indexed above.
+### 2026-09-02 Construction/Production generic platform continuation
+
+- Goal remains `active`; August INF A-D remains `not complete`.
+- Verified headless evidence: backend `4138 passed`; Construction/Production
+  focused band `103 passed`; content and job Harness profiles green;
+  `compileall` and `git diff --check` green.
+- Implemented evidence: exact Blueprint descriptor activation, package/content/
+  declaration/descriptor/active-set Job provenance, tamper-rejecting full/tail
+  replay, owner-issued reservation evidence validation and persistence, and
+  explicit failure-policy provenance in output certification. Decommissioned
+  facilities are rejected before new ProductionRun append.
+- Remaining gates: full package-bound placement zoning evidence,
+  concrete cross-owner reservation projection integration, complete
+  Construction-to-Inventory failure/output handoff, and Godot procedural
+  editor runtime verification. Package-bound permit evidence is now persisted
+  with Job events and replay projection. No Godot executable is installed in the
+  current environment.
+
+- Package-bound Job replay now also rejects malformed or revoked permit
+  evidence before projection acceptance; focused Job suite is `13 passed`.
+
+- Inventory custody now preserves and validates certification source package,
+  content, declaration and descriptor provenance through replay.
+
+- Packaged Blueprint Job events now carry component refs and material/tool/
+  qualification/duration content, and occupancy is computed from the approved
+  component tree rather than a synthetic footprint.
+
+- Blueprint content may now declare an explicit optional `zoning_ref`; when
+  present, the existing permit evidence must carry the exact zoning ref. Legacy
+  packages without zoning remain compatible and are not assigned a default.
+
+- Job placement persists the optional zoning ref in its owner projection, and
+  source events retain exact component-tree placement content.
+
+- Reservation source-event validation rejects Inventory reservations that were
+  later consumed or released before a new Construction run can append.
+
+- Reservation evidence submitted without a declared requirement is rejected as
+  unbound before append; this prevents caller-only proof injection.
+
+- ProductionRun/ConstructionJob append batches now pin each declared
+  reservation revision under a deterministic `reservation:<ref>` key.
+
+- ProceduralConstructionEditor now exposes a presentation-only typed-draft
+  exporter (`build_typed_draft`). It emits blueprint/grid placement fields only;
+  digest derivation, descriptor binding and authority writes remain backend-owned.
+
+- Source-event pins for owner families without an approved event mapping are
+  rejected fail-closed rather than accepting arbitrary owner events as proof.
+
+- Construction Job completion now inherits start-time binding, permit,
+  component and content pins; replay rejects completion identity or content
+  conflicts.
+
+- ProductionRun finish now compares the caller run snapshot with current
+  projection before append; stale run identity/content is rejected fail-closed.
+
+- ConstructionJob completion/failure events now inherit reservation refs and
+  owner-issued reservation evidence; replay rejects terminal reservation
+  lineage conflicts.
+
+- ProductionRun finish replay now rejects facility/recipe/output identity
+  tampering and completed ticks earlier than the pinned due tick.
+
+- Job replay now rejects zoning ref mismatches between declared Job content and
+  permit evidence.
+
+- Pure `finish_run()` now rejects recipe/output identity mismatch while
+  preserving compatibility for legacy runs that have no output pin.
+
+- ConstructionProductionProjector now exports and restores hashed checkpoints;
+  restored checkpoints plus event tails reproduce full projections and reject
+  tampering before state acceptance.
+
+- Checkpoint `last_global_sequence` is now type/range validated and included in
+  the projection hash, preventing tail-position tampering.
+
+- Checkpoint source revision vectors now reject boolean, negative or non-integer
+  values before hash comparison.
+
+- `run_failed@1` replay rejects empty failure reasons; explicit failure evidence
+  is mandatory before a run enters a terminal failure state.
+
+- ConstructionJob now has a terminal `construction_job_failed@1` owner event;
+  explicit failure reason, no-compensation semantics, idempotency and replay
+  identity/content pin checks are enforced.
+
+- Pure `start_run()` and acquisition paths reject pre-decommissioned Facility
+  values, preserving the active→decommissioned lifecycle boundary across both
+  direct and settlement entry points.
+
+- `settle_start_run()` now rejects stale projected Facility revision, plot,
+  kind, lifecycle or condition values before append.
+
+- Job projector binding-pin validation is independent of permit payload
+  presence; malformed digest/type pins fail closed even when permit evidence is
+  absent.
+
+- `run_failed@1` replay now requires the failure-policy revision to match the
+  ProductionRun start pin exactly; policy revision tampering fails closed.
+
+- Failure lifecycle projection now maps `release -> released`, `loss -> lost`,
+  and keeps `rework`/`terminal` as failed, preserving explicit policy semantics.
+
+- Facility acquisition rejects a pre-decommissioned Facility; lifecycle status
+  can only move through the existing owner transition path.
+
+- Construction Job completion now inherits start-time package/permit/component
+  provenance; replay rejects completion payload pin conflicts.
+
+- Failure replay also rejects mode tampering when the event mode differs from
+  the ProductionRun's pinned failure policy mode.
+
+- Construction Job replay now validates reservation evidence key sets and
+  owner/status/revision shape against the declared reservation refs.
+
+- Job replay source-event pins now require an existing mapped Inventory/Economy
+  reservation event with matching ref, revision and privacy; missing or wrong
+  owner event fails closed.
+
+- 2026-09-02 checkpoint: Economy budget reservation lifecycle is now checked
+  in Construction start and replay. A consumed `budget_reserved` source is
+  rejected fail-closed before mutation. Focused Construction/Production suite:
+  `84 passed`; generic platform remains active/staged and Godot runtime is
+still unverified.
+
+- 2026-09-02 failure replay checkpoint: `run_failed@1` now requires project
+  privacy, exact facility/recipe stream identity, and matching facility plus
+  pre-append stream-head pins. Focused failure/output suite: `71 passed`.
+
+- Failure replay also persists and verifies exact ProductionRun reservation
+  lineage; altered refs/evidence fail closed.
+
+- Maintenance obligation provenance now carries facility/project/revision/
+  policy and pre-append stream-head pins for known facilities; replay rejects
+  tampering while legacy no-pin events remain compatible.
+
+- Maintenance obligation idempotency now rejects changed reuse of a committed
+  key and returns duplicate replay only for an exact request.
+
+- Core facility/run lifecycle event schemas now have explicit registrations in
+  the existing EventSchemaRegistry.
+
+- Reservation admission now rejects undeclared refs and evidence keys before
+  Construction mutation; exact owner-issued set semantics are preserved.
+
+- ProductionRun start replay now validates canonical reservation order and exact
+  evidence-key sets before accepting projection state.
+
+- Run-start source binding now enforces project privacy and exact facility
+  stream/revision identity whenever a materialized Facility is available.
+
+- Run-finish replay now enforces project privacy and exact facility stream/source
+  identity before applying completion.
+
+- Facility acquisition replay now enforces project privacy, canonical facility
+  stream and non-empty facility/plot identity fields.
+
+- Facility transform replay now enforces project privacy, canonical facility
+  stream and matching project binding before applying the transition.
+
+- Facility repair replay now enforces project privacy, canonical facility stream
+  and matching project binding before condition mutation.
+
+- Facility repair replay now validates condition bounds and strict revision
+  increment before applying the projection update.
+
+- Facility decommission replay now enforces project privacy, canonical facility
+  stream and matching project binding before terminal lifecycle mutation.
+
+- Decommission source replay is row-aware: acquisition is required for all
+  rows, with reinforcement pins required for the exact v3 mill row.
+
+- Failure chronology gate: `failed_tick` must be at or after the committed run
+  start tick; pre-start failure attempts are zero-write.

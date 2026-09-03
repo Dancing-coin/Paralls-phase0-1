@@ -21,6 +21,15 @@ marker；不扣款、不释放、不退款、不转账，也不建立通用预�
 contract、plan、focused tests、独立 Harness 与 replay/privacy/zero-write
 证据均已同步到主线文档。
 
+2026-09-01：INF-2AO 在既有 Economy owner 上完成一个严格的
+production-output market-eligibility 窄切。它只消费已提交、project-visible
+的 Inventory `production_output_custody@1`，记录一个 authority-only
+`production_output_market_eligible@1` marker，并复制 owner-derived item、
+quantity、holder、container、facility、project、recipe 与 mapping pins；
+不产生 buyer、receiver、account、currency、price、payment、transfer 或
+market-order 事实。focused/Harness/replay/privacy/zero-write 证据已同步到
+主线文档；任何后续挂牌、出售或结算仍需独立 source-owner-outcome 合同。
+
 当前实现映射：见 [../12-实现收口与证据映射.md](../12-实现收口与证据映射.md#世界基础设施增量指导)。INF-1 至 INF-4 的文档化纵切已有独立 spec、plan、测试和 Harness 证据：语义/实体/因果、caller-driven obligation、frost/crop 生态灾害、以及隔离人口分支预览。它们不等同于通用元规则语言、完整生态传导、完整群体模拟或文明演进；这些广域能力仍是后续设计与 owner-scoped 实现工作。
 
 八月 INF 主线的未完成项必须显式保留，不能被 `INF-*X/Y/Z` 窄包名称遮蔽：
@@ -382,3 +391,8 @@ INF-4Q 的独立证据为
 INF-4AO/INF-4AP 已纳入主线验证账本。它们都是 existing-owner 的窄纵切，
 不开放 generic transform、payment、transfer、activity、social 或 settlement；
 August INF A-D 仍未完成。
+
+2026-09-01 实现映射补充：INF-2AO 已纳入主线验证账本。它是
+existing-Economy-owner 的 account-neutral eligibility marker；不改变上述
+generic payment/transfer/market/settlement 未完成的结论，August INF A-D
+仍未完成。

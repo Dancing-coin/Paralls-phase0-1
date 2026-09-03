@@ -163,6 +163,30 @@ manifest or Ecology source fact is present. Synthetic in-memory source
 mutation is explicitly excluded from genericity evidence, and the aggregate
 family verifier keeps the family `bounded_adapter` until two real,
 digest-valid manifest/source pairs pass the same adapter.
+
+## 2026-09-01 Ordered Continuation After INF-2AO
+
+The post-INF-2AO scan found no new committed Ecology source paired with a
+distinct existing target owner and exact outcome/event vector. Existing
+weather-front and process-consumer candidates remain formally blocked;
+`drought_process_advanced` is not admissible as a substitute for the
+committed weather-front source. No generic consumer, fanout, router, retry,
+compensation or second runtime was added.
+
+The shared Inventory production-output custody reader now rejects invalid
+checkpoint bounds and forged certification/provenance pins during replay. This
+strengthens INF-3AB and Foundation custody evidence without creating a new
+Ecology row or generic Inventory writer.
+
+The custody replay hardening is covered by the shared custody regression and
+does not alter INF-3AB's fixed grain row or create a new target-owner edge.
+
+## 2026-09-01 Continuation Status
+
+No additional committed Ecology source paired with a distinct existing target
+owner and exact event vector was found. Unlisted target-owner edges remain
+formally blocked; `drought_process_advanced` remains inadmissible as a weather
+front substitute.
 ## 2026-08-28 Grain Harvest Closure
 
 The fixed mature wheat admission and terminal `grain_harvested` Ecology row

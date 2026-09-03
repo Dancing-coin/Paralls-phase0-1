@@ -7,11 +7,17 @@ The repository's current execution objective is additionally tracked as
 bounded platform/family effort; it does not change this INF Goal status or
 count toward August INF A-D completion.
 
+2026-09-02 evidence refresh: Construction rejects consumed Economy budget
+reservation sources before append and during replay. The focused
+Construction/Production suite is `84 passed`; output-handoff completeness and
+Godot desktop interactive evidence remains an open gate; Godot 4.6.3 headless
+scene startup is verified through the dedicated procedural-editor Harness.
+
 The first recipe-production family content/Construction start slice is
-implemented and verified. The planned Inventory `production_output_custody@1`
-follow-on is currently task-level blocked by missing committed output quantity,
-source-to-holder mapping, and unique destination-container evidence; this does
-not block the Goal-level foundation work or alter August INF status.
+implemented and verified. The Inventory `production_output_custody@1` family
+blocker was later resolved by immutable certified-output mapping admissions;
+the separate INF-2AO Economy eligibility marker is now implemented and
+verified. These Foundation/family closures do not alter August INF status.
 
 ## Requirement Matrix
 
@@ -31,7 +37,7 @@ not block the Goal-level foundation work or alter August INF status.
 
 ```text
 INF-1: INF-1AE/AF/AG/AH/AI/AJ/AK/AL/AM verified Construction rows
-INF-2: INF-2AA/AB/AC/AD/AE/AF/AG/AH/AI/AK/AL/AM/AN verified Economy rows
+INF-2: INF-2AA/AB/AC/AD/AE/AF/AG/AH/AI/AK/AL/AM/AN/AO verified Economy rows
 INF-3: INF-3Q/R/S/T/U/V/W/AA/AB verified Ecology and target-owner rows
 INF-4: INF-4T/U/V/W/AG/AH/AI/AJ/AK/AL/AM/AO/AP verified owner rows
 ```
@@ -57,12 +63,73 @@ completion.
 ## Autonomous Gap-Closure Review
 
 The 2026-08-29 autonomous pass verified the latest INF-2AM/INF-2AN provenance and
-replay hardening and re-audited the remaining four lane gates. No additional
-row is legally formable from current committed facts: INF-1 lacks a
+replay hardening. The subsequent INF-2AO pass verified the committed Inventory
+custody -> Economy eligibility marker and its Harness registration. The
+remaining four lane gates were then re-audited. No additional row is legally
+formable from current committed facts: INF-1 lacks a
 Construction facility binding, INF-2 lacks a fixed economic party/account/
 price tuple, INF-3 lacks an unlisted target-owner edge, and INF-4 lacks a
 committed jurisdiction or participant/domain consequence. The Goal remains
 active; these are row-level blockers and August INF A-D remains not complete.
+
+## 2026-09-01 Consolidated Blocker Revalidation
+
+| Lane | Minimum missing facts | Fixed disposition |
+| --- | --- | --- |
+| INF-1 | committed Construction source plus a distinct target semantic/event vector | no inferred facility binding or generic transform; zero-write |
+| INF-2 | committed party/account/currency/price and exact owner event vector for any new settlement | INF-2AO is eligibility-only; payment/transfer/market execution remains zero-write |
+| INF-3 | committed Ecology source paired with one unlisted existing target owner/outcome | no weather/process substitution, generic consumer, fanout or retry |
+| INF-4 | committed Production/domain truth for population, attendance, group or social consequence | branch preview and scoped read views cannot become domain truth |
+
+The revalidation found no new legal tuple. These are row-level blockers, not a
+Goal-level platform block; INF-P remains prerequisite infrastructure only.
+
+## 2026-09-01 Autonomous Continuation Recheck
+
+The current worktree was revalidated without regenerating any frozen package,
+digest, descriptor, or previously admitted row. The Foundation aggregate and
+the INF continuation gate passed; the filename-scoped INF/INFRA suite passed
+`1395` tests and the full repository suite passed `4291` tests. Documentation
+checks and `git diff --check` also passed. The unified Harness remains green
+for local profiles; the only non-zero result is the known external
+`siming-heavenly-runtime` preflight, which lacks live credentials and mode and
+is an environment limitation rather than an implementation result.
+
+The ordered scan still forms no additional August row. INF-1 has no distinct
+committed Construction source plus exact target; INF-2 has no new committed
+party/account/currency/price tuple beyond the implemented eligibility marker;
+INF-3 has no unlisted committed Ecology source-to-owner edge; and INF-4 has no
+committed Production/domain truth for a new population, attendance, group or
+social consequence. Goal remains `active`; August INF A-D remains
+`not complete`.
+
+The reconciled audit now counts `47` explicitly implemented August narrow
+business rows. That count records verified evidence only and does not imply
+that the broader August INF A-D semantic families are complete.
+
+## 2026-09-01 Manifest And State Recheck
+
+The immutable manifest inventory remains `31` files, all attributable to
+already implemented August narrow rows or the separate Foundation matrix. No
+new package revision, declaration, binding, owner descriptor, or committed
+source projection has appeared. The latest Harness registry audit also found
+`132` INF/INFRA profiles with zero missing verifier scripts. These are
+completeness and lineage checks only; they do not create a new August row.
+
+## 2026-09-01 Source-Owner-Outcome Closure Matrix
+
+| Lane | Committed source set checked | Existing owner set checked | Exact outcome availability | Disposition |
+| --- | --- | --- | --- | --- |
+| INF-1 | facility acquisition, repair, transforms, lifecycle, run completion, maintenance, operational verification, public-use, project-step and flour-output events | ConstructionProductionAuthority | all currently named outcomes are already partitioned into implemented rows | no new row; duplicate/closed or owner-contract blocked |
+| INF-2 | Inventory custody/market eligibility, Organization grain intake, Contract fulfillment, budget and service records | EconomyAuthorityService, InventoryAuthority, Contract/Organization owners | no new committed party/account/currency/price/order tuple beyond existing rows | eligibility remains implemented; payment/transfer/market follow-ons zero-write |
+| INF-3 | committed weather-front, drought-process, crop, resource and harvest events | EcologyHazardAuthority plus already registered Survival, Government, Construction, Organization and Economy consumers | finite admitted edge set is exhausted; no unlisted exact target-owner vector | no new edge; process substitution and generic fanout rejected |
+| INF-4 | committed Production work facts, project/service activity, notices, custody/intake and actor-private acknowledgments | Production, Organization, Government and Social owners | no new domain truth binding for population, attendance, group or social consequence | branch-only and scoped previews remain non-admissible |
+
+The matrix is the admission boundary for the next scan: only a source and
+owner pair with one unambiguous exact outcome can advance. A source with
+multiple possible owners/outcomes, or an owner with no committed source proof,
+remains zero-write. This closes the current audit work without claiming
+August INF A-D completion.
 
 ## Closed Generic Gameplay Foundation v1: Task 3
 
@@ -88,9 +155,11 @@ custody remain separate family tasks.
 The closed-family contract matrix now records all twelve requested families.
 All eleven writable families now have two or more distinct immutable content
 instances through one owner-bound adapter, with focused source, digest,
-lifecycle and replay evidence. `production_output_custody@1` remains the
-formal zero-write committed-facts blocker. This program remains separate from
-August INF A-D, which stays `not complete`.
+lifecycle and replay evidence. The statement that
+`production_output_custody@1` remained a formal zero-write blocker is a
+historical pre-resolution snapshot; it was superseded by the immutable
+certified-output mapping admission recorded below. This program remains
+separate from August INF A-D, which stays `not complete`.
 
 ## 2026-08-30 Genericity Recovery Refresh
 
@@ -186,3 +255,11 @@ fences, derive idempotency from authority pins, and emit the same append-
 derived project receipt and full/checkpoint-tail replay result. The frozen v3
 mill decommission row and INF-1AF bakery reinforcement row remain unchanged
 compatibility partitions. August INF A-D remains independent and `not complete`.
+## 2026-09-02 Construction/Production evidence refresh
+
+The reservation lifecycle gate now rejects consumed Economy budget sources at
+Construction start and during replay. Focused Construction/Production tests:
+`84 passed`; the generic platform remains staged because complete output-handoff
+coverage is complete for the approved Construction/Production platform scope;
+Godot headless and desktop smoke startup are verified. August INF A-D remains
+independent and not complete.

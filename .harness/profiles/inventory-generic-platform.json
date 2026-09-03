@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inventory-generic-platform",
+  "order": 360,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_inventory_generic_platform.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inventory-generic-platform-report.json",
+  "description": "Inventory v3 content, item/lot/container/custody/reservation, condition/transport and recipe evidence"
+}

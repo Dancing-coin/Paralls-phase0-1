@@ -8,6 +8,11 @@ This taxonomy keeps platform, package, owner, implementation, and environment
 blockers distinct. A blocker never authorizes a generic owner or a default
 value.
 
+2026-09-02 disposition: a consumed Economy `budget_reserved` source is an
+explicit fail-closed Construction reservation case at append and replay. This
+does not widen platform authority; Godot availability and complete output
+handoff remain separate readiness gates.
+
 | Status | Meaning | What may proceed | What remains prohibited |
 | --- | --- | --- | --- |
 | `platform-design pending` | Platform-level design still has unresolved contract fields or approval questions | documentation, design review, plan and taxonomy refinement | schema, digest freeze, catalog, verifier, tests, Harness, runtime |
@@ -50,12 +55,14 @@ authority surface.
 INF-P platform mechanics, including P1 candidate-binding sequencing, are
 implemented and verified. The mapping/migration errata and schema-closure
 addendum remain the governing design evidence. Package-content freeze/digest,
-row binding, and INF runtime remain separate. For INF-1AG specifically, P1
-permits a complete binding-bearing candidate but activation requires an
-independently admitted exact-one immutable descriptor. INF-1AG has its
-approved static descriptor/catalog admission implemented and focused verified;
-its exact Construction runtime is implemented and verified. No other business descriptor or
-INF row has been resumed.
+row binding, and INF runtime remain independently governed per exact row. For
+INF-1AG, P1 permits a complete binding-bearing candidate but activation requires
+an independently admitted exact-one immutable descriptor; its approved static
+descriptor/catalog admission and exact Construction runtime are implemented and
+verified. Subsequent August rows are likewise recorded only where their own
+existing owner, immutable content/admission (when applicable), source proof,
+and focused replay evidence are complete. The ordered completion audit is the
+authoritative current row ledger.
 
 The first attempt to write the descriptor/catalog admission packet was blocked
 by environment review error `MODEL_PRICE_NOT_CONFIGURED`. That is a tooling
@@ -68,10 +75,11 @@ finite August INF A-D ledger remains execution-active and not complete; no
 generic row becomes unblocked merely because this taxonomy or the platform
 design exists.
 
-Verification caveat: all 124 INF profiles now pass after the stale selector and
-predecessor evidence refresh. Full pytest's one failure is environment-limited
-(`.env` write permission outside the workspace), and repository-wide `all`
-still has an unrelated non-INF character-agent evidence gap.
+Verification caveat: the current registry contains `132` INF/INFRA profiles
+with zero missing verifier scripts. The latest local evidence is recorded in
+the ordered completion/readiness audits; the external
+`siming-heavenly-runtime` preflight remains environment-limited because live
+mode and credentials are unavailable.
 
 ## Goal-Level Blocked Definition
 
@@ -83,9 +91,9 @@ condition. If platform-contract, design, package-content, admission-evidence,
 or other bounded work is explicitly approved, the Goal remains active and is
 classified by the narrowest applicable blocker status above.
 
-The independent platform-level design lane is complete. August INF row
-execution remains paused, but that pause is not a Goal-level blocked
-disposition.
+The independent platform-level design lane is complete. August INF execution
+is active for any newly evidenced exact row; the absence of a new legal tuple
+is a row-level blocker, not a Goal-level blocked disposition.
 
 The [August INF A-D formal blocker disposition contract](../2026-08-26-august-inf-formal-blocker-disposition-contract.md)
 is approved. Goal status is `active`; this is a governance disposition only.
@@ -496,3 +504,40 @@ Inventory custody and caller-selected coordinates remain blocked.
 `INF-4AP` is also implemented as a fixed Organization consumer of the
 INF-3AB custody event. Its project-scoped intake fact is separate from
 Inventory, Economy and generic activity semantics.
+
+## 2026-09-01 INF-2AO Downstream Boundary
+
+INF-2AO's `production_output_market_eligible@1` is a verified,
+authority-only eligibility marker, not a market writer. Its payload contains
+no committed buyer, receiver, account, currency, price, order identity or
+settlement lifecycle. No existing owner contract consumes it into a distinct
+sale/listing/transfer/payment outcome. Those follow-ons therefore remain
+`owner-contract blocked` and zero-write; admitting them would require a new
+named source, exact existing owner outcome, and independent contract rather
+than a generic market capability.
+
+The generic declared-exchange adapter also rejects a declaration that lacks
+its matching immutable economic outcome. Currency and amount are never
+defaulted from source kind or content; missing economic terms remain
+zero-write and require a named package outcome.
+
+Package definition matching is exact identity, not suffix/prefix matching;
+service exchange source identity must come from the committed Contract
+projection. This prevents forged package content or event-name inference from
+selecting an exchange.
+
+Fixed-service package selection is likewise source-controlled: only the unique
+fulfilled Contract `terms_ref` may select the service declaration. Proposal
+digest substrings, active-set load order and legacy fallback cannot select an
+authority coordinate.
+
+Legacy compatibility is allowed only for packages without the active family
+binding under evaluation and only when exact source identity yields one row;
+family-bound packages cannot fall back to legacy selection.
+## Construction/Production reservation evidence disposition (2026-09-02)
+
+Consumed Economy budget reservations are now an explicit fail-closed evidence
+case for Construction start and replay. This resolves the stale active-hold
+ambiguity without changing the immutable platform boundary. Godot runtime
+availability and complete output-handoff coverage remain separate readiness
+gates, not blocker evidence for August INF A-D.

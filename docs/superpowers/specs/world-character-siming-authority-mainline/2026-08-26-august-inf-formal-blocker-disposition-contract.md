@@ -36,6 +36,8 @@ and terminal boundaries:
   authority-only budget close marker;
 - INF-2AN committed Organization grain intake -> fixed authority-only Economy
   acceptance marker;
+- INF-2AO committed Inventory production-output custody -> fixed authority-only
+  Economy market-eligibility marker;
 - INF-3Q `weather:drought -> Survival dehydrated`;
 - INF-3R `weather:drought -> Government drought advisory issued`;
 - INF-3S Government drought advisory -> fixed Contract municipal-assessment
@@ -94,6 +96,18 @@ owner-operation conflict-matrix preflight, full contract, and evidence plan.
 INF-P remains a platform prerequisite and is not counted as August INF A-D
 business completion.
 
+Package-declared economic rows also retain a fail-closed rule: if a declaration
+does not resolve exactly one immutable economic outcome, the owner must reject
+before account lookup or append. Currency, amount, party, account, and
+settlement terms may not be inferred from source content or defaults.
+
+The package exchange definition schema also makes privacy, compensation,
+source-selection and capability references explicit required fields; omitted
+policy metadata is rejected before admission.
+
+Its `eligibility_refs` array is likewise required and may be empty only when
+the author explicitly supplies `[]`; omission is not a default.
+
 ## Approval Effect
 
 The mainline Goal is `active`. August INF A-D remains `not complete`. The
@@ -114,7 +128,7 @@ The current implementation ledger, in order, is:
 
 ```text
 INF-1: AE, AF, AG, AH, AI, AJ, AK, AL, AM = implemented narrow verticals
-INF-2: AA, AB, AC, AD, AE, AF, AG, AH, AI, AK, AL, AM, AN = implemented narrow verticals
+INF-2: AA, AB, AC, AD, AE, AF, AG, AH, AI, AK, AL, AM, AN, AO = implemented narrow verticals
 INF-3: Q, R, S, T, U, V, W, AA, AB = implemented narrow verticals
 INF-4: T, U, V, W, AG, AH, AI, AJ, AK, AL, AM, AO, AP = implemented narrow verticals
 ```
@@ -126,10 +140,21 @@ unimplemented. INF-P remains a prerequisite and August INF A-D remains
 `not complete`.
 
 The 2026-08-29 continuation adds INF-2AN's exact grain-intake acceptance
-marker and records INF-3AB/INF-4AP as the latest Ecology-to-Inventory and
+marker and the 2026-09-01 continuation adds INF-2AO's exact production-output
+market-eligibility marker. It records INF-3AB/INF-4AP as the latest Ecology-to-Inventory and
 Inventory-to-Organization rows. These are fixed, owner-bound rows only; they
 do not open generic payment, transfer, consumer, activity, social, population,
 or group semantics.
 
 The same continuation records INF-4AO's actor-private acknowledgment row and
 keeps the complete current INF-4 ledger aligned with the ordered audit.
+
+## 2026-09-01 Ordered Continuation
+
+INF-2AO is part of the implemented ledger: one committed, project-visible
+Inventory `production_output_custody@1` source yields one authority-only
+Economy `production_output_market_eligible@1` marker. It adds no price,
+currency, account, buyer, receiver, payment, transfer, or market-order fact.
+Its catalog/descriptor, source fences, append receipt, idempotency and
+full/checkpoint-tail replay evidence are verified. The next INF-3 -> INF-4
+scan found no new legal tuple; remaining row-level blockers stay in force.

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "procedural-construction-editor-runtime",
+  "order": 331,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_procedural_construction_editor.py",
+  "requires_godot": true,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/procedural-construction-editor-runtime-report.json",
+  "description": "Godot headless startup evidence for the external-art-free ProceduralConstructionEditor scene; desktop interaction remains separate evidence"
+}

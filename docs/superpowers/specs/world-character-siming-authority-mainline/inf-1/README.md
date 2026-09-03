@@ -315,3 +315,73 @@ The precise missing fields and zero-write boundary are recorded in
 [the next-row blocker](2026-08-28-inf-1-next-construction-row-blocker.md).
 No RED tests, runtime, catalog, or Harness were added because no unique row
 exists to implement without inventing facts or generic behavior.
+
+## 2026-09-01 Continuation Status
+
+The ordered recheck found no additional distinct committed Construction source
+and exact target semantic. Existing rows remain implemented and verified;
+unformed actions/transforms remain duplicate/closed or owner-contract blocked.
+
+The separate Construction/Production generic-platform track now has approved
+subsystem specs and a first headless typed-content/grid-occupancy slice. It is
+owner-bound platform work and does not alter or generalize the existing INF-1
+narrow rows.
+
+2026-09-02: a consumed Economy `budget_reserved` source is rejected by
+Construction start and replay before mutation. This closes one reservation
+lifecycle evidence gate without adding a generic transform or authority.
+
+2026-09-02: `run_failed@1` replay now rejects private events, wrong facility
+streams, mismatched facility/recipe identities, and inconsistent source
+revision vectors before projection mutation.
+
+Maintenance obligation events now retain facility/project/revision/policy pins;
+replay fails closed on tampering without changing legacy event interpretation.
+
+Maintenance obligation requests reject changed duplicate idempotency keys.
+
+Core facility/run lifecycle event schemas are explicitly registered and
+idempotent in the existing registry.
+
+Construction reservation requirements use exact-set validation; extra refs or
+evidence keys fail closed before append.
+
+Run-start replay also rejects non-canonical reservation refs or mismatched
+reservation evidence keys.
+
+ConstructionJob completion/failure replay now rejects wrong plot stream or
+private scope before terminal status changes.
+
+When a Facility projection exists, run-start replay also rejects wrong stream,
+privacy or facility/revision identity before accepting the run.
+
+Run-finish replay applies the same exact project/stream/facility source fence.
+
+Acquisition replay applies the canonical project/facility stream fence and
+requires non-empty facility/plot identity fields.
+
+Transform replay applies the same project/privacy/facility-stream source fence.
+
+Declared transform acquisition references are resolved and revision-checked
+during replay.
+Checkpoint-tail replay may use persisted acquisition identity for pre-tail
+sources; full replay requires the committed source event.
+
+Repair replay applies the same project/privacy/facility-stream source fence.
+
+Repair replay enforces condition bounds and strict facility revision increments.
+
+Maintenance-state application replay applies the materialized facility
+project/privacy/stream fence.
+
+Decommission replay applies the same project/privacy/facility-stream source
+fence before terminal lifecycle mutation.
+
+The v3 mill decommission row additionally resolves and verifies its exact
+reinforcement source event; generic lifecycle rows remain acquisition-only.
+
+Failure admission enforces run chronology and rejects any tick before the
+committed ProductionRun start.
+
+Failure events also inherit ProductionRun reservation refs/evidence and replay
+rejects lineage tampering before status mutation.

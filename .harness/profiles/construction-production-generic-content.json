@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "construction-production-generic-content",
+  "order": 330,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_construction_production_generic_content.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/construction-production-generic-content-report.json",
+  "description": "Owner-bound Construction/Production typed content and deterministic grid occupancy gate"
+}

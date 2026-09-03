@@ -11,6 +11,11 @@ verticals. It prevents broad phrases such as "complete INF", "full ecology",
 or "complete group simulation" from concealing missing owners, write paths, or
 evidence.
 
+2026-09-02 Construction/Production note: consumed Economy budget reservations
+are now rejected as inactive evidence at Construction start and replay. This
+is additive fail-closed validation; no new owner, scheduler, coordinator or
+generic settlement path is introduced.
+
 ## Unknown Gameplay And Package/Mod Completion Path
 
 INF-P now implements and verifies the federated platform schema,
@@ -810,6 +815,32 @@ owner-derived containers, parties/accounts, price policy, and Economy root
 outcome. Existing delivery, exchange, archive-token, and bakery fixture facts
 cannot substitute. `INF-2AM` is recorded as `owner-contract blocked`; no
 generic output, market, payment, transfer, or second writer is admitted.
+
+## 2026-09-01 INF-2AO Economy Eligibility Marker
+
+The later Foundation custody closure supplies a committed project-visible
+Inventory `production_output_custody@1` fact, and INF-2AO consumes exactly
+that fact through the existing Economy owner. It records a fixed,
+authority-only `production_output_market_eligible@1` marker and derives item,
+quantity, holder, container, facility, project, recipe and mapping provenance
+only from custody. It does not solve the blocked purchase/settlement class:
+buyer, receiver, account, currency, price policy, debit, credit, transfer and
+market order are still absent and therefore remain zero-write.
+
+## 2026-09-01 Exchange Selection Hardening
+
+The shared Economy exchange adapters now resolve package content by exact
+committed source identity. Declared exchange requires the canonical package
+definition identity and an immutable matching economic outcome; fixed-service
+exchange resolves the unique fulfilled Contract `terms_ref`. Caller proposal
+digests, suffix/prefix matches, legacy fallback, default currency, default
+amount, and bounded-price endpoint selection are not valid selectors and must
+zero-write on ambiguity or missing terms.
+
+The compatibility rule is partitioned rather than global: family-bound
+packages are excluded from legacy fallback, while unrelated legacy packages
+remain eligible only when exact committed source identity yields one row.
+Caller choice and load order never select between them.
 # 2026-08-28 Four-Lane Gap Closure Update
 
 The latest autonomous continuation pass removed four ordinary blockers through
@@ -819,3 +850,11 @@ mature grain harvest, and Social actor-private public-milling acknowledgment
 (INF-4AO). Each remains a fixed partition with independent privacy, revision,
 idempotency, receipt and replay evidence; unlisted rows and generic authorities
 remain blocked.
+## 2026-09-02 Construction/Production continuation note
+
+Construction reservation evidence now treats a consumed Economy budget hold as
+inactive: both append admission and replay fail closed when
+`public_project_budget_consumed` references the pinned `budget_reserved` event.
+This is an additive evidence rule; no new owner, scheduler, coordinator or
+generic settlement path is introduced. Remaining platform gates are complete
+output handoff coverage and unavailable Godot runtime verification.

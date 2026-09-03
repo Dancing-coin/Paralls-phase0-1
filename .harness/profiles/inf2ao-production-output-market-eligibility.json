@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "inf2ao-production-output-market-eligibility",
+  "order": 997,
+  "include_in_profile_order": false,
+  "include_in_all": true,
+  "script": "scripts/verification/verify_inf2ao_production_output_market_eligibility.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/inf2ao-production-output-market-eligibility-report.json",
+  "description": "INF-2AO certified production output -> Economy market eligibility marker; no payment, pricing, transfer, or market-order semantics"
+}

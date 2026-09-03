@@ -1,6 +1,6 @@
 # INF-2 Specification Tree
 
-Status: `approved INF-2 narrow verticals verified through INF-2AN; generic and unadmitted INF-2 scope remains incomplete`
+Status: `approved INF-2 narrow verticals verified through INF-2AO; generic and unadmitted INF-2 scope remains incomplete`
 
 INF-2AI is implemented: the exact completed INF-4AG public-workshop activity
 consumes the matching INF-2AH fixed reservation as one authority-only
@@ -253,3 +253,30 @@ Harness.
 Source validation additionally requires the Organization and Inventory events
 to be on their fixed owner streams; a wrong-stream forged source is rejected
 before append.
+
+## INF-2AO Production Output Market Eligibility
+
+`INF-2AO` is an implemented narrow Economy marker. One committed,
+project-visible Inventory `production_output_custody@1` event yields one
+authority-only `production_output_market_eligible@1` marker. The marker copies
+only source-derived item, quantity, holder, container, facility, project,
+recipe and mapping pins; it does not set a price, currency, account, buyer,
+receiver, payment, transfer or market order. Economy and Inventory keep
+separate append-derived receipts and full/checkpoint-tail readers. Unknown,
+private, stale, forged, duplicate and revision-conflicting source evidence is
+zero-write. This row is distinct from INF-2AM purchase and does not generalize
+payment or market pricing.
+
+Verification closure (2026-09-01): focused INF-2AO suite `11 passed`; the
+dedicated verifier and registered Harness profile
+`inf2ao-production-output-market-eligibility` pass. The INF-2 regression
+collection passes `83 passed`, and the filename-scoped INF/INFRA collection
+passes `1395 passed`. No payment, transfer, pricing, or market-order semantics
+were added.
+
+## 2026-09-01 Continuation Status
+
+INF-2AO remains implemented and verified. No new committed economic party,
+account, currency, price, order, or terminal settlement tuple exists beyond
+the implemented rows, so generic payment/transfer/market execution remains
+owner-contract blocked and zero-write.
