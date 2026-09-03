@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "organization-government-social-generic-platform",
+  "order": 370,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_organization_government_social_generic_platform.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/organization-government-social-generic-platform-report.json",
+  "description": "Federated Organization, Government, Social and Population-bridge content, admission and replay evidence"
+}

@@ -34,6 +34,30 @@ August INF A-D Goal and its ordered INF-1 -> INF-2 -> INF-3 -> INF-4 scan;
 Foundation completion is reusable evidence only and is not an August INF
 business completion claim.
 
+## 2026-09-01 Construction/Production Generic Platform
+
+The approved owner-bound Construction/Production expansion is tracked by the
+[master plan](construction-production-generic-platform-implementation-plan.md)
+and six subsystem plans: Plot/Blueprint/Job, Facility/Lifecycle/Maintenance,
+Recipe/Run/Quality, Reservation/Scheduling/Concurrency, Failure/Output Handoff,
+and Procedural Authoring/View. Typed content, exact Blueprint activation and
+package provenance for Construction Job start are implemented and verified;
+reservation evidence, broader handoff and Godot runtime gates remain pending.
+This track does not mark August INF A-D complete.
+
+## 2026-09-02 General Economy Platform C
+
+The complete regulated Economy target is tracked by the new General Economy
+Platform C design and implementation plan. Schema foundation work now accepts
+only `(3, "2.0")` for new Economy content while preserving `(1, absent)` and
+`(2, "1.0")` read-only compatibility. Runtime family rollout remains staged;
+this track is not an August INF completion claim.
+
+The current headless verification baseline is `4102 passed`. Construction Job
+provenance/tamper replay, owner-issued reservation evidence persistence, and
+decommissioned-facility start rejection are covered; Godot runtime remains
+unverified because the executable is unavailable.
+
 The shared event-store substrate also has a verified snapshot-integrity
 closure: recovery cross-checks ledger events, transaction batches, append
 results, idempotency indexes, and outbox references before reopening. This is
@@ -111,3 +135,38 @@ activity, production, payment, and social routes remain closed.
 
 Residual lane blockers and their minimum next decisions are recorded in the
 [INF residual blocker register](../../specs/world-character-siming-authority-mainline/2026-08-29-inf-residual-blocker-register.md).
+
+## 2026-09-02 General Economy Platform C
+
+Schema/content/catalog foundation is implemented for Manifest v3 + platform 2.0,
+with explicit Economy owner primitives for currency issuance, Population market
+signals, ledger postings, holds and obligations. Remaining Economy family
+runtime and cross-owner rollout is staged and does not change August INF status.
+## 2026-09-03 General Ecology Platform
+
+The Ecology generic platform rollout is tracked by the new Ecology design and
+implementation plan. Schema/content, region/grid runtime, hazard lifecycle,
+consumer admission and read-only presentation are implemented in staged form;
+final full-suite verification remains the completion gate. August INF A-D is
+unchanged and remains `not complete`.
+
+Completion audit: [2026-09-03 Ecology Generic Platform Completion Audit](../../specs/world-character-siming-authority-mainline/2026-09-03-ecology-generic-platform-completion-audit.md).
+Harness `57 passed`; repository pytest `4481 passed`; August INF A-D remains
+`not complete`.
+
+Inventory generic platform is implemented and verified by its completion audit;
+August INF A-D remains `not complete`.
+
+## 2026-09-03 Organization / Government / Social Generic Platform
+
+The OGS platform is implemented and verified as a federated owner-bound
+vertical. All 13 family descriptors, typed content models, exact-one bindings,
+owner append paths, replay projections, Population signal/materialization
+bridge, recipe target-admission markers, and read-only presentation evidence
+are covered by the dedicated Harness. August INF A-D remains `not complete`.
+## 2026-09-03 General Inventory Platform
+
+Inventory generic rollout is tracked by the new design and implementation plan.
+Existing purchase, gift, harvest, production-output custody and equipment rows
+remain compatibility baselines; the generic rollout does not alter August INF
+status.

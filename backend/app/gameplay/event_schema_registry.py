@@ -88,6 +88,83 @@ INF2AN_GRAIN_INTAKE_ACCEPTANCE_EVENT_SCHEMAS = (
     ),
 )
 
+INF2AO_PRODUCTION_OUTPUT_MARKET_ELIGIBILITY_EVENT_SCHEMAS = (
+    EventSchemaRegistration(
+        "gameplay.economy.production_output_market_eligible@1",
+        1,
+        "sha256:inf2ao:economy:production-output-market-eligible:v1",
+    ),
+)
+
+CONSTRUCTION_JOB_EVENT_SCHEMAS = (
+    EventSchemaRegistration(
+        "gameplay.construction_production.construction_job_started@1",
+        1,
+        "sha256:construction:job-started:v1",
+    ),
+    EventSchemaRegistration(
+        "gameplay.construction_production.construction_job_completed@1",
+        1,
+        "sha256:construction:job-completed:v1",
+    ),
+    EventSchemaRegistration(
+        "gameplay.construction_production.construction_job_failed@1",
+        1,
+        "sha256:construction:job-failed:v1",
+    ),
+)
+
+CONSTRUCTION_PRODUCTION_FAILURE_EVENT_SCHEMAS = (
+    EventSchemaRegistration(
+        "gameplay.construction_production.run_failed@1",
+        1,
+        "sha256:construction:run-failed:v1",
+    ),
+)
+
+CONSTRUCTION_MAINTENANCE_OBLIGATION_EVENT_SCHEMAS = (
+    EventSchemaRegistration(
+        "gameplay.construction_production.maintenance_obligation_created",
+        1,
+        "sha256:construction:maintenance-obligation-created:v1",
+    ),
+)
+
+CONSTRUCTION_OUTPUT_CERTIFICATION_EVENT_SCHEMAS = (
+    EventSchemaRegistration(
+        "gameplay.construction_production.production_output_certified@1",
+        1,
+        "sha256:construction:production-output-certified:v1",
+    ),
+)
+
+INVENTORY_OUTPUT_CUSTODY_EVENT_SCHEMAS = (
+    EventSchemaRegistration(
+        "gameplay.inventory.production_output_received@1",
+        1,
+        "sha256:inventory:production-output-received:v1",
+    ),
+)
+
+CONSTRUCTION_LIFECYCLE_EVENT_SCHEMAS = (
+    EventSchemaRegistration("gameplay.construction_production.facility_acquired", 1, "sha256:construction:facility-acquired:v1"),
+    EventSchemaRegistration("gameplay.construction_production.facility_transformed", 1, "sha256:construction:facility-transformed:v1"),
+    EventSchemaRegistration("gameplay.construction_production.facility_decommissioned", 1, "sha256:construction:facility-decommissioned:v1"),
+    EventSchemaRegistration("gameplay.construction_production.run_started", 1, "sha256:construction:run-started:v1"),
+    EventSchemaRegistration("gameplay.construction_production.run_finished", 1, "sha256:construction:run-finished:v1"),
+)
+
+CONSTRUCTION_MAINTENANCE_EVENT_SCHEMAS = (
+    EventSchemaRegistration("gameplay.construction_production.facility_repaired", 1, "sha256:construction:facility-repaired:v1"),
+    EventSchemaRegistration("gameplay.construction_production.facility_repair_compensated", 1, "sha256:construction:facility-repair-compensated:v1"),
+    EventSchemaRegistration("gameplay.construction_production.maintenance_state_applied", 1, "sha256:construction:maintenance-state-applied:v1"),
+    EventSchemaRegistration("gameplay.construction_production.maintenance_state_obligation_opened", 1, "sha256:construction:maintenance-state-obligation-opened:v1"),
+    EventSchemaRegistration("gameplay.construction_production.maintenance_state_obligation_settled", 1, "sha256:construction:maintenance-state-obligation-settled:v1"),
+    EventSchemaRegistration("gameplay.construction_production.maintenance_state_expired", 1, "sha256:construction:maintenance-state-expired:v1"),
+    EventSchemaRegistration("gameplay.construction_production.maintenance_state_dispelled", 1, "sha256:construction:maintenance-state-dispelled:v1"),
+    EventSchemaRegistration("gameplay.construction_production.maintenance_state_obligation_cancelled", 1, "sha256:construction:maintenance-state-obligation-cancelled:v1"),
+)
+
 
 class EventSchemaRegistry:
     def __init__(self) -> None:
@@ -157,6 +234,118 @@ class EventSchemaRegistry:
                 raise
             raise EventSchemaRegistryError("event_schema_registry_snapshot_invalid") from exc
         return registry
+
+
+_GENERAL_ECONOMY_PLATFORM_EVENTS = (
+    "gameplay.economy.currency_issuance_recorded@1", "gameplay.economy.fx_fixing_recorded@1",
+    "gameplay.economy.ledger_posted@1", "gameplay.economy.hold_recorded@1",
+    "gameplay.economy.obligation_recorded@1", "gameplay.economy.population_market_signal_recorded@1",
+    "gameplay.economy.delivery_settlement_recorded@1", "gameplay.economy.organization_period_recorded@1",
+    "gameplay.economy.tax_obligation_recorded@1", "gameplay.economy.market_quote_recorded@1",
+    "gameplay.economy.market_order_recorded@1", "gameplay.economy.market_clearing_recorded@1",
+    "gameplay.economy.credit_facility_recorded@1", "gameplay.economy.insurance_policy_recorded@1",
+    "gameplay.economy.security_holding_recorded@1", "gameplay.economy.insolvency_resolution_recorded@1",
+    "gameplay.economy.regional_macro_period_closed@1",
+    "gameplay.economy.organization_recipe_accepted@1",
+    "gameplay.economy.government_recipe_accepted@1",
+    "gameplay.contract.ogs_social_conflict_eligibility_accepted@1",
+)
+
+
+def register_general_economy_platform_event_schemas(registry: EventSchemaRegistry) -> None:
+    for event_type in _GENERAL_ECONOMY_PLATFORM_EVENTS:
+        registration = EventSchemaRegistration(event_type, 1, f"sha256:general-economy-platform:{event_type}:v1")
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError:
+            if registry.get(event_type, 1) != registration:
+                raise
+
+
+_GENERAL_ECOLOGY_PLATFORM_EVENTS = (
+    "gameplay.ecology.region.recorded@1",
+    "gameplay.ecology.cell.recorded@1",
+    "gameplay.ecology.environment.recorded@1",
+    "gameplay.ecology.resource.recorded@1",
+    "gameplay.ecology.crop.recorded@1",
+    "gameplay.ecology.species.recorded@1",
+    "gameplay.ecology.region_period_closed@1",
+    "gameplay.ecology_hazard.hazard_admitted@1",
+    "gameplay.ecology_hazard.hazard_activated@1",
+    "gameplay.ecology_hazard.hazard_decayed@1",
+    "gameplay.ecology_hazard.hazard_recovered@1",
+    "gameplay.ecology_hazard.hazard_terminal@1",
+    "gameplay.ecology_hazard.hazard_propagated@1",
+    "gameplay.ecology.population_signal_recorded@1",
+)
+
+
+def register_general_ecology_platform_event_schemas(registry: EventSchemaRegistry) -> None:
+    for event_type in _GENERAL_ECOLOGY_PLATFORM_EVENTS:
+        registration = EventSchemaRegistration(event_type, 1, f"sha256:general-ecology-platform:{event_type}:v1")
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError:
+            if registry.get(event_type, 1) != registration:
+                raise
+
+
+_GENERAL_INVENTORY_PLATFORM_EVENTS = (
+    "gameplay.inventory.item_instantiated@1", "gameplay.inventory.lot_created@1",
+    "gameplay.inventory.container_recorded@1", "gameplay.inventory.custody_recorded@1",
+    "gameplay.inventory.custody_transferred@1", "gameplay.inventory.custody_consumed@1",
+    "gameplay.inventory.custody_lost@1", "gameplay.inventory.custody_rejected@1",
+    "gameplay.inventory.reservation_opened@1", "gameplay.inventory.reservation_consumed@1",
+    "gameplay.inventory.reservation_released@1", "gameplay.inventory.reservation_expired@1",
+    "gameplay.inventory.lot_split@1", "gameplay.inventory.lot_merged@1",
+    "gameplay.inventory.condition_recorded@1", "gameplay.inventory.transport_in_transit@1",
+    "gameplay.inventory.transport_delivered@1", "gameplay.inventory.transport_lost@1",
+    "gameplay.inventory.transport_rejected@1",
+)
+
+
+_ORGANIZATION_GOVERNMENT_SOCIAL_PLATFORM_EVENTS = (
+    "gameplay.organization.lifecycle_transitioned@1",
+    "gameplay.organization.membership_delegation_recorded@1",
+    "gameplay.organization.operating_period_recorded@1",
+    "gameplay.organization.commitment_budget_proposed@1",
+    "gameplay.government.policy_lifecycle_recorded@1",
+    "gameplay.government.permit_inspection_case_recorded@1",
+    "gameplay.government.tax_treasury_project_proposed@1",
+    "gameplay.government.notice_audit_recorded@1",
+    "gameplay.social.identity_relationship_recorded@1",
+    "gameplay.social.household_group_recorded@1",
+    "gameplay.social.norm_conflict_recorded@1",
+    "gameplay.social.private_projection_recorded@1",
+    "gameplay.social.population_signal_recorded@1",
+)
+
+
+def register_general_inventory_platform_event_schemas(registry: EventSchemaRegistry) -> None:
+    for event_type in _GENERAL_INVENTORY_PLATFORM_EVENTS:
+        registration = EventSchemaRegistration(event_type, 1, f"sha256:general-inventory-platform:{event_type}:v1")
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError:
+            if registry.get(event_type, 1) != registration:
+                raise
+
+
+def register_organization_government_social_platform_event_schemas(
+    registry: EventSchemaRegistry,
+) -> None:
+    """Register the source-controlled schema bundle for the federated OGS portfolio."""
+    for event_type in _ORGANIZATION_GOVERNMENT_SOCIAL_PLATFORM_EVENTS:
+        registration = EventSchemaRegistration(
+            event_type,
+            1,
+            f"sha256:organization-government-social-platform:{event_type}:v1",
+        )
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError:
+            if registry.get(event_type, 1) != registration:
+                raise
 
 
 def register_phase2a_work_intent_event_schemas(registry: EventSchemaRegistry) -> None:
@@ -245,6 +434,116 @@ def register_inf2an_grain_intake_acceptance_event_schemas(
     """Install the fixed Organization-to-Economy grain acceptance schema."""
 
     for registration in INF2AN_GRAIN_INTAKE_ACCEPTANCE_EVENT_SCHEMAS:
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError as exc:
+            existing = registry.get(registration.event_type, registration.schema_version)
+            if existing != registration:
+                raise exc
+
+
+def register_inf2ao_production_output_market_eligibility_event_schemas(
+    registry: EventSchemaRegistry,
+) -> None:
+    """Install the exact INF-2AO Economy eligibility-marker schema."""
+
+    for registration in INF2AO_PRODUCTION_OUTPUT_MARKET_ELIGIBILITY_EVENT_SCHEMAS:
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError as exc:
+            existing = registry.get(registration.event_type, registration.schema_version)
+            if existing != registration:
+                raise exc
+
+
+def register_construction_job_event_schemas(registry: EventSchemaRegistry) -> None:
+    """Install the generic Construction plot-job event schemas."""
+
+    for registration in CONSTRUCTION_JOB_EVENT_SCHEMAS:
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError as exc:
+            existing = registry.get(registration.event_type, registration.schema_version)
+            if existing != registration:
+                raise exc
+
+
+def register_construction_production_failure_event_schemas(registry: EventSchemaRegistry) -> None:
+    """Install the owner-bound production failure event schema."""
+
+    for registration in CONSTRUCTION_PRODUCTION_FAILURE_EVENT_SCHEMAS:
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError as exc:
+            existing = registry.get(registration.event_type, registration.schema_version)
+            if existing != registration:
+                raise exc
+
+
+def register_construction_maintenance_obligation_event_schemas(registry: EventSchemaRegistry) -> None:
+    """Install the owner-bound maintenance obligation event schema."""
+
+    for registration in CONSTRUCTION_MAINTENANCE_OBLIGATION_EVENT_SCHEMAS:
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError as exc:
+            existing = registry.get(registration.event_type, registration.schema_version)
+            if existing != registration:
+                raise exc
+
+
+def register_construction_output_certification_event_schemas(registry: EventSchemaRegistry) -> None:
+    """Install the owner-bound production output certification schema."""
+
+    for registration in CONSTRUCTION_OUTPUT_CERTIFICATION_EVENT_SCHEMAS:
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError as exc:
+            existing = registry.get(registration.event_type, registration.schema_version)
+            if existing != registration:
+                raise exc
+
+
+def register_inventory_output_custody_event_schemas(registry: EventSchemaRegistry) -> None:
+    """Install the Inventory-owned production output custody schema."""
+
+    for registration in INVENTORY_OUTPUT_CUSTODY_EVENT_SCHEMAS:
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError as exc:
+            existing = registry.get(registration.event_type, registration.schema_version)
+            if existing != registration:
+                raise exc
+
+
+def register_construction_lifecycle_event_schemas(registry: EventSchemaRegistry) -> None:
+    """Install the core Construction facility/run lifecycle schemas."""
+
+    for registration in CONSTRUCTION_LIFECYCLE_EVENT_SCHEMAS:
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError as exc:
+            existing = registry.get(registration.event_type, registration.schema_version)
+            if existing != registration:
+                raise exc
+
+
+def register_construction_production_event_schemas(registry: EventSchemaRegistry) -> None:
+    """Register the complete opt-in Construction/Production event schema bundle."""
+
+    register_construction_job_event_schemas(registry)
+    register_construction_production_failure_event_schemas(registry)
+    register_construction_maintenance_obligation_event_schemas(registry)
+    register_construction_output_certification_event_schemas(registry)
+    register_construction_lifecycle_event_schemas(registry)
+    register_construction_maintenance_event_schemas(registry)
+    register_inventory_output_custody_event_schemas(registry)
+
+
+def register_construction_maintenance_event_schemas(registry: EventSchemaRegistry) -> None:
+    """Register facility repair and maintenance-state event schemas."""
+
+    for registration in CONSTRUCTION_MAINTENANCE_EVENT_SCHEMAS:
         try:
             registry.register(registration)
         except EventSchemaRegistryError as exc:

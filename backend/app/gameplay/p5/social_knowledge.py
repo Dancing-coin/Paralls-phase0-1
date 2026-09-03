@@ -8,13 +8,14 @@ from typing import Any, Mapping
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
-from app.gameplay.models import GameplayOutboxEntry
+from app.gameplay.models import GameplayOutboxEntry, OwnerAuthorizedFragment
 from app.gameplay.patch_runtime import GameplayPatchRegistry
 from app.gameplay.p5.contracts import P5ResolutionRequest, P5ResolutionResult, build_directed_relationship_ref
 from app.gameplay.p5.registry import P5PolicyRegistry
 from app.gameplay.shared_contracts import GameplayCommandEnvelope, SettlementPlan, SettlementReceipt
 from app.gameplay.settlement_plan import (
     SettlementPlan as EventStoreSettlementPlan,
+    build_atomic_event_batch,
     build_multi_stream_atomic_event_batch,
 )
 
@@ -152,6 +153,236 @@ class SocialFactAuthority:
         self._registry = registry
         self._store = store
         self._package_registry = package_registry
+
+    def record_admitted_population_signal_materialization_proposal(
+        self,
+        *,
+        intent: object,
+        binding_ref: str,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        expected_revision: int,
+    ) -> SocialFactAuthorityResult:
+        """Record one public Population proposal; it never creates a subject.
+
+        Any later identity allocation and target-owner creation is a separate
+        precompiled recipe accepted by that owner, not a Social write.
+        """
+        from app.gameplay.organization_government_social_platform_runtime import (
+            PopulationSignalMaterializationProposalIntent,
+        )
+
+        active = self._package_registry.active_patch_set if self._package_registry else None
+        if active is None:
+            return self._rejected("ogs_population_signal_package_inactive")
+        matches = tuple(
+            binding for binding in active.capability_bindings
+            if binding.binding_ref == binding_ref
+            and binding.family_ref == "population_signal_materialization@1"
+            and binding.descriptor_ref == "descriptor:population-signal-materialization@1"
+        )
+        if len(matches) != 1:
+            return self._rejected("ogs_population_signal_binding_conflict")
+        try:
+            authored = intent if isinstance(intent, PopulationSignalMaterializationProposalIntent) else PopulationSignalMaterializationProposalIntent.model_validate(intent)
+            binding = matches[0]
+            typed = authored.model_copy(update={
+                "package_revision_pin": binding.package_revision,
+                "content_digest_pin": binding.content_digest,
+                "declaration_ref_pin": binding.declaration_ref,
+                "declaration_digest_pin": binding.declaration_digest,
+                "descriptor_pin": binding.descriptor_ref,
+                "descriptor_revision_pin": binding.descriptor_revision,
+                "active_set_digest_pin": binding.active_patch_set_revision,
+            }, deep=True)
+            stream_id = f"gameplay:social:population:{typed.signal_ref}"
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:population-signal-materialization@1",
+                contract_kind="contract_admission",
+                owner_ref=_PRINCIPAL,
+                stream_ids=(stream_id,),
+                event_types=("gameplay.social.population_signal_recorded@1",),
+                projection_scope="mixed",
+            )
+        except (ValueError, GovernedAuthorityContractError):
+            return self._rejected("ogs_population_signal_intent_invalid")
+        if self._store.get_stream_head(stream_id) != expected_revision:
+            return self._rejected("ogs_population_signal_revision_conflict")
+        payload = typed.model_dump(mode="json", exclude_none=True)
+        batch = build_atomic_event_batch(
+            command_id=command_id, principal_ref=_PRINCIPAL, stream_id=stream_id,
+            expected_revision=expected_revision,
+            event_specs=(("gameplay.social.population_signal_recorded@1", payload),),
+            idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id,
+            read_stream_revisions={stream_id: expected_revision},
+            pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin},
+        )
+        batch = batch.model_copy(update={
+            "events": [event.model_copy(update={"visibility_policy": "public"}, deep=True) for event in batch.events],
+            "owner_fragments": [OwnerAuthorizedFragment(
+                fragment_id=f"fragment:population-signal:{command_id}", owner_principal_ref=_PRINCIPAL,
+                source_rule_ref="population-signal-materialization:social-proposal@1",
+                expected_revisions={stream_id: expected_revision}, read_set_revisions={stream_id: expected_revision},
+                pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin},
+                event_specs={stream_id: (("gameplay.social.population_signal_recorded@1", payload),)},
+                event_visibility_policies={stream_id: ("public",)},
+            )],
+        }, deep=True)
+        result = self._store.append_batch(batch)
+        receipt = SettlementReceipt.from_append_result(
+            result=result,
+            audit_refs=(f"ogs_population_signal:{result.transaction_id}",),
+        )
+        return self._committed_result(receipt, settlement_plan=None)
+
+    def record_admitted_platform_social_relationship(
+        self,
+        *,
+        intent: object,
+        binding_ref: str,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        expected_revision: int,
+    ) -> SocialFactAuthorityResult:
+        """Append a mutually accepted shared relationship at package-fixed scope."""
+        from app.gameplay.organization_government_social_content import SocialRelationshipContent
+        from app.gameplay.organization_government_social_platform_runtime import SocialIdentityRelationshipIntent
+
+        active = self._package_registry.active_patch_set if self._package_registry else None
+        if active is None:
+            return self._rejected("ogs_social_relationship_package_inactive")
+        matches = tuple(
+            binding for binding in active.capability_bindings
+            if binding.binding_ref == binding_ref
+            and binding.family_ref == "social_identity_relationship@1"
+            and binding.descriptor_ref == "descriptor:social-identity-relationship@1"
+        )
+        if len(matches) != 1:
+            return self._rejected("ogs_social_relationship_binding_conflict")
+        try:
+            binding = matches[0]
+            manifest = next(item for item in self._package_registry.active_manifests(active.active_patch_set_revision) if item.patch_revision_id == binding.package_revision)
+            definition = next(item for item in manifest.platform_extension.package_definitions if item.definition_ref == binding.definition_ref)
+            content = SocialRelationshipContent.model_validate(definition.typed_content)
+            authored = intent if isinstance(intent, SocialIdentityRelationshipIntent) else SocialIdentityRelationshipIntent.model_validate(intent)
+            if authored.relationship_ref != content.relationship_ref or len(authored.participant_refs) != content.required_party_count:
+                raise ValueError("ogs_social_relationship_content_mismatch")
+            typed = authored.model_copy(update={
+                "package_revision_pin": binding.package_revision, "content_digest_pin": binding.content_digest,
+                "declaration_ref_pin": binding.declaration_ref, "declaration_digest_pin": binding.declaration_digest,
+                "descriptor_pin": binding.descriptor_ref, "descriptor_revision_pin": binding.descriptor_revision,
+                "active_set_digest_pin": binding.active_patch_set_revision,
+            }, deep=True)
+            stream_id = f"gameplay:social:relationship:{typed.relationship_ref}"
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:social-identity-relationship@1", contract_kind="settlement", owner_ref=_PRINCIPAL,
+                stream_ids=(stream_id,), event_types=("gameplay.social.identity_relationship_recorded@1",), projection_scope="mixed",
+            )
+        except Exception:
+            return self._rejected("ogs_social_relationship_intent_invalid")
+        if self._store.get_stream_head(stream_id) != expected_revision:
+            return self._rejected("ogs_social_relationship_revision_conflict")
+        payload = typed.model_dump(mode="json", exclude_none=True)
+        batch = build_atomic_event_batch(
+            command_id=command_id, principal_ref=_PRINCIPAL, stream_id=stream_id, expected_revision=expected_revision,
+            event_specs=(("gameplay.social.identity_relationship_recorded@1", payload),), idempotency_key=idempotency_key,
+            causation_id=causation_id, correlation_id=correlation_id, read_stream_revisions={stream_id: expected_revision},
+            pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin},
+        )
+        batch = batch.model_copy(update={
+            "events": [event.model_copy(update={"visibility_policy": content.shared_visibility_scope}, deep=True) for event in batch.events],
+            "owner_fragments": [OwnerAuthorizedFragment(
+                fragment_id=f"fragment:social-relationship:{command_id}", owner_principal_ref=_PRINCIPAL,
+                source_rule_ref="social-identity-relationship:mutual-acceptance@1",
+                expected_revisions={stream_id: expected_revision}, read_set_revisions={stream_id: expected_revision},
+                pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin},
+                event_specs={stream_id: (("gameplay.social.identity_relationship_recorded@1", payload),)},
+                event_visibility_policies={stream_id: (content.shared_visibility_scope,)},
+            )],
+        }, deep=True)
+        result = self._store.append_batch(batch)
+        return self._committed_result(SettlementReceipt.from_append_result(result=result, audit_refs=(f"ogs_social_relationship:{result.transaction_id}",)), settlement_plan=None)
+
+    def record_admitted_platform_social_group(
+        self, *, intent: object, binding_ref: str, command_id: str, idempotency_key: str,
+        causation_id: str, correlation_id: str, expected_revision: int,
+    ) -> SocialFactAuthorityResult:
+        from app.gameplay.organization_government_social_platform_runtime import SocialHouseholdGroupIntent
+        active = self._package_registry.active_patch_set if self._package_registry else None
+        if active is None:
+            return self._rejected("ogs_social_group_package_inactive")
+        matches = tuple(b for b in active.capability_bindings if b.binding_ref == binding_ref and b.family_ref == "social_household_group@1" and b.descriptor_ref == "descriptor:social-household-group@1")
+        if len(matches) != 1:
+            return self._rejected("ogs_social_group_binding_conflict")
+        try:
+            typed = intent if isinstance(intent, SocialHouseholdGroupIntent) else SocialHouseholdGroupIntent.model_validate(intent)
+            binding = matches[0]
+            typed = typed.model_copy(update={"package_revision_pin": binding.package_revision, "content_digest_pin": binding.content_digest, "declaration_ref_pin": binding.declaration_ref, "declaration_digest_pin": binding.declaration_digest, "descriptor_pin": binding.descriptor_ref, "descriptor_revision_pin": binding.descriptor_revision, "active_set_digest_pin": binding.active_patch_set_revision}, deep=True)
+            stream_id = f"gameplay:social:group:{typed.group_ref}"
+            GovernedAuthorityContractCatalog.require_operation(contract_ref="inf:social-household-group@1", contract_kind="lifecycle", owner_ref=_PRINCIPAL, stream_ids=(stream_id,), event_types=("gameplay.social.household_group_recorded@1",), projection_scope="project")
+        except Exception:
+            return self._rejected("ogs_social_group_intent_invalid")
+        if self._store.get_stream_head(stream_id) != expected_revision:
+            return self._rejected("ogs_social_group_revision_conflict")
+        payload = typed.model_dump(mode="json", exclude_none=True)
+        batch = build_atomic_event_batch(command_id=command_id, principal_ref=_PRINCIPAL, stream_id=stream_id, expected_revision=expected_revision, event_specs=(("gameplay.social.household_group_recorded@1", payload),), idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id, read_stream_revisions={stream_id: expected_revision}, pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin})
+        batch = batch.model_copy(update={"events": [e.model_copy(update={"visibility_policy": "project"}, deep=True) for e in batch.events], "owner_fragments": [OwnerAuthorizedFragment(fragment_id=f"fragment:social-group:{command_id}", owner_principal_ref=_PRINCIPAL, source_rule_ref="social-household-group:owner-bound@1", expected_revisions={stream_id: expected_revision}, read_set_revisions={stream_id: expected_revision}, pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin}, event_specs={stream_id: (("gameplay.social.household_group_recorded@1", payload),)}, event_visibility_policies={stream_id: ("project",)})]}, deep=True)
+        result = self._store.append_batch(batch)
+        return self._committed_result(SettlementReceipt.from_append_result(result=result, audit_refs=(f"ogs_social_group:{result.transaction_id}",)), settlement_plan=None)
+
+    def record_admitted_platform_social_conflict(
+        self, *, intent: object, binding_ref: str, command_id: str, idempotency_key: str,
+        causation_id: str, correlation_id: str, expected_revision: int,
+    ) -> SocialFactAuthorityResult:
+        from app.gameplay.organization_government_social_platform_runtime import SocialNormConflictIntent
+        active = self._package_registry.active_patch_set if self._package_registry else None
+        if active is None:
+            return self._rejected("ogs_social_conflict_package_inactive")
+        matches = tuple(b for b in active.capability_bindings if b.binding_ref == binding_ref and b.family_ref == "social_norm_conflict@1" and b.descriptor_ref == "descriptor:social-norm-conflict@1")
+        if len(matches) != 1:
+            return self._rejected("ogs_social_conflict_binding_conflict")
+        try:
+            typed = intent if isinstance(intent, SocialNormConflictIntent) else SocialNormConflictIntent.model_validate(intent)
+            binding = matches[0]
+            typed = typed.model_copy(update={"package_revision_pin": binding.package_revision, "content_digest_pin": binding.content_digest, "declaration_ref_pin": binding.declaration_ref, "declaration_digest_pin": binding.declaration_digest, "descriptor_pin": binding.descriptor_ref, "descriptor_revision_pin": binding.descriptor_revision, "active_set_digest_pin": binding.active_patch_set_revision}, deep=True)
+            stream_id = f"gameplay:social:case:{typed.case_ref}"
+            GovernedAuthorityContractCatalog.require_operation(contract_ref="inf:social-norm-conflict@1", contract_kind="lifecycle", owner_ref=_PRINCIPAL, stream_ids=(stream_id,), event_types=("gameplay.social.norm_conflict_recorded@1",), projection_scope="mixed")
+        except Exception:
+            return self._rejected("ogs_social_conflict_intent_invalid")
+        if self._store.get_stream_head(stream_id) != expected_revision:
+            return self._rejected("ogs_social_conflict_revision_conflict")
+        payload = typed.model_dump(mode="json", exclude_none=True)
+        batch = build_atomic_event_batch(command_id=command_id, principal_ref=_PRINCIPAL, stream_id=stream_id, expected_revision=expected_revision, event_specs=(("gameplay.social.norm_conflict_recorded@1", payload),), idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id, read_stream_revisions={stream_id: expected_revision}, pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin})
+        batch = batch.model_copy(update={"events": [e.model_copy(update={"visibility_policy": "project"}, deep=True) for e in batch.events], "owner_fragments": [OwnerAuthorizedFragment(fragment_id=f"fragment:social-conflict:{command_id}", owner_principal_ref=_PRINCIPAL, source_rule_ref="social-norm-conflict:owner-bound@1", expected_revisions={stream_id: expected_revision}, read_set_revisions={stream_id: expected_revision}, pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin}, event_specs={stream_id: (("gameplay.social.norm_conflict_recorded@1", payload),)}, event_visibility_policies={stream_id: ("project",)})]}, deep=True)
+        result = self._store.append_batch(batch)
+        return self._committed_result(SettlementReceipt.from_append_result(result=result, audit_refs=(f"ogs_social_conflict:{result.transaction_id}",)), settlement_plan=None)
+
+    def record_admitted_platform_social_private_projection(
+        self, *, intent: object, binding_ref: str, command_id: str, idempotency_key: str,
+        causation_id: str, correlation_id: str, expected_revision: int,
+    ) -> SocialFactAuthorityResult:
+        from app.gameplay.organization_government_social_platform_runtime import SocialPrivateProjectionIntent
+        active = self._package_registry.active_patch_set if self._package_registry else None
+        if active is None: return self._rejected("ogs_social_private_package_inactive")
+        matches = tuple(b for b in active.capability_bindings if b.binding_ref == binding_ref and b.family_ref == "social_private_projection@1" and b.descriptor_ref == "descriptor:social-private-projection@1")
+        if len(matches) != 1: return self._rejected("ogs_social_private_binding_conflict")
+        try:
+            typed = intent if isinstance(intent, SocialPrivateProjectionIntent) else SocialPrivateProjectionIntent.model_validate(intent)
+            binding = matches[0]
+            typed = typed.model_copy(update={"package_revision_pin": binding.package_revision, "content_digest_pin": binding.content_digest, "declaration_ref_pin": binding.declaration_ref, "declaration_digest_pin": binding.declaration_digest, "descriptor_pin": binding.descriptor_ref, "descriptor_revision_pin": binding.descriptor_revision, "active_set_digest_pin": binding.active_patch_set_revision}, deep=True)
+            stream_id = f"gameplay:social:private:{typed.participant_ref}"
+            GovernedAuthorityContractCatalog.require_operation(contract_ref="inf:social-private-projection@1", contract_kind="contract_admission", owner_ref=_PRINCIPAL, stream_ids=(stream_id,), event_types=("gameplay.social.private_projection_recorded@1",), projection_scope="actor_private")
+        except Exception: return self._rejected("ogs_social_private_intent_invalid")
+        if self._store.get_stream_head(stream_id) != expected_revision: return self._rejected("ogs_social_private_revision_conflict")
+        payload = typed.model_dump(mode="json", exclude_none=True)
+        batch = build_atomic_event_batch(command_id=command_id, principal_ref=_PRINCIPAL, stream_id=stream_id, expected_revision=expected_revision, event_specs=(("gameplay.social.private_projection_recorded@1", payload),), idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id, read_stream_revisions={stream_id: expected_revision}, pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin})
+        batch = batch.model_copy(update={"events": [e.model_copy(update={"visibility_policy": f"actor:{typed.participant_ref}"}, deep=True) for e in batch.events], "owner_fragments": [OwnerAuthorizedFragment(fragment_id=f"fragment:social-private:{command_id}", owner_principal_ref=_PRINCIPAL, source_rule_ref="social-private-projection:owner-bound@1", expected_revisions={stream_id: expected_revision}, read_set_revisions={stream_id: expected_revision}, pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin}, event_specs={stream_id: (("gameplay.social.private_projection_recorded@1", payload),)}, event_visibility_policies={stream_id: (f"actor:{typed.participant_ref}",)})]}, deep=True)
+        result = self._store.append_batch(batch)
+        return self._committed_result(SettlementReceipt.from_append_result(result=result, audit_refs=(f"ogs_social_private:{result.transaction_id}",)), settlement_plan=None)
 
     def record_household_membership(
         self,

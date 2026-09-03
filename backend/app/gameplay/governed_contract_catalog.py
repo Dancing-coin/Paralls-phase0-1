@@ -61,11 +61,20 @@ class GovernedAuthorityContract(StrictGameplayModel):
                     or self.replay_reader_ref != "SocialFactAuthority.public_milling_notice_social_acknowledgment_view_for"
                 )
             )
+            or (
+                self.contract_ref == "inf:social-private-projection@1"
+                and (
+                    self.stream_patterns != ("gameplay:social:private:{participant_ref}",)
+                    or self.event_types != ("gameplay.social.private_projection_recorded@1",)
+                    or self.replay_reader_ref != "OrganizationGovernmentSocialProjector.social-private-projection"
+                )
+            )
             or self.contract_ref
             not in {
                 "inf:social-handshake-shared-experience@1",
                 "inf:social-public-milling-notice-acknowledgment@1",
                 "inf:private-follow-on@1",
+                "inf:social-private-projection@1",
             }
         ):
             raise ValueError("governed_actor_private_scope_unadmitted")
@@ -515,6 +524,16 @@ class GovernedAuthorityContractCatalog:
                 projection_scope="authority_only",
                 receipt_reader_ref="GameplayEventStore.append_batch",
                 replay_reader_ref="EconomyAuthorityService.grain_intake_acceptance_projection",
+            ),
+            GovernedAuthorityContract(
+                contract_ref="inf:economy-production-output-market-eligibility@1",
+                contract_kind="lifecycle",
+                owner_ref="actor_gameplay.economy_domain",
+                stream_patterns=("gameplay:economy",),
+                event_types=("gameplay.economy.production_output_market_eligible@1",),
+                projection_scope="authority_only",
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_ref="EconomyAuthorityService.production_output_market_eligibility_projection",
             ),
             GovernedAuthorityContract(
                 contract_ref="inf:economy-wage-accrual-obligation@1",
@@ -1040,6 +1059,33 @@ class GovernedAuthorityContractCatalog:
         """
         return (
             OwnerOperationDescriptor(
+                descriptor_ref="descriptor:construction-blueprint-placement@1",
+                descriptor_revision="descriptor:construction-blueprint-placement@1",
+                family_ref="construction_blueprint_placement@1",
+                capability_ref="capability:construction-blueprint-placement@1",
+                outcome_family_ref="outcome:construction-blueprint-placement@1",
+                allowed_predicate_family_refs=("predicate:construction-plot-available@1",),
+                allowed_proposal_effect_types=("effect:construction-job-placement@1",),
+                owner_ref="actor_gameplay.construction_production_domain",
+                accepted_intent_schema_ref="schema:construction-blueprint-placement-intent@1",
+                source_event_types=("gameplay.construction_production.facility_acquired",),
+                source_stream_pattern="gameplay:construction_production:{facility_ref}",
+                source_revision_fence_ref="revision:construction-plot-and-permit@1",
+                target_stream_pattern="gameplay:construction_production:plot:{plot_ref}",
+                target_event_types=("gameplay.construction_production.construction_job_started@1",),
+                privacy_scope="project",
+                idempotency_rule_ref="idempotency:construction-blueprint-placement@1",
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_refs=(
+                    "reader:construction-blueprint-placement-checkpoint-tail@1",
+                    "reader:construction-blueprint-placement-full@1",
+                ),
+                terminal_semantics_ref="lifecycle:terminal-no-compensation@1",
+                reversal_semantics_ref="lifecycle:none@1",
+                compensation_semantics_ref="lifecycle:none@1",
+                package_slot_refs=("slot:blueprint-definition@1", "slot:grid-footprint@1", "slot:permit@1"),
+            ),
+            OwnerOperationDescriptor(
                 descriptor_ref="descriptor:construction-facility-package-declared-transform@1",
                 descriptor_revision="descriptor:construction-facility-package-declared-transform@1",
                 capability_ref="capability:construction-facility-package-declared-transform@1",
@@ -1086,6 +1132,32 @@ class GovernedAuthorityContractCatalog:
                     "slot:qualification@1",
                     "slot:recipe-definition@1",
                 ),
+            ),
+            OwnerOperationDescriptor(
+                descriptor_ref="descriptor:economy-production-output-market-eligibility@1",
+                descriptor_revision="descriptor:economy-production-output-market-eligibility@1",
+                capability_ref="capability:economy-production-output-market-eligibility@1",
+                outcome_family_ref="outcome:economy-production-output-market-eligibility@1",
+                allowed_predicate_family_refs=("predicate:inventory-production-output-custody@1",),
+                allowed_proposal_effect_types=("effect:economy-production-output-market-eligibility@1",),
+                owner_ref="actor_gameplay.economy_domain",
+                accepted_intent_schema_ref="schema:economy-production-output-market-eligibility-intent@1",
+                source_event_types=("gameplay.inventory.production_output_received@1",),
+                source_stream_pattern="gameplay:inventory:{holder_ref}",
+                source_revision_fence_ref="revision:inventory-production-output-custody@1",
+                target_stream_pattern="gameplay:economy",
+                target_event_types=("gameplay.economy.production_output_market_eligible@1",),
+                privacy_scope="authority_only",
+                idempotency_rule_ref="idempotency:economy-production-output-market-eligibility@1",
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_refs=(
+                    "reader:economy-production-output-market-eligibility-checkpoint-tail@1",
+                    "reader:economy-production-output-market-eligibility-full@1",
+                ),
+                terminal_semantics_ref="lifecycle:terminal-no-compensation@1",
+                reversal_semantics_ref="lifecycle:none@1",
+                compensation_semantics_ref="lifecycle:none@1",
+                package_slot_refs=(),
             ),
             OwnerOperationDescriptor(
                 descriptor_ref="descriptor:construction-facility-mill-reinforcement@1",
@@ -1441,7 +1513,144 @@ class GovernedAuthorityContractCatalog:
             if contract_kind is not None and contract.contract_kind != contract_kind:
                 raise GovernedAuthorityContractError("governed_authority_contract_kind_mismatch")
             return contract
+        for contract in cls.economy_platform_contracts():
+            if contract.contract_ref != contract_ref:
+                continue
+            if contract_kind is not None and contract.contract_kind != contract_kind:
+                raise GovernedAuthorityContractError("governed_authority_contract_kind_mismatch")
+            return contract
+        for contract in cls.ecology_platform_contracts():
+            if contract.contract_ref != contract_ref:
+                continue
+            if contract_kind is not None and contract.contract_kind != contract_kind:
+                raise GovernedAuthorityContractError("governed_authority_contract_kind_mismatch")
+            return contract
+        for contract in cls.inventory_platform_contracts():
+            if contract.contract_ref != contract_ref:
+                continue
+            if contract_kind is not None and contract.contract_kind != contract_kind:
+                raise GovernedAuthorityContractError("governed_authority_contract_kind_mismatch")
+            return contract
+        for contract in cls.organization_government_social_platform_contracts():
+            if contract.contract_ref != contract_ref:
+                continue
+            if contract_kind is not None and contract.contract_kind != contract_kind:
+                raise GovernedAuthorityContractError("governed_authority_contract_kind_mismatch")
+            return contract
         raise GovernedAuthorityContractError("governed_authority_contract_unknown")
+
+    @staticmethod
+    def organization_government_social_platform_contracts() -> tuple[GovernedAuthorityContract, ...]:
+        """Immutable contracts for the federated Organization/Government/Social portfolio."""
+        rows = (
+            ("organization-lifecycle", "lifecycle", "actor_gameplay.organization_domain", "gameplay:organization:{organization_ref}", ("gameplay.organization.lifecycle_transitioned@1",), "project"),
+            ("organization-membership-delegation", "settlement", "actor_gameplay.organization_domain", "gameplay:organization:{organization_ref}", ("gameplay.organization.membership_delegation_recorded@1",), "project"),
+            ("organization-operating-period", "lifecycle", "actor_gameplay.organization_domain", "gameplay:organization:{organization_ref}", ("gameplay.organization.operating_period_recorded@1",), "project"),
+            ("organization-commitment-budget", "settlement", "actor_gameplay.organization_domain", "gameplay:organization:{organization_ref}", ("gameplay.organization.commitment_budget_proposed@1",), "project"),
+            ("government-jurisdiction-policy", "policy", "actor_gameplay.government_domain", "gameplay:government:{jurisdiction_ref}", ("gameplay.government.policy_lifecycle_recorded@1",), "project"),
+            ("government-permit-inspection-enforcement", "lifecycle", "actor_gameplay.government_domain", "gameplay:government:case:{case_ref}", ("gameplay.government.permit_inspection_case_recorded@1",), "project"),
+            ("government-tax-treasury-project", "settlement", "actor_gameplay.government_domain", "gameplay:government:{jurisdiction_ref}", ("gameplay.government.tax_treasury_project_proposed@1",), "authority_only"),
+            ("government-notice-audit", "policy", "actor_gameplay.government_domain", "gameplay:government:{jurisdiction_ref}", ("gameplay.government.notice_audit_recorded@1",), "mixed"),
+            ("social-identity-relationship", "settlement", "authority:p5:social", "gameplay:social:relationship:{relationship_ref}", ("gameplay.social.identity_relationship_recorded@1",), "mixed"),
+            ("social-household-group", "lifecycle", "authority:p5:social", "gameplay:social:group:{group_ref}", ("gameplay.social.household_group_recorded@1",), "project"),
+            ("social-norm-conflict", "lifecycle", "authority:p5:social", "gameplay:social:case:{case_ref}", ("gameplay.social.norm_conflict_recorded@1",), "mixed"),
+            ("social-private-projection", "contract_admission", "authority:p5:social", "gameplay:social:private:{participant_ref}", ("gameplay.social.private_projection_recorded@1",), "actor_private"),
+            ("population-signal-materialization", "contract_admission", "authority:p5:social", "gameplay:social:population:{signal_ref}", ("gameplay.social.population_signal_recorded@1",), "mixed"),
+        )
+        return tuple(
+            GovernedAuthorityContract(
+                contract_ref=f"inf:{slug}@1",
+                contract_kind=contract_kind,
+                owner_ref=owner_ref,
+                stream_patterns=(stream_pattern,),
+                event_types=event_types,
+                projection_scope=privacy_scope,
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_ref=f"OrganizationGovernmentSocialProjector.{slug}",
+            )
+            for slug, contract_kind, owner_ref, stream_pattern, event_types, privacy_scope in rows
+        )
+
+    @staticmethod
+    def inventory_platform_contracts() -> tuple[GovernedAuthorityContract, ...]:
+        rows = (
+            ("item-definition-instance-lot", "gameplay:inventory:platform:{subject_ref}", ("gameplay.inventory.item_instantiated@1", "gameplay.inventory.lot_created@1")),
+            ("container-graph", "gameplay:inventory:platform:{subject_ref}", ("gameplay.inventory.container_recorded@1",)),
+            ("custody-reservation", "gameplay:inventory:platform:{subject_ref}", ("gameplay.inventory.custody_recorded@1", "gameplay.inventory.reservation_opened@1")),
+            ("condition-expiry", "gameplay:inventory:platform:condition:{subject_ref}", ("gameplay.inventory.condition_recorded@1",)),
+            ("transport-delivery", "gameplay:inventory:platform:transport:{subject_ref}", ("gameplay.inventory.transport_in_transit@1", "gameplay.inventory.transport_delivered@1", "gameplay.inventory.transport_lost@1", "gameplay.inventory.transport_rejected@1")),
+        )
+        return tuple(
+            GovernedAuthorityContract(
+                contract_ref=f"inf:inventory-{slug}@1",
+                contract_kind="settlement",
+                owner_ref="actor_gameplay.inventory_domain",
+                stream_patterns=(stream_pattern,),
+                event_types=event_types,
+                projection_scope="project",
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_ref=f"InventoryPlatformProjector.{slug}",
+            )
+            for slug, stream_pattern, event_types in rows
+        )
+
+    @staticmethod
+    def ecology_platform_contracts() -> tuple[GovernedAuthorityContract, ...]:
+        rows = (
+            ("region-grid", "gameplay:ecology:platform:{subject_ref}", ("gameplay.ecology.region.recorded@1", "gameplay.ecology.cell.recorded@1")),
+            ("environment-water", "gameplay:ecology:platform:{subject_ref}", ("gameplay.ecology.environment.recorded@1",)),
+            ("soil-resource", "gameplay:ecology:platform:{subject_ref}", ("gameplay.ecology.resource.recorded@1",)),
+            ("crop-habitat", "gameplay:ecology:platform:{subject_ref}", ("gameplay.ecology.crop.recorded@1",)),
+            ("species-food-web", "gameplay:ecology:platform:{subject_ref}", ("gameplay.ecology.species.recorded@1",)),
+            ("regional-period-close", "gameplay:ecology:platform:close:{subject_ref}", ("gameplay.ecology.region_period_closed@1",)),
+            ("hazard-lifecycle", "gameplay:ecology_hazard:{subject_ref}", ("gameplay.ecology_hazard.hazard_admitted@1", "gameplay.ecology_hazard.hazard_activated@1", "gameplay.ecology_hazard.hazard_decayed@1", "gameplay.ecology_hazard.hazard_recovered@1", "gameplay.ecology_hazard.hazard_terminal@1", "gameplay.ecology_hazard.hazard_propagated@1")),
+        )
+        return tuple(
+            GovernedAuthorityContract(
+                contract_ref=f"inf:ecology-{slug}@1",
+                contract_kind="lifecycle",
+                owner_ref="authority:ecology_hazard" if slug == "hazard-lifecycle" else "actor_gameplay.ecology_domain",
+                stream_patterns=(stream_pattern,),
+                event_types=event_types,
+                projection_scope="project",
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_ref=f"EcologyPlatformProjector.{slug}",
+            )
+            for slug, stream_pattern, event_types in rows
+        )
+
+    @staticmethod
+    def economy_platform_contracts() -> tuple[GovernedAuthorityContract, ...]:
+        """Read-only contracts for the Manifest v3/platform 2.0 Economy portfolio."""
+        rows = (
+            ("currency-issuance", "currency_issuance@1", "gameplay.economy.currency_issuance_recorded@1", "gameplay:economy:{subject_ref}", "authority_only"),
+            ("fx-fixing", "fx_fixing@1", "gameplay.economy.fx_fixing_recorded@1", "gameplay:economy:fx:{subject_ref}", "authority_only"),
+            ("account-ledger", "account_ledger@1", "gameplay.economy.ledger_posted@1", "gameplay:economy:{subject_ref}", "authority_only"),
+            ("hold-obligation", "hold_obligation@1", "gameplay.economy.obligation_recorded@1", "gameplay:economy:{subject_ref}", "authority_only"),
+            ("quote-order", "quote_order@1", "gameplay.economy.market_quote_recorded@1", "gameplay:economy:market:quote:{subject_ref}", "project"),
+            ("deterministic-clearing", "deterministic_clearing@1", "gameplay.economy.market_clearing_recorded@1", "gameplay:economy:market:clearing:{subject_ref}", "project"),
+            ("commerce-delivery-settlement", "commerce_delivery_settlement@1", "gameplay.economy.delivery_settlement_recorded@1", "gameplay:economy:{subject_ref}", "authority_only"),
+            ("organization-labor-period", "organization_labor_period@1", "gameplay.economy.organization_period_recorded@1", "gameplay:economy:{subject_ref}", "authority_only"),
+            ("tax-regulation", "tax_regulation@1", "gameplay.economy.tax_obligation_recorded@1", "gameplay:economy:{subject_ref}", "authority_only"),
+            ("credit-collateral", "credit_collateral@1", "gameplay.economy.credit_facility_recorded@1", "gameplay:economy:{subject_ref}", "authority_only"),
+            ("insurance-contract", "insurance_contract@1", "gameplay.economy.insurance_policy_recorded@1", "gameplay:economy:{subject_ref}", "authority_only"),
+            ("security-holding", "security_holding@1", "gameplay.economy.security_holding_recorded@1", "gameplay:economy:{subject_ref}", "authority_only"),
+            ("insolvency-resolution", "insolvency_resolution@1", "gameplay.economy.insolvency_resolution_recorded@1", "gameplay:economy:{subject_ref}", "authority_only"),
+            ("regional-macro-close", "regional_macro_close@1", "gameplay.economy.regional_macro_period_closed@1", "gameplay:economy:macro:{subject_ref}", "authority_only"),
+        )
+        return tuple(
+            GovernedAuthorityContract(
+                contract_ref=f"inf:economy-{slug}@1",
+                contract_kind="settlement",
+                owner_ref="actor_gameplay.economy_domain",
+                stream_patterns=(stream_pattern,),
+                event_types=(event_type,),
+                projection_scope=privacy_scope,
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_ref=f"EconomyPlatformProjector.{family}",
+            )
+            for slug, family, event_type, stream_pattern, privacy_scope in rows
+        )
 
     @staticmethod
     def closed_family_contracts() -> tuple[GovernedAuthorityContract, ...]:
@@ -1515,7 +1724,161 @@ class GovernedAuthorityContractCatalog:
             for family in CLOSED_GAMEPLAY_FAMILIES
             if family.descriptor_ref not in known and family.family_ref != "recipe_production@1"
         )
-        return (*existing, *family_descriptors)
+        economy_rows = (
+            ("currency_issuance@1", "currency-issuance", "gameplay:economy:{subject_ref}", "gameplay.economy.currency_issuance_recorded@1", "authority_only"),
+            ("fx_fixing@1", "fx-fixing", "gameplay:economy:fx:{subject_ref}", "gameplay.economy.fx_fixing_recorded@1", "authority_only"),
+            ("account_ledger@1", "account-ledger", "gameplay:economy:{subject_ref}", "gameplay.economy.ledger_posted@1", "authority_only"),
+            ("hold_obligation@1", "hold-obligation", "gameplay:economy:{subject_ref}", "gameplay.economy.obligation_recorded@1", "authority_only"),
+            ("quote_order@1", "quote-order", "gameplay:economy:market:quote:{subject_ref}", "gameplay.economy.market_quote_recorded@1", "project"),
+            ("deterministic_clearing@1", "deterministic-clearing", "gameplay:economy:market:clearing:{subject_ref}", "gameplay.economy.market_clearing_recorded@1", "project"),
+            ("commerce_delivery_settlement@1", "commerce-delivery-settlement", "gameplay:economy:{subject_ref}", "gameplay.economy.delivery_settlement_recorded@1", "authority_only"),
+            ("organization_labor_period@1", "organization-labor-period", "gameplay:economy:{subject_ref}", "gameplay.economy.organization_period_recorded@1", "authority_only"),
+            ("tax_regulation@1", "tax-regulation", "gameplay:economy:{subject_ref}", "gameplay.economy.tax_obligation_recorded@1", "authority_only"),
+            ("credit_collateral@1", "credit-collateral", "gameplay:economy:{subject_ref}", "gameplay.economy.credit_facility_recorded@1", "authority_only"),
+            ("insurance_contract@1", "insurance-contract", "gameplay:economy:{subject_ref}", "gameplay.economy.insurance_policy_recorded@1", "authority_only"),
+            ("security_holding@1", "security-holding", "gameplay:economy:{subject_ref}", "gameplay.economy.security_holding_recorded@1", "authority_only"),
+            ("insolvency_resolution@1", "insolvency-resolution", "gameplay:economy:{subject_ref}", "gameplay.economy.insolvency_resolution_recorded@1", "authority_only"),
+            ("regional_macro_close@1", "regional-macro-close", "gameplay:economy:macro:{subject_ref}", "gameplay.economy.regional_macro_period_closed@1", "authority_only"),
+        )
+        economy_descriptors = tuple(
+            OwnerOperationDescriptor(
+                descriptor_ref=f"descriptor:economy-{slug}@1",
+                descriptor_revision=f"descriptor:economy-{slug}@1",
+                family_ref=family_ref,
+                capability_ref=f"capability:economy-{slug}@1",
+                outcome_family_ref=f"outcome:economy-{slug}@1",
+                allowed_predicate_family_refs=(f"predicate:economy-{slug}@1",),
+                allowed_proposal_effect_types=(f"effect:economy-{slug}@1",),
+                owner_ref="actor_gameplay.economy_domain",
+                accepted_intent_schema_ref=f"schema:economy-{slug}-intent@1",
+                source_event_types=(event_type,),
+                source_stream_pattern=stream_pattern,
+                source_revision_fence_ref=f"revision:economy-{slug}-source@1",
+                target_stream_pattern=stream_pattern,
+                target_event_types=(event_type,),
+                privacy_scope=privacy_scope,
+                idempotency_rule_ref=f"idempotency:economy-{slug}@1",
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_refs=(
+                    f"reader:economy-{slug}-checkpoint-tail@1",
+                    f"reader:economy-{slug}-full@1",
+                ),
+                terminal_semantics_ref="lifecycle:policy-defined@1",
+                reversal_semantics_ref="lifecycle:policy-defined@1",
+                compensation_semantics_ref="lifecycle:policy-defined@1",
+                allowed_recipe_family_refs=(f"economy_{slug.replace('-', '_')}@1",),
+            )
+            for family_ref, slug, stream_pattern, event_type, privacy_scope in economy_rows
+        )
+        ecology_rows = (
+            ("region-grid", "region_grid@1", "actor_gameplay.ecology_domain", "gameplay:ecology:platform:{subject_ref}", ("gameplay.ecology.region.recorded@1", "gameplay.ecology.cell.recorded@1")),
+            ("environment-water", "environment_water@1", "actor_gameplay.ecology_domain", "gameplay:ecology:platform:{subject_ref}", ("gameplay.ecology.environment.recorded@1",)),
+            ("soil-resource", "soil_resource@1", "actor_gameplay.ecology_domain", "gameplay:ecology:platform:{subject_ref}", ("gameplay.ecology.resource.recorded@1",)),
+            ("crop-habitat", "crop_habitat@1", "actor_gameplay.ecology_domain", "gameplay:ecology:platform:{subject_ref}", ("gameplay.ecology.crop.recorded@1",)),
+            ("species-food-web", "species_food_web@1", "actor_gameplay.ecology_domain", "gameplay:ecology:platform:{subject_ref}", ("gameplay.ecology.species.recorded@1",)),
+            ("regional-period-close", "regional_period_close@1", "actor_gameplay.ecology_domain", "gameplay:ecology:platform:close:{subject_ref}", ("gameplay.ecology.region_period_closed@1",)),
+            ("hazard-lifecycle", "hazard_lifecycle@1", "authority:ecology_hazard", "gameplay:ecology_hazard:{subject_ref}", ("gameplay.ecology_hazard.hazard_admitted@1", "gameplay.ecology_hazard.hazard_activated@1", "gameplay.ecology_hazard.hazard_decayed@1", "gameplay.ecology_hazard.hazard_recovered@1", "gameplay.ecology_hazard.hazard_terminal@1", "gameplay.ecology_hazard.hazard_propagated@1")),
+        )
+        ecology_descriptors = tuple(
+            OwnerOperationDescriptor(
+                descriptor_ref=f"descriptor:ecology-{slug}@1",
+                descriptor_revision=f"descriptor:ecology-{slug}@1",
+                family_ref=family_ref,
+                capability_ref=f"capability:ecology-{slug}@1",
+                outcome_family_ref=f"outcome:ecology-{slug}@1",
+                allowed_predicate_family_refs=(f"predicate:ecology-{slug}@1",),
+                allowed_proposal_effect_types=(f"effect:ecology-{slug}@1",),
+                owner_ref=owner_ref,
+                accepted_intent_schema_ref=f"schema:ecology-{slug}-intent@1",
+                source_event_types=tuple(sorted(event_types)),
+                source_stream_pattern=stream_pattern,
+                source_revision_fence_ref=f"revision:ecology-{slug}-source@1",
+                target_stream_pattern=stream_pattern,
+                target_event_types=tuple(sorted(event_types)),
+                privacy_scope="project",
+                idempotency_rule_ref=f"idempotency:ecology-{slug}@1",
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_refs=(f"reader:ecology-{slug}-checkpoint-tail@1", f"reader:ecology-{slug}-full@1"),
+                terminal_semantics_ref="lifecycle:policy-defined@1",
+                reversal_semantics_ref="lifecycle:policy-defined@1",
+                compensation_semantics_ref="lifecycle:policy-defined@1",
+                allowed_recipe_family_refs=(f"ecology_{family_ref.split('@')[0]}@1",),
+            )
+            for slug, family_ref, owner_ref, stream_pattern, event_types in ecology_rows
+        )
+        inventory_rows = (
+            ("item-definition-instance-lot", "item_definition_instance_lot@1", "gameplay:inventory:platform:{subject_ref}", ("gameplay.inventory.item_instantiated@1", "gameplay.inventory.lot_created@1")),
+            ("container-graph", "container_graph@1", "gameplay:inventory:platform:{subject_ref}", ("gameplay.inventory.container_recorded@1",)),
+            ("custody-reservation", "custody_reservation@1", "gameplay:inventory:platform:{subject_ref}", ("gameplay.inventory.custody_recorded@1", "gameplay.inventory.reservation_opened@1")),
+            ("condition-expiry", "condition_expiry@1", "gameplay:inventory:platform:condition:{subject_ref}", ("gameplay.inventory.condition_recorded@1",)),
+            ("transport-delivery", "transport_delivery@1", "gameplay:inventory:platform:transport:{subject_ref}", ("gameplay.inventory.transport_in_transit@1", "gameplay.inventory.transport_delivered@1", "gameplay.inventory.transport_lost@1", "gameplay.inventory.transport_rejected@1")),
+        )
+        inventory_descriptors = tuple(
+            OwnerOperationDescriptor(
+                descriptor_ref=f"descriptor:inventory-{slug}@1", descriptor_revision=f"descriptor:inventory-{slug}@1", family_ref=family_ref,
+                capability_ref=f"capability:inventory-{slug}@1", outcome_family_ref=f"outcome:inventory-{slug}@1",
+                allowed_predicate_family_refs=(f"predicate:inventory-{slug}@1",), allowed_proposal_effect_types=(f"effect:inventory-{slug}@1",),
+                owner_ref="actor_gameplay.inventory_domain", accepted_intent_schema_ref=f"schema:inventory-{slug}-intent@1",
+                source_event_types=tuple(sorted(event_types)), source_stream_pattern=stream_pattern, source_revision_fence_ref=f"revision:inventory-{slug}-source@1",
+                target_stream_pattern=stream_pattern, target_event_types=tuple(sorted(event_types)), privacy_scope="project",
+                idempotency_rule_ref=f"idempotency:inventory-{slug}@1", receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_refs=(f"reader:inventory-{slug}-checkpoint-tail@1", f"reader:inventory-{slug}-full@1"),
+                terminal_semantics_ref="lifecycle:policy-defined@1", reversal_semantics_ref="lifecycle:policy-defined@1", compensation_semantics_ref="lifecycle:policy-defined@1",
+                allowed_recipe_family_refs=(f"inventory_{family_ref.split('@')[0]}@1",),
+            ) for slug, family_ref, stream_pattern, event_types in inventory_rows
+        )
+        ogs_rows = (
+            ("organization_lifecycle@1", "organization-lifecycle", "actor_gameplay.organization_domain", "gameplay:organization:{organization_ref}", ("gameplay.organization.lifecycle_transitioned@1",), "project"),
+            ("organization_membership_delegation@1", "organization-membership-delegation", "actor_gameplay.organization_domain", "gameplay:organization:{organization_ref}", ("gameplay.organization.membership_delegation_recorded@1",), "project"),
+            ("organization_operating_period@1", "organization-operating-period", "actor_gameplay.organization_domain", "gameplay:organization:{organization_ref}", ("gameplay.organization.operating_period_recorded@1",), "project"),
+            ("organization_commitment_budget@1", "organization-commitment-budget", "actor_gameplay.organization_domain", "gameplay:organization:{organization_ref}", ("gameplay.organization.commitment_budget_proposed@1",), "project"),
+            ("government_jurisdiction_policy@1", "government-jurisdiction-policy", "actor_gameplay.government_domain", "gameplay:government:{jurisdiction_ref}", ("gameplay.government.policy_lifecycle_recorded@1",), "project"),
+            ("government_permit_inspection_enforcement@1", "government-permit-inspection-enforcement", "actor_gameplay.government_domain", "gameplay:government:case:{case_ref}", ("gameplay.government.permit_inspection_case_recorded@1",), "project"),
+            ("government_tax_treasury_project@1", "government-tax-treasury-project", "actor_gameplay.government_domain", "gameplay:government:{jurisdiction_ref}", ("gameplay.government.tax_treasury_project_proposed@1",), "authority_only"),
+            ("government_notice_audit@1", "government-notice-audit", "actor_gameplay.government_domain", "gameplay:government:{jurisdiction_ref}", ("gameplay.government.notice_audit_recorded@1",), "mixed"),
+            ("social_identity_relationship@1", "social-identity-relationship", "authority:p5:social", "gameplay:social:relationship:{relationship_ref}", ("gameplay.social.identity_relationship_recorded@1",), "mixed"),
+            ("social_household_group@1", "social-household-group", "authority:p5:social", "gameplay:social:group:{group_ref}", ("gameplay.social.household_group_recorded@1",), "project"),
+            ("social_norm_conflict@1", "social-norm-conflict", "authority:p5:social", "gameplay:social:case:{case_ref}", ("gameplay.social.norm_conflict_recorded@1",), "mixed"),
+            ("social_private_projection@1", "social-private-projection", "authority:p5:social", "gameplay:social:private:{participant_ref}", ("gameplay.social.private_projection_recorded@1",), "actor_private"),
+            ("population_signal_materialization@1", "population-signal-materialization", "authority:p5:social", "gameplay:social:population:{signal_ref}", ("gameplay.social.population_signal_recorded@1",), "mixed"),
+        )
+        ogs_descriptors = tuple(
+            OwnerOperationDescriptor(
+                descriptor_ref=f"descriptor:{slug}@1",
+                descriptor_revision=f"descriptor:{slug}@1",
+                family_ref=family_ref,
+                capability_ref=f"capability:{slug}@1",
+                outcome_family_ref=f"outcome:{slug}@1",
+                allowed_predicate_family_refs=(f"predicate:{slug}@1",),
+                allowed_proposal_effect_types=(f"effect:{slug}@1",),
+                owner_ref=owner_ref,
+                accepted_intent_schema_ref=f"schema:{slug}-intent@1",
+                source_event_types=event_types,
+                source_stream_pattern=stream_pattern,
+                source_revision_fence_ref=f"revision:{slug}-source@1",
+                target_stream_pattern=stream_pattern,
+                target_event_types=event_types,
+                privacy_scope=privacy_scope,
+                idempotency_rule_ref=f"idempotency:{slug}@1",
+                receipt_reader_ref="GameplayEventStore.append_batch",
+                replay_reader_refs=(
+                    f"reader:{slug}-checkpoint-tail@1",
+                    f"reader:{slug}-full@1",
+                ),
+                terminal_semantics_ref="lifecycle:policy-defined@1",
+                reversal_semantics_ref="lifecycle:policy-defined@1",
+                compensation_semantics_ref="lifecycle:none@1",
+                allowed_recipe_family_refs=(family_ref,),
+                package_slot_refs=(
+                    "slot:package@1",
+                    "slot:content@1",
+                    "slot:declaration@1",
+                    "slot:policy@1",
+                ),
+            )
+            for family_ref, slug, owner_ref, stream_pattern, event_types, privacy_scope in ogs_rows
+        )
+        return (*existing, *family_descriptors, *economy_descriptors, *ecology_descriptors, *inventory_descriptors, *ogs_descriptors)
 
     @classmethod
     def require_descriptor(cls, descriptor_ref: str) -> OwnerOperationDescriptor:

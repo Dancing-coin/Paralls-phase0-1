@@ -368,15 +368,62 @@ open generic activity or transfer behavior.
 The current residual disposition is maintained in the
 [INF residual blocker register](2026-08-29-inf-residual-blocker-register.md).
 
+The ordered completion audit also contains an [expanded implemented-row
+index](2026-08-29-inf-ordered-completion-audit.md#2026-09-01-expanded-implemented-row-index)
+so historical and latest narrow rows are not mistaken for unimplemented scope.
+
+## 2026-09-01 Construction/Production Generic Platform
+
+The approved owner-bound Construction/Production platform design is split into
+six subsystem specs: Plot/Blueprint/ConstructionJob, Facility/Lifecycle/
+Maintenance, Recipe/ProductionRun/Quality, Reservation/Scheduling/Concurrency,
+Failure/Recovery/Output Handoff, and Procedural Authoring/View. The master
+design and implementation plan are:
+
+- [generic platform design](2026-09-01-construction-production-generic-platform-design.md)
+- [generic platform implementation plan](2026-09-01-construction-production-generic-platform-implementation-plan.md)
+
+Implementation has started with strict typed content and deterministic grid
+occupancy primitives in `construction_production_content.py`; the current
+focused Construction/Production content/job gate is green (`63 passed`). This
+is still not a claim that the full Construction/Production platform or August
+INF A-D is complete.
+
+The gate also covers three immutable recipe-production test packages
+(bakery/kiln/mill) and preserves explicit recipe policy pins through the
+Construction `ProductionRun` replay snapshot. Repository-wide pytest is
+`4310 passed` after this extension.
+
+The Plot/Blueprint/Job slice is implemented and focused-verified:
+plot-scoped job start/completion, deterministic occupancy conflict,
+owner-derived idempotency, exact Blueprint descriptor activation, package /
+content / declaration / descriptor / active-set provenance pins, and
+full/checkpoint-tail replay. Owner-issued reservation evidence validation and
+replay persistence are now covered; complete cross-owner reservation
+projection integration, complete failure/output handoff and Godot editor
+delivery remain pending.
+
+The independent `construction-job-runtime` Harness is green. The latest
+focused Construction/Production band is `97 passed`; the latest full
+repository pytest is `4138 passed`.
+
+An external-art-free `ProceduralConstructionEditor` scene/script now provides
+grid preview, speculative placement, typed-draft export, backend projection sync and rejection
+rollback. Package-bound permit evidence is persisted into Job events and
+replay projection, including malformed-permit rejection, optional zoning
+evidence and component-tree occupancy; static asset checks pass; Godot runtime
+execution remains unverified
+until the editor executable is available.
+
 Requirement-level readiness is tracked in the
 [INF goal completion readiness audit](2026-08-29-inf-goal-completion-readiness-audit.md).
 
-## 2026-08-29 Current Evidence Reconciliation
+## 2026-08-29 Current Evidence Reconciliation (historical snapshot)
 
 The current source-of-truth ledger supersedes the historical counts above:
-the INF/INFRA keyword selection is `1339 passed` with `2758 deselected`, the
-latest repository-root suite is `4093 passed`, and the docs/continuation
-checks are green. INF-1AM, INF-2AM, INF-3AA, INF-3AB, INF-4AO and INF-4AP are
+the INF/INFRA keyword selection was `1339 passed` with `2758 deselected`, and
+the repository-root suite was `4093 passed`. INF-1AM, INF-2AM, INF-3AA,
+INF-3AB, INF-4AO and INF-4AP were
 implemented narrow rows with independent owner/replay evidence; INF-2AN adds
 the exact grain-intake acceptance marker, while INF-2AB and
 the earlier finite INF rows remain verified as recorded in their own contracts.
@@ -391,4 +438,219 @@ The local INF/INFRA Harness report set contains 166 reports and all are
 INF-2AN now adds one exact Organization grain-intake -> Economy acceptance
 marker row; it remains acceptance-only and does not open generic payment,
 transfer, or settlement.
+
+INF-2AO now adds one exact Inventory custody -> Economy market-eligibility
+marker row; it remains account-neutral and does not open payment, transfer,
+pricing, or market-order semantics.
 August INF A-D remains `not complete`; INF-P remains prerequisite only.
+
+## 2026-09-01 Ordered INF Continuation (historical snapshot)
+
+INF-2AO is implemented and verified as an Economy-owned, account-neutral
+`production_output_market_eligible@1` marker sourced from committed Inventory
+custody. Focused, INF-2, INF/INFRA and full-repository checks were green at
+that checkpoint (`10`, `82`, `1335`, and `4280` tests). The only non-local Harness limitation
+is the known external `siming-heavenly-runtime` credential/mode preflight.
+
+The subsequent ordered scan found no additional admissible INF-3 or INF-4
+source -> existing-owner -> exact-outcome tuple. Their formal row-level
+blockers remain in force; Goal stays active and August INF A-D remains
+`not complete`.
+
+The declared-exchange family also received a fail-closed boundary repair:
+missing package `economic_outcomes` no longer causes default currency or amount
+inference. The approved exchange packages remain green; generic payment and
+transfer semantics remain closed.
+
+Exchange source selection is exact-identity based and completed-service refs
+are resolved from committed Contract projection evidence; caller/event-name
+inference is rejected.
+
+Package exchange privacy, compensation, source-selection and capability fields
+are required explicitly; omitted policy metadata is zero-write at validation.
+
+The package exchange eligibility array is explicit as well: `[]` is allowed,
+omission is rejected.
+
+The Inventory custody reader was also hardened to reject out-of-range
+checkpoint values and forged certification/mapping provenance during replay;
+full repository verification remains green at `4291 passed`.
+
+Fixed-service exchange provenance now retains immutable package/declaration and
+active-set pins for replay validation; legacy no-pin events remain untouched.
+
+## 2026-09-01 Continuation Recheck
+
+The latest autonomous pass revalidated the current state without changing any
+frozen package or previously implemented narrow row. Foundation aggregate and
+continuation gate passed; INF/INFRA regression passed (`1395` tests) and the
+full repository suite passed (`4291` tests). No additional legal August
+INF-1/2/3/4 source-to-owner-to-outcome tuple was found. Goal remains active and
+August INF A-D remains not complete; the residual blocker register is the
+authoritative next-decision surface.
+
+2026-09-02 reservation lifecycle recheck: Construction start and replay now
+reject an Economy `budget_reserved` source after a committed
+`public_project_budget_consumed` references that reservation event. The gate
+is covered by focused tests and preserves the single event-store/owner-bound
+reservation boundary. The platform remains staged pending complete output
+handoff and Godot runtime evidence. The latest full backend regression is
+`4388 passed`.
+
+Failure replay integrity is also enforced: `run_failed@1` must remain
+project-visible on the exact facility stream, match facility/recipe identity,
+and carry matching facility and pre-append stream-head pins. The focused
+failure/output band is `71 passed`; the platform remains staged pending full
+handoff coverage and Godot runtime evidence.
+
+Maintenance obligations now retain additive facility/project/revision/policy
+provenance and replay rejects tampering; legacy no-pin obligation events remain
+read-only compatible.
+
+Maintenance obligations enforce exact idempotency identity; changed key reuse
+is zero-write.
+
+Malformed maintenance obligation replay now fails closed with a stable domain
+error rather than leaking an internal key lookup failure.
+
+Latest full backend regression after replay hardening: `4390 passed`.
+
+`maintenance_obligation_created@1` now has an explicit source-controlled schema
+registration in the existing event-schema registry.
+
+Latest full backend regression after the maintenance/idempotency gates:
+`4384 passed`.
+
+Reservation admission now rejects undeclared refs/evidence keys before any
+Construction mutation; owner-issued exact-set semantics remain unchanged.
+
+ProductionRun replay now enforces the same canonical reservation structure as
+append admission.
+
+ConstructionJob replay now rejects malformed occupied-cell coordinates instead
+of silently filtering them.
+
+Run-start replay now enforces the materialized Facility's project privacy,
+stream and revision identity, preserving legacy source-less run records.
+
+Job-start replay now enforces project privacy and canonical plot stream identity.
+
+Job completion and failure replay enforce the same exact plot/privacy fence.
+Identity tampering retains its existing identity-conflict classification.
+
+Failure admission enforces run chronology: a failure tick before the committed
+ProductionRun start tick is rejected before append.
+
+Replay also rejects tampered failure events dated before run start.
+
+The Construction output-certification event now has explicit source-controlled
+schema registration through the existing event-schema registry.
+
+The corresponding Inventory output-custody event now has explicit registration
+in the same registry.
+
+Core Construction facility and ProductionRun lifecycle events are also
+source-controlled in that registry.
+
+The existing registry now exposes one idempotent Construction/Production bundle
+registration for opt-in stores and replay harnesses.
+
+That bundle covers repair and maintenance-state event variants as well as jobs,
+run lifecycle, failure, certification and custody.
+
+Failure events now preserve the started run's owner-issued reservation lineage;
+replay rejects missing, extra, or altered reservation refs/evidence.
+
+The procedural Construction view now includes backend-derived facility, Job,
+ProductionRun and replay-timeline mirrors; local speculative state is cleared
+on sync/rejection. Static asset and Godot 4.6.3 headless scene verification
+pass through the dedicated Harness profile; desktop smoke also passes.
+
+Current focused Construction/Production and procedural-view verification is
+`129 passed`; latest full backend baseline is `4419 passed`. Godot headless and
+desktop smoke execution are verified through the dedicated Harness.
+
+The three immutable certification packages (bakery, mill, kiln) now have
+end-to-end adapter and full/checkpoint-tail replay coverage through one
+owner-bound family path; the generic-content Harness includes that matrix.
+Latest full backend regression after this gate: `4383 passed`.
+
+The same three-package matrix now includes Inventory output custody for kiln;
+destination holder/container remain immutable mapping-owned facts.
+Latest full backend regression after the kiln custody gate: `4386 passed`.
+
+Run-finish replay now rejects wrong stream, privacy or facility/project identity
+before accepting completion state.
+
+Run-finish replay rejects malformed output quantity or quality before completion
+projection.
+
+Facility acquisition replay now rejects wrong stream/privacy or missing
+facility/plot identity without introducing a new Plot authority.
+
+Facility transform replay now rejects wrong stream/privacy or project binding
+before applying a facility transition.
+
+Transform replay now resolves declared acquisition source pins instead of
+accepting opaque caller-shaped references.
+Tail replay reuses persisted acquisition identity only for events before the
+tail boundary; full replay remains source-event strict.
+
+Facility repair replay now rejects wrong stream/privacy or project binding
+before applying condition changes.
+
+Repair replay also rejects out-of-range condition values and non-incrementing
+facility revisions.
+
+Applied maintenance-state replay now rejects wrong stream/privacy or project
+binding when a Facility projection exists.
+
+Malformed maintenance-state payloads now return a stable fail-closed domain
+error.
+
+Facility decommission replay now rejects wrong stream/privacy or project binding
+before applying terminal lifecycle state.
+
+Decommission provenance is row-aware: generic lifecycle rows pin acquisition,
+while the v3 mill row also pins reinforcement.
+
+## 2026-09-02 General Economy Platform C
+
+The approved complete regulated Economy target is tracked by
+[General Economy Platform C Design](2026-09-02-general-economy-platform-design.md)
+and the corresponding implementation plan. The initial schema/admission slice
+adds strict Manifest v3 + platform 2.0 pairing and Economy typed-content
+models. Existing v1/v2 manifests remain read-only compatible; Economy runtime
+family rollout remains in progress.
+## 2026-09-03 General Ecology Platform
+
+The approved layered Ecology platform is tracked by
+[General Ecology Platform Design](2026-09-03-ecology-generic-platform-design.md)
+and its implementation plan. It uses a region graph plus fixed local grid,
+explicit region-period close, seven typed hazards, and owner-bound consumer
+contracts. Existing INF-3 ecology rows remain compatibility baselines and
+August INF A-D remains `not complete`.
+
+Inventory generic platform completion is recorded in
+[2026-09-03 Inventory Generic Platform Completion Audit](2026-09-03-inventory-generic-platform-completion-audit.md).
+
+Completion audit: [2026-09-03 Ecology Generic Platform Completion Audit](2026-09-03-ecology-generic-platform-completion-audit.md).
+The platform is implemented and verified; this is not an August INF completion claim.
+## 2026-09-03 General Inventory Platform
+
+The approved layered Inventory platform is tracked by
+[General Inventory Platform Design](2026-09-03-inventory-generic-platform-design.md)
+and its implementation plan. It preserves item/container/custody ownership,
+adds instance+lot and reservation/transport foundations, and keeps August INF
+A-D `not complete`.
+
+## 2026-09-03 Organization / Government / Social Generic Platform
+
+The federated Organization/Government/Social platform is active under the
+[master design](2026-09-03-organization-government-social-generic-platform-design.md)
+and its matching implementation plan. It reuses Manifest v3/platform 2.0 and
+existing owners; Population can publish a public, revision-pinned proposal but
+only an admitted target owner can create canonical subject truth. Current
+coverage is recorded in the [completion audit](2026-09-03-organization-government-social-generic-platform-completion-audit.md).
+The platform is implemented as a narrow federated vertical and verified by its
+family matrix/Harness; this does not mark August INF A-D complete.

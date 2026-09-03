@@ -546,8 +546,141 @@ class GovernmentAuthority:
     _BRANCH_STREAM_PREFIX = "gameplay:government_branch:"
     _MUNICIPAL_ACK_POLICY = "policy:government-drought-assessment-acknowledgment@1"
 
-    def __init__(self, *, store: GameplayEventStore) -> None:
+    def __init__(self, *, store: GameplayEventStore, package_registry: object | None = None) -> None:
         self._store = store
+        self._package_registry = package_registry
+
+    def record_admitted_platform_government_policy_lifecycle(
+        self,
+        *,
+        intent: object,
+        binding_ref: str,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        expected_revision: int,
+    ) -> AppendBatchResult:
+        """Government-owned, exact-binding policy lifecycle append."""
+        from app.gameplay.organization_government_social_platform_runtime import GovernmentPolicyLifecycleIntent
+
+        active = getattr(self._package_registry, "active_patch_set", None) if self._package_registry else None
+        if active is None:
+            return self._rejected_append(command_id, "ogs_government_policy_package_inactive")
+        matches = tuple(
+            binding for binding in active.capability_bindings
+            if binding.binding_ref == binding_ref
+            and binding.family_ref == "government_jurisdiction_policy@1"
+            and binding.descriptor_ref == "descriptor:government-jurisdiction-policy@1"
+        )
+        if len(matches) != 1:
+            return self._rejected_append(command_id, "ogs_government_policy_binding_conflict")
+        try:
+            authored = intent if isinstance(intent, GovernmentPolicyLifecycleIntent) else GovernmentPolicyLifecycleIntent.model_validate(intent)
+            binding = matches[0]
+            typed = authored.model_copy(update={
+                "package_revision_pin": binding.package_revision,
+                "content_digest_pin": binding.content_digest,
+                "declaration_ref_pin": binding.declaration_ref,
+                "declaration_digest_pin": binding.declaration_digest,
+                "descriptor_pin": binding.descriptor_ref,
+                "descriptor_revision_pin": binding.descriptor_revision,
+                "active_set_digest_pin": binding.active_patch_set_revision,
+            }, deep=True)
+        except Exception:
+            return self._rejected_append(command_id, "ogs_government_policy_intent_invalid")
+        stream_id = f"gameplay:government:{typed.jurisdiction_ref}"
+        if self._store.get_stream_head(stream_id) != expected_revision:
+            return self._rejected_append(command_id, "ogs_government_policy_revision_conflict")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:government-jurisdiction-policy@1",
+                contract_kind="policy",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(stream_id,),
+                event_types=("gameplay.government.policy_lifecycle_recorded@1",),
+                projection_scope="project",
+            )
+        except GovernedAuthorityContractError as exc:
+            return self._rejected_append(command_id, str(exc))
+        payload = typed.model_dump(mode="json", exclude_none=True)
+        batch = build_atomic_event_batch(
+            command_id=command_id, principal_ref=self._PRINCIPAL, stream_id=stream_id,
+            expected_revision=expected_revision,
+            event_specs=(("gameplay.government.policy_lifecycle_recorded@1", payload),),
+            idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id,
+            read_stream_revisions={stream_id: expected_revision},
+            pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin},
+        )
+        batch = batch.model_copy(update={
+            "events": [event.model_copy(update={"visibility_policy": "project"}, deep=True) for event in batch.events],
+            "owner_fragments": [OwnerAuthorizedFragment(
+                fragment_id=f"fragment:government-policy:{command_id}", owner_principal_ref=self._PRINCIPAL,
+                source_rule_ref="government-jurisdiction-policy:owner-bound@1",
+                expected_revisions={stream_id: expected_revision}, read_set_revisions={stream_id: expected_revision},
+                pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin},
+                event_specs={stream_id: (("gameplay.government.policy_lifecycle_recorded@1", payload),)},
+                event_visibility_policies={stream_id: ("project",)},
+            )],
+        }, deep=True)
+        return self._store.append_batch(batch)
+
+    def record_admitted_platform_government_case(self, *, intent: object, binding_ref: str, command_id: str, idempotency_key: str, causation_id: str, correlation_id: str, expected_revision: int) -> AppendBatchResult:
+        from app.gameplay.organization_government_social_platform_runtime import GovernmentPermitInspectionCaseIntent
+        active = self._package_registry.active_patch_set if self._package_registry else None
+        if active is None: return self._rejected_append(command_id, "ogs_government_case_package_inactive")
+        matches = tuple(b for b in active.capability_bindings if b.binding_ref == binding_ref and b.family_ref == "government_permit_inspection_enforcement@1" and b.descriptor_ref == "descriptor:government-permit-inspection-enforcement@1")
+        if len(matches) != 1: return self._rejected_append(command_id, "ogs_government_case_binding_conflict")
+        try:
+            typed = intent if isinstance(intent, GovernmentPermitInspectionCaseIntent) else GovernmentPermitInspectionCaseIntent.model_validate(intent)
+            binding = matches[0]
+            typed = typed.model_copy(update={"package_revision_pin": binding.package_revision, "content_digest_pin": binding.content_digest, "declaration_ref_pin": binding.declaration_ref, "declaration_digest_pin": binding.declaration_digest, "descriptor_pin": binding.descriptor_ref, "descriptor_revision_pin": binding.descriptor_revision, "active_set_digest_pin": binding.active_patch_set_revision}, deep=True)
+            stream_id = f"gameplay:government:case:{typed.case_ref}"
+            GovernedAuthorityContractCatalog.require_operation(contract_ref="inf:government-permit-inspection-enforcement@1", contract_kind="lifecycle", owner_ref=self._PRINCIPAL, stream_ids=(stream_id,), event_types=("gameplay.government.permit_inspection_case_recorded@1",), projection_scope="project")
+        except Exception: return self._rejected_append(command_id, "ogs_government_case_intent_invalid")
+        if self._store.get_stream_head(stream_id) != expected_revision: return self._rejected_append(command_id, "ogs_government_case_revision_conflict")
+        payload = typed.model_dump(mode="json", exclude_none=True)
+        batch = build_atomic_event_batch(command_id=command_id, principal_ref=self._PRINCIPAL, stream_id=stream_id, expected_revision=expected_revision, event_specs=(("gameplay.government.permit_inspection_case_recorded@1", payload),), idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id, read_stream_revisions={stream_id: expected_revision}, pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin})
+        batch = batch.model_copy(update={"events": [e.model_copy(update={"visibility_policy": "project"}, deep=True) for e in batch.events], "owner_fragments": [OwnerAuthorizedFragment(fragment_id=f"fragment:government-case:{command_id}", owner_principal_ref=self._PRINCIPAL, source_rule_ref="government-permit-inspection:owner-bound@1", expected_revisions={stream_id: expected_revision}, read_set_revisions={stream_id: expected_revision}, pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin}, event_specs={stream_id: (("gameplay.government.permit_inspection_case_recorded@1", payload),)}, event_visibility_policies={stream_id: ("project",)})]}, deep=True)
+        return self._store.append_batch(batch)
+
+    def record_admitted_platform_government_notice(self, *, intent: object, binding_ref: str, command_id: str, idempotency_key: str, causation_id: str, correlation_id: str, expected_revision: int) -> AppendBatchResult:
+        from app.gameplay.organization_government_social_platform_runtime import GovernmentNoticeAuditIntent
+        active = self._package_registry.active_patch_set if self._package_registry else None
+        if active is None: return self._rejected_append(command_id, "ogs_government_notice_package_inactive")
+        matches = tuple(b for b in active.capability_bindings if b.binding_ref == binding_ref and b.family_ref == "government_notice_audit@1" and b.descriptor_ref == "descriptor:government-notice-audit@1")
+        if len(matches) != 1: return self._rejected_append(command_id, "ogs_government_notice_binding_conflict")
+        try:
+            typed = intent if isinstance(intent, GovernmentNoticeAuditIntent) else GovernmentNoticeAuditIntent.model_validate(intent)
+            binding = matches[0]
+            typed = typed.model_copy(update={"package_revision_pin": binding.package_revision, "content_digest_pin": binding.content_digest, "declaration_ref_pin": binding.declaration_ref, "declaration_digest_pin": binding.declaration_digest, "descriptor_pin": binding.descriptor_ref, "descriptor_revision_pin": binding.descriptor_revision, "active_set_digest_pin": binding.active_patch_set_revision}, deep=True)
+            stream_id = f"gameplay:government:{typed.jurisdiction_ref}"
+            GovernedAuthorityContractCatalog.require_operation(contract_ref="inf:government-notice-audit@1", contract_kind="policy", owner_ref=self._PRINCIPAL, stream_ids=(stream_id,), event_types=("gameplay.government.notice_audit_recorded@1",), projection_scope="mixed")
+        except Exception: return self._rejected_append(command_id, "ogs_government_notice_intent_invalid")
+        if self._store.get_stream_head(stream_id) != expected_revision: return self._rejected_append(command_id, "ogs_government_notice_revision_conflict")
+        payload = typed.model_dump(mode="json", exclude_none=True)
+        batch = build_atomic_event_batch(command_id=command_id, principal_ref=self._PRINCIPAL, stream_id=stream_id, expected_revision=expected_revision, event_specs=(("gameplay.government.notice_audit_recorded@1", payload),), idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id, read_stream_revisions={stream_id: expected_revision}, pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin})
+        batch = batch.model_copy(update={"events": [e.model_copy(update={"visibility_policy": "project"}, deep=True) for e in batch.events], "owner_fragments": [OwnerAuthorizedFragment(fragment_id=f"fragment:government-notice:{command_id}", owner_principal_ref=self._PRINCIPAL, source_rule_ref="government-notice-audit:owner-bound@1", expected_revisions={stream_id: expected_revision}, read_set_revisions={stream_id: expected_revision}, pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin}, event_specs={stream_id: (("gameplay.government.notice_audit_recorded@1", payload),)}, event_visibility_policies={stream_id: ("project",)})]}, deep=True)
+        return self._store.append_batch(batch)
+
+    def record_admitted_platform_government_tax_project(self, *, intent: object, binding_ref: str, command_id: str, idempotency_key: str, causation_id: str, correlation_id: str, expected_revision: int) -> AppendBatchResult:
+        from app.gameplay.organization_government_social_platform_runtime import GovernmentTaxTreasuryProjectIntent
+        active = self._package_registry.active_patch_set if self._package_registry else None
+        if active is None: return self._rejected_append(command_id, "ogs_government_tax_package_inactive")
+        matches = tuple(b for b in active.capability_bindings if b.binding_ref == binding_ref and b.family_ref == "government_tax_treasury_project@1" and b.descriptor_ref == "descriptor:government-tax-treasury-project@1")
+        if len(matches) != 1: return self._rejected_append(command_id, "ogs_government_tax_binding_conflict")
+        try:
+            typed = intent if isinstance(intent, GovernmentTaxTreasuryProjectIntent) else GovernmentTaxTreasuryProjectIntent.model_validate(intent)
+            binding = matches[0]
+            typed = typed.model_copy(update={"package_revision_pin": binding.package_revision, "content_digest_pin": binding.content_digest, "declaration_ref_pin": binding.declaration_ref, "declaration_digest_pin": binding.declaration_digest, "descriptor_pin": binding.descriptor_ref, "descriptor_revision_pin": binding.descriptor_revision, "active_set_digest_pin": binding.active_patch_set_revision}, deep=True)
+            stream_id = f"gameplay:government:{typed.jurisdiction_ref}"
+            GovernedAuthorityContractCatalog.require_operation(contract_ref="inf:government-tax-treasury-project@1", contract_kind="settlement", owner_ref=self._PRINCIPAL, stream_ids=(stream_id,), event_types=("gameplay.government.tax_treasury_project_proposed@1",), projection_scope="authority_only")
+        except Exception: return self._rejected_append(command_id, "ogs_government_tax_intent_invalid")
+        if self._store.get_stream_head(stream_id) != expected_revision: return self._rejected_append(command_id, "ogs_government_tax_revision_conflict")
+        payload = typed.model_dump(mode="json", exclude_none=True)
+        batch = build_atomic_event_batch(command_id=command_id, principal_ref=self._PRINCIPAL, stream_id=stream_id, expected_revision=expected_revision, event_specs=(("gameplay.government.tax_treasury_project_proposed@1", payload),), idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id, read_stream_revisions={stream_id: expected_revision}, pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin})
+        batch = batch.model_copy(update={"events": [e.model_copy(update={"visibility_policy": "authority_only"}, deep=True) for e in batch.events], "owner_fragments": [OwnerAuthorizedFragment(fragment_id=f"fragment:government-tax:{command_id}", owner_principal_ref=self._PRINCIPAL, source_rule_ref="government-tax-treasury-project:proposal-only@1", expected_revisions={stream_id: expected_revision}, read_set_revisions={stream_id: expected_revision}, pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin}, event_specs={stream_id: (("gameplay.government.tax_treasury_project_proposed@1", payload),)}, event_visibility_policies={stream_id: ("authority_only",)})]}, deep=True)
+        return self._store.append_batch(batch)
 
     def register_commercial_inspection_policy(
         self,
@@ -2691,6 +2824,142 @@ class GovernmentAuthority:
             json.dumps(projection, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
         return projection
+
+    def _append_platform_organization_lifecycle(
+        self,
+        *,
+        intent: object,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        expected_revision: int,
+    ) -> AppendBatchResult:
+        """Append the one admitted generic Organization lifecycle family.
+
+        The existing Organization owner remains the writer.  The platform
+        projector merely reads this event; it has no append capability.
+        """
+        from app.gameplay.organization_government_social_platform_runtime import OrganizationLifecycleIntent
+
+        try:
+            typed = intent if isinstance(intent, OrganizationLifecycleIntent) else OrganizationLifecycleIntent.model_validate(intent)
+            stream_id = f"gameplay:organization:{typed.organization_ref}"
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:organization-lifecycle@1",
+                contract_kind="lifecycle",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(stream_id,),
+                event_types=("gameplay.organization.lifecycle_transitioned@1",),
+                projection_scope="project",
+            )
+        except (ValueError, GovernedAuthorityContractError) as exc:
+            return self._organization_window_rejected(command_id, str(exc))
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            if existing.committed and len(existing.committed_event_ids) == 1:
+                previous = self._store.get_event(existing.committed_event_ids[0])
+                if (
+                    previous.event_type == "gameplay.organization.lifecycle_transitioned@1"
+                    and previous.payload == typed.model_dump(mode="json", exclude_none=True)
+                ):
+                    return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._organization_window_rejected(command_id, "ogs_organization_lifecycle_idempotency_reused")
+        if self._store.get_stream_head(stream_id) != expected_revision:
+            return self._organization_window_rejected(command_id, "ogs_organization_lifecycle_revision_conflict")
+        payload = typed.model_dump(mode="json", exclude_none=True)
+        batch = build_atomic_event_batch(
+            command_id=command_id,
+            principal_ref=self._PRINCIPAL,
+            stream_id=stream_id,
+            expected_revision=expected_revision,
+            event_specs=(("gameplay.organization.lifecycle_transitioned@1", payload),),
+            idempotency_key=idempotency_key,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            read_stream_revisions={stream_id: expected_revision},
+            pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin},
+        )
+        batch = batch.model_copy(
+            update={
+                "events": [event.model_copy(update={"visibility_policy": "project"}, deep=True) for event in batch.events],
+                "owner_fragments": [
+                    OwnerAuthorizedFragment(
+                        fragment_id=f"fragment:organization-lifecycle:{command_id}",
+                        owner_principal_ref=self._PRINCIPAL,
+                        source_rule_ref="organization-lifecycle:owner-bound@1",
+                        expected_revisions={stream_id: expected_revision},
+                        read_set_revisions={stream_id: expected_revision},
+                        pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin},
+                        event_specs={stream_id: (("gameplay.organization.lifecycle_transitioned@1", payload),)},
+                        event_visibility_policies={stream_id: ("project",)},
+                    )
+                ],
+            },
+            deep=True,
+        )
+        return self._store.append_batch(batch)
+
+    def transition_admitted_platform_organization_lifecycle(
+        self,
+        *,
+        intent: object,
+        binding_ref: str,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        expected_revision: int,
+    ) -> AppendBatchResult:
+        """Resolve exactly one active lifecycle binding before the owner appends.
+
+        This is intentionally a narrow Organization operation: the caller can
+        name a binding, but cannot supply the package, descriptor, stream,
+        event, privacy, receipt, or provenance pin values stored in the event.
+        """
+        from app.gameplay.organization_government_social_platform_runtime import OrganizationLifecycleIntent
+
+        if self._package_registry is None:
+            return self._organization_window_rejected(command_id, "ogs_organization_lifecycle_package_inactive")
+        active = getattr(self._package_registry, "active_patch_set", None)
+        if active is None:
+            return self._organization_window_rejected(command_id, "ogs_organization_lifecycle_package_inactive")
+        matches = tuple(
+            binding
+            for binding in active.capability_bindings
+            if binding.binding_ref == binding_ref
+            and binding.family_ref == "organization_lifecycle@1"
+            and binding.descriptor_ref == "descriptor:organization-lifecycle@1"
+            and binding.descriptor_revision == "descriptor:organization-lifecycle@1"
+        )
+        if len(matches) != 1:
+            return self._organization_window_rejected(command_id, "ogs_organization_lifecycle_binding_conflict")
+        try:
+            authored = intent if isinstance(intent, OrganizationLifecycleIntent) else OrganizationLifecycleIntent.model_validate(intent)
+            binding = matches[0]
+            typed = authored.model_copy(
+                update={
+                    "package_revision_pin": binding.package_revision,
+                    "content_digest_pin": binding.content_digest,
+                    "declaration_ref_pin": binding.declaration_ref,
+                    "declaration_digest_pin": binding.declaration_digest,
+                    "descriptor_pin": binding.descriptor_ref,
+                    "descriptor_revision_pin": binding.descriptor_revision,
+                    "active_set_digest_pin": binding.active_patch_set_revision,
+                },
+                deep=True,
+            )
+        except Exception:
+            return self._organization_window_rejected(command_id, "ogs_organization_lifecycle_intent_invalid")
+        return GovernmentAuthority._append_platform_organization_lifecycle(
+            self,
+            intent=typed,
+            command_id=command_id,
+            idempotency_key=idempotency_key,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            expected_revision=expected_revision,
+        )
 
     def branch_remediation_receipt_for(
         self, *, event_id: str, privacy_scope: str
@@ -6276,6 +6545,198 @@ class OrganizationAuthority:
             json.dumps(projection, sort_keys=True, separators=(",", ":")).encode("utf-8")
         ).hexdigest()
         return projection
+
+    def transition_admitted_platform_organization_lifecycle(
+        self,
+        *,
+        intent: object,
+        binding_ref: str,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        expected_revision: int,
+    ) -> AppendBatchResult:
+        return GovernmentAuthority.transition_admitted_platform_organization_lifecycle(
+            self,
+            intent=intent,
+            binding_ref=binding_ref,
+            command_id=command_id,
+            idempotency_key=idempotency_key,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            expected_revision=expected_revision,
+        )
+
+    def materialize_admitted_population_organization(
+        self,
+        *,
+        intent: object,
+        binding_ref: str,
+        population_signal_event_id: str,
+        expected_population_signal_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        expected_revision: int,
+    ) -> AppendBatchResult:
+        """Accept one public, identity-allocated Population proposal into Organization truth."""
+        from app.gameplay.organization_government_social_platform_runtime import OrganizationLifecycleIntent
+
+        try:
+            source = self._store.get_event(population_signal_event_id)
+            authored = intent if isinstance(intent, OrganizationLifecycleIntent) else OrganizationLifecycleIntent.model_validate(intent)
+            if (
+                source.event_type != "gameplay.social.population_signal_recorded@1"
+                or source.visibility_policy != "public"
+                or source.stream_revision != expected_population_signal_revision
+                or self._store.get_stream_head(source.stream_id) != expected_population_signal_revision
+                or source.payload.get("materialization_state") != "identity_allocated"
+                or source.payload.get("allocated_subject_ref") != authored.organization_ref
+                or authored.from_state != "draft"
+                or authored.to_state != "registered"
+            ):
+                raise ValueError("ogs_population_materialization_source_invalid")
+            typed = authored.model_copy(update={
+                "source_revision_pin": expected_population_signal_revision,
+                "materialization_source_event_id": source.event_id,
+                "materialization_source_stream_revision": source.stream_revision,
+            }, deep=True)
+        except Exception:
+            return self._organization_window_rejected(command_id, "ogs_population_materialization_source_invalid")
+        return self.transition_admitted_platform_organization_lifecycle(
+            intent=typed,
+            binding_ref=binding_ref,
+            command_id=command_id,
+            idempotency_key=idempotency_key,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            expected_revision=expected_revision,
+        )
+
+    def record_admitted_platform_organization_membership(
+        self,
+        *,
+        intent: object,
+        binding_ref: str,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        expected_revision: int,
+    ) -> AppendBatchResult:
+        """Append membership/delegation through the existing Organization owner."""
+        from app.gameplay.organization_government_social_platform_runtime import OrganizationMembershipDelegationIntent
+        from app.gameplay.organization_government_social_content import OrganizationRoleDelegationContent
+
+        active = self._package_registry.active_patch_set if self._package_registry else None
+        if active is None:
+            return self._organization_window_rejected(command_id, "ogs_organization_membership_package_inactive")
+        matches = tuple(
+            binding for binding in active.capability_bindings
+            if binding.binding_ref == binding_ref
+            and binding.family_ref == "organization_membership_delegation@1"
+            and binding.descriptor_ref == "descriptor:organization-membership-delegation@1"
+        )
+        if len(matches) != 1:
+            return self._organization_window_rejected(command_id, "ogs_organization_membership_binding_conflict")
+        try:
+            binding = matches[0]
+            manifest = next(item for item in self._package_registry.active_manifests(active.active_patch_set_revision) if item.patch_revision_id == binding.package_revision)
+            definition = next(item for item in manifest.platform_extension.package_definitions if item.definition_ref == binding.definition_ref)
+            content = OrganizationRoleDelegationContent.model_validate(definition.typed_content)
+            typed = intent if isinstance(intent, OrganizationMembershipDelegationIntent) else OrganizationMembershipDelegationIntent.model_validate(intent)
+            if typed.organization_ref != content.organization_ref or typed.role_ref != content.role_ref:
+                raise ValueError("ogs_organization_membership_content_mismatch")
+            stream_id = f"gameplay:organization:{typed.organization_ref}"
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:organization-membership-delegation@1", contract_kind="settlement",
+                owner_ref=self._PRINCIPAL, stream_ids=(stream_id,),
+                event_types=("gameplay.organization.membership_delegation_recorded@1",), projection_scope="project",
+            )
+        except Exception:
+            return self._organization_window_rejected(command_id, "ogs_organization_membership_intent_invalid")
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            if existing.committed and len(existing.committed_event_ids) == 1:
+                previous = self._store.get_event(existing.committed_event_ids[0])
+                if previous.event_type == "gameplay.organization.membership_delegation_recorded@1" and previous.payload == typed.model_dump(mode="json", exclude_none=True):
+                    return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._organization_window_rejected(command_id, "ogs_organization_membership_idempotency_reused")
+        if self._store.get_stream_head(stream_id) != expected_revision:
+            return self._organization_window_rejected(command_id, "ogs_organization_membership_revision_conflict")
+        payload = typed.model_dump(mode="json", exclude_none=True)
+        batch = build_atomic_event_batch(
+            command_id=command_id, principal_ref=self._PRINCIPAL, stream_id=stream_id, expected_revision=expected_revision,
+            event_specs=(("gameplay.organization.membership_delegation_recorded@1", payload),), idempotency_key=idempotency_key,
+            causation_id=causation_id, correlation_id=correlation_id, read_stream_revisions={stream_id: expected_revision},
+            pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin},
+        )
+        batch = batch.model_copy(update={
+            "events": [event.model_copy(update={"visibility_policy": "project"}, deep=True) for event in batch.events],
+            "owner_fragments": [OwnerAuthorizedFragment(
+                fragment_id=f"fragment:organization-membership:{command_id}", owner_principal_ref=self._PRINCIPAL,
+                source_rule_ref="organization-membership-delegation:owner-bound@1",
+                expected_revisions={stream_id: expected_revision}, read_set_revisions={stream_id: expected_revision},
+                pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin},
+                event_specs={stream_id: (("gameplay.organization.membership_delegation_recorded@1", payload),)},
+                event_visibility_policies={stream_id: ("project",)},
+            )],
+        }, deep=True)
+        return self._store.append_batch(batch)
+
+    def record_admitted_platform_organization_operating_period(
+        self, *, intent: object, binding_ref: str, command_id: str, idempotency_key: str,
+        causation_id: str, correlation_id: str, expected_revision: int,
+    ) -> AppendBatchResult:
+        from app.gameplay.organization_government_social_platform_runtime import OrganizationOperatingPeriodIntent
+        active = self._package_registry.active_patch_set if self._package_registry else None
+        if active is None:
+            return self._organization_window_rejected(command_id, "ogs_organization_period_package_inactive")
+        matches = tuple(b for b in active.capability_bindings if b.binding_ref == binding_ref and b.family_ref == "organization_operating_period@1" and b.descriptor_ref == "descriptor:organization-operating-period@1")
+        if len(matches) != 1:
+            return self._organization_window_rejected(command_id, "ogs_organization_period_binding_conflict")
+        try:
+            typed = intent if isinstance(intent, OrganizationOperatingPeriodIntent) else OrganizationOperatingPeriodIntent.model_validate(intent)
+            binding = matches[0]
+            typed = typed.model_copy(update={"package_revision_pin": binding.package_revision, "content_digest_pin": binding.content_digest, "declaration_ref_pin": binding.declaration_ref, "declaration_digest_pin": binding.declaration_digest, "descriptor_pin": binding.descriptor_ref, "descriptor_revision_pin": binding.descriptor_revision, "active_set_digest_pin": binding.active_patch_set_revision}, deep=True)
+            stream_id = f"gameplay:organization:{typed.organization_ref}"
+            GovernedAuthorityContractCatalog.require_operation(contract_ref="inf:organization-operating-period@1", contract_kind="lifecycle", owner_ref=self._PRINCIPAL, stream_ids=(stream_id,), event_types=("gameplay.organization.operating_period_recorded@1",), projection_scope="project")
+        except Exception:
+            return self._organization_window_rejected(command_id, "ogs_organization_period_intent_invalid")
+        if self._store.get_stream_head(stream_id) != expected_revision:
+            return self._organization_window_rejected(command_id, "ogs_organization_period_revision_conflict")
+        payload = typed.model_dump(mode="json", exclude_none=True)
+        batch = build_atomic_event_batch(command_id=command_id, principal_ref=self._PRINCIPAL, stream_id=stream_id, expected_revision=expected_revision, event_specs=(("gameplay.organization.operating_period_recorded@1", payload),), idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id, read_stream_revisions={stream_id: expected_revision}, pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin})
+        batch = batch.model_copy(update={"events": [e.model_copy(update={"visibility_policy": "project"}, deep=True) for e in batch.events], "owner_fragments": [OwnerAuthorizedFragment(fragment_id=f"fragment:organization-period:{command_id}", owner_principal_ref=self._PRINCIPAL, source_rule_ref="organization-operating-period:owner-bound@1", expected_revisions={stream_id: expected_revision}, read_set_revisions={stream_id: expected_revision}, pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin}, event_specs={stream_id: (("gameplay.organization.operating_period_recorded@1", payload),)}, event_visibility_policies={stream_id: ("project",)})]}, deep=True)
+        return self._store.append_batch(batch)
+
+    def record_admitted_platform_organization_commitment_budget(
+        self, *, intent: object, binding_ref: str, command_id: str, idempotency_key: str,
+        causation_id: str, correlation_id: str, expected_revision: int,
+    ) -> AppendBatchResult:
+        from app.gameplay.organization_government_social_platform_runtime import OrganizationCommitmentBudgetIntent
+        active = self._package_registry.active_patch_set if self._package_registry else None
+        if active is None:
+            return self._organization_window_rejected(command_id, "ogs_organization_commitment_package_inactive")
+        matches = tuple(b for b in active.capability_bindings if b.binding_ref == binding_ref and b.family_ref == "organization_commitment_budget@1" and b.descriptor_ref == "descriptor:organization-commitment-budget@1")
+        if len(matches) != 1:
+            return self._organization_window_rejected(command_id, "ogs_organization_commitment_binding_conflict")
+        try:
+            typed = intent if isinstance(intent, OrganizationCommitmentBudgetIntent) else OrganizationCommitmentBudgetIntent.model_validate(intent)
+            binding = matches[0]
+            typed = typed.model_copy(update={"package_revision_pin": binding.package_revision, "content_digest_pin": binding.content_digest, "declaration_ref_pin": binding.declaration_ref, "declaration_digest_pin": binding.declaration_digest, "descriptor_pin": binding.descriptor_ref, "descriptor_revision_pin": binding.descriptor_revision, "active_set_digest_pin": binding.active_patch_set_revision}, deep=True)
+            stream_id = f"gameplay:organization:{typed.organization_ref}"
+            GovernedAuthorityContractCatalog.require_operation(contract_ref="inf:organization-commitment-budget@1", contract_kind="settlement", owner_ref=self._PRINCIPAL, stream_ids=(stream_id,), event_types=("gameplay.organization.commitment_budget_proposed@1",), projection_scope="project")
+        except Exception:
+            return self._organization_window_rejected(command_id, "ogs_organization_commitment_intent_invalid")
+        if self._store.get_stream_head(stream_id) != expected_revision:
+            return self._organization_window_rejected(command_id, "ogs_organization_commitment_revision_conflict")
+        payload = typed.model_dump(mode="json", exclude_none=True)
+        batch = build_atomic_event_batch(command_id=command_id, principal_ref=self._PRINCIPAL, stream_id=stream_id, expected_revision=expected_revision, event_specs=(("gameplay.organization.commitment_budget_proposed@1", payload),), idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id, read_stream_revisions={stream_id: expected_revision}, pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin})
+        batch = batch.model_copy(update={"events": [e.model_copy(update={"visibility_policy": "project"}, deep=True) for e in batch.events], "owner_fragments": [OwnerAuthorizedFragment(fragment_id=f"fragment:organization-commitment:{command_id}", owner_principal_ref=self._PRINCIPAL, source_rule_ref="organization-commitment-budget:owner-bound@1", expected_revisions={stream_id: expected_revision}, read_set_revisions={stream_id: expected_revision}, pinned_revisions={stream_id: expected_revision, "source": typed.source_revision_pin}, event_specs={stream_id: (("gameplay.organization.commitment_budget_proposed@1", payload),)}, event_visibility_policies={stream_id: ("project",)})]}, deep=True)
+        return self._store.append_batch(batch)
 
 
 __all__ = [

@@ -294,7 +294,7 @@ class ReplayReaderRef(StrictPlatformExtensionModel):
 
 
 class PlatformExtension(StrictPlatformExtensionModel):
-    platform_schema_version: Literal["1.0"]
+    platform_schema_version: Literal["1.0", "2.0"]
     package_identity: PackageIdentity
     package_definitions: tuple[PackageDefinition, ...]
     outcome_declarations: tuple[NormalizedOutcomeDeclaration, ...]
@@ -401,11 +401,11 @@ class PackageDeclaredNegotiatedExchangeDefinition(StrictPatchModel):
     source_evidence_kind: str = Field(min_length=1)
     price_policy: PackageExchangePricePolicy
     consent_rule_ref: str = Field(min_length=1)
-    eligibility_refs: tuple[str, ...] = ()
-    privacy_policy_ref: str = "authority_only"
-    compensation_policy_ref: str = "none"
-    source_selection_rule_ref: str = "exchange:unique-owned-source@1"
-    capability_ref: str = "capability:package-declared-negotiated-exchange@1"
+    eligibility_refs: tuple[str, ...]
+    privacy_policy_ref: str = Field(min_length=1)
+    compensation_policy_ref: str = Field(min_length=1)
+    source_selection_rule_ref: str = Field(min_length=1)
+    capability_ref: str = Field(min_length=1)
 
     @model_validator(mode="after")
     def _validate_contract(self) -> "PackageDeclaredNegotiatedExchangeDefinition":
@@ -559,7 +559,11 @@ class GameplayPatchManifest(StrictPatchModel):
             if extension_present:
                 raise ValueError("platform_schema_pair_invalid")
             return value
-        if schema_version != 2 or not isinstance(extension, Mapping) or extension.get("platform_schema_version") != "1.0":
+        if schema_version == 2:
+            if not isinstance(extension, Mapping) or extension.get("platform_schema_version") != "1.0":
+                raise ValueError("platform_schema_pair_invalid")
+            return value
+        if schema_version != 3 or not isinstance(extension, Mapping) or extension.get("platform_schema_version") != "2.0":
             raise ValueError("platform_schema_pair_invalid")
         return value
 
@@ -606,8 +610,11 @@ class GameplayPatchManifest(StrictPatchModel):
             raise ValueError("patch economic_outcomes must be unique")
         if len(set(self.granted_effect_types)) != len(self.granted_effect_types):
             raise ValueError("patch granted_effect_types must be unique")
-        if self.manifest_schema_version == 2:
+        if self.manifest_schema_version in (2, 3):
             assert self.platform_extension is not None
+            expected_platform_version = "1.0" if self.manifest_schema_version == 2 else "2.0"
+            if self.platform_extension.platform_schema_version != expected_platform_version:
+                raise ValueError("platform_schema_pair_invalid")
             if self.platform_extension.package_identity.package_id != self.patch_id:
                 raise ValueError("platform_package_identity_mismatch")
             if self.platform_extension.package_identity.package_version != self.patch_version:
@@ -648,7 +655,7 @@ class GameplayPatchManifest(StrictPatchModel):
         return _canonical_digest(payload)
 
     def _validate_v2_outer_arrays(self) -> None:
-        if self.manifest_schema_version != 2:
+        if self.manifest_schema_version not in (2, 3):
             return
         _require_author_canonical(
             self.dependencies,
@@ -982,6 +989,56 @@ class GameplayPatchRegistry:
         return payload
 
     @staticmethod
+    def _admit_exact_construction_blueprint_binding(
+        *,
+        binding_ref: str,
+        package_revision: str,
+        package_content_digest: str,
+        family_content_digest: str,
+        declaration_ref: str,
+        declaration_digest: str,
+        declaration_payload: Mapping[str, object] | None,
+        descriptor_ref: str,
+        descriptor_revision: str,
+        active_set_revision: str,
+        family_definition_ref: str,
+        typed_content: Mapping[str, object],
+    ) -> ReadOnlyCapabilityBinding:
+        from app.gameplay.construction_production_content import BlueprintContent
+
+        if descriptor_ref != "descriptor:construction-blueprint-placement@1" or descriptor_revision != descriptor_ref:
+            raise ValueError("construction_blueprint_descriptor_mismatch")
+        if not declaration_ref.startswith("declaration:") or "@" not in declaration_ref:
+            raise ValueError("construction_blueprint_declaration_invalid")
+        if not declaration_digest.startswith("sha256:") or not package_content_digest.startswith("sha256:"):
+            raise ValueError("construction_blueprint_digest_invalid")
+        if not family_content_digest.startswith("sha256:"):
+            raise ValueError("construction_blueprint_digest_invalid")
+        if declaration_payload is not None:
+            payload = dict(declaration_payload)
+            if payload.get("declaration_ref") != declaration_ref:
+                raise ValueError("construction_blueprint_declaration_mismatch")
+            if declaration_digest != _canonical_digest(payload):
+                raise ValueError("construction_blueprint_declaration_digest_mismatch")
+        BlueprintContent.model_validate(dict(typed_content))
+        validated_family_content_digest = _canonical_digest(dict(typed_content))
+        if family_content_digest != validated_family_content_digest:
+            raise ValueError("construction_blueprint_content_digest_mismatch")
+        return ReadOnlyCapabilityBinding(
+            binding_ref=binding_ref,
+            package_revision=package_revision,
+            content_digest=package_content_digest,
+            declaration_ref=declaration_ref,
+            declaration_digest=declaration_digest,
+            descriptor_ref=descriptor_ref,
+            descriptor_revision=descriptor_revision,
+            active_patch_set_revision=active_set_revision,
+            family_ref="construction_blueprint_placement@1",
+            definition_ref=family_definition_ref,
+            family_content_digest=validated_family_content_digest,
+        )
+
+    @staticmethod
     def _resolve_capability_bindings(
         selected: tuple[GameplayPatchManifest, ...],
         active_patch_set_revision: str,
@@ -1088,6 +1145,52 @@ class GameplayPatchRegistry:
                         validated_family_content = RecipeProductionContent.from_package_definition(definitions[0])
                     except (TypeError, ValueError, ValidationError) as exc:
                         raise GameplayPatchRuntimeError("patch_capability_binding_content_invalid") from exc
+                elif descriptor.family_ref == "construction_blueprint_placement@1":
+                    from app.gameplay.construction_production_content import BlueprintContent
+
+                    definitions = tuple(
+                        definition
+                        for definition in extension.package_definitions
+                        if definition.definition_ref in declaration.definition_refs
+                    )
+                    if len(definitions) != 1:
+                        raise GameplayPatchRuntimeError("patch_capability_binding_content_invalid")
+                    family_definition_ref = definitions[0].definition_ref
+                    try:
+                        validated_family_content = BlueprintContent.model_validate(definitions[0].typed_content)
+                    except (TypeError, ValueError, ValidationError) as exc:
+                        raise GameplayPatchRuntimeError("patch_capability_binding_content_invalid") from exc
+                elif descriptor.family_ref in {
+                    "organization_lifecycle@1",
+                    "organization_membership_delegation@1",
+                    "organization_operating_period@1",
+                    "organization_commitment_budget@1",
+                    "government_jurisdiction_policy@1",
+                    "government_permit_inspection_enforcement@1",
+                    "government_tax_treasury_project@1",
+                    "government_notice_audit@1",
+                    "social_identity_relationship@1",
+                    "social_household_group@1",
+                    "social_norm_conflict@1",
+                    "social_private_projection@1",
+                    "population_signal_materialization@1",
+                }:
+                    from app.gameplay.organization_government_social_content import content_model_for_ogs_family
+
+                    definitions = tuple(
+                        definition
+                        for definition in extension.package_definitions
+                        if definition.definition_ref in declaration.definition_refs
+                    )
+                    if len(definitions) != 1:
+                        raise GameplayPatchRuntimeError("patch_capability_binding_content_invalid")
+                    family_definition_ref = definitions[0].definition_ref
+                    try:
+                        validated_family_content = content_model_for_ogs_family(descriptor.family_ref).model_validate(
+                            definitions[0].typed_content
+                        )
+                    except (KeyError, TypeError, ValueError, ValidationError) as exc:
+                        raise GameplayPatchRuntimeError("patch_capability_binding_content_invalid") from exc
                 elif descriptor.family_ref:
                     from app.gameplay.closed_generic_gameplay_families import content_model_for_family
 
@@ -1105,7 +1208,56 @@ class GameplayPatchRegistry:
                         )
                     except (KeyError, TypeError, ValueError, ValidationError) as exc:
                         raise GameplayPatchRuntimeError("patch_capability_binding_content_invalid") from exc
-                if descriptor.family_ref and validated_family_content is not None and payload is not None:
+                predicate_families = tuple(
+                    requirement.predicate_family_ref
+                    for requirement in request.typed_read_requirements
+                )
+                if (
+                    predicate_families != descriptor.allowed_predicate_family_refs
+                    or request.proposal_effect_types != descriptor.allowed_proposal_effect_types
+                ):
+                    raise GameplayPatchRuntimeError("patch_capability_binding_mismatch")
+                if descriptor.family_ref == "construction_blueprint_placement@1" and validated_family_content is not None:
+                    try:
+                        family_content_digest = _canonical_digest(definitions[0].typed_content)
+                        binding = GameplayPatchRegistry._admit_exact_construction_blueprint_binding(
+                            binding_ref=request.binding_ref,
+                            package_revision=manifest.patch_revision_id,
+                            package_content_digest=manifest.content_digest,
+                            family_content_digest=family_content_digest,
+                            declaration_ref=declaration.declaration_ref,
+                            declaration_digest=declaration.declaration_digest,
+                            declaration_payload=payload,
+                            descriptor_ref=descriptor.descriptor_ref,
+                            descriptor_revision=descriptor.descriptor_revision,
+                            active_set_revision=active_patch_set_revision,
+                            family_definition_ref=family_definition_ref or "",
+                            typed_content=definitions[0].typed_content,
+                        )
+                    except (TypeError, ValueError, ValidationError) as exc:
+                        raise GameplayPatchRuntimeError("patch_capability_binding_content_invalid") from exc
+                    bindings.append(binding)
+                    continue
+                if (
+                    descriptor.family_ref
+                    and descriptor.family_ref not in {
+                        "organization_lifecycle@1",
+                        "organization_membership_delegation@1",
+                        "organization_operating_period@1",
+                        "organization_commitment_budget@1",
+                        "government_jurisdiction_policy@1",
+                        "government_permit_inspection_enforcement@1",
+                        "government_tax_treasury_project@1",
+                        "government_notice_audit@1",
+                        "social_identity_relationship@1",
+                        "social_household_group@1",
+                        "social_norm_conflict@1",
+                        "social_private_projection@1",
+                        "population_signal_materialization@1",
+                    }
+                    and validated_family_content is not None
+                    and payload is not None
+                ):
                     from app.gameplay.closed_generic_gameplay_families import admit_family_binding
 
                     try:
@@ -1125,15 +1277,6 @@ class GameplayPatchRegistry:
                         )
                     except (KeyError, TypeError, ValueError, ValidationError) as exc:
                         raise GameplayPatchRuntimeError("patch_capability_binding_content_invalid") from exc
-                predicate_families = tuple(
-                    requirement.predicate_family_ref
-                    for requirement in request.typed_read_requirements
-                )
-                if (
-                    predicate_families != descriptor.allowed_predicate_family_refs
-                    or request.proposal_effect_types != descriptor.allowed_proposal_effect_types
-                ):
-                    raise GameplayPatchRuntimeError("patch_capability_binding_mismatch")
                 bindings.append(
                     ReadOnlyCapabilityBinding(
                         binding_ref=request.binding_ref,
