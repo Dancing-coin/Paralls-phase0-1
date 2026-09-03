@@ -43,6 +43,7 @@ def test_employee_period_records_wage_accrual_and_payment() -> None:
     assert "gameplay.economy.wage_accrued" in event_types
     assert "gameplay.economy.wage_paid" in event_types
     assert "gameplay.contract.record_created" in event_types
+    assert "gameplay.construction_production.work_completion_evidence_recorded" in event_types
 
 
 def test_three_period_employee_loop_pays_each_period() -> None:

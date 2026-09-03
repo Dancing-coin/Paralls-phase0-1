@@ -20,6 +20,10 @@ The employee path also admits one fixed existing Contract `simple_service`
 employment record per employee before wage accrual, retaining Contract as the
 source of labor terms rather than adding bakery-owned contract state.
 
+Completed production now carries an existing Construction work-contribution
+record and verified completion-evidence event; Economy wage accrual references
+that committed evidence rather than a caller or synthetic skill claim.
+
 Simulation-mode periods also exercise the existing Survival owner tick; the
 default narrative/disabled modes remain non-authority presentation choices.
 

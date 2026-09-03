@@ -17,7 +17,7 @@ from app.gameplay.inventory_runtime import (
     InventoryProjector,
     ItemDefinition,
 )
-from app.gameplay.organization_government_runtime import GovernmentAuthority, Organization, OrganizationAuthority, Permit, RoleAssignment
+from app.gameplay.organization_government_runtime import GovernmentAuthority, Organization, OrganizationAuthority, Permit, RoleAssignment, WorkerContributionRef
 from app.gameplay.contract_runtime import ContractAuthorityService, ContractTermsDefinition, ContractTermsRegistry
 from app.gameplay.survival_runtime import NeedDefinition, NeedState, SurvivalAuthority, SurvivalMode, SurvivalPolicy
 from app.character_agent.profile.registry import CharacterProfileRegistry
@@ -197,6 +197,16 @@ class BakeryReferenceScenario:
                 )
             )
             production_authority = ConstructionProductionAuthority(store=store)
+            worker_contributions = tuple(
+                WorkerContributionRef(
+                    actor_ref=employee_ref,
+                    assignment_ref=f"assignment:bakery:{employee_ref}",
+                    work_order_ref=f"work:bakery:{sequence}",
+                    evidence_refs=(),
+                    contribution_digest=f"sha256:bakery-work:{sequence}:{employee_ref}",
+                )
+                for employee_ref in self.employee_refs
+            )
             self._require_result(
                 production_authority.settle_start_run(
                     facility=self.facility,
@@ -208,6 +218,7 @@ class BakeryReferenceScenario:
                     causation_id=f"causation:{run_ref}",
                     correlation_id=f"correlation:{self.organization.organization_ref}:{sequence}",
                     reservation_refs=(reservation_ref,),
+                    worker_contribution_refs=worker_contributions,
                 )
             )
             if inject_production_failure:
@@ -292,7 +303,19 @@ class BakeryReferenceScenario:
                         owner_ref=employee_ref,
                         initial_balance=0,
                     )
-                    evidence_ref = finish_result.committed_event_ids[0]
+                    contribution = next(value for value in worker_contributions if value.actor_ref == employee_ref)
+                    evidence_result = production_authority.record_completed_work_evidence(
+                        run_ref=run_ref,
+                        contribution=contribution,
+                        evidence_ref=f"evidence:production-completed:{run_ref}:{contribution.contribution_digest}",
+                        observed_at=f"bakery-period-{sequence}",
+                        command_id=f"work-evidence:{sequence}:{employee_ref}",
+                        idempotency_key=f"work-evidence:{sequence}:{employee_ref}",
+                        causation_id=f"causation:{run_ref}:work",
+                        correlation_id=f"correlation:{self.organization.organization_ref}:{sequence}",
+                    )
+                    self._require_result(evidence_result)
+                    evidence_ref = evidence_result.committed_event_ids[0]
                     accrual = WageAccrual(
                         accrual_ref=f"accrual:bakery:{sequence}:{employee_ref}",
                         organization_ref=self.organization.organization_ref,
