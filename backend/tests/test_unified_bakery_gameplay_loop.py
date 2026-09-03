@@ -44,6 +44,16 @@ def test_employee_period_records_wage_accrual_and_payment() -> None:
     assert "gameplay.economy.wage_paid" in event_types
 
 
+def test_three_period_employee_loop_pays_each_period() -> None:
+    store = GameplayEventStore()
+    scenario = BakeryReferenceScenario.default().with_existing_character_employee("character:char_b")
+    periods = scenario.run_three_periods(store=store)
+    event_types = [event.event_type for event in store.read_events()]
+    assert len(periods) == 3
+    assert event_types.count("gameplay.economy.wage_accrued") == 3
+    assert event_types.count("gameplay.economy.wage_paid") == 3
+
+
 @pytest.mark.parametrize(
     ("prepare_store", "scenario", "expected_error"),
     [
