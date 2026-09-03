@@ -28,9 +28,9 @@ Simulation-mode periods also exercise the existing Survival owner tick; the
 default narrative/disabled modes remain non-authority presentation choices.
 
 The repository-wide backend regression is green (`5057 passed`). Godot project
-import, scene-load smoke, and static scene checks pass after Git LFS hydration;
-the broader `phase0` dynamic verifier still reports missing observatory/live
-presentation markers, so this Goal remains active pending a Bakery-specific
-Godot projection smoke or an accepted runtime-equivalent evidence artifact.
+import, scene-load smoke, static scene checks, and the dedicated headless plus
+desktop `BakeryCommittedMirrorProbe` all pass after Git LFS hydration. The
+broader `phase0` verifier still reports missing observatory/live presentation
+markers, but those are outside this Bakery Goal's scope.
 
 August INF A-D remains `not complete` and is not changed by this loop.

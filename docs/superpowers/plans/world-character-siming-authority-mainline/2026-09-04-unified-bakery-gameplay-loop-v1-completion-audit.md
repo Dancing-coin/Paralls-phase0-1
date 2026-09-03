@@ -5,4 +5,4 @@
 - [x] committed-only Godot mirror and independent Harness
 - [x] full/checkpoint-tail replay equality and tamper rejection
 - [x] repository-wide backend regression (`5057 passed`), compileall, diff check and docs/Harness gates
-- [ ] Bakery-specific Godot dynamic projection smoke; current phase0 verifier lacks Bakery observatory markers
+- [x] Bakery-specific headless and desktop committed-projection smoke
