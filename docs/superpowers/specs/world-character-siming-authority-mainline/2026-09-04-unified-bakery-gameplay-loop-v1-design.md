@@ -25,6 +25,8 @@ owner fragments, append-derived receipts and source revision pins.
 - one real owner CharacterRecord and one `org:bakery` organization;
 - three consecutive periods with deterministic period refs;
 - fixed flour input, bread output, permit, wage/tax policies and aggregate demand;
+- profile-backed employee work contributions and verified completion evidence feed
+  the existing Economy wage obligation/accrual/payment path;
 - success, insufficient material/funds/skill, expired permit, facility failure,
   production failure and recovery outcomes;
 - read-only committed projection for Godot; speculative UI state is discarded

@@ -41,6 +41,11 @@
 - [ ] Verify duplicate, stale revision, expired permit and changed-idempotency zero-write.
 - [ ] Run focused cross-owner tests.
 
+Implementation note: when an existing Character employee is admitted, the
+ProductionRun carries an owner-validated `WorkerContributionRef`; Construction
+records completion evidence and Economy consumes that evidence for wage
+accrual/payment. No caller-selected skill truth is accepted.
+
 ### Task 3: Read-only Godot projection and Harness
 
 **Files:**
