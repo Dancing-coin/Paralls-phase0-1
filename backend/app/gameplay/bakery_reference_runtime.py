@@ -19,8 +19,8 @@ from app.gameplay.inventory_runtime import (
 )
 from app.gameplay.organization_government_runtime import GovernmentAuthority, Organization, OrganizationAuthority, Permit, RoleAssignment, WorkerContributionRef
 from app.gameplay.contract_runtime import ContractAuthorityService, ContractTermsDefinition, ContractTermsRegistry
-from app.gameplay.survival_runtime import NeedDefinition, NeedState, SurvivalAuthority, SurvivalMode, SurvivalPolicy
 from app.character_agent.profile.registry import CharacterProfileRegistry
+from app.gameplay.survival_runtime import NeedDefinition, NeedState, SurvivalAuthority, SurvivalMode, SurvivalPolicy
 
 
 @dataclass(frozen=True)
