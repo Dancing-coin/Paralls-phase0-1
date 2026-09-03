@@ -1,6 +1,6 @@
 # Unified Bakery Gameplay Loop v1 Completion Audit
 
-Status: `implementation-active; backend/replay/Harness gates verified; Godot dynamic gate pending`
+Status: `implemented narrow vertical; all Bakery Loop v1 gates verified`
 
 Task 1 deterministic three-period owner composition is implemented and
 verified. Task 2 adds an injected Construction `run_failed@1` outcome with
@@ -12,8 +12,7 @@ The default scenario now binds its organization owner to the committed,
 repository-visible `character:char_a` profile; no synthetic owner ref is used.
 
 Task 4 replay evidence covers full replay and checkpoint-tail replay equality,
-including tampered-checkpoint rejection. Final repository regression and Godot
-desktop evidence remain the release gate before declaring the Goal complete.
+including tampered-checkpoint rejection.
 
 The fixed employee path now records Economy-owned wage accrual and payment
 facts through existing wage/account APIs; the read-only mirror reports wage
@@ -38,6 +37,7 @@ The repository-wide backend regression is green (`5057 passed`). Godot project
 import, scene-load smoke, static scene checks, and the dedicated headless plus
 desktop `BakeryCommittedMirrorProbe` all pass after Git LFS hydration. The
 broader `phase0` verifier still reports missing observatory/live presentation
-markers, but those are outside this Bakery Goal's scope.
+markers, but those are outside this Bakery Goal's scope. Dedicated
+`BakeryCommittedMirrorProbe` passes in both headless and desktop modes.
 
 August INF A-D remains `not complete` and is not changed by this loop.
