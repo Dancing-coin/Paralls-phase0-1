@@ -68,6 +68,18 @@ class BakeryReferenceScenario:
         registry = CharacterProfileRegistry.from_directory(profile_dir)
         return frozenset(f"character:{actor_id}" for actor_id in registry.actor_ids())
 
+    def _validate_employee_skill_profiles(self) -> None:
+        """Read existing Character skill declarations before worker admission."""
+        profile_dir = Path(__file__).resolve().parents[3] / "assets" / "characters" / "profiles"
+        registry = CharacterProfileRegistry.from_directory(profile_dir)
+        for employee_ref in self.employee_refs:
+            try:
+                profile = registry.profile_ref(employee_ref)
+            except KeyError as exc:
+                raise ValueError("character_record_required") from exc
+            if not profile.capability_constraint_layer.skills:
+                raise ValueError("skill_requirement_unmet")
+
     def with_existing_character_employee(self, character_ref: str) -> "BakeryReferenceScenario":
         """Add an employee only when the ref resolves to an existing profile record."""
         if character_ref not in self.existing_character_refs():
@@ -98,6 +110,7 @@ class BakeryReferenceScenario:
             existing_refs = self.existing_character_refs()
             if any(ref not in existing_refs for ref in self.employee_refs):
                 raise ValueError("character_record_required")
+            self._validate_employee_skill_profiles()
         if store is not None:
             GovernmentAuthority.require_permit(self.permit, tick=sequence, policy_revision=self.permit.policy_revision)
             self._validate_existing_period_inputs(store)

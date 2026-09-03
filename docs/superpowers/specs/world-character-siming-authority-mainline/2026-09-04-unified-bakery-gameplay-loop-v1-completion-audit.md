@@ -27,6 +27,10 @@ Completed production now carries an existing Construction work-contribution
 record and verified completion-evidence event; Economy wage accrual references
 that committed evidence rather than a caller or synthetic skill claim.
 
+Employee admission reads the existing Character capability layer and fails
+closed before any append when the skill declaration is absent; this is a gate,
+not a duplicate Skill owner or caller-provided skill truth.
+
 Simulation-mode periods also exercise the existing Survival owner tick; the
 default narrative/disabled modes remain non-authority presentation choices.
 

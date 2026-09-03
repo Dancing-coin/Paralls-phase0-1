@@ -27,7 +27,7 @@
 - [ ] Add a failing test that `BakeryReferenceScenario.default().run_three_periods(store=GameplayEventStore())` commits three distinct period refs and owner receipts.
 - [ ] Run the focused test and observe the failure.
 - [ ] Implement deterministic period identity, committed period-open/close evidence and existing-owner composition without bypassing authorities.
-- [ ] Add failure-injection assertions for material, funds, skill and permit validation with zero-write.
+- [x] Add failure-injection assertions for material, funds, skill and permit validation with zero-write.
 - [ ] Run focused tests and preserve the existing bakery reference tests.
 
 ### Task 2: Failure/recovery and cross-owner acceptance

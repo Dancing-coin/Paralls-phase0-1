@@ -63,6 +63,19 @@ def test_simulation_survival_mode_records_owner_tick_in_period() -> None:
     assert any(event.event_type == "gameplay.survival.need_tick" for event in store.read_events())
 
 
+def test_skill_admission_failure_is_zero_write(monkeypatch) -> None:
+    scenario = BakeryReferenceScenario.default().with_existing_character_employee("character:char_b")
+    monkeypatch.setattr(
+        BakeryReferenceScenario,
+        "_validate_employee_skill_profiles",
+        lambda _self: (_ for _ in ()).throw(ValueError("skill_requirement_unmet")),
+    )
+    store = GameplayEventStore()
+    with pytest.raises(ValueError, match="skill_requirement_unmet"):
+        scenario.execute_period(1, store=store)
+    assert store.read_events() == []
+
+
 @pytest.mark.parametrize(
     ("prepare_store", "scenario", "expected_error"),
     [
