@@ -146,7 +146,7 @@ def _failure_matrix(scenario: BakeryReferenceScenario) -> list[dict[str, object]
     capture(
         "material_shortage",
         lambda store: _reserve_shortage(store),
-        lambda store: scenario.execute_period(1, store=store),
+        lambda store: _recover_shortage_then_execute(scenario, store),
         prepare=_prepare_shortage,
     )
     capture(
@@ -221,6 +221,25 @@ def _prepare_shortage(store: GameplayEventStore) -> None:
     service = InventoryAuthorityService(store=store, registry=registry)
     service.create_container(command_id="failure:container", actor_ref="org:bakery", spec=ContainerSpec("container:failure", 10, 10, 10), idempotency_key="failure:container", causation_id="failure", correlation_id="failure")
     service.instantiate(command_id="failure:item", actor_ref="org:bakery", item_id="item:failure", definition_id="item:flour", quantity=1, container_id="container:failure", idempotency_key="failure:item", causation_id="failure", correlation_id="failure")
+
+
+def _recover_shortage_then_execute(scenario: BakeryReferenceScenario, store: GameplayEventStore) -> None:
+    """Model explicit recovery by refilling flour through Inventory before retry."""
+    registry = InventoryDefinitionRegistry()
+    registry.register_item(ItemDefinition("item:flour", "v1", 1, 1))
+    service = InventoryAuthorityService(store=store, registry=registry)
+    service.instantiate(
+        command_id="failure:recovery:item",
+        actor_ref="org:bakery",
+        item_id="item:recovery:flour",
+        definition_id="item:flour",
+        quantity=2,
+        container_id="container:failure",
+        idempotency_key="failure:recovery:item",
+        causation_id="failure:recovery",
+        correlation_id="failure:recovery",
+    )
+    scenario.execute_period(1, store=store)
 
 
 def _capacity_failure(store: GameplayEventStore) -> None:

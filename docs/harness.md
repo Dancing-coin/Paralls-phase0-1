@@ -2,6 +2,9 @@
 
 This project uses a narrow Harness Engineering layer so agents can verify the demo without relying on hidden human context.
 
+The unified bakery loop profile is an opt-in verification surface:
+`unified-bakery-gameplay-loop-v1`.
+
 ## Command Surface
 
 Run profiles through:
