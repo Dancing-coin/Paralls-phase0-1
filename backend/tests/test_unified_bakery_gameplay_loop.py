@@ -54,6 +54,13 @@ def test_three_period_employee_loop_pays_each_period() -> None:
     assert event_types.count("gameplay.economy.wage_paid") == 3
 
 
+def test_simulation_survival_mode_records_owner_tick_in_period() -> None:
+    store = GameplayEventStore()
+    scenario = BakeryReferenceScenario.default()
+    scenario.execute_period(1, store=store, survival_mode="simulation")
+    assert any(event.event_type == "gameplay.survival.need_tick" for event in store.read_events())
+
+
 @pytest.mark.parametrize(
     ("prepare_store", "scenario", "expected_error"),
     [

@@ -406,7 +406,7 @@ class BakeryReferenceScenario:
                     correlation_id=f"correlation:{self.organization.organization_ref}:{sequence}",
                 )
             )
-        if survival_mode != SurvivalMode.DISABLED:
+        if survival_mode not in {SurvivalMode.DISABLED, SurvivalMode.NARRATIVE}:
             if store is None:
                 SurvivalAuthority.tick(policy=SurvivalPolicy(policy_ref="survival:food", mode=survival_mode, revision="policy:v1"), definition=NeedDefinition(need_ref="need:food", category="food", decay_per_tick=.1), state=NeedState(need_ref="need:food", value=1, last_tick=sequence - 1), tick=sequence)
             else:

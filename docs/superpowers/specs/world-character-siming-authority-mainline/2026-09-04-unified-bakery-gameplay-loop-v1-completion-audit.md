@@ -16,4 +16,7 @@ The fixed employee path now records Economy-owned wage accrual and payment
 facts through existing wage/account APIs; the read-only mirror reports wage
 parity without owning payroll truth.
 
+Simulation-mode periods also exercise the existing Survival owner tick; the
+default narrative/disabled modes remain non-authority presentation choices.
+
 August INF A-D remains `not complete` and is not changed by this loop.
