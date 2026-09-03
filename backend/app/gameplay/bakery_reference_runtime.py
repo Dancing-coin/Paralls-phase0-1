@@ -7,7 +7,7 @@ from pathlib import Path
 
 from app.gameplay.construction_production_runtime import ConstructionProductionAuthority, Facility, Plot, Recipe
 from app.gameplay.recipe_production_family import RecipeProductionFailureIntent
-from app.gameplay.econ1_economy_runtime import BusinessPeriod, EconomyAuthority, MarketQuote, PurchasePosting, SalePosting
+from app.gameplay.econ1_economy_runtime import BusinessPeriod, EconomyAuthority, MarketQuote, PurchasePosting, SalePosting, WageAccrual
 from app.gameplay.economy_runtime import EconomyAuthorityService, EconomyProjector
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.inventory_runtime import (
@@ -258,8 +258,7 @@ class BakeryReferenceScenario:
                     )
                 )
                 return EconomyAuthority.close_period(failed_period)
-            self._require_result(
-                production_authority.settle_finish_run(
+            finish_result = production_authority.settle_finish_run(
                     production_authority.projector().runs[run_ref],
                     recipe=self.recipe,
                     tick=sequence + 1,
@@ -268,7 +267,48 @@ class BakeryReferenceScenario:
                     causation_id=f"causation:{run_ref}",
                     correlation_id=f"correlation:{self.organization.organization_ref}:{sequence}",
                 )
-            )
+            self._require_result(finish_result)
+            if self.employee_refs:
+                account_service = EconomyAuthorityService(store=store)
+                for employee_ref in self.employee_refs:
+                    self._ensure_account(
+                        store,
+                        account_service,
+                        account_id=f"account:{employee_ref}",
+                        owner_ref=employee_ref,
+                        initial_balance=0,
+                    )
+                    evidence_ref = finish_result.committed_event_ids[0]
+                    accrual = WageAccrual(
+                        accrual_ref=f"accrual:bakery:{sequence}:{employee_ref}",
+                        organization_ref=self.organization.organization_ref,
+                        payee_actor_ref=employee_ref,
+                        work_evidence_refs=(evidence_ref,),
+                        wage_policy_revision="policy:wage:bakery@1",
+                        amount=1,
+                        status="accrued",
+                    )
+                    self._require_result(
+                        economy_authority.accrue_wage(
+                            accrual,
+                            completed_evidence_refs={evidence_ref},
+                            command_id=f"wage-accrue:{sequence}:{employee_ref}",
+                            idempotency_key=f"wage-accrue:{sequence}:{employee_ref}",
+                            causation_id=f"causation:{run_ref}:wage",
+                            correlation_id=f"correlation:{self.organization.organization_ref}:{sequence}",
+                        )
+                    )
+                    self._require_result(
+                        economy_authority.pay_wage(
+                            accrual,
+                            payer_account_id="account:bakery",
+                            payee_account_id=f"account:{employee_ref}",
+                            command_id=f"wage-pay:{sequence}:{employee_ref}",
+                            idempotency_key=f"wage-pay:{sequence}:{employee_ref}",
+                            causation_id=f"causation:{run_ref}:wage",
+                            correlation_id=f"correlation:{self.organization.organization_ref}:{sequence}",
+                        )
+                    )
             self._require_result(
                 inventory_service.consume_reservation(
                     command_id=f"inventory-consume:{run_ref}",
@@ -344,7 +384,14 @@ class BakeryReferenceScenario:
                     correlation_id=f"correlation:{self.organization.organization_ref}:{sequence}",
                 )
             )
-        period = BusinessPeriod(period_ref=f"period:bakery:{sequence}", sequence=sequence, policy_revision="policy:v1", revenue=10, cost=4, tax=1)
+        period = BusinessPeriod(
+            period_ref=f"period:bakery:{sequence}",
+            sequence=sequence,
+            policy_revision="policy:v1",
+            revenue=10,
+            cost=4 + len(self.employee_refs),
+            tax=1,
+        )
         if store is not None:
             self._require_result(
                 government_authority.settle_tax_assessment(
@@ -444,6 +491,30 @@ class BakeryReferenceScenario:
             )
             BakeryReferenceScenario._require_result(result)
             projection = EconomyProjector().rebuild(store.read_events())
+
+    @staticmethod
+    def _ensure_account(
+        store: GameplayEventStore,
+        service: EconomyAuthorityService,
+        *,
+        account_id: str,
+        owner_ref: str,
+        initial_balance: int,
+    ) -> None:
+        projection = EconomyProjector().rebuild(store.read_events())
+        if account_id in projection.accounts:
+            return
+        result = service.open_account(
+            command_id=f"account-open:{account_id}",
+            account_id=account_id,
+            owner_ref=owner_ref,
+            currency_ref="currency:coin",
+            initial_balance=initial_balance,
+            idempotency_key=f"account-open:{account_id}",
+            causation_id=f"causation:account-open:{account_id}",
+            correlation_id="correlation:bakery:accounts",
+        )
+        BakeryReferenceScenario._require_result(result)
 
     @staticmethod
     def _validate_existing_period_inputs(store: GameplayEventStore) -> None:

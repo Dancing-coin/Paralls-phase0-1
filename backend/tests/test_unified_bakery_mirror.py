@@ -19,6 +19,8 @@ def test_committed_three_period_mirror_exposes_cross_owner_summary() -> None:
     assert payload["permit_count"] == 3
     assert payload["failure_count"] == 0
     assert payload["recovery_count"] == 0
+    assert payload["wage_accrual_count"] == 0
+    assert payload["wage_paid_count"] == 0
 
 
 def test_failed_period_mirror_is_rejected_until_recovery_and_next_commit() -> None:

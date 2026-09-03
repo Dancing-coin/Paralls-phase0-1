@@ -23,6 +23,7 @@ def main() -> int:
         "sales": payload["sale_count"] == 3,
         "permits": payload["permit_count"] == 3,
         "outputs": payload["output_count"] == 3,
+        "wages_balanced": payload["wage_accrual_count"] == payload["wage_paid_count"],
         "committed_only": payload["failure_count"] == 0,
     }
     report = {

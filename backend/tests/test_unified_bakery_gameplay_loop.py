@@ -35,6 +35,15 @@ def test_three_period_loop_commits_three_distinct_period_receipts() -> None:
     assert len({receipt.transaction_id for receipt in receipts}) == 3
 
 
+def test_employee_period_records_wage_accrual_and_payment() -> None:
+    store = GameplayEventStore()
+    scenario = BakeryReferenceScenario.default().with_existing_character_employee("character:char_b")
+    scenario.execute_period(1, store=store)
+    event_types = [event.event_type for event in store.read_events()]
+    assert "gameplay.economy.wage_accrued" in event_types
+    assert "gameplay.economy.wage_paid" in event_types
+
+
 @pytest.mark.parametrize(
     ("prepare_store", "scenario", "expected_error"),
     [

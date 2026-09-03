@@ -12,4 +12,8 @@ Task 4 replay evidence covers full replay and checkpoint-tail replay equality,
 including tampered-checkpoint rejection. Final repository regression and Godot
 desktop evidence remain the release gate before declaring the Goal complete.
 
+The fixed employee path now records Economy-owned wage accrual and payment
+facts through existing wage/account APIs; the read-only mirror reports wage
+parity without owning payroll truth.
+
 August INF A-D remains `not complete` and is not changed by this loop.
