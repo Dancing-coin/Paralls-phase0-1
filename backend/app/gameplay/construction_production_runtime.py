@@ -6170,7 +6170,12 @@ class ConstructionProductionAuthority:
             transaction_id=f"transaction:{command_id}",
             idempotency_key=idempotency_key,
             expected_revisions={stream_id: current_revision},
-            read_set_revisions={stream_id: finished_event.stream_revision},
+            # The finished event remains the immutable source pin in payload;
+            # once multiple contributions are recorded, the append stream head
+            # may advance beyond that source revision. Fence the write against
+            # the validated current head instead of self-conflicting with the
+            # older source revision.
+            read_set_revisions={stream_id: current_revision},
             causation_id=causation_id,
             correlation_id=correlation_id,
             source_ref=finished_event.event_id,
