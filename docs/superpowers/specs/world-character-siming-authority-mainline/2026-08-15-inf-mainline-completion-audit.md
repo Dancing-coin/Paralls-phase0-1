@@ -1454,3 +1454,8 @@ Harnesses and broad Harness run are green for all local profiles; only the
 pre-existing external `siming-heavenly-runtime` credentials preflight remains
 limited. Remaining generic rows remain bounded; August INF A-D remains `not
 complete`.
+
+The separately approved Bakery Loop v1 replay/checkpoint slice is tracked in
+[2026-09-04-unified-bakery-gameplay-loop-v1-design.md](2026-09-04-unified-bakery-gameplay-loop-v1-design.md)
+and its implementation plan. It does not change August INF A-D status, which
+remains `not complete`.

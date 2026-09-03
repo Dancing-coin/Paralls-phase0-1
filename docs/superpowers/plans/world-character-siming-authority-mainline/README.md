@@ -171,3 +171,7 @@ Inventory generic rollout is tracked by the new design and implementation plan.
 Existing purchase, gift, harvest, production-output custody and equipment rows
 remain compatibility baselines; the generic rollout does not alter August INF
 status.
+
+The approved Bakery Loop v1 replay/checkpoint slice is tracked in
+[2026-09-04-unified-bakery-gameplay-loop-v1-implementation-plan.md](2026-09-04-unified-bakery-gameplay-loop-v1-implementation-plan.md)
+and its design. It remains outside the August INF A-D business ledger.

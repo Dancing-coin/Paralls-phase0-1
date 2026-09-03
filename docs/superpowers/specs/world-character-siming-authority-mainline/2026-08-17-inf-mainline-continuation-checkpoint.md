@@ -2346,3 +2346,9 @@ still unverified.
 
 - Failure chronology gate: `failed_tick` must be at or after the committed run
   start tick; pre-start failure attempts are zero-write.
+
+The separately approved Bakery Loop v1 replay/checkpoint slice is tracked in
+[2026-09-04-unified-bakery-gameplay-loop-v1-design.md](2026-09-04-unified-bakery-gameplay-loop-v1-design.md)
+and its implementation plan. It reuses the existing owner and event-store
+replay/checkpoint facilities and does not alter the August INF A-D `not
+complete` status.

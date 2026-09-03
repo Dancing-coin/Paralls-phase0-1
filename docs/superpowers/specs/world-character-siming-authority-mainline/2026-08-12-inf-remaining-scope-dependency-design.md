@@ -858,3 +858,9 @@ inactive: both append admission and replay fail closed when
 This is an additive evidence rule; no new owner, scheduler, coordinator or
 generic settlement path is introduced. Remaining platform gates are complete
 output handoff coverage and unavailable Godot runtime verification.
+
+The separately approved Bakery Loop v1 replay/checkpoint slice is tracked in
+[2026-09-04-unified-bakery-gameplay-loop-v1-design.md](2026-09-04-unified-bakery-gameplay-loop-v1-design.md)
+and its implementation plan. It reuses the existing owner and event-store
+replay/checkpoint facilities and does not alter the August INF A-D `not
+complete` status.

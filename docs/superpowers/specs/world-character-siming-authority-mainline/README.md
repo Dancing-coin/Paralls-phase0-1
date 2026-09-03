@@ -654,3 +654,8 @@ only an admitted target owner can create canonical subject truth. Current
 coverage is recorded in the [completion audit](2026-09-03-organization-government-social-generic-platform-completion-audit.md).
 The platform is implemented as a narrow federated vertical and verified by its
 family matrix/Harness; this does not mark August INF A-D complete.
+
+The approved Bakery Loop v1 replay/checkpoint slice is tracked in
+[2026-09-04-unified-bakery-gameplay-loop-v1-design.md](2026-09-04-unified-bakery-gameplay-loop-v1-design.md)
+and its implementation plan. It adds focused three-period replay evidence
+only and does not change August INF A-D status.
