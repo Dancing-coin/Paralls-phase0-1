@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.gameplay.construction_production_runtime import ConstructionProductionAuthority, Facility, Plot, Recipe
+from app.gameplay.recipe_production_family import RecipeProductionFailureIntent
 from app.gameplay.econ1_economy_runtime import BusinessPeriod, EconomyAuthority, MarketQuote, PurchasePosting, SalePosting
 from app.gameplay.economy_runtime import EconomyAuthorityService, EconomyProjector
 from app.gameplay.event_store import GameplayEventStore
@@ -38,7 +39,14 @@ class BakeryReferenceScenario:
             owner_character_ref="character:bakery-owner",
             organization=Organization(organization_ref="org:bakery", jurisdiction_ref="jurisdiction:demo", owner_character_ref="character:bakery-owner"),
             facility=Facility(facility_ref="facility:bakery", plot_ref="plot:bakery", facility_kind="bakery", condition=1),
-            recipe=Recipe(recipe_ref="recipe:bread:v1", inputs={"flour": 2}, output_item="bread", duration_ticks=1),
+            recipe=Recipe(
+                recipe_ref="recipe:bread:v1",
+                inputs={"flour": 2},
+                output_item="bread",
+                duration_ticks=1,
+                failure_policy_mode="release",
+                failure_policy_revision="policy:failure:release@1",
+            ),
             permit=Permit(permit_ref="permit:bakery", organization_ref="org:bakery", policy_revision="policy:v1", expires_tick=100),
         )
 
@@ -79,6 +87,8 @@ class BakeryReferenceScenario:
         *,
         survival_mode: SurvivalMode = SurvivalMode.DISABLED,
         store: GameplayEventStore | None = None,
+        inject_production_failure: bool = False,
+        failure_reason: str = "injected_production_failure",
     ) -> BusinessPeriod:
         if sequence < 1 or sequence > self.period_count:
             raise ValueError("period_out_of_range")
@@ -199,6 +209,32 @@ class BakeryReferenceScenario:
                     reservation_refs=(reservation_ref,),
                 )
             )
+            if inject_production_failure:
+                stream_id = f"gameplay:construction_production:{self.facility.facility_ref}"
+                run_projection = production_authority.projector()
+                run = run_projection.runs[run_ref]
+                failure = production_authority.settle_recipe_production_failure(
+                    intent=RecipeProductionFailureIntent(
+                        facility_ref=self.facility.facility_ref,
+                        run_ref=run_ref,
+                        tick=sequence + 1,
+                        expected_stream_revision=store.get_stream_head(stream_id),
+                        expected_facility_revision=run_projection.facilities[self.facility.facility_ref].revision,
+                        failure_reason=failure_reason,
+                        command_id=f"production-failure:{run_ref}",
+                        causation_id=f"causation:{run_ref}:failure",
+                        correlation_id=f"correlation:{self.organization.organization_ref}:{sequence}",
+                    )
+                )
+                self._require_result(failure)
+                return BusinessPeriod(
+                    period_ref=f"period:bakery:{sequence}:failed",
+                    sequence=sequence,
+                    policy_revision="policy:v1",
+                    revenue=0,
+                    cost=4,
+                    tax=0,
+                )
             self._require_result(
                 production_authority.settle_finish_run(
                     production_authority.projector().runs[run_ref],
@@ -328,6 +364,32 @@ class BakeryReferenceScenario:
                 )
             )
         return EconomyAuthority.close_period(period)
+
+    def recover_failed_production(
+        self,
+        *,
+        run_ref: str,
+        store: GameplayEventStore,
+    ) -> object:
+        """Explicitly release a failed run's input reservation through Inventory."""
+        production = ConstructionProductionAuthority(store=store).projector()
+        run = production.runs.get(run_ref)
+        if run is None or run.status not in {"released", "lost", "failed"}:
+            raise ValueError("bakery_failed_run_required")
+        inventory_service, _ = self._inventory_service(store)
+        results = []
+        for reservation_ref in run.reservation_refs:
+            results.append(
+                inventory_service.release_reservation(
+                    command_id=f"inventory-release:{run_ref}:{reservation_ref}",
+                    actor_ref=self.organization.organization_ref,
+                    reservation_ref=reservation_ref,
+                    idempotency_key=f"inventory-release:{run_ref}:{reservation_ref}",
+                    causation_id=f"causation:{run_ref}:recovery",
+                    correlation_id=f"correlation:{self.organization.organization_ref}:recovery",
+                )
+            )
+        return results[0] if len(results) == 1 else tuple(results)
 
     @staticmethod
     def _require_result(result: object) -> None:
