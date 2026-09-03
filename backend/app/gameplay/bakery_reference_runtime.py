@@ -82,6 +82,14 @@ class BakeryReferenceScenario:
     ) -> BusinessPeriod:
         if sequence < 1 or sequence > self.period_count:
             raise ValueError("period_out_of_range")
+        # Validate all non-mutating period prerequisites before any owner append.
+        if self.employee_refs:
+            existing_refs = self.existing_character_refs()
+            if any(ref not in existing_refs for ref in self.employee_refs):
+                raise ValueError("character_record_required")
+        if store is not None:
+            GovernmentAuthority.require_permit(self.permit, tick=sequence, policy_revision=self.permit.policy_revision)
+            self._validate_existing_period_inputs(store)
         run_ref = f"run:bakery:{sequence}"
         if store is None:
             run = ConstructionProductionAuthority.start_run(facility=self.facility, recipe=self.recipe, run_ref=run_ref, tick=sequence)
@@ -351,6 +359,25 @@ class BakeryReferenceScenario:
             )
             BakeryReferenceScenario._require_result(result)
             projection = EconomyProjector().rebuild(store.read_events())
+
+    @staticmethod
+    def _validate_existing_period_inputs(store: GameplayEventStore) -> None:
+        """Reject known-invalid caller state before the first period append."""
+        economy = EconomyProjector().rebuild(store.read_events())
+        bakery_account = economy.accounts.get("account:bakery")
+        if bakery_account is not None and bakery_account.balance < 4:
+            raise ValueError("economy_insufficient_funds")
+        registry = InventoryDefinitionRegistry()
+        registry.register_item(ItemDefinition("item:flour", "v1", 1, 1))
+        registry.register_item(ItemDefinition("item:bread", "v1", 1, 1))
+        inventory = InventoryProjector(registry).rebuild("org:bakery", store.read_events())
+        existing_flour = sum(
+            item.quantity
+            for item in inventory.items.values()
+            if item.definition_id == "item:flour"
+        )
+        if any(item.quantity > 0 for item in inventory.items.values()) and existing_flour < 2:
+            raise ValueError("inventory_reservation_insufficient")
 
     @staticmethod
     def _inventory_service(store: GameplayEventStore) -> tuple[InventoryAuthorityService, InventoryDefinitionRegistry]:
