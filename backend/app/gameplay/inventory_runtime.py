@@ -103,6 +103,16 @@ _PRODUCTION_OUTPUT_CUSTODY_BINDING_CONTRACTS: tuple[ProductionOutputCustodyBindi
         container_id="container:org:mill:1:stores",
         mapping_revision="mapping:production-output-custody:mill@1",
     ),
+    ProductionOutputCustodyBindingContract(
+        facility_kind="kiln",
+        recipe_ref="recipe:clay-to-brick@1",
+        output_item_ref="item:brick@1",
+        holder_binding_ref="binding:holder:organization:kiln@1",
+        container_binding_ref="binding:container:container:organization:kiln:production-output@1",
+        holder_ref="organization:kiln",
+        container_id="container:organization:kiln:production-output",
+        mapping_revision="mapping:production-output-custody:kiln@1",
+    ),
 )
 
 
@@ -1626,6 +1636,24 @@ class InventoryAuthorityService:
             or certification.payload.get("quantity", 0) <= 0
         ):
             return self._rejected_append(typed.command_id, "production_output_custody_source_invalid")
+        source_certification_provenance = {
+            key: certification.payload.get(key)
+            for key in (
+                "package_revision",
+                "content_digest",
+                "declaration_digest",
+                "descriptor_ref",
+                "descriptor_revision",
+            )
+        }
+        if (
+            any(not isinstance(value, str) or not value for value in source_certification_provenance.values())
+            or any(
+                not str(source_certification_provenance[key]).startswith("sha256:")
+                for key in ("content_digest", "declaration_digest")
+            )
+        ):
+            return self._rejected_append(typed.command_id, "production_output_custody_source_invalid")
         source_stream = certification.stream_id
         facility_ref = certification.payload.get("facility_ref")
         acquisitions = [
@@ -1769,6 +1797,7 @@ class InventoryAuthorityService:
             "binding_ref": binding.binding_ref,
             "active_patch_set_revision": active.active_patch_set_revision,
             "mapping_revision": mapping.mapping_revision,
+            "source_certification_provenance": source_certification_provenance,
         }
         command = GameplayCommandEnvelope(
             command_id=typed.command_id,
@@ -1825,13 +1854,91 @@ class InventoryAuthorityService:
         return SettlementReceipt.from_append_result(result=result, audit_refs=(f"production_output_custody:{result.transaction_id}",))
 
     def production_output_custody_view_for(self, *, checkpoint_at: int | None = None) -> dict[str, object]:
-        if checkpoint_at is not None and checkpoint_at < 0:
+        if checkpoint_at is not None and (isinstance(checkpoint_at, bool) or checkpoint_at < 0):
             raise InventoryRuntimeError("production_output_custody_checkpoint_invalid")
-        rows = []
-        for event in self._store.read_events():
-            if event.event_type == "gameplay.inventory.production_output_received@1":
-                rows.append(dict(event.payload))
-        return {"scope": "project", "rows": tuple(rows)}
+        events = sorted(self._store.read_events(), key=lambda event: (event.global_sequence, event.event_id))
+        max_sequence = max((event.global_sequence for event in events), default=0)
+        if checkpoint_at is not None and checkpoint_at > max_sequence:
+            raise InventoryRuntimeError("production_output_custody_checkpoint_invalid")
+        events_by_id = {event.event_id: event for event in events}
+        if checkpoint_at is None:
+            ordered = events
+        else:
+            ordered = [
+                *[event for event in events if event.global_sequence <= checkpoint_at],
+                *[event for event in events if event.global_sequence > checkpoint_at],
+            ]
+        rows: list[dict[str, object]] = []
+        source_revision_vector: dict[str, int] = {}
+        for event in ordered:
+            if event.event_type != "gameplay.inventory.production_output_received@1":
+                continue
+            payload = event.payload
+            source = events_by_id.get(str(payload.get("source_certification_event_id", "")))
+            if source is None:
+                raise InventoryRuntimeError("production_output_custody_replay_invalid")
+            provenance = {
+                "family_ref": payload.get("family_ref"),
+                "package_revision": payload.get("package_revision"),
+                "content_digest": payload.get("content_digest"),
+                "declaration_ref": payload.get("declaration_ref"),
+                "declaration_digest": payload.get("declaration_digest"),
+                "binding_ref": payload.get("binding_ref"),
+                "active_patch_set_revision": payload.get("active_patch_set_revision"),
+                "mapping_revision": payload.get("mapping_revision"),
+                "source_certification_provenance": payload.get("source_certification_provenance"),
+            }
+            valid = (
+                event.visibility_policy == "project"
+                and event.stream_id == f"gameplay:inventory:{payload.get('holder_ref', '')}"
+                and payload.get("family_ref") == "production_output_custody@1"
+                and _sha256_text(payload, "content_digest")
+                and _sha256_text(payload, "declaration_digest")
+                and _prefixed_text(payload, "package_revision", "package:")
+                and _prefixed_text(payload, "declaration_ref", "declaration:")
+                and _prefixed_text(payload, "binding_ref", "binding:")
+                and _prefixed_text(payload, "active_patch_set_revision", "sha256:")
+                and _prefixed_text(payload, "mapping_revision", "mapping:")
+                and payload.get("provenance_digest") == _canonical_digest(provenance)
+                and payload.get("source_certification_provenance") == {
+                    key: source.payload.get(key)
+                    for key in (
+                        "package_revision",
+                        "content_digest",
+                        "declaration_digest",
+                        "descriptor_ref",
+                        "descriptor_revision",
+                    )
+                }
+                and source.event_type == "gameplay.construction_production.production_output_certified@1"
+                and source.visibility_policy == "project"
+                and source.stream_revision == payload.get("source_certification_revision")
+                and source.payload.get("facility_ref") == payload.get("facility_ref")
+                and source.payload.get("project_ref") == payload.get("project_ref")
+                and source.payload.get("recipe_ref") == payload.get("recipe_ref")
+                and source.payload.get("output_item") == payload.get("item_ref")
+                and source.payload.get("quantity") == payload.get("quantity")
+                and isinstance(payload.get("item_id"), str)
+                and bool(payload.get("item_id"))
+                and isinstance(payload.get("holder_ref"), str)
+                and bool(payload.get("holder_ref"))
+                and isinstance(payload.get("container_id"), str)
+                and bool(payload.get("container_id"))
+                and isinstance(payload.get("quantity"), int)
+                and not isinstance(payload.get("quantity"), bool)
+                and payload.get("quantity", 0) > 0
+            )
+            if not valid:
+                raise InventoryRuntimeError("production_output_custody_replay_invalid")
+            rows.append(dict(payload))
+            source_revision_vector[event.stream_id] = max(source_revision_vector.get(event.stream_id, 0), event.stream_revision)
+            if source is not None:
+                source_revision_vector[source.stream_id] = max(source_revision_vector.get(source.stream_id, 0), source.stream_revision)
+        return {
+            "scope": "project",
+            "rows": tuple(rows),
+            "source_revision_vector": source_revision_vector,
+        }
 
     def grain_harvest_custody_receipt_for(
         self, *, result: AppendBatchResult, scope: str

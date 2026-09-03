@@ -590,6 +590,79 @@ class EconomyAuthorityService:
                 source_ids = payload.get("source_event_ids")
                 if not isinstance(source_ids, list) or len(source_ids) != 1:
                     raise EconomyRuntimeError("package_exchange_replay_invalid")
+            if payload.get("family_ref") == "declared_exchange@1" and payload.get("package_revision") is not None:
+                registry = self._package_registry
+                if registry is None:
+                    raise EconomyRuntimeError("package_exchange_replay_invalid")
+                try:
+                    manifest = registry.candidate(str(payload["package_revision"]))
+                    extension = manifest.platform_extension
+                    declaration = next(
+                        item
+                        for item in extension.outcome_declarations
+                        if item.declaration_ref == payload["declaration_ref"]
+                    )
+                    request = next(
+                        item
+                        for item in extension.capability_binding_requests
+                        if item.binding_ref == payload["binding_ref"]
+                    )
+                    active_bindings = tuple(
+                        item
+                        for item in registry.active_patch_set.capability_bindings
+                        if item.binding_ref == payload["binding_ref"]
+                        and item.package_revision == manifest.patch_revision_id
+                        and item.content_digest == manifest.content_digest
+                        and item.declaration_digest == declaration.declaration_digest
+                    )
+                except (KeyError, StopIteration, TypeError, AttributeError) as exc:
+                    raise EconomyRuntimeError("package_exchange_replay_invalid") from exc
+                if (
+                    manifest.content_digest != payload.get("content_digest")
+                    or declaration.declaration_digest != payload.get("declaration_digest")
+                    or declaration.outcome_family_ref != "outcome:declared-exchange@1"
+                    or request.capability_ref != "capability:declared-exchange@1"
+                    or request.declaration_ref != declaration.declaration_ref
+                    or request.source_package_revision != manifest.patch_revision_id
+                    or payload.get("package_revision_id") != manifest.patch_revision_id
+                    or payload.get("active_patch_set_revision")
+                    != registry.active_patch_set.active_patch_set_revision
+                    or manifest.patch_revision_id
+                    not in registry.active_patch_set.patch_revision_ids
+                    or len(active_bindings) != 1
+                ):
+                    raise EconomyRuntimeError("package_exchange_replay_invalid")
+            if payload.get("family_ref") == "fixed_service_exchange@1" and payload.get("package_revision"):
+                registry = self._package_registry
+                if registry is None or registry.active_patch_set is None:
+                    raise EconomyRuntimeError("package_exchange_replay_invalid")
+                try:
+                    manifest = registry.candidate(str(payload["package_revision"]))
+                    declarations = tuple(
+                        item
+                        for item in (manifest.platform_extension.outcome_declarations if manifest.platform_extension else ())
+                        if item.declaration_ref == payload.get("declaration_ref")
+                    )
+                    outcomes = tuple(
+                        item
+                        for item in getattr(manifest, "economic_outcomes", ())
+                        if item.outcome_ref == payload.get("outcome_ref")
+                    )
+                except (KeyError, TypeError, AttributeError) as exc:
+                    raise EconomyRuntimeError("package_exchange_replay_invalid") from exc
+                if (
+                    manifest.content_digest != payload.get("content_digest")
+                    or len(declarations) != 1
+                    or declarations[0].declaration_digest != payload.get("declaration_digest")
+                    or len(outcomes) != 1
+                    or outcomes[0].price_policy.fixed_amount != payload.get("amount_minor")
+                    or outcomes[0].price_policy.currency_ref != payload.get("currency_ref")
+                    or declarations[0].source_package_revision != manifest.patch_revision_id
+                    or payload.get("active_patch_set_revision") != registry.active_patch_set.active_patch_set_revision
+                    or manifest.patch_revision_id not in registry.active_patch_set.patch_revision_ids
+                ):
+                    raise EconomyRuntimeError("package_exchange_replay_invalid")
+            if payload.get("package_revision_id") == "package:industrial-facilities:v7":
                 try:
                     source = self._store.get_event(str(source_ids[0]))
                 except KeyError:
@@ -3118,7 +3191,221 @@ class EconomyAuthorityService:
             payload=payload,
         )
 
+    def record_production_output_market_eligibility(self, *, intent: object) -> AppendBatchResult:
+        """Record one account-neutral eligibility marker from Inventory custody."""
+        from app.gameplay.inf2ao_market_eligibility import ProductionOutputMarketEligibilityIntent
+
+        try:
+            typed = intent if isinstance(intent, ProductionOutputMarketEligibilityIntent) else ProductionOutputMarketEligibilityIntent.model_validate(intent)
+        except Exception:
+            return self._rejected_append(str(getattr(intent, "command_id", "production-output-market-eligibility")), "production_output_market_eligibility_intent_invalid")
+        if isinstance(typed.expected_source_revision, bool) or isinstance(typed.expected_economy_stream_revision, bool):
+            return self._rejected_append(typed.command_id, "production_output_market_eligibility_reference_invalid")
+        try:
+            source = self._store.get_event(typed.source_event_id)
+        except KeyError:
+            return self._rejected_append(typed.command_id, "production_output_market_eligibility_source_missing")
+        payload = source.payload
+        if (
+            source.event_type != "gameplay.inventory.production_output_received@1"
+            or source.visibility_policy != "project"
+            or not source.stream_id.startswith("gameplay:inventory:")
+            or source.stream_revision != typed.expected_source_revision
+            or self._store.get_stream_head(source.stream_id) != typed.expected_source_revision
+            or payload.get("family_ref") != "production_output_custody@1"
+            or not isinstance(payload.get("item_ref"), str)
+            or not payload.get("item_ref")
+            or not isinstance(payload.get("quantity"), int)
+            or isinstance(payload.get("quantity"), bool)
+            or payload.get("quantity", 0) <= 0
+            or not isinstance(payload.get("holder_ref"), str)
+            or not payload.get("holder_ref")
+            or source.stream_id != f"gameplay:inventory:{payload.get('holder_ref', '')}"
+            or not isinstance(payload.get("container_id"), str)
+            or not payload.get("container_id")
+            or not isinstance(payload.get("project_ref"), str)
+            or not payload.get("project_ref")
+            or not isinstance(payload.get("facility_ref"), str)
+            or not payload.get("facility_ref")
+            or not isinstance(payload.get("recipe_ref"), str)
+            or not payload.get("recipe_ref")
+            or not isinstance(payload.get("mapping_revision"), str)
+            or not payload.get("mapping_revision")
+        ):
+            return self._rejected_append(typed.command_id, "production_output_market_eligibility_source_invalid")
+        economy_stream = "gameplay:economy"
+        idempotency_key = (
+            f"economy:production-output-market-eligibility:{source.event_id}:"
+            f"{source.stream_revision}:{typed.expected_economy_stream_revision}:v1"
+        )
+        request = {
+            "source_event_id": source.event_id,
+            "expected_source_revision": source.stream_revision,
+            "expected_economy_stream_revision": typed.expected_economy_stream_revision,
+            "causation_id": typed.causation_id,
+            "correlation_id": typed.correlation_id,
+        }
+        duplicate = self._budget_duplicate_result(
+            command_id=typed.command_id,
+            idempotency_key=idempotency_key,
+            request=request,
+            error_prefix="production_output_market_eligibility",
+        )
+        if duplicate is not None:
+            return duplicate
+        if self._store.get_stream_head(economy_stream) != typed.expected_economy_stream_revision:
+            return self._rejected_append(typed.command_id, "production_output_market_eligibility_revision_conflict")
+        if typed.causation_id != source.event_id:
+            return self._rejected_append(typed.command_id, "production_output_market_eligibility_causation_invalid")
+        if any(
+            event.event_type == "gameplay.economy.production_output_market_eligible@1"
+            and event.payload.get("source_event_id") == source.event_id
+            for event in self._store.read_stream(economy_stream)
+        ):
+            return self._rejected_append(typed.command_id, "production_output_market_eligibility_duplicate")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:economy-production-output-market-eligibility@1",
+                contract_kind="lifecycle",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(economy_stream,),
+                event_types=("gameplay.economy.production_output_market_eligible@1",),
+                projection_scope="authority_only",
+            )
+        except GovernedAuthorityContractError as error:
+            return self._rejected_append(typed.command_id, str(error))
+        event_payload = {
+            "eligibility_ref": "eligibility:production-output-market-listing@1",
+            "source_event_id": source.event_id,
+            "source_event_revision": source.stream_revision,
+            "source_stream_id": source.stream_id,
+            "source_stream_head": source.stream_revision,
+            "item_ref": payload["item_ref"],
+            "quantity": payload["quantity"],
+            "holder_ref": payload["holder_ref"],
+            "container_id": payload["container_id"],
+            "facility_ref": payload["facility_ref"],
+            "project_ref": payload["project_ref"],
+            "recipe_ref": payload["recipe_ref"],
+            "mapping_revision": payload["mapping_revision"],
+            "policy_revision": "policy:economy-production-output-market-eligibility@1",
+            "descriptor_ref": "descriptor:economy-production-output-market-eligibility@1",
+            "descriptor_revision": "descriptor:economy-production-output-market-eligibility@1",
+            "catalog_ref": "inf:economy-production-output-market-eligibility@1",
+            "status": "eligible",
+            "terminal": "v1_terminal_no_compensation",
+        }
+        command = GameplayCommandEnvelope(
+            command_id=typed.command_id,
+            command_type="gameplay.economy.record_production_output_market_eligibility",
+            command_version=1,
+            principal_ref=self._PRINCIPAL,
+            actor_ref=None,
+            project_ref=None,
+            transaction_id=f"transaction:{typed.command_id}",
+            idempotency_key=idempotency_key,
+            expected_revisions={economy_stream: typed.expected_economy_stream_revision},
+            read_set_revisions={source.stream_id: source.stream_revision},
+            causation_id=typed.causation_id,
+            correlation_id=typed.correlation_id,
+            source_ref=source.event_id,
+            submitted_at=typed.submitted_at,
+            pinned_revisions={"economy": typed.expected_economy_stream_revision, "inventory_source": source.stream_revision},
+            payload={
+                "stream_ref": economy_stream,
+                "event_type": "gameplay.economy.production_output_market_eligible@1",
+                "event_specs": [{"event_type": "gameplay.economy.production_output_market_eligible@1", "payload": {**event_payload, "visibility_policy": "authority_only"}}],
+            },
+        )
+        batch = SettlementPlan.from_command_envelope(command).to_atomic_event_batch()
+        batch = batch.model_copy(
+            update={
+                "idempotency_record": batch.idempotency_record.model_copy(
+                    update={"payload_digest": _digest(request)}, deep=True
+                ),
+                "outbox_entries": [
+                    GameplayOutboxEntry(
+                        outbox_id=f"outbox:{event.event_id}",
+                        transaction_id=batch.transaction_id,
+                        event_id=event.event_id,
+                        global_sequence=0,
+                        topic="economy.production_output_market_eligibility.scoped_projection",
+                        audience="authority:economy",
+                        payload_projection={"eligibility_ref": event_payload["eligibility_ref"], "source_event_id": source.event_id},
+                    )
+                    for event in batch.events
+                ],
+            },
+            deep=True,
+        )
+        return self._store.append_batch(batch)
+
+    def production_output_market_eligibility_receipt_for(self, *, result: AppendBatchResult | None, scope: str) -> SettlementReceipt:
+        if scope != "authority":
+            raise EconomyRuntimeError("production_output_market_eligibility_receipt_scope_denied")
+        if result is None or not result.committed or len(result.committed_event_ids) != 1:
+            raise EconomyRuntimeError("production_output_market_eligibility_receipt_missing")
+        return SettlementReceipt.from_append_result(result=result, audit_refs=(f"economy_production_output_market_eligibility:{result.transaction_id}",))
+
+    def production_output_market_eligibility_projection(self, *, scope: str, checkpoint_at: int | None = None) -> dict[str, object]:
+        if scope != "authority":
+            raise EconomyRuntimeError("production_output_market_eligibility_projection_scope_denied")
+        events = sorted(self._store.read_stream("gameplay:economy"), key=lambda event: (event.global_sequence, event.event_id))
+        if checkpoint_at is not None and (isinstance(checkpoint_at, bool) or checkpoint_at < 0 or checkpoint_at > max((event.global_sequence for event in events), default=0)):
+            raise EconomyRuntimeError("production_output_market_eligibility_checkpoint_invalid")
+        rows: dict[str, dict[str, object]] = {}
+        source_revisions: dict[str, int] = {"gameplay:economy": self._store.get_stream_head("gameplay:economy")}
+        for event in events:
+            if event.event_type != "gameplay.economy.production_output_market_eligible@1":
+                continue
+            payload = event.payload
+            try:
+                source = self._store.get_event(str(payload["source_event_id"]))
+                certification = self._store.get_event(str(source.payload["source_certification_event_id"]))
+            except (KeyError, TypeError) as exc:
+                raise EconomyRuntimeError("production_output_market_eligibility_projection_source_invalid") from exc
+            if (
+                event.visibility_policy != "authority_only"
+                or event.causation_id != source.event_id
+                or payload.get("status") != "eligible"
+                or payload.get("eligibility_ref") != "eligibility:production-output-market-listing@1"
+                or payload.get("source_stream_id") != source.stream_id
+                or payload.get("source_stream_head") != source.stream_revision
+                or payload.get("policy_revision") != "policy:economy-production-output-market-eligibility@1"
+                or payload.get("descriptor_ref") != "descriptor:economy-production-output-market-eligibility@1"
+                or payload.get("descriptor_revision") != "descriptor:economy-production-output-market-eligibility@1"
+                or payload.get("catalog_ref") != "inf:economy-production-output-market-eligibility@1"
+                or payload.get("terminal") != "v1_terminal_no_compensation"
+                or source.event_type != "gameplay.inventory.production_output_received@1"
+                or source.visibility_policy != "project"
+                or source.stream_id != f"gameplay:inventory:{source.payload.get('holder_ref', '')}"
+                or source.stream_revision != payload.get("source_event_revision")
+                or source.payload.get("family_ref") != "production_output_custody@1"
+                or certification.event_type != "gameplay.construction_production.production_output_certified@1"
+                or certification.visibility_policy != "project"
+                or certification.payload.get("facility_ref") != source.payload.get("facility_ref")
+                or certification.payload.get("project_ref") != source.payload.get("project_ref")
+                or certification.payload.get("recipe_ref") != source.payload.get("recipe_ref")
+                or certification.payload.get("output_item") != source.payload.get("item_ref")
+                or certification.payload.get("quantity") != source.payload.get("quantity")
+                or source.payload.get("source_certification_revision") != certification.stream_revision
+                or payload.get("item_ref") != source.payload.get("item_ref")
+                or payload.get("quantity") != source.payload.get("quantity")
+                or payload.get("holder_ref") != source.payload.get("holder_ref")
+                or payload.get("container_id") != source.payload.get("container_id")
+                or payload.get("facility_ref") != source.payload.get("facility_ref")
+                or payload.get("project_ref") != source.payload.get("project_ref")
+                or payload.get("recipe_ref") != source.payload.get("recipe_ref")
+                or payload.get("mapping_revision") != source.payload.get("mapping_revision")
+            ):
+                raise EconomyRuntimeError("production_output_market_eligibility_projection_source_invalid")
+            source_revisions[source.stream_id] = max(source_revisions.get(source.stream_id, 0), source.stream_revision)
+            rows[str(payload.get("eligibility_ref", event.event_id))] = dict(payload)
+        return {"scope": scope, "rows": dict(sorted(rows.items())), "source_revision_vector": source_revisions}
+
     def _settle_family_exchange(self, *, intent: object, family_ref: str) -> AppendBatchResult:
+        content = None
+        declaration_pin = None
         try:
             from app.gameplay.closed_generic_gameplay_families import DeclaredExchangeIntent, FixedServiceExchangeIntent
             typed = intent
@@ -3139,7 +3426,20 @@ class EconomyAuthorityService:
                 return self._rejected_append(typed.command_id, "declared_exchange_source_invalid")
             source_item = source.payload.get("item_ref")
             source_service = source.payload.get("service_ref") or source.payload.get("terms_ref")
+            if source.event_type == "gameplay.contract.record_fulfilled" and not source_service:
+                contract_record = next(
+                    (
+                        record
+                        for record in ContractProjector().rebuild(
+                            self._store.read_stream("gameplay:contracts")
+                        ).contracts.values()
+                        if record.contract_id == source.payload.get("contract_id")
+                    ),
+                    None,
+                )
+                source_service = contract_record.terms_ref if contract_record is not None else None
             candidates = []
+            family_bound_revisions: set[str] = set()
             registry = self._package_registry
             active = getattr(registry, "active_patch_set", None) if registry is not None else None
             if active is not None:
@@ -3156,22 +3456,31 @@ class EconomyAuthorityService:
                             declaration = declarations.get(request.declaration_ref)
                             if declaration is None:
                                 continue
+                            family_bound_revisions.add(str(manifest.patch_revision_id))
                             definitions = tuple(item for item in extension.package_definitions if item.definition_ref in declaration.definition_refs)
                             if len(definitions) != 1:
                                 continue
                             content = definitions[0].typed_content
-                            matches = (source_item and content.get("tradeable_definition_ref", "").endswith(str(source_item))) or (source_service and content.get("service_definition_ref", "").endswith(str(source_service)))
+                            matches = (
+                                source_item is not None
+                                and content.get("tradeable_definition_ref") == f"definition:{source_item}"
+                            ) or (
+                                source_service is not None
+                                and content.get("service_definition_ref") == f"definition:{source_service}"
+                            )
                             if matches:
                                 outcome = next((item for item in getattr(manifest, "economic_outcomes", ()) if item.outcome_ref == content.get("outcome_ref")), None)
                                 if outcome is None:
-                                    from types import SimpleNamespace
-                                    outcome = SimpleNamespace(
-                                        outcome_ref=content.get("outcome_ref"),
-                                        price_policy=SimpleNamespace(
-                                            currency_ref="currency:local",
-                                            fixed_amount=8 if source_item else 12,
-                                        ),
-                                    )
+                                    # A declaration without a matching immutable
+                                    # economic outcome is incomplete. Never infer
+                                    # currency or amount from source kind/content.
+                                    continue
+                                if outcome.price_policy.fixed_amount is None:
+                                    # Bounded prices require an explicit,
+                                    # owner-authorized amount. This intent has
+                                    # no amount slot, so fail closed rather
+                                    # than append zero or choose a bound.
+                                    continue
                                 candidates.append((manifest, declaration, content, outcome, request))
                 except Exception:
                     pass
@@ -3180,6 +3489,8 @@ class EconomyAuthorityService:
                 if active is not None:
                     try:
                         for manifest in registry.active_manifests(active.active_patch_set_revision):
+                            if str(manifest.patch_revision_id) in family_bound_revisions:
+                                continue
                             for outcome in getattr(manifest, "economic_outcomes", ()):
                                 if (source_item and outcome.tradeable_ref == source_item) or (source.event_type == "gameplay.contract.record_fulfilled" and outcome.source_evidence_mode == "completed_service@1"):
                                     legacy_candidates.append((manifest, outcome))
@@ -3214,12 +3525,29 @@ class EconomyAuthorityService:
                 content = None
             else:
                 manifest, declaration, content, outcome, binding_request = candidates[0]
-                provider_ref = str(source.payload.get("provider_ref") or source.payload.get("actor_ref") or "")
+                if source.event_type == "gameplay.contract.record_fulfilled":
+                    record = next(
+                        (
+                            item
+                            for item in ContractProjector()
+                            .rebuild(self._store.read_stream("gameplay:contracts"))
+                            .contracts.values()
+                            if item.contract_id == source.payload.get("contract_id")
+                        ),
+                        None,
+                    )
+                    if record is None or len(record.party_refs) != 2:
+                        return self._rejected_append(typed.command_id, "declared_exchange_source_invalid")
+                    provider_ref, receiver_ref = record.party_refs
+                else:
+                    provider_ref = str(source.payload.get("provider_ref") or source.payload.get("actor_ref") or "")
+                    receiver_ref = ""
                 projection = self._projector.rebuild(self._store.read_events())
-                receiver_accounts = [account for account in projection.accounts.values() if account.owner_ref != provider_ref and account.currency_ref == outcome.price_policy.currency_ref and account.balance >= int(outcome.price_policy.fixed_amount or 0)]
-                if len(receiver_accounts) != 1:
-                    return self._rejected_append(typed.command_id, "declared_exchange_party_account_unavailable")
-                receiver_ref = receiver_accounts[0].owner_ref
+                if not receiver_ref:
+                    receiver_accounts = [account for account in projection.accounts.values() if account.owner_ref != provider_ref and account.currency_ref == outcome.price_policy.currency_ref and account.balance >= int(outcome.price_policy.fixed_amount or 0)]
+                    if len(receiver_accounts) != 1:
+                        return self._rejected_append(typed.command_id, "declared_exchange_party_account_unavailable")
+                    receiver_ref = receiver_accounts[0].owner_ref
                 package_revision = manifest.patch_revision_id
                 outcome_ref = outcome.outcome_ref
                 amount = int(outcome.price_policy.fixed_amount or 0)
@@ -3232,25 +3560,44 @@ class EconomyAuthorityService:
             candidates = []
             if active is not None:
                 try:
+                    contract_records = tuple(
+                        record
+                        for record in ContractProjector()
+                        .rebuild(self._store.read_stream("gameplay:contracts"))
+                        .contracts.values()
+                        if record.status == "fulfilled"
+                    )
                     for manifest in registry.active_manifests(active.active_patch_set_revision):
                         for outcome in getattr(manifest, "economic_outcomes", ()):
-                            if outcome.source_evidence_mode == "completed_service@1" and (
-                                not typed.proposal_digest
-                                or str(manifest.patch_revision_id) in typed.proposal_digest
-                                or len(getattr(registry, "active_manifests", lambda _revision: ()) (active.active_patch_set_revision)) == 1
-                            ):
-                                candidates.append((manifest, outcome))
+                            if outcome.source_evidence_mode != "completed_service@1" or outcome.price_policy.fixed_amount is None:
+                                continue
+                            matching_records = tuple(
+                                record
+                                for record in contract_records
+                                if record.terms_ref == outcome.typed_service_ref
+                            )
+                            for record in matching_records:
+                                candidates.append((manifest, outcome, record))
                 except Exception:
                     pass
             if len(candidates) != 1:
                 return self._rejected_append(typed.command_id, "fixed_service_exchange_source_invalid")
-            manifest, outcome = candidates[0]
-            records = [record for record in ContractProjector().rebuild(self._store.read_stream("gameplay:contracts")).contracts.values() if record.status == "fulfilled" and record.terms_ref == outcome.typed_service_ref]
-            if len(records) != 1:
+            manifest, outcome, record = candidates[0]
+            if len(record.party_refs) != 2:
                 return self._rejected_append(typed.command_id, "fixed_service_exchange_source_invalid")
-            provider_ref, receiver_ref = records[0].party_refs
+            provider_ref, receiver_ref = record.party_refs
             package_revision, outcome_ref = manifest.patch_revision_id, outcome.outcome_ref
             amount, currency, source_ids, source_mode = int(outcome.price_policy.fixed_amount or 0), outcome.price_policy.currency_ref, [], "completed_service@1"
+            try:
+                declarations = tuple(
+                    item
+                    for item in (manifest.platform_extension.outcome_declarations if manifest.platform_extension else ())
+                    if item.policy_revision_ref == outcome.price_policy.price_policy_revision
+                    and item.source_package_revision == manifest.patch_revision_id
+                )
+                declaration_pin = declarations[0] if len(declarations) == 1 else None
+            except (AttributeError, IndexError):
+                declaration_pin = None
         request_digest = _digest(typed.model_dump(mode="json"))
         identity = getattr(typed, "proposal_digest", None) or getattr(typed, "source_event_id", "source")
         key = f"economy:{family_ref}:{identity}:v1"
@@ -3282,6 +3629,27 @@ class EconomyAuthorityService:
             "source_evidence_mode": source_mode,
             "status": "settled",
         }
+        if family_ref == "fixed_service_exchange@1" and declaration_pin is not None:
+            payload.update(
+                {
+                    "package_revision": manifest.patch_revision_id,
+                    "content_digest": manifest.content_digest,
+                    "declaration_ref": declaration_pin.declaration_ref,
+                    "declaration_digest": declaration_pin.declaration_digest,
+                    "active_patch_set_revision": self._package_registry.active_patch_set.active_patch_set_revision if self._package_registry is not None and self._package_registry.active_patch_set is not None else "",
+                }
+            )
+        if content is not None:
+            payload.update(
+                {
+                    "package_revision": manifest.patch_revision_id,
+                    "content_digest": manifest.content_digest,
+                    "declaration_ref": declaration.declaration_ref,
+                    "declaration_digest": declaration.declaration_digest,
+                    "binding_ref": binding_request.binding_ref,
+                    "active_patch_set_revision": active.active_patch_set_revision,
+                }
+            )
         command = GameplayCommandEnvelope(command_id=typed.command_id, command_type=f"gameplay.economy.settle_{family_ref}", command_version=1, principal_ref=self._PRINCIPAL, actor_ref=None, project_ref=None, transaction_id=f"transaction:{typed.command_id}", idempotency_key=key, expected_revisions={stream: expected}, read_set_revisions={}, causation_id=typed.causation_id, correlation_id=typed.correlation_id, source_ref=source_ids[0] if source_ids else f"exchange:{outcome_ref}", submitted_at=getattr(typed, "submitted_at", "exchange"), pinned_revisions={"economy": expected}, payload={"stream_ref": stream, "event_specs":[{"event_type":"gameplay.economy.account_debited","payload":{"account_id":receiver.account_id,"amount":amount,"currency_ref":currency,"visibility_policy":"authority_only"}},{"event_type":"gameplay.economy.account_credited","payload":{"account_id":provider.account_id,"amount":amount,"currency_ref":currency,"visibility_policy":"authority_only"}},{"event_type":"gameplay.economy.package_declared_negotiated_exchange_settled","payload":{**payload,"visibility_policy":"authority_only"}}]})
         batch = SettlementPlan.from_command_envelope(command).to_atomic_event_batch()
         batch = batch.model_copy(update={"idempotency_record": batch.idempotency_record.model_copy(update={"payload_digest": _digest({"family": family_ref, "digest": request_digest})}, deep=True)}, deep=True)

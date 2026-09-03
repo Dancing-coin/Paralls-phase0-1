@@ -6,7 +6,7 @@ an event, append a batch, or interpret a recipe as committed world truth.
 
 from __future__ import annotations
 
-from typing import Mapping
+from typing import Literal, Mapping
 
 from pydantic import ConfigDict, Field, model_validator
 
@@ -54,6 +54,13 @@ class RecipeProductionContent(StrictGameplayModel):
     duration_ticks: int = Field(gt=0)
     qualification_refs: tuple[str, ...] = ()
     policy_revision_ref: str = Field(min_length=1)
+    batch_size: int | None = Field(default=None, gt=0)
+    quality_policy_revision_ref: str | None = None
+    wear_policy_ref: str | None = None
+    failure_policy_mode: Literal["release", "loss", "rework", "terminal"] | None = None
+    failure_policy_revision_ref: str | None = None
+    output_quantity: int | None = Field(default=None, gt=0)
+    quality_value: float | None = Field(default=None, ge=0, le=1)
 
     @model_validator(mode="before")
     @classmethod
@@ -85,6 +92,23 @@ class RecipeProductionContent(StrictGameplayModel):
             raise ValueError("recipe_production_single_output_required")
         for reference in self.qualification_refs:
             _require_platform_ref(reference, prefix="qualification:", error="recipe_production_qualification_ref_invalid")
+        if self.recipe_schema_ref == "schema:construction-recipe@1":
+            if (
+                self.batch_size is None
+                or
+                self.quality_policy_revision_ref is None
+                or self.wear_policy_ref is None
+                or self.failure_policy_mode is None
+                or self.failure_policy_revision_ref is None
+                or self.quality_value is None
+            ):
+                raise ValueError("recipe_production_policy_required")
+        if self.quality_policy_revision_ref is not None:
+            _require_platform_ref(self.quality_policy_revision_ref, prefix="policy:", error="recipe_production_quality_policy_ref_invalid")
+        if self.wear_policy_ref is not None:
+            _require_platform_ref(self.wear_policy_ref, prefix="policy:", error="recipe_production_wear_policy_ref_invalid")
+        if self.failure_policy_revision_ref is not None:
+            _require_platform_ref(self.failure_policy_revision_ref, prefix="policy:", error="recipe_production_failure_policy_ref_invalid")
         return self
 
     @classmethod
@@ -97,12 +121,25 @@ class RecipeProductionContent(StrictGameplayModel):
     def as_recipe_fields(self) -> Mapping[str, object]:
         """Return fields compatible with the existing Construction Recipe model."""
         output = self.output_slots[0]
-        return {
+        fields: dict[str, object] = {
             "recipe_ref": self.recipe_ref,
             "inputs": {slot.item_definition_ref: slot.quantity for slot in self.input_slots},
             "output_item": output.item_definition_ref,
             "duration_ticks": self.duration_ticks,
         }
+        if self.recipe_schema_ref == "schema:construction-recipe@1":
+            assert self.batch_size is not None and self.output_quantity is not None and self.quality_value is not None
+            fields["batch_size"] = self.batch_size
+            fields["output_quantity"] = self.output_quantity * self.batch_size
+            fields["output_quality"] = self.quality_value
+            fields["failure_policy_revision"] = self.failure_policy_revision_ref
+        if self.quality_policy_revision_ref is not None:
+            fields["quality_policy_revision"] = self.quality_policy_revision_ref
+        if self.wear_policy_ref is not None:
+            fields["wear_policy_ref"] = self.wear_policy_ref
+        if self.failure_policy_mode is not None:
+            fields["failure_policy_mode"] = self.failure_policy_mode
+        return fields
 
     def to_existing_recipe(self) -> object:
         """Build the existing Construction ``Recipe`` value without writing facts."""
@@ -127,6 +164,33 @@ class RecipeProductionStartIntent(StrictGameplayModel):
     correlation_id: str = Field(min_length=1)
 
 
+class RecipeProductionFinishIntent(StrictGameplayModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    facility_ref: str = Field(min_length=1)
+    run_ref: str = Field(min_length=1)
+    tick: int = Field(ge=0)
+    expected_stream_revision: int = Field(ge=1)
+    expected_facility_revision: int = Field(ge=0)
+    command_id: str = Field(min_length=1)
+    causation_id: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+
+
+class RecipeProductionFailureIntent(StrictGameplayModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    facility_ref: str = Field(min_length=1)
+    run_ref: str = Field(min_length=1)
+    tick: int = Field(ge=0)
+    expected_stream_revision: int = Field(ge=1)
+    expected_facility_revision: int = Field(ge=0)
+    failure_reason: str = Field(min_length=1)
+    command_id: str = Field(min_length=1)
+    causation_id: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+
+
 __all__ = [
     "RECIPE_PRODUCTION_FAMILY",
     "RECIPE_PRODUCTION_OUTCOME_FAMILY_REF",
@@ -134,4 +198,6 @@ __all__ = [
     "RecipeOutputSlot",
     "RecipeProductionContent",
     "RecipeProductionStartIntent",
+    "RecipeProductionFinishIntent",
+    "RecipeProductionFailureIntent",
 ]

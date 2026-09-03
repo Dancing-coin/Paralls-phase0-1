@@ -19,6 +19,7 @@ BASE_DIR = (
 MANIFEST_PATHS = {
     "recipe-production-demo-v1": BASE_DIR / "recipe-production" / "package-recipe-production-demo-v1.manifest.json",
     "recipe-production-kiln-v1": BASE_DIR / "recipe-production" / "package-recipe-production-kiln-v1.manifest.json",
+    "recipe-production-mill-v1": BASE_DIR / "recipe-production" / "package-recipe-production-mill-v1.manifest.json",
     "facility-identity-upgrade-demo-v1": BASE_DIR
     / "facility-identity-upgrade"
     / "package-facility-identity-upgrade-demo-v1.manifest.json",
@@ -31,6 +32,9 @@ MANIFEST_PATHS = {
     "production-output-certification-mill-demo-v1": BASE_DIR
     / "production-output-certification"
     / "package-production-output-certification-mill-demo-v1.manifest.json",
+    "production-output-certification-kiln-demo-v1": BASE_DIR
+    / "production-output-certification"
+    / "package-production-output-certification-kiln-demo-v1.manifest.json",
     "production-output-custody-bread": BASE_DIR
     / "production-output-custody"
     / "package-production-output-custody-bread.manifest.json",

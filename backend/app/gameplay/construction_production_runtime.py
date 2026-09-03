@@ -24,6 +24,18 @@ from app.gameplay.organization_government_runtime import WorkerContributionRef
 
 _MILL_FLOUR_RECIPE_REF = "recipe:industrial-facilities:mill-flour@1"
 _MILL_FLOUR_OUTPUT_ITEM = "item:industrial-facilities:flour@1"
+_CONSTRUCTION_BINDING_PIN_KEYS = frozenset(
+    {
+        "package_revision",
+        "content_digest",
+        "declaration_digest",
+        "descriptor_ref",
+        "descriptor_revision",
+        "active_patch_set_revision",
+        "family_content_digest",
+        "binding_ref",
+    }
+)
 
 
 def _closed_family_binding_is_valid(
@@ -71,6 +83,65 @@ def _closed_family_binding_is_valid(
         and binding.family_content_digest == _canonical_digest(content_payload)
         and _canonical_digest(content_payload) == binding.family_content_digest
     )
+
+
+def _validate_owner_reservation_source_events(
+    *,
+    store: GameplayEventStore,
+    requirements: tuple[object, ...],
+    reservation_evidence: Mapping[str, Mapping[str, object]] | None,
+) -> None:
+    """Validate optional source-event pins against existing owner facts."""
+    if reservation_evidence is None:
+        return
+    for requirement in requirements:
+        reservation_ref = str(getattr(requirement, "reservation_ref", ""))
+        evidence = reservation_evidence.get(reservation_ref, {})
+        source_event_id = evidence.get("source_event_id")
+        if source_event_id is None:
+            continue
+        try:
+            source = store.get_event(str(source_event_id))
+        except KeyError as exc:
+            raise ValueError("construction_run_reservation_evidence_source_missing") from exc
+        owner_family = str(getattr(requirement, "owner_family_ref", ""))
+        expected_event_type = {
+            "inventory": "gameplay.inventory.reservation_created",
+            "economy": "gameplay.economy.budget_reserved",
+        }.get(owner_family)
+        if expected_event_type is None:
+            raise ValueError("construction_run_reservation_evidence_source_conflict")
+        if expected_event_type is not None and source.event_type != expected_event_type:
+            raise ValueError("construction_run_reservation_evidence_source_conflict")
+        if source.payload.get("reservation_ref") != reservation_ref:
+            raise ValueError("construction_run_reservation_evidence_source_conflict")
+        if source.stream_revision != getattr(requirement, "revision", -1):
+            raise ValueError("construction_run_reservation_evidence_source_conflict")
+        if source.visibility_policy not in {"project", "authority_only"}:
+            raise ValueError("construction_run_reservation_evidence_source_private")
+        if expected_event_type == "gameplay.inventory.reservation_created":
+            later_events = store.read_stream(source.stream_id, from_revision=source.stream_revision + 1)
+            if any(
+                event.event_type
+                in {
+                    "gameplay.inventory.reservation_consumed",
+                    "gameplay.inventory.reservation_released",
+                }
+                and event.payload.get("reservation_ref") == reservation_ref
+                for event in later_events
+            ):
+                raise ValueError("construction_run_reservation_evidence_source_conflict")
+        elif expected_event_type == "gameplay.economy.budget_reserved":
+            # Economy reservations are consumed by a separate owner event that
+            # references the reservation event id rather than repeating the
+            # reservation_ref.  A consumed hold is no longer an active source
+            # for a new Construction job/run and must fail closed before append.
+            if any(
+                event.event_type == "gameplay.economy.public_project_budget_consumed"
+                and event.payload.get("source_reservation_event_id") == source.event_id
+                for event in store.read_events()
+            ):
+                raise ValueError("construction_run_reservation_evidence_source_conflict")
 
 
 def _canonical_hazard_admission_channel():
@@ -217,14 +288,18 @@ class Facility(StrictGameplayModel):
     facility_ref: str = Field(min_length=1)
     plot_ref: str = Field(min_length=1)
     facility_kind: str = Field(min_length=1)
+    facility_definition_ref: str | None = None
     condition: float = Field(ge=0, le=1)
     revision: int = Field(default=0, ge=0)
     # This value is populated only by the pinned mill-reinforcement/decommission
     # vector.  Existing facilities deliberately have no inferred lifecycle.
     lifecycle_status: Literal["active", "decommissioned"] | None = None
     reinforcement_event_id: str | None = None
+    acquisition_event_id: str | None = None
     public_use_status: Literal["enabled"] | None = None
     completed_project_step_refs: tuple[str, ...] = ()
+    slot_capacity: int = Field(default=1, gt=0)
+    maintenance_policy_ref: str | None = None
 
 
 class Recipe(StrictGameplayModel):
@@ -233,6 +308,15 @@ class Recipe(StrictGameplayModel):
     inputs: dict[str, int] = Field(default_factory=dict)
     output_item: str = Field(min_length=1)
     duration_ticks: int = Field(gt=0)
+    # Optional fields preserve old event/value compatibility while allowing
+    # new package content to carry explicit production policies.
+    batch_size: int = Field(default=1, gt=0)
+    quality_policy_revision: str | None = None
+    wear_policy_ref: str | None = None
+    failure_policy_mode: Literal["release", "loss", "rework", "terminal"] | None = None
+    failure_policy_revision: str | None = None
+    output_quantity: int | None = Field(default=None, gt=0)
+    output_quality: float | None = Field(default=None, ge=0, le=1)
 
 
 class ConstructionJob(StrictGameplayModel):
@@ -242,7 +326,21 @@ class ConstructionJob(StrictGameplayModel):
     blueprint_ref: str = Field(min_length=1)
     status: Literal["planned", "started", "completed", "failed"] = "planned"
     reservation_refs: tuple[str, ...] = ()
+    reservation_evidence: dict[str, object] = Field(default_factory=dict)
     pinned_revisions: dict[str, int] = Field(default_factory=dict)
+    anchor_x: int = 0
+    anchor_y: int = 0
+    orientation: Literal[0, 90, 180, 270] = 0
+    occupied_cells: tuple[tuple[int, int], ...] = ()
+    plot_revision: int = Field(default=0, ge=0)
+    binding_pins: dict[str, str] = Field(default_factory=dict)
+    permit_evidence: dict[str, object] = Field(default_factory=dict)
+    zoning_ref: str | None = None
+    component_refs: tuple[str, ...] = ()
+    material_requirements: dict[str, int] = Field(default_factory=dict)
+    tool_refs: tuple[str, ...] = ()
+    qualification_refs: tuple[str, ...] = ()
+    duration_ticks: int | None = Field(default=None, gt=0)
 
 
 class ProductionRun(StrictGameplayModel):
@@ -250,16 +348,27 @@ class ProductionRun(StrictGameplayModel):
     run_ref: str = Field(min_length=1)
     facility_ref: str = Field(min_length=1)
     recipe_ref: str = Field(min_length=1)
-    status: Literal["started", "completed", "lost", "released"] = "started"
+    status: Literal["started", "completed", "lost", "released", "failed"] = "started"
     started_tick: int = Field(ge=0)
     finish_tick: int = Field(ge=0)
     reservation_refs: tuple[str, ...] = ()
+    reservation_evidence: dict[str, object] = Field(default_factory=dict)
     output_item: str | None = None
     maintenance_obligation_ref: str | None = None
     work_order_ref: str | None = None
     shift_ref: str | None = None
     worker_contribution_refs: tuple[str, ...] = ()
     facility_slot_ref: str | None = None
+    batch_size: int = Field(default=1, gt=0)
+    quality_policy_revision: str | None = None
+    wear_policy_ref: str | None = None
+    failure_policy_mode: Literal["release", "loss", "rework", "terminal"] | None = None
+    failure_policy_revision: str | None = None
+    failure_reason: str | None = None
+    output_quantity: int | None = Field(default=None, gt=0)
+    output_quality: float | None = Field(default=None, ge=0, le=1)
+    source_started_event_id: str | None = None
+    source_finished_event_id: str | None = None
 
 
 class ConstructionDueCompletionPolicy(StrictGameplayModel):
@@ -339,6 +448,7 @@ class ConstructionProductionProjection:
     operational_verifications: Mapping[str, "FacilityOperationalVerification"] = field(default_factory=dict)
     mill_flour_output_certifications: Mapping[str, MillFlourOutputCertification] = field(default_factory=dict)
     production_output_certifications: Mapping[str, "ProductionOutputCertificationRecord"] = field(default_factory=dict)
+    jobs: Mapping[str, ConstructionJob] = field(default_factory=dict)
 
 
 class CommittedProductionRecipe(StrictGameplayModel):
@@ -348,6 +458,12 @@ class CommittedProductionRecipe(StrictGameplayModel):
 
     recipe: Recipe
     source_stream_revision: int = Field(ge=0)
+    package_revision: str | None = None
+    content_digest: str | None = None
+    declaration_digest: str | None = None
+    descriptor_ref: str | None = None
+    descriptor_revision: str | None = None
+    policy_revision: str | None = None
 
 
 class ProductionRecipeResult(StrictGameplayModel):
@@ -407,6 +523,7 @@ class ProductionOutputCertificationRecord(StrictGameplayModel):
     recipe_ref: str
     output_item: str
     quantity: int = Field(gt=0)
+    output_quality: float | None = Field(default=None, ge=0, le=1)
     source_run_finished_event_id: str
     source_revision_vector: dict[str, int] = Field(default_factory=dict)
     certification_status: Literal["certified"]
@@ -654,6 +771,9 @@ class ConstructionProductionProjector:
     _DECOMMISSIONED = "gameplay.construction_production.facility_decommissioned"
     _MILL_FLOUR_OUTPUT_CERTIFIED = "gameplay.construction_production.mill_flour_output_certified@1"
     _OUTPUT_CERTIFIED = "gameplay.construction_production.production_output_certified@1"
+    _JOB_STARTED = "gameplay.construction_production.construction_job_started@1"
+    _JOB_COMPLETED = "gameplay.construction_production.construction_job_completed@1"
+    _RUN_FAILED = "gameplay.construction_production.run_failed@1"
 
     def rebuild(
         self,
@@ -679,6 +799,7 @@ class ConstructionProductionProjector:
         production_output_certifications: dict[str, ProductionOutputCertificationRecord] = (
             dict(checkpoint.production_output_certifications) if checkpoint is not None else {}
         )
+        jobs: dict[str, ConstructionJob] = dict(checkpoint.jobs) if checkpoint is not None else {}
         ordered_events = sorted(events, key=lambda value: (value.global_sequence, value.event_id))
         events_by_id = {event.event_id: event for event in ordered_events}
         for event in ordered_events:
@@ -701,20 +822,352 @@ class ConstructionProductionProjector:
                 "gameplay.construction_production.public_project_step_completed",
                 self._MILL_FLOUR_OUTPUT_CERTIFIED,
                 self._OUTPUT_CERTIFIED,
+                self._JOB_STARTED,
+                self._JOB_COMPLETED,
+                "gameplay.construction_production.construction_job_failed@1",
+                self._RUN_FAILED,
             }:
                 continue
             payload = event.payload
+            if event.event_type == self._JOB_STARTED:
+                job_ref = str(payload.get("job_ref", ""))
+                if not job_ref or job_ref in jobs:
+                    raise ValueError("construction_job_duplicate")
+                job_plot_ref = payload.get("plot_ref")
+                if (
+                    event.visibility_policy != "project"
+                    or not isinstance(job_plot_ref, str)
+                    or not job_plot_ref
+                    or event.stream_id != f"gameplay:construction_production:plot:{job_plot_ref}"
+                ):
+                    raise ValueError("construction_job_source_conflict")
+                binding_pins = payload.get("binding_pins", {})
+                if binding_pins:
+                    if not isinstance(binding_pins, Mapping) or set(binding_pins) != _CONSTRUCTION_BINDING_PIN_KEYS:
+                        raise ValueError("construction_job_binding_pins_invalid")
+                    if any(
+                        not isinstance(key, str) or not isinstance(value, str) or not value
+                        for key, value in binding_pins.items()
+                    ):
+                        raise ValueError("construction_job_binding_pins_invalid")
+                    for digest_key in ("content_digest", "declaration_digest", "active_patch_set_revision", "family_content_digest"):
+                        value = binding_pins[digest_key]
+                        if not value.startswith("sha256:") or len(value) != len("sha256:") + 64:
+                            raise ValueError("construction_job_binding_pins_invalid")
+                    if any(
+                        key in payload and payload[key] != value
+                        for key, value in binding_pins.items()
+                    ):
+                        raise ValueError("construction_job_binding_pins_invalid")
+                permit_evidence = payload.get("permit_evidence", {})
+                if permit_evidence:
+                    if (
+                        not isinstance(permit_evidence, Mapping)
+                        or not isinstance(permit_evidence.get("permit_ref"), str)
+                        or not isinstance(permit_evidence.get("jurisdiction_ref"), str)
+                        or permit_evidence.get("status") != "active"
+                        or isinstance(permit_evidence.get("revision"), bool)
+                        or not isinstance(permit_evidence.get("revision"), int)
+                        or permit_evidence.get("revision", 0) < 1
+                    ):
+                        raise ValueError("construction_job_permit_evidence_invalid")
+                    if payload.get("zoning_ref") is not None and permit_evidence.get("zoning_ref") != payload.get("zoning_ref"):
+                        raise ValueError("construction_job_permit_evidence_conflict")
+                reservation_refs = tuple(str(value) for value in payload.get("reservation_refs", ()))
+                reservation_evidence = payload.get("reservation_evidence", {})
+                if reservation_evidence:
+                    if not isinstance(reservation_evidence, Mapping) or set(reservation_evidence) != set(reservation_refs):
+                        raise ValueError("construction_job_reservation_evidence_invalid")
+                    for ref, evidence in reservation_evidence.items():
+                        if (
+                            not isinstance(ref, str)
+                            or not isinstance(evidence, Mapping)
+                            or evidence.get("owner_family_ref") not in {"inventory", "organization", "economy", "skill"}
+                            or evidence.get("status") != "active"
+                            or isinstance(evidence.get("revision"), bool)
+                            or not isinstance(evidence.get("revision"), int)
+                            or evidence.get("revision", 0) < 1
+                        ):
+                            raise ValueError("construction_job_reservation_evidence_invalid")
+                        source_event_id = evidence.get("source_event_id")
+                        if source_event_id is not None:
+                            source = events_by_id.get(str(source_event_id))
+                            if source is None:
+                                raise ValueError("construction_job_reservation_evidence_source_missing")
+                            expected_event_type = {
+                                "inventory": "gameplay.inventory.reservation_created",
+                                "economy": "gameplay.economy.budget_reserved",
+                            }.get(str(evidence["owner_family_ref"]))
+                            if (
+                                expected_event_type is None
+                                or source.event_type != expected_event_type
+                                or source.payload.get("reservation_ref") != ref
+                                or source.stream_revision != evidence["revision"]
+                                or source.visibility_policy not in {"project", "authority_only"}
+                            ):
+                                raise ValueError("construction_job_reservation_evidence_source_conflict")
+                raw_occupied = payload.get("occupied_cells", ())
+                if not isinstance(raw_occupied, (list, tuple)):
+                    raise ValueError("construction_job_occupied_cells_invalid")
+                try:
+                    occupied = tuple(
+                        (int(cell[0]), int(cell[1]))
+                        for cell in raw_occupied
+                        if isinstance(cell, (list, tuple)) and len(cell) == 2
+                    )
+                except (TypeError, ValueError, IndexError) as exc:
+                    raise ValueError("construction_job_occupied_cells_invalid") from exc
+                if len(occupied) != len(raw_occupied) or occupied != tuple(sorted(set(occupied))):
+                    raise ValueError("construction_job_occupied_cells_invalid")
+                jobs[job_ref] = ConstructionJob(
+                    job_ref=job_ref,
+                    plot_ref=str(payload["plot_ref"]),
+                    blueprint_ref=str(payload["blueprint_ref"]),
+                    status="started",
+                    reservation_refs=reservation_refs,
+                    reservation_evidence={
+                        str(key): value
+                        for key, value in payload.get("reservation_evidence", {}).items()
+                        if isinstance(key, str)
+                    },
+                    pinned_revisions={
+                        "plot": int(payload.get("plot_revision", 0)),
+                        "stream_head": event.stream_revision,
+                    },
+                    anchor_x=int(payload.get("anchor_x", 0)),
+                    anchor_y=int(payload.get("anchor_y", 0)),
+                    orientation=int(payload.get("orientation", 0)),
+                    occupied_cells=occupied,
+                    plot_revision=int(payload.get("plot_revision", 0)),
+                    binding_pins={
+                        str(key): str(value)
+                        for key, value in payload.get("binding_pins", {}).items()
+                        if isinstance(key, str) and isinstance(value, str)
+                    },
+                    permit_evidence={
+                        str(key): value
+                        for key, value in payload.get("permit_evidence", {}).items()
+                        if isinstance(key, str)
+                    },
+                    zoning_ref=(
+                        str(payload["zoning_ref"])
+                        if payload.get("zoning_ref") is not None
+                        else None
+                    ),
+                    component_refs=tuple(str(value) for value in payload.get("component_refs", ())),
+                    material_requirements={
+                        str(key): int(value)
+                        for key, value in payload.get("material_requirements", {}).items()
+                        if isinstance(key, str) and isinstance(value, int) and not isinstance(value, bool)
+                    },
+                    tool_refs=tuple(str(value) for value in payload.get("tool_refs", ())),
+                    qualification_refs=tuple(str(value) for value in payload.get("qualification_refs", ())),
+                    duration_ticks=(
+                        int(payload["duration_ticks"])
+                        if payload.get("duration_ticks") is not None
+                        else None
+                    ),
+                )
+                revisions[event.stream_id] = max(revisions.get(event.stream_id, 0), event.stream_revision)
+                continue
+            if event.event_type == self._JOB_COMPLETED:
+                job_ref = str(payload.get("job_ref", ""))
+                job = jobs.get(job_ref)
+                if job is None or job.status != "started":
+                    raise ValueError("construction_job_missing")
+                if payload.get("plot_ref") != job.plot_ref:
+                    raise ValueError("construction_job_completion_identity_conflict")
+                if (
+                    event.visibility_policy != "project"
+                    or event.stream_id != f"gameplay:construction_production:plot:{job.plot_ref}"
+                ):
+                    raise ValueError("construction_job_completion_source_conflict")
+                if (
+                    payload.get("plot_ref") != job.plot_ref
+                    or payload.get("blueprint_ref") != job.blueprint_ref
+                    or payload.get("plot_revision") != job.plot_revision
+                ):
+                    raise ValueError("construction_job_completion_identity_conflict")
+                if job.binding_pins:
+                    if payload.get("binding_pins") != job.binding_pins:
+                        raise ValueError("construction_job_completion_binding_conflict")
+                    if payload.get("permit_evidence", {}) != job.permit_evidence:
+                        raise ValueError("construction_job_completion_binding_conflict")
+                    if payload.get("component_refs", ()) != job.component_refs:
+                        raise ValueError("construction_job_completion_binding_conflict")
+                    if payload.get("zoning_ref") != job.zoning_ref:
+                        raise ValueError("construction_job_completion_binding_conflict")
+                    if (
+                        payload.get("material_requirements", {}) != job.material_requirements
+                        or payload.get("tool_refs", ()) != job.tool_refs
+                        or payload.get("qualification_refs", ()) != job.qualification_refs
+                        or payload.get("duration_ticks") != job.duration_ticks
+                    ):
+                        raise ValueError("construction_job_completion_content_conflict")
+                if payload.get("reservation_refs", ()) != job.reservation_refs:
+                    raise ValueError("construction_job_completion_reservation_conflict")
+                if payload.get("reservation_evidence", {}) != job.reservation_evidence:
+                    raise ValueError("construction_job_completion_reservation_conflict")
+                jobs[job_ref] = job.model_copy(
+                    update={
+                        "status": "completed",
+                        "pinned_revisions": {
+                            **job.pinned_revisions,
+                            "completed_stream_head": event.stream_revision,
+                        },
+                    },
+                    deep=True,
+                )
+                revisions[event.stream_id] = max(revisions.get(event.stream_id, 0), event.stream_revision)
+                continue
+            if event.event_type == "gameplay.construction_production.construction_job_failed@1":
+                job_ref = str(payload.get("job_ref", ""))
+                job = jobs.get(job_ref)
+                if job is None or job.status != "started":
+                    raise ValueError("construction_job_missing")
+                if payload.get("plot_ref") != job.plot_ref:
+                    raise ValueError("construction_job_failure_identity_conflict")
+                if (
+                    event.visibility_policy != "project"
+                    or event.stream_id != f"gameplay:construction_production:plot:{job.plot_ref}"
+                ):
+                    raise ValueError("construction_job_failure_source_conflict")
+                if (
+                    payload.get("plot_ref") != job.plot_ref
+                    or payload.get("blueprint_ref") != job.blueprint_ref
+                    or payload.get("plot_revision") != job.plot_revision
+                ):
+                    raise ValueError("construction_job_failure_identity_conflict")
+                reason = payload.get("failure_reason")
+                if not isinstance(reason, str) or not reason:
+                    raise ValueError("construction_job_failure_reason_invalid")
+                if payload.get("terminal") != "v1_terminal_no_compensation":
+                    raise ValueError("construction_job_failure_policy_invalid")
+                if job.binding_pins:
+                    if payload.get("binding_pins") != job.binding_pins:
+                        raise ValueError("construction_job_failure_binding_conflict")
+                    if payload.get("permit_evidence", {}) != job.permit_evidence:
+                        raise ValueError("construction_job_failure_binding_conflict")
+                    if payload.get("component_refs", ()) != job.component_refs:
+                        raise ValueError("construction_job_failure_binding_conflict")
+                    if payload.get("zoning_ref") != job.zoning_ref:
+                        raise ValueError("construction_job_failure_binding_conflict")
+                    if (
+                        payload.get("material_requirements", {}) != job.material_requirements
+                        or payload.get("tool_refs", ()) != job.tool_refs
+                        or payload.get("qualification_refs", ()) != job.qualification_refs
+                        or payload.get("duration_ticks") != job.duration_ticks
+                    ):
+                        raise ValueError("construction_job_failure_content_conflict")
+                if payload.get("reservation_refs", ()) != job.reservation_refs:
+                    raise ValueError("construction_job_failure_reservation_conflict")
+                if payload.get("reservation_evidence", {}) != job.reservation_evidence:
+                    raise ValueError("construction_job_failure_reservation_conflict")
+                jobs[job_ref] = job.model_copy(
+                    update={
+                        "status": "failed",
+                        "pinned_revisions": {
+                            **job.pinned_revisions,
+                            "failed_stream_head": event.stream_revision,
+                        },
+                    },
+                    deep=True,
+                )
+                revisions[event.stream_id] = max(revisions.get(event.stream_id, 0), event.stream_revision)
+                continue
+            if event.event_type == self._RUN_FAILED:
+                run_ref = str(payload.get("run_ref", ""))
+                run = runs.get(run_ref)
+                if run is None or run.status != "started":
+                    raise ValueError("production_run_missing")
+                facility = facilities.get(run.facility_ref)
+                if (
+                    facility is None
+                    or event.visibility_policy != "project"
+                    or event.stream_id != f"gameplay:construction_production:{run.facility_ref}"
+                    or payload.get("facility_ref") != run.facility_ref
+                    or payload.get("recipe_ref") != run.recipe_ref
+                    or not isinstance(payload.get("source_revision_vector"), Mapping)
+                    or payload["source_revision_vector"].get("facility")
+                    != facility.revision
+                    or payload["source_revision_vector"].get("stream_head") != event.stream_revision - 1
+                    or tuple(payload.get("reservation_refs", ())) != run.reservation_refs
+                    or payload.get("reservation_evidence", {}) != run.reservation_evidence
+                ):
+                    raise ValueError("production_failure_source_conflict")
+                mode = str(payload.get("failure_mode", ""))
+                if mode not in {"release", "loss", "rework", "terminal"}:
+                    raise ValueError("production_failure_mode_invalid")
+                if run.failure_policy_mode is None or mode != run.failure_policy_mode:
+                    raise ValueError("production_failure_mode_conflict")
+                reason = payload.get("failure_reason")
+                if not isinstance(reason, str) or not reason:
+                    raise ValueError("production_failure_reason_invalid")
+                failed_tick = payload.get("failed_tick")
+                if (
+                    isinstance(failed_tick, bool)
+                    or not isinstance(failed_tick, int)
+                    or failed_tick < run.started_tick
+                ):
+                    raise ValueError("production_failure_chronology_conflict")
+                policy_revision = payload.get("failure_policy_revision")
+                if (
+                    run.failure_policy_revision is None
+                    or not isinstance(policy_revision, str)
+                    or policy_revision != run.failure_policy_revision
+                ):
+                    raise ValueError("production_failure_policy_revision_conflict")
+                status = {
+                    "release": "released",
+                    "loss": "lost",
+                    "rework": "failed",
+                    "terminal": "failed",
+                }[mode]
+                runs[run_ref] = run.model_copy(
+                    update={
+                        "status": status,
+                        "failure_policy_mode": mode,
+                        "failure_policy_revision": policy_revision,
+                        "failure_reason": reason,
+                    },
+                    deep=True,
+                )
+                revisions[event.stream_id] = max(revisions.get(event.stream_id, 0), event.stream_revision)
+                continue
             if event.event_type == self._ACQUIRED:
                 facility_ref = str(payload.get("facility_ref", ""))
                 if not facility_ref or facility_ref in facilities:
                     raise ValueError("facility_duplicate")
+                plot_ref = payload.get("plot_ref")
+                if (
+                    event.visibility_policy != "project"
+                    or event.stream_id != f"gameplay:construction_production:{facility_ref}"
+                    or not isinstance(plot_ref, str)
+                    or not plot_ref
+                    or payload.get("facility_ref") != facility_ref
+                    or not isinstance(payload.get("facility_kind"), str)
+                    or not payload.get("facility_kind")
+                ):
+                    raise ValueError("facility_acquisition_source_conflict")
                 facilities[facility_ref] = Facility(
                     facility_ref=facility_ref,
-                    plot_ref=str(payload["plot_ref"]),
+                    plot_ref=plot_ref,
                     facility_kind=str(payload["facility_kind"]),
+                    facility_definition_ref=(
+                        str(payload["facility_definition_ref"])
+                        if payload.get("facility_definition_ref") is not None
+                        else None
+                    ),
                     condition=float(payload["condition"]),
                     revision=int(payload.get("revision", 0)),
                     lifecycle_status=payload.get("lifecycle_status"),
+                    slot_capacity=int(payload.get("slot_capacity", 1)),
+                    maintenance_policy_ref=(
+                        str(payload["maintenance_policy_ref"])
+                        if payload.get("maintenance_policy_ref") is not None
+                        else None
+                    ),
+                    acquisition_event_id=event.event_id,
                 )
                 revisions[event.stream_id] = max(revisions.get(event.stream_id, 0), event.stream_revision)
                 continue
@@ -723,12 +1176,26 @@ class ConstructionProductionProjector:
                 facility = facilities.get(facility_ref)
                 if facility is None:
                     raise ValueError("facility_repair_target_missing")
+                if (
+                    event.visibility_policy != "project"
+                    or event.stream_id != f"gameplay:construction_production:{facility_ref}"
+                    or payload.get("project_ref") not in {None, facility.plot_ref}
+                ):
+                    raise ValueError("facility_repair_source_conflict")
                 if event.event_type == self._REPAIRED:
                     prior = float(payload["prior_condition"])
                     next_condition = float(payload["next_condition"])
                 else:
                     prior = float(payload["prior_condition"])
                     next_condition = float(payload["restored_condition"])
+                if not 0 <= prior <= 1 or not 0 <= next_condition <= 1:
+                    raise ValueError("facility_repair_conflict")
+                if (
+                    not isinstance(payload.get("facility_revision"), int)
+                    or isinstance(payload.get("facility_revision"), bool)
+                    or payload.get("facility_revision") != facility.revision + 1
+                ):
+                    raise ValueError("facility_repair_conflict")
                 if abs(facility.condition - prior) > 1e-9:
                     raise ValueError("facility_repair_condition_conflict")
                 facilities[facility_ref] = facility.model_copy(
@@ -745,6 +1212,34 @@ class ConstructionProductionProjector:
                 facility = facilities.get(facility_ref)
                 if facility is None:
                     raise ValueError("facility_transform_target_missing")
+                if (
+                    event.visibility_policy != "project"
+                    or event.stream_id != f"gameplay:construction_production:{facility_ref}"
+                    or payload.get("project_ref") not in {None, facility.plot_ref}
+                ):
+                    raise ValueError("facility_transform_source_conflict")
+                acquisition_event_id = payload.get("acquisition_event_id")
+                if acquisition_event_id is not None:
+                    acquisition_source = events_by_id.get(str(acquisition_event_id))
+                    source_valid = (
+                        acquisition_source is not None
+                        and acquisition_source.event_type == self._ACQUIRED
+                        and acquisition_source.visibility_policy == "project"
+                        and acquisition_source.stream_id == event.stream_id
+                        and acquisition_source.payload.get("facility_ref") == facility_ref
+                        and acquisition_source.payload.get("plot_ref") == facility.plot_ref
+                        and (
+                            payload.get("acquisition_event_revision") is None
+                            or acquisition_source.stream_revision == payload.get("acquisition_event_revision")
+                        )
+                    )
+                    checkpoint_source_valid = (
+                        checkpoint is not None
+                        and acquisition_source is None
+                        and facility.acquisition_event_id == acquisition_event_id
+                    )
+                    if not source_valid and not checkpoint_source_valid:
+                        raise ValueError("facility_transform_source_conflict")
                 legacy_bakery = (
                     payload.get("prior_kind") == "bakery"
                     and payload.get("next_kind") == "bakery_reinforced"
@@ -813,6 +1308,47 @@ class ConstructionProductionProjector:
                 facility = facilities.get(facility_ref)
                 if facility is None:
                     raise ValueError("facility_decommission_target_missing")
+                if (
+                    event.visibility_policy != "project"
+                    or event.stream_id != f"gameplay:construction_production:{facility_ref}"
+                    or payload.get("project_ref") not in {None, facility.plot_ref}
+                ):
+                    raise ValueError("facility_decommission_source_conflict")
+                acquisition_source = events_by_id.get(str(payload.get("acquisition_event_id", "")))
+                reinforcement_source = events_by_id.get(str(payload.get("reinforcement_event_id", "")))
+                narrow_decommission = payload.get("decommission_package_revision") == "package:industrial-facilities:v3"
+                source_pins_valid = (
+                    (
+                        acquisition_source is not None
+                        and acquisition_source.event_type == self._ACQUIRED
+                        and acquisition_source.visibility_policy == "project"
+                        and acquisition_source.stream_id == event.stream_id
+                        and acquisition_source.payload.get("facility_ref") == facility_ref
+                        and acquisition_source.payload.get("plot_ref") == facility.plot_ref
+                        and acquisition_source.stream_revision == payload.get("acquisition_event_revision")
+                        and (
+                            not narrow_decommission
+                            or (
+                                reinforcement_source is not None
+                                and reinforcement_source.event_type == self._TRANSFORMED
+                                and reinforcement_source.visibility_policy == "project"
+                                and reinforcement_source.stream_id == event.stream_id
+                                and reinforcement_source.payload.get("facility_ref") == facility_ref
+                                and reinforcement_source.payload.get("project_ref") == facility.plot_ref
+                                and reinforcement_source.stream_revision == payload.get("reinforcement_event_revision")
+                            )
+                        )
+                    )
+                    or (
+                        checkpoint is not None
+                        and acquisition_source is None
+                        and (not narrow_decommission or reinforcement_source is None)
+                        and facility.acquisition_event_id == payload.get("acquisition_event_id")
+                        and (not narrow_decommission or facility.reinforcement_event_id == payload.get("reinforcement_event_id"))
+                    )
+                )
+                if not source_pins_valid:
+                    raise ValueError("facility_decommission_source_conflict")
                 narrow_valid = (
                     event.visibility_policy == "project"
                     and event.stream_id == f"gameplay:construction_production:{facility_ref}"
@@ -1107,6 +1643,7 @@ class ConstructionProductionProjector:
             if event.event_type == self._OUTPUT_CERTIFIED:
                 facility_ref, run_ref = str(payload.get("facility_ref", "")), str(payload.get("run_ref", ""))
                 facility, run = facilities.get(facility_ref), runs.get(run_ref)
+                source_finished = events_by_id.get(str(payload.get("source_run_finished_event_id", "")))
                 valid = (
                     facility is not None and run is not None and run.status == "completed"
                     and event.visibility_policy == "project" and event.stream_id == f"gameplay:construction_production:{facility_ref}"
@@ -1116,6 +1653,28 @@ class ConstructionProductionProjector:
                     and payload.get("quantity") > 0 and payload.get("facility_revision") == facility.revision
                     and payload.get("expected_stream_revision") == event.stream_revision - 1
                     and isinstance(payload.get("source_run_finished_event_id"), str)
+                    and (
+                        (
+                            source_finished is not None
+                            and source_finished.event_type == self._FINISHED
+                            and source_finished.visibility_policy == "project"
+                            and source_finished.stream_id == event.stream_id
+                            and source_finished.stream_revision == payload.get("source_run_finished_revision")
+                            and source_finished.global_sequence < event.global_sequence
+                            and source_finished.payload.get("run_ref") == run_ref
+                            and source_finished.payload.get("facility_ref") == facility_ref
+                            and source_finished.payload.get("recipe_ref") == run.recipe_ref
+                            and source_finished.payload.get("output_item") == run.output_item
+                        )
+                        or (
+                            checkpoint is not None
+                            and source_finished is None
+                            and run.source_finished_event_id == payload.get("source_run_finished_event_id")
+                            and revisions.get(event.stream_id) == payload.get("source_run_finished_revision")
+                            and payload.get("source_revision_vector", {}).get("run_finished")
+                            == payload.get("source_run_finished_revision")
+                        )
+                    )
                     and run_ref not in production_output_certifications
                 )
                 if not valid:
@@ -1123,6 +1682,11 @@ class ConstructionProductionProjector:
                 production_output_certifications[run_ref] = ProductionOutputCertificationRecord(
                     facility_ref=facility_ref, project_ref=facility.plot_ref, run_ref=run_ref,
                     recipe_ref=run.recipe_ref, output_item=str(run.output_item), quantity=int(payload["quantity"]),
+                    output_quality=(
+                        float(payload["output_quality"])
+                        if payload.get("output_quality") is not None
+                        else None
+                    ),
                     source_run_finished_event_id=str(payload["source_run_finished_event_id"]),
                     source_revision_vector=dict(payload.get("source_revision_vector", {})), certification_status="certified",
                 )
@@ -1132,14 +1696,31 @@ class ConstructionProductionProjector:
                 facility_ref = str(payload.get("facility_ref", ""))
                 if not facility_ref:
                     raise ValueError("construction_event_payload_invalid")
-                maintenance_states[facility_ref] = ConstructionMaintenanceState(
-                    state_ref=str(payload["state_ref"]),
-                    effect_ref=str(payload["effect_ref"]),
-                    stacks=int(payload["next_stacks"]),
-                    effective_magnitude=int(payload["effective_magnitude"]),
-                    resistance_revision=int(payload["resistance_revision"]),
-                    semantic_snapshot_digest=str(payload["semantic_snapshot_digest"]),
-                )
+                facility = facilities.get(facility_ref)
+                if facility is not None and (
+                    event.visibility_policy != "project"
+                    or event.stream_id != f"gameplay:construction_production:{facility_ref}"
+                ):
+                    raise ValueError("construction_maintenance_state_source_conflict")
+                if facility is not None and payload.get("project_ref") not in {None, facility.plot_ref}:
+                    raise ValueError("construction_maintenance_state_source_conflict")
+                try:
+                    state = ConstructionMaintenanceState(
+                        state_ref=str(payload["state_ref"]),
+                        effect_ref=str(payload["effect_ref"]),
+                        stacks=int(payload["next_stacks"]),
+                        effective_magnitude=int(payload["effective_magnitude"]),
+                        resistance_revision=int(payload["resistance_revision"]),
+                        semantic_snapshot_digest=str(payload["semantic_snapshot_digest"]),
+                    )
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise ValueError("construction_maintenance_state_invalid") from exc
+                if any(
+                    isinstance(payload.get(key), bool) or not isinstance(payload.get(key), int) or payload.get(key) < bound
+                    for key, bound in (("next_stacks", 1), ("effective_magnitude", 0), ("resistance_revision", 0))
+                ):
+                    raise ValueError("construction_maintenance_state_invalid")
+                maintenance_states[facility_ref] = state
                 revisions[event.stream_id] = max(revisions.get(event.stream_id, 0), event.stream_revision)
                 continue
             if event.event_type == self._MAINTENANCE_STATE_OPENED:
@@ -1168,19 +1749,98 @@ class ConstructionProductionProjector:
             if event.event_type == self._STARTED:
                 if run_ref in runs:
                     raise ValueError("production_run_duplicate")
+                existing_facility = facilities.get(str(payload.get("facility_ref", "")))
+                if existing_facility is not None and (
+                    event.visibility_policy != "project"
+                    or event.stream_id != f"gameplay:construction_production:{existing_facility.facility_ref}"
+                    or payload.get("facility_ref") != existing_facility.facility_ref
+                    or payload.get("project_ref") not in {None, existing_facility.plot_ref}
+                    or payload.get("facility_revision") not in {None, existing_facility.revision}
+                ):
+                    raise ValueError("production_run_source_conflict")
+                reservation_refs = tuple(str(value) for value in payload.get("reservation_refs", ()))
+                reservation_evidence = payload.get("reservation_evidence", {})
+                if reservation_evidence:
+                    if (
+                        not isinstance(reservation_evidence, Mapping)
+                        or reservation_refs != tuple(sorted(set(reservation_refs)))
+                        or set(reservation_evidence) != set(reservation_refs)
+                    ):
+                        raise ValueError("construction_run_reservation_evidence_invalid")
+                    for ref, evidence in reservation_evidence.items():
+                        source_event_id = evidence.get("source_event_id") if isinstance(evidence, Mapping) else None
+                        if (
+                            not isinstance(ref, str)
+                            or not isinstance(evidence, Mapping)
+                            or evidence.get("owner_family_ref") not in {"inventory", "organization", "economy", "skill"}
+                            or evidence.get("status") != "active"
+                            or isinstance(evidence.get("revision"), bool)
+                            or not isinstance(evidence.get("revision"), int)
+                            or evidence.get("revision", 0) < 1
+                        ):
+                            raise ValueError("construction_run_reservation_evidence_invalid")
+                        if source_event_id is None:
+                            continue
+                        source = events_by_id.get(str(source_event_id))
+                        if source is None:
+                            raise ValueError("construction_run_reservation_evidence_source_missing")
+                        owner_family = evidence.get("owner_family_ref")
+                        expected_event_type = {
+                            "inventory": "gameplay.inventory.reservation_created",
+                            "economy": "gameplay.economy.budget_reserved",
+                        }.get(owner_family)
+                        if (
+                            expected_event_type is None
+                            or source.event_type != expected_event_type
+                            or source.payload.get("reservation_ref") != ref
+                            or source.stream_revision != evidence.get("revision")
+                            or source.visibility_policy not in {"project", "authority_only"}
+                        ):
+                            raise ValueError("construction_run_reservation_evidence_source_conflict")
+                        if owner_family == "economy" and any(
+                            candidate.event_type == "gameplay.economy.public_project_budget_consumed"
+                            and candidate.payload.get("source_reservation_event_id") == source.event_id
+                            for candidate in ordered_events
+                        ):
+                            raise ValueError("construction_run_reservation_evidence_source_conflict")
                 runs[run_ref] = ProductionRun(
                     run_ref=run_ref,
                     facility_ref=str(payload["facility_ref"]),
                     recipe_ref=str(payload["recipe_ref"]),
                     started_tick=int(payload["started_tick"]),
                     finish_tick=int(payload["finish_tick"]),
-                    reservation_refs=tuple(payload.get("reservation_refs", ())),
+                    reservation_refs=reservation_refs,
+                    reservation_evidence={
+                        str(key): value
+                        for key, value in payload.get("reservation_evidence", {}).items()
+                        if isinstance(key, str)
+                    },
                     output_item=(str(payload["output_item"]) if payload.get("output_item") else None),
                     worker_contribution_refs=tuple(
                         str(item.get("contribution_digest", ""))
                         for item in payload.get("worker_contributions", ())
                         if isinstance(item, dict) and item.get("contribution_digest")
                     ),
+                    batch_size=int(payload.get("batch_size", 1)),
+                    quality_policy_revision=(
+                        str(payload["quality_policy_revision"])
+                        if payload.get("quality_policy_revision") is not None
+                        else None
+                    ),
+                    wear_policy_ref=(
+                        str(payload["wear_policy_ref"]) if payload.get("wear_policy_ref") is not None else None
+                    ),
+                    failure_policy_mode=(
+                        str(payload["failure_policy_mode"])
+                        if payload.get("failure_policy_mode") is not None
+                        else None
+                    ),
+                    failure_policy_revision=(
+                        str(payload["failure_policy_revision"])
+                        if payload.get("failure_policy_revision") is not None
+                        else None
+                    ),
+                    source_started_event_id=event.event_id,
                 )
                 recipe_snapshot = payload.get("recipe_snapshot")
                 if recipe_snapshot is not None:
@@ -1191,20 +1851,140 @@ class ConstructionProductionProjector:
                         inputs={},
                         output_item=str(recipe_snapshot["output_item"]),
                         duration_ticks=int(recipe_snapshot["duration_ticks"]),
+                        batch_size=int(recipe_snapshot.get("batch_size", 1)),
+                        quality_policy_revision=(
+                            str(recipe_snapshot["quality_policy_revision"])
+                            if recipe_snapshot.get("quality_policy_revision") is not None
+                            else None
+                        ),
+                        wear_policy_ref=(
+                            str(recipe_snapshot["wear_policy_ref"])
+                            if recipe_snapshot.get("wear_policy_ref") is not None
+                            else None
+                        ),
+                        failure_policy_mode=(
+                            str(recipe_snapshot["failure_policy_mode"])
+                            if recipe_snapshot.get("failure_policy_mode") is not None
+                            else None
+                        ),
+                        failure_policy_revision=(
+                            str(recipe_snapshot["failure_policy_revision"])
+                            if recipe_snapshot.get("failure_policy_revision") is not None
+                            else None
+                        ),
                     )
                     if recipe.recipe_ref != runs[run_ref].recipe_ref:
                         raise ValueError("construction_recipe_snapshot_mismatch")
                     recipes_by_run[run_ref] = CommittedProductionRecipe(
                         recipe=recipe,
                         source_stream_revision=event.stream_revision,
+                        package_revision=(
+                            str(recipe_snapshot["package_revision"])
+                            if recipe_snapshot.get("package_revision") is not None
+                            else None
+                        ),
+                        content_digest=(
+                            str(recipe_snapshot["content_digest"])
+                            if recipe_snapshot.get("content_digest") is not None
+                            else None
+                        ),
+                        declaration_digest=(
+                            str(recipe_snapshot["declaration_digest"])
+                            if recipe_snapshot.get("declaration_digest") is not None
+                            else None
+                        ),
+                        descriptor_ref=(
+                            str(recipe_snapshot["descriptor_ref"])
+                            if recipe_snapshot.get("descriptor_ref") is not None
+                            else None
+                        ),
+                        descriptor_revision=(
+                            str(recipe_snapshot["descriptor_revision"])
+                            if recipe_snapshot.get("descriptor_revision") is not None
+                            else None
+                        ),
+                        policy_revision=(
+                            str(recipe_snapshot["policy_revision"])
+                            if recipe_snapshot.get("policy_revision") is not None
+                            else None
+                        ),
                     )
             elif event.event_type == self._FINISHED:
                 run = runs.get(run_ref)
                 if run is None or run.status != "started":
                     raise ValueError("production_run_missing")
+                if (
+                    event.visibility_policy != "project"
+                    or event.stream_id != f"gameplay:construction_production:{run.facility_ref}"
+                    or payload.get("facility_ref") != run.facility_ref
+                ):
+                    raise ValueError("production_run_finish_source_conflict")
+                facility = facilities.get(run.facility_ref)
+                if facility is not None and payload.get("project_ref") not in {None, facility.plot_ref}:
+                    raise ValueError("production_run_finish_source_conflict")
+                output_quantity = payload.get("output_quantity")
+                output_quality = payload.get("output_quality")
+                if (
+                    output_quantity is not None
+                    and (isinstance(output_quantity, bool) or not isinstance(output_quantity, int) or output_quantity <= 0)
+                ):
+                    raise ValueError("production_run_finish_output_invalid")
+                if (
+                    output_quality is not None
+                    and (isinstance(output_quality, bool) or not isinstance(output_quality, (int, float)) or not 0 <= float(output_quality) <= 1)
+                ):
+                    raise ValueError("production_run_finish_output_invalid")
+                if (
+                    payload.get("facility_ref") != run.facility_ref
+                    or payload.get("recipe_ref") != run.recipe_ref
+                    or payload.get("output_item") != run.output_item
+                ):
+                    raise ValueError("production_run_finish_identity_conflict")
+                completed_tick = payload.get("completed_tick")
+                if isinstance(completed_tick, bool) or not isinstance(completed_tick, int) or completed_tick < run.finish_tick:
+                    raise ValueError("production_run_finish_revision_conflict")
                 runs[run_ref] = run.model_copy(
-                    update={"status": "completed", "output_item": str(payload["output_item"])}, deep=True
+                    update={
+                        "status": "completed",
+                        "output_item": str(payload["output_item"]),
+                        "output_quantity": (
+                            int(output_quantity)
+                            if output_quantity is not None
+                            else None
+                        ),
+                        "output_quality": (
+                            float(output_quality)
+                            if output_quality is not None
+                            else None
+                        ),
+                        "source_finished_event_id": event.event_id,
+                    },
+                    deep=True,
                 )
+            elif event.event_type == self._MAINTENANCE:
+                run = runs.get(run_ref)
+                obligation_ref = payload.get("obligation_ref")
+                if run is None or not isinstance(obligation_ref, str) or not obligation_ref:
+                    raise ValueError("construction_maintenance_obligation_conflict")
+                if "facility_ref" in payload:
+                    facility = facilities.get(run.facility_ref)
+                    if (
+                        facility is None
+                        or event.visibility_policy != "project"
+                        or event.stream_id != f"gameplay:construction_production:{run.facility_ref}"
+                        or payload.get("facility_ref") != run.facility_ref
+                        or payload.get("project_ref") != facility.plot_ref
+                        or payload.get("facility_revision") != facility.revision
+                        or payload.get("expected_stream_revision") != event.stream_revision - 1
+                        or payload.get("maintenance_policy_ref") != facility.maintenance_policy_ref
+                    ):
+                        raise ValueError("construction_maintenance_obligation_conflict")
+                runs[run_ref] = run.model_copy(
+                    update={"maintenance_obligation_ref": obligation_ref},
+                    deep=True,
+                )
+                revisions[event.stream_id] = max(revisions.get(event.stream_id, 0), event.stream_revision)
+                continue
             else:
                 run = runs.get(run_ref)
                 if run is None:
@@ -1224,7 +2004,119 @@ class ConstructionProductionProjector:
                 dict(sorted(mill_flour_output_certifications.items()))
             ),
             production_output_certifications=MappingProxyType(dict(sorted(production_output_certifications.items()))),
+            jobs=MappingProxyType(dict(sorted(jobs.items()))),
         )
+
+    @staticmethod
+    def export_checkpoint(
+        projection: ConstructionProductionProjection,
+        *,
+        checkpoint_id: str,
+        last_global_sequence: int,
+    ) -> dict[str, object]:
+        if not checkpoint_id or last_global_sequence < 0:
+            raise ValueError("construction_projection_checkpoint_invalid")
+        state = {
+            "runs": {key: value.model_dump(mode="json") for key, value in projection.runs.items()},
+            "facilities": {key: value.model_dump(mode="json") for key, value in projection.facilities.items()},
+            "recipes_by_run": {key: value.model_dump(mode="json") for key, value in projection.recipes_by_run.items()},
+            "maintenance_states": {key: value.model_dump(mode="json") for key, value in projection.maintenance_states.items()},
+            "operational_verifications": {
+                key: value.model_dump(mode="json") for key, value in projection.operational_verifications.items()
+            },
+            "mill_flour_output_certifications": {
+                key: value.model_dump(mode="json")
+                for key, value in projection.mill_flour_output_certifications.items()
+            },
+            "production_output_certifications": {
+                key: value.model_dump(mode="json")
+                for key, value in projection.production_output_certifications.items()
+            },
+            "jobs": {key: value.model_dump(mode="json") for key, value in projection.jobs.items()},
+        }
+        digest_payload = {
+            "last_global_sequence": last_global_sequence,
+            "source_revision_vector": dict(projection.source_revision_vector),
+            "state": state,
+        }
+        projection_hash = "sha256:" + hashlib.sha256(
+            json.dumps(digest_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+        ).hexdigest()
+        return {
+            "checkpoint_schema_version": 1,
+            "checkpoint_id": checkpoint_id,
+            "projector_id": "construction_production",
+            "projector_version": "1",
+            "last_global_sequence": last_global_sequence,
+            "source_revision_vector": dict(projection.source_revision_vector),
+            "state": state,
+            "projection_hash": projection_hash,
+        }
+
+    @staticmethod
+    def restore_checkpoint(snapshot: Mapping[str, object]) -> ConstructionProductionProjection:
+        if snapshot.get("checkpoint_schema_version") != 1:
+            raise ValueError("construction_projection_checkpoint_unsupported")
+        if snapshot.get("projector_id") != "construction_production" or snapshot.get("projector_version") != "1":
+            raise ValueError("construction_projection_checkpoint_unsupported")
+        state = snapshot.get("state")
+        source_revision_vector = snapshot.get("source_revision_vector")
+        last_global_sequence = snapshot.get("last_global_sequence")
+        if (
+            isinstance(last_global_sequence, bool)
+            or not isinstance(last_global_sequence, int)
+            or last_global_sequence < 0
+            or not isinstance(state, Mapping)
+            or not isinstance(source_revision_vector, Mapping)
+        ):
+            raise ValueError("construction_projection_checkpoint_invalid")
+        if any(
+            not isinstance(key, str)
+            or not key
+            or isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 0
+            for key, value in source_revision_vector.items()
+        ):
+            raise ValueError("construction_projection_checkpoint_invalid")
+        digest_payload = {
+            "last_global_sequence": last_global_sequence,
+            "source_revision_vector": dict(source_revision_vector),
+            "state": dict(state),
+        }
+        expected_hash = "sha256:" + hashlib.sha256(
+            json.dumps(digest_payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+        ).hexdigest()
+        if snapshot.get("projection_hash") != expected_hash:
+            raise ValueError("construction_projection_checkpoint_digest_mismatch")
+        try:
+            def models(key: str, model_type: type[StrictGameplayModel]) -> dict[str, object]:
+                values = state.get(key, {})
+                if not isinstance(values, Mapping):
+                    raise ValueError("construction_projection_checkpoint_invalid")
+                return {str(ref): model_type.model_validate(value) for ref, value in values.items()}
+
+            return ConstructionProductionProjection(
+                runs=MappingProxyType(models("runs", ProductionRun)),
+                source_revision_vector=MappingProxyType(
+                    {str(key): int(value) for key, value in source_revision_vector.items()}
+                ),
+                facilities=MappingProxyType(models("facilities", Facility)),
+                recipes_by_run=MappingProxyType(models("recipes_by_run", CommittedProductionRecipe)),
+                maintenance_states=MappingProxyType(models("maintenance_states", ConstructionMaintenanceState)),
+                operational_verifications=MappingProxyType(
+                    models("operational_verifications", FacilityOperationalVerification)
+                ),
+                mill_flour_output_certifications=MappingProxyType(
+                    models("mill_flour_output_certifications", MillFlourOutputCertification)
+                ),
+                production_output_certifications=MappingProxyType(
+                    models("production_output_certifications", ProductionOutputCertificationRecord)
+                ),
+                jobs=MappingProxyType(models("jobs", ConstructionJob)),
+            )
+        except (TypeError, ValueError, KeyError) as exc:
+            raise ValueError("construction_projection_checkpoint_invalid") from exc
 
 
 class ConstructionProductionAuthority:
@@ -1278,6 +2170,445 @@ class ConstructionProductionAuthority:
             return self._projector.rebuild(events)
         checkpoint = self._projector.rebuild(events[:checkpoint_at])
         return self._projector.rebuild(events[checkpoint_at:], checkpoint=checkpoint)
+
+    def start_construction_job(
+        self,
+        *,
+        plot: Plot,
+        blueprint: Blueprint,
+        content: object | None = None,
+        job_ref: str,
+        anchor: tuple[int, int],
+        footprint: tuple[int, int],
+        orientation: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+        permit_evidence: Mapping[str, object] | None = None,
+        reservation_refs: tuple[str, ...] = (),
+        reservation_requirements: tuple[object, ...] = (),
+        reservation_evidence: Mapping[str, Mapping[str, object]] | None = None,
+        binding_pins: Mapping[str, str] | None = None,
+        _resolved_binding: object | None = None,
+    ) -> AppendBatchResult:
+        """Append one deterministic plot-scoped Construction job start."""
+        from app.gameplay.construction_production_content import ComponentContent, occupied_grid_cells
+
+        stream_id = f"gameplay:construction_production:plot:{plot.plot_ref}"
+        if not job_ref or not command_id or not causation_id or not correlation_id:
+            return self._rejected_append(command_id or "construction-job", "construction_job_reference_invalid")
+        if binding_pins is not None and _resolved_binding is None:
+            return self._rejected_append(command_id, "construction_job_binding_pins_invalid")
+        if reservation_evidence is not None and not reservation_requirements:
+            return self._rejected_append(command_id, "construction_job_reservation_evidence_unbound")
+        if binding_pins is not None and (
+            any(key not in _CONSTRUCTION_BINDING_PIN_KEYS for key in binding_pins)
+            or any(not isinstance(key, str) or not isinstance(value, str) or not value for key, value in binding_pins.items())
+        ):
+            return self._rejected_append(command_id, "construction_job_binding_pins_invalid")
+        if _resolved_binding is not None:
+            expected_binding_pins = {
+                "package_revision": str(getattr(_resolved_binding, "package_revision", "")),
+                "content_digest": str(getattr(_resolved_binding, "content_digest", "")),
+                "declaration_digest": str(getattr(_resolved_binding, "declaration_digest", "")),
+                "descriptor_ref": str(getattr(_resolved_binding, "descriptor_ref", "")),
+                "descriptor_revision": str(getattr(_resolved_binding, "descriptor_revision", "")),
+                "active_patch_set_revision": str(getattr(_resolved_binding, "active_patch_set_revision", "")),
+                "family_content_digest": str(getattr(_resolved_binding, "family_content_digest", "") or ""),
+                "binding_ref": str(getattr(_resolved_binding, "binding_ref", "")),
+            }
+            if dict(binding_pins or {}) != expected_binding_pins:
+                return self._rejected_append(command_id, "construction_job_binding_pins_invalid")
+        if orientation not in {0, 90, 180, 270} or len(footprint) != 2 or footprint[0] <= 0 or footprint[1] <= 0:
+            return self._rejected_append(command_id, "construction_job_placement_invalid")
+        if reservation_requirements:
+            from app.gameplay.construction_production_content import validate_reservation_requirements
+
+            try:
+                validate_reservation_requirements(
+                    requirements=tuple(reservation_requirements),
+                    provided_refs=tuple(sorted(reservation_refs)),
+                    reservation_evidence=reservation_evidence,
+                )
+                _validate_owner_reservation_source_events(
+                    store=self._store,
+                    requirements=tuple(reservation_requirements),
+                    reservation_evidence=reservation_evidence,
+                )
+            except ValueError as exc:
+                return self._rejected_append(
+                    command_id,
+                    "construction_job_reservation_evidence_source_missing"
+                    if "source_missing" in str(exc)
+                    else "construction_job_reservation_evidence_conflict"
+                    if "evidence" in str(exc)
+                    else "construction_job_reservation_missing"
+                    if "missing" in str(exc)
+                    else "construction_job_reservation_invalid",
+                )
+        if content is not None:
+            if (
+                getattr(content, "blueprint_ref", None) != blueprint.blueprint_ref
+                or getattr(content, "facility_kind", None) != blueprint.facility_kind
+                or getattr(content, "required_permit_ref", None) != blueprint.required_permit_ref
+                or tuple(getattr(content, "allowed_orientations", ())) != tuple(
+                    sorted(set(getattr(content, "allowed_orientations", ())))
+                )
+            ):
+                return self._rejected_append(command_id, "construction_job_blueprint_binding_conflict")
+        content_components = tuple(getattr(content, "components", ())) if content is not None else ()
+        if content_components:
+            component_refs = tuple(component.component_ref for component in content_components)
+            if component_refs != tuple(sorted(set(component_refs))):
+                return self._rejected_append(command_id, "construction_job_blueprint_binding_conflict")
+        else:
+            component_refs = ()
+        canonical_key = f"construction:job-start:{plot.plot_ref}:{blueprint.blueprint_ref}:{job_ref}:v1"
+        if idempotency_key != canonical_key:
+            return self._rejected_append(command_id, "construction_job_idempotency_key_invalid")
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        projection = self.projector()
+        if job_ref in projection.jobs:
+            return self._rejected_append(command_id, "construction_job_duplicate")
+        components = content_components or (
+            ComponentContent(
+                component_ref="component:footprint@1",
+                component_kind="footprint",
+                width=footprint[0],
+                depth=footprint[1],
+            ),
+        )
+        occupied = occupied_grid_cells(anchor=anchor, components=components, orientation=orientation)
+        if any(
+            set(occupied) & set(job.occupied_cells)
+            for job in projection.jobs.values()
+            if job.plot_ref == plot.plot_ref and job.status == "started"
+        ):
+            return self._rejected_append(command_id, "construction_job_placement_conflict")
+        batch = build_atomic_event_batch(
+            command_id=command_id,
+            principal_ref=self._PRINCIPAL,
+            stream_id=stream_id,
+            expected_revision=self._store.get_stream_head(stream_id),
+            event_specs=[
+                (
+                    "gameplay.construction_production.construction_job_started@1",
+                    {
+                        "job_ref": job_ref,
+                        "plot_ref": plot.plot_ref,
+                        "blueprint_ref": blueprint.blueprint_ref,
+                        "facility_kind": blueprint.facility_kind,
+                        "anchor_x": anchor[0],
+                        "anchor_y": anchor[1],
+                        "orientation": orientation,
+                        "occupied_cells": tuple(sorted(occupied)),
+                        "plot_revision": plot.revision,
+                        "reservation_refs": reservation_refs,
+                        **(
+                            {"reservation_evidence": dict(reservation_evidence)}
+                            if reservation_evidence is not None
+                            else {}
+                        ),
+                        "visibility_policy": "project",
+                        "binding_pins": dict(binding_pins or {}),
+                        **dict(binding_pins or {}),
+                        "component_refs": component_refs,
+                        **(
+                            {
+                                "material_requirements": dict(getattr(content, "material_requirements", {})),
+                                "tool_refs": tuple(getattr(content, "tool_refs", ())),
+                                "qualification_refs": tuple(getattr(content, "qualification_refs", ())),
+                                "duration_ticks": int(getattr(content, "duration_ticks")),
+                            }
+                            if content_components
+                            else {}
+                        ),
+                        **(
+                            {"permit_evidence": dict(permit_evidence)}
+                            if permit_evidence is not None
+                            else {}
+                        ),
+                        **(
+                            {"zoning_ref": str(getattr(content, "zoning_ref"))}
+                            if getattr(content, "zoning_ref", None) is not None
+                            else {}
+                        ),
+                    },
+                )
+            ],
+            idempotency_key=idempotency_key,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            pinned_revisions={
+                "plot": plot.revision,
+                **(
+                    {
+                        f"reservation:{reservation_ref}": int(evidence["revision"])
+                        for reservation_ref, evidence in (reservation_evidence or {}).items()
+                        if isinstance(evidence.get("revision"), int)
+                        and not isinstance(evidence.get("revision"), bool)
+                    }
+                ),
+            },
+        )
+        return self._store.append_batch(batch)
+
+    def start_packaged_construction_job(
+        self,
+        *,
+        plot: Plot,
+        package_revision: str,
+        definition_ref: str,
+        job_ref: str,
+        anchor: tuple[int, int],
+        orientation: int,
+        command_id: str,
+        causation_id: str,
+        correlation_id: str,
+        permit_evidence: Mapping[str, object] | None = None,
+        reservation_refs: tuple[str, ...] = (),
+        reservation_requirements: tuple[object, ...] = (),
+        reservation_evidence: Mapping[str, Mapping[str, object]] | None = None,
+    ) -> AppendBatchResult:
+        """Resolve one BlueprintContent from the active immutable package."""
+        from app.gameplay.construction_production_content import BlueprintContent
+
+        registry = self._package_registry
+        active = getattr(registry, "active_patch_set", None) if registry is not None else None
+        if active is None or package_revision not in tuple(active.patch_revision_ids):
+            return self._rejected_append(command_id, "construction_job_package_inactive")
+        try:
+            manifests = tuple(
+                manifest
+                for manifest in registry.active_manifests(active.active_patch_set_revision)
+                if manifest.patch_revision_id == package_revision
+            )
+        except Exception:
+            return self._rejected_append(command_id, "construction_job_package_inactive")
+        if len(manifests) != 1:
+            return self._rejected_append(command_id, "construction_job_package_ambiguous")
+        manifest = manifests[0]
+        extension = manifest.platform_extension
+        if extension is None:
+            return self._rejected_append(command_id, "construction_job_package_invalid")
+        definitions = tuple(item for item in extension.package_definitions if item.definition_ref == definition_ref)
+        if len(definitions) != 1:
+            return self._rejected_append(command_id, "construction_job_blueprint_unknown")
+        declaration_matches = tuple(
+            declaration
+            for declaration in extension.outcome_declarations
+            if definition_ref in declaration.definition_refs
+        )
+        binding_matches = tuple(
+            binding
+            for binding in active.capability_bindings
+            if any(declaration.declaration_ref == binding.declaration_ref for declaration in declaration_matches)
+        )
+        if len(declaration_matches) != 1 or len(binding_matches) != 1:
+            return self._rejected_append(command_id, "construction_job_binding_ambiguous")
+        declaration = declaration_matches[0]
+        binding = binding_matches[0]
+        requests = tuple(
+            request
+            for request in extension.capability_binding_requests
+            if request.declaration_ref == declaration.declaration_ref
+            and request.binding_ref == binding.binding_ref
+        )
+        if (
+            len(requests) != 1
+            or binding.definition_ref != definition_ref
+            or binding.package_revision != manifest.patch_revision_id
+            or binding.content_digest != manifest.content_digest
+            or binding.active_patch_set_revision != active.active_patch_set_revision
+        ):
+            return self._rejected_append(command_id, "construction_job_binding_conflict")
+        try:
+            content = BlueprintContent.from_package_definition(definitions[0])
+            blueprint = content.to_existing_blueprint()
+        except Exception:
+            return self._rejected_append(command_id, "construction_job_blueprint_invalid")
+        if orientation not in content.allowed_orientations:
+            return self._rejected_append(command_id, "construction_job_orientation_invalid")
+        from app.gameplay.construction_production_content import validate_permit_evidence
+
+        try:
+            validate_permit_evidence(
+                permit_evidence=permit_evidence,
+                required_permit_ref=content.required_permit_ref,
+                jurisdiction_ref=plot.jurisdiction_ref,
+                required_zoning_ref=getattr(content, "zoning_ref", None),
+            )
+        except ValueError as exc:
+            return self._rejected_append(command_id, str(exc))
+        return self.start_construction_job(
+            plot=plot,
+            blueprint=blueprint,
+            content=content,
+            job_ref=job_ref,
+            anchor=anchor,
+            footprint=(content.footprint.width, content.footprint.depth),
+            orientation=orientation,
+            command_id=command_id,
+            idempotency_key=(
+                f"construction:job-start:{plot.plot_ref}:{blueprint.blueprint_ref}:{job_ref}:v1"
+            ),
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            permit_evidence=permit_evidence,
+            reservation_refs=reservation_refs,
+            reservation_requirements=reservation_requirements,
+            reservation_evidence=reservation_evidence,
+            binding_pins={
+                "package_revision": manifest.patch_revision_id,
+                "content_digest": manifest.content_digest,
+                "declaration_digest": declaration.declaration_digest,
+                "descriptor_ref": binding.descriptor_ref,
+                "descriptor_revision": binding.descriptor_revision,
+                "active_patch_set_revision": binding.active_patch_set_revision,
+                "family_content_digest": binding.family_content_digest or "",
+                "binding_ref": binding.binding_ref,
+            },
+            _resolved_binding=binding,
+        )
+
+    def complete_construction_job(
+        self,
+        *,
+        job_ref: str,
+        expected_plot_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ) -> AppendBatchResult:
+        """Append the terminal completion event for one started job."""
+        projection = self.projector()
+        job = projection.jobs.get(job_ref)
+        if job is None:
+            return self._rejected_append(command_id, "construction_job_source_missing")
+        canonical_key = f"construction:job-complete:{job_ref}:{job.plot_revision}:v1"
+        if idempotency_key != canonical_key:
+            return self._rejected_append(command_id, "construction_job_idempotency_key_invalid")
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        if job.status != "started":
+            return self._rejected_append(command_id, "construction_job_terminal")
+        if expected_plot_revision != job.plot_revision:
+            return self._rejected_append(command_id, "construction_job_revision_conflict")
+        stream_id = f"gameplay:construction_production:plot:{job.plot_ref}"
+        batch = build_atomic_event_batch(
+            command_id=command_id,
+            principal_ref=self._PRINCIPAL,
+            stream_id=stream_id,
+            expected_revision=self._store.get_stream_head(stream_id),
+            event_specs=[
+                (
+                    "gameplay.construction_production.construction_job_completed@1",
+                    {
+                        "job_ref": job_ref,
+                        "plot_ref": job.plot_ref,
+                        "blueprint_ref": job.blueprint_ref,
+                        "plot_revision": job.plot_revision,
+                        "visibility_policy": "project",
+                        "reservation_refs": tuple(job.reservation_refs),
+                        "reservation_evidence": dict(job.reservation_evidence),
+                        **({"binding_pins": dict(job.binding_pins)} if job.binding_pins else {}),
+                        **({"permit_evidence": dict(job.permit_evidence)} if job.permit_evidence else {}),
+                        **({"component_refs": tuple(job.component_refs)} if job.component_refs else {}),
+                        **({"zoning_ref": job.zoning_ref} if job.zoning_ref is not None else {}),
+                        **(
+                            {
+                                "material_requirements": dict(job.material_requirements),
+                                "tool_refs": tuple(job.tool_refs),
+                                "qualification_refs": tuple(job.qualification_refs),
+                                "duration_ticks": job.duration_ticks,
+                            }
+                            if job.duration_ticks is not None
+                            else {}
+                        ),
+                    },
+                )
+            ],
+            idempotency_key=idempotency_key,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            pinned_revisions={"plot": job.plot_revision},
+        )
+        return self._store.append_batch(batch)
+
+    def fail_construction_job(
+        self,
+        *,
+        job_ref: str,
+        expected_plot_revision: int,
+        failure_reason: str,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ) -> AppendBatchResult:
+        """Append one terminal Construction Job failure without compensation."""
+        projection = self.projector()
+        job = projection.jobs.get(job_ref)
+        if job is None:
+            return self._rejected_append(command_id, "construction_job_source_missing")
+        if not failure_reason:
+            return self._rejected_append(command_id, "construction_job_failure_reason_invalid")
+        canonical_key = f"construction:job-fail:{job_ref}:{job.plot_revision}:v1"
+        if idempotency_key != canonical_key:
+            return self._rejected_append(command_id, "construction_job_idempotency_key_invalid")
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            prior = next((event for event in self._store.read_events() if event.event_id in set(existing.committed_event_ids)), None)
+            if prior is not None and prior.payload.get("failure_reason") == failure_reason:
+                return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._rejected_append(command_id, "idempotency_key_reused")
+        if job.status != "started":
+            return self._rejected_append(command_id, "construction_job_terminal")
+        if expected_plot_revision != job.plot_revision:
+            return self._rejected_append(command_id, "construction_job_revision_conflict")
+        stream_id = f"gameplay:construction_production:plot:{job.plot_ref}"
+        payload: dict[str, object] = {
+            "job_ref": job_ref,
+            "plot_ref": job.plot_ref,
+            "blueprint_ref": job.blueprint_ref,
+            "plot_revision": job.plot_revision,
+            "failure_reason": failure_reason,
+            "visibility_policy": "project",
+            "terminal": "v1_terminal_no_compensation",
+            "reservation_refs": tuple(job.reservation_refs),
+            "reservation_evidence": dict(job.reservation_evidence),
+            **({"binding_pins": dict(job.binding_pins)} if job.binding_pins else {}),
+            **({"permit_evidence": dict(job.permit_evidence)} if job.permit_evidence else {}),
+            **({"component_refs": tuple(job.component_refs)} if job.component_refs else {}),
+            **({"zoning_ref": job.zoning_ref} if job.zoning_ref is not None else {}),
+            **(
+                {
+                    "material_requirements": dict(job.material_requirements),
+                    "tool_refs": tuple(job.tool_refs),
+                    "qualification_refs": tuple(job.qualification_refs),
+                    "duration_ticks": job.duration_ticks,
+                }
+                if job.duration_ticks is not None
+                else {}
+            ),
+        }
+        batch = build_atomic_event_batch(
+            command_id=command_id,
+            principal_ref=self._PRINCIPAL,
+            stream_id=stream_id,
+            expected_revision=self._store.get_stream_head(stream_id),
+            event_specs=[("gameplay.construction_production.construction_job_failed@1", payload)],
+            idempotency_key=idempotency_key,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            pinned_revisions={"plot": job.plot_revision},
+        )
+        return self._store.append_batch(batch)
 
     @staticmethod
     def facility_operational_verification_receipt_for(*, result: AppendBatchResult, scope: str) -> SettlementReceipt:
@@ -1483,11 +2814,23 @@ class ConstructionProductionAuthority:
         facility = projection.facilities.get(facility_ref)
         run = projection.runs.get(run_ref)
         started_events = [
-            event for event in self._store.read_stream(stream_id)
+            self._store.get_event(event.event_id)
+            for event in self._store.read_events()
+            if event.stream_id == stream_id
             if event.event_type == "gameplay.construction_production.run_started"
             and event.payload.get("run_ref") == run_ref
         ]
         started = started_events[-1] if started_events else None
+        if (
+            started is None
+            or started.payload.get("failure_policy_mode") not in {"release", "loss", "rework", "terminal"}
+            or not isinstance(started.payload.get("failure_policy_revision"), str)
+            or not started.payload.get("failure_policy_revision")
+        ):
+            return self._rejected_append(
+                typed_intent.command_id,
+                "production_output_certification_failure_policy_missing",
+            )
         if (
             facility is None
             or run is None
@@ -1530,6 +2873,26 @@ class ConstructionProductionAuthority:
         if len(candidates) != 1:
             return self._rejected_append(typed_intent.command_id, "production_output_certification_binding_ambiguous")
         manifest, declaration, binding, request, definition, content = candidates[0]
+        if (
+            finished.payload.get("output_quantity") is not None
+            and finished.payload.get("output_quantity") != content.quantity
+        ):
+            return self._rejected_append(
+                typed_intent.command_id,
+                "production_output_certification_quantity_conflict",
+            )
+        source_quality = finished.payload.get("output_quality")
+        if source_quality is not None:
+            if content.quality_policy_revision_ref is None:
+                return self._rejected_append(
+                    typed_intent.command_id,
+                    "production_output_certification_quality_conflict",
+                )
+            if not (content.minimum_quality <= float(source_quality) <= content.maximum_quality):
+                return self._rejected_append(
+                    typed_intent.command_id,
+                    "production_output_certification_quality_conflict",
+                )
         if not _closed_family_binding_is_valid(
             family_ref="production_output_certification@1",
             manifest=manifest,
@@ -1581,8 +2944,27 @@ class ConstructionProductionAuthority:
                 "recipe_ref": run.recipe_ref,
                 "output_item": run.output_item,
                 "quantity": content.quantity,
+                **(
+                    {"output_quality": float(finished.payload["output_quality"])}
+                    if finished.payload.get("output_quality") is not None
+                    else {}
+                ),
                 "source_run_finished_event_id": finished.event_id,
                 "source_run_finished_revision": finished.stream_revision,
+                **(
+                    {
+                        "failure_policy_mode": started.payload["failure_policy_mode"],
+                        "failure_policy_revision": started.payload["failure_policy_revision"],
+                        "source_provenance": {
+                            "run_finished_event_id": finished.event_id,
+                            "failure_policy_mode": started.payload["failure_policy_mode"],
+                            "failure_policy_revision": started.payload["failure_policy_revision"],
+                        },
+                    }
+                    if started.payload.get("failure_policy_mode") is not None
+                    and started.payload.get("failure_policy_revision") is not None
+                    else {}
+                ),
                 "expected_stream_revision": typed_intent.expected_stream_revision,
                 "facility_revision": facility.revision,
                 "source_revision_vector": {"run_finished": finished.stream_revision, "facility": facility.revision, "stream_head": typed_intent.expected_stream_revision},
@@ -3169,6 +4551,8 @@ class ConstructionProductionAuthority:
             or facility.revision != typed_intent.expected_facility_revision
         ):
             return self._rejected_append(typed_intent.command_id, "facility_lifecycle_transition_revision_conflict")
+        if any(run.facility_ref == facility.facility_ref and run.status == "started" for run in self.projector().runs.values()):
+            return self._rejected_append(typed_intent.command_id, "construction_mill_decommission_active_run")
         envelope = GameplayCommandEnvelope(
             command_id=typed_intent.command_id,
             command_type="gameplay.construction_production.facility_lifecycle_transition",
@@ -4111,6 +5495,8 @@ class ConstructionProductionAuthority:
     ) -> AppendBatchResult:
         if facility.plot_ref != plot.plot_ref or facility.condition <= 0:
             raise ValueError("facility_acquisition_invalid")
+        if facility.lifecycle_status == "decommissioned":
+            raise ValueError("facility_acquisition_lifecycle_invalid")
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if existing is not None:
             return existing
@@ -4152,6 +5538,8 @@ class ConstructionProductionAuthority:
         causation_id: str,
         correlation_id: str,
         reservation_refs: tuple[str, ...] = (),
+        reservation_requirements: tuple[object, ...] = (),
+        reservation_evidence: Mapping[str, Mapping[str, object]] | None = None,
         worker_contribution_refs: tuple[WorkerContributionRef, ...] = (),
         due_completion_policy_revision: str = "1",
         recipe_provenance: Mapping[str, str] | None = None,
@@ -4159,6 +5547,53 @@ class ConstructionProductionAuthority:
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if existing is not None:
             return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        if facility.condition <= 0:
+            raise ValueError("facility_unavailable")
+        if facility.lifecycle_status == "decommissioned":
+            return self._rejected_append(command_id, "facility_lifecycle_decommissioned")
+        current_facility = self.projector().facilities.get(facility.facility_ref)
+        if current_facility is not None:
+            if current_facility.revision != facility.revision:
+                return self._rejected_append(command_id, "construction_run_facility_revision_conflict")
+            if (
+                current_facility.plot_ref != facility.plot_ref
+                or current_facility.facility_kind != facility.facility_kind
+                or current_facility.lifecycle_status != facility.lifecycle_status
+                or abs(current_facility.condition - facility.condition) > 1e-9
+            ):
+                return self._rejected_append(command_id, "construction_run_facility_source_conflict")
+        if reservation_evidence is not None and not reservation_requirements:
+            return self._rejected_append(command_id, "construction_run_reservation_evidence_unbound")
+        if reservation_requirements:
+            from app.gameplay.construction_production_content import validate_reservation_requirements
+
+            try:
+                validate_reservation_requirements(
+                    requirements=tuple(reservation_requirements),
+                    provided_refs=tuple(sorted(reservation_refs)),
+                    reservation_evidence=reservation_evidence,
+                )
+                _validate_owner_reservation_source_events(
+                    store=self._store,
+                    requirements=tuple(reservation_requirements),
+                    reservation_evidence=reservation_evidence,
+                )
+            except ValueError as exc:
+                code = (
+                    "construction_run_reservation_evidence_source_missing"
+                    if "source_missing" in str(exc)
+                    else "construction_run_reservation_evidence_conflict"
+                    if "evidence" in str(exc)
+                    else "construction_run_reservation_invalid"
+                )
+                return self._rejected_append(command_id, code)
+        active_slot_count = sum(
+            1
+            for existing_run in self.projector().runs.values()
+            if existing_run.facility_ref == facility.facility_ref and existing_run.status == "started"
+        )
+        if active_slot_count >= facility.slot_capacity:
+            return self._rejected_append(command_id, "slot_capacity_exceeded")
         run = self.start_run(
             facility=facility,
             recipe=recipe,
@@ -4166,6 +5601,8 @@ class ConstructionProductionAuthority:
             tick=tick,
             reservation_refs=reservation_refs,
             worker_contribution_refs=worker_contribution_refs,
+            active_slot_count=active_slot_count,
+            slot_capacity=facility.slot_capacity,
         )
         stream_id = f"gameplay:construction_production:{facility.facility_ref}"
         batch = build_atomic_event_batch(
@@ -4183,15 +5620,54 @@ class ConstructionProductionAuthority:
                         "started_tick": run.started_tick,
                         "finish_tick": run.finish_tick,
                         "reservation_refs": run.reservation_refs,
+                        **(
+                            {"reservation_evidence": dict(reservation_evidence)}
+                            if reservation_evidence is not None
+                            else {}
+                        ),
                         "output_item": run.output_item,
                         "worker_contributions": [
                             contribution.model_dump(mode="json")
                             for contribution in worker_contribution_refs
                         ],
+                        **({"batch_size": run.batch_size} if run.batch_size != 1 else {}),
+                        **(
+                            {"quality_policy_revision": run.quality_policy_revision}
+                            if run.quality_policy_revision is not None
+                            else {}
+                        ),
+                        **({"wear_policy_ref": run.wear_policy_ref} if run.wear_policy_ref is not None else {}),
+                        **(
+                            {"failure_policy_mode": run.failure_policy_mode}
+                            if run.failure_policy_mode is not None
+                            else {}
+                        ),
+                        **(
+                            {"failure_policy_revision": run.failure_policy_revision}
+                            if run.failure_policy_revision is not None
+                            else {}
+                        ),
                         "recipe_snapshot": {
                             "recipe_ref": recipe.recipe_ref,
                             "output_item": recipe.output_item,
                             "duration_ticks": recipe.duration_ticks,
+                            **({"batch_size": recipe.batch_size} if recipe.batch_size != 1 else {}),
+                            **(
+                                {"quality_policy_revision": recipe.quality_policy_revision}
+                                if recipe.quality_policy_revision is not None
+                                else {}
+                            ),
+                            **({"wear_policy_ref": recipe.wear_policy_ref} if recipe.wear_policy_ref is not None else {}),
+                            **(
+                                {"failure_policy_mode": recipe.failure_policy_mode}
+                                if recipe.failure_policy_mode is not None
+                                else {}
+                            ),
+                            **(
+                                {"failure_policy_revision": recipe.failure_policy_revision}
+                                if recipe.failure_policy_revision is not None
+                                else {}
+                            ),
                             **(dict(recipe_provenance) if recipe_provenance is not None else {}),
                         },
                         "due_obligation_id": ConstructionDueCompletionPolicy.obligation_id_for(
@@ -4205,7 +5681,18 @@ class ConstructionProductionAuthority:
             idempotency_key=idempotency_key,
             causation_id=causation_id,
             correlation_id=correlation_id,
-            pinned_revisions={"facility": facility.revision, "recipe": recipe.duration_ticks},
+            pinned_revisions={
+                "facility": facility.revision,
+                "recipe": recipe.duration_ticks,
+                **(
+                    {
+                        f"reservation:{reservation_ref}": int(evidence["revision"])
+                        for reservation_ref, evidence in (reservation_evidence or {}).items()
+                        if isinstance(evidence.get("revision"), int)
+                        and not isinstance(evidence.get("revision"), bool)
+                    }
+                ),
+            },
         )
         return self._store.append_batch(batch)
 
@@ -4285,9 +5772,13 @@ class ConstructionProductionAuthority:
                 except (TypeError, ValueError, GameplayPatchRuntimeError):
                     continue
                 if (
-                    content.recipe_schema_ref == "schema:recipe@1"
+                    content.recipe_schema_ref in {"schema:recipe@1", "schema:construction-recipe@1"}
                     and content.recipe_ref == typed_intent.recipe_ref
                     and content.facility_kind == facility.facility_kind
+                    and (
+                        facility.facility_definition_ref is None
+                        or content.facility_definition_ref == facility.facility_definition_ref
+                    )
                 ):
                     candidates.append((manifest, binding_matches[0], declaration, request, definitions[0], content))
 
@@ -4364,6 +5855,214 @@ class ConstructionProductionAuthority:
                 "descriptor_revision": binding.descriptor_revision,
             },
         )
+
+    def settle_recipe_production_finish(self, *, intent: object) -> AppendBatchResult:
+        """Finish one admitted construction recipe run using package-derived evidence."""
+        from app.gameplay.recipe_production_family import RecipeProductionContent, RecipeProductionFinishIntent
+
+        try:
+            typed = intent if isinstance(intent, RecipeProductionFinishIntent) else RecipeProductionFinishIntent.model_validate(intent)
+        except Exception:
+            return self._rejected_append(str(getattr(intent, "command_id", "recipe-production-finish")), "recipe_production_finish_intent_invalid")
+        registry = self._package_registry
+        active = getattr(registry, "active_patch_set", None) if registry is not None else None
+        if active is None:
+            return self._rejected_append(typed.command_id, "recipe_production_finish_package_inactive")
+        stream_id = f"gameplay:construction_production:{typed.facility_ref}"
+        projection = self.projector()
+        facility = projection.facilities.get(typed.facility_ref)
+        run = projection.runs.get(typed.run_ref)
+        committed_recipe = projection.recipes_by_run.get(typed.run_ref)
+        if facility is None or run is None:
+            return self._rejected_append(typed.command_id, "recipe_production_finish_source_missing")
+        if (
+            run.facility_ref != facility.facility_ref
+            or facility.revision != typed.expected_facility_revision
+            or typed.tick < run.finish_tick
+        ):
+            return self._rejected_append(typed.command_id, "recipe_production_finish_source_invalid")
+        try:
+            manifests = registry.active_manifests(active.active_patch_set_revision)
+        except Exception:
+            return self._rejected_append(typed.command_id, "recipe_production_finish_package_inactive")
+        candidates: list[tuple[object, object, object, object, object, RecipeProductionContent]] = []
+        for manifest in manifests:
+            extension = manifest.platform_extension
+            if extension is None:
+                continue
+            declarations = {item.declaration_ref: item for item in extension.outcome_declarations}
+            for request in extension.capability_binding_requests:
+                if request.capability_ref != "capability:recipe-production@1":
+                    continue
+                declaration = declarations.get(request.declaration_ref)
+                definitions = tuple(
+                    item for item in extension.package_definitions
+                    if declaration is not None and item.definition_ref in declaration.definition_refs
+                )
+                bindings = tuple(
+                    item for item in active.capability_bindings
+                    if item.binding_ref == request.binding_ref and item.package_revision == manifest.patch_revision_id
+                )
+                if declaration is None or len(definitions) != 1 or len(bindings) != 1:
+                    continue
+                try:
+                    content = RecipeProductionContent.from_package_definition(definitions[0])
+                except Exception:
+                    continue
+                binding_candidate = bindings[0] if len(bindings) == 1 else None
+                if (
+                    content.recipe_ref == run.recipe_ref
+                    and content.facility_kind == facility.facility_kind
+                    and (
+                        committed_recipe is None
+                        or committed_recipe.package_revision is None
+                        or committed_recipe.package_revision == manifest.patch_revision_id
+                    )
+                    and (
+                        committed_recipe is None
+                        or committed_recipe.content_digest is None
+                        or committed_recipe.content_digest == manifest.content_digest
+                    )
+                    and (
+                        committed_recipe is None
+                        or committed_recipe.declaration_digest is None
+                        or (
+                            binding_candidate is not None
+                            and committed_recipe.declaration_digest == binding_candidate.declaration_digest
+                        )
+                    )
+                ):
+                    candidates.append((manifest, bindings[0], declaration, request, definitions[0], content))
+        if not candidates:
+            return self._rejected_append(typed.command_id, "recipe_production_finish_content_unknown")
+        if len(candidates) != 1:
+            return self._rejected_append(typed.command_id, "recipe_production_finish_binding_ambiguous")
+        manifest, binding, declaration, request, definition, content = candidates[0]
+        if not _closed_family_binding_is_valid(
+            family_ref="recipe_production@1",
+            manifest=manifest,
+            declaration=declaration,
+            request=request,
+            definition=definition,
+            binding=binding,
+            active_set_revision=active.active_patch_set_revision,
+            typed_content=content,
+        ):
+            return self._rejected_append(typed.command_id, "recipe_production_finish_binding_invalid")
+        recipe = content.to_existing_recipe()
+        idempotency_key = (
+            f"construction:recipe-production-finish:{binding.binding_ref}:{manifest.patch_revision_id}:"
+            f"{run.run_ref}:{typed.expected_stream_revision}:v1"
+        )
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            if len(existing.committed_event_ids) != 1:
+                return self._rejected_append(typed.command_id, "recipe_production_finish_idempotency_reused")
+            prior = self._store.get_event(existing.committed_event_ids[0])
+            if prior.payload.get("run_ref") != run.run_ref or prior.payload.get("completed_tick") != typed.tick:
+                return self._rejected_append(typed.command_id, "recipe_production_finish_idempotency_reused")
+            return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        if run.status != "started":
+            return self._rejected_append(typed.command_id, "recipe_production_finish_terminal")
+        if self._store.get_stream_head(stream_id) != typed.expected_stream_revision:
+            return self._rejected_append(typed.command_id, "recipe_production_finish_revision_conflict")
+        return self.settle_finish_run(
+            run,
+            tick=typed.tick,
+            recipe=recipe,
+            command_id=typed.command_id,
+            idempotency_key=idempotency_key,
+            causation_id=typed.causation_id,
+            correlation_id=typed.correlation_id,
+            output_quantity=recipe.output_quantity,
+            output_quality=recipe.output_quality,
+            recipe_provenance={
+                "package_revision": manifest.patch_revision_id,
+                "content_digest": manifest.content_digest,
+                "declaration_digest": binding.declaration_digest,
+                "descriptor_ref": binding.descriptor_ref,
+                "descriptor_revision": binding.descriptor_revision,
+                "policy_revision": content.policy_revision_ref,
+            },
+        )
+
+    def settle_recipe_production_failure(self, *, intent: object) -> AppendBatchResult:
+        """Append one package-declared failure outcome for a started run."""
+        from app.gameplay.recipe_production_family import RecipeProductionFailureIntent
+
+        try:
+            typed = intent if isinstance(intent, RecipeProductionFailureIntent) else RecipeProductionFailureIntent.model_validate(intent)
+        except Exception:
+            return self._rejected_append(str(getattr(intent, "command_id", "recipe-production-failure")), "recipe_production_failure_intent_invalid")
+        stream_id = f"gameplay:construction_production:{typed.facility_ref}"
+        projection = self.projector()
+        facility = projection.facilities.get(typed.facility_ref)
+        run = projection.runs.get(typed.run_ref)
+        committed_recipe = projection.recipes_by_run.get(typed.run_ref)
+        if facility is None or run is None:
+            return self._rejected_append(typed.command_id, "recipe_production_failure_source_missing")
+        if run.facility_ref != facility.facility_ref or facility.revision != typed.expected_facility_revision:
+            return self._rejected_append(typed.command_id, "recipe_production_failure_source_conflict")
+        if run.failure_policy_mode is None or run.failure_policy_revision is None:
+            return self._rejected_append(typed.command_id, "recipe_production_failure_policy_missing")
+        if typed.tick < run.started_tick:
+            return self._rejected_append(typed.command_id, "recipe_production_failure_tick_invalid")
+        idempotency_key = (
+            f"construction:recipe-production-failure:{typed.facility_ref}:{run.run_ref}:"
+            f"{typed.expected_stream_revision}:{run.failure_policy_revision}:v1"
+        )
+        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            if len(existing.committed_event_ids) != 1:
+                return self._rejected_append(typed.command_id, "recipe_production_failure_idempotency_reused")
+            prior = self._store.get_event(existing.committed_event_ids[0])
+            if prior.payload.get("failure_reason") != typed.failure_reason:
+                return self._rejected_append(typed.command_id, "recipe_production_failure_idempotency_reused")
+            return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        if run.status != "started":
+            return self._rejected_append(typed.command_id, "recipe_production_failure_terminal")
+        if self._store.get_stream_head(stream_id) != typed.expected_stream_revision:
+            return self._rejected_append(typed.command_id, "recipe_production_failure_revision_conflict")
+        payload = {
+            "run_ref": run.run_ref,
+            "facility_ref": facility.facility_ref,
+            "recipe_ref": run.recipe_ref,
+            "failed_tick": typed.tick,
+            "failure_reason": typed.failure_reason,
+            "failure_mode": run.failure_policy_mode,
+            "failure_policy_revision": run.failure_policy_revision,
+            "reservation_refs": tuple(run.reservation_refs),
+            "reservation_evidence": dict(run.reservation_evidence),
+            "visibility_policy": "project",
+            "source_revision_vector": {
+                "run_started": committed_recipe.source_stream_revision if committed_recipe is not None else 1,
+                "facility": facility.revision,
+                "stream_head": typed.expected_stream_revision,
+            },
+            **(
+                {
+                    "package_revision": committed_recipe.package_revision,
+                    "content_digest": committed_recipe.content_digest,
+                    "declaration_digest": committed_recipe.declaration_digest,
+                    "descriptor_ref": committed_recipe.descriptor_ref,
+                    "descriptor_revision": committed_recipe.descriptor_revision,
+                }
+                if committed_recipe is not None and committed_recipe.package_revision is not None
+                else {}
+            ),
+        }
+        batch = build_atomic_event_batch(
+            command_id=typed.command_id,
+            principal_ref=self._PRINCIPAL,
+            stream_id=stream_id,
+            expected_revision=typed.expected_stream_revision,
+            event_specs=[("gameplay.construction_production.run_failed@1", payload)],
+            idempotency_key=idempotency_key,
+            causation_id=typed.causation_id,
+            correlation_id=typed.correlation_id,
+            pinned_revisions={"facility": facility.revision, "stream_head": typed.expected_stream_revision},
+        )
+        return self._store.append_batch(batch)
 
     def record_completed_work_evidence(
         self,
@@ -4550,12 +6249,44 @@ class ConstructionProductionAuthority:
         idempotency_key: str,
         causation_id: str,
         correlation_id: str,
+        output_quantity: int | None = None,
+        output_quality: float | None = None,
+        recipe_provenance: Mapping[str, str] | None = None,
     ) -> AppendBatchResult:
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if existing is not None:
             return existing
-        completed = self.finish_run(run, tick=tick, recipe=recipe)
+        current_run = self.projector().runs.get(run.run_ref)
+        if current_run is not None and current_run.model_dump(mode="json") != run.model_dump(mode="json"):
+            return self._rejected_append(command_id, "production_run_source_conflict")
+        if current_run is None:
+            return self._rejected_append(command_id, "production_run_source_missing")
+        completed = self.finish_run(
+            run,
+            tick=tick,
+            recipe=recipe,
+            output_quantity=output_quantity,
+            output_quality=output_quality,
+        )
         stream_id = f"gameplay:construction_production:{completed.facility_ref}"
+        finish_payload = {
+            "run_ref": completed.run_ref,
+            "facility_ref": completed.facility_ref,
+            "recipe_ref": completed.recipe_ref,
+            "completed_tick": tick,
+            "output_item": completed.output_item,
+            **(
+                {"output_quantity": completed.output_quantity}
+                if completed.output_quantity is not None
+                else {}
+            ),
+            **(
+                {"output_quality": completed.output_quality}
+                if completed.output_quality is not None
+                else {}
+            ),
+            **(dict(recipe_provenance) if recipe_provenance is not None else {}),
+        }
         batch = build_atomic_event_batch(
             command_id=command_id,
             principal_ref=self._PRINCIPAL,
@@ -4564,13 +6295,7 @@ class ConstructionProductionAuthority:
             event_specs=[
                 (
                     "gameplay.construction_production.run_finished",
-                    {
-                        "run_ref": completed.run_ref,
-                        "facility_ref": completed.facility_ref,
-                        "recipe_ref": completed.recipe_ref,
-                        "completed_tick": tick,
-                        "output_item": completed.output_item,
-                    },
+                    finish_payload,
                 )
             ],
             idempotency_key=idempotency_key,
@@ -4594,8 +6319,35 @@ class ConstructionProductionAuthority:
             raise ValueError("maintenance_obligation_required")
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if existing is not None:
-            return existing
+            if len(existing.committed_event_ids) != 1:
+                return self._rejected_append(command_id, "idempotency_key_reused")
+            try:
+                prior = self._store.get_event(existing.committed_event_ids[0])
+            except KeyError:
+                return self._rejected_append(command_id, "idempotency_key_reused")
+            if (
+                prior.event_type != "gameplay.construction_production.maintenance_obligation_created"
+                or prior.payload.get("run_ref") != run.run_ref
+                or prior.payload.get("obligation_ref") != obligation_ref
+                or prior.causation_id != causation_id
+                or prior.correlation_id != correlation_id
+            ):
+                return self._rejected_append(command_id, "idempotency_key_reused")
+            return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         stream_id = f"gameplay:construction_production:{run.facility_ref}"
+        facility = self.projector().facilities.get(run.facility_ref)
+        payload = {"run_ref": run.run_ref, "obligation_ref": obligation_ref}
+        if facility is not None:
+            payload.update(
+                {
+                    "facility_ref": facility.facility_ref,
+                    "project_ref": facility.plot_ref,
+                    "facility_revision": facility.revision,
+                    "maintenance_policy_ref": facility.maintenance_policy_ref,
+                    "expected_stream_revision": self._store.get_stream_head(stream_id),
+                    "visibility_policy": "project",
+                }
+            )
         batch = build_atomic_event_batch(
             command_id=command_id,
             principal_ref=self._PRINCIPAL,
@@ -4604,7 +6356,7 @@ class ConstructionProductionAuthority:
             event_specs=[
                 (
                     "gameplay.construction_production.maintenance_obligation_created",
-                    {"run_ref": run.run_ref, "obligation_ref": obligation_ref},
+                    payload,
                 )
             ],
             idempotency_key=idempotency_key,
@@ -5425,13 +7177,30 @@ class ConstructionProductionAuthority:
     ) -> OwnerAuthorizedFragment:
         completed = cls.finish_run(run, tick=tick, recipe=recipe)
         stream_id = f"gameplay:construction_production:{completed.facility_ref}"
+        finish_payload = {
+            "run_ref": completed.run_ref,
+            "facility_ref": completed.facility_ref,
+            "recipe_ref": completed.recipe_ref,
+            "completed_tick": tick,
+            "output_item": completed.output_item,
+            **(
+                {"output_quantity": completed.output_quantity}
+                if completed.output_quantity is not None
+                else {}
+            ),
+            **(
+                {"output_quality": completed.output_quality}
+                if completed.output_quality is not None
+                else {}
+            ),
+        }
         return OwnerAuthorizedFragment(
             fragment_id=f"fragment:production:due:{completed.run_ref}:{tick}",
             owner_principal_ref=cls._PRINCIPAL,
             source_rule_ref="construction-production:due-finish",
             expected_revisions={stream_id: expected_revision},
             pinned_revisions={"recipe": recipe.duration_ticks},
-            event_specs={stream_id: (("gameplay.construction_production.run_finished", {"run_ref": completed.run_ref, "facility_ref": completed.facility_ref, "recipe_ref": completed.recipe_ref, "completed_tick": tick, "output_item": completed.output_item}),)},
+            event_specs={stream_id: (("gameplay.construction_production.run_finished", finish_payload),)},
         )
 
     @classmethod
@@ -5517,9 +7286,17 @@ class ConstructionProductionAuthority:
         tick: int,
         reservation_refs: tuple[str, ...] = (),
         worker_contribution_refs: tuple[WorkerContributionRef, ...] = (),
+        active_slot_count: int = 0,
+        slot_capacity: int | None = None,
     ) -> ProductionRun:
         if facility.condition <= 0:
             raise ValueError("facility_unavailable")
+        if facility.lifecycle_status == "decommissioned":
+            raise ValueError("facility_lifecycle_decommissioned")
+        if active_slot_count < 0:
+            raise ValueError("slot_count_invalid")
+        if slot_capacity is not None and active_slot_count >= slot_capacity:
+            raise ValueError("slot_capacity_exceeded")
         return ProductionRun(
             run_ref=run_ref,
             facility_ref=facility.facility_ref,
@@ -5531,6 +7308,12 @@ class ConstructionProductionAuthority:
             worker_contribution_refs=tuple(
                 contribution.contribution_digest for contribution in worker_contribution_refs
             ),
+            batch_size=recipe.batch_size,
+            quality_policy_revision=recipe.quality_policy_revision,
+            wear_policy_ref=recipe.wear_policy_ref,
+            failure_policy_mode=recipe.failure_policy_mode,
+            failure_policy_revision=recipe.failure_policy_revision,
+            output_quantity=recipe.output_quantity,
         )
 
     @staticmethod
@@ -5550,12 +7333,35 @@ class ConstructionProductionAuthority:
         )
 
     @staticmethod
-    def finish_run(run: ProductionRun, *, tick: int, recipe: Recipe) -> ProductionRun:
+    def finish_run(
+        run: ProductionRun,
+        *,
+        tick: int,
+        recipe: Recipe,
+        output_quantity: int | None = None,
+        output_quality: float | None = None,
+    ) -> ProductionRun:
         if run.status != "started":
             raise ValueError("production_run_final")
+        if recipe.recipe_ref != run.recipe_ref:
+            raise ValueError("production_recipe_conflict")
+        if run.output_item is not None and recipe.output_item != run.output_item:
+            raise ValueError("production_output_identity_conflict")
         if tick < run.finish_tick:
             raise ValueError("production_not_due")
-        return run.model_copy(update={"status": "completed", "output_item": recipe.output_item}, deep=True)
+        if output_quantity is not None and output_quantity <= 0:
+            raise ValueError("production_output_quantity_invalid")
+        if output_quality is not None and not 0 <= output_quality <= 1:
+            raise ValueError("production_output_quality_invalid")
+        return run.model_copy(
+            update={
+                "status": "completed",
+                "output_item": recipe.output_item,
+                "output_quantity": output_quantity,
+                "output_quality": output_quality,
+            },
+            deep=True,
+        )
 
     @staticmethod
     def maintenance(run: ProductionRun, *, obligation_ref: str) -> ProductionRun:

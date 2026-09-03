@@ -95,12 +95,21 @@ class ProductionOutputCertificationContent(ClosedFamilyContent):
     output_item_definition_ref: str = Field(min_length=1)
     quantity: int = Field(gt=0)
     policy_revision_ref: str = Field(min_length=1)
+    quality_policy_revision_ref: str | None = None
+    minimum_quality: float | None = Field(default=None, ge=0, le=1)
+    maximum_quality: float | None = Field(default=None, ge=0, le=1)
 
     @model_validator(mode="after")
     def validate_slots(self) -> "ProductionOutputCertificationContent":
         _require_platform_ref(self.recipe_ref, prefix="recipe:")
         _require_platform_ref(self.output_item_definition_ref, prefix="item:")
         _require_platform_ref(self.policy_revision_ref, prefix="policy:")
+        if self.quality_policy_revision_ref is not None:
+            _require_platform_ref(self.quality_policy_revision_ref, prefix="policy:")
+            if self.minimum_quality is None or self.maximum_quality is None or self.minimum_quality > self.maximum_quality:
+                raise ValueError("production_output_certification_quality_policy_invalid")
+        elif self.minimum_quality is not None or self.maximum_quality is not None:
+            raise ValueError("production_output_certification_quality_policy_invalid")
         return self
 
 
@@ -152,7 +161,7 @@ class DeclaredExchangeContent(ClosedFamilyContent):
     tradeable_definition_ref: str | None = None
     service_definition_ref: str | None = None
     policy_revision_ref: str = Field(min_length=1)
-    eligibility_refs: tuple[str, ...] = ()
+    eligibility_refs: tuple[str, ...]
 
     @model_validator(mode="after")
     def validate_slots(self) -> "DeclaredExchangeContent":

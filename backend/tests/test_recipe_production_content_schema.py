@@ -106,3 +106,32 @@ def test_recipe_production_content_exposes_existing_recipe_fields_without_author
     recipe = content.to_existing_recipe()
     assert recipe.recipe_ref == "recipe:bread@1"
     assert recipe.output_item == "item:bread@1"
+
+
+def test_construction_recipe_schema_requires_explicit_batch_quality_wear_and_failure_policy() -> None:
+    with pytest.raises((ValidationError, ValueError), match="recipe_production_policy_required"):
+        RecipeProductionContent.model_validate(
+            _content(recipe_schema_ref="schema:construction-recipe@1")
+        )
+
+
+def test_construction_recipe_schema_preserves_explicit_runtime_policy_fields() -> None:
+    content = RecipeProductionContent.model_validate(
+        _content(
+            recipe_schema_ref="schema:construction-recipe@1",
+            batch_size=3,
+            quality_policy_revision_ref="policy:quality:bread@1",
+            wear_policy_ref="policy:wear:bakery@1",
+            failure_policy_mode="rework",
+            quality_value=0.8,
+            output_quantity=1,
+            failure_policy_revision_ref="policy:failure:rework@1",
+        )
+    )
+
+    recipe = content.to_existing_recipe()
+    assert recipe.batch_size == 3
+    assert recipe.quality_policy_revision == "policy:quality:bread@1"
+    assert recipe.wear_policy_ref == "policy:wear:bakery@1"
+    assert recipe.failure_policy_mode == "rework"
+    assert recipe.failure_policy_revision == "policy:failure:rework@1"
