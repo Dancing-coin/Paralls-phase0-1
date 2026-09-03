@@ -101,6 +101,22 @@ class RecordingPopulationCapability:
         return PopulationCycleResult(status="accepted", batch_ref=report.batch_ref, report=report, production_append_count=0)
 
 
+class GenericDefaultRecordingPopulationCapability(RecordingPopulationCapability):
+    def __init__(self) -> None:
+        super().__init__()
+        self.generic_calls = 0
+        self.cohort_calls = 0
+
+    def run_default_decision_cycle(self, cadence_input, read_set):
+        self.generic_calls += 1
+        report = PopulationBatchReport(batch_ref="batch:generic", read_set_digest=read_set.read_set_digest, result_digest="sha256:generic", budget_used=0, budget_remaining=cadence_input.budget)
+        return PopulationCycleResult(status="accepted", batch_ref=report.batch_ref, report=report, production_append_count=0)
+
+    def run_cohort_cycle(self, cadence_input, read_set):
+        self.cohort_calls += 1
+        return self.run_cycle(cadence_input, read_set)
+
+
 def test_missing_owner_is_zero_write() -> None:
     result = PopulationSimulationCapability(planner=PopulationPlanner(), seed_planner=CharacterSeedPlanner()).run_cycle(cadence_input(), read_set_with_supply_candidate())
     assert result.status == "owner_settlement_required"
@@ -223,6 +239,32 @@ def test_tick_routes_population_once() -> None:
     recorder = RecordingPopulationCapability()
     result = SimingRuntime(population_capability=recorder).tick([SimingInput(input_type="population_cadence_input", source_event=cadence_event())])
     assert recorder.calls == 1
+    assert result.read_model is not None
+
+
+def test_non_v1_population_cadence_defaults_to_generic_decision_surface() -> None:
+    recorder = GenericDefaultRecordingPopulationCapability()
+    event = cadence_event(cadence_id="cadence:generic:1", selector_revision="selector:generic:v1")
+    result = SimingRuntime(population_capability=recorder).tick(
+        [SimingInput(input_type="population_cadence_input", source_event=event)]
+    )
+    assert recorder.generic_calls == 1
+    assert recorder.cohort_calls == 0
+    assert result.read_model is not None
+
+
+def test_v1_population_cadence_keeps_cohort_fixture_path() -> None:
+    recorder = GenericDefaultRecordingPopulationCapability()
+    event = cadence_event(
+        cadence_id="cadence:cohort:bakery:W0",
+        selector_revision="selector:cohort-bakery:v1",
+        ruleset_revision="rules:cohort-bakery:v1",
+    )
+    result = SimingRuntime(population_capability=recorder).tick(
+        [SimingInput(input_type="population_cadence_input", source_event=event)]
+    )
+    assert recorder.generic_calls == 0
+    assert recorder.cohort_calls == 1
     assert result.read_model is not None
 
 

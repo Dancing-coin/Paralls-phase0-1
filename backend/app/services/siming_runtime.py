@@ -145,9 +145,16 @@ class SimingRuntime:
                     cadence = PopulationCadenceInput.from_authority_event(event)
                     read_set = self._population_read_set_builder(event, cadence)
                     generic_payload = event.payload.get("population_decision")
-                    if isinstance(generic_payload, dict) and callable(
-                        getattr(self._population_capability, "run_decision_cycle", None)
-                    ):
+                    generic_runner = getattr(self._population_capability, "run_decision_cycle", None)
+                    default_runner = getattr(self._population_capability, "run_default_decision_cycle", None)
+                    fixture_checker = getattr(self._population_capability, "is_v1_fixture", None)
+                    is_fixture = (
+                        bool(fixture_checker(read_set))
+                        if callable(fixture_checker)
+                        else cadence.cadence_id.startswith("cadence:cohort:")
+                    )
+                    generic_mode = isinstance(generic_payload, dict) or cadence.selector_revision.startswith("selector:generic:")
+                    if generic_mode and isinstance(generic_payload, dict) and callable(generic_runner):
                         policy_payload = generic_payload.get("policy") or generic_payload.get("decision_policy")
                         capability_payload = generic_payload.get("capabilities") or ()
                         policy = PopulationDecisionPolicy.model_validate(policy_payload)
@@ -156,9 +163,11 @@ class SimingRuntime:
                             for item in capability_payload
                             if isinstance(item, dict)
                         )
-                        cycle = self._population_capability.run_decision_cycle(
+                        cycle = generic_runner(
                             cadence, read_set, policy, capabilities
                         )
+                    elif generic_mode and callable(default_runner) and not is_fixture:
+                        cycle = default_runner(cadence, read_set)
                     else:
                         runner = getattr(self._population_capability, "run_cohort_cycle", None)
                         cycle = (

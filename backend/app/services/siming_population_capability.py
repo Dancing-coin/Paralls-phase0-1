@@ -129,6 +129,63 @@ class PopulationSimulationCapability:
         self._continuity_port = continuity_port
         self._decision_planner = decision_planner or PopulationDecisionPlanner()
 
+    @classmethod
+    def default_decision_policy(cls, cadence: PopulationCadenceInput) -> PopulationDecisionPolicy:
+        return PopulationDecisionPolicy(
+            policy_revision=cadence.policy_revision,
+            default_fidelity_tier="B1",
+            budget=cadence.budget,
+            max_candidates=cadence.catch_up_limit,
+        )
+
+    @classmethod
+    def default_capabilities(
+        cls, cadence: PopulationCadenceInput
+    ) -> tuple[PopulationCapabilityDescriptor, ...]:
+        return (
+            PopulationCapabilityDescriptor(
+                capability_id="population:schedule-gated-supply:v1",
+                accepted_behavior_kinds=("schedule_gated_supply",),
+                target_owner="actor_gameplay.organization_domain",
+                allowed_output_kinds=("owner_bound_intent", "character_core_command"),
+                capability_revision="population:schedule-gated-supply:v1",
+                policy_revision=cadence.policy_revision,
+                enabled=True,
+            ),
+            PopulationCapabilityDescriptor(
+                capability_id="population:routine-presentation:v1",
+                accepted_behavior_kinds=("routine_work",),
+                target_owner="character_core",
+                allowed_output_kinds=("presentation_seed",),
+                capability_revision="population:routine-presentation:v1",
+                policy_revision=cadence.policy_revision,
+                enabled=True,
+            ),
+            PopulationCapabilityDescriptor(
+                capability_id="population:activation-candidate:v1",
+                accepted_behavior_kinds=("relationship_negotiation",),
+                target_owner="character_activation",
+                allowed_output_kinds=("activation_candidate",),
+                capability_revision="population:activation-candidate:v1",
+                policy_revision=cadence.policy_revision,
+                enabled=True,
+            ),
+        )
+
+    def run_default_decision_cycle(
+        self, cadence_input: PopulationCadenceInput, read_set: PopulationReadSet
+    ) -> PopulationCycleResult:
+        return self.run_decision_cycle(
+            cadence_input,
+            read_set,
+            self.default_decision_policy(cadence_input),
+            self.default_capabilities(cadence_input),
+        )
+
+    @staticmethod
+    def is_v1_fixture(read_set: PopulationReadSet) -> bool:
+        return PopulationSimulationCapability._looks_like_v1_cohort(read_set)
+
     def run_decision_cycle(
         self,
         cadence_input: PopulationCadenceInput,
