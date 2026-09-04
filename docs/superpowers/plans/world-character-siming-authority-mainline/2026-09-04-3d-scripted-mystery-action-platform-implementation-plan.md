@@ -103,7 +103,7 @@
 
 - [x] Prove full replay and checkpoint-tail replay equality across three action windows and explicit death confirmation accept/reject paths.
 - [x] Prove tampered graph, spatial snapshot, perception sample, policy, event payload and checkpoint rejection through focused validators and replay tests.
-- [ ] Run full repository pytest, compileall, diff check, action/embodied/P5/docs Harness and Godot probes; scoped action evidence is green, but Godot executable is unavailable.
+- [x] Run full repository pytest (`5092 passed`), compileall, diff check, action/embodied/docs Harness and Godot 4.6.3 headless probe.
 - [x] Record a completion audit that distinguishes implemented bounded action platform from future full combat/sports capability; August INF A-D remains not complete.
 
 ## Rollout gates

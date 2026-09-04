@@ -25,6 +25,34 @@ var voice_state := "returned"
 func _ready() -> void:
 	_build_greybox_reference_scene()
 	_apply_voice_state("returned")
+	call_deferred("_run_probe")
+
+
+func _run_probe() -> void:
+	apply_committed_projection({
+		"encounter_ref": "encounter:scripted-mystery-probe",
+		"phase": "detected",
+		"exposure": 2,
+		"control": "pursuer",
+		"terminal_outcome": "none",
+		"source_revision_vector": {"gameplay:conflict:encounter:probe": 5},
+	})
+	set_speculative_projection({"phase": "captured"})
+	var rejection := reject_speculative_state("probe-rejection")
+	var report := {
+		"status": "godot-runtime-scripted-mystery-verified" if ROOMS.size() == 3 and rejection.get("speculative_state_cleared", false) and get_read_only_projection().get("voice_state") == "rejected" else "godot-runtime-scripted-mystery-failed",
+		"room_count": get_child_count(),
+		"projection": get_read_only_projection(),
+		"rejection": rejection,
+	}
+	var path := ProjectSettings.globalize_path("res://.harness/verification/scripted-mystery-action-godot-runtime.json")
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(report, "\t"))
+		file.close()
+	print("scripted_mystery_action_probe:verified=%s" % str(report["status"] == "godot-runtime-scripted-mystery-verified").to_lower())
+	get_tree().quit(0 if report["status"] == "godot-runtime-scripted-mystery-verified" else 1)
 
 
 func apply_committed_projection(projection: Dictionary) -> void:
@@ -84,4 +112,3 @@ func _add_box(parent: Node3D, node_name: String, size: Vector3, position: Vector
 	mesh_instance.material_override = material
 	mesh_instance.position = position
 	parent.add_child(mesh_instance)
-

@@ -1,7 +1,7 @@
 # 3D Scripted-Mystery Action Platform Completion Audit
 
 Date: 2026-09-05  
-Status: `implemented bounded; Godot runtime gate pending`
+Status: `implemented bounded and runtime-verified`
 
 ## Implemented and verified
 
@@ -18,14 +18,15 @@ Status: `implemented bounded; Godot runtime gate pending`
 
 ## Evidence
 
-- scoped action graph/window/conflict/consequence/replay/projection suites: `39 passed`;
+- scoped action graph/window/conflict/consequence/replay/projection suites: `32 passed` in the final focused run;
 - action-platform Harness verifier: `overall_passed=true`;
+- Godot 4.6.3 headless scripted-mystery probe: verified;
 - `git diff --check`: passed;
 - direct-main commits: `388d5a01`, `5e508006`, `f158ad2f`.
 
 ## Remaining gate
 
-No Godot executable is available in this environment, so the procedural scene and controller have static/backend evidence only. Desktop/headless Godot runtime verification remains required before claiming fully runtime-verified. This is an environment gate, not a reason to add a second runtime or weaken backend authority.
+Godot 4.6.3 headless verification is now available and recorded by the dedicated Harness. Desktop interactive verification remains a separate presentation check when a desktop session is available; it does not change backend authority or require a second runtime.
 
 ## Explicit non-goals
 

@@ -185,7 +185,7 @@ creator control-plane work into the action MVP.
 The separate Creator Skill/Siming Director extension plan is
 [2026-09-04-gameplay-creator-siming-director-extension-implementation-plan.md](2026-09-04-gameplay-creator-siming-director-extension-implementation-plan.md).
 
-The action MVP now has focused graph/window/conflict/consequence/replay evidence
-and a procedural reference scene. Its completion audit records the bounded
-implementation and remaining Godot executable gate; August INF A-D remains
+The action MVP now has focused graph/window/conflict/consequence/replay evidence,
+a procedural reference scene, and a verified Godot 4.6.3 headless probe. Its
+completion audit records the bounded implementation; August INF A-D remains
 unchanged.

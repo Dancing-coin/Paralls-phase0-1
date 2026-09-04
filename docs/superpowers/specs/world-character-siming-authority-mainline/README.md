@@ -675,5 +675,6 @@ The bounded scripted-mystery action vertical is implemented through graph
 admission, frozen one-second windows, the additive P5 conflict facade,
 explicit case/world-death separation, and a procedural three-room probe. See
 the [completion audit](2026-09-05-3d-scripted-mystery-action-platform-completion-audit.md).
-Godot desktop/headless execution remains an environment-gated verification
-item; this does not claim full combat or sports capability.
+Godot 4.6.3 headless execution is verified by the dedicated Harness; desktop
+interactive smoke remains a presentation follow-up. This does not claim full
+combat or sports capability.
