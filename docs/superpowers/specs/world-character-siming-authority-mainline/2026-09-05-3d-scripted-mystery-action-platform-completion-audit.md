@@ -26,7 +26,7 @@ Status: `implemented bounded and runtime-verified`
 
 ## Remaining gate
 
-Godot 4.6.3 headless verification is now available and recorded by the dedicated Harness. Desktop interactive verification remains a separate presentation check when a desktop session is available; it does not change backend authority or require a second runtime.
+Godot 4.6.3 headless verification is available and recorded by the dedicated Harness. Desktop interactive verification remains a separate presentation check when a desktop session is available; it does not change backend authority or require a second runtime. The aggregate embodied-interaction-foundation profile still reports its pre-existing interaction-session prerequisite as not verified, while the action-controller and P5 profiles pass independently.
 
 ## Explicit non-goals
 
