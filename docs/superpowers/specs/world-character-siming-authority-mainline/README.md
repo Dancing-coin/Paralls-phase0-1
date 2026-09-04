@@ -659,3 +659,14 @@ The approved Bakery Loop v1 replay/checkpoint slice is tracked in
 [2026-09-04-unified-bakery-gameplay-loop-v1-design.md](2026-09-04-unified-bakery-gameplay-loop-v1-design.md)
 and its implementation plan. It adds focused three-period replay evidence
 only and does not change August INF A-D status.
+
+The revised 3D scripted-mystery action platform is tracked in
+[2026-09-04-3d-scripted-mystery-action-platform-design.md](2026-09-04-3d-scripted-mystery-action-platform-design.md)
+and its [implementation plan](../../plans/world-character-siming-authority-mainline/2026-09-04-3d-scripted-mystery-action-platform-implementation-plan.md).
+It composes the existing ActionPrimitive, EmbodiedActionController, Skill/Body
+gates and P5 conflict authority; it does not create a second action or conflict
+runtime. Creator Skill and Siming Director remain a separate future extension.
+
+That future extension is specified separately in
+[2026-09-04-gameplay-creator-siming-director-extension-design.md](2026-09-04-gameplay-creator-siming-director-extension-design.md)
+with its [implementation plan](../../plans/world-character-siming-authority-mainline/2026-09-04-gameplay-creator-siming-director-extension-implementation-plan.md).
