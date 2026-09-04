@@ -45,6 +45,26 @@ def test_world_death_requires_explicit_case_death_source() -> None:
     assert store.read_events() == []
 
 
+def test_wrong_owner_fragment_is_zero_write() -> None:
+    store = GameplayEventStore()
+    boundary = ActionConsequenceBoundary(store)
+    result = boundary.validate(
+        ActionConsequenceIntent(
+            source_event_id="event:missing",
+            source_event_type="gameplay.conflict.terminal_outcome_recorded",
+            target_actor_ref="character:survivor",
+            owner_kind="body",
+            owner_principal_ref="authority:inventory",
+            expected_source_revision=1,
+            policy_revision="policy:action@1",
+            evidence_refs=("evidence:1",),
+        )
+    )
+    assert not result.accepted
+    assert result.error_code == "action_consequence_owner_fragment_invalid"
+    assert store.read_events() == []
+
+
 def test_explicit_world_death_confirmation_is_owner_appended() -> None:
     store = GameplayEventStore()
     source_stream = "gameplay:conflict:encounter:case"

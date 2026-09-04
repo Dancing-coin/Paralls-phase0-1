@@ -20,6 +20,9 @@ class ActionConsequenceIntent(StrictGameplayModel):
     expected_source_revision: int
     policy_revision: str
     evidence_refs: tuple[str, ...]
+    owner_principal_ref: str = ""
+    target_stream_ref: str = ""
+    target_event_type: str = ""
 
 
 class WorldDeathConfirmationIntent(StrictGameplayModel):
@@ -47,6 +50,16 @@ class ActionConsequenceBoundary:
     def validate(self, intent: ActionConsequenceIntent) -> ActionConsequenceValidationResult:
         if not intent.evidence_refs:
             return ActionConsequenceValidationResult(accepted=False, error_code="action_consequence_evidence_missing")
+        expected_owner = {
+            "body": "authority:body",
+            "inventory": "authority:inventory",
+            "quest": "authority:quest",
+            "social": "authority:social",
+            "economy": "authority:economy",
+            "character": "authority:character",
+        }[intent.owner_kind]
+        if intent.owner_principal_ref and intent.owner_principal_ref != expected_owner:
+            return ActionConsequenceValidationResult(accepted=False, error_code="action_consequence_owner_fragment_invalid")
         try:
             source = self.store.get_event(intent.source_event_id)
         except KeyError:

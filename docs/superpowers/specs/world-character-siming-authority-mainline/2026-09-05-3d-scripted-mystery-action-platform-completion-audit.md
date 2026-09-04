@@ -22,7 +22,7 @@ Status: `implemented bounded and runtime-verified`
 - action-platform Harness verifier: `overall_passed=true`;
 - Godot 4.6.3 headless scripted-mystery probe: verified;
 - `git diff --check`: passed;
-- direct-main commits: `388d5a01`, `5e508006`, `f158ad2f`.
+- direct-main commits: `388d5a01`, `5e508006`, `f158ad2f`, `93bc6b7c`, `4f141eba`.
 
 ## Remaining gate
 
