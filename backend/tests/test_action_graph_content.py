@@ -228,6 +228,30 @@ def test_action_graph_admission_rejects_unknown_primitive() -> None:
     assert result.error_code == "action_graph_primitive_unknown"
 
 
+@pytest.mark.parametrize(
+    ("field", "catalog_key"),
+    (("role_refs", "role"), ("capability_refs", "capability"), ("observation_requirements", "observation"), ("asset_refs", "asset")),
+)
+def test_action_graph_admission_rejects_unknown_registered_reference(field: str, catalog_key: str) -> None:
+    graph = ActionGraphDefinition.model_validate(_graph(**{field: ("unknown:value@1",)}))
+    catalogs = _reference_catalogs()
+    catalogs[catalog_key] = tuple()
+    result = ActionGraphAdmissionResult.admit(graph, primitive_catalog=_primitive_catalog(), reference_catalogs=catalogs)
+    assert result.accepted is False
+    assert result.error_code == f"action_graph_{catalog_key}_unknown"
+
+
+@pytest.mark.parametrize("field", ("role_refs", "capability_refs", "observation_requirements", "asset_refs"))
+def test_action_graph_admission_rejects_order_only_digest_mutation(field: str) -> None:
+    values = list(_graph()[field])
+    if len(values) < 2:
+        pytest.skip("fixture needs at least two values")
+    graph = ActionGraphDefinition.model_validate(_graph(**{field: tuple(reversed(values))}))
+    result = ActionGraphAdmissionResult.admit(graph, primitive_catalog=_primitive_catalog(), reference_catalogs=_reference_catalogs())
+    assert result.accepted is False
+    assert result.error_code == "action_graph_array_not_canonical"
+
+
 def test_action_graph_admission_rejects_duplicate_node() -> None:
     graph = ActionGraphDefinition.model_validate(
         _graph(

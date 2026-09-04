@@ -110,6 +110,8 @@ class ActionGraphAdmissionResult(StrictGameplayModel):
             registered = reference_catalogs.get(key)
             if registered is None or not set(values).issubset(set(registered)):
                 return cls._reject(f"action_graph_{key}_unknown")
+            if not _follows_catalog_order(values, tuple(registered)):
+                return cls._reject("action_graph_array_not_canonical")
         for value in (graph.interruption_policy, graph.recovery_policy, graph.policy_revision):
             registered = reference_catalogs.get("policy")
             if registered is None or value not in set(registered):
@@ -209,6 +211,11 @@ def _can_reach_any(starts: set[str], targets: set[str], adjacency: dict[str, lis
 
 def _is_versioned_ref(value: str) -> bool:
     return ":" in value and "@" in value and not value.endswith("@")
+
+
+def _follows_catalog_order(values: tuple[str, ...], catalog: tuple[str, ...]) -> bool:
+    positions = {value: index for index, value in enumerate(catalog)}
+    return all(positions[left] < positions[right] for left, right in zip(values, values[1:]))
 
 
 def _bounded_cycles_are_valid(graph: ActionGraphDefinition, adjacency: dict[str, list[str]]) -> bool:
