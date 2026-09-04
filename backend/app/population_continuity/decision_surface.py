@@ -24,6 +24,7 @@ PopulationOutputKind = Literal[
 
 class PopulationDecisionCandidate(ContinuityModel):
     candidate_ref: str = Field(min_length=1)
+    capability_id: str = ""
     actor_ref: str = Field(min_length=1)
     cohort_ref: str = Field(min_length=1)
     behavior_kind: str = Field(min_length=1)
@@ -100,6 +101,18 @@ class PopulationCapabilityDescriptor(ContinuityModel):
     capability_revision: str = Field(min_length=1)
     policy_revision: str = Field(min_length=1)
     enabled: bool
+    owner_contract_ref: str | None = None
+
+    def validate_owner_contract(self) -> bool:
+        if "owner_bound_intent" not in self.allowed_output_kinds or not self.owner_contract_ref:
+            return "owner_bound_intent" not in self.allowed_output_kinds
+        from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog
+
+        try:
+            contract = GovernedAuthorityContractCatalog.require(contract_ref=self.owner_contract_ref)
+        except Exception:
+            return False
+        return contract.owner_ref == self.target_owner
 
 
 class PopulationCapabilityCatalog:
@@ -116,6 +129,17 @@ class PopulationCapabilityCatalog:
                 capability_revision="population:schedule-gated-supply:v1",
                 policy_revision=policy_revision,
                 enabled=True,
+                owner_contract_ref="inf:weather-front-organization-supply@1",
+            ),
+            PopulationCapabilityDescriptor(
+                capability_id="population:organization-window-due:v1",
+                accepted_behavior_kinds=("organization_operating_window_due",),
+                target_owner="actor_gameplay.organization_domain",
+                allowed_output_kinds=("owner_bound_intent",),
+                capability_revision="population:organization-window-due:v1",
+                policy_revision=policy_revision,
+                enabled=True,
+                owner_contract_ref="inf:organization-operating-window@1",
             ),
             PopulationCapabilityDescriptor(
                 capability_id="population:routine-presentation:v1",
@@ -222,6 +246,7 @@ class PopulationDecisionPlanner:
             candidates.append(
                 PopulationDecisionCandidate(
                     candidate_ref=f"candidate:{projection.ref}",
+                    capability_id=descriptor.capability_id,
                     actor_ref=actor_ref,
                     cohort_ref=cohort_ref,
                     behavior_kind=behavior,
