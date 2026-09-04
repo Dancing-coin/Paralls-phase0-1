@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.models import GameplayFailure, OwnerAuthorizedFragment, ReplayResult
+from app.gameplay.models import AppendBatchResult, GameplayFailure, OwnerAuthorizedFragment, ReplayResult
+from app.gameplay.action_graph_content import ActionGraphDefinition
+from app.gameplay.action_window_runtime import ActionWindowIntent, ActionWindowResult, ActionWindowValidator, SpatialSnapshotRef
 from app.gameplay.p5.contracts import (
     P5ResolutionRequest,
     P5ResolutionResult,
@@ -12,6 +14,7 @@ from app.gameplay.p5.contracts import (
 )
 from app.gameplay.p5.registry import P5PolicyRegistry
 from app.gameplay.shared_contracts import GameplayCommandEnvelope, SettlementPlan
+from app.gameplay.settlement_plan import build_atomic_event_batch
 
 
 _PRINCIPAL = "authority:p5:investigation-conflict"
@@ -21,6 +24,13 @@ _PROJECTOR_VERSION = "v1"
 _INVESTIGATION_EVENT = "gameplay.investigation.observation_resolved"
 _CONFLICT_EVENT = "gameplay.conflict.attempt_resolved"
 _ALARM_EVENT = "gameplay.conflict.alarm_raised"
+_ACTION_WINDOW_EVENTS = (
+    "gameplay.conflict.encounter_started",
+    "gameplay.conflict.action_window_resolved",
+    "gameplay.conflict.control_changed",
+    "gameplay.conflict.terminal_outcome_recorded",
+    "gameplay.conflict.encounter_closed",
+)
 
 
 def _is_visible(visibility: str, recipient_ref: str) -> bool:
@@ -72,10 +82,141 @@ class InvestigationConflictAuthorityResult:
     settlement_plan: SettlementPlan | None
 
 
+@dataclass(frozen=True)
+class ActionWindowConflictResult:
+    """Outcome of the additive action-window adapter over the P5 conflict owner."""
+
+    committed: bool
+    idempotency_status: str
+    receipt: AppendBatchResult | None = None
+    error_code: str | None = None
+    window_result: ActionWindowResult | None = None
+
+
 class InvestigationConflictAuthority:
     def __init__(self, *, registry: P5PolicyRegistry, store: GameplayEventStore) -> None:
         self._registry = registry
         self._store = store
+
+    def resolve_action_window(
+        self,
+        *,
+        command: GameplayCommandEnvelope,
+        intent: ActionWindowIntent,
+        graph: object,
+        spatial_snapshot: SpatialSnapshotRef,
+        role_ref: str,
+        now: str,
+    ) -> ActionWindowConflictResult:
+        """Persist one validated window using the existing conflict event spine.
+
+        This is intentionally additive: the P5 registry, event store, receipt,
+        idempotency and replay reader remain the authority surface.  The action
+        window validator must run before this method is called.
+        """
+        del now
+        if not role_ref:
+            return ActionWindowConflictResult(False, "rejected", error_code="action_window_scope_invalid")
+        graph_value = graph
+        if not isinstance(graph_value, ActionGraphDefinition):
+            return ActionWindowConflictResult(False, "rejected", error_code="action_window_graph_invalid")
+        window_result = ActionWindowValidator.validate(
+            intent,
+            graph=graph_value,
+            spatial_snapshot=spatial_snapshot,
+        )
+        if not window_result.accepted:
+            return ActionWindowConflictResult(False, "rejected", error_code=window_result.error_code, window_result=window_result)
+        if command.principal_ref != _PRINCIPAL or command.actor_ref != intent.actor_ref:
+            return ActionWindowConflictResult(False, "rejected", error_code="action_window_owner_invalid", window_result=window_result)
+        if role_ref not in graph_value.role_refs:
+            return ActionWindowConflictResult(False, "rejected", error_code="action_window_role_invalid", window_result=window_result)
+        if len(command.expected_revisions) != 1:
+            return ActionWindowConflictResult(False, "rejected", error_code="action_window_write_revision_invalid", window_result=window_result)
+        stream_id = next(iter(command.expected_revisions), "")
+        expected_revision = command.expected_revisions.get(stream_id)
+        if expected_revision is None:
+            return ActionWindowConflictResult(False, "rejected", error_code="action_window_conflict_revision_missing", window_result=window_result)
+        if not stream_id.startswith("gameplay:conflict:encounter:"):
+            return ActionWindowConflictResult(False, "rejected", error_code="action_window_stream_invalid", window_result=window_result)
+        for event_type in _ACTION_WINDOW_EVENTS:
+            try:
+                self._registry.require_event(event_type, 1)
+            except ValueError:
+                return ActionWindowConflictResult(False, "rejected", error_code="action_window_event_unregistered", window_result=window_result)
+        if any(self._store.get_stream_head(source_stream) != revision for source_stream, revision in command.read_set_revisions.items()):
+            return ActionWindowConflictResult(False, "rejected", error_code="action_window_source_revision_stale", window_result=window_result)
+        idempotency_key = command.idempotency_key
+        payload = {
+            "attempt_ref": intent.attempt_ref,
+            "encounter_ref": intent.encounter_ref,
+            "actor_ref": intent.actor_ref,
+            "role_ref": role_ref,
+            "window_index": intent.window_index,
+            "window_start_tick": intent.window_start_tick,
+            "window_end_tick": intent.window_end_tick,
+            "graph_ref": intent.graph_ref,
+            "graph_revision": intent.graph_revision,
+            "node_ref": intent.node_ref,
+            "intent_digest": canonical_sha256_digest(intent.model_dump(mode="json")),
+            "deterministic_seed": intent.deterministic_seed,
+            "outcome": "resolved",
+            "perception": window_result.perception.model_dump(mode="json") if window_result.perception is not None else {},
+            "source_revision_vector": dict(intent.expected_revision_vector),
+            "spatial_revisions": {
+                "navigation": intent.navigation_revision,
+                "collision": intent.collision_revision,
+                "occlusion": intent.occlusion_revision,
+                "sound_zone": intent.sound_zone_revision,
+            },
+            "evidence_refs": tuple(intent.evidence_refs),
+            "visibility_policy": "project",
+        }
+        digest = canonical_sha256_digest(payload)
+        existing = self._store.get_idempotency_record(_PRINCIPAL, idempotency_key)
+        if existing is not None:
+            receipt = self._store.get_by_idempotency(_PRINCIPAL, idempotency_key)
+            prior = self._store.get_event(receipt.committed_event_ids[0]) if receipt and receipt.committed_event_ids else None
+            expected_prior = {**payload, "event_kind": "encounter_started"}
+            if prior is None or canonical_sha256_digest(prior.payload) != canonical_sha256_digest(expected_prior):
+                return ActionWindowConflictResult(False, "rejected", error_code="action_window_idempotency_reused", window_result=window_result)
+            return ActionWindowConflictResult(True, "duplicate_replayed", receipt=receipt, window_result=window_result)
+        if self._store.get_stream_head(stream_id) != expected_revision:
+            return ActionWindowConflictResult(False, "rejected", error_code="action_window_conflict_revision_stale")
+        event_specs = tuple(
+            (
+                event_type,
+                {**payload, "event_kind": event_type.rsplit(".", 1)[-1]},
+            )
+            for event_type in _ACTION_WINDOW_EVENTS
+        )
+        batch = build_atomic_event_batch(
+            command_id=f"action-window:{intent.attempt_ref}:{intent.window_index}",
+            principal_ref=_PRINCIPAL,
+            stream_id=stream_id,
+            expected_revision=expected_revision,
+            read_stream_revisions={**dict(command.read_set_revisions), stream_id: expected_revision},
+            event_specs=event_specs,
+            idempotency_key=idempotency_key,
+            causation_id=f"action-window:{intent.attempt_ref}",
+            correlation_id=intent.encounter_ref,
+            pinned_revisions={
+                "graph": 1,
+                "navigation": 1,
+                "collision": 1,
+                "occlusion": 1,
+                "sound_zone": 1,
+            },
+        )
+        receipt = self._store.append_batch(batch)
+        if not receipt.committed:
+            return ActionWindowConflictResult(
+                False,
+                "rejected",
+                receipt=receipt,
+                error_code=receipt.failure.error_code if receipt.failure is not None else "action_window_append_failed",
+            )
+        return ActionWindowConflictResult(True, "new_commit", receipt=receipt, window_result=window_result)
 
     def resolve(
         self,
@@ -731,4 +872,4 @@ class InvestigationConflictAuthority:
         )
 
 
-__all__ = ["InvestigationConflictAuthority", "InvestigationConflictAuthorityResult"]
+__all__ = ["ActionWindowConflictResult", "InvestigationConflictAuthority", "InvestigationConflictAuthorityResult"]
