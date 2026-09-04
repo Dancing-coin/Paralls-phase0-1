@@ -56,7 +56,7 @@ class ActionWindowIntent(StrictGameplayModel):
     occlusion_revision: str = Field(min_length=1)
     sound_zone_revision: str = Field(min_length=1)
     deterministic_seed: str = Field(min_length=1)
-    evidence_refs: tuple[str, ...] = ()
+    evidence_refs: tuple[str, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
     def validate_window(self) -> "ActionWindowIntent":

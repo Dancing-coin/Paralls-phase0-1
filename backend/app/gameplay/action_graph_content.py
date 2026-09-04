@@ -215,12 +215,13 @@ def _bounded_cycles_are_valid(graph: ActionGraphDefinition, adjacency: dict[str,
     if graph.bounded_loop_limit <= 0:
         return False
     edge_budgets = {(edge.from_node, edge.to_node): edge.loop_budget for edge in graph.edges}
-    return all(
-        edge_budgets.get((source, target), 0) > 0
+    cycle_budgets = [
+        edge_budgets.get((source, target), 0)
         for source, targets in adjacency.items()
         for target in targets
         if _reachable(target, adjacency).intersection({source})
-    )
+    ]
+    return bool(cycle_budgets) and all(budget > 0 for budget in cycle_budgets) and sum(cycle_budgets) <= graph.bounded_loop_limit
 
 
 __all__ = [
