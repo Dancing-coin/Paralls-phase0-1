@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.population_continuity.decision_surface import (
     PopulationCapabilityDescriptor,
+    PopulationCapabilityCatalog,
     PopulationDecisionCandidate,
     PopulationDecisionPlanner,
     PopulationDecisionPolicy,
@@ -161,3 +162,11 @@ def test_registered_behavior_can_extend_without_actor_specific_mapping() -> None
     result = PopulationDecisionPlanner().evaluate(custom_read_set, (descriptor,), policy())
     assert len(result) == 1
     assert result[0].behavior_kind == "custom_observation"
+
+
+def test_default_capability_catalog_is_read_only_and_policy_pinned() -> None:
+    descriptors = PopulationCapabilityCatalog.default("policy:test:v1")
+    assert {behavior for descriptor in descriptors for behavior in descriptor.accepted_behavior_kinds} == {
+        "schedule_gated_supply", "routine_work", "relationship_negotiation"
+    }
+    assert all(descriptor.policy_revision == "policy:test:v1" for descriptor in descriptors)

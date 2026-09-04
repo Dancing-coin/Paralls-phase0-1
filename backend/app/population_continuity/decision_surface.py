@@ -102,6 +102,42 @@ class PopulationCapabilityDescriptor(ContinuityModel):
     enabled: bool
 
 
+class PopulationCapabilityCatalog:
+    """Source-controlled, read-only capability descriptors for population decisions."""
+
+    @staticmethod
+    def default(policy_revision: str) -> tuple[PopulationCapabilityDescriptor, ...]:
+        return (
+            PopulationCapabilityDescriptor(
+                capability_id="population:schedule-gated-supply:v1",
+                accepted_behavior_kinds=("schedule_gated_supply",),
+                target_owner="actor_gameplay.organization_domain",
+                allowed_output_kinds=("owner_bound_intent", "character_core_command"),
+                capability_revision="population:schedule-gated-supply:v1",
+                policy_revision=policy_revision,
+                enabled=True,
+            ),
+            PopulationCapabilityDescriptor(
+                capability_id="population:routine-presentation:v1",
+                accepted_behavior_kinds=("routine_work",),
+                target_owner="character_core",
+                allowed_output_kinds=("presentation_seed",),
+                capability_revision="population:routine-presentation:v1",
+                policy_revision=policy_revision,
+                enabled=True,
+            ),
+            PopulationCapabilityDescriptor(
+                capability_id="population:activation-candidate:v1",
+                accepted_behavior_kinds=("relationship_negotiation",),
+                target_owner="character_activation",
+                allowed_output_kinds=("activation_candidate",),
+                capability_revision="population:activation-candidate:v1",
+                policy_revision=policy_revision,
+                enabled=True,
+            ),
+        )
+
+
 class PopulationDecisionPolicy(ContinuityModel):
     policy_revision: str = Field(min_length=1)
     default_fidelity_tier: Literal["B0", "B1", "B2", "B3"]
