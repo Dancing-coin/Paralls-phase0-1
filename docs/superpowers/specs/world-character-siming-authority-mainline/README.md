@@ -670,3 +670,10 @@ runtime. Creator Skill and Siming Director remain a separate future extension.
 That future extension is specified separately in
 [2026-09-04-gameplay-creator-siming-director-extension-design.md](2026-09-04-gameplay-creator-siming-director-extension-design.md)
 with its [implementation plan](../../plans/world-character-siming-authority-mainline/2026-09-04-gameplay-creator-siming-director-extension-implementation-plan.md).
+
+The bounded scripted-mystery action vertical is implemented through graph
+admission, frozen one-second windows, the additive P5 conflict facade,
+explicit case/world-death separation, and a procedural three-room probe. See
+the [completion audit](2026-09-05-3d-scripted-mystery-action-platform-completion-audit.md).
+Godot desktop/headless execution remains an environment-gated verification
+item; this does not claim full combat or sports capability.

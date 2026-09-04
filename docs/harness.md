@@ -1,5 +1,12 @@
 # Harness Engineering Guide
 
+## 3D scripted-mystery action platform
+
+The opt-in profile `3d-scripted-mystery-action-platform` runs the procedural
+three-room action probe and its backend replay/static evidence. It is excluded
+from the default profile order until a Godot executable is available; the
+report explicitly records that environment gate.
+
 This project uses a narrow Harness Engineering layer so agents can verify the demo without relying on hidden human context.
 
 The unified bakery loop profile is an opt-in verification surface:

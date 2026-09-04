@@ -43,3 +43,11 @@ Matching plans: [P5A](../../../plans/world-character-siming-authority-mainline/p
 [P5B](../../../plans/world-character-siming-authority-mainline/phase-five-rpg-social-gameplay/2026-08-10-p5b-relationship-reputation-and-knowledge-implementation-plan.md),
 [P5C](../../../plans/world-character-siming-authority-mainline/phase-five-rpg-social-gameplay/2026-08-10-p5c-investigation-stealth-and-conflict-implementation-plan.md),
 [P5D](../../../plans/world-character-siming-authority-mainline/phase-five-rpg-social-gameplay/2026-08-10-p5d-rpg-investigation-vertical-slice-implementation-plan.md).
+# 2026-09-05 Scripted-mystery action extension
+
+The P5 investigation/stealth/conflict surface now has an additive bounded action
+window facade over the existing authority. It keeps the original event payloads
+and readers, adds source-fenced one-second windows, explicit case-death versus
+world-death confirmation, and procedural presentation evidence. This is a
+bounded extension, not a generic combat system; full sports/combat requires
+separate owner contracts.
