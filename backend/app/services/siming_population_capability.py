@@ -122,12 +122,13 @@ class PopulationSimulationCapability:
     _V1_RULESET = "rules:cohort-bakery:v1"
     _V1_ACTORS = ("character:char_a", "character:char_b", "character:char_c")
 
-    def __init__(self, *, planner: PopulationPlanner | None = None, seed_planner: CharacterSeedPlanner | None = None, owner_executor: PopulationOwnerExecutor | None = None, continuity_port: CharacterContinuityPort | None = None, decision_planner: PopulationDecisionPlanner | None = None) -> None:
+    def __init__(self, *, planner: PopulationPlanner | None = None, seed_planner: CharacterSeedPlanner | None = None, owner_executor: PopulationOwnerExecutor | None = None, continuity_port: CharacterContinuityPort | None = None, decision_planner: PopulationDecisionPlanner | None = None, owner_executors: Mapping[str, PopulationOwnerExecutor] | None = None) -> None:
         self._planner = planner or PopulationPlanner()
         self._seed_planner = seed_planner or CharacterSeedPlanner()
         self._owner_executor = owner_executor
         self._continuity_port = continuity_port
         self._decision_planner = decision_planner or PopulationDecisionPlanner()
+        self._owner_executors = dict(owner_executors or {})
 
     @classmethod
     def default_decision_policy(cls, cadence: PopulationCadenceInput) -> PopulationDecisionPolicy:
@@ -219,6 +220,85 @@ class PopulationSimulationCapability:
             for candidate in decision.selected_candidates
             if candidate.behavior_kind not in PopulationPlanner.ADMITTED_BEHAVIORS
         )
+        generic_owner_candidates = tuple(
+            candidate for candidate in decision.selected_candidates
+            if "owner_bound_intent" in candidate.allowed_outputs
+            and candidate.behavior_kind != "schedule_gated_supply"
+        )
+        if generic_owner_candidates:
+            receipts: list[PopulationOwnerReceipt] = []
+            for candidate in generic_owner_candidates:
+                projection = next(item for item in read_set.projections if item.ref in candidate.source_projection_refs)
+                executor = self._owner_executors.get(candidate.capability_id)
+                if executor is None:
+                    return self._requeue(
+                        f"population-decision:{cadence_input.cadence_id}:requeue",
+                        read_set,
+                        "capability_owner_adapter_missing",
+                    )
+                payload = dict(projection.payload.get("owner_payload") or projection.payload)
+                intent = BatchIntentCandidate(
+                    intent_ref=candidate.candidate_ref,
+                    profile_ref=candidate.actor_ref,
+                    intent_kind=str(payload.get("intent_kind") or candidate.behavior_kind),
+                    payload=payload,
+                    expected_revisions=dict(candidate.source_revision_vector),
+                    policy_revision=policy.policy_revision,
+                    package_revision=candidate.capability_id,
+                    idempotency_key=candidate.idempotency_key,
+                    correlation_id=cadence_input.cadence_id,
+                    source_ref=candidate.source_projection_refs[0],
+                    privacy_scope=projection.scope,
+                )
+                receipts.append(executor.submit(intent, read_set=read_set))
+            if any(
+                not receipt.committed
+                or (receipt.zero_write and receipt.idempotency_status != "duplicate_replayed")
+                for receipt in receipts
+            ):
+                return PopulationCycleResult(
+                    status="requeue",
+                    batch_ref=f"population-decision:{cadence_input.cadence_id}",
+                    report=PopulationBatchReport(
+                        batch_ref=f"population-decision:{cadence_input.cadence_id}",
+                        owner_intent_count=len(generic_owner_candidates),
+                        budget_used=decision.budget_used,
+                        budget_remaining=decision.budget_remaining,
+                        read_set_digest=read_set.read_set_digest,
+                        result_digest=decision.result_digest,
+                    ),
+                    decision=decision,
+                    owner_receipts=tuple(receipts),
+                    reason="owner_rejected",
+                    production_append_count=0,
+                )
+            return PopulationCycleResult(
+                status="accepted",
+                batch_ref=f"population-decision:{cadence_input.cadence_id}",
+                report=PopulationBatchReport(
+                    batch_ref=f"population-decision:{cadence_input.cadence_id}",
+                    selected_cohort_refs=tuple(candidate.actor_ref for candidate in decision.selected_candidates),
+                    owner_intent_count=len(generic_owner_candidates),
+                    owner_committed_count=sum(
+                        1
+                        for receipt in receipts
+                        if receipt.committed
+                        and (
+                            not receipt.zero_write
+                            or receipt.idempotency_status == "duplicate_replayed"
+                        )
+                    ),
+                    budget_used=decision.budget_used,
+                    budget_remaining=decision.budget_remaining,
+                    read_set_digest=read_set.read_set_digest,
+                    result_digest=decision.result_digest,
+                ),
+                decision=decision,
+                owner_receipts=tuple(receipts),
+                production_append_count=sum(
+                    1 for receipt in receipts if receipt.committed and not receipt.zero_write
+                ),
+            )
         if unknown_selected:
             if any(
                 output in {"owner_bound_intent", "character_core_command"}

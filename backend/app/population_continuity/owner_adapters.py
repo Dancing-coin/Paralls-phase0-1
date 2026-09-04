@@ -9,6 +9,7 @@ from app.population_continuity.social_input import FrozenSocialPlanningInput
 from app.population_continuity.source_inputs import HouseholdScheduleInput, OrganizationScheduleInput
 from app.population_continuity.models import BatchIntentCandidate
 from app.population_continuity.siming_contracts import PopulationOwnerReceipt, PopulationReadSet
+from app.gameplay.organization_government_runtime import OrganizationAuthority
 
 
 class ScheduleGatedSupplyOwnerExecutor:
@@ -88,4 +89,51 @@ class ScheduleGatedSupplyOwnerExecutor:
             return {}
 
 
-__all__ = ["ScheduleGatedSupplyOwnerExecutor"]
+class OrganizationOperatingWindowDueOwnerExecutor:
+    """Adapter for the existing Organization operating-window Owner contract."""
+
+    OWNER_REF = OrganizationAuthority._PRINCIPAL
+    EVENT_FAMILY = "gameplay.organization.operating_window_due_recorded"
+    CONTRACT_REF = "inf:organization-operating-window@1"
+    OWNER_VISIBILITY_SCOPE = "project"
+
+    def __init__(self, *, authority: OrganizationAuthority) -> None:
+        self._authority = authority
+
+    def submit(self, intent: BatchIntentCandidate, *, read_set: PopulationReadSet) -> PopulationOwnerReceipt:
+        if intent.intent_kind != "operating_window_due":
+            return PopulationOwnerReceipt(
+                receipt_ref=f"rejected:{intent.intent_ref}", owner_ref=self.OWNER_REF,
+                event_family=self.EVENT_FAMILY, committed=False, revision_vector={}, zero_write=True,
+            )
+        payload = intent.payload
+        try:
+            stream_ref = str(payload["stream_ref"])
+            result = self._authority.record_operating_window_due(
+                command_id=intent.intent_ref,
+                idempotency_key=intent.idempotency_key,
+                causation_id=intent.correlation_id,
+                correlation_id=intent.correlation_id,
+                organization_ref=str(payload["organization_ref"]),
+                window_ref=str(payload["window_ref"]),
+                expected_stream_revision=int(intent.expected_revisions.get(stream_ref, 0)),
+                visibility_scope=self.OWNER_VISIBILITY_SCOPE,
+            )
+        except (KeyError, TypeError, ValueError):
+            return PopulationOwnerReceipt(
+                receipt_ref=f"rejected:{intent.intent_ref}", owner_ref=self.OWNER_REF,
+                event_family=self.EVENT_FAMILY, committed=False, revision_vector={}, zero_write=True,
+            )
+        committed = bool(result.committed)
+        return PopulationOwnerReceipt(
+            receipt_ref=(result.committed_event_ids[0] if result.committed_event_ids else f"receipt:{intent.intent_ref}"),
+            owner_ref=self.OWNER_REF,
+            event_family=self.EVENT_FAMILY,
+            committed=committed,
+            revision_vector=dict(result.resulting_stream_revisions),
+            zero_write=not committed or result.idempotency_status == "duplicate_replayed",
+            idempotency_status=result.idempotency_status,
+        )
+
+
+__all__ = ["ScheduleGatedSupplyOwnerExecutor", "OrganizationOperatingWindowDueOwnerExecutor"]
