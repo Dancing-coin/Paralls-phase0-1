@@ -51,3 +51,9 @@ and readers, adds source-fenced one-second windows, explicit case-death versus
 world-death confirmation, and procedural presentation evidence. This is a
 bounded extension, not a generic combat system; full sports/combat requires
 separate owner contracts.
+
+The first complete case using this extension is specified in
+[Stormnight Copper Sanatorium](../2026-09-05-stormnight-copper-sanatorium-mystery-case-design.md)
+and its matching implementation plan. The case retains P5 as the owner of
+investigation/conflict facts while Quest, Social, Character and Inventory keep
+their own truth boundaries.

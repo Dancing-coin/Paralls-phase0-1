@@ -189,3 +189,9 @@ The action MVP now has focused graph/window/conflict/consequence/replay evidence
 a procedural reference scene, and a verified Godot 4.6.3 headless probe. Its
 completion audit records the bounded implementation; August INF A-D remains
 unchanged.
+
+The next product vertical is the complete original
+[Stormnight Copper Sanatorium mystery case](2026-09-05-stormnight-copper-sanatorium-mystery-case-implementation-plan.md).
+The plan converts the bounded action seam into a full case loop with typed
+truth, private agent knowledge, statements, evidence, accusation, four
+outcomes, Godot presentation and a second content-only genericity variant.

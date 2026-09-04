@@ -678,3 +678,10 @@ the [completion audit](2026-09-05-3d-scripted-mystery-action-platform-completion
 Godot 4.6.3 headless execution is verified by the dedicated Harness; desktop
 interactive smoke remains a presentation follow-up. This does not claim full
 combat or sports capability.
+
+The first complete case built on that platform is now specified as
+[Stormnight Copper Sanatorium](2026-09-05-stormnight-copper-sanatorium-mystery-case-design.md).
+Its implementation plan is tracked in the matching
+[case implementation plan](../../plans/world-character-siming-authority-mainline/2026-09-05-stormnight-copper-sanatorium-mystery-case-implementation-plan.md).
+The case uses original content inspired only by a public-domain structural
+source; it does not vendor source text or modern adaptations.
