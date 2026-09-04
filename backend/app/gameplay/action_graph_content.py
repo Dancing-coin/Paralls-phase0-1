@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
-from typing import Iterable
+from typing import Iterable, Mapping
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_validator
 
 from app.gameplay.models import StrictGameplayModel
 from app.gameplay.shared_contracts import ActionPrimitiveDefinition
@@ -29,6 +29,12 @@ class ActionGraphNode(StrictGameplayModel):
     asset_ref: str = Field(min_length=1)
     contact_marker_refs: tuple[str, ...] = ()
 
+    @model_validator(mode="after")
+    def validate_window(self) -> "ActionGraphNode":
+        if self.duration_window[0] < 0 or self.duration_window[1] <= self.duration_window[0]:
+            raise ValueError("action_graph_duration_invalid")
+        return self
+
 
 class ActionGraphEdge(StrictGameplayModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -38,6 +44,7 @@ class ActionGraphEdge(StrictGameplayModel):
     trigger: str = Field(min_length=1)
     priority: int = Field(ge=0)
     condition_refs: tuple[str, ...] = ()
+    loop_budget: int = Field(default=0, ge=0)
 
 
 class ActionGraphDefinition(StrictGameplayModel):
@@ -56,6 +63,7 @@ class ActionGraphDefinition(StrictGameplayModel):
     interruption_policy: str = Field(min_length=1)
     recovery_policy: str = Field(min_length=1)
     policy_revision: str = Field(min_length=1)
+    bounded_loop_limit: int = Field(default=0, ge=0)
 
 
 class ActionGraphAdmissionResult(StrictGameplayModel):
@@ -71,6 +79,7 @@ class ActionGraphAdmissionResult(StrictGameplayModel):
         graph: ActionGraphDefinition,
         *,
         primitive_catalog: Iterable[ActionPrimitiveDefinition],
+        reference_catalogs: Mapping[str, Iterable[str]] | None = None,
     ) -> "ActionGraphAdmissionResult":
         primitives = {primitive.action_ref: primitive for primitive in primitive_catalog}
         node_refs = tuple(node.node_ref for node in graph.nodes)
@@ -78,14 +87,38 @@ class ActionGraphAdmissionResult(StrictGameplayModel):
             return cls._reject("action_graph_node_duplicate")
         if len(set(graph.primitive_refs)) != len(graph.primitive_refs):
             return cls._reject("action_graph_primitive_duplicate")
-        if len(set(graph.role_refs)) != len(graph.role_refs):
-            return cls._reject("action_graph_role_duplicate")
-        if len(set(graph.asset_refs)) != len(graph.asset_refs):
-            return cls._reject("action_graph_asset_duplicate")
-        if tuple(sorted(graph.primitive_refs)) != graph.primitive_refs:
-            return cls._reject("action_graph_array_not_canonical")
-        if tuple(sorted(graph.role_refs)) != graph.role_refs:
-            return cls._reject("action_graph_array_not_canonical")
+        for values, duplicate_code in (
+            (graph.role_refs, "action_graph_role_duplicate"),
+            (graph.capability_refs, "action_graph_capability_duplicate"),
+            (graph.observation_requirements, "action_graph_observation_duplicate"),
+            (graph.asset_refs, "action_graph_asset_duplicate"),
+            (graph.primitive_refs, "action_graph_primitive_duplicate"),
+        ):
+            if len(set(values)) != len(values):
+                return cls._reject(duplicate_code)
+        for reference in (*graph.role_refs, *graph.capability_refs, *graph.observation_requirements, *graph.asset_refs):
+            if not _is_versioned_ref(reference):
+                return cls._reject("action_graph_reference_invalid")
+        if not _is_versioned_ref(graph.interruption_policy) or not _is_versioned_ref(graph.recovery_policy) or not _is_versioned_ref(graph.policy_revision):
+            return cls._reject("action_graph_policy_ref_invalid")
+        if reference_catalogs is not None:
+            for key, values in (
+                ("role", graph.role_refs),
+                ("capability", graph.capability_refs),
+                ("observation", graph.observation_requirements),
+                ("asset", graph.asset_refs),
+            ):
+                registered = reference_catalogs.get(key)
+                if registered is not None and not set(values).issubset(set(registered)):
+                    return cls._reject(f"action_graph_{key}_unknown")
+            for key, value in (
+                ("interruption_policy", graph.interruption_policy),
+                ("recovery_policy", graph.recovery_policy),
+                ("policy", graph.policy_revision),
+            ):
+                registered = reference_catalogs.get(key)
+                if registered is not None and value not in set(registered):
+                    return cls._reject("action_graph_policy_ref_unknown")
 
         for primitive_ref in graph.primitive_refs:
             if primitive_ref not in primitives:
@@ -94,8 +127,6 @@ class ActionGraphAdmissionResult(StrictGameplayModel):
         for node in graph.nodes:
             if node.primitive_ref not in primitive_refs:
                 return cls._reject("action_graph_primitive_unknown")
-            if node.duration_window[0] < 0 or node.duration_window[1] <= node.duration_window[0]:
-                return cls._reject("action_graph_duration_invalid")
             if len(set(node.cancel_targets)) != len(node.cancel_targets):
                 return cls._reject("action_graph_cancel_target_duplicate")
             if any(target not in node_refs for target in node.cancel_targets):
@@ -112,6 +143,8 @@ class ActionGraphAdmissionResult(StrictGameplayModel):
             if key in edge_keys:
                 return cls._reject("action_graph_edge_duplicate")
             edge_keys.add(key)
+            if len(set(edge.condition_refs)) != len(edge.condition_refs):
+                return cls._reject("action_graph_array_not_canonical")
             trigger_key = (edge.from_node, edge.trigger)
             previous_target = trigger_targets.get(trigger_key)
             if previous_target is not None and previous_target != edge.to_node:
@@ -123,7 +156,7 @@ class ActionGraphAdmissionResult(StrictGameplayModel):
         reachable = _reachable(start_ref, adjacency)
         if reachable != node_set:
             return cls._reject("action_graph_node_unreachable")
-        if _has_cycle(node_refs, adjacency):
+        if _has_cycle(node_refs, adjacency) and not _bounded_cycles_are_valid(graph, adjacency):
             return cls._reject("action_graph_cycle_invalid")
 
         terminal_nodes = {node.node_ref for node in graph.nodes if node.phase == "terminal"}
@@ -177,6 +210,22 @@ def _has_cycle(nodes: tuple[str, ...], adjacency: dict[str, list[str]]) -> bool:
 
 def _can_reach_any(starts: set[str], targets: set[str], adjacency: dict[str, list[str]]) -> bool:
     return any(targets.intersection(_reachable(start, adjacency)) for start in starts)
+
+
+def _is_versioned_ref(value: str) -> bool:
+    return ":" in value and "@" in value and not value.endswith("@")
+
+
+def _bounded_cycles_are_valid(graph: ActionGraphDefinition, adjacency: dict[str, list[str]]) -> bool:
+    if graph.bounded_loop_limit <= 0:
+        return False
+    edge_budgets = {(edge.from_node, edge.to_node): edge.loop_budget for edge in graph.edges}
+    return all(
+        edge_budgets.get((source, target), 0) > 0
+        for source, targets in adjacency.items()
+        for target in targets
+        if _reachable(target, adjacency).intersection({source})
+    )
 
 
 __all__ = [

@@ -344,3 +344,20 @@ def test_action_graph_admission_rejects_missing_recovery_path() -> None:
 
     assert not result.accepted
     assert result.error_code == "action_graph_recovery_path_missing"
+
+
+def test_action_graph_admission_rejects_unknown_declared_reference_when_catalog_is_supplied() -> None:
+    graph = ActionGraphDefinition.model_validate(_graph())
+    result = ActionGraphAdmissionResult.admit(
+        graph,
+        primitive_catalog=_primitive_catalog(),
+        reference_catalogs={
+            "role": graph.role_refs,
+            "capability": graph.capability_refs,
+            "observation": graph.observation_requirements,
+            "asset": ("asset:door@1",),
+            "policy": (graph.policy_revision, graph.recovery_policy, graph.interruption_policy),
+        },
+    )
+    assert not result.accepted
+    assert result.error_code == "action_graph_asset_unknown"
