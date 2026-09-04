@@ -52,6 +52,7 @@ enum DriverMode {
 @export var player_run_speed_threshold := 6.4
 @export var use_root_motion_patrol := true
 @export var embodied_interaction_distance := 3.0
+@export_enum("third_person", "first_person") var presentation_camera_mode := "third_person"
 
 const CHARACTER_ACTOR_STATUS_ACCEPTED := "accepted_by_actor_adapter"
 const CHARACTER_ACTOR_STATUS_RECOVERING_APPROACH := "recovering_approach"
@@ -369,6 +370,13 @@ func clear_embodied_control_frame() -> void:
 	if locomotion_state == LocomotionState.WALK or locomotion_state == LocomotionState.ATTEND:
 		locomotion_state = LocomotionState.IDLE
 		_set_role_asset_state(idle_role_state)
+
+
+func set_presentation_camera_mode(mode: String) -> Dictionary:
+	if mode not in ["third_person", "first_person"]:
+		return {"accepted": false, "error_code": "camera_mode_invalid"}
+	presentation_camera_mode = mode
+	return {"accepted": true, "camera_mode": presentation_camera_mode, "presentation_only": true}
 
 func is_embodied_control_active() -> bool:
 	return player_shell_active

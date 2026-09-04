@@ -69,6 +69,11 @@ def _snapshot() -> SpatialSnapshotRef:
         collision_revision="collision:warehouse@1",
         occlusion_revision="occlusion:warehouse@1",
         sound_zone_revision="sound:warehouse@1",
+        source_revision_vector={"scene:warehouse": 1},
+        visibility_by_target={"room:hall": False},
+        sound_by_target={"room:hall": False},
+        contact_by_target={"room:hall": False},
+        distance_band_by_target={"room:hall": "near"},
     )
 
 
@@ -100,6 +105,6 @@ def test_action_window_rejects_out_of_order_and_changed_duplicate() -> None:
     out_of_order = ActionWindowValidator.validate(_intent(window_index=2), graph=graph, spatial_snapshot=snapshot, previous_window_index=0)
     assert not out_of_order.accepted
     assert out_of_order.error_code == "action_window_order_conflict"
-    changed = ActionWindowValidator.validate(_intent(window_index=0, deterministic_seed="seed:changed"), graph=graph, spatial_snapshot=snapshot, prior_intent_digest=ordered.intent_digest)
+    changed = ActionWindowValidator.validate(_intent(window_index=0, deterministic_seed="seed:changed"), graph=graph, spatial_snapshot=snapshot, prior_intent_digest=ordered.intent_digest, prior_result=ordered)
     assert not changed.accepted
     assert changed.error_code == "action_window_idempotency_reused"

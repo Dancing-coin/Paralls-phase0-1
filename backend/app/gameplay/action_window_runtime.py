@@ -25,6 +25,11 @@ class SpatialSnapshotRef(StrictGameplayModel):
     collision_revision: str = Field(min_length=1)
     occlusion_revision: str = Field(min_length=1)
     sound_zone_revision: str = Field(min_length=1)
+    source_revision_vector: dict[str, int] = Field(default_factory=dict)
+    visibility_by_target: dict[str, bool] = Field(default_factory=dict)
+    sound_by_target: dict[str, bool] = Field(default_factory=dict)
+    contact_by_target: dict[str, bool] = Field(default_factory=dict)
+    distance_band_by_target: dict[str, str] = Field(default_factory=dict)
 
 
 class ActionWindowIntent(StrictGameplayModel):
@@ -55,7 +60,7 @@ class ActionWindowIntent(StrictGameplayModel):
 
     @model_validator(mode="after")
     def validate_window(self) -> "ActionWindowIntent":
-        if self.window_end_tick <= self.window_start_tick:
+        if self.window_end_tick - self.window_start_tick != 1:
             raise ValueError("action_window_duration_invalid")
         if len(self.local_position_sample) != 3 or len(self.facing_sample) != 3:
             raise ValueError("action_window_sample_invalid")
@@ -100,6 +105,7 @@ class ActionWindowValidator:
         spatial_snapshot: SpatialSnapshotRef,
         previous_window_index: int | None = None,
         prior_intent_digest: str | None = None,
+        prior_result: ActionWindowResult | None = None,
     ) -> ActionWindowResult:
         digest = _digest(intent.model_dump(mode="json"))
         if intent.graph_ref != graph.graph_ref or intent.graph_revision != graph.graph_revision:
@@ -108,17 +114,9 @@ class ActionWindowValidator:
             return cls._reject(intent, digest, "action_window_order_conflict")
         if prior_intent_digest is not None:
             if prior_intent_digest == digest:
-                return ActionWindowResult(
-                    accepted=True,
-                    attempt_ref=intent.attempt_ref,
-                    window_index=intent.window_index,
-                    intent_digest=digest,
-                    perception=PerceptionResolution(
-                        snapshot_ref=spatial_snapshot.snapshot_ref,
-                        distance_band="duplicate",
-                        reason_ref="action_window_duplicate_replay",
-                    ),
-                )
+                if prior_result is None:
+                    return cls._reject(intent, digest, "action_window_duplicate_result_missing")
+                return prior_result.model_copy(deep=True)
             return cls._reject(intent, digest, "action_window_idempotency_reused")
         node = next((candidate for candidate in graph.nodes if candidate.node_ref == intent.node_ref), None)
         if node is None:
@@ -139,15 +137,28 @@ class ActionWindowValidator:
         }
         if actual != expected:
             return cls._reject(intent, digest, "action_window_spatial_revision_conflict")
+        if dict(intent.expected_revision_vector) != dict(spatial_snapshot.source_revision_vector):
+            return cls._reject(intent, digest, "action_window_source_revision_conflict")
         if _private_evidence_leaked(intent.actor_ref, intent.visibility_sample, intent.sound_sample, intent.contact_sample):
             return cls._reject(intent, digest, "action_window_private_evidence_leaked")
         if _sample_conflicts(intent):
             return cls._reject(intent, digest, "action_window_measurement_conflict")
+        target_ref = intent.target_refs[0] if intent.target_refs else ""
+        if target_ref and target_ref not in spatial_snapshot.distance_band_by_target:
+            return cls._reject(intent, digest, "action_window_spatial_evidence_missing")
+        authoritative_visible = spatial_snapshot.visibility_by_target.get(target_ref, False)
+        authoritative_heard = spatial_snapshot.sound_by_target.get(target_ref, False)
+        authoritative_contact = spatial_snapshot.contact_by_target.get(target_ref, False)
+        claimed_visible = bool(intent.visibility_sample.get("visible", False))
+        claimed_heard = bool(intent.sound_sample.get("heard", False))
+        claimed_contact = bool(intent.contact_sample.get("in_contact", False))
+        if (claimed_visible, claimed_heard, claimed_contact) != (authoritative_visible, authoritative_heard, authoritative_contact):
+            return cls._reject(intent, digest, "action_window_measurement_conflict")
         perception = PerceptionResolution(
-            visible=bool(intent.visibility_sample.get("visible", False)),
-            heard=bool(intent.sound_sample.get("heard", False)),
-            in_contact=bool(intent.contact_sample.get("in_contact", False)),
-            distance_band=str(intent.visibility_sample.get("distance_band", "unknown")),
+            visible=authoritative_visible,
+            heard=authoritative_heard,
+            in_contact=authoritative_contact,
+            distance_band=spatial_snapshot.distance_band_by_target.get(target_ref, "movement"),
             reason_ref="action_window_spatial_snapshot_recomputed",
             snapshot_ref=spatial_snapshot.snapshot_ref,
         )

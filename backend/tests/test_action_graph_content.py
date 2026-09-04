@@ -139,13 +139,24 @@ def _graph(**overrides: object) -> dict[str, object]:
         ],
         "capability_refs": ["capability:recovery@1", "capability:stealth@1"],
         "observation_requirements": ["observation:visibility@1", "observation:sound@1"],
-        "asset_refs": ["asset:case-file@1", "asset:door@1"],
+        "asset_refs": ["asset:case-file@1", "asset:door@1", "asset:hallway@1", "asset:safe-room@1"],
         "interruption_policy": "policy:interrupt-default@1",
         "recovery_policy": "policy:recovery@1",
         "policy_revision": "policy:action-graph@1",
     }
     value.update(overrides)
     return value
+
+
+def _reference_catalogs() -> dict[str, tuple[str, ...]]:
+    graph = _graph()
+    return {
+        "role": tuple(graph["role_refs"]),
+        "capability": tuple(graph["capability_refs"]),
+        "observation": tuple(graph["observation_requirements"]),
+        "asset": tuple(graph["asset_refs"]),
+        "policy": (str(graph["policy_revision"]), str(graph["recovery_policy"]), str(graph["interruption_policy"])),
+    }
 
 
 def test_action_graph_admission_accepts_canonical_graph_without_store_access(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -156,7 +167,7 @@ def test_action_graph_admission_accepts_canonical_graph_without_store_access(mon
     monkeypatch.setattr(action_graph_content_module, "GameplayEventStore", ExplodingStore, raising=False)
 
     graph = ActionGraphDefinition.model_validate(_graph())
-    result = ActionGraphAdmissionResult.admit(graph, primitive_catalog=_primitive_catalog())
+    result = ActionGraphAdmissionResult.admit(graph, primitive_catalog=_primitive_catalog(), reference_catalogs=_reference_catalogs())
 
     assert result.accepted is True
     assert result.error_code is None
@@ -211,7 +222,7 @@ def test_action_graph_admission_rejects_unknown_primitive() -> None:
         )
     )
 
-    result = ActionGraphAdmissionResult.admit(graph, primitive_catalog=_primitive_catalog())
+    result = ActionGraphAdmissionResult.admit(graph, primitive_catalog=_primitive_catalog(), reference_catalogs=_reference_catalogs())
 
     assert not result.accepted
     assert result.error_code == "action_graph_primitive_unknown"
@@ -229,7 +240,7 @@ def test_action_graph_admission_rejects_duplicate_node() -> None:
         )
     )
 
-    result = ActionGraphAdmissionResult.admit(graph, primitive_catalog=_primitive_catalog())
+    result = ActionGraphAdmissionResult.admit(graph, primitive_catalog=_primitive_catalog(), reference_catalogs=_reference_catalogs())
 
     assert not result.accepted
     assert result.error_code == "action_graph_node_duplicate"
@@ -271,7 +282,7 @@ def test_action_graph_admission_rejects_cycle_without_bounded_loop() -> None:
         )
     )
 
-    result = ActionGraphAdmissionResult.admit(graph, primitive_catalog=_primitive_catalog())
+    result = ActionGraphAdmissionResult.admit(graph, primitive_catalog=_primitive_catalog(), reference_catalogs=_reference_catalogs())
 
     assert not result.accepted
     assert result.error_code == "action_graph_cycle_invalid"
@@ -313,7 +324,7 @@ def test_action_graph_admission_rejects_conflicting_edge() -> None:
         )
     )
 
-    result = ActionGraphAdmissionResult.admit(graph, primitive_catalog=_primitive_catalog())
+    result = ActionGraphAdmissionResult.admit(graph, primitive_catalog=_primitive_catalog(), reference_catalogs=_reference_catalogs())
 
     assert not result.accepted
     assert result.error_code == "action_graph_edge_conflict"
@@ -340,7 +351,7 @@ def test_action_graph_admission_rejects_missing_recovery_path() -> None:
         )
     )
 
-    result = ActionGraphAdmissionResult.admit(graph, primitive_catalog=_primitive_catalog())
+    result = ActionGraphAdmissionResult.admit(graph, primitive_catalog=_primitive_catalog(), reference_catalogs=_reference_catalogs())
 
     assert not result.accepted
     assert result.error_code == "action_graph_recovery_path_missing"

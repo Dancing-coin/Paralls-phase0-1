@@ -79,7 +79,7 @@ class ActionGraphAdmissionResult(StrictGameplayModel):
         graph: ActionGraphDefinition,
         *,
         primitive_catalog: Iterable[ActionPrimitiveDefinition],
-        reference_catalogs: Mapping[str, Iterable[str]] | None = None,
+        reference_catalogs: Mapping[str, Iterable[str]],
     ) -> "ActionGraphAdmissionResult":
         primitives = {primitive.action_ref: primitive for primitive in primitive_catalog}
         node_refs = tuple(node.node_ref for node in graph.nodes)
@@ -101,24 +101,19 @@ class ActionGraphAdmissionResult(StrictGameplayModel):
                 return cls._reject("action_graph_reference_invalid")
         if not _is_versioned_ref(graph.interruption_policy) or not _is_versioned_ref(graph.recovery_policy) or not _is_versioned_ref(graph.policy_revision):
             return cls._reject("action_graph_policy_ref_invalid")
-        if reference_catalogs is not None:
-            for key, values in (
-                ("role", graph.role_refs),
-                ("capability", graph.capability_refs),
-                ("observation", graph.observation_requirements),
-                ("asset", graph.asset_refs),
-            ):
-                registered = reference_catalogs.get(key)
-                if registered is not None and not set(values).issubset(set(registered)):
-                    return cls._reject(f"action_graph_{key}_unknown")
-            for key, value in (
-                ("interruption_policy", graph.interruption_policy),
-                ("recovery_policy", graph.recovery_policy),
-                ("policy", graph.policy_revision),
-            ):
-                registered = reference_catalogs.get(key)
-                if registered is not None and value not in set(registered):
-                    return cls._reject("action_graph_policy_ref_unknown")
+        for key, values in (
+            ("role", graph.role_refs),
+            ("capability", graph.capability_refs),
+            ("observation", graph.observation_requirements),
+            ("asset", graph.asset_refs),
+        ):
+            registered = reference_catalogs.get(key)
+            if registered is None or not set(values).issubset(set(registered)):
+                return cls._reject(f"action_graph_{key}_unknown")
+        for value in (graph.interruption_policy, graph.recovery_policy, graph.policy_revision):
+            registered = reference_catalogs.get("policy")
+            if registered is None or value not in set(registered):
+                return cls._reject("action_graph_policy_ref_unknown")
 
         for primitive_ref in graph.primitive_refs:
             if primitive_ref not in primitives:

@@ -40,6 +40,12 @@ var realtime_request: Dictionary = {}
 var realtime_grant: Dictionary = {}
 var realtime_registry_binding: Dictionary = {}
 var realtime_next_phase_index := 0
+var action_graph_ref := ""
+var action_graph_revision := ""
+var action_graph_node_ref := ""
+var action_window_index := -1
+var action_window_duration_seconds := 1.0
+var action_window_active := false
 
 
 func can_start_attempt(request: Dictionary, grant: Dictionary) -> Dictionary:
@@ -52,6 +58,55 @@ func can_start_attempt(request: Dictionary, grant: Dictionary) -> Dictionary:
 	if str(grant.get("one_time_outcome_nonce", "")) == "":
 		return {"accepted": false, "error_code": "outcome_nonce_required"}
 	return {"accepted": true, "error_code": ""}
+
+
+func begin_action_graph_node(graph: Dictionary, node: Dictionary) -> Dictionary:
+	"""Bind one declarative graph node to this local playback controller."""
+	var graph_ref := str(graph.get("graph_ref", ""))
+	var graph_revision := str(graph.get("graph_revision", ""))
+	var node_ref := str(node.get("node_ref", ""))
+	if graph_ref.is_empty() or graph_revision.is_empty() or node_ref.is_empty():
+		return {"accepted": false, "error_code": "action_graph_binding_invalid"}
+	if not graph.has("nodes") or not (graph.get("nodes") is Array):
+		return {"accepted": false, "error_code": "action_graph_nodes_missing"}
+	var known := false
+	for candidate: Dictionary in graph.get("nodes", []):
+		if str(candidate.get("node_ref", "")) == node_ref:
+			known = true
+			break
+	if not known:
+		return {"accepted": false, "error_code": "action_graph_node_unknown"}
+	action_graph_ref = graph_ref
+	action_graph_revision = graph_revision
+	action_graph_node_ref = node_ref
+	action_window_index = -1
+	action_window_active = true
+	return {"accepted": true, "graph_ref": action_graph_ref, "graph_revision": action_graph_revision, "node_ref": action_graph_node_ref}
+
+
+func advance_action_window(window_index: int) -> Dictionary:
+	if not action_window_active:
+		return {"accepted": false, "error_code": "action_window_inactive"}
+	if window_index != action_window_index + 1:
+		return {"accepted": false, "error_code": "action_window_order_conflict", "expected_window_index": action_window_index + 1}
+	action_window_index = window_index
+	return {"accepted": true, "window_index": action_window_index, "duration_seconds": action_window_duration_seconds}
+
+
+func reject_action_window(reason: String = "authority_rejected") -> Dictionary:
+	action_window_active = false
+	action_graph_ref = ""
+	action_graph_revision = ""
+	action_graph_node_ref = ""
+	action_window_index = -1
+	selected_action_atoms.clear()
+	phase_action_atoms.clear()
+	trace_events.clear()
+	if active_playback_adapter != null and active_playback_adapter.has_method("restore_local_ownership"):
+		active_playback_adapter.call("restore_local_ownership")
+	current_phase = "idle"
+	local_ownership_restored = true
+	return {"accepted": false, "error_code": reason, "speculative_state_cleared": true}
 
 
 func run_attempt(
