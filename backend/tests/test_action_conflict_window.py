@@ -21,6 +21,7 @@ from app.gameplay.p5.registry import (
     TrustedEvidenceProvider,
 )
 from app.gameplay.shared_contracts import GameplayCommandEnvelope
+from app.gameplay.settlement_plan import build_atomic_event_batch
 
 
 REGISTRY_REF = "registry:p5:action-window"
@@ -208,7 +209,7 @@ def _command() -> GameplayCommandEnvelope:
         transaction_id="transaction:action-window:1",
         idempotency_key="idempotency:action-window:1",
         expected_revisions={EVENT_STREAM: 0},
-        read_set_revisions={},
+        read_set_revisions={SOURCE_STREAM: 1},
         causation_id="causation:action-window:1",
         correlation_id="correlation:action-window:1",
         source_ref="source:action-window:1",
@@ -218,8 +219,26 @@ def _command() -> GameplayCommandEnvelope:
     )
 
 
+def _seed_source(store: GameplayEventStore) -> None:
+    result = store.append_batch(
+        build_atomic_event_batch(
+            command_id="source:action-window:1",
+            principal_ref="authority:source-fixture",
+            stream_id=SOURCE_STREAM,
+            expected_revision=0,
+            event_specs=(("world.encounter.snapshot_committed", {"actor_ref": "character:survivor:alpha", "visibility_policy": "project"}),),
+            idempotency_key="source:action-window:1",
+            causation_id="source:action-window:1",
+            correlation_id="encounter:bakery-theft",
+        )
+    )
+    assert result.committed
+
+
 def test_action_window_facade_commits_the_small_conflict_surface() -> None:
-    authority = InvestigationConflictAuthority(registry=_registry(), store=GameplayEventStore())
+    store = GameplayEventStore()
+    _seed_source(store)
+    authority = InvestigationConflictAuthority(registry=_registry(), store=store)
 
     result = authority.resolve_action_window(
         command=_command(),
@@ -232,11 +251,12 @@ def test_action_window_facade_commits_the_small_conflict_surface() -> None:
 
     assert result.window_result.accepted is True
     assert result.receipt is not None and result.receipt.committed is True
-    assert [event.event_type for event in authority._store.read_events()] == list(EVENT_TYPES)
+    assert [event.event_type for event in authority._store.read_events() if event.event_type in EVENT_TYPES] == list(EVENT_TYPES)
 
 
 def test_action_window_duplicate_replays_without_new_write() -> None:
     store = GameplayEventStore()
+    _seed_source(store)
     authority = InvestigationConflictAuthority(registry=_registry(), store=store)
     first = authority.resolve_action_window(
         command=_command(),
@@ -258,11 +278,12 @@ def test_action_window_duplicate_replays_without_new_write() -> None:
     assert first.committed is True
     assert second.committed is True
     assert second.idempotency_status == "duplicate_replayed"
-    assert len(store.read_events()) == 5
+    assert len([event for event in store.read_events() if event.event_type in EVENT_TYPES]) == 5
 
 
 def test_action_window_changed_duplicate_is_zero_write() -> None:
     store = GameplayEventStore()
+    _seed_source(store)
     authority = InvestigationConflictAuthority(registry=_registry(), store=store)
     first = authority.resolve_action_window(
         command=_command(),
@@ -285,11 +306,12 @@ def test_action_window_changed_duplicate_is_zero_write() -> None:
     assert first.committed is True
     assert changed.committed is False
     assert changed.error_code == "action_window_idempotency_reused"
-    assert len(store.read_events()) == 5
+    assert len([event for event in store.read_events() if event.event_type in EVENT_TYPES]) == 5
 
 
 def test_action_window_role_scope_and_source_revision_reject_without_partial_append() -> None:
     store = GameplayEventStore()
+    _seed_source(store)
     authority = InvestigationConflictAuthority(registry=_registry(), store=store)
     before = len(store.read_events())
     rejected_role = authority.resolve_action_window(
@@ -318,6 +340,7 @@ def test_action_window_role_scope_and_source_revision_reject_without_partial_app
 
 def test_action_window_facade_rejects_changed_duplicate_and_private_evidence() -> None:
     store = GameplayEventStore()
+    _seed_source(store)
     authority = InvestigationConflictAuthority(registry=_registry(), store=store)
     intent = _intent()
     first = authority.resolve_action_window(
@@ -334,7 +357,7 @@ def test_action_window_facade_rejects_changed_duplicate_and_private_evidence() -
     )
     assert not changed.committed
     assert changed.error_code == "action_window_idempotency_reused"
-    assert len(store.read_events()) == 5
+    assert len([event for event in store.read_events() if event.event_type in EVENT_TYPES]) == 5
 
     private_intent = intent.model_copy(
         update={
@@ -354,4 +377,4 @@ def test_action_window_facade_rejects_changed_duplicate_and_private_evidence() -
     )
     assert not private.committed
     assert private.error_code == "action_window_private_evidence_leaked"
-    assert len(store.read_events()) == 5
+    assert len(store.read_events()) == 6
