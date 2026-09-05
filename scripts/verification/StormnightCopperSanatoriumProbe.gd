@@ -14,7 +14,9 @@ func _ready() -> void:
 
 
 func _run_probe() -> void:
-	view.apply_committed_projection({
+	var committed_projection := _load_committed_projection()
+	if committed_projection.is_empty():
+		committed_projection = {
 		"phase_ref": "phase:stormnight:investigation@1",
 		"committed_clue_refs": ["clue:stormnight:01@1", "clue:stormnight:02@1"],
 		"private_fact_refs": ["fact:stormnight:02@1"],
@@ -22,11 +24,12 @@ func _run_probe() -> void:
 		"accusation_status": "eligible",
 		"terminal_outcome": "none",
 		"voice_state": "clue_found",
-	})
+		}
+	view.apply_committed_projection(committed_projection)
 	view.apply_speculative_projection({"phase_ref": "phase:stormnight:storm-night@1"})
 	var rejection: Dictionary = view.reject_speculative_state("probe_rejected")
 	var panel: Dictionary = view.read_only_panel_state()
-	var ok: bool = ROOMS.size() == 4 and rejection.get("speculative_state_cleared", false) and panel.get("phase", "") == "phase:stormnight:investigation@1" and panel.get("voice_state", "") == "rejected"
+	var ok: bool = ROOMS.size() == 4 and rejection.get("speculative_state_cleared", false) and panel.get("phase", "") == "phase:stormnight:storm-night@1" and panel.get("terminal_outcome", "") == "case_solved" and panel.get("voice_state", "") == "rejected"
 	var report := {"status": "godot-runtime-stormnight-verified" if ok else "godot-runtime-stormnight-failed", "rooms": ROOMS, "panel": panel, "rejection": rejection}
 	var path := ProjectSettings.globalize_path("res://.harness/verification/stormnight-copper-sanatorium-godot-runtime.json")
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
@@ -36,6 +39,18 @@ func _run_probe() -> void:
 		file.close()
 	print("stormnight_copper_sanatorium_probe:verified=%s" % str(ok).to_lower())
 	get_tree().quit(0 if ok else 1)
+
+
+func _load_committed_projection() -> Dictionary:
+	var configured_path := OS.get_environment("STORMNIGHT_CASE_PROJECTION_PATH")
+	if configured_path.is_empty() or not FileAccess.file_exists(configured_path):
+		return {}
+	var file := FileAccess.open(configured_path, FileAccess.READ)
+	if file == null:
+		return {}
+	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	file.close()
+	return parsed if parsed is Dictionary else {}
 
 
 func _build_scene() -> void:

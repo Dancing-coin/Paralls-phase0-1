@@ -17,4 +17,4 @@ def test_stormnight_scene_has_procedural_case_geometry_and_read_only_view() -> N
         assert f"func {method}" in view
     assert "append_batch" not in probe
     assert "BackendBridge" not in probe
-
+    assert "STORMNIGHT_CASE_PROJECTION_PATH" in probe

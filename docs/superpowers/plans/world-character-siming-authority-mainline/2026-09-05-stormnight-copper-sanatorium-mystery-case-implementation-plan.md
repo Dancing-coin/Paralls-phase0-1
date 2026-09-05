@@ -160,9 +160,17 @@
 - [x] **Step 1: Write RED replay tests** covering case lifecycle, owner handoff, one action window, one statement, one evidence collection, one accusation, all four declared outcomes and tampered checkpoint rejection.
 - [x] **Step 2: Add tamper tests** for package bytes, declaration/content digest and checkpoint state; focused content/evidence/action tamper gates remain green.
 - [x] **Step 3: Add a second content-only variant** with different case/package/location identity while retaining the same typed slots and adapters; prove the same case adapter opens and runs it.
-- [ ] **Step 4: Run focused suites, `python -m pytest -q`, `python -m compileall -q backend`, `git diff --check`, action/P5/Character/Godot/docs Harness profiles and the full Harness.
-- [ ] **Step 5: Update the completion audit** to distinguish `complete reference game`, `reusable case template`, and future Creator Skill/Siming Director work. Keep August INF A-D `not complete`.
-- [ ] **Step 6: Commit and push each verified slice directly to `main`** using Lore-format messages.
+- [x] **Step 4: Run focused suites, `python -m pytest -q`, `python -m compileall -q backend`, `git diff --check`, action/P5/Character/Godot/docs Harness profiles and the full Harness.
+- [x] **Step 5: Update the completion audit** to distinguish `complete reference game`, `reusable case template`, and future Creator Skill/Siming Director work. Keep August INF A-D `not complete`.
+- [x] **Step 6: Commit and push each verified slice directly to `main`** using Lore-format messages.
+
+### Execution record
+
+Tasks 1–7 were completed in the preceding verified commits listed in the SDD
+ledger. Task 8 is closed by the final focused suite, full-replay/genericity
+suite, Stormnight Harness, Godot headless/desktop probes, and synchronized
+completion audit. The remaining interactive-agent and creator-tool items are
+explicit follow-on scope, not blockers for this reference game.
 
 ## Rollout gates
 

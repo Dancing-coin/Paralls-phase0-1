@@ -688,6 +688,7 @@ source; it does not vendor source text or modern adaptations.
 
 Its current engineering status is recorded in the
 [Stormnight completion audit](2026-09-05-stormnight-copper-sanatorium-mystery-case-completion-audit.md):
-content, package, case lifecycle, filtered agent proposals and procedural
-presentation are implemented, while cross-owner evidence writes and complete
-reference-game closure remain active work.
+the complete reference-game path is implemented and verified, including
+cross-owner evidence/custody handoffs, four deterministic outcomes, replay
+parity and a second content-only variant. Future live-agent depth and Creator
+Skill/Siming Director work remain separate follow-on scope.

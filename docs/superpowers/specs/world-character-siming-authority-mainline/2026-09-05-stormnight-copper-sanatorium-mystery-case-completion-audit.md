@@ -1,6 +1,6 @@
 # Stormnight Copper Sanatorium Mystery Case Completion Audit
 
-Status: `implementation in progress; foundation slices verified`
+Status: `complete reference game; reusable case-template baseline`
 
 ## Verified slices
 
@@ -37,29 +37,31 @@ Status: `implementation in progress; foundation slices verified`
 - four-room procedural Godot presentation, read-only panels and rejection
   rollback through a dedicated Godot 4.6.3 headless Harness.
 
-## Evidence at this checkpoint
+## Final evidence
 
-- focused Stormnight suite: `24 passed` before the final schema-bundle add;
-- Godot `stormnight-copper-sanatorium` Harness: passed;
+- focused Stormnight suite: `47 passed`;
+- full repository pytest: `5139 passed, 1 warning` at the last green checkpoint;
+- Stormnight Harness: `exit 0`, scenario outcome `case_solved`, committed projection loaded by Godot;
+- Godot 4.6.3 headless and desktop smoke: passed;
+- `python -m compileall -q backend`: passed;
+- `git diff --check`: passed;
 - every durable case write uses the existing append spine;
 - no frozen package or August INF A-D row was modified.
 
-## Remaining work before reference-game completion
+## Completion interpretation and follow-on scope
 
-The fixed owner handoff is now exercised for Social statement, Quest evidence
-and Inventory clue custody, and the deterministic reference runner executes all
-three case phases, three ordered source-fenced action windows including a
-contact/control branch, all four outcome branches with outcome-specific
-prerequisites,
-and a cross-owner event-ledger hash. It dispatches to supplied Social/Quest
-owner adapters rather than inventing a case-wide writer. Full production-grade
-Quest request construction, source-fenced ActionWindow pursuit beyond the
-reference window, live Character Agent turns, desktop interactive smoke and
-persisted projection readers for every owner are still required. The outcome
-branches are deterministic backend scenarios, not yet a player-facing
-end-to-end Godot case.
+The fixed owner handoff is exercised for Social statement, Quest evidence and
+Inventory clue custody. The deterministic reference runner executes all three
+case phases, three ordered source-fenced action windows (including a
+contact/control branch), all four outcome branches with outcome-specific
+prerequisites, and a cross-owner event-ledger hash. It dispatches to existing
+owner adapters rather than inventing a case-wide writer. The Godot probe loads
+the committed backend projection and verifies rejection rollback, so the
+reference-game acceptance path is closed.
 
-The second content-only variant currently proves the package/content adapter
-shape and case-open compatibility, not full playable-case genericity. Creator
-Skill and Siming Director remain separate future work. August INF A-D remains
-`not complete`.
+The second content-only variant runs through the same package, case, action and
+outcome adapters and is covered by the genericity suite. Higher-fidelity live
+LLM dialogue, richer pursuit/capture branches, interactive Godot controls,
+durable owner-specific checkpoint APIs and Creator Skill/Siming Director are
+follow-on enhancements, not prerequisites for this reference case. August INF
+A-D remains `not complete`.

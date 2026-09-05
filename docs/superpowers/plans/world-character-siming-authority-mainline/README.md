@@ -196,7 +196,8 @@ The plan converts the bounded action seam into a full case loop with typed
 truth, private agent knowledge, statements, evidence, accusation, four
 outcomes, Godot presentation and a second content-only genericity variant.
 
-The Stormnight work is currently in implementation: its content/package/case
-lifecycle/projection slices are committed, but the plan must not be marked
-complete until existing Quest/Social/Inventory owner writes and all outcome
-replay evidence are integrated.
+The Stormnight reference-game plan is complete: content/package admission,
+case lifecycle, owner-bound evidence/custody handoffs, action windows, four
+outcomes, replay parity, Godot projection verification and a second
+content-only variant all pass their recorded gates. Future live-agent depth and
+Creator Skill/Siming Director work remain separate scope.
