@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "stormnight-realtime-playable",
+  "order": 89,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_stormnight_realtime_playable.py",
+  "requires_godot": true,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/stormnight-realtime-playable-report.json",
+  "description": "Realtime local-player Stormnight backend/WebSocket/Godot smoke verification"
+}

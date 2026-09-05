@@ -52,12 +52,6 @@ from app.models.visual_fact import VisualFactEvent
 from app.models.world_result import WorldResultBase
 from app.gameplay.dispatcher import GameplayOutboxDispatcher
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.event_schema_registry import (
-    EventSchemaRegistration,
-    EventSchemaRegistry,
-    EventSchemaRegistryError,
-    register_stormnight_scripted_mystery_event_schemas,
-)
 from app.gameplay.p5.stormnight_realtime_session import (
     StormnightPlayerIntent,
     StormnightRealtimeSessionService,
@@ -438,28 +432,7 @@ def reset_runtime_state() -> None:
     previous_capabilities = globals().get("harness_capability_store")
     if isinstance(previous_capabilities, HarnessCapabilityStore):
         previous_capabilities.close()
-    stormnight_event_registry = EventSchemaRegistry()
-    register_stormnight_scripted_mystery_event_schemas(stormnight_event_registry)
-    for event_type, digest in (
-        ("gameplay.social.knowledge_observed", "sha256:stormnight-social-knowledge-v1"),
-        ("gameplay.quest.evidence_registered", "sha256:stormnight-quest-evidence-v1"),
-        ("gameplay.inventory.container_created", "sha256:stormnight-inventory-container-v1"),
-        ("gameplay.inventory.item_instantiated", "sha256:stormnight-inventory-item-v1"),
-        ("gameplay.inventory.item_moved", "sha256:stormnight-inventory-move-v1"),
-        ("world.stormnight.spatial_snapshot_committed", "sha256:stormnight-spatial-source-v1"),
-        ("gameplay.conflict.encounter_started", "sha256:stormnight-conflict-started-v1"),
-        ("gameplay.conflict.action_window_resolved", "sha256:stormnight-conflict-window-v1"),
-        ("gameplay.conflict.control_changed", "sha256:stormnight-conflict-control-v1"),
-        ("gameplay.conflict.terminal_outcome_recorded", "sha256:stormnight-conflict-terminal-v1"),
-        ("gameplay.conflict.encounter_closed", "sha256:stormnight-conflict-closed-v1"),
-    ):
-        registration = EventSchemaRegistration(event_type, 1, digest)
-        try:
-            stormnight_event_registry.register(registration)
-        except EventSchemaRegistryError:
-            if stormnight_event_registry.get(event_type, 1) != registration:
-                raise
-    gameplay_event_store = GameplayEventStore(event_schema_registry=stormnight_event_registry)
+    gameplay_event_store = GameplayEventStore()
     stormnight_realtime_session_service = StormnightRealtimeSessionService(store=gameplay_event_store)
     runtime_state = build_runtime_state(settings)
     heavenly_graph = runtime_state.heavenly_graph

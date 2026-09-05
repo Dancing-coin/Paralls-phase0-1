@@ -46,6 +46,10 @@ Status: `complete reference game; reusable case-template baseline`
 - four Stormnight low-poly actor replicas load from the reusable primitive-only
   character scene; actor colors/markers and committed terminal-state mapping
   are verified without any Throne Hall or knight-scene reference;
+- a separately runnable local realtime vertical now binds PlayerShell input to
+  finite WebSocket intents, shared-store owner validation and committed Godot
+  HUD/actor updates; backend startup plus actual WebSocket round-trip and
+  Godot scene load are covered by `stormnight-realtime-playable` Harness.
 - `python -m compileall -q backend`: passed;
 - `git diff --check`: passed;
 - every durable case write uses the existing append spine;

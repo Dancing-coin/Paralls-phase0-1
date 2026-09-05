@@ -84,3 +84,12 @@ This vertical is one local-player reference session, not authenticated public
 multiplayer, arbitrary free-text truth creation, a generic new scheduler, or a
 replacement for the existing mirror/session systems. Online account binding,
 voice synthesis and live LLM provider operations remain follow-on work.
+
+## Implemented evidence
+
+The local realtime vertical is implemented. It has a strict WebSocket route,
+shared-store service, PlayerShell scene, four primitive actors, HUD, committed
+response rollback and a dedicated Harness that starts the backend and loads the
+Godot scene. The direct service, real WebSocket and Godot static suites cover
+finite input, actor impersonation rejection, changed-idempotency zero-write,
+owner handoffs and absence of knight/church references.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app import main
 from app.ws_protocol import Envelope
+from fastapi.testclient import TestClient
 
 
 def _send(payload: dict[str, object]) -> list[dict[str, object]]:
@@ -35,3 +36,14 @@ def test_stormnight_websocket_changed_duplicate_is_rejected_without_append() -> 
     changed = _send({"kind": "inspect", "request_id": "same"})
     assert changed[0]["payload"]["error_code"] == "stormnight_player_idempotency_reused"
     assert len(main.gameplay_event_store.read_events()) == before
+
+
+def test_stormnight_realtime_intent_round_trips_over_the_actual_websocket() -> None:
+    main.reset_runtime_state()
+    with TestClient(main.app) as client:
+        with client.websocket_connect("/ws") as websocket:
+            websocket.send_json({"message_type": "stormnight_player_intent", "payload": {"kind": "start", "request_id": "live-start"}})
+            response = websocket.receive_json()
+    assert response["message_type"] == "stormnight_case_projection"
+    assert response["payload"]["accepted"] is True
+    assert response["payload"]["projection"]["opened"] is True

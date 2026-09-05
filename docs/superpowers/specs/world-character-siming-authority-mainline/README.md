@@ -691,5 +691,8 @@ Its current engineering status is recorded in the
 the complete reference-game path is implemented and verified, including
 cross-owner evidence/custody handoffs, four deterministic outcomes, replay
 parity, a second content-only variant, and four procedural low-poly actor
-replicas in the Godot case scene. Future live-agent depth and Creator
-Skill/Siming Director work remain separate follow-on scope.
+replicas in the Godot case scene. A separate PlayerShell-powered realtime
+scene now sends finite intents over WebSocket and renders committed owner
+responses without using the knight/church assets. Future public multiplayer,
+live-agent depth and Creator Skill/Siming Director work remain separate
+follow-on scope.
