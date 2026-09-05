@@ -155,6 +155,48 @@ class ScriptedMysteryCaseAuthority:
         result = self._append(command_id, idempotency_key, expected_revision, causation_id, correlation_id, _CASE_EVENTS["accusation_submitted"], self._payload(case_ref=self.package.content.case_ref, case_revision=self.package.content.case_revision, accuser_ref=accuser_ref, target_ref=target_ref, evidence_refs=evidence_refs))
         return CaseAccusationResult(committed=result.committed, target_ref=target_ref, idempotency_status=result.idempotency_status, error_code=None if result.committed else (result.failure.error_code if result.failure else "case_append_failed"), event_id=result.committed_event_ids[0] if result.committed_event_ids else None)
 
+    def handoff_statement_and_clue(
+        self,
+        *,
+        handoff,
+        statement_ref: str,
+        speaker_ref: str,
+        target_ref: str,
+        mode: str,
+        clue_ref: str,
+        discoverer_ref: str,
+        social_expected_revision: int,
+        quest_expected_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ) -> tuple[object, object]:
+        """Route fixed statement/clue facts to Social and Quest owners."""
+        social = handoff.record_social_statement(
+            case_ref=self.package.content.case_ref,
+            statement_ref=statement_ref,
+            speaker_ref=speaker_ref,
+            target_ref=target_ref,
+            mode=mode,
+            expected_revision=social_expected_revision,
+            command_id=f"{command_id}:social",
+            idempotency_key=f"{idempotency_key}:social",
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+        )
+        quest = handoff.record_quest_evidence(
+            case_ref=self.package.content.case_ref,
+            clue_ref=clue_ref,
+            discoverer_ref=discoverer_ref,
+            expected_revision=quest_expected_revision,
+            command_id=f"{command_id}:quest",
+            idempotency_key=f"{idempotency_key}:quest",
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+        )
+        return social, quest
+
     def project(self) -> CaseProjection:
         return self._project_events(self.store.read_events())
 
