@@ -36,8 +36,9 @@ Status: `implementation in progress; foundation slices verified`
 ## Remaining work before reference-game completion
 
 The fixed owner handoff is now exercised for Social statement, Quest evidence
-and Inventory clue custody, and the Stormnight graph is admitted over existing
-action primitives. Full production-grade Quest request construction,
+and Inventory clue custody, and can dispatch to supplied Social/Quest owner
+adapters rather than inventing a case-wide writer. The Stormnight graph is
+admitted over existing action primitives. Full production-grade Quest request construction,
 source-fenced ActionWindow pursuit beyond the reference window, live Character
 Agent turns, desktop interactive smoke and a complete cross-owner replay with
 persisted owner projection readers are still required. The four outcome
@@ -45,6 +46,8 @@ branches are deterministically exercised by the reference runner, but are not
 yet a player-facing end-to-end Godot case.
 
 The second content-only variant currently proves the package/content adapter
-shape and case-open compatibility, not full playable-case genericity. Creator
+shape and case-open compatibility, not full playable-case genericity. The
+isolated fallback handoff used by scenario tests is not sufficient production
+evidence until real owner registries are supplied. Creator
 Skill and Siming Director remain separate future work. August INF A-D remains
 `not complete`.
