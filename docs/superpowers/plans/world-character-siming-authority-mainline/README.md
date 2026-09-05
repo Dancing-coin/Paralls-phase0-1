@@ -195,3 +195,8 @@ The next product vertical is the complete original
 The plan converts the bounded action seam into a full case loop with typed
 truth, private agent knowledge, statements, evidence, accusation, four
 outcomes, Godot presentation and a second content-only genericity variant.
+
+The Stormnight work is currently in implementation: its content/package/case
+lifecycle/projection slices are committed, but the plan must not be marked
+complete until existing Quest/Social/Inventory owner writes and all outcome
+replay evidence are integrated.

@@ -685,3 +685,9 @@ Its implementation plan is tracked in the matching
 [case implementation plan](../../plans/world-character-siming-authority-mainline/2026-09-05-stormnight-copper-sanatorium-mystery-case-implementation-plan.md).
 The case uses original content inspired only by a public-domain structural
 source; it does not vendor source text or modern adaptations.
+
+Its current engineering status is recorded in the
+[Stormnight completion audit](2026-09-05-stormnight-copper-sanatorium-mystery-case-completion-audit.md):
+content, package, case lifecycle, filtered agent proposals and procedural
+presentation are implemented, while cross-owner evidence writes and complete
+reference-game closure remain active work.

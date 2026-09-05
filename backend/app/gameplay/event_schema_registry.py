@@ -320,6 +320,13 @@ _ORGANIZATION_GOVERNMENT_SOCIAL_PLATFORM_EVENTS = (
     "gameplay.social.population_signal_recorded@1",
 )
 
+_STORMNIGHT_SCRIPTED_MYSTERY_EVENTS = (
+    "gameplay.p5.mystery.case_opened@1",
+    "gameplay.p5.mystery.statement_recorded@1",
+    "gameplay.p5.mystery.accusation_submitted@1",
+    "gameplay.p5.mystery.case_outcome_resolved@1",
+)
+
 
 def register_general_inventory_platform_event_schemas(registry: EventSchemaRegistry) -> None:
     for event_type in _GENERAL_INVENTORY_PLATFORM_EVENTS:
@@ -340,6 +347,21 @@ def register_organization_government_social_platform_event_schemas(
             event_type,
             1,
             f"sha256:organization-government-social-platform:{event_type}:v1",
+        )
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError:
+            if registry.get(event_type, 1) != registration:
+                raise
+
+
+def register_stormnight_scripted_mystery_event_schemas(registry: EventSchemaRegistry) -> None:
+    """Register the additive case event bundle for the Stormnight package."""
+    for event_type in _STORMNIGHT_SCRIPTED_MYSTERY_EVENTS:
+        registration = EventSchemaRegistration(
+            event_type,
+            1,
+            f"sha256:stormnight-copper-sanatorium:{event_type}:v1",
         )
         try:
             registry.register(registration)

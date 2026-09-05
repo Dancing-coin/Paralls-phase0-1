@@ -173,7 +173,7 @@ class ScriptedMysteryCaseAuthority:
                 continue
             payload = dict(event.payload)
             if payload.get("package_revision") != self.package.manifest.patch_revision_id or payload.get("content_digest") != self.package.manifest.content_digest:
-                continue
+                raise ValueError("stormnight_case_provenance_tampered")
             case_ref = str(payload.get("case_ref", case_ref or ""))
             case_revision = str(payload.get("case_revision", case_revision or ""))
             phase_ref = str(payload.get("phase_ref", phase_ref or ""))
