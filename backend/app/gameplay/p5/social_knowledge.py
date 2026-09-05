@@ -154,6 +154,22 @@ class SocialFactAuthority:
         self._store = store
         self._package_registry = package_registry
 
+    def scripted_mystery_statement_view(self, *, case_ref: str, recipient_ref: str) -> dict[str, object]:
+        rows = [
+            {
+                "statement_ref": event.payload.get("statement_ref"),
+                "speaker_ref": event.payload.get("knower_ref"),
+                "target_ref": event.payload.get("subject_ref"),
+                "mode": str(event.payload.get("knowledge_kind", "")).removeprefix("statement:"),
+                "stream_revision": event.stream_revision,
+            }
+            for event in self._store.read_events()
+            if event.event_type == _KNOWLEDGE_EVENT
+            and event.payload.get("case_ref") == case_ref
+            and _is_visible(event.visibility_policy, recipient_ref)
+        ]
+        return {"case_ref": case_ref, "recipient_ref": recipient_ref, "statements": rows, "projection_hash": _digest(rows)}
+
     def record_scripted_mystery_statement(
         self,
         *,

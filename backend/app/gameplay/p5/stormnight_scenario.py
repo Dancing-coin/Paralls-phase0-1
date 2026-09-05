@@ -42,6 +42,7 @@ class StormnightScenarioResult:
     phases_completed: int
     agent_turn_proposed: bool
     owner_replay_consistent: bool
+    owner_projection_consistent: bool
 
 
 class StormnightScenarioRunner:
@@ -134,6 +135,12 @@ class StormnightScenarioRunner:
         tail = self.case.replay_checkpoint_tail(checkpoint)
         owner_replay_hash = self._owner_replay_hash()
         owner_replay_hash_again = self._owner_replay_hash()
+        owner_projection_consistent = (
+            self.quest_authority.scripted_mystery_evidence_view(case_ref=self.content.case_ref)["projection_hash"]
+            == self.quest_authority.scripted_mystery_evidence_view(case_ref=self.content.case_ref)["projection_hash"]
+            and self.social_authority.scripted_mystery_statement_view(case_ref=self.content.case_ref, recipient_ref=statement.speaker_ref)["projection_hash"]
+            == self.social_authority.scripted_mystery_statement_view(case_ref=self.content.case_ref, recipient_ref=statement.speaker_ref)["projection_hash"]
+        )
         return StormnightScenarioResult(
             case_opened=opened.committed,
             action_window_committed=action.committed,
@@ -149,6 +156,7 @@ class StormnightScenarioRunner:
             phases_completed=sum(1 for phase in (opened, phase_two, phase_three) if phase.committed),
             agent_turn_proposed=agent_turn.accepted,
             owner_replay_consistent=owner_replay_hash == owner_replay_hash_again,
+            owner_projection_consistent=owner_projection_consistent,
         )
 
     def _owner_replay_hash(self) -> str:

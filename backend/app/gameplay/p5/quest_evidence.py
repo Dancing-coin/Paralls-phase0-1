@@ -48,6 +48,20 @@ class QuestEvidenceAuthority:
         self._registry = registry
         self._store = store
 
+    def scripted_mystery_evidence_view(self, *, case_ref: str) -> dict[str, object]:
+        rows = [
+            {
+                "evidence_ref": event.payload.get("evidence_ref"),
+                "clue_ref": event.payload.get("clue_ref"),
+                "case_ref": event.payload.get("case_ref"),
+                "subject_ref": event.payload.get("subject_ref"),
+                "stream_revision": event.stream_revision,
+            }
+            for event in self._store.read_events()
+            if event.event_type == _EVIDENCE_EVENT and event.payload.get("case_ref") == case_ref
+        ]
+        return {"case_ref": case_ref, "evidence": rows, "projection_hash": _digest(rows)}
+
     def record_scripted_mystery_evidence(
         self,
         *,
