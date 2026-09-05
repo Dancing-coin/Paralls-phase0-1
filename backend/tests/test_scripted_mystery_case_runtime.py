@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from app.gameplay.event_schema_registry import create_stormnight_event_schema_registry
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.p5.scripted_mystery_case_runtime import CaseOpenIntent, ScriptedMysteryCaseAuthority
 
 
 def _authority() -> ScriptedMysteryCaseAuthority:
-    return ScriptedMysteryCaseAuthority.create(GameplayEventStore())
+    return ScriptedMysteryCaseAuthority.create(GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry()))
 
 
 def test_open_advance_and_outcome_are_projected() -> None:

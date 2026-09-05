@@ -16,10 +16,10 @@ _PRINCIPAL = "authority:p5:scripted-mystery-case"
 _PROJECTOR_ID = "projector:p5:scripted-mystery-case"
 _PROJECTOR_VERSION = "v1"
 _CASE_EVENTS = {
-    "case_opened": "gameplay.p5.mystery.case_opened",
-    "statement_recorded": "gameplay.p5.mystery.statement_recorded",
-    "accusation_submitted": "gameplay.p5.mystery.accusation_submitted",
-    "case_outcome_resolved": "gameplay.p5.mystery.case_outcome_resolved",
+    "case_opened": "gameplay.p5.mystery.case_opened@1",
+    "statement_recorded": "gameplay.p5.mystery.statement_recorded@1",
+    "accusation_submitted": "gameplay.p5.mystery.accusation_submitted@1",
+    "case_outcome_resolved": "gameplay.p5.mystery.case_outcome_resolved@1",
 }
 
 

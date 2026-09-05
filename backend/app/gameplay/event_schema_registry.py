@@ -370,6 +370,12 @@ def register_stormnight_scripted_mystery_event_schemas(registry: EventSchemaRegi
                 raise
 
 
+def create_stormnight_event_schema_registry() -> EventSchemaRegistry:
+    registry = EventSchemaRegistry()
+    register_stormnight_scripted_mystery_event_schemas(registry)
+    return registry
+
+
 def register_phase2a_work_intent_event_schemas(registry: EventSchemaRegistry) -> None:
     for registration in PHASE2A_WORK_INTENT_EVENT_SCHEMAS:
         try:
