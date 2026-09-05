@@ -13,6 +13,9 @@ Status: `implementation in progress; foundation slices verified`
 - filtered public/private case context and proposal-only Character Agent turns;
 - evidence, statement, accusation and action-loop boundaries reject unadmitted
   or private input before a case cross-owner write;
+- fixed handoff adapters now delegate statement/knowledge, Quest evidence and
+  Inventory clue custody to their existing owner services, with owner streams
+  and append receipts retained separately;
 - four-room procedural Godot presentation, read-only panels and rejection
   rollback through a dedicated Godot 4.6.3 headless Harness.
 
@@ -25,13 +28,11 @@ Status: `implementation in progress; foundation slices verified`
 
 ## Remaining work before reference-game completion
 
-The case does not yet invoke the existing Quest, Social and Inventory owner
-methods to write collected evidence, statements and accusations. The current
-adapter validates and routes those intents only. The P5 case descriptor/catalog
-must also be admitted through the existing global registry after the event
-schema bundle is wired into a real store. Live Character Agent runtime turns,
-all four playable end-to-end outcomes, full source-fenced ActionWindow pursuit,
-desktop interactive smoke and a complete cross-owner replay are still required.
+The fixed owner handoff is now exercised for Social statement, Quest evidence
+and Inventory clue custody. Full production-grade Quest request construction,
+source-fenced ActionWindow pursuit, all four playable end-to-end outcomes,
+live Character Agent turns, desktop interactive smoke and a complete
+cross-owner replay are still required.
 
 The second content-only variant currently proves the package/content adapter
 shape, not full playable-case genericity. Creator Skill and Siming Director
