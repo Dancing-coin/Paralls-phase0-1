@@ -17,7 +17,7 @@ def main() -> int:
     args = parser.parse_args()
     root = repo_root()
     log = verification_dir(root) / "stormnight-copper-sanatorium-pytest.log"
-    result = run_command([resolve_python_exe(args.python_exe), "-m", "pytest", "-q", "backend/tests/test_stormnight_godot_contract_static.py", "backend/tests/test_scripted_mystery_content.py", "backend/tests/test_scripted_mystery_case_package.py", "backend/tests/test_scripted_mystery_case_runtime.py", "backend/tests/test_scripted_mystery_evidence.py", "backend/tests/test_scripted_mystery_agent_turns.py", "backend/tests/test_stormnight_action_loop.py"], root, log)
+    result = run_command([resolve_python_exe(args.python_exe), "-m", "pytest", "-q", "backend/tests/test_stormnight_godot_contract_static.py", "backend/tests/test_scripted_mystery_content.py", "backend/tests/test_scripted_mystery_case_package.py", "backend/tests/test_scripted_mystery_case_runtime.py", "backend/tests/test_scripted_mystery_evidence.py", "backend/tests/test_scripted_mystery_agent_turns.py", "backend/tests/test_stormnight_action_loop.py", "backend/tests/test_stormnight_owner_handoff.py", "backend/tests/test_stormnight_scenario.py", "backend/tests/test_stormnight_cross_owner_replay.py", "backend/tests/test_stormnight_copper_sanatorium_full_replay.py", "backend/tests/test_stormnight_case_template_genericity.py"], root, log)
     godot_log = verification_dir(root) / "stormnight-copper-sanatorium-godot.log"
     godot_artifact = verification_dir(root) / "stormnight-copper-sanatorium-godot-runtime.json"
     godot_ok = False

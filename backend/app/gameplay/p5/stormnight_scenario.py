@@ -13,6 +13,7 @@ from app.gameplay.p5.scripted_mystery_content import stormnight_case_content
 from app.gameplay.p5.scripted_mystery_evidence import AccusationIntent, ScriptedMysteryEvidenceAdapter
 from app.gameplay.p5.scripted_mystery_owner_handoff import StormnightOwnerHandoffService
 from app.gameplay.p5.stormnight_action_graph import stormnight_action_graph, stormnight_action_registry
+from app.gameplay.p5.contracts import canonical_sha256_digest
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.gameplay.shared_contracts import GameplayCommandEnvelope
 from app.gameplay.inventory_runtime import ContainerSpec, InventoryAuthorityService, InventoryDefinitionRegistry, ItemDefinition
@@ -29,6 +30,7 @@ class StormnightScenarioResult:
     outcome_kind: str
     full_replay_hash: str
     tail_replay_hash: str
+    owner_replay_hash: str
 
 
 class StormnightScenarioRunner:
@@ -98,6 +100,7 @@ class StormnightScenarioRunner:
         events = self.store.read_events()
         checkpoint = self.case.create_checkpoint(events[: max(1, len(events) // 2)])
         tail = self.case.replay_checkpoint_tail(checkpoint)
+        owner_replay_hash = self._owner_replay_hash()
         return StormnightScenarioResult(
             case_opened=opened.committed,
             action_window_committed=action.committed,
@@ -108,7 +111,16 @@ class StormnightScenarioRunner:
             outcome_kind=outcome_kind,
             full_replay_hash=full.projection_hash,
             tail_replay_hash=tail.projection_hash,
+            owner_replay_hash=owner_replay_hash,
         )
+
+    def _owner_replay_hash(self) -> str:
+        """Hash all owner streams touched by the scenario for reconnect evidence."""
+        rows = []
+        for event in self.store.read_events():
+            if event.event_type.startswith(("gameplay.p5.mystery.", "gameplay.social.", "gameplay.quest.", "gameplay.inventory.")):
+                rows.append({"event_id": event.event_id, "event_type": event.event_type, "stream_id": event.stream_id, "stream_revision": event.stream_revision, "visibility_policy": event.visibility_policy, "payload": dict(event.payload)})
+        return canonical_sha256_digest(rows)
 
     def _seed_spatial_source(self) -> None:
         if self.store.get_stream_head(self._source_stream) > 0:

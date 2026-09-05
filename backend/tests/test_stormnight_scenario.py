@@ -16,3 +16,4 @@ def test_stormnight_scenario_runs_owner_bound_case_loop_and_replays(outcome_kind
     assert result.accusation_committed
     assert result.outcome_kind == outcome_kind
     assert result.full_replay_hash == result.tail_replay_hash
+    assert result.owner_replay_hash.startswith("sha256:")
