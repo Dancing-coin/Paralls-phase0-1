@@ -4,7 +4,8 @@
 
 Add visible, reusable low-poly characters to the existing Stormnight Godot
 scene without merging the knight church/Throne Hall scene or changing backend
-truth ownership.
+truth ownership. The first implementation now includes four profile-driven
+replicas and committed-state mapping in the verification scene.
 
 ## Scope and boundaries
 
@@ -29,9 +30,10 @@ authority, or encode hidden case facts.
   controlled and returned poses;
 - metadata for `actor_ref`, `role_ref` and `presentation_profile_ref`.
 
-`StormnightCopperSanatorium.tscn` instances four replicas at explicit spawn
-points. A profile changes only visual parameters: colors, scale, marker shape,
-and allowed local presentation states. Profiles never contain truth facts.
+`StormnightCopperSanatorium.tscn` loads the probe, which instances four
+`ProceduralLowPolyCharacter` replicas at explicit spawn points. A profile
+changes only visual parameters: colors, scale, marker shape, and allowed local
+presentation states. Profiles never contain truth facts.
 
 ## Data flow
 

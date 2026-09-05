@@ -690,5 +690,6 @@ Its current engineering status is recorded in the
 [Stormnight completion audit](2026-09-05-stormnight-copper-sanatorium-mystery-case-completion-audit.md):
 the complete reference-game path is implemented and verified, including
 cross-owner evidence/custody handoffs, four deterministic outcomes, replay
-parity and a second content-only variant. Future live-agent depth and Creator
+parity, a second content-only variant, and four procedural low-poly actor
+replicas in the Godot case scene. Future live-agent depth and Creator
 Skill/Siming Director work remain separate follow-on scope.

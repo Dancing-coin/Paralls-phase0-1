@@ -1,15 +1,24 @@
 extends Node3D
 
 const VIEW := preload("res://scripts/verification/StormnightCopperSanatoriumView.gd")
+const CHARACTER_SCENE := preload("res://scenes/phase0/ProceduralLowPolyCharacter.tscn")
 const ROOMS := ["arrival", "records", "treatment", "courtyard"]
+const ACTOR_PROFILES := [
+	{"actor_ref": "character:stormnight-heir@1", "role_ref": "role:threatened-heir@1", "presentation_profile_ref": "presentation:stormnight:investigator-blue@1", "primary_color": "#3d6ea8", "secondary_color": "#1d2c42", "marker": "blue"},
+	{"actor_ref": "character:stormnight-guardian@1", "role_ref": "role:guardian@1", "presentation_profile_ref": "presentation:stormnight:guardian-red@1", "primary_color": "#8f3f45", "secondary_color": "#3a171c", "marker": "red"},
+	{"actor_ref": "character:stormnight-investigator@1", "role_ref": "role:investigator@1", "presentation_profile_ref": "presentation:stormnight:witness-green@1", "primary_color": "#3b805e", "secondary_color": "#173c2b", "marker": "green"},
+	{"actor_ref": "character:stormnight-physician@1", "role_ref": "role:physician@1", "presentation_profile_ref": "presentation:stormnight:suspect-amber@1", "primary_color": "#a77532", "secondary_color": "#4a3014", "marker": "amber"},
+]
 
 var view: Node
+var actor_nodes: Array[Node] = []
 
 
 func _ready() -> void:
 	view = VIEW.new()
 	add_child(view)
 	_build_scene()
+	_build_actors()
 	call_deferred("_run_probe")
 
 
@@ -26,6 +35,7 @@ func _run_probe() -> void:
 		"voice_state": "clue_found",
 		}
 	view.apply_committed_projection(committed_projection)
+	_apply_committed_actor_state(committed_projection)
 	view.apply_speculative_projection({"phase_ref": "phase:stormnight:storm-night@1"})
 	var rejection: Dictionary = view.reject_speculative_state("probe_rejected")
 	var panel: Dictionary = view.read_only_panel_state()
@@ -39,6 +49,38 @@ func _run_probe() -> void:
 		file.close()
 	print("stormnight_copper_sanatorium_probe:verified=%s" % str(ok).to_lower())
 	get_tree().quit(0 if ok else 1)
+
+
+func _build_actors() -> void:
+	var actors_root := Node3D.new()
+	actors_root.name = "StormnightActors"
+	add_child(actors_root)
+	for index in range(ACTOR_PROFILES.size()):
+		var actor := CHARACTER_SCENE.instantiate()
+		actor.name = "Actor_%s" % index
+		actors_root.add_child(actor)
+		actor.position = Vector3(-7.0 + float(index) * 4.6, 0.0, 4.0)
+		if actor.has_method("configure_profile"):
+			actor.call("configure_profile", ACTOR_PROFILES[index])
+		actor_nodes.append(actor)
+
+
+func _apply_committed_actor_state(projection: Dictionary) -> void:
+	var terminal := str(projection.get("terminal_outcome", "none"))
+	var phase := str(projection.get("phase_ref", ""))
+	for index in range(actor_nodes.size()):
+		var state := "observe" if phase.ends_with("storm-night@1") else "idle"
+		if terminal == "case_solved":
+			state = "returned"
+		elif terminal == "false_accusation" and index == 2:
+			state = "controlled"
+		elif terminal == "culprit_escaped" and index == 1:
+			state = "pursue"
+		elif terminal == "investigator_captured" and index == 2:
+			state = "controlled"
+		var actor: Node = actor_nodes[index]
+		if actor.has_method("apply_committed_state"):
+			actor.call("apply_committed_state", state)
 
 
 func _load_committed_projection() -> Dictionary:

@@ -1,0 +1,18 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/verification/ProceduralLowPolyCharacter.gd" id="1_character"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_character"]
+radius = 0.42
+height = 2.9
+
+[node name="ProceduralLowPolyCharacter" type="CharacterBody3D"]
+script = ExtResource("1_character")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 1.45, 0)
+shape = SubResource("CapsuleShape3D_character")
+
+[node name="VisualRoot" type="Node3D" parent="."]
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]

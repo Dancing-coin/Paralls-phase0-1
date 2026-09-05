@@ -199,5 +199,7 @@ outcomes, Godot presentation and a second content-only genericity variant.
 The Stormnight reference-game plan is complete: content/package admission,
 case lifecycle, owner-bound evidence/custody handoffs, action windows, four
 outcomes, replay parity, Godot projection verification and a second
-content-only variant all pass their recorded gates. Future live-agent depth and
-Creator Skill/Siming Director work remain separate scope.
+content-only variant all pass their recorded gates, and the case scene now
+loads four primitive-only actor replicas without merging the knight/church
+assets. Future live-agent depth and Creator Skill/Siming Director work remain
+separate scope.

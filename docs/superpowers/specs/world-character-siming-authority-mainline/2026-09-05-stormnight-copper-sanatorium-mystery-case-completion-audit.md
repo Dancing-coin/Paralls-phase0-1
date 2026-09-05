@@ -43,6 +43,9 @@ Status: `complete reference game; reusable case-template baseline`
 - full repository pytest: `5139 passed, 1 warning` at the last green checkpoint;
 - Stormnight Harness: `exit 0`, scenario outcome `case_solved`, committed projection loaded by Godot;
 - Godot 4.6.3 headless and desktop smoke: passed;
+- four Stormnight low-poly actor replicas load from the reusable primitive-only
+  character scene; actor colors/markers and committed terminal-state mapping
+  are verified without any Throne Hall or knight-scene reference;
 - `python -m compileall -q backend`: passed;
 - `git diff --check`: passed;
 - every durable case write uses the existing append spine;
