@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.gameplay.event_schema_registry import EventSchemaRegistration, EventSchemaRegistry, EventSchemaRegistryError
+from app.gameplay.event_schema_registry import EventSchemaRegistration, EventSchemaRegistry, EventSchemaRegistryError, create_stormnight_event_schema_registry
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 
 from test_gameplay_event_store_contract import _batch, _event, _outbox
@@ -37,6 +37,17 @@ def test_schema_registration_identity_is_immutable_and_snapshot_round_trips() ->
 
     restored = EventSchemaRegistry.from_snapshot(registry.export_snapshot())
     assert restored.get("gameplay.session_reserved", 1) == registration
+
+
+def test_stormnight_case_schema_bundle_is_registered() -> None:
+    registry = create_stormnight_event_schema_registry()
+    for event_type in (
+        "gameplay.p5.mystery.case_opened@1",
+        "gameplay.p5.mystery.statement_recorded@1",
+        "gameplay.p5.mystery.accusation_submitted@1",
+        "gameplay.p5.mystery.case_outcome_resolved@1",
+    ):
+        registry.require(event_type, 1)
 
 
 def test_durable_snapshot_restores_opt_in_write_gate(tmp_path) -> None:
