@@ -21,6 +21,8 @@ Status: `implementation in progress; foundation slices verified`
 - a deterministic scenario runner now composes case open, action window,
   Social/Quest handoff, Inventory clue custody, accusation and all four
   declared outcome branches on one event store with replay hash comparison;
+- the dedicated Stormnight Harness now executes the expanded integrated
+  scenario and cross-owner event-ledger checks alongside the Godot probe;
 - four-room procedural Godot presentation, read-only panels and rejection
   rollback through a dedicated Godot 4.6.3 headless Harness.
 
@@ -43,5 +45,6 @@ branches are deterministically exercised by the reference runner, but are not
 yet a player-facing end-to-end Godot case.
 
 The second content-only variant currently proves the package/content adapter
-shape, not full playable-case genericity. Creator Skill and Siming Director
-remain separate future work. August INF A-D remains `not complete`.
+shape and case-open compatibility, not full playable-case genericity. Creator
+Skill and Siming Director remain separate future work. August INF A-D remains
+`not complete`.
