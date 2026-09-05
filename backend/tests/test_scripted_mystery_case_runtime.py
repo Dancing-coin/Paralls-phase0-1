@@ -16,11 +16,12 @@ def test_open_advance_and_outcome_are_projected() -> None:
     advanced = authority.advance_phase(command_id="advance", idempotency_key="advance", phase_ref="phase:stormnight:investigation@1", expected_revision=1, causation_id="cause", correlation_id="corr")
     assert advanced.committed
     outcome = authority.resolve_outcome(command_id="outcome", idempotency_key="outcome", outcome_kind="case_solved", expected_revision=2, causation_id="cause", correlation_id="corr")
-    assert outcome.committed
+    assert not outcome.committed
+    assert outcome.error_code == "case_outcome_prerequisite_missing"
     projection = authority.project()
     assert projection.opened
     assert projection.phase_ref == "phase:stormnight:investigation@1"
-    assert projection.terminal_outcome == "case_solved"
+    assert projection.terminal_outcome is None
 
 
 def test_duplicate_and_changed_duplicate_are_fail_closed() -> None:

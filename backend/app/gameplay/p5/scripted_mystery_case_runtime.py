@@ -80,6 +80,9 @@ class CaseProjection(StrictGameplayModel):
     committed_clue_refs: tuple[str, ...] = ()
     statement_refs: tuple[str, ...] = ()
     accusation_refs: tuple[str, ...] = ()
+    last_accusation_target_ref: str | None = None
+    action_window_count: int = 0
+    contact_observed: bool = False
     terminal_outcome: str | None = None
     source_revision_vector: dict[str, int] = Field(default_factory=dict)
     applied_event_ids: tuple[str, ...] = ()
@@ -126,11 +129,22 @@ class ScriptedMysteryCaseAuthority:
         if existing is not None:
             receipt = self.store.get_by_idempotency(_PRINCIPAL, idempotency_key)
             return CaseOutcomeResult(committed=True, outcome_kind=outcome_kind, idempotency_status="duplicate_replayed", event_id=receipt.committed_event_ids[0] if receipt and receipt.committed_event_ids else None)
+        projection = self.project()
         if self.store.get_stream_head(self.stream_id) != expected_revision:
             return CaseOutcomeResult(committed=False, outcome_kind=outcome_kind, idempotency_status="rejected", error_code="case_revision_stale")
         if outcome_kind not in {item.outcome_kind for item in self.package.content.outcome_definitions}:
             return CaseOutcomeResult(committed=False, outcome_kind=outcome_kind, idempotency_status="rejected", error_code="case_outcome_unknown")
-        payload = self._payload(case_ref=self.package.content.case_ref, case_revision=self.package.content.case_revision, phase_ref=self.project().phase_ref, outcome_kind=outcome_kind)
+        if not projection.accusation_refs:
+            return CaseOutcomeResult(committed=False, outcome_kind=outcome_kind, idempotency_status="rejected", error_code="case_outcome_prerequisite_missing")
+        if outcome_kind == "case_solved" and projection.last_accusation_target_ref != self.package.content.culprit_actor_ref:
+            return CaseOutcomeResult(committed=False, outcome_kind=outcome_kind, idempotency_status="rejected", error_code="case_outcome_accusation_incorrect")
+        if outcome_kind == "false_accusation" and projection.last_accusation_target_ref == self.package.content.culprit_actor_ref:
+            return CaseOutcomeResult(committed=False, outcome_kind=outcome_kind, idempotency_status="rejected", error_code="case_outcome_accusation_should_be_false")
+        if outcome_kind == "investigator_captured" and not projection.contact_observed:
+            return CaseOutcomeResult(committed=False, outcome_kind=outcome_kind, idempotency_status="rejected", error_code="case_outcome_capture_prerequisite_missing")
+        if outcome_kind == "culprit_escaped" and projection.contact_observed:
+            return CaseOutcomeResult(committed=False, outcome_kind=outcome_kind, idempotency_status="rejected", error_code="case_outcome_escape_contact_conflict")
+        payload = self._payload(case_ref=self.package.content.case_ref, case_revision=self.package.content.case_revision, phase_ref=projection.phase_ref, outcome_kind=outcome_kind)
         result = self._append(command_id, idempotency_key, expected_revision, causation_id, correlation_id, _CASE_EVENTS["case_outcome_resolved"], payload)
         if not result.committed:
             return CaseOutcomeResult(committed=False, outcome_kind=outcome_kind, idempotency_status="rejected", error_code=result.failure.error_code if result.failure else "case_append_failed")
@@ -244,11 +258,23 @@ class ScriptedMysteryCaseAuthority:
         opened = False
         clues: list[str] = []
         accusations: list[str] = []
+        last_accusation_target: str | None = None
+        action_window_count = 0
+        contact_observed = False
         statements: list[str] = []
         revisions: dict[str, int] = {}
         ids: list[str] = []
         last_sequence = 0
         for event in events:
+            if event.event_type == "gameplay.conflict.action_window_resolved":
+                action_window_count += 1
+                contact_observed = contact_observed or bool(dict(event.payload.get("perception", {})).get("in_contact", False))
+                continue
+            if event.event_type == "gameplay.quest.evidence_registered" and event.payload.get("case_ref") == self.package.content.case_ref:
+                clue_ref = str(event.payload.get("clue_ref", event.payload.get("evidence_ref", "")))
+                if clue_ref and clue_ref not in clues:
+                    clues.append(clue_ref)
+                continue
             if not str(event.event_type).startswith("gameplay.p5.mystery."):
                 continue
             payload = dict(event.payload)
@@ -268,10 +294,11 @@ class ScriptedMysteryCaseAuthority:
                 accusation_ref = str(payload.get("accusation_ref", event.event_id))
                 if accusation_ref not in accusations:
                     accusations.append(accusation_ref)
+                last_accusation_target = str(payload.get("target_ref", "")) or last_accusation_target
             revisions[event.stream_id] = event.stream_revision
             ids.append(event.event_id)
             last_sequence = max(last_sequence, event.global_sequence)
-        return CaseProjection(case_ref=case_ref, case_revision=case_revision, phase_ref=phase_ref, opened=opened, committed_clue_refs=tuple(clues), statement_refs=tuple(statements), accusation_refs=tuple(accusations), terminal_outcome=outcome, source_revision_vector=dict(sorted(revisions.items())), applied_event_ids=tuple(ids), last_global_sequence=last_sequence)
+        return CaseProjection(case_ref=case_ref, case_revision=case_revision, phase_ref=phase_ref, opened=opened, committed_clue_refs=tuple(clues), statement_refs=tuple(statements), accusation_refs=tuple(accusations), last_accusation_target_ref=last_accusation_target, action_window_count=action_window_count, contact_observed=contact_observed, terminal_outcome=outcome, source_revision_vector=dict(sorted(revisions.items())), applied_event_ids=tuple(ids), last_global_sequence=last_sequence)
 
 
 __all__ = ["CaseAccusationResult", "CaseOpenIntent", "CaseOutcomeResult", "CasePhaseResult", "CaseProjection", "CaseStatementResult", "ScriptedMysteryCaseAuthority"]

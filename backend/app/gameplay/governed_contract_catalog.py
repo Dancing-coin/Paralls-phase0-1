@@ -1086,39 +1086,6 @@ class GovernedAuthorityContractCatalog:
                 package_slot_refs=("slot:blueprint-definition@1", "slot:grid-footprint@1", "slot:permit@1"),
             ),
             OwnerOperationDescriptor(
-                descriptor_ref="descriptor:scripted-mystery-case@1",
-                descriptor_revision="descriptor:scripted-mystery-case@1",
-                family_ref="scripted_mystery_case@1",
-                capability_ref="capability:scripted-mystery-case@1",
-                outcome_family_ref="outcome:scripted-mystery-case@1",
-                allowed_predicate_family_refs=("predicate:scripted-mystery-case@1",),
-                allowed_proposal_effect_types=("effect:scripted-mystery-case@1",),
-                owner_ref="authority:p5:scripted-mystery-case",
-                accepted_intent_schema_ref="schema:scripted-mystery-case-intent@1",
-                source_event_types=("gameplay.p5.mystery.case_opened@1",),
-                source_stream_pattern="gameplay:p5:mystery:{case_ref}",
-                source_revision_fence_ref="revision:scripted-mystery-case-source@1",
-                target_stream_pattern="gameplay:p5:mystery:{case_ref}",
-                target_event_types=(
-                    "gameplay.p5.mystery.accusation_submitted@1",
-                    "gameplay.p5.mystery.case_opened@1",
-                    "gameplay.p5.mystery.case_outcome_resolved@1",
-                    "gameplay.p5.mystery.statement_recorded@1",
-                ),
-                privacy_scope="project",
-                idempotency_rule_ref="idempotency:scripted-mystery-case@1",
-                receipt_reader_ref="GameplayEventStore.append_batch",
-                replay_reader_refs=(
-                    "reader:scripted-mystery-case-full@1",
-                    "reader:scripted-mystery-case-tail@1",
-                ),
-                terminal_semantics_ref="lifecycle:terminal-no-compensation@1",
-                reversal_semantics_ref="lifecycle:none@1",
-                compensation_semantics_ref="lifecycle:none@1",
-                allowed_recipe_family_refs=("scripted_mystery_case@1",),
-                package_slot_refs=("slot:case-truth@1", "slot:clue-graph@1", "slot:outcomes@1", "slot:private-knowledge@1"),
-            ),
-            OwnerOperationDescriptor(
                 descriptor_ref="descriptor:construction-facility-package-declared-transform@1",
                 descriptor_revision="descriptor:construction-facility-package-declared-transform@1",
                 capability_ref="capability:construction-facility-package-declared-transform@1",
@@ -1911,7 +1878,32 @@ class GovernedAuthorityContractCatalog:
             )
             for family_ref, slug, owner_ref, stream_pattern, event_types, privacy_scope in ogs_rows
         )
-        return (*existing, *family_descriptors, *economy_descriptors, *ecology_descriptors, *inventory_descriptors, *ogs_descriptors)
+        stormnight_descriptor = OwnerOperationDescriptor(
+            descriptor_ref="descriptor:scripted-mystery-case@1",
+            descriptor_revision="descriptor:scripted-mystery-case@1",
+            family_ref="scripted_mystery_case@1",
+            capability_ref="capability:scripted-mystery-case@1",
+            outcome_family_ref="outcome:scripted-mystery-case@1",
+            allowed_predicate_family_refs=("predicate:scripted-mystery-case@1",),
+            allowed_proposal_effect_types=("effect:scripted-mystery-case@1",),
+            owner_ref="authority:p5:scripted-mystery-case",
+            accepted_intent_schema_ref="schema:scripted-mystery-case-intent@1",
+            source_event_types=("gameplay.p5.mystery.case_opened@1",),
+            source_stream_pattern="gameplay:p5:mystery:{case_ref}",
+            source_revision_fence_ref="revision:scripted-mystery-case-source@1",
+            target_stream_pattern="gameplay:p5:mystery:{case_ref}",
+            target_event_types=("gameplay.p5.mystery.accusation_submitted@1", "gameplay.p5.mystery.case_opened@1", "gameplay.p5.mystery.case_outcome_resolved@1", "gameplay.p5.mystery.statement_recorded@1"),
+            privacy_scope="project",
+            idempotency_rule_ref="idempotency:scripted-mystery-case@1",
+            receipt_reader_ref="GameplayEventStore.append_batch",
+            replay_reader_refs=("reader:scripted-mystery-case-full@1", "reader:scripted-mystery-case-tail@1"),
+            terminal_semantics_ref="lifecycle:terminal-no-compensation@1",
+            reversal_semantics_ref="lifecycle:none@1",
+            compensation_semantics_ref="lifecycle:none@1",
+            allowed_recipe_family_refs=("scripted_mystery_case@1",),
+            package_slot_refs=("slot:case-truth@1", "slot:clue-graph@1", "slot:outcomes@1", "slot:private-knowledge@1"),
+        )
+        return (*existing, stormnight_descriptor, *family_descriptors, *economy_descriptors, *ecology_descriptors, *inventory_descriptors, *ogs_descriptors)
 
     @classmethod
     def require_descriptor(cls, descriptor_ref: str) -> OwnerOperationDescriptor:

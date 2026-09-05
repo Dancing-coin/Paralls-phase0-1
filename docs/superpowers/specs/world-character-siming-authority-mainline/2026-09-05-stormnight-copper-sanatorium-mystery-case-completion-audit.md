@@ -25,6 +25,13 @@ Status: `implementation in progress; foundation slices verified`
   scenario and cross-owner event-ledger checks alongside the Godot probe;
 - the runner now compares repeatable Quest, Social and Inventory owner
   projections in addition to the case projection and ledger hash;
+- the scenario runner now derives outcome prerequisites from committed case
+  facts: correct culprit accusation for `case_solved`, wrong-target accusation
+  for `false_accusation`, no contact for `culprit_escaped`, and contact for
+  `investigator_captured`;
+- the runner now gates execution on the admitted Stormnight action graph and
+  the global exact descriptor/catalog binding, instead of accepting a local
+  graph or caller-selected authority coordinates;
 - four-room procedural Godot presentation, read-only panels and rejection
   rollback through a dedicated Godot 4.6.3 headless Harness.
 
@@ -40,7 +47,8 @@ Status: `implementation in progress; foundation slices verified`
 The fixed owner handoff is now exercised for Social statement, Quest evidence
 and Inventory clue custody, and the deterministic reference runner executes all
 three case phases, three ordered source-fenced action windows including a
-contact/control branch, all four outcome branches,
+contact/control branch, all four outcome branches with outcome-specific
+prerequisites,
 and a cross-owner event-ledger hash. It dispatches to supplied Social/Quest
 owner adapters rather than inventing a case-wide writer. Full production-grade
 Quest request construction, source-fenced ActionWindow pursuit beyond the

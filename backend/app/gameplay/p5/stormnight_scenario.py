@@ -12,7 +12,7 @@ from app.gameplay.p5.scripted_mystery_case_package import StormnightCasePackage,
 from app.gameplay.p5.scripted_mystery_content import stormnight_case_content
 from app.gameplay.p5.scripted_mystery_evidence import AccusationIntent, ScriptedMysteryEvidenceAdapter
 from app.gameplay.p5.scripted_mystery_owner_handoff import StormnightOwnerHandoffService
-from app.gameplay.p5.stormnight_action_graph import stormnight_action_graph, stormnight_action_registry
+from app.gameplay.p5.stormnight_action_graph import admit_stormnight_action_graph, stormnight_action_graph, stormnight_action_registry
 from app.gameplay.p5.contracts import canonical_sha256_digest
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.gameplay.shared_contracts import GameplayCommandEnvelope
@@ -62,12 +62,15 @@ class StormnightScenarioRunner:
     def run(self, *, outcome_kind: str = "case_solved") -> StormnightScenarioResult:
         if outcome_kind not in {item.outcome_kind for item in self.content.outcome_definitions}:
             raise ValueError("stormnight_outcome_unadmitted")
+        graph_admission = admit_stormnight_action_graph()
+        if not graph_admission.accepted:
+            raise ValueError(graph_admission.error_code or "stormnight_action_graph_unadmitted")
         opened = self.case.open_case(CaseOpenIntent(case_ref=self.content.case_ref, case_revision=self.content.case_revision, command_id="stormnight:open", idempotency_key="stormnight:open", causation_id="stormnight", correlation_id="stormnight", submitted_at="2026-09-05T00:00:00Z"))
         self._seed_spatial_source()
         actions = [
             self._resolve_action_window(window_index=0, expected_conflict_revision=0, node_ref="arrival", target_ref="location:stormnight:arrival@1", contact=False),
             self._resolve_action_window(window_index=1, expected_conflict_revision=5, node_ref="investigate", target_ref="location:stormnight:records@1", contact=False),
-            self._resolve_action_window(window_index=2, expected_conflict_revision=10, node_ref="recover", target_ref="location:stormnight:courtyard@1", contact=True),
+            self._resolve_action_window(window_index=2, expected_conflict_revision=10, node_ref="recover", target_ref="location:stormnight:courtyard@1", contact=outcome_kind == "investigator_captured"),
         ]
         action = actions[-1]
         phase_two = self.case.advance_phase(command_id="stormnight:phase-2", idempotency_key="stormnight:phase-2", phase_ref="phase:stormnight:investigation@1", expected_revision=1, causation_id="stormnight", correlation_id="stormnight")
@@ -108,11 +111,12 @@ class StormnightScenarioRunner:
         inventory_projection = inventory._projector.rebuild(discoverer, self.store.read_events())
         inventory_projection_again = inventory._projector.rebuild(discoverer, self.store.read_events())
         projection = self.case.project()
-        context = ScriptedMysteryEvidenceAdapter(content=self.content).build_turn_context(projection, statement.speaker_ref)
+        investigator_ref = "character:stormnight-investigator@1"
+        context = ScriptedMysteryEvidenceAdapter(content=self.content).build_turn_context(projection, investigator_ref)
         agent_turn = ScriptedMysteryAgentTurnService().propose_turn_from_character_runtime(
             CharacterAgentRuntime(),
             CharacterPerceivedEvent(
-                actor_id=statement.speaker_ref,
+            actor_id=investigator_ref,
                 percept_channel="visual",
                 producer_ts=1,
                 room_id="stormnight",
@@ -127,8 +131,8 @@ class StormnightScenarioRunner:
             policy="investigator",
         )
         accusation = self.case.submit_accusation(
-            accuser_ref=statement.speaker_ref,
-            target_ref=statement.target_ref,
+            accuser_ref=investigator_ref,
+            target_ref=self.content.culprit_actor_ref if outcome_kind == "case_solved" else self.content.actor_refs[1],
             evidence_refs=(context.public_fact_refs[0], context.public_fact_refs[1]),
             command_id="stormnight:accusation",
             idempotency_key="stormnight:accusation",
@@ -139,15 +143,15 @@ class StormnightScenarioRunner:
         resolved = self.case.resolve_outcome(command_id="stormnight:outcome", idempotency_key="stormnight:outcome", outcome_kind=outcome_kind, expected_revision=4, causation_id="stormnight", correlation_id="stormnight")
         full = self.case.replay_full()
         events = self.store.read_events()
-        checkpoint = self.case.create_checkpoint(events[: max(1, len(events) // 2)])
+        checkpoint = self.case.create_checkpoint(events[:1])
         tail = self.case.replay_checkpoint_tail(checkpoint)
         owner_replay_hash = self._owner_replay_hash()
         owner_replay_hash_again = self._owner_replay_hash()
         owner_projection_consistent = (
             self.quest_authority.scripted_mystery_evidence_view(case_ref=self.content.case_ref)["projection_hash"]
-            == self.quest_authority.scripted_mystery_evidence_view(case_ref=self.content.case_ref)["projection_hash"]
+            == QuestEvidenceAuthority(registry=stormnight_quest_registry(), store=self.store).scripted_mystery_evidence_view(case_ref=self.content.case_ref)["projection_hash"]
             and self.social_authority.scripted_mystery_statement_view(case_ref=self.content.case_ref, recipient_ref=statement.speaker_ref)["projection_hash"]
-            == self.social_authority.scripted_mystery_statement_view(case_ref=self.content.case_ref, recipient_ref=statement.speaker_ref)["projection_hash"]
+            == SocialFactAuthority(registry=stormnight_social_registry(), store=self.store).scripted_mystery_statement_view(case_ref=self.content.case_ref, recipient_ref=statement.speaker_ref)["projection_hash"]
             and inventory_projection.locations == inventory_projection_again.locations
             and inventory_projection.items == inventory_projection_again.items
         )
