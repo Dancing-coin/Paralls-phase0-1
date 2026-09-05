@@ -7,6 +7,7 @@ from app.services.scripted_mystery_agent_turns import ScriptedMysteryAgentTurnSe
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.p5.investigation_conflict import InvestigationConflictAuthority
 from test_action_conflict_window import _command as action_command, _graph as action_graph, _intent as action_intent, _snapshot as action_snapshot, _registry as action_registry, _seed_source
+from app.gameplay.p5.stormnight_action_graph import stormnight_action_graph
 from app.gameplay.p5.scripted_mystery_case_runtime import CaseOpenIntent
 from app.gameplay.p5.scripted_mystery_content import stormnight_case_content
 
@@ -46,3 +47,7 @@ def test_case_open_then_existing_p5_action_window_commits_on_same_store() -> Non
     result = InvestigationConflictAuthority(registry=action_registry(), store=store).resolve_action_window(command=action_command(), intent=action_intent(), graph=action_graph(), spatial_snapshot=action_snapshot(), role_ref="role:survivor@1", now="now")
     assert result.committed
     assert len([event for event in store.read_events() if event.event_type == "gameplay.conflict.action_window_resolved"]) == 1
+
+
+def test_stormnight_graph_is_the_case_action_graph_input() -> None:
+    assert stormnight_action_graph().graph_ref == "graph:stormnight-investigation@1"
