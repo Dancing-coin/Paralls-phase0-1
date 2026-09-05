@@ -6,7 +6,9 @@ from app.gameplay.p5.scripted_mystery_case_package import (
     build_stormnight_case_package,
     load_stormnight_case_package,
     resolve_exact_one_binding,
+    install_stormnight_case_package,
 )
+from app.gameplay.patch_runtime import GameplayPatchRegistry
 
 
 def test_stormnight_package_is_v3_platform_2_and_digest_verified() -> None:
@@ -40,3 +42,12 @@ def test_package_content_is_immutable_and_package_revision_pinned() -> None:
     with pytest.raises((TypeError, ValueError)):
         package.content.case_ref = "case:changed@1"  # type: ignore[misc]
     assert package.binding.package_revision == package.manifest.patch_revision_id
+
+
+def test_package_installs_as_exact_one_active_binding() -> None:
+    registry = GameplayPatchRegistry(trusted_authors=frozenset({"author:repo"}))
+    package = install_stormnight_case_package(registry)
+    assert registry.active_patch_set is not None
+    matches = tuple(binding for binding in registry.active_patch_set.capability_bindings if binding.binding_ref == package.binding.binding_ref)
+    assert len(matches) == 1
+    assert matches[0].descriptor_ref == package.binding.descriptor_ref

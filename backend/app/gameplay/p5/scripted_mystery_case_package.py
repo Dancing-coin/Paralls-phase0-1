@@ -23,6 +23,7 @@ from app.gameplay.patch_runtime import (
     ReplayReaderRef,
     TypedReadRequirement,
     _canonical_digest,
+    GameplayPatchRegistry,
 )
 
 
@@ -191,6 +192,20 @@ def load_stormnight_case_package() -> StormnightCasePackage:
     return build_stormnight_case_package()
 
 
+def install_stormnight_case_package(registry: GameplayPatchRegistry) -> StormnightCasePackage:
+    """Install the immutable candidate and activate it through the existing registry."""
+    package = load_stormnight_case_package()
+    registry.install(package.manifest)
+    active = registry.activate((package.manifest.patch_revision_id,))
+    package = StormnightCasePackage(
+        content=package.content,
+        manifest=package.manifest,
+        binding=package.binding.model_copy(update={"active_set_digest": active.active_patch_set_revision}, deep=True),
+    )
+    package.validate()
+    return package
+
+
 def resolve_exact_one_binding(bindings: Iterable[CasePackageBinding], binding_ref: str) -> CasePackageBinding:
     matches = tuple(binding for binding in bindings if binding.binding_ref == binding_ref)
     if len(matches) != 1:
@@ -198,4 +213,4 @@ def resolve_exact_one_binding(bindings: Iterable[CasePackageBinding], binding_re
     return matches[0]
 
 
-__all__ = ["CasePackageBinding", "StormnightCasePackage", "build_stormnight_case_package", "load_stormnight_case_package", "resolve_exact_one_binding"]
+__all__ = ["CasePackageBinding", "StormnightCasePackage", "build_stormnight_case_package", "install_stormnight_case_package", "load_stormnight_case_package", "resolve_exact_one_binding"]
