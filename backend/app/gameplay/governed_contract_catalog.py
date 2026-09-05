@@ -1088,6 +1088,7 @@ class GovernedAuthorityContractCatalog:
             OwnerOperationDescriptor(
                 descriptor_ref="descriptor:scripted-mystery-case@1",
                 descriptor_revision="descriptor:scripted-mystery-case@1",
+                family_ref="scripted_mystery_case@1",
                 capability_ref="capability:scripted-mystery-case@1",
                 outcome_family_ref="outcome:scripted-mystery-case@1",
                 allowed_predicate_family_refs=("predicate:scripted-mystery-case@1",),

@@ -1191,6 +1191,21 @@ class GameplayPatchRegistry:
                         )
                     except (KeyError, TypeError, ValueError, ValidationError) as exc:
                         raise GameplayPatchRuntimeError("patch_capability_binding_content_invalid") from exc
+                elif descriptor.family_ref == "scripted_mystery_case@1":
+                    from app.gameplay.p5.scripted_mystery_content import ScriptedMysteryCaseContent
+
+                    definitions = tuple(
+                        definition
+                        for definition in extension.package_definitions
+                        if definition.definition_ref in declaration.definition_refs
+                    )
+                    if len(definitions) != 1:
+                        raise GameplayPatchRuntimeError("patch_capability_binding_content_invalid")
+                    family_definition_ref = definitions[0].definition_ref
+                    try:
+                        validated_family_content = ScriptedMysteryCaseContent.model_validate(definitions[0].typed_content)
+                    except (TypeError, ValueError, ValidationError) as exc:
+                        raise GameplayPatchRuntimeError("patch_capability_binding_content_invalid") from exc
                 elif descriptor.family_ref:
                     from app.gameplay.closed_generic_gameplay_families import content_model_for_family
 
@@ -1241,6 +1256,7 @@ class GameplayPatchRegistry:
                 if (
                     descriptor.family_ref
                     and descriptor.family_ref not in {
+                        "scripted_mystery_case@1",
                         "organization_lifecycle@1",
                         "organization_membership_delegation@1",
                         "organization_operating_period@1",

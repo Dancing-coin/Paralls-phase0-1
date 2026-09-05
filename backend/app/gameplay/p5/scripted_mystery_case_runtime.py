@@ -7,6 +7,7 @@ from typing import Literal
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import ProjectionCheckpoint, ReplayResult, StrictGameplayModel
+from pydantic import Field
 from app.gameplay.p5.scripted_mystery_case_package import StormnightCasePackage, load_stormnight_case_package
 from app.gameplay.p5.contracts import canonical_sha256_digest
 from app.gameplay.settlement_plan import build_atomic_event_batch
@@ -79,7 +80,7 @@ class CaseProjection(StrictGameplayModel):
     committed_clue_refs: tuple[str, ...] = ()
     accusation_refs: tuple[str, ...] = ()
     terminal_outcome: str | None = None
-    source_revision_vector: dict[str, int] = {}
+    source_revision_vector: dict[str, int] = Field(default_factory=dict)
     applied_event_ids: tuple[str, ...] = ()
     last_global_sequence: int = 0
 
