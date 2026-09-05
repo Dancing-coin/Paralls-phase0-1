@@ -99,6 +99,8 @@ class StormnightScenarioRunner:
             causation_id="stormnight",
             correlation_id="stormnight",
         )
+        inventory_projection = inventory._projector.rebuild(discoverer, self.store.read_events())
+        inventory_projection_again = inventory._projector.rebuild(discoverer, self.store.read_events())
         projection = self.case.project()
         context = ScriptedMysteryEvidenceAdapter(content=self.content).build_turn_context(projection, statement.speaker_ref)
         agent_turn = ScriptedMysteryAgentTurnService().propose_turn_from_character_runtime(
@@ -140,6 +142,8 @@ class StormnightScenarioRunner:
             == self.quest_authority.scripted_mystery_evidence_view(case_ref=self.content.case_ref)["projection_hash"]
             and self.social_authority.scripted_mystery_statement_view(case_ref=self.content.case_ref, recipient_ref=statement.speaker_ref)["projection_hash"]
             == self.social_authority.scripted_mystery_statement_view(case_ref=self.content.case_ref, recipient_ref=statement.speaker_ref)["projection_hash"]
+            and inventory_projection.locations == inventory_projection_again.locations
+            and inventory_projection.items == inventory_projection_again.items
         )
         return StormnightScenarioResult(
             case_opened=opened.committed,
