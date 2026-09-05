@@ -18,7 +18,7 @@ Status: `implementation in progress; foundation slices verified`
   and append receipts retained separately;
 - a case-specific finite action graph and exact P5 registry surface are now
   admitted through the existing primitive/action-window/conflict path;
-- a deterministic scenario runner now composes case open, action window,
+- a deterministic scenario runner now composes case open, three ordered action windows,
   Social/Quest handoff, Inventory clue custody, accusation and all four
   declared outcome branches on one event store with replay hash comparison;
 - the dedicated Stormnight Harness now executes the expanded integrated
@@ -39,7 +39,8 @@ Status: `implementation in progress; foundation slices verified`
 
 The fixed owner handoff is now exercised for Social statement, Quest evidence
 and Inventory clue custody, and the deterministic reference runner executes all
-three case phases, one source-fenced action window, all four outcome branches,
+three case phases, three ordered source-fenced action windows including a
+contact/control branch, all four outcome branches,
 and a cross-owner event-ledger hash. It dispatches to supplied Social/Quest
 owner adapters rather than inventing a case-wide writer. Full production-grade
 Quest request construction, source-fenced ActionWindow pursuit beyond the

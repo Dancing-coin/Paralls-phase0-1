@@ -30,6 +30,7 @@ from app.services.scripted_mystery_agent_turns import ScriptedMysteryAgentTurnSe
 class StormnightScenarioResult:
     case_opened: bool
     action_window_committed: bool
+    action_window_count: int
     statement_committed: bool
     clue_committed: bool
     custody_committed: bool
@@ -63,7 +64,12 @@ class StormnightScenarioRunner:
             raise ValueError("stormnight_outcome_unadmitted")
         opened = self.case.open_case(CaseOpenIntent(case_ref=self.content.case_ref, case_revision=self.content.case_revision, command_id="stormnight:open", idempotency_key="stormnight:open", causation_id="stormnight", correlation_id="stormnight", submitted_at="2026-09-05T00:00:00Z"))
         self._seed_spatial_source()
-        action = self._resolve_action_window()
+        actions = [
+            self._resolve_action_window(window_index=0, expected_conflict_revision=0, node_ref="arrival", target_ref="location:stormnight:arrival@1", contact=False),
+            self._resolve_action_window(window_index=1, expected_conflict_revision=5, node_ref="investigate", target_ref="location:stormnight:records@1", contact=False),
+            self._resolve_action_window(window_index=2, expected_conflict_revision=10, node_ref="recover", target_ref="location:stormnight:courtyard@1", contact=True),
+        ]
+        action = actions[-1]
         phase_two = self.case.advance_phase(command_id="stormnight:phase-2", idempotency_key="stormnight:phase-2", phase_ref="phase:stormnight:investigation@1", expected_revision=1, causation_id="stormnight", correlation_id="stormnight")
         phase_three = self.case.advance_phase(command_id="stormnight:phase-3", idempotency_key="stormnight:phase-3", phase_ref="phase:stormnight:storm-night@1", expected_revision=2, causation_id="stormnight", correlation_id="stormnight")
         statement = self.content.statement_definitions[0]
@@ -147,7 +153,8 @@ class StormnightScenarioRunner:
         )
         return StormnightScenarioResult(
             case_opened=opened.committed,
-            action_window_committed=action.committed,
+            action_window_committed=all(item.committed for item in actions),
+            action_window_count=sum(1 for item in actions if item.committed),
             statement_committed=bool(getattr(social, "committed_event_ids", ())) and not bool(getattr(social, "zero_write", False)),
             clue_committed=bool(getattr(quest, "committed_event_ids", ())) and not bool(getattr(quest, "zero_write", False)),
             custody_committed=custody.committed,
@@ -188,31 +195,31 @@ class StormnightScenarioRunner:
             )
         )
 
-    def _resolve_action_window(self):
+    def _resolve_action_window(self, *, window_index: int, expected_conflict_revision: int, node_ref: str, target_ref: str, contact: bool):
         graph = stormnight_action_graph()
         intent = ActionWindowIntent(
-            attempt_ref="attempt:stormnight:arrival",
+            attempt_ref=f"attempt:stormnight:{window_index}",
             encounter_ref="encounter:stormnight",
             actor_ref=self.content.actor_refs[0],
-            window_index=0,
-            window_start_tick=0,
-            window_end_tick=1,
+            window_index=window_index,
+            window_start_tick=window_index,
+            window_end_tick=window_index + 1,
             graph_ref=graph.graph_ref,
             graph_revision=graph.graph_revision,
-            node_ref="arrival",
-            target_refs=("location:stormnight:arrival@1",),
+            node_ref=node_ref,
+            target_refs=(target_ref,),
             expected_revision_vector={self._source_stream: 1},
             local_position_sample=(0.0, 0.0, 0.0),
             facing_sample=(0.0, 0.0, 1.0),
             visibility_sample={"visible": True},
             sound_sample={"heard": False},
-            contact_sample={"in_contact": False},
+            contact_sample={"in_contact": contact},
             navigation_revision="nav:stormnight@1",
             collision_revision="collision:stormnight@1",
             occlusion_revision="occlusion:stormnight@1",
             sound_zone_revision="sound:stormnight@1",
-            deterministic_seed="seed:stormnight:arrival",
-            evidence_refs=("evidence:stormnight:arrival@1",),
+            deterministic_seed=f"seed:stormnight:{window_index}",
+            evidence_refs=(f"evidence:stormnight:{window_index}@1",),
         )
         snapshot = SpatialSnapshotRef(
             snapshot_ref="snapshot:stormnight@1",
@@ -221,21 +228,21 @@ class StormnightScenarioRunner:
             occlusion_revision="occlusion:stormnight@1",
             sound_zone_revision="sound:stormnight@1",
             source_revision_vector={self._source_stream: 1},
-            visibility_by_target={"location:stormnight:arrival@1": True},
-            sound_by_target={"location:stormnight:arrival@1": False},
-            contact_by_target={"location:stormnight:arrival@1": False},
-            distance_band_by_target={"location:stormnight:arrival@1": "near"},
+            visibility_by_target={target_ref: True},
+            sound_by_target={target_ref: False},
+            contact_by_target={target_ref: contact},
+            distance_band_by_target={target_ref: "near"},
         )
         command = GameplayCommandEnvelope(
-            command_id="stormnight:action",
+            command_id=f"stormnight:action:{window_index}",
             command_type="gameplay.conflict.resolve_action_window",
             command_version=1,
             principal_ref="authority:p5:investigation-conflict",
             actor_ref=self.content.actor_refs[0],
             project_ref="project:stormnight",
-            transaction_id="stormnight:action",
-            idempotency_key="stormnight:action",
-            expected_revisions={"gameplay:conflict:encounter:stormnight": 0},
+            transaction_id=f"stormnight:action:{window_index}",
+            idempotency_key=f"stormnight:action:{window_index}",
+            expected_revisions={"gameplay:conflict:encounter:stormnight": expected_conflict_revision},
             read_set_revisions={self._source_stream: 1},
             causation_id="stormnight",
             correlation_id="stormnight",

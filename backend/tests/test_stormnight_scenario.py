@@ -10,6 +10,7 @@ def test_stormnight_scenario_runs_owner_bound_case_loop_and_replays(outcome_kind
     result = StormnightScenarioRunner().run(outcome_kind=outcome_kind)
     assert result.case_opened
     assert result.action_window_committed
+    assert result.action_window_count == 3
     assert result.statement_committed
     assert result.clue_committed
     assert result.custody_committed
