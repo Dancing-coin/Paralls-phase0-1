@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from app.gameplay.p5.scripted_mystery_content import CaseContentAdmissionResult, stormnight_case_content
 from app.gameplay.p5.scripted_mystery_case_package import build_stormnight_case_package
+from app.gameplay.p5.scripted_mystery_case_runtime import CaseOpenIntent, ScriptedMysteryCaseAuthority
+from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.event_schema_registry import create_stormnight_event_schema_registry
 
 
 def test_second_content_variant_uses_same_case_adapter() -> None:
@@ -11,3 +14,5 @@ def test_second_content_variant_uses_same_case_adapter() -> None:
     assert CaseContentAdmissionResult.admit(second, admitted_action_graph_refs=second.action_graph_refs, admitted_predicate_refs=("predicate:stormnight:inspect@1", "predicate:stormnight:phase-transition@1")).accepted
     package = build_stormnight_case_package(second)
     assert package.manifest.patch_revision_id == second.package_revision
+    authority = ScriptedMysteryCaseAuthority.create(GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry()), package)
+    assert authority.open_case(CaseOpenIntent(case_ref=second.case_ref, case_revision=second.case_revision, command_id="variant-open", idempotency_key="variant-open", causation_id="variant", correlation_id="variant", submitted_at="now")).committed
