@@ -20,6 +20,7 @@ from app.gameplay.inventory_runtime import ContainerSpec, InventoryAuthorityServ
 from app.gameplay.p5.social_knowledge import SocialFactAuthority
 from app.gameplay.p5.quest_evidence import QuestEvidenceAuthority
 from app.gameplay.p5.stormnight_owner_registries import stormnight_quest_registry, stormnight_social_registry
+from app.gameplay.event_schema_registry import create_stormnight_event_schema_registry
 
 
 @dataclass(frozen=True)
@@ -42,7 +43,7 @@ class StormnightScenarioRunner:
     """Run one deterministic content-backed scenario on one event store."""
 
     def __init__(self, *, store: GameplayEventStore | None = None, package: StormnightCasePackage | None = None) -> None:
-        self.store = store or GameplayEventStore()
+        self.store = store or GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
         self.package = package or load_stormnight_case_package()
         self.case = ScriptedMysteryCaseAuthority.create(self.store, self.package)
         self.content = self.package.content

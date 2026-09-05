@@ -373,6 +373,24 @@ def register_stormnight_scripted_mystery_event_schemas(registry: EventSchemaRegi
 def create_stormnight_event_schema_registry() -> EventSchemaRegistry:
     registry = EventSchemaRegistry()
     register_stormnight_scripted_mystery_event_schemas(registry)
+    for event_type, digest in (
+        ("gameplay.social.knowledge_observed", "sha256:stormnight-social-knowledge-v1"),
+        ("gameplay.quest.evidence_registered", "sha256:stormnight-quest-evidence-v1"),
+        ("gameplay.inventory.container_created", "sha256:stormnight-inventory-container-v1"),
+        ("gameplay.inventory.item_instantiated", "sha256:stormnight-inventory-item-v1"),
+        ("gameplay.inventory.item_moved", "sha256:stormnight-inventory-move-v1"),
+        ("world.stormnight.spatial_snapshot_committed", "sha256:stormnight-spatial-source-v1"),
+        ("gameplay.conflict.encounter_started", "sha256:stormnight-conflict-started-v1"),
+        ("gameplay.conflict.action_window_resolved", "sha256:stormnight-conflict-window-v1"),
+        ("gameplay.conflict.control_changed", "sha256:stormnight-conflict-control-v1"),
+        ("gameplay.conflict.terminal_outcome_recorded", "sha256:stormnight-conflict-terminal-v1"),
+        ("gameplay.conflict.encounter_closed", "sha256:stormnight-conflict-closed-v1"),
+    ):
+        try:
+            registry.register(EventSchemaRegistration(event_type, 1, digest))
+        except EventSchemaRegistryError:
+            if registry.get(event_type, 1).schema_digest != digest:
+                raise
     return registry
 
 
