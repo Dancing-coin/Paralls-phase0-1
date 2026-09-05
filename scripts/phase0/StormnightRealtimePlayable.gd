@@ -11,7 +11,7 @@ const ACTORS := [
 	{"actor_ref": "character:stormnight-physician@1", "role_ref": "role:physician@1", "presentation_profile_ref": "presentation:stormnight:suspect-amber@1", "primary_color": "#a77532", "secondary_color": "#4a3014", "marker": "amber"},
 ]
 
-var hud: StormnightRealtimeHud
+var hud: CanvasLayer
 var actors: Array[Node] = []
 var request_counter := 0
 var last_projection: Dictionary = {}
