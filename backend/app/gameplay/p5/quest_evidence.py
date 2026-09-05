@@ -12,6 +12,7 @@ from app.gameplay.shared_contracts import SettlementReceipt
 from app.gameplay.p5.contracts import P5ResolutionRequest, P5ResolutionResult
 from app.gameplay.p5.registry import P5PolicyRegistry
 from app.gameplay.shared_contracts import GameplayCommandEnvelope, SettlementPlan
+from app.gameplay.settlement_plan import build_atomic_event_batch
 
 
 _PRINCIPAL = "authority:p5:quest-evidence"

@@ -17,6 +17,9 @@ from app.gameplay.p5.contracts import canonical_sha256_digest
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.gameplay.shared_contracts import GameplayCommandEnvelope
 from app.gameplay.inventory_runtime import ContainerSpec, InventoryAuthorityService, InventoryDefinitionRegistry, ItemDefinition
+from app.gameplay.p5.social_knowledge import SocialFactAuthority
+from app.gameplay.p5.quest_evidence import QuestEvidenceAuthority
+from app.gameplay.p5.stormnight_owner_registries import stormnight_quest_registry, stormnight_social_registry
 
 
 @dataclass(frozen=True)
@@ -41,7 +44,9 @@ class StormnightScenarioRunner:
         self.package = package or load_stormnight_case_package()
         self.case = ScriptedMysteryCaseAuthority.create(self.store, self.package)
         self.content = self.package.content
-        self.handoff = StormnightOwnerHandoffService(self.store)
+        self.social_authority = SocialFactAuthority(registry=stormnight_social_registry(), store=self.store)
+        self.quest_authority = QuestEvidenceAuthority(registry=stormnight_quest_registry(), store=self.store)
+        self.handoff = StormnightOwnerHandoffService(self.store, social_authority=self.social_authority, quest_authority=self.quest_authority)
         self._source_stream = "world:stormnight:scene"
 
     def run(self, *, outcome_kind: str = "case_solved") -> StormnightScenarioResult:
@@ -104,8 +109,8 @@ class StormnightScenarioRunner:
         return StormnightScenarioResult(
             case_opened=opened.committed,
             action_window_committed=action.committed,
-            statement_committed=social.committed,
-            clue_committed=quest.committed,
+            statement_committed=bool(getattr(social, "committed_event_ids", ())) and not bool(getattr(social, "zero_write", False)),
+            clue_committed=bool(getattr(quest, "committed_event_ids", ())) and not bool(getattr(quest, "zero_write", False)),
             custody_committed=custody.committed,
             accusation_committed=accusation.committed,
             outcome_kind=outcome_kind,
