@@ -31,9 +31,11 @@ class StormnightScenarioResult:
     custody_committed: bool
     accusation_committed: bool
     outcome_kind: str
+    outcome_committed: bool
     full_replay_hash: str
     tail_replay_hash: str
     owner_replay_hash: str
+    phases_completed: int
 
 
 class StormnightScenarioRunner:
@@ -55,6 +57,8 @@ class StormnightScenarioRunner:
         opened = self.case.open_case(CaseOpenIntent(case_ref=self.content.case_ref, case_revision=self.content.case_revision, command_id="stormnight:open", idempotency_key="stormnight:open", causation_id="stormnight", correlation_id="stormnight", submitted_at="2026-09-05T00:00:00Z"))
         self._seed_spatial_source()
         action = self._resolve_action_window()
+        phase_two = self.case.advance_phase(command_id="stormnight:phase-2", idempotency_key="stormnight:phase-2", phase_ref="phase:stormnight:investigation@1", expected_revision=1, causation_id="stormnight", correlation_id="stormnight")
+        phase_three = self.case.advance_phase(command_id="stormnight:phase-3", idempotency_key="stormnight:phase-3", phase_ref="phase:stormnight:storm-night@1", expected_revision=2, causation_id="stormnight", correlation_id="stormnight")
         statement = self.content.statement_definitions[0]
         social, quest = self.case.handoff_statement_and_clue(
             handoff=self.handoff,
@@ -96,11 +100,11 @@ class StormnightScenarioRunner:
             evidence_refs=(context.public_fact_refs[0], context.public_fact_refs[1]),
             command_id="stormnight:accusation",
             idempotency_key="stormnight:accusation",
-            expected_revision=1,
+            expected_revision=3,
             causation_id="stormnight",
             correlation_id="stormnight",
         )
-        resolved = self.case.resolve_outcome(command_id="stormnight:outcome", idempotency_key="stormnight:outcome", outcome_kind=outcome_kind, expected_revision=3, causation_id="stormnight", correlation_id="stormnight")
+        resolved = self.case.resolve_outcome(command_id="stormnight:outcome", idempotency_key="stormnight:outcome", outcome_kind=outcome_kind, expected_revision=4, causation_id="stormnight", correlation_id="stormnight")
         full = self.case.replay_full()
         events = self.store.read_events()
         checkpoint = self.case.create_checkpoint(events[: max(1, len(events) // 2)])
@@ -114,9 +118,11 @@ class StormnightScenarioRunner:
             custody_committed=custody.committed,
             accusation_committed=accusation.committed,
             outcome_kind=outcome_kind,
+            outcome_committed=resolved.committed,
             full_replay_hash=full.projection_hash,
             tail_replay_hash=tail.projection_hash,
             owner_replay_hash=owner_replay_hash,
+            phases_completed=sum(1 for phase in (opened, phase_two, phase_three) if phase.committed),
         )
 
     def _owner_replay_hash(self) -> str:

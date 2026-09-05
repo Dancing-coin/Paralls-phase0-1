@@ -36,14 +36,15 @@ Status: `implementation in progress; foundation slices verified`
 ## Remaining work before reference-game completion
 
 The fixed owner handoff is now exercised for Social statement, Quest evidence
-and Inventory clue custody, and can dispatch to supplied Social/Quest owner
-adapters rather than inventing a case-wide writer. The Stormnight graph is
-admitted over existing action primitives. Full production-grade Quest request construction,
-source-fenced ActionWindow pursuit beyond the reference window, live Character
-Agent turns, desktop interactive smoke and a complete cross-owner replay with
-persisted owner projection readers are still required. The four outcome
-branches are deterministically exercised by the reference runner, but are not
-yet a player-facing end-to-end Godot case.
+and Inventory clue custody, and the deterministic reference runner executes all
+three case phases, one source-fenced action window, all four outcome branches,
+and a cross-owner event-ledger hash. It dispatches to supplied Social/Quest
+owner adapters rather than inventing a case-wide writer. Full production-grade
+Quest request construction, source-fenced ActionWindow pursuit beyond the
+reference window, live Character Agent turns, desktop interactive smoke and
+persisted projection readers for every owner are still required. The outcome
+branches are deterministic backend scenarios, not yet a player-facing
+end-to-end Godot case.
 
 The second content-only variant currently proves the package/content adapter
 shape and case-open compatibility, not full playable-case genericity. The
