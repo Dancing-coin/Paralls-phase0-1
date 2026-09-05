@@ -131,21 +131,21 @@ git commit -m "Keep Stormnight actor animation projection-bound"
 - Modify: `docs/superpowers/plans/world-character-siming-authority-mainline/README.md`
 - Modify: `docs/superpowers/specs/world-character-siming-authority-mainline/phase-five-rpg-social-gameplay/README.md`
 
-- [ ] **Step 1: Run focused Stormnight tests**
+- [x] **Step 1: Run focused Stormnight tests**
 
 Run: `python -m pytest -q backend/tests/test_stormnight* backend/tests/test_scripted_mystery*`
 Expected: all selected tests pass.
 
-- [ ] **Step 2: Run broad verification**
+- [x] **Step 2: Run broad verification**
 
 Run: `python -m pytest -q`; `python -m compileall -q backend`; `git diff --check`; `python scripts/verification/harness.py --profile stormnight-copper-sanatorium`; `python scripts/verification/harness.py --profile docs`.
 
-- [ ] **Step 3: Record evidence**
+- [x] **Step 3: Record evidence**
 
 Document primitive-only actors, four profile instances, committed projection
 binding, rollback behavior, and explicit non-use of knight/church scenes.
 
-- [ ] **Step 4: Commit and push the verified docs closure**
+- [x] **Step 4: Commit and push the verified docs closure**
 
 ```bash
 git add docs/superpowers/specs/world-character-siming-authority-mainline docs/superpowers/plans/world-character-siming-authority-mainline
@@ -159,3 +159,10 @@ Stop and revert only the new presentation slice if headless Godot fails, a
 static test detects a cross-scene reference, a character node attempts a write,
 or projection rejection fails to restore the last committed state. Existing
 knight/church assets and Stormnight backend facts must remain untouched.
+
+## Execution record
+
+All tasks completed. The focused contract suite passes (`5 passed`), full
+repository pytest passes (`5143 passed, 1 warning`), compileall and diff-check
+pass, and the Stormnight Harness reports `overall_passed=true` with Godot
+headless and desktop smoke verified.
