@@ -16,6 +16,8 @@ Status: `implementation in progress; foundation slices verified`
 - fixed handoff adapters now delegate statement/knowledge, Quest evidence and
   Inventory clue custody to their existing owner services, with owner streams
   and append receipts retained separately;
+- a case-specific finite action graph and exact P5 registry surface are now
+  admitted through the existing primitive/action-window/conflict path;
 - four-room procedural Godot presentation, read-only panels and rejection
   rollback through a dedicated Godot 4.6.3 headless Harness.
 
@@ -29,7 +31,8 @@ Status: `implementation in progress; foundation slices verified`
 ## Remaining work before reference-game completion
 
 The fixed owner handoff is now exercised for Social statement, Quest evidence
-and Inventory clue custody. Full production-grade Quest request construction,
+and Inventory clue custody, and the Stormnight graph is admitted over existing
+action primitives. Full production-grade Quest request construction,
 source-fenced ActionWindow pursuit, all four playable end-to-end outcomes,
 live Character Agent turns, desktop interactive smoke and a complete
 cross-owner replay are still required.
