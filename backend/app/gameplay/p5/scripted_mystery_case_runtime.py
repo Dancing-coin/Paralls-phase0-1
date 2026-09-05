@@ -55,6 +55,22 @@ class CaseOutcomeResult(StrictGameplayModel):
     event_id: str | None = None
 
 
+class CaseStatementResult(StrictGameplayModel):
+    committed: bool
+    statement_ref: str
+    idempotency_status: str
+    error_code: str | None = None
+    event_id: str | None = None
+
+
+class CaseAccusationResult(StrictGameplayModel):
+    committed: bool
+    target_ref: str
+    idempotency_status: str
+    error_code: str | None = None
+    event_id: str | None = None
+
+
 class CaseProjection(StrictGameplayModel):
     case_ref: str | None = None
     case_revision: str | None = None
@@ -117,6 +133,25 @@ class ScriptedMysteryCaseAuthority:
         if not result.committed:
             return CaseOutcomeResult(committed=False, outcome_kind=outcome_kind, idempotency_status="rejected", error_code=result.failure.error_code if result.failure else "case_append_failed")
         return CaseOutcomeResult(committed=True, outcome_kind=outcome_kind, idempotency_status=result.idempotency_status, event_id=result.committed_event_ids[0] if result.committed_event_ids else None)
+
+    def record_statement(self, *, statement_ref: str, speaker_ref: str, target_ref: str, mode: str, command_id: str, idempotency_key: str, expected_revision: int, causation_id: str, correlation_id: str) -> CaseStatementResult:
+        from app.gameplay.p5.scripted_mystery_evidence import CaseTurnContext, ScriptedMysteryEvidenceAdapter, StatementIntent
+        context = ScriptedMysteryEvidenceAdapter(content=self.package.content).build_turn_context(self.project(), speaker_ref)
+        error = ScriptedMysteryEvidenceAdapter(content=self.package.content).validate_statement(StatementIntent(statement_ref=statement_ref, speaker_ref=speaker_ref, target_ref=target_ref, mode=mode, expected_case_revision=expected_revision, command_id=command_id), context)
+        if error:
+            return CaseStatementResult(committed=False, statement_ref=statement_ref, idempotency_status="rejected", error_code=error)
+        result = self._append(command_id, idempotency_key, expected_revision, causation_id, correlation_id, _CASE_EVENTS["statement_recorded"], self._payload(case_ref=self.package.content.case_ref, case_revision=self.package.content.case_revision, statement_ref=statement_ref, speaker_ref=speaker_ref, target_ref=target_ref, mode=mode))
+        return CaseStatementResult(committed=result.committed, statement_ref=statement_ref, idempotency_status=result.idempotency_status, error_code=None if result.committed else (result.failure.error_code if result.failure else "case_append_failed"), event_id=result.committed_event_ids[0] if result.committed_event_ids else None)
+
+    def submit_accusation(self, *, accuser_ref: str, target_ref: str, evidence_refs: tuple[str, ...], command_id: str, idempotency_key: str, expected_revision: int, causation_id: str, correlation_id: str) -> CaseAccusationResult:
+        from app.gameplay.p5.scripted_mystery_evidence import AccusationIntent, ScriptedMysteryEvidenceAdapter
+        adapter = ScriptedMysteryEvidenceAdapter(content=self.package.content)
+        context = adapter.build_turn_context(self.project(), accuser_ref)
+        error = adapter.validate_accusation(AccusationIntent(accuser_ref=accuser_ref, target_ref=target_ref, evidence_refs=evidence_refs, expected_case_revision=expected_revision, command_id=command_id), context)
+        if error:
+            return CaseAccusationResult(committed=False, target_ref=target_ref, idempotency_status="rejected", error_code=error)
+        result = self._append(command_id, idempotency_key, expected_revision, causation_id, correlation_id, _CASE_EVENTS["accusation_submitted"], self._payload(case_ref=self.package.content.case_ref, case_revision=self.package.content.case_revision, accuser_ref=accuser_ref, target_ref=target_ref, evidence_refs=evidence_refs))
+        return CaseAccusationResult(committed=result.committed, target_ref=target_ref, idempotency_status=result.idempotency_status, error_code=None if result.committed else (result.failure.error_code if result.failure else "case_append_failed"), event_id=result.committed_event_ids[0] if result.committed_event_ids else None)
 
     def project(self) -> CaseProjection:
         return self._project_events(self.store.read_events())
@@ -186,4 +221,4 @@ class ScriptedMysteryCaseAuthority:
         return CaseProjection(case_ref=case_ref, case_revision=case_revision, phase_ref=phase_ref, opened=opened, committed_clue_refs=tuple(clues), accusation_refs=tuple(accusations), terminal_outcome=outcome, source_revision_vector=dict(sorted(revisions.items())), applied_event_ids=tuple(ids), last_global_sequence=last_sequence)
 
 
-__all__ = ["CaseOpenIntent", "CaseOutcomeResult", "CasePhaseResult", "CaseProjection", "ScriptedMysteryCaseAuthority"]
+__all__ = ["CaseAccusationResult", "CaseOpenIntent", "CaseOutcomeResult", "CasePhaseResult", "CaseProjection", "CaseStatementResult", "ScriptedMysteryCaseAuthority"]

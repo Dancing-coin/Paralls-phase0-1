@@ -58,3 +58,17 @@ def test_full_and_checkpoint_tail_replay_match() -> None:
     tail = authority.replay_checkpoint_tail(checkpoint)
     assert full.succeeded and tail.succeeded
     assert full.projection_hash == tail.projection_hash
+
+
+def test_statement_and_accusation_use_case_owner_boundary() -> None:
+    authority = _authority()
+    content = authority.package.content
+    opened = authority.open_case(CaseOpenIntent(case_ref=content.case_ref, case_revision=content.case_revision, command_id="open", idempotency_key="open", causation_id="cause", correlation_id="corr", submitted_at="now"))
+    assert opened.committed
+    statement = content.statement_definitions[0]
+    recorded = authority.record_statement(statement_ref=statement.statement_ref, speaker_ref=statement.speaker_ref, target_ref=statement.target_ref, mode=statement.allowed_modes[0], command_id="statement", idempotency_key="statement", expected_revision=1, causation_id="cause", correlation_id="corr")
+    assert recorded.committed
+    context = __import__("app.gameplay.p5.scripted_mystery_evidence", fromlist=["ScriptedMysteryEvidenceAdapter"]).ScriptedMysteryEvidenceAdapter(content=content).build_turn_context(authority.project(), statement.speaker_ref)
+    evidence = tuple(sorted((context.public_fact_refs[1], context.private_fact_refs[0])))
+    accusation = authority.submit_accusation(accuser_ref=statement.speaker_ref, target_ref=statement.target_ref, evidence_refs=evidence, command_id="accusation", idempotency_key="accusation", expected_revision=2, causation_id="cause", correlation_id="corr")
+    assert accusation.committed
