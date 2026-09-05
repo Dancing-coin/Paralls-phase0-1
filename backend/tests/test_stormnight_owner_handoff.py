@@ -64,3 +64,23 @@ def test_inventory_clue_custody_uses_existing_inventory_owner() -> None:
     result = StormnightOwnerHandoffService(store).record_inventory_clue_custody(inventory_authority=inventory, case_ref="case:stormnight@1", clue_ref="clue:stormnight:01@1", discoverer_ref=actor, container_id=container_id, command_id="custody", idempotency_key="custody", causation_id="case", correlation_id="case")
     assert result.committed
     assert any(event.event_type == "gameplay.inventory.item_instantiated" for event in store.read_events())
+
+
+def test_handoff_dispatches_to_existing_owner_adapters_when_supplied() -> None:
+    class OwnerResult:
+        receipt = None
+        committed = True
+
+    class SocialOwner:
+        def record_scripted_mystery_statement(self, **kwargs):
+            assert kwargs["case_ref"].startswith("case:")
+            return OwnerResult()
+
+    class QuestOwner:
+        def record_scripted_mystery_evidence(self, **kwargs):
+            assert kwargs["clue_ref"].startswith("clue:")
+            return OwnerResult()
+
+    service = StormnightOwnerHandoffService(GameplayEventStore(), social_authority=SocialOwner(), quest_authority=QuestOwner())
+    assert service.record_social_statement(case_ref="case:stormnight@1", statement_ref="statement:stormnight:01@1", speaker_ref="character:a@1", target_ref="character:b@1", mode="reveal", expected_revision=0, command_id="social", idempotency_key="social", causation_id="case", correlation_id="case").committed
+    assert service.record_quest_evidence(case_ref="case:stormnight@1", clue_ref="clue:stormnight:01@1", discoverer_ref="character:a@1", expected_revision=0, command_id="quest", idempotency_key="quest", causation_id="case", correlation_id="case").committed

@@ -8,6 +8,7 @@ from typing import Any
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import OwnerAuthorizedFragment
+from app.gameplay.shared_contracts import SettlementReceipt
 from app.gameplay.p5.contracts import P5ResolutionRequest, P5ResolutionResult
 from app.gameplay.p5.registry import P5PolicyRegistry
 from app.gameplay.shared_contracts import GameplayCommandEnvelope, SettlementPlan
@@ -45,6 +46,52 @@ class QuestEvidenceAuthority:
     def __init__(self, *, registry: P5PolicyRegistry, store: GameplayEventStore) -> None:
         self._registry = registry
         self._store = store
+
+    def record_scripted_mystery_evidence(
+        self,
+        *,
+        case_ref: str,
+        clue_ref: str,
+        discoverer_ref: str,
+        expected_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ):
+        """Record one fixed Stormnight clue through Quest ownership."""
+        if not case_ref.startswith("case:") or not clue_ref.startswith("clue:") or not discoverer_ref.startswith("character:") or expected_revision < 0:
+            return self._rejected("p5_scripted_mystery_evidence_invalid")
+        stream_id = f"gameplay:evidence:{clue_ref}"
+        if self._store.get_stream_head(stream_id) != expected_revision:
+            return self._rejected("p5_scripted_mystery_evidence_revision_stale")
+        payload = {
+            "evidence_ref": clue_ref,
+            "evidence_kind_ref": "evidence:stormnight:physical@1",
+            "subject_ref": discoverer_ref,
+            "provider_ref": "provider:stormnight:case@1",
+            "provenance_source_ref": case_ref,
+            "visibility": "project",
+            "observed_at": "2026-09-05T00:00:00Z",
+            "case_ref": case_ref,
+            "clue_ref": clue_ref,
+        }
+        batch = build_atomic_event_batch(
+            command_id=command_id,
+            principal_ref=_PRINCIPAL,
+            stream_id=stream_id,
+            expected_revision=expected_revision,
+            read_stream_revisions={stream_id: expected_revision},
+            event_specs=((_EVIDENCE_EVENT, payload),),
+            idempotency_key=idempotency_key,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            pinned_revisions={"case": 1},
+        )
+        result = self._store.append_batch(batch)
+        if not result.committed:
+            return self._rejected(result.failure.error_code if result.failure else "p5_scripted_mystery_evidence_append_failed")
+        return self._committed_result(SettlementReceipt.from_append_result(result=result, audit_refs=(f"scripted_mystery_evidence:{result.transaction_id}",)), duplicate=result.idempotency_status == "duplicate_replayed", settlement_plan=None)
 
     def resolve(
         self,

@@ -154,6 +154,73 @@ class SocialFactAuthority:
         self._store = store
         self._package_registry = package_registry
 
+    def record_scripted_mystery_statement(
+        self,
+        *,
+        case_ref: str,
+        statement_ref: str,
+        speaker_ref: str,
+        target_ref: str,
+        mode: str,
+        expected_revision: int,
+        command_id: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ):
+        """Record one case statement as a Social-owned knowledge fact.
+
+        This is intentionally a fixed case adapter, not a generic statement
+        writer; all coordinates and event family remain Social-owned.
+        """
+        if (
+            not case_ref.startswith("case:")
+            or not statement_ref.startswith("statement:")
+            or not speaker_ref.startswith("character:")
+            or not target_ref.startswith("character:")
+            or mode not in {"reveal", "withhold", "mislead", "deny"}
+            or expected_revision < 0
+        ):
+            return self._rejected("p5_scripted_mystery_statement_invalid")
+        stream_id = _knowledge_stream(
+            knower_ref=speaker_ref,
+            fact_ref=statement_ref,
+        )
+        if self._store.get_stream_head(stream_id) != expected_revision:
+            return self._rejected("p5_scripted_mystery_statement_revision_stale")
+        payload = {
+            "fact_ref": statement_ref,
+            "knower_ref": speaker_ref,
+            "subject_ref": target_ref,
+            "observation_ref": case_ref,
+            "knowledge_kind": f"statement:{mode}",
+            "confidence": 1.0,
+            "decay_rate_per_day": 0.0,
+            "evidence_ref": statement_ref,
+            "provenance_source_ref": case_ref,
+            "observed_at": "2026-09-05T00:00:00Z",
+            "visibility": "project",
+            "case_ref": case_ref,
+            "statement_ref": statement_ref,
+        }
+        digest = _digest({"case_ref": case_ref, "statement_ref": statement_ref, "speaker_ref": speaker_ref, "target_ref": target_ref, "mode": mode})
+        batch = build_atomic_event_batch(
+            command_id=command_id,
+            principal_ref=_PRINCIPAL,
+            stream_id=stream_id,
+            expected_revision=expected_revision,
+            read_stream_revisions={stream_id: expected_revision},
+            event_specs=((_KNOWLEDGE_EVENT, payload),),
+            idempotency_key=idempotency_key,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            pinned_revisions={"case": 1},
+        )
+        result = self._store.append_batch(batch.model_copy(update={"events": [event.model_copy(update={"visibility_policy": "project"}, deep=True) for event in batch.events], "result_digest": digest}, deep=True))
+        if not result.committed:
+            return self._rejected(result.failure.error_code if result.failure else "p5_scripted_mystery_statement_append_failed")
+        return self._committed_result(SettlementReceipt.from_append_result(result=result, audit_refs=(f"scripted_mystery_statement:{result.transaction_id}",)), settlement_plan=None)
+
     def record_admitted_population_signal_materialization_proposal(
         self,
         *,

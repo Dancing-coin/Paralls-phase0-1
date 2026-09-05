@@ -18,6 +18,8 @@ from app.gameplay.settlement_plan import build_atomic_event_batch
 @dataclass(frozen=True)
 class StormnightOwnerHandoffService:
     store: GameplayEventStore
+    social_authority: object | None = None
+    quest_authority: object | None = None
 
     def record_social_statement(
         self,
@@ -33,6 +35,20 @@ class StormnightOwnerHandoffService:
         causation_id: str,
         correlation_id: str,
     ) -> AppendBatchResult:
+        if self.social_authority is not None and hasattr(self.social_authority, "record_scripted_mystery_statement"):
+            result = self.social_authority.record_scripted_mystery_statement(
+                case_ref=case_ref,
+                statement_ref=statement_ref,
+                speaker_ref=speaker_ref,
+                target_ref=target_ref,
+                mode=mode,
+                expected_revision=expected_revision,
+                command_id=command_id,
+                idempotency_key=idempotency_key,
+                causation_id=causation_id,
+                correlation_id=correlation_id,
+            )
+            return result.receipt if hasattr(result, "receipt") and result.receipt is not None else result
         stream_id = "gameplay:knowledge:" + canonical_sha256_digest(
             {"case_ref": case_ref, "statement_ref": statement_ref, "speaker_ref": speaker_ref}
         ).split(":", 1)[1]
@@ -75,6 +91,18 @@ class StormnightOwnerHandoffService:
         causation_id: str,
         correlation_id: str,
     ) -> AppendBatchResult:
+        if self.quest_authority is not None and hasattr(self.quest_authority, "record_scripted_mystery_evidence"):
+            result = self.quest_authority.record_scripted_mystery_evidence(
+                case_ref=case_ref,
+                clue_ref=clue_ref,
+                discoverer_ref=discoverer_ref,
+                expected_revision=expected_revision,
+                command_id=command_id,
+                idempotency_key=idempotency_key,
+                causation_id=causation_id,
+                correlation_id=correlation_id,
+            )
+            return result.receipt if hasattr(result, "receipt") and result.receipt is not None else result
         stream_id = f"gameplay:evidence:{clue_ref}"
         payload = {
             "evidence_ref": clue_ref,
