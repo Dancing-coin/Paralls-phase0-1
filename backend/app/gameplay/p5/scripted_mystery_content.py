@@ -135,6 +135,7 @@ class ScriptedMysteryCaseContent(StrictGameplayModel):
     package_revision: str = Field(min_length=1)
     location_ref: str = Field(min_length=1)
     actor_refs: tuple[str, ...] = Field(min_length=1)
+    culprit_actor_ref: str = Field(pattern=r"^character:")
     role_assignments: Mapping[str, str]
     truth_facts: tuple[CaseTruthFact, ...] = Field(min_length=1)
     private_knowledge_sets: tuple[PrivateKnowledgeSet, ...] = Field(min_length=1)
@@ -160,6 +161,8 @@ class ScriptedMysteryCaseContent(StrictGameplayModel):
         if len({fact.fact_ref for fact in self.truth_facts}) != len(self.truth_facts):
             raise ValueError("mystery_case_truth_duplicate")
         actor_set = set(self.actor_refs)
+        if self.culprit_actor_ref not in actor_set:
+            raise ValueError("mystery_case_culprit_unknown")
         truth_set = {fact.fact_ref for fact in self.truth_facts}
         for knowledge in self.private_knowledge_sets:
             if knowledge.actor_ref not in actor_set or not set(knowledge.fact_refs).issubset(truth_set):
@@ -285,6 +288,7 @@ def stormnight_case_content() -> ScriptedMysteryCaseContent:
         package_revision="package:stormnight-copper-sanatorium:v1@1",
         location_ref="location:stormnight-copper-sanatorium@1",
         actor_refs=actors,
+        culprit_actor_ref="character:stormnight-guardian@1",
         role_assignments={actor: role for actor, role in zip(actors, ("role:threatened-heir@1", "role:guardian@1", "role:investigator@1", "role:physician@1"), strict=True)},
         truth_facts=truth,
         private_knowledge_sets=knowledge,

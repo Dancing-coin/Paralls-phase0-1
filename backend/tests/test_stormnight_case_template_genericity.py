@@ -5,6 +5,7 @@ from app.gameplay.p5.scripted_mystery_case_package import build_stormnight_case_
 from app.gameplay.p5.scripted_mystery_case_runtime import CaseOpenIntent, ScriptedMysteryCaseAuthority
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.event_schema_registry import create_stormnight_event_schema_registry
+from app.gameplay.p5.stormnight_scenario import StormnightScenarioRunner
 
 
 def test_second_content_variant_uses_same_case_adapter() -> None:
@@ -25,3 +26,10 @@ def test_second_variant_preserves_same_typed_slot_counts() -> None:
     assert len(first.clue_definitions) == len(second.clue_definitions)
     assert len(first.phase_definitions) == len(second.phase_definitions)
     assert len(first.outcome_definitions) == len(second.outcome_definitions)
+
+
+def test_second_variant_runs_the_same_integrated_scenario_adapter() -> None:
+    first = stormnight_case_content()
+    second = first.model_copy(update={"case_ref": "case:stormnight-copper-annex@1", "case_revision": "case:stormnight-copper-annex@1", "package_ref": "package:stormnight-copper-annex@1", "package_revision": "package:stormnight-copper-annex:v1@1", "location_ref": "location:stormnight-copper-annex@1", "provenance_note": "Original second content variant; no source text copied."}, deep=True)
+    result = StormnightScenarioRunner(package=build_stormnight_case_package(second)).run(outcome_kind="case_solved")
+    assert result.case_opened and result.action_window_count == 3 and result.outcome_committed

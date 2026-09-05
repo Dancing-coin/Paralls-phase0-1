@@ -27,19 +27,10 @@ def test_case_full_replay_rejects_tampered_package_pin() -> None:
 
 
 def test_four_outcome_fixtures_are_replayable_with_statement_and_accusation() -> None:
-    package = load_stormnight_case_package()
-    for index, outcome_kind in enumerate(("case_solved", "false_accusation", "culprit_escaped", "investigator_captured")):
-        store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
-        authority = ScriptedMysteryCaseAuthority.create(store, package)
-        actor = package.content.actor_refs[0]
-        opened = authority.open_case(CaseOpenIntent(case_ref=package.content.case_ref, case_revision=package.content.case_revision, command_id=f"open-{index}", idempotency_key=f"open-{index}", causation_id=f"cause-{index}", correlation_id=f"corr-{index}", submitted_at="now"))
-        assert opened.committed
-        statement = package.content.statement_definitions[0]
-        assert authority.record_statement(statement_ref=statement.statement_ref, speaker_ref=statement.speaker_ref, target_ref=statement.target_ref, mode=statement.allowed_modes[0], command_id=f"statement-{index}", idempotency_key=f"statement-{index}", expected_revision=1, causation_id=f"cause-{index}", correlation_id=f"corr-{index}").committed
-        context = ScriptedMysteryEvidenceAdapter(content=package.content).build_turn_context(authority.project(), actor)
-        evidence = tuple(sorted((context.public_fact_refs[1], context.private_fact_refs[0])))
-        assert authority.submit_accusation(accuser_ref=actor, target_ref=package.content.actor_refs[1], evidence_refs=evidence, command_id=f"accuse-{index}", idempotency_key=f"accuse-{index}", expected_revision=2, causation_id=f"cause-{index}", correlation_id=f"corr-{index}").committed
-        resolved = authority.resolve_outcome(command_id=f"outcome-{index}", idempotency_key=f"outcome-{index}", outcome_kind=outcome_kind, expected_revision=3, causation_id=f"cause-{index}", correlation_id=f"corr-{index}")
-        assert resolved.committed
-        full = authority.replay_full()
-        assert full.succeeded and full.state["terminal_outcome"] == outcome_kind
+    from app.gameplay.p5.stormnight_scenario import StormnightScenarioRunner
+
+    for outcome_kind in ("case_solved", "false_accusation", "culprit_escaped", "investigator_captured"):
+        result = StormnightScenarioRunner().run(outcome_kind=outcome_kind)
+        assert result.outcome_committed
+        assert result.outcome_kind == outcome_kind
+        assert result.full_replay_hash == result.tail_replay_hash
