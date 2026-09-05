@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "stormnight-copper-sanatorium",
+  "order": 88,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_stormnight_copper_sanatorium.py",
+  "requires_godot": true,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/stormnight-copper-sanatorium-report.json",
+  "description": "Godot and backend verification for the Stormnight original smart-agent mystery case"
+}
