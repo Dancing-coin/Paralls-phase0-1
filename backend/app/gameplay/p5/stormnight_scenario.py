@@ -21,6 +21,9 @@ from app.gameplay.p5.social_knowledge import SocialFactAuthority
 from app.gameplay.p5.quest_evidence import QuestEvidenceAuthority
 from app.gameplay.p5.stormnight_owner_registries import stormnight_quest_registry, stormnight_social_registry
 from app.gameplay.event_schema_registry import create_stormnight_event_schema_registry
+from app.services.character_agent_runtime import CharacterAgentRuntime
+from app.models.character_perceived import CharacterPerceivedEvent
+from app.services.scripted_mystery_agent_turns import ScriptedMysteryAgentTurnService
 
 
 @dataclass(frozen=True)
@@ -37,6 +40,8 @@ class StormnightScenarioResult:
     tail_replay_hash: str
     owner_replay_hash: str
     phases_completed: int
+    agent_turn_proposed: bool
+    owner_replay_consistent: bool
 
 
 class StormnightScenarioRunner:
@@ -95,6 +100,23 @@ class StormnightScenarioRunner:
         )
         projection = self.case.project()
         context = ScriptedMysteryEvidenceAdapter(content=self.content).build_turn_context(projection, statement.speaker_ref)
+        agent_turn = ScriptedMysteryAgentTurnService().propose_turn_from_character_runtime(
+            CharacterAgentRuntime(),
+            CharacterPerceivedEvent(
+                actor_id=statement.speaker_ref,
+                percept_channel="visual",
+                producer_ts=1,
+                room_id="stormnight",
+                scene_id="stormnight",
+                zone_id="investigation",
+                perceived_summary="A copper mark is visible near the evidence table.",
+                source_candidate_event_id="source:stormnight:agent-perception@1",
+            ),
+            context=context,
+            case_ref=self.content.case_ref,
+            turn_id="stormnight:agent-turn",
+            policy="investigator",
+        )
         accusation = self.case.submit_accusation(
             accuser_ref=statement.speaker_ref,
             target_ref=statement.target_ref,
@@ -111,6 +133,7 @@ class StormnightScenarioRunner:
         checkpoint = self.case.create_checkpoint(events[: max(1, len(events) // 2)])
         tail = self.case.replay_checkpoint_tail(checkpoint)
         owner_replay_hash = self._owner_replay_hash()
+        owner_replay_hash_again = self._owner_replay_hash()
         return StormnightScenarioResult(
             case_opened=opened.committed,
             action_window_committed=action.committed,
@@ -124,6 +147,8 @@ class StormnightScenarioRunner:
             tail_replay_hash=tail.projection_hash,
             owner_replay_hash=owner_replay_hash,
             phases_completed=sum(1 for phase in (opened, phase_two, phase_three) if phase.committed),
+            agent_turn_proposed=agent_turn.accepted,
+            owner_replay_consistent=owner_replay_hash == owner_replay_hash_again,
         )
 
     def _owner_replay_hash(self) -> str:

@@ -58,5 +58,23 @@ class ScriptedMysteryAgentTurnService:
             proposal = CaseTurnProposal(turn_id=turn_id, actor_ref=context.recipient_ref, proposal_kind=kind, target_ref=context.recipient_ref if kind == "pursue" else None, owner_route="action", source_revision_vector=context.source_revision_vector, policy_revision="policy:stormnight:guardian@1")
         return CaseTurnDecision(accepted=True, proposal=proposal)
 
+    def propose_turn_from_character_runtime(self, runtime, event, *, context: CaseTurnContext, case_ref: str, turn_id: str, policy: Literal["investigator", "guardian"]) -> CaseTurnDecision:
+        """Feed one committed perception through the existing Character runtime.
+
+        The returned goal commands are normalized to a non-canonical proposal;
+        this method never appends case or world facts.
+        """
+        if event.actor_id != context.recipient_ref:
+            return CaseTurnDecision(accepted=False, error_code="stormnight_agent_actor_mismatch")
+        commands = runtime.ingest_character_perceived_event(event)
+        base = self.propose_turn(context, case_ref=case_ref, turn_id=turn_id, policy=policy)
+        if not base.accepted or base.proposal is None:
+            return base
+        if commands:
+            command = commands[0]
+            proposal = base.proposal.model_copy(update={"target_ref": command.target_actor_id or command.target_object_id or command.target_environment_id}, deep=True)
+            return CaseTurnDecision(accepted=True, proposal=proposal)
+        return base
+
 
 __all__ = ["CaseAgentContext", "CaseTurnDecision", "CaseTurnProposal", "ScriptedMysteryAgentTurnService"]
