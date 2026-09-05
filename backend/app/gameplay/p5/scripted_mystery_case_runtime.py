@@ -78,6 +78,7 @@ class CaseProjection(StrictGameplayModel):
     phase_ref: str | None = None
     opened: bool = False
     committed_clue_refs: tuple[str, ...] = ()
+    statement_refs: tuple[str, ...] = ()
     accusation_refs: tuple[str, ...] = ()
     terminal_outcome: str | None = None
     source_revision_vector: dict[str, int] = Field(default_factory=dict)
@@ -201,6 +202,7 @@ class ScriptedMysteryCaseAuthority:
         opened = False
         clues: list[str] = []
         accusations: list[str] = []
+        statements: list[str] = []
         revisions: dict[str, int] = {}
         ids: list[str] = []
         last_sequence = 0
@@ -216,10 +218,18 @@ class ScriptedMysteryCaseAuthority:
             opened = opened or event.event_type == _CASE_EVENTS["case_opened"]
             if event.event_type == _CASE_EVENTS["case_outcome_resolved"]:
                 outcome = str(payload.get("outcome_kind", ""))
+            if event.event_type == _CASE_EVENTS["statement_recorded"]:
+                statement_ref = str(payload.get("statement_ref", ""))
+                if statement_ref and statement_ref not in statements:
+                    statements.append(statement_ref)
+            if event.event_type == _CASE_EVENTS["accusation_submitted"]:
+                accusation_ref = str(payload.get("accusation_ref", event.event_id))
+                if accusation_ref not in accusations:
+                    accusations.append(accusation_ref)
             revisions[event.stream_id] = event.stream_revision
             ids.append(event.event_id)
             last_sequence = max(last_sequence, event.global_sequence)
-        return CaseProjection(case_ref=case_ref, case_revision=case_revision, phase_ref=phase_ref, opened=opened, committed_clue_refs=tuple(clues), accusation_refs=tuple(accusations), terminal_outcome=outcome, source_revision_vector=dict(sorted(revisions.items())), applied_event_ids=tuple(ids), last_global_sequence=last_sequence)
+        return CaseProjection(case_ref=case_ref, case_revision=case_revision, phase_ref=phase_ref, opened=opened, committed_clue_refs=tuple(clues), statement_refs=tuple(statements), accusation_refs=tuple(accusations), terminal_outcome=outcome, source_revision_vector=dict(sorted(revisions.items())), applied_event_ids=tuple(ids), last_global_sequence=last_sequence)
 
 
 __all__ = ["CaseAccusationResult", "CaseOpenIntent", "CaseOutcomeResult", "CasePhaseResult", "CaseProjection", "CaseStatementResult", "ScriptedMysteryCaseAuthority"]

@@ -72,3 +72,6 @@ def test_statement_and_accusation_use_case_owner_boundary() -> None:
     evidence = tuple(sorted((context.public_fact_refs[1], context.private_fact_refs[0])))
     accusation = authority.submit_accusation(accuser_ref=statement.speaker_ref, target_ref=statement.target_ref, evidence_refs=evidence, command_id="accusation", idempotency_key="accusation", expected_revision=2, causation_id="cause", correlation_id="corr")
     assert accusation.committed
+    projection = authority.project()
+    assert statement.statement_ref in projection.statement_refs
+    assert accusation.event_id in projection.accusation_refs
