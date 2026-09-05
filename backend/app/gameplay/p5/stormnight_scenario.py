@@ -44,6 +44,7 @@ class StormnightScenarioResult:
     agent_turn_proposed: bool
     owner_replay_consistent: bool
     owner_projection_consistent: bool
+    owner_projection_replay_consistent: bool
 
 
 class StormnightScenarioRunner:
@@ -155,6 +156,21 @@ class StormnightScenarioRunner:
             and inventory_projection.locations == inventory_projection_again.locations
             and inventory_projection.items == inventory_projection_again.items
         )
+        restored_store = GameplayEventStore.from_snapshot(
+            self.store.export_snapshot(),
+            event_schema_registry=create_stormnight_event_schema_registry(),
+        )
+        restored_social = SocialFactAuthority(registry=stormnight_social_registry(), store=restored_store)
+        restored_quest = QuestEvidenceAuthority(registry=stormnight_quest_registry(), store=restored_store)
+        restored_inventory = InventoryAuthorityService(store=restored_store, registry=inventory_registry)
+        owner_projection_replay_consistent = (
+            restored_social.scripted_mystery_statement_view(case_ref=self.content.case_ref, recipient_ref=statement.speaker_ref)["projection_hash"]
+            == self.social_authority.scripted_mystery_statement_view(case_ref=self.content.case_ref, recipient_ref=statement.speaker_ref)["projection_hash"]
+            and restored_quest.scripted_mystery_evidence_view(case_ref=self.content.case_ref)["projection_hash"]
+            == self.quest_authority.scripted_mystery_evidence_view(case_ref=self.content.case_ref)["projection_hash"]
+            and restored_inventory._projector.rebuild(discoverer, restored_store.read_events()).items
+            == inventory_projection.items
+        )
         return StormnightScenarioResult(
             case_opened=opened.committed,
             action_window_committed=all(item.committed for item in actions),
@@ -172,6 +188,7 @@ class StormnightScenarioRunner:
             agent_turn_proposed=agent_turn.accepted,
             owner_replay_consistent=owner_replay_hash == owner_replay_hash_again,
             owner_projection_consistent=owner_projection_consistent,
+            owner_projection_replay_consistent=owner_projection_replay_consistent,
         )
 
     def _owner_replay_hash(self) -> str:

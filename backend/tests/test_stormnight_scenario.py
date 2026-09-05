@@ -23,3 +23,4 @@ def test_stormnight_scenario_runs_owner_bound_case_loop_and_replays(outcome_kind
     assert result.agent_turn_proposed
     assert result.owner_replay_consistent
     assert result.owner_projection_consistent
+    assert result.owner_projection_replay_consistent

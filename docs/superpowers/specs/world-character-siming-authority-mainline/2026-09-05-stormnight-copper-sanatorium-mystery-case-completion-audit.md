@@ -25,6 +25,8 @@ Status: `implementation in progress; foundation slices verified`
   scenario and cross-owner event-ledger checks alongside the Godot probe;
 - the runner now compares repeatable Quest, Social and Inventory owner
   projections in addition to the case projection and ledger hash;
+- restored-store replay now reproduces the Quest, Social and Inventory owner
+  projections, not just the raw case event ledger;
 - the scenario runner now derives outcome prerequisites from committed case
   facts: correct culprit accusation for `case_solved`, wrong-target accusation
   for `false_accusation`, no contact for `culprit_escaped`, and contact for
