@@ -132,6 +132,18 @@ class PopulationCapabilityCatalog:
                 owner_contract_ref="inf:weather-front-organization-supply@1",
             ),
             PopulationCapabilityDescriptor(
+                capability_id="population:organization-production-work-contribution:v1",
+                accepted_behavior_kinds=("organization_production_work_contribution",),
+                required_scopes=("organization:summary", "public"),
+                required_source_domains=("production",),
+                target_owner="actor_gameplay.organization_domain",
+                allowed_output_kinds=("owner_bound_intent", "character_core_command"),
+                capability_revision="population:organization-production-work-contribution:v1",
+                policy_revision=policy_revision,
+                enabled=True,
+                owner_contract_ref="inf:organization-production-work-contribution-acceptance@1",
+            ),
+            PopulationCapabilityDescriptor(
                 capability_id="population:organization-window-due:v1",
                 accepted_behavior_kinds=("organization_operating_window_due",),
                 target_owner="actor_gameplay.organization_domain",

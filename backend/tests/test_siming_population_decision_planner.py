@@ -167,6 +167,7 @@ def test_registered_behavior_can_extend_without_actor_specific_mapping() -> None
 def test_default_capability_catalog_is_read_only_and_policy_pinned() -> None:
     descriptors = PopulationCapabilityCatalog.default("policy:test:v1")
     assert {behavior for descriptor in descriptors for behavior in descriptor.accepted_behavior_kinds} == {
-        "schedule_gated_supply", "organization_operating_window_due", "routine_work", "relationship_negotiation"
+        "schedule_gated_supply", "organization_production_work_contribution",
+        "organization_operating_window_due", "routine_work", "relationship_negotiation"
     }
     assert all(descriptor.policy_revision == "policy:test:v1" for descriptor in descriptors)
