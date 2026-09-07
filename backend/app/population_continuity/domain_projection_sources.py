@@ -36,7 +36,8 @@ def production_work_population_projections(
     organization_scope = str(
         organization.get("visibility_scope")
         or organization.get("scope")
-        or organization_projection.get("visibility_scope", "")
+        or organization_projection.get("visibility_scope")
+        or organization_projection.get("scope", "")
     )
     if organization_scope not in _ADMITTED_SCOPES or organization_scope != scope:
         return ()
