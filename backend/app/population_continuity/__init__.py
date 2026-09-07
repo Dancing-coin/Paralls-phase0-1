@@ -23,6 +23,7 @@ from .siming_contracts import PopulationBatchReport, PopulationCadenceInput, Pop
 from .decision_surface import PopulationCapabilityCatalog, PopulationCapabilityDescriptor, PopulationDecision, PopulationDecisionCandidate
 from .owner_adapters import ScheduleGatedSupplyOwnerExecutor
 from .inventory_owner_adapter import InventoryOutputCustodyOwnerExecutor
+from .social_owner_adapter import SocialPopulationSignalOwnerExecutor
 
 __all__ = [
     "ProfileActivationAuthority",
@@ -61,6 +62,7 @@ __all__ = [
     "PopulationCapabilityCatalog",
     "ScheduleGatedSupplyOwnerExecutor",
     "InventoryOutputCustodyOwnerExecutor",
+    "SocialPopulationSignalOwnerExecutor",
 ]
 
 

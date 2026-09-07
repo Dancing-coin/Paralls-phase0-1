@@ -169,6 +169,6 @@ def test_default_capability_catalog_is_read_only_and_policy_pinned() -> None:
     assert {behavior for descriptor in descriptors for behavior in descriptor.accepted_behavior_kinds} == {
         "schedule_gated_supply", "organization_production_work_contribution",
             "organization_operating_window_due", "routine_work", "relationship_negotiation",
-            "inventory_output_custody"
+                "inventory_output_custody", "social_population_signal"
     }
     assert all(descriptor.policy_revision == "policy:test:v1" for descriptor in descriptors)

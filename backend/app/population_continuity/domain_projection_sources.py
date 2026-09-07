@@ -14,6 +14,8 @@ _PRODUCTION_OWNER = "actor_gameplay.organization_domain"
 _PRODUCTION_ACCEPTED = "gameplay.organization.production_work_contribution_accepted"
 _INVENTORY_ADMITTED_SCOPES = frozenset({"organization:summary", "public"})
 _OUTPUT_CERTIFIED_EVENT = "gameplay.construction_production.production_output_certified@1"
+_SOCIAL_SIGNAL_ADMITTED_SCOPES = frozenset({"public"})
+_SOCIAL_SIGNAL_CAPABILITY = "population:social-population-signal:v1"
 
 
 def _payload(value: Mapping[str, object]) -> Mapping[str, object]:
@@ -296,6 +298,86 @@ def inventory_output_custody_population_projections(
     return tuple(projections)
 
 
+def social_population_signal_population_projections(
+    *,
+    population_signal_projection: Mapping[str, object] | None = None,
+    signal_projection: Mapping[str, object] | None = None,
+    scope: str,
+) -> tuple[PopulationProjection, ...]:
+    """Admit one public, revision-pinned Social signal as a population candidate."""
+    if scope not in _SOCIAL_SIGNAL_ADMITTED_SCOPES:
+        return ()
+    source = population_signal_projection or signal_projection
+    if not isinstance(source, Mapping):
+        return ()
+    payload = _payload(source)
+    if str(payload.get("visibility_scope") or payload.get("visibility") or "") != "public":
+        return ()
+    source_domain = payload.get("source_domain") or payload.get("domain")
+    if source_domain is not None and str(source_domain) != "social":
+        return ()
+    if any(
+        "private" in str(key).lower()
+        or "relationship" in str(key).lower()
+        or "participant" in str(key).lower()
+        for key in payload
+    ):
+        return ()
+    signal_ref = str(payload.get("signal_ref") or "")
+    provenance_ref = str(payload.get("provenance_ref") or "")
+    source_stream_ref = str(payload.get("source_stream_ref") or payload.get("stream_ref") or "")
+    source_revision_pin = payload.get("source_revision_pin")
+    if (
+        not signal_ref.startswith("signal:")
+        or not provenance_ref
+        or not source_stream_ref
+        or not isinstance(source_revision_pin, int)
+        or isinstance(source_revision_pin, bool)
+        or source_revision_pin < 0
+        or str(payload.get("materialization_state") or "") != "proposed"
+    ):
+        return ()
+    revision_vector = payload.get("revision_vector") or {source_stream_ref: source_revision_pin}
+    if not isinstance(revision_vector, Mapping) or revision_vector.get(source_stream_ref) != source_revision_pin:
+        return ()
+    if any(
+        not isinstance(value, int) or isinstance(value, bool) or value < 0
+        for value in revision_vector.values()
+    ):
+        return ()
+    idempotency_key = f"social:population-signal:{signal_ref}:{source_revision_pin}:v1"
+    candidate_payload: dict[str, Any] = {
+        "candidate_kind": "social_population_signal",
+        "behavior_kind": "social_population_signal",
+        "capability_id": _SOCIAL_SIGNAL_CAPABILITY,
+        "intent_kind": "social_population_signal",
+        "actor_ref": signal_ref,
+        "signal_ref": signal_ref,
+        "provenance_ref": provenance_ref,
+        "source_revision_pin": source_revision_pin,
+        "source_stream_ref": source_stream_ref,
+        "materialization_state": "proposed",
+        "visibility_scope": "public",
+        "source_domain": "social",
+        "idempotency_key": idempotency_key,
+        "source_event_refs": tuple(str(item) for item in (payload.get("source_event_refs") or (source_stream_ref,))),
+        "evidence_refs": tuple(str(item) for item in (payload.get("evidence_refs") or (provenance_ref,))),
+        "objective_risk": "low",
+        "unresolved_owner_consequence": 1.0,
+    }
+    return (
+        PopulationProjection(
+            ref=f"projection:social-population-signal:{signal_ref}",
+            scope="public",
+            revision_vector=dict(revision_vector),
+            payload=candidate_payload,
+        ),
+    )
+
+
+social_population_signal_projections = social_population_signal_population_projections
+
+
 # Keep the source name discoverable for callers that describe the input rather
 # than the resulting Owner operation.
 certified_output_population_projections = inventory_output_custody_population_projections
@@ -306,4 +388,6 @@ __all__ = [
     "inventory_output_custody_population_projections",
     "production_receipt_population_projections",
     "production_work_population_projections",
+    "social_population_signal_population_projections",
+    "social_population_signal_projections",
 ]

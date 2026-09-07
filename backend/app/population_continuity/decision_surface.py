@@ -156,6 +156,18 @@ class PopulationCapabilityCatalog:
                 owner_contract_ref="inf:inventory-production-output-custody@1",
             ),
             PopulationCapabilityDescriptor(
+                capability_id="population:social-population-signal:v1",
+                accepted_behavior_kinds=("social_population_signal",),
+                required_scopes=("public",),
+                required_source_domains=("social",),
+                target_owner="authority:p5:social",
+                allowed_output_kinds=("owner_bound_intent",),
+                capability_revision="population:social-population-signal:v1",
+                policy_revision=policy_revision,
+                enabled=True,
+                owner_contract_ref="inf:population-signal-materialization@1",
+            ),
+            PopulationCapabilityDescriptor(
                 capability_id="population:organization-window-due:v1",
                 accepted_behavior_kinds=("organization_operating_window_due",),
                 target_owner="actor_gameplay.organization_domain",
