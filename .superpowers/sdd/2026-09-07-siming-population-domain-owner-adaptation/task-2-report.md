@@ -46,6 +46,8 @@ passed (no output)
 
 `b9063c3a27c7b841b7fb7dbf02fc22034e517aae` (`接入司命生产工作 Owner 纵切`)
 
+Follow-up compatibility fix: `72ba277` (`兼容司命组织投影外层作用域`).
+
 ## Concerns
 
 - The new source function is intentionally pure and is not wired into startup
