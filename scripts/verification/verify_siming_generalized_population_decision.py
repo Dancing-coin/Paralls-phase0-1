@@ -7,6 +7,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 from app.population_continuity.vertical import GeneralizedPopulationDecisionFixture
+from app.population_continuity.domain_projection_sources import production_receipt_population_projections
+from app.population_continuity.siming_contracts import PopulationOwnerReceipt
 
 
 def main() -> int:
@@ -30,6 +32,28 @@ def main() -> int:
     competing = scenarios["competing_candidates"]
     player = scenarios["player_proximity"]
     zero_write = all(scenarios[name]["zero_write"] for name in ("stale_receipt", "owner_rejection", "noop_defer"))
+    production_receipt = PopulationOwnerReceipt(
+        receipt_ref="receipt:verification:production",
+        owner_ref="actor_gameplay.organization_domain",
+        event_family="gameplay.organization.production_work_contribution_accepted",
+        committed=True,
+        revision_vector={"gameplay:organization:org:bakery": 3},
+        zero_write=False,
+    )
+    production_projection = production_receipt_population_projections(
+        owner_receipt=production_receipt,
+        organization_projection={
+            "scope": "organization:summary",
+            "organization_ref": "org:bakery",
+            "source_revision_vector": dict(production_receipt.revision_vector),
+            "acceptance_rows": ({
+                "event_id": production_receipt.receipt_ref,
+                "recipient_ref": "character:char_a",
+                "organization_ref": "org:bakery",
+            },),
+        },
+        scope="organization:summary",
+    )
     report = {
         "overall_passed": bool(
             predecessor
@@ -41,6 +65,8 @@ def main() -> int:
             and replay["decision_digest"] == competing["decision_digest"]
             and not competing["uses_actor_specific_fixture"]
             and zero_write
+            and len(production_projection) == 1
+            and production_projection[0].revision_vector == production_receipt.revision_vector
         ),
         "predecessors": {"siming-governed-three-actor-cohort-continuity-v1": predecessor},
         "harness_checks": {
@@ -48,10 +74,15 @@ def main() -> int:
             "owner_boundary": competing["owner_refs"] == ["character:char_a"],
             "activation_only_boundary": player["owner_refs"] == [],
             "fixture_not_generic_contract": not competing["uses_actor_specific_fixture"],
+            "production_receipt_projection": len(production_projection) == 1,
         },
         "scenarios": scenarios,
         "replay": {"equal": replay["decision_digest"] == competing["decision_digest"], "decision_digest": replay["decision_digest"]},
         "zero_write": zero_write,
+        "production_receipt_projection": {
+            "count": len(production_projection),
+            "revision_vector": dict(production_projection[0].revision_vector) if production_projection else {},
+        },
     }
     artifact = root / ".harness" / "verification" / "siming-generalized-population-decision-report.json"
     artifact.parent.mkdir(parents=True, exist_ok=True)

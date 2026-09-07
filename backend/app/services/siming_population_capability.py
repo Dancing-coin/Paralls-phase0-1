@@ -7,6 +7,7 @@ from typing import Callable, Protocol, Sequence
 from app.character_agent.models.simulation_seed import CharacterContinuityCommand, CharacterContinuityReceipt
 from app.models.authority_event import AuthorityEvent
 from app.population_continuity.batch import PopulationOwnerBoundIntent, PopulationPlanner
+from app.population_continuity.domain_projection_sources import production_receipt_population_projections
 from app.population_continuity.models import PopulationWorldPlan
 from app.population_continuity.social_input import FrozenSocialPlanningInput
 from app.population_continuity.source_inputs import HouseholdScheduleInput, OrganizationScheduleInput
@@ -40,6 +41,20 @@ def default_population_read_set_builder(event: AuthorityEvent, cadence: Populati
         from app.population_continuity.siming_contracts import PopulationProjection
 
         projections = tuple(PopulationProjection.model_validate(item) for item in raw if isinstance(item, dict))
+    owner_receipt_value = event.payload.get("population_owner_receipt")
+    organization_projection = event.payload.get("organization_projection")
+    if isinstance(owner_receipt_value, dict) and isinstance(organization_projection, dict):
+        from app.population_continuity.siming_contracts import PopulationOwnerReceipt
+
+        try:
+            owner_receipt = PopulationOwnerReceipt.model_validate(owner_receipt_value)
+            projections = production_receipt_population_projections(
+                owner_receipt=owner_receipt,
+                organization_projection=organization_projection,
+                scope=cadence.report_scope,
+            )
+        except (TypeError, ValueError):
+            projections = ()
     def named_value(name: str, *aliases: str) -> object:
         value = event.payload.get(name)
         if value is None:
@@ -220,10 +235,21 @@ class PopulationSimulationCapability:
             for candidate in decision.selected_candidates
             if candidate.behavior_kind not in PopulationPlanner.ADMITTED_BEHAVIORS
         )
+        settled_owner_receipt_refs = {
+            str(candidate_source.payload.get("source_owner_receipt_ref"))
+            for candidate_source in selected_projections
+            if candidate_source.payload.get("source_owner_receipt_ref")
+        }
         generic_owner_candidates = tuple(
-            candidate for candidate in decision.selected_candidates
+            candidate
+            for candidate in decision.selected_candidates
             if "owner_bound_intent" in candidate.allowed_outputs
             and candidate.behavior_kind != "schedule_gated_supply"
+            and not any(
+                item.payload.get("source_owner_receipt_ref")
+                for item in selected_projections
+                if item.ref in candidate.source_projection_refs
+            )
         )
         if generic_owner_candidates:
             receipts: list[PopulationOwnerReceipt] = []
@@ -271,6 +297,52 @@ class PopulationSimulationCapability:
                     owner_receipts=tuple(receipts),
                     reason="owner_rejected",
                     production_append_count=0,
+                )
+            if self._continuity_port is not None and any(
+                candidate.behavior_kind == "organization_production_work_contribution"
+                for candidate in generic_owner_candidates
+            ):
+                receipt_by_projection = {
+                    candidate.source_projection_refs[0]: receipt.receipt_ref
+                    for candidate, receipt in zip(generic_owner_candidates, receipts)
+                    if receipt.committed
+                }
+                settled_projections = tuple(
+                    projection.model_copy(
+                        update={
+                            "payload": {
+                                **projection.payload,
+                                "source_owner_receipt_ref": receipt_by_projection[projection.ref],
+                                "source_owner_receipt_refs": (receipt_by_projection[projection.ref],),
+                            }
+                        },
+                        deep=True,
+                    )
+                    if projection.ref in receipt_by_projection
+                    else projection
+                    for projection in selected_projections
+                )
+                selected_read_set = PopulationReadSet.from_inputs(cadence_input, settled_projections)
+                core_refs = {
+                    candidate.actor_ref
+                    for candidate in decision.selected_candidates
+                    if "character_core_command" in candidate.allowed_outputs
+                }
+                settled = tuple(receipt.receipt_ref for receipt in receipts)
+                settled_result = self._run_cycle_impl(
+                    cadence_input,
+                    selected_read_set,
+                    allowed_character_core_refs=core_refs,
+                    accepted_owner_receipt_refs=settled,
+                )
+                return settled_result.model_copy(
+                    update={
+                        "decision": decision,
+                        "owner_receipts": tuple(receipts),
+                        "production_append_count": sum(
+                            1 for receipt in receipts if receipt.committed and not receipt.zero_write
+                        ),
+                    }
                 )
             return PopulationCycleResult(
                 status="accepted",
@@ -361,6 +433,7 @@ class PopulationSimulationCapability:
             cadence_input,
             selected_read_set,
             allowed_character_core_refs=allowed_core_refs,
+            accepted_owner_receipt_refs=tuple(sorted(settled_owner_receipt_refs)),
         )
         return result.model_copy(update={"decision": decision})
 
@@ -373,12 +446,43 @@ class PopulationSimulationCapability:
         capabilities: tuple[PopulationCapabilityDescriptor, ...],
     ) -> PopulationCycleResult:
         """Re-evaluate only after prior Owner receipts have reached a terminal success."""
-        if any(not receipt.committed or receipt.zero_write for receipt in receipts):
+        if any(
+            not receipt.committed
+            or (receipt.zero_write and receipt.idempotency_status != "duplicate_replayed")
+            for receipt in receipts
+        ):
             return self._requeue(
                 f"population-decision:{next_read_set.cadence.cadence_id}:requeue",
                 next_read_set,
                 "owner_rejected",
             )
+        production_receipts = tuple(
+            receipt
+            for receipt in receipts
+            if receipt.event_family == "gameplay.organization.production_work_contribution_accepted"
+        )
+        if production_receipts:
+            receipt_vector: dict[str, int] = {}
+            for receipt in production_receipts:
+                for stream, revision in receipt.revision_vector.items():
+                    if stream in receipt_vector and receipt_vector[stream] != revision:
+                        return self._requeue(
+                            f"population-decision:{next_read_set.cadence.cadence_id}:requeue",
+                            next_read_set,
+                            "stale_read_set",
+                        )
+                    receipt_vector[stream] = revision
+            if next_read_set.cadence.base_revision_vector != receipt_vector or any(
+                projection.revision_vector != receipt_vector
+                or projection.payload.get("source_owner_receipt_ref")
+                not in {receipt.receipt_ref for receipt in production_receipts}
+                for projection in next_read_set.projections
+            ):
+                return self._requeue(
+                    f"population-decision:{next_read_set.cadence.cadence_id}:requeue",
+                    next_read_set,
+                    "stale_read_set",
+                )
         if previous_decision is None:
             return self._requeue(
                 f"population-decision:{next_read_set.cadence.cadence_id}:requeue",
@@ -418,6 +522,7 @@ class PopulationSimulationCapability:
         *,
         cohort: bool = False,
         allowed_character_core_refs: set[str] | None = None,
+        accepted_owner_receipt_refs: Sequence[str] = (),
     ) -> PopulationCycleResult:
         batch_ref = f"population-batch:{cadence_input.cadence_id}:requeue"
         if not self._scope_admitted(cadence_input.report_scope):
@@ -464,7 +569,7 @@ class PopulationSimulationCapability:
                     "continuity_revision_reader_invalid",
                 )
         owner_receipts: list[PopulationOwnerReceipt] = []
-        owner_refs: list[str] = []
+        owner_refs: list[str] = list(accepted_owner_receipt_refs)
         owner_receipt_associations: dict[str, str] = {}
         for bound in report.owner_bound_intents:
             if isinstance(bound, dict):
@@ -477,6 +582,10 @@ class PopulationSimulationCapability:
                 bound.intent_kind != "schedule_gated_supply"
                 and not (cohort and bound.intent_kind == "supply" and bound.actor_ref == "character:char_a")
             ):
+                continue
+            settled_receipt_ref = str(bound.payload.get("source_owner_receipt_ref") or "")
+            if settled_receipt_ref in accepted_owner_receipt_refs:
+                owner_receipt_associations[bound.candidate_ref] = settled_receipt_ref
                 continue
             if self._owner_executor is None:
                 continue

@@ -145,6 +145,7 @@ class PopulationPlanner:
             "relationship_negotiation",
             "high_value_event",
             "b3_event",
+            "organization_production_work_contribution",
         }
     )
     ACTIVATION_BEHAVIORS = frozenset(

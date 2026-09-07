@@ -10,6 +10,8 @@ from app.population_continuity.siming_contracts import PopulationProjection
 
 _EVIDENCE_EVENT = "gameplay.construction_production.work_completion_evidence_recorded"
 _ADMITTED_SCOPES = frozenset({"organization:summary", "public"})
+_PRODUCTION_OWNER = "actor_gameplay.organization_domain"
+_PRODUCTION_ACCEPTED = "gameplay.organization.production_work_contribution_accepted"
 
 
 def _payload(value: Mapping[str, object]) -> Mapping[str, object]:
@@ -128,4 +130,95 @@ def production_work_population_projections(
     return tuple(projections)
 
 
-__all__ = ["production_work_population_projections"]
+def production_receipt_population_projections(
+    *,
+    owner_receipt: object,
+    organization_projection: Mapping[str, object],
+    scope: str,
+) -> tuple[PopulationProjection, ...]:
+    """Project one committed Production Owner receipt into the next read set."""
+    if scope not in _ADMITTED_SCOPES:
+        return ()
+    if (
+        getattr(owner_receipt, "owner_ref", "") != _PRODUCTION_OWNER
+        or getattr(owner_receipt, "event_family", "") != _PRODUCTION_ACCEPTED
+        or not getattr(owner_receipt, "committed", False)
+        or (
+            getattr(owner_receipt, "zero_write", True)
+            and getattr(owner_receipt, "idempotency_status", "") != "duplicate_replayed"
+        )
+    ):
+        return ()
+    revision_vector = getattr(owner_receipt, "revision_vector", {})
+    if not isinstance(revision_vector, Mapping) or not revision_vector:
+        return ()
+    organization = _payload(organization_projection)
+    if (
+        str(organization.get("scope") or organization.get("visibility_scope") or "") != scope
+        or not isinstance(organization.get("source_revision_vector"), Mapping)
+        or dict(organization["source_revision_vector"]) != dict(revision_vector)
+    ):
+        return ()
+    receipt_ref = str(getattr(owner_receipt, "receipt_ref", ""))
+    if not receipt_ref:
+        return ()
+    rows = organization.get("acceptance_rows") or organization.get("acceptances") or ()
+    if isinstance(rows, Mapping):
+        rows = (rows,)
+    if not isinstance(rows, (tuple, list)):
+        return ()
+    row = next(
+        (
+            item
+            for item in rows
+            if isinstance(item, Mapping)
+            and receipt_ref
+            in {
+                str(item.get("event_id") or ""),
+                str(item.get("receipt_ref") or ""),
+                str(item.get("owner_receipt_ref") or ""),
+            }
+        ),
+        None,
+    )
+    if row is None:
+        return ()
+    actor_ref = str(row.get("recipient_ref") or row.get("actor_ref") or "")
+    organization_ref = str(row.get("organization_ref") or organization.get("organization_ref") or "")
+    if not actor_ref.startswith("character:") or not organization_ref.startswith("org:"):
+        return ()
+    payload: dict[str, Any] = {
+        "candidate_kind": "organization_production_work_contribution",
+        "behavior_kind": "organization_production_work_contribution",
+        "capability_id": "population:organization-production-work-contribution:v1",
+        "actor_ref": actor_ref,
+        "organization_ref": organization_ref,
+        "source_domain": "production",
+        "source_owner_receipt_ref": receipt_ref,
+        "source_owner_receipt_refs": (receipt_ref,),
+        "source_event_refs": tuple(
+            str(item)
+            for item in (
+                row.get("source_evidence_event_id") or row.get("source_event_refs") or receipt_ref,
+            )
+            if str(item)
+        ),
+        "evidence_refs": (receipt_ref,),
+        "idempotency_key": f"population:production-receipt:{receipt_ref}:v1",
+        "objective_risk": "low",
+        "unresolved_owner_consequence": 0.0,
+    }
+    return (
+        PopulationProjection(
+            ref=f"projection:organization-production-receipt:{receipt_ref}",
+            scope=scope,
+            revision_vector=dict(revision_vector),
+            payload=payload,
+        ),
+    )
+
+
+__all__ = [
+    "production_receipt_population_projections",
+    "production_work_population_projections",
+]
