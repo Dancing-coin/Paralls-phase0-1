@@ -144,6 +144,18 @@ class PopulationCapabilityCatalog:
                 owner_contract_ref="inf:organization-production-work-contribution-acceptance@1",
             ),
             PopulationCapabilityDescriptor(
+                capability_id="population:inventory-output-custody:v1",
+                accepted_behavior_kinds=("inventory_output_custody",),
+                required_scopes=("organization:summary", "public"),
+                required_source_domains=("inventory",),
+                target_owner="actor_gameplay.inventory_domain",
+                allowed_output_kinds=("owner_bound_intent", "character_core_command"),
+                capability_revision="population:inventory-output-custody:v1",
+                policy_revision=policy_revision,
+                enabled=True,
+                owner_contract_ref="inf:inventory-production-output-custody@1",
+            ),
+            PopulationCapabilityDescriptor(
                 capability_id="population:organization-window-due:v1",
                 accepted_behavior_kinds=("organization_operating_window_due",),
                 target_owner="actor_gameplay.organization_domain",

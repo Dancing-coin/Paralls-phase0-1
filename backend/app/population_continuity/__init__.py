@@ -22,6 +22,7 @@ from .capability_input import CapabilityInputValidation, FrozenCapabilityEligibi
 from .siming_contracts import PopulationBatchReport, PopulationCadenceInput, PopulationCycleResult, PopulationOwnerReceipt, PopulationProjection, PopulationReadSet
 from .decision_surface import PopulationCapabilityCatalog, PopulationCapabilityDescriptor, PopulationDecision, PopulationDecisionCandidate
 from .owner_adapters import ScheduleGatedSupplyOwnerExecutor
+from .inventory_owner_adapter import InventoryOutputCustodyOwnerExecutor
 
 __all__ = [
     "ProfileActivationAuthority",
@@ -59,6 +60,7 @@ __all__ = [
     "PopulationCapabilityDescriptor",
     "PopulationCapabilityCatalog",
     "ScheduleGatedSupplyOwnerExecutor",
+    "InventoryOutputCustodyOwnerExecutor",
 ]
 
 

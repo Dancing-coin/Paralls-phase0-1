@@ -12,6 +12,8 @@ _EVIDENCE_EVENT = "gameplay.construction_production.work_completion_evidence_rec
 _ADMITTED_SCOPES = frozenset({"organization:summary", "public"})
 _PRODUCTION_OWNER = "actor_gameplay.organization_domain"
 _PRODUCTION_ACCEPTED = "gameplay.organization.production_work_contribution_accepted"
+_INVENTORY_ADMITTED_SCOPES = frozenset({"organization:summary", "public"})
+_OUTPUT_CERTIFIED_EVENT = "gameplay.construction_production.production_output_certified@1"
 
 
 def _payload(value: Mapping[str, object]) -> Mapping[str, object]:
@@ -218,7 +220,90 @@ def production_receipt_population_projections(
     )
 
 
+def inventory_output_custody_population_projections(
+    *,
+    committed_events: tuple[AuthorityEvent, ...] = (),
+    scope: str,
+    certified_output_projection: Mapping[str, object] | None = None,
+) -> tuple[PopulationProjection, ...]:
+    """Project one committed, certified output into an Inventory Owner candidate.
+
+    The projection intentionally carries only the certification pin. Inventory
+    derives holder, container, quantity, and destination stream from its family
+    binding when the Owner executes the intent.
+    """
+    if scope not in _INVENTORY_ADMITTED_SCOPES:
+        return ()
+    events: tuple[object, ...] = committed_events
+    if certified_output_projection is not None:
+        event_id = str(certified_output_projection.get("event_id") or "")
+        event_payload = certified_output_projection.get("payload")
+        if isinstance(event_payload, Mapping):
+            event = type("CertifiedProjection", (), {
+                "event_id": event_id,
+                "event_type": certified_output_projection.get("event_type", _OUTPUT_CERTIFIED_EVENT),
+                "stream_id": certified_output_projection.get("stream_id", ""),
+                "stream_revision": certified_output_projection.get("stream_revision", 0),
+                "payload": event_payload,
+            })()
+            events = (event,)
+    projections: list[PopulationProjection] = []
+    for event in events:
+        if getattr(event, "event_type", "") != _OUTPUT_CERTIFIED_EVENT:
+            continue
+        payload = _payload(getattr(event, "payload", {}))
+        if payload.get("family_ref") != "production_output_certification@1":
+            continue
+        if payload.get("visibility_policy") not in (None, "project"):
+            continue
+        event_id = str(getattr(event, "event_id", ""))
+        stream_ref = str(payload.get("stream_ref") or getattr(event, "stream_id", ""))
+        revision = _revision(event, payload)
+        quantity = payload.get("quantity")
+        if not event_id or not stream_ref or revision < 1 or not isinstance(quantity, int) or isinstance(quantity, bool) or quantity <= 0:
+            continue
+        certification_revision = payload.get("stream_revision", revision)
+        if not isinstance(certification_revision, int) or isinstance(certification_revision, bool) or certification_revision < 1:
+            certification_revision = revision
+        actor_ref = str(payload.get("actor_ref") or payload.get("facility_ref") or f"production:{event_id}")
+        expected_inventory_revision = payload.get("expected_inventory_stream_revision")
+        projection_payload: dict[str, Any] = {
+            "candidate_kind": "inventory_output_custody",
+            "behavior_kind": "inventory_output_custody",
+            "capability_id": "population:inventory-output-custody:v1",
+            "intent_kind": "inventory_output_custody",
+            "actor_ref": actor_ref,
+            "source_domain": "inventory",
+            "source_certification_event_id": event_id,
+            "source_certification_revision": certification_revision,
+            "source_stream_ref": stream_ref,
+            "source_event_refs": (event_id,),
+            "evidence_refs": (event_id,),
+            "idempotency_key": f"population:inventory-output-custody:{event_id}:{certification_revision}:v1",
+            "objective_risk": "low",
+            "unresolved_owner_consequence": 1.0,
+        }
+        if isinstance(expected_inventory_revision, int) and not isinstance(expected_inventory_revision, bool) and expected_inventory_revision >= 0:
+            projection_payload["expected_inventory_stream_revision"] = expected_inventory_revision
+        projections.append(
+            PopulationProjection(
+                ref=f"projection:inventory-output-custody:{event_id}",
+                scope=scope,
+                revision_vector={stream_ref: revision},
+                payload=projection_payload,
+            )
+        )
+    return tuple(projections)
+
+
+# Keep the source name discoverable for callers that describe the input rather
+# than the resulting Owner operation.
+certified_output_population_projections = inventory_output_custody_population_projections
+
+
 __all__ = [
+    "certified_output_population_projections",
+    "inventory_output_custody_population_projections",
     "production_receipt_population_projections",
     "production_work_population_projections",
 ]

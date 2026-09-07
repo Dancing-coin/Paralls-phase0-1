@@ -299,7 +299,10 @@ class PopulationSimulationCapability:
                     production_append_count=0,
                 )
             if self._continuity_port is not None and any(
-                candidate.behavior_kind == "organization_production_work_contribution"
+                candidate.behavior_kind in {
+                    "organization_production_work_contribution",
+                    "inventory_output_custody",
+                }
                 for candidate in generic_owner_candidates
             ):
                 receipt_by_projection = {
@@ -580,6 +583,10 @@ class PopulationSimulationCapability:
                 )
             if not isinstance(bound, PopulationOwnerBoundIntent) or (
                 bound.intent_kind != "schedule_gated_supply"
+                and not (
+                    bound.intent_kind == "inventory_output_custody"
+                    and str(bound.payload.get("source_owner_receipt_ref") or "") in accepted_owner_receipt_refs
+                )
                 and not (cohort and bound.intent_kind == "supply" and bound.actor_ref == "character:char_a")
             ):
                 continue
