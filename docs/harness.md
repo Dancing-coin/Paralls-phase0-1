@@ -3454,3 +3454,24 @@ another runtime.
 ```powershell
 python scripts/verification/harness.py --profile siming-generalized-population-decision
 ```
+
+### Siming Population Domain-Owner Admission Matrix
+
+The source-controlled matrix in
+`docs/superpowers/specs/world-character-siming-authority-mainline/2026-09-07-siming-population-domain-owner-adaptation-design.md`
+is the admission gate for future population verticals. The gate must report
+the difference between an existing domain Owner contract and an approved
+population capability: a contract alone does not authorize candidate
+derivation, Siming selection, or Owner dispatch.
+
+The matrix test is intentionally backend-only and read-only:
+
+```powershell
+python -m pytest -q backend/tests/test_siming_population_domain_owner_matrix.py
+```
+
+Rows are admitted one at a time through committed, scope-filtered projections
+and fixed Owner adapters. `tax_pressure` remains report-only, and
+`stormnight_action_window` remains outside population cadence. The gate must
+not introduce a generic population truth owner, generic writer/router, second
+event bus/store, clock, scheduler, or background loop.
