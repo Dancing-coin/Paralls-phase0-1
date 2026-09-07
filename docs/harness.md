@@ -3446,3 +3446,11 @@ account and does not admit generic payment, transfer, pricing, settlement, or
 another runtime.
 
 - `.harness/verification/inf2an-grain-intake-acceptance-report.json`
+
+### `siming-generalized-population-decision`
+
+该 profile 验证司命通用群体候选选择：多个合法选择、预算/权重变化、Owner/Character Core 边界、零写入场景与决策回放。它不要求固定 actor 或固定行为结果，且保持 `include_in_profile_order=false`、`include_in_all=false`。
+
+```powershell
+python scripts/verification/harness.py --profile siming-generalized-population-decision
+```
