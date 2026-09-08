@@ -16,6 +16,8 @@ _INVENTORY_ADMITTED_SCOPES = frozenset({"organization:summary", "public"})
 _OUTPUT_CERTIFIED_EVENT = "gameplay.construction_production.production_output_certified@1"
 _SOCIAL_SIGNAL_ADMITTED_SCOPES = frozenset({"public"})
 _SOCIAL_SIGNAL_CAPABILITY = "population:social-population-signal:v1"
+_TAX_PRESSURE_ADMITTED_SCOPES = frozenset({"public"})
+_TAX_PRESSURE_CAPABILITY = "population:tax-pressure:v1"
 
 
 def _payload(value: Mapping[str, object]) -> Mapping[str, object]:
@@ -375,7 +377,52 @@ def social_population_signal_population_projections(
     )
 
 
+def tax_pressure_population_projections(
+    *,
+    tax_obligation_projection: Mapping[str, object] | None = None,
+    scope: str,
+) -> tuple[PopulationProjection, ...]:
+    """Redact one due tax obligation into a report-only pressure candidate."""
+    if scope not in _TAX_PRESSURE_ADMITTED_SCOPES or not isinstance(tax_obligation_projection, Mapping):
+        return ()
+    source = _payload(tax_obligation_projection)
+    obligation_ref = str(source.get("obligation_ref") or "")
+    actor_ref = str(source.get("actor_ref") or source.get("character_ref") or "")
+    stream_ref = str(source.get("source_stream_ref") or source.get("stream_ref") or "")
+    revision = source.get("source_revision_pin", source.get("stream_revision"))
+    if (
+        not obligation_ref.startswith("obligation:economy:tax:")
+        or not actor_ref.startswith("character:")
+        or stream_ref != "gameplay:economy"
+        or not isinstance(revision, int)
+        or isinstance(revision, bool)
+        or revision < 1
+        or str(source.get("status") or "") not in {"due", "overdue"}
+    ):
+        return ()
+    payload: dict[str, Any] = {
+        "candidate_kind": "tax_pressure",
+        "behavior_kind": "tax_pressure",
+        "capability_id": _TAX_PRESSURE_CAPABILITY,
+        "actor_ref": actor_ref,
+        "tax_pressure_ref": f"tax-pressure:{obligation_ref}:{revision}",
+        "source_domain": "economy",
+        "idempotency_key": f"population:tax-pressure:{obligation_ref}:{revision}:v1",
+        "objective_risk": "none",
+        "narrative_obligation_pressure": 1.0,
+    }
+    return (
+        PopulationProjection(
+            ref=f"projection:tax-pressure:{obligation_ref}",
+            scope=scope,
+            revision_vector={stream_ref: revision},
+            payload=payload,
+        ),
+    )
+
+
 social_population_signal_projections = social_population_signal_population_projections
+tax_obligation_population_projections = tax_pressure_population_projections
 
 
 # Keep the source name discoverable for callers that describe the input rather
@@ -390,4 +437,6 @@ __all__ = [
     "production_work_population_projections",
     "social_population_signal_population_projections",
     "social_population_signal_projections",
+    "tax_obligation_population_projections",
+    "tax_pressure_population_projections",
 ]

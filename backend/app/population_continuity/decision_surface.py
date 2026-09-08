@@ -195,6 +195,17 @@ class PopulationCapabilityCatalog:
                 policy_revision=policy_revision,
                 enabled=True,
             ),
+            PopulationCapabilityDescriptor(
+                capability_id="population:tax-pressure:v1",
+                accepted_behavior_kinds=("tax_pressure",),
+                required_scopes=("public",),
+                required_source_domains=("economy",),
+                target_owner="character_core",
+                allowed_output_kinds=("presentation_seed", "activation_candidate", "defer"),
+                capability_revision="population:tax-pressure:v1",
+                policy_revision=policy_revision,
+                enabled=True,
+            ),
         )
 
 
