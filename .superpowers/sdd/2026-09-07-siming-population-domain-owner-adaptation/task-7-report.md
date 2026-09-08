@@ -97,3 +97,11 @@ git diff --check: passed (no output)
 - Tax remains report-only and has no runtime Owner executor. Stormnight realtime action windows remain outside population cadence.
 - This Task is backend-only; it makes no Godot runtime verification claim.
 - The existing untracked implementation-plan file was intentionally left outside both commits.
+
+## Final Review Repairs (2026-09-08)
+
+- P1: Projection `source_owner_receipt_ref` is no longer treated as proof of Owner settlement. Public decision calls carry no accepted receipt references; the private decision path receives references only after `replan_from_receipts` validates committed production receipts, Owner identity, cadence source and revision, and the matching production projection. Forged references requeue before any Owner write, seed derivation, or Character Core command.
+- P2: The Social adapter compares `provenance_ref` before returning a duplicate receipt. A changed provenance for the same signal and source revision is rejected with zero write; a real `SocialFactAuthority` regression verifies that the original event remains the only stored event.
+- Regression RED: `python -m pytest -q backend/tests/test_siming_population_production_replanning.py backend/tests/test_siming_population_social_signal_vertical.py` reproduced `3 failed, 7 passed, 2 warnings in 2.57s` before the fixes. The failures proved forged references reached Character Core through both public and empty-receipt replan entrypoints, and changed Social provenance was accepted.
+- Covering GREEN: `python -m pytest -q backend/tests -k siming_population` completed with `152 passed, 4795 deselected, 7 warnings in 7.32s`, exit code 0. Coverage includes valid receipt reuse without a second Owner write and the added Owner/source/revision mismatch cases.
+- `git diff --check` passed with no output. This repair is backend-only and makes no new Godot verification claim.

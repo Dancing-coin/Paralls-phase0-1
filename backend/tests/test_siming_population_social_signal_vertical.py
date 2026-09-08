@@ -110,3 +110,30 @@ def test_social_owner_receipt_is_replayable_without_duplicate_write() -> None:
     assert first.owner_receipts[0].committed
     assert replay.owner_receipts[0].idempotency_status == "duplicate_replayed"
     assert replay.owner_receipts[0].zero_write
+
+
+def test_social_owner_rejects_changed_provenance_on_duplicate_signal() -> None:
+    store, authority = _authority()
+    read_set = _read_set()
+    capability = PopulationSimulationCapability(owner_executors={
+        "population:social-population-signal:v1": SocialPopulationSignalOwnerExecutor(
+            authority=authority
+        )
+    })
+    first = capability.run_default_decision_cycle(read_set.cadence, read_set)
+    projection = read_set.projections[0]
+    changed = projection.model_copy(update={"payload": {
+        **projection.payload, "provenance_ref": "provenance:different-signal@1",
+    }})
+    replay = capability.run_default_decision_cycle(
+        read_set.cadence, PopulationReadSet.from_inputs(read_set.cadence, (changed,)),
+    )
+
+    assert first.owner_receipts[0].committed
+    assert replay.status == "requeue"
+    assert not replay.owner_receipts[0].committed
+    assert replay.owner_receipts[0].zero_write
+    assert replay.production_append_count == 0
+    events = store.read_stream("gameplay:social:population:signal:riverward-workforce@1")
+    assert len(events) == 1
+    assert events[0].payload["provenance_ref"] == projection.payload["provenance_ref"]

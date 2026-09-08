@@ -41,6 +41,7 @@ class SocialPopulationSignalOwnerExecutor:
             return rejected()
         try:
             signal_ref = str(payload["signal_ref"])
+            provenance_ref = str(payload["provenance_ref"])
             source_revision = int(payload["source_revision_pin"])
             source_stream_ref = str(payload["source_stream_ref"])
             canonical_key = f"social:population-signal:{signal_ref}:{source_revision}:v1"
@@ -66,6 +67,8 @@ class SocialPopulationSignalOwnerExecutor:
                     None,
                 )
                 if existing is not None:
+                    if existing.payload.get("provenance_ref") != provenance_ref:
+                        return rejected()
                     return PopulationOwnerReceipt(
                         receipt_ref=existing.event_id,
                         owner_ref=self.OWNER_REF,
@@ -77,7 +80,7 @@ class SocialPopulationSignalOwnerExecutor:
                     )
             authored = PopulationSignalMaterializationProposalIntent(
                 signal_ref=signal_ref,
-                provenance_ref=str(payload["provenance_ref"]),
+                provenance_ref=provenance_ref,
                 source_revision_pin=source_revision,
                 materialization_state="proposed",
                 visibility_scope="public",

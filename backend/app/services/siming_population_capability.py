@@ -181,6 +181,17 @@ class PopulationSimulationCapability:
         policy: PopulationDecisionPolicy,
         capabilities: tuple[PopulationCapabilityDescriptor, ...],
     ) -> PopulationCycleResult:
+        return self._run_decision_cycle(cadence_input, read_set, policy, capabilities)
+
+    def _run_decision_cycle(
+        self,
+        cadence_input: PopulationCadenceInput,
+        read_set: PopulationReadSet,
+        policy: PopulationDecisionPolicy,
+        capabilities: tuple[PopulationCapabilityDescriptor, ...],
+        *,
+        accepted_owner_receipt_refs: Sequence[str] = (),
+    ) -> PopulationCycleResult:
         """Evaluate and settle a generic decision through existing authority paths."""
         if read_set.cadence != cadence_input:
             return self._requeue(f"population-batch:{cadence_input.cadence_id}:requeue", read_set, "stale_read_set")
@@ -240,6 +251,12 @@ class PopulationSimulationCapability:
             for candidate_source in selected_projections
             if candidate_source.payload.get("source_owner_receipt_ref")
         }
+        if not settled_owner_receipt_refs.issubset(accepted_owner_receipt_refs):
+            return self._requeue(
+                f"population-decision:{cadence_input.cadence_id}:requeue",
+                read_set,
+                "unverified_owner_receipt",
+            )
         generic_owner_candidates = tuple(
             candidate
             for candidate in decision.selected_candidates
@@ -465,6 +482,7 @@ class PopulationSimulationCapability:
             if receipt.event_family == "gameplay.organization.production_work_contribution_accepted"
         )
         if production_receipts:
+            receipts_by_ref = {receipt.receipt_ref: receipt for receipt in production_receipts}
             receipt_vector: dict[str, int] = {}
             for receipt in production_receipts:
                 for stream, revision in receipt.revision_vector.items():
@@ -475,11 +493,19 @@ class PopulationSimulationCapability:
                             "stale_read_set",
                         )
                     receipt_vector[stream] = revision
-            if next_read_set.cadence.base_revision_vector != receipt_vector or any(
-                projection.revision_vector != receipt_vector
-                or projection.payload.get("source_owner_receipt_ref")
-                not in {receipt.receipt_ref for receipt in production_receipts}
-                for projection in next_read_set.projections
+            if (
+                any(receipt.owner_ref != "actor_gameplay.organization_domain" for receipt in production_receipts)
+                or next_read_set.cadence.base_revision_vector != receipt_vector
+                or receipt_vector.get(next_read_set.cadence.cadence_source_ref)
+                != next_read_set.cadence.cadence_source_revision
+                or any(
+                    projection.revision_vector != receipt_vector
+                    or projection.payload.get("source_owner_receipt_ref") not in receipts_by_ref
+                    or projection.revision_vector != receipts_by_ref[projection.payload["source_owner_receipt_ref"]].revision_vector
+                    or projection.payload.get("source_domain") != "production"
+                    or projection.payload.get("candidate_kind") != "organization_production_work_contribution"
+                    for projection in next_read_set.projections
+                )
             ):
                 return self._requeue(
                     f"population-decision:{next_read_set.cadence.cadence_id}:requeue",
@@ -492,11 +518,12 @@ class PopulationSimulationCapability:
                 next_read_set,
                 "previous_decision_missing",
             )
-        return self.run_decision_cycle(
+        return self._run_decision_cycle(
             next_read_set.cadence,
             next_read_set,
             policy,
             capabilities,
+            accepted_owner_receipt_refs=tuple(receipt.receipt_ref for receipt in production_receipts),
         )
 
     def run_cycle(self, cadence_input: PopulationCadenceInput, read_set: PopulationReadSet) -> PopulationCycleResult:
