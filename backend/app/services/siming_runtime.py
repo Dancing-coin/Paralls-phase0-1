@@ -144,6 +144,11 @@ class SimingRuntime:
                 try:
                     cadence = PopulationCadenceInput.from_authority_event(event)
                     read_set = self._population_read_set_builder(event, cadence)
+                    if isinstance(event.payload.get("population_owner_receipt"), dict) and not read_set.projections:
+                        result.audit_records.append(
+                            self._audit(event, status="no_action", reason="population_requeue:owner_rejected")
+                        )
+                        continue
                     generic_payload = event.payload.get("population_decision")
                     generic_runner = getattr(self._population_capability, "run_decision_cycle", None)
                     default_runner = getattr(self._population_capability, "run_default_decision_cycle", None)

@@ -145,6 +145,8 @@ class PopulationPlanner:
             "relationship_negotiation",
             "high_value_event",
             "b3_event",
+            "organization_production_work_contribution",
+            "inventory_output_custody",
         }
     )
     ACTIVATION_BEHAVIORS = frozenset(
@@ -342,6 +344,9 @@ class PopulationPlanner:
                     )
                     continue
                 owner_intents.append(PopulationOwnerBoundIntent(projection.ref, actor_ref, kind, scope, owner_payload, source_vector))
+                budget_used += cost
+            elif kind == "inventory_output_custody":
+                owner_intents.append(PopulationOwnerBoundIntent(projection.ref, actor_ref, kind, scope, dict(payload), source_vector))
                 budget_used += cost
             elif kind in {"relationship_negotiation", "high_value_event", "b3_event"} or str(payload.get("behavior_tier", "")).upper() in {"B2", "B3"}:
                 activations.append(PopulationActivationCandidate(

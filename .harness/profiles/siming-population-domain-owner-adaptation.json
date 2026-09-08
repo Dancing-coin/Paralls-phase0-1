@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "siming-population-domain-owner-adaptation",
+  "order": 121,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_siming_population_domain_owner_adaptation.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/siming-population-domain-owner-adaptation-report.json",
+  "description": "Runtime admission and fail-closed proof for Siming population domain Owner adapters"
+}

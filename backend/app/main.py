@@ -175,7 +175,10 @@ from app.services.siming_population_capability import PopulationSimulationCapabi
 from app.character_agent.services.character_continuity import CharacterRuntimeContinuityPort
 from app.population_continuity.batch import ContinuityMergeAuthority
 from app.population_continuity.models import ActivationReceipt, BatchIntentCandidate, WorldModeProfile
-from app.population_continuity.owner_adapters import ScheduleGatedSupplyOwnerExecutor
+from app.population_continuity.owner_adapters import (
+    OrganizationProductionWorkContributionOwnerExecutor,
+    ScheduleGatedSupplyOwnerExecutor,
+)
 from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationProjection
 from app.population_continuity.world import WorldContinuityRuntime
 from app.population_continuity.social_input import FrozenSocialPlanningInput
@@ -294,6 +297,7 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
     )
     llm_provider = build_siming_llm_provider(runtime_settings)
     population_owner = None
+    population_owner_executors = {}
     owner_store = globals().get("gameplay_event_store")
     if isinstance(owner_store, GameplayEventStore):
         profile_dir = Path(__file__).resolve().parents[2] / "assets" / "characters" / "profiles"
@@ -303,6 +307,11 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
             merger=ContinuityMergeAuthority(store=owner_store, registry=owner_registry, mode=owner_mode),
             context_builder=ScheduleGatedSupplyOwnerExecutor.context_from_intent_payload,
         )
+        population_owner_executors = {
+            "population:organization-production-work-contribution:v1": OrganizationProductionWorkContributionOwnerExecutor(
+                authority=OrganizationAuthority(store=owner_store)
+            ),
+        }
 
     def actor_autonomy(proposal) -> bool:
         actor_id = proposal.target_actor_id
@@ -354,6 +363,7 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
             heavenly_support=support,
             population_capability=PopulationSimulationCapability(
                 owner_executor=population_owner,
+                owner_executors=population_owner_executors,
                 continuity_port=CharacterRuntimeContinuityPort(character_agent_runtime),
             ),
             behavior_turn_recorder=BehaviorTurnRecorder(heavenly_graph),

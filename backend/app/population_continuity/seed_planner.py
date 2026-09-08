@@ -30,6 +30,8 @@ class CharacterSeedPlanner:
             "relationship_negotiation",
             "high_value_event",
             "b3_event",
+            "organization_production_work_contribution",
+            "inventory_output_custody",
         }
     )
 
@@ -53,7 +55,7 @@ class CharacterSeedPlanner:
             owner_refs = self._owner_receipt_refs(payload)
             if owner_receipt_associations and projection.ref in owner_receipt_associations:
                 owner_refs = owner_refs | frozenset({str(owner_receipt_associations[projection.ref])})
-            objective = kind == "schedule_gated_supply" or bool(payload.get("objective_effect")) or bool(payload.get("world_effect"))
+            objective = kind in {"schedule_gated_supply", "organization_production_work_contribution", "inventory_output_custody"} or bool(payload.get("objective_effect")) or bool(payload.get("world_effect"))
             if kind == "routine_work":
                 objective = False
             state_deltas = payload.get("state_deltas")

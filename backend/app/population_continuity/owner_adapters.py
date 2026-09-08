@@ -136,4 +136,60 @@ class OrganizationOperatingWindowDueOwnerExecutor:
         )
 
 
-__all__ = ["ScheduleGatedSupplyOwnerExecutor", "OrganizationOperatingWindowDueOwnerExecutor"]
+class OrganizationProductionWorkContributionOwnerExecutor:
+    """Narrow adapter for the committed Production -> Organization Owner contract."""
+
+    OWNER_REF = "actor_gameplay.organization_domain"
+    EVENT_FAMILY = "gameplay.organization.production_work_contribution_accepted"
+    CAPABILITY_ID = "population:organization-production-work-contribution:v1"
+
+    def __init__(self, *, authority: OrganizationAuthority) -> None:
+        self._authority = authority
+
+    def submit(self, intent: BatchIntentCandidate, *, read_set: PopulationReadSet) -> PopulationOwnerReceipt:
+        rejected = lambda: PopulationOwnerReceipt(
+            receipt_ref=f"rejected:{intent.intent_ref}", owner_ref=self.OWNER_REF,
+            event_family=self.EVENT_FAMILY, committed=False, revision_vector={}, zero_write=True,
+        )
+        if intent.intent_kind != "organization_production_work_contribution" or intent.package_revision != self.CAPABILITY_ID or intent.privacy_scope not in {"organization:summary", "public"}:
+            return rejected()
+        payload = intent.payload
+        try:
+            projection = next((item for item in read_set.projections if item.ref == intent.source_ref), None)
+            if projection is None or projection.scope != intent.privacy_scope or dict(projection.revision_vector) != dict(intent.expected_revisions):
+                return rejected()
+            organization_ref = str(payload["organization_ref"])
+            source_event_id = str(payload["source_evidence_event_id"])
+            source_revision = int(payload["source_evidence_revision"])
+            organization_stream = f"gameplay:organization:{organization_ref}"
+            organization_revision = int(payload["organization_stream_revision"])
+            schedule_event_id = str(payload["schedule_event_id"])
+            schedule_revision = int(payload["schedule_event_revision"])
+            canonical_key = f"organization:production-work-contribution:{organization_ref}:{source_event_id}:{source_revision}:{schedule_event_id}:{schedule_revision}:v1"
+            if "event_family" in payload or "stream_ref" in payload or payload.get("idempotency_key") != canonical_key:
+                return rejected()
+            if intent.expected_revisions.get(payload.get("source_stream_ref")) != source_revision or intent.expected_revisions.get(organization_stream) != organization_revision:
+                return rejected()
+            result = self._authority.accept_production_work_contribution(
+                organization_ref=organization_ref,
+                source_evidence_event_id=source_event_id,
+                expected_source_stream_revision=source_revision,
+                expected_organization_stream_revision=organization_revision,
+                command_id=intent.intent_ref,
+                idempotency_key=canonical_key,
+                causation_id=intent.source_ref,
+                correlation_id=intent.correlation_id,
+            )
+        except (KeyError, TypeError, ValueError):
+            return rejected()
+        committed = bool(result.committed)
+        return PopulationOwnerReceipt(
+            receipt_ref=(result.committed_event_ids[0] if result.committed_event_ids else f"receipt:{intent.intent_ref}"),
+            owner_ref=self.OWNER_REF, event_family=self.EVENT_FAMILY, committed=committed,
+            revision_vector=dict(result.resulting_stream_revisions),
+            zero_write=not committed or result.idempotency_status == "duplicate_replayed",
+            idempotency_status=result.idempotency_status,
+        )
+
+
+__all__ = ["ScheduleGatedSupplyOwnerExecutor", "OrganizationOperatingWindowDueOwnerExecutor", "OrganizationProductionWorkContributionOwnerExecutor"]
