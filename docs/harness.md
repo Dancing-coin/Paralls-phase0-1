@@ -3475,3 +3475,25 @@ and fixed Owner adapters. `tax_pressure` remains report-only, and
 `stormnight_action_window` remains outside population cadence. The gate must
 not introduce a generic population truth owner, generic writer/router, second
 event bus/store, clock, scheduler, or background loop.
+
+### `siming-population-domain-owner-adaptation`
+
+该 backend-only profile 验证司命群体领域 Owner（领域事实写入者）适配边界：默认
+`SimingRuntime` 保留 Bakery 的 legacy `owner_executor`，并仅把已有真实 Owner 合同且
+无需额外 package activation 的 Production/Organization capability 注册进
+`owner_executors`。Inventory 与 public Social adapter 已由独立纵切测试验证，但当前
+生产 runtime 没有对应的 active package binding（已激活包绑定），因此保持
+`capability_owner_adapter_missing`、requeue 和 zero-write；不能用测试 manifest 或伪造
+registry 绕过。Tax 保持 report-only，Stormnight realtime action window 不进入 population
+cadence（群体推进节奏）。
+
+该 profile 同时验证多领域 descriptor 有效、预算改变选择、隐私与 authority-only 投影
+过滤、Owner receipt 先于 Character Core seed、full/checkpoint-tail 回放摘要一致，以及
+所有未准入 capability 都不会触达 Owner。
+
+```powershell
+python scripts/verification/harness.py --profile siming-population-domain-owner-adaptation
+```
+
+证据报告：
+`.harness/verification/siming-population-domain-owner-adaptation-report.json`。
