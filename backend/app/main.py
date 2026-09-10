@@ -866,6 +866,107 @@ def _ack_siming_staging_request(event: AuthorityEvent) -> None:
     )
 
 
+def _legacy_supply_projection_is_authorized(
+    projection: PopulationProjection,
+    *,
+    cadence: PopulationCadenceInput,
+    store: GameplayEventStore,
+    organization_projection: Mapping[str, object],
+) -> bool:
+    payload = projection.payload
+    if set(payload) != {
+        "actor_ref",
+        "candidate_kind",
+        "capability_id",
+        "priority",
+        "state_deltas",
+        "presentation_seed",
+        "activation_hints",
+        "exposure_basis",
+        "summary",
+        "source_event_refs",
+        "schedule_gated_supply_source_context",
+    }:
+        return False
+    actor_ref = payload.get("actor_ref")
+    source_event_refs = payload.get("source_event_refs")
+    context = payload.get("schedule_gated_supply_source_context")
+    if (
+        projection.ref != "projection:bakery:supply:char_a"
+        or actor_ref != "character:char_a"
+        or payload.get("candidate_kind") != "schedule_gated_supply"
+        or payload.get("capability_id") != "population:schedule-gated-supply:v1"
+        or not isinstance(source_event_refs, (list, tuple))
+        or not source_event_refs
+        or not isinstance(context, dict)
+        or set(context)
+        != {
+            "mode",
+            "candidate",
+            "social_input",
+            "household_input",
+            "organization_input",
+            "base_event_digest",
+            "base_checkpoint_sequence",
+            "tail_boundary",
+        }
+    ):
+        return False
+    try:
+        mode = WorldModeProfile.model_validate(context["mode"])
+        candidate = BatchIntentCandidate.model_validate(context["candidate"])
+        social = FrozenSocialPlanningInput.model_validate(context["social_input"])
+        household = HouseholdScheduleInput.model_validate(context["household_input"])
+        organization = OrganizationScheduleInput.model_validate(
+            context["organization_input"]
+        )
+        source_events = tuple(store.get_event(str(ref)) for ref in source_event_refs)
+    except (KeyError, TypeError, ValueError):
+        return False
+    organization_stream = f"gameplay:organization:{organization.organization_ref}"
+    return (
+        mode.world_ref == cadence.world_ref
+        and mode.revision == cadence.world_mode_revision
+        and "supply" in mode.allowed_intent_kinds
+        and candidate.intent_kind == "supply"
+        and candidate.profile_ref == actor_ref
+        and candidate.profile_ref
+        == social.recipient_ref
+        == household.recipient_ref
+        == organization.recipient_ref
+        and candidate.privacy_scope == cadence.report_scope
+        and candidate.expected_revisions == projection.revision_vector
+        and organization.source_revision_vector == projection.revision_vector
+        and organization_projection.get("organization_ref")
+        == organization.organization_ref
+        and candidate.payload.get("organization_ref") == organization.organization_ref
+        and set(candidate.payload)
+        == {
+            "organization_ref",
+            "counterparty_organization_ref",
+            "commitment_ref",
+            "organization_grant_refs",
+            "budget_reservation_refs",
+            "schedule_work_order_ref",
+        }
+        and context["base_event_digest"] == cadence.base_checkpoint_digest
+        and all(
+            event.event_type
+            in {
+                "gameplay.organization.membership_recorded",
+                "gameplay.organization.role_term_recorded",
+                "gameplay.organization.shift_offer_recorded",
+                "gameplay.organization.work_order_recorded",
+            }
+            and event.stream_id == organization_stream
+            and event.stream_revision <= projection.revision_vector.get(organization_stream, 0)
+            and event.visibility_policy == cadence.report_scope
+            and event.payload.get("recipient_ref") == actor_ref
+            for event in source_events
+        )
+    )
+
+
 def publish_authorized_population_cadence(
     *,
     cadence: PopulationCadenceInput,
@@ -901,6 +1002,48 @@ def publish_authorized_population_cadence(
     if source_event is None:
         return None
 
+    source_payload = source_event.payload
+    admitted_visibility = {"project", "public"}
+    if cadence.report_scope == "organization:summary":
+        admitted_visibility.add("organization:summary")
+    declared_visibility = source_payload.get("visibility_scope")
+    if (
+        source_event.visibility_policy not in admitted_visibility
+        or declared_visibility not in (None, source_event.visibility_policy)
+    ):
+        return None
+    if source_event.event_type == "population.world.resume":
+        source_authorized = (
+            source_ref == f"world:{cadence.world_ref}"
+            and source_payload.get("world_ref") == cadence.world_ref
+            and source_payload.get("mode_revision") == cadence.world_mode_revision
+        )
+    elif source_event.event_type in {
+        "population.activation.committed",
+        "population.activation.region_assigned",
+    }:
+        source_authorized = (
+            source_ref == f"population:{cadence.world_ref}"
+            and source_payload.get("world_ref") == cadence.world_ref
+        )
+    elif source_event.event_type in {
+        "gameplay.organization.schedule_recorded",
+        "gameplay.organization.work_order_recorded",
+    }:
+        organization_ref = source_payload.get("organization_ref")
+        projection_vector = organization_projection.get("source_revision_vector")
+        source_authorized = (
+            isinstance(organization_ref, str)
+            and source_ref == f"gameplay:organization:{organization_ref}"
+            and organization_projection.get("organization_ref") == organization_ref
+            and isinstance(projection_vector, Mapping)
+            and projection_vector.get(source_ref) == source_revision
+        )
+    else:
+        source_authorized = False
+    if not source_authorized:
+        return None
+
     metadata = dict(organization_projection)
     world_mode_projection = metadata.pop("_world_mode_projection", {})
     social_projection = metadata.pop("_social_projection", {})
@@ -914,9 +1057,22 @@ def publish_authorized_population_cadence(
     accepted: dict[str, PopulationProjection] = {}
     for projection in projections:
         if (
+            (
+                projection in legacy_projections
+                and not _legacy_supply_projection_is_authorized(
+                    projection,
+                    cadence=cadence,
+                    store=store,
+                    organization_projection=metadata,
+                )
+            )
+            or
             projection.scope not in {cadence.report_scope, "public"}
             or not projection.revision_vector
-            or projection.revision_vector != cadence.base_revision_vector
+            or any(
+                cadence.base_revision_vector.get(ref) != revision
+                for ref, revision in projection.revision_vector.items()
+            )
             or any(
                 store.get_stream_head(ref) != revision
                 for ref, revision in projection.revision_vector.items()
@@ -948,7 +1104,7 @@ def publish_authorized_population_cadence(
             "household_projection": household_projection,
             "organization_projection": metadata,
             "population_projections": [
-                projection.model_dump(mode="json") for projection in accepted.values()
+                accepted[ref].model_dump(mode="json") for ref in sorted(accepted)
             ],
         },
     )
@@ -1079,6 +1235,7 @@ def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:
         payload={
             "actor_ref": recipient_ref,
             "candidate_kind": "schedule_gated_supply",
+            "capability_id": "population:schedule-gated-supply:v1",
             "priority": candidate.priority,
             "state_deltas": {"dynamic_state": {"stress_load": 0.1}},
             "presentation_seed": {"task": "replenish_family_food"},
