@@ -873,10 +873,18 @@ class PopulationSimulationCapability:
         payload = projection.payload
         actor_ref = payload.get("actor_ref") or payload.get("profile_ref") or payload.get("character_ref")
         actor_text = str(actor_ref or "").strip().lower()
+        social_owner_only = (
+            projection.scope == "public"
+            and payload.get("source_domain") == "social"
+            and payload.get("candidate_kind") == "social_population_signal"
+            and payload.get("capability_id") == "population:social-population-signal:v1"
+            and actor_text.startswith("signal:")
+        )
         if (
             actor_ref is not None
             and not actor_text.startswith("character:")
             and payload.get("source_domain") != "inventory"
+            and not social_owner_only
         ):
             return False
         return PopulationSimulationCapability._payload_scope_admitted(

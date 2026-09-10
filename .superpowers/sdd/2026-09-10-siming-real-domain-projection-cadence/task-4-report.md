@@ -40,3 +40,11 @@ admitted as Owner targets and are excluded from Character Core seed refs.
 
 No contract, Owner, scheduler, holder/container fabrication, or private Social
 projection was added.
+
+## Review Fix
+
+The public Social candidate scope guard now admits only the exact owner-only
+shape (`public` + `social` + `social_population_signal` + registered capability
+and `signal:*` actor). The real cadence fixture proves the Social Owner writes
+one target-stream event. Review verification: 108 focused tests passed, Social
+subset 2 passed, domain-owner harness passed, and `git diff --check` passed.
