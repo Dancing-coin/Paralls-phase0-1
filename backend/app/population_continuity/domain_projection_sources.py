@@ -25,6 +25,10 @@ def _payload(value: Mapping[str, object]) -> Mapping[str, object]:
     return nested if isinstance(nested, Mapping) else value
 
 
+def _committed_marker_is_valid(value: object) -> bool:
+    return value is None or value is True
+
+
 def committed_event_payload(event: object) -> dict[str, object]:
     """Return a detached event payload for read-only source adapters."""
     payload = getattr(event, "payload", {})
@@ -88,8 +92,7 @@ def production_work_population_projections(
         if getattr(event, "event_type", "") != _EVIDENCE_EVENT:
             continue
         evidence = _payload(getattr(event, "payload", {}))
-        committed = evidence.get("committed")
-        if (committed is not None and committed is not True) or evidence.get("evidence_kind") != "production-completed" or evidence.get("outcome") != "completed" or evidence.get("verification_state") != "verified":
+        if not _committed_marker_is_valid(evidence.get("committed")) or evidence.get("evidence_kind") != "production-completed" or evidence.get("outcome") != "completed" or evidence.get("verification_state") != "verified":
             continue
         evidence_revision = _revision(event, evidence)
         event_stream = str(getattr(event, "stream_id", ""))
@@ -172,7 +175,7 @@ def production_receipt_population_projections(
     if (
         getattr(owner_receipt, "owner_ref", "") != _PRODUCTION_OWNER
         or getattr(owner_receipt, "event_family", "") != _PRODUCTION_ACCEPTED
-        or not getattr(owner_receipt, "committed", False)
+        or getattr(owner_receipt, "committed", False) is not True
         or (
             getattr(owner_receipt, "zero_write", True)
             and getattr(owner_receipt, "idempotency_status", "") != "duplicate_replayed"
@@ -280,6 +283,8 @@ def inventory_output_custody_population_projections(
         if getattr(event, "event_type", "") != _OUTPUT_CERTIFIED_EVENT:
             continue
         payload = _payload(getattr(event, "payload", {}))
+        if not _committed_marker_is_valid(payload.get("committed")):
+            continue
         if payload.get("family_ref") != "production_output_certification@1":
             continue
         if payload.get("visibility_policy") not in (None, "project"):
@@ -341,6 +346,8 @@ def social_population_signal_population_projections(
     if not isinstance(source, Mapping):
         return ()
     payload = _payload(source)
+    if not _committed_marker_is_valid(payload.get("committed")):
+        return ()
     if str(payload.get("visibility_scope") or payload.get("visibility") or "") != "public":
         return ()
     source_domain = payload.get("source_domain") or payload.get("domain")
@@ -414,6 +421,8 @@ def tax_pressure_population_projections(
     if scope not in _TAX_PRESSURE_ADMITTED_SCOPES or not isinstance(tax_obligation_projection, Mapping):
         return ()
     source = _payload(tax_obligation_projection)
+    if not _committed_marker_is_valid(source.get("committed")):
+        return ()
     obligation_ref = str(source.get("obligation_ref") or "")
     actor_ref = str(source.get("actor_ref") or source.get("character_ref") or "")
     stream_ref = str(source.get("source_stream_ref") or source.get("stream_ref") or "")

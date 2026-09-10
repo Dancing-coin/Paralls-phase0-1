@@ -137,20 +137,27 @@ def test_assembler_rejects_private_evidence_and_stale_schedule_vector() -> None:
 
 
 def test_assembler_rejects_non_boolean_committed_flags() -> None:
-    for malformed in ("false", 0):
+    malformed_values = (
+        ("string-false", "false"),
+        ("zero", 0),
+        ("one", 1),
+        ("string-true", "true"),
+        ("truthy-list", ["committed"]),
+    )
+    for label, malformed in malformed_values:
         store = GameplayEventStore()
         organization_stream = "gameplay:organization:org:bakery"
-        evidence_stream = f"gameplay:construction_production:facility:oven:{malformed}"
+        evidence_stream = f"gameplay:construction_production:facility:oven:{label}"
         _commit(
             store,
-            event_id=f"event:org:{malformed}",
+            event_id=f"event:org:{label}",
             event_type="gameplay.organization.schedule_recorded",
             stream_id=organization_stream,
             payload={},
         )
         _commit(
             store,
-            event_id=f"event:evidence:{malformed}",
+            event_id=f"event:evidence:{label}",
             event_type="gameplay.construction_production.work_completion_evidence_recorded",
             stream_id=evidence_stream,
             payload={

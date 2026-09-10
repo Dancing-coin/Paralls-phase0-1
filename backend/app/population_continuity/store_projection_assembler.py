@@ -5,6 +5,7 @@ from typing import Any
 
 from app.gameplay.event_store import GameplayEventStore
 from app.population_continuity.domain_projection_sources import (
+    _committed_marker_is_valid,
     committed_event_payload,
     event_visibility_policy,
     inventory_output_custody_population_projections,
@@ -38,12 +39,11 @@ def _committed_events(store: GameplayEventStore) -> tuple[object, ...]:
     events: list[object] = []
     for event in store.read_events():
         payload = _event_payload(event)
-        if getattr(event, "committed", True) is False:
+        if not _committed_marker_is_valid(getattr(event, "committed", None)):
             continue
         if getattr(event, "global_sequence", 0) < 1 or getattr(event, "stream_revision", 0) < 1:
             continue
-        committed = payload.get("committed")
-        if committed is not None and committed is not True:
+        if not _committed_marker_is_valid(payload.get("committed")):
             continue
         if _event_visibility(event, payload) not in _ADMITTED_EVENT_VISIBILITY:
             continue
