@@ -242,6 +242,11 @@ Commit: `git commit -m "发布授权领域群体节拍"`
 ### Task 3: Production Evidence to Real Siming Cycle
 
 **Files:**
+- Modify: `backend/app/main.py`
+- Modify: `backend/app/services/siming_runtime.py`
+- Modify: `backend/app/services/siming_population_capability.py`
+- Modify: `backend/app/population_continuity/domain_projection_sources.py`
+- Modify: `backend/app/gameplay/organization_government_runtime.py`
 - Modify: `backend/tests/test_siming_population_authorized_cadence_publication.py`
 - Modify: `backend/tests/test_siming_population_production_replanning.py`
 - Modify: `scripts/verification/verify_siming_population_domain_owner_adaptation.py`
@@ -309,6 +314,9 @@ Commit: `git commit -m "接通真实生产群体节拍纵切"`
 - Modify: `backend/tests/test_siming_population_authorized_cadence_publication.py`
 - Modify: `backend/tests/test_siming_population_inventory_vertical.py`
 - Modify: `backend/tests/test_siming_population_social_signal_vertical.py`
+- Modify: `backend/app/population_continuity/batch.py` (required read-set pin seam: accept non-empty source-vector subsets)
+- Modify: `backend/app/population_continuity/store_projection_assembler.py` (public sources retain public projection scope under organization cadences)
+- Modify: `backend/app/services/siming_population_capability.py` (admit inventory Owner actor refs without character-core seeding)
 - Modify: `scripts/verification/verify_siming_population_domain_owner_adaptation.py`
 
 **Interfaces:**
@@ -376,6 +384,10 @@ Commit: `git commit -m "接通库存与公开社会群体节拍"`
 
 **Files:**
 - Modify: `backend/tests/test_siming_population_authorized_cadence_publication.py`
+- Modify: `backend/app/gameplay/economy_runtime.py` (read-only redacted Tax pressure projection helper)
+- Modify: `backend/app/population_continuity/store_projection_assembler.py` (consume only explicit redacted Tax metadata)
+- Modify: `backend/app/main.py` (strip Tax metadata before cadence event publication)
+- Modify: `backend/app/services/siming_runtime.py` (always record read-set and decision digests in cycle audit)
 - Modify: `scripts/verification/verify_siming_population_domain_owner_adaptation.py`
 - Modify: `docs/harness.md`
 - Modify: `docs/8月分析/司命与群体世界补充设计/03-群体模拟与角色分级连续性.md`

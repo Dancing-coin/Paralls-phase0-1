@@ -170,6 +170,38 @@ class PopulationSimulationCapability:
             self.default_capabilities(cadence_input),
         )
 
+    def run_receipt_pinned_decision_cycle(
+        self,
+        cadence_input: PopulationCadenceInput,
+        read_set: PopulationReadSet,
+        owner_receipt: PopulationOwnerReceipt,
+    ) -> PopulationCycleResult:
+        """Continue a batch only from one committed Organization receipt."""
+        if (
+            owner_receipt.owner_ref != "actor_gameplay.organization_domain"
+            or owner_receipt.event_family
+            != "gameplay.organization.production_work_contribution_accepted"
+            or not owner_receipt.committed
+            or (
+                owner_receipt.zero_write
+                and owner_receipt.idempotency_status != "duplicate_replayed"
+            )
+            or not owner_receipt.revision_vector
+            or dict(owner_receipt.revision_vector) != cadence_input.base_revision_vector
+        ):
+            return self._requeue(
+                f"population-decision:{cadence_input.cadence_id}:requeue",
+                read_set,
+                "owner_rejected",
+            )
+        return self._run_decision_cycle(
+            cadence_input,
+            read_set,
+            self.default_decision_policy(cadence_input),
+            self.default_capabilities(cadence_input),
+            accepted_owner_receipt_refs=(owner_receipt.receipt_ref,),
+        )
+
     @staticmethod
     def is_v1_fixture(read_set: PopulationReadSet) -> bool:
         return PopulationSimulationCapability._looks_like_v1_cohort(read_set)
@@ -347,6 +379,7 @@ class PopulationSimulationCapability:
                     candidate.actor_ref
                     for candidate in decision.selected_candidates
                     if "character_core_command" in candidate.allowed_outputs
+                    and candidate.actor_ref.startswith("character:")
                 }
                 settled = tuple(receipt.receipt_ref for receipt in receipts)
                 settled_result = self._run_cycle_impl(
@@ -566,7 +599,11 @@ class PopulationSimulationCapability:
         if (
             canonical.read_set_digest != read_set.read_set_digest
             or any(
-                projection.revision_vector != cadence_input.base_revision_vector
+                not projection.revision_vector
+                or any(
+                    cadence_input.base_revision_vector.get(stream_id) != revision
+                    for stream_id, revision in projection.revision_vector.items()
+                )
                 for projection in read_set.projections
             )
         ):
@@ -611,7 +648,11 @@ class PopulationSimulationCapability:
             if not isinstance(bound, PopulationOwnerBoundIntent) or (
                 bound.intent_kind != "schedule_gated_supply"
                 and not (
-                    bound.intent_kind == "inventory_output_custody"
+                    bound.intent_kind
+                    in {
+                        "inventory_output_custody",
+                        "organization_production_work_contribution",
+                    }
                     and str(bound.payload.get("source_owner_receipt_ref") or "") in accepted_owner_receipt_refs
                 )
                 and not (cohort and bound.intent_kind == "supply" and bound.actor_ref == "character:char_a")
@@ -832,7 +873,19 @@ class PopulationSimulationCapability:
         payload = projection.payload
         actor_ref = payload.get("actor_ref") or payload.get("profile_ref") or payload.get("character_ref")
         actor_text = str(actor_ref or "").strip().lower()
-        if actor_ref is not None and not actor_text.startswith("character:"):
+        social_owner_only = (
+            projection.scope == "public"
+            and payload.get("source_domain") == "social"
+            and payload.get("candidate_kind") == "social_population_signal"
+            and payload.get("capability_id") == "population:social-population-signal:v1"
+            and actor_text.startswith("signal:")
+        )
+        if (
+            actor_ref is not None
+            and not actor_text.startswith("character:")
+            and payload.get("source_domain") != "inventory"
+            and not social_owner_only
+        ):
             return False
         return PopulationSimulationCapability._payload_scope_admitted(
             payload,

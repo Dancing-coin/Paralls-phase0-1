@@ -3496,3 +3496,9 @@ python scripts/verification/harness.py --profile siming-population-domain-owner-
 
 证据报告：
 `.harness/verification/siming-population-domain-owner-adaptation-report.json`。
+
+Tax pressure 的证据链必须保持可追溯且脱敏：committed Economy obligation
+source -> authorized cadence event -> read-set digest -> Siming decision/result
+digest -> report-only disposition（无 Owner receipt）-> no Character Core receipt。
+Harness 同时检查 read-set 与 cadence 只携带 `obligation_ref`、组织 scope、状态和
+economy revision pin；amount、account、evidence 与 payment event 不得出现。

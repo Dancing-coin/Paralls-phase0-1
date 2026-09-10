@@ -60,6 +60,91 @@ def test_production_receipt_is_the_only_source_for_next_population_projection() 
     assert projections[0].payload["source_owner_receipt_ref"] == receipt.receipt_ref
 
 
+def test_production_receipt_does_not_promote_to_a_later_schedule_vector() -> None:
+    receipt = PopulationOwnerReceipt(
+        receipt_ref="receipt:production:1",
+        owner_ref="actor_gameplay.organization_domain",
+        event_family="gameplay.organization.production_work_contribution_accepted",
+        committed=True,
+        revision_vector={"gameplay:organization:org:bakery": 3},
+        zero_write=False,
+    )
+    assert production_receipt_population_projections(
+        owner_receipt=receipt,
+        organization_projection={
+            **_receipt_projection(),
+            "source_revision_vector": {"gameplay:organization:org:bakery": 7},
+        },
+        scope="organization:summary",
+    ) == ()
+
+
+def test_old_receipt_cannot_drive_current_cadence() -> None:
+    receipt = PopulationOwnerReceipt(
+        receipt_ref="receipt:production:1",
+        owner_ref="actor_gameplay.organization_domain",
+        event_family="gameplay.organization.production_work_contribution_accepted",
+        committed=True,
+        revision_vector={"gameplay:organization:org:bakery": 3},
+        zero_write=False,
+    )
+    cadence = PopulationCadenceInput(
+        cadence_id="cadence:production:current",
+        world_ref="world:bakery",
+        world_mode_ref="mode:bakery",
+        world_mode_revision="mode:v1",
+        cadence_source_ref="gameplay:organization:org:bakery",
+        cadence_source_revision=4,
+        window_start=1,
+        window_end=2,
+        base_checkpoint_ref="checkpoint:current",
+        base_checkpoint_digest="sha256:current",
+        base_revision_vector={"gameplay:organization:org:bakery": 4},
+        policy_revision="policy:population:v1",
+        selector_revision="selector:generic:population:v1",
+        ruleset_revision="rules:population:v1",
+        deterministic_seed="seed:current",
+        catch_up_limit=1,
+        budget=1,
+        report_scope="organization:summary",
+    )
+    projection = production_receipt_population_projections(
+        owner_receipt=receipt,
+        organization_projection=_receipt_projection(),
+        scope="organization:summary",
+    )[0].model_copy(update={"revision_vector": dict(cadence.base_revision_vector)})
+    result = PopulationSimulationCapability().run_receipt_pinned_decision_cycle(
+        cadence,
+        PopulationReadSet.from_inputs(cadence, (projection,)),
+        receipt,
+    )
+
+    assert result.status == "requeue"
+    assert result.reason == "owner_rejected"
+
+
+def test_production_receipt_requires_one_matching_organization_acceptance() -> None:
+    receipt = PopulationOwnerReceipt(
+        receipt_ref="receipt:production:1",
+        owner_ref="actor_gameplay.organization_domain",
+        event_family="gameplay.organization.production_work_contribution_accepted",
+        committed=True,
+        revision_vector={"gameplay:organization:org:bakery": 3},
+        zero_write=False,
+    )
+    organization_projection = _receipt_projection()
+    organization_projection["acceptance_rows"] = (
+        *organization_projection["acceptance_rows"],
+        dict(organization_projection["acceptance_rows"][0]),
+    )
+
+    assert production_receipt_population_projections(
+        owner_receipt=receipt,
+        organization_projection=organization_projection,
+        scope="organization:summary",
+    ) == ()
+
+
 def test_rejected_production_receipt_does_not_create_next_projection() -> None:
     receipt = PopulationOwnerReceipt(
         receipt_ref="rejected:production:1",

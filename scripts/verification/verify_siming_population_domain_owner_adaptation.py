@@ -9,6 +9,7 @@ from tempfile import TemporaryDirectory
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "backend"))
+sys.path.insert(0, str(ROOT / "backend" / "tests"))
 
 from app.config import Settings
 from app.gameplay.event_store import GameplayEventStore
@@ -48,6 +49,9 @@ def _focused_tests() -> tuple[bool, str]:
             "backend/tests/test_siming_population_inventory_vertical.py",
             "backend/tests/test_siming_population_social_signal_vertical.py",
             "backend/tests/test_siming_population_tax_pressure.py",
+            "backend/tests/test_siming_population_authorized_cadence_publication.py",
+            "backend/tests/test_siming_population_production_replanning.py",
+            "backend/tests/test_siming_led_population_seed_continuity.py",
         ],
         cwd=ROOT,
         env=env,
@@ -58,7 +62,7 @@ def _focused_tests() -> tuple[bool, str]:
     return result.returncode == 0, result.stdout + result.stderr
 
 
-def _runtime_owner_ids() -> tuple[set[str], bool]:
+def _runtime_owner_ids() -> tuple[set[str], bool, bool]:
     import app.main as runtime_main
 
     saved_store = runtime_main.gameplay_event_store
@@ -76,17 +80,81 @@ def _runtime_owner_ids() -> tuple[set[str], bool]:
                     executor._authority._store is store
                     for executor in capability._owner_executors.values()
                 )
+                adapter_contracts_valid = all(
+                    getattr(executor, "CAPABILITY_ID", "") == capability_id
+                    for capability_id, executor in capability._owner_executors.items()
+                )
                 legacy_preserved = capability._owner_executor is not None
             finally:
                 state.close()
     finally:
         runtime_main.gameplay_event_store = saved_store
-    return owner_ids, shares_store and legacy_preserved
+    return owner_ids, shares_store and legacy_preserved, adapter_contracts_valid
+
+
+def _tax_trace_invariants() -> tuple[bool, dict[str, object]]:
+    from test_siming_population_authorized_cadence_publication import _tax_runtime_fixture
+    from app.population_continuity.siming_contracts import PopulationCadenceInput
+    from app.services.siming_population_capability import default_population_read_set_builder
+
+    runtime_main, store, cadence, organization_projection = _tax_runtime_fixture()
+    event = runtime_main.publish_authorized_population_cadence(
+        cadence=cadence,
+        store=store,
+        organization_projection=organization_projection,
+        room_id="room:task5",
+        scene_id="scene:task5",
+        zone_id="zone:task5",
+        causation_id="task5:tax",
+        correlation_id="population:task5:tax",
+    )
+    if event is None:
+        return False, {"reason": "tax_cadence_not_published"}
+    read_set = default_population_read_set_builder(
+        event, PopulationCadenceInput.from_authority_event(event)
+    )
+    tax_rows = [
+        item for item in read_set.projections if item.payload.get("candidate_kind") == "tax_pressure"
+    ]
+    audits = runtime_main.siming_audit_writer.find_by_correlation(
+        room_id="room:task5", correlation_id="population:task5:tax"
+    )
+    cycle = next((audit for audit in audits if audit.reason.startswith("population_cycle")), None)
+    serialized = json.dumps(
+        [item.model_dump(mode="json") for item in tax_rows], sort_keys=True
+    )
+    source_present = any(item.event_type == "gameplay.economy.tax_obligation_opened" for item in store.read_events())
+    trace_valid = (
+        source_present
+        and bool(tax_rows)
+        and cycle is not None
+        and f"read_set={read_set.read_set_digest}" in cycle.reason
+        and "result=" in cycle.reason
+        and "owners=0" in cycle.reason
+        and "receipts=0" in cycle.reason
+        and all(marker not in serialized for marker in ("amount", "account:", "evidence:"))
+        and not any(
+            item.event_type in {
+                "gameplay.economy.tax_obligation_settled",
+                "gameplay.economy.account_debited",
+                "gameplay.economy.account_credited",
+            }
+            for item in store.read_events()
+        )
+    )
+    return trace_valid, {
+        "source_present": source_present,
+        "cadence_event_id": event.event_id,
+        "read_set_digest": read_set.read_set_digest,
+        "cycle_reason": cycle.reason if cycle is not None else "",
+        "redacted": all(marker not in serialized for marker in ("amount", "account:", "evidence:")),
+    }
 
 
 def main() -> int:
     focused, focused_log = _focused_tests()
-    owner_ids, runtime_composition_valid = _runtime_owner_ids()
+    owner_ids, runtime_composition_valid, adapter_contracts_valid = _runtime_owner_ids()
+    tax_trace_valid, tax_trace = _tax_trace_invariants()
     catalog = {
         descriptor.capability_id: descriptor
         for descriptor in PopulationCapabilityCatalog.default("policy:harness@1")
@@ -183,6 +251,8 @@ def main() -> int:
         "replay_checkpoint_tail_digests_match": replay_matches,
         "stormnight_action_windows_outside_population_cadence": stormnight_outside_cadence,
         "shared_store_and_legacy_owner_preserved": runtime_composition_valid,
+        "runtime_owner_adapter_contracts_match_capability_ids": adapter_contracts_valid,
+        "tax_source_to_report_only_trace_is_complete": tax_trace_valid,
     }
     report = {
         "overall_passed": all(checks.values()),
@@ -197,6 +267,7 @@ def main() -> int:
         "replay_hash": replay["full_hash"],
         "zero_write": tax_report_only and privacy_valid,
         "focused_log": focused_log,
+        "tax_trace": tax_trace,
     }
     return write_report("siming-population-domain-owner-adaptation", report)
 

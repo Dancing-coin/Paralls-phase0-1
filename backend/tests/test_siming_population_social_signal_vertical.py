@@ -137,3 +137,11 @@ def test_social_owner_rejects_changed_provenance_on_duplicate_signal() -> None:
     events = store.read_stream("gameplay:social:population:signal:riverward-workforce@1")
     assert len(events) == 1
     assert events[0].payload["provenance_ref"] == projection.payload["provenance_ref"]
+
+
+def test_production_runtime_registers_social_population_owner_adapter() -> None:
+    import app.main as main
+
+    main.reset_runtime_state()
+    executors = main.siming_event_pipeline._runtime._population_capability._owner_executors
+    assert "population:social-population-signal:v1" in executors

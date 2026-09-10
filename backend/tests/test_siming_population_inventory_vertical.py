@@ -150,3 +150,11 @@ def test_inventory_receipt_precedes_character_seed() -> None:
     ).run_default_decision_cycle(read_set.cadence, read_set)
     assert result.owner_receipts[0].committed
     assert result.continuity_receipts[0].source_owner_receipt_refs == (result.owner_receipts[0].receipt_ref,)
+
+
+def test_production_runtime_registers_inventory_population_owner_adapter() -> None:
+    import app.main as main
+
+    main.reset_runtime_state()
+    executors = main.siming_event_pipeline._runtime._population_capability._owner_executors
+    assert "population:inventory-output-custody:v1" in executors

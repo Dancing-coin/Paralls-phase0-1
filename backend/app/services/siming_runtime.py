@@ -61,7 +61,11 @@ from app.services.siming_story_projection import SimingStoryProjection
 from app.services.behavior_turn_recorder import BehaviorTurnRecorder
 from app.models.behavior_turn import BehaviorTurnRecordRequest, BehaviorTurnStageRecord
 from app.models.siming_heavenly_graph import GraphProvenance, GraphRevisionVector, HeavenlyGraphScope
-from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationReadSet
+from app.population_continuity.siming_contracts import (
+    PopulationCadenceInput,
+    PopulationOwnerReceipt,
+    PopulationReadSet,
+)
 from app.population_continuity.decision_surface import PopulationCapabilityDescriptor, PopulationDecisionPolicy
 from app.services.siming_population_capability import PopulationSimulationCapability, ReadSetBuilder, default_population_read_set_builder
 
@@ -144,7 +148,8 @@ class SimingRuntime:
                 try:
                     cadence = PopulationCadenceInput.from_authority_event(event)
                     read_set = self._population_read_set_builder(event, cadence)
-                    if isinstance(event.payload.get("population_owner_receipt"), dict) and not read_set.projections:
+                    owner_receipt_payload = event.payload.get("population_owner_receipt")
+                    if isinstance(owner_receipt_payload, dict) and not read_set.projections:
                         result.audit_records.append(
                             self._audit(event, status="no_action", reason="population_requeue:owner_rejected")
                         )
@@ -152,6 +157,11 @@ class SimingRuntime:
                     generic_payload = event.payload.get("population_decision")
                     generic_runner = getattr(self._population_capability, "run_decision_cycle", None)
                     default_runner = getattr(self._population_capability, "run_default_decision_cycle", None)
+                    receipt_runner = getattr(
+                        self._population_capability,
+                        "run_receipt_pinned_decision_cycle",
+                        None,
+                    )
                     fixture_checker = getattr(self._population_capability, "is_v1_fixture", None)
                     is_fixture = (
                         bool(fixture_checker(read_set))
@@ -159,7 +169,13 @@ class SimingRuntime:
                         else cadence.cadence_id.startswith("cadence:cohort:")
                     )
                     generic_mode = isinstance(generic_payload, dict) or cadence.selector_revision.startswith("selector:generic:")
-                    if generic_mode and isinstance(generic_payload, dict) and callable(generic_runner):
+                    if isinstance(owner_receipt_payload, dict) and callable(receipt_runner):
+                        cycle = receipt_runner(
+                            cadence,
+                            read_set,
+                            PopulationOwnerReceipt.model_validate(owner_receipt_payload),
+                        )
+                    elif generic_mode and isinstance(generic_payload, dict) and callable(generic_runner):
                         policy_payload = generic_payload.get("policy") or generic_payload.get("decision_policy")
                         capability_payload = generic_payload.get("capabilities") or ()
                         policy = PopulationDecisionPolicy.model_validate(policy_payload)
@@ -658,6 +674,8 @@ class SimingRuntime:
             f" seeds={len(cycle.seed_candidates)}"
             f" receipts={len(cycle.continuity_receipts)}"
             f" append={cycle.production_append_count}"
+            f" read_set={report.read_set_digest}"
+            f" result={report.result_digest}"
             f" reason={cycle.reason or 'none'}"
         )
         if report.cohort_ref:
@@ -672,8 +690,6 @@ class SimingRuntime:
                 f" presentation={report.presentation_seed_count}"
                 f" activation={report.activation_candidate_count}"
                 f" continuity_requeue={report.continuity_requeue_count}"
-                f" read_set={report.read_set_digest}"
-                f" result={report.result_digest}"
             )
         return SimingAuditRecord(
             audit_id=f"audit_{event.event_id}_population_cycle",

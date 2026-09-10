@@ -324,6 +324,7 @@ class EconomyProjector:
             MappingProxyType(dict(sorted(public_project_budget_consumptions.items()))),
         )
 
+
 class EconomyAuthorityService:
     _PRINCIPAL="actor_gameplay.economy_domain"
     def __init__(
@@ -1180,6 +1181,55 @@ class EconomyAuthorityService:
                 f"source_tax_due_event:{_text(opening.payload, 'source_tax_due_event_id')}",
             ),
         )
+
+    def tax_population_pressure_projection_for(
+        self, *, organization_ref: str, recipient_ref: str
+    ) -> dict[str, object] | None:
+        """Return one redacted, current Tax pressure input for population reads."""
+        if not organization_ref or not recipient_ref.startswith("character:"):
+            return None
+        projection = self._projector.rebuild(self._store.read_events())
+        due = next(
+            (item for item in projection.tax_due.values() if item.organization_ref == organization_ref),
+            None,
+        )
+        if due is None:
+            return None
+        obligation_ref = self.tax_obligation_id_for(
+            organization_ref=due.organization_ref, period_ref=due.period_ref
+        )
+        opening = next(
+            (
+                event
+                for event in self._store.read_stream("gameplay:economy")
+                if event.event_type == "gameplay.economy.tax_obligation_opened"
+                and event.payload.get("obligation_id") == obligation_ref
+            ),
+            None,
+        )
+        if opening is None:
+            return None
+        terminal = {
+            event.event_type
+            for event in self._store.read_stream("gameplay:economy")
+            if event.payload.get("obligation_id") == obligation_ref
+        }
+        if terminal.intersection(
+            {
+                "gameplay.economy.tax_obligation_settled",
+                "gameplay.economy.tax_obligation_cancelled",
+                "gameplay.economy.tax_obligation_expired",
+            }
+        ):
+            return None
+        return {
+            "obligation_ref": obligation_ref,
+            "organization_ref": organization_ref,
+            "actor_ref": recipient_ref,
+            "status": "due",
+            "source_stream_ref": "gameplay:economy",
+            "source_revision_pin": self._store.get_stream_head("gameplay:economy"),
+        }
 
     def build_tax_obligation_settlement_fragment(self, *, obligation: ScheduledObligation) -> OwnerAuthorizedFragment:
         return self._tax_terminal_fragment(obligation=obligation, event_type="gameplay.economy.tax_obligation_settled", current_state="settled", reason_ref=None)

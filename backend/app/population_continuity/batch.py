@@ -502,7 +502,11 @@ class PopulationPlanner:
             return False
         return all(
             projection.scope in {cadence.report_scope, "public", "actor:self"}
-            and projection.revision_vector == cadence.base_revision_vector
+            and projection.revision_vector
+            and all(
+                cadence.base_revision_vector.get(stream_id) == revision
+                for stream_id, revision in projection.revision_vector.items()
+            )
             for projection in read_set.projections
         )
 

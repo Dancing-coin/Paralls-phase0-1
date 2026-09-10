@@ -25,6 +25,27 @@ def _payload(value: Mapping[str, object]) -> Mapping[str, object]:
     return nested if isinstance(nested, Mapping) else value
 
 
+def _committed_marker_is_valid(value: object) -> bool:
+    return value is None or value is True
+
+
+def committed_event_payload(event: object) -> dict[str, object]:
+    """Return a detached event payload for read-only source adapters."""
+    payload = getattr(event, "payload", {})
+    if not isinstance(payload, Mapping):
+        return {}
+    return dict(_payload(payload))
+
+
+def event_visibility_policy(event: object, payload: Mapping[str, object] | None = None) -> str:
+    """Read event visibility without treating payload claims as authority."""
+    value = getattr(event, "visibility_policy", None)
+    if isinstance(value, str) and value:
+        return value
+    candidate = (payload or committed_event_payload(event)).get("visibility_policy")
+    return candidate if isinstance(candidate, str) else ""
+
+
 def _revision(event: object, payload: Mapping[str, object]) -> int:
     value = payload.get("stream_revision", payload.get("source_evidence_revision"))
     value = getattr(event, "stream_revision", value)
@@ -71,10 +92,16 @@ def production_work_population_projections(
         if getattr(event, "event_type", "") != _EVIDENCE_EVENT:
             continue
         evidence = _payload(getattr(event, "payload", {}))
-        if evidence.get("committed") is False or evidence.get("evidence_kind") != "production-completed" or evidence.get("outcome") != "completed" or evidence.get("verification_state") != "verified":
+        if not _committed_marker_is_valid(evidence.get("committed")) or evidence.get("evidence_kind") != "production-completed" or evidence.get("outcome") != "completed" or evidence.get("verification_state") != "verified":
             continue
         evidence_revision = _revision(event, evidence)
-        source_stream = str(evidence.get("stream_ref") or getattr(event, "stream_id", ""))
+        event_stream = str(getattr(event, "stream_id", ""))
+        declared_stream = evidence.get("stream_ref")
+        if event_stream and declared_stream is not None and str(declared_stream) != event_stream:
+            continue
+        source_stream = event_stream or str(declared_stream or "")
+        if evidence.get("organization_ref") not in (None, organization_ref):
+            continue
         actor_ref = str(evidence.get("actor_ref") or "")
         assignment_ref = str(evidence.get("assignment_ref") or "")
         work_order_ref = str(evidence.get("work_order_ref") or "")
@@ -148,7 +175,7 @@ def production_receipt_population_projections(
     if (
         getattr(owner_receipt, "owner_ref", "") != _PRODUCTION_OWNER
         or getattr(owner_receipt, "event_family", "") != _PRODUCTION_ACCEPTED
-        or not getattr(owner_receipt, "committed", False)
+        or getattr(owner_receipt, "committed", False) is not True
         or (
             getattr(owner_receipt, "zero_write", True)
             and getattr(owner_receipt, "idempotency_status", "") != "duplicate_replayed"
@@ -159,10 +186,11 @@ def production_receipt_population_projections(
     if not isinstance(revision_vector, Mapping) or not revision_vector:
         return ()
     organization = _payload(organization_projection)
+    organization_vector = organization.get("source_revision_vector")
     if (
         str(organization.get("scope") or organization.get("visibility_scope") or "") != scope
-        or not isinstance(organization.get("source_revision_vector"), Mapping)
-        or dict(organization["source_revision_vector"]) != dict(revision_vector)
+        or not isinstance(organization_vector, Mapping)
+        or dict(organization_vector) != dict(revision_vector)
     ):
         return ()
     receipt_ref = str(getattr(owner_receipt, "receipt_ref", ""))
@@ -173,22 +201,27 @@ def production_receipt_population_projections(
         rows = (rows,)
     if not isinstance(rows, (tuple, list)):
         return ()
-    row = next(
-        (
-            item
-            for item in rows
-            if isinstance(item, Mapping)
-            and receipt_ref
-            in {
-                str(item.get("event_id") or ""),
-                str(item.get("receipt_ref") or ""),
-                str(item.get("owner_receipt_ref") or ""),
-            }
-        ),
-        None,
+    matches = tuple(
+        item
+        for item in rows
+        if isinstance(item, Mapping)
+        and receipt_ref
+        in {
+            str(item.get("event_id") or ""),
+            str(item.get("receipt_ref") or ""),
+            str(item.get("owner_receipt_ref") or ""),
+        }
     )
-    if row is None:
+    if (
+        not matches
+        and len(rows) == 1
+        and isinstance(rows[0], Mapping)
+        and not {"event_id", "receipt_ref", "owner_receipt_ref"} & set(rows[0])
+    ):
+        matches = (rows[0],)
+    if len(matches) != 1:
         return ()
+    row = matches[0]
     actor_ref = str(row.get("recipient_ref") or row.get("actor_ref") or "")
     organization_ref = str(row.get("organization_ref") or organization.get("organization_ref") or "")
     if not actor_ref.startswith("character:") or not organization_ref.startswith("org:"):
@@ -202,6 +235,7 @@ def production_receipt_population_projections(
         "source_domain": "production",
         "source_owner_receipt_ref": receipt_ref,
         "source_owner_receipt_refs": (receipt_ref,),
+        "source_owner_receipt_revision_vector": dict(revision_vector),
         "source_event_refs": tuple(
             str(item)
             for item in (
@@ -256,12 +290,18 @@ def inventory_output_custody_population_projections(
         if getattr(event, "event_type", "") != _OUTPUT_CERTIFIED_EVENT:
             continue
         payload = _payload(getattr(event, "payload", {}))
+        if not _committed_marker_is_valid(payload.get("committed")):
+            continue
         if payload.get("family_ref") != "production_output_certification@1":
             continue
         if payload.get("visibility_policy") not in (None, "project"):
             continue
         event_id = str(getattr(event, "event_id", ""))
-        stream_ref = str(payload.get("stream_ref") or getattr(event, "stream_id", ""))
+        event_stream = str(getattr(event, "stream_id", ""))
+        declared_stream = payload.get("stream_ref")
+        if event_stream and declared_stream is not None and str(declared_stream) != event_stream:
+            continue
+        stream_ref = event_stream or str(declared_stream or "")
         revision = _revision(event, payload)
         quantity = payload.get("quantity")
         if not event_id or not stream_ref or revision < 1 or not isinstance(quantity, int) or isinstance(quantity, bool) or quantity <= 0:
@@ -313,6 +353,8 @@ def social_population_signal_population_projections(
     if not isinstance(source, Mapping):
         return ()
     payload = _payload(source)
+    if not _committed_marker_is_valid(payload.get("committed")):
+        return ()
     if str(payload.get("visibility_scope") or payload.get("visibility") or "") != "public":
         return ()
     source_domain = payload.get("source_domain") or payload.get("domain")
@@ -386,6 +428,8 @@ def tax_pressure_population_projections(
     if scope not in _TAX_PRESSURE_ADMITTED_SCOPES or not isinstance(tax_obligation_projection, Mapping):
         return ()
     source = _payload(tax_obligation_projection)
+    if not _committed_marker_is_valid(source.get("committed")):
+        return ()
     obligation_ref = str(source.get("obligation_ref") or "")
     actor_ref = str(source.get("actor_ref") or source.get("character_ref") or "")
     stream_ref = str(source.get("source_stream_ref") or source.get("stream_ref") or "")
@@ -432,6 +476,8 @@ certified_output_population_projections = inventory_output_custody_population_pr
 
 __all__ = [
     "certified_output_population_projections",
+    "committed_event_payload",
+    "event_visibility_policy",
     "inventory_output_custody_population_projections",
     "production_receipt_population_projections",
     "production_work_population_projections",
