@@ -242,6 +242,11 @@ Commit: `git commit -m "发布授权领域群体节拍"`
 ### Task 3: Production Evidence to Real Siming Cycle
 
 **Files:**
+- Modify: `backend/app/main.py`
+- Modify: `backend/app/services/siming_runtime.py`
+- Modify: `backend/app/services/siming_population_capability.py`
+- Modify: `backend/app/population_continuity/domain_projection_sources.py`
+- Modify: `backend/app/gameplay/organization_government_runtime.py`
 - Modify: `backend/tests/test_siming_population_authorized_cadence_publication.py`
 - Modify: `backend/tests/test_siming_population_production_replanning.py`
 - Modify: `scripts/verification/verify_siming_population_domain_owner_adaptation.py`
