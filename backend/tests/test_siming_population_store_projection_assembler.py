@@ -136,6 +136,41 @@ def test_assembler_rejects_private_evidence_and_stale_schedule_vector() -> None:
     ) == ()
 
 
+def test_assembler_rejects_non_boolean_committed_flags() -> None:
+    for malformed in ("false", 0):
+        store = GameplayEventStore()
+        organization_stream = "gameplay:organization:org:bakery"
+        evidence_stream = f"gameplay:construction_production:facility:oven:{malformed}"
+        _commit(
+            store,
+            event_id=f"event:org:{malformed}",
+            event_type="gameplay.organization.schedule_recorded",
+            stream_id=organization_stream,
+            payload={},
+        )
+        _commit(
+            store,
+            event_id=f"event:evidence:{malformed}",
+            event_type="gameplay.construction_production.work_completion_evidence_recorded",
+            stream_id=evidence_stream,
+            payload={
+                "committed": malformed,
+                "evidence_kind": "production-completed",
+                "outcome": "completed",
+                "verification_state": "verified",
+                "organization_ref": "org:bakery",
+                "actor_ref": "character:worker",
+                "assignment_ref": "assignment:1",
+                "work_order_ref": "work-order:1",
+                "observed_at": "2026-09-10T12:00:00Z",
+            },
+        )
+        cadence = _cadence(scope="organization:summary", revision_vector={evidence_stream: 1, organization_stream: 1})
+        assert assemble_committed_population_projections(
+            store=store, cadence=cadence, organization_projection=_organization_projection(revision=1)
+        ) == ()
+
+
 def test_assembler_emits_inventory_only_from_project_visible_certification() -> None:
     store = GameplayEventStore()
     stream = "gameplay:construction_production:facility:oven"

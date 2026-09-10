@@ -38,3 +38,7 @@ cadence publication and real Siming dispatch remain later tasks in the plan.
   dropped instead of first-wins selection.
 
 Review regression coverage raised the focused suite to 25 passed.
+
+The committed marker is now fail-closed: it may be absent or exactly boolean
+`True`; string and numeric values such as `"false"` and `0` are rejected.
+The focused suite is 26 passed after this regression coverage.

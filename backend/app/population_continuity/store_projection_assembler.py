@@ -42,7 +42,8 @@ def _committed_events(store: GameplayEventStore) -> tuple[object, ...]:
             continue
         if getattr(event, "global_sequence", 0) < 1 or getattr(event, "stream_revision", 0) < 1:
             continue
-        if payload.get("committed") is False:
+        committed = payload.get("committed")
+        if committed is not None and committed is not True:
             continue
         if _event_visibility(event, payload) not in _ADMITTED_EVENT_VISIBILITY:
             continue

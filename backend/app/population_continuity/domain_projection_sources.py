@@ -88,7 +88,8 @@ def production_work_population_projections(
         if getattr(event, "event_type", "") != _EVIDENCE_EVENT:
             continue
         evidence = _payload(getattr(event, "payload", {}))
-        if evidence.get("committed") is False or evidence.get("evidence_kind") != "production-completed" or evidence.get("outcome") != "completed" or evidence.get("verification_state") != "verified":
+        committed = evidence.get("committed")
+        if (committed is not None and committed is not True) or evidence.get("evidence_kind") != "production-completed" or evidence.get("outcome") != "completed" or evidence.get("verification_state") != "verified":
             continue
         evidence_revision = _revision(event, evidence)
         event_stream = str(getattr(event, "stream_id", ""))
