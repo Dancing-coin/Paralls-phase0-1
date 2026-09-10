@@ -203,3 +203,10 @@ content-only variant all pass their recorded gates, and the case scene now
 loads four primitive-only actor replicas without merging the knight/church
 assets. Future live-agent depth and Creator Skill/Siming Director work remain
 separate scope.
+
+The next Siming population runtime plan is
+[2026-09-10-siming-real-domain-projection-cadence-implementation-plan.md](2026-09-10-siming-real-domain-projection-cadence-implementation-plan.md).
+It connects committed domain facts to an already-authorized cadence without
+adding a scheduler, then proves the source -> Siming -> Owner -> receipt
+continuity chain for Production, Inventory, public Social, and redacted Tax
+pressure.
