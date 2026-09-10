@@ -54,6 +54,13 @@ def _committed_events(store: GameplayEventStore) -> tuple[object, ...]:
     return tuple(events)
 
 
+def _event_allowed_for_scope(event: object, scope: str) -> bool:
+    visibility = _event_visibility(event, _event_payload(event))
+    if scope == "public":
+        return visibility == "public"
+    return visibility in _ADMITTED_EVENT_VISIBILITY
+
+
 def _projection_is_pinned(
     projection: PopulationProjection,
     *,
@@ -74,8 +81,8 @@ def _social_source(event: object) -> dict[str, object]:
     payload = _event_payload(event)
     stream_id = str(getattr(event, "stream_id", ""))
     revision = getattr(event, "stream_revision", 0)
-    payload.setdefault("source_stream_ref", stream_id)
-    payload.setdefault("source_revision_pin", revision)
+    payload["source_stream_ref"] = stream_id
+    payload["source_revision_pin"] = revision
     payload.setdefault("signal_ref", payload.get("signal_id", ""))
     payload.setdefault("provenance_ref", payload.get("source_event_id", getattr(event, "event_id", "")))
     payload.setdefault("visibility_scope", _event_visibility(event, payload))
@@ -87,8 +94,8 @@ def _tax_source(event: object) -> dict[str, object]:
     payload = _event_payload(event)
     stream_id = str(getattr(event, "stream_id", ""))
     revision = getattr(event, "stream_revision", 0)
-    payload.setdefault("source_stream_ref", stream_id)
-    payload.setdefault("source_revision_pin", revision)
+    payload["source_stream_ref"] = stream_id
+    payload["source_revision_pin"] = revision
     payload.setdefault("obligation_ref", payload.get("obligation_id", ""))
     payload.setdefault("actor_ref", payload.get("character_ref", ""))
     if "status" not in payload and "due" in str(getattr(event, "event_type", "")):
@@ -109,23 +116,28 @@ def assemble_committed_population_projections(
         return ()
 
     candidates: list[PopulationProjection] = []
+    scoped_events = tuple(event for event in events if _event_allowed_for_scope(event, cadence.report_scope))
     candidates.extend(
         production_work_population_projections(
-            committed_events=events,
+            committed_events=scoped_events,
             organization_projection=organization_projection,
             scope=cadence.report_scope,
         )
     )
     candidates.extend(
         inventory_output_custody_population_projections(
-            committed_events=events,
+            committed_events=scoped_events,
             scope=cadence.report_scope,
         )
     )
     for event in events:
+        event_payload = _event_payload(event)
+        declared_source_stream = event_payload.get("source_stream_ref", event_payload.get("stream_ref"))
+        if declared_source_stream is not None and str(declared_source_stream) != str(getattr(event, "stream_id", "")):
+            continue
         if (
             getattr(event, "event_type", "") == _SOCIAL_EVENT
-            and _event_visibility(event, _event_payload(event)) in {"public", "project"}
+            and _event_visibility(event, event_payload) == "public"
         ):
             candidates.extend(
                 social_population_signal_population_projections(
@@ -135,7 +147,7 @@ def assemble_committed_population_projections(
             )
         if (
             getattr(event, "event_type", "") in _TAX_EVENT_TYPES
-            and _event_visibility(event, _event_payload(event)) in {"public", "project"}
+            and _event_visibility(event, event_payload) == "public"
         ):
             candidates.extend(
                 tax_pressure_population_projections(
@@ -148,8 +160,9 @@ def assemble_committed_population_projections(
     for projection in candidates:
         if not _projection_is_pinned(projection, store=store, cadence=cadence):
             continue
-        accepted.setdefault(projection.ref, projection)
-    return tuple(accepted[ref] for ref in sorted(accepted))
+        accepted[projection.ref] = accepted.get(projection.ref, projection)
+    duplicate_refs = {ref for ref, projection in accepted.items() if sum(item.ref == ref for item in candidates) > 1}
+    return tuple(accepted[ref] for ref in sorted(accepted) if ref not in duplicate_refs)
 
 
 __all__ = ["assemble_committed_population_projections"]

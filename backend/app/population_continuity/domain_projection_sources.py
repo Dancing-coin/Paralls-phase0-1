@@ -91,7 +91,11 @@ def production_work_population_projections(
         if evidence.get("committed") is False or evidence.get("evidence_kind") != "production-completed" or evidence.get("outcome") != "completed" or evidence.get("verification_state") != "verified":
             continue
         evidence_revision = _revision(event, evidence)
-        source_stream = str(evidence.get("stream_ref") or getattr(event, "stream_id", ""))
+        event_stream = str(getattr(event, "stream_id", ""))
+        declared_stream = evidence.get("stream_ref")
+        if event_stream and declared_stream is not None and str(declared_stream) != event_stream:
+            continue
+        source_stream = event_stream or str(declared_stream or "")
         if evidence.get("organization_ref") not in (None, organization_ref):
             continue
         actor_ref = str(evidence.get("actor_ref") or "")
@@ -280,7 +284,11 @@ def inventory_output_custody_population_projections(
         if payload.get("visibility_policy") not in (None, "project"):
             continue
         event_id = str(getattr(event, "event_id", ""))
-        stream_ref = str(payload.get("stream_ref") or getattr(event, "stream_id", ""))
+        event_stream = str(getattr(event, "stream_id", ""))
+        declared_stream = payload.get("stream_ref")
+        if event_stream and declared_stream is not None and str(declared_stream) != event_stream:
+            continue
+        stream_ref = event_stream or str(declared_stream or "")
         revision = _revision(event, payload)
         quantity = payload.get("quantity")
         if not event_id or not stream_ref or revision < 1 or not isinstance(quantity, int) or isinstance(quantity, bool) or quantity <= 0:

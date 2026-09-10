@@ -151,9 +151,9 @@ def test_assembler_emits_inventory_only_from_project_visible_certification() -> 
         },
         visibility_policy="project",
     )
-    cadence = _cadence(scope="public", revision_vector={stream: 1})
+    cadence = _cadence(scope="organization:summary", revision_vector={stream: 1})
     projections = assemble_committed_population_projections(
-        store=store, cadence=cadence, organization_projection={"scope": "public"}
+        store=store, cadence=cadence, organization_projection={"scope": "organization:summary"}
     )
     assert "inventory_output_custody" in {item.payload["candidate_kind"] for item in projections}
 
@@ -228,3 +228,74 @@ def test_assembler_redacts_tax_before_creating_pressure_candidate() -> None:
     tax = next(item for item in projections if item.payload["candidate_kind"] == "tax_pressure")
     assert "amount_minor" not in tax.payload
     assert "payer_account_id" not in tax.payload
+
+
+def test_assembler_rejects_spoofed_production_source_stream() -> None:
+    store = GameplayEventStore()
+    organization_stream = "gameplay:organization:org:bakery"
+    evidence_stream = "gameplay:construction_production:facility:oven"
+    _commit(store, event_id="event:org:1", event_type="gameplay.organization.schedule_recorded", stream_id=organization_stream, payload={})
+    _commit(
+        store,
+        event_id="event:evidence:spoofed",
+        event_type="gameplay.construction_production.work_completion_evidence_recorded",
+        stream_id=evidence_stream,
+        payload={
+            "stream_ref": "gameplay:construction_production:facility:forged",
+            "committed": True,
+            "evidence_kind": "production-completed",
+            "outcome": "completed",
+            "verification_state": "verified",
+            "organization_ref": "org:bakery",
+            "actor_ref": "character:worker",
+            "assignment_ref": "assignment:1",
+            "work_order_ref": "work-order:1",
+            "observed_at": "2026-09-10T12:00:00Z",
+        },
+    )
+    cadence = _cadence(scope="organization:summary", revision_vector={evidence_stream: 1, organization_stream: 1})
+    assert assemble_committed_population_projections(
+        store=store, cadence=cadence, organization_projection=_organization_projection(revision=1)
+    ) == ()
+
+
+def test_assembler_does_not_upcast_project_event_to_public_scope() -> None:
+    store = GameplayEventStore()
+    stream = "gameplay:construction_production:facility:oven"
+    _commit(
+        store,
+        event_id="event:certification:project",
+        event_type="gameplay.construction_production.production_output_certified@1",
+        stream_id=stream,
+        payload={"family_ref": "production_output_certification@1", "quantity": 2},
+        visibility_policy="project",
+    )
+    cadence = _cadence(scope="public", revision_vector={stream: 1})
+    assert assemble_committed_population_projections(
+        store=store, cadence=cadence, organization_projection={"scope": "public"}
+    ) == ()
+
+
+def test_assembler_drops_duplicate_signal_refs() -> None:
+    store = GameplayEventStore()
+    first_stream = "gameplay:social:population:signal:first"
+    second_stream = "gameplay:social:population:signal:second"
+    for event_id, stream in (("event:social:first", first_stream), ("event:social:second", second_stream)):
+        _commit(
+            store,
+            event_id=event_id,
+            event_type="gameplay.social.population_signal_recorded@1",
+            stream_id=stream,
+            payload={
+                "signal_ref": "signal:duplicate@1",
+                "provenance_ref": f"provenance:{event_id}",
+                "materialization_state": "proposed",
+                "visibility_scope": "public",
+                "source_stream_ref": stream,
+            },
+            visibility_policy="public",
+        )
+    cadence = _cadence(scope="public", revision_vector={first_stream: 1, second_stream: 1})
+    assert assemble_committed_population_projections(
+        store=store, cadence=cadence, organization_projection={"scope": "public"}
+    ) == ()

@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 import json
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from secrets import compare_digest
 from dataclasses import dataclass
 from queue import Empty, Queue
@@ -188,6 +188,7 @@ from app.gameplay.production_package_registry import (
     build_production_social_policy_registry,
 )
 from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationProjection
+from app.population_continuity.store_projection_assembler import assemble_committed_population_projections
 from app.population_continuity.world import WorldContinuityRuntime
 from app.population_continuity.social_input import FrozenSocialPlanningInput
 from app.population_continuity.source_inputs import HouseholdScheduleInput, OrganizationScheduleInput
@@ -865,16 +866,107 @@ def _ack_siming_staging_request(event: AuthorityEvent) -> None:
     )
 
 
+def publish_authorized_population_cadence(
+    *,
+    cadence: PopulationCadenceInput,
+    store: GameplayEventStore,
+    organization_projection: Mapping[str, object],
+    room_id: str,
+    scene_id: str,
+    zone_id: str,
+    causation_id: str,
+    correlation_id: str,
+    legacy_projections: tuple[PopulationProjection, ...] = (),
+) -> AuthorityEvent | None:
+    """Publish one caller-authorized cadence without creating cadence time."""
+    source_ref = cadence.cadence_source_ref
+    source_revision = cadence.cadence_source_revision
+    if (
+        not source_ref
+        or source_revision < 1
+        or cadence.base_revision_vector.get(source_ref) != source_revision
+        or any(store.get_stream_head(ref) != revision for ref, revision in cadence.base_revision_vector.items())
+    ):
+        return None
+    source_event = next(
+        (
+            event
+            for event in store.read_events()
+            if event.stream_id == source_ref
+            and event.stream_revision == source_revision
+            and event.global_sequence >= 1
+        ),
+        None,
+    )
+    if source_event is None:
+        return None
+
+    metadata = dict(organization_projection)
+    world_mode_projection = metadata.pop("_world_mode_projection", {})
+    social_projection = metadata.pop("_social_projection", {})
+    household_projection = metadata.pop("_household_projection", {})
+    assembled = assemble_committed_population_projections(
+        store=store,
+        cadence=cadence,
+        organization_projection=metadata,
+    )
+    projections = (*legacy_projections, *assembled)
+    accepted: dict[str, PopulationProjection] = {}
+    for projection in projections:
+        if (
+            projection.scope not in {cadence.report_scope, "public"}
+            or not projection.revision_vector
+            or projection.revision_vector != cadence.base_revision_vector
+            or any(
+                store.get_stream_head(ref) != revision
+                for ref, revision in projection.revision_vector.items()
+            )
+            or projection.ref in accepted
+        ):
+            return None
+        accepted[projection.ref] = projection
+
+    event = AuthorityEvent(
+        event_id=f"event:population-cadence:{cadence.cadence_id}",
+        event_type="population_cadence_event",
+        producer_ts=cadence.window_start,
+        room_id=room_id,
+        scene_id=scene_id,
+        zone_id=zone_id,
+        source=AuthorityEventSource(layer="L2", system="world_runtime.cadence"),
+        routing=AuthorityEventRouting(audience_mode="broadcast", routing_mode="event_type"),
+        priority="p2",
+        durability="realtime",
+        causation_id=causation_id,
+        correlation_id=correlation_id,
+        payload={
+            "population_cadence": cadence.model_dump(mode="json"),
+            "world_mode_projection": world_mode_projection,
+            "activation_projection": {},
+            "activation_pending_projection": {},
+            "social_projection": social_projection,
+            "household_projection": household_projection,
+            "organization_projection": metadata,
+            "population_projections": [
+                projection.model_dump(mode="json") for projection in accepted.values()
+            ],
+        },
+    )
+    authority_event_bus.publish(event)
+    drain_observatory = getattr(siming_event_pipeline, "drain_observatory_messages", None)
+    if callable(drain_observatory):
+        drain_observatory()
+    return event
+
+
 def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:
-    """Hand one committed world-mode projection to the existing Siming bus."""
+    """Construct one committed game-start cadence and hand it to the publisher."""
     if authority_event_bus.list_events(
         event_type="population_cadence_event", include_realtime=True, current_only=False
     ):
         return None
     mode = _bakery_population_mode()
-    mode_receipt = WorldContinuityRuntime(
-        store=gameplay_event_store, mode=mode
-    ).resume()
+    mode_receipt = WorldContinuityRuntime(store=gameplay_event_store, mode=mode).resume()
     if not mode_receipt.committed:
         return None
     world_source_ref = f"world:{mode.world_ref}"
@@ -1006,44 +1098,27 @@ def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:
             },
         },
     )
-    projections = [candidate_projection.model_dump(mode="json")]
-    mode_event_refs = list(mode_receipt.committed_event_ids)
-    event = AuthorityEvent(
-        event_id="event:population-cadence:bakery-district:game-start:v3",
-        event_type="population_cadence_event",
-        producer_ts=world_source_revision,
-        room_id="room:bakery",
-        scene_id="scene:bakery",
-        zone_id="zone:bakery",
-        source=AuthorityEventSource(layer="L2", system="world_runtime.cadence"),
-        routing=AuthorityEventRouting(audience_mode="broadcast", routing_mode="event_type"),
-        priority="p2",
-        durability="realtime",
-        causation_id=mode_event_refs[0] if mode_event_refs else "game-start:bakery",
-        correlation_id="population:bakery-district:game-start:v3",
-        payload={
-            "population_cadence": cadence.model_dump(mode="json"),
-            "world_mode_projection": {
+    return publish_authorized_population_cadence(
+        cadence=cadence,
+        store=gameplay_event_store,
+        organization_projection={
+            **organization_input.model_dump(mode="json"),
+            "_world_mode_projection": {
                 "world_ref": mode.world_ref,
                 "mode": mode.mode,
                 "revision": mode.revision,
-                "committed_event_ids": mode_event_refs,
+                "committed_event_ids": list(mode_receipt.committed_event_ids),
             },
-            "activation_projection": {},
-            "activation_pending_projection": {},
-            "social_projection": social_input.model_dump(mode="json"),
-            "household_projection": household_input.model_dump(mode="json"),
-            "organization_projection": organization_input.model_dump(mode="json"),
-            "population_projections": projections,
+            "_social_projection": social_input.model_dump(mode="json"),
+            "_household_projection": household_input.model_dump(mode="json"),
         },
+        room_id="room:bakery",
+        scene_id="scene:bakery",
+        zone_id="zone:bakery",
+        causation_id=(mode_receipt.committed_event_ids[0] if mode_receipt.committed_event_ids else "game-start:bakery"),
+        correlation_id="population:bakery-district:game-start:v3",
+        legacy_projections=(candidate_projection,),
     )
-    authority_event_bus.publish(event)
-    # The handoff is consumed immediately; its audit remains durable while
-    # startup observatory messages must not leak into the next player turn.
-    drain_observatory = getattr(siming_event_pipeline, "drain_observatory_messages", None)
-    if callable(drain_observatory):
-        drain_observatory()
-    return event
 
 
 def _bakery_population_mode() -> WorldModeProfile:

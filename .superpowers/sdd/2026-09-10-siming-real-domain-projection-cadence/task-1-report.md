@@ -26,3 +26,15 @@ or package activation call.
 
 This task validates the read-only projection assembly seam only. Authorized
 cadence publication and real Siming dispatch remain later tasks in the plan.
+
+## Review Fixes
+
+- Source stream refs now use the committed event `stream_id` when present and
+  reject mismatched payload stream claims; legacy AuthorityEvent fixtures with
+  no stream id retain their declared source ref.
+- Public cadence assembly admits only public event visibility, so project and
+  organization-summary facts cannot be upcast into the public read set.
+- Duplicate projection refs fail closed: every candidate sharing a ref is
+  dropped instead of first-wins selection.
+
+Review regression coverage raised the focused suite to 25 passed.
