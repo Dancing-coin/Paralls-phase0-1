@@ -81,6 +81,7 @@ from app.gameplay.adventure_basic_mirror_runtime import (
     AdventureBasicMirrorRuntimeError,
 )
 from app.gameplay.inventory_runtime import ContainerSpec, InventoryAuthorityService, InventoryDefinitionRegistry, ItemDefinition
+from app.gameplay.p5.social_knowledge import SocialFactAuthority
 from app.gameplay.organization_government_runtime import OrganizationAuthority
 from app.services.candidate_percept_service import compile_candidate_percepts
 from app.services.character_service import CharacterService
@@ -178,6 +179,13 @@ from app.population_continuity.models import ActivationReceipt, BatchIntentCandi
 from app.population_continuity.owner_adapters import (
     OrganizationProductionWorkContributionOwnerExecutor,
     ScheduleGatedSupplyOwnerExecutor,
+)
+from app.population_continuity.inventory_owner_adapter import InventoryOutputCustodyOwnerExecutor
+from app.population_continuity.social_owner_adapter import SocialPopulationSignalOwnerExecutor
+from app.gameplay.production_package_registry import (
+    build_production_inventory_definition_registry,
+    build_production_package_registry,
+    build_production_social_policy_registry,
 )
 from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationProjection
 from app.population_continuity.world import WorldContinuityRuntime
@@ -300,6 +308,24 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
     population_owner_executors = {}
     owner_store = globals().get("gameplay_event_store")
     if isinstance(owner_store, GameplayEventStore):
+        package_registry = globals().get("production_package_registry")
+        inventory_registry = globals().get("inventory_definition_registry")
+        social_policy_registry = globals().get("production_social_policy_registry")
+        active_bindings = (
+            package_registry.active_patch_set.capability_bindings
+            if package_registry is not None and package_registry.active_patch_set is not None
+            else ()
+        )
+        inventory_bindings = tuple(
+            binding
+            for binding in active_bindings
+            if binding.family_ref == "production_output_custody@1"
+        )
+        social_bindings = tuple(
+            binding
+            for binding in active_bindings
+            if binding.family_ref == "population_signal_materialization@1"
+        )
         profile_dir = Path(__file__).resolve().parents[2] / "assets" / "characters" / "profiles"
         owner_registry = CharacterProfileRegistry.from_directory(profile_dir)
         owner_mode = _bakery_population_mode()
@@ -309,9 +335,78 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
         )
         population_owner_executors = {
             "population:organization-production-work-contribution:v1": OrganizationProductionWorkContributionOwnerExecutor(
-                authority=OrganizationAuthority(store=owner_store)
+                authority=OrganizationAuthority(
+                    store=owner_store,
+                    package_registry=package_registry,
+                )
             ),
         }
+        if (
+            inventory_registry is not None
+            and len(inventory_bindings) == 2
+            and {
+                (
+                    binding.binding_ref,
+                    binding.package_revision,
+                    binding.descriptor_ref,
+                    binding.descriptor_revision,
+                )
+                for binding in inventory_bindings
+            }
+            == {
+                (
+                    "binding:production-output-custody-bread@1",
+                    "package:production-output-custody:bread@1",
+                    "descriptor:inventory-production-output-custody@1",
+                    "descriptor:inventory-production-output-custody@1",
+                ),
+                (
+                    "binding:production-output-custody-flour@1",
+                    "package:production-output-custody:flour@1",
+                    "descriptor:inventory-production-output-custody@1",
+                    "descriptor:inventory-production-output-custody@1",
+                ),
+            }
+        ):
+            population_owner_executors[
+                "population:inventory-output-custody:v1"
+            ] = InventoryOutputCustodyOwnerExecutor(
+                authority=InventoryAuthorityService(
+                    store=owner_store,
+                    registry=inventory_registry,
+                    package_registry=package_registry,
+                )
+            )
+        if (
+            social_policy_registry is not None
+            and len(social_bindings) == 1
+            and {
+                (
+                    binding.binding_ref,
+                    binding.package_revision,
+                    binding.descriptor_ref,
+                    binding.descriptor_revision,
+                )
+                for binding in social_bindings
+            }
+            == {
+                (
+                    "binding:population-materialization@1",
+                    "package:population-materialization:v1",
+                    "descriptor:population-signal-materialization@1",
+                    "descriptor:population-signal-materialization@1",
+                )
+            }
+        ):
+            population_owner_executors[
+                "population:social-population-signal:v1"
+            ] = SocialPopulationSignalOwnerExecutor(
+                authority=SocialFactAuthority(
+                    registry=social_policy_registry,
+                    store=owner_store,
+                    package_registry=package_registry,
+                )
+            )
 
     def actor_autonomy(proposal) -> bool:
         actor_id = proposal.target_actor_id
@@ -425,6 +520,8 @@ def reset_runtime_state() -> None:
     global embodied_carry_place_authority_service
     global default_scene_pickup_policy_service
     global inventory_definition_registry
+    global production_package_registry
+    global production_social_policy_registry
     global inventory_authority_service
     global embodied_custody_inventory_authority_service
     global default_scene_archive_door_embodied_service
@@ -443,6 +540,9 @@ def reset_runtime_state() -> None:
     if isinstance(previous_capabilities, HarnessCapabilityStore):
         previous_capabilities.close()
     gameplay_event_store = GameplayEventStore()
+    production_package_registry = build_production_package_registry(Path(WORKTREE_ROOT))
+    production_social_policy_registry = build_production_social_policy_registry()
+    inventory_definition_registry = build_production_inventory_definition_registry()
     stormnight_realtime_session_service = StormnightRealtimeSessionService(store=gameplay_event_store)
     runtime_state = build_runtime_state(settings)
     heavenly_graph = runtime_state.heavenly_graph
@@ -632,11 +732,10 @@ def reset_runtime_state() -> None:
         scene_revision=11,
     )
     default_scene_pickup_policy_service = DefaultScenePickupPolicyService.demo_defaults()
-    inventory_definition_registry = InventoryDefinitionRegistry()
-    inventory_definition_registry.register_item(ItemDefinition("archive_token", "v1", 1, 1))
     inventory_authority_service = InventoryAuthorityService(
         store=gameplay_event_store,
         registry=inventory_definition_registry,
+        package_registry=production_package_registry,
     )
     created_inventory_containers: set[tuple[str, str]] = set()
     for pickup_policy in default_scene_pickup_policy_service.policies():

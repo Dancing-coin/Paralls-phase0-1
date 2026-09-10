@@ -26,15 +26,10 @@ from verify_phase3_common import write_report
 
 RUNTIME_OWNER_CAPABILITIES = {
     "population:organization-production-work-contribution:v1",
-}
-DOMAIN_ADAPTER_CAPABILITIES = RUNTIME_OWNER_CAPABILITIES | {
     "population:inventory-output-custody:v1",
     "population:social-population-signal:v1",
 }
-BLOCKED_RUNTIME_CAPABILITIES = {
-    "population:inventory-output-custody:v1",
-    "population:social-population-signal:v1",
-}
+DOMAIN_ADAPTER_CAPABILITIES = RUNTIME_OWNER_CAPABILITIES
 TAX_CAPABILITY = "population:tax-pressure:v1"
 
 
@@ -161,7 +156,6 @@ def main() -> int:
         and replay["full_hash"] == replay["checkpoint_tail_hash"]
         and replay["character_full_hash"] == replay["character_checkpoint_tail_hash"]
     )
-    blocked_fail_closed = not owner_ids.intersection(BLOCKED_RUNTIME_CAPABILITIES)
     tax_report_only = (
         TAX_CAPABILITY not in owner_ids
         and "owner_bound_intent" not in catalog[TAX_CAPABILITY].allowed_output_kinds
@@ -177,7 +171,12 @@ def main() -> int:
         "multiple_domain_candidates_remain_valid": domain_candidates_valid,
         "selection_changes_with_policy_budget": selection_changes,
         "only_runtime_admitted_capability_ids_reach_owners": only_admitted_reach_owners,
-        "unactivated_inventory_social_fail_closed": blocked_fail_closed,
+        "inventory_social_active_from_source_manifests": owner_ids.issuperset(
+            {
+                "population:inventory-output-custody:v1",
+                "population:social-population-signal:v1",
+            }
+        ),
         "tax_remains_report_only": tax_report_only,
         "private_authority_only_projections_filtered": privacy_valid,
         "owner_receipts_precede_character_core_seeds": owner_receipts_precede_seeds,
@@ -190,15 +189,13 @@ def main() -> int:
         "harness_checks": checks,
         "runtime_owner_capability_ids": sorted(owner_ids),
         "adapter_capability_ids": sorted(DOMAIN_ADAPTER_CAPABILITIES),
-        "runtime_blocked_without_active_package_binding": sorted(
-            BLOCKED_RUNTIME_CAPABILITIES
-        ),
+        "report_only_capability_ids": [TAX_CAPABILITY],
         "selection": {
             "competing": competing["selected"],
             "budget_limited": budget_limited["selected"],
         },
         "replay_hash": replay["full_hash"],
-        "zero_write": blocked_fail_closed and tax_report_only and privacy_valid,
+        "zero_write": tax_report_only and privacy_valid,
         "focused_log": focused_log,
     }
     return write_report("siming-population-domain-owner-adaptation", report)

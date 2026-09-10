@@ -3479,13 +3479,12 @@ event bus/store, clock, scheduler, or background loop.
 ### `siming-population-domain-owner-adaptation`
 
 该 backend-only profile 验证司命群体领域 Owner（领域事实写入者）适配边界：默认
-`SimingRuntime` 保留 Bakery 的 legacy `owner_executor`，并仅把已有真实 Owner 合同且
-无需额外 package activation 的 Production/Organization capability 注册进
-`owner_executors`。Inventory 与 public Social adapter 已由独立纵切测试验证，但当前
-生产 runtime 没有对应的 active package binding（已激活包绑定），因此保持
-`capability_owner_adapter_missing`、requeue 和 zero-write；不能用测试 manifest 或伪造
-registry 绕过。Tax 保持 report-only，Stormnight realtime action window 不进入 population
-cadence（群体推进节奏）。
+`SimingRuntime` 保留 Bakery 的 legacy `owner_executor`。默认启动从仓库源码 manifest
+生成并激活共享 `GameplayPatchRegistry`（Gameplay 包注册表），将已验证 binding 注入
+Production/Organization、Inventory output custody 和 public Social population signal 的
+`owner_executors`。Tax 保持 report-only，Stormnight realtime action window 不进入
+population cadence（群体推进节奏）。manifest 缺失、digest 不匹配或 binding 无法激活时，
+启动链 fail-closed（失败关闭），不能用测试 helper 或伪造 registry 绕过。
 
 该 profile 同时验证多领域 descriptor 有效、预算改变选择、隐私与 authority-only 投影
 过滤、Owner receipt 先于 Character Core seed、full/checkpoint-tail 回放摘要一致，以及

@@ -19,6 +19,8 @@ from app.population_continuity.siming_contracts import PopulationCadenceInput, P
 
 ADMITTED_CAPABILITIES = {
     "population:organization-production-work-contribution:v1",
+    "population:inventory-output-custody:v1",
+    "population:social-population-signal:v1",
 }
 
 
@@ -121,14 +123,21 @@ def test_report_only_tax_capability_has_no_runtime_owner_executor(
         state.close()
 
 
-def test_unactivated_inventory_and_social_capabilities_have_no_runtime_owner_executor(
+def test_active_inventory_and_social_capabilities_use_the_shared_package_registry(
     tmp_path: Path, monkeypatch
 ) -> None:
+    import app.main as main
+
     state, _ = _runtime(tmp_path, monkeypatch)
     try:
         capability = state.siming_runtime._population_capability
-        assert "population:inventory-output-custody:v1" not in capability._owner_executors
-        assert "population:social-population-signal:v1" not in capability._owner_executors
+        assert "population:inventory-output-custody:v1" in capability._owner_executors
+        assert "population:social-population-signal:v1" in capability._owner_executors
+        assert all(
+            executor._authority._package_registry is main.production_package_registry
+            for executor in capability._owner_executors.values()
+            if hasattr(executor._authority, "_package_registry")
+        )
     finally:
         state.close()
 
@@ -167,7 +176,12 @@ def test_unsupported_population_capability_requeues_without_write(
             audit for audit in result.audit_records if "population_cycle" in audit.reason
         )
         assert "status=requeue" in population_audit.reason
-        assert "reason=capability_owner_adapter_missing" in population_audit.reason
+        expected_reason = (
+            "owner_rejected"
+            if candidate_kind in {"inventory_output_custody", "social_population_signal"}
+            else "capability_owner_adapter_missing"
+        )
+        assert f"reason={expected_reason}" in population_audit.reason
         assert store.export_snapshot() == before
     finally:
         state.close()

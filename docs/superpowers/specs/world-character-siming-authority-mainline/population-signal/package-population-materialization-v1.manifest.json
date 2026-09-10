@@ -1,0 +1,69 @@
+{
+  "manifest_schema_version": 3,
+  "patch_id": "package:population-materialization",
+  "patch_version": "1.0.0",
+  "patch_revision_id": "package:population-materialization:v1",
+  "content_digest": "sha256:28d3b94c9258d88dd86a892b77febd4ac6499d174b110d7f569876fa9f8e5cd7",
+  "author_id": "author:repo",
+  "trust_policy_ref": "trust:repo",
+  "dependencies": [],
+  "state_group_ids": [],
+  "state_group_migrations": [],
+  "event_schemas": [],
+  "rules": [],
+  "requested_capabilities": [],
+  "economic_outcomes": [],
+  "granted_effect_types": [],
+  "verification_profiles": [],
+  "platform_extension": {
+    "platform_schema_version": "2.0",
+    "package_identity": {
+      "package_id": "package:population-materialization",
+      "package_version": "1.0.0",
+      "package_revision": "package:population-materialization:v1"
+    },
+    "package_definitions": [
+      {
+        "definition_ref": "definition:population-materialization@1",
+        "definition_schema_ref": "schema:organization@1",
+        "source_package_revision": "package:population-materialization:v1",
+        "typed_content": {
+          "materialization_policy_ref": "policy:riverward-organization-materialization@1",
+          "target_subject_kind": "organization",
+          "required_signal_kind_refs": [],
+          "identity_policy_ref": "policy:riverward-identity@1"
+        }
+      }
+    ],
+    "outcome_declarations": [
+      {
+        "declaration_ref": "declaration:population-materialization@1",
+        "outcome_family_ref": "outcome:population-signal-materialization@1",
+        "definition_refs": ["definition:population-materialization@1"],
+        "eligibility_refs": ["eligibility:organization-charter@1"],
+        "policy_revision_ref": "policy:ogs-millers-charter@1",
+        "source_package_revision": "package:population-materialization:v1",
+        "declaration_digest": "sha256:133242c8add82f2f28ff33459b83da3193ccb8b24387c4d7012d256b689e0f7e"
+      }
+    ],
+    "capability_binding_requests": [
+      {
+        "binding_ref": "binding:population-materialization@1",
+        "capability_ref": "capability:population-signal-materialization@1",
+        "source_package_revision": "package:population-materialization:v1",
+        "declaration_ref": "declaration:population-materialization@1",
+        "typed_read_requirements": [
+          {
+            "requirement_ref": "requirement:population-signal-materialization@1@1",
+            "predicate_family_ref": "predicate:population-signal-materialization@1",
+            "subject_slot_ref": "slot:organization@1"
+          }
+        ],
+        "proposal_effect_types": ["effect:population-signal-materialization@1"]
+      }
+    ],
+    "dependency_and_conflict_refs": [],
+    "replay_reader_refs": [],
+    "verification_profile_refs": []
+  }
+}
