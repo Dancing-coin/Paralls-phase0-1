@@ -311,6 +311,21 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
         package_registry = globals().get("production_package_registry")
         inventory_registry = globals().get("inventory_definition_registry")
         social_policy_registry = globals().get("production_social_policy_registry")
+        active_bindings = (
+            package_registry.active_patch_set.capability_bindings
+            if package_registry is not None and package_registry.active_patch_set is not None
+            else ()
+        )
+        inventory_bindings = tuple(
+            binding
+            for binding in active_bindings
+            if binding.family_ref == "production_output_custody@1"
+        )
+        social_bindings = tuple(
+            binding
+            for binding in active_bindings
+            if binding.family_ref == "population_signal_materialization@1"
+        )
         profile_dir = Path(__file__).resolve().parents[2] / "assets" / "characters" / "profiles"
         owner_registry = CharacterProfileRegistry.from_directory(profile_dir)
         owner_mode = _bakery_population_mode()
@@ -327,13 +342,31 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
             ),
         }
         if (
-            package_registry is not None
-            and inventory_registry is not None
-            and package_registry.active_patch_set is not None
-            and any(
-                binding.family_ref == "production_output_custody@1"
-                for binding in package_registry.active_patch_set.capability_bindings
-            )
+            inventory_registry is not None
+            and len(inventory_bindings) == 2
+            and {
+                (
+                    binding.binding_ref,
+                    binding.package_revision,
+                    binding.descriptor_ref,
+                    binding.descriptor_revision,
+                )
+                for binding in inventory_bindings
+            }
+            == {
+                (
+                    "binding:production-output-custody-bread@1",
+                    "package:production-output-custody:bread@1",
+                    "descriptor:inventory-production-output-custody@1",
+                    "descriptor:inventory-production-output-custody@1",
+                ),
+                (
+                    "binding:production-output-custody-flour@1",
+                    "package:production-output-custody:flour@1",
+                    "descriptor:inventory-production-output-custody@1",
+                    "descriptor:inventory-production-output-custody@1",
+                ),
+            }
         ):
             population_owner_executors[
                 "population:inventory-output-custody:v1"
@@ -345,13 +378,25 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
                 )
             )
         if (
-            package_registry is not None
-            and social_policy_registry is not None
-            and package_registry.active_patch_set is not None
-            and any(
-                binding.family_ref == "population_signal_materialization@1"
-                for binding in package_registry.active_patch_set.capability_bindings
-            )
+            social_policy_registry is not None
+            and len(social_bindings) == 1
+            and {
+                (
+                    binding.binding_ref,
+                    binding.package_revision,
+                    binding.descriptor_ref,
+                    binding.descriptor_revision,
+                )
+                for binding in social_bindings
+            }
+            == {
+                (
+                    "binding:population-materialization@1",
+                    "package:population-materialization:v1",
+                    "descriptor:population-signal-materialization@1",
+                    "descriptor:population-signal-materialization@1",
+                )
+            }
         ):
             population_owner_executors[
                 "population:social-population-signal:v1"
