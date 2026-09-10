@@ -170,6 +170,38 @@ class PopulationSimulationCapability:
             self.default_capabilities(cadence_input),
         )
 
+    def run_receipt_pinned_decision_cycle(
+        self,
+        cadence_input: PopulationCadenceInput,
+        read_set: PopulationReadSet,
+        owner_receipt: PopulationOwnerReceipt,
+    ) -> PopulationCycleResult:
+        """Continue a batch only from one committed Organization receipt."""
+        if (
+            owner_receipt.owner_ref != "actor_gameplay.organization_domain"
+            or owner_receipt.event_family
+            != "gameplay.organization.production_work_contribution_accepted"
+            or not owner_receipt.committed
+            or (
+                owner_receipt.zero_write
+                and owner_receipt.idempotency_status != "duplicate_replayed"
+            )
+            or not owner_receipt.revision_vector
+            or dict(owner_receipt.revision_vector) != cadence_input.base_revision_vector
+        ):
+            return self._requeue(
+                f"population-decision:{cadence_input.cadence_id}:requeue",
+                read_set,
+                "owner_rejected",
+            )
+        return self._run_decision_cycle(
+            cadence_input,
+            read_set,
+            self.default_decision_policy(cadence_input),
+            self.default_capabilities(cadence_input),
+            accepted_owner_receipt_refs=(owner_receipt.receipt_ref,),
+        )
+
     @staticmethod
     def is_v1_fixture(read_set: PopulationReadSet) -> bool:
         return PopulationSimulationCapability._looks_like_v1_cohort(read_set)
@@ -611,7 +643,11 @@ class PopulationSimulationCapability:
             if not isinstance(bound, PopulationOwnerBoundIntent) or (
                 bound.intent_kind != "schedule_gated_supply"
                 and not (
-                    bound.intent_kind == "inventory_output_custody"
+                    bound.intent_kind
+                    in {
+                        "inventory_output_custody",
+                        "organization_production_work_contribution",
+                    }
                     and str(bound.payload.get("source_owner_receipt_ref") or "") in accepted_owner_receipt_refs
                 )
                 and not (cohort and bound.intent_kind == "supply" and bound.actor_ref == "character:char_a")

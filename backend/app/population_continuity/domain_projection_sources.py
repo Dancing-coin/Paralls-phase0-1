@@ -186,10 +186,11 @@ def production_receipt_population_projections(
     if not isinstance(revision_vector, Mapping) or not revision_vector:
         return ()
     organization = _payload(organization_projection)
+    organization_vector = organization.get("source_revision_vector")
     if (
         str(organization.get("scope") or organization.get("visibility_scope") or "") != scope
-        or not isinstance(organization.get("source_revision_vector"), Mapping)
-        or dict(organization["source_revision_vector"]) != dict(revision_vector)
+        or not isinstance(organization_vector, Mapping)
+        or dict(organization_vector) != dict(revision_vector)
     ):
         return ()
     receipt_ref = str(getattr(owner_receipt, "receipt_ref", ""))
@@ -200,22 +201,20 @@ def production_receipt_population_projections(
         rows = (rows,)
     if not isinstance(rows, (tuple, list)):
         return ()
-    row = next(
-        (
-            item
-            for item in rows
-            if isinstance(item, Mapping)
-            and receipt_ref
-            in {
-                str(item.get("event_id") or ""),
-                str(item.get("receipt_ref") or ""),
-                str(item.get("owner_receipt_ref") or ""),
-            }
-        ),
-        None,
+    matches = tuple(
+        item
+        for item in rows
+        if isinstance(item, Mapping)
+        and receipt_ref
+        in {
+            str(item.get("event_id") or ""),
+            str(item.get("receipt_ref") or ""),
+            str(item.get("owner_receipt_ref") or ""),
+        }
     )
-    if row is None:
+    if len(matches) != 1:
         return ()
+    row = matches[0]
     actor_ref = str(row.get("recipient_ref") or row.get("actor_ref") or "")
     organization_ref = str(row.get("organization_ref") or organization.get("organization_ref") or "")
     if not actor_ref.startswith("character:") or not organization_ref.startswith("org:"):
@@ -229,6 +228,7 @@ def production_receipt_population_projections(
         "source_domain": "production",
         "source_owner_receipt_ref": receipt_ref,
         "source_owner_receipt_refs": (receipt_ref,),
+        "source_owner_receipt_revision_vector": dict(revision_vector),
         "source_event_refs": tuple(
             str(item)
             for item in (

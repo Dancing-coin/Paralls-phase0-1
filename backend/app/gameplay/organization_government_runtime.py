@@ -4698,7 +4698,7 @@ class OrganizationAuthority:
     ) -> OrganizationWorkContributionAcceptanceView:
         stream_id = f"gameplay:organization:{organization_ref}"
         rows = [
-            dict(event.payload)
+            {"event_id": event.event_id, **dict(event.payload)}
             for event in self._store.read_stream(stream_id)
             if event.event_type == "gameplay.organization.production_work_contribution_accepted"
             and event.visibility_policy == "organization:summary"

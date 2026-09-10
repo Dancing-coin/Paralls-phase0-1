@@ -187,7 +187,11 @@ from app.gameplay.production_package_registry import (
     build_production_package_registry,
     build_production_social_policy_registry,
 )
-from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationProjection
+from app.population_continuity.siming_contracts import (
+    PopulationCadenceInput,
+    PopulationOwnerReceipt,
+    PopulationProjection,
+)
 from app.population_continuity.store_projection_assembler import assemble_committed_population_projections
 from app.population_continuity.world import WorldContinuityRuntime
 from app.population_continuity.social_input import FrozenSocialPlanningInput
@@ -967,6 +971,62 @@ def _legacy_supply_projection_is_authorized(
     )
 
 
+def _population_owner_receipt_is_authorized(
+    receipt: PopulationOwnerReceipt,
+    *,
+    cadence: PopulationCadenceInput,
+    organization_projection: Mapping[str, object],
+    store: GameplayEventStore,
+) -> bool:
+    if (
+        receipt.owner_ref != "actor_gameplay.organization_domain"
+        or receipt.event_family
+        != "gameplay.organization.production_work_contribution_accepted"
+        or not receipt.committed
+        or (receipt.zero_write and receipt.idempotency_status != "duplicate_replayed")
+        or not receipt.revision_vector
+        or dict(receipt.revision_vector) != cadence.base_revision_vector
+    ):
+        return False
+    organization_ref = organization_projection.get("organization_ref")
+    if (
+        not isinstance(organization_ref, str)
+        or not organization_ref.startswith("org:")
+        or organization_projection.get("scope") != "organization:summary"
+    ):
+        return False
+    rows = organization_projection.get("acceptance_rows")
+    if not isinstance(rows, (list, tuple)):
+        return False
+    matches = [
+        row
+        for row in rows
+        if isinstance(row, Mapping)
+        and receipt.receipt_ref
+        in {
+            str(row.get("event_id") or ""),
+            str(row.get("receipt_ref") or ""),
+            str(row.get("owner_receipt_ref") or ""),
+        }
+    ]
+    if len(matches) != 1:
+        return False
+    if matches[0].get("organization_ref") != organization_ref:
+        return False
+    try:
+        event = store.get_event(receipt.receipt_ref)
+    except KeyError:
+        return False
+    return (
+        event.event_type
+        == "gameplay.organization.production_work_contribution_accepted"
+        and event.stream_id == f"gameplay:organization:{organization_ref}"
+        and event.stream_revision == receipt.revision_vector.get(event.stream_id)
+        and event.visibility_policy == "organization:summary"
+        and event.payload.get("organization_ref") == organization_ref
+    )
+
+
 def publish_authorized_population_cadence(
     *,
     cadence: PopulationCadenceInput,
@@ -978,14 +1038,30 @@ def publish_authorized_population_cadence(
     causation_id: str,
     correlation_id: str,
     legacy_projections: tuple[PopulationProjection, ...] = (),
+    population_owner_receipt: PopulationOwnerReceipt | None = None,
 ) -> AuthorityEvent | None:
     """Publish one caller-authorized cadence without creating cadence time."""
     source_ref = cadence.cadence_source_ref
     source_revision = cadence.cadence_source_revision
+    source_vector_revision = cadence.base_revision_vector.get(source_ref, -1)
+    receipt_pins_current_base = population_owner_receipt is not None and (
+        _population_owner_receipt_is_authorized(
+            population_owner_receipt,
+            cadence=cadence,
+            organization_projection=organization_projection,
+            store=store,
+        )
+    )
+    if population_owner_receipt is not None and not receipt_pins_current_base:
+        return None
     if (
         not source_ref
         or source_revision < 1
-        or cadence.base_revision_vector.get(source_ref) != source_revision
+        or source_vector_revision < source_revision
+        or (
+            source_vector_revision != source_revision
+            and not receipt_pins_current_base
+        )
         or any(store.get_stream_head(ref) != revision for ref, revision in cadence.base_revision_vector.items())
     ):
         return None
@@ -1037,7 +1113,13 @@ def publish_authorized_population_cadence(
             and source_ref == f"gameplay:organization:{organization_ref}"
             and organization_projection.get("organization_ref") == organization_ref
             and isinstance(projection_vector, Mapping)
-            and projection_vector.get(source_ref) == source_revision
+            and (
+                projection_vector.get(source_ref) == source_revision
+                or (
+                    receipt_pins_current_base
+                    and projection_vector.get(source_ref) == source_vector_revision
+                )
+            )
         )
     else:
         source_authorized = False
@@ -1106,6 +1188,11 @@ def publish_authorized_population_cadence(
             "population_projections": [
                 accepted[ref].model_dump(mode="json") for ref in sorted(accepted)
             ],
+            **(
+                {"population_owner_receipt": population_owner_receipt.model_dump(mode="json")}
+                if population_owner_receipt is not None
+                else {}
+            ),
         },
     )
     authority_event_bus.publish(event)
