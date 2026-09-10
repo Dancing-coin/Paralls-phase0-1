@@ -995,36 +995,24 @@ def _population_owner_receipt_is_authorized(
         or organization_projection.get("scope") != "organization:summary"
     ):
         return False
-    rows = organization_projection.get("acceptance_rows")
-    if not isinstance(rows, (list, tuple)):
-        return False
-    matches = [
-        row
-        for row in rows
-        if isinstance(row, Mapping)
-        and receipt.receipt_ref
-        in {
-            str(row.get("event_id") or ""),
-            str(row.get("receipt_ref") or ""),
-            str(row.get("owner_receipt_ref") or ""),
-        }
-    ]
-    if len(matches) != 1:
-        return False
-    if matches[0].get("organization_ref") != organization_ref:
-        return False
     try:
         event = store.get_event(receipt.receipt_ref)
     except KeyError:
         return False
-    return (
+    if not (
         event.event_type
         == "gameplay.organization.production_work_contribution_accepted"
         and event.stream_id == f"gameplay:organization:{organization_ref}"
         and event.stream_revision == receipt.revision_vector.get(event.stream_id)
         and event.visibility_policy == "organization:summary"
         and event.payload.get("organization_ref") == organization_ref
-    )
+    ):
+        return False
+    rows = organization_projection.get("acceptance_rows")
+    return isinstance(rows, (list, tuple)) and sum(
+        isinstance(row, Mapping) and dict(row) == dict(event.payload)
+        for row in rows
+    ) == 1
 
 
 def publish_authorized_population_cadence(
@@ -1127,6 +1115,10 @@ def publish_authorized_population_cadence(
         return None
 
     metadata = dict(organization_projection)
+    if population_owner_receipt is not None:
+        metadata["acceptance_rows"] = [
+            dict(store.get_event(population_owner_receipt.receipt_ref).payload)
+        ]
     world_mode_projection = metadata.pop("_world_mode_projection", {})
     social_projection = metadata.pop("_social_projection", {})
     household_projection = metadata.pop("_household_projection", {})

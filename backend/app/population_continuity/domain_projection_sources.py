@@ -212,6 +212,13 @@ def production_receipt_population_projections(
             str(item.get("owner_receipt_ref") or ""),
         }
     )
+    if (
+        not matches
+        and len(rows) == 1
+        and isinstance(rows[0], Mapping)
+        and not {"event_id", "receipt_ref", "owner_receipt_ref"} & set(rows[0])
+    ):
+        matches = (rows[0],)
     if len(matches) != 1:
         return ()
     row = matches[0]
