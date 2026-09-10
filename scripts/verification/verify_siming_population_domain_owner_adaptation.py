@@ -61,7 +61,7 @@ def _focused_tests() -> tuple[bool, str]:
     return result.returncode == 0, result.stdout + result.stderr
 
 
-def _runtime_owner_ids() -> tuple[set[str], bool]:
+def _runtime_owner_ids() -> tuple[set[str], bool, bool]:
     import app.main as runtime_main
 
     saved_store = runtime_main.gameplay_event_store
@@ -79,17 +79,21 @@ def _runtime_owner_ids() -> tuple[set[str], bool]:
                     executor._authority._store is store
                     for executor in capability._owner_executors.values()
                 )
+                adapter_contracts_valid = all(
+                    getattr(executor, "CAPABILITY_ID", "") == capability_id
+                    for capability_id, executor in capability._owner_executors.items()
+                )
                 legacy_preserved = capability._owner_executor is not None
             finally:
                 state.close()
     finally:
         runtime_main.gameplay_event_store = saved_store
-    return owner_ids, shares_store and legacy_preserved
+    return owner_ids, shares_store and legacy_preserved, adapter_contracts_valid
 
 
 def main() -> int:
     focused, focused_log = _focused_tests()
-    owner_ids, runtime_composition_valid = _runtime_owner_ids()
+    owner_ids, runtime_composition_valid, adapter_contracts_valid = _runtime_owner_ids()
     catalog = {
         descriptor.capability_id: descriptor
         for descriptor in PopulationCapabilityCatalog.default("policy:harness@1")
@@ -186,6 +190,7 @@ def main() -> int:
         "replay_checkpoint_tail_digests_match": replay_matches,
         "stormnight_action_windows_outside_population_cadence": stormnight_outside_cadence,
         "shared_store_and_legacy_owner_preserved": runtime_composition_valid,
+        "runtime_owner_adapter_contracts_match_capability_ids": adapter_contracts_valid,
     }
     report = {
         "overall_passed": all(checks.values()),

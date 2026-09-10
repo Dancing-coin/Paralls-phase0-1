@@ -314,6 +314,9 @@ Commit: `git commit -m "接通真实生产群体节拍纵切"`
 - Modify: `backend/tests/test_siming_population_authorized_cadence_publication.py`
 - Modify: `backend/tests/test_siming_population_inventory_vertical.py`
 - Modify: `backend/tests/test_siming_population_social_signal_vertical.py`
+- Modify: `backend/app/population_continuity/batch.py` (required read-set pin seam: accept non-empty source-vector subsets)
+- Modify: `backend/app/population_continuity/store_projection_assembler.py` (public sources retain public projection scope under organization cadences)
+- Modify: `backend/app/services/siming_population_capability.py` (admit inventory Owner actor refs without character-core seeding)
 - Modify: `scripts/verification/verify_siming_population_domain_owner_adaptation.py`
 
 **Interfaces:**

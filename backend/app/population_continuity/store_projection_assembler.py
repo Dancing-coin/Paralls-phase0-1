@@ -143,7 +143,7 @@ def assemble_committed_population_projections(
             candidates.extend(
                 social_population_signal_population_projections(
                     population_signal_projection=_social_source(event),
-                    scope=cadence.report_scope,
+                    scope="public",
                 )
             )
         if (
@@ -153,7 +153,7 @@ def assemble_committed_population_projections(
             candidates.extend(
                 tax_pressure_population_projections(
                     tax_obligation_projection=_tax_source(event),
-                    scope=cadence.report_scope,
+                    scope="public",
                 )
             )
 

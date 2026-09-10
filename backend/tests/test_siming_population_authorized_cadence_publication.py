@@ -10,15 +10,21 @@ from app.gameplay.construction_production_runtime import (
     Plot,
     Recipe,
 )
+from app.gameplay.closed_generic_gameplay_families import ProductionOutputCertificationIntent
 from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.inventory_runtime import ContainerSpec
+from app.gameplay.p5.social_knowledge import SocialFactAuthority
+from app.gameplay.organization_government_social_platform_runtime import PopulationSignalMaterializationProposalIntent
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.gameplay.organization_government_runtime import (
     OrganizationAuthority,
     WorkerContributionRef,
 )
+from app.population_continuity.source_inputs import OrganizationScheduleInput
+from app.population_continuity.batch import PopulationPlanner
 from app.population_continuity.siming_contracts import PopulationOwnerReceipt
 from app.services.siming_population_capability import default_population_read_set_builder
-from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationProjection
+from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationProjection, PopulationReadSet
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 
 
@@ -331,6 +337,353 @@ def test_game_start_remains_one_explicit_authorized_cadence() -> None:
     )
     assert len(events) == 1
     assert events[0].payload["population_cadence"]["cadence_id"].endswith("game-start:v3")
+
+
+def test_population_read_set_accepts_current_source_vector_subset() -> None:
+    cadence = _cadence().model_copy(
+        update={
+            "base_revision_vector": {
+                "gameplay:organization:org:test": 1,
+                "gameplay:inventory:organization:test": 1,
+            }
+        }
+    )
+    projection = PopulationProjection(
+        ref="projection:inventory:test",
+        scope="organization:summary",
+        revision_vector={"gameplay:inventory:organization:test": 1},
+        payload={"actor_ref": "character:worker", "candidate_kind": "inventory_output_custody"},
+    )
+    read_set = PopulationReadSet.from_inputs(cadence, (projection,))
+    assert PopulationPlanner._valid_population_read_set(read_set)
+
+
+@pytest.mark.parametrize("revision_vector", ({"gameplay:inventory:organization:test": 0}, {}))
+def test_population_read_set_rejects_stale_or_missing_source_pin(
+    revision_vector: dict[str, int],
+) -> None:
+    cadence = _cadence().model_copy(
+        update={
+            "base_revision_vector": {
+                "gameplay:organization:org:test": 1,
+                "gameplay:inventory:organization:test": 1,
+            }
+        }
+    )
+    projection = PopulationProjection(
+        ref="projection:inventory:test",
+        scope="organization:summary",
+        revision_vector=revision_vector,
+        payload={"actor_ref": "character:worker", "candidate_kind": "inventory_output_custody"},
+    )
+    read_set = PopulationReadSet.from_inputs(cadence, (projection,))
+    assert not PopulationPlanner._valid_population_read_set(read_set)
+
+
+def _task4_cadence(
+    *,
+    source_ref: str,
+    source_revision: int,
+    base_revision_vector: dict[str, int],
+    cadence_id: str,
+    report_scope: str = "organization:summary",
+) -> PopulationCadenceInput:
+    return PopulationCadenceInput(
+        cadence_id=cadence_id,
+        world_ref="world:task4",
+        world_mode_ref="world-mode:task4",
+        world_mode_revision="mode:task4:v1",
+        cadence_source_ref=source_ref,
+        cadence_source_revision=source_revision,
+        window_start=1,
+        window_end=2,
+        base_checkpoint_ref=f"checkpoint:{cadence_id}",
+        base_checkpoint_digest=f"sha256:{cadence_id}",
+        base_revision_vector=base_revision_vector,
+        policy_revision="policy:population:v1",
+        selector_revision="selector:generic:task4",
+        ruleset_revision="rules:population:v1",
+        deterministic_seed=f"seed:{cadence_id}",
+        catch_up_limit=1,
+        budget=1,
+        report_scope=report_scope,
+    )
+
+
+def _organization_authorized_cadence_fixture(*, cadence_id: str) -> tuple[object, GameplayEventStore, dict[str, object], str, int]:
+    import app.main as main
+
+    main.reset_runtime_state()
+    store = main.gameplay_event_store
+    organization = OrganizationAuthority(
+        store=store, package_registry=main.production_package_registry
+    )
+    schedule = organization.record_schedule(
+        command_id=f"task4:{cadence_id}:schedule",
+        organization_ref="org:task4-bakery",
+        recipient_ref="character:worker",
+        membership_ref=f"membership:{cadence_id}",
+        assignment_ref=f"assignment:{cadence_id}",
+        role="baker",
+        shift_ref=f"shift:{cadence_id}",
+        operating_window_ref=f"window:{cadence_id}",
+        work_order_ref="work:task4-bread",
+        effective_from="2026-09-01T00:00:00Z",
+        effective_to=None,
+        visibility_scope="organization:summary",
+    )
+    assert schedule.committed, schedule.failure
+    organization_stream = "gameplay:organization:org:task4-bakery"
+    organization_revision = store.get_stream_head(organization_stream)
+    view = organization.schedule_view_for(
+        organization_ref="org:task4-bakery",
+        recipient_ref="character:worker",
+        observed_at="2026-09-10T12:00:00Z",
+    )
+    organization_projection = OrganizationScheduleInput.freeze(
+        recipient_ref="character:worker",
+        observed_at="2026-09-10T12:00:00Z",
+        view=view,
+    ).model_dump(mode="json")
+    return main, store, organization_projection, organization_stream, organization_revision
+
+
+def _inventory_runtime_fixture() -> tuple[object, GameplayEventStore, PopulationCadenceInput, dict[str, object], str]:
+    main, store, organization_projection, organization_stream, organization_revision = _organization_authorized_cadence_fixture(
+        cadence_id="inventory"
+    )
+    construction = ConstructionProductionAuthority(
+        store=store, package_registry=main.production_package_registry
+    )
+    facility = Facility(
+        facility_ref="facility:task4-bakery",
+        plot_ref="plot:task4-bakery",
+        facility_kind="bakery",
+        condition=1.0,
+    )
+    assert construction.settle_facility_acquisition(
+        plot=Plot(
+            plot_ref=facility.plot_ref,
+            jurisdiction_ref="jurisdiction:task4",
+            owner_ref="organization:bakery",
+        ),
+        facility=facility,
+        command_id="task4:facility",
+        idempotency_key="task4:facility",
+        causation_id="task4",
+        correlation_id="population:task4:inventory",
+    ).committed
+    recipe = Recipe(
+        recipe_ref="recipe:flour-to-bread@1",
+        inputs={},
+        output_item="item:bread@1",
+        duration_ticks=1,
+        failure_policy_mode="terminal",
+        failure_policy_revision="policy:failure:terminal@1",
+    )
+    assert construction.settle_start_run(
+        facility=facility,
+        recipe=recipe,
+        run_ref="run:task4-bakery",
+        tick=10,
+        command_id="task4:start",
+        idempotency_key="task4:start",
+        causation_id="task4",
+        correlation_id="population:task4:inventory",
+    ).committed
+    run = construction.projector().runs["run:task4-bakery"]
+    assert construction.settle_finish_run(
+        run,
+        tick=11,
+        recipe=recipe,
+        command_id="task4:finish",
+        idempotency_key="task4:finish",
+        causation_id="task4",
+        correlation_id="population:task4:inventory",
+    ).committed
+    finished = store.read_stream("gameplay:construction_production:facility:task4-bakery")[-1]
+    certification = construction.settle_production_output_certification(
+        intent=ProductionOutputCertificationIntent(
+            run_finished_event_id=finished.event_id,
+            expected_run_finished_revision=3,
+            expected_stream_revision=3,
+            expected_facility_revision=0,
+            command_id="task4:certification",
+            causation_id=finished.event_id,
+            correlation_id="population:task4:inventory",
+            submitted_at="2026-09-10T12:00:00Z",
+        )
+    )
+    assert certification.committed, certification.failure
+    certification_event_id = certification.committed_event_ids[0]
+    container = main.inventory_authority_service.create_container(
+        command_id="task4:inventory-container",
+        actor_ref="organization:bakery",
+        spec=ContainerSpec(
+            container_id="container:organization:bakery:production-output",
+            capacity_weight=100,
+            capacity_volume=100,
+            capacity_slots=4,
+        ),
+        idempotency_key="task4:inventory-container",
+        causation_id="task4",
+        correlation_id="population:task4:inventory",
+    )
+    assert container.committed, container.failure
+    certification_stream = finished.stream_id
+    certification_revision = store.get_stream_head(certification_stream)
+    cadence = _task4_cadence(
+        source_ref=organization_stream,
+        source_revision=organization_revision,
+        base_revision_vector={
+            organization_stream: organization_revision,
+            certification_stream: certification_revision,
+        },
+        cadence_id="cadence:task4:inventory",
+    )
+    return main, store, cadence, organization_projection, certification_event_id
+
+
+def test_certified_output_enters_authorized_cadence_and_uses_inventory_owner() -> None:
+    main, store, cadence, organization_projection, _ = _inventory_runtime_fixture()
+    event = main.publish_authorized_population_cadence(
+        cadence=cadence,
+        store=store,
+        organization_projection=organization_projection,
+        room_id="room:task4",
+        scene_id="scene:task4",
+        zone_id="zone:task4",
+        causation_id="task4:inventory",
+        correlation_id="population:task4:inventory",
+    )
+    assert event is not None
+    assert any(
+        item["payload"]["candidate_kind"] == "inventory_output_custody"
+        for item in event.payload["population_projections"]
+    )
+    audits = main.siming_audit_writer.find_by_correlation(
+        room_id="room:task4", correlation_id="population:task4:inventory"
+    )
+    assert any("status=accepted" in audit.reason and "owners=1" in audit.reason for audit in audits)
+    owner_events = [
+        item
+        for item in store.read_events()
+        if item.event_type == "gameplay.inventory.production_output_received@1"
+    ]
+    assert len(owner_events) == 1
+
+
+def _social_runtime_fixture(*, private: bool = False) -> tuple[object, GameplayEventStore, PopulationCadenceInput, dict[str, object]]:
+    main, store, organization_projection, organization_stream, organization_revision = _organization_authorized_cadence_fixture(
+        cadence_id="social-private" if private else "social-public"
+    )
+    if private:
+        signal_stream = "gameplay:social:population:signal:task4-private@1"
+        _commit(
+            store,
+            event_id="event:task4:private-signal",
+            event_type="gameplay.social.population_signal_recorded@1",
+            stream_id=signal_stream,
+            payload={
+                "signal_ref": "signal:task4-private@1",
+                "provenance_ref": "provenance:task4-private@1",
+                "source_revision_pin": 1,
+                "materialization_state": "proposed",
+                "visibility_scope": "actor_private",
+            },
+            visibility_policy="actor:character:worker",
+        )
+        cadence = _task4_cadence(
+            source_ref=signal_stream,
+            source_revision=1,
+            base_revision_vector={signal_stream: 1},
+            cadence_id="cadence:task4:social-private",
+            report_scope="public",
+        )
+        return main, store, cadence, organization_projection
+
+    social = SocialFactAuthority(
+        registry=main.production_social_policy_registry,
+        store=store,
+        package_registry=main.production_package_registry,
+    )
+    signal_ref = "signal:task4-public@1"
+    result = social.record_admitted_population_signal_materialization_proposal(
+        intent=PopulationSignalMaterializationProposalIntent(
+            signal_ref=signal_ref,
+            provenance_ref="provenance:task4-public@1",
+            source_revision_pin=1,
+            materialization_state="proposed",
+            visibility_scope="public",
+        ),
+        binding_ref="binding:population-materialization@1",
+        command_id="task4:social-source",
+        idempotency_key=f"social:population-signal:{signal_ref}:1:v1",
+        causation_id="task4:social-source",
+        correlation_id="population:task4:social",
+        expected_revision=0,
+    )
+    assert result.resolution.result_kind == "committed_success"
+    signal_stream = f"gameplay:social:population:{signal_ref}"
+    cadence = _task4_cadence(
+        source_ref=organization_stream,
+        source_revision=organization_revision,
+        base_revision_vector={
+            organization_stream: organization_revision,
+            signal_stream: 1,
+        },
+        cadence_id="cadence:task4:social-public",
+    )
+    return main, store, cadence, organization_projection
+
+
+def test_public_population_signal_enters_authorized_cadence_and_uses_social_owner() -> None:
+    main, store, cadence, organization_projection = _social_runtime_fixture()
+    event = main.publish_authorized_population_cadence(
+        cadence=cadence,
+        store=store,
+        organization_projection=organization_projection,
+        room_id="room:task4",
+        scene_id="scene:task4",
+        zone_id="zone:task4",
+        causation_id="task4:social",
+        correlation_id="population:task4:social",
+    )
+    assert event is not None
+    assert any(
+        item["payload"]["candidate_kind"] == "social_population_signal"
+        for item in event.payload["population_projections"]
+    )
+    audits = main.siming_audit_writer.find_by_correlation(
+        room_id="room:task4", correlation_id="population:task4:social"
+    )
+    assert any("status=accepted" in audit.reason and "owners=1" in audit.reason for audit in audits)
+    owner_events = [
+        item
+        for item in store.read_events()
+        if item.event_type == "gameplay.social.population_signal_recorded@1"
+    ]
+    assert len(owner_events) == 1
+
+
+def test_private_social_signal_never_publishes_population_cadence_candidate() -> None:
+    main, store, cadence, organization_projection = _social_runtime_fixture(private=True)
+    assert main.publish_authorized_population_cadence(
+        cadence=cadence,
+        store=store,
+        organization_projection=organization_projection,
+        room_id="room:task4",
+        scene_id="scene:task4",
+        zone_id="zone:task4",
+        causation_id="task4:social-private",
+        correlation_id="population:task4:social-private",
+    ) is None
+    assert not main.authority_event_bus.list_events(
+        event_type="population_cadence_event",
+        room_id="room:task4",
+        include_realtime=True,
+        current_only=False,
+    )
 
 
 @dataclass

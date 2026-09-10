@@ -379,6 +379,7 @@ class PopulationSimulationCapability:
                     candidate.actor_ref
                     for candidate in decision.selected_candidates
                     if "character_core_command" in candidate.allowed_outputs
+                    and candidate.actor_ref.startswith("character:")
                 }
                 settled = tuple(receipt.receipt_ref for receipt in receipts)
                 settled_result = self._run_cycle_impl(
@@ -598,7 +599,11 @@ class PopulationSimulationCapability:
         if (
             canonical.read_set_digest != read_set.read_set_digest
             or any(
-                projection.revision_vector != cadence_input.base_revision_vector
+                not projection.revision_vector
+                or any(
+                    cadence_input.base_revision_vector.get(stream_id) != revision
+                    for stream_id, revision in projection.revision_vector.items()
+                )
                 for projection in read_set.projections
             )
         ):
@@ -868,7 +873,11 @@ class PopulationSimulationCapability:
         payload = projection.payload
         actor_ref = payload.get("actor_ref") or payload.get("profile_ref") or payload.get("character_ref")
         actor_text = str(actor_ref or "").strip().lower()
-        if actor_ref is not None and not actor_text.startswith("character:"):
+        if (
+            actor_ref is not None
+            and not actor_text.startswith("character:")
+            and payload.get("source_domain") != "inventory"
+        ):
             return False
         return PopulationSimulationCapability._payload_scope_admitted(
             payload,
