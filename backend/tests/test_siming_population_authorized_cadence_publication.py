@@ -13,6 +13,8 @@ from app.gameplay.construction_production_runtime import (
 from app.gameplay.closed_generic_gameplay_families import ProductionOutputCertificationIntent
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.inventory_runtime import ContainerSpec
+from app.gameplay.p5.social_knowledge import SocialFactAuthority
+from app.gameplay.organization_government_social_platform_runtime import PopulationSignalMaterializationProposalIntent
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.gameplay.organization_government_runtime import (
     OrganizationAuthority,
@@ -601,21 +603,28 @@ def _social_runtime_fixture(*, private: bool = False) -> tuple[object, GameplayE
         return main, store, cadence, organization_projection
 
     signal_ref = "signal:task4-public@1"
-    source_stream = "gameplay:social:signal-source:task4"
-    _commit(
-        store,
-        event_id="event:task4:public-signal-source",
-        event_type="gameplay.social.population_signal_recorded@1",
-        stream_id=source_stream,
-        payload={
-            "signal_ref": signal_ref,
-            "provenance_ref": "provenance:task4-public@1",
-            "source_revision_pin": 1,
-            "materialization_state": "proposed",
-            "visibility_scope": "public",
-        },
-        visibility_policy="public",
+    social = SocialFactAuthority(
+        registry=main.production_social_policy_registry,
+        store=store,
+        package_registry=main.production_package_registry,
     )
+    result = social.record_admitted_population_signal_materialization_proposal(
+        intent=PopulationSignalMaterializationProposalIntent(
+            signal_ref=signal_ref,
+            provenance_ref="provenance:task4-public@1",
+            source_revision_pin=1,
+            materialization_state="proposed",
+            visibility_scope="public",
+        ),
+        binding_ref="binding:population-materialization@1",
+        command_id="task4:social-source",
+        idempotency_key=f"social:population-signal:{signal_ref}:1:v1",
+        causation_id="task4:social-source",
+        correlation_id="population:task4:social",
+        expected_revision=0,
+    )
+    assert result.resolution.result_kind == "committed_success"
+    source_stream = f"gameplay:social:population:{signal_ref}"
     cadence = _task4_cadence(
         source_ref=organization_stream,
         source_revision=organization_revision,

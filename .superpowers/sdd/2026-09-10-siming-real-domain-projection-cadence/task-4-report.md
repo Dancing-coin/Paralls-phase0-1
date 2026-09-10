@@ -12,7 +12,8 @@ Added real Inventory and public Social cadence fixtures in
   registered Inventory adapter commits `gameplay.inventory.production_output_received@1`.
 - Social setup uses the active `population_signal_materialization@1` binding to
   commit a public signal. The cadence reaches the registered Social adapter;
-  replay is zero-write and preserves one committed public signal event.
+  its legal `duplicate_replayed` receipt is zero-write and preserves one
+  committed public signal event.
 - A private Social source cannot authorize a cadence and publishes no cadence
   event or candidate.
 
@@ -46,5 +47,6 @@ projection was added.
 The public Social candidate scope guard now admits only the exact owner-only
 shape (`public` + `social` + `social_population_signal` + registered capability
 and `signal:*` actor). The real cadence fixture proves the Social Owner writes
-one target-stream event. Review verification: 108 focused tests passed, Social
-subset 2 passed, domain-owner harness passed, and `git diff --check` passed.
+through its active binding and returns one target-stream `duplicate_replayed`
+receipt. Review verification: 108 focused tests passed, Social subset 2 passed,
+domain-owner harness passed, and `git diff --check` passed.
