@@ -237,7 +237,9 @@ def test_assembler_emits_public_social_but_not_private_relationships() -> None:
     )
     cadence = _cadence(scope="public", revision_vector={stream: 1})
     projections = assemble_committed_population_projections(
-        store=store, cadence=cadence, organization_projection={"scope": "public"}
+        store=store,
+        cadence=cadence,
+        organization_projection={"scope": "public"},
     )
     assert all(item.scope != "actor:self" for item in projections)
     assert "social_population_signal" in {item.payload["candidate_kind"] for item in projections}
@@ -265,7 +267,20 @@ def test_assembler_redacts_tax_before_creating_pressure_candidate() -> None:
     )
     cadence = _cadence(scope="public", revision_vector={stream: 1})
     projections = assemble_committed_population_projections(
-        store=store, cadence=cadence, organization_projection={"scope": "public"}
+        store=store,
+        cadence=cadence,
+        organization_projection={
+            "scope": "public",
+            "organization_ref": "org:bakery",
+            "_tax_projection": {
+                "obligation_ref": "obligation:economy:tax:org:bakery:period:2026-09",
+                "organization_ref": "org:bakery",
+                "actor_ref": "character:steward",
+                "source_stream_ref": stream,
+                "source_revision_pin": 1,
+                "status": "due",
+            },
+        },
     )
     tax = next(item for item in projections if item.payload["candidate_kind"] == "tax_pressure")
     assert "amount_minor" not in tax.payload

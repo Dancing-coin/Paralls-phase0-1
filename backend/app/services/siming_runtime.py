@@ -674,6 +674,8 @@ class SimingRuntime:
             f" seeds={len(cycle.seed_candidates)}"
             f" receipts={len(cycle.continuity_receipts)}"
             f" append={cycle.production_append_count}"
+            f" read_set={report.read_set_digest}"
+            f" result={report.result_digest}"
             f" reason={cycle.reason or 'none'}"
         )
         if report.cohort_ref:
@@ -688,8 +690,6 @@ class SimingRuntime:
                 f" presentation={report.presentation_seed_count}"
                 f" activation={report.activation_candidate_count}"
                 f" continuity_requeue={report.continuity_requeue_count}"
-                f" read_set={report.read_set_digest}"
-                f" result={report.result_digest}"
             )
         return SimingAuditRecord(
             audit_id=f"audit_{event.event_id}_population_cycle",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 import pytest
@@ -13,6 +14,7 @@ from app.gameplay.construction_production_runtime import (
 from app.gameplay.closed_generic_gameplay_families import ProductionOutputCertificationIntent
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.inventory_runtime import ContainerSpec
+from app.gameplay.economy_runtime import EconomyAuthorityService
 from app.gameplay.p5.social_knowledge import SocialFactAuthority
 from app.gameplay.organization_government_social_platform_runtime import PopulationSignalMaterializationProposalIntent
 from app.gameplay.settlement_plan import build_atomic_event_batch
@@ -684,6 +686,95 @@ def test_private_social_signal_never_publishes_population_cadence_candidate() ->
         room_id="room:task4",
         include_realtime=True,
         current_only=False,
+    )
+
+
+def _tax_runtime_fixture() -> tuple[object, GameplayEventStore, PopulationCadenceInput, dict[str, object]]:
+    main, store, organization_projection, organization_stream, organization_revision = _organization_authorized_cadence_fixture(
+        cadence_id="tax"
+    )
+    economy = EconomyAuthorityService(store=store)
+    due = economy.record_tax_due(
+        command_id="task5:tax-due",
+        organization_ref="org:task4-bakery",
+        period_ref="period:2026-09",
+        assessed_amount_minor=27,
+        policy_revision="policy:commercial@7",
+        policy_digest="sha256:commercial-policy",
+        due_calendar_ref="calendar:monthly",
+        evidence_refs=("evidence:task5-taxable",),
+        source_digest="sha256:task5-tax-source",
+        idempotency_key="task5:tax-due",
+        causation_id="task5",
+        correlation_id="population:task5:tax",
+    )
+    assert due.committed, due.failure
+    due_event = store.read_events()[-1]
+    opened = economy.open_tax_obligation(
+        command_id="task5:tax-open",
+        tax_due_event_id=due_event.event_id,
+        due_tick=10,
+        idempotency_key="task5:tax-open",
+        causation_id=due_event.event_id,
+        correlation_id="population:task5:tax",
+        expected_revision=1,
+    )
+    assert opened.committed, opened.append_result.failure
+    economy_revision = store.get_stream_head("gameplay:economy")
+    tax_projection = economy.tax_population_pressure_projection_for(
+        organization_ref="org:task4-bakery",
+        recipient_ref=str(organization_projection["recipient_ref"]),
+    )
+    assert tax_projection is not None
+    organization_projection = {
+        **organization_projection,
+        "_tax_projection": tax_projection,
+    }
+    cadence = _task4_cadence(
+        source_ref=organization_stream,
+        source_revision=organization_revision,
+        base_revision_vector={
+            organization_stream: organization_revision,
+            "gameplay:economy": economy_revision,
+        },
+        cadence_id="cadence:task5:tax",
+        report_scope="organization:summary",
+    )
+    return main, store, cadence, organization_projection
+
+
+def test_tax_due_enters_authorized_cadence_as_report_only_pressure() -> None:
+    main, store, cadence, organization_projection = _tax_runtime_fixture()
+    event = main.publish_authorized_population_cadence(
+        cadence=cadence,
+        store=store,
+        organization_projection=organization_projection,
+        room_id="room:task5",
+        scene_id="scene:task5",
+        zone_id="zone:task5",
+        causation_id="task5:tax",
+        correlation_id="population:task5:tax",
+    )
+    assert event is not None
+    tax = next(
+        item
+        for item in event.payload["population_projections"]
+        if item["payload"]["candidate_kind"] == "tax_pressure"
+    )
+    read_set = default_population_read_set_builder(
+        event, PopulationCadenceInput.from_authority_event(event)
+    )
+    serialized = json.dumps(read_set.model_dump(mode="json"), sort_keys=True)
+    assert "amount_minor" not in serialized
+    assert "account:" not in serialized
+    assert "evidence:" not in serialized
+    audits = main.siming_audit_writer.find_by_correlation(
+        room_id="room:task5", correlation_id="population:task5:tax"
+    )
+    assert any("status=accepted" in audit.reason and "owners=0" in audit.reason for audit in audits)
+    assert not any(
+        item.event_type == "gameplay.economy.tax_obligation_settled"
+        for item in store.read_events()
     )
 
 

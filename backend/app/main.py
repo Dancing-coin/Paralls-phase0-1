@@ -1130,10 +1130,14 @@ def publish_authorized_population_cadence(
     world_mode_projection = metadata.pop("_world_mode_projection", {})
     social_projection = metadata.pop("_social_projection", {})
     household_projection = metadata.pop("_household_projection", {})
+    tax_projection = metadata.pop("_tax_projection", None)
+    assembly_projection = dict(metadata)
+    if isinstance(tax_projection, Mapping):
+        assembly_projection["_tax_projection"] = tax_projection
     assembled = assemble_committed_population_projections(
         store=store,
         cadence=cadence,
-        organization_projection=metadata,
+        organization_projection=assembly_projection,
     )
     projections = (*legacy_projections, *assembled)
     accepted: dict[str, PopulationProjection] = {}

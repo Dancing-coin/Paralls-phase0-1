@@ -384,6 +384,10 @@ Commit: `git commit -m "接通库存与公开社会群体节拍"`
 
 **Files:**
 - Modify: `backend/tests/test_siming_population_authorized_cadence_publication.py`
+- Modify: `backend/app/gameplay/economy_runtime.py` (read-only redacted Tax pressure projection helper)
+- Modify: `backend/app/population_continuity/store_projection_assembler.py` (consume only explicit redacted Tax metadata)
+- Modify: `backend/app/main.py` (strip Tax metadata before cadence event publication)
+- Modify: `backend/app/services/siming_runtime.py` (always record read-set and decision digests in cycle audit)
 - Modify: `scripts/verification/verify_siming_population_domain_owner_adaptation.py`
 - Modify: `docs/harness.md`
 - Modify: `docs/8月分析/司命与群体世界补充设计/03-群体模拟与角色分级连续性.md`

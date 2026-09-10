@@ -91,20 +91,6 @@ def _social_source(event: object) -> dict[str, object]:
     return payload
 
 
-def _tax_source(event: object) -> dict[str, object]:
-    payload = _event_payload(event)
-    stream_id = str(getattr(event, "stream_id", ""))
-    revision = getattr(event, "stream_revision", 0)
-    payload["source_stream_ref"] = stream_id
-    payload["source_revision_pin"] = revision
-    payload.setdefault("obligation_ref", payload.get("obligation_id", ""))
-    payload.setdefault("actor_ref", payload.get("character_ref", ""))
-    if "status" not in payload and "due" in str(getattr(event, "event_type", "")):
-        payload["status"] = "due"
-    payload.setdefault("visibility_scope", _event_visibility(event, payload))
-    return payload
-
-
 def assemble_committed_population_projections(
     *,
     store: GameplayEventStore,
@@ -146,13 +132,18 @@ def assemble_committed_population_projections(
                     scope="public",
                 )
             )
+    tax_projection = organization_projection.get("_tax_projection")
+    if isinstance(tax_projection, Mapping):
         if (
-            getattr(event, "event_type", "") in _TAX_EVENT_TYPES
-            and _event_visibility(event, event_payload) == "public"
+            tax_projection.get("organization_ref") == organization_projection.get("organization_ref")
+            and tax_projection.get("source_stream_ref") == "gameplay:economy"
+            and tax_projection.get("status") in {"due", "overdue"}
+            and isinstance(tax_projection.get("actor_ref"), str)
+            and str(tax_projection["actor_ref"]).startswith("character:")
         ):
             candidates.extend(
                 tax_pressure_population_projections(
-                    tax_obligation_projection=_tax_source(event),
+                    tax_obligation_projection=tax_projection,
                     scope="public",
                 )
             )
