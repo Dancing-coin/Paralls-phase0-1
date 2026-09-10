@@ -1,0 +1,28 @@
+# Task 1 Report
+
+## Outcome
+
+Implemented the read-only `assemble_committed_population_projections(...)` seam.
+It reads committed `GameplayEventStore` events, reuses the existing Production,
+Inventory, public Social, and redacted Tax source functions, rejects private,
+malformed, stale, and cadence-unpinned rows, deduplicates refs, and returns
+deterministically sorted projections.
+
+The assembler contains no Owner, Character Core, event-store append, scheduler,
+or package activation call.
+
+## Verification
+
+- `python -m pytest -q backend/tests/test_siming_population_store_projection_assembler.py backend/tests/test_siming_population_production_owner_vertical.py backend/tests/test_siming_population_inventory_vertical.py backend/tests/test_siming_population_social_signal_vertical.py backend/tests/test_siming_population_tax_pressure.py`
+  - 22 passed
+- `git diff --check`
+  - passed
+
+## Commit
+
+`汇编已提交领域群体投影`
+
+## Attention
+
+This task validates the read-only projection assembly seam only. Authorized
+cadence publication and real Siming dispatch remain later tasks in the plan.

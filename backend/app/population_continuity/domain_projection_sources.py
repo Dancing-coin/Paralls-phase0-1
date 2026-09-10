@@ -25,6 +25,23 @@ def _payload(value: Mapping[str, object]) -> Mapping[str, object]:
     return nested if isinstance(nested, Mapping) else value
 
 
+def committed_event_payload(event: object) -> dict[str, object]:
+    """Return a detached event payload for read-only source adapters."""
+    payload = getattr(event, "payload", {})
+    if not isinstance(payload, Mapping):
+        return {}
+    return dict(_payload(payload))
+
+
+def event_visibility_policy(event: object, payload: Mapping[str, object] | None = None) -> str:
+    """Read event visibility without treating payload claims as authority."""
+    value = getattr(event, "visibility_policy", None)
+    if isinstance(value, str) and value:
+        return value
+    candidate = (payload or committed_event_payload(event)).get("visibility_policy")
+    return candidate if isinstance(candidate, str) else ""
+
+
 def _revision(event: object, payload: Mapping[str, object]) -> int:
     value = payload.get("stream_revision", payload.get("source_evidence_revision"))
     value = getattr(event, "stream_revision", value)
@@ -75,6 +92,8 @@ def production_work_population_projections(
             continue
         evidence_revision = _revision(event, evidence)
         source_stream = str(evidence.get("stream_ref") or getattr(event, "stream_id", ""))
+        if evidence.get("organization_ref") not in (None, organization_ref):
+            continue
         actor_ref = str(evidence.get("actor_ref") or "")
         assignment_ref = str(evidence.get("assignment_ref") or "")
         work_order_ref = str(evidence.get("work_order_ref") or "")
@@ -432,6 +451,8 @@ certified_output_population_projections = inventory_output_custody_population_pr
 
 __all__ = [
     "certified_output_population_projections",
+    "committed_event_payload",
+    "event_visibility_policy",
     "inventory_output_custody_population_projections",
     "production_receipt_population_projections",
     "production_work_population_projections",
