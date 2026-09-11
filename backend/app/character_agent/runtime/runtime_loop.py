@@ -93,6 +93,7 @@ class CharacterAgentRuntime:
         self,
         storage_root: str | Path | None = None,
         *,
+        continuity_actor_ids: set[str] | frozenset[str] | None = None,
         skill_service: CharacterSkillService | None = None,
         memory_store: CharacterMemoryStorePort | None = None,
         continuity_store: CharacterGraphContinuityStore | None = None,
@@ -104,6 +105,7 @@ class CharacterAgentRuntime:
             raise ValueError("graph continuity store is required in production continuity mode")
         self._profile_registry = CharacterProfileRegistry.from_directory(self._PROFILE_DIRECTORY)
         self._supported_actor_ids = set(self._profile_registry.actor_ids())
+        self._continuity_actor_ids = set(continuity_actor_ids or ())
         self._activation_world_ref = "world:default"
         self._activation_authority = activation_authority
         self._l1 = CharacterAgentL1Service()
@@ -1015,13 +1017,17 @@ class CharacterAgentRuntime:
     def supports_actor(self, actor_id: str) -> bool:
         return actor_id in self._supported_actor_ids
 
+    def supports_continuity_actor(self, actor_id: str) -> bool:
+        """Return whether Character Core can persist dormant continuity for an actor."""
+        return actor_id in self._supported_actor_ids or actor_id in self._continuity_actor_ids
+
     def character_identity_digest(self, actor_id: str) -> str:
         if not self.supports_actor(actor_id):
             raise ValueError(f"unsupported actor_id: {actor_id}")
         return self._profile_registry.authored_identity_digest(f"character:{actor_id}")
 
     def get_continuity_revision(self, actor_id: str) -> int:
-        if not self.supports_actor(actor_id):
+        if not self.supports_continuity_actor(actor_id):
             raise ValueError(f"unsupported actor_id: {actor_id}")
         return int(self._continuity_revisions.get(actor_id, 0))
 
@@ -1167,7 +1173,7 @@ class CharacterAgentRuntime:
             raise TypeError("seed_projection_invalid")
         actor_ref = str(payload.get("actor_ref", "") or "")
         actor_id = actor_ref.removeprefix("character:")
-        if not self.supports_actor(actor_id):
+        if not self.supports_continuity_actor(actor_id):
             return []
         self._seed_projections[actor_id] = deepcopy(payload)
         state_delta = payload.get("state_deltas", {})
@@ -1282,7 +1288,7 @@ class CharacterAgentRuntime:
         self, command: CharacterContinuityCommand
     ) -> CharacterContinuityReceipt:
         actor_id = command.actor_ref.removeprefix("character:")
-        if not self.supports_actor(actor_id):
+        if not self.supports_continuity_actor(actor_id):
             return CharacterContinuityReceipt(
                 receipt_ref=f"rejected:{command.command_id}",
                 command_id=command.command_id,
@@ -3927,7 +3933,7 @@ class CharacterAgentRuntime:
     def _rehydrate_graph_continuity(self) -> None:
         if self._continuity_store is None:
             return
-        for actor_id in sorted(self._supported_actor_ids):
+        for actor_id in sorted(self._supported_actor_ids | self._continuity_actor_ids):
             snapshot = self._continuity_store.read_snapshot(actor_id)
             if not snapshot:
                 continue

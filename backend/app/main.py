@@ -194,6 +194,7 @@ from app.population_continuity.siming_contracts import (
 )
 from app.population_continuity.store_projection_assembler import assemble_committed_population_projections
 from app.population_continuity.world import WorldContinuityRuntime
+from app.population_continuity.roster import POPULATION_ACTOR_IDS
 from app.population_continuity.social_input import FrozenSocialPlanningInput
 from app.population_continuity.source_inputs import HouseholdScheduleInput, OrganizationScheduleInput
 from app.character_agent.profile.registry import CharacterProfileRegistry
@@ -302,6 +303,7 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
         heavy_actor_ids=frozenset(runtime_settings.character_graph_memory_heavy_actor_ids),
     )
     character_agent_runtime = CharacterAgentRuntime(
+        continuity_actor_ids=frozenset(POPULATION_ACTOR_IDS),
         storage_root=character_agent_storage_root,
         memory_store=memory_router,
         continuity_store=continuity_store,
@@ -1026,6 +1028,7 @@ def publish_authorized_population_cadence(
     causation_id: str,
     correlation_id: str,
     legacy_projections: tuple[PopulationProjection, ...] = (),
+    population_projections: tuple[PopulationProjection, ...] = (),
     population_owner_receipt: PopulationOwnerReceipt | None = None,
 ) -> AuthorityEvent | None:
     """Publish one caller-authorized cadence without creating cadence time."""
@@ -1131,7 +1134,7 @@ def publish_authorized_population_cadence(
         cadence=cadence,
         organization_projection=assembly_projection,
     )
-    projections = (*legacy_projections, *assembled)
+    projections = (*legacy_projections, *population_projections, *assembled)
     accepted: dict[str, PopulationProjection] = {}
     for projection in projections:
         if (
@@ -1192,10 +1195,41 @@ def publish_authorized_population_cadence(
         },
     )
     authority_event_bus.publish(event)
-    drain_observatory = getattr(siming_event_pipeline, "drain_observatory_messages", None)
+    drain_observatory = getattr(
+        globals().get("siming_event_pipeline"), "drain_observatory_messages", None
+    )
     if callable(drain_observatory):
         drain_observatory()
     return event
+
+
+def publish_population_cadence_window(
+    *,
+    world_runtime: WorldContinuityRuntime,
+    window_start: int,
+    window_end: int,
+    room_id: str,
+    scene_id: str,
+    zone_id: str,
+    causation_id: str,
+    correlation_id: str,
+) -> AuthorityEvent | None:
+    """Publish one World Runtime-owned generic population window."""
+    cadence = world_runtime.build_population_cadence(
+        window_start=window_start,
+        window_end=window_end,
+    )
+    return publish_authorized_population_cadence(
+        cadence=cadence,
+        store=world_runtime.store,
+        organization_projection={},
+        room_id=room_id,
+        scene_id=scene_id,
+        zone_id=zone_id,
+        causation_id=causation_id,
+        correlation_id=correlation_id,
+        population_projections=world_runtime.build_population_projections(cadence),
+    )
 
 
 def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:

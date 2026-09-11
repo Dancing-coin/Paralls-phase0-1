@@ -60,7 +60,7 @@ class CharacterSeedPlanner:
                 objective = False
             state_deltas = payload.get("state_deltas")
             if kind == "routine_work":
-                state_deltas = {}
+                state_deltas = state_deltas if isinstance(state_deltas, dict) else {}
             elif not isinstance(state_deltas, dict):
                 state_deltas = {"task": str(payload.get("task") or "supply") } if objective else {}
             exposure_basis = str(payload.get("exposure_basis") or payload.get("exposure") or "")

@@ -90,6 +90,25 @@ def test_seed_derivation_records_exposure_without_granting_global_knowledge() ->
     assert candidate.actor_ref == "character:char_a"
 
 
+def test_routine_seed_preserves_objective_continuity_state_without_memory() -> None:
+    read_set = PopulationReadSet.from_inputs(
+        cadence(),
+        (
+            projection(
+                "routine",
+                actor_ref="character:char_b",
+                candidate_kind="routine_work",
+                state_deltas={"task": "knead_dough", "dynamic_state": {"fatigue": 0.2}},
+            ),
+        ),
+    )
+
+    seed = CharacterSeedPlanner().derive(read_set, ())[0]
+
+    assert seed.state_deltas == {"task": "knead_dough", "dynamic_state": {"fatigue": 0.2}}
+    assert seed.memory_candidates == ()
+
+
 def test_unknown_behavior_is_report_only_and_not_owner_bound() -> None:
     report = PopulationPlanner().plan_population_cycle(read_set_with_candidate_kind("new_story_action"))
     assert report.rejected_candidates[0].reason == "capability_not_admitted"

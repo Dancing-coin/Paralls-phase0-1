@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.replay import GameplayProjectionReplay
 from app.gameplay.settlement_plan import build_atomic_event_batch
@@ -11,6 +14,8 @@ from app.world_runtime.scheduling import (
 )
 
 from .models import DueEvaluationReceipt, WorldModeProfile, WorldModeReceipt
+from .siming_contracts import PopulationCadenceInput, PopulationProjection
+from .roster import POPULATION_ACTOR_IDS
 
 
 class WorldContinuityRuntime:
@@ -94,6 +99,76 @@ class WorldContinuityRuntime:
                 actor_population=len(candidates),
                 wake_budget=self.mode.wake_budget,
             )
+        )
+
+    def build_population_cadence(
+        self,
+        *,
+        window_start: int,
+        window_end: int,
+        cadence_id: str | None = None,
+        policy_revision: str = "policy:population:v1",
+        selector_revision: str = "selector:generic:population:v1",
+        ruleset_revision: str = "rules:population:v1",
+        report_scope: str = "public",
+        budget: int | None = None,
+    ) -> PopulationCadenceInput:
+        """Build one deterministic window from the committed world stream."""
+        if window_end <= window_start:
+            raise ValueError("population_cadence_window_invalid")
+        world_stream = f"world:{self.mode.world_ref}"
+        source_revision = self.store.get_stream_head(world_stream)
+        if source_revision <= 0:
+            raise ValueError("population_cadence_source_missing")
+        events = [event.model_dump(mode="json") for event in self.store.read_events()]
+        digest = "sha256:" + hashlib.sha256(
+            json.dumps(events, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        return PopulationCadenceInput(
+            cadence_id=cadence_id or f"cadence:{self.mode.world_ref}:{window_start}",
+            world_ref=self.mode.world_ref,
+            world_mode_ref=f"world-mode:{self.mode.world_ref}",
+            world_mode_revision=self.mode.revision,
+            cadence_source_ref=world_stream,
+            cadence_source_revision=source_revision,
+            window_start=window_start,
+            window_end=window_end,
+            base_checkpoint_ref=f"checkpoint:population:{self.mode.world_ref}:{source_revision}",
+            base_checkpoint_digest=digest,
+            base_revision_vector={world_stream: source_revision},
+            policy_revision=policy_revision,
+            selector_revision=selector_revision,
+            ruleset_revision=ruleset_revision,
+            deterministic_seed=f"seed:{self.mode.world_ref}:{window_start}",
+            catch_up_limit=self.mode.catch_up_limit,
+            budget=self.mode.batch_limit if budget is None else budget,
+            report_scope=report_scope,
+        )
+
+    def build_population_projections(
+        self, cadence: PopulationCadenceInput
+    ) -> tuple[PopulationProjection, ...]:
+        """Build deterministic B0 routine inputs for the bounded resident roster."""
+        actors = POPULATION_ACTOR_IDS
+        start = cadence.window_start % len(actors)
+        ordered = actors[start:] + actors[:start]
+        return tuple(
+            PopulationProjection(
+                ref=f"projection:{actor}:{cadence.window_start}",
+                scope="public",
+                revision_vector=dict(cadence.base_revision_vector),
+                payload={
+                    "actor_ref": f"character:{actor}",
+                    "candidate_kind": "routine_work",
+                    "fidelity_tier": "B0",
+                    "starvation_credit": 1.0 - (index / len(actors)),
+                    "state_deltas": {
+                        "dynamic_state": {"stress_load": 0.0},
+                    },
+                    "presentation_seed": {"task": "daily_routine"},
+                },
+            )
+            for index, actor in enumerate(ordered)
         )
 
     def replay_equivalence(self) -> tuple[str, str]:

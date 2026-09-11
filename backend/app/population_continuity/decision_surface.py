@@ -181,7 +181,7 @@ class PopulationCapabilityCatalog:
                 capability_id="population:routine-presentation:v1",
                 accepted_behavior_kinds=("routine_work",),
                 target_owner="character_core",
-                allowed_output_kinds=("presentation_seed",),
+                allowed_output_kinds=("presentation_seed", "character_core_command"),
                 capability_revision="population:routine-presentation:v1",
                 policy_revision=policy_revision,
                 enabled=True,

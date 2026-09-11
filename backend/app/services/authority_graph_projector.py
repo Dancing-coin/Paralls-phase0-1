@@ -23,6 +23,7 @@ class HeavenlyAuthorityEventProjector:
         "esm_result_event": "esm_world",
         "constraint_state_event": "esm_world",
         "gameplay.inventory.": "inventory",
+        "gameplay.organization.": "organization",
         "gameplay.ownership.": "ownership",
         "gameplay.economy.": "economy",
         "gameplay.survival.": "survival_body",

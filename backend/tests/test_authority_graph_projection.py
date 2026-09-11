@@ -46,6 +46,7 @@ def _event() -> AuthorityEvent:
     ("event_type", "domain"),
     [
         ("gameplay.inventory.item_moved", "inventory"),
+        ("gameplay.organization.production_work_contribution_accepted", "organization"),
         ("gameplay.ownership.right_transferred", "ownership"),
         ("gameplay.economy.account_credited", "economy"),
         ("gameplay.survival.obligation_settled", "survival_body"),

@@ -172,3 +172,13 @@ def test_default_capability_catalog_is_read_only_and_policy_pinned() -> None:
                 "inventory_output_custody", "social_population_signal", "tax_pressure"
     }
     assert all(descriptor.policy_revision == "policy:test:v1" for descriptor in descriptors)
+
+
+def test_default_routine_capability_allows_character_core_continuity_command() -> None:
+    routine = next(
+        descriptor
+        for descriptor in PopulationCapabilityCatalog.default("policy:test:v1")
+        if descriptor.capability_id == "population:routine-presentation:v1"
+    )
+
+    assert "character_core_command" in routine.allowed_output_kinds
