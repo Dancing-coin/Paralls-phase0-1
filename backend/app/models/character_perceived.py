@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from app.character_agent.models.memory_consistency import MemoryFactClaim
 
 
 class CharacterPerceivedEvent(BaseModel):
@@ -29,3 +31,15 @@ class CharacterPerceivedEvent(BaseModel):
     distance_m: float | None = None
     clarity_score: float = 1.0
     certainty_score: float = 1.0
+    fact_claim: MemoryFactClaim | None = None
+
+    @model_validator(mode="after")
+    def validate_memory_evidence(self):
+        if self.fact_claim is not None:
+            if self.fact_claim.source_ref not in {self.source_candidate_event_id, *self.source_ref_lineage}:
+                raise ValueError("fact claim must reference the received evidence")
+            if self.fact_claim.valid_at > self.producer_ts:
+                raise ValueError("future fact cannot be received evidence")
+            if self.fact_claim.subject_ref not in {self.target_ref, self.target_object_id, self.target_actor_id, self.target_environment_id}:
+                raise ValueError("fact claim must match the perceived target")
+        return self

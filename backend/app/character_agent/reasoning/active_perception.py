@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.character_agent.models.memory_consistency import MemoryFactClaim
 from app.character_agent.reasoning.actor_scene_knowledge import ActorSceneKnowledgeStore
 from app.world_runtime.intelligence_upgrade import PerceptionQueryFrame, SampleInputRef
 from app.world_runtime.l1_perception_frame import L1PerceptionFrameService
@@ -77,6 +78,7 @@ class ActivePerceptionResult(BaseModel):
     summary: str
     conflict_refs: list[str] = Field(default_factory=list)
     failure_reason: str = ""
+    fact_claim: MemoryFactClaim | None = None
 
     @model_validator(mode="after")
     def validate_provider_chain(self) -> "ActivePerceptionResult":
@@ -131,6 +133,22 @@ class ActivePerceptionPlanner:
     def apply_result(self, store: ActorSceneKnowledgeStore, result: ActivePerceptionResult, *, producer_ts: int):
         from app.character_agent.reasoning.actor_scene_knowledge import ActorSceneKnowledgeEntry
 
+        if result.freshness != "fresh" or result.failure_reason:
+            raise ValueError("active perception requires a fresh result without failure")
+        if result.fact_claim is not None:
+            if result.fact_claim.subject_ref != result.subject_ref:
+                raise ValueError("fact claim subject does not match perception target")
+            if result.fact_claim.valid_at > producer_ts:
+                raise ValueError("fact claim valid_at is later than result time")
+            if result.fact_claim.source_ref not in result.provider_result_refs:
+                raise ValueError("fact claim source is not in provider result lineage")
+        entries = store.entries_for_actor(result.actor_id, session_id=result.session_id, scene_id=result.scene_id)
+        referenced = [(entry, conflict) for entry in entries for conflict in entry.conflicts
+                      if conflict.conflict_id in result.conflict_refs]
+        if len(referenced) != len(set(result.conflict_refs)) or any(
+            entry.subject_ref != result.subject_ref or conflict.resolved for entry, conflict in referenced
+        ):
+            raise ValueError("result references an unrelated or resolved conflict")
         update = store.upsert(
             ActorSceneKnowledgeEntry(
                 entry_id=f"ask:{result.actor_id}:{result.subject_ref}:active_perception",
@@ -140,16 +158,17 @@ class ActivePerceptionPlanner:
                 subject_ref=result.subject_ref,
                 knowledge_type="space",
                 summary=result.summary,
+                claim=result.fact_claim,
                 source_kind="active_perception",
                 source_refs=[result.result_id, result.request_id, result.pqf_query_id, *result.provider_result_refs],
                 confidence=result.confidence,
             ),
             producer_ts=producer_ts,
         )
-        if result.conflict_refs and update.entry.conflicts:
+        for entry, conflict in referenced:
             store.resolve_conflict(
-                entry_id=update.entry.entry_id,
-                conflict_id=update.entry.conflicts[-1].conflict_id,
+                entry_id=entry.entry_id,
+                conflict_id=conflict.conflict_id,
                 result_ref=result.result_id,
                 producer_ts=producer_ts,
             )

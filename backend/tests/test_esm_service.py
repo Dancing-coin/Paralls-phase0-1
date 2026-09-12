@@ -129,6 +129,56 @@ def test_esm_service_accepts_the_registered_default_scene_plaque_policy() -> Non
     }
 
 
+def test_read_requires_record_access_and_discloses_only_on_success() -> None:
+    service = ESMService(readable_records={
+        "obj_plaque": {
+            "content": "The archive closes at dusk.",
+            "source_ref": "record:archive-plaque:v1",
+            "allowed_actor_ids": {"char_c"},
+        },
+        "obj_letter": {
+            "content": "A retained document.", "source_ref": "record:letter:v1",
+            "allowed_actor_ids": {"char_c"},
+        },
+    })
+    event = InteractIntent(
+        player_id="p1", room_id="room_demo", actor_id="char_c",
+        intent_type="interact_intent", producer_ts=12,
+        target_object_id="obj_plaque", interaction_type="read",
+    )
+    accepted = service.resolve_interaction(event, is_in_range=True)
+    assert accepted.resolution_status == "accepted"
+    assert accepted.read_content == "The archive closes at dusk."
+    assert accepted.read_source_ref == "record:archive-plaque:v1"
+
+    for denied in (
+        service.resolve_interaction(event, is_in_range=False),
+        service.resolve_interaction(event.model_copy(update={"actor_id": "char_b"}), is_in_range=True),
+    ):
+        assert denied.result_type == "constraint_state_result"
+        assert "read_content" not in denied.model_dump()
+
+    inspect = service.resolve_interaction(event.model_copy(update={"interaction_type": "inspect"}), is_in_range=True)
+    assert inspect.read_content is None
+    assert inspect.read_source_ref is None
+
+    legacy = ESMService().resolve_interaction(event, is_in_range=True)
+    assert legacy.resolution_status == "accepted"
+    assert legacy.read_content is None
+    assert legacy.read_source_ref is None
+
+    missing = ESMService().resolve_interaction(event.model_copy(update={"target_object_id": "obj_letter"}), is_in_range=True)
+    assert missing.resolution_status == "accepted"
+    assert missing.read_content is None
+
+    service.commit_interaction_state(
+        room_id="room_demo", scene_id="scene_demo", zone_id="zone_focus",
+        target_object_id="obj_letter", current_state="removed_from_surface",
+    )
+    removed = service.resolve_interaction(event.model_copy(update={"target_object_id": "obj_letter"}), is_in_range=True)
+    assert removed.result_type == "constraint_state_result"
+
+
 def test_esm_service_accepts_only_press_for_the_registered_lamp_switch_policy() -> None:
     service = ESMService()
     event = InteractIntent(

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.character_agent.models.memory_consistency import MemoryFactClaim
+
 
 class CharacterKnowledgeMemoryRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -14,4 +16,4 @@ class CharacterKnowledgeMemoryRecord(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     source_event_id: str
     producer_ts: int
-
+    claim: MemoryFactClaim | None = None

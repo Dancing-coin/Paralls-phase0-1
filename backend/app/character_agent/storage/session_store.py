@@ -24,9 +24,12 @@ class CharacterAgentSessionStore:
         event_type: str,
         producer_ts: int,
         payload: dict[str, object],
+        expected_revision: int | None = None,
     ) -> dict[str, object]:
         with self._lock:
             timeline = self._events_by_actor.setdefault(actor_id, [])
+            if expected_revision is not None and expected_revision != len(timeline):
+                raise ValueError("character_revision_conflict")
             event_index = len(timeline) + 1
             entry = {
                 "event_id": f"{actor_id}:{event_type}:{producer_ts}:{self._runtime_id}:{event_index}",
@@ -37,7 +40,11 @@ class CharacterAgentSessionStore:
                 "payload": dict(payload),
             }
             timeline.append(entry)
-            self._persist()
+            try:
+                self._persist()
+            except Exception:
+                timeline.pop()
+                raise
             return entry
 
     def list_events(self, actor_id: str) -> list[dict[str, object]]:

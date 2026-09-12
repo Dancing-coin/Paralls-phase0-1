@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.object_anchor import append_unique_lineage, derive_world_anchor_id
 from app.world_runtime.intelligence_upgrade import CanonicalPerceptBundle
+from app.character_agent.models.memory_consistency import MemoryFactClaim, compare_memory_claims
 
 
 KnowledgeType = Literal["space", "obstacle", "occlusion", "path", "environment", "affordance", "target", "failure"]
@@ -74,6 +75,7 @@ class ActorSceneKnowledgeEntry(BaseModel):
     target_ref: str = ""
     knowledge_type: KnowledgeType
     summary: str
+    claim: MemoryFactClaim | None = None
     source_kind: KnowledgeSourceKind
     source_refs: list[str] = Field(default_factory=list)
     source_ref_lineage: list[str] = Field(default_factory=list)
@@ -206,6 +208,7 @@ class ActorSceneKnowledgeStore:
                 "freshness": existing.freshness.model_copy(update={"state": "fresh", "last_confirmed_at": producer_ts}),
                 "source_refs": self._append_unique(existing.source_refs, incoming.source_refs),
                 "source_ref_lineage": self._append_unique(existing.source_ref_lineage, incoming.source_ref_lineage),
+                "claim": incoming.claim or existing.claim,
             }
         )
         if incoming.confidence > existing.confidence or incoming.summary != existing.summary:
@@ -457,6 +460,11 @@ class ActorSceneKnowledgeStore:
         raise KeyError(entry_id)
 
     def _is_conflict(self, existing: ActorSceneKnowledgeEntry, incoming: ActorSceneKnowledgeEntry) -> bool:
+        comparison = compare_memory_claims(existing.claim, incoming.claim)
+        if comparison != "not_comparable":
+            return comparison == "conflicted"
+        if existing.claim is not None and incoming.claim is not None:
+            return False
         if existing.summary == incoming.summary:
             return False
         if existing.world_truth_marker == "l1_projected_fact_ref" and incoming.source_kind == "vla_advisory":

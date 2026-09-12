@@ -157,6 +157,13 @@ def test_character_profile_accepts_minimal_stage2_payload() -> None:
     assert profile.temperament_response_layer.baseline_temperament.caution == 0.66
     assert profile.long_term_personality_drift_layer.drift_policy.require_non_transient_evidence is True
     assert profile.runtime_defaults.default_control_mode == "agent_full_auto"
+    assert profile.capability_constraint_layer.memory_retention == "normal"
+
+
+def test_character_profile_accepts_strong_memory_retention() -> None:
+    payload = _make_minimal_stage2_payload()
+    payload["capability_constraint_layer"]["memory_retention"] = "strong"
+    assert CharacterProfile.model_validate(payload).capability_constraint_layer.memory_retention == "strong"
 
 
 def test_character_profile_accepts_runtime_default_control_mode() -> None:

@@ -555,7 +555,8 @@ class ESMService:
         },
     }
 
-    def __init__(self) -> None:
+    def __init__(self, *, readable_records: dict[str, dict[str, object]] | None = None) -> None:
+        self._readable_records = {} if readable_records is None else readable_records
         self._environment_fields: dict[tuple[str, str], EnvironmentFieldState] = {}
         self._latest_environment_result: EnvironmentStateResult | None = None
         self._latest_state_machine_transition: StateMachineTransitionEvent | None = None
@@ -671,6 +672,40 @@ class ESMService:
                 settlement_status="rejected",
             )
 
+        read_record = None
+        if event.interaction_type == "read":
+            read_record = self._readable_records.get(event.target_object_id)
+            policy = self.interaction_policy_for(
+                event.target_object_id, "read", room_id=event.room_id,
+                scene_id=event.scene_id, zone_id=event.zone_id, actor_id=event.actor_id,
+            )
+            record_available = (
+                policy is not None
+                and self.interaction_state_for(
+                    room_id=event.room_id, scene_id=event.scene_id,
+                    zone_id=event.zone_id, target_object_id=event.target_object_id,
+                ) != "removed_from_surface"
+                and isinstance(read_record, dict)
+                and isinstance(read_record.get("content"), str)
+                and bool(read_record["content"])
+                and isinstance(read_record.get("source_ref"), str)
+                and bool(read_record["source_ref"])
+                and event.actor_id in read_record.get("allowed_actor_ids", ())
+            )
+            if read_record is not None and not record_available:
+                return ConstraintStateResult(
+                    request_ref=request.request_id,
+                    result_id=f"constraint:{request.request_id}",
+                    room_id=event.room_id, scene_id=event.scene_id, zone_id=event.zone_id,
+                    actor_id=event.actor_id, source_type="player",
+                    entity_id=event.target_object_id, target_object_id=event.target_object_id,
+                    causation_id=request.causation_id, correlation_id=request.correlation_id,
+                    producer_ts=event.producer_ts + 1,
+                    constraint_type="record_access_constraint", constraint_code="record_unavailable",
+                    constraint_summary="record is not available to this actor",
+                    blocking_entity_refs=[event.target_object_id], settlement_status="rejected",
+                )
+
         return ActionResolutionResult(
             request_ref=request.request_id,
             result_id=f"action_resolution:{request.request_id}",
@@ -694,6 +729,8 @@ class ESMService:
             ],
             stable_state_summary="interaction accepted",
             settlement_status="accepted",
+            read_content=str(read_record["content"]) if read_record is not None else None,
+            read_source_ref=str(read_record["source_ref"]) if read_record is not None else None,
         )
 
     def interaction_policy_for(

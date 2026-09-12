@@ -2,6 +2,7 @@ from copy import deepcopy
 
 from app.character_agent.models.knowledge_state import KnowledgeState
 from app.character_agent.models.knowledge_memory import CharacterKnowledgeMemoryRecord
+from app.character_agent.models.memory_consistency import MemoryFactClaim
 
 
 class CharacterKnowledgeMemory:
@@ -17,6 +18,7 @@ class CharacterKnowledgeMemory:
         confidence: float,
         source_event_id: str,
         producer_ts: int,
+        claim: MemoryFactClaim | None = None,
     ) -> dict[str, object]:
         entries = self._entries_by_actor.setdefault(actor_id, [])
         state_value = self._normalize_state(state)
@@ -30,6 +32,8 @@ class CharacterKnowledgeMemory:
             "source_event_id": source_event_id,
             "producer_ts": producer_ts,
         }
+        if claim is not None:
+            entry["claim"] = claim.model_dump()
         for idx, existing in enumerate(entries):
             if existing["proposition_key"] == proposition_key:
                 entries[idx] = deepcopy(entry)

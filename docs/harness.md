@@ -146,6 +146,7 @@ python scripts/verification/harness.py --profile siming-resource-staging
 python scripts/verification/harness.py --profile siming-adaptive-bridge
 python scripts/verification/harness.py --profile behavior-turn-runtime
 python scripts/verification/harness.py --profile character-continuity-recovery
+python scripts/verification/harness.py --profile character-memory-consistency
 python scripts/verification/harness.py --profile authority-graph-projection
 python scripts/verification/harness.py --profile siming-behavior-turn-runtime
 python scripts/verification/harness.py --profile siming-led-population-seed-continuity
@@ -692,6 +693,39 @@ not prove Siming, six-domain Authority projection, online LLM, or Godot closure.
 ```powershell
 python scripts/verification/harness.py --profile character-continuity-recovery
 ```
+
+### `character-memory-consistency`
+
+Backend-only evidence for the actor's known facts, a single actor's on-demand
+verification, bounded strong-memory recall, and an explicitly authorized
+per-request Siming correction. The report uses the flow test's JUnit properties
+to show the world result, updated actor belief, received source, and verification
+request; world truth is never rewritten by character memory. Strong memory
+queries only the actor's own evidence when needed and stays pending if it cannot
+fit the model budget. Siming has no default edit permission: each correction
+requires explicit bound authority and complete source content and revision.
+Reading record content depends on server-configured ESM readable records;
+without it, legacy `read` only proves visibility. Godot presentation and
+embodied integration remain unverified by this profile.
+The focused privacy test also requires reader-only content to stay out of
+debug WebSocket messages.
+
+`apply_memory_verification_result` 是可信后端 provider adapter 的内部接入口，
+目前没有 HTTP、WebSocket 或 LLM 自报入口。专项测试提供确定性的 provider 回执；
+真实 provider 与 Godot 接线仍待联调，不能把该报告当作真实具身感知的证明。
+获得 Godot 环境后，应验证同一 PQF 请求、实际 provider 返回、目标对象与有效时间、
+Character Core 记忆写回及场景反馈能够贯通，并重跑 `--profile all`。
+当前公开调试快照保留 `memory_summary` 字段，但不广播人物私有记忆正文。
+
+```powershell
+python scripts/verification/harness.py --profile character-memory-consistency
+# 从仓库根目录运行全量后端测试，确保跨目录导入能解析。
+python -m pytest backend/tests -v
+```
+
+Evidence: `.harness/verification/character-memory-consistency-report.json`,
+`character-memory-consistency-trace.json`, JUnit XML, and pytest log in the same
+verification directory.
 
 ### `authority-graph-projection`
 

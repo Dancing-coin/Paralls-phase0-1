@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import cast
 
 from app.models.authority_event import AuthorityEvent
+from app.character_agent.models.memory_consistency import MemoryCorrectionRequest, MemoryCorrectionReceipt
 from app.models.character_agent_runtime import CharacterGoalCommand
 from app.models.siming_catalyst import SimingCatalystInput
 from app.models.siming_character_bridge import (
@@ -34,9 +35,15 @@ class SimingCharacterDispatchAdapter:
         *,
         runtime: CharacterAgentRuntime,
         now_ts_provider: Callable[[], int] | None = None,
+        memory_edit_principal_ref: str = "",
     ) -> None:
         self._runtime = runtime
         self._now_ts_provider = now_ts_provider or (lambda: 0)
+        self._memory_edit_principal_ref = memory_edit_principal_ref
+
+    def dispatch_memory_correction(self, request: MemoryCorrectionRequest) -> MemoryCorrectionReceipt:
+        """Edit 身份由服务装配绑定，不从 catalyst 或请求载荷获取。"""
+        return self._runtime.apply_memory_correction(request, principal_ref=self._memory_edit_principal_ref)
 
     def dispatch(self, event: AuthorityEvent) -> SimingCharacterDispatchResult:
         if event.event_type not in SUPPORTED_SIMING_EVENT_TYPES:

@@ -53,6 +53,12 @@ class MemoryRecallResult:
     metadata: dict[str, object]
 
 
+class MissingRequiredMemoryEvidence(ValueError):
+    def __init__(self, missing_required_refs: list[str]) -> None:
+        self.missing_required_refs = missing_required_refs
+        super().__init__(f"missing_required_memory_evidence: {', '.join(missing_required_refs)}")
+
+
 class CharacterMemoryRecallPolicy:
     """Select a bounded, auditable memory view for a model context.
 
@@ -87,14 +93,23 @@ class CharacterMemoryRecallPolicy:
                 normalized["relational_memories"]
             )
 
+        profile = context.get("effective_profile") or context.get("profile") or {}
+        capability = profile.get("capability_constraint_layer", {}) if isinstance(profile, dict) else {}
+        strong = isinstance(capability, dict) and capability.get("memory_retention") == "strong"
+        pool_limit = 16 if strong and self.pool_limit == 8 else self.pool_limit
+        token_budget = 2400 if strong and self.token_budget == 1200 else self.token_budget
+        subjects = self._current_subjects(context)
+        required = self._required_memories(normalized, subjects) if strong else set()
         terms = self._context_terms(context)
         candidates: list[tuple[float, str, str, dict[str, object]]] = []
         selected_by_pool: dict[str, list[dict[str, object]]] = {}
+        missing_required_refs: list[str] = []
         for pool in _POOL_NAMES:
             ranked = sorted(
                 (
                     (
-                        self._score(entry, terms=terms, max_timestamp=self._max_timestamp(normalized[pool])),
+                        self._score(entry, terms=terms, max_timestamp=self._max_timestamp(normalized[pool]))
+                        + (2.0 if (pool, self._memory_id(entry)) in required else 0.0),
                         self._timestamp(entry),
                         str(entry.get("memory_id", "") or entry.get("event_id", "") or ""),
                         entry,
@@ -103,7 +118,12 @@ class CharacterMemoryRecallPolicy:
                 ),
                 key=lambda item: (-item[0], -item[1], item[2]),
             )
-            selected = ranked[: self.pool_limit]
+            selected = ranked[:pool_limit]
+            missing_required_refs.extend(
+                f"{_REF_PREFIXES[pool]}:{self._memory_id(item[3])}"
+                for item in ranked[pool_limit:]
+                if (pool, self._memory_id(item[3])) in required
+            )
             selected_by_pool[pool] = [deepcopy(item[3]) for item in selected]
             candidates.extend(
                 (score, pool, memory_id, deepcopy(entry))
@@ -116,8 +136,10 @@ class CharacterMemoryRecallPolicy:
         truncated = False
         for score, pool, memory_id, entry in candidates:
             entry_tokens = self._estimate_tokens(entry)
-            if estimated_tokens + entry_tokens > self.token_budget:
+            if estimated_tokens + entry_tokens > token_budget:
                 truncated = True
+                if (pool, memory_id) in required:
+                    missing_required_refs.append(f"{_REF_PREFIXES[pool]}:{memory_id}")
                 continue
             kept_ids.add((pool, memory_id))
             estimated_tokens += entry_tokens
@@ -151,9 +173,10 @@ class CharacterMemoryRecallPolicy:
             "selected_counts": {
                 pool: len(result_memory[pool]) for pool in _POOL_NAMES
             },
-            "pool_limit": self.pool_limit,
-            "token_budget": self.token_budget,
+            "pool_limit": pool_limit,
+            "token_budget": token_budget,
             "estimated_tokens": estimated_tokens,
+            "missing_required_refs": missing_required_refs,
             "truncated": truncated or any(
                 len(normalized[pool]) > len(result_memory[pool]) for pool in _POOL_NAMES
             ),
@@ -161,6 +184,54 @@ class CharacterMemoryRecallPolicy:
             "goal_terms": self._context_values(context, "goal_terms"),
         }
         return MemoryRecallResult(memory=result_memory, metadata=metadata)
+
+    def _current_subjects(self, context: dict[str, object]) -> set[str]:
+        subjects: set[str] = set()
+        for key in ("snapshot", "event", "interpretation", "current_goal_state"):
+            value = context.get(key)
+            if isinstance(value, dict):
+                for field in ("current_focus_target", "attention_target", "target_object_id", "target_actor_id", "target_environment_id", "subject_ref", "target_ref",
+                              "current_attention_targets", "attention_targets"):
+                    subject = value.get(field)
+                    if isinstance(subject, str) and subject:
+                        subjects.add(subject)
+                    elif isinstance(subject, list):
+                        subjects.update(item for item in subject if isinstance(item, str) and item)
+        for field in ("attention_targets",):
+            value = context.get(field)
+            if isinstance(value, list):
+                subjects.update(item for item in value if isinstance(item, str) and item)
+        return subjects
+
+    def _required_memories(
+        self, memory: dict[str, list[dict[str, object]]], subjects: set[str]
+    ) -> set[tuple[str, str]]:
+        latest: dict[tuple[str, str, str], dict[str, object]] = {}
+        for entry in memory["knowledge_memories"]:
+            claim = entry.get("claim")
+            if not isinstance(claim, dict) or claim.get("subject_ref") not in subjects:
+                continue
+            if entry.get("state") in {"abandoned", "disputed"}:
+                continue
+            key = (str(claim.get("scope_ref", "")), str(claim["subject_ref"]), str(claim.get("predicate", "")))
+            previous = latest.get(key)
+            if previous is None or int(claim.get("valid_at", 0) or 0) > int(previous["claim"].get("valid_at", 0) or 0):
+                latest[key] = entry
+        required = {("knowledge_memories", self._memory_id(entry)) for entry in latest.values()}
+        source_refs = {
+            str(ref) for entry in latest.values()
+            for ref in (entry.get("source_event_id"), entry["claim"].get("source_ref")) if ref
+        }
+        for pool in ("event_memories", "observation_memories"):
+            required.update(
+                (pool, self._memory_id(entry)) for entry in memory[pool]
+                if any(
+                    isinstance(ref, str) and ref in source_refs
+                    for ref in (self._memory_id(entry), entry.get("event_id"), entry.get("source_event_id"),
+                                *(entry.get("refs") if isinstance(entry.get("refs"), list) else []))
+                )
+            )
+        return required
 
     def _score(
         self,
@@ -290,4 +361,4 @@ class CharacterMemoryRecallPolicy:
         return result
 
 
-__all__ = ["CharacterMemoryRecallPolicy", "MemoryRecallResult"]
+__all__ = ["CharacterMemoryRecallPolicy", "MemoryRecallResult", "MissingRequiredMemoryEvidence"]

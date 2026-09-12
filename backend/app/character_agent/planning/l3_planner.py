@@ -1,7 +1,7 @@
 from app.character_agent.gateway.context_builder import CharacterContextBuilder
 from app.character_agent.models.cognition_delta import CharacterHigherOrderDelta
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
-from app.character_agent.gateway.memory_recall import CharacterMemoryRecallPolicy
+from app.character_agent.gateway.memory_recall import CharacterMemoryRecallPolicy, MissingRequiredMemoryEvidence
 from app.character_agent.models.cognition_delta import CharacterBeliefDelta
 from app.character_agent.models.cognition_delta import CharacterSocialDelta
 from app.character_agent.models.event_memory import CharacterEventMemoryRecord
@@ -13,6 +13,7 @@ from app.character_agent.models.observation_memory import CharacterObservationMe
 from app.character_agent.models.social_memory import CharacterSocialMemoryRecord
 from app.character_agent.models.working_memory_state import CharacterWorkingMemoryState
 from app.character_agent.planning.triple_filter import CharacterTripleFilter
+from app.character_agent.profile.personality_projection import PersonalityProjectionResolver
 from app.models.character_agent_runtime import CharacterActiveGoalFrame
 from app.models.character_agent_runtime import CharacterIntentDecision, CharacterInterpretation, CharacterSuggestionPacket
 
@@ -68,9 +69,17 @@ class CharacterAgentL3Service:
                 "snapshot": normalized_snapshot,
                 "interpretation": interpretation.model_dump(),
                 "current_goal_state": normalized_current_goal_state,
+                "profile": normalized_profile,
+                "effective_profile": normalized_effective_profile,
             },
         )
+        if recall.metadata.get("missing_required_refs"):
+            raise MissingRequiredMemoryEvidence(list(recall.metadata["missing_required_refs"]))
         recalled_memory_bundle = self._memory_record_bundle_model(recall.memory)
+        verification = self._verification_context(
+            interpretation, normalized_snapshot, recall.memory, normalized_effective_profile,
+            self._list_entries(unresolved_tensions),
+        )
         behavior_policy = self._runtime_behavior_policy(recall.memory)
         normalized_goal_state_history = self._goal_state_history_mappings(
             goal_state_history,
@@ -102,6 +111,7 @@ class CharacterAgentL3Service:
         )
         model_output = self._gateway.run_task(
             task_kind="l3_planning",
+            **({"prepared_recall": recall} if isinstance(self._gateway, CharacterModelGateway) else {}),
             context={
                 "actor_id": interpretation.actor_id,
                 "control_mode": control_mode,
@@ -113,6 +123,7 @@ class CharacterAgentL3Service:
                 "snapshot": normalized_snapshot,
                 "memory": recall.memory,
                 "memory_recall": recall.metadata,
+                "verification": verification,
                 "behavior_policy": behavior_policy,
                 "working_memory_state": normalized_working_memory_state,
                 "active_goal_tags": context_goal_tags,
@@ -155,6 +166,7 @@ class CharacterAgentL3Service:
                 working_memory_state=normalized_working_memory_state,
                 need_tension_state=normalized_need_tension_state,
                 dynamic_state=normalized_dynamic_state,
+                verification=verification,
             )
             for candidate in candidates
         ]
@@ -167,6 +179,7 @@ class CharacterAgentL3Service:
             "candidates": candidates,
             "filter_results": filter_results,
             "memory_recall": recall.metadata,
+            "verification": verification,
             "behavior_policy": behavior_policy,
         }
 
@@ -684,6 +697,7 @@ class CharacterAgentL3Service:
         working_memory_state: dict[str, object],
         need_tension_state: dict[str, object],
         dynamic_state: dict[str, object],
+        verification: dict[str, object] | None = None,
     ) -> dict[str, object]:
         persona_ok = True
         persona_notes: list[str] = []
@@ -707,6 +721,7 @@ class CharacterAgentL3Service:
             working_memory_state=working_memory_state,
             need_tension_state=need_tension_state,
             dynamic_state=dynamic_state,
+            verification=verification,
         )
         return self._triple_filter.evaluate_candidate(
             candidate=candidate,
@@ -780,6 +795,7 @@ class CharacterAgentL3Service:
         working_memory_state: dict[str, object] | None = None,
         need_tension_state: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | None = None,
+        verification: dict[str, object] | None = None,
     ) -> tuple[float, list[str]]:
         _ = interpretation
         _ = snapshot
@@ -806,6 +822,9 @@ class CharacterAgentL3Service:
         }
         score = base_scores.get(candidate, 0.3)
         notes: list[str] = []
+        if verification and candidate in verification.get("recommended_intents", []):
+            score += .15 * float(verification["analytical_control"])
+            notes.append("personality_projection=verification")
         dynamic_signal = self._dynamic_state_mapping(dynamic_state, working_memory_state=working_memory_state)
         affect_signal = self._affect_state_mapping(dynamic_signal)
         approach_bias = self._positive_approach_bias(affect_signal)
@@ -850,6 +869,36 @@ class CharacterAgentL3Service:
                 notes.append("pressure_penalty=exposure")
 
         return self._clamp(score), notes
+
+    def _verification_context(self, interpretation, snapshot, memory, profile, unresolved_tensions=()) -> dict[str, object]:
+        target = interpretation.attention_target
+        if not target:
+            return {}
+        visible_targets = snapshot.get("current_attention_targets", [])
+        available = target == snapshot.get("current_focus_target") or target in visible_targets
+        if not available:
+            return {}
+        recommended = ["ask_probe"] if target.startswith("char_") else ["observe", "inspect_object"]
+        projection = PersonalityProjectionResolver().resolve(profile)
+        for record in memory.get("knowledge_memories", []):
+            claim = record.get("claim") if isinstance(record, dict) else None
+            if isinstance(claim, dict) and claim.get("subject_ref") == target and record.get("state") in {"disputed", "stale"}:
+                return {"subject_ref": target, "reason": record["state"], "source_ref": claim.get("source_ref"),
+                        "recommended_intents": recommended, "analytical_control": projection["analytical_control"]}
+        # 沿用运行时传入的本人未决事项；不另造只在测试快照中存在的失败列表。
+        for failure in unresolved_tensions:
+            if (isinstance(failure, dict) and failure.get("category") == "constraint_result"
+                    and failure.get("status", "active") == "active" and failure.get("target_ref") == target
+                    and failure.get("source_event_id")):
+                if any(isinstance(record, dict) and isinstance(record.get("claim"), dict)
+                    and record["claim"].get("subject_ref") == target
+                    and record.get("state") == "high_confidence_believed"
+                    and record["claim"].get("valid_at", 0) >= failure.get("last_reinforced_ts", 0)
+                    for record in memory.get("knowledge_memories", [])):
+                    continue
+                return {"subject_ref": target, "reason": "failed_interaction", "source_ref": failure["source_event_id"],
+                        "recommended_intents": recommended, "analytical_control": projection["analytical_control"]}
+        return {}
 
     def _map_candidate_to_intent(self, candidate: str) -> str:
         mapping = {

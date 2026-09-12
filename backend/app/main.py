@@ -3405,7 +3405,7 @@ def _handle_envelope(
                     stage="character_input_received",
                     actor_id=event.actor_id,
                     summary=summarize_character_input_from_world_result(event.actor_id, world_result.model_dump()),
-                    detail=world_result.model_dump(),
+                    detail=world_result.model_dump(exclude={"read_content", "read_source_ref"}),
                 )
             )
             transition = esm_service.emit_state_machine_transition(
@@ -5609,6 +5609,10 @@ def _publish_world_result_authority_event(
     *,
     source_event: object,
 ) -> list[dict[str, object]]:
+    if (getattr(result, "read_content", None) and getattr(result, "read_source_ref", None)
+        and result.actor_id == getattr(source_event, "actor_id", None)):
+        character_agent_runtime.record_settlement_result(
+            actor_id=result.actor_id, producer_ts=result.producer_ts, payload=result.model_dump(exclude_none=True))
     authority_event = authority_event_adapter.world_result_event(result, source_event=source_event)
     frontend_authority_event_projector.handle_event(authority_event)
     authority_event_bus.publish(authority_event)
@@ -5964,7 +5968,7 @@ def _emit_debug_from_messages(messages: list[dict[str, object]]) -> None:
 
 def _observatory_messages_from_outbound(messages: list[dict[str, object]]) -> list[dict[str, object]]:
     extras: list[dict[str, object]] = []
-    extras.extend(character_agent_runtime.drain_observatory_messages())
+    extras.extend(_public_actor_observatory_message(message) for message in character_agent_runtime.drain_observatory_messages())
     extras.extend(siming_event_pipeline.drain_observatory_messages())
     actor_events: list[dict[str, object]] = []
     siming_events: list[dict[str, object]] = []
@@ -5991,6 +5995,25 @@ def _observatory_messages_from_outbound(messages: list[dict[str, object]]) -> li
     extras.extend(_scheduling_round_trace_messages_from_actor_events(actor_events))
     extras.extend(_script_beat_messages_from_observatory_events(actor_events, siming_events, world_events))
     return extras
+
+
+def _public_actor_observatory_message(message: dict[str, object]) -> dict[str, object]:
+    payload = message.get("payload", {})
+    if not isinstance(payload, dict):
+        return message
+    if message.get("message_type") == "character_agent_debug_snapshot":
+        # 公开观测保留协议形状；人物私有记忆正文不进入房间广播。
+        return {**message, "payload": {**payload, "memory_summary": ""}}
+    if message.get("message_type") == "character_agent_debug_event" and payload.get("stage") == "settlement_result":
+        detail = payload.get("detail", {})
+        if isinstance(detail, dict):
+            public_detail = {key: value for key, value in detail.items()
+                if key not in {"read_content", "read_source_ref"}}
+            if isinstance(public_detail.get("detail"), dict):
+                public_detail["detail"] = {key: value for key, value in public_detail["detail"].items()
+                    if key not in {"read_content", "read_source_ref"}}
+            return {**message, "payload": {**payload, "detail": public_detail}}
+    return message
 
 
 def _world_outcome_observatory_messages_from_payload(payload: dict[str, object]) -> list[dict[str, object]]:

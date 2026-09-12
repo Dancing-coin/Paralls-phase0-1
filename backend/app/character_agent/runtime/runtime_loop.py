@@ -1,6 +1,9 @@
 from copy import deepcopy
+import hashlib
+import json
 import os
 from pathlib import Path
+from threading import RLock
 from typing import Callable
 
 from app.character_agent.logic.affect_engine import AffectEngine
@@ -22,6 +25,9 @@ from app.character_agent.models.goal_runtime import CharacterActiveGoalFrame
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
 from app.character_agent.models.goal_runtime import CharacterGoalStateRecord
 from app.character_agent.models.memory_record_bundle import CharacterMemoryRecordBundle
+from app.character_agent.models.memory_consistency import (
+    MemoryCorrectionRequest, MemoryCorrectionReceipt, MemoryFactClaim, MemorySourceRecord, memory_claim_key,
+)
 from app.character_agent.models.supervision import (
     CharacterBackgroundCognitionResult,
     CharacterBackgroundMode,
@@ -54,8 +60,11 @@ from app.models.character_perceived import CharacterPerceivedEvent
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
 from app.models.siming_heavenly_graph import HeavenlyGraphScope
 from app.character_agent.reasoning.l1_perception import CharacterAgentL1Service
+from app.character_agent.reasoning.active_perception import ActivePerceptionPlanner, ActivePerceptionRequest, ActivePerceptionResult
+from app.character_agent.reasoning.actor_scene_knowledge import ActorSceneKnowledgeEntry
 from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
 from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+from app.character_agent.gateway.memory_recall import MissingRequiredMemoryEvidence
 from app.character_agent.execution.l4_adapter import CharacterAgentL4Adapter
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
 from app.character_agent.storage.session_store import CharacterAgentSessionStore
@@ -100,10 +109,18 @@ class CharacterAgentRuntime:
         activation_authority: ProfileActivationAuthority | None = None,
         behavior_turn_recorder: BehaviorTurnRecorder | None = None,
         behavior_turn_scope_resolver: Callable[[str], HeavenlyGraphScope] | None = None,
+        memory_correction_authorizer: Callable[[str, MemoryCorrectionRequest], bool] | None = None,
+        memory_source_resolver: Callable[[str], MemorySourceRecord | None] | None = None,
+        memory_now_ts_provider: Callable[[], int] | None = None,
     ) -> None:
         if os.getenv("CHARACTER_GRAPH_REQUIRE_CONTINUITY", "").strip() == "1" and continuity_store is None:
             raise ValueError("graph continuity store is required in production continuity mode")
         self._profile_registry = CharacterProfileRegistry.from_directory(self._PROFILE_DIRECTORY)
+        # ponytail: 单 runtime 的低频修复串行执行；多进程写入时需使用 owner 事务锁。
+        self._memory_correction_lock = RLock()
+        self._memory_correction_authorizer = memory_correction_authorizer
+        self._memory_source_resolver = memory_source_resolver
+        self._memory_now_ts_provider = memory_now_ts_provider
         self._supported_actor_ids = set(self._profile_registry.actor_ids())
         self._continuity_actor_ids = set(continuity_actor_ids or ())
         self._activation_world_ref = "world:default"
@@ -152,6 +169,7 @@ class CharacterAgentRuntime:
         self._session_store = CharacterAgentSessionStore(storage_root=storage_root)
         self._graph_session_timelines: dict[str, list[dict[str, object]]] = {}
         self._memory_store = memory_store or CharacterAgentMemoryStore()
+        self._projected_memory_scene_events: set[tuple[str, str]] = set()
         self._dynamic_state_store = CharacterDynamicStateStore()
         self._need_tension_store = CharacterNeedTensionStore()
         self._goal_state_store = CharacterGoalStateStore()
@@ -182,6 +200,9 @@ class CharacterAgentRuntime:
         self._drift_promotion_gate = DriftPromotionGate()
         self._rehydrate_runtime_state_from_timeline()
         self._rehydrate_graph_continuity()
+        for actor_id in self._supported_actor_ids | self._continuity_actor_ids:
+            for event in self.get_session_timeline(actor_id):
+                self._update_memory_scene_knowledge(event)
 
     def ingest_character_perceived_event(self, event: CharacterPerceivedEvent) -> list[CharacterGoalCommand]:
         if not self.supports_actor(event.actor_id):
@@ -306,10 +327,10 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             control_mode=self.get_control_mode(event.actor_id),
             source_stage="character_perceived_event",
-            run_model=lambda: self._l2.interpret_perceived_event(
+            run_model=lambda memory_override=None: self._l2.interpret_perceived_event(
                 snapshot,
                 event,
-                memory_bundle=memory_record_bundle,
+                memory_bundle=memory_override if memory_override is not None else memory_record_bundle,
                 control_mode=self.get_control_mode(event.actor_id),
                 working_memory_state=working_memory_state,
                 current_goal_state=current_goal_state,
@@ -359,12 +380,12 @@ class CharacterAgentRuntime:
             interpretation=interpretation,
             control_mode=self.get_control_mode(event.actor_id),
             source_stage="character_perceived_event",
-            run_model=lambda: self._l3.select_intent(
+            run_model=lambda memory_override=None: self._l3.select_intent(
                 interpretation,
                 snapshot=snapshot.model_dump(),
                 profile=self._profile_payload(event.actor_id),
                 effective_profile=effective_profile,
-                memory_bundle=memory_record_bundle,
+                memory_bundle=memory_override if memory_override is not None else memory_record_bundle,
                 control_mode=self.get_control_mode(event.actor_id),
                 working_memory_state=working_memory_state,
                 current_goal_state=current_goal_state,
@@ -668,10 +689,10 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             control_mode=self.get_control_mode(event.actor_id),
             source_stage="self_body_perceived_event",
-            run_model=lambda: self._l2.interpret_self_body_event(
+            run_model=lambda memory_override=None: self._l2.interpret_self_body_event(
                 snapshot,
                 event,
-                memory_bundle=memory_record_bundle,
+                memory_bundle=memory_override if memory_override is not None else memory_record_bundle,
                 control_mode=self.get_control_mode(event.actor_id),
                 working_memory_state=working_memory_state,
                 current_goal_state=current_goal_state,
@@ -712,11 +733,11 @@ class CharacterAgentRuntime:
             interpretation=interpretation,
             control_mode=self.get_control_mode(event.actor_id),
             source_stage="self_body_perceived_event",
-            run_model=lambda: self._l3.select_intent(
+            run_model=lambda memory_override=None: self._l3.select_intent(
                 interpretation,
                 snapshot=snapshot.model_dump(),
                 profile=self._profile_payload(event.actor_id),
-                memory_bundle=memory_record_bundle,
+                memory_bundle=memory_override if memory_override is not None else memory_record_bundle,
                 control_mode=self.get_control_mode(event.actor_id),
                 working_memory_state=working_memory_state,
                 current_goal_state=current_goal_state,
@@ -902,10 +923,10 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             control_mode=self.get_control_mode(actor_id),
             source_stage="siming_output_event",
-            run_model=lambda: self._l2.interpret_siming_output(
+            run_model=lambda memory_override=None: self._l2.interpret_siming_output(
                 snapshot,
                 normalized_payload,
-                memory_bundle=memory_record_bundle,
+                memory_bundle=memory_override if memory_override is not None else memory_record_bundle,
                 control_mode=self.get_control_mode(actor_id),
                 working_memory_state=working_memory_state,
                 current_goal_state=current_goal_state,
@@ -950,11 +971,11 @@ class CharacterAgentRuntime:
             interpretation=interpretation,
             control_mode=self.get_control_mode(actor_id),
             source_stage="siming_output_event",
-            run_model=lambda: self._l3.select_intent(
+            run_model=lambda memory_override=None: self._l3.select_intent(
                 interpretation,
                 snapshot=snapshot.model_dump(),
                 profile=self._profile_payload(actor_id),
-                memory_bundle=memory_record_bundle,
+                memory_bundle=memory_override if memory_override is not None else memory_record_bundle,
                 control_mode=self.get_control_mode(actor_id),
                 working_memory_state=working_memory_state,
                 current_goal_state=current_goal_state,
@@ -1159,6 +1180,208 @@ class CharacterAgentRuntime:
         self, command: CharacterContinuityCommand
     ) -> CharacterContinuityReceipt:
         return self._continuity_service.apply_command(command)
+
+    def get_memory_revision(self, actor_id: str) -> int:
+        """使用角色事件时间线的版本，普通认知写入也会使旧修复请求失效。"""
+        return len(self.get_session_timeline(actor_id))
+
+    def get_target_memory_record_bundle(self, actor_id: str, subject_refs: set[str]) -> CharacterMemoryRecordBundle:
+        """按当前目标补查本人的已获知经历，不访问世界真相或其他角色。"""
+        projection = CharacterAgentMemoryStore()
+        # ponytail: 按需扫描单个角色时间线；历史量显著增长后增加角色内命题索引。
+        for event in self.get_session_timeline(actor_id):
+            payload = event.get("payload", {})
+            claim = payload.get("fact_claim") if isinstance(payload, dict) else None
+            if event.get("event_type") == "character_memory_correction":
+                claim = payload.get("knowledge", {}).get("claim")
+            if isinstance(claim, dict) and claim.get("subject_ref") in subject_refs:
+                projection.write_event(event)
+        bundle = projection.retrieval_record_bundle(actor_id)
+        sources = {source for record in bundle.knowledge_memories for source in
+            (record.source_event_id, record.claim.source_ref if record.claim else "") if source}
+        return bundle.model_copy(update={
+            "event_memories": [record for record in bundle.event_memories if record.source_event_id in sources or sources.intersection(record.refs)],
+            "observation_memories": [record for record in bundle.observation_memories if record.source_event_id in sources or sources.intersection(record.refs)],
+        })
+
+    def _run_with_memory_recall(self, actor_id: str, snapshot: CharacterPrivateWorldSnapshot, run_model):
+        try:
+            return run_model()
+        except MissingRequiredMemoryEvidence as error:
+            subjects = set(snapshot.current_attention_targets or snapshot.attention_targets)
+            focused = self.get_target_memory_record_bundle(actor_id, subjects)
+            found = {record.memory_id for name in type(focused).model_fields for record in getattr(focused, name)}
+            if not subjects or any(ref.split(":", 1)[-1] not in found for ref in error.missing_required_refs):
+                raise
+            return run_model(focused)
+
+    def get_memory_verification_requests(
+        self, actor_id: str, *, producer_ts: int, room_id: str = "room_demo",
+        scene_id: str = "scene_demo", zone_id: str = "zone_focus",
+    ):
+        """只为当前角色已知的异常生成一次感知请求，由现有 provider 链执行。"""
+        requests = ActivePerceptionPlanner().requests_for_actor(
+            self._l1.get_actor_scene_knowledge_store(), actor_id=actor_id, session_id=room_id,
+            room_id=room_id, scene_id=scene_id, zone_id=zone_id)
+        timeline = self.get_session_timeline(actor_id)
+        consumed = {event.get("payload", {}).get("verification_request_ref") for event in timeline}
+        pending = [event["payload"] for event in timeline
+            if event.get("event_type") == "character_memory_verification_requested"
+            and event["payload"]["request_id"] not in consumed]
+        created = False
+        for index, request in enumerate(requests):
+            existing = next((item for item in pending if all(item.get(key) == getattr(request, key)
+                for key in ("session_id", "scene_id", "subject_ref", "reason", "source_entry_ids"))), None)
+            if existing is not None:
+                requests[index] = ActivePerceptionRequest.model_validate(existing)
+                continue
+            request.request_id += f":{self.get_memory_revision(actor_id)}"
+            request.to_pqf(started_at=producer_ts, ended_at=producer_ts)
+            self._session_append_event(actor_id=actor_id, event_type="character_memory_verification_requested",
+                producer_ts=producer_ts, payload=request.model_dump())
+            created = True
+        if created:
+            self._persist_graph_continuity(actor_id=actor_id, producer_ts=producer_ts)
+        return requests
+
+    def apply_memory_verification_result(self, result: ActivePerceptionResult, *, producer_ts: int) -> None:
+        """消费可信后端 provider 的实际回执；不接受客户端或模型自报的感知结果。"""
+        result = ActivePerceptionResult.model_validate(result.model_dump())
+        timeline = self.get_session_timeline(result.actor_id)
+        request_event = next((event for event in timeline if event.get("event_type") == "character_memory_verification_requested"
+            and event.get("payload", {}).get("request_id") == result.request_id), None)
+        if request_event is None:
+            raise ValueError("memory verification request not found")
+        request = request_event["payload"]
+        if any(request.get(key) != getattr(result, key) for key in ("actor_id", "session_id", "scene_id", "subject_ref", "pqf_query_id")):
+            raise ValueError("memory verification result does not match request")
+        if producer_ts < int(request_event["producer_ts"]):
+            raise ValueError("memory verification result predates request")
+        for event in timeline:
+            payload = event.get("payload", {})
+            if payload.get("verification_request_ref") == result.request_id:
+                if payload.get("verification_result") != result.model_dump() or event["producer_ts"] != producer_ts:
+                    raise ValueError("memory verification request already consumed with different result")
+                self._persist_graph_continuity(actor_id=result.actor_id, producer_ts=producer_ts)
+                self._memory_store.write_event(event)
+                self._update_memory_scene_knowledge(event)
+                return
+        store = self._l1.get_actor_scene_knowledge_store()
+        entries = [entry for entry in store.entries_for_actor(result.actor_id, session_id=result.session_id, scene_id=result.scene_id)
+            if entry.entry_id in request["source_entry_ids"] and entry.subject_ref == result.subject_ref]
+        if result.fact_claim is not None:
+            if any(entry.claim and (entry.claim.scope_ref, entry.claim.predicate) !=
+                (result.fact_claim.scope_ref, result.fact_claim.predicate) for entry in entries):
+                raise ValueError("memory verification claim scope does not match request")
+            if result.fact_claim.valid_at < int(request_event["producer_ts"]):
+                raise ValueError("memory verification claim predates request")
+        conflict_refs = [conflict.conflict_id for entry in entries for conflict in entry.conflicts if not conflict.resolved]
+        if result.conflict_refs and not set(result.conflict_refs).issubset(conflict_refs):
+            raise ValueError("memory verification references unrelated conflict")
+        projected_result = result.model_copy(update={"conflict_refs": result.conflict_refs or conflict_refs})
+        # 先在副本检查；持久事件成功提交后，才修改角色的可重建认知投影。
+        ActivePerceptionPlanner().apply_result(deepcopy(store), projected_result, producer_ts=producer_ts)
+        self._record_character_perceived_event(CharacterPerceivedEvent(
+            actor_id=result.actor_id, percept_channel="visual", producer_ts=producer_ts,
+            room_id=request["room_id"], scene_id=result.scene_id, zone_id=request["zone_id"],
+            perceived_summary=result.summary, source_candidate_event_id=result.result_id,
+            target_object_id=result.subject_ref, certainty_score=result.confidence,
+            source_ref_lineage=[result.result_id, result.request_id, result.pqf_query_id, *result.provider_result_refs],
+            fact_claim=result.fact_claim,
+        ), verification_result=result, verification_conflict_refs=projected_result.conflict_refs)
+
+    def apply_memory_correction(
+        self, request: MemoryCorrectionRequest, *, principal_ref: str,
+    ) -> MemoryCorrectionReceipt:
+        """按次修复已知证据；授权与源版本由服务端 owner 提供。"""
+        request = MemoryCorrectionRequest.model_validate(request.model_dump())
+        with self._memory_correction_lock:
+            actor_id = request.actor_id
+            timeline = self.get_session_timeline(actor_id)
+            revision = len(timeline)
+            local_revision = len(self._session_store.list_events(actor_id))
+            def reject(reason: str) -> MemoryCorrectionReceipt:
+                return MemoryCorrectionReceipt(request_id=request.request_id, actor_id=actor_id,
+                    status="rejected", reason=reason, before_revision=revision, after_revision=revision)
+
+            if not self.supports_continuity_actor(actor_id):
+                return reject("target_unavailable")
+            if self._memory_correction_authorizer is None or not self._memory_correction_authorizer(principal_ref, request):
+                return reject("permission_denied")
+            digest = hashlib.sha256(json.dumps(request.model_dump(mode="json"), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+            for event in timeline:
+                payload = event.get("payload", {})
+                if event.get("event_type") != "character_memory_correction" or not isinstance(payload, dict):
+                    continue
+                if payload.get("idempotency_key") == request.idempotency_key or payload.get("request_id") == request.request_id:
+                    if payload.get("request_digest") != digest:
+                        return reject("idempotency_conflict")
+                    # 已提交事件是回执和投影的共同来源，投影失败可以再次重建。
+                    self._memory_store.write_event(event)
+                    self._persist_graph_continuity(actor_id=actor_id, producer_ts=int(event["producer_ts"]))
+                    return MemoryCorrectionReceipt.model_validate(payload["receipt"])
+            now = self._memory_now_ts_provider() if self._memory_now_ts_provider else max((int(event.get("producer_ts", 0)) for event in timeline), default=0)
+            if now < request.requested_at or now >= request.expires_at:
+                return reject("request_expired")
+            if revision != request.expected_character_revision:
+                return reject("character_revision_conflict")
+            target = next((record for record in self.get_memory_record_bundle(actor_id).knowledge_memories
+                if record.memory_id == request.target_memory_refs[0]), None)
+            if target is None:
+                return reject("target_memory_not_found")
+            known: dict[str, MemoryFactClaim] = {}
+            for event in timeline:
+                payload = event.get("payload", {})
+                if event.get("event_type") != "character_perceived_event" or not isinstance(payload, dict):
+                    continue
+                claim_payload = payload.get("fact_claim")
+                if isinstance(claim_payload, dict) and int(event.get("producer_ts", 0)) <= now:
+                    claim = MemoryFactClaim.model_validate(claim_payload)
+                    if claim.source_ref in known and known[claim.source_ref] != claim:
+                        return reject("source_conflict")
+                    known[claim.source_ref] = claim
+            if any(source not in known for source in request.source_refs):
+                return reject("source_not_known")
+            claims = [known[source] for source in request.source_refs]
+            if any(memory_claim_key(claim) != target.proposition_key for claim in claims):
+                return reject("source_target_mismatch")
+            selected = max(claims, key=lambda claim: claim.valid_at)
+            if any(memory_claim_key(claim) == target.proposition_key and claim.valid_at > selected.valid_at for claim in known.values()):
+                return reject("source_superseded")
+            if any(claim.valid_at == selected.valid_at and claim.value != selected.value for claim in claims):
+                return reject("source_conflict")
+            if self._memory_source_resolver is None:
+                return reject("source_validation_unavailable")
+            for source in request.source_refs:
+                authoritative = self._memory_source_resolver(source)
+                if authoritative is None or authoritative.revision != request.source_revision_vector[source]:
+                    return reject("source_revision_conflict")
+                if authoritative.claim != known[source]:
+                    return reject("source_content_mismatch")
+            receipt = MemoryCorrectionReceipt(request_id=request.request_id, actor_id=actor_id,
+                status="applied", before_revision=revision, after_revision=revision + 1,
+                applied_memory_refs=request.target_memory_refs, source_refs=request.source_refs)
+            knowledge = target.model_copy(update={"claim": selected,
+                "proposition": f"{selected.subject_ref}:{selected.predicate}={selected.value}",
+                "state": "high_confidence_believed", "confidence": 1.0, "producer_ts": now})
+            try:
+                stored = self._session_store.append_event(actor_id=actor_id,
+                    event_type="character_memory_correction", producer_ts=now,
+                    expected_revision=local_revision, payload={
+                        "request_id": request.request_id, "idempotency_key": request.idempotency_key,
+                        "request_digest": digest, "principal_ref": principal_ref, "reason": request.reason,
+                        "source_refs": list(request.source_refs), "source_revision_vector": request.source_revision_vector,
+                        "supersedes": target.source_event_id, "knowledge": knowledge.model_dump(mode="json"),
+                        "receipt": receipt.model_dump(mode="json"),
+                    })
+            except ValueError as error:
+                if str(error) == "character_revision_conflict":
+                    return reject("character_revision_conflict")
+                raise
+            # 图模式也先提交可回放时间线；有效记忆只是该事件的派生投影。
+            self._persist_graph_continuity(actor_id=actor_id, producer_ts=now)
+            self._memory_store.write_event(stored)
+            return receipt
 
     def ingest_seed_projection(self, seed: object) -> list[CharacterGoalCommand]:
         # Public callers must use apply_character_continuity_command; this parser is internal.
@@ -1458,11 +1681,21 @@ class CharacterAgentRuntime:
         story_branch_id: str | None = None,
         valid_at: int | None = None,
     ) -> CharacterMemoryRecordBundle:
-        return self._memory_store.retrieval_record_bundle(
+        bundle = self._memory_store.retrieval_record_bundle(
             actor_id,
             story_branch_id=story_branch_id,
             valid_at=valid_at,
         )
+        snapshot = self._l1.get_snapshot(actor_id)
+        if valid_at is None and story_branch_id is None and snapshot is not None and self.supports_actor(actor_id):
+            capability = self._effective_profile_payload(actor_id).get("capability_constraint_layer", {})
+            if isinstance(capability, dict) and capability.get("memory_retention") == "strong":
+                focused = self.get_target_memory_record_bundle(actor_id, set(snapshot.current_attention_targets or snapshot.attention_targets))
+                for field in type(bundle).model_fields:
+                    records = {record.memory_id: record for record in getattr(bundle, field)}
+                    records.update({record.memory_id: record for record in getattr(focused, field)})
+                    setattr(bundle, field, list(records.values()))
+        return bundle
 
     def get_working_memory_state(self, actor_id: str, private_snapshot: dict[str, object] | None = None) -> dict[str, object]:
         return self.get_working_memory_state_record(
@@ -1657,10 +1890,10 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             control_mode=self.get_control_mode(actor_id),
             source_stage="background_cognition_tick",
-            run_model=lambda: self._l2.interpret_background_state(
+            run_model=lambda memory_override=None: self._l2.interpret_background_state(
                 snapshot,
                 background_payload,
-                memory_bundle=memory_record_bundle,
+                memory_bundle=memory_override if memory_override is not None else memory_record_bundle,
                 control_mode=self.get_control_mode(actor_id),
                 working_memory_state=working_memory_state,
                 current_goal_state=current_goal_state,
@@ -1684,11 +1917,11 @@ class CharacterAgentRuntime:
             interpretation=interpretation,
             control_mode=self.get_control_mode(actor_id),
             source_stage="background_cognition_tick",
-            run_model=lambda: self._l3.select_intent(
+            run_model=lambda memory_override=None: self._l3.select_intent(
                 interpretation,
                 snapshot=snapshot.model_dump(),
                 profile=self._profile_payload(actor_id),
-                memory_bundle=memory_record_bundle,
+                memory_bundle=memory_override if memory_override is not None else memory_record_bundle,
                 control_mode=self.get_control_mode(actor_id),
                 working_memory_state=working_memory_state,
                 current_goal_state=current_goal_state,
@@ -1927,13 +2160,20 @@ class CharacterAgentRuntime:
             return []
         return [command for command in commands if self.is_command_allowed_for_mode(mode, command.command_type)]
 
-    def _record_character_perceived_event(self, event: CharacterPerceivedEvent) -> None:
+    def _record_character_perceived_event(self, event: CharacterPerceivedEvent, *,
+        verification_result: ActivePerceptionResult | None = None, verification_conflict_refs: list[str] | None = None,
+    ) -> None:
+        event = CharacterPerceivedEvent.model_validate(event.model_dump())
         stored = self._session_store.append_event(
             actor_id=event.actor_id,
             event_type="character_perceived_event",
             producer_ts=event.producer_ts,
             payload={
                 "percept_channel": event.percept_channel,
+                "room_id": event.room_id, "scene_id": event.scene_id, "zone_id": event.zone_id,
+                **({"verification_request_ref": verification_result.request_id,
+                    "verification_result": verification_result.model_dump(),
+                    "verification_conflict_refs": verification_conflict_refs or []} if verification_result else {}),
                 "summary": event.perceived_summary,
                 "tags": [event.percept_channel],
                 "source_candidate_event_id": event.source_candidate_event_id,
@@ -1946,9 +2186,53 @@ class CharacterAgentRuntime:
                 "capture_id": event.capture_id,
                 "capture_root_id": event.capture_root_id,
                 "source_ref_lineage": list(event.source_ref_lineage),
+                "clarity_score": event.clarity_score,
+                "certainty_score": event.certainty_score,
+                **({"fact_claim": event.fact_claim.model_dump()} if event.fact_claim is not None else {}),
             },
         )
+        if verification_result is not None:
+            self._persist_graph_continuity(actor_id=event.actor_id, producer_ts=event.producer_ts)
         self._memory_store.write_event(stored)
+        self._update_memory_scene_knowledge(stored)
+
+    def _update_memory_scene_knowledge(self, event: dict[str, object]) -> None:
+        event_key = (str(event["actor_id"]), str(event["event_id"]))
+        if event_key in self._projected_memory_scene_events:
+            return
+        payload = event.get("payload", {})
+        if not isinstance(payload, dict):
+            return
+        if event.get("event_type") == "character_agent_settlement_result":
+            target = str(payload.get("target_object_id", "") or payload.get("target_actor_id", "") or "")
+            if target and payload.get("result_type") == "constraint_state_result":
+                self._l1.get_actor_scene_knowledge_store().upsert(ActorSceneKnowledgeEntry(
+                    entry_id=f"ask:{event['actor_id']}:{target}:failure", actor_id=str(event["actor_id"]),
+                    session_id=str(payload.get("room_id", "room_demo")), scene_id=str(payload.get("scene_id", "scene_demo")),
+                    subject_ref=target, knowledge_type="space", summary=str(payload.get("constraint_summary", "interaction failed")),
+                    source_kind="interaction_failure", source_refs=[str(event["event_id"])], confidence=1.0,
+                ), producer_ts=int(event["producer_ts"]))
+            self._projected_memory_scene_events.add(event_key)
+            return
+        if payload.get("verification_result"):
+            result = ActivePerceptionResult.model_validate(payload["verification_result"])
+            result.conflict_refs = list(payload.get("verification_conflict_refs", result.conflict_refs))
+            ActivePerceptionPlanner().apply_result(self._l1.get_actor_scene_knowledge_store(), result,
+                producer_ts=int(event["producer_ts"]))
+            self._projected_memory_scene_events.add(event_key)
+            return
+        claim_payload = payload.get("fact_claim") if isinstance(payload, dict) else None
+        if not isinstance(claim_payload, dict):
+            return
+        claim = MemoryFactClaim.model_validate(claim_payload)
+        self._l1.get_actor_scene_knowledge_store().upsert(ActorSceneKnowledgeEntry(
+            entry_id=f"ask:{event['actor_id']}:{claim.subject_ref}:memory",
+            actor_id=str(event["actor_id"]), session_id=str(payload.get("room_id", "room_demo")),
+            scene_id=str(payload.get("scene_id", "scene_demo")), subject_ref=claim.subject_ref,
+            knowledge_type="space", summary=str(payload.get("summary", "")), source_kind="canonical_percept_bundle",
+            source_refs=[str(event["event_id"]), claim.source_ref], confidence=float(payload.get("certainty_score", 1.0)), claim=claim,
+        ), producer_ts=int(event["producer_ts"]))
+        self._projected_memory_scene_events.add(event_key)
 
     def _record_relational_belief_from_perceived_event(self, event: CharacterPerceivedEvent) -> None:
         entity_id = str(event.source_actor_id or "")
@@ -2125,6 +2409,20 @@ class CharacterAgentRuntime:
             payload=stored_payload,
         )
         self._memory_store.write_event(stored)
+        target = str(payload.get("target_object_id", "") or payload.get("target_actor_id", "") or "")
+        self._update_memory_scene_knowledge(stored)
+        if (payload.get("result_type") == "action_resolution_result" and payload.get("resolution_status") == "accepted"
+            and payload.get("actor_id") == actor_id and target and payload.get("read_content") and payload.get("read_source_ref")):
+            source = str(payload["read_source_ref"])
+            self._record_character_perceived_event(CharacterPerceivedEvent(
+                actor_id=actor_id, percept_channel="record", producer_ts=producer_ts,
+                room_id=str(payload.get("room_id", "room_demo")), scene_id=str(payload.get("scene_id", "scene_demo")),
+                zone_id=str(payload.get("zone_id", "zone_focus")), target_object_id=target,
+                perceived_summary=f"record {target}: {payload['read_content']}",
+                source_candidate_event_id=str(payload["result_id"]), source_ref_lineage=[source, str(payload["result_id"])],
+                fact_claim=MemoryFactClaim(scope_ref=f"record:{payload.get('room_id', 'room_demo')}", subject_ref=target,
+                    predicate="record_content", value=str(payload["read_content"]), valid_at=producer_ts, source_ref=source),
+            ))
         evaluation = self._record_behavior_evaluation(
             actor_id=actor_id,
             producer_ts=producer_ts,
@@ -2620,7 +2918,7 @@ class CharacterAgentRuntime:
         run_model,
     ) -> CharacterInterpretation:
         try:
-            return run_model()
+            return self._run_with_memory_recall(actor_id, snapshot, run_model)
         except Exception as exc:
             if os.getenv("CHARACTER_MODEL_REQUIRE_ONLINE", "").strip() == "1":
                 raise
@@ -2659,8 +2957,16 @@ class CharacterAgentRuntime:
         run_model,
     ) -> CharacterIntentDecision:
         try:
-            return run_model()
+            return self._run_with_memory_recall(actor_id, snapshot, run_model)
         except Exception as exc:
+            if isinstance(exc, MissingRequiredMemoryEvidence):
+                self._session_append_event(actor_id=actor_id, event_type="character_memory_recall_deferred",
+                    producer_ts=producer_ts, payload={"missing_required_refs": exc.missing_required_refs})
+                return self._continuity_floor_decision(actor_id=actor_id, snapshot=snapshot,
+                    interpretation=interpretation, control_mode=control_mode, error=exc).model_copy(update={
+                        "selected_intent": "stay_silent", "fallback_mode": "memory_evidence_pending",
+                        "rationale": "关键已知证据仍未进入上下文，延后依赖该证据的决策。",
+                    })
             if os.getenv("CHARACTER_MODEL_REQUIRE_ONLINE", "").strip() == "1":
                 raise
             decision = self._continuity_floor_decision(
@@ -2826,6 +3132,10 @@ class CharacterAgentRuntime:
                 state = str(delta.get("state", "suspected") or "suspected")
                 confidence = float(delta.get("confidence", 0.0) or 0.0)
             if proposition_key == "":
+                continue
+            # 模型摘要不能覆盖已经获得的结构化事实；新证据走感知/核验入口。
+            if any(record.proposition_key == proposition_key and record.claim is not None
+                   for record in self.get_memory_record_bundle(actor_id).knowledge_memories):
                 continue
             stored = self._session_store.append_event(
                 actor_id=actor_id,

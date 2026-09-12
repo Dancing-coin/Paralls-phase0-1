@@ -16,6 +16,7 @@ from app.character_agent.models.event_memory import CharacterEventMemoryRecord
 from app.character_agent.models.higher_order_memory import CharacterHigherOrderMemoryRecord
 from app.character_agent.models.knowledge_state import KnowledgeState
 from app.character_agent.models.knowledge_memory import CharacterKnowledgeMemoryRecord
+from app.character_agent.models.memory_consistency import MemoryFactClaim, compare_memory_claims, memory_claim_key
 from app.character_agent.models.memory_record_bundle import CharacterMemoryRecordBundle
 from app.character_agent.models.observation_memory import CharacterObservationMemoryRecord
 from app.character_agent.models.social_memory import CharacterSocialMemoryRecord
@@ -64,6 +65,7 @@ class CharacterAgentMemoryStore:
         self._social = CharacterSocialMemory()
         self._higher_order = CharacterHigherOrderMemory()
         self._events_by_actor: dict[str, list[dict[str, object]]] = {}
+        self._seen_event_ids: set[tuple[str, str]] = set()
         self._storage_path: Path | None = None
         if storage_root is not None:
             root = Path(storage_root)
@@ -75,10 +77,15 @@ class CharacterAgentMemoryStore:
         actor_id = str(event.get("actor_id", "") or "")
         if actor_id == "":
             return
+        event_id = str(event.get("event_id", "") or "")
+        if event_id and (actor_id, event_id) in self._seen_event_ids:
+            return
         stored_event = deepcopy(event)
         self._events_by_actor.setdefault(actor_id, []).append(stored_event)
         self._ingest_event(stored_event)
         self._persist()
+        if event_id:
+            self._seen_event_ids.add((actor_id, event_id))
 
     def _ingest_event(self, event: dict[str, object]) -> None:
         actor_id = str(event.get("actor_id", "") or "")
@@ -134,6 +141,32 @@ class CharacterAgentMemoryStore:
                 certainty_score=float(payload.get("certainty_score", 1.0) or 1.0),
                 distortion_tags=[],
                 refs=source_refs,
+            )
+            claim_payload = payload.get("fact_claim")
+            if isinstance(claim_payload, dict):
+                claim = MemoryFactClaim.model_validate(claim_payload)
+                key = memory_claim_key(claim)
+                previous = next((item for item in self._knowledge.recall_records(actor_id) if item.proposition_key == key), None)
+                state = KnowledgeState.HIGH_CONFIDENCE_BELIEVED if payload.get("percept_channel") == "visual" else KnowledgeState.TENTATIVELY_BELIEVED
+                if previous is not None and previous.claim is not None:
+                    if previous.claim.valid_at > claim.valid_at:
+                        return
+                    if compare_memory_claims(previous.claim, claim) == "conflicted" and not payload.get("verification_request_ref"):
+                        state = KnowledgeState.DISPUTED
+                self._knowledge.upsert_proposition(
+                    actor_id=actor_id, proposition_key=key,
+                    proposition=f"{claim.subject_ref}:{claim.predicate}={claim.value}",
+                    state=state, confidence=float(payload.get("certainty_score", 1.0)),
+                    source_event_id=source_event_id, producer_ts=producer_ts, claim=claim,
+                )
+        elif event_type == "character_memory_correction":
+            record = CharacterKnowledgeMemoryRecord.model_validate(payload["knowledge"])
+            if record.actor_id != actor_id:
+                raise ValueError("correction actor mismatch")
+            self._knowledge.upsert_proposition(
+                actor_id=actor_id, proposition_key=record.proposition_key, proposition=record.proposition,
+                state=record.state, confidence=record.confidence, source_event_id=str(event["event_id"]),
+                producer_ts=int(event["producer_ts"]), claim=record.claim,
             )
         elif event_type == "character_agent_settlement_result":
             settlement_summary = (
@@ -515,6 +548,8 @@ class CharacterAgentMemoryStore:
             self._events_by_actor[actor_id] = normalized_events
             for event in normalized_events:
                 self._ingest_event(event)
+                if event.get("event_id"):
+                    self._seen_event_ids.add((actor_id, str(event["event_id"])))
 
     def _persist(self) -> None:
         if self._storage_path is None:

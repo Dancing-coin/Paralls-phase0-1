@@ -1,5 +1,5 @@
 from app.character_agent.gateway.context_builder import CharacterContextBuilder
-from app.character_agent.gateway.memory_recall import CharacterMemoryRecallPolicy
+from app.character_agent.gateway.memory_recall import CharacterMemoryRecallPolicy, MemoryRecallResult, MissingRequiredMemoryEvidence
 from app.character_agent.gateway.model_provider import CharacterModelProvider
 from app.character_agent.gateway.model_router import CharacterModelRouter
 from app.character_agent.gateway.output_validator import CharacterStructuredOutputValidator
@@ -29,12 +29,15 @@ class CharacterModelGateway:
         task_kind: str,
         context: dict[str, object],
         route_override: str | None = None,
+        prepared_recall: MemoryRecallResult | None = None,
     ) -> dict[str, object]:
         route = self._router.resolve_route(route_override)
-        recall = self._memory_recall.select(
+        recall = prepared_recall if prepared_recall is not None else self._memory_recall.select(
             dict(context.get("memory", {}) or {}),
             context=context,
         )
+        if recall.metadata.get("missing_required_refs"):
+            raise MissingRequiredMemoryEvidence(list(recall.metadata["missing_required_refs"]))
         prepared_context = self._context_builder.build_context(
             actor_id=str(context.get("actor_id", "") or ""),
             snapshot=context.get("snapshot", {}) or {},
@@ -72,11 +75,13 @@ class CharacterModelGateway:
         task_kind: str,
         context: dict[str, object],
         route_override: str | None = None,
+        prepared_recall: MemoryRecallResult | None = None,
     ) -> dict[str, object]:
         request = self.prepare_run_request(
             task_kind=task_kind,
             context=context,
             route_override=route_override,
+            prepared_recall=prepared_recall,
         )
         output = self._provider.complete(request)
         return self._validator.validate(task_kind=task_kind, output=output)

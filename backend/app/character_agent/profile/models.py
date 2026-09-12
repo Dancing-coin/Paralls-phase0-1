@@ -196,6 +196,7 @@ class VirtueValueLayer(StrictProfileModel):
 
 
 class CapabilityConstraintLayer(StrictProfileModel):
+    memory_retention: Literal["normal", "strong"] = "normal"
     skills: list[str] = Field(default_factory=list)
     knowledge_domains: list[str] = Field(default_factory=list)
     physical_constraints: list[str] = Field(default_factory=list)

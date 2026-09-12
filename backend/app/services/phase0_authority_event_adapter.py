@@ -85,6 +85,8 @@ class Phase0AuthorityEventAdapter:
 
     def world_result_event(self, result: WorldResultEvent, *, source_event: object) -> AuthorityEvent:
         event_type = "constraint_state_event" if isinstance(result, ConstraintStateResult) else "esm_result_event"
+        # 正文只交给实际读者，公开权威事件只说明交互结果。
+        public_payload = result.model_dump(exclude_none=True, exclude={"read_content", "read_source_ref"})
         return AuthorityEvent(
             event_id=f"{event_type}:{result.producer_ts}:{result.causation_id}",
             event_type=event_type,
@@ -99,7 +101,7 @@ class Phase0AuthorityEventAdapter:
             durability="replayable",
             causation_id=result.causation_id,
             correlation_id=result.correlation_id or result.causation_id,
-            payload=result.model_dump(exclude_none=True),
+            payload=public_payload,
         )
 
     def conversation_candidate_event(self, event: ConversationCandidateEvent) -> AuthorityEvent:

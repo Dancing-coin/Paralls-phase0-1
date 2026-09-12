@@ -29,6 +29,8 @@ class ActionResolutionResult(WorldResultBase):
     stable_state_summary: str = ""
     action_profile: str = ""
     source_action_request_type: str = ""
+    read_content: str | None = None
+    read_source_ref: str | None = None
 
 
 class EnvironmentStateResult(WorldResultBase):
