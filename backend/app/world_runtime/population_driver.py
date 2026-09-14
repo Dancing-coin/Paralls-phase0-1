@@ -91,8 +91,6 @@ class PopulationCadenceDriver:
             self._runtime_history.add(cadence_id)
             published.append(cadence_id)
             confirmed_tick = window_end
-        if windows and not rejected and not deferred:
-            confirmed_tick = target_tick
         self.clock.tick = confirmed_tick
         return PopulationDriverTickResult(
             published_cadence_ids=tuple(published),

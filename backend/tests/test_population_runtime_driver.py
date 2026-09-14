@@ -80,6 +80,16 @@ def test_driver_does_not_publish_partial_future_window(driver: PopulationCadence
     assert driver.current_tick == 0
 
 
+def test_driver_resumes_from_last_complete_window_after_partial_target(driver: PopulationCadenceDriver) -> None:
+    first = driver.tick(4000)
+    first_cursor = driver.current_tick
+    second = driver.tick(7600)
+
+    assert first.published_cadence_ids == ("cadence:world:0",)
+    assert first_cursor == 3600
+    assert second.published_cadence_ids == ("cadence:world:3600",)
+
+
 def test_zero_catch_up_budget_keeps_due_windows_for_next_tick() -> None:
     runtime = WorldContinuityRuntime(store=GameplayEventStore(), mode=_mode())
     runtime.resume()
