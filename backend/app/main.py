@@ -219,31 +219,45 @@ websocket_transport_closers: dict[str, Callable[[str], None]] = {}
 _population_runtime_driver: PopulationCadenceDriver | None = None
 _population_runtime_task: asyncio.Task[None] | None = None
 _population_runtime_stop_event: asyncio.Event | None = None
+_population_runtime_failure: BaseException | None = None
 _population_runtime_sleep: Callable[[float], object] = asyncio.sleep
 _population_runtime_clock: Callable[[int, int], int] = lambda current, window: current + window
 
 
 async def _run_population_runtime(driver: PopulationCadenceDriver, stop_event: asyncio.Event) -> None:
     window_size = driver.window_size
-    while not stop_event.is_set():
-        driver.tick(_population_runtime_clock(driver.current_tick, window_size))
-        await _population_runtime_sleep(window_size)  # type: ignore[misc]
+    global _population_runtime_failure
+    try:
+        while not stop_event.is_set():
+            driver.tick(_population_runtime_clock(driver.current_tick, window_size))
+            await _population_runtime_sleep(window_size)  # type: ignore[misc]
+    except asyncio.CancelledError:
+        raise
+    except BaseException as exc:
+        _population_runtime_failure = exc
+        raise
 
 
 def start_population_runtime() -> asyncio.Task[None] | None:
     """Start the singleton population cadence driver for the current runtime."""
     global _population_runtime_driver, _population_runtime_task, _population_runtime_stop_event
+    global _population_runtime_failure
     if _population_runtime_task is not None and not _population_runtime_task.done():
         return _population_runtime_task
     if "authority_event_bus" not in globals() or "gameplay_event_store" not in globals():
         return None
     mode = _bakery_population_mode()
     world_runtime = WorldContinuityRuntime(store=gameplay_event_store, mode=mode)
-    receipt = world_runtime.resume()
-    initial_tick = int(receipt.revision_vector.get(f"world:{mode.world_ref}", 0))
-    _population_runtime_driver = PopulationCadenceDriver(
-        world_runtime=world_runtime,
-        publish_window=lambda cadence: publish_population_cadence_window(
+    world_stream_ref = f"world:{mode.world_ref}"
+    initial_tick = gameplay_event_store.get_stream_head(world_stream_ref)
+    if initial_tick <= 0:
+        return None
+    published_events = authority_event_bus.list_events(
+        event_type="population_cadence_event", include_realtime=True, current_only=False
+    )
+    _population_runtime_failure = None
+    def publish(cadence):
+        event = publish_population_cadence_window(
             world_runtime=world_runtime,
             window_start=cadence.window_start,
             window_end=cadence.window_end,
@@ -252,7 +266,14 @@ def start_population_runtime() -> asyncio.Task[None] | None:
             zone_id="zone:bakery",
             causation_id=f"population-runtime:{cadence.cadence_id}",
             correlation_id=f"population-runtime:{cadence.cadence_id}",
-        ),
+        )
+        if event is not None:
+            published_events.append(event)
+        return event
+    publish.published_events = published_events
+    _population_runtime_driver = PopulationCadenceDriver(
+        world_runtime=world_runtime,
+        publish_window=publish,
         window_size=86400,
         catch_up_limit=mode.catch_up_limit,
         initial_tick=initial_tick,
@@ -263,6 +284,10 @@ def start_population_runtime() -> asyncio.Task[None] | None:
         name="population-cadence-runtime",
     )
     return _population_runtime_task
+
+
+def get_population_runtime_failure() -> BaseException | None:
+    return _population_runtime_failure
 
 
 def stop_population_runtime() -> None:
