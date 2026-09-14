@@ -599,6 +599,14 @@ class _RecordingPopulationSimulationCapability(PopulationSimulationCapability):
         self.last_result = super().run_cohort_cycle(cadence_input, read_set)
         return self.last_result
 
+    def run_decision_cycle(self, cadence_input, read_set, policy, capabilities):
+        self.run_count += 1
+        self.cadence_ids.append(cadence_input.cadence_id)
+        self.last_result = super().run_decision_cycle(
+            cadence_input, read_set, policy, capabilities
+        )
+        return self.last_result
+
 
 class _RecordingCohortPopulationSimulationCapability(
     _RecordingPopulationSimulationCapability
@@ -795,7 +803,7 @@ class SimingLedPopulationFixture:
             ),
             base_revision_vector=dict(plan.source_revision_vector),
             policy_revision=plan.policy_revision,
-            selector_revision="selector:population:v1",
+            selector_revision="selector:generic:population:v1",
             ruleset_revision="rules:population:v1",
             deterministic_seed="seed:bakery-district:game-start",
             catch_up_limit=1,
@@ -1886,7 +1894,7 @@ class GeneralizedPopulationDecisionFixture:
                 objective_risk="low" if behavior == "schedule_gated_supply" else "none", player_proximity=proximity,
                 narrative_obligation_pressure=0.0, unresolved_owner_consequence=consequence,
                 propagation_pressure=propagation, starvation_credit=0.0, allowed_outputs=outputs,
-                policy_revision="policy:generic:v1", selector_revision="selector:generic:v1",
+                policy_revision="policy:generic:v1", selector_revision="selector:generic:population:v1",
                 ruleset_revision="rules:generic:v1", idempotency_key=ref,
             )
         return (

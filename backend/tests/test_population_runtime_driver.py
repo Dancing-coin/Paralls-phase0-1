@@ -121,6 +121,57 @@ def test_driver_rebuild_uses_existing_publisher_history(driver: PopulationCadenc
     result = rebuilt.tick(3600)
 
     assert result.published_cadence_ids == ()
+    assert rebuilt.current_tick == 3600
+    assert rebuilt.tick(7200).published_cadence_ids == ("cadence:world:3600",)
+
+
+def test_driver_reports_selected_windows_after_publisher_failure() -> None:
+    runtime = WorldContinuityRuntime(store=GameplayEventStore(), mode=_mode())
+    runtime.resume()
+    calls = 0
+
+    def publish(cadence):
+        nonlocal calls
+        calls += 1
+        return _event(cadence.cadence_id) if calls == 1 else None
+
+    driver = PopulationCadenceDriver(
+        world_runtime=runtime,
+        publish_window=publish,
+        window_size=3600,
+        catch_up_limit=3,
+        initial_tick=0,
+    )
+
+    result = driver.tick(10800)
+
+    assert result.published_cadence_ids == ("cadence:world:0",)
+    assert result.rejected_windows == (("cadence:world:3600", "publisher_rejected"),)
+    assert result.deferred_windows == ("cadence:world:7200",)
+    assert driver.current_tick == 3600
+
+
+def test_driver_does_not_publish_while_world_is_paused() -> None:
+    runtime = WorldContinuityRuntime(store=GameplayEventStore(), mode=_mode())
+    runtime.resume()
+    runtime.pause(reason="test")
+    driver = PopulationCadenceDriver(
+        world_runtime=runtime,
+        publish_window=lambda cadence: _event(cadence.cadence_id),
+        window_size=3600,
+        catch_up_limit=2,
+        initial_tick=0,
+    )
+
+    paused = driver.tick(7200)
+
+    assert paused.published_cadence_ids == ()
+    assert paused.deferred_windows == ("cadence:world:0", "cadence:world:3600")
+    assert driver.current_tick == 0
+
+    runtime.resume()
+    resumed = driver.tick(7200)
+    assert resumed.published_cadence_ids == ("cadence:world:0", "cadence:world:3600")
 
 
 def test_driver_rejects_rewind() -> None:

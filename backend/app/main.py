@@ -249,12 +249,30 @@ def start_population_runtime() -> asyncio.Task[None] | None:
     mode = _bakery_population_mode()
     world_runtime = WorldContinuityRuntime(store=gameplay_event_store, mode=mode)
     world_stream_ref = f"world:{mode.world_ref}"
+    window_size = 86400
     initial_tick = gameplay_event_store.get_stream_head(world_stream_ref)
     if initial_tick <= 0:
         return None
     published_events = authority_event_bus.list_events(
         event_type="population_cadence_event", include_realtime=True, current_only=False
     )
+    cadence_prefix = f"cadence:{mode.world_ref}:"
+    runtime_origins = []
+    for event in published_events:
+        payload = event.payload.get("population_cadence", {}) if isinstance(event.payload, dict) else {}
+        cadence_id = payload.get("cadence_id") if isinstance(payload, dict) else None
+        window_start = payload.get("window_start") if isinstance(payload, dict) else None
+        window_end = payload.get("window_end") if isinstance(payload, dict) else None
+        if (
+            isinstance(cadence_id, str)
+            and cadence_id.startswith(cadence_prefix)
+            and isinstance(window_start, int)
+            and isinstance(window_end, int)
+            and window_end - window_start == window_size
+        ):
+            runtime_origins.append(window_start)
+    if runtime_origins:
+        initial_tick = min(runtime_origins)
     _population_runtime_failure = None
     def publish(cadence):
         event = publish_population_cadence_window(
@@ -274,7 +292,7 @@ def start_population_runtime() -> asyncio.Task[None] | None:
     _population_runtime_driver = PopulationCadenceDriver(
         world_runtime=world_runtime,
         publish_window=publish,
-        window_size=86400,
+        window_size=window_size,
         catch_up_limit=mode.catch_up_limit,
         initial_tick=initial_tick,
     )
@@ -291,7 +309,7 @@ def get_population_runtime_failure() -> BaseException | None:
 
 
 def stop_population_runtime() -> None:
-    """Signal and cancel the singleton population cadence driver."""
+    """通知并取消当前运行时的单例群体节拍驱动器。"""
     global _population_runtime_driver, _population_runtime_task, _population_runtime_stop_event
     if _population_runtime_stop_event is not None:
         _population_runtime_stop_event.set()
@@ -303,6 +321,7 @@ def stop_population_runtime() -> None:
 
 
 async def _shutdown_population_runtime() -> None:
+    """停止群体节拍任务，并等待其完成取消。"""
     task = _population_runtime_task
     stop_population_runtime()
     if task is not None:
@@ -1423,7 +1442,7 @@ def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:
         policy_revision=mode.revision,
         package_revision="package:bakery-authored-agents:v1",
         idempotency_key="intent:runtime-start:bakery:supply",
-        correlation_id="population:bakery-district:game-start:v3",
+        correlation_id="population:bakery-district:game-start:v4",
         source_ref="population:siming",
         privacy_scope="organization:summary",
     )
@@ -1432,7 +1451,7 @@ def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:
         [event.model_dump(mode="json") for event in gameplay_event_store.read_events()]
     )
     cadence = PopulationCadenceInput(
-        cadence_id="cadence:bakery-district:game-start:v3",
+        cadence_id="cadence:bakery-district:game-start:v4",
         world_ref=mode.world_ref,
         world_mode_ref="world-mode:bakery-district",
         world_mode_revision=mode.revision,
@@ -1444,7 +1463,7 @@ def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:
         base_checkpoint_digest=base_checkpoint_digest,
         base_revision_vector=base_vector,
         policy_revision="policy:population:v1",
-        selector_revision="selector:population:v1",
+        selector_revision="selector:generic:population:v1",
         ruleset_revision="rules:population:v1",
         deterministic_seed="seed:bakery-district:game-start",
         catch_up_limit=mode.catch_up_limit,
@@ -1496,7 +1515,7 @@ def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:
         scene_id="scene:bakery",
         zone_id="zone:bakery",
         causation_id=(mode_receipt.committed_event_ids[0] if mode_receipt.committed_event_ids else "game-start:bakery"),
-        correlation_id="population:bakery-district:game-start:v3",
+        correlation_id="population:bakery-district:game-start:v4",
         legacy_projections=(candidate_projection,),
     )
 

@@ -338,7 +338,62 @@ def test_game_start_remains_one_explicit_authorized_cadence() -> None:
         event_type="population_cadence_event", include_realtime=True, current_only=False
     )
     assert len(events) == 1
-    assert events[0].payload["population_cadence"]["cadence_id"].endswith("game-start:v3")
+    assert events[0].payload["population_cadence"]["cadence_id"].endswith("game-start:v4")
+
+
+def test_game_start_upgrade_preserves_v3_audit_and_restarts_on_same_sqlite(tmp_path, monkeypatch) -> None:
+    import app.main as main
+    from app.models.behavior_turn import BehaviorTurnRecordRequest, BehaviorTurnStageRecord
+    from app.models.siming_heavenly_graph import GraphProvenance, GraphRevisionVector, HeavenlyGraphScope, HeavenlyNodeQuery
+    from app.services.behavior_turn_recorder import BehaviorTurnRecorder
+    from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
+
+    database_path = str(tmp_path / "upgrade.sqlite3")
+    scope = HeavenlyGraphScope(world_id="world:demo", session_id="session:demo", story_branch_id="branch:main")
+    legacy_correlation = "population:bakery-district:game-start:v3"
+    # 预置升级必须保留的旧版审计键，避免回归测试依赖 Git 或历史源码。
+    legacy_request = BehaviorTurnRecordRequest(
+        turn_id=f"siming:{legacy_correlation}", scope=scope,
+        valid_at=1, recorded_at=1, policy_revision="policy:siming-runtime:v1",
+        source_revision_vector=GraphRevisionVector(source_revision=1), scope_digest="scope:siming-authority",
+        provenance=GraphProvenance(
+            source_kind="authority_event", source_ref="event:population-cadence:game-start:v3",
+            causation_id="game-start:bakery", correlation_id=legacy_correlation, producer_system="siming_runtime",
+        ),
+        transaction_id=f"siming-behavior-turn:{legacy_correlation}",
+        idempotency_key=f"siming-behavior-turn:{legacy_correlation}",
+        stages=(BehaviorTurnStageRecord(stage="context", payload={
+            "population_cadence": {"cadence_id": "cadence:bakery-district:game-start:v3", "selector_revision": "selector:population:v1"},
+        }),),
+    )
+    legacy_graph = SQLiteHeavenlyGraphAdapter(database_path)
+    try:
+        assert BehaviorTurnRecorder(legacy_graph).record(legacy_request).applied
+        legacy_nodes = legacy_graph.query_nodes(HeavenlyNodeQuery(scope=scope, valid_at=10))
+    finally:
+        legacy_graph.close()
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(main.settings, "heavenly_graph_path", database_path)
+            first_start_nodes = None
+            for _ in range(2):
+                main.reset_runtime_state()
+                events = main.authority_event_bus.list_events(event_type="population_cadence_event", include_realtime=True, current_only=False)
+                assert len(events) == 1
+                event = events[0]
+                assert event.correlation_id == "population:bakery-district:game-start:v4"
+                assert event.payload["population_cadence"]["cadence_id"] == "cadence:bakery-district:game-start:v4"
+                assert event.payload["population_cadence"]["selector_revision"] == "selector:generic:population:v1"
+                nodes = main.heavenly_graph.query_nodes(HeavenlyNodeQuery(scope=scope, valid_at=10, limit=None))
+                assert all(node in nodes for node in legacy_nodes)
+                assert BehaviorTurnRecorder(main.heavenly_graph).record(legacy_request).replayed
+                assert any(node.attributes.get("correlation_id") == event.correlation_id for node in nodes)
+                if first_start_nodes is not None:
+                    assert nodes == first_start_nodes
+                first_start_nodes = nodes
+    finally:
+        main.reset_runtime_state()
 
 
 def test_population_read_set_accepts_current_source_vector_subset() -> None:
@@ -403,7 +458,7 @@ def _task4_cadence(
         base_checkpoint_digest=f"sha256:{cadence_id}",
         base_revision_vector=base_revision_vector,
         policy_revision="policy:population:v1",
-        selector_revision="selector:generic:task4",
+        selector_revision="selector:generic:population:v1",
         ruleset_revision="rules:population:v1",
         deterministic_seed=f"seed:{cadence_id}",
         catch_up_limit=1,
@@ -935,7 +990,7 @@ class _ProductionRuntimeFixture:
             base_checkpoint_digest="sha256:task3",
             base_revision_vector=dict(receipt.revision_vector),
             policy_revision="policy:population:v1",
-            selector_revision="selector:generic:task3",
+            selector_revision="selector:generic:population:v1",
             ruleset_revision="rules:population:v1",
             deterministic_seed=f"seed:task3:{suffix}",
             catch_up_limit=1,

@@ -101,6 +101,11 @@ class WorldContinuityRuntime:
             )
         )
 
+    def is_paused(self) -> bool:
+        """读取最近一次已提交的世界模式边界，不写入世界真相。"""
+        events = self.store.read_stream(f"world:{self.mode.world_ref}")
+        return bool(events and events[-1].event_type == "population.world.pause")
+
     def build_population_cadence(
         self,
         *,
@@ -150,7 +155,9 @@ class WorldContinuityRuntime:
     ) -> tuple[PopulationProjection, ...]:
         """Build deterministic B0 routine inputs for the bounded resident roster."""
         actors = POPULATION_ACTOR_IDS
-        start = cadence.window_start % len(actors)
+        window_size = cadence.window_end - cadence.window_start
+        window_index = cadence.window_start // window_size
+        start = window_index % len(actors)
         ordered = actors[start:] + actors[:start]
         return tuple(
             PopulationProjection(

@@ -3536,3 +3536,27 @@ source -> authorized cadence event -> read-set digest -> Siming decision/result
 digest -> report-only disposition（无 Owner receipt）-> no Character Core receipt。
 Harness 同时检查 read-set 与 cadence 只携带 `obligation_ref`、组织 scope、状态和
 economy revision pin；amount、account、evidence 与 payment event 不得出现。
+
+### `population-continuous-runtime`
+
+该 profile 运行真实应用生命周期到 Siming、Character Core 的受控日窗口测试：推进 12 个窗口覆盖全部 12 名居民，再停止/重启并确认第 13 个窗口继续推进。它同时验证重复窗口、失败重试、预算 deferred、revision requeue、Owner receipt 和真相优先的按需记忆核对。日常连续状态不生成无暴露记忆，不激活 dormant actor 的完整认知。
+
+断点恢复证据限定为同一进程内重建 driver；跨进程 Authority Event 持久化尚未证明。报告明确记录 `backend-only`、`written_and_backend_verified`（仅通过时）和 `godot_unverified`。
+
+```powershell
+python scripts/verification/harness.py --profile population-continuous-runtime
+```
+
+报告写入 `.harness/verification/population-continuous-runtime-report.json`，附同名 `-tests.xml`、`-tests.log` 和实际窗口/居民观测值。
+
+### `siming-sgc-runtime-admission`
+
+该 profile 复用司命群体领域 Owner 适配验证，并执行正式 selector、descriptor、Owner 映射、scope/revision、隐私、stale/duplicate/changed-duplicate 和 full/checkpoint-tail replay 测试。未知 selector、畸形 payload、缺失 descriptor 或 runner 不得回退至 fixture。报告只证明 backend 准入，保留 `godot_unverified` 和 `full_sgc_runtime_proof=false`。
+
+```powershell
+python scripts/verification/harness.py --profile siming-sgc-runtime-admission
+```
+
+报告写入 `.harness/verification/siming-sgc-runtime-admission-report.json`。
+
+两个 profile 都重新执行测试并保存本轮证据，不依赖预存的绿色报告。新会话验证 Godot 时，先重跑上述命令，再按 `mainline-unified-runtime` 和实际场景检查证明连接、权威消息与可见结果；后端报告不能替代这些检查。

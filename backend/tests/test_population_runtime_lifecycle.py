@@ -5,6 +5,7 @@ import asyncio
 import pytest
 
 from app import main
+from app.population_continuity.world import WorldContinuityRuntime
 
 
 @pytest.mark.asyncio
@@ -50,6 +51,42 @@ async def test_runtime_lifecycle_publishes_population_event_and_stops_without_ex
 @pytest.mark.asyncio
 async def test_runtime_stop_start_reuses_cadence_history(monkeypatch: pytest.MonkeyPatch) -> None:
     main.stop_population_runtime()
+
+
+@pytest.mark.asyncio
+async def test_runtime_restart_after_world_pause_resume_uses_runtime_origin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    main.stop_population_runtime()
+    main.reset_runtime_state()
+    monkeypatch.setattr(main, "_population_runtime_sleep", _stop_after_one_sleep(main))
+
+    first = main.start_population_runtime()
+    assert first is not None
+    await first
+    main.stop_population_runtime()
+
+    world = WorldContinuityRuntime(store=main.gameplay_event_store, mode=main._bakery_population_mode())
+    assert world.pause(reason="test").committed
+    assert world.resume().committed
+
+    restarted = main.start_population_runtime()
+    assert restarted is not None
+    await restarted
+    runtime_events = [
+        event
+        for event in main.authority_event_bus.list_events(
+            event_type="population_cadence_event",
+            include_realtime=True,
+            current_only=False,
+        )
+        if event.payload["population_cadence"]["cadence_id"].startswith(
+            "cadence:world:bakery-district:"
+        )
+    ]
+    assert runtime_events[-1].payload["population_cadence"]["window_start"] == 86401
+    assert runtime_events[-1].payload["population_cadence"]["window_end"] == 172801
+    main.stop_population_runtime()
     monkeypatch.setattr(main, "_population_runtime_sleep", _stop_after_one_sleep(main))
 
     first = main.start_population_runtime()
@@ -76,7 +113,8 @@ async def test_runtime_stop_start_reuses_cadence_history(monkeypatch: pytest.Mon
             current_only=False,
         )
     )
-    assert second_ids == first_ids
+    assert second_ids[: len(first_ids)] == first_ids
+    assert len(second_ids) == len(first_ids) + 1
     main.stop_population_runtime()
 
 

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "population-continuous-runtime",
+  "order": 122,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_population_continuous_runtime.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/population-continuous-runtime-report.json",
+  "description": "Backend-only continuous population cadence evidence; Godot remains unverified"
+}

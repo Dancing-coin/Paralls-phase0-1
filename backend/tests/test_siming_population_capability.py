@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import pytest
+
 from app.models.authority_event import AuthorityEvent, AuthorityEventRouting, AuthorityEventSource
 from app.models.siming_event import SimingInput
 from app.population_continuity.batch import ContinuityMergeAuthority, PopulationPlanner
+from app.population_continuity.decision_surface import PopulationCapabilityCatalog
 from app.population_continuity.seed_planner import CharacterSeedPlanner
 from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationCycleResult, PopulationProjection, PopulationReadSet, PopulationBatchReport
 from app.services.siming_event_consumer import SimingEventConsumer
@@ -115,6 +118,9 @@ class GenericDefaultRecordingPopulationCapability(RecordingPopulationCapability)
     def run_cohort_cycle(self, cadence_input, read_set):
         self.cohort_calls += 1
         return self.run_cycle(cadence_input, read_set)
+
+    def run_decision_cycle(self, cadence_input, read_set, policy, capabilities):
+        return self.run_default_decision_cycle(cadence_input, read_set)
 
 
 def test_missing_owner_is_zero_write() -> None:
@@ -236,15 +242,15 @@ def test_default_production_builder_supplies_bakery_owner_context() -> None:
 
 
 def test_tick_routes_population_once() -> None:
-    recorder = RecordingPopulationCapability()
-    result = SimingRuntime(population_capability=recorder).tick([SimingInput(input_type="population_cadence_input", source_event=cadence_event())])
+    recorder = GenericDefaultRecordingPopulationCapability()
+    result = SimingRuntime(population_capability=recorder).tick([SimingInput(input_type="population_cadence_input", source_event=cadence_event(cadence_id="cadence:cohort:bakery:W0", selector_revision="selector:cohort-bakery:v1", ruleset_revision="rules:cohort-bakery:v1"))])
     assert recorder.calls == 1
     assert result.read_model is not None
 
 
 def test_non_v1_population_cadence_defaults_to_generic_decision_surface() -> None:
     recorder = GenericDefaultRecordingPopulationCapability()
-    event = cadence_event(cadence_id="cadence:generic:1", selector_revision="selector:generic:v1")
+    event = cadence_event(cadence_id="cadence:generic:1", selector_revision="selector:generic:population:v1")
     result = SimingRuntime(population_capability=recorder).tick(
         [SimingInput(input_type="population_cadence_input", source_event=event)]
     )
@@ -268,6 +274,114 @@ def test_v1_population_cadence_keeps_cohort_fixture_path() -> None:
     assert result.read_model is not None
 
 
+def test_unknown_population_selector_requeues_without_fallback() -> None:
+    recorder = GenericDefaultRecordingPopulationCapability()
+    event = cadence_event(selector_revision="selector:generic:legacy:v1")
+    result = SimingRuntime(population_capability=recorder).tick(
+        [SimingInput(input_type="population_cadence_input", source_event=event)]
+    )
+    assert recorder.generic_calls == 0 and recorder.cohort_calls == 0
+    assert result.audit_records[-1].reason == "population_requeue:unknown_selector"
+
+
+def test_generic_population_decision_requires_admitted_descriptors() -> None:
+    recorder = GenericDefaultRecordingPopulationCapability()
+    event = cadence_event(
+        selector_revision="selector:generic:population:v1",
+    ).model_copy(
+        update={
+            "payload": {
+                **cadence_event(selector_revision="selector:generic:population:v1").payload,
+                "population_decision": {"policy": {}, "capabilities": []},
+            }
+        }
+    )
+    result = SimingRuntime(population_capability=recorder).tick(
+        [SimingInput(input_type="population_cadence_input", source_event=event)]
+    )
+    assert recorder.generic_calls == 0
+    assert result.audit_records[-1].reason == "population_requeue:capability_descriptor_missing"
+
+
 def test_consumer_maps_cadence_event() -> None:
     inputs = SimingEventConsumer().handle_event(cadence_event())
     assert len(inputs) == 1 and inputs[0].input_type == "population_cadence_input"
+
+
+@pytest.mark.parametrize("field,value", [
+    ("population_decision", None),
+    ("population_decision", []),
+    ("population_decision", "invalid"),
+    ("population_owner_receipt", None),
+    ("population_owner_receipt", []),
+    ("population_owner_receipt", "invalid"),
+])
+def test_malformed_population_payload_never_uses_default(field, value) -> None:
+    recorder = GenericDefaultRecordingPopulationCapability()
+    event = cadence_event(selector_revision="selector:generic:population:v1")
+    event.payload[field] = value
+    result = SimingRuntime(population_capability=recorder).tick([
+        SimingInput(input_type="population_cadence_input", source_event=event)
+    ])
+    assert recorder.generic_calls == recorder.cohort_calls == recorder.calls == 0
+    assert result.audit_records[-1].reason.startswith("population_requeue:")
+
+
+def test_receipt_runner_missing_never_uses_generic_default() -> None:
+    recorder = GenericDefaultRecordingPopulationCapability()
+    event = cadence_event(selector_revision="selector:generic:population:v1")
+    event.payload["population_owner_receipt"] = {
+        "receipt_ref": "receipt:production", "owner_ref": "actor_gameplay.organization_domain",
+        "event_family": "gameplay.organization.production_work_contribution_accepted",
+        "committed": True, "revision_vector": {"world:bakery": 1}, "zero_write": False,
+    }
+    event.payload["population_projections"] = [{
+        "ref": "projection:production", "scope": "organization:summary",
+        "revision_vector": {"world:bakery": 1}, "payload": {},
+    }]
+    result = SimingRuntime(population_capability=recorder).tick([
+        SimingInput(input_type="population_cadence_input", source_event=event)
+    ])
+    assert recorder.generic_calls == recorder.cohort_calls == recorder.calls == 0
+    assert result.audit_records[-1].reason == "population_requeue:runner_missing"
+
+
+def test_fixture_runner_missing_never_uses_legacy_cycle() -> None:
+    recorder = RecordingPopulationCapability()
+    event = cadence_event(selector_revision="selector:cohort-bakery:v1")
+    result = SimingRuntime(population_capability=recorder).tick([
+        SimingInput(input_type="population_cadence_input", source_event=event)
+    ])
+    assert recorder.calls == 0
+    assert result.audit_records[-1].reason == "population_requeue:runner_missing"
+
+
+@pytest.mark.parametrize("invalid_descriptor", [None, "invalid", {"capability_id": "unknown"}])
+def test_mixed_capability_descriptors_cannot_silently_drop_invalid_entries(invalid_descriptor) -> None:
+    recorder = GenericDefaultRecordingPopulationCapability()
+    event = cadence_event(selector_revision="selector:generic:population:v1")
+    cadence = PopulationCadenceInput.from_authority_event(event)
+    event.payload["population_decision"] = {
+        "policy": PopulationSimulationCapability.default_decision_policy(cadence).model_dump(mode="json"),
+        "capabilities": [PopulationCapabilityCatalog.default(cadence.policy_revision)[0].model_dump(mode="json"), invalid_descriptor],
+    }
+    result = SimingRuntime(population_capability=recorder).tick([
+        SimingInput(input_type="population_cadence_input", source_event=event)
+    ])
+    assert recorder.generic_calls == recorder.cohort_calls == recorder.calls == 0
+    assert result.audit_records[-1].reason.startswith("population_requeue:")
+
+
+def test_admitted_explicit_generic_decision_ignores_fixture_cadence_id_prefix() -> None:
+    recorder = GenericDefaultRecordingPopulationCapability()
+    event = cadence_event(cadence_id="cadence:cohort:bakery:W0", selector_revision="selector:generic:population:v1")
+    cadence = PopulationCadenceInput.from_authority_event(event)
+    event.payload["population_decision"] = {
+        "policy": PopulationSimulationCapability.default_decision_policy(cadence).model_dump(mode="json"),
+        "capabilities": [PopulationCapabilityCatalog.default(cadence.policy_revision)[0].model_dump(mode="json")],
+    }
+    SimingRuntime(population_capability=recorder).tick([
+        SimingInput(input_type="population_cadence_input", source_event=event)
+    ])
+    assert recorder.generic_calls == 1
+    assert recorder.cohort_calls == recorder.calls == 0

@@ -8,6 +8,8 @@ def test_game_start_to_player_activation_closes_the_seed_vertical() -> None:
     fixture = SimingLedPopulationFixture.create()
     result = fixture.run()
 
+    assert fixture.cadence_event.payload["population_cadence"]["selector_revision"] == "selector:generic:population:v1"
+    assert fixture.capability.last_result.decision is not None
     assert result["cadence"]["status"] == "accepted"
     assert result["population"]["seed_count"] == 1
     assert result["owner"]["owner_ref"] == "actor_gameplay.organization_domain"

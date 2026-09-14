@@ -39,6 +39,17 @@ class MemorySourceRecord(BaseModel):
     revision: int = Field(ge=0, strict=True)
 
 
+class MemoryConsistencyResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    actor_id: str
+    producer_ts: int = Field(ge=0, strict=True)
+    status: Literal["no_conflicts", "policy_skipped", "rate_limited", "truth_wins", "verification_required"]
+    conflict_refs: tuple[str, ...] = ()
+    verification_request_refs: tuple[str, ...] = ()
+    next_check_at: int | None = None
+
+
 class MemoryCorrectionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

@@ -66,11 +66,18 @@ from app.population_continuity.siming_contracts import (
     PopulationOwnerReceipt,
     PopulationReadSet,
 )
-from app.population_continuity.decision_surface import PopulationCapabilityDescriptor, PopulationDecisionPolicy
+from app.population_continuity.decision_surface import (
+    PopulationCapabilityCatalog,
+    PopulationCapabilityDescriptor,
+    PopulationDecisionPolicy,
+)
 from app.services.siming_population_capability import PopulationSimulationCapability, ReadSetBuilder, default_population_read_set_builder
 
 
 class SimingRuntime:
+    _POPULATION_GENERIC_SELECTOR = "selector:generic:population:v1"
+    _POPULATION_FIXTURE_SELECTOR = "selector:cohort-bakery:v1"
+
     def __init__(
         self,
         *,
@@ -148,13 +155,24 @@ class SimingRuntime:
                 try:
                     cadence = PopulationCadenceInput.from_authority_event(event)
                     read_set = self._population_read_set_builder(event, cadence)
+                    if cadence.selector_revision not in {
+                        self._POPULATION_GENERIC_SELECTOR,
+                        self._POPULATION_FIXTURE_SELECTOR,
+                    }:
+                        result.audit_records.append(
+                            self._audit(event, status="no_action", reason="population_requeue:unknown_selector")
+                        )
+                        continue
                     owner_receipt_payload = event.payload.get("population_owner_receipt")
+                    generic_payload = event.payload.get("population_decision")
+                    for field in ("population_owner_receipt", "population_decision"):
+                        if field in event.payload and not isinstance(event.payload[field], dict):
+                            raise ValueError(f"{field}_invalid")
                     if isinstance(owner_receipt_payload, dict) and not read_set.projections:
                         result.audit_records.append(
                             self._audit(event, status="no_action", reason="population_requeue:owner_rejected")
                         )
                         continue
-                    generic_payload = event.payload.get("population_decision")
                     generic_runner = getattr(self._population_capability, "run_decision_cycle", None)
                     default_runner = getattr(self._population_capability, "run_default_decision_cycle", None)
                     receipt_runner = getattr(
@@ -162,44 +180,67 @@ class SimingRuntime:
                         "run_receipt_pinned_decision_cycle",
                         None,
                     )
-                    fixture_checker = getattr(self._population_capability, "is_v1_fixture", None)
-                    is_fixture = (
-                        bool(fixture_checker(read_set))
-                        if callable(fixture_checker)
-                        else cadence.cadence_id.startswith("cadence:cohort:")
-                    )
-                    generic_mode = isinstance(generic_payload, dict) or cadence.selector_revision.startswith("selector:generic:")
-                    if isinstance(owner_receipt_payload, dict) and callable(receipt_runner):
+                    is_fixture = cadence.selector_revision == self._POPULATION_FIXTURE_SELECTOR
+                    generic_mode = cadence.selector_revision == self._POPULATION_GENERIC_SELECTOR
+                    if generic_mode and isinstance(owner_receipt_payload, dict):
+                        if not callable(receipt_runner):
+                            result.audit_records.append(
+                                self._audit(event, status="no_action", reason="population_requeue:runner_missing")
+                            )
+                            continue
                         cycle = receipt_runner(
                             cadence,
                             read_set,
                             PopulationOwnerReceipt.model_validate(owner_receipt_payload),
                         )
-                    elif generic_mode and isinstance(generic_payload, dict) and callable(generic_runner):
-                        policy_payload = generic_payload.get("policy") or generic_payload.get("decision_policy")
-                        capability_payload = generic_payload.get("capabilities") or ()
+                    elif generic_mode and isinstance(generic_payload, dict):
+                        policy_payload = generic_payload.get("policy", generic_payload.get("decision_policy"))
+                        capability_payload = generic_payload.get("capabilities")
+                        if not capability_payload:
+                            result.audit_records.append(
+                                self._audit(event, status="no_action", reason="population_requeue:capability_descriptor_missing")
+                            )
+                            continue
+                        if not callable(generic_runner):
+                            result.audit_records.append(
+                                self._audit(event, status="no_action", reason="population_requeue:runner_missing")
+                            )
+                            continue
                         policy = PopulationDecisionPolicy.model_validate(policy_payload)
+                        if not isinstance(capability_payload, (list, tuple)):
+                            raise ValueError("capability_descriptor_invalid")
                         capabilities = tuple(
                             PopulationCapabilityDescriptor.model_validate(item)
                             for item in capability_payload
-                            if isinstance(item, dict)
                         )
+                        if not self._population_capabilities_admitted(cadence, capabilities):
+                            result.audit_records.append(
+                                self._audit(event, status="no_action", reason="population_requeue:capability_descriptor_invalid")
+                            )
+                            continue
                         cycle = generic_runner(
                             cadence, read_set, policy, capabilities
                         )
-                    elif generic_mode and callable(default_runner) and not is_fixture:
+                    elif generic_mode and callable(default_runner):
                         cycle = default_runner(cadence, read_set)
-                    else:
+                    elif is_fixture:
                         runner = getattr(self._population_capability, "run_cohort_cycle", None)
-                        cycle = (
-                            runner(cadence, read_set)
-                            if callable(runner)
-                            else self._population_capability.run_cycle(cadence, read_set)
+                        if not callable(runner):
+                            result.audit_records.append(
+                                self._audit(event, status="no_action", reason="population_requeue:runner_missing")
+                            )
+                            continue
+                        cycle = runner(cadence, read_set)
+                    else:
+                        result.audit_records.append(
+                            self._audit(event, status="no_action", reason="population_requeue:runner_missing")
                         )
+                        continue
                     result.audit_records.append(self._population_cycle_audit(event, cycle))
                     result.audit_records.extend(audit for audit in cycle.audits if isinstance(audit, SimingAuditRecord))
                 except (TypeError, ValueError) as exc:
                     result.audit_records.append(self._audit(event, status="no_action", reason=f"population_requeue:{exc}"))
+                    continue
             if siming_input.input_type == "siming_staging_ack":
                 self._process_staging_ack(event, result)
                 continue
@@ -654,6 +695,24 @@ class SimingRuntime:
                 no_action_reason="no eligible intervention",
             )
         return result
+
+    @staticmethod
+    def _population_capabilities_admitted(
+        cadence: PopulationCadenceInput,
+        capabilities: tuple[PopulationCapabilityDescriptor, ...],
+    ) -> bool:
+        admitted = {
+            item.capability_id: item
+            for item in PopulationCapabilityCatalog.default(cadence.policy_revision)
+        }
+        return bool(capabilities) and all(
+            descriptor.enabled
+            and descriptor.policy_revision == cadence.policy_revision
+            and descriptor.capability_id in admitted
+            and descriptor == admitted[descriptor.capability_id]
+            and descriptor.validate_owner_contract()
+            for descriptor in capabilities
+        )
 
     def _population_cycle_audit(self, event: AuthorityEvent, cycle) -> SimingAuditRecord:
         status = "recorded" if cycle.status == "accepted" else "no_action"

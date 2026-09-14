@@ -26,7 +26,8 @@ from app.character_agent.models.private_world_snapshot import CharacterPrivateWo
 from app.character_agent.models.goal_runtime import CharacterGoalStateRecord
 from app.character_agent.models.memory_record_bundle import CharacterMemoryRecordBundle
 from app.character_agent.models.memory_consistency import (
-    MemoryCorrectionRequest, MemoryCorrectionReceipt, MemoryFactClaim, MemorySourceRecord, memory_claim_key,
+    MemoryConsistencyResult, MemoryCorrectionRequest, MemoryCorrectionReceipt, MemoryFactClaim,
+    MemorySourceRecord, compare_memory_claims, memory_claim_key,
 )
 from app.character_agent.models.supervision import (
     CharacterBackgroundCognitionResult,
@@ -1215,14 +1216,64 @@ class CharacterAgentRuntime:
                 raise
             return run_model(focused)
 
+    def run_memory_consistency_pass(self, actor_id: str, producer_ts: int) -> MemoryConsistencyResult:
+        """按需核对一个角色的已知冲突；真相只用于裁决，获知仍须经过感知链。"""
+        result = MemoryConsistencyResult(actor_id=actor_id, producer_ts=producer_ts, status="no_conflicts")
+        with self._memory_correction_lock:
+            if not self._profile_registry.contains(actor_id):
+                return result.model_copy(update={"status": "policy_skipped"})
+            profile = self._effective_profile_payload(actor_id)
+            deliberation = profile["personality_layer"]["facets"]["conscientiousness"]["deliberation"]
+            if deliberation < 0.6:
+                return result.model_copy(update={"status": "policy_skipped"})
+            # 复用严谨性与记忆保持设定；毫秒时钟下普通角色一分钟，强记忆角色五分钟。
+            interval = 300_000 if profile["capability_constraint_layer"].get("memory_retention") == "strong" else 60_000
+            # ponytail: 按需扫描单个角色的历史；历史量显著增长后改用角色内检查时间索引。
+            timeline = self.get_session_timeline(actor_id)
+            if producer_ts < max((int(event["producer_ts"]) for event in timeline), default=0):
+                raise ValueError("memory consistency pass predates actor events")
+            last_check = max((int(event["producer_ts"]) for event in timeline
+                if event["event_type"] == "character_memory_consistency_checked"), default=None)
+            if last_check is not None and producer_ts < last_check + interval:
+                return result.model_copy(update={"status": "rate_limited", "next_check_at": last_check + interval})
+            entries = [entry for entry in self._l1.get_actor_scene_knowledge_store().entries_for_actor(actor_id)
+                if entry.conflict_state == "conflicted"]
+            if not entries:
+                return result
+            conflict_refs = tuple(conflict.conflict_id for entry in entries for conflict in entry.conflicts if not conflict.resolved)
+            truth_wins = False
+            if self._memory_source_resolver is not None:
+                for entry in entries:
+                    for source_ref in dict.fromkeys(source for conflict in entry.conflicts if not conflict.resolved
+                        for source in conflict.source_refs):
+                        source = self._memory_source_resolver(source_ref)
+                        if source is not None and compare_memory_claims(entry.claim, source.claim) == "conflicted":
+                            truth_wins = True
+            requests = []
+            for room_id, scene_id in dict.fromkeys((entry.session_id, entry.scene_id) for entry in entries):
+                requests.extend(self.get_memory_verification_requests(actor_id, producer_ts=producer_ts,
+                    room_id=room_id, scene_id=scene_id, source_entry_ids={entry.entry_id for entry in entries
+                        if entry.session_id == room_id and entry.scene_id == scene_id}))
+            result = result.model_copy(update={"status": "truth_wins" if truth_wins else "verification_required",
+                "conflict_refs": conflict_refs, "verification_request_refs": tuple(request.request_id for request in requests),
+                "next_check_at": producer_ts + interval})
+            # 持久化检查时间以便重启后保持限频；不写有效记忆，也不隐式调用 edit。
+            self._session_store.append_event(actor_id=actor_id, event_type="character_memory_consistency_checked",
+                producer_ts=producer_ts, payload=result.model_dump(mode="json"))
+            self._persist_graph_continuity(actor_id=actor_id, producer_ts=producer_ts)
+            return result
+
     def get_memory_verification_requests(
         self, actor_id: str, *, producer_ts: int, room_id: str = "room_demo",
         scene_id: str = "scene_demo", zone_id: str = "zone_focus",
+        source_entry_ids: set[str] | None = None,
     ):
         """只为当前角色已知的异常生成一次感知请求，由现有 provider 链执行。"""
         requests = ActivePerceptionPlanner().requests_for_actor(
             self._l1.get_actor_scene_knowledge_store(), actor_id=actor_id, session_id=room_id,
             room_id=room_id, scene_id=scene_id, zone_id=zone_id)
+        if source_entry_ids is not None:
+            requests = [request for request in requests if source_entry_ids.intersection(request.source_entry_ids)]
         timeline = self.get_session_timeline(actor_id)
         consumed = {event.get("payload", {}).get("verification_request_ref") for event in timeline}
         pending = [event["payload"] for event in timeline

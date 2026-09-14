@@ -798,7 +798,7 @@ def test_production_player_dialogue_cognition_runs_inside_activation_lock() -> N
 
 def test_population_tick_emits_bounded_cycle_summary_in_existing_audit() -> None:
     class RecordingPopulation:
-        def run_cycle(self, cadence_input, read_set):
+        def run_default_decision_cycle(self, cadence_input, read_set):
             report = PopulationBatchReport(
                 batch_ref="population-batch:summary",
                 budget_used=1,
@@ -828,7 +828,10 @@ def test_population_tick_emits_bounded_cycle_summary_in_existing_audit() -> None
             )
 
     runtime = SimingRuntime(population_capability=RecordingPopulation())
-    result = runtime.tick([SimingInput(input_type="population_cadence_input", source_event=_event())])
+    result = runtime.tick([SimingInput(
+        input_type="population_cadence_input",
+        source_event=_event(_cadence(selector_revision="selector:generic:population:v1")),
+    )])
     summary_audits = [audit for audit in result.audit_records if "population_cycle" in audit.reason]
     assert summary_audits
     assert "status=owner_settlement_required" in summary_audits[0].reason

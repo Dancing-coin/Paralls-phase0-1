@@ -51,7 +51,7 @@ def _unsupported_cadence_event(
         base_checkpoint_digest="sha256:checkpoint:test",
         base_revision_vector={"gameplay:organization:window:unsupported": 1},
         policy_revision="policy:test@1",
-        selector_revision="selector:generic:test@1",
+        selector_revision="selector:generic:population:v1",
         ruleset_revision="rules:generic:test@1",
         deterministic_seed="seed:test:1",
         catch_up_limit=1,

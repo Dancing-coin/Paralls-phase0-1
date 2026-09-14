@@ -44,6 +44,7 @@ class PopulationCadenceDriver:
         )
         setattr(world_runtime, "published_population_cadence_ids", self._runtime_history)
         self._published_cadence_ids = self._history_ids()
+        self.clock.tick = self._confirmed_history_tick(initial_tick)
 
     @property
     def current_tick(self) -> int:
@@ -58,18 +59,30 @@ class PopulationCadenceDriver:
             return PopulationDriverTickResult(
                 rejected_windows=((cadence_id, str(exc)),)
             )
-        pending = [
+        window_items = [
             (f"cadence:{self.world_runtime.mode.world_ref}:{start}", start, end)
             for start, end in windows
-            if f"cadence:{self.world_runtime.mode.world_ref}:{start}"
-            not in self._published_cadence_ids
         ]
+        if self.world_runtime.is_paused():
+            return PopulationDriverTickResult(
+                deferred_windows=tuple(item[0] for item in window_items)
+            )
+        pending = []
+        deferred_after_gap: list[str] = []
+        confirmed_tick = previous_tick
+        for item in window_items:
+            if item[0] in self._published_cadence_ids and not pending:
+                confirmed_tick = item[2]
+                continue
+            if item[0] in self._published_cadence_ids:
+                deferred_after_gap.append(item[0])
+            else:
+                pending.append(item)
         selected = pending[: self.catch_up_limit]
-        deferred = tuple(item[0] for item in pending[self.catch_up_limit :])
+        deferred = tuple(item[0] for item in pending[self.catch_up_limit :]) + tuple(deferred_after_gap)
         published: list[str] = []
         rejected: list[tuple[str, str]] = []
-        confirmed_tick = previous_tick
-        for cadence_id, window_start, window_end in selected:
+        for index, (cadence_id, window_start, window_end) in enumerate(selected):
             try:
                 cadence = self.world_runtime.build_population_cadence(
                     window_start=window_start,
@@ -83,9 +96,11 @@ class PopulationCadenceDriver:
                     if not isinstance(exc, ValueError)
                     else (cadence_id, str(exc))
                 )
+                deferred = tuple(item[0] for item in selected[index + 1 :]) + deferred
                 break
             if event is None:
                 rejected.append((cadence_id, "publisher_rejected"))
+                deferred = tuple(item[0] for item in selected[index + 1 :]) + deferred
                 break
             self._published_cadence_ids.add(cadence_id)
             self._runtime_history.add(cadence_id)
@@ -118,6 +133,13 @@ class PopulationCadenceDriver:
             if isinstance(cadence_id, str):
                 ids.add(cadence_id)
         return ids
+
+    def _confirmed_history_tick(self, initial_tick: int) -> int:
+        cursor = initial_tick
+        prefix = f"cadence:{self.world_runtime.mode.world_ref}:"
+        while f"{prefix}{cursor}" in self._published_cadence_ids:
+            cursor += self.window_size
+        return cursor
 
 
 __all__ = ["PopulationCadenceDriver", "PopulationDriverTickResult"]
