@@ -128,6 +128,7 @@ from app.services.phase0_authority_event_adapter import Phase0AuthorityEventAdap
 from app.services.session_input_router import SessionInputRouter
 from app.population_continuity.activation import ProfileActivationAuthority
 from app.population_continuity.activation_policy import ActivationPolicy
+from app.world_runtime.population_driver import PopulationCadenceDriver
 from app.services.gameplay_mirror_session_access_service import (
     GameplayMirrorActorRequest,
     GameplayMirrorSessionAccessError,
@@ -215,6 +216,85 @@ _PLAYER_SHELL_ACTOR_IDS = {"char_c"}
 _SPEECH_REQUEST_TYPES = {"speak_public", "speak_private", "share_info", "withhold"}
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 websocket_transport_closers: dict[str, Callable[[str], None]] = {}
+_population_runtime_driver: PopulationCadenceDriver | None = None
+_population_runtime_task: asyncio.Task[None] | None = None
+_population_runtime_stop_event: asyncio.Event | None = None
+_population_runtime_sleep: Callable[[float], object] = asyncio.sleep
+_population_runtime_clock: Callable[[int, int], int] = lambda current, window: current + window
+
+
+async def _run_population_runtime(driver: PopulationCadenceDriver, stop_event: asyncio.Event) -> None:
+    window_size = driver.window_size
+    while not stop_event.is_set():
+        driver.tick(_population_runtime_clock(driver.current_tick, window_size))
+        await _population_runtime_sleep(window_size)  # type: ignore[misc]
+
+
+def start_population_runtime() -> asyncio.Task[None] | None:
+    """Start the singleton population cadence driver for the current runtime."""
+    global _population_runtime_driver, _population_runtime_task, _population_runtime_stop_event
+    if _population_runtime_task is not None and not _population_runtime_task.done():
+        return _population_runtime_task
+    if "authority_event_bus" not in globals() or "gameplay_event_store" not in globals():
+        return None
+    mode = _bakery_population_mode()
+    world_runtime = WorldContinuityRuntime(store=gameplay_event_store, mode=mode)
+    receipt = world_runtime.resume()
+    initial_tick = int(receipt.revision_vector.get(f"world:{mode.world_ref}", 0))
+    _population_runtime_driver = PopulationCadenceDriver(
+        world_runtime=world_runtime,
+        publish_window=lambda cadence: publish_population_cadence_window(
+            world_runtime=world_runtime,
+            window_start=cadence.window_start,
+            window_end=cadence.window_end,
+            room_id="room:bakery",
+            scene_id="scene:bakery",
+            zone_id="zone:bakery",
+            causation_id=f"population-runtime:{cadence.cadence_id}",
+            correlation_id=f"population-runtime:{cadence.cadence_id}",
+        ),
+        window_size=86400,
+        catch_up_limit=mode.catch_up_limit,
+        initial_tick=initial_tick,
+    )
+    _population_runtime_stop_event = asyncio.Event()
+    _population_runtime_task = asyncio.create_task(
+        _run_population_runtime(_population_runtime_driver, _population_runtime_stop_event),
+        name="population-cadence-runtime",
+    )
+    return _population_runtime_task
+
+
+def stop_population_runtime() -> None:
+    """Signal and cancel the singleton population cadence driver."""
+    global _population_runtime_driver, _population_runtime_task, _population_runtime_stop_event
+    if _population_runtime_stop_event is not None:
+        _population_runtime_stop_event.set()
+    if _population_runtime_task is not None and not _population_runtime_task.done():
+        _population_runtime_task.cancel()
+    _population_runtime_driver = None
+    _population_runtime_task = None
+    _population_runtime_stop_event = None
+
+
+async def _shutdown_population_runtime() -> None:
+    task = _population_runtime_task
+    stop_population_runtime()
+    if task is not None:
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+@app.on_event("startup")
+async def _start_population_runtime_on_startup() -> None:
+    start_population_runtime()
+
+
+@app.on_event("shutdown")
+async def _stop_population_runtime_on_shutdown() -> None:
+    await _shutdown_population_runtime()
 
 
 class TrustedLocalGameplayMirrorEnrollmentRequest(BaseModel):
@@ -475,6 +555,7 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
 
 
 def reset_runtime_state() -> None:
+    stop_population_runtime()
     global runtime
     global character_service
     global character_perceived_input_service
