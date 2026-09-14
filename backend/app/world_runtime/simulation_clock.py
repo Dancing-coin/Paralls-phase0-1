@@ -5,6 +5,21 @@ from dataclasses import dataclass
 from app.gameplay.shared_contracts import ScheduledObligation
 
 
+def calculate_window_bounds(
+    previous_tick: int, target_tick: int, window_size: int
+) -> tuple[tuple[int, int], ...]:
+    if previous_tick < 0 or target_tick < 0 or window_size <= 0:
+        raise ValueError("simulation_clock_invalid_window")
+    if target_tick < previous_tick:
+        raise ValueError("simulation_clock_cannot_rewind")
+    if target_tick == previous_tick:
+        return ()
+    return tuple(
+        (window_start, window_start + window_size)
+        for window_start in range(previous_tick, target_tick + window_size, window_size)
+    )
+
+
 @dataclass(frozen=True)
 class ClockAdvance:
     previous_tick: int
@@ -34,4 +49,4 @@ class SimulationClock:
         return ClockAdvance(previous_tick=previous, current_tick=target_tick, due=selected, deferred=deferred)
 
 
-__all__ = ["ClockAdvance", "SimulationClock"]
+__all__ = ["ClockAdvance", "SimulationClock", "calculate_window_bounds"]
