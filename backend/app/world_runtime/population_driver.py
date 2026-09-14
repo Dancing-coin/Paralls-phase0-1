@@ -77,8 +77,12 @@ class PopulationCadenceDriver:
                     cadence_id=cadence_id,
                 )
                 event = self.publish_window(cadence)
-            except ValueError as exc:
-                rejected.append((cadence_id, str(exc)))
+            except Exception as exc:
+                rejected.append(
+                    (cadence_id, f"publisher_exception:{type(exc).__name__}:{exc}")
+                    if not isinstance(exc, ValueError)
+                    else (cadence_id, str(exc))
+                )
                 break
             if event is None:
                 rejected.append((cadence_id, "publisher_rejected"))
@@ -87,7 +91,7 @@ class PopulationCadenceDriver:
             self._runtime_history.add(cadence_id)
             published.append(cadence_id)
             confirmed_tick = window_end
-        if not rejected:
+        if windows and not rejected and not deferred:
             confirmed_tick = target_tick
         self.clock.tick = confirmed_tick
         return PopulationDriverTickResult(

@@ -64,12 +64,38 @@ def driver() -> PopulationCadenceDriver:
 
 
 def test_driver_publishes_each_due_window_once(driver: PopulationCadenceDriver) -> None:
-    first = driver.tick(7200)
-    second = driver.tick(7200)
+    first = driver.tick(14400)
+    second = driver.tick(14400)
 
     assert first.published_cadence_ids == ("cadence:world:0", "cadence:world:3600")
-    assert first.deferred_windows == ("cadence:world:7200",)
-    assert second.published_cadence_ids == ()
+    assert first.deferred_windows == ("cadence:world:7200", "cadence:world:10800")
+    assert second.published_cadence_ids == ("cadence:world:7200", "cadence:world:10800")
+
+
+def test_driver_does_not_publish_partial_future_window(driver: PopulationCadenceDriver) -> None:
+    result = driver.tick(1000)
+
+    assert result.published_cadence_ids == ()
+    assert result.deferred_windows == ()
+    assert driver.current_tick == 0
+
+
+def test_zero_catch_up_budget_keeps_due_windows_for_next_tick() -> None:
+    runtime = WorldContinuityRuntime(store=GameplayEventStore(), mode=_mode())
+    runtime.resume()
+    driver = PopulationCadenceDriver(
+        world_runtime=runtime,
+        publish_window=lambda cadence: _event(cadence.cadence_id),
+        window_size=3600,
+        catch_up_limit=0,
+        initial_tick=0,
+    )
+
+    result = driver.tick(3600)
+
+    assert result.published_cadence_ids == ()
+    assert result.deferred_windows == ("cadence:world:0",)
+    assert driver.current_tick == 0
 
 
 def test_driver_rebuild_uses_existing_publisher_history(driver: PopulationCadenceDriver) -> None:
@@ -118,6 +144,27 @@ def test_driver_keeps_rejected_window_due_when_publisher_returns_none() -> None:
 
     assert result.published_cadence_ids == ()
     assert result.rejected_windows == (("cadence:world:0", "publisher_rejected"),)
+    assert driver.current_tick == 0
+
+
+def test_driver_returns_auditable_rejection_for_publisher_exception() -> None:
+    runtime = WorldContinuityRuntime(store=GameplayEventStore(), mode=_mode())
+    runtime.resume()
+
+    def publish(_cadence):
+        raise RuntimeError("publisher_down")
+
+    driver = PopulationCadenceDriver(
+        world_runtime=runtime,
+        publish_window=publish,
+        window_size=3600,
+        catch_up_limit=2,
+        initial_tick=0,
+    )
+
+    result = driver.tick(3600)
+
+    assert result.rejected_windows == (("cadence:world:0", "publisher_exception:RuntimeError:publisher_down"),)
     assert driver.current_tick == 0
 
 

@@ -12,11 +12,9 @@ def calculate_window_bounds(
         raise ValueError("simulation_clock_invalid_window")
     if target_tick < previous_tick:
         raise ValueError("simulation_clock_cannot_rewind")
-    if target_tick == previous_tick:
-        return ()
     return tuple(
         (window_start, window_start + window_size)
-        for window_start in range(previous_tick, target_tick + window_size, window_size)
+        for window_start in range(previous_tick, target_tick - window_size + 1, window_size)
     )
 
 
