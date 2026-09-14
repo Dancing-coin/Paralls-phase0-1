@@ -749,12 +749,12 @@ class PopulationSimulationCapability:
             status = "owner_settlement_required"
         if continuity_failure_status:
             status = continuity_failure_status
+        report = report.model_copy(update={
+            "owner_committed_count": sum(1 for item in owner_receipts if item.committed and not item.zero_write),
+            "continuity_committed_count": sum(1 for item in continuity_receipts if item.status in {"committed", "idempotent_replay"}),
+            "continuity_requeue_count": sum(1 for item in continuity_receipts if item.status in {"requeued", "rejected"}),
+        })
         if cohort:
-            report = report.model_copy(update={
-                "owner_committed_count": sum(1 for item in owner_receipts if item.committed and not item.zero_write),
-                "continuity_committed_count": sum(1 for item in continuity_receipts if item.status in {"committed", "idempotent_replay"}),
-                "continuity_requeue_count": sum(1 for item in continuity_receipts if item.status in {"requeued", "rejected"}),
-            })
             audits = ({
                 "cohort_ref": report.cohort_ref,
                 "window": cadence_input.cadence_id.rsplit(":", 1)[-1],

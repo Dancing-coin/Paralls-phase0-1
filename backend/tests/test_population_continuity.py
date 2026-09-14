@@ -18,6 +18,10 @@ from app.population_continuity.models import (
 from app.population_continuity.world import WorldContinuityRuntime
 from app.population_continuity.vertical import BakeryDistrictPopulationFixture
 from app.world_runtime.scheduling import RuntimePopulationPolicy, RuntimeWakeUpCandidate
+from app.population_continuity.roster import POPULATION_ACTOR_IDS
+from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationProjection, PopulationReadSet
+from app.services.siming_population_capability import PopulationSimulationCapability
+from app.character_agent.models.simulation_seed import CharacterContinuityReceipt
 
 
 PROFILE_DIR = (
@@ -377,3 +381,79 @@ def test_p3d_bakery_district_fixture_uses_existing_profiles_and_replays(
         "character:char_c",
     ]
     assert result["restricted_market"]["supplier_quote"] == "fixed-quote"
+
+
+class _ContinuityRecorder:
+    def __init__(self, *, conflict_actor: str | None = None) -> None:
+        self.commands: list[object] = []
+        self.revisions: dict[str, int] = {}
+        self.conflict_actor = conflict_actor
+
+    def current_revision(self, actor_ref: str) -> int:
+        return self.revisions.get(actor_ref, 0)
+
+    def apply_command(self, command: object) -> CharacterContinuityReceipt:
+        self.commands.append(command)
+        before = self.revisions.get(command.actor_ref, 0)
+        if command.actor_ref == self.conflict_actor:
+            return CharacterContinuityReceipt(
+                receipt_ref=f"requeued:{command.command_id}", command_id=command.command_id,
+                actor_ref=command.actor_ref, status="requeued",
+                character_revision_before=before + 1, character_revision_after=before + 1,
+                refusal_reason="character_revision_conflict",
+            )
+        self.revisions[command.actor_ref] = before + 1
+        return CharacterContinuityReceipt(
+            receipt_ref=f"continuity:{command.command_id}", command_id=command.command_id,
+            actor_ref=command.actor_ref, status="committed",
+            character_revision_before=before, character_revision_after=before + 1,
+        )
+
+
+def _twelve_actor_read_set(*, catch_up_limit: int = 12, budget: int = 12) -> PopulationReadSet:
+    cadence = PopulationCadenceInput(
+        cadence_id="cadence:town:1", world_ref="world:town", world_mode_ref="mode:town",
+        world_mode_revision="mode:town:v1", cadence_source_ref="world:town", cadence_source_revision=1,
+        window_start=100, window_end=101, base_checkpoint_ref="checkpoint:town:1",
+        base_checkpoint_digest="sha256:checkpoint", base_revision_vector={"world:town": 1},
+        policy_revision="policy:town:v1", selector_revision="selector:town:v1",
+        ruleset_revision="rules:town:v1", deterministic_seed="seed:town:1",
+        catch_up_limit=catch_up_limit, budget=budget, report_scope="public",
+    )
+    projections = tuple(
+        PopulationProjection(
+            ref=f"projection:{actor_id}:W0", scope="public", revision_vector={"world:town": 1},
+            payload={
+                "actor_ref": f"character:{actor_id}", "candidate_kind": "routine_work",
+                "dynamic_state": {"routine_cursor": 100}, "presentation_seed": {"slot": actor_id},
+                "starvation_credit": 0.1,
+            },
+        )
+        for actor_id in POPULATION_ACTOR_IDS
+    )
+    return PopulationReadSet.from_inputs(cadence, projections)
+
+
+def test_twelve_residents_receive_b0_continuity_without_memory_claims() -> None:
+    continuity = _ContinuityRecorder()
+    result = PopulationSimulationCapability(continuity_port=continuity).run_default_decision_cycle(
+        _twelve_actor_read_set().cadence, _twelve_actor_read_set()
+    )
+    assert result.status == "accepted"
+    assert result.report.continuity_committed_count == 12
+    assert len(continuity.commands) == 12
+    assert len(result.seed_candidates) == 12
+    assert all(not seed.memory_candidates for seed in result.seed_candidates)
+
+
+def test_twelve_residents_defer_after_budget_and_requeue_on_revision_conflict() -> None:
+    read_set = _twelve_actor_read_set(catch_up_limit=12, budget=3)
+    continuity = _ContinuityRecorder(conflict_actor="character:char_a")
+    result = PopulationSimulationCapability(continuity_port=continuity).run_default_decision_cycle(
+        read_set.cadence, read_set
+    )
+    assert result.status == "requeue"
+    assert result.reason == "character_continuity_requeued"
+    assert result.report.continuity_requeue_count == 1
+    assert result.decision is not None
+    assert len(result.decision.deferred_candidates) == 9
