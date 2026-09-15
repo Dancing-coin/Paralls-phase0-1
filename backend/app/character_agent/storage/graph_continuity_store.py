@@ -128,6 +128,22 @@ class CharacterGraphContinuityStore:
         source_event_ref: str,
     ) -> None:
         """写入不含完整 timeline 的热当前态；历史仍由 session event 和 checkpoint 负责。"""
+        with self._lock:
+            self._write_current_state(
+                actor_id=actor_id,
+                producer_ts=producer_ts,
+                snapshot=snapshot,
+                source_event_ref=source_event_ref,
+            )
+
+    def _write_current_state(
+        self,
+        *,
+        actor_id: str,
+        producer_ts: int,
+        snapshot: dict[str, object],
+        source_event_ref: str,
+    ) -> None:
         scope = self._scope_for_actor(actor_id)
         node_id = f"actor-current-state:{actor_id}"
         previous = self._graph.get_node(node_id=node_id, scope=scope, valid_at=self._MAX_TIME)
