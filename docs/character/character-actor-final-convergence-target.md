@@ -8,6 +8,19 @@ This document freezes the final shared `CharacterActor` target that Stage 2 conv
 
 It exists so the repository stops treating the current transitional actor layering as oral-history knowledge.
 
+## 2026-09-14 Action-Foundation Refinement
+
+The target in this document remains the shared-host boundary. The active
+action-foundation and INF tag contract is now refined by:
+
+- `docs/superpowers/specs/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-design.md`
+- `docs/character/character-action-foundation-current-state.md`
+
+That refinement adds a deterministic layered coordinator, namespaced tag
+ownership, external-asset qualification, and Motor-consumed root motion. It
+does not create a second actor host or relax the single `CharacterMotor`
+displacement rule.
+
 ## Final Shared Actor Host Choice
 
 For this repository, the final shared actor host converges from the current `CharacterReplica` lineage, not from the current `CharacterBase` wrapper.

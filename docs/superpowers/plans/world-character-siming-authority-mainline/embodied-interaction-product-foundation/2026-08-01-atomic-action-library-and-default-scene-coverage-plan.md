@@ -40,6 +40,19 @@ presentation dependencies and are not implementation targets here.
 Before each behavior change, add a focused failing test. Do not add a new
 dependency or a second action-asset contract.
 
+## 2026-09-14 Contract Dependency
+
+This plan implements atomic interaction coverage under the unified action
+foundation contract:
+
+`docs/superpowers/plans/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-implementation-plan.md`
+
+The shared plan owns namespaced tags, actor-layer arbitration, external asset
+qualification, and the final Motor boundary. This plan must continue to use
+the existing `CharacterEmbodimentAssetRegistry` and `EmbodiedActionController`
+surfaces, and must not add local damage truth, direct transform writes, or a
+second action registry.
+
 ## Phase 1: Inventory Existing Atoms And Controller Hooks
 
 1. Audit `selected_skill_path`, `primitive_action_tags`, and

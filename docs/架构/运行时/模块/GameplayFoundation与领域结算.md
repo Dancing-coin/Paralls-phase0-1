@@ -36,6 +36,18 @@ settlement owner。
 都是可重建或受限投影。System L6 的 `AuthorityEvent` 是跨层消息总线，不取代该历史。
 `GameplayOutboxDispatcher` 只会在 commit 后派发，不能把未提交 proposal 变成可见事实。
 
+## 与动作底座及 INF 元标签的关系（2026-09-14）
+
+Gameplay 的 `status:*`、`capability:*`、`affordance:*` 和 authority result
+是角色动作底座的约束/结果投影，不是 Godot 本地可任意写入的标签。INF/角色
+智能体可以携带目标、证据、约束、因果和置信度 metadata 形成结构化意图；
+动作底座在接触 marker 处提交 typed request，由本领域 authority 验证并通过
+`AtomicEventBatch`/committed outbox 产生结果。
+
+本地 `action:*`、`phase:*`、`occupy:*` 和 `presentation:*` 只描述执行与表现，
+不能替代 Gameplay 的状态事实。动作底座与 INF 的统一契约见
+`docs/superpowers/specs/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-design.md`。
+
 ## 已实现的事件与结算脊柱
 
 ```text

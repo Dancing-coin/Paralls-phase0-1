@@ -20,6 +20,7 @@ It exists to answer three questions without rereading every historical plan:
 
 | Plan | Status | Notes |
 | --- | --- | --- |
+| `2026-09-14-unified-character-action-foundation-and-inf-tag-contract-implementation-plan.md` | `metadata_only_open` | New active plan for imported-asset character embodiment, unified action arbitration, and INF/CharacterAgent tag-boundary convergence; implementation not started. |
 | `2026-06-08-system-l1-full-phase1-implementation-plan.md` | `completed_verified` | Parent `System L1` plan; child-plan matrix and full verification gate are green. |
 | `2026-06-08-system-l1-client-interaction-implementation-plan.md` | `completed_verified` | `move_intent` / `focus_target_change` / `interact` proof chain is verified. |
 | `2026-06-08-system-l1-visual-fact-system-implementation-plan.md` | `completed_verified` | emitter family plus `evidence_projection` runtime proof is verified. |

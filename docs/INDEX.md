@@ -37,6 +37,7 @@
 - `docs/9月分析/README.md`：初代产品初稿入口，记录小镇、个人区域、锚点朋友、朋友圈桌游和剧本角色增量方向；该目录是提议性分析材料，不授权实现。
 - `docs/8月分析/第二阶段推进/README.md`：`bakery-authored-agents` 的增量指导入口；正式 SDD/plan 见下方 Phase Two tree。
 - `docs/art-resource-swap-workflow.md`：美术资源替换与更新工作流手册，定义 art pack、adapter scene、runtime shell 和 binding profile 的接入方式。
+- `docs/art-asset-production-repository.md`：独立 `paralls-art-assets` 美术生产仓库的职责、交接流程、旧资源参考和资格门禁。
 - `docs/demo-script.md`：预期 demo 节拍和可观察证明路径。
 - `docs/population-roster.md`：群体居民名单配置、结构化剧本角色表导入与自然语言草稿审阅。
 - `docs/production-readiness.md`：生产级在线 provider、图谱连续性、Authority 与 Godot 发布门禁。
@@ -103,9 +104,20 @@
 - `docs/superpowers/plans/2026-06-19-deepseek-character-model-gateway-implementation-plan.md`
 - `docs/superpowers/plans/2026-06-19-character-actor-stage2-closeout-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-15-character-actor-architecture-optimization-design.md`
+- `docs/superpowers/specs/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-design.md`
+- `docs/superpowers/specs/2026-09-14-character-physics-motion-and-contact-subspec.md`
+- `docs/superpowers/specs/2026-09-14-character-esm-action-attempt-settlement-subspec.md`
+- `docs/superpowers/specs/2026-09-14-character-connected-action-and-physical-replication-subspec.md`
+- `docs/superpowers/specs/2026-09-14-character-animation-asset-qualification-and-concurrent-realization-subspec.md`
 - `docs/superpowers/plans/2026-06-15-character-actor-architecture-optimization-implementation-plan.md`
 - `docs/superpowers/plans/2026-06-15-character-actor-near-term-cleanup-implementation-plan.md`
 - `docs/superpowers/plans/2026-06-15-character-actor-final-convergence-implementation-plan.md`
+- `docs/superpowers/plans/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-implementation-plan.md`（唯一实施顺序；覆盖共享契约、仲裁、Motor、资产、Agent/INF、ESM/Gameplay、联网、调试与双角色验收）
+- `docs/superpowers/plans/2026-09-14-character-shared-contracts-arbitration-and-tools-implementation-plan.md`（任务级参考，不定义独立顺序）
+- `docs/superpowers/plans/2026-09-14-character-animation-asset-qualification-and-concurrent-realization-implementation-plan.md`（任务级参考，不定义独立顺序）
+- `docs/superpowers/plans/2026-09-14-character-physics-motion-and-contact-implementation-plan.md`（任务级参考，不定义独立顺序）
+- `docs/superpowers/plans/2026-09-14-character-esm-action-attempt-settlement-implementation-plan.md`（任务级参考，不定义独立顺序）
+- `docs/superpowers/plans/2026-09-14-character-connected-action-and-physical-replication-implementation-plan.md`（任务级参考，不定义独立顺序）
 - `docs/superpowers/specs/2026-06-15-full-character-agent-runtime-with-llm-design.md`
 - `docs/superpowers/plans/2026-06-15-full-character-agent-runtime-with-llm-implementation-plan.md`
 - `docs/superpowers/specs/2026-06-12-character-actor-unification-design.md`
@@ -326,6 +338,11 @@ Latest run manifest、baseline 和 diff artifacts 写入 `.harness/verification/
 - `docs/character/character-asset-integration.md`
 - `docs/art-resource-swap-workflow.md`
 - `docs/character/character-action-asset-interface.md`
+- `docs/character/character-action-foundation-operator-guide-and-index.md`：动作底座相关 spec/plan 的权威层级、执行手册、依赖索引和验证梯度。
+- `docs/superpowers/specs/2026-09-14-character-animation-asset-qualification-and-concurrent-realization-subspec.md`
+- `docs/character/character-action-foundation-current-state.md`
+- `docs/character/character-runtime-design-drift-audit.md`
+- `docs/character/deepseek-dialogue-guidance-and-action-foundation-reconciliation.md`：DeepSeek 完整目录 `1-90` 与原文级 `113-206` 对话的主题、采纳/约束/预留/延期决策及其与动作底座、Agent、INF、ESM、物理和联网边界的对齐记录。
 - `docs/character/character-actor-migration-status.md`
 - `docs/character/character-actor-final-convergence-target.md`
 - `docs/character/character-actor-final-convergence-gap-report.md`

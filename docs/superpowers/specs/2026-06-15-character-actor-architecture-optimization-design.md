@@ -87,6 +87,17 @@ Those specs remain valuable as:
 
 They should not be deleted, but this spec becomes the primary active truth for architecture optimization and future actor-stack cleanup.
 
+## Unified Action/INF Contract Update (2026-09-14)
+
+The actor architecture is now refined by the unified action-foundation spec:
+
+`docs/superpowers/specs/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-design.md`
+
+That spec is the controlling detail for namespaced tags, layered action
+coordination, imported-asset qualification, contact markers, and INF result
+projection. This document remains the controlling boundary for the shared
+actor host, Motor ownership, and presentation split.
+
 ## Core Decisions
 
 ### 1. Human Control Changes The Command Source, Not The Actor Substrate

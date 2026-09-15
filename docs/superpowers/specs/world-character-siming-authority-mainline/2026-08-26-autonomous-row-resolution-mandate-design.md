@@ -72,6 +72,37 @@ This authority remains bounded by the permanent prohibitions below. It cannot
 turn a gap into a generic owner, generic payment/transfer/transform/promotion,
 router, registry, coordinator, writer, settlement authority or second runtime.
 
+### Autonomous Completion Rule
+
+The absence of a newly supplied business literal is **not**, by itself, a
+blocker.  When a row or a supporting input is incomplete, the main thread must
+finish the missing decision instead of repeatedly reporting that more business
+input is needed.  It must classify every missing element and take the matching
+action:
+
+| Missing element class | Required autonomous action |
+| --- | --- |
+| Already fixed by a committed source, frozen package, approved contract, schema, or descriptor | Derive it mechanically and retain the derivation in the decision record. |
+| A product/content choice with several legal, project-consistent values | Select the value that best advances the approved product loop and durable content leverage; record alternatives, rationale, consequences, and a reversible migration/compatibility boundary where relevant. |
+| A source fact, projection, policy, package, descriptor, test, replay reader, presentation mirror, or verification artifact missing from the repository | Create the narrowest complete, product-significant form under its rightful existing owner; if no owner can legally own it, use the conflict-matrix path for one row-specific owner. |
+| An implementation, verification, or documentation gap inside an admitted row | Repair and verify it in the same delivery cycle; do not relabel it as a business-input blocker. |
+
+The main thread must choose and document package-local literals, content
+definitions, policies, eligibility mappings, outcome/binding identifiers,
+dependencies, validation profiles, and presentation details whenever they are
+not mechanically fixed but can be coherently resolved within the row and the
+project's product direction.  It must never substitute an arbitrary default,
+fixture, name-based inference, caller-selected authority coordinate, or
+uncommitted external claim for a world fact.
+
+Escalation is permitted only when progress would require one of the permanent
+prohibitions, a schema/platform capability that cannot express the required
+closed row, an unavailable external credential or fact that cannot be created
+under an existing rightful owner, or evidence that cannot be made coherent
+without contradicting committed privacy/replay history.  Such an escalation
+must name the exact conflict and the smallest decision or platform change that
+would resolve it; it must not ask generally for “new business input.”
+
 ## Permanent Boundaries
 
 This mandate does not authorize generic owners, writers, routers, registries,

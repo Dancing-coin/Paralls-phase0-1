@@ -14,6 +14,20 @@ one incremental coverage route for default main-scene objects.
 It does not replace the existing controller, settlement, VLA, dialogue, or
 TTS designs. It specifies how their already separate responsibilities compose.
 
+## 2026-09-14 Cross-Cutting Contract Alignment
+
+The unified character action-foundation spec is now the controlling
+cross-cutting contract for this design:
+
+`docs/superpowers/specs/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-design.md`
+
+This document continues to own atomic interaction assets, reviewed scene
+affordances, and `EmbodiedActionController` phase coverage. The 2026-09-14
+contract adds the shared namespaced tag ontology and requires all new action
+assets to remain compatible with one `CharacterIntentFrame -> CharacterMotor`
+path. It does not create a parallel asset registry or change the existing
+authority settlement owner.
+
 ## Current Code Facts
 
 - `CharacterActionAssetDescriptor` and `CharacterEmbodimentAssetRegistry`
