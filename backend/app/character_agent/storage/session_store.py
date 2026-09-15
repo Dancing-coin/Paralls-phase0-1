@@ -122,17 +122,27 @@ class CharacterAgentSessionStore:
                 )
             self._needs_actor_migration = False
         path = self._actor_storage_path(actor_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
         previous_size = path.stat().st_size if path.exists() else 0
         try:
-            with path.open("ab") as stream:
-                stream.write(
-                    (json.dumps(entry, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+            data = (json.dumps(entry, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+            try:
+                with path.open("ab") as stream:
+                    stream.write(data)
+            except FileNotFoundError:
+                # 外部运行时可能替换临时 storage root；保留可恢复的旧 JSON 快照作为降级锚点。
+                self._needs_actor_migration = True
+                self._storage_path.write_text(
+                    json.dumps(self._events_by_actor, ensure_ascii=False, separators=(",", ":")),
+                    encoding="utf-8",
                 )
+                return
             self._storage_path.write_text(
                 json.dumps({"schema_version": 2}, separators=(",", ":")),
                 encoding="utf-8",
             )
         except Exception:
-            with path.open("r+b") as stream:
-                stream.truncate(previous_size)
+            if path.exists():
+                with path.open("r+b") as stream:
+                    stream.truncate(previous_size)
             raise
