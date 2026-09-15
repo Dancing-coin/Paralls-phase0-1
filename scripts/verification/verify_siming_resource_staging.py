@@ -186,7 +186,7 @@ def _static_resources(project_root: Path) -> dict[str, bool]:
     source_text = {
         relative_path: read_source(relative_path)
         for relative_path in (
-            "scenes/phase0/MainDemo.tscn",
+            "scenes/integration/Unified3DIntegrationValidation.tscn",
             "scenes/phase0/CharacterBase.tscn",
             "scenes/phase0/CharacterReplica.tscn",
             "scenes/phase0/InteractiveObject.tscn",
@@ -201,12 +201,12 @@ def _static_resources(project_root: Path) -> dict[str, bool]:
             "scripts/audio/SpatialVoiceController.gd",
         )
     }
-    main_demo = source_text["scenes/phase0/MainDemo.tscn"]
+    validation_scene = source_text["scenes/integration/Unified3DIntegrationValidation.tscn"]
     character_base = source_text["scenes/phase0/CharacterBase.tscn"]
     player_instance = bool(
         re.search(
             r'\[node name="PlayerCharacter"[^]]*instance=ExtResource\("2_player"\)',
-            main_demo,
+            validation_scene,
         )
     )
     player_char_c_binding = bool(
@@ -216,25 +216,26 @@ def _static_resources(project_root: Path) -> dict[str, bool]:
         )
     )
     return {
-        "main_demo_wiring": all(
-            token in main_demo
+        "unified_validation_wiring": all(
+            token in validation_scene
             for token in (
                 'res://scenes/phase0/InteractiveObject.tscn',
                 'res://scenes/phase0/EnvironmentStateNode.tscn',
-                'instance=ExtResource("6_object")',
-                'instance=ExtResource("7_environment")',
+                'instance=ExtResource("4_object")',
+                'instance=ExtResource("6_environment")',
             )
         ),
-        "throne_room": "ThroneRoomImported" in main_demo,
-        "participant_bindings": 'actor_id = "char_b"' in main_demo
-        and 'res://scripts/visual/VisualFactEmitter.gd' in main_demo
+        "art_pack_independence": "ThroneRoomImported" not in validation_scene
+        and "res://assets/environment/" not in validation_scene
+        and "res://assets/characters/shared/" not in validation_scene,
+        "participant_bindings": 'actor_id = "char_b"' in validation_scene
+        and 'res://scripts/visual/VisualFactEmitter.gd' in validation_scene
         and 'actor_id := "char_c"' in source_text["scripts/visual/VisualFactEmitter.gd"],
         "player_character_instance": player_instance,
         "player_char_c_binding": player_instance and player_char_c_binding,
         "player_camera_voice_wiring": player_instance
         and player_char_c_binding
-        and 'res://scenes/phase0/CharacterBase.tscn' in main_demo
-        and 'res://scenes/phase0/CharacterReplica.tscn' in main_demo
+        and 'res://scenes/phase0/CharacterBase.tscn' in validation_scene
         and 'res://scenes/phase0/CharacterReplica.tscn'
         in character_base
         and 'type="Camera3D"' in character_base
@@ -285,7 +286,7 @@ def main() -> int:
     }
     confrontation_match = eligible_matches["fact_confirmed"]
     reveal_match = registry.match(reveal_request, world_ts=20)
-    registry.record_realization(reveal_request, "main_demo_throne_room", world_ts=19)
+    registry.record_realization(reveal_request, "unified_3d_validation", world_ts=19)
     repeated_reveal = registry.match(reveal_request, world_ts=20)
     distinct_confrontation = registry.match(confrontation_request, world_ts=20)
 
@@ -348,12 +349,12 @@ def main() -> int:
     results = [
         _result(
             "existing_resource_package",
-            "The existing MainDemo resource package covers the requested realization",
+            "The unified validation resource package covers the requested realization",
             all(static_resources.values())
             and confrontation_match.accepted
             and capability is not None
-            and capability.asset_bundle == "main_demo_throne_room"
-            and capability.scene_refs == ["scenes/phase0/MainDemo.tscn"]
+            and capability.asset_bundle == "unified_3d_validation"
+            and capability.scene_refs == ["scenes/integration/Unified3DIntegrationValidation.tscn"]
             and set(capability.actor_ids) == {"char_b", "char_c"}
             and capability.object_ids == ["obj_letter"]
             and capability.environment_ids == ["env_lamp"]

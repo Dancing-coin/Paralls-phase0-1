@@ -13,9 +13,9 @@ class ResourceCapabilityRegistry:
         self._recent_signatures: list[str] = []
         self.register(
             ResourceCapabilityPackage(
-                capability_id="main_demo_throne_room",
-                asset_bundle="main_demo_throne_room",
-                scene_refs=["scenes/phase0/MainDemo.tscn"],
+                capability_id="unified_3d_validation",
+                asset_bundle="unified_3d_validation",
+                scene_refs=["scenes/integration/Unified3DIntegrationValidation.tscn"],
                 actor_ids=["char_b", "char_c"],
                 object_ids=["obj_letter"],
                 environment_ids=["env_lamp"],

@@ -7,9 +7,10 @@ const OCCUPANCY_SAMPLER := preload("res://scripts/l1/space/RuntimeOccupancySampl
 const REGISTRY := preload("res://scripts/interaction/SceneAffordanceRegistry.gd")
 
 const BINDING_REVISION := 1
-const SCENE_INSTANCE_ID := "scene_instance:main_demo:1"
 
 @export_node_path("Node3D") var target_object_path := NodePath("../InteractiveObject")
+@export var scene_id := "scene_demo"
+@export var scene_instance_id := "scene_instance:validation:1"
 @export var object_id := "obj_letter"
 @export var affordance_id := "affordance:obj_letter:inspect"
 @export var semantic_type := "letter"
@@ -70,8 +71,8 @@ func resolve_interaction(target_object_id: String, interaction_type: String) -> 
 	_refresh_local_occupancy(target)
 	registry.current_tick = Time.get_ticks_msec()
 	return registry.resolve(
-		"scene_demo",
-		SCENE_INSTANCE_ID,
+		scene_id,
+		scene_instance_id,
 		object_id,
 		affordance_id,
 		BINDING_REVISION,
@@ -143,8 +144,8 @@ func _target_object() -> Node3D:
 func _record(target: Node3D) -> Dictionary:
 	return {
 		"entity_ref": object_id,
-		"scene_id": "scene_demo",
-		"scene_instance_id": SCENE_INSTANCE_ID,
+		"scene_id": scene_id,
+		"scene_instance_id": scene_instance_id,
 		"binding_revision": BINDING_REVISION,
 		"semantic_type": semantic_type,
 		"semantic_tags": semantic_tags,

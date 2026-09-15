@@ -115,7 +115,7 @@ def test_knight_role_skin_has_sword_and_shield_pose_overlays() -> None:
 
 
 def test_knight_role_skin_scene_wires_combat_modifier() -> None:
-    scene_source = (ROOT / "scenes" / "phase0" / "KnightRoleSkin.tscn").read_text(encoding="utf-8")
+    scene_source = (ROOT / "archive" / "scenes" / "legacy" / "KnightRoleSkin.tscn").read_text(encoding="utf-8")
 
     assert 'res://scripts/character/KnightCombatModifier.gd' in scene_source
     assert '[node name="KnightCombatModifier"' in scene_source

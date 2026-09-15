@@ -11,7 +11,7 @@ def _read(relative_path: str) -> str:
 def test_door_host_uses_the_existing_motor_owner_and_reviewed_atom_contract() -> None:
     host = _read("scripts/interaction/ArchiveDoorEmbodiedActionHost.gd")
     scene = _read("scenes/phase0/CharacterBase.tscn")
-    main_demo = _read("scenes/phase0/MainDemo.tscn")
+    main_demo = _read("scenes/integration/Unified3DIntegrationValidation.tscn")
     replica = _read("scripts/character/CharacterReplica.gd")
 
     assert "class_name ArchiveDoorEmbodiedActionHost" in host
@@ -143,7 +143,7 @@ def test_contact_ik_settle_is_bounded_by_monotonic_time_as_well_as_physics_ticks
 
 def test_custom_reach_modifier_is_a_local_last_resort_after_the_existing_modifier_miss() -> None:
     role_skin = _read("scripts/character/KnightRoleSkin.gd")
-    scene = _read("scenes/phase0/KnightRoleSkin.tscn")
+    scene = _read("archive/scenes/legacy/KnightRoleSkin.tscn")
     host = _read("scripts/interaction/ArchiveDoorEmbodiedActionHost.gd")
     modifier = _read("scripts/character/ArchiveDoorReachModifier.gd")
     contact_body = host.split("func _process_contact() -> void:", maxsplit=1)[1].split(

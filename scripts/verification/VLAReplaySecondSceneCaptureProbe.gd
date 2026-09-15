@@ -1,7 +1,7 @@
 extends Node
 
-const REPLAY_SCENE := preload("res://scenes/phase0/ThroneHallWalkPreview.tscn")
-const REPLAY_SCENE_ASSET := "res://scenes/phase0/ThroneHallWalkPreview.tscn"
+const REPLAY_SCENE := preload("res://archive/scenes/legacy/ThroneHallWalkPreview.tscn")
+const REPLAY_SCENE_ASSET := "res://archive/scenes/legacy/ThroneHallWalkPreview.tscn"
 const REPLAY_CAPTURE_PATH := ".harness/verification/vla-replay-thronehall-walk-preview.png"
 const REPLAY_REPORT_PATH := ".harness/verification/vla-replay-thronehall-walk-preview.json"
 const VISUAL_PROVIDER := preload("res://scripts/character/VisualPatchProvider.gd")

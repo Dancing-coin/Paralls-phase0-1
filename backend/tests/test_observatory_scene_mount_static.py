@@ -6,11 +6,11 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def test_observatory_root_scene_exists_and_is_mounted_in_main_demo() -> None:
     root_scene = (ROOT / "scenes" / "phase0" / "ObservatoryRoot.tscn")
-    main_demo = (ROOT / "scenes" / "phase0" / "MainDemo.tscn").read_text(encoding="utf-8")
+    validation_scene = (ROOT / "scenes" / "integration" / "Unified3DIntegrationValidation.tscn").read_text(encoding="utf-8")
 
     assert root_scene.exists()
-    assert 'path="res://scenes/phase0/ObservatoryRoot.tscn"' in main_demo
-    assert 'node name="ObservatoryRoot" parent="."' in main_demo
+    assert 'path="res://scenes/phase0/ObservatoryRoot.tscn"' in validation_scene
+    assert 'node name="ObservatoryRoot" parent="."' in validation_scene
 
 
 def test_observatory_root_wires_state_and_all_key_surfaces() -> None:

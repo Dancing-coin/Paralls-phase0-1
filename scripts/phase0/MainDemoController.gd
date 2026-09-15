@@ -1,7 +1,6 @@
 extends Node3D
 
 const LIGHTING_TUNER := preload("res://scripts/visual/ThroneRoomLightingTuner.gd")
-const THRONE_HALL_WALK_PREVIEW := preload("res://scenes/phase0/ThroneHallWalkPreview.tscn")
 const ACTOR_PERCEPTION_SAMPLER := preload("res://scripts/character/ActorPerceptionSampler.gd")
 const ACTOR_PERCEPTION_TARGET_RESOLVER := preload("res://scripts/character/ActorPerceptionTargetResolver.gd")
 const FLOOR_CHECKPOINTS := [
@@ -159,31 +158,9 @@ func _bootstrap_throne_room_collision() -> void:
 		return
 	if _get_scene_collision_root() != null:
 		return
-	var imported_root := _get_scene_imported_root()
-	if imported_root == null:
-		return
-	var mesh_lookup := {}
-	_build_imported_mesh_lookup(imported_root, mesh_lookup)
-	var preview_scene := THRONE_HALL_WALK_PREVIEW.instantiate()
-	if preview_scene == null:
-		return
-	var collision_root := Node3D.new()
-	collision_root.name = _get_scene_collision_root_name()
-	add_child(collision_root)
-
-	for source_path in ["PreviewFloor", "WalkStepLower", "WalkStepUpper", "PreviewCollisionRoot"]:
-		var source_node := preview_scene.get_node_or_null(source_path)
-		if source_node == null:
-			continue
-		var duplicated := source_node.duplicate()
-		if duplicated is Node:
-			_ensure_preview_collision_shapes(duplicated as Node, mesh_lookup)
-			collision_root.add_child(duplicated)
-	preview_scene.queue_free()
-	_bus_log("throne_room_collision_bootstrap:static_bodies=%s collision_shapes=%s" % [
-		_count_static_bodies(collision_root),
-		_count_collision_shapes(collision_root),
-	])
+	# Environment adapters own collision construction. The old throne-room
+	# fallback is intentionally not part of the generic runtime host.
+	_bus_log("scene_collision_bootstrap_skipped:adapter_owned")
 
 func _ensure_l1_navigation_region() -> void:
 	var existing := get_node_or_null("L1NavigationRegion")

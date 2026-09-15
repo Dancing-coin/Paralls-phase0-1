@@ -129,7 +129,11 @@ def _websocket_trace(log_dir: Path) -> Path:
 
     session_messages = [message for message in messages if message.get("message_type") == "embodied_interaction_session_event"]
     session_payloads = [message.get("payload", {}) for message in session_messages]
-    bus_events = backend_main.authority_event_bus.list_events()
+    bus_events = [
+        event
+        for event in backend_main.authority_event_bus.list_events()
+        if event.payload.get("session_id") == "session:handshake:websocket-verify"
+    ]
     store_events = backend_main.gameplay_event_store.read_stream("session:session:handshake:websocket-verify")
     trace_path = log_dir / "embodied-interaction-session-websocket-trace.json"
     write_json(

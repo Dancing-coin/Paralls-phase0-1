@@ -1,7 +1,6 @@
 extends Node
 
-const MAIN_DEMO_SCENE := preload("res://scenes/phase0/MainDemo.tscn")
-const THRONE_HALL_SCENE := preload("res://scenes/phase0/ThroneHallWalkPreview.tscn")
+const MAIN_DEMO_SCENE := preload("res://scenes/integration/Unified3DIntegrationValidation.tscn")
 const VISUAL_PROVIDER := preload("res://scripts/character/VisualPatchProvider.gd")
 
 
@@ -19,7 +18,11 @@ func _capture() -> void:
 		push_error("vla_replay_coverage_capture:invalid_environment")
 		get_tree().quit(1)
 		return
-	var scene := MAIN_DEMO_SCENE.instantiate() if scene_key == "main_demo" else THRONE_HALL_SCENE.instantiate()
+	if scene_key != "main_demo":
+		push_error("vla_replay_coverage_capture:archived_scene_requires_explicit_activation")
+		get_tree().quit(1)
+		return
+	var scene := MAIN_DEMO_SCENE.instantiate()
 	add_child(scene)
 	var camera := _find_first_camera(scene)
 	if camera == null:
@@ -39,7 +42,7 @@ func _capture() -> void:
 		"status": "candidate_capture_ready" if meaningful and artifact_ref != "" else "candidate_capture_invalid",
 		"candidate_id": candidate_id,
 		"scene_key": scene_key,
-		"scene_asset": "res://scenes/phase0/MainDemo.tscn" if scene_key == "main_demo" else "res://scenes/phase0/ThroneHallWalkPreview.tscn",
+		"scene_asset": "res://scenes/integration/Unified3DIntegrationValidation.tscn",
 		"variant_index": variant_index,
 		"artifact_ref": artifact_ref,
 		"capture_path": capture_path,

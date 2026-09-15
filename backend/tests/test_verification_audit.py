@@ -1376,7 +1376,7 @@ def test_main_demo_runtime_wires_evidence_projection_emitter() -> None:
     controller_source = (project_root / "scripts" / "phase0" / "MainDemoController.gd").read_text(
         encoding="utf-8"
     )
-    scene_source = (project_root / "scenes" / "phase0" / "MainDemo.tscn").read_text(
+    scene_source = (project_root / "scenes" / "integration" / "Unified3DIntegrationValidation.tscn").read_text(
         encoding="utf-8"
     )
 
@@ -1490,7 +1490,7 @@ def test_main_demo_runtime_wires_remaining_sensory_emitters() -> None:
     controller_source = (project_root / "scripts" / "phase0" / "MainDemoController.gd").read_text(
         encoding="utf-8"
     )
-    scene_source = (project_root / "scenes" / "phase0" / "MainDemo.tscn").read_text(
+    scene_source = (project_root / "scenes" / "integration" / "Unified3DIntegrationValidation.tscn").read_text(
         encoding="utf-8"
     )
 
@@ -1671,7 +1671,7 @@ def test_phase05_character_scene_upgrade_artifacts_exist_and_match_role_split() 
 
 def test_phase0_open_scene_camera_artifacts_match_open_field_layout() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    scene_source = (project_root / "scenes" / "phase0" / "MainDemo.tscn").read_text(encoding="utf-8")
+    scene_source = (project_root / "scenes" / "integration" / "Unified3DIntegrationValidation.tscn").read_text(encoding="utf-8")
     controller_source = (project_root / "scripts" / "phase0" / "MainDemoController.gd").read_text(
         encoding="utf-8"
     )
@@ -1682,9 +1682,9 @@ def test_phase0_open_scene_camera_artifacts_match_open_field_layout() -> None:
         encoding="utf-8"
     )
 
-    assert "size = Vector2(80, 50)" in scene_source
-    assert "size = Vector3(80, 0.2, 50)" in scene_source
-    assert "Boundary" in scene_source
+    assert "size = Vector2(24, 18)" in scene_source
+    assert "size = Vector3(24, 0.2, 18)" in scene_source
+    assert "Wall" in scene_source
     assert "@export var focus_max_distance := 28.0" in controller_source
     assert "spring_length = 6.6" in controller_source
     assert "floor_grid_probe" in controller_source
