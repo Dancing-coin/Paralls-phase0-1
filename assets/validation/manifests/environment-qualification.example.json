@@ -1,0 +1,10 @@
+{
+  "contract": "environment_asset_qualification.v1",
+  "qualification_status": "candidate",
+  "artpack_id": "replace_with_active_pack_id",
+  "environment_scene_ref": "res://assets/active/<pack_id>/environment.glb",
+  "collision_scene_ref": "res://assets/active/<pack_id>/collision.tscn",
+  "required_anchor_ids": ["zone:validation", "nav:walkable", "anchor:player_spawn"],
+  "required_state_fixture_ids": ["env_lamp"],
+  "qualification_notes": "Candidate manifest. The imported environment must not own gameplay truth."
+}
