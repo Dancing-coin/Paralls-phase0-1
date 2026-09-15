@@ -270,7 +270,10 @@ class GameplayEventStore:
         start = max(0, from_revision - 1)
         end = to_revision if to_revision is not None else None
         events = events[start:end]
-        return [event.model_copy(deep=True) for event in events]
+        return [
+            self._events_by_id.get(event.event_id, event).model_copy(deep=True)
+            for event in events
+        ]
 
     def read_events(self, *, global_sequence_from: int | None = None, global_sequence_after: int | None = None, limit: int | None = None) -> list[GameplayEvent]:
         start_sequence = 1
