@@ -18,10 +18,13 @@ from app.population_continuity.models import (
 from app.population_continuity.world import WorldContinuityRuntime
 from app.population_continuity.vertical import BakeryDistrictPopulationFixture
 from app.world_runtime.scheduling import RuntimePopulationPolicy, RuntimeWakeUpCandidate
-from app.population_continuity.roster import POPULATION_ACTOR_IDS
+from app.population_continuity.roster import load_population_roster
 from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationProjection, PopulationReadSet
 from app.services.siming_population_capability import PopulationSimulationCapability
 from app.character_agent.models.simulation_seed import CharacterContinuityReceipt
+
+
+SAMPLE_ACTOR_IDS = load_population_roster().actor_ids
 
 
 PROFILE_DIR = (
@@ -429,7 +432,7 @@ def _twelve_actor_read_set(*, catch_up_limit: int = 12, budget: int = 12) -> Pop
                 "starvation_credit": 0.1,
             },
         )
-        for actor_id in POPULATION_ACTOR_IDS
+        for actor_id in SAMPLE_ACTOR_IDS
     )
     return PopulationReadSet.from_inputs(cadence, projections)
 

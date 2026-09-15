@@ -31,6 +31,12 @@ def test_settings_read_dialogue_and_tts_modes_from_env(monkeypatch) -> None:
     assert reloaded.settings.character_dialogue_cascade_limit == 240
 
 
+def test_settings_read_population_roster_from_env(monkeypatch) -> None:
+    monkeypatch.setenv("POPULATION_ROSTER_PATH", "backend/assets/population/story.json")
+    reloaded = importlib.reload(config_module)
+    assert reloaded.settings.population_roster_path == "backend/assets/population/story.json"
+
+
 def test_settings_read_tts_provider_and_voice_map_from_env(monkeypatch) -> None:
     monkeypatch.setenv("TTS_MODE", "openai_compatible")
     monkeypatch.setenv("TTS_PROVIDER_ENDPOINT", "https://tts.example.test/v1/audio/speech")

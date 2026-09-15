@@ -62,12 +62,19 @@ def main() -> int:
         "test_siming_population_authorized_cadence_publication.py",
         "test_character_agent_memory_consistency.py", "test_character_memory_consistency_flow.py",
         "test_character_memory_correction.py",
+        "test_population_roster.py", "test_population_roster_import.py",
     ))
     observation = report["observations"].get("continuous_runtime_evidence")
     evidence = json.loads(observation) if observation else {}
     report["continuous_runtime"] = evidence
+    configured_rosters = [json.loads(value) for key, value in report["observations"].items()
+                          if key.startswith("configured_roster_")]
+    report["configured_rosters"] = configured_rosters
     report["overall_passed"] = bool(report["overall_passed"] and evidence.get("window_count", 0) >= 2
-                                    and len(evidence.get("actor_ids", [])) == 12)
+                                    and evidence.get("actor_ids") and len(configured_rosters) >= 2
+                                    and all(row["actor_ids"] and not row["default_fill"]
+                                            and set(row["actor_ids"]) == set(row["advanced_actor_ids"])
+                                            for row in configured_rosters))
     report["restart_scope"] = "same_process; cross_process_authority_event_durability_not_proven"
     return backend_report(name, report)
 

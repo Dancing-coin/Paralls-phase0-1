@@ -3539,7 +3539,9 @@ economy revision pin；amount、account、evidence 与 payment event 不得出�
 
 ### `population-continuous-runtime`
 
-该 profile 运行真实应用生命周期到 Siming、Character Core 的受控日窗口测试：推进 12 个窗口覆盖全部 12 名居民，再停止/重启并确认第 13 个窗口继续推进。它同时验证重复窗口、失败重试、预算 deferred、revision requeue、Owner receipt 和真相优先的按需记忆核对。日常连续状态不生成无暴露记忆，不激活 dormant actor 的完整认知。
+该 profile 运行真实应用生命周期到 Siming、Character Core 的受控日窗口测试：默认 JSON 样例推进 12 个窗口覆盖全部 12 名居民，再停止/重启并确认第 13 个窗口继续推进。12 人仅是样例；运行名单通过 `POPULATION_ROSTER_PATH` 配置，人数由名单长度决定。另用 2 人和 17 人名单验证全部角色实际推进、没有补入默认居民、带 `@1` 的剧本角色引用可用，以及同次运行读取同一名单快照。结构化角色表导入、自然语言模型响应校验和草稿审核导出也纳入测试；模型传输使用测试替身，不证明真实服务质量。使用方法见 `docs/population-roster.md`。
+
+它同时验证重复窗口、失败重试、预算 deferred、revision requeue、Owner receipt 和真相优先的按需记忆核对。日常连续状态不生成无暴露记忆，不激活 dormant actor 的完整认知。
 
 断点恢复证据限定为同一进程内重建 driver；跨进程 Authority Event 持久化尚未证明。报告明确记录 `backend-only`、`written_and_backend_verified`（仅通过时）和 `godot_unverified`。
 

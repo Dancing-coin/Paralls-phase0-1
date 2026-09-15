@@ -195,7 +195,7 @@ from app.population_continuity.siming_contracts import (
 )
 from app.population_continuity.store_projection_assembler import assemble_committed_population_projections
 from app.population_continuity.world import WorldContinuityRuntime
-from app.population_continuity.roster import POPULATION_ACTOR_IDS
+from app.population_continuity.roster import PopulationRoster, load_population_roster
 from app.population_continuity.social_input import FrozenSocialPlanningInput
 from app.population_continuity.source_inputs import HouseholdScheduleInput, OrganizationScheduleInput
 from app.character_agent.profile.registry import CharacterProfileRegistry
@@ -247,7 +247,7 @@ def start_population_runtime() -> asyncio.Task[None] | None:
     if "authority_event_bus" not in globals() or "gameplay_event_store" not in globals():
         return None
     mode = _bakery_population_mode()
-    world_runtime = WorldContinuityRuntime(store=gameplay_event_store, mode=mode)
+    world_runtime = WorldContinuityRuntime(store=gameplay_event_store, mode=mode, roster=population_roster)
     world_stream_ref = f"world:{mode.world_ref}"
     window_size = 86400
     initial_tick = gameplay_event_store.get_stream_head(world_stream_ref)
@@ -391,6 +391,7 @@ class FrontendSimingCharacterDispatchAdapter(SimingCharacterDispatchAdapter):
 
 @dataclass
 class RuntimeState:
+    population_roster: PopulationRoster
     heavenly_graph: SQLiteHeavenlyGraphAdapter
     character_graph_memory: CharacterGraphMemoryStore
     character_agent_runtime: CharacterAgentRuntime
@@ -401,6 +402,7 @@ class RuntimeState:
 
 
 def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
+    roster = load_population_roster(runtime_settings.population_roster_path)
     graph_path = Path(runtime_settings.heavenly_graph_path)
     graph_path.parent.mkdir(parents=True, exist_ok=True)
     heavenly_graph = SQLiteHeavenlyGraphAdapter(graph_path)
@@ -427,7 +429,7 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
         heavy_actor_ids=frozenset(runtime_settings.character_graph_memory_heavy_actor_ids),
     )
     character_agent_runtime = CharacterAgentRuntime(
-        continuity_actor_ids=frozenset(POPULATION_ACTOR_IDS),
+        continuity_actor_ids=frozenset(roster.actor_ids),
         storage_root=character_agent_storage_root,
         memory_store=memory_router,
         continuity_store=continuity_store,
@@ -581,6 +583,7 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
             llm_provider=llm_provider,
         )
     return RuntimeState(
+        population_roster=roster,
         heavenly_graph=heavenly_graph,
         character_graph_memory=graph_memory,
         character_agent_runtime=character_agent_runtime,
@@ -600,6 +603,7 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
 
 def reset_runtime_state() -> None:
     stop_population_runtime()
+    global population_roster
     global runtime
     global character_service
     global character_perceived_input_service
@@ -677,6 +681,7 @@ def reset_runtime_state() -> None:
     inventory_definition_registry = build_production_inventory_definition_registry()
     stormnight_realtime_session_service = StormnightRealtimeSessionService(store=gameplay_event_store)
     runtime_state = build_runtime_state(settings)
+    population_roster = runtime_state.population_roster
     heavenly_graph = runtime_state.heavenly_graph
     runtime = SessionInputRouter()
     websocket_transport_closers = {}
@@ -1364,7 +1369,7 @@ def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:
     ):
         return None
     mode = _bakery_population_mode()
-    mode_receipt = WorldContinuityRuntime(store=gameplay_event_store, mode=mode).resume()
+    mode_receipt = WorldContinuityRuntime(store=gameplay_event_store, mode=mode, roster=population_roster).resume()
     if not mode_receipt.committed:
         return None
     world_source_ref = f"world:{mode.world_ref}"

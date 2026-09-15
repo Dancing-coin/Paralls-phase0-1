@@ -38,6 +38,7 @@
 - `docs/8月分析/第二阶段推进/README.md`：`bakery-authored-agents` 的增量指导入口；正式 SDD/plan 见下方 Phase Two tree。
 - `docs/art-resource-swap-workflow.md`：美术资源替换与更新工作流手册，定义 art pack、adapter scene、runtime shell 和 binding profile 的接入方式。
 - `docs/demo-script.md`：预期 demo 节拍和可观察证明路径。
+- `docs/population-roster.md`：群体居民名单配置、结构化剧本角色表导入与自然语言草稿审阅。
 - `docs/production-readiness.md`：生产级在线 provider、图谱连续性、Authority 与 Godot 发布门禁。
 - `docs/knowledge-graph-future-optimization.md`：当前运行时可用领域知识图谱的通用化、规模化、运维和治理后期优化项。
 

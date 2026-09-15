@@ -72,6 +72,7 @@ class Settings(BaseModel):
     character_graph_memory_heavy_actor_ids: list[str] = Field(
         default_factory=lambda: ["char_b"]
     )
+    population_roster_path: str | None = Field(default=None, min_length=1)
     vla_provider_mode: Literal["disabled", "http", "local", "blocked"] = "blocked"
     vla_provider_kind: Literal["openai_compatible"] = "openai_compatible"
     vla_provider_endpoint: str | None = None
@@ -274,6 +275,7 @@ settings = Settings(
     character_graph_memory_heavy_actor_ids=_env_list(
         "CHARACTER_GRAPH_MEMORY_HEAVY_ACTORS", ["char_b"]
     ),
+    population_roster_path=_env_optional("POPULATION_ROSTER_PATH"),
     vla_provider_mode=_env_value("VLA_PROVIDER_MODE", "blocked") or "blocked",
     vla_provider_kind=_env_value("VLA_PROVIDER_KIND", "openai_compatible") or "openai_compatible",
     vla_provider_endpoint=_env_value("VLA_PROVIDER_ENDPOINT"),

@@ -28,7 +28,7 @@ class CharacterContinuityPort(Protocol):
 
 
 ReadSetBuilder = Callable[[AuthorityEvent, PopulationCadenceInput], PopulationReadSet]
-_CHARACTER_REF_PATTERN = re.compile(r"character:[a-z0-9_.-]+")
+_CHARACTER_REF_PATTERN = re.compile(r"character:[a-z0-9_.@-]+")
 
 
 def default_population_read_set_builder(event: AuthorityEvent, cadence: PopulationCadenceInput) -> PopulationReadSet:

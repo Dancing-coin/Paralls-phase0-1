@@ -15,7 +15,7 @@ from app.world_runtime.scheduling import (
 
 from .models import DueEvaluationReceipt, WorldModeProfile, WorldModeReceipt
 from .siming_contracts import PopulationCadenceInput, PopulationProjection
-from .roster import POPULATION_ACTOR_IDS
+from .roster import PopulationRoster, load_population_roster
 
 
 class WorldContinuityRuntime:
@@ -27,10 +27,12 @@ class WorldContinuityRuntime:
         store: GameplayEventStore,
         mode: WorldModeProfile,
         authorized_actor_refs: frozenset[str] | None = None,
+        roster: PopulationRoster | None = None,
     ) -> None:
         self.store = store
         self.mode = mode
         self.authorized_actor_refs = authorized_actor_refs
+        self.roster = roster if roster is not None else load_population_roster()
 
     def pause(
         self, *, reason: str, expected_mode_revision: str | None = None
@@ -154,7 +156,7 @@ class WorldContinuityRuntime:
         self, cadence: PopulationCadenceInput
     ) -> tuple[PopulationProjection, ...]:
         """Build deterministic B0 routine inputs for the bounded resident roster."""
-        actors = POPULATION_ACTOR_IDS
+        actors = self.roster.actor_ids
         window_size = cadence.window_end - cadence.window_start
         window_index = cadence.window_start // window_size
         start = window_index % len(actors)
