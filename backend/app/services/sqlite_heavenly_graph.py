@@ -38,6 +38,7 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
         self._connection.execute("PRAGMA journal_mode = WAL")
         self._migrate()
         super().__init__()
+        self._pending_write_batch: HeavenlyGraphWriteBatch | None = None
         self._load()
 
     def close(self) -> None:
@@ -47,6 +48,7 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
     def write_batch(self, batch: HeavenlyGraphWriteBatch) -> HeavenlyGraphWriteResult:
         with self._lock:
             snapshot = self._snapshot_mutable_state()
+            self._pending_write_batch = batch
             try:
                 result = super().write_batch(batch)
                 if result.applied:
@@ -55,6 +57,8 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
             except Exception:
                 self._restore_mutable_state(snapshot)
                 raise
+            finally:
+                self._pending_write_batch = None
 
     def fork_branch(self, request: GraphBranchForkRequest) -> HeavenlyGraphWriteResult:
         with self._lock:
@@ -201,6 +205,9 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
         return json.dumps(value.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
 
     def _persist(self) -> None:
+        if self._pending_write_batch is not None:
+            self._persist_write_batch_delta(self._pending_write_batch)
+            return
         connection = self._connection
         try:
             connection.execute("BEGIN IMMEDIATE")
@@ -246,6 +253,60 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
                         ),
                     ),
                 )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+
+    def _persist_write_batch_delta(self, batch: HeavenlyGraphWriteBatch) -> None:
+        """Persist append-only graph writes without rewriting historical rows."""
+        connection = self._connection
+        scope_key = self._scope_key(batch.scope)
+        payload_hash, result = self._idempotency[(scope_key, batch.idempotency_key)]
+        node_revision, relation_revision = self._scope_stream_revisions.get(
+            scope_key, (0, 0)
+        )
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            for node in batch.nodes:
+                connection.execute(
+                    "INSERT INTO graph_nodes VALUES (?, ?, ?, ?)",
+                    (
+                        self._scope_json(node.scope),
+                        node.node_id,
+                        node.revision,
+                        self._payload_json(node),
+                    ),
+                )
+            for relation in batch.relations:
+                connection.execute(
+                    "INSERT INTO graph_relations VALUES (?, ?, ?, ?)",
+                    (
+                        self._scope_json(relation.scope),
+                        relation.relation_id,
+                        relation.revision,
+                        self._payload_json(relation),
+                    ),
+                )
+            connection.execute(
+                """
+                INSERT INTO graph_stream_revisions(scope_json, node_revision, relation_revision)
+                VALUES (?, ?, ?)
+                ON CONFLICT(scope_json) DO UPDATE SET
+                    node_revision = excluded.node_revision,
+                    relation_revision = excluded.relation_revision
+                """,
+                (self._scope_json(batch.scope), node_revision, relation_revision),
+            )
+            connection.execute(
+                "INSERT INTO graph_idempotency VALUES (?, ?, ?, ?)",
+                (
+                    self._scope_json(batch.scope),
+                    batch.idempotency_key,
+                    payload_hash,
+                    self._payload_json(result),
+                ),
+            )
             connection.commit()
         except Exception:
             connection.rollback()
