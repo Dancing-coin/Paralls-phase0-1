@@ -460,3 +460,25 @@ def test_twelve_residents_defer_after_budget_and_requeue_on_revision_conflict() 
     assert result.report.continuity_requeue_count == 1
     assert result.decision is not None
     assert len(result.decision.deferred_candidates) == 9
+
+
+def test_explicit_b0_projection_does_not_call_character_core() -> None:
+    base = _twelve_actor_read_set()
+    projection = base.projections[0].model_copy(
+        update={
+            "payload": {
+                **base.projections[0].payload,
+                "fidelity_tier": "B0",
+            }
+        },
+        deep=True,
+    )
+    read_set = PopulationReadSet.from_inputs(base.cadence, (projection,))
+    continuity = _ContinuityRecorder()
+
+    result = PopulationSimulationCapability(continuity_port=continuity).run_default_decision_cycle(
+        read_set.cadence, read_set
+    )
+
+    assert result.status == "accepted"
+    assert continuity.commands == []

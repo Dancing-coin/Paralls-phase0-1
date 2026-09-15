@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from app.character_agent.storage.session_store import CharacterAgentSessionStore
@@ -73,3 +74,42 @@ def test_session_store_recovers_from_empty_interrupted_file(tmp_path: Path) -> N
 
     assert event["event_index"] == 1
     assert reloaded.list_events("char_b")[0]["payload"]["summary"] == "recovered"
+
+
+def test_session_store_appends_actor_scoped_history_without_rewriting_other_actor(
+    tmp_path: Path,
+) -> None:
+    store = CharacterAgentSessionStore(storage_root=tmp_path)
+    store.append_event("char_a", "character_perceived_event", 1007, {"summary": "a"})
+
+    actor_a_path = store._actor_storage_path("char_a")
+    before = actor_a_path.read_bytes()
+
+    store.append_event("char_b", "character_perceived_event", 1008, {"summary": "b"})
+
+    assert actor_a_path.read_bytes() == before
+    assert store.list_events("char_a")[0]["payload"]["summary"] == "a"
+    assert store.list_events("char_b")[0]["payload"]["summary"] == "b"
+
+
+def test_session_store_migrates_legacy_snapshot_once_without_duplicate_events(
+    tmp_path: Path,
+) -> None:
+    legacy_event = {
+        "event_id": "char_a:legacy:1",
+        "event_index": 1,
+        "actor_id": "char_a",
+        "event_type": "legacy",
+        "producer_ts": 1,
+        "payload": {"summary": "legacy"},
+    }
+    (tmp_path / "character_agent_session_store.json").write_text(
+        '{"char_a": [' + json.dumps(legacy_event) + ']}',
+        encoding="utf-8",
+    )
+
+    store = CharacterAgentSessionStore(storage_root=tmp_path)
+    store.append_event("char_a", "new", 2, {"summary": "new"})
+    reloaded = CharacterAgentSessionStore(storage_root=tmp_path)
+
+    assert [item["event_type"] for item in reloaded.list_events("char_a")] == ["legacy", "new"]

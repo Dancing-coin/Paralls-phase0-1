@@ -296,6 +296,10 @@ class GameplayEventStore:
     def get_stream_head(self, stream_id: str) -> int:
         return int(self._stream_heads.get(stream_id, 0))
 
+    def get_stream_heads(self) -> dict[str, int]:
+        """Return the immutable source revision vector without scanning history."""
+        return dict(self._stream_heads)
+
     def get_event(self, event_id: str) -> GameplayEvent:
         if event_id not in self._events_by_id:
             raise KeyError(event_id)

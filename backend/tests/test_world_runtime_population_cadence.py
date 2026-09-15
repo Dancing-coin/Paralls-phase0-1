@@ -40,6 +40,21 @@ def test_world_runtime_builds_replayable_population_cadence_from_committed_world
     assert cadence.base_checkpoint_digest.startswith("sha256:")
 
 
+def test_world_runtime_cadence_uses_revision_heads_without_scanning_history() -> None:
+    store = GameplayEventStore()
+    runtime = WorldContinuityRuntime(store=store, mode=_mode())
+    runtime.resume()
+
+    def fail_history_scan(**_: object) -> list[object]:
+        raise AssertionError("cadence construction must not scan the event history")
+
+    store.read_events = fail_history_scan  # type: ignore[method-assign]
+
+    cadence = runtime.build_population_cadence(window_start=10, window_end=11)
+
+    assert cadence.cadence_source_revision == 1
+
+
 def test_world_runtime_rejects_an_empty_population_window() -> None:
     runtime = WorldContinuityRuntime(store=GameplayEventStore(), mode=_mode())
 
@@ -112,7 +127,7 @@ class _RecordingContinuityPort:
         )
 
 
-def test_twelve_residents_progress_across_rotating_windows_without_memory_write() -> None:
+def test_twelve_residents_publish_b0_results_without_character_core_writes() -> None:
     runtime = WorldContinuityRuntime(store=GameplayEventStore(), mode=_mode())
     runtime.resume()
     continuity = _RecordingContinuityPort()
@@ -130,6 +145,5 @@ def test_twelve_residents_progress_across_rotating_windows_without_memory_write(
         result = capability.run_default_decision_cycle(cadence, read_set)
         assert result.status == "accepted"
 
-    assert len(continuity.revisions) == 12
-    assert all(revision > 0 for revision in continuity.revisions.values())
-    assert all(not command.memory_candidate_refs for command in continuity.commands)
+    assert continuity.revisions == {}
+    assert continuity.commands == []

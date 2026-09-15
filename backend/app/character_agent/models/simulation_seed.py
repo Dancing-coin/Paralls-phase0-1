@@ -79,6 +79,9 @@ class CharacterContinuityCommand(ContinuityModel):
     actor_ref: str = Field(min_length=1)
     source_owner_receipt_refs: tuple[str, ...] = ()
     expected_character_revision: int = Field(ge=0)
+    from_tick: int = Field(default=0, ge=0)
+    to_tick: int = Field(default=0, ge=0)
+    simulation_tick_cursor: int = Field(default=0, ge=0)
     source_revision_vector: dict[str, int] = Field(default_factory=dict)
     state_delta: dict[str, Any] = Field(default_factory=dict)
     memory_candidate_refs: tuple[str, ...] = ()
@@ -89,6 +92,8 @@ class CharacterContinuityCommand(ContinuityModel):
 
     @model_validator(mode="after")
     def validate_command(self) -> "CharacterContinuityCommand":
+        if self.to_tick < self.from_tick or self.simulation_tick_cursor < self.to_tick:
+            raise ValueError("command_tick_range_invalid")
         if len(set(self.source_owner_receipt_refs)) != len(self.source_owner_receipt_refs):
             raise ValueError("command_owner_receipt_duplicate")
         if len(set(self.memory_candidate_refs)) != len(self.memory_candidate_refs):
@@ -109,6 +114,8 @@ class CharacterContinuityReceipt(ContinuityModel):
     applied_state_digest: str = ""
     seed_delta_refs: tuple[str, ...] = ()
     materialization_status: str = "pending"
+    simulation_tick_cursor: int = Field(default=0, ge=0)
+    source_revision_vector: dict[str, int] = Field(default_factory=dict)
     cursor_vector: dict[str, int] = Field(default_factory=dict)
     refusal_reason: str | None = None
     source_owner_receipt_refs: tuple[str, ...] = ()
@@ -116,6 +123,7 @@ class CharacterContinuityReceipt(ContinuityModel):
 
     @model_validator(mode="after")
     def validate_receipt_vectors(self) -> "CharacterContinuityReceipt":
+        _check_vector(self.source_revision_vector)
         _check_vector(self.cursor_vector)
         return self
 

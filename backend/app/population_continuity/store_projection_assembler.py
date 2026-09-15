@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.models import ProjectionCheckpoint
 from app.population_continuity.domain_projection_sources import (
     _committed_marker_is_valid,
     committed_event_payload,
@@ -35,9 +36,11 @@ def _event_visibility(event: object, payload: Mapping[str, object]) -> str:
     return event_visibility_policy(event, payload)
 
 
-def _committed_events(store: GameplayEventStore) -> tuple[object, ...]:
+def _committed_events(
+    store: GameplayEventStore, *, global_sequence_after: int | None = None
+) -> tuple[object, ...]:
     events: list[object] = []
-    for event in store.read_events():
+    for event in store.read_events(global_sequence_after=global_sequence_after):
         payload = _event_payload(event)
         if not _committed_marker_is_valid(getattr(event, "committed", None)):
             continue
@@ -96,13 +99,38 @@ def assemble_committed_population_projections(
     store: GameplayEventStore,
     cadence: PopulationCadenceInput,
     organization_projection: Mapping[str, object],
+    checkpoint: ProjectionCheckpoint | None = None,
 ) -> tuple[PopulationProjection, ...]:
     """Read committed, current, cadence-pinned facts without writing or settling."""
-    events = _committed_events(store)
+    checkpoint_projections: list[PopulationProjection] = []
+    if checkpoint is not None:
+        if checkpoint.projector_id != "population-continuity" or checkpoint.projection_schema_version != 1:
+            raise ValueError("projection_checkpoint_schema_mismatch")
+        if any(
+            cadence.base_revision_vector.get(stream_id) != revision
+            for stream_id, revision in checkpoint.source_revision_vector.items()
+        ):
+            raise ValueError("stale_read_set")
+        raw_projections = checkpoint.state.get("population_projections", [])
+        if not isinstance(raw_projections, list):
+            raise ValueError("projection_checkpoint_state_invalid")
+        checkpoint_projections = [
+            PopulationProjection.model_validate(item)
+            for item in raw_projections
+            if isinstance(item, dict)
+        ]
+    events = _committed_events(
+        store,
+        global_sequence_after=None if checkpoint is None else checkpoint.last_global_sequence,
+    )
+    if checkpoint is not None and events:
+        first_sequence = int(getattr(events[0], "global_sequence", 0))
+        if first_sequence != checkpoint.last_global_sequence + 1:
+            raise ValueError("projection_gap")
     if not events or cadence.report_scope not in {"organization:summary", "public"}:
-        return ()
+        return tuple(checkpoint_projections)
 
-    candidates: list[PopulationProjection] = []
+    candidates: list[PopulationProjection] = list(checkpoint_projections)
     scoped_events = tuple(event for event in events if _event_allowed_for_scope(event, cadence.report_scope))
     candidates.extend(
         production_work_population_projections(

@@ -42,7 +42,8 @@ async def test_daily_runtime_advances_all_residents_and_resumes_after_restart(mo
         assert task is not None and main.start_population_runtime() is task
         await task
         assert len(observed) == 12
-        assert all(runtime.get_continuity_revision(actor) > revisions[actor] for actor in SAMPLE_ACTOR_IDS)
+        # B0 窗口只发布连续性结果；没有 activation/B1/B2 授权时不写 Character Core。
+        assert all(runtime.get_continuity_revision(actor) == revisions[actor] for actor in SAMPLE_ACTOR_IDS)
         # 工作记忆保留连续状态审计；五类长期记忆不能凭 routine 生成内容。
         assert all(runtime.get_memory_record_bundle(actor) == memories[actor] for actor in SAMPLE_ACTOR_IDS)
         assert all(not event["payload"].get("memory_candidate_refs") for actor in SAMPLE_ACTOR_IDS
@@ -115,9 +116,9 @@ async def test_configured_roster_drives_every_resident_without_default_fill(
                 projected = {row["payload"]["actor_ref"] for row in event.payload["population_projections"]}
                 assert projected == {f"character:{actor}" for actor in actors}
             advanced = [actor for actor in actors if runtime.get_continuity_revision(actor) > revisions[actor]]
-            assert set(advanced) == set(actors)
+            assert advanced == []
             record_property(f"configured_roster_{population_size}", json.dumps({
-                "actor_ids": actors, "advanced_actor_ids": advanced,
+                "actor_ids": actors, "b0_actor_ids": actors, "character_core_actor_ids": advanced,
                 "window_count": len(observed), "default_fill": False,
             }))
     finally:
