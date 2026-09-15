@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bisect import bisect_left
 from collections import defaultdict
 import json
 import os
@@ -89,7 +90,9 @@ class GameplayEventStore:
         self._event_schema_registry = event_schema_registry
         self._events: list[GameplayEvent] = []
         self._events_by_id: dict[str, GameplayEvent] = {}
+        self._events_by_stream: dict[str, list[GameplayEvent]] = defaultdict(list)
         self._transactions: list[AtomicEventBatch] = []
+        self._transaction_end_sequences: list[int] = []
         self._transaction_results: dict[str, AppendBatchResult] = {}
         self._stream_heads: dict[str, int] = defaultdict(int)
         self._idempotency_records: dict[tuple[str, str], IdempotencyRecord] = {}
@@ -251,7 +254,10 @@ class GameplayEventStore:
         self._stream_heads = defaultdict(int, stream_heads)
         self._events.extend(committed_events)
         self._events_by_id.update({event.event_id: event for event in committed_events})
+        for event in committed_events:
+            self._events_by_stream[event.stream_id].append(event)
         self._transactions.append(committed_batch)
+        self._transaction_end_sequences.append(committed_events[-1].global_sequence)
         self._transaction_results[batch.transaction_id] = result
         self._idempotency_records[idempotency_key] = batch.idempotency_record
         self._idempotency_results[idempotency_key] = result
@@ -260,30 +266,26 @@ class GameplayEventStore:
         return result.model_copy(deep=True)
 
     def read_stream(self, stream_id: str, *, from_revision: int = 1, to_revision: int | None = None) -> list[GameplayEvent]:
-        events = [event for event in self._events if event.stream_id == stream_id and event.stream_revision >= from_revision]
-        if to_revision is not None:
-            events = [event for event in events if event.stream_revision <= to_revision]
+        events = self._events_by_stream.get(stream_id, ())
+        start = max(0, from_revision - 1)
+        end = to_revision if to_revision is not None else None
+        events = events[start:end]
         return [event.model_copy(deep=True) for event in events]
 
     def read_events(self, *, global_sequence_from: int | None = None, global_sequence_after: int | None = None, limit: int | None = None) -> list[GameplayEvent]:
-        events = self._events
+        start_sequence = 1
         if global_sequence_from is not None:
-            events = [event for event in events if event.global_sequence >= global_sequence_from]
+            start_sequence = max(start_sequence, global_sequence_from)
         if global_sequence_after is not None:
-            events = [event for event in events if event.global_sequence > global_sequence_after]
-        events = sorted(events, key=lambda event: event.global_sequence)
+            start_sequence = max(start_sequence, global_sequence_after + 1)
+        events = self._events[max(0, start_sequence - 1):]
         if limit is not None:
             events = events[:limit]
         return [event.model_copy(deep=True) for event in events]
 
     def read_transactions(self, *, global_position: int | None = None, limit: int | None = None) -> list[AtomicEventBatch]:
-        transactions = self._transactions
-        if global_position is not None:
-            transactions = [
-                batch
-                for batch in transactions
-                if batch.events and batch.events[-1].global_sequence >= global_position
-            ]
+        start = bisect_left(self._transaction_end_sequences, global_position) if global_position is not None else 0
+        transactions = self._transactions[start:]
         if limit is not None:
             transactions = transactions[:limit]
         return [batch.model_copy(deep=True) for batch in transactions]
@@ -561,7 +563,11 @@ class GameplayEventStore:
         store = cls(event_schema_registry=snapshot_registry or event_schema_registry)
         store._events = events
         store._events_by_id = {event.event_id: event for event in events}
+        store._events_by_stream = defaultdict(list)
+        for event in events:
+            store._events_by_stream[event.stream_id].append(event)
         store._transactions = transactions
+        store._transaction_end_sequences = [batch.events[-1].global_sequence for batch in transactions]
         store._stream_heads = defaultdict(int, stream_heads)
         store._transaction_results = {result.transaction_id: result for result in results}
         store._outbox = outbox
