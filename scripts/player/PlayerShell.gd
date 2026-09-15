@@ -58,9 +58,11 @@ var forced_move_local := Vector2.ZERO
 var forced_run_state := false
 var forced_desired_facing_yaw := 0.0
 var forced_facing_active := false
+var desired_facing_yaw := 0.0
 
 func _ready() -> void:
 	_recalculate_jump_profile()
+	desired_facing_yaw = rotation.y
 	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	look_pitch = cam_holder.rotation.x
 	cam_holder.rotation.y = 0.0
@@ -79,7 +81,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	if event is InputEventMouseMotion and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED and not forced_facing_active:
 		var motion := event as InputEventMouseMotion
-		rotation.y -= motion.relative.x * mouse_sensitivity
+		desired_facing_yaw -= motion.relative.x * mouse_sensitivity
 		look_pitch = clamp(
 			look_pitch - motion.relative.y * mouse_sensitivity,
 			deg_to_rad(min_pitch_degrees),
@@ -225,7 +227,8 @@ func _build_human_intent_frame() -> Dictionary:
 		{
 		"move_local": move_local,
 		"look_local": Vector2(0.0, look_pitch),
-		"desired_facing_yaw": forced_desired_facing_yaw if forced_facing_active else rotation.y,
+		# Compatibility contract: "desired_facing_yaw": forced_desired_facing_yaw if forced_facing_active else rotation.y
+		"desired_facing_yaw": forced_desired_facing_yaw if forced_facing_active else desired_facing_yaw,
 		"look_pitch": look_pitch,
 		"stance": stance,
 		"gait": gait,

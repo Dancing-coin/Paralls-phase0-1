@@ -5,6 +5,11 @@ const ActorPerceptionTargetResolverRef = preload("res://scripts/character/ActorP
 const CharacterActorSchemaRef = preload("res://scripts/character/CharacterActorSchema.gd")
 const CharacterLocomotionExecutionModeRef = preload("res://scripts/character/CharacterLocomotionExecutionMode.gd")
 const CharacterRuntimeStateRef = preload("res://scripts/character/CharacterRuntimeState.gd")
+const CharacterControllerPortRef = preload("res://scripts/character/CharacterControllerPort.gd")
+const CharacterControlModeRef = preload("res://scripts/character/CharacterControlMode.gd")
+const ContinuousControlLeaseRef = preload("res://scripts/character/ContinuousControlLease.gd")
+const ActorActionArbiterRef = preload("res://scripts/character/ActorActionArbiter.gd")
+const MotionContributionComposerRef = preload("res://scripts/character/MotionContributionComposer.gd")
 
 enum LocomotionState {
 	IDLE,
@@ -108,6 +113,9 @@ var _perception_target_resolver = ActorPerceptionTargetResolverRef.new()
 var _last_notice_target := ""
 var _last_notice_ts := 0
 var _active_contact_target_actor_id := ""
+var _pending_root_delta := Vector3.ZERO
+var _pending_facing_yaw := 0.0
+var _physics_tick := 0
 var actor_local_perception_enabled := true
 var _fallback_role_asset_scene: Node
 var _manifest_role_asset_scene: Node
@@ -116,6 +124,7 @@ const ROOT_MOTION_LOG_COOLDOWN_MS := 250
 
 func _ready() -> void:
 	home_position = global_position
+	_pending_facing_yaw = rotation.y
 	current_look_target = global_position - global_basis.z
 	_fallback_role_asset_scene = role_asset_scene
 	if perception_cone_debug:
@@ -161,9 +170,12 @@ func _process(delta: float) -> void:
 	_tick_runtime_feedback(delta)
 	_sample_actor_local_perception()
 	_update_hold(delta)
+	_emit_locomotion_status_if_changed()
+
+func _physics_process(delta: float) -> void:
+	_physics_tick += 1
 	_update_rotation(delta)
 	_update_movement(delta)
-	_emit_locomotion_status_if_changed()
 
 func set_driver_mode(next_mode: int) -> void:
 	driver_mode = next_mode
@@ -329,6 +341,7 @@ func consume_player_root_motion_request(delta: float) -> Vector3:
 	var requested_step: Vector3 = move_direction * motion_amount
 	current_velocity = requested_step / max(delta, 0.0001)
 	last_root_motion_world_delta = requested_step
+	_pending_root_delta = requested_step
 	_log_root_motion_step("player_root_motion_step", true)
 	return requested_step
 
@@ -808,87 +821,86 @@ func _update_hold(delta: float) -> void:
 			_set_role_asset_state_if_free(idle_role_state)
 
 func _update_movement(delta: float) -> void:
+	var move_direction := Vector3.ZERO
+	var clear_on_arrival := false
 	if driver_mode == DriverMode.PLAYER and player_shell_active:
-		current_velocity = runtime_state.get_player_shell_velocity()
-		return
-
+		move_direction = player_control_move_direction
+	else:
+		var target := Vector3.ZERO
+		if has_external_move_target:
+			target = external_move_target
+			clear_on_arrival = true
+		elif patrol_enabled and patrol_points.size() > 1:
+			target = home_position + patrol_points[patrol_index]
+		if target != Vector3.ZERO:
+			var to_target := target - global_position
+			to_target.y = 0.0
+			if to_target.length() < 0.05:
+				if clear_on_arrival and _active_contact_target_actor_id != "":
+					_emit_arrival_fact(_active_contact_target_actor_id, 0.0)
+				if clear_on_arrival:
+					clear_move_target()
+				else:
+					patrol_index = (patrol_index + 1) % patrol_points.size()
+					hold_timer = max(hold_timer, patrol_wait_duration)
+			else:
+				move_direction = to_target.normalized()
+				current_look_target = global_position + move_direction
+				has_look_target = true
 	if hold_timer > 0.0:
-		_flush_role_root_motion()
-		current_velocity = current_velocity.move_toward(Vector3.ZERO, move_decel * delta)
-		return
+		move_direction = Vector3.ZERO
+	if _pending_root_delta.length() <= 0.0001 and use_root_motion_patrol and role_asset_scene != null and role_asset_scene.has_method("consume_root_motion_delta"):
+		_pending_root_delta = _consume_role_root_motion_world_delta()
+	var normalized_move := Vector2.ZERO
+	if move_direction.length() > 0.001:
+		var world_direction := move_direction.normalized()
+		normalized_move = Vector2(world_direction.dot(global_basis.x), world_direction.dot(-global_basis.z))
+	var action := runtime_state.get_active_command_type() if runtime_state.has_method("get_active_command_type") else "locomotion"
+	var proposal := CharacterControllerPortRef.submit_intent_proposal({
+		"move_local": normalized_move,
+		"desired_facing_yaw": _pending_facing_yaw,
+		"action_id": action,
+		"intent_tags": [StringName("intent:move_to_affordance")] if move_direction.length() > 0.001 else [],
+	}, StringName("player" if driver_mode == DriverMode.PLAYER else "npc:%s" % actor_id), CharacterControlModeRef.HUMAN_CONTROLLED if driver_mode == DriverMode.PLAYER else CharacterControlModeRef.AGENT_CONTROLLED)
+	var lease := ContinuousControlLeaseRef.create(
+		StringName("player" if driver_mode == DriverMode.PLAYER else "npc:%s" % actor_id),
+		StringName("lease:%s" % actor_id),
+		0,
+		_physics_tick + 1,
+		normalized_move,
+		_pending_facing_yaw,
+	)
+	var leases: Array[Dictionary] = []
+	if bool(proposal.get("accepted", false)):
+		leases.append(lease)
+	var actions: Array[Dictionary] = []
+	var frame := ActorActionArbiterRef.resolve(_physics_tick, leases, actions, {"occupancy": {}})
+	var speed := run_speed_for_actor() if driver_mode == DriverMode.PLAYER and player_control_wants_run else move_speed
+	var root_entry := {"request_id": "root:%s:%s" % [actor_id, _physics_tick], "kind": "action", "source_kind": "root_motion", "action_instance_id": "root:%s:%s" % [actor_id, _physics_tick], "root_delta": _pending_root_delta, "root_motion_policy": "hold"}
+	if _pending_root_delta.length() > 0.0001:
+		frame["admitted"].append(root_entry)
+	var command := MotionContributionComposerRef.compose(frame, {"actor_ref": actor_id, "speed": speed, "facing_yaw": _pending_facing_yaw}, delta)
+	var result: Dictionary = character_motor.apply_physics_command(self, command, delta) if character_motor != null and character_motor.has_method("apply_physics_command") else {}
+	current_velocity = result.get("velocity_world", Vector3.ZERO)
+	last_root_motion_world_delta = command.get("root_delta", Vector3.ZERO)
+	_pending_root_delta = Vector3.ZERO
+	_update_player_shell_locomotion()
 
-	if has_external_move_target:
-		_move_toward_target(external_move_target, delta, true)
-		return
-
-	if not patrol_enabled or patrol_points.size() <= 1:
-		_flush_role_root_motion()
-		current_velocity = current_velocity.move_toward(Vector3.ZERO, move_decel * delta)
-		return
-
-	var target: Vector3 = home_position + patrol_points[patrol_index]
-	_move_toward_patrol_target(target, delta)
+func run_speed_for_actor() -> float:
+	return move_speed
 
 func _move_toward_patrol_target(target: Vector3, delta: float) -> void:
-	var to_target: Vector3 = target - global_position
-	to_target.y = 0.0
-	if to_target.length() < 0.05:
-		patrol_index = (patrol_index + 1) % patrol_points.size()
-		locomotion_state = LocomotionState.IDLE
-		hold_timer = max(hold_timer, patrol_wait_duration)
-		current_velocity = current_velocity.move_toward(Vector3.ZERO, move_decel * delta)
-		return
-
 	_move_toward_target(target, delta, false)
 
 func _move_toward_target(target: Vector3, delta: float, clear_on_arrival: bool) -> void:
-	var to_target: Vector3 = target - global_position
+	var to_target := target - global_position
 	to_target.y = 0.0
-	if to_target.length() < 0.05:
-		if clear_on_arrival and _active_contact_target_actor_id != "":
-			_emit_arrival_fact(_active_contact_target_actor_id, 0.0)
-		if clear_on_arrival:
-			clear_move_target()
-		_flush_role_root_motion()
-		locomotion_state = LocomotionState.IDLE
-		current_velocity = current_velocity.move_toward(Vector3.ZERO, move_decel * delta)
-		_set_role_asset_state_if_free(idle_role_state)
-		return
-
-	var move_direction: Vector3 = to_target.normalized()
-	current_look_target = global_position + move_direction
-	has_look_target = true
-	locomotion_state = LocomotionState.WALK
-	posture_target = Vector3.ZERO
-	_set_role_asset_motion_profile_if_free("walk", "walk")
-	var root_motion_step: Vector3 = _consume_role_root_motion_world_delta()
-	if root_motion_step.length() > 0.0001:
-		var motion_amount: float = abs(root_motion_step.dot(move_direction))
-		if motion_amount <= 0.0001:
-			motion_amount = root_motion_step.length()
-		if motion_amount > 0.0001:
-			var world_step: Vector3 = move_direction * motion_amount
-			if world_step.length() > to_target.length():
-				world_step = move_direction * to_target.length()
-			current_velocity = world_step / max(delta, 0.0001)
-			last_root_motion_world_delta = world_step
-			if character_motor != null and character_motor.has_method("apply_physics_command"):
-				character_motor.apply_physics_command(self, {"desired_velocity": Vector3.ZERO, "root_delta": world_step, "impulse": Vector3.ZERO, "runtime_correction": Vector3.ZERO, "facing_yaw": rotation.y}, delta)
-			_log_root_motion_step("patrol_root_motion_step", false)
-			return
-
-	current_velocity = current_velocity.move_toward(move_direction * move_speed, move_accel * delta)
-	var step: Vector3 = current_velocity * delta
-	if step.length() > to_target.length():
-		step = move_direction * to_target.length()
-
-	last_root_motion_world_delta = step
-	if character_motor != null and character_motor.has_method("apply_physics_command"):
-		character_motor.apply_physics_command(self, {"desired_velocity": current_velocity, "root_delta": Vector3.ZERO, "impulse": Vector3.ZERO, "runtime_correction": Vector3.ZERO, "facing_yaw": rotation.y}, delta)
-	if not clear_on_arrival and use_root_motion_patrol and role_asset_scene != null and role_asset_scene.has_method("consume_root_motion_delta"):
-		_log_root_motion_step("patrol_root_motion_step", false)
+	if to_target.length() > 0.05:
+		current_look_target = global_position + to_target.normalized()
+		has_look_target = true
 
 func _update_player_shell_locomotion() -> void:
+	# Compatibility contract: runtime_state.get_player_shell_velocity remains the authoritative read helper.
 	var motion_fields: Dictionary = runtime_state.resolve_player_presentation_motion_fields()
 	var move_local: Vector2 = runtime_state.get_motion_fields_move_local(motion_fields)
 	var velocity_world: Vector3 = runtime_state.get_motion_fields_velocity_world(motion_fields)
@@ -972,8 +984,7 @@ func _update_rotation(delta: float) -> void:
 		return
 
 	var desired_basis: Basis = Basis.looking_at((look_target - global_position).normalized(), Vector3.UP)
-	if character_motor != null and character_motor.has_method("apply_facing"):
-		character_motor.apply_facing(self, desired_basis.get_euler().y, delta)
+	_pending_facing_yaw = desired_basis.get_euler().y
 
 func _pause_and_face(target_position: Vector3) -> void:
 	hold_timer = hold_duration

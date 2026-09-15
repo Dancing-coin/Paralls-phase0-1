@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Character action asset manifest v1",
+  "type": "object",
+  "required": ["package_id", "source_frame_rate", "unit_scale", "forward_axis", "up_axis", "canonical_mapping", "required_slots", "slots", "locomotion_map", "actions"],
+  "properties": {
+    "package_id": {"type": "string", "minLength": 1},
+    "source_frame_rate": {"type": "number", "exclusiveMinimum": 0},
+    "unit_scale": {"const": 1},
+    "forward_axis": {"const": "-z"},
+    "up_axis": {"const": "+y"},
+    "canonical_mapping": {
+      "type": "object",
+      "required": ["profile_id", "bones"],
+      "properties": {
+        "profile_id": {"const": "humanoid.v1"},
+        "bones": {"type": "object", "minProperties": 1}
+      }
+    },
+    "required_slots": {"type": "array", "items": {"type": "string"}},
+    "slots": {"type": "object"},
+    "locomotion_map": {"type": "object"},
+    "actions": {"type": "array", "minItems": 1}
+  }
+}

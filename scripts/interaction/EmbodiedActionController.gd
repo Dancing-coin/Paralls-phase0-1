@@ -46,6 +46,9 @@ var action_graph_node_ref := ""
 var action_window_index := -1
 var action_window_duration_seconds := 1.0
 var action_window_active := false
+var active_claims: Array[StringName] = []
+var locomotion_lease_revision := 0
+var unsafe_root_motion_frozen := false
 
 
 func can_start_attempt(request: Dictionary, grant: Dictionary) -> Dictionary:
@@ -110,9 +113,15 @@ func reject_action_window(reason: String = "authority_rejected") -> Dictionary:
 
 func apply_authority_recovery(result: Dictionary) -> void:
 	var directive := str(result.get("recovery_directive", result.get("status", "")))
+	if directive == "unknown":
+		unsafe_root_motion_frozen = true
+		return
 	if directive in ["accepted", "rejected", "timed_out", "cancelled", "target_invalid"]:
 		selected_action_atoms.clear()
 		phase_action_atoms.clear()
+		active_claims.clear()
+		locomotion_lease_revision += 1
+		unsafe_root_motion_frozen = false
 		current_phase = "recover"
 		local_ownership_restored = true
 

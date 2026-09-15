@@ -11,6 +11,13 @@ const MOTION_STATE_KEYS := {
 	"move_local_actual": true,
 	"gait_actual": true,
 	"grounded": true,
+	"support_ref": true,
+	"support_loss": true,
+	"collision_count": true,
+	"collision_normals": true,
+	"body_revision": true,
+	"physics_tick": true,
+	"physics_command": true,
 }
 
 
@@ -23,6 +30,13 @@ static func normalize_motion_state(candidate: Dictionary) -> Dictionary:
 		"move_local_actual": _as_vector2(candidate.get("move_local_actual", Vector2.ZERO)),
 		"gait_actual": str(candidate.get("gait_actual", "walk")),
 		"grounded": bool(candidate.get("grounded", false)),
+		"support_ref": str(candidate.get("support_ref", "")),
+		"support_loss": bool(candidate.get("support_loss", false)),
+		"collision_count": int(candidate.get("collision_count", 0)),
+		"collision_normals": candidate.get("collision_normals", []).duplicate(),
+		"body_revision": int(candidate.get("body_revision", 0)),
+		"physics_tick": int(candidate.get("physics_tick", -1)),
+		"physics_command": candidate.get("physics_command", {}).duplicate(true),
 	}
 
 
