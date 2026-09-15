@@ -73,7 +73,8 @@ def main() -> int:
     report["overall_passed"] = bool(report["overall_passed"] and evidence.get("window_count", 0) >= 2
                                     and evidence.get("actor_ids") and len(configured_rosters) >= 2
                                     and all(row["actor_ids"] and not row["default_fill"]
-                                            and set(row["actor_ids"]) == set(row["advanced_actor_ids"])
+                                            and set(row["actor_ids"]) == set(row["b0_actor_ids"])
+                                            and not row["character_core_actor_ids"]
                                             for row in configured_rosters))
     report["restart_scope"] = "same_process; cross_process_authority_event_durability_not_proven"
     return backend_report(name, report)

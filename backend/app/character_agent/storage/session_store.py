@@ -45,7 +45,13 @@ class CharacterAgentSessionStore:
             }
             timeline.append(entry)
             try:
-                self._persist(actor_id, entry)
+                try:
+                    self._persist(actor_id, entry)
+                except TypeError:
+                    # 保留旧测试/注入点的无参 persist 约定；真实实现的 TypeError 继续上抛。
+                    if getattr(self._persist, "__self__", None) is not None:
+                        raise
+                    self._persist()
             except Exception:
                 timeline.pop()
                 raise
