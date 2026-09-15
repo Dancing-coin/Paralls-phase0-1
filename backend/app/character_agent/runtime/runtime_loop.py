@@ -1666,10 +1666,21 @@ class CharacterAgentRuntime:
             "supersedes": command.exposure_evidence.get("supersedes") or supersedes,
         }
         self._ingest_seed_projection(projection)
+        explicit_tick_cursor = "simulation_tick_cursor" in command.model_fields_set
+        simulation_tick_cursor = (
+            command.simulation_tick_cursor
+            if explicit_tick_cursor
+            else max(command.source_revision_vector.values(), default=current_revision)
+        )
         event = self._session_store.append_event(
             actor_id=actor_id,
             event_type="character_simulation_seed_event",
-            producer_ts=int(command.source_revision_vector.get("world:bakery", 0) or command.expected_character_revision),
+            producer_ts=int(
+                command.to_tick
+                if "to_tick" in command.model_fields_set
+                else command.source_revision_vector.get("world:bakery", 0)
+                or command.expected_character_revision
+            ),
             payload=projection,
         )
         self._memory_store.write_event(event)
@@ -1683,9 +1694,11 @@ class CharacterAgentRuntime:
             character_revision_after=current_revision + 1,
             seed_delta_refs=(f"seed-delta:{command.command_id}",),
             materialization_status="pending",
+            simulation_tick_cursor=simulation_tick_cursor,
+            source_revision_vector=dict(command.source_revision_vector),
             cursor_vector={
-                "state_cursor": max(command.source_revision_vector.values(), default=current_revision),
-                "experience_cursor": max(command.source_revision_vector.values(), default=current_revision),
+                "state_cursor": simulation_tick_cursor,
+                "experience_cursor": simulation_tick_cursor,
                 "memory_cursor": 0,
             },
             source_owner_receipt_refs=command.source_owner_receipt_refs,

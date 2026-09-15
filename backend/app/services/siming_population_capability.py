@@ -713,6 +713,11 @@ class PopulationSimulationCapability:
             owner_refs,
             owner_receipt_associations=owner_receipt_associations,
         )
+        b0_actor_refs = {
+            str(projection.payload.get("actor_ref", ""))
+            for projection in read_set.projections
+            if projection.payload.get("fidelity_tier") == "B0"
+        }
         if cohort:
             selected_refs = set(report.selected_cohort_refs)
             seeds = tuple(
@@ -731,6 +736,8 @@ class PopulationSimulationCapability:
             for seed in seeds:
                 if not seed.actor_ref.startswith("character:"):
                     continue
+                if seed.actor_ref in b0_actor_refs:
+                    continue
                 if allowed_character_core_refs is not None and seed.actor_ref not in allowed_character_core_refs:
                     continue
                 if seed.owner_effect_status in {"owner_settlement_required", "rejected"}:
@@ -738,7 +745,11 @@ class PopulationSimulationCapability:
                 command = CharacterContinuityCommand(
                     command_id=f"continuity:{seed.seed_id}", actor_ref=seed.actor_ref,
                     source_owner_receipt_refs=seed.source_owner_receipt_refs,
-                    expected_character_revision=next_actor_revisions[seed.actor_ref], source_revision_vector=dict(seed.source_revision_vector),
+                    expected_character_revision=next_actor_revisions[seed.actor_ref],
+                    from_tick=seed.from_tick,
+                    to_tick=seed.to_tick,
+                    simulation_tick_cursor=seed.to_tick,
+                    source_revision_vector=dict(seed.source_revision_vector),
                     state_delta={
                         **dict(seed.state_deltas),
                         "presentation_seed": dict(seed.presentation_seed),
