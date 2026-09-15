@@ -26,6 +26,47 @@ var runtime_engagement_pressure := ""
 var runtime_privacy_risk_hint := ""
 var active_command_type := ""
 var active_command_priority := 0
+var grounded_motion_projection: Dictionary = {}
+var active_lease_summaries: Array[Dictionary] = []
+var active_action_summaries: Array[Dictionary] = []
+var occupancy: Dictionary = {}
+var pending_attempts: Array[Dictionary] = []
+var capability_projection: Array[StringName] = []
+var status_projection: Array[StringName] = []
+var latest_authority_result: Dictionary = {}
+var presentation_cues: Array[StringName] = []
+
+
+func record_arbitration_frame(frame: Dictionary) -> void:
+	active_lease_summaries = _dictionary_array(frame.get("admitted", []), &"lease_id")
+	active_action_summaries = _dictionary_array(frame.get("admitted", []), &"action_instance_id")
+	occupancy = frame.get("occupancy", {}).duplicate(true)
+
+
+func _dictionary_array(values: Array, identity_key: StringName) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for value in values:
+		if value is Dictionary and value.has(identity_key):
+			result.append(value.duplicate(true))
+	return result
+
+
+func apply_authority_result(result: Dictionary) -> void:
+	if not bool(result.get("committed", false)):
+		return
+	if str(result.get("authority_route", "")) not in ["esm", "gameplay", "composite"]:
+		return
+	latest_authority_result = result.duplicate(true)
+	capability_projection = _string_names(result.get("capability_tags", []))
+	status_projection = _string_names(result.get("status_tags", []))
+	presentation_cues = _string_names(result.get("presentation_tags", []))
+
+
+func _string_names(values: Array) -> Array[StringName]:
+	var normalized: Array[StringName] = []
+	for value in values:
+		normalized.append(StringName(value))
+	return normalized
 
 
 func stage_player_shell_pose(

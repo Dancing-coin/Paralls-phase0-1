@@ -1,4 +1,4 @@
-extends Node3D
+extends CharacterBody3D
 
 const ActorPerceptionSamplerRef = preload("res://scripts/character/ActorPerceptionSampler.gd")
 const ActorPerceptionTargetResolverRef = preload("res://scripts/character/ActorPerceptionTargetResolver.gd")
@@ -47,7 +47,7 @@ enum DriverMode {
 @export_node_path("Node") var spatial_access_fact_emitter_path := NodePath("VisualFactEmitter/SpatialAccessFactEmitter")
 @export_node_path("Node") var role_state_fact_emitter_path := NodePath("RoleStateFactEmitter")
 @export_node_path("Node") var physiology_state_fact_emitter_path := NodePath("PhysiologyStateFactEmitter")
-@export_node_path("Node") var role_asset_scene_path := NodePath("VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/KnightRoleSkin")
+@export_node_path("Node") var role_asset_scene_path := NodePath("VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/GenericRoleSkin")
 @export var player_walk_speed_threshold := 0.08
 @export var player_run_speed_threshold := 6.4
 @export var use_root_motion_patrol := true
@@ -71,6 +71,7 @@ const FOCUS_ANCHOR_LOCAL_OFFSET := Vector3(0.0, 1.55, 0.0)
 @onready var role_asset_root: Node3D = $VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot
 @onready var role_asset_scene: Node = _resolve_role_asset_scene()
 @onready var runtime_feedback: Node = $CharacterRuntimeFeedback
+@onready var character_motor: Node = $CharacterMotor
 @onready var perception_cone_debug: MeshInstance3D = $PerceptionConeDebug
 # Keep runtime_state constructed via the host ref rather than a typed onready binding.
 @onready var runtime_state = CharacterRuntimeStateRef.new()
@@ -275,8 +276,6 @@ func begin_embodied_control_frame(world_position: Vector3, move_direction: Vecto
 		posture_target = Vector3(0.0, -0.22, 0.02)
 	elif hold_timer <= 0.0 and focus_attention_posture_timer <= 0.0:
 		posture_target = Vector3.ZERO
-	if global_position.distance_to(world_position + player_shell_visual_offset) > 1.0:
-		global_position = Vector3(world_position.x, world_position.y, world_position.z) + player_shell_visual_offset
 	set_look_target(look_target)
 
 func consume_player_root_motion_request(delta: float) -> Vector3:
@@ -348,7 +347,6 @@ func apply_embodied_pose_sync(world_position: Vector3, planar_velocity: Vector3,
 		current_gait,
 		current_jump,
 	)
-	global_position = Vector3(world_position.x, world_position.y, world_position.z) + player_shell_visual_offset
 	set_look_target(look_target)
 	_push_presentation_input(player_presentation_input)
 	_update_player_shell_locomotion()
@@ -872,9 +870,10 @@ func _move_toward_target(target: Vector3, delta: float, clear_on_arrival: bool) 
 			var world_step: Vector3 = move_direction * motion_amount
 			if world_step.length() > to_target.length():
 				world_step = move_direction * to_target.length()
-			global_position += world_step
 			current_velocity = world_step / max(delta, 0.0001)
 			last_root_motion_world_delta = world_step
+			if character_motor != null and character_motor.has_method("apply_physics_command"):
+				character_motor.apply_physics_command(self, {"desired_velocity": Vector3.ZERO, "root_delta": world_step, "impulse": Vector3.ZERO, "runtime_correction": Vector3.ZERO, "facing_yaw": rotation.y}, delta)
 			_log_root_motion_step("patrol_root_motion_step", false)
 			return
 
@@ -883,8 +882,9 @@ func _move_toward_target(target: Vector3, delta: float, clear_on_arrival: bool) 
 	if step.length() > to_target.length():
 		step = move_direction * to_target.length()
 
-	global_position += step
 	last_root_motion_world_delta = step
+	if character_motor != null and character_motor.has_method("apply_physics_command"):
+		character_motor.apply_physics_command(self, {"desired_velocity": current_velocity, "root_delta": Vector3.ZERO, "impulse": Vector3.ZERO, "runtime_correction": Vector3.ZERO, "facing_yaw": rotation.y}, delta)
 	if not clear_on_arrival and use_root_motion_patrol and role_asset_scene != null and role_asset_scene.has_method("consume_root_motion_delta"):
 		_log_root_motion_step("patrol_root_motion_step", false)
 
@@ -972,7 +972,8 @@ func _update_rotation(delta: float) -> void:
 		return
 
 	var desired_basis: Basis = Basis.looking_at((look_target - global_position).normalized(), Vector3.UP)
-	global_basis = global_basis.slerp(desired_basis, clamp(turn_speed * delta, 0.0, 1.0))
+	if character_motor != null and character_motor.has_method("apply_facing"):
+		character_motor.apply_facing(self, desired_basis.get_euler().y, delta)
 
 func _pause_and_face(target_position: Vector3) -> void:
 	hold_timer = hold_duration

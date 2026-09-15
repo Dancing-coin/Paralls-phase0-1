@@ -23,16 +23,16 @@ def test_current_scene_shape_matches_the_frozen_host_choice() -> None:
     character_base_scene = _read("scenes/phase0/CharacterBase.tscn")
     player_shell_scene = _read("scenes/phase0/PlayerShell.tscn")
     character_replica_scene = _read("scenes/phase0/CharacterReplica.tscn")
-    main_demo_scene = _read("scenes/phase0/MainDemo.tscn")
+    validation_scene = _read("scenes/integration/Unified3DIntegrationValidation.tscn")
 
     assert '[node name="CharacterBase" type="CharacterBody3D"]' in character_base_scene
     assert '[node name="CharacterReplica" parent="." instance=ExtResource("2_character")]' in character_base_scene
     assert '[node name="CharacterMotor" type="Node" parent="."]' not in character_base_scene
     assert '[node name="CharacterMotor" type="Node" parent="."]' in character_replica_scene
-    assert '[node name="CharacterReplica" type="Node3D"]' in character_replica_scene
-    assert '[node name="PlayerCharacter" parent="." unique_id=' in main_demo_scene
-    assert '[node name="CharacterA" parent="." unique_id=' in main_demo_scene
-    assert '[node name="CharacterB" parent="." unique_id=' in main_demo_scene
+    assert '[node name="CharacterReplica" type="CharacterBody3D"]' in character_replica_scene
+    assert '[node name="PlayerCharacter" parent="." instance=ExtResource("2_player")]' in validation_scene
+    assert '[node name="CharacterA" parent="." instance=ExtResource("3_character")]' in validation_scene
+    assert '[node name="CharacterB" parent="." instance=ExtResource("3_character")]' in validation_scene
     assert '[node name="CharacterReplica"' not in player_shell_scene
 
 
@@ -107,3 +107,12 @@ def test_phase0_player_command_relay_no_longer_owns_wrapper_embodiment_feedback(
     assert "trigger_interact_feedback" not in relay_source
     assert "trigger_role_action" in bridge_source
     assert "perform_action(action_name: String)" in replica_source
+
+
+def test_active_actor_scenes_have_one_character_body_control_path() -> None:
+    player_scene = _read("scenes/phase0/PlayerShell.tscn")
+    replica_scene = _read("scenes/phase0/CharacterReplica.tscn")
+
+    assert player_scene.count('type="CharacterBody3D"') == 1
+    assert replica_scene.count('type="CharacterBody3D"') == 1
+    assert replica_scene.count('name="CharacterMotor" type="Node" parent="."') == 1

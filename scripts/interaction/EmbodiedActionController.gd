@@ -108,6 +108,14 @@ func reject_action_window(reason: String = "authority_rejected") -> Dictionary:
 	local_ownership_restored = true
 	return {"accepted": false, "error_code": reason, "speculative_state_cleared": true}
 
+func apply_authority_recovery(result: Dictionary) -> void:
+	var directive := str(result.get("recovery_directive", result.get("status", "")))
+	if directive in ["accepted", "rejected", "timed_out", "cancelled", "target_invalid"]:
+		selected_action_atoms.clear()
+		phase_action_atoms.clear()
+		current_phase = "recover"
+		local_ownership_restored = true
+
 
 func run_attempt(
 	request: Dictionary,
