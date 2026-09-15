@@ -1,0 +1,31 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/npc_ch31_player_controller.gd" id="1_taggv"]
+[ext_resource type="PackedScene" path="res://scenes/npc_ch31_animated.glb" id="2_666yh"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_4gjy5"]
+radius = 0.32
+height = 1.8
+
+[node name="NPC_Interactive_CH31" type="CharacterBody3D" unique_id=1117747964]
+script = ExtResource("1_taggv")
+default_animation = &"anim_idle"
+
+[node name="NPC_Model_CH31" type="Node3D" parent="." unique_id=1109660278 instance=ExtResource("2_666yh")]
+
+[node name="NPC_CapsuleCollider" type="CollisionShape3D" parent="." unique_id=1726012590]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+shape = SubResource("CapsuleShape3D_4gjy5")
+
+[node name="CameraYaw" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.35, 0)
+
+[node name="CameraPitch" type="Node3D" parent="CameraYaw"]
+
+[node name="SpringArm3D" type="SpringArm3D" parent="CameraYaw/CameraPitch"]
+spring_length = 4.2
+margin = 0.2
+
+[node name="Camera3D" type="Camera3D" parent="CameraYaw/CameraPitch/SpringArm3D"]
+current = true
+fov = 70.0

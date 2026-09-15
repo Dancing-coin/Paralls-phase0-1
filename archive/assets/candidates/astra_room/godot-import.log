@@ -1,0 +1,83 @@
+Godot Engine v4.6.3.stable.official.7d41c59c4 - https://godotengine.org
+
+[   0% ] [90m[1mfirst_scan_filesystem[22m | Started 项目初始化 (5 steps)[39m[0m
+[   0% ] [90m[1mfirst_scan_filesystem[22m | 正在扫描文件结构……[39m[0m
+[  16% ] [90m[1mfirst_scan_filesystem[22m | 正在加载全局类名……[39m[0m
+[  33% ] [90m[1mfirst_scan_filesystem[22m | 正在校验 GDExtension……[39m[0m
+[  50% ] [90m[1mfirst_scan_filesystem[22m | 正在创建自动加载脚本……[39m[0m
+[  66% ] [90m[1mfirst_scan_filesystem[22m | 正在初始化插件……[39m[0m
+[MCP] Connecting to ports 6505-6514
+[MCP] Godot MCP Pro v1.14.1 started (ports 6505-6514)
+[MCP] Registered 171 commands
+[  83% ] [90m[1mfirst_scan_filesystem[22m | 正在启动文件扫描……[39m[0m
+[92m[ DONE ][39m [1mfirst_scan_filesystem[22m
+[0m
+[   0% ] [90m[1mupdate_scripts_classes[22m | Started 正在注册全局类…… (7 steps)[39m[0m
+[   0% ] [90m[1mupdate_scripts_classes[22m | [39m[0m
+[  12% ] [90m[1mupdate_scripts_classes[22m | [39m[0m
+[  25% ] [90m[1mupdate_scripts_classes[22m | StormnightRealtimeHud[39m[0m
+[  37% ] [90m[1mupdate_scripts_classes[22m | [39m[0m
+[  50% ] [90m[1mupdate_scripts_classes[22m | ProceduralLowPolyCharacter[39m[0m
+[  62% ] [90m[1mupdate_scripts_classes[22m | [39m[0m
+[  75% ] [90m[1mupdate_scripts_classes[22m | [39m[0m
+[92m[ DONE ][39m [1mupdate_scripts_classes[22m
+[0m
+[   0% ] [90m[1m_update_scan_actions[22m | Started 正在扫描动作…… (10 steps)[39m[0m
+[   0% ] [90m[1m_update_scan_actions[22m | autopsy-beauty.png[39m[0m
+[   9% ] [90m[1m_update_scan_actions[22m | autopsy-wire.png[39m[0m
+[  18% ] [90m[1m_update_scan_actions[22m | room_preview.png[39m[0m
+[  27% ] [90m[1m_update_scan_actions[22m | autopsy-beauty.png[39m[0m
+[  36% ] [90m[1m_update_scan_actions[22m | autopsy-wire.png[39m[0m
+[  45% ] [90m[1m_update_scan_actions[22m | room-preview.png[39m[0m
+[  54% ] [90m[1m_update_scan_actions[22m | autopsy-beauty.png[39m[0m
+[  63% ] [90m[1m_update_scan_actions[22m | autopsy-wire.png[39m[0m
+[  72% ] [90m[1m_update_scan_actions[22m | room_preview.png[39m[0m
+[  81% ] [90m[1m_update_scan_actions[22m | room-high.glb[39m[0m
+[92m[ DONE ][39m [1m_update_scan_actions[22m
+[0m
+[   0% ] [90m[1mreimport[22m | Started 正在导入或重新导入资产 (10 steps)[39m[0m
+[   0% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[   9% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[  18% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[  27% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[  36% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[  45% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[  54% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[  63% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[  72% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[  81% ] [90m[1mreimport[22m | 正在准备重新导入文件……[39m[0m
+[   0% ] [90m[1mreimport[22m | 正在执行重新导入的前置操作……[39m[0m
+[   0% ] [90m[1mreimport[22m | autopsy-beauty.png[39m[0m
+[   9% ] [90m[1mreimport[22m | autopsy-wire.png[39m[0m
+[  18% ] [90m[1mreimport[22m | room_preview.png[39m[0m
+[  27% ] [90m[1mreimport[22m | autopsy-beauty.png[39m[0m
+[  36% ] [90m[1mreimport[22m | autopsy-wire.png[39m[0m
+[  45% ] [90m[1mreimport[22m | room-preview.png[39m[0m
+[  54% ] [90m[1mreimport[22m | autopsy-beauty.png[39m[0m
+[  63% ] [90m[1mreimport[22m | autopsy-wire.png[39m[0m
+[  72% ] [90m[1mreimport[22m | room_preview.png[39m[0m
+[  81% ] [90m[1mreimport[22m | room-high.glb[39m[0m
+[   0% ] [90m[1mimport[22m | Started 导入场景 (104 steps)[39m[0m
+[   0% ] [90m[1mimport[22m | 导入场景中...[39m[0m
+[   1% ] [90m[1mimport[22m | 执行自定义脚本...[39m[0m
+[  99% ] [90m[1mimport[22m | 保存中...[39m[0m
+[92m[ DONE ][39m [1mimport[22m
+[0m
+[  90% ] [90m[1mreimport[22m | 正在结束资产导入……[39m[0m
+[92m[ DONE ][39m [1mreimport[22m
+[0m
+[   0% ] [90m[1mreimport[22m | Started 正在导入或重新导入资产 (10 steps)[39m[0m
+[   0% ] [90m[1mreimport[22m | 正在执行重新导入的后置操作……[39m[0m
+[92m[ DONE ][39m [1mreimport[22m
+[0m
+[   0% ] [90m[1mloading_editor_layout[22m | Started 正在加载编辑器 (5 steps)[39m[0m
+[   0% ] [90m[1mloading_editor_layout[22m | 正在加载编辑器布局……[39m[0m
+[  16% ] [90m[1mloading_editor_layout[22m | 正在加载停靠面板……[39m[0m
+[92m[ DONE ][39m [1mloading_editor_layout[22m
+[0m
+SCRIPT ERROR: Parse Error: Variable "_observatory_refresh_queued" has the same name as a previously declared variable.
+   at: GDScript::reload (res://scripts/ui/CharacterDirectorState.gd:21)
+ERROR: Failed to load script "res://scripts/ui/CharacterDirectorState.gd" with error "Parse error".
+   at: load (modules/gdscript/gdscript.cpp:2907)
+[MCP] WebSocket client stopped
+[MCP] Godot MCP Pro stopped

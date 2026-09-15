@@ -1,0 +1,17 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/npc_auto_idle.gd" id="1_elnyj"]
+[ext_resource type="PackedScene" path="res://scenes/npc_ch01_animated.glb" id="2_rd71x"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_llv7s"]
+radius = 0.32
+height = 1.8
+
+[node name="NPC_Interactive_CH01" type="CharacterBody3D" unique_id=1251269840]
+script = ExtResource("1_elnyj")
+
+[node name="NPC_Model_CH01" type="Node3D" parent="." unique_id=2003548894 instance=ExtResource("2_rd71x")]
+
+[node name="NPC_CapsuleCollider" type="CollisionShape3D" parent="." unique_id=865638960]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+shape = SubResource("CapsuleShape3D_llv7s")

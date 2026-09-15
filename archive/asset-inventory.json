@@ -1,0 +1,62 @@
+{
+  "contract": "paralls_archived_asset_inventory.v1",
+  "policy": "preserve-source-disable-default-load",
+  "packs": [
+    {
+      "id": "throne_room_existing",
+      "category": "legacy",
+      "path": "archive/assets/legacy/throne_room_existing",
+      "former_active_path": "assets/environment/throne_room_existing",
+      "default_loaded": false,
+      "restore_target": "assets/active/throne_room_existing"
+    },
+    {
+      "id": "crusader_knight",
+      "category": "legacy",
+      "path": "archive/assets/legacy/crusader_knight",
+      "former_active_path": "assets/characters/shared",
+      "default_loaded": false,
+      "restore_target": "assets/active/crusader_knight"
+    },
+    {
+      "id": "throne_room_fresh",
+      "category": "candidate",
+      "path": "archive/assets/candidates/throne_room_fresh",
+      "former_active_path": "assets/environment/throne_room_fresh",
+      "default_loaded": false,
+      "restore_target": "assets/active/throne_room_fresh"
+    },
+    {
+      "id": "astra_room",
+      "category": "candidate",
+      "path": "archive/assets/candidates/astra_room",
+      "former_active_path": "assets/environment/astra_room",
+      "default_loaded": false,
+      "restore_target": "assets/active/astra_room"
+    },
+    {
+      "id": "apartment_test",
+      "category": "candidate",
+      "path": "archive/assets/candidates/apartment_test",
+      "former_active_path": "assets/artpacks/apartment_test",
+      "default_loaded": false,
+      "restore_target": "assets/active/apartment_test"
+    },
+    {
+      "id": "import_fixtures",
+      "category": "fixture",
+      "path": "archive/assets/fixtures/props",
+      "former_active_path": "assets/props",
+      "default_loaded": false,
+      "restore_target": "assets/active/fixtures/props"
+    },
+    {
+      "id": "goblend_source",
+      "category": "source",
+      "path": "archive/assets/source/goblend",
+      "former_active_path": "goblend",
+      "default_loaded": false,
+      "restore_target": "assets/active/source/goblend"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+[gd_resource type="Environment" format=3 uid="uid://7ayi60yomcft"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_hall"]
+sky_horizon_color = Color(0.08, 0.085, 0.1, 1)
+ground_horizon_color = Color(0.045, 0.04, 0.035, 1)
+
+[sub_resource type="Sky" id="Sky_hall"]
+sky_material = SubResource("ProceduralSkyMaterial_hall")
+
+[resource]
+background_mode = 2
+sky = SubResource("Sky_hall")
+ambient_light_source = 1
+ambient_light_energy = 0.02
+reflected_light_source = 1
+tonemap_mode = 4
+tonemap_exposure = 0.42
+glow_enabled = true
+glow_intensity = 0.72
+glow_strength = 0.55
+glow_bloom = 0.16
+fog_enabled = true
+fog_light_color = Color(0.62, 0.48, 0.34, 1)
+fog_light_energy = 0.6
+fog_density = 0.009
+volumetric_fog_enabled = true
+volumetric_fog_density = 0.0
+volumetric_fog_albedo = Color(0.95, 0.82, 0.68, 1)
+volumetric_fog_emission = Color(0.12, 0.07, 0.03, 1)
+volumetric_fog_emission_energy = 0.35
+volumetric_fog_anisotropy = 0.7
+volumetric_fog_length = 96.0
+volumetric_fog_ambient_inject = 0.08
