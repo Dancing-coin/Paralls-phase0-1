@@ -178,6 +178,7 @@ class CharacterAgentRuntime:
         self._behavior_evaluation = CharacterBehaviorEvaluationService()
         self._continuity_store = continuity_store
         self._continuity_revisions: dict[str, int] = {}
+        self._continuity_checkpoint_event_indexes: dict[str, int] = {}
         self._continuity_receipts: dict[str, CharacterContinuityReceipt] = {}
         self._materialization_receipts: dict[str, CharacterMemoryMaterializationReceipt] = {}
         self._pending_seed_candidates: dict[str, dict[str, CharacterMemoryCandidate]] = {}
@@ -4350,6 +4351,9 @@ class CharacterAgentRuntime:
             revisions = snapshot.get("continuity_revisions")
             if isinstance(revisions, int) and revisions >= 0:
                 self._continuity_revisions[actor_id] = revisions
+            checkpoint_index = snapshot.get("checkpoint_event_index")
+            if isinstance(checkpoint_index, int) and checkpoint_index >= 0:
+                self._continuity_checkpoint_event_indexes[actor_id] = checkpoint_index
             receipts = snapshot.get("continuity_receipts")
             if isinstance(receipts, dict):
                 for key, value in receipts.items():
@@ -4417,14 +4421,16 @@ class CharacterAgentRuntime:
                 for key, value in self._pending_seed_candidates.get(actor_id, {}).items()
             },
             "seed_projection": self.get_seed_projection(actor_id),
+            "checkpoint_event_index": self._continuity_checkpoint_event_indexes.get(actor_id, 0),
         }
+        checkpoint_index = self._continuity_checkpoint_event_indexes.get(actor_id, 0)
         self._continuity_store.write_current_state(
             actor_id=actor_id,
             producer_ts=producer_ts,
             source_event_ref=source_ref,
             snapshot={
                 **{key: value for key, value in snapshot.items() if key != "session_timeline"},
-                "session_timeline_tail": timeline[((len(timeline) - 1) // 16) * 16 :],
+                "session_timeline_tail": timeline[checkpoint_index:],
             },
         )
         if len(timeline) <= 1 or len(timeline) % 16 == 0:
@@ -4434,6 +4440,7 @@ class CharacterAgentRuntime:
                 source_event_ref=source_ref,
                 snapshot=snapshot,
             )
+            self._continuity_checkpoint_event_indexes[actor_id] = len(timeline)
 
     def _observatory_context(self, actor_id: str) -> dict[str, str]:
         return self._observatory_actor_context.setdefault(

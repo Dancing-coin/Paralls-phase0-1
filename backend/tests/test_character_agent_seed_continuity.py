@@ -85,6 +85,27 @@ def command_with_memory_candidate(*, exposure_basis: str) -> CharacterContinuity
     )
 
 
+class _CheckpointFailingContinuityStore:
+    def __init__(self) -> None:
+        self.current_states: list[dict[str, object]] = []
+        self.fail_checkpoint_at = 16
+
+    def write_current_state(self, *, snapshot: dict[str, object], **_: object) -> None:
+        self.current_states.append(snapshot)
+
+    def write_snapshot(self, *, snapshot: dict[str, object], **_: object) -> None:
+        timeline = snapshot.get("session_timeline")
+        if isinstance(timeline, list) and len(timeline) == self.fail_checkpoint_at:
+            self.fail_checkpoint_at = -1
+            raise RuntimeError("checkpoint_write_failed")
+
+    def read_current_state(self, _: str) -> None:
+        return None
+
+    def read_snapshot(self, _: str) -> None:
+        return None
+
+
 def correction_for_char_a() -> CharacterContinuityCommand:
     return command_for_char_a(
         command_id="continuity:char_a:102",
@@ -154,3 +175,27 @@ def test_seed_correction_appends_supersession_without_deleting_subjective_memory
     assert correction.status == "committed"
     assert runtime.get_memory_bundle("char_a")["event_memories"]
     assert runtime.get_seed_projection("char_a")["supersedes"] == "seed:character:char_a:supply"
+
+
+def test_checkpoint_failure_keeps_current_state_tail_from_last_confirmed_checkpoint() -> None:
+    continuity_store = _CheckpointFailingContinuityStore()
+    runtime = CharacterAgentRuntime(continuity_store=continuity_store)
+
+    for index in range(17):
+        command = command_for_char_a(
+            command_id=f"continuity:char_a:tail:{index}",
+            idempotency_key=f"continuity:char_a:tail:{index}",
+            expected_character_revision=index,
+            source_revision_vector={"world:bakery": 101 + index},
+            memory_candidate_refs=(),
+            exposure_evidence={},
+        )
+        if index == 15:
+            try:
+                runtime.apply_character_continuity_command(command)
+            except RuntimeError as exc:
+                assert str(exc) == "checkpoint_write_failed"
+        else:
+            runtime.apply_character_continuity_command(command)
+
+    assert len(continuity_store.current_states[-1]["session_timeline_tail"]) == 16
