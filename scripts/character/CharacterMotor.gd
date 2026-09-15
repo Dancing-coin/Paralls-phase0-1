@@ -9,11 +9,12 @@ const MotionContributionComposerRef = preload("res://scripts/character/MotionCon
 const PhysicsContactEvidenceRef = preload("res://scripts/character/PhysicsContactEvidence.gd")
 
 func apply_intent_frame(body: CharacterBody3D, frame: Dictionary, delta: float) -> Dictionary:
-	var normalized := CharacterControllerPortRef.normalize_intent_frame(frame)
-	var lease := ContinuousControlLeaseRef.create(StringName(normalized.get("controller_source", "program")), &"lease:compat", 0, Engine.get_physics_frames() + 1, CharacterControllerPortRef.get_move_local(normalized), CharacterControllerPortRef.get_desired_facing_yaw(normalized, body.rotation.y))
+	var normalized_frame := CharacterControllerPortRef.normalize_intent_frame(frame)
+	var lease := ContinuousControlLeaseRef.create(StringName(normalized_frame.get("controller_source", "program")), &"lease:compat", 0, Engine.get_physics_frames() + 1, CharacterControllerPortRef.get_move_local(normalized_frame), CharacterControllerPortRef.get_desired_facing_yaw(normalized_frame, body.rotation.y))
 	var intent_frame := ActorActionArbiterRef.resolve(Engine.get_physics_frames(), [lease], [], {"occupancy": {}})
-	var speed := _get_body_float(body, "run_speed", 4.0) if CharacterControllerPortRef.get_gait_name(normalized) == "run" else _get_body_float(body, "walk_speed", 4.0)
-	return apply_physics_command(body, MotionContributionComposerRef.compose(intent_frame, {"actor_ref": normalized.get("actor_id", ""), "speed": speed}, delta), delta)
+	var action_name := CharacterControllerPortRef.get_action_name(normalized_frame)
+	var speed := _get_body_float(body, "run_speed", 4.0) if CharacterControllerPortRef.get_gait_name(normalized_frame) == "run" else _get_body_float(body, "walk_speed", 4.0)
+	return apply_physics_command(body, MotionContributionComposerRef.compose(intent_frame, {"actor_ref": normalized_frame.get("actor_id", ""), "speed": speed, "action_name": action_name}, delta), delta)
 
 func apply_physics_command(body: CharacterBody3D, command: Dictionary, delta: float) -> Dictionary:
 	body.rotation.y = rotate_toward(body.rotation.y, float(command.get("facing_yaw", body.rotation.y)), _get_body_float(body, "facing_turn_speed", 8.0) * delta)
