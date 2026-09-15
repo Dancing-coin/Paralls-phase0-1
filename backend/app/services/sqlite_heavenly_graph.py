@@ -47,7 +47,7 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
 
     def write_batch(self, batch: HeavenlyGraphWriteBatch) -> HeavenlyGraphWriteResult:
         with self._lock:
-            snapshot = self._snapshot_mutable_state()
+            snapshot = self._capture_write_batch_state(batch)
             self._pending_write_batch = batch
             try:
                 result = super().write_batch(batch)
@@ -55,10 +55,67 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
                     self._persist()
                 return result
             except Exception:
-                self._restore_mutable_state(snapshot)
+                self._restore_write_batch_state(snapshot)
                 raise
             finally:
                 self._pending_write_batch = None
+
+    def _capture_write_batch_state(self, batch: HeavenlyGraphWriteBatch) -> dict[str, object]:
+        """Capture only mutable entries that an ordinary batch can touch."""
+        node_states: dict[object, tuple[object, int | None]] = {}
+        for node in batch.nodes:
+            key = (self._scope_key(node.scope), node.node_id)
+            if key not in node_states:
+                values = self._nodes.get(key)
+                node_states[key] = (values, None if values is None else len(values))
+
+        relation_states: dict[object, tuple[object, int | None]] = {}
+        for relation in batch.relations:
+            key = (self._scope_key(relation.scope), relation.relation_id)
+            if key not in relation_states:
+                values = self._relations.get(key)
+                relation_states[key] = (values, None if values is None else len(values))
+
+        idempotency_key = (self._scope_key(batch.scope), batch.idempotency_key)
+        revision_key = self._scope_key(batch.scope)
+        return {
+            "nodes": node_states,
+            "relations": relation_states,
+            "idempotency": (
+                idempotency_key,
+                self._idempotency.get(idempotency_key),
+            ),
+            "stream_revision": (
+                revision_key,
+                self._scope_stream_revisions.get(revision_key),
+            ),
+        }
+
+    def _restore_write_batch_state(self, snapshot: dict[str, object]) -> None:
+        for key, (values, length) in snapshot["nodes"].items():  # type: ignore[union-attr]
+            if values is None:
+                self._nodes.pop(key, None)
+            else:
+                del values[length:]  # type: ignore[index]
+                self._nodes[key] = values  # type: ignore[assignment]
+        for key, (values, length) in snapshot["relations"].items():  # type: ignore[union-attr]
+            if values is None:
+                self._relations.pop(key, None)
+            else:
+                del values[length:]  # type: ignore[index]
+                self._relations[key] = values  # type: ignore[assignment]
+
+        idempotency_key, idempotency_value = snapshot["idempotency"]  # type: ignore[misc]
+        if idempotency_value is None:
+            self._idempotency.pop(idempotency_key, None)
+        else:
+            self._idempotency[idempotency_key] = idempotency_value
+
+        revision_key, revision_value = snapshot["stream_revision"]  # type: ignore[misc]
+        if revision_value is None:
+            self._scope_stream_revisions.pop(revision_key, None)
+        else:
+            self._scope_stream_revisions[revision_key] = revision_value
 
     def fork_branch(self, request: GraphBranchForkRequest) -> HeavenlyGraphWriteResult:
         with self._lock:

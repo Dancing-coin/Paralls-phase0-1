@@ -38,7 +38,9 @@ def _write_revision(graph: SQLiteHeavenlyGraphAdapter, revision: int, state: str
 
 
 def measure_delta() -> dict[str, int | bool]:
-    path = root() / ".harness" / "verification" / "population-data-oriented-probe.sqlite3"
+    directory = root() / ".harness" / "verification"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "population-data-oriented-probe.sqlite3"
     path.unlink(missing_ok=True)
     graph = SQLiteHeavenlyGraphAdapter(path)
     try:
