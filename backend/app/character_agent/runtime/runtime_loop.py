@@ -4295,7 +4295,22 @@ class CharacterAgentRuntime:
         if self._continuity_store is None:
             return
         for actor_id in sorted(self._supported_actor_ids | self._continuity_actor_ids):
-            snapshot = self._continuity_store.read_snapshot(actor_id)
+            current_state = self._continuity_store.read_current_state(actor_id)
+            checkpoint = self._continuity_store.read_snapshot(actor_id)
+            snapshot = dict(checkpoint or {})
+            if current_state:
+                snapshot.update(current_state)
+                tail = current_state.get("session_timeline_tail")
+                base_timeline = list(checkpoint.get("session_timeline", [])) if isinstance(checkpoint, dict) else []
+                if isinstance(tail, list):
+                    known = {str(item.get("event_id", "")) for item in base_timeline if isinstance(item, dict)}
+                    base_timeline.extend(
+                        item for item in tail
+                        if isinstance(item, dict) and str(item.get("event_id", "")) not in known
+                    )
+                    snapshot["session_timeline"] = base_timeline
+            if not snapshot:
+                continue
             if not snapshot:
                 continue
             dynamic = snapshot.get("dynamic_state")
@@ -4364,37 +4379,48 @@ class CharacterAgentRuntime:
             return
         timeline = self.get_session_timeline(actor_id)
         source_ref = str(timeline[-1].get("event_id", "") or "") if timeline else ""
-        self._continuity_store.write_snapshot(
+        snapshot = {
+            "working_memory": self.get_working_memory_state(actor_id),
+            "dynamic_state": self.get_dynamic_state(actor_id),
+            "need_tension_state": self.get_need_tension_state(actor_id),
+            "supervision_state": self.get_supervision_state(actor_id),
+            "goal_state": self.get_goal_state(actor_id),
+            "goal_state_history": self.get_goal_state_history(actor_id),
+            "session_timeline": timeline,
+            "continuity_state": self.get_runtime_continuity_state(actor_id),
+            "continuity_revisions": self._continuity_revisions.get(actor_id, 0),
+            "continuity_receipts": {
+                key: value.model_dump(mode="json")
+                for key, value in self._continuity_receipts.items()
+                if value.actor_ref.removeprefix("character:") == actor_id
+            },
+            "materialization_receipts": {
+                key: value.model_dump(mode="json")
+                for key, value in self._materialization_receipts.items()
+                if value.actor_ref.removeprefix("character:") == actor_id
+            },
+            "pending_seed_candidates": {
+                key: value.model_dump(mode="json")
+                for key, value in self._pending_seed_candidates.get(actor_id, {}).items()
+            },
+            "seed_projection": self.get_seed_projection(actor_id),
+        }
+        self._continuity_store.write_current_state(
             actor_id=actor_id,
             producer_ts=producer_ts,
             source_event_ref=source_ref,
             snapshot={
-                "working_memory": self.get_working_memory_state(actor_id),
-                "dynamic_state": self.get_dynamic_state(actor_id),
-                "need_tension_state": self.get_need_tension_state(actor_id),
-                "supervision_state": self.get_supervision_state(actor_id),
-                "goal_state": self.get_goal_state(actor_id),
-                "goal_state_history": self.get_goal_state_history(actor_id),
-                "session_timeline": timeline,
-                "continuity_state": self.get_runtime_continuity_state(actor_id),
-                "continuity_revisions": self._continuity_revisions.get(actor_id, 0),
-                "continuity_receipts": {
-                    key: value.model_dump(mode="json")
-                    for key, value in self._continuity_receipts.items()
-                    if value.actor_ref.removeprefix("character:") == actor_id
-                },
-                "materialization_receipts": {
-                    key: value.model_dump(mode="json")
-                    for key, value in self._materialization_receipts.items()
-                    if value.actor_ref.removeprefix("character:") == actor_id
-                },
-                "pending_seed_candidates": {
-                    key: value.model_dump(mode="json")
-                    for key, value in self._pending_seed_candidates.get(actor_id, {}).items()
-                },
-                "seed_projection": self.get_seed_projection(actor_id),
+                **{key: value for key, value in snapshot.items() if key != "session_timeline"},
+                "session_timeline_tail": timeline[((len(timeline) - 1) // 16) * 16 :],
             },
         )
+        if len(timeline) <= 1 or len(timeline) % 16 == 0:
+            self._continuity_store.write_snapshot(
+                actor_id=actor_id,
+                producer_ts=producer_ts,
+                source_event_ref=source_ref,
+                snapshot=snapshot,
+            )
 
     def _observatory_context(self, actor_id: str) -> dict[str, str]:
         return self._observatory_actor_context.setdefault(

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "population-data-oriented-incremental-read",
+  "order": 125,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_population_data_oriented_incremental.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/population-data-oriented-incremental-report.json",
+  "description": "Backend-only hot-state and incremental-read evidence; Godot remains unverified"
+}

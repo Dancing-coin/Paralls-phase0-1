@@ -33,6 +33,8 @@ class WorldContinuityRuntime:
         self.mode = mode
         self.authorized_actor_refs = authorized_actor_refs
         self.roster = roster if roster is not None else load_population_roster()
+        self._cadence_cache: dict[tuple[object, ...], PopulationCadenceInput] = {}
+        self._projection_cache: dict[str, tuple[PopulationProjection, ...]] = {}
 
     def pause(
         self, *, reason: str, expected_mode_revision: str | None = None
@@ -127,11 +129,25 @@ class WorldContinuityRuntime:
         source_revision = self.store.get_stream_head(world_stream)
         if source_revision <= 0:
             raise ValueError("population_cadence_source_missing")
+        cache_key = (
+            cadence_id,
+            window_start,
+            window_end,
+            source_revision,
+            policy_revision,
+            selector_revision,
+            ruleset_revision,
+            report_scope,
+            budget,
+        )
+        cached = self._cadence_cache.get(cache_key)
+        if cached is not None:
+            return cached
         events = [event.model_dump(mode="json") for event in self.store.read_events()]
         digest = "sha256:" + hashlib.sha256(
             json.dumps(events, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
-        return PopulationCadenceInput(
+        cadence = PopulationCadenceInput(
             cadence_id=cadence_id or f"cadence:{self.mode.world_ref}:{window_start}",
             world_ref=self.mode.world_ref,
             world_mode_ref=f"world-mode:{self.mode.world_ref}",
@@ -151,17 +167,22 @@ class WorldContinuityRuntime:
             budget=self.mode.batch_limit if budget is None else budget,
             report_scope=report_scope,
         )
+        self._cadence_cache[cache_key] = cadence
+        return cadence
 
     def build_population_projections(
         self, cadence: PopulationCadenceInput
     ) -> tuple[PopulationProjection, ...]:
         """Build deterministic B0 routine inputs for the bounded resident roster."""
+        cached = self._projection_cache.get(cadence.cadence_id)
+        if cached is not None:
+            return cached
         actors = self.roster.actor_ids
         window_size = cadence.window_end - cadence.window_start
         window_index = cadence.window_start // window_size
         start = window_index % len(actors)
         ordered = actors[start:] + actors[:start]
-        return tuple(
+        projections = tuple(
             PopulationProjection(
                 ref=f"projection:{actor}:{cadence.window_start}",
                 scope="public",
@@ -179,6 +200,8 @@ class WorldContinuityRuntime:
             )
             for index, actor in enumerate(ordered)
         )
+        self._projection_cache[cadence.cadence_id] = projections
+        return projections
 
     def replay_equivalence(self) -> tuple[str, str]:
         replay = GameplayProjectionReplay(

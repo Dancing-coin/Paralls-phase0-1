@@ -170,6 +170,35 @@ class PopulationSimulationCapability:
             self.default_capabilities(cadence_input),
         )
 
+    def build_b0_continuous_deltas(
+        self, cadence_input: PopulationCadenceInput, read_set: PopulationReadSet
+    ) -> tuple[dict[str, object], ...]:
+        """生成有界连续状态增量，不触发候选、记忆或 Owner 写入。"""
+        if read_set.cadence != cadence_input:
+            raise ValueError("stale_read_set")
+        deltas: list[dict[str, object]] = []
+        for projection in sorted(read_set.projections, key=lambda item: item.ref):
+            payload = projection.payload
+            if payload.get("fidelity_tier") != "B0":
+                continue
+            actor_ref = str(payload.get("actor_ref", ""))
+            state_deltas = payload.get("state_deltas", {})
+            if not actor_ref or not isinstance(state_deltas, dict):
+                continue
+            if any(key in payload for key in ("memory_candidates", "llm_request", "full_profile")):
+                raise ValueError("b0_deep_state_forbidden")
+            deltas.append(
+                {
+                    "actor_ref": actor_ref,
+                    "window_start": cadence_input.window_start,
+                    "window_end": cadence_input.window_end,
+                    "state_deltas": dict(state_deltas),
+                    "source_revision_vector": dict(projection.revision_vector or cadence_input.base_revision_vector),
+                    "idempotency_key": f"b0:{cadence_input.cadence_id}:{actor_ref}",
+                }
+            )
+        return tuple(deltas)
+
     def run_receipt_pinned_decision_cycle(
         self,
         cadence_input: PopulationCadenceInput,

@@ -119,6 +119,57 @@ class CharacterGraphContinuityStore:
                 )
             )
 
+    def write_current_state(
+        self,
+        *,
+        actor_id: str,
+        producer_ts: int,
+        snapshot: dict[str, object],
+        source_event_ref: str,
+    ) -> None:
+        """写入不含完整 timeline 的热当前态；历史仍由 session event 和 checkpoint 负责。"""
+        scope = self._scope_for_actor(actor_id)
+        node_id = f"actor-current-state:{actor_id}"
+        previous = self._graph.get_node(node_id=node_id, scope=scope, valid_at=self._MAX_TIME)
+        if previous is not None and source_event_ref and source_event_ref in previous.semantic_metadata.source_event_refs:
+            return
+        revision = previous.revision + 1 if previous else 1
+        node = HeavenlyGraphNode(
+            node_id=node_id,
+            node_type="actor_view",
+            scope=scope,
+            validity=GraphValidity(valid_from=producer_ts),
+            recorded_at=max(producer_ts, previous.recorded_at if previous else 0),
+            revision=revision,
+            supersedes_revision=previous.revision if previous else None,
+            attributes={"state_kind": "character_current_state", "actor_id": actor_id, "snapshot": deepcopy(snapshot)},
+            provenance=GraphProvenance(
+                source_kind="runtime_outcome",
+                source_ref=source_event_ref or node_id,
+                causation_id=source_event_ref or node_id,
+                correlation_id=source_event_ref or node_id,
+                producer_system="character_agent_runtime",
+                actor_id=actor_id,
+            ),
+            semantic_metadata=GraphSemanticMetadata(
+                record_kind="projection",
+                visibility_scope="actor_private",
+                derivation_kind="projection",
+                source_event_refs=(source_event_ref or node_id,),
+                source_revision_vector=GraphRevisionVector(source_revision=revision),
+                policy_revision="policy:character-continuity:v1",
+                scope_digest="scope:actor-private",
+            ),
+        )
+        self._graph.write_batch(
+            HeavenlyGraphWriteBatch(
+                transaction_id=f"actor-current-state:{actor_id}:{producer_ts}",
+                idempotency_key=f"actor-current-state:{actor_id}:{source_event_ref or producer_ts}",
+                scope=scope,
+                nodes=[node],
+            )
+        )
+
     def read_snapshot(
         self,
         actor_id: str,
@@ -140,6 +191,30 @@ class CharacterGraphContinuityStore:
                 ),
                 scope=scope,
                 node_ids=[f"actor-continuity:{actor_id}"],
+                node_types=["actor_view"],
+                limit=1,
+            )
+        )
+        if not result.nodes:
+            return None
+        snapshot = result.nodes[0].attributes.get("snapshot")
+        return deepcopy(snapshot) if isinstance(snapshot, dict) else None
+
+    def read_current_state(self, actor_id: str) -> dict[str, object] | None:
+        scope = self._scope_for_actor(actor_id)
+        result = self._graph.query_semantic(
+            NodeLookupQuery(
+                context=GraphReaderContext(
+                    reader_principal=actor_id,
+                    allowed_visibility_scopes=("actor_private",),
+                    world_id=scope.world_id,
+                    session_id=scope.session_id,
+                    story_branch_id=scope.story_branch_id,
+                    valid_at=self._MAX_TIME,
+                    policy_revision="policy:character-continuity:v1",
+                ),
+                scope=scope,
+                node_ids=[f"actor-current-state:{actor_id}"],
                 node_types=["actor_view"],
                 limit=1,
             )
