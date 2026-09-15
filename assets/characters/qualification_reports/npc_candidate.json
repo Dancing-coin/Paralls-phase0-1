@@ -1,0 +1,37 @@
+{
+	"actions": [],
+	"checks": {
+		"skeleton": false
+	},
+	"clip_audits": {
+
+	},
+	"contract": "character_qualification_report.v1",
+	"delivery_level": "presentation_extension",
+	"fallback": {
+		"mode": "candidate_only",
+		"policy": "do_not_admit"
+	},
+	"fallbacks": [],
+	"locomotion": {
+
+	},
+	"locomotion_compatibility": "not_admitted",
+	"manifest_path": "res://assets/validation/manifests/npc-candidate.json",
+	"optional": [],
+	"package_id": "npc_candidate",
+	"provenance": {
+		"package_digest": "55288101F6A435057A94D19D0E5EA40C9D2714CC8903A42CFF739BB757E38D62",
+		"qualification_report_ref": "assets/characters/qualification_reports/npc_candidate.json",
+		"source_uri": "archive/assets/candidates/apartment_test/source/npc_animated.glb"
+	},
+	"reasons": [
+		"skeleton_missing"
+	],
+	"report_path": ".harness/verification/npc-candidate-qualification-report.json",
+	"source": {
+		"digest_sha256": "55288101F6A435057A94D19D0E5EA40C9D2714CC8903A42CFF739BB757E38D62",
+		"model_path": "archive/assets/candidates/apartment_test/source/npc_animated.glb"
+	},
+	"status": "rejected"
+}

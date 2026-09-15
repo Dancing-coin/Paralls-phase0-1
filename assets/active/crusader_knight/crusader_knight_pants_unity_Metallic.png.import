@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c1cwv78fcrcjj"
-path.s3tc="res://.godot/imported/crusader_knight_pants_unity_Metallic.png-1b5bd377cfe5d14438c45e0b5ce7c039.s3tc.ctex"
+path.s3tc="res://.godot/imported/crusader_knight_pants_unity_Metallic.png-2feec05c5fea09e89a9ed5ba571252c5.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -14,8 +14,8 @@ generator_parameters={
 
 [deps]
 
-source_file="res://assets/characters/shared/crusader_knight_pants_unity_Metallic.png"
-dest_files=["res://.godot/imported/crusader_knight_pants_unity_Metallic.png-1b5bd377cfe5d14438c45e0b5ce7c039.s3tc.ctex"]
+source_file="res://assets/active/crusader_knight/crusader_knight_pants_unity_Metallic.png"
+dest_files=["res://.godot/imported/crusader_knight_pants_unity_Metallic.png-2feec05c5fea09e89a9ed5ba571252c5.s3tc.ctex"]
 
 [params]
 

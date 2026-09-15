@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://vv4r17sl4jg1"
-path.s3tc="res://.godot/imported/crusader_knight_cape_unity_Albedo.png-4041c125bb05fba3766c6bcad716e6bb.s3tc.ctex"
+path.s3tc="res://.godot/imported/crusader_knight_cape_unity_Albedo.png-876f554be47d8fe309049059f2052b4d.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -14,8 +14,8 @@ generator_parameters={
 
 [deps]
 
-source_file="res://assets/characters/shared/crusader_knight_cape_unity_Albedo.png"
-dest_files=["res://.godot/imported/crusader_knight_cape_unity_Albedo.png-4041c125bb05fba3766c6bcad716e6bb.s3tc.ctex"]
+source_file="res://assets/active/crusader_knight/crusader_knight_cape_unity_Albedo.png"
+dest_files=["res://.godot/imported/crusader_knight_cape_unity_Albedo.png-876f554be47d8fe309049059f2052b4d.s3tc.ctex"]
 
 [params]
 

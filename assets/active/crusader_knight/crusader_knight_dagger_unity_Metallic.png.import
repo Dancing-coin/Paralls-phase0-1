@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://rmphthacrtac"
-path.s3tc="res://.godot/imported/crusader_knight_dagger_unity_Metallic.png-f744774a7a696a8d67472eb8fc92bfa5.s3tc.ctex"
+path.s3tc="res://.godot/imported/crusader_knight_dagger_unity_Metallic.png-62ea6be825bd361145f9dd66900ee9ab.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -14,8 +14,8 @@ generator_parameters={
 
 [deps]
 
-source_file="res://assets/characters/shared/crusader_knight_dagger_unity_Metallic.png"
-dest_files=["res://.godot/imported/crusader_knight_dagger_unity_Metallic.png-f744774a7a696a8d67472eb8fc92bfa5.s3tc.ctex"]
+source_file="res://assets/active/crusader_knight/crusader_knight_dagger_unity_Metallic.png"
+dest_files=["res://.godot/imported/crusader_knight_dagger_unity_Metallic.png-62ea6be825bd361145f9dd66900ee9ab.s3tc.ctex"]
 
 [params]
 

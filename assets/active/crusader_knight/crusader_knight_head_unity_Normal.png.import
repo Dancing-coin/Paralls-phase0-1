@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://xb01nwld7d81"
-path.s3tc="res://.godot/imported/crusader_knight_head_unity_Normal.png-5fff73bf21939aff1f59c5290fc8ceef.s3tc.ctex"
+path.s3tc="res://.godot/imported/crusader_knight_head_unity_Normal.png-49bef547f213c2c8fdc944739adf5a32.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -14,8 +14,8 @@ generator_parameters={
 
 [deps]
 
-source_file="res://assets/characters/shared/crusader_knight_head_unity_Normal.png"
-dest_files=["res://.godot/imported/crusader_knight_head_unity_Normal.png-5fff73bf21939aff1f59c5290fc8ceef.s3tc.ctex"]
+source_file="res://assets/active/crusader_knight/crusader_knight_head_unity_Normal.png"
+dest_files=["res://.godot/imported/crusader_knight_head_unity_Normal.png-49bef547f213c2c8fdc944739adf5a32.s3tc.ctex"]
 
 [params]
 

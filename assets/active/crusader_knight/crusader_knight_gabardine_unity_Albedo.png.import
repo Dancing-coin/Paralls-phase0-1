@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://n7soa6hpjpb6"
-path.s3tc="res://.godot/imported/crusader_knight_gabardine_unity_Albedo.png-fe506ee891481ab068ce52f803f786a4.s3tc.ctex"
+path.s3tc="res://.godot/imported/crusader_knight_gabardine_unity_Albedo.png-56bb7e9190a12d1c6459c77eeccee18a.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -14,8 +14,8 @@ generator_parameters={
 
 [deps]
 
-source_file="res://assets/characters/shared/crusader_knight_gabardine_unity_Albedo.png"
-dest_files=["res://.godot/imported/crusader_knight_gabardine_unity_Albedo.png-fe506ee891481ab068ce52f803f786a4.s3tc.ctex"]
+source_file="res://assets/active/crusader_knight/crusader_knight_gabardine_unity_Albedo.png"
+dest_files=["res://.godot/imported/crusader_knight_gabardine_unity_Albedo.png-56bb7e9190a12d1c6459c77eeccee18a.s3tc.ctex"]
 
 [params]
 

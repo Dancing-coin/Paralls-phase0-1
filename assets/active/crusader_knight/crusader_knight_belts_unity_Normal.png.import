@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cqwcfb1xlp4jh"
-path.s3tc="res://.godot/imported/crusader_knight_belts_unity_Normal.png-e6ea77f4b65c8cea59ce66d2a3edd1d2.s3tc.ctex"
+path.s3tc="res://.godot/imported/crusader_knight_belts_unity_Normal.png-ca75b358b5b2d999e20f9096459e47e7.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -14,8 +14,8 @@ generator_parameters={
 
 [deps]
 
-source_file="res://assets/characters/shared/crusader_knight_belts_unity_Normal.png"
-dest_files=["res://.godot/imported/crusader_knight_belts_unity_Normal.png-e6ea77f4b65c8cea59ce66d2a3edd1d2.s3tc.ctex"]
+source_file="res://assets/active/crusader_knight/crusader_knight_belts_unity_Normal.png"
+dest_files=["res://.godot/imported/crusader_knight_belts_unity_Normal.png-ca75b358b5b2d999e20f9096459e47e7.s3tc.ctex"]
 
 [params]
 

@@ -1,0 +1,9 @@
+{
+  "contract": "external_character_qualification_matrix.v1",
+  "candidates": [
+    {"candidate_id": "crusader_knight", "package_path": "assets/active/crusader_knight", "status": "qualified_with_fallback", "delivery_level": "full_body_action", "fallback": "full_body_exclusive; queue_until_compatible", "report_ref": "assets/characters/qualification_reports/crusader_knight.json", "reasons": ["upper-body candidate writes lower-body/root/pelvis tracks"], "opt_in": false},
+    {"candidate_id": "external_character_b", "package_path": "assets/active/external_character_b", "status": "rejected", "delivery_level": "presentation_extension", "fallback": "do_not_admit_to_actor_action_path", "report_ref": "assets/characters/qualification_reports/external_character_b.json", "reasons": ["locomotion_source_clips_missing:idle_walk_run_jump_turn", "full_body_source_has_no_qualified_upper_body_realization"], "opt_in": false},
+    {"candidate_id": "npc_candidate", "source_path": "archive/assets/candidates/apartment_test/source/npc_animated.glb", "status": "rejected", "delivery_level": "presentation_extension", "fallback": "candidate_only", "report_ref": "assets/characters/qualification_reports/npc_candidate.json", "reasons": ["archive_source_is_not_a_runtime_package", "source_texture_paths_are_not_self_contained"], "opt_in": false},
+    {"candidate_id": "female_trio_opt_in", "source_path": "archive/assets/candidates/female_trio/visual-0.4.0", "status": "rejected", "delivery_level": "presentation_extension", "fallback": "candidate_only", "report_ref": "assets/characters/qualification_reports/female_trio_opt_in.json", "reasons": ["visual_0.4.0_rejected", "no_new_headless_qualification_report"], "opt_in": true}
+  ]
+}

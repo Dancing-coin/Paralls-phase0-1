@@ -1,0 +1,12 @@
+{
+  "contract": "character_action_timing.v1",
+  "package_id": "external_character_b",
+  "actions": [
+    {"action_id":"Idle","clip":"anim_drink","timing":{"duration_seconds":2.0,"windup_seconds":0.0,"contact_seconds":0.0,"recovery_seconds":0.0},"cancel_windows":[],"markers":[],"authority_route":"local","local_only":true,"root_motion_policy":"hold","claims":["locomotion"],"recovery_policy":"loop","atomic_sequence":[]},
+    {"action_id":"Walk","clip":"anim_drink","timing":{"duration_seconds":1.0,"windup_seconds":0.0,"contact_seconds":0.0,"recovery_seconds":0.0},"cancel_windows":[],"markers":[],"authority_route":"local","local_only":true,"root_motion_policy":"hold","claims":["locomotion"],"recovery_policy":"loop","atomic_sequence":[]},
+    {"action_id":"Run","clip":"anim_drink","timing":{"duration_seconds":0.8,"windup_seconds":0.0,"contact_seconds":0.0,"recovery_seconds":0.0},"cancel_windows":[],"markers":[],"authority_route":"local","local_only":true,"root_motion_policy":"hold","claims":["locomotion"],"recovery_policy":"loop","atomic_sequence":[]},
+    {"action_id":"Jump","clip":"anim_drink","timing":{"duration_seconds":0.9,"windup_seconds":0.1,"contact_seconds":0.2,"recovery_seconds":0.3},"cancel_windows":[{"start_seconds":0.5,"end_seconds":0.8}],"markers":[{"marker_id":"jump_apex","marker_kind":"locomotion","time_seconds":0.45,"evidence_requirement":"none"}],"authority_route":"local","local_only":true,"root_motion_policy":"hold","claims":["locomotion"],"recovery_policy":"return_idle","atomic_sequence":[]},
+    {"action_id":"Turn","clip":"anim_drink","timing":{"duration_seconds":0.5,"windup_seconds":0.0,"contact_seconds":0.0,"recovery_seconds":0.1},"cancel_windows":[],"markers":[],"authority_route":"local","local_only":true,"root_motion_policy":"hold","claims":["facing"],"recovery_policy":"return_idle","atomic_sequence":[]},
+    {"action_id":"MeleeStaffStrike","clip":"anim_knock","timing":{"duration_seconds":1.1,"windup_seconds":0.25,"contact_seconds":0.45,"recovery_seconds":0.38},"cancel_windows":[{"start_seconds":0.7,"end_seconds":0.95}],"markers":[{"marker_id":"staff_contact","marker_kind":"melee_contact","time_seconds":0.45,"evidence_requirement":"physics_contact"}],"authority_route":"esm","local_only":false,"root_motion_policy":"hold","claims":["right_arm","weapon_slot:staff","weapon_hit_volume:staff"],"recovery_policy":"return_idle","atomic_sequence":[]}
+  ]
+}

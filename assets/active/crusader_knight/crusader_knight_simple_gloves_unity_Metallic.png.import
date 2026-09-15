@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://ep46sit7ve6h"
-path.s3tc="res://.godot/imported/crusader_knight_simple_gloves_unity_Metallic.png-6aff344c7390bd1901373ef1ea559ea5.s3tc.ctex"
+path.s3tc="res://.godot/imported/crusader_knight_simple_gloves_unity_Metallic.png-7e0d908124ea024152af0fa4545a3eb0.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -14,8 +14,8 @@ generator_parameters={
 
 [deps]
 
-source_file="res://assets/characters/shared/crusader_knight_simple_gloves_unity_Metallic.png"
-dest_files=["res://.godot/imported/crusader_knight_simple_gloves_unity_Metallic.png-6aff344c7390bd1901373ef1ea559ea5.s3tc.ctex"]
+source_file="res://assets/active/crusader_knight/crusader_knight_simple_gloves_unity_Metallic.png"
+dest_files=["res://.godot/imported/crusader_knight_simple_gloves_unity_Metallic.png-7e0d908124ea024152af0fa4545a3eb0.s3tc.ctex"]
 
 [params]
 

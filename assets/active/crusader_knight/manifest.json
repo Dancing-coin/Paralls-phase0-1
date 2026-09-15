@@ -1,0 +1,28 @@
+{
+  "contract": "character_action_asset_manifest.v1",
+  "package_id": "crusader_knight",
+  "source_model_path": "res://assets/active/crusader_knight/crusader_knight.glb",
+  "source": {"model_path": "assets/active/crusader_knight/crusader_knight.glb", "digest_sha256": "3D36D56D80344CBF61CF93C5C4A28005AB1816551978AA21C88BA7437C478F78", "format": "glb"},
+  "provenance": {"source_uri": "archive/assets/legacy/crusader_knight/crusader_knight.glb", "authoring_contract": "external_provider", "qualification_report_ref": "assets/characters/qualification_reports/crusader_knight.json", "package_digest": "3D36D56D80344CBF61CF93C5C4A28005AB1816551978AA21C88BA7437C478F78"},
+  "source_frame_rate": 30.0,
+  "unit_scale": 1.0,
+  "forward_axis": "-z",
+  "up_axis": "+y",
+  "rest_pose": {"import_policy": "applied_transforms", "pose": "stable_root_rest", "root_translation_policy": "qualified"},
+  "canonical_mapping": {"profile_id": "humanoid.v1", "bones": {"root": "Bip001 Pelvis", "pelvis": "Bip001 Spine", "spine": "Bip001 Spine1", "chest": "Bip001 Spine2", "head": "Bip001 Head", "left_upper_arm": "Bip001 L UpperArm", "left_lower_arm": "Bip001 L Forearm", "left_hand": "Bip001 L Hand", "right_upper_arm": "Bip001 R UpperArm", "right_lower_arm": "Bip001 R Forearm", "right_hand": "Bip001 R Hand", "left_upper_leg": "Bip001 L Thigh", "left_lower_leg": "Bip001 L Calf", "left_foot": "Bip001 L Foot", "right_upper_leg": "Bip001 R Thigh", "right_lower_leg": "Bip001 R Calf", "right_foot": "Bip001 R Foot"}},
+  "required_slots": ["weapon_hand", "weapon_slot:sword", "weapon_hit_volume:sword"],
+  "slots": {"weapon_hand": {"canonical_bone": "right_hand", "anchor_ref": "Bip001 R Hand/sword_in_hand", "held_item": true}, "weapon_slot:sword": {"canonical_bone": "right_hand", "anchor_ref": "Bip001 R Hand/sword_in_hand"}, "weapon_hit_volume:sword": {"canonical_bone": "right_hand", "anchor_ref": "hit_volume:sword"}},
+  "clip_aliases": {"idle": "idle_guard", "walk_forward": "walk_guard", "run_forward": "run_charge", "jump_start": "jump_command", "jump_loop": "jump_command", "jump_land": "jump_command", "turn_left": "walk_guard", "turn_right": "walk_guard", "melee_sword": "inspect_relic", "aim_upper": "observe_watch"},
+  "locomotion_map": {"idle": "idle_guard", "walk_forward": "walk_guard", "run_forward": "run_charge", "jump_start": "jump_command", "jump_loop": "jump_command", "jump_land": "jump_command", "turn_left": "walk_guard", "turn_right": "walk_guard"},
+  "root_motion_profile": {"profile_id": "crusader_knight.root.v1", "policy": "bounded_continue", "max_distance": 1.5, "max_duration_ticks": 60},
+  "physical_profile": {"profile_id": "humanoid_kinematic.v1", "collision_shape": "capsule", "contact_policy": "motor_evidence_only", "root_motion_owner": "CharacterMotor"},
+  "fallback": {"mode": "full_body_exclusive", "locomotion_compatibility": "replace_locomotion", "policy": "queue_until_compatible"},
+  "delivery_level": "full_body_action",
+  "locomotion_compatibility": "full_body_actions_replace_locomotion; no qualified_upper_body_profile",
+  "report_path": ".harness/verification/crusader_knight-qualification-report.json",
+  "actions": [
+    {"semantic_action_id": "action:melee.sword_slash", "clip_ref": "inspect_relic", "mode": "full_body_exclusive", "locomotion_compatibility": "replace_locomotion", "root_motion_policy": "hold", "root_motion_required": false, "required_slots": ["weapon_slot:sword", "weapon_hit_volume:sword"], "markers": [{"marker_id": "melee_contact", "time_seconds": 0.42, "marker_kind": "melee_contact", "emits_attempt": true, "evidence_requirement": "physics_contact"}], "cancel_windows": [{"start_seconds": 0.65, "end_seconds": 0.9}], "resource_claims": ["right_arm", "weapon_slot:sword"], "physics_claims": ["weapon_hit_volume:sword"], "authority_route_ref": "esm", "fallback_policy": "queue_until_compatible"},
+    {"semantic_action_id": "action:aim.upper_body", "clip_ref": "observe_watch", "mode": "derived_upper_body", "locomotion_compatibility": "coexist", "root_motion_policy": "hold", "root_motion_required": false, "required_slots": ["weapon_hand"], "markers": [{"marker_id": "aim_ready", "time_seconds": 0.3, "marker_kind": "presentation", "emits_attempt": false, "evidence_requirement": "none"}], "cancel_windows": [{"start_seconds": 0.1, "end_seconds": 0.8}], "resource_claims": ["upper_body"], "physics_claims": [], "authority_route_ref": "gameplay", "fallback": {"mode": "full_body_exclusive", "locomotion_compatibility": "replace_locomotion"}, "fallback_policy": "queue_until_compatible"}
+    ,{"semantic_action_id": "action:hitscan.aim_fire", "clip_ref": "observe_watch", "mode": "derived_upper_body", "locomotion_compatibility": "coexist", "root_motion_policy": "hold", "root_motion_required": false, "required_slots": ["weapon_slot:sword"], "markers": [{"marker_id": "hitscan_request", "time_seconds": 0.5, "marker_kind": "hitscan_semantic_request", "emits_attempt": true, "evidence_requirement": "line_of_sight"}], "cancel_windows": [{"start_seconds": 0.1, "end_seconds": 0.8}], "resource_claims": ["upper_body", "weapon_slot:sword"], "physics_claims": [], "authority_route_ref": "gameplay", "fallback": {"mode": "full_body_exclusive", "locomotion_compatibility": "replace_locomotion"}, "fallback_policy": "presentation_only"}
+  ]
+}

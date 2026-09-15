@@ -84,6 +84,19 @@ For external handoff, its `Normative Phase 1 Asset Delivery Rules` section is
 the binding checklist. This interface document intentionally does not create a
 second set of asset acceptance rules.
 
+## Task 7 Staging Evidence
+
+`assets/active/crusader_knight/manifest.json` is a qualified-with-fallback
+external package. Its imported clips include lower-body/root/pelvis curves, so
+its declared melee action is full-body exclusive and Walk/Run concurrency is
+not claimed. `assets/active/external_character_b/manifest.json` is a
+source-provenance-preserving staged candidate, rejected from runtime admission:
+the supplied asset exposes only `anim_drink` and `anim_knock`, rather than a
+verified locomotion suite or native/derived upper-body realization. The
+machine-readable reports and candidate statuses are in
+`assets/characters/qualification_reports/`; names and paths do not promote a
+rejected candidate.
+
 Examples of action tags:
 
 - `sword_swing`

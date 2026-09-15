@@ -20,3 +20,12 @@
 `binding_status` 改为 `approved`。空白的正式清单不会改变当前运行时。
 
 完整填写、验证和回退规则见 [自动应用流程](自动应用流程.md)。
+
+动作包清单还必须符合
+`assets/validation/schemas/character-action-asset-manifest.v1.json`：它声明
+`humanoid.v1` mapping、metres/scale、`-z` forward 与 `+y` up、required slots、
+Phase 1 locomotion tags、clip/action timing、claims、root-motion policy/envelope、
+realization mode 与 fallback。资格化报告使用
+`character-qualification-report.v1.json`，记录实际骨骼曲线影响、root/pelvis、
+lower-body、markers、cancel windows 和已选 fallback。不得以文件或目录名称猜测
+任何 mapping、slot 或 upper-body concurrency。

@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b3ivoxk8bdo8s"
-path.s3tc="res://.godot/imported/crusader_knight_shield_unity_Metallic.png-798e3c03bf7214d93f1f205df52003ae.s3tc.ctex"
+path.s3tc="res://.godot/imported/crusader_knight_shield_unity_Metallic.png-8f94f0525e457718e0d156a71f288b2b.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -14,8 +14,8 @@ generator_parameters={
 
 [deps]
 
-source_file="res://assets/characters/shared/crusader_knight_shield_unity_Metallic.png"
-dest_files=["res://.godot/imported/crusader_knight_shield_unity_Metallic.png-798e3c03bf7214d93f1f205df52003ae.s3tc.ctex"]
+source_file="res://assets/active/crusader_knight/crusader_knight_shield_unity_Metallic.png"
+dest_files=["res://.godot/imported/crusader_knight_shield_unity_Metallic.png-8f94f0525e457718e0d156a71f288b2b.s3tc.ctex"]
 
 [params]
 

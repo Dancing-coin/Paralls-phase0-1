@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cj74pw6qis0fd"
-path.s3tc="res://.godot/imported/crusader_knight_sword_unity_Metallic.png-08390eff371b2f8fc9b53bdf6c2e00b5.s3tc.ctex"
+path.s3tc="res://.godot/imported/crusader_knight_sword_unity_Metallic.png-30285a1242b1dee8df14472ca867e69a.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -14,8 +14,8 @@ generator_parameters={
 
 [deps]
 
-source_file="res://assets/characters/shared/crusader_knight_sword_unity_Metallic.png"
-dest_files=["res://.godot/imported/crusader_knight_sword_unity_Metallic.png-08390eff371b2f8fc9b53bdf6c2e00b5.s3tc.ctex"]
+source_file="res://assets/active/crusader_knight/crusader_knight_sword_unity_Metallic.png"
+dest_files=["res://.godot/imported/crusader_knight_sword_unity_Metallic.png-30285a1242b1dee8df14472ca867e69a.s3tc.ctex"]
 
 [params]
 

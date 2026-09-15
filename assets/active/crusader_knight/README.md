@@ -1,8 +1,11 @@
-# 共享临时角色资源
+# Crusader Knight External Package
 
-此目录当前保存项目已有的共享骑士模型与贴图，作为过渡期表现资源。它们不是
-`char_a`、`char_b`、`char_c` 的长期专属资产声明。
+This active package is a runtime wrapper around the externally authored
+`crusader_knight.glb`. The source asset remains unchanged; its SHA-256 digest,
+source URI, canonical humanoid mapping, import/rest-pose policy, slots,
+locomotion and action profiles are declared in `manifest.json`.
 
-后续接入正式角色模型、服装、装备、道具和动作时，应将可运行资源放入
-`assets/artpacks/<资源包ID>/`，再在 `../asset_manifests/` 中记录角色绑定。
-不要直接把共享资源路径硬编码进角色档案或后端权威逻辑。
+The package follows the external authoring contract: lower-case snake_case
+clip aliases, metres, applied transforms, a stable root/rest pose, `-z`
+forward and `+y` up. Semantic action IDs are independent from clip names and
+all timing entries keep `atomic_sequence: []`.

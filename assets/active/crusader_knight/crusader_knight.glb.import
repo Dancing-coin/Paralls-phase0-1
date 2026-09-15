@@ -4,12 +4,12 @@ importer="scene"
 importer_version=1
 type="PackedScene"
 uid="uid://bjv48pi0q2ifq"
-path="res://.godot/imported/crusader_knight.glb-ff84edcf30d9df7e973a2799ba02d535.scn"
+path="res://.godot/imported/crusader_knight.glb-361658ecd165f51795a62c16a3fb2b9d.scn"
 
 [deps]
 
-source_file="res://assets/characters/shared/crusader_knight.glb"
-dest_files=["res://.godot/imported/crusader_knight.glb-ff84edcf30d9df7e973a2799ba02d535.scn"]
+source_file="res://assets/active/crusader_knight/crusader_knight.glb"
+dest_files=["res://.godot/imported/crusader_knight.glb-361658ecd165f51795a62c16a3fb2b9d.scn"]
 
 [params]
 

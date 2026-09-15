@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dndyhc6xphc3c"
-path.s3tc="res://.godot/imported/crusader_knight_sword_unity_Albedo.png-eb347e9b07731af9ba104022cfa1ed0a.s3tc.ctex"
+path.s3tc="res://.godot/imported/crusader_knight_sword_unity_Albedo.png-a7fbe29462358dd7f20db220626494ac.s3tc.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc"],
 "vram_texture": true
@@ -14,8 +14,8 @@ generator_parameters={
 
 [deps]
 
-source_file="res://assets/characters/shared/crusader_knight_sword_unity_Albedo.png"
-dest_files=["res://.godot/imported/crusader_knight_sword_unity_Albedo.png-eb347e9b07731af9ba104022cfa1ed0a.s3tc.ctex"]
+source_file="res://assets/active/crusader_knight/crusader_knight_sword_unity_Albedo.png"
+dest_files=["res://.godot/imported/crusader_knight_sword_unity_Albedo.png-a7fbe29462358dd7f20db220626494ac.s3tc.ctex"]
 
 [params]
 
