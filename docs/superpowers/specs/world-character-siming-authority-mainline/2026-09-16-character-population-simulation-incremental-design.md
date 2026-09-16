@@ -1,14 +1,16 @@
-# Character and Population Simulation Unified Runtime Design
+# Character and Population Simulation Incremental Design
 
 Status: `approved design discussion; implementation not authorized`
 
 Date: `2026-09-16`
 
-This document records the agreed direction for combining Siming-governed
-population continuity, script-driven simple mind/behavior models, and the
-Character Agent runtime. It extends the existing population-continuity and
-Character Simulation Seed contracts. It does not replace them, create a second
-runtime, or claim that INF-4 complete population simulation is implemented.
+This document records the agreed incremental direction for combining
+Siming-governed population continuity, script-driven simple mind/behavior
+models, and Character Agent cognition. It adds small composable contracts and
+pure helpers to existing population-continuity, scheduling, intent,
+protocol, event/replay and projection paths. It does not replace those paths,
+create a second runtime, or claim that INF-4 complete population simulation is
+implemented.
 
 ## 1. Decision Summary
 
@@ -107,8 +109,8 @@ atomic fact or express an independent will.
 
 ## 3. Shared Simulation Medium
 
-The runtime exchanges a read-only `CharacterSimulationFrame`, not natural
-language and not a second NPC database:
+The existing runtime paths exchange a read-only `CharacterSimulationFrame`,
+not natural language and not a second NPC database:
 
 ```text
 authored identity and archetype summary
@@ -207,7 +209,8 @@ Neither consumer can widen an authored prohibition.
 ## 5. Simple Mind and Behavior Modules
 
 Simple models are script-driven modules covering mind and behavior together.
-They are package-extensible and do not require a new runtime per game.
+They are package-extensible and do not require a new simulation runtime per
+game.
 
 An archetype such as farmer may bind:
 
@@ -504,7 +507,9 @@ updates economic projections.
 
 ## 12. Implementation Phases
 
-The design is intentionally staged:
+The design is intentionally staged. Every phase extends an existing
+continuity, scheduling, intent, protocol, event/replay or projection path;
+none constructs a parallel population-simulation runtime:
 
 1. classify current classes as fact authority, protocol authority, projection
    or compatibility adapter; do not change behavior;
@@ -515,7 +520,8 @@ The design is intentionally staged:
 5. implement the intersection packet and B0/B1/B2/B3 handoff;
 6. connect character intents to admitted generic protocols;
 7. make the universal codebook available to all authorized consumers;
-8. optimize DOD hot state and batch execution only after correctness evidence.
+8. optimize the existing DOD hot state and batch execution only after
+   correctness evidence.
 
 The INF platform may continue its own generic fact/protocol work in parallel.
 Population simulation may consume only already admitted capabilities. A new
