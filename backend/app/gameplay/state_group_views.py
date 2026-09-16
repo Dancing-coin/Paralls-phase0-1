@@ -11,10 +11,14 @@ from typing import Any, Literal, Mapping
 from pydantic import ConfigDict, Field
 
 from app.gameplay.models import StrictGameplayModel
-from app.gameplay.runtime_state import CharacterGameRuntimeState, StateGroupProjectionEnvelope
+from app.gameplay.runtime_state import (
+    CharacterGameRuntimeState,
+    StateGroupProjectionEnvelope,
+    StateGroupRegistry,
+)
 
 
-ConsumerKind = Literal["authority", "godot", "mind_frame", "debug"]
+ConsumerKind = Literal["authority", "population", "godot", "mind_frame", "debug"]
 
 
 class StateGroupViewError(ValueError):
@@ -27,6 +31,7 @@ class StateGroupConsumerViewPolicy(StrictGameplayModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     group_id: str = Field(min_length=1)
+    population_allowed_fields: tuple[str, ...] = ()
     godot_allowed_fields: tuple[str, ...] = ()
     mind_allowed_fields: tuple[str, ...] = ()
     debug_allowed_fields: tuple[str, ...] = ()
@@ -56,10 +61,16 @@ class CharacterGameRuntimeStateView:
 class StateGroupViewProjector:
     """Creates presentation/read views without changing state, lifecycle, or authority."""
 
-    def __init__(self, policies: list[StateGroupConsumerViewPolicy]) -> None:
+    def __init__(
+        self,
+        policies: list[StateGroupConsumerViewPolicy],
+        *,
+        registry: StateGroupRegistry | None = None,
+    ) -> None:
         self._policies = {policy.group_id: policy for policy in policies}
         if len(self._policies) != len(policies):
             raise StateGroupViewError("view_policy_duplicate_group")
+        self._registry = registry
 
     def authority_view(
         self,
@@ -76,6 +87,15 @@ class StateGroupViewProjector:
         allowed_group_ids: tuple[str, ...],
     ) -> CharacterGameRuntimeStateView:
         return self._project(state, consumer="godot", allowed_group_ids=allowed_group_ids)
+
+    def population_view(
+        self,
+        state: CharacterGameRuntimeState,
+        *,
+        allowed_group_ids: tuple[str, ...],
+    ) -> CharacterGameRuntimeStateView:
+        """Project only fields explicitly approved for deterministic batch simulation."""
+        return self._project(state, consumer="population", allowed_group_ids=allowed_group_ids)
 
     def mind_frame_view(
         self,
@@ -117,9 +137,19 @@ class StateGroupViewProjector:
                 payload = _freeze_mapping(_thaw(envelope.payload))
             else:
                 policy = self._policies.get(group_id)
-                if policy is None:
+                if policy is None and not (
+                    consumer == "population" and self._registry is not None
+                ):
                     raise StateGroupViewError("view_policy_missing")
-                allowed_fields = self._allowed_fields(policy, consumer, principal_ref)
+                if policy is None:
+                    policy = StateGroupConsumerViewPolicy(group_id=group_id)
+                allowed_fields = self._allowed_fields(
+                    group_id,
+                    envelope,
+                    policy,
+                    consumer,
+                    principal_ref,
+                )
                 if allowed_fields is None:
                     continue
                 payload = _freeze_mapping(
@@ -157,14 +187,28 @@ class StateGroupViewProjector:
             view_checksum=f"sha256:{checksum}",
         )
 
-    @staticmethod
     def _allowed_fields(
+        self,
+        group_id: str,
+        envelope: StateGroupProjectionEnvelope,
         policy: StateGroupConsumerViewPolicy,
         consumer: ConsumerKind,
         principal_ref: str | None,
     ) -> tuple[str, ...] | None:
         if consumer == "godot":
             return policy.godot_allowed_fields or None
+        if consumer == "population":
+            if policy.population_allowed_fields:
+                return policy.population_allowed_fields
+            if self._registry is not None:
+                try:
+                    return self._registry.population_fields(
+                        group_id,
+                        envelope.definition_version,
+                    ) or None
+                except Exception as exc:
+                    raise StateGroupViewError("population_definition_unknown") from exc
+            return None
         if consumer == "mind_frame":
             return policy.mind_allowed_fields or None
         if consumer == "debug":

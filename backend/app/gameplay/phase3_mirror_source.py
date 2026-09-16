@@ -122,10 +122,13 @@ class Phase3MirrorSource:
             ),
             _status_tag_projector=StatusTagProjector(tag_registry),
             _composer=Phase3StateComposer(facade_builder=CharacterGameRuntimeStateBuilder(state_groups)),
-            _view_projector=StateGroupViewProjector(list(configuration.godot_view_policies)),
+            _view_projector=StateGroupViewProjector(
+                list(configuration.godot_view_policies),
+                registry=state_groups,
+            ),
         )
 
-    def godot_view(self):
+    def _runtime_state(self):
         actor_ref = self.configuration.actor_ref
         # Each configured source rebuilds only its own committed actor stream.
         events = tuple(
@@ -159,10 +162,22 @@ class Phase3MirrorSource:
             world_config_revision=self.configuration.world_config_revision,
             active_patch_set_revision=self.configuration.active_patch_set_revision,
         )
+        return state
+
+    def godot_view(self):
         return self._view_projector.godot_view(
-            state,
+            self._runtime_state(),
             allowed_group_ids=self.configuration.godot_allowed_group_ids
             or tuple(item.group_id for item in self.configuration.state_group_definitions),
+        )
+
+    def population_view(self):
+        """Expose the same committed state through the package allowlist."""
+        return self._view_projector.population_view(
+            self._runtime_state(),
+            allowed_group_ids=tuple(
+                item.group_id for item in self.configuration.state_group_definitions
+            ),
         )
 
 

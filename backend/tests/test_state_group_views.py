@@ -34,6 +34,7 @@ def _projector() -> StateGroupViewProjector:
         [
             StateGroupConsumerViewPolicy(
                 group_id="core.resources",
+                population_allowed_fields=("stamina", "max_stamina"),
                 godot_allowed_fields=("stamina", "max_stamina"),
                 mind_allowed_fields=("stamina",),
                 debug_allowed_fields=("stamina", "max_stamina", "internal_cost_basis"),
@@ -41,6 +42,7 @@ def _projector() -> StateGroupViewProjector:
             ),
             StateGroupConsumerViewPolicy(
                 group_id="core.relationships",
+                population_allowed_fields=("public_disposition",),
                 mind_allowed_fields=("public_disposition",),
                 debug_allowed_fields=("public_disposition", "private_belief"),
                 debug_principal_refs=("principal:debug-admin",),
@@ -98,3 +100,50 @@ def test_view_projector_fails_closed_when_an_allowed_group_has_no_policy() -> No
 
     with pytest.raises(StateGroupViewError, match="view_policy_missing"):
         projector.godot_view(state, allowed_group_ids=("core.resources", "core.relationships"))
+
+
+def test_population_view_is_explicitly_allowlisted_and_excludes_private_fields() -> None:
+    state = _state()
+    projector = _projector()
+
+    population = projector.population_view(
+        state,
+        allowed_group_ids=("core.resources", "core.relationships"),
+    )
+
+    assert population.groups["core.relationships"].payload == {
+        "public_disposition": "calm",
+    }
+    assert "internal_cost_basis" not in population.groups["core.resources"].payload
+    assert "private_belief" not in population.groups["core.relationships"].payload
+
+
+def test_population_view_can_use_package_declared_definition_fields_without_duplicate_policy() -> None:
+    registry = StateGroupRegistry()
+    registry.register(
+        StateGroupDefinition(
+            group_id="character.commitments",
+            definition_version="1.0.0",
+            projection_schema_version=1,
+            shared_fields=("next_due_tick", "private_note"),
+            population_allowed_fields=("next_due_tick",),
+        )
+    )
+    state = CharacterGameRuntimeStateBuilder(registry).build(
+        actor_ref="character:char_a",
+        enabled_group_ids=("character.commitments",),
+        group_payloads={
+            "character.commitments": {"next_due_tick": 120, "private_note": "hidden"}
+        },
+        source_revision_vector={"world:test": 1},
+        registry_revision="registry:test",
+        world_config_revision="world:test",
+        active_patch_set_revision="patch:test",
+    )
+
+    population = StateGroupViewProjector([], registry=registry).population_view(
+        state,
+        allowed_group_ids=("character.commitments",),
+    )
+
+    assert population.groups["character.commitments"].payload == {"next_due_tick": 120}

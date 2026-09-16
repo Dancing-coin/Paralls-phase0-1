@@ -4,6 +4,8 @@ import pytest
 from types import SimpleNamespace
 
 from app.character_agent.models.simulation_seed import CharacterContinuityReceipt
+from app.gameplay.runtime_state import CharacterGameRuntimeStateBuilder, StateGroupDefinition, StateGroupRegistry
+from app.gameplay.state_group_views import StateGroupViewProjector
 from app.gameplay.event_store import GameplayEventStore
 from app.population_continuity.models import WorldModeProfile
 from app.population_continuity.siming_contracts import PopulationReadSet
@@ -76,6 +78,49 @@ def test_world_runtime_builds_a_rotating_twelve_resident_projection_pool() -> No
     assert projections[0].payload["candidate_kind"] == "routine_work"
     assert projections[0].payload["starvation_credit"] > 0
     assert projections[0].revision_vector == cadence.base_revision_vector
+
+
+def test_world_runtime_carries_redacted_population_view_into_projection_payload() -> None:
+    store = GameplayEventStore()
+    runtime = WorldContinuityRuntime(store=store, mode=_mode())
+    runtime.resume()
+    cadence = runtime.build_population_cadence(window_start=3, window_end=4)
+    registry = StateGroupRegistry()
+    registry.register(
+        StateGroupDefinition(
+            group_id="character.commitments",
+            definition_version="1.0.0",
+            projection_schema_version=1,
+            shared_fields=("next_due_tick", "private_note"),
+            population_allowed_fields=("next_due_tick",),
+        )
+    )
+    state = CharacterGameRuntimeStateBuilder(registry).build(
+        actor_ref="character:resident_01",
+        enabled_group_ids=("character.commitments",),
+        group_payloads={
+            "character.commitments": {"next_due_tick": 120, "private_note": "hidden"}
+        },
+        source_revision_vector={"world:world:test": 1},
+        registry_revision="registry:test",
+        world_config_revision="world:test",
+        active_patch_set_revision="patch:test",
+    )
+    view = StateGroupViewProjector([], registry=registry).population_view(
+        state,
+        allowed_group_ids=("character.commitments",),
+    )
+
+    projections = runtime.build_population_projections(
+        cadence,
+        population_views={"character:resident_01": view},
+    )
+    payload = next(item.payload for item in projections if item.payload["actor_ref"] == "character:resident_01")
+
+    assert payload["population_state"] == {
+        "character.commitments": {"next_due_tick": 120}
+    }
+    assert "private_note" not in str(payload)
 
 
 def test_main_publishes_one_generic_cadence_for_the_world_window() -> None:

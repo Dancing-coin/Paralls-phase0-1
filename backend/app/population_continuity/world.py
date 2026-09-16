@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.replay import GameplayProjectionReplay
@@ -175,7 +176,10 @@ class WorldContinuityRuntime:
         return cadence
 
     def build_population_projections(
-        self, cadence: PopulationCadenceInput
+        self,
+        cadence: PopulationCadenceInput,
+        *,
+        population_views: Mapping[str, object] | None = None,
     ) -> tuple[PopulationProjection, ...]:
         """Build deterministic B0 routine inputs for the bounded resident roster."""
         cache_key = (
@@ -186,6 +190,16 @@ class WorldContinuityRuntime:
             cadence.ruleset_revision,
             cadence.report_scope,
             tuple(self.roster.actor_ids),
+            tuple(
+                sorted(
+                    (
+                        str(actor_ref),
+                        str(getattr(view, "view_checksum", "")),
+                        repr(getattr(view, "groups", {})),
+                    )
+                    for actor_ref, view in (population_views or {}).items()
+                )
+            ),
         )
         cached = self._projection_cache.get(cache_key)
         if cached is not None:
@@ -195,24 +209,46 @@ class WorldContinuityRuntime:
         window_index = cadence.window_start // window_size
         start = window_index % len(actors)
         ordered = actors[start:] + actors[:start]
-        projections = tuple(
-            PopulationProjection(
-                ref=f"projection:{actor}:{cadence.window_start}",
-                scope="public",
-                revision_vector=dict(cadence.base_revision_vector),
-                payload={
-                    "actor_ref": f"character:{actor}",
-                    "candidate_kind": "routine_work",
-                    "fidelity_tier": "B0",
-                    "starvation_credit": 1.0 - (index / len(actors)),
-                    "state_deltas": {
-                        "dynamic_state": {"stress_load": 0.0},
-                    },
-                    "presentation_seed": {"task": "daily_routine"},
+        projections: list[PopulationProjection] = []
+        for index, actor in enumerate(ordered):
+            actor_ref = f"character:{actor}"
+            payload = {
+                "actor_ref": actor_ref,
+                "candidate_kind": "routine_work",
+                "fidelity_tier": "B0",
+                "starvation_credit": 1.0 - (index / len(actors)),
+                "state_deltas": {
+                    "dynamic_state": {"stress_load": 0.0},
                 },
+                "presentation_seed": {"task": "daily_routine"},
+            }
+            view = (population_views or {}).get(actor_ref)
+            if view is not None:
+                if getattr(view, "consumer", None) != "population":
+                    raise ValueError("population_view_required")
+                groups = getattr(view, "groups", None)
+                if not isinstance(groups, Mapping):
+                    raise ValueError("population_view_invalid")
+                payload["population_state"] = {
+                    str(group_id): _thaw_population_value(getattr(envelope, "payload", {}))
+                    for group_id, envelope in sorted(groups.items(), key=lambda item: str(item[0]))
+                    if isinstance(getattr(envelope, "payload", None), Mapping)
+                }
+                payload["population_state_source_revision_vector"] = _thaw_population_value(
+                    getattr(view, "source_revision_vector", {})
+                )
+                payload["population_state_checksum"] = str(
+                    getattr(view, "view_checksum", "")
+                )
+            projections.append(
+                PopulationProjection(
+                    ref=f"projection:{actor}:{cadence.window_start}",
+                    scope="public",
+                    revision_vector=dict(cadence.base_revision_vector),
+                    payload=payload,
+                )
             )
-            for index, actor in enumerate(ordered)
-        )
+        projections = tuple(projections)
         self._projection_cache[cache_key] = projections
         return projections
 
@@ -226,7 +262,6 @@ class WorldContinuityRuntime:
         checkpoint = replay.create_checkpoint(events[:index])
         tail = replay.checkpoint_plus_tail_replay(checkpoint, events[index:])
         return full.projection_hash, tail.projection_hash
-
     def _transition(
         self, action: str, reason: str, *, expected_mode_revision: str | None = None
     ) -> WorldModeReceipt:
@@ -279,3 +314,14 @@ class WorldContinuityRuntime:
             if result.committed
             else (result.failure.error_code if result.failure else "append_rejected"),
         )
+
+
+def _thaw_population_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _thaw_population_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_thaw_population_value(item) for item in value]
+    return value

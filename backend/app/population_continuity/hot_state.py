@@ -28,13 +28,67 @@ class HotStateReceipt:
 class PopulationHotState:
     """稳定 actor ID 到紧凑槽位的热字段表；不保存身份、记忆或权限对象。"""
 
-    def __init__(self, actor_ids: Iterable[str] = ()) -> None:
+    def __init__(
+        self,
+        actor_ids: Iterable[str] = (),
+        *,
+        additional_fields: Iterable[str] = (),
+    ) -> None:
+        normalized_fields = {str(field).strip() for field in additional_fields}
+        if any(not field for field in normalized_fields):
+            raise ValueError("hot_state_field_invalid")
+        self._allowed_fields = HOT_FIELDS.union(normalized_fields)
         self._slot_by_actor: dict[str, int] = {}
         self._actor_by_slot: list[str | None] = []
-        self._rows: list[dict[str, object] | None] = []
+        self._columns: dict[str, list[object | None]] = {
+            field: [] for field in sorted(self._allowed_fields)
+        }
         self._revision: dict[str, int] = {}
         for actor_id in actor_ids:
             self._ensure_slot(actor_id)
+
+    def register_fields(self, fields: Iterable[str]) -> None:
+        """Register gameplay-package columns before batch updates use them."""
+        normalized_fields = {str(field).strip() for field in fields}
+        if any(not field for field in normalized_fields):
+            raise ValueError("hot_state_field_invalid")
+        added = normalized_fields.difference(self._allowed_fields)
+        self._allowed_fields = self._allowed_fields.union(normalized_fields)
+        for field in sorted(added):
+            self._columns[field] = [None] * len(self._actor_by_slot)
+
+    def register_group_fields(self, group_id: str, fields: Iterable[str]) -> None:
+        """Compile a state-group field list into collision-resistant hot columns."""
+        normalized_group = str(group_id).strip()
+        if not normalized_group:
+            raise ValueError("hot_state_group_invalid")
+        normalized_fields = {str(field).strip() for field in fields}
+        if any(not field for field in normalized_fields):
+            raise ValueError("hot_state_field_invalid")
+        self.register_fields(f"{normalized_group}.{field}" for field in normalized_fields)
+
+    def upsert_population_view(self, view: object, *, revision: int) -> None:
+        """Compile one already-redacted population view into group-qualified hot columns."""
+        if getattr(view, "consumer", None) != "population":
+            raise ValueError("population_view_required")
+        actor_id = str(getattr(view, "actor_ref", "") or "")
+        groups = getattr(view, "groups", None)
+        if not actor_id or not isinstance(groups, Mapping):
+            raise ValueError("population_view_invalid")
+        values: dict[str, object] = {}
+        for group_id, envelope in sorted(groups.items(), key=lambda item: str(item[0])):
+            normalized_group = str(group_id).strip()
+            payload = getattr(envelope, "payload", None)
+            if not normalized_group or not isinstance(payload, Mapping):
+                raise ValueError("population_view_invalid")
+            self.register_group_fields(normalized_group, payload.keys())
+            values.update(
+                {
+                    f"{normalized_group}.{field}": value
+                    for field, value in payload.items()
+                }
+            )
+        self.upsert(actor_id, values, revision)
 
     def upsert(self, actor_id: str, values: Mapping[str, object], revision: int) -> None:
         if not actor_id:
@@ -44,37 +98,42 @@ class PopulationHotState:
         previous_revision = self._revision.get(actor_id, -1)
         if revision < previous_revision:
             raise ValueError("hot_state_revision_conflict")
-        unknown = set(values).difference(HOT_FIELDS)
+        unknown = set(values).difference(self._allowed_fields)
         if unknown:
             raise ValueError("hot_state_field_not_allowed")
         slot = self._ensure_slot(actor_id)
-        row = dict(self._rows[slot] or {})
-        row.update(values)
-        row["revision"] = revision
-        self._rows[slot] = row
+        for field, value in values.items():
+            self._columns[field][slot] = value
         self._revision[actor_id] = revision
 
     def read(self, actor_id: str) -> Mapping[str, object]:
         slot = self._slot_by_actor.get(actor_id)
-        if slot is None or self._rows[slot] is None:
+        if slot is None or self._actor_by_slot[slot] is None:
             raise KeyError(actor_id)
-        return dict(self._rows[slot] or {})
+        row = {
+            field: values[slot]
+            for field, values in self._columns.items()
+            if values[slot] is not None
+        }
+        if actor_id in self._revision:
+            row["revision"] = self._revision[actor_id]
+        return row
 
     def remove(self, actor_id: str) -> None:
         slot = self._slot_by_actor.pop(actor_id, None)
         if slot is None:
             return
         self._actor_by_slot[slot] = None
-        self._rows[slot] = None
+        for values in self._columns.values():
+            values[slot] = None
         self._revision.pop(actor_id, None)
 
     def due_actor_ids(self, tick: int) -> tuple[str, ...]:
         due: list[tuple[int, str]] = []
         for actor_id, slot in self._slot_by_actor.items():
-            row = self._rows[slot]
-            if row is None:
+            if self._actor_by_slot[slot] is None:
                 continue
-            due_tick = row.get("next_due_tick")
+            due_tick = self._columns["next_due_tick"][slot]
             if isinstance(due_tick, int) and not isinstance(due_tick, bool) and due_tick <= tick:
                 due.append((due_tick, actor_id))
         return tuple(actor_id for _, actor_id in sorted(due))
@@ -96,7 +155,7 @@ class PopulationHotState:
         return tuple(
             (actor_id, self.read(actor_id))
             for actor_id in sorted(self._slot_by_actor)
-            if self._rows[self._slot_by_actor[actor_id]] is not None
+            if self._actor_by_slot[self._slot_by_actor[actor_id]] is not None
         )
 
     def map_readonly(
@@ -126,11 +185,13 @@ class PopulationHotState:
         try:
             slot = self._actor_by_slot.index(None)
             self._actor_by_slot[slot] = actor_id
-            self._rows[slot] = {}
+            for values in self._columns.values():
+                values[slot] = None
         except ValueError:
             slot = len(self._actor_by_slot)
             self._actor_by_slot.append(actor_id)
-            self._rows.append({})
+            for values in self._columns.values():
+                values.append(None)
         self._slot_by_actor[actor_id] = slot
         return slot
 

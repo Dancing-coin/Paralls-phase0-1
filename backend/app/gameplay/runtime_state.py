@@ -10,7 +10,7 @@ import re
 from types import MappingProxyType
 from typing import Any, Iterable, Literal, Mapping
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_validator
 
 from app.gameplay.models import GameplayEvent, StrictGameplayModel
 
@@ -42,6 +42,22 @@ class StateGroupDefinition(StrictGameplayModel):
     projection_schema_version: int = Field(ge=1)
     dependencies: tuple[str, ...] = ()
     conflicts: tuple[str, ...] = ()
+    shared_fields: tuple[str, ...] = ()
+    population_allowed_fields: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_declared_fields(self) -> "StateGroupDefinition":
+        for field_name, fields in (
+            ("shared_fields", self.shared_fields),
+            ("population_allowed_fields", self.population_allowed_fields),
+        ):
+            if any(not str(field).strip() for field in fields):
+                raise ValueError(f"state_group_{field_name}_invalid")
+            if len(set(fields)) != len(fields):
+                raise ValueError(f"state_group_{field_name}_duplicate")
+        if not set(self.population_allowed_fields).issubset(self.shared_fields):
+            raise ValueError("state_group_population_fields_not_shared")
+        return self
 
 
 @dataclass(frozen=True)
@@ -127,6 +143,30 @@ class StateGroupRegistry:
     def list_group_ids(self) -> tuple[str, ...]:
         """Expose stable registry membership for backend policy compilation only."""
         return tuple(sorted(self._definitions))
+
+    def population_fields(
+        self,
+        group_id: str,
+        definition_version: str | None = None,
+    ) -> tuple[str, ...]:
+        """Return package-declared fields safe for deterministic population reads."""
+        return self.resolve(group_id, definition_version).population_allowed_fields
+
+    def validate_module_payload(
+        self,
+        group_id: str,
+        definition_version: str,
+        projection_schema_version: int,
+        payload: Mapping[str, Any],
+    ) -> StateGroupDefinition:
+        """Validate a shared character module against the package registry."""
+        definition = self.resolve(group_id, definition_version)
+        if definition.projection_schema_version != projection_schema_version:
+            raise StateGroupRegistryError("state_group_projection_schema_mismatch")
+        unknown = set(payload).difference(definition.shared_fields)
+        if unknown:
+            raise StateGroupRegistryError("state_group_field_unknown")
+        return definition
 
     def resolve_load_order(
         self,
