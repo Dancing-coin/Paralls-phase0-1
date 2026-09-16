@@ -1,6 +1,9 @@
 {
   "contract": "character_action_asset_manifest.v1",
   "package_id": "crusader_knight",
+  "runtime_action_status": "unavailable",
+  "runtime_action_status_reason": "replacement_workbench_active; existing knight actions are not accepted for delivery",
+  "unavailable_action_ids": ["action:melee.sword_slash", "action:aim.upper_body", "action:hitscan.aim_fire", "idle", "walk_forward", "run_forward", "jump_start", "jump_loop", "jump_land", "turn_left", "turn_right"],
   "source_model_path": "res://assets/active/crusader_knight/crusader_knight.glb",
   "source": {"model_path": "assets/active/crusader_knight/crusader_knight.glb", "digest_sha256": "3D36D56D80344CBF61CF93C5C4A28005AB1816551978AA21C88BA7437C478F78", "format": "glb"},
   "provenance": {"source_uri": "archive/assets/legacy/crusader_knight/crusader_knight.glb", "authoring_contract": "external_provider", "qualification_report_ref": "assets/characters/qualification_reports/crusader_knight.json", "package_digest": "3D36D56D80344CBF61CF93C5C4A28005AB1816551978AA21C88BA7437C478F78"},

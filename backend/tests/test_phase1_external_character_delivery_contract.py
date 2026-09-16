@@ -69,3 +69,23 @@ def test_reports_are_machine_readable_and_expose_fallback_and_concurrency_claims
         assert report["provenance"]["package_digest"]
         assert report["actions"]
         assert any(a.get("semantic_action_id") for a in report["actions"])
+
+
+def test_knight_actions_are_explicitly_unavailable_during_replacement_attempt() -> None:
+    manifest = _manifest("crusader_knight")
+    assert manifest["runtime_action_status"] == "unavailable"
+    assert manifest["runtime_action_status_reason"]
+    timing = json.loads((ACTIVE / "crusader_knight" / "docs" / "action-timing.json").read_text(encoding="utf-8"))
+    assert timing["runtime_action_status"] == "unavailable"
+
+
+def test_working_copies_are_declared_without_replacing_original_sources() -> None:
+    art_root = Path(r"D:/Users/User/Documents/paralls-art-assets")
+    for package_id in ("crusader_knight", "external_character_b"):
+        manifest_path = art_root / "production-assets" / "characters" / package_id / "source" / "working-copy-manifest.json"
+        assert manifest_path.is_file(), f"missing working-copy manifest: {manifest_path}"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        assert manifest["package_id"] == package_id
+        assert manifest["copy_policy"] == "new_file_only"
+        assert (art_root / manifest["working_copy"]).is_file()
+        assert manifest["original_source"]
