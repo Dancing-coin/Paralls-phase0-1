@@ -63,6 +63,8 @@ def main() -> int:
         "test_character_agent_memory_consistency.py", "test_character_memory_consistency_flow.py",
         "test_character_memory_correction.py",
         "test_population_roster.py", "test_population_roster_import.py",
+        "test_population_durable_cadence_recovery.py", "test_population_due_index.py",
+        "test_population_hot_state.py", "test_population_parallel_determinism.py",
     ))
     observation = report["observations"].get("continuous_runtime_evidence")
     evidence = json.loads(observation) if observation else {}
@@ -76,7 +78,7 @@ def main() -> int:
                                             and set(row["actor_ids"]) == set(row["b0_actor_ids"])
                                             and not row["character_core_actor_ids"]
                                             for row in configured_rosters))
-    report["restart_scope"] = "same_process; cross_process_authority_event_durability_not_proven"
+    report["restart_scope"] = "durable_gameplay_store_reopen_and_pending_outbox_redelivery; hot_state_rebuilt_from_committed_cadence"
     return backend_report(name, report)
 
 

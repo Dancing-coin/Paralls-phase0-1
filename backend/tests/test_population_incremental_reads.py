@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.models import ProjectionCheckpoint
 from app.population_continuity.siming_contracts import PopulationCadenceInput
 from app.population_continuity.store_projection_assembler import assemble_committed_population_projections
 
@@ -94,16 +93,10 @@ def test_population_assembler_reads_after_projection_checkpoint() -> None:
         budget=10,
         report_scope="public",
     )
-    checkpoint = ProjectionCheckpoint(
-        checkpoint_id="checkpoint:population:0",
-        projector_id="population-continuity",
-        projector_version="1",
-        projection_schema_version=1,
-        source_revision_vector={"gameplay:population": 0},
-        last_global_sequence=3,
-        state={"population_projections": []},
-        projection_hash="sha256:empty",
+    assemble_committed_population_projections(
+        store=store, cadence=cadence, organization_projection={}, incremental=True,
     )
+    checkpoint = store.list_projection_checkpoints(projector_id="population-continuity")[0]
     observed: list[dict[str, object]] = []
     original = store.read_events
 
@@ -119,4 +112,4 @@ def test_population_assembler_reads_after_projection_checkpoint() -> None:
         organization_projection={},
         checkpoint=checkpoint,
     ) == ()
-    assert observed == [{"global_sequence_after": 3}]
+    assert observed == [{"global_sequence_after": 0}]

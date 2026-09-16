@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "population-runtime-scale",
+  "order": 123,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_population_runtime_scale.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/population-runtime-scale-report.json",
+  "description": "真实 population runtime 100/1000/10000 居民、1x/10x、30 窗口规模门禁"
+}

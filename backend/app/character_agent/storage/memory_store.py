@@ -81,9 +81,17 @@ class CharacterAgentMemoryStore:
         if event_id and (actor_id, event_id) in self._seen_event_ids:
             return
         stored_event = deepcopy(event)
-        self._events_by_actor.setdefault(actor_id, []).append(stored_event)
-        self._ingest_event(stored_event)
-        self._persist()
+        timeline = self._events_by_actor.setdefault(actor_id, [])
+        timeline.append(stored_event)
+        try:
+            self._ingest_event(stored_event)
+            self._persist()
+        except Exception:
+            timeline.pop()
+            if not timeline:
+                self._events_by_actor.pop(actor_id, None)
+            self._rebuild_projections()
+            raise
         if event_id:
             self._seen_event_ids.add((actor_id, event_id))
 
@@ -550,6 +558,21 @@ class CharacterAgentMemoryStore:
                 self._ingest_event(event)
                 if event.get("event_id"):
                     self._seen_event_ids.add((actor_id, str(event["event_id"])))
+
+    def _rebuild_projections(self) -> None:
+        self._working = CharacterWorkingMemory()
+        self._event = CharacterEventMemory()
+        self._observation = CharacterObservationMemory()
+        self._knowledge = CharacterKnowledgeMemory()
+        self._social = CharacterSocialMemory()
+        self._higher_order = CharacterHigherOrderMemory()
+        self._seen_event_ids = set()
+        for actor_id, events in self._events_by_actor.items():
+            for event in events:
+                self._ingest_event(event)
+                event_id = str(event.get("event_id", "") or "")
+                if event_id:
+                    self._seen_event_ids.add((actor_id, event_id))
 
     def _persist(self) -> None:
         if self._storage_path is None:

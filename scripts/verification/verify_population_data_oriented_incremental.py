@@ -6,212 +6,545 @@ import platform
 import subprocess
 import sys
 from pathlib import Path
-from statistics import median
 from time import perf_counter
+from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "backend"))
 
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.models import ProjectionCheckpoint
-from app.population_continuity.siming_contracts import PopulationCadenceInput
+from app.gameplay.settlement_plan import (
+    build_atomic_event_batch,
+    build_multi_stream_atomic_event_batch,
+)
+from app.population_continuity.publication import publish_authorized_population_cadence
+from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationProjection
 from app.population_continuity.store_projection_assembler import assemble_committed_population_projections
+from app.services.authority_event_bus import InMemoryAuthorityEventBus
+from app.services.siming_audit_writer import SimingAuditWriter
+from app.services.siming_event_consumer import SimingEventConsumer
+from app.services.siming_event_pipeline import SimingEventPipeline
+from app.services.siming_event_producer import SimingEventProducer
+from app.services.siming_population_capability import PopulationSimulationCapability
+from app.services.siming_runtime import SimingRuntime
+from scripts.verification.population_benchmark_metrics import peak_rss_bytes, percentile
+
+
+WORLD_REF = "benchmark"
+WORLD_STREAM = f"world:{WORLD_REF}"
+WORLD_MODE_REVISION = "mode:benchmark:v1"
+PUBLIC_STREAM_A = "gameplay:social:population:public:a"
+PUBLIC_STREAM_B = "gameplay:social:population:public:b"
+PRIVATE_STREAM = "gameplay:social:population:private"
+SOCIAL_STREAMS = (PUBLIC_STREAM_A, PUBLIC_STREAM_B, PRIVATE_STREAM)
 
 
 def root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    return ROOT
 
 
 def _digest(value: object) -> str:
-    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
-    return "sha256:" + hashlib.sha256(payload).hexdigest()
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
 
-def _append_social_event(store: GameplayEventStore, index: int) -> None:
-    stream_id = f"gameplay:social:population:{index}"
-    event_id = f"evt:population:signal:{index}"
-    tx = f"tx:population:signal:{index}"
-    command_id = f"cmd:population:signal:{index}"
-    store.append_batch(
-        {
-            "transaction_id": tx,
-            "command_id": command_id,
-            "expected_stream_revisions": {stream_id: 0},
-            "pinned_revisions": {"policy": 1},
-            "events": [
-                {
-                    "event_id": event_id,
-                    "event_type": "gameplay.social.population_signal_recorded@1",
-                    "schema_version": 1,
-                    "stream_id": stream_id,
-                    "stream_revision": 0,
-                    "global_sequence": 0,
-                    "transaction_id": tx,
-                    "command_id": command_id,
-                    "causation_id": command_id,
-                    "correlation_id": tx,
-                    "visibility_policy": "public",
-                    "payload": {
-                        "committed": True,
-                        "signal_id": f"signal:population:{index}",
-                        "source_event_id": event_id,
-                        "source_domain": "social",
-                        "visibility_scope": "public",
-                        "materialization_state": "proposed",
-                    },
-                }
-            ],
-            "idempotency_record": {
-                "principal_ref": "verification",
-                "idempotency_key": f"population:signal:{index}",
-                "payload_digest": _digest(event_id),
-            },
-            "outbox_entries": [],
-            "result_digest": _digest(tx),
-            "projection_refresh_hints": [],
-        }
+def _encoded_bytes(value: object) -> int:
+    return len(
+        json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
     )
 
 
-def _fixture(history: int) -> tuple[GameplayEventStore, PopulationCadenceInput]:
-    store = GameplayEventStore()
-    for index in range(history):
-        _append_social_event(store, index)
+def _append_world_source(store: GameplayEventStore) -> None:
+    store.append_batch(
+        build_atomic_event_batch(
+            command_id="benchmark-world-resume",
+            principal_ref="verification",
+            stream_id=WORLD_STREAM,
+            expected_revision=0,
+            event_specs=((
+                "population.world.resume",
+                {
+                    "committed": True,
+                    "world_ref": WORLD_REF,
+                    "mode_revision": WORLD_MODE_REVISION,
+                    "visibility_scope": "project",
+                },
+            ),),
+            idempotency_key="benchmark-world-resume",
+            causation_id="benchmark-world-resume",
+            correlation_id="benchmark-world-resume",
+        )
+    )
+
+
+def _social_event_spec(index: int, stream_id: str, visibility: str) -> tuple[str, dict[str, object]]:
+    return (
+        "gameplay.social.population_signal_recorded@1",
+        {
+            "committed": True,
+            "signal_ref": f"signal:benchmark:{index:08d}",
+            "provenance_ref": f"provenance:benchmark:{index:08d}",
+            "source_domain": "social",
+            "source_stream_ref": stream_id,
+            "visibility_scope": visibility,
+            "materialization_state": "proposed",
+        },
+    )
+
+
+def _append_history(
+    store: GameplayEventStore,
+    *,
+    start: int,
+    count: int,
+    batch_ref: str,
+) -> None:
+    for offset in range(0, count, 1_000):
+        size = min(1_000, count - offset)
+        specs: dict[str, list[tuple[str, dict[str, object]]]] = {
+            stream_id: [] for stream_id in SOCIAL_STREAMS
+        }
+        visibilities: dict[str, list[str]] = {stream_id: [] for stream_id in SOCIAL_STREAMS}
+        for index in range(start + offset, start + offset + size):
+            if index % 10 == 0:
+                stream_id, visibility = PRIVATE_STREAM, "actor:self"
+            elif index % 2 == 0:
+                stream_id, visibility = PUBLIC_STREAM_A, "public"
+            else:
+                stream_id, visibility = PUBLIC_STREAM_B, "public"
+            specs[stream_id].append(_social_event_spec(index, stream_id, visibility))
+            visibilities[stream_id].append(visibility)
+        specs = {stream_id: events for stream_id, events in specs.items() if events}
+        visibilities = {
+            stream_id: values
+            for stream_id, values in visibilities.items()
+            if stream_id in specs
+        }
+        command_id = f"benchmark-history:{batch_ref}:{offset}"
+        store.append_batch(
+            build_multi_stream_atomic_event_batch(
+                command_id=command_id,
+                principal_ref="verification",
+                expected_revisions={
+                    stream_id: store.get_stream_head(stream_id) for stream_id in specs
+                },
+                event_specs=specs,
+                event_visibility_policies=visibilities,
+                idempotency_key=command_id,
+                causation_id=command_id,
+                correlation_id=command_id,
+            )
+        )
+
+
+def _cadence(store: GameplayEventStore, *, sample: int, population: int) -> PopulationCadenceInput:
     heads = store.get_stream_heads()
-    cadence = PopulationCadenceInput(
-        cadence_id=f"cadence:verification:{history}",
-        world_ref="world:verification",
-        world_mode_ref="mode:verification",
-        world_mode_revision="mode:1",
-        cadence_source_ref="world:verification",
-        cadence_source_revision=history,
-        window_start=0,
-        window_end=1,
-        base_checkpoint_ref=f"checkpoint:verification:{history}",
+    return PopulationCadenceInput(
+        cadence_id=f"cadence:benchmark:{population}:{sample}",
+        world_ref=WORLD_REF,
+        world_mode_ref="mode:benchmark",
+        world_mode_revision=WORLD_MODE_REVISION,
+        cadence_source_ref=WORLD_STREAM,
+        cadence_source_revision=1,
+        window_start=sample,
+        window_end=sample + 1,
+        base_checkpoint_ref=f"checkpoint:benchmark:{sample}",
         base_checkpoint_digest=_digest(heads),
         base_revision_vector=heads,
         policy_revision="policy:population:v1",
-        selector_revision="selector:population:v1",
+        selector_revision="selector:generic:population:v1",
         ruleset_revision="rules:population:v1",
-        deterministic_seed=f"seed:verification:{history}",
-        catch_up_limit=history,
-        budget=history,
+        deterministic_seed=f"seed:benchmark:{sample}",
+        catch_up_limit=population,
+        budget=population,
         report_scope="public",
     )
-    return store, cadence
 
 
-def _run_assembler(
-    store: GameplayEventStore,
+def _population_projections(population: int) -> tuple[PopulationProjection, ...]:
+    return tuple(
+        PopulationProjection(
+            ref=f"projection:benchmark:resident:{index:05d}",
+            scope="public",
+            revision_vector={WORLD_STREAM: 1},
+            payload={
+                "actor_ref": f"character:benchmark:{index:05d}",
+                "candidate_kind": "routine_work",
+                "behavior_kind": "routine_work",
+                "fidelity_tier": "B0",
+                "budget_cost": 0,
+                "fallback": "no-op",
+                "state_deltas": {"energy": -1, "location_tick": index % 16},
+                "presentation_seed": {"activity": "routine_work", "variant": index % 8},
+            },
+        )
+        for index in range(population)
+    )
+
+
+def _pipeline() -> tuple[InMemoryAuthorityEventBus, SimingAuditWriter]:
+    bus = InMemoryAuthorityEventBus()
+    audit = SimingAuditWriter()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=SimingRuntime(population_capability=PopulationSimulationCapability()),
+        producer=SimingEventProducer(bus),
+        audit_writer=audit,
+    )
+    bus.subscribe(
+        "population_cadence_event",
+        pipeline.handle_event,
+        consumer_id="benchmark-siming-runtime",
+    )
+    return bus, audit
+
+
+def _publish(
+    *,
     cadence: PopulationCadenceInput,
-    checkpoint: ProjectionCheckpoint | None = None,
-) -> tuple[tuple[object, ...], dict[str, int], float]:
-    counts = {"read_calls": 0, "events_returned": 0}
-    original = store.read_events
+    store: GameplayEventStore,
+    bus: InMemoryAuthorityEventBus,
+    population_projections: tuple[PopulationProjection, ...],
+):
+    return publish_authorized_population_cadence(
+        cadence=cadence,
+        store=store,
+        organization_projection={"scope": "public"},
+        room_id="room:benchmark",
+        scene_id="scene:benchmark",
+        zone_id="zone:benchmark",
+        causation_id=f"cause:{cadence.cadence_id}",
+        correlation_id=f"correlation:{cadence.cadence_id}",
+        population_projections=population_projections,
+        event_bus=bus,
+    )
+
+
+def _publish_with_read_metrics(
+    *,
+    cadence: PopulationCadenceInput,
+    store: GameplayEventStore,
+    bus: InMemoryAuthorityEventBus,
+    population_projections: tuple[PopulationProjection, ...],
+) -> tuple[object | None, dict[str, int], float]:
+    metrics = {
+        "read_events_calls": 0,
+        "read_events_returned": 0,
+        "read_events_encoded_bytes": 0,
+        "read_stream_calls": 0,
+        "read_stream_returned": 0,
+        "read_stream_encoded_bytes": 0,
+    }
+    original_read_events = store.read_events
+    original_read_stream = store.read_stream
 
     def counted_read_events(**kwargs: object):
-        counts["read_calls"] += 1
-        events = original(**kwargs)
-        counts["events_returned"] += len(events)
+        events = original_read_events(**kwargs)
+        metrics["read_events_calls"] += 1
+        metrics["read_events_returned"] += len(events)
+        metrics["read_events_encoded_bytes"] += _encoded_bytes(
+            [event.model_dump(mode="json") for event in events]
+        )
+        return events
+
+    def counted_read_stream(stream_id: str, **kwargs: object):
+        events = original_read_stream(stream_id, **kwargs)
+        metrics["read_stream_calls"] += 1
+        metrics["read_stream_returned"] += len(events)
+        metrics["read_stream_encoded_bytes"] += _encoded_bytes(
+            [event.model_dump(mode="json") for event in events]
+        )
         return events
 
     store.read_events = counted_read_events  # type: ignore[method-assign]
+    store.read_stream = counted_read_stream  # type: ignore[method-assign]
     started = perf_counter()
     try:
-        projections = assemble_committed_population_projections(
-            store=store,
+        event = _publish(
             cadence=cadence,
-            organization_projection={},
-            checkpoint=checkpoint,
+            store=store,
+            bus=bus,
+            population_projections=population_projections,
         )
     finally:
-        store.read_events = original  # type: ignore[method-assign]
-    elapsed_ms = (perf_counter() - started) * 1000
-    return projections, counts, elapsed_ms
+        elapsed_ms = (perf_counter() - started) * 1_000
+        store.read_events = original_read_events  # type: ignore[method-assign]
+        store.read_stream = original_read_stream  # type: ignore[method-assign]
+    return event, metrics, elapsed_ms
 
 
-def _measure(population: int, history: int) -> dict[str, object]:
-    store, cadence = _fixture(history)
-    full, full_counts, full_ms = _run_assembler(store, cadence)
-    midpoint = history // 2
-    checkpoint_projections = [
-        projection.model_dump(mode="json")
-        for projection in full
-        if int(str(projection.payload["source_event_refs"][0]).rsplit(":", 1)[-1]) < midpoint
-    ]
-    checkpoint = ProjectionCheckpoint(
-        checkpoint_id=f"checkpoint:verification:{history}",
-        projector_id="population-continuity",
-        projector_version="1",
-        projection_schema_version=1,
-        source_revision_vector={},
-        last_global_sequence=midpoint,
-        state={"population_projections": checkpoint_projections},
-        projection_hash=_digest(checkpoint_projections),
+def _projection_payload(event: object) -> list[dict[str, Any]]:
+    payload = getattr(event, "payload", {})
+    rows = payload.get("population_projections", []) if isinstance(payload, dict) else []
+    return [dict(row) for row in rows if isinstance(row, dict)]
+
+
+def _checkpoint_id() -> str:
+    context = {
+        "world_ref": WORLD_REF,
+        "world_mode_revision": WORLD_MODE_REVISION,
+        "report_scope": "public",
+        "policy_revision": "policy:population:v1",
+        "selector_revision": "selector:generic:population:v1",
+        "ruleset_revision": "rules:population:v1",
+        "organization_ref": None,
+    }
+    return "checkpoint:population:" + _digest(context).split(":", 1)[1]
+
+
+def measure_incremental_history(
+    *,
+    history: int,
+    population: int = 100,
+    tail: int = 10,
+    samples: int = 5,
+) -> dict[str, object]:
+    if history < 1 or population < 1 or tail < 1 or samples < 1:
+        raise ValueError("benchmark_dimensions_invalid")
+    store = GameplayEventStore()
+    _append_world_source(store)
+    if history > 1:
+        _append_history(
+            store,
+            start=1,
+            count=history - 1,
+            batch_ref=f"prefix:{history}",
+        )
+    bus, _audit = _pipeline()
+    population_projections = _population_projections(population)
+    prefix_cadence = _cadence(store, sample=0, population=population)
+    prefix_started = perf_counter()
+    prefix_event = _publish(
+        cadence=prefix_cadence,
+        store=store,
+        bus=bus,
+        population_projections=population_projections,
     )
-    tail, tail_counts, tail_ms = _run_assembler(store, cadence, checkpoint)
-    full_hash = _digest([projection.model_dump(mode="json") for projection in full])
-    tail_hash = _digest([projection.model_dump(mode="json") for projection in tail])
+    prefix_ms = (perf_counter() - prefix_started) * 1_000
+    checkpoint = store.get_projection_checkpoint(_checkpoint_id())
+
+    sample_rows: list[dict[str, object]] = []
+    final_event = prefix_event
+    next_event_index = history
+    for sample in range(1, samples + 1):
+        _append_history(
+            store,
+            start=next_event_index,
+            count=tail,
+            batch_ref=f"tail:{history}:{sample}",
+        )
+        next_event_index += tail
+        cadence = _cadence(store, sample=sample, population=population)
+        event, metrics, elapsed_ms = _publish_with_read_metrics(
+            cadence=cadence,
+            store=store,
+            bus=bus,
+            population_projections=population_projections,
+        )
+        final_event = event
+        sample_rows.append(
+            {
+                "sample": sample,
+                "published": event is not None,
+                "elapsed_ms": round(elapsed_ms, 4),
+                **metrics,
+            }
+        )
+
+    final_cadence = _cadence(store, sample=samples, population=population)
+    assembled = assemble_committed_population_projections(
+        store=store,
+        cadence=final_cadence,
+        organization_projection={"scope": "public"},
+    )
+    oracle_rows = [
+        projection.model_dump(mode="json")
+        for projection in sorted((*population_projections, *assembled), key=lambda item: item.ref)
+    ]
+    output_rows = _projection_payload(final_event) if final_event is not None else []
+    input_events = store.read_events()
+    input_rows = [event.model_dump(mode="json") for event in input_events]
+    social_events = [event for event in input_events if event.stream_id in SOCIAL_STREAMS]
+    source_streams = {event.stream_id for event in social_events}
+    elapsed = [float(row["elapsed_ms"]) for row in sample_rows]
+    output_hash = _digest(output_rows)
+    full_oracle_hash = _digest(oracle_rows)
+    reads_are_incremental = all(
+        row["read_events_calls"] == 1
+        and row["read_events_returned"] == tail
+        and row["read_stream_calls"] == 1
+        and row["read_stream_returned"] == 1
+        for row in sample_rows
+    )
+    prefix_sequence = checkpoint.last_global_sequence if checkpoint is not None else -1
+    replay_equivalent = output_hash == full_oracle_hash
     return {
         "population": population,
         "history": history,
-        "full_projection_count": len(full),
-        "tail_projection_count": len(tail),
-        "full_hash": full_hash,
-        "tail_hash": tail_hash,
-        "replay_equivalent": full_hash == tail_hash,
-        "full": {"ms": round(full_ms, 4), **full_counts},
-        "tail": {"ms": round(tail_ms, 4), **tail_counts},
+        "tail": tail,
+        "sample_count": samples,
+        "prefix_checkpoint_sequence": prefix_sequence,
+        "prefix_elapsed_ms": round(prefix_ms, 4),
+        "full_oracle_event_count": store.get_last_global_sequence(),
+        "full_oracle_projection_count": len(oracle_rows),
+        "source_stream_count": len(source_streams),
+        "private_event_count": sum(
+            event.visibility_policy == "actor:self" for event in social_events
+        ),
+        "same_stream_update_count": len(social_events) - len(source_streams),
+        "input_encoded_bytes": _encoded_bytes(input_rows),
+        "output_encoded_bytes": _encoded_bytes(output_rows),
+        "input_hash": _digest(input_rows),
+        "output_hash": output_hash,
+        "full_oracle_hash": full_oracle_hash,
+        "replay_equivalent": replay_equivalent,
+        "p50_ms": round(percentile(elapsed, 0.50), 4),
+        "p95_ms": round(percentile(elapsed, 0.95), 4),
+        "peak_rss_bytes": peak_rss_bytes(),
+        "samples": sample_rows,
+        "overall_passed": (
+            prefix_event is not None
+            and prefix_sequence == history
+            and reads_are_incremental
+            and replay_equivalent
+        ),
     }
 
 
-def _percentile(values: list[float], percentile: float) -> float:
-    ordered = sorted(values)
-    return ordered[min(len(ordered) - 1, int((len(ordered) - 1) * percentile))]
+def measure_projection_scale(*, population: int, samples: int = 5) -> dict[str, object]:
+    if population < 1 or samples < 1:
+        raise ValueError("benchmark_dimensions_invalid")
+    store = GameplayEventStore()
+    _append_world_source(store)
+    bus, audit = _pipeline()
+    projections = _population_projections(population)
+    sample_rows: list[dict[str, object]] = []
+    final_event = None
+    audit_count = 0
+    for sample in range(samples):
+        cadence = _cadence(store, sample=sample, population=population)
+        correlation_id = f"correlation:{cadence.cadence_id}"
+        started = perf_counter()
+        final_event = _publish(
+            cadence=cadence,
+            store=store,
+            bus=bus,
+            population_projections=projections,
+        )
+        elapsed_ms = (perf_counter() - started) * 1_000
+        records = audit.find_by_correlation(
+            room_id="room:benchmark",
+            correlation_id=correlation_id,
+        )
+        cycle_audits = [record for record in records if record.reason.startswith("population_")]
+        audit_count += len(cycle_audits)
+        sample_rows.append(
+            {
+                "sample": sample + 1,
+                "published": final_event is not None,
+                "elapsed_ms": round(elapsed_ms, 4),
+                "population_cycle_audits": len(cycle_audits),
+            }
+        )
+    input_rows = [projection.model_dump(mode="json") for projection in projections]
+    output_rows = _projection_payload(final_event) if final_event is not None else []
+    elapsed = [float(row["elapsed_ms"]) for row in sample_rows]
+    input_hash = _digest(input_rows)
+    output_hash = _digest(output_rows)
+    published_projection_count = len(output_rows)
+    all_published = all(bool(row["published"]) for row in sample_rows)
+    return {
+        "population": population,
+        "sample_count": samples,
+        "published_projection_count": published_projection_count,
+        "pipeline_audit_count": audit_count,
+        "input_encoded_bytes": _encoded_bytes(input_rows),
+        "output_encoded_bytes": _encoded_bytes(output_rows),
+        "input_hash": input_hash,
+        "output_hash": output_hash,
+        "p50_ms": round(percentile(elapsed, 0.50), 4),
+        "p95_ms": round(percentile(elapsed, 0.95), 4),
+        "peak_rss_bytes": peak_rss_bytes(),
+        "samples": sample_rows,
+        "overall_passed": (
+            all_published
+            and audit_count == samples
+            and published_projection_count == population
+            and input_hash == output_hash
+        ),
+    }
 
 
 def main() -> int:
-    scenarios: list[dict[str, object]] = []
-    for population in (54, 100, 1000, 10000):
-        for history in (max(32, population // 4), population):
-            samples = [_measure(population, history) for _ in range(5)]
-            full_ms = [float(sample["full"]["ms"]) for sample in samples]  # type: ignore[index]
-            tail_ms = [float(sample["tail"]["ms"]) for sample in samples]  # type: ignore[index]
-            scenarios.append(
-                {
-                    "population": population,
-                    "history": history,
-                    "samples": samples,
-                    "p50_ms": {"full": round(median(full_ms), 4), "tail": round(median(tail_ms), 4)},
-                    "p95_ms": {"full": round(_percentile(full_ms, 0.95), 4), "tail": round(_percentile(tail_ms, 0.95), 4)},
-                }
-            )
+    history_scenarios = [
+        measure_incremental_history(history=history, population=100, tail=10)
+        for history in (1_000, 10_000, 50_000)
+    ]
+    projection_scenarios = [
+        measure_projection_scale(population=population)
+        for population in (54, 100, 1_000, 10_000)
+    ]
     command = [
         sys.executable,
         "-m",
         "pytest",
         "-q",
         "backend/tests/test_population_incremental_benchmark.py",
-        "backend/tests/test_population_parallel_determinism.py",
+        "backend/tests/test_population_checkpoint_closure.py",
     ]
-    result = subprocess.run(command, cwd=root(), capture_output=True, text=True, check=False)
-    equivalent = all(sample["replay_equivalent"] for scenario in scenarios for sample in scenario["samples"])
+    test_result = subprocess.run(
+        command,
+        cwd=root(),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    scenario_passed = all(
+        bool(scenario["overall_passed"])
+        for scenario in (*history_scenarios, *projection_scenarios)
+    )
+    overall_passed = test_result.returncode == 0 and scenario_passed
     report = {
-        "overall_passed": result.returncode == 0 and equivalent,
-        "implementation_status": "written_and_backend_verified" if result.returncode == 0 and equivalent else "backend_verification_failed",
+        "stage": "population_data_oriented_incremental_read",
+        "overall_passed": overall_passed,
+        "implementation_status": (
+            "written_and_backend_verified" if overall_passed else "backend_verification_failed"
+        ),
         "godot_status": "godot_unverified",
         "python": platform.python_version(),
-        "git_head": subprocess.run(["git", "rev-parse", "HEAD"], cwd=root(), capture_output=True, text=True, check=False).stdout.strip(),
-        "scenarios": scenarios,
+        "git_head": subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=root(),
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout.strip(),
+        "history_scenarios": history_scenarios,
+        "projection_scale_scenarios": projection_scenarios,
         "test_command": command,
-        "test_output": result.stdout + result.stderr,
+        "test_returncode": test_result.returncode,
+        "test_output": test_result.stdout + test_result.stderr,
     }
     directory = root() / ".harness" / "verification"
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "population-data-oriented-incremental-report.json").write_text(
-        json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
-    print(f"overall_population_data_oriented_incremental_passed={report['overall_passed']}")
-    return 0 if report["overall_passed"] else 1
+    evidence = directory / "population-data-oriented-incremental-report.json"
+    evidence.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"evidence={evidence}")
+    print(f"overall_population_data_oriented_incremental_passed={overall_passed}")
+    return 0 if overall_passed else 1
 
 
 if __name__ == "__main__":

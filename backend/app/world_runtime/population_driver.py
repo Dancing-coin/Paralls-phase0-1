@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from typing import Awaitable, Callable
+from time import monotonic
 
 from app.models.authority_event import AuthorityEvent
 from app.population_continuity.siming_contracts import PopulationCadenceInput
@@ -16,6 +17,10 @@ class PopulationDriverTickResult:
     published_cadence_ids: tuple[str, ...] = ()
     deferred_windows: tuple[str, ...] = ()
     rejected_windows: tuple[tuple[str, str], ...] = ()
+    b0_advanced_count: int = 0
+    due_item_count: int = 0
+    deferred_item_count: int = 0
+    rejected_item_count: int = 0
 
 
 class PopulationCadenceDriver:
@@ -82,6 +87,7 @@ class PopulationCadenceDriver:
         deferred = tuple(item[0] for item in pending[self.catch_up_limit :]) + tuple(deferred_after_gap)
         published: list[str] = []
         rejected: list[tuple[str, str]] = []
+        advanced_count = due_count = deferred_count = rejected_count = 0
         for index, (cadence_id, window_start, window_end) in enumerate(selected):
             try:
                 cadence = self.world_runtime.build_population_cadence(
@@ -106,21 +112,39 @@ class PopulationCadenceDriver:
             self._runtime_history.add(cadence_id)
             published.append(cadence_id)
             confirmed_tick = window_end
+            receipt = getattr(self.world_runtime, "last_population_confirmation", None)
+            if receipt is not None and receipt.cadence_id == cadence_id:
+                advanced_count += receipt.advanced_count
+                due_count += receipt.due_count
+                deferred_count += receipt.deferred_count
+                rejected_count += receipt.rejected_count
         self.clock.tick = confirmed_tick
         return PopulationDriverTickResult(
             published_cadence_ids=tuple(published),
             deferred_windows=deferred,
             rejected_windows=tuple(rejected),
+            b0_advanced_count=advanced_count,
+            due_item_count=due_count,
+            deferred_item_count=deferred_count,
+            rejected_item_count=rejected_count,
         )
 
     async def run_forever(
         self,
         stop_event: asyncio.Event,
         sleep: Callable[[float], Awaitable[None]],
+        advance_clock: Callable[[int, int], int] | None = None,
     ) -> None:
+        started_at = monotonic()
+        origin_tick = self.current_tick
         while not stop_event.is_set():
-            self.tick(self.clock.tick + self.window_size)
-            await sleep(self.window_size)
+            iteration_started = monotonic()
+            due_tick = origin_tick + int((iteration_started - started_at) // self.window_size) * self.window_size
+            current = max(self.current_tick, due_tick)
+            target = advance_clock(current, self.window_size) if advance_clock else current + self.window_size
+            self.tick(target)
+            # 处理耗时包含在窗口周期内；过载时由下一轮有限 catch-up 追赶。
+            await sleep(max(0.0, self.window_size - (monotonic() - iteration_started)))
 
     def _history_ids(self) -> set[str]:
         existing = getattr(self.world_runtime, "published_population_cadence_ids", ())

@@ -148,7 +148,11 @@ def test_session_commit_failure_leaves_no_phantom_receipt(tmp_path, monkeypatch)
     runtime.record_character_perceived_event_without_cognition(perceived_claim())
     request = request_for(runtime)
     before = runtime.get_session_timeline("char_a")
-    monkeypatch.setattr(runtime._session_store, "_persist", lambda: (_ for _ in ()).throw(OSError("disk full")))
+    monkeypatch.setattr(
+        runtime._session_store,
+        "_persist",
+        lambda *_: (_ for _ in ()).throw(OSError("disk full")),
+    )
     with pytest.raises(OSError, match="disk full"):
         runtime.apply_memory_correction(request, principal_ref="siming")
     assert runtime.get_session_timeline("char_a") == before

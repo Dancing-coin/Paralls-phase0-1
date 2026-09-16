@@ -62,7 +62,7 @@ def test_world_runtime_rejects_an_empty_population_window() -> None:
         runtime.build_population_cadence(window_start=10, window_end=10)
 
 
-def test_world_runtime_builds_a_rotating_twelve_resident_projection_pool() -> None:
+def test_world_runtime_builds_all_twelve_resident_b0_previews() -> None:
     store = GameplayEventStore()
     runtime = WorldContinuityRuntime(store=store, mode=_mode())
     runtime.resume()
@@ -75,6 +75,19 @@ def test_world_runtime_builds_a_rotating_twelve_resident_projection_pool() -> No
     assert projections[0].payload["actor_ref"] == "character:resident_01"
     assert projections[0].payload["candidate_kind"] == "routine_work"
     assert projections[0].payload["starvation_credit"] > 0
+    assert projections[0].payload["simulation_tick_cursor"] == 4
+    assert projections[0].payload["from_tick"] == 0
+    assert projections[0].payload["to_tick"] == 4
+    assert projections[0].payload["due_obligation_refs"] == ()
+    assert "threshold_refs" in projections[0].payload["presentation_seed"]
+    assert set(projections[0].payload["state_deltas"]) == {
+        "last_update_tick",
+        "activity_phase",
+        "fatigue",
+        "need_pressure",
+        "next_due_tick",
+        "starvation_credit",
+    }
     assert projections[0].revision_vector == cadence.base_revision_vector
 
 

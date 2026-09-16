@@ -68,6 +68,7 @@ def test_default_runtime_injects_active_registry_into_population_owners(
     try:
         capability = state.siming_runtime._population_capability
         assert {
+            "population:organization-window-due:v1",
             "population:organization-production-work-contribution:v1",
             "population:inventory-output-custody:v1",
             "population:social-population-signal:v1",

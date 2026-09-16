@@ -1,104 +1,141 @@
 from __future__ import annotations
 
-import hashlib
+import argparse
 import json
 import platform
 import subprocess
 import sys
 from pathlib import Path
-from statistics import median
-from time import perf_counter
+from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 
-from app.population_continuity.hot_state import PopulationHotState
-
-
-def root() -> Path:
-    return Path(__file__).resolve().parents[2]
-
-
-def _digest(value: object) -> str:
-    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
-    return "sha256:" + hashlib.sha256(payload).hexdigest()
-
-
-def _fixture(population: int) -> PopulationHotState:
-    state = PopulationHotState(f"actor_{index}" for index in range(population))
-    for index in range(population):
-        state.upsert(
-            f"actor_{index}",
-            {
-                "last_update_tick": index,
-                "activity_phase": "routine",
-                "fatigue": (index % 100) / 100,
-                "need_pressure": ((index * 3) % 100) / 100,
-                "next_due_tick": index + 10,
-                "starvation_credit": 1.0,
-            },
-            index,
-        )
-    return state
+from scripts.verification.population_benchmark_metrics import implementation_digest
+from scripts.verification.verify_population_runtime_scale import (
+    POPULATION_SIZES,
+    PRESSURE_PROFILES,
+    WINDOW_COUNT,
+    build_report as build_scale_report,
+    scenario_evidence_complete,
+    scenario_passed,
+)
 
 
-def _evaluate(state: PopulationHotState, workers: int) -> tuple[str, float]:
-    started = perf_counter()
-    values = state.map_readonly(
-        (f"actor_{index}" for index in range(len(state.export_rows()))),
-        lambda actor_id, row: (actor_id, round(float(row["fatigue"]) + float(row["need_pressure"]), 6)),
-        workers=workers,
+def _git_head() -> str:
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=False
+    ).stdout.strip()
+
+
+def load_scale_report(path: Path) -> dict[str, Any]:
+    report = json.loads(path.read_text(encoding="utf-8"))
+    if report.get("measurement_schema_version") != 1 or report.get("stage") != 5:
+        raise ValueError("population_scale_report_schema_invalid")
+    if report.get("implementation_digest") != implementation_digest(ROOT):
+        raise ValueError("population_scale_report_implementation_stale")
+    if report.get("provider_mode") != "disabled_default":
+        raise ValueError("population_scale_report_provider_mode_invalid")
+    profiles = report.get("profiles")
+    if not isinstance(profiles, dict) or set(profiles) != set(PRESSURE_PROFILES):
+        raise ValueError("population_scale_report_matrix_incomplete")
+    all_scenarios: list[dict[str, Any]] = []
+    for profile_name, expected in PRESSURE_PROFILES.items():
+        profile = profiles[profile_name]
+        if profile.get("wall_budget_seconds") != expected["wall_budget_seconds"]:
+            raise ValueError("population_scale_report_budget_invalid")
+        scenarios = profile.get("scenarios")
+        if not isinstance(scenarios, list) or [item.get("population") for item in scenarios] != list(POPULATION_SIZES):
+            raise ValueError("population_scale_report_matrix_incomplete")
+        if any(
+            item.get("window_count") != WINDOW_COUNT
+            or item.get("windows_completed") != WINDOW_COUNT
+            or item.get("wall_budget_seconds") != expected["wall_budget_seconds"]
+            for item in scenarios
+        ):
+            raise ValueError("population_scale_report_window_invalid")
+        recomputed_complete = all(scenario_evidence_complete(item) for item in scenarios)
+        recomputed_passed = all(scenario_passed(item) for item in scenarios)
+        if profile.get("ran_complete") is not recomputed_complete or profile.get("passed") is not recomputed_passed:
+            raise ValueError("population_scale_report_result_inconsistent")
+        all_scenarios.extend(scenarios)
+    if report.get("all_required_evidence") is not all(
+        scenario_evidence_complete(item) for item in all_scenarios
+    ):
+        raise ValueError("population_scale_report_evidence_inconsistent")
+    if not isinstance(report.get("cpu_kernel_share"), (int, float)):
+        raise ValueError("population_scale_report_kernel_share_missing")
+    return report
+
+
+def build_report(*, scale_report: dict[str, Any] | None = None) -> dict[str, Any]:
+    scale = build_scale_report() if scale_report is None else scale_report
+    profiles = scale.get("profiles") or {}
+    one_x = profiles.get("one_x") or {}
+    ten_x = profiles.get("ten_x") or {}
+    one_x_evidence = one_x.get("ran_complete") is True
+    ten_x_evidence = ten_x.get("ran_complete") is True
+    one_x_passed = one_x.get("passed") is True
+    ten_x_passed = ten_x.get("passed") is True
+    all_evidence = scale.get("all_required_evidence") is True
+    kernel_share = scale.get("cpu_kernel_share")
+    kernel_dominates = isinstance(kernel_share, (int, float)) and kernel_share >= 0.60
+    admission = (
+        all_evidence
+        and one_x_evidence
+        and ten_x_evidence
+        and not one_x_passed
+        and kernel_dominates
     )
-    elapsed_ms = (perf_counter() - started) * 1000
-    return _digest(values), elapsed_ms
 
+    if admission:
+        decision = "native_cpu_adapter_allowed"
+        target = "pure_population_kernel"
+        reason = "1x/10x真实30窗口证据完整且纯积分CPU占比达到60%，允许评估可回退原生CPU适配器"
+    elif one_x_evidence and one_x_passed:
+        decision = "continue_python"
+        target = "none_required"
+        reason = "1x真实30窗口门槛已通过，继续使用Python运行时"
+    elif one_x_evidence and isinstance(kernel_share, (int, float)) and kernel_share < 0.60:
+        decision = "continue_python"
+        target = "protocol_or_persistence"
+        reason = "1x门槛失败且纯积分CPU占比低于60%，应先优化协议、Owner或持久化路径"
+    else:
+        decision = "continue_python"
+        target = "collect_missing_evidence"
+        reason = "原生/GPU准入所需的真实30窗口、恢复、Owner或CPU占比证据不完整"
 
-def measure(population: int, repeats: int = 5) -> dict[str, object]:
-    state = _fixture(population)
-    serial: list[float] = []
-    parallel: list[float] = []
-    serial_hash = ""
-    parallel_hash = ""
-    for _ in range(repeats):
-        serial_hash, serial_ms = _evaluate(state, workers=1)
-        parallel_hash, parallel_ms = _evaluate(state, workers=4)
-        serial.append(serial_ms)
-        parallel.append(parallel_ms)
-    return {
-        "population": population,
-        "serial_p50_ms": round(median(serial), 4),
-        "serial_p95_ms": round(sorted(serial)[-1], 4),
-        "parallel_p50_ms": round(median(parallel), 4),
-        "parallel_p95_ms": round(sorted(parallel)[-1], 4),
-        "serial_hash": serial_hash,
-        "parallel_hash": parallel_hash,
-        "result_equivalent": serial_hash == parallel_hash,
-    }
-
-
-def build_report() -> dict[str, object]:
-    scenarios = [measure(population) for population in (100, 1000, 10000)]
-    # 只有端到端 1x/10x、30 个连续窗口和完整提交成本证据齐全后才准入原生/GPU。
     return {
         "stage": 5,
         "python": platform.python_version(),
-        "git_head": subprocess.run(["git", "rev-parse", "HEAD"], cwd=root(), capture_output=True, text=True, check=False).stdout.strip(),
-        "scenarios": scenarios,
-        "cpu_kernel_share": None,
-        "serialization_share": None,
-        "owner_submission_share": None,
-        "one_x_thirty_window_evidence": False,
-        "ten_x_pressure_evidence": False,
-        "decision": "continue_python",
-        "decision_reason": "当前仅有热状态纯计算对比，缺少完整窗口与 Owner 提交成本证据，拒绝引入原生/GPU适配器",
-        "implementation_status": "written_and_backend_verified",
+        "git_head": _git_head(),
+        "implementation_digest": implementation_digest(ROOT),
+        "scale_report": scale,
+        "cpu_kernel_share": kernel_share,
+        "protocol_persistence_share": scale.get("protocol_persistence_share"),
+        "one_x_thirty_window_evidence": one_x_evidence,
+        "one_x_performance_passed": one_x_passed,
+        "ten_x_pressure_evidence": ten_x_evidence,
+        "ten_x_performance_passed": ten_x_passed,
+        "native_gpu_admission_passed": admission,
+        "scale_performance_gate_passed": one_x_passed,
+        "decision": decision,
+        "optimization_target": target,
+        "decision_reason": reason,
+        "overall_passed": all_evidence and one_x_passed,
+        "implementation_status": "benchmark_evidence_evaluated",
         "godot_status": "godot_unverified",
     }
 
 
 def main() -> int:
-    report = build_report()
-    report["overall_passed"] = all(item["result_equivalent"] for item in report["scenarios"])
-    directory = root() / ".harness" / "verification"
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--scale-report", type=Path)
+    args = parser.parse_args()
+    scale = load_scale_report(args.scale_report) if args.scale_report else None
+    report = build_report(scale_report=scale)
+    report["scale_report_source"] = str(args.scale_report.resolve()) if args.scale_report else "fresh_run"
+    directory = ROOT / ".harness" / "verification"
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "population-native-gpu-gate-report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"

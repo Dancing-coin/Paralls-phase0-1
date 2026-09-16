@@ -4,11 +4,12 @@ import hashlib
 import json
 from typing import Any, Literal, Sequence
 
-from pydantic import Field, model_validator
+from pydantic import Field, TypeAdapter, model_validator
 
 from app.models.authority_event import AuthorityEvent
 from app.population_continuity.models import ContinuityModel
 from app.population_continuity.decision_surface import PopulationDecision
+from app.population_continuity.hot_state import HOT_FIELDS
 
 
 def _check_vector(value: dict[str, int]) -> None:
@@ -119,6 +120,88 @@ class PopulationProjection(ContinuityModel):
         return self
 
 
+_POPULATION_PROJECTIONS_ADAPTER = TypeAdapter(tuple[PopulationProjection, ...])
+
+
+def dump_population_projections(
+    projections: Sequence[PopulationProjection],
+) -> list[dict[str, Any]]:
+    return list(
+        _POPULATION_PROJECTIONS_ADAPTER.dump_python(tuple(projections), mode="json")
+    )
+
+
+class PopulationB0ContinuousDelta(ContinuityModel):
+    """无写权限的客观连续推进结果；只能由 cadence 确认路径提交。"""
+
+    actor_ref: str = Field(min_length=1)
+    fidelity_tier: Literal["B0"] = "B0"
+    from_tick: int = Field(ge=0)
+    to_tick: int = Field(ge=0)
+    simulation_tick_cursor: int = Field(ge=0)
+    actor_revision: int = Field(ge=0)
+    state_deltas: dict[str, Any] = Field(default_factory=dict)
+    presentation_seed: dict[str, Any] = Field(default_factory=dict)
+    due_obligation_refs: tuple[str, ...] = ()
+    source_revision_vector: dict[str, int] = Field(min_length=1)
+    scope: Literal["public"] = "public"
+    idempotency_key: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_delta(self) -> "PopulationB0ContinuousDelta":
+        if not self.actor_ref.startswith("character:"):
+            raise ValueError("b0_actor_ref_invalid")
+        if self.to_tick <= self.from_tick:
+            raise ValueError("b0_window_invalid")
+        if self.simulation_tick_cursor != self.to_tick:
+            raise ValueError("b0_cursor_invalid")
+        _check_vector(self.source_revision_vector)
+        unknown = set(self.state_deltas).difference(HOT_FIELDS)
+        if unknown:
+            raise ValueError("b0_state_field_not_allowed")
+        integer_fields = {"last_update_tick", "next_due_tick"}
+        numeric_fields = {"fatigue", "need_pressure", "starvation_credit"}
+        for key, value in self.state_deltas.items():
+            if key in integer_fields and (
+                not isinstance(value, int) or isinstance(value, bool) or value < 0
+            ):
+                raise ValueError("b0_state_value_invalid")
+            if key in numeric_fields and (
+                not isinstance(value, (int, float))
+                or isinstance(value, bool)
+                or not 0.0 <= float(value) <= 1.0
+            ):
+                raise ValueError("b0_state_value_invalid")
+            if key == "activity_phase" and value not in {
+                "rest", "routine", "routine_work", "leisure"
+            }:
+                raise ValueError("b0_state_value_invalid")
+        if any(not isinstance(ref, str) or not ref for ref in self.due_obligation_refs):
+            raise ValueError("b0_due_obligation_invalid")
+        return self
+
+    def __getitem__(self, key: str) -> Any:
+        aliases = {"window_start": "from_tick", "window_end": "to_tick"}
+        return getattr(self, aliases.get(key, key))
+
+    def get(self, key: str, default: Any = None) -> Any:
+        try:
+            return self[key]
+        except AttributeError:
+            return default
+
+
+class PopulationB0BatchStats(ContinuityModel):
+    """有界 cadence 统计，不包含居民历史或私有 profile。"""
+
+    cadence_id: str = Field(min_length=1)
+    read_set_digest: str = Field(min_length=1)
+    actor_count: int = Field(ge=0)
+    due_count: int = Field(ge=0)
+    deferred_count: int = Field(ge=0)
+    rejected_count: int = Field(ge=0)
+
+
 class PopulationReadSet(ContinuityModel):
     cadence: PopulationCadenceInput
     projections: tuple[PopulationProjection, ...] = ()
@@ -132,11 +215,28 @@ class PopulationReadSet(ContinuityModel):
         return self
 
     @classmethod
-    def from_inputs(cls, cadence: PopulationCadenceInput, projections: Sequence[PopulationProjection]) -> "PopulationReadSet":
+    def from_inputs(
+        cls,
+        cadence: PopulationCadenceInput,
+        projections: Sequence[PopulationProjection],
+    ) -> "PopulationReadSet":
         ordered = tuple(sorted(projections, key=lambda item: item.ref))
-        canonical = {"cadence": cadence.model_dump(mode="json"), "projections": [item.model_dump(mode="json") for item in ordered]}
-        encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
-        return cls(cadence=cadence, projections=ordered, read_set_digest="sha256:" + hashlib.sha256(encoded).hexdigest())
+        refs = tuple(item.ref for item in ordered)
+        if len(refs) != len(set(refs)):
+            raise ValueError("read_set_projection_duplicate")
+        canonical = {
+            "cadence": cadence.model_dump(mode="json"),
+            "projections": dump_population_projections(ordered),
+        }
+        encoded = json.dumps(
+            canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
+            allow_nan=False,
+        ).encode()
+        return cls.model_construct(
+            cadence=cadence,
+            projections=ordered,
+            read_set_digest="sha256:" + hashlib.sha256(encoded).hexdigest(),
+        )
 
 
 class PopulationOwnerReceipt(ContinuityModel):
@@ -147,11 +247,37 @@ class PopulationOwnerReceipt(ContinuityModel):
     revision_vector: dict[str, int] = Field(default_factory=dict)
     zero_write: bool
     idempotency_status: str = "new_commit"
+    settlement_status: Literal[
+        "committed", "duplicate", "requeue", "rejected", "zero_write"
+    ] = "zero_write"
+    reason: str = ""
+
+    @model_validator(mode="before")
+    @classmethod
+    def derive_settlement_status(cls, value: object) -> object:
+        if not isinstance(value, dict) or value.get("settlement_status") is not None:
+            return value
+        data = dict(value)
+        if data.get("committed") and data.get("idempotency_status") == "duplicate_replayed":
+            data["settlement_status"] = "duplicate"
+        elif data.get("committed") and not data.get("zero_write"):
+            data["settlement_status"] = "committed"
+        elif data.get("committed"):
+            data["settlement_status"] = "zero_write"
+        else:
+            data["settlement_status"] = "rejected"
+        return data
 
     @model_validator(mode="after")
     def validate_receipt_vector(self) -> "PopulationOwnerReceipt":
         _check_vector(self.revision_vector)
         return self
+
+
+class PopulationOwnerBatchResult(ContinuityModel):
+    receipts: tuple[PopulationOwnerReceipt, ...]
+    append_count: int = Field(ge=0, le=1)
+    atomic: bool
 
 
 class PopulationBatchReport(ContinuityModel):
@@ -178,6 +304,25 @@ class PopulationBatchReport(ContinuityModel):
     result_digest: str = Field(min_length=1)
 
 
+class PopulationCognitionStats(ContinuityModel):
+    b0_advanced: int = Field(default=0, ge=0)
+    quiet_actors: int = Field(default=0, ge=0)
+    active_actors: int = Field(default=0, ge=0)
+    deep_selected: int = Field(default=0, ge=0)
+    deep_deferred: int = Field(default=0, ge=0)
+    llm_queued: int = Field(default=0, ge=0)
+    llm_completed: int = Field(default=0, ge=0)
+    llm_expired: int = Field(default=0, ge=0)
+    max_wait_windows: int = Field(default=0, ge=0)
+    requeue_reasons: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def bound_requeue_reasons(self) -> "PopulationCognitionStats":
+        if len(self.requeue_reasons) > 16 or any(not reason for reason in self.requeue_reasons):
+            raise ValueError("population_cognition_stats_unbounded")
+        return self
+
+
 class PopulationCycleResult(ContinuityModel):
     status: Literal["accepted", "owner_settlement_required", "requeue", "rejected"]
     batch_ref: str = Field(min_length=1)
@@ -189,3 +334,7 @@ class PopulationCycleResult(ContinuityModel):
     reason: str = ""
     production_append_count: int = Field(ge=0)
     decision: PopulationDecision | None = None
+    b0_results: tuple[PopulationB0ContinuousDelta, ...] = ()
+    cognition_stats: PopulationCognitionStats = Field(
+        default_factory=PopulationCognitionStats
+    )

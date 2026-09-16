@@ -124,3 +124,36 @@ def test_write_batch_failure_restores_only_the_touched_state(
         assert graph._scope_stream_revisions[graph._scope_key(graph_scope())] == (1, 0)
     finally:
         graph.close()
+
+
+def test_sql_commit_failure_rolls_back_database_and_memory(tmp_path, monkeypatch):
+    import sqlite3
+
+    path = tmp_path / "commit-failure.sqlite3"
+    graph = SQLiteHeavenlyGraphAdapter(path)
+    _write_node(graph, node_id="population:actor:1", revision=1,
+                supersedes_revision=None, state="idle")
+    connection = graph._connection
+
+    class FailingCommit:
+        def __getattr__(self, name):
+            return getattr(connection, name)
+
+        def commit(self):
+            raise sqlite3.OperationalError("injected_commit_failure")
+
+    monkeypatch.setattr(graph, "_connection", FailingCommit())
+    with pytest.raises(sqlite3.OperationalError, match="injected_commit_failure"):
+        _write_node(graph, node_id="population:actor:1", revision=2,
+                    supersedes_revision=1, state="working")
+    assert graph.get_node(node_id="population:actor:1", scope=graph_scope(), valid_at=100).revision == 1
+    graph.close()
+    reopened = SQLiteHeavenlyGraphAdapter(path)
+    try:
+        assert reopened._connection.execute("SELECT COUNT(*) FROM graph_nodes").fetchone()[0] == 1
+        assert reopened._connection.execute("SELECT COUNT(*) FROM graph_idempotency").fetchone()[0] == 1
+        assert reopened.get_node(node_id="population:actor:1", scope=graph_scope(), valid_at=100).revision == 1
+        _write_node(reopened, node_id="population:actor:1", revision=2,
+                    supersedes_revision=1, state="working")
+    finally:
+        reopened.close()

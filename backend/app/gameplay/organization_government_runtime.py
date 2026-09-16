@@ -7,7 +7,7 @@ from datetime import datetime
 import hashlib
 import json
 from types import MappingProxyType
-from typing import Literal, Mapping
+from typing import Literal, Mapping, Sequence
 
 from pydantic import ConfigDict, Field
 
@@ -27,6 +27,22 @@ class Organization(StrictGameplayModel):
     jurisdiction_ref: str = Field(min_length=1)
     owner_character_ref: str = Field(pattern=r"^character:")
     revision: int = Field(default=0, ge=0)
+
+
+class OperatingWindowDueRequest(StrictGameplayModel):
+    command_id: str = Field(min_length=1)
+    idempotency_key: str = Field(min_length=1)
+    causation_id: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+    organization_ref: str = Field(min_length=1)
+    window_ref: str = Field(min_length=1)
+    expected_stream_revision: int = Field(ge=0)
+    visibility_scope: Literal["project", "authority_only"]
+
+
+class OperatingWindowDueBatchResult(StrictGameplayModel):
+    results: dict[str, AppendBatchResult]
+    append_count: int = Field(ge=0, le=1)
 
 
 class RoleAssignment(StrictGameplayModel):
@@ -4875,6 +4891,50 @@ class OrganizationAuthority:
         return None
 
     @staticmethod
+    def _operating_window_due_intent_digest(
+        request: OperatingWindowDueRequest,
+    ) -> str:
+        encoded = json.dumps(
+            request.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+    def _operating_window_due_event_replay(
+        self, request: OperatingWindowDueRequest
+    ) -> AppendBatchResult | None:
+        stream_id = f"gameplay:organization:window:{request.window_ref}"
+        head = self._store.get_stream_head(stream_id)
+        if head <= 0:
+            return None
+        events = self._store.read_stream(
+            stream_id, from_revision=head, to_revision=head
+        )
+        if not events:
+            return None
+        event = events[-1]
+        if event.event_type != "gameplay.organization.operating_window_due_recorded":
+            return None
+        stored_key = event.payload.get("owner_intent_idempotency_key")
+        if stored_key != request.idempotency_key:
+            return None
+        expected_digest = self._operating_window_due_intent_digest(request)
+        if event.payload.get("owner_intent_digest") != expected_digest:
+            return self._organization_window_rejected(
+                request.command_id, "idempotency_key_reused"
+            )
+        return AppendBatchResult(
+            committed=True,
+            transaction_id=event.transaction_id,
+            command_id=request.command_id,
+            committed_event_ids=[event.event_id],
+            resulting_stream_revisions={stream_id: event.stream_revision},
+            global_sequence_range=(event.global_sequence, event.global_sequence),
+            idempotency_status="duplicate_replayed",
+        )
+
+    @staticmethod
     def assign_role(role: RoleAssignment, *, existing_character_refs: set[str]) -> RoleAssignment:
         if role.character_ref not in existing_character_refs:
             raise ValueError("character_record_required")
@@ -5162,8 +5222,22 @@ class OrganizationAuthority:
             return self._organization_window_rejected(
                 command_id, "organization_operating_window_invalid"
             )
+        request = OperatingWindowDueRequest(
+            command_id=command_id,
+            idempotency_key=idempotency_key,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            organization_ref=organization_ref,
+            window_ref=window_ref,
+            expected_stream_revision=expected_stream_revision,
+            visibility_scope=visibility_scope,
+        )
         current = self._operating_window_state(window_ref)
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is None:
+            replay = self._operating_window_due_event_replay(request)
+            if replay is not None:
+                return replay
         if (
             existing is None
             and (
@@ -5219,6 +5293,10 @@ class OrganizationAuthority:
                 "organization_ref": organization_ref,
                 "status": "closed",
                 "due_state": "recorded",
+                "owner_intent_idempotency_key": idempotency_key,
+                "owner_intent_digest": self._operating_window_due_intent_digest(
+                    request
+                ),
             },
         )
         batch = EventStoreSettlementPlan.from_command_envelope(
@@ -5247,6 +5325,196 @@ class OrganizationAuthority:
             deep=True,
         )
         return self._store.append_batch(batch)
+
+    def record_operating_windows_due_batch(
+        self, requests: Sequence[OperatingWindowDueRequest]
+    ) -> OperatingWindowDueBatchResult:
+        """校验互不相交的窗口提案，并通过现有 event store 原子提交一次。"""
+        ordered = tuple(sorted(requests, key=lambda item: item.command_id))
+        if not ordered:
+            raise ValueError("organization_operating_window_batch_required")
+        if len({item.command_id for item in ordered}) != len(ordered):
+            raise ValueError("organization_operating_window_command_duplicate")
+        batch_digest = hashlib.sha256(
+            json.dumps(
+                [item.model_dump(mode="json") for item in ordered],
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        batch_command_id = f"population-owner-batch:{batch_digest[:24]}"
+        batch_idempotency_key = f"organization-window-due-batch:{batch_digest}"
+        existing_batch = self._store.get_by_idempotency(
+            self._PRINCIPAL, batch_idempotency_key
+        )
+        results: dict[str, AppendBatchResult] = {}
+
+        def result_for_stream(
+            result: AppendBatchResult,
+            request: OperatingWindowDueRequest,
+            *,
+            duplicate: bool = False,
+        ) -> AppendBatchResult:
+            stream_id = f"gameplay:organization:window:{request.window_ref}"
+            events = [
+                self._store.get_event(event_id)
+                for event_id in result.committed_event_ids
+                if self._store.get_event(event_id).stream_id == stream_id
+            ]
+            event_ids = [event.event_id for event in events]
+            sequence_range = (
+                (events[0].global_sequence, events[-1].global_sequence)
+                if events
+                else None
+            )
+            return AppendBatchResult(
+                committed=result.committed,
+                transaction_id=result.transaction_id,
+                command_id=request.command_id,
+                committed_event_ids=event_ids,
+                resulting_stream_revisions={
+                    stream_id: result.resulting_stream_revisions[stream_id]
+                }
+                if stream_id in result.resulting_stream_revisions
+                else {},
+                global_sequence_range=sequence_range,
+                idempotency_status=(
+                    "duplicate_replayed" if duplicate else result.idempotency_status
+                ),
+                failure=result.failure,
+                projection_refresh_hints=result.projection_refresh_hints,
+            )
+
+        stream_counts: dict[str, int] = {}
+        for request in ordered:
+            stream_id = f"gameplay:organization:window:{request.window_ref}"
+            stream_counts[stream_id] = stream_counts.get(stream_id, 0) + 1
+
+        valid: list[tuple[OperatingWindowDueRequest, OwnerAuthorizedFragment]] = []
+        for request in ordered:
+            stream_id = f"gameplay:organization:window:{request.window_ref}"
+            if existing_batch is not None and stream_id in existing_batch.resulting_stream_revisions:
+                results[request.command_id] = result_for_stream(
+                    existing_batch, request, duplicate=True
+                )
+                continue
+            existing = self._store.get_by_idempotency(
+                self._PRINCIPAL, request.idempotency_key
+            )
+            if existing is not None:
+                results[request.command_id] = self.record_operating_window_due(
+                    **request.model_dump()
+                )
+                continue
+            replay = self._operating_window_due_event_replay(request)
+            if replay is not None:
+                results[request.command_id] = replay
+                continue
+            if stream_counts[stream_id] != 1:
+                results[request.command_id] = self._organization_window_rejected(
+                    request.command_id, "organization_operating_window_batch_stream_overlap"
+                )
+                continue
+            current = self._operating_window_state(request.window_ref)
+            reason = ""
+            if not request.organization_ref.startswith("org:") or not request.window_ref:
+                reason = "organization_operating_window_invalid"
+            elif current["organization_ref"] != request.organization_ref:
+                reason = "organization_operating_window_not_closed"
+            elif current["status"] != "closed":
+                reason = "organization_operating_window_not_closed"
+            elif int(current["stream_revision"]) != request.expected_stream_revision:
+                reason = "organization_operating_window_revision_conflict"
+            elif current["due_recorded"]:
+                reason = "organization_operating_window_due_already_recorded"
+            else:
+                reason = self._operating_window_contract_error(
+                    stream_id=stream_id,
+                    event_type="gameplay.organization.operating_window_due_recorded",
+                    visibility_scope=request.visibility_scope,
+                ) or ""
+            if reason:
+                results[request.command_id] = self._organization_window_rejected(
+                    request.command_id, reason
+                )
+                continue
+            payload = {
+                "window_ref": request.window_ref,
+                "organization_ref": request.organization_ref,
+                "status": "closed",
+                "due_state": "recorded",
+                "owner_intent_idempotency_key": request.idempotency_key,
+                "owner_intent_digest": self._operating_window_due_intent_digest(
+                    request
+                ),
+            }
+            valid.append(
+                (
+                    request,
+                    OwnerAuthorizedFragment(
+                        fragment_id=f"fragment:{request.command_id}",
+                        owner_principal_ref=self._PRINCIPAL,
+                        source_rule_ref="inf:organization-operating-window@1",
+                        expected_revisions={
+                            stream_id: request.expected_stream_revision
+                        },
+                        read_set_revisions={
+                            stream_id: request.expected_stream_revision
+                        },
+                        pinned_revisions={"organization_window_policy": 1},
+                        event_specs={
+                            stream_id: (
+                                (
+                                    "gameplay.organization.operating_window_due_recorded",
+                                    payload,
+                                ),
+                            )
+                        },
+                        event_visibility_policies={
+                            stream_id: (request.visibility_scope,)
+                        },
+                    ),
+                )
+            )
+
+        if not valid:
+            return OperatingWindowDueBatchResult(results=results, append_count=0)
+        fragments = tuple(fragment for _, fragment in valid)
+        batch = build_multi_stream_atomic_event_batch_from_fragments(
+            command_id=batch_command_id,
+            idempotency_principal_ref=self._PRINCIPAL,
+            idempotency_key=batch_idempotency_key,
+            causation_id=f"population:{ordered[0].correlation_id}",
+            correlation_id=ordered[0].correlation_id,
+            fragments=fragments,
+        )
+        outbox_entries = [
+            GameplayOutboxEntry(
+                outbox_id=f"outbox:{event.event_id}",
+                transaction_id=batch.transaction_id,
+                event_id=event.event_id,
+                global_sequence=0,
+                topic="world.organization_window.scoped_projection",
+                audience=event.visibility_policy,
+                payload_projection={
+                    "organization_ref": event.payload["organization_ref"],
+                    "window_ref": event.payload["window_ref"],
+                    "status": "closed",
+                    "due_recorded": True,
+                },
+            )
+            for event in batch.events
+        ]
+        batch = batch.model_copy(
+            update={"outbox_entries": outbox_entries}, deep=True
+        )
+        committed = self._store.append_batch(batch)
+        for request, _ in valid:
+            results[request.command_id] = result_for_stream(committed, request)
+        return OperatingWindowDueBatchResult(
+            results=results,
+            append_count=int(committed.committed and committed.idempotency_status == "new_commit"),
+        )
 
     def record_schedule(
         self,

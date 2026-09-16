@@ -22,6 +22,7 @@ class CharacterGraphContinuityStore:
     """角色连续性图谱存储：保存可重建状态快照，不接管 runtime owner。"""
 
     _MAX_TIME = 2**63 - 1
+    SOURCE_EVENT_REF_FIELD = "_continuity_source_event_ref"
     REQUIRED_SNAPSHOT_FIELDS = frozenset(
         {
             "working_memory",
@@ -213,8 +214,13 @@ class CharacterGraphContinuityStore:
         )
         if not result.nodes:
             return None
-        snapshot = result.nodes[0].attributes.get("snapshot")
-        return deepcopy(snapshot) if isinstance(snapshot, dict) else None
+        node = result.nodes[0]
+        snapshot = node.attributes.get("snapshot")
+        if not isinstance(snapshot, dict):
+            return None
+        restored = deepcopy(snapshot)
+        restored[self.SOURCE_EVENT_REF_FIELD] = node.provenance.source_ref
+        return restored
 
     def read_current_state(self, actor_id: str) -> dict[str, object] | None:
         scope = self._scope_for_actor(actor_id)
@@ -237,8 +243,13 @@ class CharacterGraphContinuityStore:
         )
         if not result.nodes:
             return None
-        snapshot = result.nodes[0].attributes.get("snapshot")
-        return deepcopy(snapshot) if isinstance(snapshot, dict) else None
+        node = result.nodes[0]
+        snapshot = node.attributes.get("snapshot")
+        if not isinstance(snapshot, dict):
+            return None
+        restored = deepcopy(snapshot)
+        restored[self.SOURCE_EVENT_REF_FIELD] = node.provenance.source_ref
+        return restored
 
     def _scope_for_actor(self, actor_id: str) -> HeavenlyGraphScope:
         scope = self._scope_resolver(actor_id)
