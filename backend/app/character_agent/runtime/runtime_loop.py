@@ -75,6 +75,7 @@ from app.character_agent.storage.graph_continuity_store import CharacterGraphCon
 from app.character_agent.storage.goal_state_store import CharacterGoalStateStore
 from app.character_agent.storage.need_tension_store import CharacterNeedTensionStore
 from app.character_agent.storage.unresolved_tension_store import CharacterUnresolvedTensionStore
+from app.gameplay.runtime_state import StateGroupRegistry, StateGroupRegistryError
 from app.population_continuity.activation import ProfileActivationAuthority
 from app.population_continuity.models import ActivationDecision, ActivationReceipt
 from app.character_agent.services.character_behavior_evaluation import CharacterBehaviorEvaluationService
@@ -113,6 +114,7 @@ class CharacterAgentRuntime:
         memory_correction_authorizer: Callable[[str, MemoryCorrectionRequest], bool] | None = None,
         memory_source_resolver: Callable[[str], MemorySourceRecord | None] | None = None,
         memory_now_ts_provider: Callable[[], int] | None = None,
+        state_group_registry: StateGroupRegistry | None = None,
     ) -> None:
         if os.getenv("CHARACTER_GRAPH_REQUIRE_CONTINUITY", "").strip() == "1" and continuity_store is None:
             raise ValueError("graph continuity store is required in production continuity mode")
@@ -177,12 +179,14 @@ class CharacterAgentRuntime:
         self._unresolved_tension_store = CharacterUnresolvedTensionStore()
         self._behavior_evaluation = CharacterBehaviorEvaluationService()
         self._continuity_store = continuity_store
+        self._state_group_registry = state_group_registry
         self._continuity_revisions: dict[str, int] = {}
         self._continuity_checkpoint_event_indexes: dict[str, int] = {}
         self._continuity_receipts: dict[str, CharacterContinuityReceipt] = {}
         self._materialization_receipts: dict[str, CharacterMemoryMaterializationReceipt] = {}
         self._pending_seed_candidates: dict[str, dict[str, CharacterMemoryCandidate]] = {}
         self._seed_projections: dict[str, dict[str, object]] = {}
+        self._shared_module_states: dict[str, dict[str, dict[str, object]]] = {}
         self._continuity_service = CharacterContinuityService(
             apply_command=self._apply_continuity_command,
             materialize=self.materialize_pending_seed_memories,
@@ -1054,6 +1058,12 @@ class CharacterAgentRuntime:
             raise ValueError(f"unsupported actor_id: {actor_id}")
         return int(self._continuity_revisions.get(actor_id, 0))
 
+    def get_shared_module_state(self, actor_id: str) -> dict[str, dict[str, object]]:
+        """Return Character Core's replayable shared modules, never private cognition."""
+        if not self.supports_continuity_actor(actor_id):
+            raise ValueError(f"unsupported actor_id: {actor_id}")
+        return deepcopy(self._shared_module_states.get(actor_id, {}))
+
     def activation_lock_is_active(self, actor_id: str) -> bool:
         """Expose the existing activation lock without leaking authority state."""
         if not self.supports_actor(actor_id):
@@ -1651,16 +1661,32 @@ class CharacterAgentRuntime:
                 probe.merge_delta(actor_id, deepcopy(dynamic_delta))
         except Exception:
             return self._continuity_refusal(command, current_revision, "state_delta_invalid")
+        try:
+            staged_modules = self._stage_shared_module_deltas(
+                actor_id,
+                command.module_deltas,
+            )
+        except ValueError as exc:
+            return self._continuity_refusal(
+                command,
+                current_revision,
+                str(exc) or "module_delta_invalid",
+            )
         if isinstance(need_delta, dict):
             self._need_tension_store.merge_delta(actor_id, need_delta)
         if isinstance(dynamic_delta, dict):
             self._dynamic_state_store.merge_delta(actor_id, dynamic_delta)
+        self._shared_module_states[actor_id] = staged_modules
         pending = self._pending_seed_candidates.setdefault(actor_id, {})
         for candidate in staged_candidates:
             pending[candidate.candidate_id] = candidate
         projection = {
             "actor_ref": command.actor_ref,
             "state_deltas": deepcopy(state_delta),
+            "module_deltas": [
+                delta.model_dump(mode="json") for delta in command.module_deltas
+            ],
+            "shared_modules": deepcopy(staged_modules),
             "presentation_seed": deepcopy(presentation_seed) if isinstance(presentation_seed, dict) else {},
             "activation_hints": list(activation_hints) if isinstance(activation_hints, (list, tuple)) else list(command.exposure_evidence.get("activation_hints", [])),
             "memory_candidate_refs": list(command.memory_candidate_refs),
@@ -1708,6 +1734,51 @@ class CharacterAgentRuntime:
         self._continuity_receipts[command.idempotency_key] = receipt
         self._persist_graph_continuity(actor_id=actor_id, producer_ts=receipt.recorded_at)
         return receipt
+
+    def _stage_shared_module_deltas(
+        self,
+        actor_id: str,
+        module_deltas,
+    ) -> dict[str, dict[str, object]]:
+        staged = deepcopy(self._shared_module_states.get(actor_id, {}))
+        for delta in module_deltas:
+            if self._state_group_registry is not None:
+                try:
+                    self._state_group_registry.validate_module_payload(
+                        delta.group_id,
+                        delta.definition_version,
+                        delta.projection_schema_version,
+                        delta.payload,
+                    )
+                except StateGroupRegistryError as exc:
+                    reason = {
+                        "state_group_definition_unknown": "module_definition_unknown",
+                        "state_group_definition_version_unknown": "module_definition_unknown",
+                        "state_group_projection_schema_mismatch": "module_schema_version_conflict",
+                        "state_group_field_unknown": "module_field_unknown",
+                    }.get(str(exc), "module_definition_invalid")
+                    raise ValueError(reason) from exc
+            previous = staged.get(delta.group_id)
+            current_revision = int(previous.get("revision", 0)) if previous else 0
+            if delta.expected_group_revision != current_revision:
+                raise ValueError("module_revision_conflict")
+            if previous and (
+                previous.get("definition_version") != delta.definition_version
+                or previous.get("projection_schema_version")
+                != delta.projection_schema_version
+            ):
+                raise ValueError("module_definition_conflict")
+            previous_payload = previous.get("payload", {}) if previous else {}
+            if not isinstance(previous_payload, dict):
+                raise ValueError("module_state_invalid")
+            staged[delta.group_id] = {
+                "definition_version": delta.definition_version,
+                "projection_schema_version": delta.projection_schema_version,
+                "revision": current_revision + 1,
+                "payload": {**deepcopy(previous_payload), **deepcopy(delta.payload)},
+                "source_ref": delta.source_ref,
+            }
+        return staged
 
     def _continuity_refusal(self, command: CharacterContinuityCommand, revision: int, reason: str) -> CharacterContinuityReceipt:
         return CharacterContinuityReceipt(
@@ -4382,6 +4453,9 @@ class CharacterAgentRuntime:
             projection = snapshot.get("seed_projection")
             if isinstance(projection, dict):
                 self._seed_projections[actor_id] = deepcopy(projection)
+            shared_modules = snapshot.get("shared_module_state")
+            if isinstance(shared_modules, dict):
+                self._shared_module_states[actor_id] = deepcopy(shared_modules)
             timeline = snapshot.get("session_timeline")
             if isinstance(timeline, list):
                 self._graph_session_timelines[actor_id] = [
@@ -4421,6 +4495,7 @@ class CharacterAgentRuntime:
                 for key, value in self._pending_seed_candidates.get(actor_id, {}).items()
             },
             "seed_projection": self.get_seed_projection(actor_id),
+            "shared_module_state": self.get_shared_module_state(actor_id),
             "checkpoint_event_index": self._continuity_checkpoint_event_indexes.get(actor_id, 0),
         }
         checkpoint_index = self._continuity_checkpoint_event_indexes.get(actor_id, 0)

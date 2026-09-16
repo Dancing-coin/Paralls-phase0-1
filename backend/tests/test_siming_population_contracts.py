@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.character_agent.models.simulation_seed import (
+    CharacterModuleDelta,
     CharacterContinuityCommand,
     CharacterMemoryCandidate,
     CharacterSimulationSeedCandidate,

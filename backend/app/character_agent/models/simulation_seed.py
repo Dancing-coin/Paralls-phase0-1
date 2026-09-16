@@ -17,6 +17,23 @@ MemoryCandidateKind = Literal[
 ]
 
 
+class CharacterModuleDelta(ContinuityModel):
+    """Versioned shared-module change accepted by Character Core."""
+
+    group_id: str = Field(min_length=1)
+    definition_version: str = Field(min_length=1)
+    projection_schema_version: int = Field(default=1, ge=1)
+    expected_group_revision: int = Field(default=0, ge=0)
+    source_ref: str = Field(min_length=1)
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_payload(self) -> "CharacterModuleDelta":
+        if any(not str(key).strip() for key in self.payload):
+            raise ValueError("module_delta_field_invalid")
+        return self
+
+
 class CharacterMemoryCandidate(ContinuityModel):
     candidate_id: str = Field(min_length=1)
     actor_ref: str = Field(min_length=1)
@@ -50,6 +67,7 @@ class CharacterSimulationSeedCandidate(ContinuityModel):
     source_event_refs: tuple[str, ...] = ()
     source_owner_receipt_refs: tuple[str, ...] = ()
     state_deltas: dict[str, Any] = Field(default_factory=dict)
+    module_deltas: tuple[CharacterModuleDelta, ...] = ()
     memory_candidates: tuple[CharacterMemoryCandidate, ...] = ()
     drift_candidates: tuple[dict[str, Any], ...] = ()
     activation_hints: tuple[str, ...] = ()
@@ -70,6 +88,9 @@ class CharacterSimulationSeedCandidate(ContinuityModel):
             raise ValueError("seed_tick_range_invalid")
         if len(set(self.source_owner_receipt_refs)) != len(self.source_owner_receipt_refs):
             raise ValueError("seed_owner_receipt_duplicate")
+        group_ids = [delta.group_id for delta in self.module_deltas]
+        if len(group_ids) != len(set(group_ids)):
+            raise ValueError("module_delta_group_duplicate")
         _check_vector(self.source_revision_vector)
         return self
 
@@ -84,6 +105,7 @@ class CharacterContinuityCommand(ContinuityModel):
     simulation_tick_cursor: int = Field(default=0, ge=0)
     source_revision_vector: dict[str, int] = Field(default_factory=dict)
     state_delta: dict[str, Any] = Field(default_factory=dict)
+    module_deltas: tuple[CharacterModuleDelta, ...] = ()
     memory_candidate_refs: tuple[str, ...] = ()
     exposure_evidence: dict[str, Any] = Field(default_factory=dict)
     policy_revision: str = Field(min_length=1)
@@ -98,6 +120,9 @@ class CharacterContinuityCommand(ContinuityModel):
             raise ValueError("command_owner_receipt_duplicate")
         if len(set(self.memory_candidate_refs)) != len(self.memory_candidate_refs):
             raise ValueError("command_memory_candidate_duplicate")
+        group_ids = [delta.group_id for delta in self.module_deltas]
+        if len(group_ids) != len(set(group_ids)):
+            raise ValueError("module_delta_group_duplicate")
         if self.world_effect_required and not self.source_owner_receipt_refs:
             raise ValueError("owner_settlement_required")
         _check_vector(self.source_revision_vector)

@@ -3,10 +3,13 @@ from pathlib import Path
 from app.character_agent.storage.graph_continuity_store import (
     CharacterGraphContinuityStore,
 )
+from app.character_agent.models.simulation_seed import CharacterContinuityCommand, CharacterModuleDelta
+from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
 from app import config as config_module
 from app import main
 from app.models.character_perceived import CharacterPerceivedEvent
 from app.models.siming_heavenly_graph import HeavenlyGraphScope
+from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
 from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
 
 
@@ -52,8 +55,6 @@ def test_graph_continuity_snapshot_survives_sqlite_restart(tmp_path: Path) -> No
 
 
 def test_production_continuity_store_rejects_partial_snapshot() -> None:
-    from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
-
     store = CharacterGraphContinuityStore(
         InMemoryHeavenlyGraphAdapter(),
         scope_resolver=_scope,
@@ -71,6 +72,78 @@ def test_production_continuity_store_rejects_partial_snapshot() -> None:
         assert "missing required field" in str(exc)
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("partial production continuity snapshot was accepted")
+
+
+def test_production_continuity_snapshot_contract_includes_shared_module_state() -> None:
+    store = CharacterGraphContinuityStore(
+        InMemoryHeavenlyGraphAdapter(),
+        scope_resolver=_scope,
+        require_complete_snapshot=True,
+    )
+    snapshot = {
+        "working_memory": {},
+        "dynamic_state": {},
+        "need_tension_state": {},
+        "supervision_state": {},
+        "goal_state": {},
+        "goal_state_history": [],
+        "session_timeline": [],
+        "continuity_state": {},
+        "continuity_revisions": 0,
+        "continuity_receipts": {},
+        "materialization_receipts": {},
+        "pending_seed_candidates": {},
+        "seed_projection": {},
+    }
+
+    try:
+        store.write_snapshot(
+            actor_id="char_b",
+            producer_ts=100,
+            snapshot=snapshot,
+            source_event_ref="event:missing-shared-modules",
+        )
+    except ValueError as exc:
+        assert "shared_module_state" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("snapshot without shared module state was accepted")
+
+
+def test_character_runtime_restores_shared_module_state_from_graph_current_state() -> None:
+    graph = InMemoryHeavenlyGraphAdapter()
+    store = CharacterGraphContinuityStore(
+        graph,
+        scope_resolver=_scope,
+        require_complete_snapshot=True,
+    )
+    command = CharacterContinuityCommand(
+        command_id="continuity:char_b:module:1",
+        actor_ref="character:char_b",
+        expected_character_revision=0,
+        from_tick=10,
+        to_tick=11,
+        simulation_tick_cursor=11,
+        source_revision_vector={"world:continuity": 1},
+        module_deltas=(
+            CharacterModuleDelta(
+                group_id="character.commitments",
+                definition_version="1.0.0",
+                projection_schema_version=1,
+                source_ref="event:commitment:1",
+                payload={"next_due_tick": 120},
+            ),
+        ),
+        policy_revision="policy:character-continuity:v1",
+        idempotency_key="continuity:char_b:module:1",
+    )
+
+    first = CharacterAgentRuntime(continuity_store=store)
+    assert first.apply_character_continuity_command(command).status == "committed"
+
+    restarted = CharacterAgentRuntime(continuity_store=store)
+    assert restarted.get_shared_module_state("char_b")["character.commitments"]["payload"] == {
+        "next_due_tick": 120
+    }
 
 
 def test_runtime_requires_graph_continuity_store_in_production_mode(monkeypatch) -> None:

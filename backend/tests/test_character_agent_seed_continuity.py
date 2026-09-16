@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import pytest
+
 from app.character_agent.models.simulation_seed import (
+    CharacterModuleDelta,
     CharacterContinuityCommand,
     CharacterMemoryCandidate,
     CharacterSimulationSeedCandidate,
 )
 from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
+from app.gameplay.runtime_state import StateGroupDefinition, StateGroupRegistry
 
 
 def command_for_char_a(**updates: object) -> CharacterContinuityCommand:
@@ -124,6 +128,182 @@ def test_seed_command_updates_state_but_defers_memory_materialization() -> None:
     assert runtime.get_need_tension_state_record("char_a").physiological_pressure > 0
     assert runtime.get_pending_seed_candidates("char_a")
     assert runtime.get_memory_bundle("char_a")["event_memories"] == []
+
+
+def test_module_delta_is_typed_and_preserved_in_shared_seed_projection() -> None:
+    runtime = CharacterAgentRuntime()
+    receipt = runtime.apply_character_continuity_command(
+        command_for_char_a(
+            module_deltas=(
+                CharacterModuleDelta(
+                    group_id="character.commitments",
+                    definition_version="1.0.0",
+                    projection_schema_version=1,
+                    expected_group_revision=0,
+                    source_ref="evt:order:101",
+                    payload={"next_due_tick": 120, "obligation_ref": "order:bakery:1"},
+                ),
+            ),
+        )
+    )
+
+    assert receipt.status == "committed"
+    projection = runtime.get_seed_projection("char_a")
+    assert projection["module_deltas"][0]["group_id"] == "character.commitments"
+
+
+def test_module_delta_rejects_duplicate_group_updates() -> None:
+    with pytest.raises(ValueError, match="module_delta_group_duplicate"):
+        command_for_char_a(
+            module_deltas=(
+                CharacterModuleDelta(
+                    group_id="character.commitments",
+                    definition_version="1.0.0",
+                    projection_schema_version=1,
+                    source_ref="evt:order:101",
+                    payload={"next_due_tick": 120},
+                ),
+                CharacterModuleDelta(
+                    group_id="character.commitments",
+                    definition_version="1.0.0",
+                    projection_schema_version=1,
+                    source_ref="evt:order:102",
+                    payload={"next_due_tick": 130},
+                ),
+            ),
+        )
+
+
+def test_character_core_merges_module_delta_and_rejects_stale_group_revision() -> None:
+    runtime = CharacterAgentRuntime()
+    initial = CharacterModuleDelta(
+        group_id="character.commitments",
+        definition_version="1.0.0",
+        projection_schema_version=1,
+        expected_group_revision=0,
+        source_ref="evt:order:101",
+        payload={"obligation_ref": "order:bakery:1", "next_due_tick": 120},
+    )
+    first = runtime.apply_character_continuity_command(
+        command_for_char_a(module_deltas=(initial,))
+    )
+    stale = runtime.apply_character_continuity_command(
+        command_for_char_a(
+            command_id="continuity:char_a:stale-module",
+            idempotency_key="continuity:char_a:stale-module",
+            expected_character_revision=1,
+            source_revision_vector={"world:bakery": 102},
+            module_deltas=(
+                initial.model_copy(
+                    update={"source_ref": "evt:order:102", "payload": {"next_due_tick": 130}}
+                ),
+            ),
+        )
+    )
+
+    assert first.status == "committed"
+    assert stale.status == "rejected"
+    assert stale.refusal_reason == "module_revision_conflict"
+    assert runtime.get_shared_module_state("char_a") == {
+        "character.commitments": {
+            "definition_version": "1.0.0",
+            "projection_schema_version": 1,
+            "revision": 1,
+            "payload": {"obligation_ref": "order:bakery:1", "next_due_tick": 120},
+            "source_ref": "evt:order:101",
+        }
+    }
+
+
+def test_character_core_rejects_module_not_declared_by_gameplay_registry() -> None:
+    registry = StateGroupRegistry()
+    registry.register(
+        StateGroupDefinition(
+            group_id="character.commitments",
+            definition_version="1.0.0",
+            projection_schema_version=1,
+            shared_fields=("next_due_tick",),
+            population_allowed_fields=("next_due_tick",),
+        )
+    )
+    runtime = CharacterAgentRuntime(state_group_registry=registry)
+
+    rejected = runtime.apply_character_continuity_command(
+        command_for_char_a(
+            module_deltas=(
+                CharacterModuleDelta(
+                    group_id="character.unknown",
+                    definition_version="1.0.0",
+                    projection_schema_version=1,
+                    source_ref="evt:unknown:101",
+                    payload={"next_due_tick": 120},
+                ),
+            ),
+        )
+    )
+
+    assert rejected.status == "rejected"
+    assert rejected.refusal_reason == "module_definition_unknown"
+
+
+def test_character_core_rejects_module_fields_outside_declared_schema() -> None:
+    registry = StateGroupRegistry()
+    registry.register(
+        StateGroupDefinition(
+            group_id="character.commitments",
+            definition_version="1.0.0",
+            projection_schema_version=1,
+            shared_fields=("next_due_tick",),
+            population_allowed_fields=("next_due_tick",),
+        )
+    )
+    runtime = CharacterAgentRuntime(state_group_registry=registry)
+
+    rejected = runtime.apply_character_continuity_command(
+        command_for_char_a(
+            module_deltas=(
+                CharacterModuleDelta(
+                    group_id="character.commitments",
+                    definition_version="1.0.0",
+                    projection_schema_version=1,
+                    source_ref="evt:unknown-field:101",
+                    payload={"private_note": "forbidden"},
+                ),
+            ),
+        )
+    )
+
+    assert rejected.status == "rejected"
+    assert rejected.refusal_reason == "module_field_unknown"
+
+
+def test_character_core_rejects_module_fields_when_group_declares_no_shared_schema() -> None:
+    registry = StateGroupRegistry()
+    registry.register(
+        StateGroupDefinition(
+            group_id="character.commitments",
+            definition_version="1.0.0",
+            projection_schema_version=1,
+        )
+    )
+    runtime = CharacterAgentRuntime(state_group_registry=registry)
+
+    rejected = runtime.apply_character_continuity_command(
+        command_for_char_a(
+            module_deltas=(
+                CharacterModuleDelta(
+                    group_id="character.commitments",
+                    definition_version="1.0.0",
+                    projection_schema_version=1,
+                    source_ref="evt:undeclared-field:101",
+                    payload={"next_due_tick": 120},
+                ),
+            ),
+        )
+    )
+
+    assert rejected.status == "rejected"
+    assert rejected.refusal_reason == "module_field_unknown"
 
 
 def test_seed_projection_is_parsed_into_actor_local_context_not_raw_prompt_text() -> None:
