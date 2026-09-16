@@ -469,10 +469,19 @@ def test_explicit_b0_projection_does_not_call_character_core() -> None:
             "payload": {
                 **base.projections[0].payload,
                 "fidelity_tier": "B0",
+                "from_tick": base.cadence.window_start,
+                "to_tick": base.cadence.window_end,
+                "simulation_tick_cursor": base.cadence.window_end,
+                "actor_revision": 0,
+                "state_deltas": {"fatigue": 0.1},
+                "scope": "public",
+                "source_revision_vector": dict(base.cadence.base_revision_vector),
+                "idempotency_key": f"b0:{base.cadence.cadence_id}:character:char_a",
             }
         },
         deep=True,
     )
+    projection = projection.model_copy(update={"scope": "public"}, deep=True)
     read_set = PopulationReadSet.from_inputs(base.cadence, (projection,))
     continuity = _ContinuityRecorder()
 

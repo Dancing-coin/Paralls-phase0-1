@@ -8,8 +8,8 @@ from app.population_continuity.models import PopulationWorldPlan
 from app.population_continuity.social_input import FrozenSocialPlanningInput
 from app.population_continuity.source_inputs import HouseholdScheduleInput, OrganizationScheduleInput
 from app.population_continuity.models import BatchIntentCandidate
-from app.population_continuity.siming_contracts import PopulationOwnerReceipt, PopulationReadSet
-from app.gameplay.organization_government_runtime import OrganizationAuthority
+from app.population_continuity.siming_contracts import PopulationOwnerBatchResult, PopulationOwnerReceipt, PopulationReadSet
+from app.gameplay.organization_government_runtime import OrganizationAuthority, OperatingWindowDueRequest
 
 
 class ScheduleGatedSupplyOwnerExecutor:
@@ -96,43 +96,119 @@ class OrganizationOperatingWindowDueOwnerExecutor:
     EVENT_FAMILY = "gameplay.organization.operating_window_due_recorded"
     CONTRACT_REF = "inf:organization-operating-window@1"
     OWNER_VISIBILITY_SCOPE = "project"
+    CAPABILITY_ID = "population:organization-window-due:v1"
 
     def __init__(self, *, authority: OrganizationAuthority) -> None:
         self._authority = authority
 
-    def submit(self, intent: BatchIntentCandidate, *, read_set: PopulationReadSet) -> PopulationOwnerReceipt:
-        if intent.intent_kind != "operating_window_due":
-            return PopulationOwnerReceipt(
-                receipt_ref=f"rejected:{intent.intent_ref}", owner_ref=self.OWNER_REF,
-                event_family=self.EVENT_FAMILY, committed=False, revision_vector={}, zero_write=True,
-            )
-        payload = intent.payload
-        try:
-            stream_ref = str(payload["stream_ref"])
-            result = self._authority.record_operating_window_due(
-                command_id=intent.intent_ref,
-                idempotency_key=intent.idempotency_key,
-                causation_id=intent.correlation_id,
-                correlation_id=intent.correlation_id,
-                organization_ref=str(payload["organization_ref"]),
-                window_ref=str(payload["window_ref"]),
-                expected_stream_revision=int(intent.expected_revisions.get(stream_ref, 0)),
-                visibility_scope=self.OWNER_VISIBILITY_SCOPE,
-            )
-        except (KeyError, TypeError, ValueError):
-            return PopulationOwnerReceipt(
-                receipt_ref=f"rejected:{intent.intent_ref}", owner_ref=self.OWNER_REF,
-                event_family=self.EVENT_FAMILY, committed=False, revision_vector={}, zero_write=True,
-            )
+    def _receipt(
+        self, intent: BatchIntentCandidate, result: Any
+    ) -> PopulationOwnerReceipt:
         committed = bool(result.committed)
+        failure = result.failure
+        reason = str(failure.error_code) if failure is not None else ""
+        if committed and result.idempotency_status == "duplicate_replayed":
+            settlement_status = "duplicate"
+        elif committed:
+            settlement_status = "committed"
+        elif reason == "organization_operating_window_revision_conflict" or bool(
+            getattr(failure, "retriable", False)
+        ):
+            settlement_status = "requeue"
+        else:
+            settlement_status = "rejected"
         return PopulationOwnerReceipt(
-            receipt_ref=(result.committed_event_ids[0] if result.committed_event_ids else f"receipt:{intent.intent_ref}"),
+            receipt_ref=(
+                result.committed_event_ids[0]
+                if result.committed_event_ids
+                else f"rejected:{intent.intent_ref}"
+            ),
             owner_ref=self.OWNER_REF,
             event_family=self.EVENT_FAMILY,
             committed=committed,
             revision_vector=dict(result.resulting_stream_revisions),
             zero_write=not committed or result.idempotency_status == "duplicate_replayed",
             idempotency_status=result.idempotency_status,
+            settlement_status=settlement_status,
+            reason=reason,
+        )
+
+    def _request(
+        self, intent: BatchIntentCandidate
+    ) -> OperatingWindowDueRequest:
+        if (
+            intent.intent_kind != "operating_window_due"
+            or intent.package_revision != self.CAPABILITY_ID
+            or intent.privacy_scope not in {"organization:summary", "public"}
+        ):
+            raise ValueError("organization_operating_window_intent_invalid")
+        payload = intent.payload
+        window_ref = str(payload["window_ref"])
+        stream_ref = str(payload["stream_ref"])
+        canonical_stream_ref = f"gameplay:organization:window:{window_ref}"
+        if (
+            stream_ref != canonical_stream_ref
+            or canonical_stream_ref not in intent.expected_revisions
+        ):
+            raise ValueError("organization_operating_window_intent_invalid")
+        return OperatingWindowDueRequest(
+            command_id=intent.intent_ref,
+            idempotency_key=intent.idempotency_key,
+            causation_id=intent.correlation_id,
+            correlation_id=intent.correlation_id,
+            organization_ref=str(payload["organization_ref"]),
+            window_ref=window_ref,
+            expected_stream_revision=int(intent.expected_revisions[canonical_stream_ref]),
+            visibility_scope=self.OWNER_VISIBILITY_SCOPE,
+        )
+
+    def submit(self, intent: BatchIntentCandidate, *, read_set: PopulationReadSet) -> PopulationOwnerReceipt:
+        try:
+            request = self._request(intent)
+            result = self._authority.record_operating_window_due(
+                **request.model_dump()
+            )
+        except (KeyError, TypeError, ValueError):
+            return PopulationOwnerReceipt(
+                receipt_ref=f"rejected:{intent.intent_ref}", owner_ref=self.OWNER_REF,
+                event_family=self.EVENT_FAMILY, committed=False, revision_vector={}, zero_write=True,
+                settlement_status="rejected", reason="organization_operating_window_intent_invalid",
+            )
+        return self._receipt(intent, result)
+
+    def submit_batch(
+        self,
+        intents: tuple[BatchIntentCandidate, ...],
+        *,
+        read_set: PopulationReadSet,
+    ) -> PopulationOwnerBatchResult:
+        del read_set
+        requests: list[OperatingWindowDueRequest] = []
+        invalid: dict[str, PopulationOwnerReceipt] = {}
+        for intent in intents:
+            try:
+                requests.append(self._request(intent))
+            except (KeyError, TypeError, ValueError):
+                invalid[intent.intent_ref] = PopulationOwnerReceipt(
+                    receipt_ref=f"rejected:{intent.intent_ref}",
+                    owner_ref=self.OWNER_REF,
+                    event_family=self.EVENT_FAMILY,
+                    committed=False,
+                    revision_vector={},
+                    zero_write=True,
+                    settlement_status="rejected",
+                    reason="organization_operating_window_intent_invalid",
+                )
+        batch_result = self._authority.record_operating_windows_due_batch(requests) if requests else None
+        receipts = tuple(
+            invalid.get(intent.intent_ref)
+            or self._receipt(intent, batch_result.results[intent.intent_ref])
+            for intent in intents
+        )
+        return PopulationOwnerBatchResult(
+            receipts=receipts,
+            append_count=batch_result.append_count if batch_result is not None else 0,
+            atomic=True,
         )
 
 

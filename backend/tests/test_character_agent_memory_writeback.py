@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from app.character_agent.storage.memory_store import CharacterAgentMemoryStore
 
 
@@ -351,3 +353,47 @@ def test_memory_store_write_event_deep_copies_input_event_payload() -> None:
     bundle = store.retrieval_bundle("char_c")
 
     assert bundle["working_memory"][0]["payload"]["nested"]["tone"] == "guarded"
+
+
+@pytest.mark.parametrize("failure_after_write", [False, True])
+def test_memory_store_persist_failure_retries_without_duplicate_projection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure_after_write: bool
+) -> None:
+    store = CharacterAgentMemoryStore(storage_root=tmp_path)
+    event = {
+        "event_id": "evt:persist-retry",
+        "event_index": 1,
+        "actor_id": "char_c",
+        "event_type": "character_perceived_event",
+        "producer_ts": 2401,
+        "payload": {"summary": "char_a spoke nearby"},
+    }
+    original_persist = store._persist
+    failed = False
+
+    def fail_once() -> None:
+        nonlocal failed
+        if failed:
+            original_persist()
+            return
+        failed = True
+        if failure_after_write:
+            original_persist()
+        raise OSError("memory_persist_failed")
+
+    monkeypatch.setattr(store, "_persist", fail_once)
+
+    with pytest.raises(OSError, match="memory_persist_failed"):
+        store.write_event(event)
+
+    if failure_after_write:
+        recovered = CharacterAgentMemoryStore(storage_root=tmp_path)
+        assert len(recovered.retrieval_bundle("char_c")["event_memories"]) == 1
+
+    store.write_event(event)
+
+    bundle = store.retrieval_bundle("char_c")
+    reloaded = CharacterAgentMemoryStore(storage_root=tmp_path)
+    assert len(bundle["working_memory"]) == 1
+    assert len(bundle["event_memories"]) == 1
+    assert len(reloaded.retrieval_bundle("char_c")["event_memories"]) == 1

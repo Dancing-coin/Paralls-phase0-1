@@ -51,7 +51,7 @@ from app.models.transport import TransportBarrier
 from app.models.visual_fact import VisualFactEvent
 from app.models.world_result import WorldResultBase
 from app.gameplay.dispatcher import GameplayOutboxDispatcher
-from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from app.gameplay.p5.stormnight_realtime_session import (
     StormnightPlayerIntent,
     StormnightRealtimeSessionService,
@@ -179,6 +179,7 @@ from app.character_agent.services.character_continuity import CharacterRuntimeCo
 from app.population_continuity.batch import ContinuityMergeAuthority
 from app.population_continuity.models import ActivationReceipt, BatchIntentCandidate, WorldModeProfile
 from app.population_continuity.owner_adapters import (
+    OrganizationOperatingWindowDueOwnerExecutor,
     OrganizationProductionWorkContributionOwnerExecutor,
     ScheduleGatedSupplyOwnerExecutor,
 )
@@ -194,8 +195,9 @@ from app.population_continuity.siming_contracts import (
     PopulationOwnerReceipt,
     PopulationProjection,
 )
-from app.population_continuity.store_projection_assembler import assemble_committed_population_projections
+from app.population_continuity.publication import publish_authorized_population_cadence as _publish_authorized_population_cadence
 from app.population_continuity.world import WorldContinuityRuntime
+from app.population_continuity.runtime_publication import RuntimeCadencePublisher
 from app.population_continuity.roster import PopulationRoster, load_population_roster
 from app.population_continuity.social_input import FrozenSocialPlanningInput
 from app.population_continuity.source_inputs import HouseholdScheduleInput, OrganizationScheduleInput
@@ -226,12 +228,9 @@ _population_runtime_clock: Callable[[int, int], int] = lambda current, window: c
 
 
 async def _run_population_runtime(driver: PopulationCadenceDriver, stop_event: asyncio.Event) -> None:
-    window_size = driver.window_size
     global _population_runtime_failure
     try:
-        while not stop_event.is_set():
-            driver.tick(_population_runtime_clock(driver.current_tick, window_size))
-            await _population_runtime_sleep(window_size)  # type: ignore[misc]
+        await driver.run_forever(stop_event, _population_runtime_sleep, _population_runtime_clock)  # type: ignore[arg-type]
     except asyncio.CancelledError:
         raise
     except BaseException as exc:
@@ -251,51 +250,24 @@ def start_population_runtime() -> asyncio.Task[None] | None:
     world_runtime = WorldContinuityRuntime(store=gameplay_event_store, mode=mode, roster=population_roster)
     world_stream_ref = f"world:{mode.world_ref}"
     window_size = 86400
-    initial_tick = gameplay_event_store.get_stream_head(world_stream_ref)
-    if initial_tick <= 0:
+    if gameplay_event_store.get_stream_head(world_stream_ref) <= 0:
         return None
-    published_events = authority_event_bus.list_events(
-        event_type="population_cadence_event", include_realtime=True, current_only=False
+    publisher = RuntimeCadencePublisher(
+        world_runtime=world_runtime, event_bus=authority_event_bus,
+        room_id="room:bakery", scene_id="scene:bakery", zone_id="zone:bakery",
     )
-    cadence_prefix = f"cadence:{mode.world_ref}:"
-    runtime_origins = []
-    for event in published_events:
-        payload = event.payload.get("population_cadence", {}) if isinstance(event.payload, dict) else {}
-        cadence_id = payload.get("cadence_id") if isinstance(payload, dict) else None
-        window_start = payload.get("window_start") if isinstance(payload, dict) else None
-        window_end = payload.get("window_end") if isinstance(payload, dict) else None
-        if (
-            isinstance(cadence_id, str)
-            and cadence_id.startswith(cadence_prefix)
-            and isinstance(window_start, int)
-            and isinstance(window_end, int)
-            and window_end - window_start == window_size
-        ):
-            runtime_origins.append(window_start)
-    if runtime_origins:
-        initial_tick = min(runtime_origins)
     _population_runtime_failure = None
     def publish(cadence):
-        event = publish_population_cadence_window(
-            world_runtime=world_runtime,
-            window_start=cadence.window_start,
-            window_end=cadence.window_end,
-            room_id="room:bakery",
-            scene_id="scene:bakery",
-            zone_id="zone:bakery",
-            causation_id=f"population-runtime:{cadence.cadence_id}",
-            correlation_id=f"population-runtime:{cadence.cadence_id}",
-        )
+        event = publisher(cadence)
         if event is not None:
-            published_events.append(event)
+            siming_event_pipeline.drain_observatory_messages()
         return event
-    publish.published_events = published_events
     _population_runtime_driver = PopulationCadenceDriver(
         world_runtime=world_runtime,
         publish_window=publish,
         window_size=window_size,
         catch_up_limit=mode.catch_up_limit,
-        initial_tick=initial_tick,
+        initial_tick=publisher.confirmed_tick,
     )
     _population_runtime_stop_event = asyncio.Event()
     _population_runtime_task = asyncio.create_task(
@@ -478,6 +450,9 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
             context_builder=ScheduleGatedSupplyOwnerExecutor.context_from_intent_payload,
         )
         population_owner_executors = {
+            "population:organization-window-due:v1": OrganizationOperatingWindowDueOwnerExecutor(
+                authority=OrganizationAuthority(store=owner_store, package_registry=package_registry)
+            ),
             "population:organization-production-work-contribution:v1": OrganizationProductionWorkContributionOwnerExecutor(
                 authority=OrganizationAuthority(
                     store=owner_store,
@@ -612,7 +587,7 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
     )
 
 
-def reset_runtime_state() -> None:
+def reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     stop_population_runtime()
     global population_roster
     global runtime
@@ -686,7 +661,12 @@ def reset_runtime_state() -> None:
     previous_capabilities = globals().get("harness_capability_store")
     if isinstance(previous_capabilities, HarnessCapabilityStore):
         previous_capabilities.close()
-    gameplay_event_store = GameplayEventStore()
+    graph_path = Path(settings.heavenly_graph_path)
+    gameplay_event_store = (
+        DurableGameplayEventStore(graph_path.with_name(f"{graph_path.name}.gameplay.json"))
+        if restore_gameplay and graph_path.name != ":memory:"
+        else GameplayEventStore()
+    )
     production_package_registry = build_production_package_registry(Path(WORKTREE_ROOT))
     production_social_policy_registry = build_production_social_policy_registry()
     inventory_definition_registry = build_production_inventory_definition_registry()
@@ -806,7 +786,8 @@ def reset_runtime_state() -> None:
     conversation_relation_service = ConversationRelationService()
     character_runtime_state_service = CharacterRuntimeStateService()
     authority_event_adapter = Phase0AuthorityEventAdapter()
-    authority_event_bus = InMemoryAuthorityEventBus()
+    # 全量居民展示仅保留最近两帧，历史窗口由 Gameplay 日志恢复。
+    authority_event_bus = InMemoryAuthorityEventBus(history_limits={"population_cadence_event": 2})
     government_drought_advisory_presentation_service = GovernmentDroughtAdvisoryPresentationService(
         government=GovernmentAuthority(store=gameplay_event_store),
         deliver=gameplay_mirror_connection_registry.deliver_government_drought_advisory,
@@ -900,7 +881,13 @@ def reset_runtime_state() -> None:
             )
             if not container_id:
                 raise ValueError("default_scene_inventory_destination_missing")
-            if (actor_ref, container_id) not in created_inventory_containers:
+            # 持久恢复后的容器由 Owner 事件保留，启动种子不能重复创建或清空其内容。
+            exists = any(
+                event.event_type == "gameplay.inventory.container_created"
+                and event.payload.get("container_id") == container_id
+                for event in gameplay_event_store.read_stream(f"gameplay:inventory:{actor_ref}")
+            )
+            if (actor_ref, container_id) not in created_inventory_containers and not exists:
                 inventory_authority_service.create_container(
                     command_id=f"bootstrap:inventory:{actor_id}:{container_id}",
                     actor_ref=actor_ref,
@@ -1114,50 +1101,6 @@ def _legacy_supply_projection_is_authorized(
     )
 
 
-def _population_owner_receipt_is_authorized(
-    receipt: PopulationOwnerReceipt,
-    *,
-    cadence: PopulationCadenceInput,
-    organization_projection: Mapping[str, object],
-    store: GameplayEventStore,
-) -> bool:
-    if (
-        receipt.owner_ref != "actor_gameplay.organization_domain"
-        or receipt.event_family
-        != "gameplay.organization.production_work_contribution_accepted"
-        or not receipt.committed
-        or (receipt.zero_write and receipt.idempotency_status != "duplicate_replayed")
-        or not receipt.revision_vector
-        or dict(receipt.revision_vector) != cadence.base_revision_vector
-    ):
-        return False
-    organization_ref = organization_projection.get("organization_ref")
-    if (
-        not isinstance(organization_ref, str)
-        or not organization_ref.startswith("org:")
-        or organization_projection.get("scope") != "organization:summary"
-    ):
-        return False
-    try:
-        event = store.get_event(receipt.receipt_ref)
-    except KeyError:
-        return False
-    if not (
-        event.event_type
-        == "gameplay.organization.production_work_contribution_accepted"
-        and event.stream_id == f"gameplay:organization:{organization_ref}"
-        and event.stream_revision == receipt.revision_vector.get(event.stream_id)
-        and event.visibility_policy == "organization:summary"
-        and event.payload.get("organization_ref") == organization_ref
-    ):
-        return False
-    rows = organization_projection.get("acceptance_rows")
-    return isinstance(rows, (list, tuple)) and sum(
-        isinstance(row, Mapping) and dict(row) == dict(event.payload)
-        for row in rows
-    ) == 1
-
-
 def publish_authorized_population_cadence(
     *,
     cadence: PopulationCadenceInput,
@@ -1172,175 +1115,19 @@ def publish_authorized_population_cadence(
     population_projections: tuple[PopulationProjection, ...] = (),
     population_owner_receipt: PopulationOwnerReceipt | None = None,
 ) -> AuthorityEvent | None:
-    """Publish one caller-authorized cadence without creating cadence time."""
-    source_ref = cadence.cadence_source_ref
-    source_revision = cadence.cadence_source_revision
-    source_vector_revision = cadence.base_revision_vector.get(source_ref, -1)
-    receipt_pins_current_base = population_owner_receipt is not None and (
-        _population_owner_receipt_is_authorized(
-            population_owner_receipt,
-            cadence=cadence,
-            organization_projection=organization_projection,
-            store=store,
-        )
+    """复用可独立验证的授权发布链路，并排空本地观察消息。"""
+    event = _publish_authorized_population_cadence(
+        cadence=cadence, store=store, organization_projection=organization_projection,
+        room_id=room_id, scene_id=scene_id, zone_id=zone_id,
+        causation_id=causation_id, correlation_id=correlation_id,
+        legacy_projections=legacy_projections, population_projections=population_projections,
+        population_owner_receipt=population_owner_receipt, event_bus=authority_event_bus,
+        legacy_projection_authorizer=_legacy_supply_projection_is_authorized,
     )
-    if population_owner_receipt is not None and not receipt_pins_current_base:
-        return None
-    if (
-        not source_ref
-        or source_revision < 1
-        or source_vector_revision < source_revision
-        or (
-            source_vector_revision != source_revision
-            and not receipt_pins_current_base
-        )
-        or any(store.get_stream_head(ref) != revision for ref, revision in cadence.base_revision_vector.items())
-    ):
-        return None
-    source_event = next(
-        (
-            event
-            for event in store.read_events()
-            if event.stream_id == source_ref
-            and event.stream_revision == source_revision
-            and event.global_sequence >= 1
-        ),
-        None,
-    )
-    if source_event is None:
-        return None
-
-    source_payload = source_event.payload
-    admitted_visibility = {"project", "public"}
-    if cadence.report_scope == "organization:summary":
-        admitted_visibility.add("organization:summary")
-    declared_visibility = source_payload.get("visibility_scope")
-    if (
-        source_event.visibility_policy not in admitted_visibility
-        or declared_visibility not in (None, source_event.visibility_policy)
-    ):
-        return None
-    if source_event.event_type == "population.world.resume":
-        source_authorized = (
-            source_ref == f"world:{cadence.world_ref}"
-            and source_payload.get("world_ref") == cadence.world_ref
-            and source_payload.get("mode_revision") == cadence.world_mode_revision
-        )
-    elif source_event.event_type in {
-        "population.activation.committed",
-        "population.activation.region_assigned",
-    }:
-        source_authorized = (
-            source_ref == f"population:{cadence.world_ref}"
-            and source_payload.get("world_ref") == cadence.world_ref
-        )
-    elif source_event.event_type in {
-        "gameplay.organization.schedule_recorded",
-        "gameplay.organization.work_order_recorded",
-    }:
-        organization_ref = source_payload.get("organization_ref")
-        projection_vector = organization_projection.get("source_revision_vector")
-        source_authorized = (
-            isinstance(organization_ref, str)
-            and source_ref == f"gameplay:organization:{organization_ref}"
-            and organization_projection.get("organization_ref") == organization_ref
-            and isinstance(projection_vector, Mapping)
-            and (
-                projection_vector.get(source_ref) == source_revision
-                or (
-                    receipt_pins_current_base
-                    and projection_vector.get(source_ref) == source_vector_revision
-                )
-            )
-        )
-    else:
-        source_authorized = False
-    if not source_authorized:
-        return None
-
-    metadata = dict(organization_projection)
-    if population_owner_receipt is not None:
-        metadata["acceptance_rows"] = [
-            dict(store.get_event(population_owner_receipt.receipt_ref).payload)
-        ]
-    world_mode_projection = metadata.pop("_world_mode_projection", {})
-    social_projection = metadata.pop("_social_projection", {})
-    household_projection = metadata.pop("_household_projection", {})
-    tax_projection = metadata.pop("_tax_projection", None)
-    assembly_projection = dict(metadata)
-    if isinstance(tax_projection, Mapping):
-        assembly_projection["_tax_projection"] = tax_projection
-    assembled = assemble_committed_population_projections(
-        store=store,
-        cadence=cadence,
-        organization_projection=assembly_projection,
-    )
-    projections = (*legacy_projections, *population_projections, *assembled)
-    accepted: dict[str, PopulationProjection] = {}
-    for projection in projections:
-        if (
-            (
-                projection in legacy_projections
-                and not _legacy_supply_projection_is_authorized(
-                    projection,
-                    cadence=cadence,
-                    store=store,
-                    organization_projection=metadata,
-                )
-            )
-            or
-            projection.scope not in {cadence.report_scope, "public"}
-            or not projection.revision_vector
-            or any(
-                cadence.base_revision_vector.get(ref) != revision
-                for ref, revision in projection.revision_vector.items()
-            )
-            or any(
-                store.get_stream_head(ref) != revision
-                for ref, revision in projection.revision_vector.items()
-            )
-            or projection.ref in accepted
-        ):
-            return None
-        accepted[projection.ref] = projection
-
-    event = AuthorityEvent(
-        event_id=f"event:population-cadence:{cadence.cadence_id}",
-        event_type="population_cadence_event",
-        producer_ts=cadence.window_start,
-        room_id=room_id,
-        scene_id=scene_id,
-        zone_id=zone_id,
-        source=AuthorityEventSource(layer="L2", system="world_runtime.cadence"),
-        routing=AuthorityEventRouting(audience_mode="broadcast", routing_mode="event_type"),
-        priority="p2",
-        durability="realtime",
-        causation_id=causation_id,
-        correlation_id=correlation_id,
-        payload={
-            "population_cadence": cadence.model_dump(mode="json"),
-            "world_mode_projection": world_mode_projection,
-            "activation_projection": {},
-            "activation_pending_projection": {},
-            "social_projection": social_projection,
-            "household_projection": household_projection,
-            "organization_projection": metadata,
-            "population_projections": [
-                accepted[ref].model_dump(mode="json") for ref in sorted(accepted)
-            ],
-            **(
-                {"population_owner_receipt": population_owner_receipt.model_dump(mode="json")}
-                if population_owner_receipt is not None
-                else {}
-            ),
-        },
-    )
-    authority_event_bus.publish(event)
-    drain_observatory = getattr(
-        globals().get("siming_event_pipeline"), "drain_observatory_messages", None
-    )
-    if callable(drain_observatory):
-        drain_observatory()
+    if event is not None:
+        drain = getattr(globals().get("siming_event_pipeline"), "drain_observatory_messages", None)
+        if callable(drain):
+            drain()
     return event
 
 
@@ -1384,6 +1171,9 @@ def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:
     ):
         return None
     mode = _bakery_population_mode()
+    # 重启不重复写入世界启动事务，也不绕过持久 outbox 重放人口窗口。
+    if gameplay_event_store.get_stream_head(f"world:{mode.world_ref}") > 0:
+        return None
     mode_receipt = WorldContinuityRuntime(store=gameplay_event_store, mode=mode, roster=population_roster).resume()
     if not mode_receipt.committed:
         return None
@@ -1605,7 +1395,7 @@ def _publish_runtime_staging_ack(
     )
 
 
-reset_runtime_state()
+reset_runtime_state(restore_gameplay=True)
 
 
 @app.get("/health")

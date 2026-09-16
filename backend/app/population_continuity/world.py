@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
 import hashlib
 import json
 from collections.abc import Mapping
@@ -15,8 +16,27 @@ from app.world_runtime.scheduling import (
 )
 
 from .models import DueEvaluationReceipt, WorldModeProfile, WorldModeReceipt
-from .siming_contracts import PopulationCadenceInput, PopulationProjection
+from .continuous import B0ContinuousResult, advance_b0_row
+from .hot_state import PopulationDueIndex, PopulationHotState
+from .siming_contracts import PopulationCadenceInput, PopulationProjection, dump_population_projections
 from .roster import PopulationRoster, load_population_roster
+
+
+@dataclass(frozen=True)
+class PopulationCadenceConfirmationReceipt:
+    cadence_id: str
+    status: str
+    window_start: int
+    window_end: int
+    advanced_count: int
+    presentation_due_count: int
+    new_due_count: int
+    due_count: int
+    deferred_count: int
+    rejected_count: int
+    due_backlog_count: int
+    projection_digest: str
+    result_digest: str
 
 
 class WorldContinuityRuntime:
@@ -36,6 +56,26 @@ class WorldContinuityRuntime:
         self.roster = roster if roster is not None else load_population_roster()
         self._cadence_cache: dict[tuple[object, ...], PopulationCadenceInput] = {}
         self._projection_cache: dict[tuple[object, ...], tuple[PopulationProjection, ...]] = {}
+        self.population_hot_state = PopulationHotState(self.roster.actor_ids)
+        self._population_due_index = PopulationDueIndex()
+        for actor_id in self.roster.actor_ids:
+            row = self.population_hot_state.read(actor_id)
+            self._population_due_index.schedule(
+                actor_id,
+                "b0:presentation-threshold",
+                int(row["next_due_tick"]),
+                int(row["revision"]),
+            )
+        self._preview_results: dict[tuple[object, ...], tuple[B0ContinuousResult, ...]] = {}
+        self._confirmed_receipts: dict[str, PopulationCadenceConfirmationReceipt] = {}
+        self._confirmed_fingerprints: dict[str, str] = {}
+        self._confirmed_window_end: int | None = None
+        self._confirmed_rule_identity: tuple[str, str, str, str] | None = None
+        self.last_population_confirmation: PopulationCadenceConfirmationReceipt | None = None
+
+    @property
+    def latest_confirmation(self) -> PopulationCadenceConfirmationReceipt | None:
+        return self.last_population_confirmation
 
     def pause(
         self, *, reason: str, expected_mode_revision: str | None = None
@@ -108,7 +148,8 @@ class WorldContinuityRuntime:
 
     def is_paused(self) -> bool:
         """读取最近一次已提交的世界模式边界，不写入世界真相。"""
-        events = self.store.read_stream(f"world:{self.mode.world_ref}")
+        stream = f"world:{self.mode.world_ref}"
+        events = self.store.read_stream(stream, from_revision=self.store.get_stream_head(stream))
         return bool(events and events[-1].event_type == "population.world.pause")
 
     def build_population_cadence(
@@ -172,23 +213,305 @@ class WorldContinuityRuntime:
             budget=self.mode.batch_limit if budget is None else budget,
             report_scope=report_scope,
         )
-        self._cadence_cache[cache_key] = cadence
+        self._cadence_cache = {cache_key: cadence}
         return cadence
 
     def build_population_projections(
         self,
         cadence: PopulationCadenceInput,
         *,
+        workers: int = 1,
+        batch_size: int = 256,
         population_views: Mapping[str, object] | None = None,
     ) -> tuple[PopulationProjection, ...]:
-        """Build deterministic B0 routine inputs for the bounded resident roster."""
-        cache_key = (
-            cadence.cadence_id,
-            tuple(sorted(cadence.base_revision_vector.items())),
+        """从已确认热状态构造只读 B0 预览；发布前不推进游标。"""
+        self._validate_confirmation_context(cadence, pin_rules=False)
+        cache_key = self._projection_cache_key(cadence, population_views=population_views)
+        cached = self._projection_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        if (
+            self._confirmed_window_end == cadence.window_start
+            and all(
+                key[0] in self._confirmed_receipts
+                for key in self._projection_cache
+            )
+        ):
+            # 已确认窗口可由 receipt 重放；新窗口计算前释放其万人预览。
+            self._projection_cache.clear()
+            self._preview_results.clear()
+        evaluated = self.population_hot_state.map_readonly(
+            self.roster.actor_ids,
+            lambda actor_id, row: advance_b0_row(
+                actor_id=actor_id,
+                row=row,
+                window_start=cadence.window_start,
+                window_end=cadence.window_end,
+            ),
+            workers=workers,
+            batch_size=batch_size,
+        )
+        by_actor = {result.actor_id: result for result in evaluated}
+        due_actor_ids = {
+            actor_id
+            for actor_id, obligation_id, _due_tick in self._population_due_index.due_items(
+                cadence.window_end
+            )
+            if obligation_id == "b0:presentation-threshold"
+        }
+        actor_ids = self.roster.actor_ids
+        window_size = cadence.window_end - cadence.window_start
+        start = (cadence.window_start // window_size) % len(actor_ids)
+        ordered_actor_ids = actor_ids[start:] + actor_ids[:start]
+        results = tuple(by_actor[actor_id] for actor_id in ordered_actor_ids)
+        projections = tuple(
+            PopulationProjection(
+                ref=f"projection:{result.actor_id}:{cadence.window_start}",
+                scope="public",
+                revision_vector=dict(cadence.base_revision_vector),
+                payload={
+                    "actor_ref": f"character:{result.actor_id}",
+                    "candidate_kind": "routine_work",
+                    "behavior_kind": "routine_work",
+                    "fidelity_tier": "B0",
+                    "from_tick": result.from_tick,
+                    "to_tick": result.to_tick,
+                    "simulation_tick_cursor": result.to_tick,
+                    "actor_revision": result.actor_revision_before,
+                    "source_revision_vector": dict(cadence.base_revision_vector),
+                    "starvation_credit": result.values["starvation_credit"],
+                    "state_deltas": dict(result.values),
+                    "presentation_seed": {
+                        "task": "daily_routine",
+                        "activity_phase": result.values["activity_phase"],
+                        "threshold_refs": tuple(
+                            f"b0:presentation-threshold:{due_tick}"
+                            for due_tick in (
+                                result.due_ticks if result.actor_id in due_actor_ids else ()
+                            )
+                        ),
+                    },
+                    "due_obligation_refs": (),
+                    "scope": "public",
+                    "idempotency_key": (
+                        f"b0:{cadence.cadence_id}:character:{result.actor_id}"
+                    ),
+                },
+            )
+            for result in results
+        )
+        if population_views:
+            enriched: list[PopulationProjection] = []
+            for projection in projections:
+                actor_ref = str(projection.payload.get("actor_ref") or "")
+                view = population_views.get(actor_ref)
+                if view is None:
+                    enriched.append(projection)
+                    continue
+                if getattr(view, "consumer", None) != "population":
+                    raise ValueError("population_view_required")
+                groups = getattr(view, "groups", None)
+                if not isinstance(groups, Mapping):
+                    raise ValueError("population_view_invalid")
+                payload = dict(projection.payload)
+                payload["population_state"] = {
+                    str(group_id): _thaw_population_value(getattr(envelope, "payload", {}))
+                    for group_id, envelope in sorted(groups.items(), key=lambda item: str(item[0]))
+                    if isinstance(getattr(envelope, "payload", None), Mapping)
+                }
+                payload["population_state_source_revision_vector"] = _thaw_population_value(
+                    getattr(view, "source_revision_vector", {})
+                )
+                payload["population_state_checksum"] = str(getattr(view, "view_checksum", ""))
+                enriched.append(projection.model_copy(update={"payload": payload}))
+            projections = tuple(enriched)
+        self._projection_cache = {cache_key: projections}
+        self._preview_results = {cache_key: results}
+        return projections
+
+    def confirm_population_cadence(
+        self, cadence: PopulationCadenceInput
+    ) -> PopulationCadenceConfirmationReceipt:
+        """在 cadence 已发布后确认同一纯计算结果，重复确认保持幂等。"""
+        fingerprint = self._cadence_fingerprint(cadence)
+        previous = self._confirmed_receipts.get(cadence.cadence_id)
+        if previous is not None:
+            if self._confirmed_fingerprints[cadence.cadence_id] != fingerprint:
+                raise ValueError("population_cadence_confirmation_conflict")
+            return replace(previous, status="idempotent_replay")
+        self._validate_confirmation_context(cadence, pin_rules=True)
+        if (
+            self._confirmed_window_end is not None
+            and cadence.window_start != self._confirmed_window_end
+        ):
+            raise ValueError("population_cadence_confirmation_conflict")
+        projections = self.build_population_projections(cadence)
+        cache_key = self._projection_cache_key(cadence)
+        results = self._preview_results[cache_key]
+        due_items = tuple(
+            item
+            for item in self._population_due_index.due_items(cadence.window_end)
+            if item[1] == "b0:presentation-threshold"
+        )
+        expected_due_actors = {
+            result.actor_id for result in results if result.due_ticks
+        }
+        if {actor_id for actor_id, _obligation_id, _due_tick in due_items} != expected_due_actors:
+            raise ValueError("population_due_index_conflict")
+        advanced_count = self.population_hot_state.commit_batch_atomic(
+            (
+                result.actor_id,
+                result.values,
+                result.actor_revision_before,
+                result.actor_revision_before + 1,
+            )
+            for result in results
+        )
+        presentation_due_count = sum(len(result.due_ticks) for result in results)
+        consumed_due = self._population_due_index.pop_due(
+            cadence.window_end, obligation_id="b0:presentation-threshold"
+        )
+        if consumed_due != due_items:
+            raise ValueError("population_due_index_conflict")
+        for result in results:
+            self._population_due_index.schedule(
+                result.actor_id,
+                "b0:presentation-threshold",
+                int(result.values["next_due_tick"]),
+                result.actor_revision_before + 1,
+            )
+        backlog = self._population_due_index.due_items(cadence.window_end)
+        projection_digest = "sha256:" + hashlib.sha256(
+            json.dumps(
+                [
+                    projection.__dict__
+                    for projection in projections
+                ],
+                check_circular=False,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        result_digest = "sha256:" + hashlib.sha256(
+            json.dumps(
+                {
+                    "cadence": fingerprint,
+                    "projection_digest": projection_digest,
+                    "advanced_count": advanced_count,
+                    "presentation_due_count": presentation_due_count,
+                    "due_backlog_count": len(backlog),
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        receipt = PopulationCadenceConfirmationReceipt(
+            cadence_id=cadence.cadence_id,
+            status="committed",
+            window_start=cadence.window_start,
+            window_end=cadence.window_end,
+            advanced_count=advanced_count,
+            presentation_due_count=presentation_due_count,
+            new_due_count=presentation_due_count,
+            due_count=presentation_due_count,
+            deferred_count=len(backlog),
+            rejected_count=0,
+            due_backlog_count=len(backlog),
+            projection_digest=projection_digest,
+            result_digest=result_digest,
+        )
+        self._confirmed_receipts[cadence.cadence_id] = receipt
+        self._confirmed_fingerprints[cadence.cadence_id] = fingerprint
+        self._confirmed_window_end = cadence.window_end
+        self._confirmed_rule_identity = self._rule_identity(cadence)
+        self.last_population_confirmation = receipt
+        return receipt
+
+    def due_population_work(self, tick: int) -> tuple[tuple[str, str, int], ...]:
+        return self._population_due_index.due_items(tick)
+
+    def claim_due_population_work(
+        self, tick: int, *, limit: int | None = None
+    ) -> tuple[tuple[str, str, int], ...]:
+        return self._population_due_index.pop_due(tick, limit=limit)
+
+    def select_due_population_work(
+        self, tick: int, *, limit: int | None = None
+    ) -> tuple[tuple[str, str, int], ...]:
+        due = self._population_due_index.due_items(tick)
+        return due if limit is None else due[:limit]
+
+    def complete_due_population_work(self, actor_id: str, obligation_id: str) -> None:
+        self._population_due_index.cancel(actor_id, obligation_id)
+
+    def requeue_due_population_work(
+        self,
+        actor_id: str,
+        obligation_id: str,
+        due_tick: int,
+        *,
+        revision: int,
+    ) -> None:
+        self._population_due_index.schedule(
+            actor_id, obligation_id, due_tick, revision
+        )
+
+    def _validate_confirmation_context(
+        self, cadence: PopulationCadenceInput, *, pin_rules: bool
+    ) -> None:
+        world_stream = f"world:{self.mode.world_ref}"
+        source_events = self.store.read_stream(
+            world_stream,
+            from_revision=cadence.cadence_source_revision,
+            to_revision=cadence.cadence_source_revision,
+        )
+        source_event = source_events[0] if len(source_events) == 1 else None
+        if (
+            cadence.world_ref != self.mode.world_ref
+            or cadence.world_mode_revision != self.mode.revision
+            or cadence.cadence_source_ref != world_stream
+            or cadence.cadence_source_revision < 1
+            or cadence.base_revision_vector.get(world_stream)
+            != cadence.cadence_source_revision
+            or self.store.get_stream_head(world_stream) < cadence.cadence_source_revision
+            or source_event is None
+            or source_event.event_type != "population.world.resume"
+            or source_event.payload.get("world_ref") != self.mode.world_ref
+            or source_event.payload.get("mode_revision") != self.mode.revision
+            or cadence.report_scope != "public"
+            or cadence.window_start < 0
+            or cadence.window_end <= cadence.window_start
+        ):
+            raise ValueError("population_cadence_confirmation_context_invalid")
+        if (
+            pin_rules
+            and self._confirmed_rule_identity is not None
+            and self._confirmed_rule_identity != self._rule_identity(cadence)
+        ):
+            raise ValueError("population_cadence_confirmation_context_invalid")
+
+    @staticmethod
+    def _rule_identity(cadence: PopulationCadenceInput) -> tuple[str, str, str, str]:
+        return (
             cadence.policy_revision,
             cadence.selector_revision,
             cadence.ruleset_revision,
             cadence.report_scope,
+        )
+
+    def _projection_cache_key(
+        self,
+        cadence: PopulationCadenceInput,
+        *,
+        population_views: Mapping[str, object] | None = None,
+    ) -> tuple[object, ...]:
+        return (
+            cadence.cadence_id,
+            cadence.window_start,
+            cadence.window_end,
+            tuple(sorted(cadence.base_revision_vector.items())),
+            *self._rule_identity(cadence),
             tuple(self.roster.actor_ids),
             tuple(
                 sorted(
@@ -201,56 +524,16 @@ class WorldContinuityRuntime:
                 )
             ),
         )
-        cached = self._projection_cache.get(cache_key)
-        if cached is not None:
-            return cached
-        actors = self.roster.actor_ids
-        window_size = cadence.window_end - cadence.window_start
-        window_index = cadence.window_start // window_size
-        start = window_index % len(actors)
-        ordered = actors[start:] + actors[:start]
-        projections: list[PopulationProjection] = []
-        for index, actor in enumerate(ordered):
-            actor_ref = f"character:{actor}"
-            payload = {
-                "actor_ref": actor_ref,
-                "candidate_kind": "routine_work",
-                "fidelity_tier": "B0",
-                "starvation_credit": 1.0 - (index / len(actors)),
-                "state_deltas": {
-                    "dynamic_state": {"stress_load": 0.0},
-                },
-                "presentation_seed": {"task": "daily_routine"},
-            }
-            view = (population_views or {}).get(actor_ref)
-            if view is not None:
-                if getattr(view, "consumer", None) != "population":
-                    raise ValueError("population_view_required")
-                groups = getattr(view, "groups", None)
-                if not isinstance(groups, Mapping):
-                    raise ValueError("population_view_invalid")
-                payload["population_state"] = {
-                    str(group_id): _thaw_population_value(getattr(envelope, "payload", {}))
-                    for group_id, envelope in sorted(groups.items(), key=lambda item: str(item[0]))
-                    if isinstance(getattr(envelope, "payload", None), Mapping)
-                }
-                payload["population_state_source_revision_vector"] = _thaw_population_value(
-                    getattr(view, "source_revision_vector", {})
-                )
-                payload["population_state_checksum"] = str(
-                    getattr(view, "view_checksum", "")
-                )
-            projections.append(
-                PopulationProjection(
-                    ref=f"projection:{actor}:{cadence.window_start}",
-                    scope="public",
-                    revision_vector=dict(cadence.base_revision_vector),
-                    payload=payload,
-                )
-            )
-        projections = tuple(projections)
-        self._projection_cache[cache_key] = projections
-        return projections
+    @staticmethod
+    def _cadence_fingerprint(cadence: PopulationCadenceInput) -> str:
+        return "sha256:" + hashlib.sha256(
+            json.dumps(
+                cadence.model_dump(mode="json"),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
 
     def replay_equivalence(self) -> tuple[str, str]:
         replay = GameplayProjectionReplay(

@@ -150,7 +150,6 @@ class SimingRuntime:
         result = SimingTickResult()
         for siming_input in inputs:
             event = siming_input.source_event
-            self._active_turn_event = event
             if siming_input.input_type == "population_cadence_input" and self._population_capability is not None:
                 try:
                     cadence = PopulationCadenceInput.from_authority_event(event)
@@ -238,9 +237,13 @@ class SimingRuntime:
                         continue
                     result.audit_records.append(self._population_cycle_audit(event, cycle))
                     result.audit_records.extend(audit for audit in cycle.audits if isinstance(audit, SimingAuditRecord))
+                    self._record_population_behavior_turn(
+                        event, cadence, read_set, cycle, result
+                    )
                 except (TypeError, ValueError) as exc:
                     result.audit_records.append(self._audit(event, status="no_action", reason=f"population_requeue:{exc}"))
-                    continue
+                continue
+            self._active_turn_event = event
             if siming_input.input_type == "siming_staging_ack":
                 self._process_staging_ack(event, result)
                 continue
@@ -719,6 +722,7 @@ class SimingRuntime:
         if cycle.status == "requeue":
             status = "stale_candidate"
         report = cycle.report
+        cognition = cycle.cognition_stats
         owner_committed = sum(1 for receipt in cycle.owner_receipts if receipt.committed and not receipt.zero_write)
         owner_rejected = len(cycle.owner_receipts) - owner_committed
         reason = (
@@ -733,6 +737,15 @@ class SimingRuntime:
             f" seeds={len(cycle.seed_candidates)}"
             f" receipts={len(cycle.continuity_receipts)}"
             f" append={cycle.production_append_count}"
+            f" b0={cognition.b0_advanced}"
+            f" quiet={cognition.quiet_actors}"
+            f" active={cognition.active_actors}"
+            f" deep_selected={cognition.deep_selected}"
+            f" deep_deferred={cognition.deep_deferred}"
+            f" llm_queued={cognition.llm_queued}"
+            f" llm_completed={cognition.llm_completed}"
+            f" llm_expired={cognition.llm_expired}"
+            f" max_wait={cognition.max_wait_windows}"
             f" read_set={report.read_set_digest}"
             f" result={report.result_digest}"
             f" reason={cycle.reason or 'none'}"
@@ -1463,6 +1476,128 @@ class SimingRuntime:
             return
         with self._behavior_turn_lock:
             self._record_behavior_turn_locked(event, prepared, result)
+
+    def _record_population_behavior_turn(
+        self,
+        event: AuthorityEvent,
+        cadence: PopulationCadenceInput,
+        read_set: PopulationReadSet,
+        cycle: object,
+        result: SimingTickResult,
+    ) -> None:
+        """记录 population 专用紧凑审计，不复制 roster projection。"""
+        if self._behavior_turn_recorder is None:
+            return
+        with self._behavior_turn_lock:
+            if event.correlation_id in self._recorded_behavior_turn_correlations:
+                return
+            resolver = self._behavior_turn_scope_resolver
+            scope = (
+                resolver(event)
+                if callable(resolver)
+                else HeavenlyGraphScope(
+                    world_id="world:demo",
+                    session_id="session:demo",
+                    story_branch_id="branch:main",
+                )
+            )
+            report = cycle.report
+            stats = cycle.cognition_stats
+            audits = tuple(
+                audit
+                for audit in result.audit_records
+                if audit.correlation_id == event.correlation_id
+            )
+            accepted = cycle.status == "accepted"
+            compact_turn_ref = (
+                f"siming:{event.correlation_id}:population-compact:v1"
+            )
+            self._behavior_turn_recorder.record(
+                BehaviorTurnRecordRequest(
+                    turn_id=compact_turn_ref,
+                    scope=scope,
+                    valid_at=event.producer_ts,
+                    recorded_at=event.producer_ts,
+                    policy_revision=cadence.policy_revision,
+                    source_revision_vector=GraphRevisionVector(
+                        source_revision=cadence.cadence_source_revision
+                    ),
+                    scope_digest="scope:siming-population",
+                    provenance=GraphProvenance(
+                        source_kind="authority_event",
+                        source_ref=event.event_id,
+                        causation_id=event.causation_id,
+                        correlation_id=event.correlation_id,
+                        producer_system="siming_runtime",
+                    ),
+                    transaction_id=f"siming-behavior-turn:{compact_turn_ref}",
+                    idempotency_key=f"siming-behavior-turn:{compact_turn_ref}",
+                    stages=(
+                        BehaviorTurnStageRecord(
+                            stage="context",
+                            source_refs=(event.event_id,),
+                            payload={
+                                "cadence_id": cadence.cadence_id,
+                                "window_start": cadence.window_start,
+                                "window_end": cadence.window_end,
+                                "projection_count": len(read_set.projections),
+                                "read_set_digest": read_set.read_set_digest,
+                            },
+                        ),
+                        BehaviorTurnStageRecord(
+                            stage="interpretation",
+                            source_refs=(read_set.read_set_digest,),
+                            payload={
+                                "b0_advanced": stats.b0_advanced,
+                                "active_actors": stats.active_actors,
+                                "deep_selected": stats.deep_selected,
+                                "deep_deferred": stats.deep_deferred,
+                            },
+                        ),
+                        BehaviorTurnStageRecord(
+                            stage="goal",
+                            source_refs=(event.event_id,),
+                            payload={"event_family": event.event_type},
+                        ),
+                        BehaviorTurnStageRecord(
+                            stage="intent",
+                            source_refs=(report.result_digest,),
+                            payload={"owner_intent_count": report.owner_intent_count},
+                        ),
+                        BehaviorTurnStageRecord(
+                            stage="execution",
+                            outcome="accepted" if accepted else "rejected",
+                            source_refs=(report.result_digest,),
+                            payload={
+                                "owner_receipt_count": len(cycle.owner_receipts),
+                                "continuity_receipt_count": len(cycle.continuity_receipts),
+                                "append_count": cycle.production_append_count,
+                            },
+                        ),
+                        BehaviorTurnStageRecord(
+                            stage="settlement",
+                            outcome="committed" if accepted else "rejected",
+                            source_refs=(report.batch_ref,),
+                            payload={"status": cycle.status, "reason": cycle.reason},
+                        ),
+                        BehaviorTurnStageRecord(
+                            stage="evaluation",
+                            source_refs=tuple(audit.audit_id for audit in audits),
+                            payload={"audit_count": len(audits)},
+                        ),
+                        BehaviorTurnStageRecord(
+                            stage="policy",
+                            source_refs=(cadence.policy_revision,),
+                            payload={
+                                "policy_revision": cadence.policy_revision,
+                                "selector_revision": cadence.selector_revision,
+                                "ruleset_revision": cadence.ruleset_revision,
+                            },
+                        ),
+                    ),
+                )
+            )
+            self._recorded_behavior_turn_correlations.add(event.correlation_id)
 
     def _record_behavior_turn_locked(self, event: AuthorityEvent, prepared: object | None, result: SimingTickResult) -> None:
         if event.correlation_id in self._recorded_behavior_turn_correlations:

@@ -30,7 +30,7 @@ async def test_daily_runtime_advances_all_residents_and_resumes_after_restart(mo
 
     async def controlled_sleep(seconds):
         nonlocal wake_count
-        assert seconds == 86400
+        assert 0 <= seconds <= 86400
         wake_count += 1
         if wake_count == 12:
             main._population_runtime_stop_event.set()
@@ -49,7 +49,9 @@ async def test_daily_runtime_advances_all_residents_and_resumes_after_restart(mo
         assert all(not event["payload"].get("memory_candidate_refs") for actor in SAMPLE_ACTOR_IDS
                    for event in runtime.get_session_timeline(actor)[timeline_sizes[actor]:]
                    if event["event_type"] == "character_simulation_seed_event")
-        assert len(main.gameplay_event_store.read_events()) == truth_before
+        appended = main.gameplay_event_store.read_events()[truth_before:]
+        assert len(appended) == 12
+        assert {event.event_type for event in appended} == {"population.cadence.admitted"}
         assert all(not runtime.supports_actor(actor) for actor in SAMPLE_ACTOR_IDS if actor.startswith("resident_"))
         windows = [event.payload["population_cadence"] for event in observed]
         assert all(row["selector_revision"] == "selector:generic:population:v1" for row in windows)

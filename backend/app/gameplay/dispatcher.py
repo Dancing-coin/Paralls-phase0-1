@@ -15,14 +15,21 @@ class GameplayOutboxDispatcher:
         store: GameplayEventStore,
         bus: AuthorityEventBusPort,
         after_transaction_dispatched: Callable[[AtomicEventBatch], None] | None = None,
+        event_transform: Callable[[AuthorityEvent], AuthorityEvent] | None = None,
     ) -> None:
         self._store = store
         self._bus = bus
         self._after_transaction_dispatched = after_transaction_dispatched
+        self._event_transform = event_transform
         self._notified_transaction_ids: set[str] = set()
 
-    def dispatch_pending(self, *, limit: int | None = None) -> DispatchResult:
+    def dispatch_pending(self, *, limit: int | None = None, topic: str | None = None) -> DispatchResult:
         entries = self._store.list_outbox(include_delivered=False)
+        if topic is not None:
+            entries = [entry for entry in entries if entry.topic == topic]
+        # 紧凑人口记录必须由持有名单/规则的运行时重建，通用分发器不得发送缺失的投影。
+        if self._event_transform is None:
+            entries = [entry for entry in entries if entry.payload_projection.get("projection_kind") != "population-runtime"]
         if limit is not None:
             entries = entries[:limit]
         published: list[str] = []
@@ -30,7 +37,10 @@ class GameplayOutboxDispatcher:
         for entry in entries:
             try:
                 event = self._store.get_event(entry.event_id)
-                self._bus.publish(self._authority_event_for(entry, event))
+                outgoing = self._authority_event_for(entry, event)
+                if self._event_transform is not None:
+                    outgoing = self._event_transform(outgoing)
+                self._bus.publish(outgoing)
             except Exception as exc:  # publish failure must not roll back committed truth
                 self._store.mark_outbox_retryable(entry.outbox_id, str(exc))
                 failed.append(entry.outbox_id)
@@ -40,7 +50,7 @@ class GameplayOutboxDispatcher:
             self._notify_if_transaction_fully_dispatched(entry.transaction_id)
         # A transaction with an explicit refresh hint and no outbox has no
         # transport work to await, but remains post-commit-only.
-        for transaction in self._store.read_transactions():
+        for transaction in self._store.read_transactions() if self._after_transaction_dispatched is not None else ():
             if not transaction.outbox_entries and transaction.projection_refresh_hints:
                 self._notify_if_transaction_fully_dispatched(transaction.transaction_id)
         return DispatchResult(

@@ -242,3 +242,20 @@ async def test_driver_run_forever_ticks_until_stopped(driver: PopulationCadenceD
     await driver.run_forever(stop, sleep)
 
     assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_window_period_includes_processing_time(driver, monkeypatch):
+    from app.world_runtime import population_driver
+
+    values = iter((0.0, 0.0, 12.0))
+    monkeypatch.setattr(population_driver, "monotonic", lambda: next(values))
+    stop = asyncio.Event()
+    waits = []
+
+    async def sleep(seconds):
+        waits.append(seconds)
+        stop.set()
+
+    await driver.run_forever(stop, sleep)
+    assert waits == [3588.0]

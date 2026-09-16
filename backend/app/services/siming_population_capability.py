@@ -4,16 +4,19 @@ from collections.abc import Mapping
 import re
 from typing import Callable, Protocol, Sequence
 
+from pydantic import TypeAdapter
+
 from app.character_agent.models.simulation_seed import CharacterContinuityCommand, CharacterContinuityReceipt
 from app.models.authority_event import AuthorityEvent
 from app.population_continuity.batch import PopulationOwnerBoundIntent, PopulationPlanner
 from app.population_continuity.domain_projection_sources import production_receipt_population_projections
+from app.population_continuity.hot_state import HOT_FIELDS
 from app.population_continuity.models import PopulationWorldPlan
 from app.population_continuity.social_input import FrozenSocialPlanningInput
 from app.population_continuity.source_inputs import HouseholdScheduleInput, OrganizationScheduleInput
 from app.population_continuity.models import BatchIntentCandidate
 from app.population_continuity.seed_planner import CharacterSeedPlanner
-from app.population_continuity.siming_contracts import PopulationBatchReport, PopulationCadenceInput, PopulationCycleResult, PopulationOwnerReceipt, PopulationReadSet
+from app.population_continuity.siming_contracts import PopulationB0BatchStats, PopulationB0ContinuousDelta, PopulationBatchReport, PopulationCadenceInput, PopulationCognitionStats, PopulationCycleResult, PopulationOwnerBatchResult, PopulationOwnerReceipt, PopulationProjection, PopulationReadSet
 from app.population_continuity.decision_surface import PopulationCapabilityCatalog, PopulationCapabilityDescriptor, PopulationDecision, PopulationDecisionPlanner, PopulationDecisionPolicy
 
 
@@ -29,6 +32,7 @@ class CharacterContinuityPort(Protocol):
 
 ReadSetBuilder = Callable[[AuthorityEvent, PopulationCadenceInput], PopulationReadSet]
 _CHARACTER_REF_PATTERN = re.compile(r"character:[a-z0-9_.@-]+")
+_POPULATION_PROJECTIONS_ADAPTER = TypeAdapter(tuple[PopulationProjection, ...])
 
 
 def default_population_read_set_builder(event: AuthorityEvent, cadence: PopulationCadenceInput) -> PopulationReadSet:
@@ -38,9 +42,9 @@ def default_population_read_set_builder(event: AuthorityEvent, cadence: Populati
     if raw is None:
         raw = [event.payload[key] for key in ("world_mode_projection", "organization_projection", "household_projection", "social_projection", "public_projection") if isinstance(event.payload.get(key), dict)]
     if isinstance(raw, (list, tuple)):
-        from app.population_continuity.siming_contracts import PopulationProjection
-
-        projections = tuple(PopulationProjection.model_validate(item) for item in raw if isinstance(item, dict))
+        projections = _POPULATION_PROJECTIONS_ADAPTER.validate_python(
+            tuple(item for item in raw if isinstance(item, dict))
+        )
     owner_receipt_value = event.payload.get("population_owner_receipt")
     organization_projection = event.payload.get("organization_projection")
     if isinstance(owner_receipt_value, dict) and isinstance(organization_projection, dict):
@@ -144,6 +148,11 @@ class PopulationSimulationCapability:
         self._continuity_port = continuity_port
         self._decision_planner = decision_planner or PopulationDecisionPlanner()
         self._owner_executors = dict(owner_executors or {})
+        self._last_b0_stats: PopulationB0BatchStats | None = None
+
+    @property
+    def last_b0_stats(self) -> PopulationB0BatchStats | None:
+        return self._last_b0_stats.model_copy(deep=True) if self._last_b0_stats else None
 
     @classmethod
     def default_decision_policy(cls, cadence: PopulationCadenceInput) -> PopulationDecisionPolicy:
@@ -172,31 +181,124 @@ class PopulationSimulationCapability:
 
     def build_b0_continuous_deltas(
         self, cadence_input: PopulationCadenceInput, read_set: PopulationReadSet
-    ) -> tuple[dict[str, object], ...]:
+    ) -> tuple[PopulationB0ContinuousDelta, ...]:
         """生成有界连续状态增量，不触发候选、记忆或 Owner 写入。"""
         if read_set.cadence != cadence_input:
             raise ValueError("stale_read_set")
-        deltas: list[dict[str, object]] = []
+        self._last_b0_stats = None
+        deltas: list[PopulationB0ContinuousDelta] = []
+        due_count = 0
+        rejected_count = 0
+        actor_refs: set[str] = set()
+        validated_template: PopulationB0ContinuousDelta | None = None
         for projection in sorted(read_set.projections, key=lambda item: item.ref):
             payload = projection.payload
             if payload.get("fidelity_tier") != "B0":
                 continue
-            actor_ref = str(payload.get("actor_ref", ""))
+            actor_ref = payload.get("actor_ref")
             state_deltas = payload.get("state_deltas", {})
-            if not actor_ref or not isinstance(state_deltas, dict):
-                continue
+            if not isinstance(actor_ref, str) or not actor_ref.startswith("character:"):
+                raise ValueError("b0_actor_ref_invalid")
+            if not isinstance(state_deltas, dict):
+                raise ValueError("b0_state_invalid")
+            if actor_ref in actor_refs:
+                raise ValueError("b0_actor_duplicate")
+            actor_refs.add(actor_ref)
+            if projection.scope != "public" or payload.get("scope") != "public":
+                raise ValueError("b0_scope_invalid")
             if any(key in payload for key in ("memory_candidates", "llm_request", "full_profile")):
                 raise ValueError("b0_deep_state_forbidden")
-            deltas.append(
-                {
-                    "actor_ref": actor_ref,
-                    "window_start": cadence_input.window_start,
-                    "window_end": cadence_input.window_end,
-                    "state_deltas": dict(state_deltas),
-                    "source_revision_vector": dict(projection.revision_vector or cadence_input.base_revision_vector),
-                    "idempotency_key": f"b0:{cadence_input.cadence_id}:{actor_ref}",
-                }
-            )
+            source_vector = dict(projection.revision_vector)
+            if (
+                not source_vector
+                or source_vector != dict(cadence_input.base_revision_vector)
+                or payload.get("source_revision_vector") != source_vector
+            ):
+                raise ValueError("b0_source_revision_mismatch")
+            raw_from_tick = payload.get("from_tick")
+            raw_to_tick = payload.get("to_tick")
+            raw_cursor = payload.get("simulation_tick_cursor")
+            raw_revision = payload.get("actor_revision")
+            if (
+                not isinstance(raw_from_tick, int)
+                or isinstance(raw_from_tick, bool)
+                or not isinstance(raw_to_tick, int)
+                or isinstance(raw_to_tick, bool)
+                or not isinstance(raw_cursor, int)
+                or isinstance(raw_cursor, bool)
+                or (
+                    raw_from_tick != cadence_input.window_start
+                    and not (raw_from_tick == 0 and raw_revision == 0)
+                )
+                or raw_to_tick != cadence_input.window_end
+                or raw_cursor != cadence_input.window_end
+            ):
+                raise ValueError("b0_window_invalid")
+            if (
+                not isinstance(raw_revision, int)
+                or isinstance(raw_revision, bool)
+                or raw_revision < 0
+            ):
+                raise ValueError("b0_actor_revision_invalid")
+            due_refs = payload.get("due_obligation_refs", ())
+            if (
+                not isinstance(due_refs, (list, tuple))
+                or any(not isinstance(item, str) or not item for item in due_refs)
+            ):
+                raise ValueError("b0_due_obligation_invalid")
+            presentation_seed = payload.get("presentation_seed", {})
+            if not isinstance(presentation_seed, dict):
+                raise ValueError("b0_presentation_seed_invalid")
+            canonical_idempotency_key = f"b0:{cadence_input.cadence_id}:{actor_ref}"
+            if payload.get("idempotency_key") != canonical_idempotency_key:
+                raise ValueError("b0_idempotency_invalid")
+            unknown_state = set(state_deltas).difference(HOT_FIELDS)
+            if unknown_state:
+                raise ValueError("b0_state_field_not_allowed")
+            for key, value in state_deltas.items():
+                if key in {"last_update_tick", "next_due_tick"} and (
+                    not isinstance(value, int) or isinstance(value, bool) or value < 0
+                ):
+                    raise ValueError("b0_state_value_invalid")
+                if key in {"fatigue", "need_pressure", "starvation_credit"} and (
+                    not isinstance(value, (int, float))
+                    or isinstance(value, bool)
+                    or not 0.0 <= float(value) <= 1.0
+                ):
+                    raise ValueError("b0_state_value_invalid")
+                if key == "activity_phase" and value not in {
+                    "rest", "routine", "routine_work", "leisure"
+                }:
+                    raise ValueError("b0_state_value_invalid")
+            delta_values = {
+                "actor_ref": actor_ref,
+                "fidelity_tier": "B0",
+                "from_tick": raw_from_tick,
+                "to_tick": raw_to_tick,
+                "simulation_tick_cursor": raw_cursor,
+                "actor_revision": raw_revision,
+                "state_deltas": dict(state_deltas),
+                "presentation_seed": dict(presentation_seed),
+                "due_obligation_refs": tuple(due_refs),
+                "source_revision_vector": source_vector,
+                "scope": "public",
+                "idempotency_key": canonical_idempotency_key,
+            }
+            if validated_template is None:
+                delta = PopulationB0ContinuousDelta(**delta_values)
+                validated_template = delta
+            else:
+                delta = validated_template.model_copy(update=delta_values)
+            due_count += len(delta.due_obligation_refs)
+            deltas.append(delta)
+        self._last_b0_stats = PopulationB0BatchStats(
+            cadence_id=cadence_input.cadence_id,
+            read_set_digest=read_set.read_set_digest,
+            actor_count=len(deltas),
+            due_count=due_count,
+            deferred_count=max(0, due_count - cadence_input.catch_up_limit),
+            rejected_count=rejected_count,
+        )
         return tuple(deltas)
 
     def run_receipt_pinned_decision_cycle(
@@ -242,7 +344,111 @@ class PopulationSimulationCapability:
         policy: PopulationDecisionPolicy,
         capabilities: tuple[PopulationCapabilityDescriptor, ...],
     ) -> PopulationCycleResult:
-        return self._run_decision_cycle(cadence_input, read_set, policy, capabilities)
+        if read_set.cadence != cadence_input:
+            return self._run_decision_cycle(
+                cadence_input, read_set, policy, capabilities
+            )
+        try:
+            b0_results = self.build_b0_continuous_deltas(cadence_input, read_set)
+        except ValueError as exc:
+            reason = str(exc)
+            if hasattr(exc, "errors"):
+                errors = exc.errors()
+                if errors:
+                    message = str(errors[0].get("ctx", {}).get("error", ""))
+                    reason = message or str(errors[0].get("msg", reason))
+            requeue = self._requeue(
+                f"population-decision:{cadence_input.cadence_id}:requeue",
+                read_set,
+                reason,
+            )
+            return requeue.model_copy(
+                update={
+                    "cognition_stats": PopulationCognitionStats(
+                        requeue_reasons=(reason,)
+                    )
+                }
+            )
+        decision_projections = tuple(
+            projection
+            for projection in read_set.projections
+            if projection.payload.get("fidelity_tier") != "B0"
+            and self._expensive_projection_admitted(
+                projection, policy.default_fidelity_tier
+            )
+        )
+        admitted_projection_refs = {
+            projection.ref for projection in decision_projections
+        }
+        excluded_expensive_count = sum(
+            1
+            for projection in read_set.projections
+            if projection.payload.get("fidelity_tier") != "B0"
+            and projection.ref not in admitted_projection_refs
+        )
+        decision_read_set = PopulationReadSet.from_inputs(
+            cadence_input, decision_projections
+        )
+        result = self._run_decision_cycle(
+            cadence_input, decision_read_set, policy, capabilities
+        )
+        decision = result.decision
+        selected = tuple(decision.selected_candidates) if decision else ()
+        deferred = tuple(decision.deferred_candidates) if decision else ()
+        report = result.report.model_copy(
+            update={"read_set_digest": read_set.read_set_digest}, deep=True
+        )
+        reasons = tuple(
+            reason
+            for reason in (
+                result.reason,
+                "expensive_candidate_not_admitted" if excluded_expensive_count else "",
+            )
+            if reason
+        )
+        return result.model_copy(
+            update={
+                "report": report,
+                "b0_results": b0_results,
+                "cognition_stats": PopulationCognitionStats(
+                    b0_advanced=len(b0_results),
+                    quiet_actors=len(b0_results),
+                    active_actors=len({candidate.actor_ref for candidate in selected}),
+                    deep_selected=len(selected),
+                    deep_deferred=len(deferred) + excluded_expensive_count,
+                    requeue_reasons=reasons,
+                ),
+            },
+        )
+
+    @staticmethod
+    def _expensive_projection_admitted(
+        projection: object, default_fidelity_tier: str
+    ) -> bool:
+        payload = projection.payload
+        explicit_fidelity = payload.get("fidelity_tier")
+        fidelity = explicit_fidelity or default_fidelity_tier
+        if fidelity not in {"B1", "B2"}:
+            return False
+        # 旧 read-set 未声明 tier 时仅沿用既有 B1/B2 policy；新生产投影必须显式授权。
+        if explicit_fidelity is None:
+            return True
+        status = str(
+            payload.get("status")
+            or payload.get("due_status")
+            or payload.get("obligation_status")
+            or ""
+        )
+        due = (
+            payload.get("due") is True
+            or status in {"due", "overdue"}
+            or str(payload.get("candidate_kind", "")).endswith("_due")
+        )
+        activation = (
+            bool(payload.get("activation_receipt_ref"))
+            and payload.get("activation_status") in {"released", "committed"}
+        )
+        return due or activation
 
     def _run_decision_cycle(
         self,
@@ -330,16 +536,12 @@ class PopulationSimulationCapability:
             )
         )
         if generic_owner_candidates:
-            receipts: list[PopulationOwnerReceipt] = []
+            intent_rows: list[
+                tuple[object, object, PopulationOwnerExecutor | None, BatchIntentCandidate]
+            ] = []
             for candidate in generic_owner_candidates:
                 projection = next(item for item in read_set.projections if item.ref in candidate.source_projection_refs)
                 executor = self._owner_executors.get(candidate.capability_id)
-                if executor is None:
-                    return self._requeue(
-                        f"population-decision:{cadence_input.cadence_id}:requeue",
-                        read_set,
-                        "capability_owner_adapter_missing",
-                    )
                 payload = dict(projection.payload.get("owner_payload") or projection.payload)
                 intent = BatchIntentCandidate(
                     intent_ref=candidate.candidate_ref,
@@ -354,7 +556,63 @@ class PopulationSimulationCapability:
                     source_ref=candidate.source_projection_refs[0],
                     privacy_scope=projection.scope,
                 )
-                receipts.append(executor.submit(intent, read_set=read_set))
+                intent_rows.append((candidate, projection, executor, intent))
+            receipt_by_intent: dict[str, PopulationOwnerReceipt] = {}
+            append_count = 0
+            groups: dict[tuple[object, ...], list[tuple[PopulationOwnerExecutor, BatchIntentCandidate]]] = {}
+            for candidate, projection, executor, intent in intent_rows:
+                if executor is None:
+                    receipt_by_intent[intent.intent_ref] = PopulationOwnerReceipt(
+                        receipt_ref=f"requeue:{intent.intent_ref}",
+                        owner_ref=str(getattr(candidate, "target_owner", "population:owner")),
+                        event_family=str(getattr(candidate, "behavior_kind", "population.owner")),
+                        committed=False,
+                        revision_vector={},
+                        zero_write=True,
+                        idempotency_status="rejected",
+                        settlement_status="requeue",
+                        reason="capability_owner_adapter_missing",
+                    )
+                    continue
+                descriptor = next(
+                    item for item in capabilities
+                    if candidate.behavior_kind in item.accepted_behavior_kinds
+                )
+                group_key = (
+                    candidate.capability_id,
+                    descriptor.target_owner,
+                    projection.scope,
+                    policy.policy_revision,
+                    cadence_input.ruleset_revision,
+                    tuple(sorted(cadence_input.base_revision_vector.items())),
+                )
+                groups.setdefault(group_key, []).append((executor, intent))
+            for rows in groups.values():
+                executor = rows[0][0]
+                intents = tuple(row[1] for row in rows)
+                submit_batch = getattr(executor, "submit_batch", None)
+                if len(intents) > 1 and callable(submit_batch):
+                    batch_result = submit_batch(intents, read_set=read_set)
+                    if not isinstance(batch_result, PopulationOwnerBatchResult):
+                        raise TypeError("population_owner_batch_result_invalid")
+                    if len(batch_result.receipts) != len(intents):
+                        raise ValueError("population_owner_batch_receipts_incomplete")
+                    append_count += batch_result.append_count
+                    receipt_by_intent.update(
+                        (intent.intent_ref, receipt)
+                        for intent, receipt in zip(
+                            intents, batch_result.receipts, strict=True
+                        )
+                    )
+                    continue
+                for intent in intents:
+                    receipt = executor.submit(intent, read_set=read_set)
+                    receipt_by_intent[intent.intent_ref] = receipt
+                    append_count += int(receipt.committed and not receipt.zero_write)
+            receipts = [
+                receipt_by_intent[intent.intent_ref]
+                for _, _, _, intent in intent_rows
+            ]
             if any(
                 not receipt.committed
                 or (receipt.zero_write and receipt.idempotency_status != "duplicate_replayed")
@@ -374,7 +632,7 @@ class PopulationSimulationCapability:
                     decision=decision,
                     owner_receipts=tuple(receipts),
                     reason="owner_rejected",
-                    production_append_count=0,
+                    production_append_count=append_count,
                 )
             if self._continuity_port is not None and any(
                 candidate.behavior_kind in {
@@ -421,9 +679,7 @@ class PopulationSimulationCapability:
                     update={
                         "decision": decision,
                         "owner_receipts": tuple(receipts),
-                        "production_append_count": sum(
-                            1 for receipt in receipts if receipt.committed and not receipt.zero_write
-                        ),
+                        "production_append_count": append_count,
                     }
                 )
             return PopulationCycleResult(
@@ -449,9 +705,7 @@ class PopulationSimulationCapability:
                 ),
                 decision=decision,
                 owner_receipts=tuple(receipts),
-                production_append_count=sum(
-                    1 for receipt in receipts if receipt.committed and not receipt.zero_write
-                ),
+                production_append_count=append_count,
             )
         if unknown_selected:
             if any(

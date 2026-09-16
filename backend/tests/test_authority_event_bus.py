@@ -52,6 +52,154 @@ def test_in_memory_bus_publishes_deep_copies_to_subscribers_and_store() -> None:
     assert stored[0].payload["fact_type"] == "light_level_drop"
 
 
+def test_population_cadence_subscribers_receive_isolated_nested_payloads() -> None:
+    bus = InMemoryAuthorityEventBus(history_limits={"population_cadence_event": 2})
+    seen: list[tuple[str, object]] = []
+
+    def mutate_first(event: AuthorityEvent) -> None:
+        event.payload["population_projections"][0]["payload"]["fatigue"] = 1.0
+        seen.append(("first", event.payload["population_projections"][0]["payload"]["fatigue"]))
+
+    def observe_second(event: AuthorityEvent) -> None:
+        seen.append(("second", event.payload["population_projections"][0]["payload"]["fatigue"]))
+
+    bus.subscribe("population_cadence_event", mutate_first)
+    bus.subscribe("population_cadence_event", observe_second)
+    event = make_authority_event(
+        event_type="population_cadence_event",
+        durability="realtime",
+        payload={
+            "population_projections": [
+                {"ref": "projection:one", "payload": {"fatigue": 0.2}}
+            ]
+        },
+    )
+
+    bus.publish(event)
+    event.payload["population_projections"][0]["payload"]["fatigue"] = 0.9
+
+    assert seen == [("first", 1.0), ("second", 0.2)]
+    assert next(iter(bus._events.values())).payload == {}
+    assert isinstance(next(iter(bus._serialized_events.values())), bytes)
+    assert bus.list_events(include_realtime=True)[0].payload["population_projections"][0]["payload"]["fatigue"] == 0.2
+
+
+def test_population_cadence_delivery_does_not_clone_the_full_model_tree(monkeypatch) -> None:
+    bus = InMemoryAuthorityEventBus(history_limits={"population_cadence_event": 2})
+    event = make_authority_event(
+        event_type="population_cadence_event",
+        durability="realtime",
+        payload={"population_projections": [{"payload": {"actor_ref": "character:one"}}]},
+    )
+    bus.subscribe("population_cadence_event", lambda _event: None)
+    original = AuthorityEvent.model_copy
+
+    def reject_population_deepcopy(self, *, update=None, deep=False):
+        if self.event_type == "population_cadence_event" and deep and self.payload:
+            raise AssertionError("population_cadence_full_tree_clone")
+        return original(self, update=update, deep=deep)
+
+    monkeypatch.setattr(AuthorityEvent, "model_copy", reject_population_deepcopy)
+
+    bus.publish(event)
+    assert bus.list_events(include_realtime=True)[0].event_id == event.event_id
+
+
+def test_bus_redelivers_exact_event_without_duplicating_history() -> None:
+    bus = InMemoryAuthorityEventBus(history_limits={"population_cadence_event": 2})
+    deliveries: list[str] = []
+    bus.subscribe("population_cadence_event", lambda event: deliveries.append(event.event_id))
+    event = make_authority_event(
+        event_type="population_cadence_event",
+        durability="realtime",
+        payload={"population_projections": []},
+    )
+
+    bus.publish(event)
+    bus.publish(event.model_copy(deep=True))
+
+    assert deliveries == [event.event_id, event.event_id]
+    assert [item.event_id for item in bus.list_events(include_realtime=True)] == [event.event_id]
+
+
+def test_bus_rejects_same_event_id_with_changed_payload() -> None:
+    bus = InMemoryAuthorityEventBus()
+    event = make_authority_event(
+        event_type="population_cadence_event",
+        durability="realtime",
+        payload={"population_projections": []},
+    )
+    bus.publish(event)
+
+    with pytest.raises(ValueError, match="authority_event_id_conflict"):
+        bus.publish(
+            event.model_copy(
+                update={"payload": {**event.payload, "fact_type": "changed"}},
+                deep=True,
+            )
+        )
+
+
+@pytest.mark.parametrize("changed_value", (True, 1.0))
+def test_population_bus_rejects_json_type_changes_for_same_event_id(
+    changed_value: object,
+) -> None:
+    bus = InMemoryAuthorityEventBus()
+    event = make_authority_event(
+        event_type="population_cadence_event",
+        durability="realtime",
+        payload={"value": 1},
+    )
+    bus.publish(event)
+
+    with pytest.raises(ValueError, match="authority_event_id_conflict"):
+        bus.publish(
+            event.model_copy(update={"payload": {"value": changed_value}}, deep=True)
+        )
+
+
+def test_population_bus_redelivers_semantically_equal_payload_with_different_key_order() -> None:
+    bus = InMemoryAuthorityEventBus()
+    seen: list[AuthorityEvent] = []
+    bus.subscribe("population_cadence_event", seen.append)
+    event = make_authority_event(
+        event_type="population_cadence_event",
+        durability="realtime",
+        payload={"population_projections": [], "window_end": 1},
+    )
+    reordered = event.model_copy(update={"payload": dict(reversed(tuple(event.payload.items())))})
+
+    bus.publish(event)
+    bus.publish(reordered)
+
+    assert len(seen) == 2
+    assert [item.event_id for item in bus.list_events(include_realtime=True)] == [event.event_id]
+
+
+def test_bus_preserves_repeated_non_population_events() -> None:
+    bus = InMemoryAuthorityEventBus()
+    event = make_authority_event()
+
+    bus.publish(event)
+    bus.publish(event.model_copy(deep=True))
+
+    assert [item.event_id for item in bus.list_events()] == [event.event_id, event.event_id]
+
+
+def test_bounded_history_keeps_delivery_and_does_not_copy_payload_for_ledger(monkeypatch):
+    bus = InMemoryAuthorityEventBus(history_limits={"visual_fact_event": 2})
+    seen = []
+    bus.subscribe("visual_fact_event", lambda event: seen.append(event.event_id))
+    for index in range(5):
+        bus.publish(make_authority_event(event_id=f"evt:{index}"))
+    assert seen == [f"evt:{index}" for index in range(5)]
+    assert [event.event_id for event in bus.list_events()] == ["evt:3", "evt:4"]
+    monkeypatch.setattr(bus, "list_events", lambda **kwargs: pytest.fail("ledger copied event history"))
+    ledger = bus.authority_recovery_ledger()
+    assert ledger.event_ids == frozenset({"evt:3", "evt:4"})
+    assert not ledger.is_complete_across_restart
+
+
 def test_in_memory_bus_filters_events_by_room_and_type() -> None:
     bus = InMemoryAuthorityEventBus()
     bus.publish(make_authority_event(event_id="evt:1", room_id="room_demo", event_type="visual_fact_event"))

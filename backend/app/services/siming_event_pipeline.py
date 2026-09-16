@@ -1,10 +1,13 @@
 import os
+import pickle
+from threading import RLock
 
 from app.models.authority_event import AuthorityEvent
 from app.models.siming_event import SimingAuditRecord
 from app.services.authority_event_bus import (
     AuthorityEventBusPort,
     AuthorityRecoveryLedger,
+    authority_events_equal,
 )
 from app.services.siming_audit_writer import SimingAuditWriter
 from app.services.siming_character_dispatch_adapter import (
@@ -18,6 +21,8 @@ from app.world_runtime.intelligence_upgrade import CanonicalPerceptBundle
 
 
 class SimingEventPipeline:
+    _INGRESS_DEDUP_LIMIT = 2
+
     def __init__(
         self,
         *,
@@ -34,8 +39,31 @@ class SimingEventPipeline:
         self._producer = producer
         self._audit_writer = audit_writer
         self._character_dispatch_adapter = character_dispatch_adapter
+        self._ingress_lock = RLock()
+        self._handled_events: dict[str, bytes] = {}
 
     def handle_event(self, event: AuthorityEvent) -> None:
+        if (
+            event.event_type != "population_cadence_event"
+            or event.durability != "realtime"
+        ):
+            self._handle_event(event)
+            return
+        with self._ingress_lock:
+            previous_snapshot = self._handled_events.get(event.event_id)
+            if previous_snapshot is not None:
+                if not authority_events_equal(
+                    pickle.loads(previous_snapshot), event
+                ):
+                    raise ValueError("siming_event_id_conflict")
+                return
+            snapshot = pickle.dumps(event, protocol=pickle.HIGHEST_PROTOCOL)
+            self._handle_event(event)
+            self._handled_events[event.event_id] = snapshot
+            while len(self._handled_events) > self._INGRESS_DEDUP_LIMIT:
+                self._handled_events.pop(next(iter(self._handled_events)))
+
+    def _handle_event(self, event: AuthorityEvent) -> None:
         record_authority_outcome = getattr(
             self._runtime, "record_authority_outcome", None
         )
@@ -83,10 +111,9 @@ class SimingEventPipeline:
         if result.read_model is not None:
             self._audit_writer.record_read_model(result.read_model)
         materialized_events = (
-            []
-            if event.event_type == "population_cadence_event"
-            and event.durability == "realtime"
-            else self._producer.materialize_outputs(result.outputs)
+            self._producer.materialize_outputs(result.outputs)
+            if result.outputs
+            else []
         )
         graph_dispatches = [
             published_event

@@ -12,12 +12,14 @@ from app.population_continuity import (
     ScheduleGatedSupplyOwnerExecutor,
 )
 from app.population_continuity.owner_adapters import (
+    OrganizationOperatingWindowDueOwnerExecutor,
     OrganizationProductionWorkContributionOwnerExecutor,
 )
 from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationProjection
 
 
 ADMITTED_CAPABILITIES = {
+    "population:organization-window-due:v1",
     "population:organization-production-work-contribution:v1",
     "population:inventory-output-custody:v1",
     "population:social-population-signal:v1",
@@ -104,6 +106,11 @@ def test_default_runtime_wires_only_admitted_population_owner_executors(
             ],
             OrganizationProductionWorkContributionOwnerExecutor,
         )
+        window_due = capability._owner_executors[
+            "population:organization-window-due:v1"
+        ]
+        assert isinstance(window_due, OrganizationOperatingWindowDueOwnerExecutor)
+        assert callable(window_due.submit_batch)
         assert all(
             executor._authority._store is store
             for executor in capability._owner_executors.values()
@@ -147,7 +154,6 @@ def test_active_inventory_and_social_capabilities_use_the_shared_package_registr
     (
         ("inventory_output_custody", "inventory", "public"),
         ("social_population_signal", "social", "public"),
-        ("organization_operating_window_due", "organization", "organization:summary"),
     ),
 )
 def test_unsupported_population_capability_requeues_without_write(
@@ -176,12 +182,7 @@ def test_unsupported_population_capability_requeues_without_write(
             audit for audit in result.audit_records if "population_cycle" in audit.reason
         )
         assert "status=requeue" in population_audit.reason
-        expected_reason = (
-            "owner_rejected"
-            if candidate_kind in {"inventory_output_custody", "social_population_signal"}
-            else "capability_owner_adapter_missing"
-        )
-        assert f"reason={expected_reason}" in population_audit.reason
+        assert "reason=owner_rejected" in population_audit.reason
         assert store.export_snapshot() == before
     finally:
         state.close()

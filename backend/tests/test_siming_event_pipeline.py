@@ -131,6 +131,180 @@ def make_pipeline(bus: InMemoryAuthorityEventBus, audit_writer: SimingAuditWrite
     )
 
 
+class _CountingNoActionRuntime:
+    def __init__(self) -> None:
+        self.tick_count = 0
+
+    def tick(self, _inputs: list[object]) -> SimingTickResult:
+        self.tick_count += 1
+        return SimingTickResult()
+
+
+def _population_event(*, event_id: str = "population:cadence:1") -> AuthorityEvent:
+    return make_visual_fact_event(
+        event_id=event_id,
+        event_type="population_cadence_event",
+        durability="realtime",
+        payload={"population_projections": [], "window_end": 1},
+    )
+
+
+def test_pipeline_deduplicates_exact_successful_ingress_event() -> None:
+    bus = InMemoryAuthorityEventBus()
+    runtime = _CountingNoActionRuntime()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=runtime,
+        producer=SimingEventProducer(bus),
+        audit_writer=SimingAuditWriter(),
+    )
+    event = _population_event()
+
+    pipeline.handle_event(event)
+    pipeline.handle_event(event.model_copy(deep=True))
+
+    assert runtime.tick_count == 1
+
+
+def test_pipeline_deduplicates_semantically_equal_payload_with_different_key_order() -> None:
+    bus = InMemoryAuthorityEventBus()
+    runtime = _CountingNoActionRuntime()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=runtime,
+        producer=SimingEventProducer(bus),
+        audit_writer=SimingAuditWriter(),
+    )
+    event = _population_event()
+    reordered = event.model_copy(update={"payload": dict(reversed(tuple(event.payload.items())))})
+
+    pipeline.handle_event(event)
+    pipeline.handle_event(reordered)
+
+    assert runtime.tick_count == 1
+
+
+def test_pipeline_bounds_successful_ingress_deduplication_window() -> None:
+    bus = InMemoryAuthorityEventBus()
+    runtime = _CountingNoActionRuntime()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=runtime,
+        producer=SimingEventProducer(bus),
+        audit_writer=SimingAuditWriter(),
+    )
+    pipeline._INGRESS_DEDUP_LIMIT = 2
+
+    for index in range(3):
+        pipeline.handle_event(_population_event(event_id=f"population:cadence:{index}"))
+
+    assert len(pipeline._handled_events) == 2
+    assert all(isinstance(snapshot, bytes) for snapshot in pipeline._handled_events.values())
+
+
+def test_pipeline_rejects_same_event_id_with_changed_payload() -> None:
+    bus = InMemoryAuthorityEventBus()
+    runtime = _CountingNoActionRuntime()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=runtime,
+        producer=SimingEventProducer(bus),
+        audit_writer=SimingAuditWriter(),
+    )
+    event = _population_event()
+    changed = event.model_copy(
+        update={"payload": {**event.payload, "fact_type": "changed"}}, deep=True
+    )
+
+    pipeline.handle_event(event)
+    with pytest.raises(ValueError, match="siming_event_id_conflict"):
+        pipeline.handle_event(changed)
+
+    assert runtime.tick_count == 1
+
+
+@pytest.mark.parametrize("changed_value", (True, 1.0))
+def test_pipeline_rejects_json_type_changes_for_same_event_id(
+    changed_value: object,
+) -> None:
+    bus = InMemoryAuthorityEventBus()
+    runtime = _CountingNoActionRuntime()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=runtime,
+        producer=SimingEventProducer(bus),
+        audit_writer=SimingAuditWriter(),
+    )
+    event = _population_event().model_copy(
+        update={"payload": {"value": 1}}, deep=True
+    )
+    changed = event.model_copy(
+        update={"payload": {"value": changed_value}}, deep=True
+    )
+
+    pipeline.handle_event(event)
+    with pytest.raises(ValueError, match="siming_event_id_conflict"):
+        pipeline.handle_event(changed)
+
+    assert runtime.tick_count == 1
+
+
+def test_bus_retry_after_later_subscriber_failure_does_not_repeat_siming_side_effect() -> None:
+    bus = InMemoryAuthorityEventBus()
+    runtime = _CountingNoActionRuntime()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=runtime,
+        producer=SimingEventProducer(bus),
+        audit_writer=SimingAuditWriter(),
+    )
+    later_calls = 0
+
+    def fail_once(_event: AuthorityEvent) -> None:
+        nonlocal later_calls
+        later_calls += 1
+        if later_calls == 1:
+            raise RuntimeError("later_subscriber_failed")
+
+    bus.subscribe("population_cadence_event", pipeline.handle_event)
+    bus.subscribe("population_cadence_event", fail_once)
+    event = _population_event()
+
+    with pytest.raises(RuntimeError, match="later_subscriber_failed"):
+        bus.publish(event)
+    bus.publish(event.model_copy(deep=True))
+
+    assert runtime.tick_count == 1
+    assert later_calls == 2
+    assert [
+        item.event_id for item in bus.list_events(include_realtime=True)
+    ] == [event.event_id]
+
+
+def test_pipeline_preserves_repeated_non_population_events() -> None:
+    bus = InMemoryAuthorityEventBus()
+    runtime = _CountingNoActionRuntime()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=runtime,
+        producer=SimingEventProducer(bus),
+        audit_writer=SimingAuditWriter(),
+    )
+    event = make_visual_fact_event()
+
+    pipeline.handle_event(event)
+    pipeline.handle_event(event.model_copy(deep=True))
+
+    assert runtime.tick_count == 2
+
+
 class FakeCharacterInputRuntime:
     def tick(self, _inputs: list[object]) -> SimingTickResult:
         return SimingTickResult(
@@ -153,6 +327,23 @@ class FakeCharacterInputRuntime:
                 )
             ]
         )
+
+
+def test_pipeline_materializes_nonempty_population_outputs() -> None:
+    bus = InMemoryAuthorityEventBus()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=FakeCharacterInputRuntime(),
+        producer=SimingEventProducer(bus),
+        audit_writer=SimingAuditWriter(),
+    )
+
+    pipeline.handle_event(_population_event())
+
+    assert [
+        event.event_type for event in bus.list_events(event_type="siming.fact_reveal")
+    ] == ["siming.fact_reveal"]
 
 
 def test_pipeline_publishes_visual_observability_event_from_visual_fact_input() -> None:

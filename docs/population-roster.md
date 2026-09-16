@@ -20,6 +20,8 @@ POPULATION_ROSTER_PATH=backend/assets/population/my_roster.json
 
 新居民仅获得 dormant continuity 身份；这不会生成完整 CharacterProfile、剧情真相、私有知识、长期记忆或 Godot 角色实例。完整角色档案仍需按既有入口单独配置。
 
+已经开始的持久局会记录名单摘要；修改名单后重开同一存档会拒绝恢复（`population_roster_mismatch`）。更换名单开始新局时，应使用新的存档路径，保留原存档；当前没有隐式增删居民迁移。恢复规则、存档位置和规模验收见 [群体优化交接](verification/population-data-oriented-closure.md)。
+
 ## 结构化角色表直接导入
 
 工具读取 UTF-8 JSON，支持三种输入：

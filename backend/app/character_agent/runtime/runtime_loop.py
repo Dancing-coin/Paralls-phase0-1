@@ -39,6 +39,7 @@ from app.character_agent.models.supervision import (
     CharacterUnresolvedTension,
 )
 from app.character_agent.models.simulation_seed import (
+    CharacterModuleDelta,
     CharacterContinuityCommand,
     CharacterContinuityReceipt,
     CharacterMemoryCandidate,
@@ -171,6 +172,8 @@ class CharacterAgentRuntime:
         self._last_skill_affordance_summaries: dict[str, dict[str, object]] = {}
         self._session_store = CharacterAgentSessionStore(storage_root=storage_root)
         self._graph_session_timelines: dict[str, list[dict[str, object]]] = {}
+        self._graph_session_local_overlap_counts: dict[str, int] = {}
+        self._graph_session_replay_offsets: dict[str, int] = {}
         self._memory_store = memory_store or CharacterAgentMemoryStore()
         self._projected_memory_scene_events: set[tuple[str, str]] = set()
         self._dynamic_state_store = CharacterDynamicStateStore()
@@ -180,10 +183,18 @@ class CharacterAgentRuntime:
         self._behavior_evaluation = CharacterBehaviorEvaluationService()
         self._continuity_store = continuity_store
         self._state_group_registry = state_group_registry
+        self._continuity_flush_locks: dict[str, RLock] = {}
         self._continuity_revisions: dict[str, int] = {}
         self._continuity_checkpoint_event_indexes: dict[str, int] = {}
         self._continuity_receipts: dict[str, CharacterContinuityReceipt] = {}
+        self._continuity_receipts_by_actor: dict[str, dict[str, CharacterContinuityReceipt]] = {}
+        self._continuity_committed_events: dict[str, dict[str, object]] = {}
+        self._continuity_projection_rebuild_required: set[str] = set()
         self._materialization_receipts: dict[str, CharacterMemoryMaterializationReceipt] = {}
+        self._materialization_receipts_by_actor: dict[
+            str, dict[str, CharacterMemoryMaterializationReceipt]
+        ] = {}
+        self._materialization_committed_events: dict[str, dict[str, object]] = {}
         self._pending_seed_candidates: dict[str, dict[str, CharacterMemoryCandidate]] = {}
         self._seed_projections: dict[str, dict[str, object]] = {}
         self._shared_module_states: dict[str, dict[str, dict[str, object]]] = {}
@@ -204,8 +215,8 @@ class CharacterAgentRuntime:
         self._affect_engine = AffectEngine()
         self._drift_accumulator = DriftAccumulator()
         self._drift_promotion_gate = DriftPromotionGate()
-        self._rehydrate_runtime_state_from_timeline()
         self._rehydrate_graph_continuity()
+        self._rehydrate_runtime_state_from_timeline()
         for actor_id in self._supported_actor_ids | self._continuity_actor_ids:
             for event in self.get_session_timeline(actor_id):
                 self._update_memory_scene_knowledge(event)
@@ -1174,19 +1185,27 @@ class CharacterAgentRuntime:
         return snapshot
 
     def get_session_timeline(self, actor_id: str) -> list[dict[str, object]]:
-        graph_timeline = deepcopy(self._graph_session_timelines.get(actor_id, []))
-        timeline = self._session_store.list_events(actor_id)
-        if not graph_timeline:
-            return timeline
-        known_event_ids = {
-            str(event.get("event_id", "") or "") for event in graph_timeline
-        }
-        graph_timeline.extend(
-            event
-            for event in timeline
-            if not event.get("event_id") or str(event["event_id"]) not in known_event_ids
+        return self._session_timeline_after(actor_id, 0)
+
+    def _session_timeline_event_count(self, actor_id: str) -> int:
+        graph_count = len(self._graph_session_timelines.get(actor_id, ()))
+        overlap = self._graph_session_local_overlap_counts.get(actor_id, 0)
+        return graph_count + self._session_store.event_count(actor_id) - overlap
+
+    def _session_timeline_after(
+        self, actor_id: str, event_count: int
+    ) -> list[dict[str, object]]:
+        graph_timeline = self._graph_session_timelines.get(actor_id, [])
+        graph_count = len(graph_timeline)
+        overlap = self._graph_session_local_overlap_counts.get(actor_id, 0)
+        graph_tail = (
+            [deepcopy(event) for event in graph_timeline[event_count:]]
+            if event_count < graph_count
+            else []
         )
-        return graph_timeline
+        local_offset = overlap + max(0, event_count - graph_count)
+        graph_tail.extend(self._session_store.list_events_after(actor_id, local_offset))
+        return graph_tail
 
     def apply_character_continuity_command(
         self, command: CharacterContinuityCommand
@@ -1195,7 +1214,7 @@ class CharacterAgentRuntime:
 
     def get_memory_revision(self, actor_id: str) -> int:
         """使用角色事件时间线的版本，普通认知写入也会使旧修复请求失效。"""
-        return len(self.get_session_timeline(actor_id))
+        return self._session_timeline_event_count(actor_id)
 
     def get_target_memory_record_bundle(self, actor_id: str, subject_refs: set[str]) -> CharacterMemoryRecordBundle:
         """按当前目标补查本人的已获知经历，不访问世界真相或其他角色。"""
@@ -1496,6 +1515,13 @@ class CharacterAgentRuntime:
         for candidate_id, candidate in list(candidates.items()):
             prior = self._materialization_receipts.get(candidate_id)
             if prior is not None:
+                if prior.status == "committed":
+                    committed_event = self._materialization_committed_events.get(
+                        candidate_id
+                    )
+                    if committed_event is None:
+                        raise ValueError("character_materialization_commit_missing")
+                    self._memory_store.write_event(committed_event)
                 receipts.append(
                     prior.model_copy(update={"status": "idempotent_replay"})
                 )
@@ -1512,7 +1538,7 @@ class CharacterAgentRuntime:
                     status="rejected",
                     refusal_reason="memory_materialization_denied",
                 )
-                self._materialization_receipts[candidate_id] = receipt
+                self._remember_materialization_receipt(candidate_id, receipt)
                 receipts.append(receipt)
                 continue
             if producer_ts < candidate.knowledge_available_at:
@@ -1522,17 +1548,10 @@ class CharacterAgentRuntime:
                     status="rejected",
                     refusal_reason="temporal_knowledge_denied",
                 )
-                self._materialization_receipts[candidate_id] = receipt
+                self._remember_materialization_receipt(candidate_id, receipt)
                 receipts.append(receipt)
                 continue
             event_type, payload = self._memory_materialization_event(candidate, actor_id, candidate_id)
-            event = self._session_store.append_event(
-                actor_id=actor_id,
-                event_type=event_type,
-                producer_ts=producer_ts,
-                payload=payload,
-            )
-            self._memory_store.write_event(event)
             receipt = CharacterMemoryMaterializationReceipt(
                 candidate_id=candidate_id,
                 actor_ref=actor_id,
@@ -1540,7 +1559,17 @@ class CharacterAgentRuntime:
                 selected_pool=self._memory_pool_for_candidate(candidate),
                 memory_cursor=producer_ts,
             )
-            self._materialization_receipts[candidate_id] = receipt
+            event = self._session_store.append_event(
+                actor_id=actor_id,
+                event_type=event_type,
+                producer_ts=producer_ts,
+                payload={
+                    **payload,
+                    "materialization_receipt": receipt.model_dump(mode="json"),
+                },
+            )
+            self._remember_materialization_commit(event)
+            self._memory_store.write_event(event)
             receipts.append(receipt)
         self._persist_graph_continuity(actor_id=actor_id, producer_ts=producer_ts)
         return receipts
@@ -1585,6 +1614,20 @@ class CharacterAgentRuntime:
             )
         prior = self._continuity_receipts.get(command.idempotency_key)
         if isinstance(prior, CharacterContinuityReceipt):
+            if command.idempotency_key in self._continuity_projection_rebuild_required:
+                event = self._continuity_committed_events.get(command.idempotency_key)
+                if event is not None:
+                    payload = event.get("payload", {})
+                    if not isinstance(payload, dict):
+                        raise ValueError("character_continuity_commit_invalid")
+                    self._apply_continuity_commit_projection(actor_id, payload)
+                    self._memory_store.write_event(event)
+                self._persist_graph_continuity(
+                    actor_id=actor_id, producer_ts=prior.recorded_at
+                )
+                self._continuity_projection_rebuild_required.discard(
+                    command.idempotency_key
+                )
             return prior.model_copy(update={"status": "idempotent_replay"}, deep=True)
         current_revision = self._continuity_revisions.get(actor_id, 0)
         if command.expected_character_revision != current_revision:
@@ -1672,14 +1715,6 @@ class CharacterAgentRuntime:
                 current_revision,
                 str(exc) or "module_delta_invalid",
             )
-        if isinstance(need_delta, dict):
-            self._need_tension_store.merge_delta(actor_id, need_delta)
-        if isinstance(dynamic_delta, dict):
-            self._dynamic_state_store.merge_delta(actor_id, dynamic_delta)
-        self._shared_module_states[actor_id] = staged_modules
-        pending = self._pending_seed_candidates.setdefault(actor_id, {})
-        for candidate in staged_candidates:
-            pending[candidate.candidate_id] = candidate
         projection = {
             "actor_ref": command.actor_ref,
             "state_deltas": deepcopy(state_delta),
@@ -1692,26 +1727,7 @@ class CharacterAgentRuntime:
             "memory_candidate_refs": list(command.memory_candidate_refs),
             "supersedes": command.exposure_evidence.get("supersedes") or supersedes,
         }
-        self._ingest_seed_projection(projection)
-        explicit_tick_cursor = "simulation_tick_cursor" in command.model_fields_set
-        simulation_tick_cursor = (
-            command.simulation_tick_cursor
-            if explicit_tick_cursor
-            else max(command.source_revision_vector.values(), default=current_revision)
-        )
-        event = self._session_store.append_event(
-            actor_id=actor_id,
-            event_type="character_simulation_seed_event",
-            producer_ts=int(
-                command.to_tick
-                if "to_tick" in command.model_fields_set
-                else command.source_revision_vector.get("world:bakery", 0)
-                or command.expected_character_revision
-            ),
-            payload=projection,
-        )
-        self._memory_store.write_event(event)
-        self._continuity_revisions[actor_id] = current_revision + 1
+        simulation_tick_cursor = command.simulation_tick_cursor
         receipt = CharacterContinuityReceipt(
             receipt_ref=f"continuity:{command.command_id}",
             command_id=command.command_id,
@@ -1729,10 +1745,40 @@ class CharacterAgentRuntime:
                 "memory_cursor": 0,
             },
             source_owner_receipt_refs=command.source_owner_receipt_refs,
-            recorded_at=max(command.source_revision_vector.values(), default=0),
+            recorded_at=command.to_tick,
         )
-        self._continuity_receipts[command.idempotency_key] = receipt
-        self._persist_graph_continuity(actor_id=actor_id, producer_ts=receipt.recorded_at)
+        event = self._session_store.append_event(
+            actor_id=actor_id,
+            event_type="character_simulation_seed_event",
+            producer_ts=command.to_tick,
+            payload={
+                **projection,
+                "continuity_commit": {
+                    "idempotency_key": command.idempotency_key,
+                    "receipt": receipt.model_dump(mode="json"),
+                    "need_tension_delta": deepcopy(need_delta) if isinstance(need_delta, dict) else {},
+                    "dynamic_state_delta": deepcopy(dynamic_delta) if isinstance(dynamic_delta, dict) else {},
+                    "memory_candidates": [
+                        candidate.model_dump(mode="json") for candidate in staged_candidates
+                    ],
+                },
+            },
+        )
+        self._continuity_committed_events[command.idempotency_key] = deepcopy(event)
+        self._continuity_revisions[actor_id] = current_revision + 1
+        self._remember_continuity_receipt(command.idempotency_key, receipt)
+        try:
+            payload = event.get("payload", {})
+            if not isinstance(payload, dict):
+                raise ValueError("character_continuity_commit_invalid")
+            self._apply_continuity_commit_projection(actor_id, payload)
+            self._memory_store.write_event(event)
+            self._persist_graph_continuity(
+                actor_id=actor_id, producer_ts=receipt.recorded_at
+            )
+        except Exception:
+            self._continuity_projection_rebuild_required.add(command.idempotency_key)
+            raise
         return receipt
 
     def _stage_shared_module_deltas(
@@ -1779,6 +1825,81 @@ class CharacterAgentRuntime:
                 "source_ref": delta.source_ref,
             }
         return staged
+    def _remember_continuity_receipt(
+        self, key: str, receipt: CharacterContinuityReceipt
+    ) -> None:
+        previous = self._continuity_receipts.get(key)
+        if previous is not None and previous != receipt:
+            raise ValueError("character_continuity_receipt_conflict")
+        self._continuity_receipts[key] = receipt
+        actor_id = receipt.actor_ref.removeprefix("character:")
+        self._continuity_receipts_by_actor.setdefault(actor_id, {})[key] = receipt
+
+    def _remember_materialization_receipt(
+        self, key: str, receipt: CharacterMemoryMaterializationReceipt
+    ) -> None:
+        previous = self._materialization_receipts.get(key)
+        if previous is not None and previous != receipt:
+            raise ValueError("character_materialization_receipt_conflict")
+        self._materialization_receipts[key] = receipt
+        actor_id = receipt.actor_ref.removeprefix("character:")
+        self._materialization_receipts_by_actor.setdefault(actor_id, {})[key] = receipt
+
+    def _remember_materialization_commit(self, event: dict[str, object]) -> None:
+        payload = event.get("payload", {})
+        if not isinstance(payload, dict):
+            return
+        materialization = payload.get("materialization_receipt")
+        if not isinstance(materialization, dict):
+            return
+        receipt = CharacterMemoryMaterializationReceipt.model_validate(materialization)
+        actor_id = str(event.get("actor_id", "") or "")
+        if receipt.actor_ref.removeprefix("character:") != actor_id:
+            raise ValueError("character_materialization_commit_actor_mismatch")
+        self._remember_materialization_receipt(receipt.candidate_id, receipt)
+        if receipt.status != "committed":
+            return
+        previous = self._materialization_committed_events.get(receipt.candidate_id)
+        if previous is not None and previous != event:
+            raise ValueError("character_materialization_commit_conflict")
+        self._materialization_committed_events[receipt.candidate_id] = deepcopy(event)
+
+    def _apply_continuity_commit_projection(
+        self, actor_id: str, payload: dict[str, object]
+    ) -> None:
+        commit = payload.get("continuity_commit")
+        if not isinstance(commit, dict):
+            raise ValueError("character_continuity_commit_invalid")
+        candidates = commit.get("memory_candidates", [])
+        if not isinstance(candidates, list):
+            raise ValueError("character_continuity_commit_invalid")
+        pending = self._pending_seed_candidates.setdefault(actor_id, {})
+        for candidate_payload in candidates:
+            candidate = CharacterMemoryCandidate.model_validate(candidate_payload)
+            if candidate.actor_ref.removeprefix("character:") != actor_id:
+                raise ValueError("character_continuity_commit_actor_mismatch")
+            pending[candidate.candidate_id] = candidate
+        projection = {
+            key: deepcopy(value)
+            for key, value in payload.items()
+            if key != "continuity_commit"
+        }
+        self._ingest_seed_projection(projection)
+        raw_module_deltas = projection.get("module_deltas", [])
+        if not isinstance(raw_module_deltas, list):
+            raise ValueError("character_continuity_module_deltas_invalid")
+        module_deltas = tuple(CharacterModuleDelta.model_validate(item) for item in raw_module_deltas)
+        if module_deltas:
+            self._shared_module_states[actor_id] = self._stage_shared_module_deltas(
+                actor_id,
+                module_deltas,
+            )
+        need_delta = commit.get("need_tension_delta")
+        if isinstance(need_delta, dict) and need_delta:
+            self._need_tension_store.merge_delta(actor_id, need_delta)
+        dynamic_delta = commit.get("dynamic_state_delta")
+        if isinstance(dynamic_delta, dict) and dynamic_delta:
+            self._dynamic_state_store.merge_delta(actor_id, dynamic_delta)
 
     def _continuity_refusal(self, command: CharacterContinuityCommand, revision: int, reason: str) -> CharacterContinuityReceipt:
         return CharacterContinuityReceipt(
@@ -2908,14 +3029,11 @@ class CharacterAgentRuntime:
             "transition_kind": transition_kind,
             "transition_reason_tags": transition_reason_tags,
         }
-        self._goal_state_store.write(
-            actor_id,
-            CharacterGoalStateRecord(
-                actor_id=actor_id,
-                transition_kind=transition_kind,
-                transition_reason_tags=transition_reason_tags,
-                **goal_state,
-            ),
+        goal_record = CharacterGoalStateRecord(
+            actor_id=actor_id,
+            transition_kind=transition_kind,
+            transition_reason_tags=transition_reason_tags,
+            **goal_state,
         )
         stored = self._session_store.append_event(
             actor_id=actor_id,
@@ -2923,6 +3041,7 @@ class CharacterAgentRuntime:
             producer_ts=producer_ts,
             payload=event_payload,
         )
+        self._goal_state_store.write(actor_id, goal_record)
         self._memory_store.write_event(stored)
         self._record_shadow_skill_affordance_summary(
             actor_id=actor_id,
@@ -4316,10 +4435,15 @@ class CharacterAgentRuntime:
         return sorted(need_pressures, key=lambda item: (-item[1], item[0]))
 
     def _rehydrate_runtime_state_from_timeline(self) -> None:
-        for actor_id, events in self._session_store.list_all_events().items():
+        actor_ids = set(self._session_store.actor_ids()) | set(self._graph_session_timelines)
+        for actor_id in sorted(actor_ids):
+            events = self._session_timeline_after(
+                actor_id, self._graph_session_replay_offsets.get(actor_id, 0)
+            )
             for event in events:
                 if isinstance(event, dict):
                     self._memory_store.write_event(event)
+                    self._remember_materialization_commit(event)
                 event_type = str(event.get("event_type", "") or "") if isinstance(event, dict) else ""
                 payload = event.get("payload", {}) if isinstance(event, dict) else {}
                 if not isinstance(payload, dict):
@@ -4375,29 +4499,139 @@ class CharacterAgentRuntime:
                     agenda_payload = payload.get("background_agenda_state", {})
                     if isinstance(agenda_payload, dict) and agenda_payload:
                         self._background_agenda_states[actor_id] = CharacterBackgroundAgendaState(**agenda_payload)
+                if event_type == "character_simulation_seed_event":
+                    self._rehydrate_continuity_commit(actor_id, event, payload)
+
+    def _rehydrate_continuity_commit(
+        self,
+        actor_id: str,
+        event: dict[str, object],
+        payload: dict[str, object],
+    ) -> None:
+        commit = payload.get("continuity_commit")
+        if not isinstance(commit, dict):
+            return
+        key = commit.get("idempotency_key")
+        receipt_payload = commit.get("receipt")
+        if not isinstance(key, str) or not key or not isinstance(receipt_payload, dict):
+            raise ValueError("character_continuity_commit_invalid")
+        receipt = CharacterContinuityReceipt.model_validate(receipt_payload)
+        if receipt.actor_ref.removeprefix("character:") != actor_id:
+            raise ValueError("character_continuity_commit_actor_mismatch")
+        self._continuity_committed_events[key] = deepcopy(event)
+        current_revision = self._continuity_revisions.get(actor_id, 0)
+        self._apply_continuity_commit_projection(actor_id, payload)
+        self._remember_continuity_receipt(key, receipt)
+        if receipt.character_revision_after <= current_revision:
+            return
+        if receipt.character_revision_before != current_revision:
+            raise ValueError("character_continuity_projection_gap")
+        self._continuity_revisions[actor_id] = receipt.character_revision_after
 
     def _rehydrate_graph_continuity(self) -> None:
         if self._continuity_store is None:
             return
+
+        def source_event_index(
+            timeline: list[dict[str, object]], source_event_ref: str
+        ) -> int | None:
+            found: int | None = None
+            for expected_index, event in enumerate(timeline, start=1):
+                event_index = event.get("event_index")
+                if (
+                    not isinstance(event_index, int)
+                    or isinstance(event_index, bool)
+                    or event_index != expected_index
+                ):
+                    raise ValueError("character_continuity_timeline_invalid")
+                if event.get("event_id") == source_event_ref:
+                    found = event_index
+            return found
+
         for actor_id in sorted(self._supported_actor_ids | self._continuity_actor_ids):
-            current_state = self._continuity_store.read_current_state(actor_id)
-            checkpoint = self._continuity_store.read_snapshot(actor_id)
-            snapshot = dict(checkpoint or {})
-            if current_state:
+            source_field = CharacterGraphContinuityStore.SOURCE_EVENT_REF_FIELD
+            checkpoint = dict(self._continuity_store.read_snapshot(actor_id) or {})
+            checkpoint_source = str(checkpoint.pop(source_field, "") or "")
+            base_timeline = [
+                deepcopy(event)
+                for event in checkpoint.get("session_timeline", [])
+                if isinstance(event, dict)
+            ]
+            base_ids = {
+                str(event.get("event_id", "") or "") for event in base_timeline
+            }
+            if checkpoint and checkpoint_source not in base_ids:
+                checkpoint = {}
+                base_timeline = []
+                base_ids = set()
+            checkpoint_anchor = (
+                source_event_index(base_timeline, checkpoint_source)
+                if checkpoint
+                else 0
+            )
+            raw_checkpoint_cursor = checkpoint.get(
+                "checkpoint_event_index", checkpoint_anchor
+            )
+            if checkpoint and (
+                not isinstance(raw_checkpoint_cursor, int)
+                or isinstance(raw_checkpoint_cursor, bool)
+                or raw_checkpoint_cursor != checkpoint_anchor
+            ):
+                checkpoint = {}
+                base_timeline = []
+                base_ids = set()
+                checkpoint_anchor = 0
+                raw_checkpoint_cursor = 0
+
+            current_state = dict(
+                self._continuity_store.read_current_state(actor_id) or {}
+            )
+            current_source = str(current_state.pop(source_field, "") or "")
+            tail = current_state.pop("session_timeline_tail", [])
+            candidate_timeline = list(base_timeline)
+            candidate_ids = set(base_ids)
+            if isinstance(tail, list):
+                for event in tail:
+                    if not isinstance(event, dict):
+                        raise ValueError("character_continuity_timeline_invalid")
+                    event_id = str(event.get("event_id", "") or "")
+                    if event_id and event_id in candidate_ids:
+                        continue
+                    candidate_timeline.append(deepcopy(event))
+                    if event_id:
+                        candidate_ids.add(event_id)
+
+            snapshot = dict(checkpoint)
+            timeline = base_timeline
+            current_anchor = (
+                source_event_index(candidate_timeline, current_source)
+                if current_source in candidate_ids
+                else None
+            )
+            current_checkpoint_cursor = current_state.get("checkpoint_event_index")
+            current_is_not_older = (
+                current_anchor is not None
+                and isinstance(current_checkpoint_cursor, int)
+                and not isinstance(current_checkpoint_cursor, bool)
+                and raw_checkpoint_cursor <= current_checkpoint_cursor <= current_anchor
+                and current_anchor >= checkpoint_anchor
+            )
+            if current_state and current_is_not_older:
                 snapshot.update(current_state)
-                tail = current_state.get("session_timeline_tail")
-                base_timeline = list(checkpoint.get("session_timeline", [])) if isinstance(checkpoint, dict) else []
-                if isinstance(tail, list):
-                    known = {str(item.get("event_id", "")) for item in base_timeline if isinstance(item, dict)}
-                    base_timeline.extend(
-                        item for item in tail
-                        if isinstance(item, dict) and str(item.get("event_id", "")) not in known
-                    )
-                    snapshot["session_timeline"] = base_timeline
-            if not snapshot:
+                timeline = candidate_timeline
+            if not snapshot and not timeline:
                 continue
-            if not snapshot:
-                continue
+            snapshot["session_timeline"] = timeline
+            checkpoint_index = snapshot.get("checkpoint_event_index", 0)
+            if (
+                not isinstance(checkpoint_index, int)
+                or isinstance(checkpoint_index, bool)
+                or checkpoint_index < 0
+                or checkpoint_index > len(timeline)
+            ):
+                raise ValueError("character_continuity_projection_gap")
+            self._continuity_checkpoint_event_indexes[actor_id] = checkpoint_index
+            self._graph_session_replay_offsets[actor_id] = checkpoint_index
             dynamic = snapshot.get("dynamic_state")
             if isinstance(dynamic, dict):
                 self._dynamic_state_store.write(actor_id, dynamic)
@@ -4411,7 +4645,11 @@ class CharacterAgentRuntime:
                         self._goal_state_store.write(actor_id, goal)
             else:
                 goal = snapshot.get("goal_state")
-                if isinstance(goal, dict) and goal:
+                goal_is_in_replay_tail = any(
+                    event.get("event_type") == "goal_state_event"
+                    for event in timeline[checkpoint_index:]
+                )
+                if isinstance(goal, dict) and goal and not goal_is_in_replay_tail:
                     self._goal_state_store.write(actor_id, goal)
             supervision = snapshot.get("supervision_state")
             if isinstance(supervision, dict) and supervision:
@@ -4422,74 +4660,83 @@ class CharacterAgentRuntime:
             revisions = snapshot.get("continuity_revisions")
             if isinstance(revisions, int) and revisions >= 0:
                 self._continuity_revisions[actor_id] = revisions
-            checkpoint_index = snapshot.get("checkpoint_event_index")
-            if isinstance(checkpoint_index, int) and checkpoint_index >= 0:
-                self._continuity_checkpoint_event_indexes[actor_id] = checkpoint_index
             receipts = snapshot.get("continuity_receipts")
             if isinstance(receipts, dict):
                 for key, value in receipts.items():
                     if isinstance(key, str) and isinstance(value, dict):
-                        try:
-                            self._continuity_receipts[key] = CharacterContinuityReceipt.model_validate(value)
-                        except Exception:
-                            continue
+                        self._remember_continuity_receipt(
+                            key, CharacterContinuityReceipt.model_validate(value)
+                        )
             materialized = snapshot.get("materialization_receipts")
             if isinstance(materialized, dict):
                 for key, value in materialized.items():
                     if isinstance(key, str) and isinstance(value, dict):
-                        try:
-                            self._materialization_receipts[key] = CharacterMemoryMaterializationReceipt.model_validate(value)
-                        except Exception:
-                            continue
+                        self._remember_materialization_receipt(
+                            key,
+                            CharacterMemoryMaterializationReceipt.model_validate(value),
+                        )
             pending = snapshot.get("pending_seed_candidates")
             if isinstance(pending, dict):
                 self._pending_seed_candidates[actor_id] = {}
                 for key, value in pending.items():
                     if isinstance(key, str) and isinstance(value, dict):
-                        try:
-                            self._pending_seed_candidates[actor_id][key] = CharacterMemoryCandidate.model_validate(value)
-                        except Exception:
-                            continue
+                        self._pending_seed_candidates[actor_id][key] = (
+                            CharacterMemoryCandidate.model_validate(value)
+                        )
             projection = snapshot.get("seed_projection")
             if isinstance(projection, dict):
                 self._seed_projections[actor_id] = deepcopy(projection)
             shared_modules = snapshot.get("shared_module_state")
             if isinstance(shared_modules, dict):
                 self._shared_module_states[actor_id] = deepcopy(shared_modules)
-            timeline = snapshot.get("session_timeline")
-            if isinstance(timeline, list):
-                self._graph_session_timelines[actor_id] = [
-                    deepcopy(event) for event in timeline if isinstance(event, dict)
-                ]
+            if timeline:
+                replay_offset = self._graph_session_replay_offsets.get(actor_id, 0)
+                if replay_offset > len(timeline):
+                    raise ValueError("character_continuity_projection_gap")
+                self._graph_session_timelines[actor_id] = timeline
+                graph_ids = {
+                    str(event.get("event_id", "") or "") for event in timeline
+                }
+                local_events = self._session_store.list_events(actor_id)
+                overlap = 0
+                while (
+                    overlap < len(local_events)
+                    and str(local_events[overlap].get("event_id", "") or "")
+                    in graph_ids
+                ):
+                    overlap += 1
+                if any(
+                    str(event.get("event_id", "") or "") in graph_ids
+                    for event in local_events[overlap:]
+                ):
+                    raise ValueError("character_continuity_projection_gap")
+                self._graph_session_local_overlap_counts[actor_id] = overlap
                 for event in timeline:
-                    if isinstance(event, dict):
-                        self._memory_store.write_event(event)
+                    self._memory_store.write_event(event)
+                    self._remember_materialization_commit(event)
 
     def _persist_graph_continuity(self, *, actor_id: str, producer_ts: int) -> None:
         if self._continuity_store is None:
             return
-        timeline = self.get_session_timeline(actor_id)
-        source_ref = str(timeline[-1].get("event_id", "") or "") if timeline else ""
-        snapshot = {
+        # 同一角色的快照捕获和 checkpoint/current 提交不可交错，避免旧游标回写。
+        with self._continuity_flush_locks.setdefault(actor_id, RLock()):
+            self._persist_graph_continuity_locked(actor_id=actor_id, producer_ts=producer_ts)
+
+    def _persist_graph_continuity_locked(self, *, actor_id: str, producer_ts: int) -> None:
+        event_count = self._session_timeline_event_count(actor_id)
+        if event_count == 0:
+            return
+        last_event = self._session_timeline_after(actor_id, event_count - 1)[0]
+        source_ref = str(last_event.get("event_id", "") or "")
+        checkpoint_index = self._continuity_checkpoint_event_indexes.get(actor_id, 0)
+        current_snapshot = {
             "working_memory": self.get_working_memory_state(actor_id),
             "dynamic_state": self.get_dynamic_state(actor_id),
             "need_tension_state": self.get_need_tension_state(actor_id),
             "supervision_state": self.get_supervision_state(actor_id),
             "goal_state": self.get_goal_state(actor_id),
-            "goal_state_history": self.get_goal_state_history(actor_id),
-            "session_timeline": timeline,
             "continuity_state": self.get_runtime_continuity_state(actor_id),
             "continuity_revisions": self._continuity_revisions.get(actor_id, 0),
-            "continuity_receipts": {
-                key: value.model_dump(mode="json")
-                for key, value in self._continuity_receipts.items()
-                if value.actor_ref.removeprefix("character:") == actor_id
-            },
-            "materialization_receipts": {
-                key: value.model_dump(mode="json")
-                for key, value in self._materialization_receipts.items()
-                if value.actor_ref.removeprefix("character:") == actor_id
-            },
             "pending_seed_candidates": {
                 key: value.model_dump(mode="json")
                 for key, value in self._pending_seed_candidates.get(actor_id, {}).items()
@@ -4498,24 +4745,60 @@ class CharacterAgentRuntime:
             "shared_module_state": self.get_shared_module_state(actor_id),
             "checkpoint_event_index": self._continuity_checkpoint_event_indexes.get(actor_id, 0),
         }
-        checkpoint_index = self._continuity_checkpoint_event_indexes.get(actor_id, 0)
+        checkpoint_due = (
+            checkpoint_index == 0 or event_count <= 1 or event_count % 16 == 0
+        )
+        if checkpoint_due:
+            timeline = self._session_timeline_after(actor_id, 0)
+            checkpoint_snapshot = {
+                **current_snapshot,
+                "goal_state_history": self.get_goal_state_history(actor_id),
+                "session_timeline": timeline,
+                "continuity_receipts": {
+                    key: value.model_dump(mode="json")
+                    for key, value in self._continuity_receipts_by_actor.get(actor_id, {}).items()
+                },
+                "materialization_receipts": {
+                    key: value.model_dump(mode="json")
+                    for key, value in self._materialization_receipts_by_actor.get(actor_id, {}).items()
+                },
+                "checkpoint_event_index": event_count,
+            }
+            try:
+                self._continuity_store.write_snapshot(
+                    actor_id=actor_id,
+                    producer_ts=producer_ts,
+                    source_event_ref=source_ref,
+                    snapshot=checkpoint_snapshot,
+                )
+            except Exception:
+                self._continuity_store.write_current_state(
+                    actor_id=actor_id,
+                    producer_ts=producer_ts,
+                    source_event_ref=source_ref,
+                    snapshot={
+                        **current_snapshot,
+                        "checkpoint_event_index": checkpoint_index,
+                        "session_timeline_tail": self._session_timeline_after(
+                            actor_id, checkpoint_index
+                        ),
+                    },
+                )
+                raise
+            checkpoint_index = event_count
+            self._continuity_checkpoint_event_indexes[actor_id] = checkpoint_index
         self._continuity_store.write_current_state(
             actor_id=actor_id,
             producer_ts=producer_ts,
             source_event_ref=source_ref,
             snapshot={
-                **{key: value for key, value in snapshot.items() if key != "session_timeline"},
-                "session_timeline_tail": timeline[checkpoint_index:],
+                **current_snapshot,
+                "checkpoint_event_index": checkpoint_index,
+                "session_timeline_tail": self._session_timeline_after(
+                    actor_id, checkpoint_index
+                ),
             },
         )
-        if len(timeline) <= 1 or len(timeline) % 16 == 0:
-            self._continuity_store.write_snapshot(
-                actor_id=actor_id,
-                producer_ts=producer_ts,
-                source_event_ref=source_ref,
-                snapshot=snapshot,
-            )
-            self._continuity_checkpoint_event_indexes[actor_id] = len(timeline)
 
     def _observatory_context(self, actor_id: str) -> dict[str, str]:
         return self._observatory_actor_context.setdefault(

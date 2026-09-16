@@ -8,5 +8,5 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/population-native-gpu-gate-report.json",
-  "description": "Population native/GPU admission gate; default decision remains continue_python"
+  "description": "基于真实 population runtime 规模报告的 native/GPU 准入门禁"
 }

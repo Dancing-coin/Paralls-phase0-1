@@ -369,6 +369,20 @@ def test_game_start_upgrade_preserves_v3_audit_and_restarts_on_same_sqlite(tmp_p
     legacy_graph = SQLiteHeavenlyGraphAdapter(database_path)
     try:
         assert BehaviorTurnRecorder(legacy_graph).record(legacy_request).applied
+        legacy_v4_correlation = "population:bakery-district:game-start:v4"
+        legacy_v4_request = legacy_request.model_copy(update={
+            "turn_id": f"siming:{legacy_v4_correlation}",
+            "provenance": legacy_request.provenance.model_copy(update={
+                "source_ref": "event:population-cadence:game-start:v4",
+                "correlation_id": legacy_v4_correlation,
+            }),
+            "transaction_id": f"siming-behavior-turn:{legacy_v4_correlation}",
+            "idempotency_key": f"siming-behavior-turn:{legacy_v4_correlation}",
+            "stages": (BehaviorTurnStageRecord(stage="context", payload={
+                "population_cadence": {"cadence_id": "cadence:bakery-district:game-start:v4"},
+            }),),
+        })
+        assert BehaviorTurnRecorder(legacy_graph).record(legacy_v4_request).applied
         legacy_nodes = legacy_graph.query_nodes(HeavenlyNodeQuery(scope=scope, valid_at=10))
     finally:
         legacy_graph.close()
