@@ -22,6 +22,13 @@ This repository implements the `world-character-Siming-authority` mainline runti
 - Godot changes need editor or runtime evidence. Integration claims need a running backend, a real boundary message, and a visible scene result.
 - Use Godot MCP when it is available for scene, autoload, and runtime checks. Otherwise report Godot work as static-only or editor-unverified.
 
+### Harness Retention
+
+- Harness verification output is temporary evidence. Delete `.harness/verification/` after the verification run; do not commit its reports, logs, traces, databases, screenshots, or caches.
+- Delete temporary `.harness/` run directories after each run. This includes random-ID directories, snapshots, archives, copied worktrees, generated assets, `__pycache__`, SQLite files, logs, and other runtime state.
+- Keep only reviewable static harness inputs: profiles, rules, templates, fixtures, references, evolution configuration, CI configuration, and checked-in harness metadata.
+- Before committing, inspect `git status --short -- .harness` and confirm no generated verification output or run directory remains.
+
 ## Reporting
 
 Separate completed and verified work from static-only work, blockers, and next steps. Do not claim a runtime milestone without its corresponding verification evidence.
