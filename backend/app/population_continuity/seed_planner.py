@@ -4,7 +4,11 @@ import hashlib
 import json
 from typing import Any, Mapping, Sequence
 
-from app.character_agent.models.simulation_seed import CharacterMemoryCandidate, CharacterSimulationSeedCandidate
+from app.character_agent.models.simulation_seed import (
+    CharacterMemoryCandidate,
+    CharacterModuleDelta,
+    CharacterSimulationSeedCandidate,
+)
 
 from .siming_contracts import PopulationProjection, PopulationReadSet
 
@@ -63,6 +67,18 @@ class CharacterSeedPlanner:
                 state_deltas = state_deltas if isinstance(state_deltas, dict) else {}
             elif not isinstance(state_deltas, dict):
                 state_deltas = {"task": str(payload.get("task") or "supply") } if objective else {}
+            raw_module_deltas = payload.get("module_deltas") or ()
+            if isinstance(raw_module_deltas, dict):
+                raw_module_deltas = (raw_module_deltas,)
+            if not isinstance(raw_module_deltas, (list, tuple)):
+                raise ValueError("seed_module_schema_invalid")
+            try:
+                module_deltas = tuple(
+                    CharacterModuleDelta.model_validate(item)
+                    for item in raw_module_deltas
+                )
+            except Exception as exc:
+                raise ValueError("seed_module_schema_invalid") from exc
             exposure_basis = str(payload.get("exposure_basis") or payload.get("exposure") or "")
             memory_candidates: tuple[CharacterMemoryCandidate, ...] = ()
             if kind != "relationship_negotiation" and exposure_basis in {"affected_directly", "public_propagation"}:
@@ -108,6 +124,7 @@ class CharacterSeedPlanner:
                     source_event_refs=source_refs,
                     source_owner_receipt_refs=settled_refs if owner_status == "settled" else (),
                     state_deltas=state_deltas,
+                    module_deltas=module_deltas,
                     memory_candidates=memory_candidates,
                     drift_candidates=tuple(payload.get("drift_candidates") or ()),
                     activation_hints=tuple(str(item) for item in (payload.get("activation_hints") or ())),

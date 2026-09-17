@@ -15,7 +15,7 @@ def test_character_base_scene_exists_with_body_and_camera_shell() -> None:
 
 
 def test_main_demo_uses_single_player_character_instance() -> None:
-    scene_text = (ROOT / "scenes" / "phase0" / "MainDemo.tscn").read_text(encoding="utf-8")
+    scene_text = (ROOT / "scenes" / "integration" / "Unified3DIntegrationValidation.tscn").read_text(encoding="utf-8")
 
     assert 'path="res://scenes/phase0/CharacterBase.tscn"' in scene_text
     assert '[node name="PlayerCharacter"' in scene_text

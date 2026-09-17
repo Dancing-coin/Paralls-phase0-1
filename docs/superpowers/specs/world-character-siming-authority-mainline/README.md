@@ -170,6 +170,8 @@ recorded in the lifecycle runtime closure. August INF A-D remain not complete.
 3. [embodied-interaction-product-foundation/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/embodied-interaction-product-foundation/README.md>)
 4. [phase-two-bakery-authored-agents/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/phase-two-bakery-authored-agents/README.md>)
 5. [phase-three-population-continuity/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/phase-three-population-continuity/README.md>)
+   - [2026-09-16 character-population incremental design](2026-09-16-character-population-simulation-incremental-design.md) - approved B0-B3, simple-module, universal-codebook and protocol-driven social-simulation increments on existing paths; implementation remains unplanned
+   - [2026-09-16 角色与群体模拟增量设计（中文版）](2026-09-16-角色与群体模拟增量设计-中文版.md) - 在既有链路上的设计意图、数据边界、INF 分层、密码本、B0-B3 交接和农民洪灾样板
 6. [phase-four-dynamic-economy-institutions/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/phase-four-dynamic-economy-institutions/README.md>)
 7. [phase-five-rpg-social-gameplay/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/phase-five-rpg-social-gameplay/README.md>)
 8. [phase-six-creator-control-plane/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/phase-six-creator-control-plane/README.md>)

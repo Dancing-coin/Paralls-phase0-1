@@ -35,6 +35,19 @@ Use this file when you need to answer:
 
 The repository now has a real `CharacterAgentRuntime` path that goes from private perception through memory, interpretation, planning, execution staging, websocket delivery, and shared actor ingress, but it is not yet a final single-path `L4 -> CharacterActor` convergence.
 
+## Action-Foundation Integration Rule (2026-09-14)
+
+The character-agent runtime must enter the actor through an `IntentProposal`,
+never through a raw pose, transform, or local damage result. Agent output may
+carry namespaced `goal:*`, `intent:*`, `capability:*`, `affordance:*`, and
+`constraint:*` tags plus INF metadata (confidence, evidence, provenance,
+causation, correlation, revision, and privacy scope). The Godot coordinator
+converts that proposal into one `CharacterIntentFrame`; `CharacterMotor` and
+the action executor remain the only local embodiment path.
+
+The corresponding action/INF contract is maintained in
+`docs/superpowers/specs/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-design.md`.
+
 ## Runtime Shape
 
 Current runtime chain:

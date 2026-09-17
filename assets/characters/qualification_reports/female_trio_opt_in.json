@@ -1,0 +1,37 @@
+{
+	"actions": [],
+	"checks": {
+		"skeleton": false
+	},
+	"clip_audits": {
+
+	},
+	"contract": "character_qualification_report.v1",
+	"delivery_level": "presentation_extension",
+	"fallback": {
+		"mode": "candidate_only",
+		"policy": "do_not_admit"
+	},
+	"fallbacks": [],
+	"locomotion": {
+
+	},
+	"locomotion_compatibility": "not_admitted",
+	"manifest_path": "res://assets/validation/manifests/female-trio-opt-in.json",
+	"optional": [],
+	"package_id": "female_trio_opt_in",
+	"provenance": {
+		"package_digest": "unavailable",
+		"qualification_report_ref": "assets/characters/qualification_reports/female_trio_opt_in.json",
+		"source_uri": "archive/assets/candidates/female_trio/visual-0.4.0"
+	},
+	"reasons": [
+		"skeleton_missing"
+	],
+	"report_path": ".harness/verification/female-trio-opt-in-qualification-report.json",
+	"source": {
+		"digest_sha256": "unavailable",
+		"model_path": "archive/assets/candidates/female_trio/visual-0.4.0"
+	},
+	"status": "rejected"
+}

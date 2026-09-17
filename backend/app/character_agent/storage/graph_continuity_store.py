@@ -38,6 +38,7 @@ class CharacterGraphContinuityStore:
             "materialization_receipts",
             "pending_seed_candidates",
             "seed_projection",
+            "shared_module_state",
         }
     )
 

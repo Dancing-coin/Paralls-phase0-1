@@ -16,7 +16,7 @@ def test_presentation_asset_manifest_is_a_valid_empty_approved_binding_registry(
 
 
 def test_main_demo_mounts_the_presentation_asset_resolver() -> None:
-    scene_source = (ROOT / "scenes" / "phase0" / "MainDemo.tscn").read_text(encoding="utf-8")
+    scene_source = (ROOT / "scenes" / "integration" / "Unified3DIntegrationValidation.tscn").read_text(encoding="utf-8")
 
     assert 'path="res://scripts/character/CharacterPresentationAssetResolver.gd"' in scene_source
     assert '[node name="CharacterPresentationAssetResolver" type="Node" parent="."]' in scene_source

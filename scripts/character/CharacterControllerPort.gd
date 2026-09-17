@@ -3,6 +3,13 @@ extends RefCounted
 class_name CharacterControllerPort
 
 const CharacterControlModeRef = preload("res://scripts/character/CharacterControlMode.gd")
+const IntentProposalRef = preload("res://scripts/character/IntentProposal.gd")
+const LayerControlProposalRef = preload("res://scripts/character/LayerControlProposal.gd")
+
+
+static func submit_intent_proposal(raw: Dictionary, source_id: StringName, control_mode: StringName) -> Dictionary:
+	var proposal := IntentProposalRef.normalize(raw, source_id, control_mode)
+	return LayerControlProposalRef.from_intent(proposal)
 
 
 static func normalize_intent_frame(candidate: Dictionary) -> Dictionary:

@@ -4,7 +4,7 @@ const ACTION_ASSET_REGISTRY := preload("res://scripts/character/CharacterEmbodim
 const ACTION_CATALOG := preload("res://scripts/character/DefaultSceneActionAtomCatalog.gd")
 const CONTROLLER := preload("res://scripts/interaction/EmbodiedActionController.gd")
 const PLAYBACK_ADAPTER := preload("res://scripts/interaction/EmbodiedActionPlaybackAdapter.gd")
-const KNIGHT_ROLE_SKIN := preload("res://scenes/phase0/KnightRoleSkin.tscn")
+const KNIGHT_ROLE_SKIN := preload("res://archive/scenes/legacy/KnightRoleSkin.tscn")
 
 
 func _ready() -> void:

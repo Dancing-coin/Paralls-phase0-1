@@ -1,7 +1,7 @@
 extends Node3D
 
 const LIGHTING_TUNER := preload("res://scripts/visual/ThroneRoomLightingTuner.gd")
-const COMPENSATION_ENV_TEMPLATE: Environment = preload("res://scenes/phase0/BlenderRenderedApproxEnvironment.tres")
+const COMPENSATION_ENV_TEMPLATE: Environment = preload("res://archive/scenes/legacy/BlenderRenderedApproxEnvironment.tres")
 const THRONE_BEAM_SHADER := preload("res://scripts/visual/throne_beam_card.gdshader")
 
 const BLUE_LIGHT_NAMES := [

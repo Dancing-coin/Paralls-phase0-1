@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Paralls phase0 demo"
-run/main_scene="res://scenes/phase0/MainDemo.tscn"
+run/main_scene="res://scenes/integration/Unified3DIntegrationValidation.tscn"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
 

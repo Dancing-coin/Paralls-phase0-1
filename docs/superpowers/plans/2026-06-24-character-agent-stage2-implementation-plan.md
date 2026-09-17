@@ -53,6 +53,18 @@ So Stage 2 is split into four dependent plans plus this roadmap:
 - [ ] Do not introduce a second embodiment path; all Plan 4 work must continue through `CharacterRuntimeState` and `CharacterPresentationInput`.
 - [ ] Keep `Phase 0` loop working after each plan, not only at the end.
 
+## Action-Foundation Dependency
+
+Before Plan 4 can claim a complete visible L4 embodiment path, execute the
+shared action-foundation plan:
+
+- `docs/superpowers/plans/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-implementation-plan.md`
+
+Plan 4 may stage against adapter seams while that plan is in progress, but it
+must not introduce an agent-only movement path, unnamespaced action tags, or
+local damage/death writes. Its final verification must use the unified
+`CharacterIntentFrame -> CharacterMotor -> CharacterPresentationInput` chain.
+
 ## Coverage Map
 
 | Spec area | Owning plan |

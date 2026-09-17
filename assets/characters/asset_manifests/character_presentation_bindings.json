@@ -1,4 +1,7 @@
 {
   "contract": "character_presentation_bindings.v1",
-  "bindings": []
+  "bindings": [
+    {"package_id":"crusader_knight","manifest_ref":"res://assets/active/crusader_knight/manifest.json","report_ref":"assets/characters/qualification_reports/crusader_knight.json","delivery_level":"full_body_action"},
+    {"package_id":"external_character_b","manifest_ref":"res://assets/active/external_character_b/manifest.json","report_ref":"assets/characters/qualification_reports/external_character_b.json","delivery_level":"presentation_extension","admission":"rejected"}
+  ]
 }

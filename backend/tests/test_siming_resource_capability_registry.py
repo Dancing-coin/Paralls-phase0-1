@@ -15,7 +15,7 @@ def realization_request(*, semantic_purpose: str) -> ResourceRealizationRequest:
     )
 
 
-def test_main_demo_package_covers_private_confrontation() -> None:
+def test_unified_validation_package_covers_private_confrontation() -> None:
     registry = ResourceCapabilityRegistry()
 
     match = registry.match(
@@ -25,7 +25,7 @@ def test_main_demo_package_covers_private_confrontation() -> None:
 
     assert match.accepted is True
     assert match.capability is not None
-    assert match.capability.asset_bundle == "main_demo_throne_room"
+    assert match.capability.asset_bundle == "unified_3d_validation"
 
 
 def test_only_exact_recent_signature_receives_fatigue_penalty() -> None:
@@ -33,7 +33,7 @@ def test_only_exact_recent_signature_receives_fatigue_penalty() -> None:
     reveal = realization_request(semantic_purpose="evidence_reveal")
     confrontation = realization_request(semantic_purpose="private_confrontation")
 
-    registry.record_realization(reveal, "main_demo_throne_room", world_ts=90)
+    registry.record_realization(reveal, "unified_3d_validation", world_ts=90)
 
     assert registry.match(reveal, world_ts=100).fatigue_penalty > 0
     assert registry.match(confrontation, world_ts=100).fatigue_penalty == 0
@@ -43,6 +43,6 @@ def test_unavailable_or_cooling_capability_is_not_selected() -> None:
     registry = ResourceCapabilityRegistry()
     request = realization_request(semantic_purpose="private_confrontation")
 
-    registry.set_cooldown("main_demo_throne_room", until=101)
+    registry.set_cooldown("unified_3d_validation", until=101)
 
     assert registry.match(request, world_ts=100).accepted is False

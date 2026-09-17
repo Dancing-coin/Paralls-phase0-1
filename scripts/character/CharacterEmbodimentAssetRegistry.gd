@@ -18,19 +18,23 @@ func register_motion_asset(semantic_key: String, asset_ref: String) -> void:
 	}
 
 
-func register_action_asset(action_tag: String, candidate: Dictionary) -> void:
+func register_action_asset(action_tag: String, candidate: Dictionary) -> bool:
 	if action_tag.is_empty():
-		return
+		return false
 	var descriptor := CharacterActionAssetDescriptor.normalize(candidate)
+	var validation := CharacterActionAssetDescriptor.validate_root_motion_descriptor(descriptor)
+	if not bool(validation.get("accepted", false)):
+		return false
 	if str(descriptor.get("action_tag", "")).is_empty():
 		descriptor["action_tag"] = action_tag
 	var asset_ref := str(descriptor.get("animation_clip_ref", ""))
 	if asset_ref.is_empty():
-		return
+		return false
 	_motion_assets[action_tag] = {
 		"asset_ref": asset_ref,
 		"descriptor": descriptor,
 	}
+	return true
 
 
 func register_reviewed_action_catalog(entries: Array[Dictionary]) -> Dictionary:
@@ -46,6 +50,10 @@ func register_reviewed_action_catalog(entries: Array[Dictionary]) -> Dictionary:
 			continue
 		var descriptor := CharacterActionAssetDescriptor.normalize(descriptor_candidate)
 		var action_tag := str(descriptor.get("action_tag", ""))
+		var descriptor_validation := CharacterActionAssetDescriptor.validate_root_motion_descriptor(descriptor)
+		if not bool(descriptor_validation.get("accepted", false)):
+			rejected_action_tags.append(action_tag)
+			continue
 		var clip_ref := str(descriptor.get("animation_clip_ref", ""))
 		var controller_phase := str(entry.get("controller_phase", ""))
 		var registration_keys: Variant = entry.get("registration_keys", [])

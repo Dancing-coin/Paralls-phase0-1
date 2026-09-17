@@ -1,0 +1,28 @@
+{
+  "contract": "character_action_asset_manifest.v1",
+  "package_id": "external_character_b",
+  "source_model_path": "res://assets/active/external_character_b/npc_animated.glb",
+  "source": {"model_path": "assets/active/external_character_b/npc_animated.glb", "digest_sha256": "55288101F6A435057A94D19D0E5EA40C9D2714CC8903A42CFF739BB757E38D62", "format": "glb"},
+  "provenance": {"source_uri": "archive/assets/candidates/apartment_test/source/npc_animated.glb", "authoring_contract": "external_provider", "qualification_report_ref": "assets/characters/qualification_reports/external_character_b.json", "package_digest": "55288101F6A435057A94D19D0E5EA40C9D2714CC8903A42CFF739BB757E38D62"},
+  "source_frame_rate": 30.0,
+  "unit_scale": 1.0,
+  "forward_axis": "-z",
+  "up_axis": "+y",
+  "rest_pose": {"import_policy": "applied_transforms", "pose": "stable_root_rest", "root_translation_policy": "qualified"},
+  "canonical_mapping": {"profile_id": "humanoid.v1", "bones": {"root": "mixamorig2_Hips", "pelvis": "mixamorig2_Spine", "spine": "mixamorig2_Spine1", "chest": "mixamorig2_Spine2", "head": "mixamorig2_Head", "left_upper_arm": "mixamorig2_LeftArm", "left_lower_arm": "mixamorig2_LeftForeArm", "left_hand": "mixamorig2_LeftHand", "right_upper_arm": "mixamorig2_RightArm", "right_lower_arm": "mixamorig2_RightForeArm", "right_hand": "mixamorig2_RightHand", "left_upper_leg": "mixamorig2_LeftUpLeg", "left_lower_leg": "mixamorig2_LeftLeg", "left_foot": "mixamorig2_LeftFoot", "right_upper_leg": "mixamorig2_RightUpLeg", "right_lower_leg": "mixamorig2_RightLeg", "right_foot": "mixamorig2_RightFoot"}},
+  "required_slots": ["weapon_hand", "weapon_slot:staff", "weapon_hit_volume:staff"],
+  "slots": {"weapon_hand": {"canonical_bone": "right_hand", "anchor_ref": "mixamorig2_RightHand/held_item", "held_item": true}, "weapon_slot:staff": {"canonical_bone": "right_hand", "anchor_ref": "mixamorig2_RightHand/held_item"}, "weapon_hit_volume:staff": {"canonical_bone": "right_hand", "anchor_ref": "hit_volume:staff"}},
+  "clip_aliases": {"idle": "anim_drink", "walk_forward": "anim_drink", "run_forward": "anim_drink", "jump_start": "anim_drink", "jump_loop": "anim_drink", "jump_land": "anim_drink", "turn_left": "anim_drink", "turn_right": "anim_drink", "melee_staff": "anim_knock", "aim_upper": "anim_drink"},
+  "locomotion_map": {"idle": "anim_drink", "walk_forward": "anim_drink", "run_forward": "anim_drink", "jump_start": "anim_drink", "jump_loop": "anim_drink", "jump_land": "anim_drink", "turn_left": "anim_drink", "turn_right": "anim_drink"},
+  "root_motion_profile": {"profile_id": "external_character_b.root.v1", "policy": "hold", "max_distance": 0.0, "max_duration_ticks": 1},
+  "physical_profile": {"profile_id": "humanoid_kinematic.v1", "collision_shape": "capsule", "contact_policy": "motor_evidence_only", "root_motion_owner": "CharacterMotor"},
+  "fallback": {"mode": "full_body_exclusive", "locomotion_compatibility": "replace_locomotion", "policy": "queue_until_compatible"},
+  "delivery_level": "presentation_extension",
+  "locomotion_compatibility": "not_admitted; source lacks independently qualified locomotion clips",
+  "qualification_blockers": ["locomotion_source_clips_missing:idle_walk_run_jump_turn", "full_body_source_has_no_qualified_upper_body_realization"],
+  "report_path": ".harness/verification/external_character_b-qualification-report.json",
+  "actions": [
+    {"semantic_action_id": "action:melee.staff_strike", "clip_ref": "anim_knock", "mode": "full_body_exclusive", "locomotion_compatibility": "replace_locomotion", "root_motion_policy": "hold", "root_motion_required": false, "required_slots": ["weapon_slot:staff", "weapon_hit_volume:staff"], "markers": [{"marker_id": "staff_contact", "time_seconds": 0.45, "marker_kind": "melee_contact", "emits_attempt": true, "evidence_requirement": "physics_contact"}], "cancel_windows": [{"start_seconds": 0.7, "end_seconds": 0.95}], "resource_claims": ["right_arm", "weapon_slot:staff"], "physics_claims": ["weapon_hit_volume:staff"], "authority_route_ref": "esm", "fallback_policy": "queue_until_compatible"},
+    {"semantic_action_id": "action:aim.staff", "clip_ref": "anim_drink", "mode": "derived_upper_body", "locomotion_compatibility": "coexist", "root_motion_policy": "hold", "root_motion_required": false, "required_slots": ["weapon_hand"], "markers": [{"marker_id": "staff_ready", "time_seconds": 0.25, "marker_kind": "presentation", "emits_attempt": false, "evidence_requirement": "none"}], "cancel_windows": [{"start_seconds": 0.1, "end_seconds": 0.8}], "resource_claims": ["upper_body"], "physics_claims": [], "authority_route_ref": "gameplay", "fallback": {"mode": "full_body_exclusive", "locomotion_compatibility": "replace_locomotion"}, "fallback_policy": "queue_until_compatible"}
+  ]
+}

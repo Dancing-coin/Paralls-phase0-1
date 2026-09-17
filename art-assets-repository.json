@@ -1,0 +1,16 @@
+{
+  "contract": "paralls_art_asset_repository_link.v1",
+  "repository_id": "paralls-art-assets",
+  "repository_path": "../paralls-art-assets",
+  "repository_role": "blender_source_and_export_packages",
+  "runtime_repository_role": "godot_runtime_and_qualification",
+  "default_runtime_scene": "res://scenes/integration/Unified3DIntegrationValidation.tscn",
+  "explicit_staging_root": "res://assets/active",
+  "qualification_scenes": {
+    "character": "res://scenes/qualification/CharacterAssetQualification.tscn",
+    "environment": "res://scenes/qualification/EnvironmentAssetQualification.tscn"
+  },
+  "export_handoff_root": "../paralls-art-assets/exports",
+  "approval_rule": "Only qualified packs may be added to approved integration bindings.",
+  "archive_policy": "Current repository archive is preserved and excluded from default Godot scanning."
+}

@@ -76,6 +76,7 @@ from app.gameplay.phase3_mirror_source import (
     Phase3MirrorActorConfiguration,
     install_phase3_mirror_sources,
 )
+from app.gameplay.runtime_state import StateGroupRegistry
 from app.gameplay.adventure_basic_mirror_runtime import (
     AdventureBasicMirrorRuntime,
     AdventureBasicMirrorRuntimeError,
@@ -389,6 +390,15 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
         scope_resolver=actor_private_scope,
         require_complete_snapshot=True,
     )
+    state_group_registry = StateGroupRegistry()
+    for raw_configuration in runtime_settings.gameplay_mirror_phase3_actor_configs:
+        configuration = Phase3MirrorActorConfiguration.model_validate(raw_configuration)
+        for definition in configuration.state_group_definitions:
+            try:
+                state_group_registry.register(definition)
+            except ValueError as exc:
+                if str(exc) != "state_group_definition_duplicate":
+                    raise
     graph_memory = CharacterGraphMemoryStore(
         heavenly_graph,
         scope_resolver=actor_private_scope,
@@ -405,6 +415,7 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
         storage_root=character_agent_storage_root,
         memory_store=memory_router,
         continuity_store=continuity_store,
+        state_group_registry=state_group_registry,
         behavior_turn_recorder=BehaviorTurnRecorder(heavenly_graph),
         behavior_turn_scope_resolver=actor_private_scope,
     )
@@ -1130,6 +1141,7 @@ def publish_population_cadence_window(
     zone_id: str,
     causation_id: str,
     correlation_id: str,
+    population_views: Mapping[str, object] | None = None,
 ) -> AuthorityEvent | None:
     """Publish one World Runtime-owned generic population window."""
     cadence = world_runtime.build_population_cadence(
@@ -1145,7 +1157,10 @@ def publish_population_cadence_window(
         zone_id=zone_id,
         causation_id=causation_id,
         correlation_id=correlation_id,
-        population_projections=world_runtime.build_population_projections(cadence),
+        population_projections=world_runtime.build_population_projections(
+            cadence,
+            population_views=population_views,
+        ),
     )
 
 

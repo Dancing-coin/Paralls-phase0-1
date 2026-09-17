@@ -44,7 +44,16 @@ class HotStateReceipt:
 class PopulationHotState:
     """稳定 actor ID 到紧凑槽位的热字段表；不保存身份、记忆或权限对象。"""
 
-    def __init__(self, actor_ids: Iterable[str] = ()) -> None:
+    def __init__(
+        self,
+        actor_ids: Iterable[str] = (),
+        *,
+        additional_fields: Iterable[str] = (),
+    ) -> None:
+        normalized_fields = {str(field).strip() for field in additional_fields}
+        if any(not field for field in normalized_fields):
+            raise ValueError("hot_state_field_invalid")
+        self._allowed_fields = HOT_FIELDS.union(normalized_fields)
         self._slot_by_actor: dict[str, int] = {}
         self._actor_by_slot: list[str | None] = []
         self._rows: list[dict[str, object] | None] = []
@@ -56,12 +65,53 @@ class PopulationHotState:
         for actor_id in actor_ids:
             self._ensure_slot(actor_id)
 
+    def register_fields(self, fields: Iterable[str]) -> None:
+        """Register gameplay-package columns before batch updates use them."""
+        normalized_fields = {str(field).strip() for field in fields}
+        if any(not field for field in normalized_fields):
+            raise ValueError("hot_state_field_invalid")
+        added = normalized_fields.difference(self._allowed_fields)
+        self._allowed_fields = self._allowed_fields.union(normalized_fields)
+
+    def register_group_fields(self, group_id: str, fields: Iterable[str]) -> None:
+        """Compile a state-group field list into collision-resistant hot columns."""
+        normalized_group = str(group_id).strip()
+        if not normalized_group:
+            raise ValueError("hot_state_group_invalid")
+        normalized_fields = {str(field).strip() for field in fields}
+        if any(not field for field in normalized_fields):
+            raise ValueError("hot_state_field_invalid")
+        self.register_fields(f"{normalized_group}.{field}" for field in normalized_fields)
+
+    def upsert_population_view(self, view: object, *, revision: int) -> None:
+        """Compile one already-redacted population view into group-qualified hot columns."""
+        if getattr(view, "consumer", None) != "population":
+            raise ValueError("population_view_required")
+        actor_id = str(getattr(view, "actor_ref", "") or "")
+        groups = getattr(view, "groups", None)
+        if not actor_id or not isinstance(groups, Mapping):
+            raise ValueError("population_view_invalid")
+        values: dict[str, object] = {}
+        for group_id, envelope in sorted(groups.items(), key=lambda item: str(item[0])):
+            normalized_group = str(group_id).strip()
+            payload = getattr(envelope, "payload", None)
+            if not normalized_group or not isinstance(payload, Mapping):
+                raise ValueError("population_view_invalid")
+            self.register_group_fields(normalized_group, payload.keys())
+            values.update(
+                {
+                    f"{normalized_group}.{field}": value
+                    for field, value in payload.items()
+                }
+            )
+        self.upsert(actor_id, values, revision)
+
     def upsert(self, actor_id: str, values: Mapping[str, object], revision: int) -> None:
         if not actor_id:
             raise ValueError("hot_state_actor_required")
         if isinstance(revision, bool) or revision < 0:
             raise ValueError("hot_state_revision_invalid")
-        unknown = set(values).difference(HOT_FIELDS)
+        unknown = set(values).difference(self._allowed_fields)
         if unknown:
             raise ValueError("hot_state_field_not_allowed")
         self._validate_values(values)
@@ -157,7 +207,7 @@ class PopulationHotState:
                     raise ValueError("hot_state_actor_missing")
                 copied_values = dict(values)
                 fields = set(copied_values)
-                if fields.difference(HOT_FIELDS):
+                if fields.difference(self._allowed_fields):
                     raise ValueError("hot_state_field_not_allowed")
                 self._validate_values(copied_values)
                 current = self._revision.get(actor_id, 0)

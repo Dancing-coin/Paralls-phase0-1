@@ -10,8 +10,8 @@ def test_removed_letter_hides_visual_label_and_collision() -> None:
     assert "collision_shape.disabled = removed" in source
 
 
-def test_main_demo_contains_heavenly_runtime_probe() -> None:
-    scene = Path("scenes/phase0/MainDemo.tscn").read_text(encoding="utf-8")
+def test_unified_validation_scene_contains_heavenly_runtime_probe() -> None:
+    scene = Path("scenes/integration/Unified3DIntegrationValidation.tscn").read_text(encoding="utf-8")
 
     assert "SimingHeavenlyRuntimeProbe.gd" in scene
     assert '[node name="SimingHeavenlyRuntimeProbe" type="Node" parent="."]' in scene

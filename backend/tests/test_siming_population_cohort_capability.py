@@ -1,4 +1,5 @@
 from app.character_agent.models.simulation_seed import CharacterContinuityReceipt
+from app.character_agent.models.simulation_seed import CharacterModuleDelta
 from app.population_continuity.siming_contracts import (
     PopulationCadenceInput,
     PopulationOwnerReceipt,
@@ -56,6 +57,11 @@ class _Continuity:
         return CharacterContinuityReceipt(receipt_ref=f"receipt:{command.command_id}", command_id=command.command_id, actor_ref=command.actor_ref, status="committed", character_revision_before=before, character_revision_after=before + 1)
 
 
+class _LockedContinuity(_Continuity):
+    def activation_lock_is_active(self, actor_ref):
+        return actor_ref == "character:char_a"
+
+
 class CohortCapabilityFixture:
     def __init__(self):
         self.owner, self.continuity = _Owner(), _Continuity()
@@ -77,6 +83,42 @@ def test_w0_routes_owner_char_a_and_core_char_a_char_b_only():
     assert [call.profile_ref for call in owner.calls] == ["character:char_a"]
     assert [command.actor_ref for command in continuity.commands] == ["character:char_a", "character:char_b"]
     assert result.report.cohort_ref == "cohort:bakery:W0"
+
+
+def test_active_character_lock_requeues_population_before_owner_or_core_write():
+    cadence, read_set = _read_set()
+    owner, continuity = _Owner(), _LockedContinuity()
+    result = PopulationSimulationCapability(owner_executor=owner, continuity_port=continuity).run_cohort_cycle(cadence, read_set)
+
+    assert result.status == "requeue"
+    assert result.reason == "activation_lock_pending"
+    assert owner.calls == []
+    assert continuity.commands == []
+
+
+def test_population_module_delta_reaches_character_core_as_typed_shared_change():
+    cadence, base = _read_set()
+    module = CharacterModuleDelta(
+        group_id="character.commitments",
+        definition_version="1.0.0",
+        projection_schema_version=1,
+        source_ref="evt:order:101",
+        payload={"obligation_ref": "order:bakery:1"},
+    ).model_dump(mode="json")
+    rows = tuple(
+        projection.model_copy(update={"payload": {**projection.payload, "module_deltas": [module]}})
+        if projection.payload["actor_ref"] == "character:char_b"
+        else projection
+        for projection in base.projections
+    )
+    read_set = PopulationReadSet.from_inputs(cadence, rows)
+    owner, continuity = _Owner(), _Continuity()
+
+    result = PopulationSimulationCapability(owner_executor=owner, continuity_port=continuity).run_cohort_cycle(cadence, read_set)
+
+    assert result.status == "accepted"
+    char_b = next(command for command in continuity.commands if command.actor_ref == "character:char_b")
+    assert char_b.module_deltas[0].group_id == "character.commitments"
 
 
 def test_missing_owner_receipt_blocks_all_cohort_core_commands():

@@ -7,11 +7,12 @@ const OCCUPANCY_SAMPLER := preload("res://scripts/l1/space/RuntimeOccupancySampl
 const REGISTRY := preload("res://scripts/interaction/SceneAffordanceRegistry.gd")
 
 const BINDING_REVISION := 4
-const SCENE_INSTANCE_ID := "scene_instance:main_demo:1"
 const OBJECT_ID := "obj_archive_door"
 const AFFORDANCE_ID := "affordance:obj_archive_door:open"
 
 @export_node_path("Node3D") var door_path := NodePath("../ArchiveDoorPhysical")
+@export var scene_id := "scene_demo"
+@export var scene_instance_id := "scene_instance:validation:1"
 @export_node_path("Marker3D") var approach_stance_path := NodePath("../ArchiveDoorPhysical/ApproachStance")
 @export_node_path("Marker3D") var contact_anchor_path := NodePath("../ArchiveDoorPhysical/ContactAnchor")
 @export_node_path("Marker3D") var observation_anchor_path := NodePath("../ArchiveDoorPhysical/ObservationAnchor")
@@ -69,8 +70,8 @@ func resolve_interaction(target_object_id: String, interaction_type: String) -> 
 	_refresh_local_occupancy()
 	registry.current_tick = Time.get_ticks_msec()
 	return registry.resolve(
-		"scene_demo",
-		SCENE_INSTANCE_ID,
+		scene_id,
+		scene_instance_id,
 		OBJECT_ID,
 		AFFORDANCE_ID,
 		BINDING_REVISION,
@@ -159,8 +160,8 @@ func _refresh_local_occupancy(source_ref: String = "") -> void:
 func _record() -> Dictionary:
 	return {
 		"entity_ref": OBJECT_ID,
-		"scene_id": "scene_demo",
-		"scene_instance_id": SCENE_INSTANCE_ID,
+		"scene_id": scene_id,
+		"scene_instance_id": scene_instance_id,
 		"binding_revision": BINDING_REVISION,
 		"semantic_type": "door",
 		"semantic_tags": ["door", "openable", "archive_access", "physical_embodiment"],

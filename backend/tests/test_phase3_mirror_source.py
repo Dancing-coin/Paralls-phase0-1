@@ -142,6 +142,30 @@ def test_configured_phase3_source_rebuilds_only_committed_backend_state() -> Non
     }
 
 
+def test_configured_phase3_source_reuses_state_for_population_view() -> None:
+    store = GameplayEventStore()
+    configuration = _configuration().model_copy(
+        update={
+            "state_group_definitions": (
+                StateGroupDefinition(
+                    group_id="core.resources",
+                    definition_version="1",
+                    projection_schema_version=1,
+                    shared_fields=("entries",),
+                    population_allowed_fields=("entries",),
+                ),
+            )
+        }
+    )
+    source = Phase3MirrorSource.create(configuration=configuration, store=store)
+
+    _append_resource_state(store, actor_ref=configuration.actor_ref)
+    view = source.population_view()
+
+    assert view.consumer == "population"
+    assert view.groups["core.resources"].payload["entries"]["core.stamina"]["available"] == 7
+
+
 def test_installer_registers_explicit_backend_actor_source_without_scene_identity() -> None:
     store = GameplayEventStore()
     configuration = _configuration("actor:production-config")

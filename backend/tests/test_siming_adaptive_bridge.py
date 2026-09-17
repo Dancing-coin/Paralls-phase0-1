@@ -217,7 +217,7 @@ def _bridge_setup(
     )
     resources = ResourceCapabilityRegistry()
     if not resource_available:
-        resources.set_cooldown("main_demo_throne_room", until=101)
+        resources.set_cooldown("unified_3d_validation", until=101)
     gateway = (
         _IncompleteGateway()
         if incomplete_memory

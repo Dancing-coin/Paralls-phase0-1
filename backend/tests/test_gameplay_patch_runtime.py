@@ -161,6 +161,29 @@ def test_data_only_rule_evaluation_returns_deterministic_proposals() -> None:
     assert first.output_digest == second.output_digest
 
 
+def test_data_only_rule_evaluation_supports_numeric_thresholds_for_behavior_rules() -> None:
+    rule = RuleDefinition(
+        rule_id="rule:rest-when-tired",
+        rule_version="1",
+        trigger="daily.tick",
+        conditions=(
+            RuleCondition(path=("actor", "fatigue"), operator="greater_than", expected_value=0.7),
+            RuleCondition(path=("actor", "safety"), operator="greater_than_or_equal", expected_value=0.4),
+        ),
+        effect_templates=(RuleEffectTemplate(effect_type="behavior.rest", payload={}),),
+    )
+    registry = GameplayPatchRegistry(trusted_authors=frozenset({"author:repo"}))
+    _activate(registry, _manifest(rules=(rule,), effects=("behavior.rest",)))
+    evaluator = GameplayRuleEvaluator(patch_registry=registry, capability_registry=CapabilityRegistry())
+
+    result = evaluator.evaluate(
+        _request(registry, trigger="daily.tick", inputs={"actor": {"fatigue": 0.8, "safety": 0.4}})
+    )
+
+    assert result.status == "proposed"
+    assert result.effect_proposals[0].effect_type == "behavior.rest"
+
+
 def test_rule_budget_and_unauthorized_effect_fail_before_any_settlement() -> None:
     budget_rule = RuleDefinition(
         rule_id="rule:too-many-effects",

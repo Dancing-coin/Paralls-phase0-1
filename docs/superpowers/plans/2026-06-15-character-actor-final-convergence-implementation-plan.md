@@ -51,6 +51,17 @@ The target guarantees:
 - no permanent dependence on a player-only outer shell plus nested replica split
 - no permanent dependence on `CharacterReplica` as an overgrown transitional owner
 
+## Action-Foundation Dependency (2026-09-14)
+
+After actor ingress convergence, execute the active action-foundation plan:
+
+`docs/superpowers/plans/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-implementation-plan.md`
+
+It owns the remaining imported-animation, layered arbitration, namespaced tag,
+NPC Motor convergence, and real CharacterAgent/INF embodiment work. This plan
+continues to own the shared host and controller-port convergence; neither plan
+may introduce a second movement or embodiment path.
+
 ---
 
 ## Scope

@@ -1,0 +1,463 @@
+{
+	"actions": [
+		{
+			"audit": {
+				"bone_impact": [
+					"root",
+					"pelvis",
+					"spine",
+					"chest",
+					"head",
+					"left_upper_arm",
+					"left_lower_arm",
+					"left_hand",
+					"right_upper_arm",
+					"right_lower_arm",
+					"right_hand",
+					"left_upper_leg",
+					"left_lower_leg",
+					"right_upper_leg",
+					"right_lower_leg"
+				],
+				"duration_seconds": 1.0,
+				"lower_body_impact": [
+					"left_upper_leg",
+					"left_upper_leg",
+					"left_lower_leg",
+					"left_lower_leg",
+					"right_upper_leg",
+					"right_upper_leg",
+					"right_lower_leg",
+					"right_lower_leg"
+				],
+				"pelvis_motion": {
+					"rotation": true,
+					"translation": true
+				},
+				"root_motion": {
+					"rotation": false,
+					"translation": true
+				},
+				"source_step_seconds": 0.0333333350718021,
+				"valid": true
+			},
+			"clip_ref": "inspect_relic",
+			"mode": "full_body_exclusive",
+			"semantic_action_id": "action:melee.sword_slash"
+		},
+		{
+			"audit": {
+				"bone_impact": [
+					"pelvis",
+					"spine",
+					"chest",
+					"head",
+					"left_upper_arm",
+					"left_lower_arm",
+					"left_hand",
+					"right_upper_arm",
+					"right_lower_arm",
+					"right_hand",
+					"left_upper_leg",
+					"left_lower_leg",
+					"right_upper_leg",
+					"right_lower_leg"
+				],
+				"duration_seconds": 1.33333337306976,
+				"lower_body_impact": [
+					"left_upper_leg",
+					"left_upper_leg",
+					"left_lower_leg",
+					"left_lower_leg",
+					"right_upper_leg",
+					"right_upper_leg",
+					"right_lower_leg",
+					"right_lower_leg"
+				],
+				"pelvis_motion": {
+					"rotation": true,
+					"translation": true
+				},
+				"root_motion": {
+					"rotation": false,
+					"translation": false
+				},
+				"source_step_seconds": 0.0333333350718021,
+				"valid": true
+			},
+			"clip_ref": "observe_watch",
+			"mode": "derived_upper_body",
+			"semantic_action_id": "action:aim.upper_body"
+		},
+		{
+			"audit": {
+				"bone_impact": [
+					"pelvis",
+					"spine",
+					"chest",
+					"head",
+					"left_upper_arm",
+					"left_lower_arm",
+					"left_hand",
+					"right_upper_arm",
+					"right_lower_arm",
+					"right_hand",
+					"left_upper_leg",
+					"left_lower_leg",
+					"right_upper_leg",
+					"right_lower_leg"
+				],
+				"duration_seconds": 1.33333337306976,
+				"lower_body_impact": [
+					"left_upper_leg",
+					"left_upper_leg",
+					"left_lower_leg",
+					"left_lower_leg",
+					"right_upper_leg",
+					"right_upper_leg",
+					"right_lower_leg",
+					"right_lower_leg"
+				],
+				"pelvis_motion": {
+					"rotation": true,
+					"translation": true
+				},
+				"root_motion": {
+					"rotation": false,
+					"translation": false
+				},
+				"source_step_seconds": 0.0333333350718021,
+				"valid": true
+			},
+			"clip_ref": "observe_watch",
+			"mode": "derived_upper_body",
+			"semantic_action_id": "action:hitscan.aim_fire"
+		}
+	],
+	"checks": {
+		"axis_convention": true,
+		"canonical_mapping": true,
+		"required_slots": true,
+		"skeleton": true,
+		"source_frame_rate": true,
+		"unit_scale": true
+	},
+	"clip_audits": {
+		"idle_guard": {
+			"bone_impact": [
+				"root",
+				"pelvis",
+				"spine",
+				"chest",
+				"head",
+				"left_upper_arm",
+				"left_lower_arm",
+				"left_hand",
+				"right_upper_arm",
+				"right_lower_arm",
+				"right_hand",
+				"left_upper_leg",
+				"left_lower_leg",
+				"right_upper_leg",
+				"right_lower_leg"
+			],
+			"duration_seconds": 1.33333337306976,
+			"lower_body_impact": [
+				"left_upper_leg",
+				"left_upper_leg",
+				"left_lower_leg",
+				"left_lower_leg",
+				"right_upper_leg",
+				"right_upper_leg",
+				"right_lower_leg",
+				"right_lower_leg"
+			],
+			"pelvis_motion": {
+				"rotation": true,
+				"translation": true
+			},
+			"root_motion": {
+				"rotation": false,
+				"translation": true
+			},
+			"source_step_seconds": 0.0333333350718021,
+			"valid": true
+		},
+		"inspect_relic": {
+			"bone_impact": [
+				"root",
+				"pelvis",
+				"spine",
+				"chest",
+				"head",
+				"left_upper_arm",
+				"left_lower_arm",
+				"left_hand",
+				"right_upper_arm",
+				"right_lower_arm",
+				"right_hand",
+				"left_upper_leg",
+				"left_lower_leg",
+				"right_upper_leg",
+				"right_lower_leg"
+			],
+			"duration_seconds": 1.0,
+			"lower_body_impact": [
+				"left_upper_leg",
+				"left_upper_leg",
+				"left_lower_leg",
+				"left_lower_leg",
+				"right_upper_leg",
+				"right_upper_leg",
+				"right_lower_leg",
+				"right_lower_leg"
+			],
+			"pelvis_motion": {
+				"rotation": true,
+				"translation": true
+			},
+			"root_motion": {
+				"rotation": false,
+				"translation": true
+			},
+			"source_step_seconds": 0.0333333350718021,
+			"valid": true
+		},
+		"jump_command": {
+			"bone_impact": [
+				"root",
+				"pelvis",
+				"spine",
+				"chest",
+				"head",
+				"left_upper_arm",
+				"left_lower_arm",
+				"left_hand",
+				"right_upper_arm",
+				"right_lower_arm",
+				"right_hand",
+				"left_upper_leg",
+				"left_lower_leg",
+				"right_upper_leg",
+				"right_lower_leg"
+			],
+			"duration_seconds": 0.533333361148834,
+			"lower_body_impact": [
+				"left_upper_leg",
+				"left_upper_leg",
+				"left_lower_leg",
+				"left_lower_leg",
+				"right_upper_leg",
+				"right_upper_leg",
+				"right_lower_leg",
+				"right_lower_leg"
+			],
+			"pelvis_motion": {
+				"rotation": true,
+				"translation": true
+			},
+			"root_motion": {
+				"rotation": false,
+				"translation": true
+			},
+			"source_step_seconds": 0.0333333350718021,
+			"valid": true
+		},
+		"observe_watch": {
+			"bone_impact": [
+				"pelvis",
+				"spine",
+				"chest",
+				"head",
+				"left_upper_arm",
+				"left_lower_arm",
+				"left_hand",
+				"right_upper_arm",
+				"right_lower_arm",
+				"right_hand",
+				"left_upper_leg",
+				"left_lower_leg",
+				"right_upper_leg",
+				"right_lower_leg"
+			],
+			"duration_seconds": 1.33333337306976,
+			"lower_body_impact": [
+				"left_upper_leg",
+				"left_upper_leg",
+				"left_lower_leg",
+				"left_lower_leg",
+				"right_upper_leg",
+				"right_upper_leg",
+				"right_lower_leg",
+				"right_lower_leg"
+			],
+			"pelvis_motion": {
+				"rotation": true,
+				"translation": true
+			},
+			"root_motion": {
+				"rotation": false,
+				"translation": false
+			},
+			"source_step_seconds": 0.0333333350718021,
+			"valid": true
+		},
+		"run_charge": {
+			"bone_impact": [
+				"root",
+				"pelvis",
+				"spine",
+				"chest",
+				"head",
+				"left_upper_arm",
+				"left_lower_arm",
+				"left_hand",
+				"right_upper_arm",
+				"right_lower_arm",
+				"right_hand",
+				"left_upper_leg",
+				"left_lower_leg",
+				"right_upper_leg",
+				"right_lower_leg"
+			],
+			"duration_seconds": 0.600000023841858,
+			"lower_body_impact": [
+				"left_upper_leg",
+				"left_upper_leg",
+				"left_lower_leg",
+				"left_lower_leg",
+				"right_upper_leg",
+				"right_upper_leg",
+				"right_lower_leg",
+				"right_lower_leg"
+			],
+			"pelvis_motion": {
+				"rotation": true,
+				"translation": true
+			},
+			"root_motion": {
+				"rotation": false,
+				"translation": true
+			},
+			"source_step_seconds": 0.0333333350718021,
+			"valid": true
+		},
+		"walk_guard": {
+			"bone_impact": [
+				"root",
+				"pelvis",
+				"spine",
+				"chest",
+				"head",
+				"left_upper_arm",
+				"left_lower_arm",
+				"left_hand",
+				"right_upper_arm",
+				"right_lower_arm",
+				"right_hand",
+				"left_upper_leg",
+				"left_lower_leg",
+				"right_upper_leg",
+				"right_lower_leg"
+			],
+			"duration_seconds": 0.800000011920929,
+			"lower_body_impact": [
+				"left_upper_leg",
+				"left_upper_leg",
+				"left_lower_leg",
+				"left_lower_leg",
+				"right_upper_leg",
+				"right_upper_leg",
+				"right_lower_leg",
+				"right_lower_leg"
+			],
+			"pelvis_motion": {
+				"rotation": true,
+				"translation": true
+			},
+			"root_motion": {
+				"rotation": false,
+				"translation": true
+			},
+			"source_step_seconds": 0.0333333350718021,
+			"valid": true
+		}
+	},
+	"contract": "character_qualification_report.v1",
+	"delivery_level": "full_body_action",
+	"fallback": {
+		"locomotion_compatibility": "replace_locomotion",
+		"mode": "full_body_exclusive",
+		"policy": "queue_until_compatible"
+	},
+	"fallbacks": [
+		{
+			"fallback": {
+				"locomotion_compatibility": "replace_locomotion",
+				"mode": "full_body_exclusive"
+			},
+			"reason": "upper_body_lower_body_motion",
+			"semantic_action_id": "action:aim.upper_body"
+		},
+		{
+			"fallback": {
+				"locomotion_compatibility": "replace_locomotion",
+				"mode": "full_body_exclusive"
+			},
+			"reason": "upper_body_lower_body_motion",
+			"semantic_action_id": "action:hitscan.aim_fire"
+		}
+	],
+	"locomotion": {
+		"idle": {
+			"classification": "root_motion",
+			"clip_ref": "idle_guard"
+		},
+		"jump_land": {
+			"classification": "root_motion",
+			"clip_ref": "jump_command"
+		},
+		"jump_loop": {
+			"classification": "root_motion",
+			"clip_ref": "jump_command"
+		},
+		"jump_start": {
+			"classification": "root_motion",
+			"clip_ref": "jump_command"
+		},
+		"run_forward": {
+			"classification": "root_motion",
+			"clip_ref": "run_charge"
+		},
+		"turn_left": {
+			"classification": "root_motion",
+			"clip_ref": "walk_guard"
+		},
+		"turn_right": {
+			"classification": "root_motion",
+			"clip_ref": "walk_guard"
+		},
+		"walk_forward": {
+			"classification": "root_motion",
+			"clip_ref": "walk_guard"
+		}
+	},
+	"locomotion_compatibility": "full_body_actions_replace_locomotion; no qualified_upper_body_profile",
+	"manifest_path": "res://assets/active/crusader_knight/manifest.json",
+	"optional": [],
+	"package_id": "crusader_knight",
+	"provenance": {
+		"authoring_contract": "external_provider",
+		"package_digest": "3D36D56D80344CBF61CF93C5C4A28005AB1816551978AA21C88BA7437C478F78",
+		"qualification_report_ref": "assets/characters/qualification_reports/crusader_knight.json",
+		"source_uri": "archive/assets/legacy/crusader_knight/crusader_knight.glb"
+	},
+	"reasons": [],
+	"report_path": ".harness/verification/crusader_knight-qualification-report.json",
+	"source": {
+		"digest_sha256": "3D36D56D80344CBF61CF93C5C4A28005AB1816551978AA21C88BA7437C478F78",
+		"format": "glb",
+		"model_path": "assets/active/crusader_knight/crusader_knight.glb"
+	},
+	"status": "qualified_with_fallback"
+}

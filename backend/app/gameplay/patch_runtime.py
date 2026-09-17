@@ -441,7 +441,16 @@ class PackageDeclaredNegotiatedExchangeDefinition(StrictPatchModel):
 
 class RuleCondition(StrictPatchModel):
     path: tuple[str, ...] = Field(min_length=1)
-    operator: Literal["equals", "exists"]
+    operator: Literal[
+        "equals",
+        "not_equals",
+        "exists",
+        "greater_than",
+        "greater_than_or_equal",
+        "less_than",
+        "less_than_or_equal",
+        "in",
+    ]
     expected_value: object | None = None
 
 
@@ -1475,6 +1484,29 @@ class GameplayRuleEvaluator:
                 raise
             if condition.operator == "exists":
                 continue
-            if actual != condition.expected_value:
+            expected = condition.expected_value
+            if condition.operator == "equals" and actual != expected:
                 return False
+            if condition.operator == "not_equals" and actual == expected:
+                return False
+            if condition.operator == "in":
+                if not isinstance(expected, (list, tuple, set, frozenset)) or actual not in expected:
+                    return False
+            if condition.operator in {
+                "greater_than",
+                "greater_than_or_equal",
+                "less_than",
+                "less_than_or_equal",
+            }:
+                try:
+                    if condition.operator == "greater_than" and not actual > expected:
+                        return False
+                    if condition.operator == "greater_than_or_equal" and not actual >= expected:
+                        return False
+                    if condition.operator == "less_than" and not actual < expected:
+                        return False
+                    if condition.operator == "less_than_or_equal" and not actual <= expected:
+                        return False
+                except TypeError:
+                    return False
         return True

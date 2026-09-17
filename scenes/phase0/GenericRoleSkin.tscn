@@ -1,0 +1,9 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/character/GenericRoleSkin.gd" id="1_generic"]
+[ext_resource type="PackedScene" path="res://scenes/phase0/GreyboxHumanoidVisual.tscn" id="2_visual"]
+
+[node name="GenericRoleSkin" type="Node3D"]
+script = ExtResource("1_generic")
+
+[node name="GreyboxHumanoidVisual" parent="." instance=ExtResource("2_visual")]

@@ -1,7 +1,7 @@
 extends Control
 
-const ROOM_SCENE: PackedScene = preload("res://assets/environment/throne_room_existing/Demo.gltf")
-const COMPENSATION_ENV_TEMPLATE: Environment = preload("res://scenes/phase0/BlenderRenderedApproxEnvironment.tres")
+const ROOM_SCENE: PackedScene = preload("res://archive/assets/legacy/throne_room_existing/Demo.gltf")
+const COMPENSATION_ENV_TEMPLATE: Environment = preload("res://archive/scenes/legacy/BlenderRenderedApproxEnvironment.tres")
 const LIGHTING_TUNER := preload("res://scripts/visual/ThroneRoomLightingTuner.gd")
 
 const RAW_TITLE := "Raw import"

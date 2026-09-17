@@ -1134,6 +1134,8 @@ class ContinuityMergeAuthority:
             return self._failed(plan, "preview_requires_branch")
         if plan.report_scope not in self.mode.allowed_privacy_scopes:
             return self._failed(plan, "privacy_denial")
+        if len(plan.candidates) != 1:
+            return self._failed(plan, "multi_candidate_atomic_batch_required")
         candidate = plan.candidates[0]
         owner_principal_ref = (
             GovernmentAuthority._PRINCIPAL

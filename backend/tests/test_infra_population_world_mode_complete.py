@@ -176,6 +176,32 @@ def test_inf4z_supply_uses_existing_organization_owner_fragment_and_receipt() ->
     assert event.event_type == "gameplay.organization.commerce_commitment_accepted"
 
 
+def test_inf4z_multi_candidate_world_plan_is_rejected_without_partial_write() -> None:
+    store = GameplayEventStore()
+    registry = CharacterProfileRegistry.from_directory(PROFILE_DIR)
+    first = _candidate()
+    second = _candidate().model_copy(update={"intent_ref": "intent:inf4z:second", "idempotency_key": "intent:inf4z:second"})
+    plan = PopulationPlanner().plan_world(
+        batch_ref="batch:inf4z:multi-candidate",
+        world_ref="world:bakery",
+        mode=_mode(),
+        candidates=(first, second),
+        base_event_digest="sha256:base",
+        tail_boundary=0,
+        active_revision_refs=("mode:inf4z:1",),
+        source_revision_vector={"gameplay:organization:organization:bakery": 0},
+        deterministic_seed="seed:inf4z:multi-candidate",
+        report_scope="actor:self",
+    )
+
+    receipt = ContinuityMergeAuthority(store=store, registry=registry, mode=_mode()).merge_world_plan(plan)
+
+    assert receipt.committed is False
+    assert receipt.zero_write is True
+    assert receipt.stop_reason == "multi_candidate_atomic_batch_required"
+    assert store.read_events() == []
+
+
 def test_inf4z_unmapped_work_intent_is_zero_write() -> None:
     store = GameplayEventStore()
     registry = CharacterProfileRegistry.from_directory(PROFILE_DIR)

@@ -110,6 +110,15 @@ This stage must not create:
 - direct world-truth writes from character reasoning
 - profile-specific hardcoded logic in runtime services
 
+### Action-Foundation Dependency
+
+Stage 2 L4 execution now depends on the unified action-foundation contract in
+`docs/superpowers/specs/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-design.md`.
+L4 may emit semantic intent, action requests, presentation cues, and
+authority-request metadata, but it may not write transforms, AnimationTree
+state, damage, or death. The actor-side coordinator owns arbitration and
+Motor-owned embodiment; INF/Gameplay/ESM remain world-result authorities.
+
 ## Current Mainline Gap Audit
 
 Stage 2 is not starting from zero, but the current mainline is still materially short of this spec.

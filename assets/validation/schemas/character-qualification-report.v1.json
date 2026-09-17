@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Character qualification report v1",
+  "type": "object",
+  "required": ["contract", "package_id", "status", "checks", "reasons", "clip_audits", "fallbacks"],
+  "properties": {
+    "contract": {"const": "character_qualification_report.v1"},
+    "package_id": {"type": "string"},
+    "status": {"enum": ["qualified", "qualified_with_fallback", "rejected"]},
+    "checks": {"type": "object"},
+    "reasons": {"type": "array", "items": {"type": "string"}},
+    "fallbacks": {"type": "array"},
+    "optional": {"type": "array", "items": {"type": "string"}},
+    "clip_audits": {"type": "object"},
+    "locomotion": {"type": "object"},
+    "actions": {"type": "array"}
+  }
+}

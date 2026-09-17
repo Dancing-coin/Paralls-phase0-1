@@ -1,0 +1,359 @@
+[gd_scene load_steps=26 format=3]
+
+[ext_resource type="Script" path="res://scripts/phase0/MainDemoController.gd" id="1_controller"]
+[ext_resource type="PackedScene" path="res://scenes/phase0/CharacterBase.tscn" id="2_player"]
+[ext_resource type="PackedScene" path="res://scenes/phase0/ValidationCharacterReplica.tscn" id="3_character"]
+[ext_resource type="PackedScene" path="res://scenes/phase0/InteractiveObject.tscn" id="4_object"]
+[ext_resource type="PackedScene" path="res://scenes/phase0/ArchiveDoorPhysical.tscn" id="5_door"]
+[ext_resource type="PackedScene" path="res://scenes/phase0/EnvironmentStateNode.tscn" id="6_environment"]
+[ext_resource type="PackedScene" path="res://scenes/phase0/ObservatoryRoot.tscn" id="7_observatory"]
+[ext_resource type="PackedScene" path="res://scenes/phase0/ValidationSceneRuntimeAdapter.tscn" id="8_adapter"]
+[ext_resource type="Script" path="res://scripts/visual/VisualFactEmitter.gd" id="9_visual"]
+[ext_resource type="Script" path="res://scripts/player/PlayerIntentMapper.gd" id="22_intent_mapper"]
+[ext_resource type="Script" path="res://scripts/ui/UnifiedValidationHud.gd" id="23_hud"]
+[ext_resource type="Script" path="res://scripts/ui/DebugOverlay.gd" id="24_debug"]
+[ext_resource type="Script" path="res://scripts/character/CharacterPresentationAssetResolver.gd" id="25_asset_resolver"]
+[ext_resource type="Script" path="res://scripts/verification/SimingHeavenlyRuntimeProbe.gd" id="26_siming_probe"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/CharacterVisualFactEmitter.gd" id="10_character_visual"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/EnvironmentVisualFactEmitter.gd" id="11_environment_visual"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/ObjectVisualFactEmitter.gd" id="12_object_visual"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/SpatialAccessFactEmitter.gd" id="13_spatial"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/EvidenceProjectionEmitter.gd" id="14_evidence"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/AuditoryFactEmitter.gd" id="15_auditory"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/TactileFactEmitter.gd" id="16_tactile"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/ThermalFactEmitter.gd" id="17_thermal"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/OlfactoryFactEmitter.gd" id="18_olfactory"]
+[ext_resource type="Script" path="res://scripts/interaction/ReviewedSceneAffordanceBridge.gd" id="19_affordance"]
+[ext_resource type="Script" path="res://scripts/interaction/ArchiveDoorEmbodiedAffordanceBridge.gd" id="20_door_affordance"]
+[ext_resource type="Script" path="res://scripts/interaction/DefaultScenePickupPresentationBridge.gd" id="21_pickup"]
+
+[sub_resource type="Environment" id="Environment_validation"]
+background_mode = 1
+background_color = Color(0.035, 0.055, 0.08, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.8, 0.86, 0.95, 1)
+ambient_light_energy = 0.8
+tonemap_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="Material_floor"]
+albedo_color = Color(0.17, 0.2, 0.24, 1)
+roughness = 0.92
+
+[sub_resource type="PlaneMesh" id="Mesh_floor"]
+size = Vector2(24, 18)
+
+[sub_resource type="BoxShape3D" id="Shape_floor"]
+size = Vector3(24, 0.2, 18)
+
+[sub_resource type="StandardMaterial3D" id="Material_wall"]
+albedo_color = Color(0.26, 0.29, 0.33, 1)
+roughness = 0.9
+
+[sub_resource type="BoxMesh" id="Mesh_wall_long"]
+size = Vector3(24, 2.6, 0.25)
+
+[sub_resource type="BoxMesh" id="Mesh_wall_short"]
+size = Vector3(0.25, 2.6, 18)
+
+[sub_resource type="BoxShape3D" id="Shape_wall_long"]
+size = Vector3(24, 2.6, 0.25)
+
+[sub_resource type="BoxShape3D" id="Shape_wall_short"]
+size = Vector3(0.25, 2.6, 18)
+
+[node name="Unified3DIntegrationValidation" type="Node3D"]
+script = ExtResource("1_controller")
+
+[node name="SceneRuntimeAdapter" parent="." instance=ExtResource("8_adapter")]
+
+[node name="CharacterPresentationAssetResolver" type="Node" parent="."]
+script = ExtResource("25_asset_resolver")
+binding_manifest_path = "res://assets/characters/asset_manifests/character_presentation_bindings.json"
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_validation")
+
+[node name="KeyLight" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, -25, 0)
+light_energy = 1.2
+shadow_enabled = true
+
+[node name="ValidationGeometry" type="Node3D" parent="."]
+
+[node name="Floor" type="MeshInstance3D" parent="ValidationGeometry"]
+mesh = SubResource("Mesh_floor")
+material_override = SubResource("Material_floor")
+
+[node name="FloorBody" type="StaticBody3D" parent="ValidationGeometry"]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ValidationGeometry/FloorBody"]
+shape = SubResource("Shape_floor")
+
+[node name="NorthWall" type="MeshInstance3D" parent="ValidationGeometry"]
+position = Vector3(0, 1.3, -9)
+mesh = SubResource("Mesh_wall_long")
+material_override = SubResource("Material_wall")
+
+[node name="NorthWallBody" type="StaticBody3D" parent="ValidationGeometry"]
+position = Vector3(0, 1.3, -9)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ValidationGeometry/NorthWallBody"]
+shape = SubResource("Shape_wall_long")
+
+[node name="SouthWall" type="MeshInstance3D" parent="ValidationGeometry"]
+position = Vector3(0, 1.3, 9)
+mesh = SubResource("Mesh_wall_long")
+material_override = SubResource("Material_wall")
+
+[node name="SouthWallBody" type="StaticBody3D" parent="ValidationGeometry"]
+position = Vector3(0, 1.3, 9)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ValidationGeometry/SouthWallBody"]
+shape = SubResource("Shape_wall_long")
+
+[node name="WestWall" type="MeshInstance3D" parent="ValidationGeometry"]
+position = Vector3(-12, 1.3, 0)
+mesh = SubResource("Mesh_wall_short")
+material_override = SubResource("Material_wall")
+
+[node name="WestWallBody" type="StaticBody3D" parent="ValidationGeometry"]
+position = Vector3(-12, 1.3, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ValidationGeometry/WestWallBody"]
+shape = SubResource("Shape_wall_short")
+
+[node name="EastWall" type="MeshInstance3D" parent="ValidationGeometry"]
+position = Vector3(12, 1.3, 0)
+mesh = SubResource("Mesh_wall_short")
+material_override = SubResource("Material_wall")
+
+[node name="EastWallBody" type="StaticBody3D" parent="ValidationGeometry"]
+position = Vector3(12, 1.3, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="ValidationGeometry/EastWallBody"]
+shape = SubResource("Shape_wall_short")
+
+[node name="L1NavigationRegion" type="NavigationRegion3D" parent="."]
+navigation_layer = 1
+
+[node name="PlayerCharacter" parent="." instance=ExtResource("2_player")]
+position = Vector3(0, 0.9, 6)
+
+[node name="IntentMapper" type="Node" parent="."]
+script = ExtResource("22_intent_mapper")
+room_id = "room:unified-3d-validation"
+scene_id = "scene:unified-3d-validation"
+zone_id = "zone:validation"
+
+[node name="VisualFactEmitter" type="Node" parent="."]
+script = ExtResource("9_visual")
+actor_id = "char_c"
+room_id = "room:unified-3d-validation"
+scene_id = "scene:unified-3d-validation"
+zone_id = "zone:validation"
+
+[node name="CharacterVisualFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("10_character_visual")
+
+[node name="EnvironmentVisualFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("11_environment_visual")
+
+[node name="ObjectVisualFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("12_object_visual")
+
+[node name="SpatialAccessFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("13_spatial")
+
+[node name="EvidenceProjectionEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("14_evidence")
+
+[node name="AuditoryFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("15_auditory")
+
+[node name="TactileFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("16_tactile")
+
+[node name="ThermalFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("17_thermal")
+
+[node name="OlfactoryFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("18_olfactory")
+
+[node name="CharacterA" parent="." instance=ExtResource("3_character")]
+position = Vector3(-4, 0.9, 0)
+actor_id = "char_a"
+patrol_enabled = false
+reacts_to_player_focus = true
+
+[node name="CharacterB" parent="." instance=ExtResource("3_character")]
+position = Vector3(4, 0.9, 0)
+actor_id = "char_b"
+patrol_enabled = false
+reacts_to_player_focus = true
+
+[node name="InteractiveObject" parent="." instance=ExtResource("4_object")]
+position = Vector3(0, 0.2, -2)
+
+[node name="DefaultSceneLetterAffordanceBridge" type="Node" parent="."]
+script = ExtResource("19_affordance")
+scene_id = "scene:unified-3d-validation"
+scene_instance_id = "scene_instance:unified-3d-validation:1"
+
+[node name="InteractivePlaque" parent="." instance=ExtResource("4_object")]
+position = Vector3(-3, 0.2, -2)
+object_id = "obj_plaque"
+display_name = "Plaque"
+metadata/grounding_refs = PackedStringArray("collider:obj_plaque:body", "anchor:obj_plaque:stance", "anchor:obj_plaque:observation", "affordance:obj_plaque:inspect", "nav:obj_plaque:approach_footprint")
+
+[node name="DefaultScenePlaqueAffordanceBridge" type="Node" parent="."]
+script = ExtResource("19_affordance")
+scene_id = "scene:unified-3d-validation"
+scene_instance_id = "scene_instance:unified-3d-validation:1"
+target_object_path = NodePath("../InteractivePlaque")
+object_id = "obj_plaque"
+affordance_id = "affordance:obj_plaque:inspect"
+semantic_type = "plaque"
+semantic_tags = PackedStringArray("plaque", "inspectable", "readable")
+policy_ref = "authority_policy:esm_inspect_plaque:v1"
+
+[node name="InteractiveLampSwitch" parent="." instance=ExtResource("4_object")]
+position = Vector3(3, 0.2, -2)
+object_id = "obj_lamp_switch"
+display_name = "Lamp Switch"
+initial_state = "idle"
+metadata/grounding_refs = PackedStringArray("collider:obj_lamp_switch:body", "anchor:obj_lamp_switch:stance", "anchor:obj_lamp_switch:observation", "affordance:obj_lamp_switch:press", "nav:obj_lamp_switch:approach_footprint")
+
+[node name="DefaultSceneLampSwitchAffordanceBridge" type="Node" parent="."]
+script = ExtResource("19_affordance")
+scene_id = "scene:unified-3d-validation"
+scene_instance_id = "scene_instance:unified-3d-validation:1"
+target_object_path = NodePath("../InteractiveLampSwitch")
+object_id = "obj_lamp_switch"
+affordance_id = "affordance:obj_lamp_switch:press"
+semantic_type = "lamp_switch"
+semantic_tags = PackedStringArray("switch", "pressable", "room_control")
+policy_ref = "authority_policy:esm_press_lamp_switch:v1"
+supported_interaction_types = PackedStringArray("press")
+primary_interaction_type = "press"
+action_semantic = "press"
+state_preconditions = PackedStringArray("idle")
+
+[node name="DefaultSceneArchiveDoorAffordanceBridge" type="Node" parent="."]
+script = ExtResource("20_door_affordance")
+scene_id = "scene:unified-3d-validation"
+scene_instance_id = "scene_instance:unified-3d-validation:1"
+
+[node name="InteractiveWorktable" parent="." instance=ExtResource("4_object")]
+position = Vector3(-4.5, 0.2, 3)
+object_id = "obj_worktable"
+display_name = "Worktable"
+initial_state = "ready"
+metadata/grounding_refs = PackedStringArray("collider:obj_worktable:body", "anchor:obj_worktable:stance", "anchor:obj_worktable:observation", "affordance:obj_worktable:use_surface", "nav:obj_worktable:approach_footprint")
+
+[node name="DefaultSceneWorktableAffordanceBridge" type="Node" parent="."]
+script = ExtResource("19_affordance")
+scene_id = "scene:unified-3d-validation"
+scene_instance_id = "scene_instance:unified-3d-validation:1"
+target_object_path = NodePath("../InteractiveWorktable")
+object_id = "obj_worktable"
+affordance_id = "affordance:obj_worktable:use_surface"
+semantic_type = "worktable"
+semantic_tags = PackedStringArray("table", "work_surface", "single_actor_use")
+policy_ref = "authority_policy:esm_use_worktable:v1"
+supported_interaction_types = PackedStringArray("use", "finish_use")
+primary_interaction_type = "use"
+default_interaction_by_state = {"ready": "use", "engaged": "finish_use"}
+action_semantic = "use_surface"
+state_preconditions = PackedStringArray("ready", "engaged")
+
+[node name="InteractiveObservationBench" parent="." instance=ExtResource("4_object")]
+position = Vector3(4.5, 0.2, 3)
+object_id = "obj_observation_bench"
+display_name = "Observation Bench"
+initial_state = "available"
+metadata/grounding_refs = PackedStringArray("collider:obj_observation_bench:body", "anchor:obj_observation_bench:stance", "anchor:obj_observation_bench:observation", "affordance:obj_observation_bench:seat", "nav:obj_observation_bench:approach_footprint")
+
+[node name="DefaultSceneObservationBenchAffordanceBridge" type="Node" parent="."]
+script = ExtResource("19_affordance")
+scene_id = "scene:unified-3d-validation"
+scene_instance_id = "scene_instance:unified-3d-validation:1"
+target_object_path = NodePath("../InteractiveObservationBench")
+object_id = "obj_observation_bench"
+affordance_id = "affordance:obj_observation_bench:seat"
+semantic_type = "observation_bench"
+semantic_tags = PackedStringArray("seat", "observation_bench", "single_occupant")
+policy_ref = "authority_policy:esm_occupy_observation_bench:v1"
+supported_interaction_types = PackedStringArray("sit", "stand")
+primary_interaction_type = "sit"
+default_interaction_by_state = {"available": "sit", "occupied": "stand"}
+action_semantic = "seat_occupancy"
+state_preconditions = PackedStringArray("available", "occupied")
+
+[node name="InteractiveArchiveToken" parent="." instance=ExtResource("4_object")]
+position = Vector3(2.5, 0.2, 3)
+object_id = "obj_archive_token"
+display_name = "Archive Token"
+initial_state = "available"
+metadata/grounding_refs = PackedStringArray("collider:obj_archive_token:body", "anchor:obj_archive_token:stance", "anchor:obj_archive_token:observation", "affordance:obj_archive_token:grab", "nav:obj_archive_token:approach_footprint")
+
+[node name="DefaultSceneArchiveTokenAffordanceBridge" type="Node" parent="."]
+script = ExtResource("19_affordance")
+scene_id = "scene:unified-3d-validation"
+scene_instance_id = "scene_instance:unified-3d-validation:1"
+target_object_path = NodePath("../InteractiveArchiveToken")
+object_id = "obj_archive_token"
+affordance_id = "affordance:obj_archive_token:grab"
+semantic_type = "archive_token"
+semantic_tags = PackedStringArray("pickup", "archive_token", "custody_only")
+policy_ref = "authority_policy:default_scene_pickup_archive_token:v1"
+supported_interaction_types = PackedStringArray("grab")
+primary_interaction_type = "grab"
+action_semantic = "grab"
+intent_route = "pickup"
+state_preconditions = PackedStringArray("available")
+
+[node name="DefaultSceneArchiveTokenPresentationBridge" type="Node" parent="."]
+script = ExtResource("21_pickup")
+
+[node name="InteractiveArchiveStorageChest" parent="." instance=ExtResource("4_object")]
+position = Vector3(0, 0.2, 5)
+object_id = "obj_archive_storage_chest"
+display_name = "Archive Storage Chest"
+initial_state = "available"
+metadata/grounding_refs = PackedStringArray("collider:obj_archive_storage_chest:body", "anchor:obj_archive_storage_chest:stance", "anchor:obj_archive_storage_chest:observation", "affordance:obj_archive_storage_chest:retrieve", "nav:obj_archive_storage_chest:approach_footprint")
+
+[node name="DefaultSceneArchiveStorageChestAffordanceBridge" type="Node" parent="."]
+script = ExtResource("19_affordance")
+scene_id = "scene:unified-3d-validation"
+scene_instance_id = "scene_instance:unified-3d-validation:1"
+target_object_path = NodePath("../InteractiveArchiveStorageChest")
+object_id = "obj_archive_storage_chest"
+affordance_id = "affordance:obj_archive_storage_chest:retrieve"
+semantic_type = "archive_storage_chest"
+semantic_tags = PackedStringArray("container", "archive_storage", "retrieve_only")
+policy_ref = "authority_policy:default_scene_retrieve_archive_token:v1"
+supported_interaction_types = PackedStringArray("retrieve")
+primary_interaction_type = "retrieve"
+action_semantic = "retrieve"
+intent_route = "retrieve"
+state_preconditions = PackedStringArray("available")
+
+[node name="ArchiveDoorPhysical" parent="." instance=ExtResource("5_door")]
+position = Vector3(0, 1.2, -8.8)
+object_id = "obj_archive_door"
+
+[node name="EnvironmentStateNode" parent="." instance=ExtResource("6_environment")]
+position = Vector3(7, 0.3, -3)
+environment_id = "env_lamp"
+
+[node name="ObservatoryRoot" parent="." instance=ExtResource("7_observatory")]
+
+[node name="SimingHeavenlyRuntimeProbe" type="Node" parent="."]
+script = ExtResource("26_siming_probe")
+
+[node name="ValidationHud" type="CanvasLayer" parent="."]
+script = ExtResource("23_hud")
+
+[node name="DebugOverlay" type="CanvasLayer" parent="."]
+visible = false
+script = ExtResource("24_debug")

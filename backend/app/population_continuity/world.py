@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 import hashlib
 import json
+from collections.abc import Mapping
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.replay import GameplayProjectionReplay
@@ -221,10 +222,11 @@ class WorldContinuityRuntime:
         *,
         workers: int = 1,
         batch_size: int = 256,
+        population_views: Mapping[str, object] | None = None,
     ) -> tuple[PopulationProjection, ...]:
         """从已确认热状态构造只读 B0 预览；发布前不推进游标。"""
         self._validate_confirmation_context(cadence, pin_rules=False)
-        cache_key = self._projection_cache_key(cadence)
+        cache_key = self._projection_cache_key(cadence, population_views=population_views)
         cached = self._projection_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -298,6 +300,31 @@ class WorldContinuityRuntime:
             )
             for result in results
         )
+        if population_views:
+            enriched: list[PopulationProjection] = []
+            for projection in projections:
+                actor_ref = str(projection.payload.get("actor_ref") or "")
+                view = population_views.get(actor_ref)
+                if view is None:
+                    enriched.append(projection)
+                    continue
+                if getattr(view, "consumer", None) != "population":
+                    raise ValueError("population_view_required")
+                groups = getattr(view, "groups", None)
+                if not isinstance(groups, Mapping):
+                    raise ValueError("population_view_invalid")
+                payload = dict(projection.payload)
+                payload["population_state"] = {
+                    str(group_id): _thaw_population_value(getattr(envelope, "payload", {}))
+                    for group_id, envelope in sorted(groups.items(), key=lambda item: str(item[0]))
+                    if isinstance(getattr(envelope, "payload", None), Mapping)
+                }
+                payload["population_state_source_revision_vector"] = _thaw_population_value(
+                    getattr(view, "source_revision_vector", {})
+                )
+                payload["population_state_checksum"] = str(getattr(view, "view_checksum", ""))
+                enriched.append(projection.model_copy(update={"payload": payload}))
+            projections = tuple(enriched)
         self._projection_cache = {cache_key: projections}
         self._preview_results = {cache_key: results}
         return projections
@@ -473,7 +500,12 @@ class WorldContinuityRuntime:
             cadence.report_scope,
         )
 
-    def _projection_cache_key(self, cadence: PopulationCadenceInput) -> tuple[object, ...]:
+    def _projection_cache_key(
+        self,
+        cadence: PopulationCadenceInput,
+        *,
+        population_views: Mapping[str, object] | None = None,
+    ) -> tuple[object, ...]:
         return (
             cadence.cadence_id,
             cadence.window_start,
@@ -481,8 +513,17 @@ class WorldContinuityRuntime:
             tuple(sorted(cadence.base_revision_vector.items())),
             *self._rule_identity(cadence),
             tuple(self.roster.actor_ids),
+            tuple(
+                sorted(
+                    (
+                        str(actor_ref),
+                        str(getattr(view, "view_checksum", "")),
+                        repr(getattr(view, "groups", {})),
+                    )
+                    for actor_ref, view in (population_views or {}).items()
+                )
+            ),
         )
-
     @staticmethod
     def _cadence_fingerprint(cadence: PopulationCadenceInput) -> str:
         return "sha256:" + hashlib.sha256(
@@ -504,7 +545,6 @@ class WorldContinuityRuntime:
         checkpoint = replay.create_checkpoint(events[:index])
         tail = replay.checkpoint_plus_tail_replay(checkpoint, events[index:])
         return full.projection_hash, tail.projection_hash
-
     def _transition(
         self, action: str, reason: str, *, expected_mode_revision: str | None = None
     ) -> WorldModeReceipt:
@@ -557,3 +597,14 @@ class WorldContinuityRuntime:
             if result.committed
             else (result.failure.error_code if result.failure else "append_rejected"),
         )
+
+
+def _thaw_population_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _thaw_population_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_thaw_population_value(item) for item in value]
+    return value

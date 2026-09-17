@@ -1,0 +1,39 @@
+{
+  "contract": "character_asset_qualification.v1",
+  "qualification_status": "candidate",
+  "artpack_id": "replace_with_active_pack_id",
+  "role_scene_ref": "res://scenes/active/<pack_id>/RoleSkin.tscn",
+  "required_bone_groups": {
+    "hips": ["hips", "pelvis", "mixamorig:Hips", "Bip001 Pelvis"],
+    "spine": ["spine", "spine_01", "mixamorig:Spine", "Bip001 Spine"],
+    "neck": ["neck", "mixamorig:Neck", "Bip001 Neck"],
+    "head": ["head", "mixamorig:Head", "Bip001 Head"],
+    "left_hand": ["hand_l", "LeftHand", "mixamorig:LeftHand", "Bip001 L Hand"],
+    "right_hand": ["hand_r", "RightHand", "mixamorig:RightHand", "Bip001 R Hand"],
+    "left_foot": ["foot_l", "LeftFoot", "mixamorig:LeftFoot", "Bip001 L Foot"],
+    "right_foot": ["foot_r", "RightFoot", "mixamorig:RightFoot", "Bip001 R Foot"]
+  },
+  "required_action_tags": ["idle", "walk", "run", "observe", "speak", "inspect", "interact", "recover"],
+  "action_clip_map": {
+    "idle": "idle_guard",
+    "walk": "walk_guard",
+    "run": "run_charge",
+    "observe": "observe_watch",
+    "speak": "speak_order",
+    "inspect": "inspect_relic",
+    "interact": "inspect_relic",
+    "recover": "idle_guard"
+  },
+  "required_role_methods": [
+    "configure_role",
+    "set_state",
+    "set_motion_profile",
+    "play_reviewed_action_atom",
+    "consume_root_motion_delta",
+    "reset_root_motion",
+    "get_current_clip_name",
+    "get_current_motion_profile_name"
+  ],
+  "required_equipment_slots": [],
+  "qualification_notes": "Candidate manifest. Do not mark approved until the qualification scene report passes."
+}

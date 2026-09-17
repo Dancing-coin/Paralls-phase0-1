@@ -3,6 +3,8 @@ from collections.abc import Iterator, Mapping
 import pytest
 
 from app.population_continuity.hot_state import PopulationDueIndex, PopulationHotState
+from app.gameplay.runtime_state import CharacterGameRuntimeStateBuilder, StateGroupDefinition, StateGroupRegistry
+from app.gameplay.state_group_views import StateGroupConsumerViewPolicy, StateGroupViewProjector
 
 
 class _FailsWhenCopied(Mapping[str, object]):
@@ -94,6 +96,70 @@ def test_due_index_is_stable_and_cancellation_is_revision_safe() -> None:
     assert index.pop_due(12) == (("actor_a", "obligation:1", 12),)
 
 
+def test_hot_state_accepts_only_explicitly_registered_extension_columns() -> None:
+    state = PopulationHotState(additional_fields=("commitment_pressure", "work_role"))
+    state.upsert(
+        "actor_a",
+        {"commitment_pressure": 0.8, "work_role": "miller"},
+        1,
+    )
+
+    assert state.read("actor_a")["commitment_pressure"] == 0.8
+    assert state.read("actor_a")["work_role"] == "miller"
+
+    try:
+        state.upsert("actor_a", {"private_memory": "hidden"}, 2)
+        raise AssertionError("unregistered extension column accepted")
+    except ValueError as exc:
+        assert str(exc) == "hot_state_field_not_allowed"
+
+
+def test_hot_state_can_register_columns_by_state_group() -> None:
+    state = PopulationHotState()
+    state.register_group_fields("character.commitments", ("pressure", "next_due_tick"))
+    state.upsert(
+        "actor_a",
+        {"character.commitments.pressure": 0.5, "character.commitments.next_due_tick": 120},
+        1,
+    )
+
+    assert state.read("actor_a")["character.commitments.next_due_tick"] == 120
+
+
+def test_hot_state_compiles_only_population_view_fields_into_columns() -> None:
+    registry = StateGroupRegistry()
+    registry.register(StateGroupDefinition(group_id="character.commitments", definition_version="1", projection_schema_version=1))
+    state = CharacterGameRuntimeStateBuilder(registry).build(
+        actor_ref="character:char_a",
+        enabled_group_ids=("character.commitments",),
+        group_payloads={
+            "character.commitments": {
+                "next_due_tick": 120,
+                "pressure": 0.8,
+                "private_note": "do not expose",
+            }
+        },
+        source_revision_vector={"world:bakery": 4},
+        registry_revision="registry:test",
+        world_config_revision="world:test",
+        active_patch_set_revision="patch:test",
+    )
+    view = StateGroupViewProjector(
+        [
+            StateGroupConsumerViewPolicy(
+                group_id="character.commitments",
+                population_allowed_fields=("next_due_tick", "pressure"),
+            )
+        ]
+    ).population_view(state, allowed_group_ids=("character.commitments",))
+    hot = PopulationHotState()
+
+    hot.upsert_population_view(view, revision=4)
+
+    row = hot.read("character:char_a")
+    assert row["character.commitments.next_due_tick"] == 120
+    assert row["character.commitments.pressure"] == 0.8
+    assert row["revision"] == 4
 def test_due_index_same_revision_reschedule_invalidates_the_old_due_tick() -> None:
     index = PopulationDueIndex()
     index.schedule("actor_a", "obligation:1", 10, 1)

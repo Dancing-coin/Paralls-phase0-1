@@ -11,7 +11,7 @@ def _read(relative_path: str) -> str:
 
 
 def test_wave_one_keeps_only_named_reviewed_default_scene_fixtures() -> None:
-    main_scene = _read("scenes/phase0/MainDemo.tscn")
+    main_scene = _read("scenes/integration/Unified3DIntegrationValidation.tscn")
     controller = _read("scripts/phase0/MainDemoController.gd")
     affordance_bridge = _read("scripts/interaction/DefaultSceneLetterAffordanceBridge.gd")
     archive_door_scene = _read("scenes/phase0/ArchiveDoorPhysical.tscn")

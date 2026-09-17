@@ -5,7 +5,7 @@ def test_default_scene_letter_is_a_reviewed_authority_owned_affordance_fixture()
     project_root = Path(__file__).resolve().parents[2]
     bridge_source = (project_root / "scripts" / "interaction" / "DefaultSceneLetterAffordanceBridge.gd").read_text(encoding="utf-8")
     generic_bridge_source = (project_root / "scripts" / "interaction" / "ReviewedSceneAffordanceBridge.gd").read_text(encoding="utf-8")
-    main_scene = (project_root / "scenes" / "phase0" / "MainDemo.tscn").read_text(encoding="utf-8")
+    main_scene = (project_root / "scenes" / "integration" / "Unified3DIntegrationValidation.tscn").read_text(encoding="utf-8")
     object_scene = (project_root / "scenes" / "phase0" / "InteractiveObject.tscn").read_text(encoding="utf-8")
 
     assert "ReviewedSceneAffordanceBridge.gd" in main_scene
@@ -37,7 +37,7 @@ def test_main_demo_requires_the_reviewed_binding_before_sending_letter_intent() 
 def test_main_demo_registers_plaque_through_the_same_reviewed_bridge_contract() -> None:
     project_root = Path(__file__).resolve().parents[2]
     bridge_source = (project_root / "scripts" / "interaction" / "DefaultSceneLetterAffordanceBridge.gd").read_text(encoding="utf-8")
-    main_scene = (project_root / "scenes" / "phase0" / "MainDemo.tscn").read_text(encoding="utf-8")
+    main_scene = (project_root / "scenes" / "integration" / "Unified3DIntegrationValidation.tscn").read_text(encoding="utf-8")
     controller_source = (project_root / "scripts" / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
     esm_source = (project_root / "backend" / "app" / "services" / "esm_service.py").read_text(encoding="utf-8")
     extractor_source = (project_root / "scripts" / "l1" / "space" / "SceneSpaceModelExtractor.gd").read_text(encoding="utf-8")
@@ -57,7 +57,7 @@ def test_main_demo_registers_plaque_through_the_same_reviewed_bridge_contract() 
 def test_main_demo_registers_switch_as_an_explicit_press_fixture() -> None:
     project_root = Path(__file__).resolve().parents[2]
     bridge_source = (project_root / "scripts" / "interaction" / "DefaultSceneLetterAffordanceBridge.gd").read_text(encoding="utf-8")
-    main_scene = (project_root / "scenes" / "phase0" / "MainDemo.tscn").read_text(encoding="utf-8")
+    main_scene = (project_root / "scenes" / "integration" / "Unified3DIntegrationValidation.tscn").read_text(encoding="utf-8")
     controller_source = (project_root / "scripts" / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
     esm_source = (project_root / "backend" / "app" / "services" / "esm_service.py").read_text(encoding="utf-8")
     main_source = (project_root / "backend" / "app" / "main.py").read_text(encoding="utf-8")
@@ -77,7 +77,7 @@ def test_main_demo_registers_switch_as_an_explicit_press_fixture() -> None:
 
 def test_main_demo_registers_door_as_an_explicit_open_fixture() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    main_scene = (project_root / "scenes" / "phase0" / "MainDemo.tscn").read_text(encoding="utf-8")
+    main_scene = (project_root / "scenes" / "integration" / "Unified3DIntegrationValidation.tscn").read_text(encoding="utf-8")
     controller_source = (project_root / "scripts" / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
     esm_source = (project_root / "backend" / "app" / "services" / "esm_service.py").read_text(encoding="utf-8")
     bridge_source = (project_root / "scripts" / "interaction" / "ArchiveDoorEmbodiedAffordanceBridge.gd").read_text(encoding="utf-8")
@@ -85,8 +85,8 @@ def test_main_demo_registers_door_as_an_explicit_open_fixture() -> None:
     assert 'object_id = "obj_archive_door"' in main_scene
     assert 'path="res://scenes/phase0/ArchiveDoorPhysical.tscn"' in main_scene
     assert 'path="res://scripts/interaction/ArchiveDoorEmbodiedAffordanceBridge.gd"' in main_scene
-    assert 'instance=ExtResource("139_archive_door_physical")' in main_scene
-    assert 'script = ExtResource("140_archive_door_bridge")' in main_scene
+    assert 'instance=ExtResource("5_door")' in main_scene
+    assert 'script = ExtResource("20_door_affordance")' in main_scene
     assert "$DefaultSceneArchiveDoorAffordanceBridge" in controller_source
     assert '"obj_archive_door"' in esm_source
     assert 'const AFFORDANCE_ID := "affordance:obj_archive_door:open"' in bridge_source
@@ -96,7 +96,7 @@ def test_main_demo_registers_door_as_an_explicit_open_fixture() -> None:
 
 def test_main_demo_registers_worktable_as_a_stateful_single_actor_use_fixture() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    main_scene = (project_root / "scenes" / "phase0" / "MainDemo.tscn").read_text(encoding="utf-8")
+    main_scene = (project_root / "scenes" / "integration" / "Unified3DIntegrationValidation.tscn").read_text(encoding="utf-8")
     controller_source = (project_root / "scripts" / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
     esm_source = (project_root / "backend" / "app" / "services" / "esm_service.py").read_text(encoding="utf-8")
 
@@ -113,7 +113,7 @@ def test_main_demo_registers_worktable_as_a_stateful_single_actor_use_fixture() 
 
 def test_main_demo_registers_observation_bench_with_authority_scoped_occupancy() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    main_scene = (project_root / "scenes" / "phase0" / "MainDemo.tscn").read_text(encoding="utf-8")
+    main_scene = (project_root / "scenes" / "integration" / "Unified3DIntegrationValidation.tscn").read_text(encoding="utf-8")
     controller_source = (project_root / "scripts" / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
     esm_source = (project_root / "backend" / "app" / "services" / "esm_service.py").read_text(encoding="utf-8")
     main_source = (project_root / "backend" / "app" / "main.py").read_text(encoding="utf-8")
@@ -134,7 +134,7 @@ def test_main_demo_registers_observation_bench_with_authority_scoped_occupancy()
 
 def test_main_demo_registers_archive_token_as_a_backend_resolved_pickup_fixture() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    main_scene = (project_root / "scenes" / "phase0" / "MainDemo.tscn").read_text(encoding="utf-8")
+    main_scene = (project_root / "scenes" / "integration" / "Unified3DIntegrationValidation.tscn").read_text(encoding="utf-8")
     controller_source = (project_root / "scripts" / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
     mapper_source = (project_root / "scripts" / "player" / "PlayerIntentMapper.gd").read_text(encoding="utf-8")
     presentation_source = (project_root / "scripts" / "interaction" / "DefaultScenePickupPresentationBridge.gd").read_text(encoding="utf-8")
@@ -156,7 +156,7 @@ def test_main_demo_registers_archive_token_as_a_backend_resolved_pickup_fixture(
 
 def test_main_demo_registers_archive_storage_chest_as_a_reviewed_retrieve_fixture() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    main_scene = (project_root / "scenes" / "phase0" / "MainDemo.tscn").read_text(encoding="utf-8")
+    main_scene = (project_root / "scenes" / "integration" / "Unified3DIntegrationValidation.tscn").read_text(encoding="utf-8")
     controller_source = (project_root / "scripts" / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
     mapper_source = (project_root / "scripts" / "player" / "PlayerIntentMapper.gd").read_text(encoding="utf-8")
     policy_source = (project_root / "backend" / "app" / "services" / "default_scene_pickup_policy.py").read_text(encoding="utf-8")

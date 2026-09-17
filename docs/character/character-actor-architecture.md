@@ -187,3 +187,23 @@ Future model and action flexibility depends on explicit contracts for:
 - future expression asset descriptors
 
 This repository does not need to implement the full asset library yet, but the actor stack must evolve toward explicit binding profiles and asset descriptors rather than hidden model-specific assumptions.
+
+## Action Foundation and INF Tag Boundary (2026-09-14)
+
+The six presentation/control layers above are now connected by a single
+namespaced tag contract. `goal:*`, `evidence:*`, `capability:*`, and
+`constraint:*` are semantic inputs or authority context; `state:*`,
+`status:*`, `action:*`, `phase:*`, and `occupy:*` are actor-runtime
+projections; `presentation:*` and `expression:*` are presentation cues.
+
+INF and CharacterAgent metadata must be adapted into intent proposals. It may
+not directly set actor transforms, AnimationTree state, damage, or death.
+Action descriptors may describe contact markers and optional root motion, but
+world consequences remain ESM/Gameplay authority results. The complete
+contract is maintained in
+`docs/superpowers/specs/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-design.md`.
+
+For the final cross-domain design, consult its child specifications for the
+physical command/evidence boundary, `ActionAttempt` settlement, and connected
+body replication. This actor document remains the host/presentation boundary;
+it does not define a second physics, ESM, or network contract.

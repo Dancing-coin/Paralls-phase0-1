@@ -15,6 +15,16 @@ receipt and replay reader remain fixed by the existing owner contract. The
 decision record must state the product loop, rejected alternatives, fact
 partition, downstream dependencies, and residual limitations.
 
+The main thread must supply any ordinary missing business/content decision
+itself: it derives fixed literals from committed contracts; where several legal
+values remain, it selects the value that best serves the approved product loop,
+world coherence, future content leverage and verification cost, then records
+the alternatives and rationale. A missing literal therefore does not justify
+waiting for a new user instruction. It may create the necessary narrow source
+fact, projection, policy, package content, proof or verification artifact under
+the rightful owner. It must not invent world evidence from fixtures, names,
+caller input or uncommitted claims.
+
 If the conflict matrix proves no existing owner can legally own the new fact,
 the main thread may admit one strictly row-specific new owner with its own
 complete Owner-Admission Contract, descriptor/catalog row, tests, Harness, and
@@ -30,4 +40,5 @@ or second runtime/store/bus/clock/scheduler. Every write still uses
 Continue in `INF-1 -> INF-2 -> INF-3 -> INF-4` order. Stop only for a true
 contradiction, unavailable external fact/credential, incompatible platform or
 schema change, forbidden generic expansion, or irreconcilable privacy/replay
-evidence failure.
+evidence failure. An escalation must identify that exact condition and its
+minimal resolution; it must not merely report a lack of new business input.

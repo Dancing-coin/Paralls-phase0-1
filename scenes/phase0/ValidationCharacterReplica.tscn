@@ -1,0 +1,65 @@
+[gd_scene load_steps=13 format=3]
+
+[ext_resource type="Script" path="res://scripts/character/CharacterReplica.gd" id="1_character"]
+[ext_resource type="PackedScene" path="res://scenes/phase0/GenericRoleSkin.tscn" id="2_visual"]
+[ext_resource type="Script" path="res://scripts/audio/SpatialVoiceController.gd" id="3_voice"]
+[ext_resource type="Script" path="res://scripts/character/CharacterMotor.gd" id="4_motor"]
+[ext_resource type="Script" path="res://scripts/character/CharacterRuntimeFeedback.gd" id="5_feedback"]
+[ext_resource type="Script" path="res://scripts/character/PerceptionConeDebug.gd" id="6_perception"]
+[ext_resource type="Script" path="res://scripts/visual/VisualFactEmitter.gd" id="7_visual_fact"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/RoleStateFactEmitter.gd" id="8_role_state"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/CharacterVisualFactEmitter.gd" id="9_character_visual"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/SpatialAccessFactEmitter.gd" id="10_spatial_access"]
+[ext_resource type="Script" path="res://scripts/l1/facts/emitters/PhysiologyStateFactEmitter.gd" id="11_physiology"]
+[ext_resource type="Script" path="res://scripts/visual/VisualFactEmitter.gd" id="12_visual_root"]
+
+[node name="CharacterReplica" type="Node3D"]
+script = ExtResource("1_character")
+
+[node name="VisualRoot" type="Node3D" parent="."]
+
+[node name="AssetMount" type="Node3D" parent="VisualRoot"]
+
+[node name="RotationOffset" type="Node3D" parent="VisualRoot/AssetMount"]
+
+[node name="ScaleOffset" type="Node3D" parent="VisualRoot/AssetMount/RotationOffset"]
+
+[node name="ImportedModel" type="Node3D" parent="VisualRoot/AssetMount/RotationOffset/ScaleOffset"]
+
+[node name="RoleAssetRoot" type="Node3D" parent="VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel"]
+
+[node name="GenericRoleSkin" parent="VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot" instance=ExtResource("2_visual")]
+
+[node name="SpatialVoiceController" type="AudioStreamPlayer3D" parent="."]
+script = ExtResource("3_voice")
+
+[node name="Nameplate" type="Label3D" parent="."]
+position = Vector3(0, 1.8, 0)
+text = "Replica"
+font_size = 32
+billboard = 1
+
+[node name="PerceptionConeDebug" type="MeshInstance3D" parent="."]
+position = Vector3(0, 1.55, 0)
+script = ExtResource("6_perception")
+
+[node name="CharacterRuntimeFeedback" type="Node" parent="."]
+script = ExtResource("5_feedback")
+
+[node name="CharacterMotor" type="Node" parent="."]
+script = ExtResource("4_motor")
+
+[node name="VisualFactEmitter" type="Node" parent="."]
+script = ExtResource("12_visual_root")
+
+[node name="RoleStateFactEmitter" type="Node" parent="."]
+script = ExtResource("8_role_state")
+
+[node name="CharacterVisualFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("9_character_visual")
+
+[node name="SpatialAccessFactEmitter" type="Node" parent="VisualFactEmitter"]
+script = ExtResource("10_spatial_access")
+
+[node name="PhysiologyStateFactEmitter" type="Node" parent="."]
+script = ExtResource("11_physiology")

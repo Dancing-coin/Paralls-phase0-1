@@ -1,6 +1,17 @@
-sandbox_mode = "danger-full-access"
-approval_policy = "never"
-approval_mode = "auto"
+# Team-shared context policy. Keep the large window available, but compact
+# before the long-context pricing/quality boundary discussed in the runbook.
+model_context_window = 1000000
+model_auto_compact_token_limit = 240000
+
+[features]
+# Project behavior only; no global OMX hooks or orchestration settings.
+codex_hooks = false
+
+# This server path is machine-specific. Each team member should replace it
+# with their local Godot MCP installation path.
 [mcp_servers.godot-mcp-pro]
 command = "node"
 args = ["E:/User/Documents/tools/godot-mcp-pro-v1.14.1/server/build/index.js"]
+
+# Add a Blender MCP entry here only when the team agrees on a server and each
+# member has installed it locally. Do not commit personal executable paths.

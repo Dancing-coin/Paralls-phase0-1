@@ -1,0 +1,14 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/phase0/SceneRuntimeAdapter.gd" id="1_adapter"]
+
+[node name="SceneRuntimeAdapter" type="Node"]
+script = ExtResource("1_adapter")
+imported_root_path = NodePath("")
+collision_root_path = NodePath("../ValidationGeometry")
+imported_root_name = ""
+collision_root_name = "ValidationGeometry"
+bootstrap_collision_enabled = false
+lighting_profile = "manual"
+source_scene_path = ""
+import_notes = "Generic primitive validation environment. No production art pack is required."

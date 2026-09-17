@@ -918,6 +918,34 @@ class PopulationSimulationCapability:
                     read_set,
                     "continuity_revision_reader_invalid",
                 )
+            lock_reader = getattr(self._continuity_port, "activation_lock_is_active", None)
+            if callable(lock_reader):
+                try:
+                    write_actor_refs: set[str] = set()
+                    for bound in report.owner_bound_intents:
+                        if isinstance(bound, PopulationOwnerBoundIntent):
+                            write_actor_refs.add(bound.actor_ref)
+                        elif isinstance(bound, dict) and bound.get("actor_ref"):
+                            write_actor_refs.add(str(bound["actor_ref"]))
+                    for value in report.presentation_seeds.values():
+                        if isinstance(value, dict) and value.get("actor_ref"):
+                            write_actor_refs.add(str(value["actor_ref"]))
+                    if any(
+                        lock_reader(actor_ref)
+                        for actor_ref in sorted(write_actor_refs)
+                        if actor_ref.startswith("character:")
+                    ):
+                        return self._requeue(
+                            report.batch_ref,
+                            read_set,
+                            "activation_lock_pending",
+                        )
+                except Exception:
+                    return self._requeue(
+                        report.batch_ref,
+                        read_set,
+                        "activation_lock_state_unavailable",
+                    )
         owner_receipts: list[PopulationOwnerReceipt] = []
         owner_refs: list[str] = list(accepted_owner_receipt_refs)
         owner_receipt_associations: dict[str, str] = {}
@@ -962,11 +990,18 @@ class PopulationSimulationCapability:
                 owner_refs.append(receipt.receipt_ref)
                 owner_receipt_associations[bound.candidate_ref] = receipt.receipt_ref
 
-        seeds = self._seed_planner.derive(
-            read_set,
-            owner_refs,
-            owner_receipt_associations=owner_receipt_associations,
-        )
+        try:
+            seeds = self._seed_planner.derive(
+                read_set,
+                owner_refs,
+                owner_receipt_associations=owner_receipt_associations,
+            )
+        except ValueError as exc:
+            return self._requeue(
+                report.batch_ref,
+                read_set,
+                str(exc) or "seed_module_schema_invalid",
+            )
         b0_actor_refs = {
             str(projection.payload.get("actor_ref", ""))
             for projection in read_set.projections
@@ -1009,6 +1044,7 @@ class PopulationSimulationCapability:
                         "presentation_seed": dict(seed.presentation_seed),
                         "activation_hints": list(seed.activation_hints),
                     },
+                    module_deltas=tuple(seed.module_deltas),
                     memory_candidate_refs=tuple(item.candidate_id for item in seed.memory_candidates),
                     exposure_evidence={
                         "source_event_refs": list(seed.source_event_refs),
