@@ -16,4 +16,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

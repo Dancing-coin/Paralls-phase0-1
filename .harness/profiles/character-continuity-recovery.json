@@ -6,5 +6,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/character-continuity-recovery-report.json",
-  "description": "Backend proof that graph-backed character continuity state rebuilds after session timeline storage loss"
+  "description": "Backend proof that graph-backed character continuity state rebuilds after session timeline storage loss",
+  "success_key": "overall_character_continuity_recovery_passed"
 }

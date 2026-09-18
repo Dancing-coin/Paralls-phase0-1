@@ -6,5 +6,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/gameplay-ability-affordance-report.json",
-  "description": "Backend proof for event-derived stable ability state and read-only body/resource affordance resolution; it excludes promotion, equipment/inventory predicates, transport, and Godot mirror delivery"
+  "description": "Backend proof for event-derived stable ability state and read-only body/resource affordance resolution; it excludes promotion, equipment/inventory predicates, transport, and Godot mirror delivery",
+  "success_key": "overall_gameplay_ability_affordance_passed"
 }

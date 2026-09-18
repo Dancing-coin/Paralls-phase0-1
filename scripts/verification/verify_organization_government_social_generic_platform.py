@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from common import verification_dir
+
 import json
 import subprocess
 import sys
@@ -33,7 +35,7 @@ def main() -> int:
         "tests": tests,
         "exit_code": result.returncode,
     }
-    output = ROOT / ".harness" / "verification" / "organization-government-social-generic-platform-report.json"
+    output = verification_dir(ROOT) / "organization-government-social-generic-platform-report.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"organization_government_social_generic_platform_report={output}")
@@ -41,4 +43,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

@@ -48,6 +48,10 @@ func write_viewport_capture_artifact(viewport: Viewport, relative_path: String =
 	if viewport == null:
 		return ""
 	var path := ProjectSettings.globalize_path("res://" + relative_path)
+	if relative_path.begins_with(".harness/verification/") and (OS.has_environment("HARNESS_EVIDENCE_ROOT") or OS.has_environment("HARNESS_ATTEMPT_ROOT")):
+		path = preload("res://scripts/verification/VerificationPaths.gd").resolve(relative_path)
+		if path.is_empty():
+			return ""
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var texture := viewport.get_texture()
 	if texture == null:

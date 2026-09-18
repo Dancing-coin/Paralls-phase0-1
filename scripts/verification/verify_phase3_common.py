@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+try:
+    from .common import verification_dir
+except ImportError:
+    from common import verification_dir
+
 import json
 import subprocess
 import sys
@@ -11,7 +16,7 @@ def root() -> Path:
 
 
 def write_report(name: str, report: dict[str, object]) -> int:
-    directory = root() / ".harness" / "verification"
+    directory = verification_dir(root())
     directory.mkdir(parents=True, exist_ok=True)
     (directory / f"{name}-report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"

@@ -18,9 +18,9 @@ from app.gameplay.organization_government_runtime import GovernmentAuthority
 from app.gameplay.replay import GameplayProjectionReplay
 from app.gameplay.settlement_plan import build_atomic_event_batch
 try:
-    from common import repo_root, resolve_godot_exe, run_command, verification_dir, write_json, write_markdown
+    from common import artifact_path, repo_root, resolve_godot_exe, run_command, verification_dir, write_json, write_markdown
 except ModuleNotFoundError:  # imported as a package by verification tests
-    from scripts.verification.common import repo_root, resolve_godot_exe, run_command, verification_dir, write_json, write_markdown
+    from scripts.verification.common import artifact_path, repo_root, resolve_godot_exe, run_command, verification_dir, write_json, write_markdown
 
 
 PREDECESSORS = (
@@ -42,7 +42,7 @@ def main() -> int:
     directory = verification_dir(root)
     predecessor_results = []
     for name in PREDECESSORS:
-        path = directory / name
+        path = artifact_path(root, f".harness/verification/{name}")
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -295,4 +295,8 @@ def _run_godot_mirror_probe(root: Path, directory: Path, payload_path: Path, exp
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

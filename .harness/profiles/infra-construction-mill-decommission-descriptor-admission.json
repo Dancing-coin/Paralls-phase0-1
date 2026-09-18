@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-construction-mill-decommission-descriptor-admission-report.json",
-  "description": "INF-1AH exact immutable lifecycle descriptor/catalog and read-only v3 binding admission; no lifecycle runtime"
+  "description": "INF-1AH exact immutable lifecycle descriptor/catalog and read-only v3 binding admission; no lifecycle runtime",
+  "success_key": "overall_passed"
 }

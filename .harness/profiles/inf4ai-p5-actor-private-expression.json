@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf4ai-p5-actor-private-expression-report.json",
-  "description": "INF-4AI exact completed handshake to actor-private Social shared experience"
+  "description": "INF-4AI exact completed handshake to actor-private Social shared experience",
+  "success_key": "overall_passed"
 }

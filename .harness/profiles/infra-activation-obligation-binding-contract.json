@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-activation-obligation-binding-contract-report.json",
-  "description": "INF-2G finite activation pending-to-existing-owner binding contract"
+  "description": "INF-2G finite activation pending-to-existing-owner binding contract",
+  "success_key": "overall_passed"
 }

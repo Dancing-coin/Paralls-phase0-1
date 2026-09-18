@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from common import read_text, repo_root, verification_dir, write_json, write_markdown
+from common import artifact_ref, read_text, repo_root, verification_dir, write_json, write_markdown
 
 
 ROOT = "docs/superpowers"
@@ -100,21 +100,21 @@ def evaluate_post_p5_capability_foundation_docs(project_root: Path) -> dict[str,
             "f0_august_coverage_ledger_complete",
             "F0 ledger maps all non-phase-progression August analysis families",
             all(marker in ledger_text for marker in ledger_markers),
-            [str(ledger_path.relative_to(project_root)).replace("\\", "/")],
+            [artifact_ref(project_root, ledger_path).replace("\\", "/")],
             "\n".join(marker for marker in ledger_markers if marker not in ledger_text),
         ),
         _result(
             "dg_opening_matrix_is_evidence_aware",
             "P6/P7 opening matrix names report paths, freshness invalidation, and future profiles",
             all(marker in dg_text for marker in dg_markers),
-            [str(dg_path.relative_to(project_root)).replace("\\", "/")],
+            [artifact_ref(project_root, dg_path).replace("\\", "/")],
             "\n".join(marker for marker in dg_markers if marker not in dg_text),
         ),
         _result(
             "post_p5_cross_links_present",
             "August guidance, formal specs, plans, and execution prompt cross-link",
             all(marker in combined_cross_links for marker in cross_link_markers),
-            [str(path.relative_to(project_root)).replace("\\", "/") for path in cross_link_paths],
+            [artifact_ref(project_root, path).replace("\\", "/") for path in cross_link_paths],
             "\n".join(marker for marker in cross_link_markers if marker not in combined_cross_links),
         ),
     ]
@@ -149,4 +149,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-ecology-weather-front-construction-edge-report.json",
-  "description": "INF-3G exact weather-front to Construction maintenance consumer edge"
+  "description": "INF-3G exact weather-front to Construction maintenance consumer edge",
+  "success_key": "overall_passed"
 }

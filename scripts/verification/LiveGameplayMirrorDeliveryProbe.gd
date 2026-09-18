@@ -1,5 +1,7 @@
 extends Node
 
+const VerificationPaths := preload("res://scripts/verification/VerificationPaths.gd")
+
 const MIRROR_BRIDGE := preload("res://scripts/interaction/GameplayMirrorBridge.gd")
 const MIRROR_CONSUMER := preload("res://scripts/interaction/GameplayRuntimeStateMirrorConsumer.gd")
 const VERIFICATION_ROOT := "res:/" + "/.harness/verification/"
@@ -25,6 +27,9 @@ var _controlled_close_code := 0
 
 
 func _ready() -> void:
+	if VerificationPaths.resolve(".harness/verification/.context-check").is_empty():
+		get_tree().quit(1)
+		return
 	_scenario = OS.get_environment("PARALLS_LIVE_GAMEPLAY_MIRROR_PROBE_SCENARIO")
 	var bus := get_node_or_null("/root/LocalPresentationBus")
 	if bus == null:
@@ -275,7 +280,10 @@ func _wait_for_reconnect_enrollment() -> void:
 
 
 func _write_ready() -> void:
-	var path := ProjectSettings.globalize_path(VERIFICATION_ROOT + "live-gameplay-mirror-ready.json")
+	var path := VerificationPaths.resolve(VERIFICATION_ROOT + "live-gameplay-mirror-ready.json")
+	if path.is_empty():
+		get_tree().quit(1)
+		return
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file != null:
@@ -284,7 +292,10 @@ func _write_ready() -> void:
 
 
 func _write_first_delivery() -> void:
-	var path := ProjectSettings.globalize_path(VERIFICATION_ROOT + "live-gameplay-mirror-first-delivery.json")
+	var path := VerificationPaths.resolve(VERIFICATION_ROOT + "live-gameplay-mirror-first-delivery.json")
+	if path.is_empty():
+		get_tree().quit(1)
+		return
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file != null:
@@ -293,7 +304,10 @@ func _write_first_delivery() -> void:
 
 
 func _write_prediction_ready(stage: String) -> void:
-	var path := ProjectSettings.globalize_path(VERIFICATION_ROOT + "live-gameplay-mirror-prediction-%s-ready.json" % stage)
+	var path := VerificationPaths.resolve(VERIFICATION_ROOT + "live-gameplay-mirror-prediction-%s-ready.json" % stage)
+	if path.is_empty():
+		get_tree().quit(1)
+		return
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file != null:
@@ -307,7 +321,10 @@ func _write_prediction_ready(stage: String) -> void:
 
 
 func _write_stage(stage: String) -> void:
-	var path := ProjectSettings.globalize_path(VERIFICATION_ROOT + "live-gameplay-mirror-stage.json")
+	var path := VerificationPaths.resolve(VERIFICATION_ROOT + "live-gameplay-mirror-stage.json")
+	if path.is_empty():
+		get_tree().quit(1)
+		return
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file != null:
@@ -342,7 +359,10 @@ func _finish(ok: bool, reason: String) -> void:
 		"controlled_close_reason": _controlled_close_reason,
 		"controlled_close_code": _controlled_close_code,
 	}
-	var path := ProjectSettings.globalize_path(VERIFICATION_ROOT + "live-gameplay-mirror-runtime.json")
+	var path := VerificationPaths.resolve(VERIFICATION_ROOT + "live-gameplay-mirror-runtime.json")
+	if path.is_empty():
+		get_tree().quit(1)
+		return
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file != null:

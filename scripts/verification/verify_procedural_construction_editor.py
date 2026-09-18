@@ -6,7 +6,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from common import run_command
+from common import verification_dir, run_command
 
 
 def main() -> int:
@@ -25,10 +25,10 @@ def main() -> int:
         "--scene",
         "res://scenes/phase0/ProceduralConstructionEditorRuntimeProbe.tscn",
     ]
-    log_path = root / ".harness" / "verification" / "procedural-construction-editor-runtime.log"
+    log_path = verification_dir(root) / "procedural-construction-editor-runtime.log"
     completed = run_command(command, root, log_path, timeout_seconds=30)
     timed_out = completed.returncode == 124
-    desktop_log_path = root / ".harness" / "verification" / "procedural-construction-editor-desktop-runtime.log"
+    desktop_log_path = verification_dir(root) / "procedural-construction-editor-desktop-runtime.log"
     desktop_command = [
         args.godot_exe,
         "--path",
@@ -63,7 +63,7 @@ def main() -> int:
         "stderr": "",
         "overall_passed": passed,
     }
-    output = root / ".harness" / "verification" / "procedural-construction-editor-runtime-report.json"
+    output = verification_dir(root) / "procedural-construction-editor-runtime-report.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"procedural_construction_editor_runtime_report_json={output}")
@@ -72,4 +72,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

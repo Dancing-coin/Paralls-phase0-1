@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-weather-front-survival-overheated-report.json",
-  "description": "INF-1AD fixed weather:heat to existing Survival overheated owner row"
+  "description": "INF-1AD fixed weather:heat to existing Survival overheated owner row",
+  "success_key": "overall_passed"
 }

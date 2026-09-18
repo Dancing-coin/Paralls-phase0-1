@@ -8,5 +8,6 @@
   "requires_godot": true,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/procedural-construction-editor-runtime-report.json",
-  "description": "Godot headless startup evidence for the external-art-free ProceduralConstructionEditor scene; desktop interaction remains separate evidence"
+  "description": "Godot headless startup evidence for the external-art-free ProceduralConstructionEditor scene; desktop interaction remains separate evidence",
+  "success_key": "overall_passed"
 }

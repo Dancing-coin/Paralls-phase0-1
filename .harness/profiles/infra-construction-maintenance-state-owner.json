@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-construction-maintenance-state-owner-report.json",
-  "description": "INF-1G closed maintenance-required to maintenance-due Construction owner row"
+  "description": "INF-1G closed maintenance-required to maintenance-due Construction owner row",
+  "success_key": "overall_passed"
 }

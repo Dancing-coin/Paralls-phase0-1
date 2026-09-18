@@ -5,25 +5,25 @@
     {
       "profile": "harness-lifecycle",
       "expected_artifacts": [
-        ".harness/verification/harness-lifecycle-report.json"
+        "harness-lifecycle-report.json"
       ]
     },
     {
       "profile": "docs",
       "expected_artifacts": [
-        ".harness/verification/docs-report.json"
+        "docs-report.json"
       ]
     },
     {
       "profile": "character-behavior-evaluation",
       "expected_artifacts": [
-        ".harness/verification/character-behavior-evaluation-report.json"
+        "character-behavior-evaluation-report.json"
       ]
     },
     {
       "profile": "character-policy-calibration",
       "expected_artifacts": [
-        ".harness/verification/character-policy-calibration-report.json"
+        "character-policy-calibration-report.json"
       ]
     }
   ],

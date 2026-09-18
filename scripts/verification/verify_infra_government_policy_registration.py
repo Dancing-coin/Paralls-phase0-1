@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from common import evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
+from common import artifact_ref, evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
 def main() -> int:
@@ -24,8 +24,8 @@ def main() -> int:
         path = verification_dir(root) / f"infra-government-policy-registration-{check}.log"
         result = run_command([python, "-m", "pytest", "-q", f"{tests}::{selector}"], root, path)
         checks[check] = result.returncode == 0
-        evidence.append(str(path.relative_to(root)).replace("\\", "/"))
-    report = {"profile": "infra-government-policy-registration", "overall_passed": all(checks.values()), "checks": checks, "focused_test_files": [str(tests.relative_to(root)).replace("\\", "/")], "evidence": evidence, "run_id": f"infra-government-policy-registration-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}", "commit": evidence_revision(root), "limitations": ["One fixed Government policy type only.", "It opens or settles no obligation and admits no generic payment or cross-domain writer."]}
+        evidence.append(artifact_ref(root, path).replace("\\", "/"))
+    report = {"profile": "infra-government-policy-registration", "overall_passed": all(checks.values()), "checks": checks, "focused_test_files": [artifact_ref(root, tests).replace("\\", "/")], "evidence": evidence, "run_id": f"infra-government-policy-registration-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}", "commit": evidence_revision(root), "limitations": ["One fixed Government policy type only.", "It opens or settles no obligation and admits no generic payment or cross-domain writer."]}
     path = verification_dir(root) / "infra-government-policy-registration-report.json"
     write_json(path, report)
     write_markdown(path.with_suffix(".md"), "INF-2K Government Policy Registration Report", {"results": [{"id": name, "status": "proved" if value else "missing", "title": name} for name, value in checks.items()], "overall_passed": report["overall_passed"]}, "overall_passed")
@@ -33,4 +33,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

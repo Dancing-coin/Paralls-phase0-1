@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+try:
+    from .common import artifact_path, verification_dir
+except ImportError:
+    from common import artifact_path, verification_dir
+
 import json
 import sys
 from pathlib import Path
@@ -22,7 +27,7 @@ def main() -> int:
         )
     }
     replay = fixture.replay_scenario("competing_candidates")
-    predecessor_path = root / ".harness" / "verification" / "siming-governed-three-actor-cohort-continuity-v1-report.json"
+    predecessor_path = artifact_path(root, ".harness/verification/siming-governed-three-actor-cohort-continuity-v1-report.json")
     predecessor = False
     if predecessor_path.exists():
         try:
@@ -84,7 +89,7 @@ def main() -> int:
             "revision_vector": dict(production_projection[0].revision_vector) if production_projection else {},
         },
     }
-    artifact = root / ".harness" / "verification" / "siming-generalized-population-decision-report.json"
+    artifact = verification_dir(root) / "siming-generalized-population-decision-report.json"
     artifact.parent.mkdir(parents=True, exist_ok=True)
     artifact.write_text(json.dumps(report, ensure_ascii=True, indent=2), encoding="utf-8")
     print(f"overall_siming_generalized_population_decision_passed={report['overall_passed']}")
@@ -92,4 +97,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

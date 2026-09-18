@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-debt-settlement-formal-spine-report.json",
-  "description": "INF-2L fixed simple-debt settlement migrated to the formal authority event spine"
+  "description": "INF-2L fixed simple-debt settlement migrated to the formal authority event spine",
+  "success_key": "overall_passed"
 }

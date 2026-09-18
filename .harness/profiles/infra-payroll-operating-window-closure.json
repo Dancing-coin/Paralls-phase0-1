@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-payroll-operating-window-closure-report.json",
-  "description": "INF-2P/INF-2V bounded owner-split payroll and organization operating-window closure"
+  "description": "INF-2P/INF-2V bounded owner-split payroll and organization operating-window closure",
+  "success_key": "overall_passed"
 }

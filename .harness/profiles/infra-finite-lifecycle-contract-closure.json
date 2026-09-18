@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-finite-lifecycle-contract-closure-report.json",
-  "description": "INF-1Q immutable lifecycle admission reader for existing Survival, Construction, Ecology, and Economy owner rows"
+  "description": "INF-1Q immutable lifecycle admission reader for existing Survival, Construction, Ecology, and Economy owner rows",
+  "success_key": "overall_passed"
 }

@@ -6,5 +6,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/siming-heavenly-graph-foundation-report.json",
-  "description": "Backend proof for namespace-safe, owner-isolated, bi-temporal, bounded, restart-durable Heavenly Graph adapters"
+  "description": "Backend proof for namespace-safe, owner-isolated, bi-temporal, bounded, restart-durable Heavenly Graph adapters",
+  "success_key": "overall_siming_heavenly_graph_foundation_passed"
 }

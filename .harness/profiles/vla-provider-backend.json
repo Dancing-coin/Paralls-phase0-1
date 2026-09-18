@@ -6,5 +6,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/vla-provider-backend-report.json",
-  "description": "Backend proof for advisory-only VLA provider request/result contracts, model registry, scheduler, cache isolation, percept bridge, runtime consumption, and real-provider readiness status"
+  "description": "Backend proof for advisory-only VLA provider request/result contracts, model registry, scheduler, cache isolation, percept bridge, runtime consumption, and real-provider readiness status",
+  "success_key": "overall_vla_provider_backend_passed"
 }

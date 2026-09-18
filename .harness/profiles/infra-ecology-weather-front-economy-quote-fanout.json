@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-ecology-weather-front-economy-quote-fanout-report.json",
-  "description": "INF-3N exact weather-front to two existing Economy quotes in one owner batch"
+  "description": "INF-3N exact weather-front to two existing Economy quotes in one owner batch",
+  "success_key": "overall_passed"
 }

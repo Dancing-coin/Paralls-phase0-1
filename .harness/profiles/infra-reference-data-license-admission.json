@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-reference-data-license-admission-report.json",
-  "description": "INF-4Z reference-data authority lifecycle, frozen authoritative calibration admission, privacy, zero-write and replay evidence"
+  "description": "INF-4Z reference-data authority lifecycle, frozen authoritative calibration admission, privacy, zero-write and replay evidence",
+  "success_key": "overall_passed"
 }

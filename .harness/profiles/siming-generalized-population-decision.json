@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/siming-generalized-population-decision-report.json",
-  "description": "Invariant and scenario proof for generalized Siming population candidate selection"
+  "description": "Invariant and scenario proof for generalized Siming population candidate selection",
+  "success_key": "overall_passed"
 }

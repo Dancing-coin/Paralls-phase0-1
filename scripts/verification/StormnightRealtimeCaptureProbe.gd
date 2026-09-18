@@ -1,9 +1,14 @@
 extends Node
 
+const VerificationPaths := preload("res://scripts/verification/VerificationPaths.gd")
+
 const REALTIME_SCENE := preload("res://scenes/phase0/StormnightRealtimePlayable.tscn")
 
 
 func _ready() -> void:
+	if VerificationPaths.resolve(".harness/verification/.context-check").is_empty():
+		get_tree().quit(1)
+		return
 	call_deferred("_capture")
 
 
@@ -46,7 +51,10 @@ func _capture() -> void:
 	var relative := OS.get_environment("STORMNIGHT_CAPTURE_PATH")
 	if relative.is_empty():
 		relative = ".harness/verification/stormnight-realtime-playable-%s.png" % index
-	var path := ProjectSettings.globalize_path("res://" + relative)
+	var path := VerificationPaths.resolve("res://" + relative)
+	if path.is_empty():
+		get_tree().quit(1)
+		return
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var image := get_viewport().get_texture().get_image()
 	var error := image.save_png(path)

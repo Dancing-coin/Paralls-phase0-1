@@ -6,5 +6,6 @@
   "requires_godot": true,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/embodied-interaction-replay-report.json",
-  "description": "Phase 5 Godot and backend proof for kick-chair visible settlement, server-ledger replay validation, idempotent source sequencing, and public Observatory projection filtering"
+  "description": "Phase 5 Godot and backend proof for kick-chair visible settlement, server-ledger replay validation, idempotent source sequencing, and public Observatory projection filtering",
+  "success_key": "overall_embodied_interaction_replay_passed"
 }

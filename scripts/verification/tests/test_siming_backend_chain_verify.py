@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import pytest
+
+from scripts.verification.common import verification_dir
+from scripts.verification.run_context import run_scope
+
 import json
 import os
 import subprocess
@@ -16,6 +21,12 @@ from registry import load_profile_registry
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
+@pytest.fixture
+def evidence_scope():
+    with run_scope(PROJECT_ROOT):
+        yield
+
+
 def test_siming_backend_chain_profile_is_registered() -> None:
     registry = load_profile_registry(PROJECT_ROOT)
 
@@ -29,7 +40,7 @@ def test_siming_backend_chain_profile_is_registered() -> None:
     assert harness._profiles_for_selection("siming-backend-chain", registry) == ["siming-backend-chain"]
 
 
-def test_component_only_console_output_is_bilingual_and_writes_report() -> None:
+def test_component_only_console_output_is_bilingual_and_writes_report(evidence_scope) -> None:
     result = subprocess.run(
         [sys.executable, "scripts/verification/verify_siming_backend_chain.py", "--component-only"],
         cwd=PROJECT_ROOT,
@@ -48,14 +59,14 @@ def test_component_only_console_output_is_bilingual_and_writes_report() -> None:
     assert "结果=通过 / result=PASS" in result.stdout
     assert "scenario=app_wiring_live_deepseek_chain" not in result.stdout
 
-    report_path = PROJECT_ROOT / ".harness" / "verification" / "siming-backend-chain-report.json"
+    report_path = verification_dir(PROJECT_ROOT) / "siming-backend-chain-report.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["overall_siming_backend_chain_passed"] is True
     assert any(entry["id"] == "component_fallback_visual_fact_chain" for entry in report["results"])
     assert all(entry["id"] != "app_wiring_live_deepseek_chain" for entry in report["results"])
 
 
-def test_live_deepseek_without_key_fails_bilingually() -> None:
+def test_live_deepseek_without_key_fails_bilingually(evidence_scope) -> None:
     env = {
         **os.environ,
         "PYTHONIOENCODING": "utf-8",
@@ -86,7 +97,7 @@ def test_live_deepseek_without_key_fails_bilingually() -> None:
     assert "失败阶段 / failed_stage=credential_check" in result.stdout
     assert "实际 / actual=missing API key for deepseek_chat" in result.stdout
 
-    report_path = PROJECT_ROOT / ".harness" / "verification" / "siming-backend-chain-report.json"
+    report_path = verification_dir(PROJECT_ROOT) / "siming-backend-chain-report.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["overall_siming_backend_chain_passed"] is False
     live_entry = next(entry for entry in report["results"] if entry["id"] == "app_wiring_live_deepseek_chain")

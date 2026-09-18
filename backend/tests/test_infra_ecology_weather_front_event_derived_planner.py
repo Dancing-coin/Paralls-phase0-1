@@ -6,6 +6,9 @@ from pathlib import Path
 import sys
 from types import SimpleNamespace
 
+from scripts.verification.common import artifact_path
+from scripts.verification.run_context import run_scope
+
 from test_infra_ecology_weather_front_wave_fanout import WAVES, _authority, _propagate
 
 from app.gameplay.ecology_runtime import (
@@ -421,27 +424,11 @@ def test_event_derived_planner_outbox_and_checkpoint_tail_replay_are_scoped():
 
 
 def test_event_derived_planner_predecessor_gate_requires_fresh_harness_identity(tmp_path, monkeypatch):
-    verification_root = tmp_path / ".harness" / "verification"
-    verification_root.mkdir(parents=True)
     predecessor_payload = {
         "profile": "infra-regional-ecology-truth",
         "overall_passed": True,
         "commit": "rev-current",
     }
-    (verification_root / "infra-regional-ecology-truth-report.json").write_text(
-        json.dumps(predecessor_payload),
-        encoding="utf-8",
-    )
-    (verification_root / "infra-ecology-weather-front-wave-fanout-report.json").write_text(
-        json.dumps(
-            {
-                **predecessor_payload,
-                "profile": "infra-ecology-weather-front-wave-fanout",
-            }
-        ),
-        encoding="utf-8",
-    )
-
     monkeypatch.setattr(verification_script, "repo_root", lambda: tmp_path)
     monkeypatch.setattr(verification_script, "evidence_revision", lambda _root: "rev-current")
     monkeypatch.setattr(
@@ -450,10 +437,20 @@ def test_event_derived_planner_predecessor_gate_requires_fresh_harness_identity(
         lambda *args, **kwargs: SimpleNamespace(returncode=0),
     )
 
-    assert verification_script.main() == 1
-    report = json.loads(
-        (verification_root / "infra-ecology-weather-front-event-derived-planner-report.json").read_text(
-            encoding="utf-8"
+    with run_scope(tmp_path) as run:
+        verification_root = run.evidence_root
+        (verification_root / "infra-regional-ecology-truth-report.json").write_text(
+            json.dumps(predecessor_payload), encoding="utf-8"
         )
-    )
+        (verification_root / "infra-ecology-weather-front-wave-fanout-report.json").write_text(
+            json.dumps({**predecessor_payload, "profile": "infra-ecology-weather-front-wave-fanout"}),
+            encoding="utf-8",
+        )
+        assert verification_script.main() == 1
+        report = json.loads(
+            artifact_path(
+                tmp_path,
+                ".harness/verification/infra-ecology-weather-front-event-derived-planner-report.json",
+            ).read_text(encoding="utf-8")
+        )
     assert report["checks"]["predecessor_regional_truth_report"] is False

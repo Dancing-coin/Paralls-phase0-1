@@ -142,7 +142,11 @@ def main_verify(python_exe: str | None) -> int:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--python-exe", default=None)
-    args = parser.parse_args()
-    raise SystemExit(main_verify(args.python_exe))
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--python-exe", default=None)
+        args = parser.parse_args()
+        raise SystemExit(main_verify(args.python_exe))

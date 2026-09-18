@@ -6,5 +6,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/behavior-turn-runtime-report.json",
-  "description": "Backend proof for one character-owned eight-stage behavior turn, accepted/rejected settlement projection, actor-private isolation, and recorder idempotency"
+  "description": "Backend proof for one character-owned eight-stage behavior turn, accepted/rejected settlement projection, actor-private isolation, and recorder idempotency",
+  "success_key": "overall_behavior_turn_runtime_passed"
 }

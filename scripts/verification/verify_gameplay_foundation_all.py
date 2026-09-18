@@ -5,7 +5,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from common import repo_root, resolve_python_exe, verification_dir, write_json, write_markdown
+from common import artifact_path, repo_root, resolve_python_exe, verification_dir, write_json, write_markdown
 
 
 GAMEPLAY_FOUNDATION_PROFILES = [
@@ -98,7 +98,7 @@ def main() -> int:
             )
 
         profile_manifest = _read_json_object(project_root / ".harness" / "profiles" / f"{profile}.json")
-        result_artifact = project_root / str(profile_manifest.get("result_artifact", ""))
+        result_artifact = artifact_path(project_root, str(profile_manifest.get("result_artifact", "")))
         report = _read_json_object(result_artifact)
         passed = result.returncode == 0 and _child_report_passed(profile, report)
         profile_results.append(
@@ -137,4 +137,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

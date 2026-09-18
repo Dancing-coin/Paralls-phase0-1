@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/facility-identity-upgrade-family-report.json",
-  "description": "Bounded Construction facility identity upgrade family verification"
+  "description": "Bounded Construction facility identity upgrade family verification",
+  "success_key": "overall_passed"
 }

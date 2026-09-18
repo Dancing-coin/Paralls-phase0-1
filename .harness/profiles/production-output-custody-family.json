@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/production-output-custody-family-report.json",
-  "description": "Production output custody blocker and zero-write evidence"
+  "description": "Production output custody blocker and zero-write evidence",
+  "success_key": "overall_passed"
 }

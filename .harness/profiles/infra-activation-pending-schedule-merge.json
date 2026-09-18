@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-activation-pending-schedule-merge-report.json",
-  "description": "INF-4C event-derived activation pending admission and released existing-Organization schedule merge"
+  "description": "INF-4C event-derived activation pending admission and released existing-Organization schedule merge",
+  "success_key": "overall_passed"
 }

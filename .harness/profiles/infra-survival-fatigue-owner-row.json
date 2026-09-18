@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-survival-fatigue-owner-row-report.json",
-  "description": "INF-1S closed fatigue-exposure to fatigued existing Survival owner row"
+  "description": "INF-1S closed fatigue-exposure to fatigued existing Survival owner row",
+  "success_key": "overall_passed"
 }

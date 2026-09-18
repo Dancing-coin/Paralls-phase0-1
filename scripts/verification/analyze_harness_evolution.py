@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from common import repo_root, verification_dir
+from run_context import run_scope
 from evolution import (
     analyze_harness_evolution,
     build_candidate_from_analysis,
@@ -23,6 +24,7 @@ def _write_report(project_root: Path, report: dict[str, object]) -> dict[str, Pa
         "# Harness Evolution Report",
         "",
         f"- History Status: `{report.get('history_status')}`",
+        f"- Effectiveness: `{report.get('effectiveness')}`",
         f"- Patterns: `{len(report.get('failure_patterns', []))}`",
         f"- Telemetry Gaps: `{len(report.get('telemetry_gaps', []))}`",
         "",
@@ -37,9 +39,15 @@ def main() -> int:
     parser.add_argument("--candidate-id", default=None)
     parser.add_argument("--replay-set", default="default")
     parser.add_argument("--project-root", default=None)
+    parser.add_argument("--input-root", type=Path, default=None)
     args = parser.parse_args()
 
     project_root = Path(args.project_root).resolve() if args.project_root else repo_root()
+    with run_scope(project_root):
+        return _execute(project_root, args)
+
+
+def _execute(project_root: Path, args: argparse.Namespace) -> int:
     config, config_errors = load_evolution_config(project_root)
     _replay_set, replay_errors = load_replay_set(project_root, args.replay_set)
     if config_errors or replay_errors:
@@ -47,10 +55,16 @@ def main() -> int:
             print(f"harness_evolution_error={error}")
         return 1
 
-    report = analyze_harness_evolution(project_root, config)
+    try:
+        report = analyze_harness_evolution(project_root, config, input_root=args.input_root)
+    except ValueError as exc:
+        print(f"harness_evolution_error={exc}")
+        return 1
     report_paths = _write_report(project_root, report)
     print(f"harness_evolution_report_json={report_paths['json']}")
     print(f"harness_evolution_report_md={report_paths['markdown']}")
+    print(f"history_status={report['history_status']}")
+    print(f"effectiveness={report['effectiveness']}")
 
     if args.mode == "propose":
         if not args.candidate_id:

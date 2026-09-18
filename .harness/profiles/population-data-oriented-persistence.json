@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/population-data-oriented-persistence-report.json",
-  "description": "Backend-only SQLite delta persistence evidence; Godot remains unverified"
+  "description": "Backend-only SQLite delta persistence evidence; Godot remains unverified",
+  "success_key": "overall_passed"
 }

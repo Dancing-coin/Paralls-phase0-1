@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "suites": {
+    "smoke": ["harness-smoke"],
+    "contract": ["docs", "boundaries", "backend-contract", "godot-project", "harness-lifecycle"],
+    "runtime": ["phase0", "mainline-unified-runtime"],
+    "release": ["docs", "boundaries", "backend-contract", "godot-project", "harness-lifecycle", "phase0", "mainline-unified-runtime"]
+  }
+}

@@ -17,7 +17,8 @@
     "failure_digest",
     "docs_gate",
     "rule_evidence",
-    "character_policy_calibration"
+    "character_policy_calibration",
+    "workflow_skill"
   ],
   "promotion_requires_profiles": [
     "docs",

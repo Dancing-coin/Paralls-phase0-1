@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-activation-overheated-expiry-report.json",
-  "description": "INF-2F released overheated state-expiry pending row through existing Survival authority"
+  "description": "INF-2F released overheated state-expiry pending row through existing Survival authority",
+  "success_key": "overall_passed"
 }

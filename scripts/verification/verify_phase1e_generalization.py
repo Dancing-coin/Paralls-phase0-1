@@ -11,7 +11,7 @@ from app.gameplay.ownership_contract_debt_sample import OwnershipContractDebtSam
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.replay import GameplayProjectionReplay, ReplayContext
 from app.gameplay.settlement_plan import SettlementPlan
-from common import repo_root, verification_dir, write_json, write_markdown
+from common import artifact_path, repo_root, verification_dir, write_json, write_markdown
 from phase1e_comparison import build_generalization_comparison
 
 
@@ -25,7 +25,7 @@ def main() -> int:
     predecessors = []
     for name in predecessor_names:
         try:
-            payload = json.loads((directory / name).read_text(encoding="utf-8"))
+            payload = json.loads(artifact_path(root, f".harness/verification/{name}").read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             payload = {}
         predecessors.append({"name": name, "passed": any(value is True for key, value in payload.items() if key.startswith("overall_"))})
@@ -139,4 +139,8 @@ def _failure_matrix(sample: OwnershipContractDebtSample) -> list[dict[str, objec
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-economy-wage-terminal-lifecycle-report.json",
-  "description": "INF-2D Economy wage retry/cancel/expired/compensation owner lifecycle"
+  "description": "INF-2D Economy wage retry/cancel/expired/compensation owner lifecycle",
+  "success_key": "overall_passed"
 }

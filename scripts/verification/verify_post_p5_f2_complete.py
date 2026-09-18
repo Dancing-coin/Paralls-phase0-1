@@ -4,12 +4,12 @@ import json
 import subprocess
 from datetime import datetime, timezone
 
-from common import evidence_revision, repo_root, verification_dir, write_json, write_markdown
+from common import artifact_path, evidence_revision, repo_root, verification_dir, write_json, write_markdown
 
 
 def _read(root, relative):
     try:
-        return json.loads((root / relative).read_text(encoding="utf-8"))
+        return json.loads((artifact_path(root, relative)).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
 
@@ -41,4 +41,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

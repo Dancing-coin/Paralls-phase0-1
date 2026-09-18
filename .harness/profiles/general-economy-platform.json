@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/general-economy-platform-report.json",
-  "description": "General Economy Platform C schema, owner-bound foundation and replay evidence"
+  "description": "General Economy Platform C schema, owner-bound foundation and replay evidence",
+  "success_key": "overall_general_economy_platform_passed"
 }

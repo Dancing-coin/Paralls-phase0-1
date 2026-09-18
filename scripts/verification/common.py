@@ -2,16 +2,21 @@ from __future__ import annotations
 
 import json
 import os
-import queue
 import subprocess
 import sys
-import threading
 import time
 import urllib.error
 import urllib.request
 import hashlib
 from pathlib import Path
-from types import SimpleNamespace
+if __package__:
+    from .process_control import BoundedOutput, OwnedProcess, run_logged_command
+else:
+    from process_control import BoundedOutput, OwnedProcess, run_logged_command
+if __package__:
+    from .run_context import current_run, output_root
+else:
+    from run_context import current_run, output_root
 
 
 DEFAULT_GODOT_EXE = Path(r"E:\下载\Godot_v4.6.3-stable_win64.exe\Godot_v4.6.3-stable_win64_console.exe")
@@ -22,19 +27,92 @@ def repo_root() -> Path:
 
 
 def evidence_revision(project_root: Path | None = None) -> str:
-    """Return a reproducible revision for committed or dirty-tree evidence."""
+    """用 Git 基线和实际输入内容标识证据，状态文件名不代表内容。"""
     root = project_root or repo_root()
-    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, check=False).stdout.strip() or "unknown"
-    status = subprocess.run(["git", "status", "--porcelain"], cwd=root, capture_output=True, text=True, check=False).stdout
-    if not status:
+    def git(*args: str) -> bytes:
+        result = subprocess.run(['git', *args], cwd=root, capture_output=True, check=False)
+        if result.returncode != 0:
+            raise RuntimeError('无法确定 Git 输入版本')
+        return result.stdout
+    head = git('rev-parse', 'HEAD').decode().strip()
+    diff = git('diff', '--binary', 'HEAD', '--')
+    untracked = git('ls-files', '--others', '--exclude-standard', '-z')
+    if not diff and not untracked:
         return head
-    return f"{head}+dirty:{hashlib.sha256(status.encode('utf-8')).hexdigest()[:16]}"
+    digest = hashlib.sha256(diff)
+    for raw in sorted(untracked.split(b'\0')):
+        if not raw:
+            continue
+        path = root / os.fsdecode(raw)
+        digest.update(raw + b'\0')
+        if path.is_symlink():
+            digest.update(os.readlink(path).encode())
+        elif path.is_file():
+            with path.open('rb') as source:
+                for chunk in iter(lambda: source.read(1024 * 1024), b''):
+                    digest.update(chunk)
+        digest.update(b'\0')
+    return f'{head}+dirty:{digest.hexdigest()}'
 
 
 def verification_dir(project_root: Path) -> Path:
-    path = project_root / ".harness" / "verification"
+    path = output_root(project_root)
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def artifact_path(project_root: Path, reference: str | Path) -> Path:
+    """解析证据逻辑名；绝不从上一轮目录寻找结果。"""
+    ref = str(reference).replace('\\', '/')
+    if ref.startswith('harness-run:/'):
+        root = current_run(project_root).evidence_root
+        path = (root / ref[len('harness-run:/'):]).resolve()
+        if not path.is_relative_to(root):
+            raise ValueError('跨作用域证据引用越界')
+        return path
+    prefix = '.harness/verification/'
+    if ref.startswith(prefix):
+        relative = ref[len(prefix):]
+        root = verification_dir(project_root)
+        path = (root / relative).resolve()
+        if not path.is_relative_to(root):
+            raise ValueError('证据引用越界')
+        run = current_run(project_root)
+        if not path.exists():
+            # 只沿当前运行的作用域索引查依赖，不扫描历史目录或旧 attempt。
+            for scope in (root, *root.parents):
+                if not scope.is_relative_to(run.evidence_root):
+                    break
+                index_path = scope / '.harness-artifacts.json'
+                if not index_path.exists():
+                    continue
+                index = json.loads(index_path.read_text(encoding='utf-8'))
+                if index.get('run_id') != run.run_id:
+                    raise ValueError('证据映射不属于本轮')
+                mapped = index.get('artifacts', {}).get(relative)
+                if mapped:
+                    path = (scope / str(mapped)).resolve()
+                    if not path.is_relative_to(scope):
+                        raise ValueError('证据映射越界')
+                    break
+        return path
+    path = (project_root / ref).resolve()
+    if not path.is_relative_to(project_root.resolve()):
+        raise ValueError('源码引用越界')
+    return path
+
+
+def artifact_ref(project_root: Path, path: Path) -> str:
+    path = path.resolve()
+    if path.is_relative_to(project_root.resolve()):
+        return path.relative_to(project_root.resolve()).as_posix()
+    root = verification_dir(project_root)
+    if not path.is_relative_to(root):
+        run_root = current_run(project_root).evidence_root
+        if path.is_relative_to(run_root):
+            return 'harness-run:/' + path.relative_to(run_root).as_posix()
+        raise ValueError(f'证据引用不属于当前运行: {path}')
+    return '.harness/verification/' + path.relative_to(root).as_posix()
 
 
 def resolve_godot_exe(explicit: str | None) -> Path:
@@ -84,70 +162,10 @@ def run_command(
     log_path: Path,
     env: dict[str, str] | None = None,
     *,
-    timeout_seconds: float | None = None,
+    timeout_seconds: float | None = 120,
+    max_output_bytes: int = 8 * 1024 * 1024,
 ) -> subprocess.CompletedProcess[str]:
-    merged_env = os.environ.copy()
-    if env:
-        merged_env.update(env)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    process = subprocess.Popen(
-        args,
-        cwd=str(cwd),
-        env=merged_env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        bufsize=1,
-    )
-    output_lines: list[str] = []
-
-    def _reader() -> None:
-        if process.stdout is None:
-            return
-        with log_path.open("w", encoding="utf-8") as log_handle:
-            try:
-                for line in iter(process.stdout.readline, ""):
-                    output_lines.append(line)
-                    log_handle.write(line)
-                    log_handle.flush()
-            finally:
-                process.stdout.close()
-
-    reader_thread = threading.Thread(target=_reader, daemon=True)
-    reader_thread.start()
-    timed_out = False
-    try:
-        try:
-            process.wait(timeout=timeout_seconds)
-        except subprocess.TimeoutExpired:
-            timed_out = True
-            process.terminate()
-            try:
-                process.wait(timeout=2.0)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5.0)
-    finally:
-        if process.poll() is None:
-            process.kill()
-            process.wait(timeout=5.0)
-        reader_thread.join(timeout=5.0)
-
-    if timed_out:
-        timeout_label = f"{timeout_seconds:g}" if timeout_seconds is not None else "unknown"
-        timeout_message = f"[harness] command timed out after {timeout_label} seconds\n"
-        output_lines.append(timeout_message)
-        with log_path.open("a", encoding="utf-8") as log_handle:
-            log_handle.write(timeout_message)
-            log_handle.flush()
-
-    return subprocess.CompletedProcess(
-        args=args,
-        returncode=124 if timed_out else int(process.returncode or 0),
-        stdout="".join(output_lines),
-    )
+    return run_logged_command(args, cwd, log_path, env, timeout_seconds=timeout_seconds, max_output_bytes=max_output_bytes)
 
 
 def run_command_until_markers(
@@ -159,93 +177,11 @@ def run_command_until_markers(
     timeout_seconds: float,
     env: dict[str, str] | None = None,
     require_all_markers: bool = False,
-) -> SimpleNamespace:
-    merged_env = os.environ.copy()
-    if env:
-        merged_env.update(env)
-    process = subprocess.Popen(
-        args,
-        cwd=str(cwd),
-        env=merged_env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        bufsize=1,
-    )
-    output_lines: list[str] = []
-    line_queue: queue.Queue[str | None] = queue.Queue()
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    log_handle = log_path.open("w", encoding="utf-8")
-
-    def _reader() -> None:
-        if process.stdout is None:
-            line_queue.put(None)
-            return
-        try:
-            for line in iter(process.stdout.readline, ""):
-                output_lines.append(line)
-                log_handle.write(line)
-                log_handle.flush()
-                line_queue.put(line)
-        finally:
-            try:
-                process.stdout.close()
-            except Exception:
-                pass
-            try:
-                log_handle.flush()
-                log_handle.close()
-            except Exception:
-                pass
-            line_queue.put(None)
-
-    reader_thread = threading.Thread(target=_reader, daemon=True)
-    reader_thread.start()
-    marker_found = False
-    found_markers: set[str] = set()
-    deadline = time.time() + timeout_seconds
-    try:
-        while time.time() < deadline:
-            if process.poll() is not None:
-                break
-            try:
-                item = line_queue.get(timeout=0.1)
-            except queue.Empty:
-                continue
-            if item is None:
-                break
-            for marker in success_markers:
-                if marker in item:
-                    found_markers.add(marker)
-            if require_all_markers:
-                if all(marker in found_markers for marker in success_markers):
-                    marker_found = True
-                    break
-            elif found_markers:
-                marker_found = True
-                break
-        if marker_found and process.poll() is None:
-            process.terminate()
-    finally:
-        if process.poll() is None:
-            process.kill()
-        try:
-            process.wait(timeout=5.0)
-        except subprocess.TimeoutExpired:
-            pass
-        reader_thread.join(timeout=5.0)
-    output = "".join(output_lines)
-    if not marker_found:
-        if require_all_markers:
-            marker_found = all(marker in output for marker in success_markers)
-        else:
-            marker_found = any(marker in output for marker in success_markers)
-    return SimpleNamespace(
-        returncode=0 if marker_found else (process.returncode if process.returncode is not None else 1),
-        stdout=output,
-        marker_found=marker_found,
+    max_output_bytes: int = 8 * 1024 * 1024,
+) -> subprocess.CompletedProcess[str]:
+    return run_logged_command(
+        args, cwd, log_path, env, timeout_seconds=timeout_seconds, max_output_bytes=max_output_bytes,
+        markers=success_markers, require_all_markers=require_all_markers,
     )
 
 
@@ -344,54 +280,74 @@ def ensure_backend(
     if health is not None:
         if str(health.get("worktree_root", "")) == expected_root and not prefer_fresh_backend:
             return health, None
-        if str(health.get("worktree_root", "")) == expected_root and prefer_fresh_backend:
-            listener_pid = _find_listener_pid(8000)
-            if listener_pid is not None:
-                _terminate_listener_pid(listener_pid)
-            if not wait_for_backend_release():
-                raise RuntimeError("Backend port 8000 did not fully release within 15 seconds.")
-            health = None
-        elif str(health.get("worktree_root", "")) == expected_root:
-            return health, None
-    if health is not None:
         raise RuntimeError(
-            f"Port 8000 is occupied by a different backend: {health.get('worktree_root', '')}"
+            f"Port 8000 is occupied by an existing backend; only its owner may stop it: {health.get('worktree_root', '')}"
         )
+    if _find_listener_pid(8000) is not None:
+        raise RuntimeError("Port 8000 is occupied by an external process without a healthy backend")
 
     log_dir = verification_dir(project_root)
     stdout_path = log_dir / "backend-verify.stdout.log"
     stderr_path = log_dir / "backend-verify.stderr.log"
-    stdout_handle = stdout_path.open("w", encoding="utf-8")
-    stderr_handle = stderr_path.open("w", encoding="utf-8")
     merged_env = os.environ.copy()
     if env:
         merged_env.update(env)
-    process = subprocess.Popen(
+    owner = OwnedProcess(
         [python_exe, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
         cwd=str(project_root / "backend"),
         env=merged_env,
-        stdout=stdout_handle,
-        stderr=stderr_handle,
-        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=0,
     )
-    deadline = time.time() + 45.0
-    while time.time() < deadline:
-        health = get_health()
-        if health is not None and str(health.get("worktree_root", "")) == expected_root:
-            return health, process
-        time.sleep(0.25)
-    process.terminate()
-    raise RuntimeError("Backend did not become healthy on port 8000 within 15 seconds.")
+    process = owner.process
+    process._harness_output_captures = []
+    try:
+        for stream, path in [(process.stdout, stdout_path), (process.stderr, stderr_path)]:
+            process._harness_output_captures.append(BoundedOutput(stream, path, 8 * 1024 * 1024))
+        deadline = time.monotonic() + 45.0
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise RuntimeError(f"Owned backend exited before becoming healthy: {process.returncode}")
+            health = get_health()
+            if health is not None and str(health.get("worktree_root", "")) == expected_root:
+                return health, process
+            time.sleep(0.25)
+        raise RuntimeError("Backend did not become healthy on port 8000 within 45 seconds")
+    except BaseException as original:
+        try:
+            stop_backend(process)
+        except BaseException as cleanup_error:
+            original.add_note(f"Backend startup cleanup failed: {cleanup_error}")
+        raise
 
 
 def stop_backend(process: subprocess.Popen[str] | None) -> None:
     if process is None:
         return
-    process.terminate()
+    owner = getattr(process, "_harness_owner", None)
+    errors: list[str] = []
     try:
-        process.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        process.kill()
+        if owner is not None:
+            owner.close()
+        elif process.poll() is None:
+            # 调用方显式传来的 Popen 仅按该句柄终止，不通过端口查杀进程。
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+    except Exception as error:
+        errors.append(str(error))
+    for capture in getattr(process, "_harness_output_captures", []):
+        try:
+            capture.finish()
+        except Exception as error:
+            errors.append(str(error))
+    process._harness_output_captures = []
+    if errors:
+        raise RuntimeError("Backend cleanup failed: " + "; ".join(errors))
 
 
 def scan_direct_visual_fact_bypass(project_root: Path) -> str:

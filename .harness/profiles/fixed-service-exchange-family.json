@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/fixed-service-exchange-family-report.json",
-  "description": "Economy fixed service exchange family verification"
+  "description": "Economy fixed service exchange family verification",
+  "success_key": "overall_passed"
 }

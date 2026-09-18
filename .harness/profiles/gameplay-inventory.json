@@ -6,5 +6,6 @@
   "requires_godot": false,
   "max_attempts": 2,
   "result_artifact": ".harness/verification/gameplay-inventory-report.json",
-  "description": "Backend proof for event-derived item location, container capacity, sealed rejection, and atomic move; it excludes nesting, encumbrance, ownership, equipment, transport, and Godot mirror"
+  "description": "Backend proof for event-derived item location, container capacity, sealed rejection, and atomic move; it excludes nesting, encumbrance, ownership, equipment, transport, and Godot mirror",
+  "success_key": "overall_gameplay_inventory_passed"
 }

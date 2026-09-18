@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf-municipal-drought-closed-loop-report.json",
-  "description": "Cross-row evidence: drought advisory through Contract admission/fulfillment, Economy settlement, and Ownership certificate"
+  "description": "Cross-row evidence: drought advisory through Contract admission/fulfillment, Economy settlement, and Ownership certificate",
+  "success_key": "overall_passed"
 }

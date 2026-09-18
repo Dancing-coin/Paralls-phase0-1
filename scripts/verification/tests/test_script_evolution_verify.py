@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from scripts.verification.common import verification_dir
+from scripts.verification.run_context import run_scope
+
 import importlib.util
 import json
 import os
@@ -24,6 +27,12 @@ def load_module():
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+@pytest.fixture
+def evidence_scope():
+    with run_scope(PROJECT_ROOT):
+        yield
 
 
 def test_fixture_baseline_normalizes_from_natural_language_text() -> None:
@@ -362,7 +371,7 @@ def test_attach_siming_evidence_does_not_treat_fairness_snapshot_only_as_observe
     assert int(result.siming_evidence["observation_evidence_count"]) == 0
 
 
-def test_cli_component_mode_writes_bilingual_reports() -> None:
+def test_cli_component_mode_writes_bilingual_reports(evidence_scope) -> None:
     result = subprocess.run(
         [
             sys.executable,
@@ -396,7 +405,7 @@ def test_cli_component_mode_writes_bilingual_reports() -> None:
     assert "EVOLVABLE_NO_IMPACT" in result.stdout
     assert "NEEDS_PRIOR_EVENT" in result.stdout
 
-    report_path = PROJECT_ROOT / ".harness" / "verification" / "script-evolution-proof-report.json"
+    report_path = verification_dir(PROJECT_ROOT) / "script-evolution-proof-report.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["overall_script_evolution_passed"] is True
     assert report["mainline_evolvable"] is True
@@ -406,7 +415,7 @@ def test_cli_component_mode_writes_bilingual_reports() -> None:
     assert report["choices"][1]["classification_zh"] == "可演化但未影响主线"
     assert report["choices"][2]["classification_zh"] == "需要前置事件"
 
-    markdown_path = PROJECT_ROOT / ".harness" / "verification" / "script-evolution-proof-report.md"
+    markdown_path = verification_dir(PROJECT_ROOT) / "script-evolution-proof-report.md"
     markdown = markdown_path.read_text(encoding="utf-8")
     assert markdown.startswith("# 自然语言剧本选择演化证明 / Natural Language Script Choice Evolution Proof")
     assert "- 总体结果(Overall): `True`" in markdown
@@ -417,12 +426,12 @@ def test_cli_component_mode_writes_bilingual_reports() -> None:
     assert "需要前置事件" in markdown
 
 
-def test_cli_no_args_uses_default_fixtures_and_fails_without_api_key() -> None:
+def test_cli_no_args_uses_default_fixtures_and_fails_without_api_key(evidence_scope) -> None:
     env = dict(os.environ)
     env["SIMING_LLM_API_KEY"] = ""
     env["SIMING_LLM_ENDPOINT"] = "https://api.deepseek.com/chat/completions"
     env["SIMING_LLM_MODEL"] = "deepseek-chat"
-    report_path = PROJECT_ROOT / ".harness" / "verification" / "script-evolution-proof-report.json"
+    report_path = verification_dir(PROJECT_ROOT) / "script-evolution-proof-report.json"
     if report_path.exists():
         report_path.unlink()
 
@@ -456,7 +465,7 @@ def test_cli_no_args_uses_default_fixtures_and_fails_without_api_key() -> None:
     assert "SIMING_LLM_API_KEY" in report["normalization"]["error"]
 
 
-def test_cli_component_mode_uses_supplied_input_files(tmp_path: Path) -> None:
+def test_cli_component_mode_uses_supplied_input_files(tmp_path: Path, evidence_scope) -> None:
     module = load_module()
     script_path = tmp_path / "custom-script.md"
     choices_path = tmp_path / "custom-choices.txt"
@@ -488,7 +497,7 @@ def test_cli_component_mode_uses_supplied_input_files(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stdout
     assert "Natural Language Script Choice Evolution Proof" in result.stdout
-    report_path = PROJECT_ROOT / ".harness" / "verification" / "script-evolution-proof-report.json"
+    report_path = verification_dir(PROJECT_ROOT) / "script-evolution-proof-report.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["script_path"] == str(script_path)
     assert report["choices_path"] == str(choices_path)
@@ -501,10 +510,10 @@ def test_cli_component_mode_uses_supplied_input_files(tmp_path: Path) -> None:
     assert candidate_choice["actor_ref"] == "char_a"
 
 
-def test_cli_component_mode_rejects_supplied_script_validation_failure(tmp_path: Path) -> None:
+def test_cli_component_mode_rejects_supplied_script_validation_failure(tmp_path: Path, evidence_scope) -> None:
     script_path = tmp_path / "invalid-script.md"
     choices_path = tmp_path / "custom-choices.txt"
-    report_path = PROJECT_ROOT / ".harness" / "verification" / "script-evolution-proof-report.json"
+    report_path = verification_dir(PROJECT_ROOT) / "script-evolution-proof-report.json"
     if report_path.exists():
         report_path.unlink()
     script_path.write_text(
@@ -553,10 +562,10 @@ def test_cli_component_mode_rejects_supplied_script_validation_failure(tmp_path:
     assert report["normalization"]["error"] == "baseline normalization failed: missing fragment: old letter exists on desk"
 
 
-def test_cli_component_mode_rejects_missing_supplied_script_file(tmp_path: Path) -> None:
+def test_cli_component_mode_rejects_missing_supplied_script_file(tmp_path: Path, evidence_scope) -> None:
     script_path = tmp_path / "missing-script.md"
     choices_path = tmp_path / "custom-choices.txt"
-    report_path = PROJECT_ROOT / ".harness" / "verification" / "script-evolution-proof-report.json"
+    report_path = verification_dir(PROJECT_ROOT) / "script-evolution-proof-report.json"
     if report_path.exists():
         report_path.unlink()
     choices_path.write_text("A. Inspect the old letter.", encoding="utf-8")
@@ -595,7 +604,7 @@ def test_cli_component_mode_rejects_missing_supplied_script_file(tmp_path: Path)
     assert "file" in report["normalization"]["error"].lower()
 
 
-def test_live_deepseek_without_key_fails_bilingually() -> None:
+def test_live_deepseek_without_key_fails_bilingually(evidence_scope) -> None:
     env = dict(os.environ)
     env["SIMING_LLM_API_KEY"] = ""
     env["SIMING_LLM_ENDPOINT"] = "https://api.deepseek.com/chat/completions"
@@ -622,7 +631,7 @@ def test_live_deepseek_without_key_fails_bilingually() -> None:
 
     assert result.returncode == 1
     assert "DEEPSEEK_UNAVAILABLE" in result.stdout
-    report_path = PROJECT_ROOT / ".harness" / "verification" / "script-evolution-proof-report.json"
+    report_path = verification_dir(PROJECT_ROOT) / "script-evolution-proof-report.json"
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["overall_script_evolution_passed"] is False
     assert "SIMING_LLM_API_KEY" in report["normalization"]["error"]
@@ -760,7 +769,7 @@ def test_normalize_with_deepseek_sends_stable_baseline_schema_to_model(monkeypat
     assert "prior_event_requirements" in script_prompt
 
 
-def test_chapter_mode_auto_choices_writes_full_chain_logs(tmp_path: Path, monkeypatch, capsys) -> None:
+def test_chapter_mode_auto_choices_writes_full_chain_logs(tmp_path: Path, monkeypatch, capsys, evidence_scope) -> None:
     module = load_module()
     script_path = tmp_path / "chapter.txt"
     choices_path = tmp_path / "unused-choices.txt"
@@ -967,8 +976,8 @@ def test_chapter_mode_auto_choices_writes_full_chain_logs(tmp_path: Path, monkey
     assert report["choices"][2]["classification"] == "NEEDS_PRIOR_EVENT"
     assert report["choices"][2]["mainline_projection"]["evolvable"] is False
 
-    report_md = PROJECT_ROOT / ".harness" / "verification" / "chapter-evolution-full-chain-report.md"
-    events_jsonl = PROJECT_ROOT / ".harness" / "verification" / "chapter-evolution-events.jsonl"
+    report_md = verification_dir(PROJECT_ROOT) / "chapter-evolution-full-chain-report.md"
+    events_jsonl = verification_dir(PROJECT_ROOT) / "chapter-evolution-events.jsonl"
     assert report_md.exists()
     assert events_jsonl.exists()
     markdown = report_md.read_text(encoding="utf-8")
@@ -1245,7 +1254,7 @@ def test_normalize_with_deepseek_rejects_partial_or_reordered_choice_lists(monke
             module.normalize_with_deepseek(script_text, choices_text)
 
 
-def test_run_proof_live_deepseek_fails_when_deepseek_omits_choice_labels(monkeypatch) -> None:
+def test_run_proof_live_deepseek_fails_when_deepseek_omits_choice_labels(monkeypatch, evidence_scope) -> None:
     module = load_module()
     baseline = module.fixture_baseline_model()
     valid_choices = module.fixture_candidate_choices()

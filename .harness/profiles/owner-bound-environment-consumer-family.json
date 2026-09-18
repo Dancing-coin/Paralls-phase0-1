@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/owner-bound-environment-consumer-family-report.json",
-  "description": "Fixed Ecology weather-front to Survival owner-bound environment consumer family verification"
+  "description": "Fixed Ecology weather-front to Survival owner-bound environment consumer family verification",
+  "success_key": "overall_passed"
 }

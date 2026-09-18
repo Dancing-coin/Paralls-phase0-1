@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-package-declared-negotiated-exchange-report.json",
-  "description": "INF-2AC immutable-package negotiated exchange narrow owner-admission vertical"
+  "description": "INF-2AC immutable-package negotiated exchange narrow owner-admission vertical",
+  "success_key": "overall_passed"
 }

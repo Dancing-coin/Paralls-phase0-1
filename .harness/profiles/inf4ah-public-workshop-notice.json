@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf4ah-public-workshop-notice-report.json",
-  "description": "INF-4AH exact fulfilled public-workshop activity to Government project notice"
+  "description": "INF-4AH exact fulfilled public-workshop activity to Government project notice",
+  "success_key": "overall_passed"
 }

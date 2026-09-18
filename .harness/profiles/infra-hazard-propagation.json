@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-hazard-propagation-report.json",
-  "description": "INF-3Y one registered canonical frost to construction consumer edge"
+  "description": "INF-3Y one registered canonical frost to construction consumer edge",
+  "success_key": "overall_passed"
 }

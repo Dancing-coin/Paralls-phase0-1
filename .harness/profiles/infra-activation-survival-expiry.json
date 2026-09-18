@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-activation-survival-expiry-report.json",
-  "description": "INF-2B released activation pending to existing Survival state-expiry settlement"
+  "description": "INF-2B released activation pending to existing Survival state-expiry settlement",
+  "success_key": "overall_passed"
 }

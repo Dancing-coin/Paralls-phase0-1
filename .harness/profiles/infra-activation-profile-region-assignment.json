@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-activation-profile-region-assignment-report.json",
-  "description": "INF-4AC activation-owned, evidence-pinned profile region assignment"
+  "description": "INF-4AC activation-owned, evidence-pinned profile region assignment",
+  "success_key": "overall_passed"
 }

@@ -8,5 +8,6 @@
   "requires_godot": true,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/3d-scripted-mystery-action-platform-report.json",
-  "description": "Static and backend verification for the procedural three-room scripted-mystery action reference surface"
+  "description": "Static and backend verification for the procedural three-room scripted-mystery action reference surface",
+  "success_key": "overall_passed"
 }

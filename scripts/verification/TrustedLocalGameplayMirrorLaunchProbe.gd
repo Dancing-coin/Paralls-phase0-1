@@ -1,5 +1,7 @@
 extends Node
 
+const VerificationPaths := preload("res://scripts/verification/VerificationPaths.gd")
+
 const MIRROR_BRIDGE := preload("res://scripts/interaction/GameplayMirrorBridge.gd")
 
 var _mirror_bridge: GameplayMirrorBridge
@@ -7,6 +9,9 @@ var _finished := false
 
 
 func _ready() -> void:
+	if VerificationPaths.resolve(".harness/verification/.context-check").is_empty():
+		get_tree().quit(1)
+		return
 	var bus := get_node_or_null("/root/LocalPresentationBus")
 	if bus == null:
 		_finish(false, {})
@@ -51,7 +56,10 @@ func _finish(ok: bool, details: Dictionary) -> void:
 		"status": "trusted-local-gameplay-mirror-live-bind-verified" if ok else "trusted-local-gameplay-mirror-live-bind-failed",
 		"scope_granted": details.get("allowed_actor_refs", []),
 	}
-	var path := ProjectSettings.globalize_path("res://.harness/verification/trusted-local-gameplay-mirror-launch-runtime.json")
+	var path := VerificationPaths.resolve("res://.harness/verification/trusted-local-gameplay-mirror-launch-runtime.json")
+	if path.is_empty():
+		get_tree().quit(1)
+		return
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file != null:

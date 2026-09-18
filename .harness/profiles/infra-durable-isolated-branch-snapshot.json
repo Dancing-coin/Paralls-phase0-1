@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-durable-isolated-branch-snapshot-report.json",
-  "description": "INF-4M explicit creator-debug persistence and replay of one isolated BranchPreviewAuthority buffer"
+  "description": "INF-4M explicit creator-debug persistence and replay of one isolated BranchPreviewAuthority buffer",
+  "success_key": "overall_passed"
 }

@@ -6,5 +6,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/authority-graph-projection-report.json",
-  "description": "Backend proof for committed Authority event projection across ESM/world, Inventory, Ownership, Economy, Survival/body, and resource/scene domains"
+  "description": "Backend proof for committed Authority event projection across ESM/world, Inventory, Ownership, Economy, Survival/body, and resource/scene domains",
+  "success_key": "overall_authority_graph_projection_passed"
 }

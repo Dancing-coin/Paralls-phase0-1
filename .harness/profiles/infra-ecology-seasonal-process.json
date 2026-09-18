@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-ecology-seasonal-process-report.json",
-  "description": "INF-3A closed EcologyHazardAuthority seasonal environment/resource/crop process evidence"
+  "description": "INF-3A closed EcologyHazardAuthority seasonal environment/resource/crop process evidence",
+  "success_key": "overall_passed"
 }

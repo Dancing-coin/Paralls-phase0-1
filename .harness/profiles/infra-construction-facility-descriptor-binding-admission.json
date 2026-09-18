@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-construction-facility-descriptor-binding-admission-report.json",
-  "description": "INF-1AG exact immutable Construction descriptor/catalog and read-only package binding admission"
+  "description": "INF-1AG exact immutable Construction descriptor/catalog and read-only package binding admission",
+  "success_key": "overall_passed"
 }

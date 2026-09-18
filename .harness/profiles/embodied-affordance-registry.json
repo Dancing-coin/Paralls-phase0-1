@@ -6,5 +6,6 @@
   "requires_godot": true,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/embodied-affordance-registry-report.json",
-  "description": "Backend and Godot runtime proof for SceneAffordanceRegistry chair_01 binding, revision pinning, occupancy freshness, PQF grounding identity, filtered views, and VLA conflict handling"
+  "description": "Backend and Godot runtime proof for SceneAffordanceRegistry chair_01 binding, revision pinning, occupancy freshness, PQF grounding identity, filtered views, and VLA conflict handling",
+  "success_key": "overall_embodied_affordance_registry_passed"
 }

@@ -40,10 +40,10 @@
       ]
     },
     {
-      "id": "harness_artifacts_are_project_local",
-      "title": "Harness artifacts use .harness without retired state references",
+      "id": "harness_artifacts_are_owned_temporary",
+      "title": "Harness artifacts use the owned temporary run context without retired state references",
       "evidence": [
-        ".harness/verification/boundary-report.json:results.harness_artifacts_are_project_local"
+        ".harness/verification/boundary-report.json:results.harness_artifacts_are_owned_temporary"
       ]
     },
     {

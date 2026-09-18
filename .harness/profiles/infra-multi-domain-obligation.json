@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-multi-domain-obligation-report.json",
-  "description": "INF-2R construction due-completion policy with unsupported retry and compensation fences"
+  "description": "INF-2R construction due-completion policy with unsupported retry and compensation fences",
+  "success_key": "overall_passed"
 }

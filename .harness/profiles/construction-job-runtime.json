@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/construction-job-runtime-report.json",
-  "description": "Construction plot-scoped job lifecycle, deterministic occupancy and replay gate"
+  "description": "Construction plot-scoped job lifecycle, deterministic occupancy and replay gate",
+  "success_key": "overall_passed"
 }

@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf3t-municipal-drought-assessment-fulfillment-report.json",
-  "description": "INF-3T exact active INF-3S municipal assessment Contract to fixed Contract completion and fulfillment"
+  "description": "INF-3T exact active INF-3S municipal assessment Contract to fixed Contract completion and fulfillment",
+  "success_key": "overall_passed"
 }

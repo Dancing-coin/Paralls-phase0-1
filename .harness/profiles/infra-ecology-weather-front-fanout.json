@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-ecology-weather-front-fanout-report.json",
-  "description": "INF-3E bounded three-target Ecology-only weather-front fanout"
+  "description": "INF-3E bounded three-target Ecology-only weather-front fanout",
+  "success_key": "overall_passed"
 }

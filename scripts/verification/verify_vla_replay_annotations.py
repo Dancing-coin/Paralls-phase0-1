@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from common import repo_root, verification_dir, write_json, write_markdown
+from common import artifact_ref, repo_root, verification_dir, write_json, write_markdown
 from vla_replay_annotations import coverage_status, load_annotation_manifest, validate_annotation_manifest
 
 
@@ -17,7 +17,7 @@ def main() -> int:
     coverage = coverage_status(manifest)
     report = {
         "schema_version": "vla-advisory-replay-annotation-verification.v1",
-        "manifest_path": str(manifest_path.relative_to(root)),
+        "manifest_path": artifact_ref(root, manifest_path),
         "manifest_valid": not errors,
         "validation_errors": errors,
         "coverage": coverage,
@@ -40,4 +40,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

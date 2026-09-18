@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-construction-bakery-reinforcement-report.json",
-  "description": "INF-1AF fixed Construction bakery-to-bakery_reinforced terminal transition"
+  "description": "INF-1AF fixed Construction bakery-to-bakery_reinforced terminal transition",
+  "success_key": "overall_passed"
 }

@@ -171,9 +171,9 @@ def evaluate_boundaries(project_root: Path) -> dict[str, object]:
             ["scripts/verification/verify_phase0.py"],
         ),
         _result(
-            "harness_artifacts_are_project_local",
-            "Harness artifacts use the project-local .harness directory without retired state references",
-            _contains(common, ['".harness"', '"verification"'])
+            "harness_artifacts_are_owned_temporary",
+            "Harness artifacts use the owned run context without retired state references",
+            _contains(common, ["run_context", "output_root(project_root)"])
             and not retired_state_references,
             ["scripts/verification/common.py", "AGENTS.md", "PHASE0_README.md"],
             "\n".join(retired_state_references),
@@ -328,4 +328,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from run_context import run_scope
+
+    with run_scope(repo_root()):
+        raise SystemExit(main())

@@ -15,6 +15,35 @@ from check_harness_reference import evaluate_harness_reference
 from check_release_gate import evaluate_release_gate
 from common import repo_root
 from registry import load_profile_registry
+from run_context import run_scope
+
+
+def test_lifecycle_accepts_temporary_retention_and_static_ledger(tmp_path: Path) -> None:
+    harness_dir = tmp_path / ".harness"
+    harness_dir.mkdir()
+    (harness_dir / "retention-policy.json").write_text(json.dumps({
+        "schema_version": 2, "generated_evidence_root": "system-temp", "default_action": "delete",
+        "export_mode": "explicit-export", "export_requires_external_directory": True,
+        "ci_artifact_retention_days": 7,
+    }), encoding="utf-8")
+    (harness_dir / "features.json").write_text(json.dumps({
+        "schema_version": 1, "verification_status": "not_evaluated",
+        "features": [{"id": str(index), "status": "implemented", "evidence": "reviewable-source"} for index in range(8)],
+    }), encoding="utf-8")
+    statuses = {entry["id"]: entry["status"] for entry in evaluate_harness_lifecycle(tmp_path)["results"]}
+    assert statuses["lifecycle_retention_policy_exists"] == "proved"
+    assert statuses["lifecycle_feature_ledger_exists"] == "proved"
+
+
+def test_lifecycle_rejects_permanent_archive_policy(tmp_path: Path) -> None:
+    path = tmp_path / ".harness/retention-policy.json"
+    path.parent.mkdir()
+    path.write_text(json.dumps({
+        "schema_version": 1, "max_archived_runs": 25, "preserve_latest_baseline": True,
+        "diff_against": "previous_baseline", "archive_root": ".harness/verification/runs/",
+    }), encoding="utf-8")
+    statuses = {entry["id"]: entry["status"] for entry in evaluate_harness_lifecycle(tmp_path)["results"]}
+    assert statuses["lifecycle_retention_policy_exists"] == "missing"
 
 
 def test_backend_contract_profile_proves_protocol_contracts() -> None:
@@ -43,8 +72,9 @@ def test_release_gate_profile_proves_ci_entrypoint() -> None:
 
     assert statuses["release_gate_metadata_exists"] == "proved"
     assert statuses["ci_harness_workflow_exists"] == "proved"
-    assert statuses["ci_runs_full_harness_profile"] == "proved"
-    assert statuses["ci_runs_mainline_unified_runtime_profile"] == "proved"
+    assert statuses["ci_runs_static_suites"] == "proved"
+    assert statuses["ci_declares_runtime_coverage_gap"] == "proved"
+    assert report["runtime_release_verified"] is False
     assert statuses["local_ci_gate_exists"] == "proved"
     assert statuses["local_ci_gate_matches_release_profile"] == "proved"
     assert statuses["local_ci_gate_runs_mainline_unified_runtime_profile"] == "proved"
@@ -101,7 +131,8 @@ def test_harness_reference_profile_proves_awesome_harness_coverage() -> None:
 
 
 def test_harness_evolution_profile_proves_governed_evolution_surface() -> None:
-    report = evaluate_harness_evolution(repo_root())
+    with run_scope(repo_root()):
+        report = evaluate_harness_evolution(repo_root())
     statuses = {entry["id"]: entry["status"] for entry in report["results"]}
 
     assert statuses["evolution_config_valid"] == "proved"

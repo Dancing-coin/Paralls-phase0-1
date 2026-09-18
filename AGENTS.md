@@ -2,6 +2,8 @@
 
 This repository implements the `world-character-Siming-authority` mainline runtime. The preserved Phase 0 demo is a smoke-compatibility slice, not the architectural target. Start with `docs/INDEX.md`; for design decisions, follow `docs/superpowers/specs/world-character-siming-authority-mainline/README.md` and then its master design.
 
+验证入口与证据契约见 `docs/harness.md`。处理清理、陈旧报告或失败诊断时，先读 `docs/harness-playbook.md` 的对应案例；Design、Superpowers、显式 Goal 与 native subagents 的协作边界见 `docs/ai-engineering-workflow.md`。
+
 ## Runtime Boundaries
 
 - Godot owns local embodiment, player input, and visible/audio presentation. It is not world-truth authority or the character cognition host.
@@ -24,10 +26,10 @@ This repository implements the `world-character-Siming-authority` mainline runti
 
 ### Harness Retention
 
-- Harness verification output is temporary evidence. Delete `.harness/verification/` after the verification run; do not commit its reports, logs, traces, databases, screenshots, or caches.
-- Delete temporary `.harness/` run directories after each run. This includes random-ID directories, snapshots, archives, copied worktrees, generated assets, `__pycache__`, SQLite files, logs, and other runtime state.
-- Keep only reviewable static harness inputs: profiles, rules, templates, fixtures, references, evolution configuration, CI configuration, and checked-in harness metadata.
-- Before committing, inspect `git status --short -- .harness` and confirm no generated verification output or run directory remains.
+- 运行产物由 `run_scope` 放入本轮系统临时目录；顶层消费者完成后清理。本轮进程与临时副本也必须回收。
+- 必要诊断在清理前通过 `--export-evidence` 显式导出到仓库外；保留期限由调用方管理。
+- `.harness/` 只保留可审查的 profiles、rules、模板、夹具、references、evolution 配置、CI 与静态元数据。
+- 提交前检查 `git status --short -- .harness` 和目录实际内容；清理仅限本轮拥有的文件、目录和进程，保留用户已有数据。
 
 ## Reporting
 

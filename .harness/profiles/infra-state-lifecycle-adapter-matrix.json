@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-state-lifecycle-adapter-matrix-report.json",
-  "description": "INF-1W closed existing-owner semantic state lifecycle adapter admission"
+  "description": "INF-1W closed existing-owner semantic state lifecycle adapter admission",
+  "success_key": "overall_passed"
 }

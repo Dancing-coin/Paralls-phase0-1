@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf1aj-facility-public-use-report.json",
-  "description": "INF-1AJ exact operationally verified oven to Construction public-use status"
+  "description": "INF-1AJ exact operationally verified oven to Construction public-use status",
+  "success_key": "overall_passed"
 }

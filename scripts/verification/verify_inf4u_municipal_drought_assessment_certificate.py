@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from common import evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
+from common import artifact_ref, evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
 def main() -> int:
@@ -23,7 +23,7 @@ def main() -> int:
         log_path = verification_dir(root) / f"inf4u-municipal-drought-certificate-{check}.log"
         result = run_command([python, "-m", "pytest", "-q", f"{root / relative}::{selector}"], root, log_path)
         checks[check] = result.returncode == 0
-        evidence.append(str(log_path.relative_to(root)).replace("\\", "/"))
+        evidence.append(artifact_ref(root, log_path).replace("\\", "/"))
     report = {
         "profile": "inf4u-municipal-drought-assessment-certificate",
         "overall_passed": all(checks.values()),
@@ -44,4 +44,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

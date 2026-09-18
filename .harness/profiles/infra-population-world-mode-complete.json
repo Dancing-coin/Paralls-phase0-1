@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-population-world-mode-complete-report.json",
-  "description": "INF-4Z bounded mode cadence, existing-owner mapping, retired legacy PopulationBatchPlan merge zero-write, inspection scoped-outbox privacy/replay, production zero-write preview boundary and fixed-base branch evidence"
+  "description": "INF-4Z bounded mode cadence, existing-owner mapping, retired legacy PopulationBatchPlan merge zero-write, inspection scoped-outbox privacy/replay, production zero-write preview boundary and fixed-base branch evidence",
+  "success_key": "overall_passed"
 }

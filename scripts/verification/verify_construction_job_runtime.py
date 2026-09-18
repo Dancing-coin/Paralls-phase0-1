@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+try:
+    from .common import verification_dir
+except ImportError:
+    from common import verification_dir
+
 import json
 import subprocess
 import sys
@@ -20,7 +25,7 @@ def main() -> int:
         "stderr": completed.stderr,
         "overall_passed": completed.returncode == 0,
     }
-    output = root / ".harness" / "verification" / "construction-job-runtime-report.json"
+    output = verification_dir(root) / "construction-job-runtime-report.json"
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"construction_job_runtime_report_json={output}")
@@ -29,4 +34,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

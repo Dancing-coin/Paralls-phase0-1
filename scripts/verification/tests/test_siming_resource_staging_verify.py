@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import pytest
+
+from scripts.verification.common import verification_dir
+from scripts.verification.run_context import run_scope
+
 import json
 import subprocess
 import sys
@@ -12,6 +17,12 @@ from registry import load_profile_registry
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+
+@pytest.fixture
+def evidence_scope():
+    with run_scope(PROJECT_ROOT):
+        yield
 
 
 def test_siming_resource_staging_profile_is_registered() -> None:
@@ -27,7 +38,7 @@ def test_siming_resource_staging_profile_is_registered() -> None:
     ]
 
 
-def test_resource_staging_verifier_proves_all_required_results() -> None:
+def test_resource_staging_verifier_proves_all_required_results(evidence_scope) -> None:
     result = subprocess.run(
         [sys.executable, "scripts/verification/verify_siming_resource_staging.py"],
         cwd=PROJECT_ROOT,
@@ -41,9 +52,7 @@ def test_resource_staging_verifier_proves_all_required_results() -> None:
 
     assert result.returncode == 0, result.stdout
     report_path = (
-        PROJECT_ROOT
-        / ".harness"
-        / "verification"
+        verification_dir(PROJECT_ROOT)
         / "siming-resource-staging-report.json"
     )
     report = json.loads(report_path.read_text(encoding="utf-8"))

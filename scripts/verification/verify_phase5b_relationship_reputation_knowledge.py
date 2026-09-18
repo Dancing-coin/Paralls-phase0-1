@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from common import repo_root
+from common import verification_dir, repo_root
 from verify_phase4_common import run_focused, write_report
 
 
@@ -306,7 +306,7 @@ def collect_phase5b_scenario_evidence() -> Phase5bScenarioEvidence:
             ),
             now="2026-08-11T00:00:00Z",
         )
-        replay_checkpoint_path = Path(repo_root()) / ".harness" / "verification" / "phase5b-relationship-reputation-knowledge-checkpoint.json"
+        replay_checkpoint_path = verification_dir(Path(repo_root())) / "phase5b-relationship-reputation-knowledge-checkpoint.json"
         replay_store.save_snapshot(replay_checkpoint_path)
 
         replay_knowledge_b = fixtures._knowledge_payload(
@@ -352,7 +352,7 @@ def collect_phase5b_scenario_evidence() -> Phase5bScenarioEvidence:
             request=replay_request_two,
             now="2026-08-12T00:00:00Z",
         )
-        replay_full_path = Path(repo_root()) / ".harness" / "verification" / "phase5b-relationship-reputation-knowledge-full.json"
+        replay_full_path = verification_dir(Path(repo_root())) / "phase5b-relationship-reputation-knowledge-full.json"
         replay_store.save_snapshot(replay_full_path)
         replay_full_store = fixtures.GameplayEventStore.load_snapshot(replay_full_path)
         replay_full_authority = SocialFactAuthority(registry=registry, store=replay_full_store)
@@ -582,4 +582,8 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

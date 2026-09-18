@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from common import repo_root, verification_dir, write_json, write_markdown
+from common import artifact_path, repo_root, verification_dir, write_json, write_markdown
 
 
 REQUIRED_REPORTS = {
@@ -19,7 +19,7 @@ REQUIRED_REPORTS = {
 
 
 def _read(project_root: Path, relative: str) -> dict[str, object]:
-    path = project_root / relative
+    path = artifact_path(project_root, relative)
     if not path.exists():
         return {}
     try:
@@ -80,4 +80,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from common import evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
+from common import artifact_ref, evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
 def main() -> int:
@@ -26,14 +26,14 @@ def main() -> int:
         log = verification_dir(root) / f"infra-append-derived-settlement-receipt-{key}.log"
         result = run_command([python, "-m", "pytest", "-q", str(path), "-k", selector], root, log)
         checks[key] = result.returncode == 0
-        logs.append(str(log.relative_to(root)).replace("\\", "/"))
+        logs.append(artifact_ref(root, log).replace("\\", "/"))
     report = {
         "profile": "infra-append-derived-settlement-receipt",
         "overall_passed": all(checks.values()),
         "checks": checks,
         "focused_test_files": [
-            str(receipt_path.relative_to(root)).replace("\\", "/"),
-            str(obligation_path.relative_to(root)).replace("\\", "/"),
+            artifact_ref(root, receipt_path).replace("\\", "/"),
+            artifact_ref(root, obligation_path).replace("\\", "/"),
         ],
         "evidence": logs,
         "run_id": f"infra-append-derived-settlement-receipt-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
@@ -49,4 +49,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

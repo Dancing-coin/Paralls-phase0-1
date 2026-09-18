@@ -6,5 +6,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/siming-story-runtime-report.json",
-  "description": "Backend proof for branch-scoped story nodes, permanent player closure, obligation transformation, and attractor reachability"
+  "description": "Backend proof for branch-scoped story nodes, permanent player closure, obligation transformation, and attractor reachability",
+  "success_key": "overall_siming_story_runtime_passed"
 }

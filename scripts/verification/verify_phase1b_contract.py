@@ -13,10 +13,10 @@ from app.gameplay.replay import GameplayProjectionReplay, PackageLifecycleAuthor
 from app.gameplay.settlement_plan import SettlementPlan
 from app.gameplay.shared_contracts import AuthorizationDecision, GameplayPackageManifest, ProjectionEnvelope, Reservation
 try:
-    from .common import repo_root, verification_dir, write_json, write_markdown
+    from .common import artifact_path, repo_root, verification_dir, write_json, write_markdown
     from .phase1b_contract_fixtures import build_effect_resistance_fixture, build_object_ownership_fixture
 except ImportError:  # Direct Harness execution keeps scripts/verification on sys.path.
-    from common import repo_root, verification_dir, write_json, write_markdown
+    from common import artifact_path, repo_root, verification_dir, write_json, write_markdown
     from phase1b_contract_fixtures import build_effect_resistance_fixture, build_object_ownership_fixture
 
 
@@ -54,7 +54,7 @@ def main() -> int:
     parser.parse_args()
     root = repo_root()
     evidence_dir = verification_dir(root)
-    predecessor_path = evidence_dir / PREDECESSOR
+    predecessor_path = artifact_path(root, f".harness/verification/{PREDECESSOR}")
     predecessor = _load_predecessor(predecessor_path)
     predecessor_ok = predecessor.get("overall_gameplay_foundation_contract_passed") is True
 
@@ -241,4 +241,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

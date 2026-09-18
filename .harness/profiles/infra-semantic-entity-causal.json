@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-semantic-entity-causal-report.json",
-  "description": "INF-1 semantic snapshots, entity dossier and causal projection evidence"
+  "description": "INF-1 semantic snapshots, entity dossier and causal projection evidence",
+  "success_key": "overall_passed"
 }

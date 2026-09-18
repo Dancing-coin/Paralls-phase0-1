@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-economy-policy-instance-registration-report.json",
-  "description": "INF-2U existing-Economy scheduled-transfer policy-instance registration with bound settlement, revocation, replay, and authority-only receipt evidence"
+  "description": "INF-2U existing-Economy scheduled-transfer policy-instance registration with bound settlement, revocation, replay, and authority-only receipt evidence",
+  "success_key": "overall_passed"
 }

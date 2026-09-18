@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+try:
+    from .common import verification_dir
+except ImportError:
+    from common import verification_dir
+
 import json
 import os
 import subprocess
@@ -51,7 +56,7 @@ def _write_revision(graph: SQLiteHeavenlyGraphAdapter, revision: int, state: str
 
 
 def measure_delta() -> dict[str, int | bool]:
-    directory = root() / ".harness" / "verification"
+    directory = verification_dir(root())
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / "population-data-oriented-probe.sqlite3"
     path.unlink(missing_ok=True)
@@ -369,7 +374,7 @@ def main() -> int:
         "test_command": command,
         "test_output": result.stdout + result.stderr,
     }
-    directory = root() / ".harness" / "verification"
+    directory = verification_dir(root())
     report["implementation_status"] = "written_and_backend_verified" if report["overall_passed"] else "backend_verification_failed"
     directory.mkdir(parents=True, exist_ok=True)
     (directory / f"{name}-report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -394,4 +399,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

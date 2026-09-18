@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf3u-municipal-certificate-government-acknowledgment-report.json",
-  "description": "INF-3U exact INF-4U certificate to authority-only Government drought assessment acknowledgment"
+  "description": "INF-3U exact INF-4U certificate to authority-only Government drought assessment acknowledgment",
+  "success_key": "overall_passed"
 }

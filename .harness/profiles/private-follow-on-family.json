@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/private-follow-on-family-report.json",
-  "description": "Actor-private two-party follow-on family verification"
+  "description": "Actor-private two-party follow-on family verification",
+  "success_key": "overall_passed"
 }

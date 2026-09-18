@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-semantic-survival-state-action-report.json",
-  "description": "INF-1K closed semantic Survival dispel and fixed-recovery transform obligation actions"
+  "description": "INF-1K closed semantic Survival dispel and fixed-recovery transform obligation actions",
+  "success_key": "overall_passed"
 }

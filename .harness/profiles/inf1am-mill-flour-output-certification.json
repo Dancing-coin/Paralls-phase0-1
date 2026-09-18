@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf1am-mill-flour-output-certification-report.json",
-  "description": "INF-1AM exact active reinforced-mill completed run to project flour-output certification"
+  "description": "INF-1AM exact active reinforced-mill completed run to project flour-output certification",
+  "success_key": "overall_passed"
 }

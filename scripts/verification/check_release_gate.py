@@ -47,15 +47,17 @@ def evaluate_release_gate(project_root: Path) -> dict[str, object]:
             [".github/workflows/harness.yml"],
         ),
         _result(
-            "ci_runs_full_harness_profile",
-            "CI workflow invokes the full harness profile",
-            "python scripts/verification/harness.py --profile all" in workflow_text,
+            "ci_runs_static_suites",
+            "Hosted CI invokes smoke and contract suites",
+            "python scripts/verification/harness.py --suite smoke" in workflow_text
+            and "python scripts/verification/harness.py --suite contract" in workflow_text,
             [".github/workflows/harness.yml"],
         ),
         _result(
-            "ci_runs_mainline_unified_runtime_profile",
-            "CI workflow invokes the mainline unified runtime profile",
-            "python scripts/verification/harness.py --profile mainline-unified-runtime" in workflow_text,
+            "ci_declares_runtime_coverage_gap",
+            "Hosted CI explicitly declares missing runtime and release coverage",
+            "no runtime coverage" in workflow_text
+            and "runtime and release acceptance are not covered" in workflow_text,
             [".github/workflows/harness.yml"],
         ),
         _result(
@@ -80,6 +82,7 @@ def evaluate_release_gate(project_root: Path) -> dict[str, object]:
     ]
     return {
         "results": results,
+        "runtime_release_verified": False,
         "overall_release_gate_passed": all(str(entry["status"]) == "proved" for entry in results),
     }
 
@@ -102,4 +105,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from run_context import run_scope
+
+    with run_scope(repo_root()):
+        raise SystemExit(main())

@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-semantic-registered-state-owner-dispatch-report.json",
-  "description": "INF-1H closed route from registered semantic state/effect rows to existing Survival and Construction owners"
+  "description": "INF-1H closed route from registered semantic state/effect rows to existing Survival and Construction owners",
+  "success_key": "overall_passed"
 }

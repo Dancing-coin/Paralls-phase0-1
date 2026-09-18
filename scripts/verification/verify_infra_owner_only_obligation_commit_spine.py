@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from common import evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
+from common import artifact_ref, evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
 def main() -> int:
@@ -31,8 +31,8 @@ def main() -> int:
         log_path = verification_dir(root) / f"infra-owner-only-obligation-commit-spine-{check}.log"
         result = run_command([python, "-m", "pytest", "-q", str(test_path), "-k", test_name], root, log_path)
         checks[check] = result.returncode == 0
-        logs.append(str(log_path.relative_to(root)).replace("\\", "/"))
-        focused_files.add(str(test_path.relative_to(root)).replace("\\", "/"))
+        logs.append(artifact_ref(root, log_path).replace("\\", "/"))
+        focused_files.add(artifact_ref(root, test_path).replace("\\", "/"))
     report = {
         "profile": "infra-owner-only-obligation-commit-spine",
         "overall_passed": all(checks.values()),
@@ -68,4 +68,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf3ab-grain-harvest-inventory-custody-report.json",
-  "description": "INF-3AB exact Ecology grain harvest to fixed Inventory custody row"
+  "description": "INF-3AB exact Ecology grain harvest to fixed Inventory custody row",
+  "success_key": "overall_passed"
 }

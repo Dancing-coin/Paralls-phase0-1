@@ -6,5 +6,6 @@
   "requires_godot": true,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/embodied-interaction-foundation-all-report.json",
-  "description": "Dependency-ordered aggregate for embodied-interaction product foundation Phase 0 through Phase 7 backend InteractionSession, handoff, and grab-carry-place websocket/Godot runtime delivery; Phase 6 starts only after the Gameplay event-spine gate passes"
+  "description": "Dependency-ordered aggregate for embodied-interaction product foundation Phase 0 through Phase 7 backend InteractionSession, handoff, and grab-carry-place websocket/Godot runtime delivery; Phase 6 starts only after the Gameplay event-spine gate passes",
+  "success_key": "overall_embodied_interaction_foundation_all_passed"
 }

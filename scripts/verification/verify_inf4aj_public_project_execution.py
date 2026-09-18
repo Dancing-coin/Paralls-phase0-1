@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from common import artifact_ref
+
 from common import (
     evidence_revision,
     repo_root,
@@ -40,7 +42,7 @@ def main() -> int:
             log_path,
         )
         checks[check] = result.returncode == 0
-        evidence.append(str(log_path.relative_to(root)).replace("\\", "/"))
+        evidence.append(artifact_ref(root, log_path).replace("\\", "/"))
     report = {
         "profile": "inf4aj-public-project-execution",
         "overall_passed": all(checks.values()),
@@ -84,4 +86,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

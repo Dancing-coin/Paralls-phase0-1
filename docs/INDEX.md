@@ -46,6 +46,7 @@
 
 ## 活跃设计与计划
 
+- [Harness 编程工作流改进方案](superpowers/plans/2026-09-18-harness-programming-workflow-improvement-plan.md)：已实施的验证产物清理、结果可信度、分层门禁及编程经验试点方案。
 - `docs/superpowers/specs/world-character-siming-authority-mainline/README.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/character-gameplay-foundation/README.md`
@@ -290,14 +291,14 @@ fake or disabled provider.
 - `pytest backend/tests/test_personality_drift_gate.py -v`
 - `pytest backend/tests/test_character_agent_l3_planning.py -v`
 
-报告写入 `.harness/verification/`。
+报告写入本轮系统临时目录，顶层 Harness 结束后自动清理；需要审查原始证据时，使用 `--export-evidence <仓库外空目录>` 显式导出。
 
 主线聚合证明报告：
 
-- `.harness/verification/mainline-unified-runtime-report.json`
-- `.harness/verification/mainline-unified-runtime-report.md`
-- `.harness/verification/heavenly-graph-semantic-foundation-report.json`
-- `.harness/verification/heavenly-graph-semantic-foundation-report.md`
+- `<evidence-root>/mainline-unified-runtime-report.json`
+- `<evidence-root>/mainline-unified-runtime-report.md`
+- `<evidence-root>/heavenly-graph-semantic-foundation-report.json`
+- `<evidence-root>/heavenly-graph-semantic-foundation-report.md`
 
 Harness profile 和规则 manifest 是项目输入：
 
@@ -305,8 +306,7 @@ Harness profile 和规则 manifest 是项目输入：
 - `.harness/rules/`：docs、boundaries 和 drift 检查的机械不变量 manifest。
 - `.harness/references/`：映射到当前项目 artifacts 的 reference taxonomies。
 
-Run-id 证据归档写入 `.harness/verification/runs/`。
-Latest run manifest、baseline 和 diff artifacts 写入 `.harness/verification/`。
+每次运行使用唯一 `run_id` 和隔离 attempt 目录；默认不保留 latest、baseline、diff 或 runs 归档。显式导出后的 `<evidence-root>` 由调用方按保留策略管理。
 
 ## Harness Lifecycle 文档
 
@@ -324,6 +324,9 @@ Latest run manifest、baseline 和 diff artifacts 写入 `.harness/verification/
 
 ## 参考资料
 
+- [agent-tutorial-doc Harness 调研](reference/agent-tutorial-doc-harness-assessment.md)：参考项目的适用能力、实现限制与本项目优化依据。
+- [Harness 操作手册](harness-playbook.md)：已确认的清理和陈旧证据案例。
+- [Harness Skill 试点记录](harness-skill-pilot.md)：候选 Skill 的压力测试和未评估限制。
 - `docs/phase1/`
 - `docs/reference/phase1-event-bus/`
 - `docs/reference/phase1-character-agent/`

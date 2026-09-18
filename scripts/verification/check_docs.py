@@ -115,7 +115,8 @@ def _missing_registry_doc_refs(project_root: Path) -> list[str]:
     required_refs = [
         ".harness/profiles/",
         ".harness/rules/",
-        ".harness/verification/runs/",
+        ".harness/retention-policy.json",
+        "--export-evidence",
     ]
     return [ref for ref in required_refs if ref not in combined_docs]
 
@@ -160,7 +161,7 @@ def evaluate_docs(project_root: Path) -> dict[str, object]:
         ),
         _result(
             "harness_registry_documented",
-            "Harness profile/rule registry and run archive paths are documented",
+            "Harness profile/rule registry, temporary retention, and explicit export are documented",
             not missing_registry_doc_refs,
             ["docs/INDEX.md", "docs/harness.md"],
             "\n".join(missing_registry_doc_refs),
@@ -196,4 +197,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from run_context import run_scope
+
+    with run_scope(repo_root()):
+        raise SystemExit(main())

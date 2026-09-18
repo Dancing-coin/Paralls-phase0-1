@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+try:
+    from .common import artifact_path
+    from .run_context import current_run
+except ImportError:
+    from common import artifact_path
+    from run_context import current_run
+
 import base64
 import json
 import mimetypes
@@ -116,8 +123,8 @@ def _resolve_runtime_capture(
     sample_scope: dict[str, str],
     grounding_catalog: dict[str, list[str]],
 ) -> LiveProofImage:
-    report_path = root / report_relative_path
-    capture_path = root / capture_relative_path
+    report_path = artifact_path(root, report_relative_path)
+    capture_path = artifact_path(root, capture_relative_path)
     if max_age_seconds <= 0:
         return LiveProofImage(source="", origin=origin, failure_reason="invalid_capture_age_budget")
     try:
@@ -142,7 +149,8 @@ def _resolve_runtime_capture(
         return LiveProofImage(source="", origin=origin, failure_reason="stale_godot_runtime_capture")
     if capture_mtime > report_mtime + 1:
         return LiveProofImage(source="", origin=origin, failure_reason="godot_capture_newer_than_matching_report")
-    resolved = _resolve_local_image(root, capture_path, origin=origin)
+    image_root = current_run(root).evidence_root if capture_relative_path.replace("\\", "/").startswith(".harness/verification/") else root
+    resolved = _resolve_local_image(image_root, capture_path, origin=origin)
     if not resolved.source:
         return resolved
     return LiveProofImage(

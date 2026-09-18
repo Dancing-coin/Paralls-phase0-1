@@ -6,5 +6,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/siming-six-domain-memory-report.json",
-  "description": "Backend proof for durable six-domain Siming memory and summary-free context reconstruction"
+  "description": "Backend proof for durable six-domain Siming memory and summary-free context reconstruction",
+  "success_key": "overall_siming_six_domain_memory_passed"
 }

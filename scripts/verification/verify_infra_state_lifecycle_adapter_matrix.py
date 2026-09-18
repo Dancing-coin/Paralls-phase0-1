@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from common import evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
+from common import artifact_ref, evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
 def main() -> int:
@@ -23,8 +23,8 @@ def main() -> int:
     for check, (filename, test_name) in cases.items():
         log = verification_dir(root) / f"infra-state-lifecycle-adapter-matrix-{check}.log"
         result = run_command([python, "-m", "pytest", "-q", str(tests / filename), "-k", test_name], root, log)
-        checks[check] = result.returncode == 0; logs.append(str(log.relative_to(root)).replace("\\", "/"))
-    report = {"profile": "infra-state-lifecycle-adapter-matrix", "overall_passed": all(checks.values()), "checks": checks, "focused_test_files": sorted({str((tests / filename).relative_to(root)).replace("\\", "/") for filename, _test_name in cases.values()}), "evidence": logs, "run_id": f"infra-state-lifecycle-adapter-matrix-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}", "commit": evidence_revision(root), "write_path": "semantic admission -> existing Survival/Construction authority -> one GameplayEventStore.append_batch -> scoped projection/replay", "limitations": ["Ecology and Economy have no semantic proposal adapter and remain unsupported.", "The matrix admits only fixed existing owner rows; it is not caller-open registration or a generic writer."]}
+        checks[check] = result.returncode == 0; logs.append(artifact_ref(root, log).replace("\\", "/"))
+    report = {"profile": "infra-state-lifecycle-adapter-matrix", "overall_passed": all(checks.values()), "checks": checks, "focused_test_files": sorted({artifact_ref(root, tests / filename).replace("\\", "/") for filename, _test_name in cases.values()}), "evidence": logs, "run_id": f"infra-state-lifecycle-adapter-matrix-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}", "commit": evidence_revision(root), "write_path": "semantic admission -> existing Survival/Construction authority -> one GameplayEventStore.append_batch -> scoped projection/replay", "limitations": ["Ecology and Economy have no semantic proposal adapter and remain unsupported.", "The matrix admits only fixed existing owner rows; it is not caller-open registration or a generic writer."]}
     path = verification_dir(root) / "infra-state-lifecycle-adapter-matrix-report.json"; write_json(path, report)
     write_markdown(path.with_suffix(".md"), "INF-1W State Lifecycle Adapter Matrix Report", {"results": [{"id": key, "status": "proved" if passed else "missing", "title": key} for key, passed in checks.items()], "overall_passed": report["overall_passed"]}, "overall_passed")
     print(f"infra_state_lifecycle_adapter_matrix_report_json={path}")
@@ -32,4 +32,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

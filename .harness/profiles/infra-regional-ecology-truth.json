@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-regional-ecology-truth-report.json",
-  "description": "INF-3X canonical EcologyHazardAuthority regional record lifecycle, scoped projection, and replay evidence"
+  "description": "INF-3X canonical EcologyHazardAuthority regional record lifecycle, scoped projection, and replay evidence",
+  "success_key": "overall_passed"
 }

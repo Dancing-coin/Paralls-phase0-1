@@ -6,5 +6,6 @@
   "requires_godot": true,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/embodied-skeletal-debug-replay-report.json",
-  "description": "Runtime and backend proof that embodied skeletal state binds CharacterReplica/Skeleton3D, exports high and mid-level refs to PQF, and keeps full bone snapshots debug replay only"
+  "description": "Runtime and backend proof that embodied skeletal state binds CharacterReplica/Skeleton3D, exports high and mid-level refs to PQF, and keeps full bone snapshots debug replay only",
+  "success_key": "overall_embodied_skeletal_debug_replay_passed"
 }

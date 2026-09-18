@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-reusable-state-transition-plan-report.json",
-  "description": "INF-C1 pure reusable state transition proposal layer"
+  "description": "INF-C1 pure reusable state transition proposal layer",
+  "success_key": "overall_passed"
 }

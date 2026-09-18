@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-government-failed-inspection-promotion-report.json",
-  "description": "INF-4S fixed Government failed-inspection promotion through the existing production event spine"
+  "description": "INF-4S fixed Government failed-inspection promotion through the existing production event spine",
+  "success_key": "overall_passed"
 }

@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from common import repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
+from common import artifact_ref, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
 TRACKS = {
@@ -61,7 +61,7 @@ def main() -> int:
         "overall_passed": passed,
         "focused_tests_passed": passed,
         "focused_test_files": config["tests"],
-        "evidence": [str(log_path.relative_to(project_root)).replace("\\", "/")],
+        "evidence": [artifact_ref(project_root, log_path).replace("\\", "/")],
         "non_goals": config["non_goals"],
         "notes": "A green result proves only this bounded foundation slice; it does not promote the generic F1 track or authorize P6/P7.",
     }
@@ -74,4 +74,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

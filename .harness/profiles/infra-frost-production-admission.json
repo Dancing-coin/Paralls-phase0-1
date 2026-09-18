@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-frost-production-admission-report.json",
-  "description": "INF-3R-A committed ecology frost source and read-only construction target admission"
+  "description": "INF-3R-A committed ecology frost source and read-only construction target admission",
+  "success_key": "overall_passed"
 }

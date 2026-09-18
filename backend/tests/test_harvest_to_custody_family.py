@@ -7,6 +7,9 @@ from pathlib import Path
 import subprocess
 import sys
 
+from scripts.verification.common import artifact_path
+from scripts.verification.run_context import run_scope
+
 import pytest
 
 from app.gameplay.closed_generic_gameplay_families import HARVEST_TO_CUSTODY_BLOCKER, HarvestToCustodyContent, HarvestToCustodyIntent
@@ -238,18 +241,20 @@ def test_harvest_to_custody_consumes_the_one_admitted_wheat_content(
     assert projection.locations[item_id] == expected_container_id
 
 
-def test_harvest_to_custody_genericity_gate_verifies_two_committed_manifest_source_pairs() -> None:
+def test_harvest_to_custody_genericity_gate_verifies_two_committed_manifest_source_pairs(tmp_path) -> None:
     root = Path(__file__).resolve().parents[2]
-    result = subprocess.run(
-        [sys.executable, "scripts/verification/verify_closed_generic_gameplay_families.py"],
-        cwd=root,
-        capture_output=True,
-        text=True,
-    )
-    report = json.loads(
-        (root / ".harness" / "verification" / "closed-generic-gameplay-families-report.json")
-        .read_text(encoding="utf-8")
-    )
+    with run_scope(root, export_to=tmp_path / "evidence"):
+        result = subprocess.run(
+            [sys.executable, "scripts/verification/verify_closed_generic_gameplay_families.py"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        report = json.loads(
+            artifact_path(root, ".harness/verification/closed-generic-gameplay-families-report.json")
+            .read_text(encoding="utf-8")
+        )
     gate = report["harvest_to_custody_genericity_gate"]
     assert gate["family_ref"] == "harvest_to_custody@1"
     assert gate["passed"] is True

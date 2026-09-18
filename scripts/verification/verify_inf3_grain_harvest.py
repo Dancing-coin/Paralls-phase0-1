@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+try:
+    from .common import verification_dir
+except ImportError:
+    from common import verification_dir
+
 import json
 import subprocess
 import sys
@@ -35,7 +40,7 @@ def main() -> int:
             "no Inventory writer, Economy writer, material conversion, generic harvest API, fanout, router, or compensation",
         ],
     }
-    artifact = ROOT / ".harness" / "verification" / "inf3-grain-harvest-report.json"
+    artifact = verification_dir(ROOT) / "inf3-grain-harvest-report.json"
     artifact.parent.mkdir(parents=True, exist_ok=True)
     artifact.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"inf3_grain_report_json={artifact}")
@@ -44,4 +49,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

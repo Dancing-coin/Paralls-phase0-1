@@ -7,5 +7,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/p2dr-authored-bakery-authority-reclosure-report.json",
-  "description": "P2D-R owner-driven two-worker bakery procurement, production evidence, wage, scope, replay and zero-write closure"
+  "description": "P2D-R owner-driven two-worker bakery procurement, production evidence, wage, scope, replay and zero-write closure",
+  "success_key": "overall_passed"
 }

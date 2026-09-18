@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from common import read_text, repo_root, verification_dir, write_json, write_markdown
+from common import artifact_ref, read_text, repo_root, verification_dir, write_json, write_markdown
 
 
 RESOURCE_PATTERN = re.compile(r"res://([^\"'\)\],\s]+)")
@@ -69,7 +69,7 @@ def _autoload_resources(project_root: Path) -> list[str]:
 
 def _blend_files(project_root: Path) -> list[str]:
     return sorted(
-        str(path.relative_to(project_root)).replace("\\", "/")
+        artifact_ref(project_root, path).replace("\\", "/")
         for path in project_root.rglob("*.blend")
         if ".godot" not in path.parts
     )
@@ -146,4 +146,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

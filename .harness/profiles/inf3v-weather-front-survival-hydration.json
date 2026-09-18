@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf3v-weather-front-survival-hydration-report.json",
-  "description": "INF-3V exact weather:rain front to Survival hydration state"
+  "description": "INF-3V exact weather:rain front to Survival hydration state",
+  "success_key": "overall_passed"
 }

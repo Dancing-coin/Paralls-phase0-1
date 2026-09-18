@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf3-grain-harvest-report.json",
-  "description": "INF-3 exact Ecology grain crop admission and terminal harvest vertical"
+  "description": "INF-3 exact Ecology grain crop admission and terminal harvest vertical",
+  "success_key": "overall_passed"
 }

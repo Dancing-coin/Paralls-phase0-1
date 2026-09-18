@@ -60,6 +60,9 @@ def test_specs_without_plans_allows_only_explicit_user_review_gate(tmp_path: Pat
 
 
 def test_undocumented_profiles_are_loaded_from_project_registry(tmp_path: Path) -> None:
+    script = tmp_path / "scripts/verification/custom.py"
+    script.parent.mkdir(parents=True)
+    script.write_text("raise SystemExit(0)\n", encoding="utf-8")
     profile_dir = tmp_path / ".harness" / "profiles"
     profile_dir.mkdir(parents=True)
     (profile_dir / "custom.json").write_text(

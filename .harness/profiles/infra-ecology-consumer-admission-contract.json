@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-ecology-consumer-admission-contract-report.json",
-  "description": "INF-C4 read-only finite Ecology consumer admission checks reused by existing Construction and Organization owners"
+  "description": "INF-C4 read-only finite Ecology consumer admission checks reused by existing Construction and Organization owners",
+  "success_key": "overall_passed"
 }

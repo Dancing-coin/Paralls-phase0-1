@@ -1,5 +1,7 @@
 extends Node
 
+const VerificationPaths := preload("res://scripts/verification/VerificationPaths.gd")
+
 const CONTROLLER := preload("res://scripts/interaction/EmbodiedActionController.gd")
 const REPORT_PATH := ".harness/verification/embodied-kick-chair-vertical-slice-godot-runtime.json"
 const SCREENSHOT_PATH := ".harness/verification/embodied-kick-chair-vertical-slice.png"
@@ -8,6 +10,9 @@ var _screenshot_source := ""
 
 
 func _ready() -> void:
+	if VerificationPaths.resolve(".harness/verification/.context-check").is_empty():
+		get_tree().quit(1)
+		return
 	call_deferred("_run_probe")
 
 
@@ -193,7 +198,9 @@ func _vector_to_dict(value: Vector3) -> Dictionary:
 
 
 func _write_screenshot(relative_path: String, success_changed: bool, failure_unchanged: bool) -> String:
-	var path := ProjectSettings.globalize_path("res://" + relative_path)
+	var path := VerificationPaths.resolve("res://" + relative_path)
+	if path.is_empty():
+		return ""
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var image: Image = null
 	if DisplayServer.get_name() != "headless":
@@ -223,7 +230,9 @@ func _state_raster_image(success_changed: bool, failure_unchanged: bool) -> Imag
 
 
 func _write_json(relative_path: String, payload: Dictionary) -> String:
-	var path := ProjectSettings.globalize_path("res://" + relative_path)
+	var path := VerificationPaths.resolve("res://" + relative_path)
+	if path.is_empty():
+		return ""
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:

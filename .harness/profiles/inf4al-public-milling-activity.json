@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf4al-public-milling-activity-report.json",
-  "description": "INF-4AL exact fulfilled public milling service to Organization activity"
+  "description": "INF-4AL exact fulfilled public milling service to Organization activity",
+  "success_key": "overall_passed"
 }

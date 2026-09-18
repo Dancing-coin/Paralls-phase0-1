@@ -4,7 +4,7 @@ import argparse
 import ast
 from pathlib import Path
 
-from common import repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
+from common import artifact_ref, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
 TEST_FILES = [
@@ -28,7 +28,7 @@ def _gameplay_bus_publish_is_dispatcher_scoped(project_root: Path) -> bool:
         if path.name != "dispatcher.py" and any(
             _is_authority_bus_publish(call) for call in ast.walk(tree) if isinstance(call, ast.Call)
         ):
-            offenders.append(str(path.relative_to(project_root)))
+            offenders.append(artifact_ref(project_root, path))
     return offenders == []
 
 
@@ -77,4 +77,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

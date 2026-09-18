@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-reusable-lifecycle-contract-report.json",
-  "description": "INF-2C2 reusable closed obligation lifecycle contract substrate"
+  "description": "INF-2C2 reusable closed obligation lifecycle contract substrate",
+  "success_key": "overall_passed"
 }

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from common import artifact_ref
+
 from common import (
     evidence_revision,
     repo_root,
@@ -33,16 +35,16 @@ def main() -> int:
         log_path = verification_dir(root) / f"infra-ecology-consumer-admission-contract-{name}.log"
         result = run_command([python, "-m", "pytest", "-q", f"{test_path}::{selector}"], root, log_path)
         checks[name] = result.returncode == 0
-        evidence.append(str(log_path.relative_to(root)).replace("\\", "/"))
+        evidence.append(artifact_ref(root, log_path).replace("\\", "/"))
 
     report = {
         "profile": "infra-ecology-consumer-admission-contract",
         "overall_passed": all(checks.values()),
         "checks": checks,
         "focused_test_files": [
-            str(c4_tests.relative_to(root)).replace("\\", "/"),
-            str(construction_tests.relative_to(root)).replace("\\", "/"),
-            str(organization_tests.relative_to(root)).replace("\\", "/"),
+            artifact_ref(root, c4_tests).replace("\\", "/"),
+            artifact_ref(root, construction_tests).replace("\\", "/"),
+            artifact_ref(root, organization_tests).replace("\\", "/"),
         ],
         "evidence": evidence,
         "run_id": f"infra-ecology-consumer-admission-contract-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
@@ -78,4 +80,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import pytest
+
+from scripts.verification.common import verification_dir
+from scripts.verification.run_context import run_scope
+
 import json
 import subprocess
 import sys
@@ -12,6 +17,12 @@ from registry import load_profile_registry
 ROOT = Path(__file__).resolve().parents[3]
 
 
+@pytest.fixture
+def evidence_scope():
+    with run_scope(ROOT):
+        yield
+
+
 def test_siming_behavior_turn_profile_is_registered() -> None:
     registry = load_profile_registry(ROOT)
     assert "siming-behavior-turn-runtime" in registry.profiles
@@ -20,7 +31,7 @@ def test_siming_behavior_turn_profile_is_registered() -> None:
     ]
 
 
-def test_siming_behavior_turn_verifier_passes() -> None:
+def test_siming_behavior_turn_verifier_passes(evidence_scope) -> None:
     result = subprocess.run(
         [sys.executable, "scripts/verification/verify_siming_behavior_turn_runtime.py"],
         cwd=ROOT,
@@ -33,7 +44,7 @@ def test_siming_behavior_turn_verifier_passes() -> None:
     )
     assert result.returncode == 0, result.stdout
     report = json.loads(
-        (ROOT / ".harness/verification/siming-behavior-turn-runtime-report.json").read_text(
+        (verification_dir(ROOT) / "siming-behavior-turn-runtime-report.json").read_text(
             encoding="utf-8"
         )
     )

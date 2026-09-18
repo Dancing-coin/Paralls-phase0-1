@@ -5,5 +5,6 @@
   "script": "scripts/verification/verify_character_behavior_evaluation.py",
   "requires_godot": false,
   "result_artifact": ".harness/verification/character-behavior-evaluation-report.json",
-  "description": "Runtime evidence chain from context and interpretation through intent, execution, settlement, behavior score, and candidate-only policy"
+  "description": "Runtime evidence chain from context and interpretation through intent, execution, settlement, behavior score, and candidate-only policy",
+  "success_key": "overall_character_behavior_evaluation_passed"
 }

@@ -6,5 +6,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/siming-behavior-turn-runtime-report.json",
-  "description": "Backend proof that SimingRuntime.tick records the shared eight-stage behavior turn on the graph decision path"
+  "description": "Backend proof that SimingRuntime.tick records the shared eight-stage behavior turn on the graph decision path",
+  "success_key": "overall_siming_behavior_turn_runtime_passed"
 }

@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/domain-acceptance-marker-family-report.json",
-  "description": "Organization domain acceptance marker family verification"
+  "description": "Organization domain acceptance marker family verification",
+  "success_key": "overall_passed"
 }

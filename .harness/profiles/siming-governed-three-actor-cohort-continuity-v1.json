@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/siming-governed-three-actor-cohort-continuity-v1-report.json",
-  "description": "Siming-governed three-actor two-cadence cohort continuity with one existing Organization Owner row"
+  "description": "Siming-governed three-actor two-cadence cohort continuity with one existing Organization Owner row",
+  "success_key": "overall_passed"
 }

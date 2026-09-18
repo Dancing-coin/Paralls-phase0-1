@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-branch-work-wage-owner-admission-report.json",
-  "description": "INF-4T branch candidate request validated against committed Production evidence before existing Economy wage accrual"
+  "description": "INF-4T branch candidate request validated against committed Production evidence before existing Economy wage accrual",
+  "success_key": "overall_passed"
 }

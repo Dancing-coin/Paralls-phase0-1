@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-generic-obligation-lifecycle-report.json",
-  "description": "INF-2A two-owner event-derived obligation lifecycle with Survival retry and compensation rows"
+  "description": "INF-2A two-owner event-derived obligation lifecycle with Survival retry and compensation rows",
+  "success_key": "overall_passed"
 }

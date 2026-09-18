@@ -6,5 +6,6 @@
   "requires_godot": false,
   "include_in_all": false,
   "result_artifact": ".harness/verification/llm-integration-closure-report.json",
-  "description": "Aggregates fresh readiness and live-provider evidence for the four approved closure claims"
+  "description": "Aggregates fresh readiness and live-provider evidence for the four approved closure claims",
+  "success_key": "overall_llm_integration_closure_passed"
 }

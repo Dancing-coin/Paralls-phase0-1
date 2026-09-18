@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf4aj-public-project-execution-report.json",
-  "description": "INF-4AJ exact INF-4AG activity plus INF-2AI consumed budget to Organization project execution"
+  "description": "INF-4AJ exact INF-4AG activity plus INF-2AI consumed budget to Organization project execution",
+  "success_key": "overall_passed"
 }

@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-ecology-disaster-report.json",
-  "description": "INF-3 ecology hazard authority, frost settlement, privacy and replay evidence"
+  "description": "INF-3 ecology hazard authority, frost settlement, privacy and replay evidence",
+  "success_key": "overall_passed"
 }

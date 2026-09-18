@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-general-semantic-rule-report.json",
-  "description": "INF-1X closed semantic vocabulary for the sole admitted production owner row"
+  "description": "INF-1X closed semantic vocabulary for the sole admitted production owner row",
+  "success_key": "overall_passed"
 }

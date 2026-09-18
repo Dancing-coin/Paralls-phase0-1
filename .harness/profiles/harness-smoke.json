@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "harness-smoke",
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/check_harness_smoke.py",
+  "requires_godot": false,
+  "timeout_seconds": 120,
+  "description": "Harness runner 与 registry 的离线故障测试，不代表游戏运行时验收"
+}

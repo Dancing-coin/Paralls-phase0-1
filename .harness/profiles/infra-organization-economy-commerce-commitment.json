@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-organization-economy-commerce-commitment-report.json",
-  "description": "INF-2I bounded Organization/Economy commerce commitment through existing owner fragments and one append batch"
+  "description": "INF-2I bounded Organization/Economy commerce commitment through existing owner fragments and one append batch",
+  "success_key": "overall_passed"
 }

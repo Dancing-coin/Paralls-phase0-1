@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+try:
+    from .common import verification_dir
+except ImportError:
+    from common import verification_dir
+
 import json
 from pathlib import Path
 import sys
@@ -36,7 +41,7 @@ def main() -> int:
         "view_payload": payload,
         "event_count": len(store.read_events()),
     }
-    artifact = ROOT / ".harness" / "verification" / "unified-bakery-gameplay-loop-v1-report.json"
+    artifact = verification_dir(ROOT) / "unified-bakery-gameplay-loop-v1-report.json"
     artifact.parent.mkdir(parents=True, exist_ok=True)
     artifact.write_text(json.dumps(report, indent=2, default=list), encoding="utf-8")
     print(f"unified_bakery_gameplay_loop_v1_report_json={artifact}")
@@ -45,4 +50,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

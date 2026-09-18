@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/population-hot-state-equivalence-report.json",
-  "description": "Population hot-state seam equivalence evidence; Godot remains unverified"
+  "description": "Population hot-state seam equivalence evidence; Godot remains unverified",
+  "success_key": "overall_passed"
 }

@@ -114,12 +114,12 @@ def evaluate_change_lifecycle(project_root: Path) -> dict[str, object]:
                 marker in workflow_text
                 for marker in [
                     "Goal is the long-running objective ledger",
-                    "durable acceptance evidence in `.harness`",
+                    "reviewed static knowledge in `.harness`",
                     "create_goal",
                     "update_goal",
                 ]
             )
-            and ".harness/verification/" in agents_text,
+            and "run_scope" in agents_text,
             ["docs/ai-engineering-workflow.md", "AGENTS.md"],
         ),
         _result(
@@ -137,7 +137,7 @@ def evaluate_change_lifecycle(project_root: Path) -> dict[str, object]:
         _result(
             "agents_entry_map_routes_goal_superpowers_native_subagents",
             "AGENTS.md routes large work through Goal, Superpowers, Harness, and native subagents",
-            _contains(agents_md, ["docs/ai-engineering-workflow.md", "Goal", "Superpowers", "native subagents", ".harness/verification/"]),
+            _contains(agents_md, ["docs/ai-engineering-workflow.md", "Goal", "Superpowers", "native subagents", "run_scope"]),
             ["AGENTS.md"],
         ),
     ]
@@ -165,4 +165,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from run_context import run_scope
+
+    with run_scope(repo_root()):
+        raise SystemExit(main())

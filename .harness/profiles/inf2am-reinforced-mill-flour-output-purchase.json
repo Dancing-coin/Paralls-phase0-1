@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf2am-reinforced-mill-flour-output-purchase-report.json",
-  "description": "INF-2AM exact INF-1AM certified flour receipt to fixed v7 Economy purchase"
+  "description": "INF-2AM exact INF-1AM certified flour receipt to fixed v7 Economy purchase",
+  "success_key": "overall_passed"
 }

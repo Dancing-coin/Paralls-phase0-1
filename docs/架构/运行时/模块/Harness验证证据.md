@@ -10,7 +10,7 @@ Harness 拥有：
 
 - profile 入口
 - verification report
-- run-id evidence archive
+- 本轮 run_id 证据、显式外部导出及清理
 - docs/boundary/drift/static checks
 - backend/Godot/runtime proof scripts
 
@@ -49,7 +49,7 @@ Harness 不拥有：
 │     └────────────┴────────────┴─────────────┴────────────────────┘       │
 │                  │                                                        │
 │                  v                                                        │
-│  .harness/verification/*-report.json / *.md / runs/run-* evidence archive │
+│  本轮系统临时目录：report / manifest / trace → 收集与显式导出 → 清理       │
 │                                                                           │
 │  证明“文档和实现状态”，不替代运行时行为、不替代真实 provider 成功调用      │
 └───────────────────────────────────────────────────────────────────────────┘
@@ -76,13 +76,15 @@ Harness 不拥有：
 
 | 产物 | 说明 |
 | --- | --- |
-| `.harness/verification/*-report.json` | 机器可读 report |
-| `.harness/verification/*-report.md` | 人类可读 report |
-| `.harness/verification/runs/` | run-id evidence archive |
+| 本轮 `*-report.json` | 机器可读 report，路径由 verification_dir 决定 |
+| 本轮 `*-report.md` | 人类可读 report，随临时目录清理 |
+| 仓库外显式导出目录 | 用于必要诊断或发布证据，由调用方管理保留期 |
 | `.harness/profiles/` | profile manifest |
 | `.harness/rules/` | rule-to-evidence manifest |
 
 ## 使用规则
+
+完整生命周期与 `--export-evidence` 用法见 `docs/harness.md`；保留策略见 `.harness/retention-policy.json`。默认不形成永久运行归档。结果身份匹配 run_id、profile、attempt 与 revision，格式门禁不证明 Skill 效果。
 
 - 文档声称“已验证”前，必须指向具体 profile。
 - 运行时 milestone 不能只靠 docs profile 证明。

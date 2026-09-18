@@ -5,23 +5,27 @@ import subprocess
 import sys
 from pathlib import Path
 
+from scripts.verification.common import artifact_path
+from scripts.verification.run_context import run_scope
+
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_closed_generic_gameplay_families_verifier_reports_family_matrix_and_blocker() -> None:
-    result = subprocess.run(
-        [sys.executable, "scripts/verification/verify_closed_generic_gameplay_families.py"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    report = json.loads(
-        (ROOT / ".harness" / "verification" / "closed-generic-gameplay-families-report.json").read_text(
-            encoding="utf-8"
+def test_closed_generic_gameplay_families_verifier_reports_family_matrix_and_blocker(tmp_path) -> None:
+    with run_scope(ROOT, export_to=tmp_path / "evidence"):
+        result = subprocess.run(
+            [sys.executable, "scripts/verification/verify_closed_generic_gameplay_families.py"],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
         )
-    )
+        assert result.returncode == 0, result.stdout + result.stderr
+        report = json.loads(
+            artifact_path(ROOT, ".harness/verification/closed-generic-gameplay-families-report.json").read_text(
+                encoding="utf-8"
+            )
+        )
     assert report["matrix_closure_passed"] is True
     assert report["foundation_matrix_closure_complete"] is True
     assert report["family_count"] == 12

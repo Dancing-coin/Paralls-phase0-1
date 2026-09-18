@@ -7,15 +7,9 @@
   ],
   "ci_workflow": ".github/workflows/harness.yml",
   "local_ci_gate": ".harness/ci/local-ci-gate.ps1",
-  "required_latest_artifacts": [
-    ".harness/verification/harness-run-report.json",
-    ".harness/verification/harness-run-manifest.json",
-    ".harness/verification/harness-run-diff.json",
-    ".harness/verification/baseline.json"
+  "required_export_artifacts": [
+    "harness-run-report.json",
+    "run-manifest.json"
   ],
-  "required_archive_artifacts": [
-    ".harness/verification/runs/<run-id>/harness-run-report.json",
-    ".harness/verification/runs/<run-id>/run-manifest.json",
-    ".harness/verification/runs/<run-id>/harness-run-diff.json"
-  ]
+  "hosted_ci_scope": "static-contract-only"
 }

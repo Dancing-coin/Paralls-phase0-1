@@ -6,5 +6,6 @@
   "requires_godot": true,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/embodied-action-controller-report.json",
-  "description": "Godot runtime proof for EmbodiedActionController local state machine, grant-gated route ownership, terminal local observations, recovery, and raw physics/bone transport exclusion"
+  "description": "Godot runtime proof for EmbodiedActionController local state machine, grant-gated route ownership, terminal local observations, recovery, and raw physics/bone transport exclusion",
+  "success_key": "overall_embodied_action_controller_passed"
 }

@@ -6,5 +6,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/gameplay-possession-equipment-report.json",
-  "description": "Backend proof that inventory placement, multi-slot equipment activation, atomic swap, activation-scoped ability-path grants, and modifier sources commit together or not at all; it excludes container-access propagation and Godot presentation binding"
+  "description": "Backend proof that inventory placement, multi-slot equipment activation, atomic swap, activation-scoped ability-path grants, and modifier sources commit together or not at all; it excludes container-access propagation and Godot presentation binding",
+  "success_key": "overall_gameplay_possession_equipment_passed"
 }

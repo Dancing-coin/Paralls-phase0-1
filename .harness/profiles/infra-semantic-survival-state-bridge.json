@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-semantic-survival-state-bridge-report.json",
-  "description": "INF-1B semantic proposal to the two registered Survival state/effect obligation owner rows"
+  "description": "INF-1B semantic proposal to the two registered Survival state/effect obligation owner rows",
+  "success_key": "overall_passed"
 }

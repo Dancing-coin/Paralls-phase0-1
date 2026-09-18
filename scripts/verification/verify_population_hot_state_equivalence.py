@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+try:
+    from .common import verification_dir
+except ImportError:
+    from common import verification_dir
+
 from dataclasses import asdict, is_dataclass
 import hashlib
 import json
@@ -372,7 +377,7 @@ def main() -> int:
         "implementation_status": "written_and_backend_verified",
         "godot_status": "godot_unverified",
     }
-    directory = root() / ".harness" / "verification"
+    directory = verification_dir(root())
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "population-hot-state-equivalence-report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -382,4 +387,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

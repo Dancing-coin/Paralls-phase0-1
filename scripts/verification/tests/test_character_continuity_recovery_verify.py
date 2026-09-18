@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import pytest
+
+from scripts.verification.common import verification_dir
+from scripts.verification.run_context import run_scope
+
 import json
 import subprocess
 import sys
@@ -14,6 +19,12 @@ from registry import load_profile_registry
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
+@pytest.fixture
+def evidence_scope():
+    with run_scope(PROJECT_ROOT):
+        yield
+
+
 def test_character_continuity_recovery_profile_is_registered() -> None:
     registry = load_profile_registry(PROJECT_ROOT)
     assert "character-continuity-recovery" in registry.profiles
@@ -25,7 +36,7 @@ def test_character_continuity_recovery_profile_is_registered() -> None:
     ]
 
 
-def test_character_continuity_recovery_verifier_proves_graph_restart() -> None:
+def test_character_continuity_recovery_verifier_proves_graph_restart(evidence_scope) -> None:
     result = subprocess.run(
         [sys.executable, "scripts/verification/verify_character_continuity_recovery.py"],
         cwd=PROJECT_ROOT,
@@ -38,7 +49,7 @@ def test_character_continuity_recovery_verifier_proves_graph_restart() -> None:
     )
     assert result.returncode == 0, result.stdout
     report = json.loads(
-        (PROJECT_ROOT / ".harness/verification/character-continuity-recovery-report.json").read_text(
+        (verification_dir(PROJECT_ROOT) / "character-continuity-recovery-report.json").read_text(
             encoding="utf-8"
         )
     )

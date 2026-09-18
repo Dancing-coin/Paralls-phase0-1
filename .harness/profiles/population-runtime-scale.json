@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/population-runtime-scale-report.json",
-  "description": "真实 population runtime 100/1000/10000 居民、1x/10x、30 窗口规模门禁"
+  "description": "真实 population runtime 100/1000/10000 居民、1x/10x、30 窗口规模门禁",
+  "success_key": "overall_passed"
 }

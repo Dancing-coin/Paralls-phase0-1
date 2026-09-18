@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf4am-public-milling-notice-report.json",
-  "description": "INF-4AM exact milling activity to Government project notice"
+  "description": "INF-4AM exact milling activity to Government project notice",
+  "success_key": "overall_passed"
 }

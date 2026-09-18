@@ -6,5 +6,6 @@
   "requires_godot": true,
   "max_attempts": 2,
   "result_artifact": ".harness/verification/siming-heavenly-runtime-report.json",
-  "description": "Live online-LLM, SQLite, Authority, character-memory, and Godot proof for the complete Siming heavenly runtime"
+  "description": "Live online-LLM, SQLite, Authority, character-memory, and Godot proof for the complete Siming heavenly runtime",
+  "success_key": "overall_siming_heavenly_runtime_passed"
 }

@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-construction-facility-operational-verification-report.json",
-  "description": "INF-1AI exact completed Construction production run to facility operational verification"
+  "description": "INF-1AI exact completed Construction production run to facility operational verification",
+  "success_key": "overall_passed"
 }

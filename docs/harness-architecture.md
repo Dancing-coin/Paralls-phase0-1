@@ -22,12 +22,11 @@ scripts/verification/harness.py
         +-- runtime profiles: phase0, phase1-slice
         |
         v
-.harness/verification/
-        +-- latest reports
-        +-- run manifest
-        +-- baseline
-        +-- previous-run diff
-        +-- runs/<run-id>/ archive
+system temporary directory / unique run_id
+        +-- run manifest and final summary
+        +-- profiles/<profile>/attempt-<n>/ reports and failure digests
+        +-- explicit external export when requested
+        +-- top-level cleanup after consumers finish
 ```
 
 ## Boundary
@@ -36,7 +35,7 @@ The harness may inspect docs, manifests, Python source, Godot scene text, logs, 
 
 ## Change Lifecycle
 
-`docs/ai-engineering-workflow.md` defines the project workflow for AI-assisted changes: approved repository-local designs define intent, Superpowers skills enforce execution discipline, Harness profiles accept or reject results, and Goal tracks long-running task continuity. `.harness` records durable acceptance evidence.
+`docs/ai-engineering-workflow.md` defines the project workflow for AI-assisted changes: approved repository-local designs define intent, Superpowers skills enforce execution discipline, Harness profiles accept or reject results, and Goal tracks long-running task continuity. `.harness` holds reviewable static inputs. Raw acceptance evidence is temporary unless explicitly exported outside the repository; reviewed cases live in `docs/harness-playbook.md`.
 
 ## External Reference Coverage
 
@@ -44,4 +43,4 @@ The harness may inspect docs, manifests, Python source, Godot scene text, logs, 
 
 ## Future Profiles
 
-Use `.harness/templates/profile-template.json` and `.harness/templates/rule-template.json` when adding new formal product modules. Each new module should add one profile, one rule manifest, one focused test file, and one report-producing check script. Workflow-level changes should also update the `change-lifecycle` profile when they alter design policy, Goal, Superpowers, or native subagent routing.
+Use `.harness/templates/profile-template.json` and `.harness/templates/rule-template.json` when adding new formal product modules. Reuse an existing profile when it already covers the acceptance boundary. Add a profile/rule and focused checks only when the change introduces an independent acceptance boundary. Workflow-level changes should also update the `change-lifecycle` profile when they alter design policy, Goal, Superpowers, or native subagent routing.

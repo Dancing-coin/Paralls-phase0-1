@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf3aa-weather-rain-water-resource-recovery-report.json",
-  "description": "INF-3AA exact weather rain front to unique water resource recovery"
+  "description": "INF-3AA exact weather rain front to unique water resource recovery",
+  "success_key": "overall_passed"
 }

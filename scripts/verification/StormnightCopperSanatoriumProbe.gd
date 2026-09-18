@@ -1,5 +1,7 @@
 extends Node3D
 
+const VerificationPaths := preload("res://scripts/verification/VerificationPaths.gd")
+
 const VIEW := preload("res://scripts/verification/StormnightCopperSanatoriumView.gd")
 const CHARACTER_SCENE := preload("res://scenes/phase0/ProceduralLowPolyCharacter.tscn")
 const ROOMS := ["arrival", "records", "treatment", "courtyard"]
@@ -15,6 +17,9 @@ var actor_nodes: Array[Node] = []
 
 
 func _ready() -> void:
+	if VerificationPaths.resolve(".harness/verification/.context-check").is_empty():
+		get_tree().quit(1)
+		return
 	view = VIEW.new()
 	add_child(view)
 	_build_scene()
@@ -41,7 +46,10 @@ func _run_probe() -> void:
 	var panel: Dictionary = view.read_only_panel_state()
 	var ok: bool = ROOMS.size() == 4 and rejection.get("speculative_state_cleared", false) and panel.get("phase", "") == "phase:stormnight:storm-night@1" and panel.get("terminal_outcome", "") == "case_solved" and panel.get("voice_state", "") == "rejected"
 	var report := {"status": "godot-runtime-stormnight-verified" if ok else "godot-runtime-stormnight-failed", "rooms": ROOMS, "panel": panel, "rejection": rejection}
-	var path := ProjectSettings.globalize_path("res://.harness/verification/stormnight-copper-sanatorium-godot-runtime.json")
+	var path := VerificationPaths.resolve("res://.harness/verification/stormnight-copper-sanatorium-godot-runtime.json")
+	if path.is_empty():
+		get_tree().quit(1)
+		return
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file != null:

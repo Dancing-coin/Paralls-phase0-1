@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-government-branch-remediation-receipt-report.json",
-  "description": "INF-4K derived receipt for the existing Government failed-inspection scenario row"
+  "description": "INF-4K derived receipt for the existing Government failed-inspection scenario row",
+  "success_key": "overall_passed"
 }

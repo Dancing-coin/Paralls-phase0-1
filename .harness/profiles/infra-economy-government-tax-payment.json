@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-economy-government-tax-payment-report.json",
-  "description": "INF-2AB bounded Treasury collector identity and Economy-owned tax payment"
+  "description": "INF-2AB bounded Treasury collector identity and Economy-owned tax payment",
+  "success_key": "overall_passed"
 }

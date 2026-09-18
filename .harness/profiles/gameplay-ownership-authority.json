@@ -6,5 +6,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/gameplay-ownership-authority-report.json",
-  "description": "Backend proof for event-derived exclusive full-title grant/transfer, credential issue/revoke/supersede with immutable issuance-holder attestation and current inventory validation, and read-only presentation requiring item presence plus right-holder identity; it excludes custody writes, accounts, offers, debt, contracts, privacy views, replay checkpoints, and Godot delivery"
+  "description": "Backend proof for event-derived exclusive full-title grant/transfer, credential issue/revoke/supersede with immutable issuance-holder attestation and current inventory validation, and read-only presentation requiring item presence plus right-holder identity; it excludes custody writes, accounts, offers, debt, contracts, privacy views, replay checkpoints, and Godot delivery",
+  "success_key": "overall_gameplay_ownership_authority_passed"
 }

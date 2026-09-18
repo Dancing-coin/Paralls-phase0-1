@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-household-org-source-projection-report.json",
-  "description": "INF-4X existing SocialFactAuthority and OrganizationAuthority scoped source projections"
+  "description": "INF-4X existing SocialFactAuthority and OrganizationAuthority scoped source projections",
+  "success_key": "overall_passed"
 }

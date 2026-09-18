@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+try:
+    from .common import artifact_ref, verification_dir
+except ImportError:
+    from common import artifact_ref, verification_dir
+
 import json
 import os
 import subprocess
@@ -10,7 +15,7 @@ from verify_phase3_common import root, write_report
 
 
 def test_evidence(name: str, files: tuple[str, ...]) -> dict[str, object]:
-    directory = root() / ".harness" / "verification"
+    directory = verification_dir(root())
     directory.mkdir(parents=True, exist_ok=True)
     xml_path = directory / f"{name}-tests.xml"
     # 每次重新生成证据，不能读取上次失败前遗留的 JUnit 报告。
@@ -34,8 +39,8 @@ def test_evidence(name: str, files: tuple[str, ...]) -> dict[str, object]:
         "test_cases": [f"{case.get('classname')}.{case.get('name')}" for case in cases],
         "observations": {prop.get("name"): prop.get("value") for case in cases
                          for prop in case.findall("./properties/property")},
-        "test_log": str(log_path.relative_to(root())),
-        "junit_report": str(xml_path.relative_to(root())),
+        "test_log": artifact_ref(root(), log_path),
+        "junit_report": artifact_ref(root(), xml_path),
     }
 
 
@@ -47,7 +52,7 @@ def backend_report(name: str, report: dict[str, object]) -> int:
         "full_sgc_runtime_proof": False,
     })
     code = write_report(name, report)
-    markdown = root() / ".harness" / "verification" / f"{name}-report.md"
+    markdown = verification_dir(root()) / f"{name}-report.md"
     with markdown.open("a", encoding="utf-8") as file:
         file.write(f"\n- scope: \x60backend-only\x60\n- implementation: \x60{report['implementation_status']}\x60\n- Godot: \x60godot_unverified\x60\n")
     return code
@@ -83,4 +88,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

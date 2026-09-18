@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf2ao-production-output-market-eligibility-report.json",
-  "description": "INF-2AO certified production output -> Economy market eligibility marker; no payment, pricing, transfer, or market-order semantics"
+  "description": "INF-2AO certified production output -> Economy market eligibility marker; no payment, pricing, transfer, or market-order semantics",
+  "success_key": "overall_passed"
 }

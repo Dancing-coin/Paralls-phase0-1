@@ -6,5 +6,6 @@
   "requires_godot": true,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/harness-embodied-task-report.json",
-  "description": "Backend proof for the real embodied session task chain, authority/evidence correlation, recovery, capability phases, and trace privacy"
+  "description": "Backend proof for the real embodied session task chain, authority/evidence correlation, recovery, capability phases, and trace privacy",
+  "success_key": "overall_harness_embodied_task_passed"
 }

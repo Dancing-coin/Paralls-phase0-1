@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+try:
+    from .common import artifact_ref, verification_dir
+except ImportError:
+    from common import artifact_ref, verification_dir
+
 import json
 import subprocess
 import sys
@@ -54,7 +59,7 @@ def main() -> int:
         )
         report["family_binding_evidence"] = [
             {
-                "path": str(path.relative_to(ROOT)).replace("\\", "/"),
+                "path": artifact_ref(ROOT, path).replace("\\", "/"),
                 "patch_revision_id": manifest.patch_revision_id,
                 "content_digest": manifest.content_digest,
                 "binding_capability_ref": manifest.platform_extension.capability_binding_requests[0].capability_ref,
@@ -74,7 +79,7 @@ def main() -> int:
     except Exception:
         report["family_binding_evidence_valid"] = False
     report["overall_passed"] = report["overall_passed"] and report["family_binding_evidence_valid"]
-    artifact = ROOT / ".harness" / "verification" / "declared-exchange-family-report.json"
+    artifact = verification_dir(ROOT) / "declared-exchange-family-report.json"
     artifact.parent.mkdir(parents=True, exist_ok=True)
     artifact.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"declared_exchange_family_report_json={artifact}")
@@ -83,4 +88,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

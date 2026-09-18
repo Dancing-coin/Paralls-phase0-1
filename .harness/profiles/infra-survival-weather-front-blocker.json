@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-survival-weather-front-blocker-report.json",
-  "description": "INF-1U weather-front to Survival remains an unsupported-input zero-write blocker"
+  "description": "INF-1U weather-front to Survival remains an unsupported-input zero-write blocker",
+  "success_key": "overall_passed"
 }

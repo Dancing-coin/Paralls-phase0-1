@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/harvest-to-custody-family-report.json",
-  "description": "Ecology harvest to fixed Inventory custody family verification"
+  "description": "Ecology harvest to fixed Inventory custody family verification",
+  "success_key": "overall_passed"
 }

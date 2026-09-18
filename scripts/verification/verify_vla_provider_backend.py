@@ -21,7 +21,7 @@ from app.world_runtime.vla_provider import (
 )
 from app.world_runtime.vla_slow_path_scheduler import VLASlowPathScheduler
 from app.world_runtime.vla_routing import VLAAdvisoryRouteConfig, VLAAdvisoryRouter
-from common import repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
+from common import artifact_path, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
 TEST_FILES = [
@@ -113,7 +113,7 @@ def main() -> int:
     pytest_log = log_dir / "vla-provider-backend-pytest.log"
     pytest_result = run_command([python_exe, "-m", "pytest", "-q", *TEST_FILES], project_root, pytest_log)
 
-    sampling_artifact = log_dir / "godot-sampling-production-grade-providers-runtime.json"
+    sampling_artifact = artifact_path(project_root, ".harness/verification/godot-sampling-production-grade-providers-runtime.json")
     sampling_payload = _load_json(sampling_artifact)
     artifact_status = "available" if sampling_payload else "blocked_missing_artifacts"
     frame_payload = sampling_payload.get("perception_query_frame", {}) if sampling_payload else {}
@@ -258,4 +258,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

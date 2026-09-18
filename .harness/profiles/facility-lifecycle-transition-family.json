@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/facility-lifecycle-transition-family-report.json",
-  "description": "Generic dual-content Construction facility lifecycle transition family verification"
+  "description": "Generic dual-content Construction facility lifecycle transition family verification",
+  "success_key": "overall_passed"
 }

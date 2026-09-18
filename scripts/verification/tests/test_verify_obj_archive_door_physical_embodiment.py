@@ -125,6 +125,7 @@ def test_profile_manifest_requires_real_main_demo_runtime_report() -> None:
         "requires_godot": True,
         "max_attempts": 1,
         "result_artifact": ".harness/verification/obj-archive-door-physical-embodiment-report.json",
+        "success_key": "overall_obj_archive_door_physical_embodiment_passed",
         "description": "Real MainDemo wrapper probe that launches a live backend plus trusted-local embodied controller enrollment and proves obj_archive_door open, distance reject, revision stale reject, and stance conflict with correlated runtime, backend, replay, and screenshot evidence",
     }
 

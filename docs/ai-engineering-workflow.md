@@ -15,13 +15,13 @@ This repository uses four explicit responsibilities for non-trivial AI-assisted 
    ```
 
 4. **Goal tracks long-running execution state.**
-   Goal is the active execution container for large demands. Use `create_goal` when a task spans multiple edits or verification loops, and `update_goal` only when the objective is genuinely complete or blocked.
+   Goal is the active execution container when explicitly requested. Use `create_goal` only on an explicit user request, and `update_goal` only when the objective is genuinely complete or blocked.
 
 ## Source Of Truth
 
 - The spec and plan are the source of truth for intent and scope.
 - `.harness/profiles/` and `.harness/rules/` are the source of truth for machine-checkable acceptance.
-- `.harness/verification/` is generated evidence.
+- Generated evidence lives in an owned system temporary directory, is collected/exported explicitly, and is deleted when the top-level run completes. `.harness/retention-policy.json` is the retention contract.
 - Goal is transient execution state; it does not replace specs, plans, or harness reports.
 - Evolution Agent candidate manifests are proposals, not implementation approval. A candidate under `.harness/evolution/candidates/` must still be reviewed, converted into an implementation plan, implemented through normal edits, and verified by its promotion profiles before it changes operational harness behavior.
 
@@ -46,7 +46,7 @@ approved idea
 
 Use Codex native subagents for independent, bounded work lanes when parallelism improves throughput. The lead agent owns integration, conflict resolution, and final verification. Do not use child agents as a substitute for a written spec, plan, or harness evidence.
 
-Goal is the long-running objective ledger for explicit tasks. New work should keep durable acceptance evidence in `.harness` and use Goal only for active task continuity; do not use either surface as a substitute for specs, plans, tests, or harness reports.
+Goal is the long-running objective ledger for explicit tasks. New work should keep reviewed static knowledge in `.harness` and `docs/harness-playbook.md`; raw acceptance evidence requires explicit export outside the repository. Use Goal only for active task continuity; neither summaries nor a prior report replace fresh verification.
 
 ## Required Gates
 

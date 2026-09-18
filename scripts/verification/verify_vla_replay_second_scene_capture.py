@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from common import read_text, repo_root, run_command, verification_dir, write_json, write_markdown
+from common import artifact_path, read_text, repo_root, run_command, verification_dir, write_json, write_markdown
 
 
 def main() -> int:
@@ -29,8 +29,8 @@ def main() -> int:
         root,
         log_path,
     )
-    runtime_report = root / ".harness/verification/vla-replay-thronehall-walk-preview.json"
-    capture_path = root / ".harness/verification/vla-replay-thronehall-walk-preview.png"
+    runtime_report = artifact_path(root, ".harness/verification/vla-replay-thronehall-walk-preview.json")
+    capture_path = artifact_path(root, ".harness/verification/vla-replay-thronehall-walk-preview.png")
     payload = _load_json(runtime_report)
     capture_ok = capture_path.is_file() and capture_path.stat().st_size > 1024
     proved = (
@@ -68,4 +68,8 @@ def _load_json(path: Path) -> dict[str, object]:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

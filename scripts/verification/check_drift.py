@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from common import read_text, repo_root, verification_dir, write_json, write_markdown
+from common import artifact_ref, read_text, repo_root, verification_dir, write_json, write_markdown
 
 
 def _result(result_id: str, title: str, proved: bool, evidence: list[str], notes: str = "") -> dict[str, object]:
@@ -72,8 +72,8 @@ def evaluate_drift(project_root: Path) -> dict[str, object]:
             "Harness profile and rule registry inputs exist and are not hidden by a broad .harness ignore",
             not missing_registry_inputs,
             [
-                *[str(path.relative_to(project_root)).replace("\\", "/") for path in registry_files],
-                *[str(path.relative_to(project_root)).replace("\\", "/") for path in rule_files],
+                *[artifact_ref(project_root, path).replace("\\", "/") for path in registry_files],
+                *[artifact_ref(project_root, path).replace("\\", "/") for path in rule_files],
             ],
             "\n".join(missing_registry_inputs),
         ),
@@ -109,4 +109,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

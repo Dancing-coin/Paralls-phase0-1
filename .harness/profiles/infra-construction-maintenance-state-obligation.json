@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-construction-maintenance-state-obligation-report.json",
-  "description": "INF-1N Construction maintenance state event-derived obligation lifecycle"
+  "description": "INF-1N Construction maintenance state event-derived obligation lifecycle",
+  "success_key": "overall_passed"
 }

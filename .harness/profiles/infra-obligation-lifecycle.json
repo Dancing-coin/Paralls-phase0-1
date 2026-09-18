@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-obligation-lifecycle-report.json",
-  "description": "INF-2X event-derived lifecycle for the sole registered construction production obligation policy"
+  "description": "INF-2X event-derived lifecycle for the sole registered construction production obligation policy",
+  "success_key": "overall_passed"
 }

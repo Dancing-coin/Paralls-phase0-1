@@ -6,5 +6,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/gameplay-patch-runtime-report.json",
-  "description": "Backend proof for immutable trusted Gameplay patch manifests, deterministic proposal-only Rule IR/capability gates, authority-ledger lifecycle control, explicit-actor state-group lifecycle/identity-rebind cutover, and the bounded typed resource-bounds data-migration upgrade"
+  "description": "Backend proof for immutable trusted Gameplay patch manifests, deterministic proposal-only Rule IR/capability gates, authority-ledger lifecycle control, explicit-actor state-group lifecycle/identity-rebind cutover, and the bounded typed resource-bounds data-migration upgrade",
+  "success_key": "overall_gameplay_patch_runtime_passed"
 }

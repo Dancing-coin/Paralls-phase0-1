@@ -1,5 +1,7 @@
 extends Node
 
+const VerificationPaths := preload("res://scripts/verification/VerificationPaths.gd")
+
 const MIRROR_BRIDGE := preload("res://scripts/interaction/GameplayMirrorBridge.gd")
 const MIRROR_CONSUMER := preload("res://scripts/interaction/GameplayRuntimeStateMirrorConsumer.gd")
 const VERIFICATION_ROOT := "res:/" + "/.harness/verification/"
@@ -17,6 +19,9 @@ var _finished := false
 
 
 func _ready() -> void:
+	if VerificationPaths.resolve(".harness/verification/.context-check").is_empty():
+		get_tree().quit(1)
+		return
 	_scenario_id = OS.get_environment("PARALLS_ADVENTURE_BASIC_MIRROR_SCENARIO")
 	_expected_initial_state = OS.get_environment("PARALLS_ADVENTURE_BASIC_MIRROR_INITIAL_STATE")
 	_expected_final_state = OS.get_environment("PARALLS_ADVENTURE_BASIC_MIRROR_FINAL_STATE")
@@ -126,7 +131,10 @@ func _presentation_state() -> String:
 
 
 func _write_ready() -> void:
-	var path := ProjectSettings.globalize_path(VERIFICATION_ROOT + "live-adventure-basic-mirror-ready.json")
+	var path := VerificationPaths.resolve(VERIFICATION_ROOT + "live-adventure-basic-mirror-ready.json")
+	if path.is_empty():
+		get_tree().quit(1)
+		return
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file != null:
@@ -163,7 +171,10 @@ func _finish(ok: bool, reason: String) -> void:
 		"rejected_projection_count": _consumer.rejected_projection_count,
 		"resync_required": _consumer.resync_required,
 	}
-	var path := ProjectSettings.globalize_path(VERIFICATION_ROOT + "live-adventure-basic-mirror-runtime.json")
+	var path := VerificationPaths.resolve(VERIFICATION_ROOT + "live-adventure-basic-mirror-runtime.json")
+	if path.is_empty():
+		get_tree().quit(1)
+		return
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file != null:

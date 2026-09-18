@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-exact-lifecycle-owner-contract-catalog-report.json",
-  "description": "INF-2Y exact existing-owner lifecycle catalog and pre-append admission gates"
+  "description": "INF-2Y exact existing-owner lifecycle catalog and pre-append admission gates",
+  "success_key": "overall_passed"
 }

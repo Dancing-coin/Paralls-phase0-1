@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-fixed-base-branch-replay-contract-report.json",
-  "description": "INF-C5 (INF-4) deterministic fixed-base branch replay contract over the existing isolated branch and fixed owner admission"
+  "description": "INF-C5 (INF-4) deterministic fixed-base branch replay contract over the existing isolated branch and fixed owner admission",
+  "success_key": "overall_passed"
 }

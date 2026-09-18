@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf4ap-grain-intake-activity-report.json",
-  "description": "INF-4AP exact Inventory grain custody to Organization grain intake record"
+  "description": "INF-4AP exact Inventory grain custody to Organization grain intake record",
+  "success_key": "overall_passed"
 }

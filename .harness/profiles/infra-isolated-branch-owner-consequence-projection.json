@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-isolated-branch-owner-consequence-projection-report.json",
-  "description": "INF-4G isolated branch-local consequence projection from validated existing-owner fragments only"
+  "description": "INF-4G isolated branch-local consequence projection from validated existing-owner fragments only",
+  "success_key": "overall_passed"
 }

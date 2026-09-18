@@ -1,5 +1,20 @@
 # Harness Engineering Guide
 
+## 验证层级与证据生命周期
+
+先按改动与完成标准选择入口，案例见 [Harness 操作手册](harness-playbook.md)：
+
+```powershell
+python scripts/verification/harness.py --suite smoke
+python scripts/verification/harness.py --suite contract
+python scripts/verification/harness.py --profile phase0
+python scripts/verification/harness.py --suite release --export-evidence D:\HarnessEvidence\release-20260918
+```
+
+`smoke` 是少量离线故障测试，`contract` 是静态契约，`runtime` 要求真实运行环境，`release` 是 contract 与 runtime 的组合；精确成员以 `.harness/suites.json` 为准。完整 release 门禁仍以 `.harness/ci/release-gate.json` 的 all 与额外主线 profile 为准。`--profile all` 保留原有选集与顺序，smoke/contract 不替代广泛或 runtime 验收。`harness-smoke` 不加入默认 all。
+
+默认运行输出位于系统临时目录，正常、失败及可捕获取消后由顶层清理；必要证据在清理前用 `--export-evidence` 导出到仓库外不存在或为空的目录。保留契约见 `.harness/retention-policy.json`。最终摘要必须区分验证失败、环境缺失和清理失败；已有 backend 的生命周期不属于本轮。
+
 ## 3D scripted-mystery action platform
 
 The opt-in profile `3d-scripted-mystery-action-platform` runs the procedural
@@ -153,30 +168,14 @@ python scripts/verification/harness.py --profile siming-led-population-seed-cont
 python scripts/verification/harness.py --profile all
 ```
 
-Every run writes an aggregate summary:
+每次运行在系统临时目录创建唯一 `run_id`，写入 `harness-run-report.json`、`harness-run-report.md` 与 `run-manifest.json`。子 profile 和重试使用本轮独立 attempt 目录，聚合完成后顶层统一清理；默认不保留 latest、baseline、diff 或运行归档。
 
-- `.harness/verification/harness-run-report.json`
-- `.harness/verification/harness-run-report.md`
-
-Every run also writes an immutable run-id archive:
-
-- `.harness/verification/runs/<run-id>/harness-run-report.json`
-- `.harness/verification/runs/<run-id>/harness-run-report.md`
-- `.harness/verification/runs/<run-id>/run-manifest.json`
-- `.harness/verification/runs/<run-id>/harness-run-diff.json`
-
-The latest files are for quick inspection. The run-id archive is the durable evidence trail for later comparison, review, or regression investigation.
-
-Latest evidence state also includes:
-
-- `.harness/verification/harness-run-manifest.json`
-- `.harness/verification/baseline.json`
-- `.harness/verification/harness-run-diff.json`
+本文的 `<evidence-root>/文件名` 是运行中对应 profile/attempt 的输出目录占位符，实际目录由 `common.verification_dir(project_root)` 返回。源码引用仍相对仓库根；运行产物引用相对所属 manifest 所在目录。清理后路径不可继续读取，最终控制台摘要记录结果和清理状态。
 
 Runtime profiles also write structured NDJSON traces:
 
-- `.harness/verification/phase0-runtime-trace.ndjson`
-- `.harness/verification/phase1-slice-runtime-trace.ndjson`
+- `<evidence-root>/phase0-runtime-trace.ndjson`
+- `<evidence-root>/phase1-slice-runtime-trace.ndjson`
 
 Trace rows always include `sequence`, `source`, `line_number`, `event_type`, `result_id`, `subject`, and `raw`. When a backend JSON payload is present, rows also project stable fields such as `message_type`, `actor_id`, `target_actor_id`, `target_object_id`, `candidate_actor_ids`, `candidate_object_ids`, `room_id`, `scene_id`, `zone_id`, `causation_id`, and `correlation_id`.
 
@@ -187,7 +186,7 @@ python scripts/verification/harness.py --profile phase0 --godot-exe C:\path\to\G
 python scripts/verification/harness.py --profile phase0 --python-exe C:\path\to\python.exe
 ```
 
-On this workspace, the harness auto-detects `D:\godot\Godot_v4.6.3-stable_win64.exe` when it exists. Use `--godot-exe` only when running from a different Godot install.
+Godot 路径使用 `--godot-exe` 或 `GODOT_EXE` 指定；机器本地的候选安装路径不构成 CI 环境保证。
 
 ## Registry
 
@@ -199,9 +198,9 @@ Harness inputs are versionable project files, while generated evidence stays ign
 - `.harness/references/`: adapted external harness reference taxonomies.
 - `.harness/evolution/`: versionable evolution config, replay sets, and candidate mutation manifests.
 - `.harness/ci/`: release gate metadata and the local CI-equivalent gate.
-- `.harness/verification/`: generated evidence, reports, screenshots, logs, traces, and run archives.
+- `.harness/retention-policy.json`: 临时证据、默认清理与显式外部导出的执行契约。
 
-Do not add a broad `.harness/` ignore rule. Only generated evidence under `.harness/verification/` should be ignored so profile and rule manifests can be reviewed with the project.
+静态配置必须可提交。旧仓库 verification 目录的窄范围 ignore 仅防误提交，不能替代清理；运行报告、日志、截图和数据库默认存放系统临时目录。
 
 ## Profiles
 
@@ -218,10 +217,10 @@ Current mechanical invariants include:
 
 Output:
 
-- `.harness/verification/docs-report.json`
-- `.harness/verification/docs-report.md`
-- `.harness/verification/harness-run-report.json`
-- `.harness/verification/harness-run-report.md`
+- `<evidence-root>/docs-report.json`
+- `<evidence-root>/docs-report.md`
+- `<evidence-root>/harness-run-report.json`
+- `<evidence-root>/harness-run-report.md`
 
 ### `boundaries`
 
@@ -232,7 +231,7 @@ Current mechanical invariants include:
 - docs index and harness guide exist
 - visual facts use the approved emitter path
 - WebSocket messages keep an explicit envelope model
-- harness artifacts use `.harness/verification`
+- harness artifacts use the owned temporary run context
 - runtime profiles write structured NDJSON traces
 - runtime trace projects stable message and payload fields
 - backend parses `player_input` payloads into explicit models
@@ -243,10 +242,10 @@ Current mechanical invariants include:
 
 Output:
 
-- `.harness/verification/boundary-report.json`
-- `.harness/verification/boundary-report.md`
-- `.harness/verification/harness-run-report.json`
-- `.harness/verification/harness-run-report.md`
+- `<evidence-root>/boundary-report.json`
+- `<evidence-root>/boundary-report.md`
+- `<evidence-root>/harness-run-report.json`
+- `<evidence-root>/harness-run-report.md`
 
 ### `drift`
 
@@ -255,16 +254,16 @@ Static cleanup checks for local artifact drift and harness test coverage.
 Current mechanical invariants include:
 
 - temporary browser/snapshot artifacts are absent from the workspace root
-- `.harness/verification/`, Python cache, and pytest cache artifacts are gitignored
+- legacy repository verification output, Python cache, and pytest cache artifacts are narrowly gitignored
 - `.harness/profiles/` and `.harness/rules/` remain versionable project inputs
 - harness verification helpers have focused tests
 
 Output:
 
-- `.harness/verification/drift-report.json`
-- `.harness/verification/drift-report.md`
-- `.harness/verification/harness-run-report.json`
-- `.harness/verification/harness-run-report.md`
+- `<evidence-root>/drift-report.json`
+- `<evidence-root>/drift-report.md`
+- `<evidence-root>/harness-run-report.json`
+- `<evidence-root>/harness-run-report.md`
 
 ### `backend-contract`
 
@@ -279,10 +278,10 @@ Current mechanical invariants include:
 
 Output:
 
-- `.harness/verification/backend-contract-report.json`
-- `.harness/verification/backend-contract-report.md`
-- `.harness/verification/harness-run-report.json`
-- `.harness/verification/harness-run-report.md`
+- `<evidence-root>/backend-contract-report.json`
+- `<evidence-root>/backend-contract-report.md`
+- `<evidence-root>/harness-run-report.json`
+- `<evidence-root>/harness-run-report.md`
 
 ### `godot-project`
 
@@ -297,10 +296,10 @@ Current mechanical invariants include:
 
 Output:
 
-- `.harness/verification/godot-project-report.json`
-- `.harness/verification/godot-project-report.md`
-- `.harness/verification/harness-run-report.json`
-- `.harness/verification/harness-run-report.md`
+- `<evidence-root>/godot-project-report.json`
+- `<evidence-root>/godot-project-report.md`
+- `<evidence-root>/harness-run-report.json`
+- `<evidence-root>/harness-run-report.md`
 
 ### `character-agent-execution`
 
@@ -318,11 +317,11 @@ Current mechanical invariants include:
 
 Output:
 
-- `.harness/verification/character-agent-execution-report.json`
-- `.harness/verification/character-agent-execution-report.md`
-- `.harness/verification/character-agent-execution-runtime-trace.ndjson`
-- `.harness/verification/harness-run-report.json`
-- `.harness/verification/harness-run-report.md`
+- `<evidence-root>/character-agent-execution-report.json`
+- `<evidence-root>/character-agent-execution-report.md`
+- `<evidence-root>/character-agent-execution-runtime-trace.ndjson`
+- `<evidence-root>/harness-run-report.json`
+- `<evidence-root>/harness-run-report.md`
 
 ### `release-gate`
 
@@ -332,15 +331,15 @@ Current mechanical invariants include:
 
 - `.harness/ci/release-gate.json` points at the full `all` profile
 - `.github/workflows/harness.yml` exists
-- CI invokes `python scripts/verification/harness.py --profile all`
+- hosted CI invokes smoke/contract and explicitly reports missing runtime/release coverage
 - local CI-equivalent gate exists and invokes the same full harness profile
 
 Output:
 
-- `.harness/verification/release-gate-report.json`
-- `.harness/verification/release-gate-report.md`
-- `.harness/verification/harness-run-report.json`
-- `.harness/verification/harness-run-report.md`
+- `<evidence-root>/release-gate-report.json`
+- `<evidence-root>/release-gate-report.md`
+- `<evidence-root>/harness-run-report.json`
+- `<evidence-root>/harness-run-report.md`
 
 ### `harness-lifecycle`
 
@@ -348,18 +347,18 @@ Static lifecycle checks adapted from the `walkinglabs/learn-harness-engineering`
 
 Current mechanical invariants include:
 
-- `.harness/features.json` records harness features with pass/evidence entries
+- `.harness/features.json` records implemented capabilities and `verification_status=not_evaluated`
 - `.harness/ci/local-ci-gate.ps1` runs focused tests, compile, and full harness
 - `.harness/templates/` contains profile and rule templates for future modules
-- `.harness/retention-policy.json` defines baseline, diff, and run archive handling
+- `.harness/retention-policy.json` requires temporary owned evidence, cleanup and explicit external export
 - lifecycle quality, handoff, architecture, and reliability docs exist
 
 Output:
 
-- `.harness/verification/harness-lifecycle-report.json`
-- `.harness/verification/harness-lifecycle-report.md`
-- `.harness/verification/harness-run-report.json`
-- `.harness/verification/harness-run-report.md`
+- `<evidence-root>/harness-lifecycle-report.json`
+- `<evidence-root>/harness-lifecycle-report.md`
+- `<evidence-root>/harness-run-report.json`
+- `<evidence-root>/harness-run-report.md`
 
 ### `change-lifecycle`
 
@@ -370,17 +369,17 @@ Current mechanical invariants include:
 - `docs/ai-engineering-workflow.md` exists with matching design and implementation plan artifacts
 - `.harness/profiles/change-lifecycle.json` and `.harness/rules/change-lifecycle-rules.json` are registered
 - OpenSpec/design, Superpowers, Harness, and Goal handoff rules are documented
-- Goal records active task continuity while `.harness` records durable acceptance evidence
+- 显式 Goal 记录任务连续性；`.harness` 保留审查后的静态输入，原始证据临时存储并按需导出
 - templates require the relevant workflow gates before execution and handoff
 - `AGENTS.md` routes large work through Goal, Superpowers, Harness, and native subagents
 - archived OpenSpec changes keep required lifecycle files, completed tasks, delta specs, and a Superpowers/Harness evidence link
 
 Output:
 
-- `.harness/verification/change-lifecycle-report.json`
-- `.harness/verification/change-lifecycle-report.md`
-- `.harness/verification/harness-run-report.json`
-- `.harness/verification/harness-run-report.md`
+- `<evidence-root>/change-lifecycle-report.json`
+- `<evidence-root>/change-lifecycle-report.md`
+- `<evidence-root>/harness-run-report.json`
+- `<evidence-root>/harness-run-report.md`
 
 ### `harness-reference`
 
@@ -395,10 +394,10 @@ Current mechanical invariants include:
 
 Output:
 
-- `.harness/verification/harness-reference-report.json`
-- `.harness/verification/harness-reference-report.md`
-- `.harness/verification/harness-run-report.json`
-- `.harness/verification/harness-run-report.md`
+- `<evidence-root>/harness-reference-report.json`
+- `<evidence-root>/harness-reference-report.md`
+- `<evidence-root>/harness-run-report.json`
+- `<evidence-root>/harness-run-report.md`
 
 ### `harness-evolution`
 
@@ -409,8 +408,8 @@ Current mechanical invariants include:
 - `.harness/evolution/config.json` exists and validates
 - `.harness/evolution/replay-sets/default.json` exists and validates
 - candidate manifests under `.harness/evolution/candidates/` are schema-valid, harness-scoped, and approval-gated
-- candidate lifecycle stages are governed; `promotion-ready` and `promoted` candidates require non-empty `qa_review_artifacts`
-- `.harness/verification/harness-evolution-report.json` exists after analyzer execution
+- candidate promotion requires matching evaluation content digests, revisions and accepted execution results; schema validity alone is not effectiveness
+- `<evidence-root>/harness-evolution-report.json` exists after analyzer execution
 
 Analyzer commands:
 
@@ -421,8 +420,8 @@ python scripts/verification/analyze_harness_evolution.py --mode propose --candid
 
 Output:
 
-- `.harness/verification/harness-evolution-report.json`
-- `.harness/verification/harness-evolution-report.md`
+- `<evidence-root>/harness-evolution-report.json`
+- `<evidence-root>/harness-evolution-report.md`
 - optional `.harness/evolution/candidates/<id>.json` in propose mode
 
 ### `character-behavior-evaluation`
@@ -435,8 +434,8 @@ profiles.
 
 Output:
 
-- `.harness/verification/character-behavior-evaluation-report.json`
-- `.harness/verification/character-behavior-evaluation-report.md`
+- `<evidence-root>/character-behavior-evaluation-report.json`
+- `<evidence-root>/character-behavior-evaluation-report.md`
 
 ### `character-policy-calibration`
 
@@ -447,8 +446,8 @@ profile mutation outside runtime evaluation.
 
 Output:
 
-- `.harness/verification/character-policy-calibration-report.json`
-- `.harness/verification/character-policy-calibration-report.md`
+- `<evidence-root>/character-policy-calibration-report.json`
+- `<evidence-root>/character-policy-calibration-report.md`
 
 ### `phase0`
 
@@ -460,7 +459,7 @@ The current profile manifest also carries a retry budget (`max_attempts`) so the
 
 Trace output:
 
-- `.harness/verification/phase0-runtime-trace.ndjson`
+- `<evidence-root>/phase0-runtime-trace.ndjson`
 
 ### `phase1-slice`
 
@@ -479,7 +478,7 @@ Current mechanical/runtime evidence includes:
 
 Trace output:
 
-- `.harness/verification/phase1-slice-runtime-trace.ndjson`
+- `<evidence-root>/phase1-slice-runtime-trace.ndjson`
 
 ### `l1-world-fact-runtime`
 
@@ -510,12 +509,12 @@ If Godot cannot be launched, the report marks `godot-runtime-unverified`; do not
 
 Output:
 
-- `.harness/verification/l1-world-fact-runtime-report.json`
-- `.harness/verification/l1-world-fact-runtime-report.md`
-- `.harness/verification/l1-space-model-runtime.json` when the Godot probe runs
-- `.harness/verification/l1-space-model-backend-contract.json` for backend contract proof
-- `.harness/verification/harness-run-report.json`
-- `.harness/verification/harness-run-report.md`
+- `<evidence-root>/l1-world-fact-runtime-report.json`
+- `<evidence-root>/l1-world-fact-runtime-report.md`
+- `<evidence-root>/l1-space-model-runtime.json` when the Godot probe runs
+- `<evidence-root>/l1-space-model-backend-contract.json` for backend contract proof
+- `<evidence-root>/harness-run-report.json`
+- `<evidence-root>/harness-run-report.md`
 
 ### `harness-execution-contract`
 
@@ -534,8 +533,8 @@ python scripts/verification/harness.py --profile harness-execution-contract
 
 Output:
 
-- `.harness/verification/harness-execution-contract-report.json`
-- `.harness/verification/harness-execution-contract-report.md`
+- `<evidence-root>/harness-execution-contract-report.json`
+- `<evidence-root>/harness-execution-contract-report.md`
 
 ### `harness-embodied-task`
 
@@ -552,8 +551,8 @@ python scripts/verification/harness.py --profile harness-embodied-task
 
 Output:
 
-- `.harness/verification/harness-embodied-task-report.json`
-- `.harness/verification/harness-embodied-task-report.md`
+- `<evidence-root>/harness-embodied-task-report.json`
+- `<evidence-root>/harness-embodied-task-report.md`
 
 ### `siming-backend-chain`
 
@@ -598,8 +597,8 @@ For actual runtime multi-route configuration, set `SIMING_LLM_ROUTES_JSON` to a 
 
 Output:
 
-- `.harness/verification/siming-backend-chain-report.json`
-- `.harness/verification/siming-backend-chain-report.md`
+- `<evidence-root>/siming-backend-chain-report.json`
+- `<evidence-root>/siming-backend-chain-report.md`
 
 ### `character-model-live`
 
@@ -622,8 +621,8 @@ Provider-specific aliases such as `DEEPSEEK_*` and `QWEN_*` are not consumed by 
 
 Output:
 
-- `.harness/verification/character-model-live-report.json`
-- `.harness/verification/character-model-live-report.md`
+- `<evidence-root>/character-model-live-report.json`
+- `<evidence-root>/character-model-live-report.md`
 
 ### `script-evolution-proof`
 
@@ -660,8 +659,8 @@ python scripts/verification/harness.py --profile heavenly-graph-semantic-foundat
 
 Output:
 
-- `.harness/verification/heavenly-graph-semantic-foundation-report.json`
-- `.harness/verification/heavenly-graph-semantic-foundation-report.md`
+- `<evidence-root>/heavenly-graph-semantic-foundation-report.json`
+- `<evidence-root>/heavenly-graph-semantic-foundation-report.md`
 
 ### `behavior-turn-runtime`
 
@@ -680,8 +679,8 @@ python scripts/verification/harness.py --profile behavior-turn-runtime
 
 Output:
 
-- `.harness/verification/behavior-turn-runtime-report.json`
-- `.harness/verification/behavior-turn-runtime-report.md`
+- `<evidence-root>/behavior-turn-runtime-report.json`
+- `<evidence-root>/behavior-turn-runtime-report.md`
 
 ### `character-continuity-recovery`
 
@@ -723,7 +722,7 @@ python scripts/verification/harness.py --profile character-memory-consistency
 python -m pytest backend/tests -v
 ```
 
-Evidence: `.harness/verification/character-memory-consistency-report.json`,
+Evidence: `<evidence-root>/character-memory-consistency-report.json`,
 `character-memory-consistency-trace.json`, JUnit XML, and pytest log in the same
 verification directory.
 
@@ -769,7 +768,7 @@ python scripts/verification/harness.py --profile siming-led-population-seed-cont
 
 Output:
 
-- `.harness/verification/siming-led-population-seed-continuity-report.json`
+- `<evidence-root>/siming-led-population-seed-continuity-report.json`
 
 The manifest intentionally keeps `include_in_profile_order=false` and `include_in_all=false`.
 Run it directly by name; aggregate profiles do not include this bounded evidence yet.
@@ -790,7 +789,7 @@ python scripts/verification/harness.py --profile siming-governed-three-actor-coh
 
 Output:
 
-- `.harness/verification/siming-governed-three-actor-cohort-continuity-v1-report.json`
+- `<evidence-root>/siming-governed-three-actor-cohort-continuity-v1-report.json`
 
 The manifest intentionally keeps `include_in_profile_order=false` and
 `include_in_all=false`.
@@ -809,8 +808,8 @@ python scripts/verification/harness.py --profile siming-heavenly-runtime
 
 Output:
 
-- `.harness/verification/siming-heavenly-runtime-report.json`
-- `.harness/verification/siming-heavenly-runtime-report.md`
+- `<evidence-root>/siming-heavenly-runtime-report.json`
+- `<evidence-root>/siming-heavenly-runtime-report.md`
 
 ### `siming-six-domain-memory`
 
@@ -881,8 +880,8 @@ Readiness remains non-live evidence; the closure report keeps `readiness_is_live
 
 Output:
 
-- `.harness/verification/llm-integration-closure-report.json`
-- `.harness/verification/llm-integration-closure-report.md`
+- `<evidence-root>/llm-integration-closure-report.json`
+- `<evidence-root>/llm-integration-closure-report.md`
 
 ### `model-provider-readiness`
 
@@ -897,8 +896,8 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/model-provider-readiness-report.json`
-- `.harness/verification/model-provider-readiness-report.md`
+- `<evidence-root>/model-provider-readiness-report.json`
+- `<evidence-root>/model-provider-readiness-report.md`
 
 ### `godot-sampling-production-grade-providers`
 
@@ -914,9 +913,9 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/godot-sampling-production-grade-providers-report.json`
-- `.harness/verification/godot-sampling-production-grade-providers-report.md`
-- `.harness/verification/godot-sampling-production-grade-providers-runtime.json`
+- `<evidence-root>/godot-sampling-production-grade-providers-report.json`
+- `<evidence-root>/godot-sampling-production-grade-providers-report.md`
+- `<evidence-root>/godot-sampling-production-grade-providers-runtime.json`
 
 ### `embodied-skeletal-debug-replay`
 
@@ -928,13 +927,13 @@ Current proof includes:
 - high-level embodied state and mid-level skeletal parameters entering the main perception payload
 - anchor refs, facing vectors, reach envelope, balance/strain hints, hand readiness, contact candidates, and pose feature tags
 - full bone snapshot exclusion from the main chain
-- `.harness/verification/skeletal-replay-*.json` debug replay artifacts with `debug_replay_only` retention and failure trace refs
+- `<evidence-root>/skeletal-replay-*.json` debug replay artifacts with `debug_replay_only` retention and failure trace refs
 
 Output:
 
-- `.harness/verification/embodied-skeletal-debug-replay-report.json`
-- `.harness/verification/embodied-skeletal-debug-replay-report.md`
-- `.harness/verification/embodied-skeletal-debug-replay-runtime.json`
+- `<evidence-root>/embodied-skeletal-debug-replay-report.json`
+- `<evidence-root>/embodied-skeletal-debug-replay-report.md`
+- `<evidence-root>/embodied-skeletal-debug-replay-runtime.json`
 
 ### `tts-voice-profile-adapter`
 
@@ -958,9 +957,9 @@ dialogue/authority state.
 
 Output:
 
-- `.harness/verification/tts-voice-profile-adapter-report.json`
-- `.harness/verification/tts-voice-profile-adapter-report.md`
-- `.harness/verification/tts-voice-profile-adapter-pytest.log`
+- `<evidence-root>/tts-voice-profile-adapter-report.json`
+- `<evidence-root>/tts-voice-profile-adapter-report.md`
+- `<evidence-root>/tts-voice-profile-adapter-pytest.log`
 
 ### `vla-provider-backend`
 
@@ -980,9 +979,9 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/vla-provider-backend-report.json`
-- `.harness/verification/vla-provider-backend-report.md`
-- `.harness/verification/vla-provider-backend-trace.json`
+- `<evidence-root>/vla-provider-backend-report.json`
+- `<evidence-root>/vla-provider-backend-report.md`
+- `<evidence-root>/vla-provider-backend-trace.json`
 
 The explicit-only external proof command is:
 
@@ -1053,9 +1052,9 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/actor-scene-knowledge-lifecycle-report.json`
-- `.harness/verification/actor-scene-knowledge-lifecycle-report.md`
-- `.harness/verification/actor-scene-knowledge-lifecycle-trace.json`
+- `<evidence-root>/actor-scene-knowledge-lifecycle-report.json`
+- `<evidence-root>/actor-scene-knowledge-lifecycle-report.md`
+- `<evidence-root>/actor-scene-knowledge-lifecycle-trace.json`
 
 ### `siming-global-situation-layer`
 
@@ -1070,9 +1069,9 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/siming-global-situation-layer-report.json`
-- `.harness/verification/siming-global-situation-layer-report.md`
-- `.harness/verification/siming-global-situation-layer-trace.json`
+- `<evidence-root>/siming-global-situation-layer-report.json`
+- `<evidence-root>/siming-global-situation-layer-report.md`
+- `<evidence-root>/siming-global-situation-layer-trace.json`
 
 ### `interaction-orchestration-service`
 
@@ -1088,9 +1087,9 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/interaction-orchestration-service-report.json`
-- `.harness/verification/interaction-orchestration-service-report.md`
-- `.harness/verification/interaction-orchestration-service-trace.json`
+- `<evidence-root>/interaction-orchestration-service-report.json`
+- `<evidence-root>/interaction-orchestration-service-report.md`
+- `<evidence-root>/interaction-orchestration-service-trace.json`
 
 ### `esm-physical-channel-world-actuation`
 
@@ -1106,10 +1105,10 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/esm-physical-channel-world-actuation-report.json`
-- `.harness/verification/esm-physical-channel-world-actuation-report.md`
-- `.harness/verification/esm-physical-channel-world-actuation-trace.json`
-- `.harness/verification/esm-physical-channel-godot-runtime.json`
+- `<evidence-root>/esm-physical-channel-world-actuation-report.json`
+- `<evidence-root>/esm-physical-channel-world-actuation-report.md`
+- `<evidence-root>/esm-physical-channel-world-actuation-trace.json`
+- `<evidence-root>/esm-physical-channel-godot-runtime.json`
 
 ### `non-runtime-production-pipeline`
 
@@ -1126,9 +1125,9 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/non-runtime-production-pipeline-report.json`
-- `.harness/verification/non-runtime-production-pipeline-report.md`
-- `.harness/verification/non-runtime-production-pipeline-trace.json`
+- `<evidence-root>/non-runtime-production-pipeline-report.json`
+- `<evidence-root>/non-runtime-production-pipeline-report.md`
+- `<evidence-root>/non-runtime-production-pipeline-trace.json`
 
 ### `perception-input-alignment`
 
@@ -1145,9 +1144,9 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/perception-input-alignment-report.json`
-- `.harness/verification/perception-input-alignment-report.md`
-- `.harness/verification/perception-input-alignment-matrix-trace.json`
+- `<evidence-root>/perception-input-alignment-report.json`
+- `<evidence-root>/perception-input-alignment-report.md`
+- `<evidence-root>/perception-input-alignment-matrix-trace.json`
 
 ### `embodied-interaction-contracts`
 
@@ -1164,9 +1163,9 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/embodied-interaction-contracts-report.json`
-- `.harness/verification/embodied-interaction-contracts-report.md`
-- `.harness/verification/embodied-interaction-contracts-trace.json`
+- `<evidence-root>/embodied-interaction-contracts-report.json`
+- `<evidence-root>/embodied-interaction-contracts-report.md`
+- `<evidence-root>/embodied-interaction-contracts-trace.json`
 
 ### `embodied-affordance-registry`
 
@@ -1210,11 +1209,11 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/embodied-affordance-registry-report.json`
-- `.harness/verification/embodied-affordance-registry-report.md`
-- `.harness/verification/embodied-affordance-registry-trace.json`
-- `.harness/verification/embodied-affordance-registry-godot-runtime.json`
-- `.harness/verification/default-scene-letter-affordance-godot-runtime.json`
+- `<evidence-root>/embodied-affordance-registry-report.json`
+- `<evidence-root>/embodied-affordance-registry-report.md`
+- `<evidence-root>/embodied-affordance-registry-trace.json`
+- `<evidence-root>/embodied-affordance-registry-godot-runtime.json`
+- `<evidence-root>/default-scene-letter-affordance-godot-runtime.json`
 
 ### `embodied-bridge-attestation`
 
@@ -1233,9 +1232,9 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/embodied-bridge-attestation-report.json`
-- `.harness/verification/embodied-bridge-attestation-report.md`
-- `.harness/verification/embodied-bridge-attestation-godot-runtime.json`
+- `<evidence-root>/embodied-bridge-attestation-report.json`
+- `<evidence-root>/embodied-bridge-attestation-report.md`
+- `<evidence-root>/embodied-bridge-attestation-godot-runtime.json`
 
 ### `embodied-action-controller`
 
@@ -1253,9 +1252,9 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/embodied-action-controller-report.json`
-- `.harness/verification/embodied-action-controller-report.md`
-- `.harness/verification/embodied-action-controller-godot-runtime.json`
+- `<evidence-root>/embodied-action-controller-report.json`
+- `<evidence-root>/embodied-action-controller-report.md`
+- `<evidence-root>/embodied-action-controller-godot-runtime.json`
 
 ### `embodied-authority-settlement`
 
@@ -1271,9 +1270,9 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/embodied-authority-settlement-report.json`
-- `.harness/verification/embodied-authority-settlement-report.md`
-- `.harness/verification/embodied-authority-settlement-trace.json`
+- `<evidence-root>/embodied-authority-settlement-report.json`
+- `<evidence-root>/embodied-authority-settlement-report.md`
+- `<evidence-root>/embodied-authority-settlement-trace.json`
 
 ### `embodied-interaction-replay`
 
@@ -1290,11 +1289,11 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/embodied-interaction-replay-report.json`
-- `.harness/verification/embodied-interaction-replay-report.md`
-- `.harness/verification/embodied-interaction-replay-ledger-trace.json`
-- `.harness/verification/embodied-kick-chair-vertical-slice-godot-runtime.json`
-- `.harness/verification/embodied-kick-chair-vertical-slice.png`
+- `<evidence-root>/embodied-interaction-replay-report.json`
+- `<evidence-root>/embodied-interaction-replay-report.md`
+- `<evidence-root>/embodied-interaction-replay-ledger-trace.json`
+- `<evidence-root>/embodied-kick-chair-vertical-slice-godot-runtime.json`
+- `<evidence-root>/embodied-kick-chair-vertical-slice.png`
 
 ### `obj-archive-door-physical-embodiment`
 
@@ -1316,12 +1315,12 @@ or physical proof.
 
 Output:
 
-- `.harness/verification/obj-archive-door-physical-embodiment-report.json`
-- `.harness/verification/obj-archive-door-physical-embodiment-report.md`
-- `.harness/verification/obj-archive-door-physical-embodiment-runtime.json`
-- `.harness/verification/obj-archive-door-physical-embodiment-backend-settlement-trace.json`
-- `.harness/verification/obj-archive-door-physical-embodiment-replay-trace.json`
-- `.harness/verification/obj-archive-door-physical-embodiment-*.png`
+- `<evidence-root>/obj-archive-door-physical-embodiment-report.json`
+- `<evidence-root>/obj-archive-door-physical-embodiment-report.md`
+- `<evidence-root>/obj-archive-door-physical-embodiment-runtime.json`
+- `<evidence-root>/obj-archive-door-physical-embodiment-backend-settlement-trace.json`
+- `<evidence-root>/obj-archive-door-physical-embodiment-replay-trace.json`
+- `<evidence-root>/obj-archive-door-physical-embodiment-*.png`
 
 ### `gameplay-foundation-contract`
 
@@ -1337,14 +1336,14 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/gameplay-foundation-contract-report.json`
-- `.harness/verification/gameplay-foundation-contract-report.md`
-- `.harness/verification/gameplay-foundation-contract-pytest.log`
+- `<evidence-root>/gameplay-foundation-contract-report.json`
+- `<evidence-root>/gameplay-foundation-contract-report.md`
+- `<evidence-root>/gameplay-foundation-contract-pytest.log`
 
 The 2026-08-07 Phase One Gameplay closure extends this profile with shared
 identity/semantic/revision/replay/permission focused tests and emits:
 
-- `.harness/verification/gameplay-foundation-contract-evidence.ndjson`
+- `<evidence-root>/gameplay-foundation-contract-evidence.ndjson`
 
 ### `phase1b-contract-verification`
 
@@ -1421,7 +1420,7 @@ python scripts/verification/harness.py --profile phase5a-quest-objective-evidenc
 
 Output:
 
-- `.harness/verification/phase5a-quest-objective-evidence-report.json`
+- `<evidence-root>/phase5a-quest-objective-evidence-report.json`
 
 ### `phase5b-relationship-reputation-knowledge`
 
@@ -1453,7 +1452,7 @@ python scripts/verification/harness.py --profile phase5b-relationship-reputation
 
 Output:
 
-- `.harness/verification/phase5b-relationship-reputation-knowledge-report.json`
+- `<evidence-root>/phase5b-relationship-reputation-knowledge-report.json`
 
 ### `phase5c-investigation-stealth-conflict`
 
@@ -1486,7 +1485,7 @@ python scripts/verification/harness.py --profile phase5c-investigation-stealth-c
 
 Output:
 
-- `.harness/verification/phase5c-investigation-stealth-conflict-report.json`
+- `<evidence-root>/phase5c-investigation-stealth-conflict-report.json`
 
 ### `phase5d-investigation-vertical-slice`
 
@@ -1504,7 +1503,7 @@ python scripts/verification/harness.py --profile phase5d-investigation-vertical-
 
 Output:
 
-- `.harness/verification/phase5d-investigation-vertical-slice-report.json`
+- `<evidence-root>/phase5d-investigation-vertical-slice-report.json`
 
 ### `gameplay-event-replay`
 
@@ -1529,9 +1528,9 @@ startup control plane, or live Godot recovery.
 
 Output:
 
-- `.harness/verification/gameplay-event-replay-report.json`
-- `.harness/verification/gameplay-event-replay-report.md`
-- `.harness/verification/gameplay-event-replay-pytest.log`
+- `<evidence-root>/gameplay-event-replay-report.json`
+- `<evidence-root>/gameplay-event-replay-report.md`
+- `<evidence-root>/gameplay-event-replay-pytest.log`
 
 ### `gameplay-foundation-event-spine`
 
@@ -1548,9 +1547,9 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/gameplay-foundation-event-spine-report.json`
-- `.harness/verification/gameplay-foundation-event-spine-report.md`
-- `.harness/verification/gameplay-foundation-event-spine-pytest.log`
+- `<evidence-root>/gameplay-foundation-event-spine-report.json`
+- `<evidence-root>/gameplay-foundation-event-spine-report.md`
+- `<evidence-root>/gameplay-foundation-event-spine-pytest.log`
 
 ### `gameplay-patch-runtime`
 
@@ -1607,12 +1606,12 @@ prove a backend-owned, post-commit filtered Godot mirror projection.
 
 Output:
 
-- `.harness/verification/gameplay-patch-runtime-report.json`
-- `.harness/verification/gameplay-patch-runtime-report.md`
-- `.harness/verification/gameplay-patch-runtime-patch-contract-and-lifecycle.log`
-- `.harness/verification/gameplay-patch-runtime-migration-replay-and-zero-write-rejection.log`
-- `.harness/verification/gameplay-patch-runtime-post-commit-godot-projection.log`
-- `.harness/verification/gameplay-patch-runtime-patch-rule-ir-and-capability-boundary.log`
+- `<evidence-root>/gameplay-patch-runtime-report.json`
+- `<evidence-root>/gameplay-patch-runtime-report.md`
+- `<evidence-root>/gameplay-patch-runtime-patch-contract-and-lifecycle.log`
+- `<evidence-root>/gameplay-patch-runtime-migration-replay-and-zero-write-rejection.log`
+- `<evidence-root>/gameplay-patch-runtime-post-commit-godot-projection.log`
+- `<evidence-root>/gameplay-patch-runtime-patch-rule-ir-and-capability-boundary.log`
 
 ### `gameplay-state-groups`
 
@@ -1650,9 +1649,9 @@ transport delivery, client prediction, persistence, or Godot mirror delivery.
 
 Output:
 
-- `.harness/verification/gameplay-state-groups-report.json`
-- `.harness/verification/gameplay-state-groups-report.md`
-- `.harness/verification/gameplay-state-groups-pytest.log`
+- `<evidence-root>/gameplay-state-groups-report.json`
+- `<evidence-root>/gameplay-state-groups-report.md`
+- `<evidence-root>/gameplay-state-groups-pytest.log`
 
 ### `gameplay-resource-body`
 
@@ -1678,9 +1677,9 @@ equivalence, transport delivery, or Godot mirror behavior.
 
 Output:
 
-- `.harness/verification/gameplay-resource-body-report.json`
-- `.harness/verification/gameplay-resource-body-report.md`
-- `.harness/verification/gameplay-resource-body-pytest.log`
+- `<evidence-root>/gameplay-resource-body-report.json`
+- `<evidence-root>/gameplay-resource-body-report.md`
+- `<evidence-root>/gameplay-resource-body-pytest.log`
 
 ### `gameplay-effective-stats`
 
@@ -1698,9 +1697,9 @@ composition, consumer views, transport, or Godot mirror delivery.
 
 Output:
 
-- `.harness/verification/gameplay-effective-stats-report.json`
-- `.harness/verification/gameplay-effective-stats-report.md`
-- `.harness/verification/gameplay-effective-stats-pytest.log`
+- `<evidence-root>/gameplay-effective-stats-report.json`
+- `<evidence-root>/gameplay-effective-stats-report.md`
+- `<evidence-root>/gameplay-effective-stats-pytest.log`
 
 ### `gameplay-ability-affordance`
 
@@ -1722,9 +1721,9 @@ delivery.
 
 Output:
 
-- `.harness/verification/gameplay-ability-affordance-report.json`
-- `.harness/verification/gameplay-ability-affordance-report.md`
-- `.harness/verification/gameplay-ability-affordance-pytest.log`
+- `<evidence-root>/gameplay-ability-affordance-report.json`
+- `<evidence-root>/gameplay-ability-affordance-report.md`
+- `<evidence-root>/gameplay-ability-affordance-pytest.log`
 
 ### `gameplay-inventory`
 
@@ -1757,9 +1756,9 @@ equivalence, transport, or Godot delivery.
 
 Output:
 
-- `.harness/verification/gameplay-possession-equipment-report.json`
-- `.harness/verification/gameplay-possession-equipment-report.md`
-- `.harness/verification/gameplay-possession-equipment-pytest.log`
+- `<evidence-root>/gameplay-possession-equipment-report.json`
+- `<evidence-root>/gameplay-possession-equipment-report.md`
+- `<evidence-root>/gameplay-possession-equipment-pytest.log`
 
 ### `gameplay-ownership-authority`
 
@@ -1778,9 +1777,9 @@ contracts, privacy views, checkpoint replay, transport, or Godot delivery.
 
 Output:
 
-- `.harness/verification/gameplay-ownership-authority-report.json`
-- `.harness/verification/gameplay-ownership-authority-report.md`
-- `.harness/verification/gameplay-ownership-authority-pytest.log`
+- `<evidence-root>/gameplay-ownership-authority-report.json`
+- `<evidence-root>/gameplay-ownership-authority-report.md`
+- `<evidence-root>/gameplay-ownership-authority-pytest.log`
 
 ### `gameplay-economy-authority`
 
@@ -1826,9 +1825,9 @@ persistence, checkpoint replay, or Godot delivery.
 
 Output:
 
-- `.harness/verification/gameplay-economy-authority-report.json`
-- `.harness/verification/gameplay-economy-authority-report.md`
-- `.harness/verification/gameplay-economy-authority-pytest.log`
+- `<evidence-root>/gameplay-economy-authority-report.json`
+- `<evidence-root>/gameplay-economy-authority-report.md`
+- `<evidence-root>/gameplay-economy-authority-pytest.log`
 
 ### `godot-gameplay-mirror`
 
@@ -1849,9 +1848,9 @@ persistence, or migration behavior.
 
 Output:
 
-- `.harness/verification/godot-gameplay-mirror-report.json`
-- `.harness/verification/godot-gameplay-mirror-report.md`
-- `.harness/verification/godot-gameplay-mirror-pytest.log`
+- `<evidence-root>/godot-gameplay-mirror-report.json`
+- `<evidence-root>/godot-gameplay-mirror-report.md`
+- `<evidence-root>/godot-gameplay-mirror-pytest.log`
 
 ### `adventure-basic`
 
@@ -1868,9 +1867,9 @@ production identity, or migration closure.
 
 Output:
 
-- `.harness/verification/adventure-basic-report.json`
-- `.harness/verification/adventure-basic-report.md`
-- `.harness/verification/adventure-basic-pytest.log`
+- `<evidence-root>/adventure-basic-report.json`
+- `<evidence-root>/adventure-basic-report.md`
+- `<evidence-root>/adventure-basic-pytest.log`
 
 ### `gameplay-foundation-all`
 
@@ -1886,9 +1885,9 @@ failure, rather than skipping the runtime gate.
 
 Output:
 
-- `.harness/verification/gameplay-foundation-all-report.json`
-- `.harness/verification/gameplay-foundation-all-report.md`
-- `.harness/verification/gameplay-foundation-all-<child-profile>.log`
+- `<evidence-root>/gameplay-foundation-all-report.json`
+- `<evidence-root>/gameplay-foundation-all-report.md`
+- `<evidence-root>/gameplay-foundation-all-<child-profile>.log`
 
 ### `gameplay-status-tags`
 
@@ -1905,9 +1904,9 @@ mirror behavior.
 
 Output:
 
-- `.harness/verification/gameplay-status-tags-report.json`
-- `.harness/verification/gameplay-status-tags-report.md`
-- `.harness/verification/gameplay-status-tags-pytest.log`
+- `<evidence-root>/gameplay-status-tags-report.json`
+- `<evidence-root>/gameplay-status-tags-report.md`
+- `<evidence-root>/gameplay-status-tags-pytest.log`
 
 ### `embodied-interaction-session`
 
@@ -1928,13 +1927,13 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/embodied-interaction-session-report.json`
-- `.harness/verification/embodied-interaction-session-report.md`
-- `.harness/verification/embodied-interaction-session-pytest.log`
-- `.harness/verification/embodied-interaction-session-trace.json`
-- `.harness/verification/embodied-interaction-session-websocket-trace.json`
-- `.harness/verification/embodied-interaction-session-godot.log`
-- `.harness/verification/embodied-interaction-session-godot-runtime.json`
+- `<evidence-root>/embodied-interaction-session-report.json`
+- `<evidence-root>/embodied-interaction-session-report.md`
+- `<evidence-root>/embodied-interaction-session-pytest.log`
+- `<evidence-root>/embodied-interaction-session-trace.json`
+- `<evidence-root>/embodied-interaction-session-websocket-trace.json`
+- `<evidence-root>/embodied-interaction-session-godot.log`
+- `<evidence-root>/embodied-interaction-session-godot-runtime.json`
 
 ### `embodied-handoff-authority`
 
@@ -1952,12 +1951,12 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/embodied-handoff-authority-report.json`
-- `.harness/verification/embodied-handoff-authority-report.md`
-- `.harness/verification/embodied-handoff-pytest.log`
-- `.harness/verification/embodied-handoff-websocket-trace.json`
-- `.harness/verification/embodied-handoff-godot.log`
-- `.harness/verification/embodied-handoff-godot-runtime.json`
+- `<evidence-root>/embodied-handoff-authority-report.json`
+- `<evidence-root>/embodied-handoff-authority-report.md`
+- `<evidence-root>/embodied-handoff-pytest.log`
+- `<evidence-root>/embodied-handoff-websocket-trace.json`
+- `<evidence-root>/embodied-handoff-godot.log`
+- `<evidence-root>/embodied-handoff-godot-runtime.json`
 
 ### `embodied-grab-carry-place-authority`
 
@@ -1978,12 +1977,12 @@ Current proof includes:
 
 Output:
 
-- `.harness/verification/embodied-grab-carry-place-authority-report.json`
-- `.harness/verification/embodied-grab-carry-place-authority-report.md`
-- `.harness/verification/embodied-carry-place-pytest.log`
-- `.harness/verification/embodied-carry-place-websocket-trace.json`
-- `.harness/verification/embodied-carry-place-godot.log`
-- `.harness/verification/embodied-carry-place-godot-runtime.json`
+- `<evidence-root>/embodied-grab-carry-place-authority-report.json`
+- `<evidence-root>/embodied-grab-carry-place-authority-report.md`
+- `<evidence-root>/embodied-carry-place-pytest.log`
+- `<evidence-root>/embodied-carry-place-websocket-trace.json`
+- `<evidence-root>/embodied-carry-place-godot.log`
+- `<evidence-root>/embodied-carry-place-godot-runtime.json`
 
 ### `embodied-interaction-foundation-all`
 
@@ -2013,8 +2012,8 @@ Phase 7 object work then proves handoff and grab-carry-place settle through Game
 
 Output:
 
-- `.harness/verification/embodied-interaction-foundation-all-report.json`
-- `.harness/verification/embodied-interaction-foundation-all-report.md`
+- `<evidence-root>/embodied-interaction-foundation-all-report.json`
+- `<evidence-root>/embodied-interaction-foundation-all-report.md`
 
 ### `all`
 
@@ -2051,28 +2050,39 @@ Use this when you need one report that is closer to the repository's new mainlin
 
 Output:
 
-- `.harness/verification/mainline-unified-runtime-report.json`
-- `.harness/verification/mainline-unified-runtime-report.md`
-- `.harness/verification/harness-run-report.json`
-- `.harness/verification/harness-run-report.md`
+- `<evidence-root>/mainline-unified-runtime-report.json`
+- `<evidence-root>/mainline-unified-runtime-report.md`
+- `<evidence-root>/harness-run-report.json`
+- `<evidence-root>/harness-run-report.md`
 
 ## Harness Evolution
 
-The Harness Evolution Agent is a governed proposal lane. It reads existing harness telemetry, writes an evolution report, and may create candidate mutation manifests under `.harness/evolution/candidates/`.
+Evolution 是经过审查的提案与证据管理入口。分析器只消费 `--input-root` 显式指定目录中的 `run-manifest.json`（也识别旧导出文件名 `harness-run-manifest.json`）及其 digest 引用；引用相对所属 manifest 目录解析，拒绝绝对路径、路径穿越和越界链接。
 
-It does not apply patches or promote its own proposals. A candidate must be converted into a normal implementation plan, implemented through the repository workflow, and verified through its promotion profiles before it can become operational harness behavior.
+```powershell
+python scripts/verification/analyze_harness_evolution.py --mode analyze --input-root D:\HarnessEvidence\review-input
+python scripts/verification/harness.py --profile harness-evolution
+```
 
-Candidate manifests may carry lifecycle metadata: `proposed`, `qa-review`, `promotion-ready`, `promoted`, or `rejected`. Generated candidates start as `proposed` with `qa_review_required=true` and empty `qa_review_artifacts`; moving a candidate to `promotion-ready` or `promoted` requires at least one QA/replay artifact reference so promotion is attributable and reviewable.
+无输入是合法状态：`history_status=insufficient_history`、候选列表为空、`effectiveness=not_evaluated`。格式门禁通过不证明修复有效或 Skill 编程收益；失败次数只支持调查，不足以确认根因或放宽 validator。
+
+候选保留 `proposed`、`qa-review`、`promotion-ready`、`promoted`、`rejected` 生命周期。新增 `baseline_revision`、`candidate_revision`、`evaluation_set_digest`、`effectiveness`；旧候选缺省为 `not_evaluated`。`evaluation_set_digest` 是对应 replay set 文件原始字节的 SHA-256。
+
+Promotion 需要 `effectiveness=accepted` 与实际评估记录：`qa_review_artifacts` 为仓库内经审查 JSON 的相对路径，`qa_review_artifact_digests` 将每个路径映射到 SHA-256。记录必须包含 schema_version、candidate_id、双 revision、evaluation_set_digest、effectiveness、overall_evaluation_passed、criteria_unchanged、acceptance_reason（拒绝时为 rejection_reason）及 `results[{run_id, profile, revision, status, exit_code}]`，覆盖基线/候选的 replay profiles 与 promotion_checks。缺失文件、摘要不符、身份不符、失败结果或变更验收标准均阻止 promotion。摘要保证引用一致性，不代替人工审查评估是否真实执行。
+
+候选不能自动应用或发布。接受由正常代码审查决定；拒绝时保留最小失败原因并只回滚候选改动。Skill 效果需要独立任务对照、固定条件与预先声明指标；本 profile 的绿色结果不表示完成该评估。
 
 First-version candidates may target harness-owned surfaces such as `.harness/`, `scripts/verification/`, `docs/harness.md`, `docs/ai-engineering-workflow.md`, and `.github/workflows/harness.yml`. Product runtime paths such as `backend/`, `scenes/`, character scripts, or Siming runtime modules are outside the mutation scope.
+
+`workflow_skill` 试点只额外允许 `.agents/skills/harness-verification/SKILL.md` 与 `docs/harness-playbook.md`；不开放其他 Skill 路径。
 
 ## Decision Observability
 
 Harness-facing changes can be recorded under `.harness/changes/` as decision manifests. These manifests are project inputs, not generated evidence. An active manifest records the evidence that motivated a Harness change, the root-cause hypothesis, predicted fixes, predicted regressions, and the profiles that should verify the change.
 
-The Harness runner includes active manifests in `harness-run-manifest.json` under `harness_changes`. Malformed manifests are reported under `harness_change_errors` so normal profile runs remain usable while evidence problems stay visible.
+The Harness runner includes active manifests in `run-manifest.json` under `harness_changes`. Malformed manifests are reported under `harness_change_errors` so normal profile runs remain usable while evidence problems stay visible.
 
-When a profile fails, the runner writes a deterministic failure digest such as `.harness/verification/phase0-failure-digest.json` and archives the same digest under that run's `.harness/verification/runs/run-.../` directory. A digest is an index into existing reports and traces; it does not replace the original profile report or runtime trace.
+失败 profile 在所属 attempt 目录写入 `phase0-failure-digest.json` 等摘要，manifest 通过相对路径引用。digest 是本轮 reports/traces 的诊断索引，随运行证据一起清理；需要保留原始证据时显式导出。
 
 ### `infra-frost-production-admission`
 
@@ -2083,7 +2093,7 @@ full/checkpoint-tail reconstruction. It does not write a production outcome.
 
 Output:
 
-- `.harness/verification/infra-frost-production-admission-report.json`
+- `<evidence-root>/infra-frost-production-admission-report.json`
 
 ### `infra-obligation-lifecycle`
 
@@ -2100,7 +2110,7 @@ other owner rows, a second scheduler, or a new event store.
 
 Output:
 
-- `.harness/verification/infra-obligation-lifecycle-report.json`
+- `<evidence-root>/infra-obligation-lifecycle-report.json`
 
 ### `infra-survival-state-obligation`
 
@@ -2117,7 +2127,7 @@ Survival owner.
 It does not prove generic state ownership, periodic effects, retry,
 compensation, other domain rows, or a second scheduler/store.
 
-- `.harness/verification/infra-survival-state-obligation-report.json`
+- `<evidence-root>/infra-survival-state-obligation-report.json`
 
 ### `infra-semantic-survival-state-bridge`
 
@@ -2131,7 +2141,7 @@ zero-write, unmapped-owner zero-write and checkpoint-tail replay. The pure
 semantic evaluator remains proposal-only; this does not
 authorize a generic semantic writer or owner matrix.
 
-- `.harness/verification/infra-semantic-survival-state-bridge-report.json`
+- `<evidence-root>/infra-semantic-survival-state-bridge-report.json`
 
 ### `infra-semantic-state-owner-matrix`
 
@@ -2143,7 +2153,7 @@ owner append, duplicate idempotency, revision/privacy zero writes and
 checkpoint-tail replay. It does not add an owner, stream or cross-domain
 effect/state lifecycle.
 
-- `.harness/verification/infra-semantic-state-owner-matrix-report.json`
+- `<evidence-root>/infra-semantic-state-owner-matrix-report.json`
 
 ### `infra-generic-obligation-lifecycle`
 
@@ -2161,7 +2171,7 @@ merge. The separately verified INF-2B/2E/2F `survival_state_expiry` rows are
 the only registered exceptions for `state:cold@1`, `state:dehydrated@1`, and
 `state:overheated@1`, and do not widen this profile.
 
-- `.harness/verification/infra-generic-obligation-lifecycle-report.json`
+- `<evidence-root>/infra-generic-obligation-lifecycle-report.json`
 
 ### `infra-frost-production-recipe-admission`
 
@@ -2172,7 +2182,7 @@ full/checkpoint-tail reconstruction. It does not write a frost consequence.
 
 Output:
 
-- `.harness/verification/infra-frost-production-recipe-admission-report.json`
+- `<evidence-root>/infra-frost-production-recipe-admission-report.json`
 
 ### `infra-regional-ecology`
 
@@ -2186,7 +2196,7 @@ Godot presentation.
 
 Output:
 
-- `.harness/verification/infra-regional-ecology-report.json`
+- `<evidence-root>/infra-regional-ecology-report.json`
 
 ### `infra-regional-ecology-truth`
 
@@ -2202,7 +2212,7 @@ retry, compensation, weather algorithm, or hazard consumer edge.
 
 Output:
 
-- `.harness/verification/infra-regional-ecology-truth-report.json`
+- `<evidence-root>/infra-regional-ecology-truth-report.json`
 
 ### `infra-ecology-seasonal-process`
 
@@ -2213,7 +2223,7 @@ revision, privacy, forged-principal, public-scope and checkpoint-tail replay
 boundary. It does not claim scheduler, generic weather, fanout or a consumer
 edge.
 
-- `.harness/verification/infra-ecology-seasonal-process-report.json`
+- `<evidence-root>/infra-ecology-seasonal-process-report.json`
 
 ### `infra-seasonal-construction-maintenance`
 
@@ -2225,7 +2235,7 @@ stale-source and target-revision zero-write, idempotency, outbox privacy and
 checkpoint-tail replay. It does not prove generic propagation, fanout, another
 target owner, scheduler, market/body/social/population effects, or P6/P7.
 
-- `.harness/verification/infra-seasonal-construction-maintenance-report.json`
+- `<evidence-root>/infra-seasonal-construction-maintenance-report.json`
 
 ### `infra-schedule-gated-supply`
 
@@ -2235,7 +2245,7 @@ Organization supply fragment settlement, and missing-work-order/activation-lock
 zero-write boundaries. It does not admit generic `work`; the former universal
 pending-merge limitation is superseded only by INF-4C's named row.
 
-- `.harness/verification/infra-schedule-gated-supply-report.json`
+- `<evidence-root>/infra-schedule-gated-supply-report.json`
 
 ### `infra-activation-pending-schedule-merge`
 
@@ -2247,7 +2257,7 @@ checkpoint-tail replay, existing-owner merge, and forged/stale zero-write.
 It does not admit generic pending payloads, ScheduledObligation activation
 integration, branch promotion, or a population truth owner.
 
-- `.harness/verification/infra-activation-pending-schedule-merge-report.json`
+- `<evidence-root>/infra-activation-pending-schedule-merge-report.json`
 
 ### `infra-activation-survival-expiry`
 
@@ -2258,7 +2268,7 @@ cover success, duplicate idempotency, revision conflict, privacy and terminal
 zero-write, and checkpoint-tail replay. Activation and Survival remain separate
 append-derived receipts; this is not generic cross-domain atomic settlement.
 
-- `.harness/verification/infra-activation-survival-expiry-report.json`
+- `<evidence-root>/infra-activation-survival-expiry-report.json`
 
 ### `infra-released-survival-expiry-batch-closure`
 
@@ -2270,7 +2280,7 @@ from only the Survival append, idempotency, revision/privacy/terminal zero-write
 and full versus checkpoint-tail replay. It does not admit a generic pending
 merge, cross-stream atomic receipt, branch promotion or a population truth owner.
 
-- `.harness/verification/infra-released-survival-expiry-batch-closure-report.json`
+- `<evidence-root>/infra-released-survival-expiry-batch-closure-report.json`
 
 ### `infra-activation-dehydration-expiry`
 
@@ -2282,7 +2292,7 @@ revision/privacy/unregistered-state/terminal zero-write, checkpoint-tail replay,
 and the distinct activation versus Survival append receipts. This is not generic
 activation-obligation binding or a cross-stream atomic receipt.
 
-- `.harness/verification/infra-activation-dehydration-expiry-report.json`
+- `<evidence-root>/infra-activation-dehydration-expiry-report.json`
 
 ### `infra-activation-overheated-expiry`
 
@@ -2295,7 +2305,7 @@ terminal zero-write, scoped project outbox, checkpoint-tail replay and the
 distinct activation versus Survival append receipts. This is not generic
 activation-obligation binding or a cross-stream atomic receipt.
 
-- `.harness/verification/infra-activation-overheated-expiry-report.json`
+- `<evidence-root>/infra-activation-overheated-expiry-report.json`
 
 ### `infra-activation-obligation-binding-contract`
 
@@ -2308,7 +2318,7 @@ this is neither registration nor a generic dispatcher or cross-stream receipt.
 It also proves an unbound historical pending cannot replay a valid Survival
 settlement receipt.
 
-- `.harness/verification/infra-activation-obligation-binding-contract-report.json`
+- `<evidence-root>/infra-activation-obligation-binding-contract-report.json`
 
 ### `infra-economy-wage-obligation`
 
@@ -2320,7 +2330,7 @@ checkpoint-tail replay. It does not admit payment, accounts, cancellation,
 retry, compensation, generic work, activation binding, or cross-stream atomic
 receipts.
 
-- `.harness/verification/infra-economy-wage-obligation-report.json`
+- `<evidence-root>/infra-economy-wage-obligation-report.json`
 
 ### `infra-semantic-closed-guard-composition`
 
@@ -2329,7 +2339,7 @@ composition over existing tag/status/numeric guards. Separate assertions cover
 true and false `all`, true `any`, and malformed/script rejection. This profile
 does not append domain events or prove any additional effect/state owner row.
 
-- `.harness/verification/infra-semantic-closed-guard-composition-report.json`
+- `<evidence-root>/infra-semantic-closed-guard-composition-report.json`
 
 ### `infra-isolated-branch-evolution`
 
@@ -2338,7 +2348,7 @@ candidate records, local checkpoint-tail projection equivalence, invalid base/
 profile zero-write, and unsupported promotion. The branch buffer is explicitly
 not a production event store or writer.
 
-- `.harness/verification/infra-isolated-branch-evolution-report.json`
+- `<evidence-root>/infra-isolated-branch-evolution-report.json`
 
 ### `infra-isolated-branch-owner-disposition`
 
@@ -2348,7 +2358,7 @@ Separate assertions prove zero production write, checkpoint-tail replay, base
 and profile rejection, and unsupported promotion. An admitted disposition does
 not execute a fragment, settle a domain consequence, or enable promotion.
 
-- `.harness/verification/infra-isolated-branch-owner-disposition-report.json`
+- `<evidence-root>/infra-isolated-branch-owner-disposition-report.json`
 
 ### `infra-isolated-branch-owner-fragment-evaluation`
 
@@ -2359,7 +2369,7 @@ evaluation, rejected/stale evaluation, branch replay, base/profile rejection,
 and production zero writes. It does not settle a fragment, create a production
 receipt, mutate a domain projection, or enable promotion.
 
-- `.harness/verification/infra-isolated-branch-owner-fragment-evaluation-report.json`
+- `<evidence-root>/infra-isolated-branch-owner-fragment-evaluation-report.json`
 
 ### `infra-isolated-branch-owner-consequence-projection`
 
@@ -2371,7 +2381,7 @@ checkpoint-tail replay, base/profile zero writes, and unsupported promotion.
 The buffer remains non-production: it never appends a `GameplayEvent`, creates
 an outbox row, settles a fragment, emits a receipt, or permits promotion.
 
-- `.harness/verification/infra-isolated-branch-owner-consequence-projection-report.json`
+- `<evidence-root>/infra-isolated-branch-owner-consequence-projection-report.json`
 
 ### `infra-durable-isolated-branch-snapshot`
 
@@ -2383,7 +2393,7 @@ privacy zero writes, idempotency and stale revision, redaction, and
 checkpoint-tail replay. It never settles a domain fragment, creates a
 production receipt, or permits promotion.
 
-- `.harness/verification/infra-durable-isolated-branch-snapshot-report.json`
+- `<evidence-root>/infra-durable-isolated-branch-snapshot-report.json`
 
 ### `infra-organization-branch-scenario-settlement`
 
@@ -2396,7 +2406,7 @@ unsupported promotion. It does not create a branch authority/store, write a
 production organization stream, admit inspection/generic scenario settlement,
 issue a cross-domain receipt or permit promotion.
 
-- `.harness/verification/infra-organization-branch-scenario-settlement-report.json`
+- `<evidence-root>/infra-organization-branch-scenario-settlement-report.json`
 
 ### `infra-government-branch-scenario-settlement`
 
@@ -2410,7 +2420,7 @@ promotion. INF-4J separately proves the fixed failed-inspection remediation row;
 neither package creates a remediation obligation, generic scenario settlement,
 cross-domain receipt or promotion path.
 
-- `.harness/verification/infra-government-branch-scenario-settlement-report.json`
+- `<evidence-root>/infra-government-branch-scenario-settlement-report.json`
 
 ### `infra-government-inspection-promotion`
 
@@ -2424,7 +2434,7 @@ with production checkpoint-tail replay. It admits no Organization/remediation/
 generic promotion row and does not create a second store, receipt store or
 population truth owner.
 
-- `.harness/verification/infra-government-inspection-promotion-report.json`
+- `<evidence-root>/infra-government-inspection-promotion-report.json`
 
 ### `infra-organization-supply-promotion`
 
@@ -2439,7 +2449,7 @@ write, and scoped outbox with production checkpoint-tail replay. It admits no
 Government/remediation/generic promotion row and does not create a second
 store, receipt store or promotion coordinator.
 
-- `.harness/verification/infra-organization-supply-promotion-report.json`
+- `<evidence-root>/infra-organization-supply-promotion-report.json`
 
 ### `infra-government-failed-inspection-promotion`
 
@@ -2454,7 +2464,7 @@ with production checkpoint-tail replay. It admits no Organization/remediation
 generic promotion row and does not create a second store, receipt store or
 population truth owner.
 
-- `.harness/verification/infra-government-failed-inspection-promotion-report.json`
+- `<evidence-root>/infra-government-failed-inspection-promotion-report.json`
 
 ### `infra-government-failed-inspection-remediation-scenario`
 
@@ -2469,7 +2479,7 @@ promotion. It does not create a branch authority/store, a remediation
 `ScheduledObligation`, generic scenario receipt, production Government write or
 promotion path.
 
-- `.harness/verification/infra-government-failed-inspection-remediation-scenario-report.json`
+- `<evidence-root>/infra-government-failed-inspection-remediation-scenario-report.json`
 
 ### `infra-durable-branch-preview-admission`
 
@@ -2482,7 +2492,7 @@ forged cross-branch zero writes, duplicates, source revision, scoped outbox, rep
 unsupported promotion. The evidence is not production/population/social truth
 and creates no receipt, lifecycle, scheduler, second store or promotion path.
 
-- `.harness/verification/infra-durable-branch-preview-admission-report.json`
+- `<evidence-root>/infra-durable-branch-preview-admission-report.json`
 
 ### `infra-ecology-weather-front-propagation`
 
@@ -2493,7 +2503,7 @@ checks, privacy, idempotency and checkpoint-tail replay. It does not admit a
 scheduler, fanout, multi-hop propagation, retry/compensation, or any consumer
 domain write.
 
-- `.harness/verification/infra-ecology-weather-front-propagation-report.json`
+- `<evidence-root>/infra-ecology-weather-front-propagation-report.json`
 
 ### `infra-ecology-weather-front-path-propagation`
 
@@ -2504,7 +2514,7 @@ repeated path, nonadjacent hop, privacy zero-write, and full/checkpoint-tail
 replay. It does not admit a fanout set, scheduler, third consumer edge, or
 non-Ecology write.
 
-- `.harness/verification/infra-ecology-weather-front-path-propagation-report.json`
+- `<evidence-root>/infra-ecology-weather-front-path-propagation-report.json`
 
 ### `infra-ecology-weather-front-fanout`
 
@@ -2514,7 +2524,7 @@ edge projection, exact/changed idempotency, stale vector, duplicate target,
 privacy zero-write, and full/checkpoint-tail replay. It does not admit
 multi-round fanout, a consumer edge, a scheduler, or non-Ecology writes.
 
-- `.harness/verification/infra-ecology-weather-front-fanout-report.json`
+- `<evidence-root>/infra-ecology-weather-front-fanout-report.json`
 
 ### `infra-ecology-weather-front-wave-fanout`
 
@@ -2526,7 +2536,7 @@ full versus checkpoint-tail replay. It admits only the existing Ecology owner,
 streams and event family; it does not create a scheduler, generic graph
 runtime, third consumer edge, retry/compensation, or non-Ecology write.
 
-- `.harness/verification/infra-ecology-weather-front-wave-fanout-report.json`
+- `<evidence-root>/infra-ecology-weather-front-wave-fanout-report.json`
 
 ### `infra-ecology-weather-front-construction-edge`
 
@@ -2539,7 +2549,7 @@ existing Ecology source event, Construction facility stream and maintenance
 obligation event; it does not create a generic consumer registry, scheduler,
 retry/compensation path, or Economy/Organization/population writer.
 
-- `.harness/verification/infra-ecology-weather-front-construction-edge-report.json`
+- `<evidence-root>/infra-ecology-weather-front-construction-edge-report.json`
 
 ### `infra-ecology-weather-front-construction-fanout`
 
@@ -2550,7 +2560,7 @@ zero-write, changed duplicate/privacy zero-write, and revision/idempotency/
 project-outbox/full-checkpoint replay. It is not a generic fanout registry or
 cross-domain settlement writer.
 
-- `.harness/verification/infra-ecology-weather-front-construction-fanout-report.json`
+- `<evidence-root>/infra-ecology-weather-front-construction-fanout-report.json`
 
 ### `infra-ecology-weather-front-organization-supply-edge`
 
@@ -2562,7 +2572,7 @@ Organization commitment projection full/checkpoint-tail replay. The edge uses
 the existing Organization event family and append spine; it is not a generic
 consumer registry, direct Ecology write, payment path, or arbitrary fanout.
 
-- `.harness/verification/infra-ecology-weather-front-organization-supply-edge-report.json`
+- `<evidence-root>/infra-ecology-weather-front-organization-supply-edge-report.json`
 
 ### `infra-ecology-weather-front-organization-supply-fanout`
 
@@ -2574,7 +2584,7 @@ project-only privacy, and full/checkpoint-tail replay. It does not admit a
 generic consumer registry, arbitrary fanout, payment, pricing, scheduler, or a
 new owner/store.
 
-- `.harness/verification/infra-ecology-weather-front-organization-supply-fanout-report.json`
+- `<evidence-root>/infra-ecology-weather-front-organization-supply-fanout-report.json`
 
 ### `infra-durable-branch-evolution`
 
@@ -2586,7 +2596,7 @@ zero-write, exact idempotency and revision, and checkpoint-tail replay. The
 event remains isolated branch evidence; it does not write production truth,
 create a branch-domain receipt, or enable generic promotion.
 
-- `.harness/verification/infra-durable-branch-evolution-report.json`
+- `<evidence-root>/infra-durable-branch-evolution-report.json`
 
 ### `infra-survival-heat-state-obligation`
 
@@ -2596,7 +2606,7 @@ independently asserts owner admission, state/open-obligation append, settlement,
 duplicate/revision/privacy rejection and replay. It does not establish generic
 effect/state ownership or a general semantic lifecycle.
 
-- `.harness/verification/infra-survival-heat-state-obligation-report.json`
+- `<evidence-root>/infra-survival-heat-state-obligation-report.json`
 
 ### `infra-survival-dehydration-state-obligation`
 
@@ -2607,7 +2617,7 @@ revision/privacy/unmapped-pair zero writes, due settlement with checkpoint-tail
 replay, and project-scoped outbox. It does not establish generic effect/state
 ownership or a general semantic lifecycle.
 
-- `.harness/verification/infra-survival-dehydration-state-obligation-report.json`
+- `<evidence-root>/infra-survival-dehydration-state-obligation-report.json`
 
 ### `infra-survival-fatigue-owner-row`
 
@@ -2618,7 +2628,7 @@ changed-duplicate behavior, stale/forged-contract zero write, semantic owner
 dispatch, and non-project privacy zero write. It does not admit generic effect,
 state, owner, stream, or event registration.
 
-- `.harness/verification/infra-survival-fatigue-owner-row-report.json`
+- `<evidence-root>/infra-survival-fatigue-owner-row-report.json`
 
 ### `infra-survival-fatigue-state-action`
 
@@ -2627,7 +2637,7 @@ the existing Survival dispel and fixed recovery-transform actions. Independent
 selectors cover both owner-event paths, non-project privacy zero write, and
 duplicate/revision/replay closure. It does not admit generic state actions.
 
-- `.harness/verification/infra-survival-fatigue-state-action-report.json`
+- `<evidence-root>/infra-survival-fatigue-state-action-report.json`
 
 ### `infra-activation-fatigue-expiry`
 
@@ -2636,7 +2646,7 @@ binding. It independently asserts owner-fragment settlement, duplicate/revision
 zero write, privacy rejection, and checkpoint-tail replay. It does not prove or
 admit generic activation-obligation binding.
 
-- `.harness/verification/infra-activation-fatigue-expiry-report.json`
+- `<evidence-root>/infra-activation-fatigue-expiry-report.json`
 
 ### `infra-construction-maintenance-state-owner`
 
@@ -2650,7 +2660,7 @@ outbox/projection, and full/checkpoint-tail replay. It does not admit a generic
 cross-owner matrix, construction state expiry, scheduler, retry, compensation,
 or a cross-stream receipt.
 
-- `.harness/verification/infra-construction-maintenance-state-owner-report.json`
+- `<evidence-root>/infra-construction-maintenance-state-owner-report.json`
 
 ### `infra-construction-maintenance-state-obligation`
 
@@ -2665,7 +2675,7 @@ cancel/retry/compensation, lifecycle projection,
 project-scoped outbox, receipt privacy, and full/checkpoint-tail replay. It is
 one fixed owner policy, not generic effect/state dispatch or a scheduler.
 
-- `.harness/verification/infra-construction-maintenance-state-obligation-report.json`
+- `<evidence-root>/infra-construction-maintenance-state-obligation-report.json`
 
 ### `infra-semantic-registered-state-owner-dispatch`
 
@@ -2679,7 +2689,7 @@ checkpoint-tail replay. The profile remains a closed adapter route; it does
 not establish generic owner dispatch, a new lifecycle policy, scheduler,
 clock, event store, or cross-stream receipt.
 
-- `.harness/verification/infra-semantic-registered-state-owner-dispatch-report.json`
+- `<evidence-root>/infra-semantic-registered-state-owner-dispatch-report.json`
 
 ### `infra-semantic-economy-wage-obligation`
 
@@ -2692,7 +2702,7 @@ lifecycle replay and the bare-`pytest` Economy terminal-lifecycle import path.
 It does not admit payment, account
 truth, generic wage policy or generic semantic effect routing.
 
-- `.harness/verification/infra-semantic-economy-wage-obligation-report.json`
+- `<evidence-root>/infra-semantic-economy-wage-obligation-report.json`
 
 ### `infra-semantic-survival-state-action`
 
@@ -2705,7 +2715,7 @@ scope, and full/checkpoint-tail replay.
 It does not claim generic state actions, arbitrary replacement states, or a
 generic semantic owner router.
 
-- `.harness/verification/infra-semantic-survival-state-action-report.json`
+- `<evidence-root>/infra-semantic-survival-state-action-report.json`
 
 ### `infra-state-action-lifecycle-closure`
 
@@ -2717,7 +2727,7 @@ zero-write, both owner settlements, idempotency, revision/privacy zero-write,
 and full/checkpoint-tail replay. It does not admit a generic action registry,
 state writer, arbitrary transform target, scheduler, or new owner row.
 
-- `.harness/verification/infra-state-action-lifecycle-closure-report.json`
+- `<evidence-root>/infra-state-action-lifecycle-closure-report.json`
 
 ### `infra-construction-maintenance-state-action`
 
@@ -2730,7 +2740,7 @@ zero-write, full/checkpoint-tail replay, and that ordinary Construction
 lifecycle cancel is still unsupported. It does not claim repair, payment,
 material, transform, generic state actions or generic cancellation.
 
-- `.harness/verification/infra-construction-maintenance-state-action-report.json`
+- `<evidence-root>/infra-construction-maintenance-state-action-report.json`
 
 ### `infra-government-policy-registration`
 
@@ -2740,7 +2750,7 @@ Backend-only INF-2K proof for the one existing-Government-owner commercial
  revision/privacy/unknown-kind zero writes and full/checkpoint-tail replay. It does not admit arbitrary policy kinds,
 obligation settlement, payment or a generic cross-domain writer.
 
-- `.harness/verification/infra-government-policy-registration-report.json`
+- `<evidence-root>/infra-government-policy-registration-report.json`
 
 ### `infra-debt-settlement-formal-spine`
 
@@ -2755,7 +2765,7 @@ replay, and the owner-local `DebtAuthorityService.replay_projection`
 full/checkpoint-tail reader. It does not admit arbitrary payment, caller-open
 policy registration, or a generic cross-domain writer.
 
-- `.harness/verification/infra-debt-settlement-formal-spine-report.json`
+- `<evidence-root>/infra-debt-settlement-formal-spine-report.json`
 
 ### `infra-governed-authority-contract-catalog`
 
@@ -2768,7 +2778,7 @@ owner path. The catalog cannot register contracts, append events, create a
 coordinator, or authorize arbitrary policy, settlement, fanout, promotion, or
 population truth.
 
-- `.harness/verification/infra-governed-authority-contract-catalog-report.json`
+- `<evidence-root>/infra-governed-authority-contract-catalog-report.json`
 
 ### `infra-ecology-weather-front-economy-quote-edge`
 
@@ -2778,7 +2788,7 @@ stale source, cross-quote reuse, exact duplicate/replay, changed-source
 idempotency and authority-only source privacy. It does not admit generic
 pricing, consumer registration, or Ecology economic writes.
 
-- `.harness/verification/infra-ecology-weather-front-economy-quote-edge-report.json`
+- `<evidence-root>/infra-ecology-weather-front-economy-quote-edge-report.json`
 
 ### `infra-ecology-weather-front-economy-quote-fanout`
 
@@ -2789,7 +2799,7 @@ catalog zero-write, idempotency with checkpoint-tail replay, and project-source
 privacy. It does not admit a generic consumer registry, arbitrary fanout,
 pricing formulas, account mutation, payment or a scheduler.
 
-- `.harness/verification/infra-ecology-weather-front-economy-quote-fanout-report.json`
+- `<evidence-root>/infra-ecology-weather-front-economy-quote-fanout-report.json`
 
 ### `infra-ecology-weather-front-owner-contract-matrix`
 
@@ -2801,7 +2811,7 @@ zero-write mismatch fence, and the existing fixed two-facility Construction
 batch. It does not register consumers, widen fanout, add retry/compensation,
 or let Ecology append target-domain truth.
 
-- `.harness/verification/infra-ecology-weather-front-owner-contract-matrix-report.json`
+- `<evidence-root>/infra-ecology-weather-front-owner-contract-matrix-report.json`
 
 ### `infra-economy-dynamic-quote-formal-spine`
 
@@ -2810,7 +2820,7 @@ the formal owner append spine. Independent selectors cover owner/outbox,
 idempotency, revision conflict, account-truth privacy rejection and replay. It
 does not itself admit an Ecology consumer or a generic settlement writer.
 
-- `.harness/verification/infra-economy-dynamic-quote-formal-spine-report.json`
+- `<evidence-root>/infra-economy-dynamic-quote-formal-spine-report.json`
 
 ### `infra-payroll-operating-window-closure`
 
@@ -2828,7 +2838,7 @@ scope, explicit overdue after close, and full/checkpoint-tail replay. It does
 not admit a scheduler, generic payroll policy, or arbitrary cross-domain
 settlement.
 
-- `.harness/verification/infra-payroll-operating-window-closure-report.json`
+- `<evidence-root>/infra-payroll-operating-window-closure-report.json`
 
 ### `infra-payroll-owner-contract-catalog`
 
@@ -2840,7 +2850,7 @@ receipt/outbox, duplicate/revision behavior, and full/checkpoint-tail replay.
 It is an extension admission substrate, not caller-open registration, a
 generic payroll policy, a scheduler, or arbitrary cross-domain settlement.
 
-- `.harness/verification/infra-payroll-owner-contract-catalog-report.json`
+- `<evidence-root>/infra-payroll-owner-contract-catalog-report.json`
 
 ### `infra-government-promotion-owner-contract-catalog`
 
@@ -2853,7 +2863,7 @@ privacy, forged scenario identity and scoped checkpoint-tail production replay.
 It does not admit generic promotion, a branch-domain writer, or group
 simulation.
 
-- `.harness/verification/infra-government-promotion-owner-contract-catalog-report.json`
+- `<evidence-root>/infra-government-promotion-owner-contract-catalog-report.json`
 
 ### `infra-survival-unregistered-state-fence`
 
@@ -2861,7 +2871,7 @@ Backend-only INF-1V admission proof that an unregistered `reject` StateDefinitio
 cannot reach the existing Survival owner append path. It records a blocker, not
 a newly admitted state row.
 
-- `.harness/verification/infra-survival-unregistered-state-fence-report.json`
+- `<evidence-root>/infra-survival-unregistered-state-fence-report.json`
 
 ### `infra-ecology-frost-state-obligation`
 
@@ -2873,7 +2883,7 @@ coordinator, project-scoped outbox, and full/checkpoint-tail replay. It does
 not authorize an ecology scheduler, retry/compensation, a new consumer edge,
 or generic effect/state routing.
 
-- `.harness/verification/infra-ecology-frost-state-obligation-report.json`
+- `<evidence-root>/infra-ecology-frost-state-obligation-report.json`
 
 ### `infra-ecology-drought-state-obligation`
 
@@ -2886,7 +2896,7 @@ semantic command/admission, and the finite state/lifecycle/adapter catalog
 rows. It does not authorize generic lifecycle closure, a scheduler, direct
 semantic append, or a new Ecology consumer edge.
 
-- `.harness/verification/infra-ecology-drought-state-obligation-report.json`
+- `<evidence-root>/infra-ecology-drought-state-obligation-report.json`
 
 ### `infra-ecology-frost-state-action`
 
@@ -2898,7 +2908,7 @@ inactive source, revision, privacy, lifecycle-action contract rejection, and
 full/checkpoint-tail replay. It does not admit generic Ecology actions,
 repair/transform semantics, a scheduler, or cross-domain writes.
 
-- `.harness/verification/infra-ecology-frost-state-action-report.json`
+- `<evidence-root>/infra-ecology-frost-state-action-report.json`
 
 ### `infra-closed-state-owner-contract-matrix`
 
@@ -2909,7 +2919,7 @@ contract metadata at the Survival, Construction and Ecology append boundaries,
 plus existing replay/privacy evidence. It is not open registration, generic
 dispatch or a writer.
 
-- `.harness/verification/infra-closed-state-owner-contract-matrix-report.json`
+- `<evidence-root>/infra-closed-state-owner-contract-matrix-report.json`
 
 ### `infra-finite-lifecycle-contract-closure`
 
@@ -2920,7 +2930,7 @@ admission, fixed metadata, and each existing owner family's fence and
 checkpoint-tail replay. The reader neither registers rows nor writes world
 truth; Ecology frost remains owner-local rather than a generic semantic route.
 
-- `.harness/verification/infra-finite-lifecycle-contract-closure-report.json`
+- `<evidence-root>/infra-finite-lifecycle-contract-closure-report.json`
 
 ### `infra-closed-lifecycle-registration-admission`
 
@@ -2936,7 +2946,7 @@ not add open policy registration or generic cross-domain settlement.
 The Construction due-completion selector separately proves that no terminal
 fragment can append without its exact committed `run_started` source event.
 
-- `.harness/verification/infra-closed-lifecycle-registration-admission-report.json`
+- `<evidence-root>/infra-closed-lifecycle-registration-admission-report.json`
 
 ### `infra-economy-wage-terminal-lifecycle`
 
@@ -2949,7 +2959,7 @@ Expiry closes only the unpaid obligation and writes no wage accrual, payment or
 account change. It does not admit payment, balance recovery, generic owner
 lifecycle binding, or a unified cross-domain settlement receipt.
 
-- `.harness/verification/infra-economy-wage-terminal-lifecycle-report.json`
+- `<evidence-root>/infra-economy-wage-terminal-lifecycle-report.json`
 
 ### `infra-owner-only-obligation-commit-spine`
 
@@ -2962,7 +2972,7 @@ privacy and full/checkpoint-tail replay. It does not admit caller-open policy
 registration, arbitrary cross-domain settlement, a second scheduler/store or a
 new truth owner.
 
-- `.harness/verification/infra-owner-only-obligation-commit-spine-report.json`
+- `<evidence-root>/infra-owner-only-obligation-commit-spine-report.json`
 
 ### `infra-state-lifecycle-adapter-matrix`
 
@@ -2973,7 +2983,7 @@ paths, duplicate/revision/privacy fences, and full/checkpoint-tail replay.
 The matrix has no callback or append path. Ecology and Economy remain excluded
 because no semantic proposal adapter has been admitted for either owner.
 
-- `.harness/verification/infra-state-lifecycle-adapter-matrix-report.json`
+- `<evidence-root>/infra-state-lifecycle-adapter-matrix-report.json`
 
 ### `infra-semantic-ecology-frost-adapter`
 
@@ -2983,7 +2993,7 @@ owner append, revision/snapshot/idempotency, source-privacy and forged-region
 relation zero writes, and Ecology checkpoint-tail replay. It does not admit generic Ecology effects,
 caller-selected streams, or a semantic append path.
 
-- `.harness/verification/infra-semantic-ecology-frost-adapter-report.json`
+- `<evidence-root>/infra-semantic-ecology-frost-adapter-report.json`
 
 ### `infra-ecology-semantic-adapter-matrix-admission`
 
@@ -2995,7 +3005,7 @@ snapshot, exact/changed duplicate, source privacy/relation, and checkpoint-tail
 replay. It does not make the generic state command sufficient for Ecology's
 hazard/crop/region source contract.
 
-- `.harness/verification/infra-ecology-semantic-adapter-matrix-admission-report.json`
+- `<evidence-root>/infra-ecology-semantic-adapter-matrix-admission-report.json`
 
 ### `infra-economy-account-settlement-spine`
 
@@ -3009,7 +3019,7 @@ checkpoint-tail replay. It covers only the existing single-stream account
 opening, same-currency transfer, and budget reservation events; it does not
 admit generic payment, open policy registration, or cross-domain settlement.
 
-- `.harness/verification/infra-economy-account-settlement-spine-report.json`
+- `<evidence-root>/infra-economy-account-settlement-spine-report.json`
 
 ### `infra-commerce-delivery-payment`
 
@@ -3021,7 +3031,7 @@ compensation, insufficient-funds rejection, and authority-only full versus
 checkpoint-tail replay. It does not prove generic payment, compensation,
 policy registration, or cross-domain settlement.
 
-- `.harness/verification/infra-commerce-delivery-payment-report.json`
+- `<evidence-root>/infra-commerce-delivery-payment-report.json`
 
 ### `infra-append-derived-settlement-receipt`
 
@@ -3031,7 +3041,7 @@ shared factory, Economy/Commerce authority-only reader scopes, the read-only
 obligation reader, and owner-only append/replay. It does not authorize a
 coordinator or generic business settlement writer.
 
-- `.harness/verification/infra-append-derived-settlement-receipt-report.json`
+- `<evidence-root>/infra-append-derived-settlement-receipt-report.json`
 
 ### `infra-economy-scheduled-transfer-obligation`
 
@@ -3042,7 +3052,7 @@ Ecology region stream. Independent checks prove one owner batch, authority/
 privacy/revision zero writes, exact duplicate and checkpoint-tail replay. It
 does not authorize a hazard consumer, scheduler, or cross-domain writer.
 
-- `.harness/verification/infra-ecology-drought-process-report.json`
+- `<evidence-root>/infra-ecology-drought-process-report.json`
 
 Backend-only INF-2J proof for one fixed Economy account-transfer obligation.
 Each selector independently proves the event-derived open/due/settled,
@@ -3053,7 +3063,7 @@ It admits only `policy:economy_scheduled_account_transfer@1` on
 `gameplay:economy`; it does not admit caller policy registration, generic
 payment, reservation release, retry/compensation, or cross-domain settlement.
 
-- `.harness/verification/infra-economy-scheduled-transfer-obligation-report.json`
+- `<evidence-root>/infra-economy-scheduled-transfer-obligation-report.json`
 
 ### `infra-continuation-gate`
 
@@ -3066,7 +3076,7 @@ write events and does not authorize a hazard edge.
 
 Output:
 
-- `.harness/verification/infra-continuation-gate-report.json`
+- `<evidence-root>/infra-continuation-gate-report.json`
 
 ### `infra-hazard-propagation`
 
@@ -3084,7 +3094,7 @@ fanout, retry, compensation or delayed canonical-hazard row is admitted.
 
 Output:
 
-- `.harness/verification/infra-hazard-propagation-report.json`
+- `<evidence-root>/infra-hazard-propagation-report.json`
 
 ### `infra-civilization-capability-read`
 
@@ -3096,7 +3106,7 @@ revocation, and full/checkpoint-tail replay equivalence. It does not bind a
 semantic or population consumer and does not admit civilization progression or
 P6/P7 work.
 
-- `.harness/verification/infra-civilization-capability-read-report.json`
+- `<evidence-root>/infra-civilization-capability-read-report.json`
 
 ### `infra-population-world-mode`
 
@@ -3108,7 +3118,7 @@ zero-write, and social-source full/checkpoint-tail replay. It does not admit
 household, organization, civilization, or full
 population simulation behavior.
 
-- `.harness/verification/infra-population-world-mode-report.json`
+- `<evidence-root>/infra-population-world-mode-report.json`
 
 ### `infra-household-org-source-projection`
 
@@ -3123,7 +3133,7 @@ unmapped civilization consumer bindings, INF-4Z full scope, and P6/P7 remain
 blocked. The separately verified `supply` capability edge is documented by
 `infra-civilization-capability-supply-consumer`.
 
-- `.harness/verification/infra-household-org-source-projection-report.json`
+- `<evidence-root>/infra-household-org-source-projection-report.json`
 
 ### `infra-population-world-mode-complete`
 
@@ -3152,7 +3162,7 @@ admission is proved separately by `infra-reference-data-license-admission`.
 It does not prove replayable branch event/projection evolution, real branch
 scenario progression, promotion, or full group simulation.
 
-- `.harness/verification/infra-population-branch-preview-report.json`
+- `<evidence-root>/infra-population-branch-preview-report.json`
 
 ### `infra-reference-data-license-admission`
 
@@ -3165,7 +3175,7 @@ handling, and full/checkpoint-tail replay. `BranchPreviewAuthority` receives a
 frozen authority-scoped view only; external ingestion, branch promotion,
 population truth, generic work, P6 and P7 remain excluded.
 
-- `.harness/verification/infra-reference-data-license-admission-report.json`
+- `<evidence-root>/infra-reference-data-license-admission-report.json`
 
 ### `infra-civilization-capability-supply-consumer`
 
@@ -3179,7 +3189,7 @@ stream revisions, and full/checkpoint-tail replay. Inspection, work, semantic,
 and every unlisted consumer remain rejected; no civilization progression or
 P6/P7 work is admitted.
 
-- `.harness/verification/infra-civilization-capability-supply-consumer-report.json`
+- `<evidence-root>/infra-civilization-capability-supply-consumer-report.json`
 
 ### `infra-civilization-capability-inspection-consumer`
 
@@ -3194,7 +3204,7 @@ capability source lineage is not emitted. Supply is separately proven; work,
 semantic and unlisted consumers remain rejected, with no civilization
 progression, P6 or P7 work.
 
-- `.harness/verification/infra-civilization-capability-inspection-consumer-report.json`
+- `<evidence-root>/infra-civilization-capability-inspection-consumer-report.json`
 
 ### `infra-production-completed-evidence-source`
 
@@ -3207,7 +3217,7 @@ zero-write, duplicate/changed-duplicate behavior, and full/checkpoint-tail
 scoped-view digest/vector replay. It does not admit a PopulationPlanner work
 consumer, wage accrual, payroll, or non-production work evidence.
 
-- `.harness/verification/infra-production-completed-evidence-source-report.json`
+- `<evidence-root>/infra-production-completed-evidence-source-report.json`
 
 ### `infra-production-evidence-wage-consumer`
 
@@ -3219,7 +3229,7 @@ revision zero-write, duplicate/changed-duplicate behavior, and
 full/checkpoint-tail replay. It does not admit generic work, non-production
 evidence, payroll payment, compensation, civilization consumers, or P6/P7.
 
-- `.harness/verification/infra-production-evidence-wage-consumer-report.json`
+- `<evidence-root>/infra-production-evidence-wage-consumer-report.json`
 
 ### `infra-organization-economy-commerce-commitment`
 
@@ -3231,9 +3241,9 @@ public/outbox privacy, full/checkpoint-tail replay, and receipt scope. It does
 not admit generic settlement, payment, policy registration, a scheduler, group
 simulation, or branch promotion.
 
-- `.harness/verification/infra-organization-economy-commerce-commitment-report.json`
+- `<evidence-root>/infra-organization-economy-commerce-commitment-report.json`
 
-- `.harness/verification/infra-population-world-mode-complete-report.json`
+- `<evidence-root>/infra-population-world-mode-complete-report.json`
 
 ### `infra-exact-lifecycle-owner-contract-catalog`
 
@@ -3255,7 +3265,7 @@ and full/checkpoint-tail lifecycle replay. It does not admit payment truth,
 account debit/credit, caller-open policy registration, compensation, or
 arbitrary cross-domain settlement.
 
-- `.harness/verification/infra-economy-tax-obligation-report.json`
+- `<evidence-root>/infra-economy-tax-obligation-report.json`
 
 ### `infra-economy-government-tax-payment`
 
@@ -3269,7 +3279,7 @@ changed idempotency, and capability/collector/revision zero-write rejection.
 It does not admit a generic Treasury, arbitrary payment, transfer, or
 settlement authority.
 
-- `.harness/verification/infra-economy-government-tax-payment-report.json`
+- `<evidence-root>/infra-economy-government-tax-payment-report.json`
 
 ### `infra-package-declared-negotiated-exchange`
 
@@ -3282,7 +3292,7 @@ zero-write; and full versus checkpoint-tail replay equivalence. It does not
 admit generic payment, transfer, treasury, market pricing, compensation,
 router, registry, coordinator, or a new truth owner.
 
-- `.harness/verification/infra-package-declared-negotiated-exchange-report.json`
+- `<evidence-root>/infra-package-declared-negotiated-exchange-report.json`
 
 ### `infra-reusable-state-transition-plan`
 
@@ -3292,7 +3302,7 @@ dispel, transform, proposal-only zero-write shape, and reuse across existing
 Survival, Construction and Ecology definitions. It does not prove generic
 state registration, owner routing, event append, or lifecycle settlement.
 
-- `.harness/verification/infra-reusable-state-transition-plan-report.json`
+- `<evidence-root>/infra-reusable-state-transition-plan-report.json`
 
 ### `infra-ecology-consumer-admission-contract`
 
@@ -3304,7 +3314,7 @@ idempotency, privacy denial, and full/checkpoint-tail replay. It does not
 issue admissions, select owners, construct fragments, append events, or
 register generic consumers.
 
-- `.harness/verification/infra-ecology-consumer-admission-contract-report.json`
+- `<evidence-root>/infra-ecology-consumer-admission-contract-report.json`
 
 ### `infra-weather-front-survival-dehydration`
 
@@ -3317,7 +3327,7 @@ idempotency, project-scoped redacted outbox, full/checkpoint-tail replay,
 It does not authorize an Ecology-to-Survival router, generic consumer registry,
 new runtime, retry, compensation, or any other target edge.
 
-- `.harness/verification/infra-weather-front-survival-dehydration-report.json`
+- `<evidence-root>/infra-weather-front-survival-dehydration-report.json`
 
 ### `infra-weather-front-government-drought-advisory`
 
@@ -3330,7 +3340,7 @@ full/checkpoint-tail advisory replay. It does not issue water
 restrictions, payment, material, production, population, compensation, retry,
 revocation, fanout, a generic Government policy API, or an Ecology router.
 
-- `.harness/verification/infra-weather-front-government-drought-advisory-report.json`
+- `<evidence-root>/infra-weather-front-government-drought-advisory-report.json`
 
 ## Evidence Rules
 
@@ -3339,13 +3349,11 @@ revocation, fanout, a generic Government policy API, or an Ecology router.
 - L1 subsystem integration claims may use `l1-world-fact-runtime`; this is a runtime-verification profile, not a product runtime.
 - Backend-only live Siming model-provider architecture claims require explicit `siming-backend-chain`.
 - Godot claims require scene execution or Godot MCP/editor inspection.
-- Generated evidence should stay under `.harness/verification/`.
-- Each Harness report and run manifest records both `run_id` and `suite_id`. For durable
-  evidence, match an archived report and manifest on both identifiers; the mutable latest
-  files are insufficient when concurrent runs can overwrite them.
+- Generated evidence belongs to the current owned system temporary directory and is deleted after collection/export.
+- 复核结果时匹配 run_id、profile、attempt 与 revision；需要长期复核时使用显式外部导出。旧运行报告不能影响本轮状态。
 - Profile and rule manifests stay under `.harness/profiles/` and `.harness/rules/`.
 - CI/release gate metadata stays under `.harness/ci/`.
-- Baseline/diff artifacts are evidence helpers, not source-of-truth design docs.
+- 经审查的静态案例和配置可长期保留；删除后的报告路径与文字摘要不构成新运行证据。
 
 ## Adapted Reference Pattern
 
@@ -3362,10 +3370,10 @@ It also adapts `ai-boost/awesome-harness-engineering` as a reference taxonomy ra
 - context delivery -> `docs/INDEX.md`, `.harness/session-handoff.md`
 - planning artifacts -> `docs/superpowers/plans/`, `.harness/templates/PLAN.md`
 - tools/MCP/permissions -> `AGENTS.md`, `.harness/templates/AGENTS.md`, `.harness/templates/HARNESS_CHECKLIST.md`
-- memory/state -> Goal, `.harness/features.json`, `.harness/verification/baseline.json`
+- memory/state -> explicit Goal, `.harness/features.json`, `docs/harness-playbook.md`
 - agent workflow -> `docs/ai-engineering-workflow.md`, `change-lifecycle`
 - verification/CI -> `.github/workflows/harness.yml`, `.harness/ci/local-ci-gate.ps1`
-- observability/debugging -> runtime traces, run manifests, baseline, and diff artifacts
+- observability/debugging -> temporary runtime traces, run manifests, failure digests, and explicit external exports
 
 ## Agent Workflow
 
@@ -3395,7 +3403,7 @@ evidence after a repair, full/checkpoint-tail replay, and the terminal
 no-compensation/no-fanout boundary. It does not admit a generic facility
 transform, payment, material, policy registry, or second owner/runtime.
 
-- `.harness/verification/infra-construction-bakery-reinforcement-report.json`
+- `<evidence-root>/infra-construction-bakery-reinforcement-report.json`
 
 ### `infra-branch-work-wage-owner-admission`
 
@@ -3411,7 +3419,7 @@ no-payroll/no-compensation boundary. It does not admit a branch truth owner,
 generic promotion, router, registry, payroll, payment, compensation, or any
 other branch target.
 
-- `.harness/verification/infra-branch-work-wage-owner-admission-report.json`
+- `<evidence-root>/infra-branch-work-wage-owner-admission-report.json`
 
 ### `inf4ao-public-milling-social-ack`
 
@@ -3426,7 +3434,7 @@ duplicate semantics, and full/checkpoint-tail replay. This is one fixed Social
 row and does not admit a generic social API, relationship/reputation writer,
 attendance, population, payment, or world mutation.
 
-- `.harness/verification/inf4ao-public-milling-social-ack-report.json`
+- `<evidence-root>/inf4ao-public-milling-social-ack-report.json`
 
 ### `inf4ai-p5-actor-private-expression`
 
@@ -3439,7 +3447,7 @@ and full/checkpoint-tail replay. This is one fixed Social row; it is not a
 generic InteractionSession adapter, relationship-score writer, attendance,
 population, or social registry.
 
-- `.harness/verification/inf4ai-p5-actor-private-expression-report.json`
+- `<evidence-root>/inf4ai-p5-actor-private-expression-report.json`
 
 ### `inf2ah-public-project-budget-reservation`
 
@@ -3452,7 +3460,7 @@ one fixed 12-unit `currency:local` reservation row; it does not admit generic
 budget reservation, account selection, payment, transfer, release,
 reimbursement, or a second owner/runtime.
 
-- `.harness/verification/inf2ah-public-project-budget-reservation-report.json`
+- `<evidence-root>/inf2ah-public-project-budget-reservation-report.json`
 
 ### `inf2am-reinforced-mill-flour-output-purchase`
 
@@ -3466,7 +3474,7 @@ conflicts, exact duplicate replay, and full/checkpoint-tail replay. It does
 not admit generic output, market pricing, arbitrary payment, transfer,
 compensation, reversal, or a new owner/runtime.
 
-- `.harness/verification/inf2am-reinforced-mill-flour-output-purchase-report.json`
+- `<evidence-root>/inf2am-reinforced-mill-flour-output-purchase-report.json`
 
 ### `inf2an-grain-intake-acceptance`
 
@@ -3479,7 +3487,7 @@ rejection, and full/checkpoint-tail replay. It does not debit or credit an
 account and does not admit generic payment, transfer, pricing, settlement, or
 another runtime.
 
-- `.harness/verification/inf2an-grain-intake-acceptance-report.json`
+- `<evidence-root>/inf2an-grain-intake-acceptance-report.json`
 
 ### `siming-generalized-population-decision`
 
@@ -3529,7 +3537,7 @@ python scripts/verification/harness.py --profile siming-population-domain-owner-
 ```
 
 证据报告：
-`.harness/verification/siming-population-domain-owner-adaptation-report.json`。
+`<evidence-root>/siming-population-domain-owner-adaptation-report.json`。
 
 Tax pressure 的证据链必须保持可追溯且脱敏：committed Economy obligation
 source -> authorized cadence event -> read-set digest -> Siming decision/result
@@ -3549,7 +3557,7 @@ economy revision pin；amount、account、evidence 与 payment event 不得出�
 python scripts/verification/harness.py --profile population-continuous-runtime
 ```
 
-报告写入 `.harness/verification/population-continuous-runtime-report.json`，附同名 `-tests.xml`、`-tests.log` 和实际窗口/居民观测值。
+报告写入 `<evidence-root>/population-continuous-runtime-report.json`，附同名 `-tests.xml`、`-tests.log` 和实际窗口/居民观测值。
 
 ### `siming-sgc-runtime-admission`
 
@@ -3559,6 +3567,6 @@ python scripts/verification/harness.py --profile population-continuous-runtime
 python scripts/verification/harness.py --profile siming-sgc-runtime-admission
 ```
 
-报告写入 `.harness/verification/siming-sgc-runtime-admission-report.json`。
+报告写入 `<evidence-root>/siming-sgc-runtime-admission-report.json`。
 
 两个 profile 都重新执行测试并保存本轮证据，不依赖预存的绿色报告。新会话验证 Godot 时，先重跑上述命令，再按 `mainline-unified-runtime` 和实际场景检查证明连接、权威消息与可见结果；后端报告不能替代这些检查。

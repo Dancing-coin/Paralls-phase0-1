@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf4ag-public-workshop-activity-report.json",
-  "description": "INF-4AG exact fulfilled public-workshop Contract to Organization project activity record"
+  "description": "INF-4AG exact fulfilled public-workshop Contract to Organization project activity record",
+  "success_key": "overall_passed"
 }

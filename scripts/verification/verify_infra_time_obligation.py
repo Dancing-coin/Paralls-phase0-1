@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from common import evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
+from common import artifact_ref, evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
 def main() -> int:
@@ -15,7 +15,7 @@ def main() -> int:
         log_path = verification_dir(root) / f"infra-time-obligation-{name}.log"
         result = run_command([python, "-m", "pytest", "-q", str(test_path), "-k", name], root, log_path)
         checks[name] = result.returncode == 0
-        logs.append(str(log_path.relative_to(root)).replace("\\", "/"))
+        logs.append(artifact_ref(root, log_path).replace("\\", "/"))
     obligation_test_path = root / "backend" / "tests" / "test_infra_time_obligation.py"
     economy_test_path = root / "backend" / "tests" / "test_infra_economy_wage_obligation.py"
     production_test_path = root / "backend" / "tests" / "test_infra_multi_domain_obligation.py"
@@ -33,7 +33,7 @@ def main() -> int:
         log_path = verification_dir(root) / f"infra-time-obligation-{name}.log"
         result = run_command([python, "-m", "pytest", "-q", str(case_path), "-k", test_name], root, log_path)
         checks[name] = result.returncode == 0
-        logs.append(str(log_path.relative_to(root)).replace("\\", "/"))
+        logs.append(artifact_ref(root, log_path).replace("\\", "/"))
     activation_test_path = root / "backend" / "tests" / "test_population_continuity.py"
     activation_cases = {
         "legacy_activation_deferral_fixture": "test_activation_lock_records_replayable_schedule_pending_then_releases",
@@ -43,17 +43,17 @@ def main() -> int:
         log_path = verification_dir(root) / f"infra-time-obligation-{name}.log"
         result = run_command([python, "-m", "pytest", "-q", str(activation_test_path), "-k", test_name], root, log_path)
         checks[name] = result.returncode == 0
-        logs.append(str(log_path.relative_to(root)).replace("\\", "/"))
+        logs.append(artifact_ref(root, log_path).replace("\\", "/"))
     report = {
         "profile": "infra-time-obligation",
         "overall_passed": all(checks.values()),
         "checks": checks,
         "focused_test_files": [
-            str(test_path.relative_to(root)).replace("\\", "/"),
-            str(obligation_test_path.relative_to(root)).replace("\\", "/"),
-            str(economy_test_path.relative_to(root)).replace("\\", "/"),
-            str(production_test_path.relative_to(root)).replace("\\", "/"),
-            str(activation_test_path.relative_to(root)).replace("\\", "/"),
+            artifact_ref(root, test_path).replace("\\", "/"),
+            artifact_ref(root, obligation_test_path).replace("\\", "/"),
+            artifact_ref(root, economy_test_path).replace("\\", "/"),
+            artifact_ref(root, production_test_path).replace("\\", "/"),
+            artifact_ref(root, activation_test_path).replace("\\", "/"),
         ],
         "evidence": logs,
         "run_id": f"infra-time-obligation-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
@@ -75,4 +75,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

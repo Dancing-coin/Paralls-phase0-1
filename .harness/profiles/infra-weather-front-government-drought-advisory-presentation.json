@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-weather-front-government-drought-advisory-presentation-report.json",
-  "description": "INF-3R fixed project/jurisdiction Government drought advisory WebSocket/Godot presentation"
+  "description": "INF-3R fixed project/jurisdiction Government drought advisory WebSocket/Godot presentation",
+  "success_key": "overall_passed"
 }

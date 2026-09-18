@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from common import artifact_path, artifact_ref, verification_dir
 
 ACTIVE_HARNESS_CHANGE_STATUS = "active"
 KNOWN_HARNESS_CHANGE_STATUSES = {"active", "superseded", "rejected"}
 
 
 def _relative_path(project_root: Path, path: Path) -> str:
-    return str(path.relative_to(project_root)).replace("\\", "/")
+    return artifact_ref(project_root, path)
 
 
 def read_json_object(path: Path) -> dict[str, object] | None:
@@ -188,7 +189,7 @@ def _resolve_profile_report(project_root: Path, profile_config: dict[str, object
     artifact = str(profile_config.get("result_artifact", "") or "")
     if artifact == "":
         return None
-    path = project_root / artifact
+    path = artifact_path(project_root, artifact)
     return path if path.exists() else None
 
 
@@ -203,7 +204,7 @@ def _source_artifacts(project_root: Path, report_path: Path | None) -> list[str]
 
 
 def _runtime_trace_refs(project_root: Path, profile: str) -> list[str]:
-    trace_path = project_root / ".harness" / "verification" / f"{profile}-runtime-trace.ndjson"
+    trace_path = verification_dir(project_root) / f"{profile}-runtime-trace.ndjson"
     if trace_path.exists():
         return [_relative_path(project_root, trace_path)]
     return []

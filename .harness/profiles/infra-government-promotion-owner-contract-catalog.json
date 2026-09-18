@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-government-promotion-owner-contract-catalog-report.json",
-  "description": "INF-4Q immutable owner-contract admission for the fixed Government passed-inspection production promotion"
+  "description": "INF-4Q immutable owner-contract admission for the fixed Government passed-inspection production promotion",
+  "success_key": "overall_passed"
 }

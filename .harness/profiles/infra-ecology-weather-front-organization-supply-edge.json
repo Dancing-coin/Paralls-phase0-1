@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-ecology-weather-front-organization-supply-edge-report.json",
-  "description": "INF-3I fixed Ecology weather-front source to existing Organization commerce commitment owner edge"
+  "description": "INF-3I fixed Ecology weather-front source to existing Organization commerce commitment owner edge",
+  "success_key": "overall_passed"
 }

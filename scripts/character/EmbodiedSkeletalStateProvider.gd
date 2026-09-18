@@ -85,6 +85,10 @@ func write_debug_snapshot_artifact(
 		"bones": bones,
 	}
 	var path := ProjectSettings.globalize_path("res://" + path_suffix)
+	if path_suffix.begins_with(".harness/verification/") and (OS.has_environment("HARNESS_EVIDENCE_ROOT") or OS.has_environment("HARNESS_ATTEMPT_ROOT")):
+		path = preload("res://scripts/verification/VerificationPaths.gd").resolve(path_suffix)
+		if path.is_empty():
+			return {}
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file != null:

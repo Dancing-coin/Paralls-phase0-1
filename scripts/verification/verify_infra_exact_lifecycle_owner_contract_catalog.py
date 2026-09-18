@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from common import evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
+from common import artifact_ref, evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
 def main() -> int:
@@ -23,12 +23,12 @@ def main() -> int:
         log = verification_dir(root) / f"infra-exact-lifecycle-owner-contract-catalog-{name}.log"
         result = run_command([python, "-m", "pytest", "-q", str(test_file), "-k", selector], root, log)
         checks[name] = result.returncode == 0
-        evidence.append(str(log.relative_to(root)).replace("\\", "/"))
+        evidence.append(artifact_ref(root, log).replace("\\", "/"))
     report = {
         "profile": "infra-exact-lifecycle-owner-contract-catalog",
         "overall_passed": all(checks.values()),
         "checks": checks,
-        "focused_test_files": [str(catalog.relative_to(root)).replace("\\", "/"), str(replay.relative_to(root)).replace("\\", "/")],
+        "focused_test_files": [artifact_ref(root, catalog).replace("\\", "/"), artifact_ref(root, replay).replace("\\", "/")],
         "evidence": evidence,
         "run_id": f"infra-exact-lifecycle-owner-contract-catalog-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
         "commit": evidence_revision(root),
@@ -52,4 +52,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

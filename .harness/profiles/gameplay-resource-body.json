@@ -6,5 +6,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/gameplay-resource-body-report.json",
-  "description": "Backend proof for the initial resource/body action gate: existing skill-path read gating, backend-only reservation authority commands, event-derived stamina/reservation/body-function projections, zero-event injury or insufficient-resource rejection, stale-read rejection, and atomic resource-cost/action settlement; it excludes reservation timeouts, tags, skill-state writes, effective stats, transport, and Godot mirror delivery"
+  "description": "Backend proof for the initial resource/body action gate: existing skill-path read gating, backend-only reservation authority commands, event-derived stamina/reservation/body-function projections, zero-event injury or insufficient-resource rejection, stale-read rejection, and atomic resource-cost/action settlement; it excludes reservation timeouts, tags, skill-state writes, effective stats, transport, and Godot mirror delivery",
+  "success_key": "overall_gameplay_resource_body_passed"
 }

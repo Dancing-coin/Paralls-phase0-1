@@ -204,11 +204,15 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    exit_code = main()
-    try:
-        import sys
+    from pathlib import Path
+    from run_context import run_scope
 
-        sys.stdout.flush()
-        sys.stderr.flush()
-    finally:
-        os._exit(exit_code)
+    with run_scope(Path(__file__).resolve().parents[2]):
+        exit_code = main()
+        try:
+            import sys
+
+            sys.stdout.flush()
+            sys.stderr.flush()
+        finally:
+            os._exit(exit_code)

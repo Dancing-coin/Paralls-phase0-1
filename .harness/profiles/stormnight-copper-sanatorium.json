@@ -8,5 +8,6 @@
   "requires_godot": true,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/stormnight-copper-sanatorium-report.json",
-  "description": "Godot and backend verification for the Stormnight original smart-agent mystery case"
+  "description": "Godot and backend verification for the Stormnight original smart-agent mystery case",
+  "success_key": "overall_passed"
 }

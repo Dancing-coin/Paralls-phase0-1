@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-civilization-capability-supply-consumer-report.json",
-  "description": "INF-4Y user-approved authority-scoped capability to existing organization supply fragment edge"
+  "description": "INF-4Y user-approved authority-scoped capability to existing organization supply fragment edge",
+  "success_key": "overall_passed"
 }

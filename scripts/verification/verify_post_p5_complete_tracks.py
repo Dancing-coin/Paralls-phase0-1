@@ -5,7 +5,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from common import evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
+from common import artifact_ref, evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
 def main(track: str) -> int:
@@ -37,8 +37,8 @@ def main(track: str) -> int:
         "overall_passed": passed and all(checks.values()),
         "track": track,
         "checks": checks,
-        "focused_test_files": [str(test_path.relative_to(root)).replace("\\", "/")],
-        "evidence": [str(log_path.relative_to(root)).replace("\\", "/")],
+        "focused_test_files": [artifact_ref(root, test_path).replace("\\", "/")],
+        "evidence": [artifact_ref(root, log_path).replace("\\", "/")],
         "run_id": f"post-p5-{track}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
         "commit": evidence_revision(root),
         "owner": {"f1a": "backend/app/gameplay/post_p5_contracts.py", "f1b": "backend/app/gameplay/post_p5_contracts.py", "f1c": "backend/app/gameplay/post_p5_contracts.py"}[track],

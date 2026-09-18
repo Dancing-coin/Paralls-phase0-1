@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import pytest
+
+from scripts.verification.common import verification_dir
+from scripts.verification.run_context import run_scope
+
 import json
 import sys
 from pathlib import Path
@@ -13,6 +18,12 @@ from registry import load_profile_registry
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
+@pytest.fixture
+def evidence_scope(tmp_path):
+    with run_scope(tmp_path):
+        yield
+
+
 def test_llm_integration_closure_profile_is_explicit_only() -> None:
     registry = load_profile_registry(PROJECT_ROOT)
 
@@ -21,7 +32,7 @@ def test_llm_integration_closure_profile_is_explicit_only() -> None:
     assert profile["include_in_all"] is False
 
 
-def test_closure_fails_missing_artifacts(monkeypatch, tmp_path) -> None:
+def test_closure_fails_missing_artifacts(monkeypatch, tmp_path, evidence_scope) -> None:
     monkeypatch.setenv("LLM_CLOSURE_RUN_ID", "fixture-run")
     monkeypatch.setattr(closure, "repo_root", lambda: tmp_path)
 
@@ -31,11 +42,10 @@ def test_closure_fails_missing_artifacts(monkeypatch, tmp_path) -> None:
     assert "missing_artifact:readiness" in report["errors"]
 
 
-def test_closure_marks_historical_success_artifacts_unverified_when_run_ids_do_not_match(monkeypatch, tmp_path) -> None:
+def test_closure_marks_historical_success_artifacts_unverified_when_run_ids_do_not_match(monkeypatch, tmp_path, evidence_scope) -> None:
     monkeypatch.setenv("LLM_CLOSURE_RUN_ID", "fresh-run")
     monkeypatch.setattr(closure, "repo_root", lambda: tmp_path)
-    log_dir = tmp_path / ".harness" / "verification"
-    log_dir.mkdir(parents=True)
+    log_dir = verification_dir(tmp_path)
     (log_dir / "model-provider-readiness-report.json").write_text(
         json.dumps(
             {
@@ -83,11 +93,10 @@ def test_closure_marks_historical_success_artifacts_unverified_when_run_ids_do_n
     }
 
 
-def test_closure_passes_with_fresh_live_artifacts(monkeypatch, tmp_path) -> None:
+def test_closure_passes_with_fresh_live_artifacts(monkeypatch, tmp_path, evidence_scope) -> None:
     monkeypatch.setenv("LLM_CLOSURE_RUN_ID", "fixture-run")
     monkeypatch.setattr(closure, "repo_root", lambda: tmp_path)
-    log_dir = tmp_path / ".harness" / "verification"
-    log_dir.mkdir(parents=True)
+    log_dir = verification_dir(tmp_path)
     (log_dir / "model-provider-readiness-report.json").write_text(
         json.dumps(
             {

@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-survival-heat-state-obligation-report.json",
-  "description": "INF-1D closed heat-exposure to overheated Survival owner row"
+  "description": "INF-1D closed heat-exposure to overheated Survival owner row",
+  "success_key": "overall_passed"
 }

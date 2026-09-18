@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-construction-facility-package-transform-report.json",
-  "description": "INF-1AG frozen industrial-facilities oven-to-kiln terminal Construction transform"
+  "description": "INF-1AG frozen industrial-facilities oven-to-kiln terminal Construction transform",
+  "success_key": "overall_passed"
 }

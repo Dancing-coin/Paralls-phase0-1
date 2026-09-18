@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import json
 
+from common import artifact_path, artifact_ref
+
 from common import evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
@@ -28,14 +30,14 @@ def main() -> int:
         log_path = verification_dir(root) / f"infra-continuation-gate-{check}.log"
         result = run_command([python, "-m", "pytest", "-q", str(test_path), "-k", test_name], root, log_path)
         checks[check] = result.returncode == 0
-        logs.append(str(log_path.relative_to(root)).replace("\\", "/"))
+        logs.append(artifact_ref(root, log_path).replace("\\", "/"))
     predecessor_reports = {
-        "obligation_lifecycle": root / ".harness" / "verification" / "infra-obligation-lifecycle-report.json",
-        "frost_regional_edge": root / ".harness" / "verification" / "infra-regional-ecology-report.json",
-        "regional_ecology_truth": root / ".harness" / "verification" / "infra-regional-ecology-truth-report.json",
-        "hazard_propagation": root / ".harness" / "verification" / "infra-hazard-propagation-report.json",
-        "seasonal_construction_maintenance": root / ".harness" / "verification" / "infra-seasonal-construction-maintenance-report.json",
-        "weather_front_propagation": root / ".harness" / "verification" / "infra-ecology-weather-front-propagation-report.json",
+        "obligation_lifecycle": artifact_path(root, ".harness/verification/infra-obligation-lifecycle-report.json"),
+        "frost_regional_edge": artifact_path(root, ".harness/verification/infra-regional-ecology-report.json"),
+        "regional_ecology_truth": artifact_path(root, ".harness/verification/infra-regional-ecology-truth-report.json"),
+        "hazard_propagation": artifact_path(root, ".harness/verification/infra-hazard-propagation-report.json"),
+        "seasonal_construction_maintenance": artifact_path(root, ".harness/verification/infra-seasonal-construction-maintenance-report.json"),
+        "weather_front_propagation": artifact_path(root, ".harness/verification/infra-ecology-weather-front-propagation-report.json"),
     }
     predecessor_checks: dict[str, bool] = {}
     for name, report_path in predecessor_reports.items():
@@ -60,11 +62,11 @@ def main() -> int:
         "overall_passed": all(checks.values()) and all(predecessor_checks.values()),
         "checks": {**checks, **{f"predecessor_{name}": value for name, value in predecessor_checks.items()}},
         "predecessor_checks": predecessor_checks,
-        "focused_test_files": [str(test_path.relative_to(root)).replace("\\", "/")],
+        "focused_test_files": [artifact_ref(root, test_path).replace("\\", "/")],
         "evidence": logs,
         "run_id": f"infra-continuation-gate-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
         "commit": evidence_revision(root),
-        "predecessor_reports": [str(path.relative_to(root)).replace("\\", "/") for path in predecessor_reports.values()],
+        "predecessor_reports": [artifact_ref(root, path).replace("\\", "/") for path in predecessor_reports.values()],
         "next_package": "INF-4R",
         "next_package_status": "INF-4R must consume only SocialFactAuthority.view_for; family/organization/civilization inputs remain blocked until their own packages",
         "limitations": [
@@ -81,4 +83,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

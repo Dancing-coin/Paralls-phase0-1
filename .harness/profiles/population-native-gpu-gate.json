@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/population-native-gpu-gate-report.json",
-  "description": "基于真实 population runtime 规模报告的 native/GPU 准入门禁"
+  "description": "基于真实 population runtime 规模报告的 native/GPU 准入门禁",
+  "success_key": "overall_passed"
 }

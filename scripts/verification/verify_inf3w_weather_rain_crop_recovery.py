@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+try:
+    from .common import verification_dir
+except ImportError:
+    from common import verification_dir
+
 import json
 import subprocess
 import sys
@@ -36,7 +41,7 @@ def main() -> int:
             "no fanout, inventory, output, payment, material, generic recovery API, or compensation",
         ],
     }
-    path = ROOT / ".harness" / "verification" / "inf3w-weather-rain-crop-recovery-report.json"
+    path = verification_dir(ROOT) / "inf3w-weather-rain-crop-recovery-report.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"inf3w_report_json={path}")
@@ -45,4 +50,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

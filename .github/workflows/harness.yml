@@ -6,16 +6,25 @@ on:
   workflow_dispatch:
 
 jobs:
-  harness:
+  static-contract:
+    name: Harness smoke and static contract (no runtime coverage)
     runs-on: windows-latest
     env:
-      GODOT_EXE: D:\godot\Godot_v4.6.3-stable_win64.exe
+      PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-      - name: Run full harness
+      - name: Install Python dependencies
+        run: python -m pip install -e "./backend[dev]"
+      - name: Run offline Harness smoke
+        run: python scripts/verification/harness.py --suite smoke
+      - name: Run static contract checks
+        run: python scripts/verification/harness.py --suite contract
+      - name: Report verification scope
+        if: always()
         run: |
-          python scripts/verification/harness.py --profile all
-          python scripts/verification/harness.py --profile mainline-unified-runtime
+          "### Verification scope" >> $env:GITHUB_STEP_SUMMARY
+          "This job covers offline Harness tests and static contract checks only." >> $env:GITHUB_STEP_SUMMARY
+          "Godot/backend runtime and release acceptance are not covered by this hosted job." >> $env:GITHUB_STEP_SUMMARY

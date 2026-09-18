@@ -6,5 +6,6 @@
   "requires_godot": true,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/obj-archive-door-physical-embodiment-report.json",
-  "description": "Real MainDemo wrapper probe that launches a live backend plus trusted-local embodied controller enrollment and proves obj_archive_door open, distance reject, revision stale reject, and stance conflict with correlated runtime, backend, replay, and screenshot evidence"
+  "description": "Real MainDemo wrapper probe that launches a live backend plus trusted-local embodied controller enrollment and proves obj_archive_door open, distance reject, revision stale reject, and stance conflict with correlated runtime, backend, replay, and screenshot evidence",
+  "success_key": "overall_obj_archive_door_physical_embodiment_passed"
 }

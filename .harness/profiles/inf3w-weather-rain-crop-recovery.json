@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf3w-weather-rain-crop-recovery-report.json",
-  "description": "INF-3W exact weather rain front to unique damaged crop recovery"
+  "description": "INF-3W exact weather rain front to unique damaged crop recovery",
+  "success_key": "overall_passed"
 }

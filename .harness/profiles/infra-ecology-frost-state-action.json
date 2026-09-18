@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-ecology-frost-state-action-report.json",
-  "description": "INF-1Z fixed semantic frost-state dispel through Ecology's existing canonical event spine"
+  "description": "INF-1Z fixed semantic frost-state dispel through Ecology's existing canonical event spine",
+  "success_key": "overall_passed"
 }

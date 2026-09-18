@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/siming-sgc-runtime-admission-report.json",
-  "description": "Backend-only SGC descriptor and Owner admission evidence; Godot remains unverified"
+  "description": "Backend-only SGC descriptor and Owner admission evidence; Godot remains unverified",
+  "success_key": "overall_passed"
 }

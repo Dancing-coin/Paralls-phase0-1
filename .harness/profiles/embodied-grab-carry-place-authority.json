@@ -6,5 +6,6 @@
   "requires_godot": true,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/embodied-grab-carry-place-authority-report.json",
-  "description": "Phase 7 grab-carry-place authority proof over Gameplay append_batch/outbox/bus plus websocket delivery and Godot BackendBridge mirror consumption, including the restricted custody-to-inventory stow/retrieve authority foundations; local presentation remains non-authoritative"
+  "description": "Phase 7 grab-carry-place authority proof over Gameplay append_batch/outbox/bus plus websocket delivery and Godot BackendBridge mirror consumption, including the restricted custody-to-inventory stow/retrieve authority foundations; local presentation remains non-authoritative",
+  "success_key": "overall_embodied_grab_carry_place_authority_passed"
 }

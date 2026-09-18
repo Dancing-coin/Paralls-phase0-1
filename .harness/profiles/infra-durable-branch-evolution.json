@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-durable-branch-evolution-report.json",
-  "description": "INF-4P one fixed durable isolated branch owner-consequence evolution step"
+  "description": "INF-4P one fixed durable isolated branch owner-consequence evolution step",
+  "success_key": "overall_passed"
 }

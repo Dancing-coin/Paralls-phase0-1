@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-closed-state-owner-contract-matrix-report.json",
-  "description": "INF-1M closed owner-contract matrix enforced by existing Survival, Construction, and Ecology authorities"
+  "description": "INF-1M closed owner-contract matrix enforced by existing Survival, Construction, and Ecology authorities",
+  "success_key": "overall_passed"
 }

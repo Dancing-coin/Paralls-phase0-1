@@ -6,5 +6,6 @@
   "requires_godot": true,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/embodied-bridge-attestation-report.json",
-  "description": "Backend and Godot runtime proof for embodied controller authentication, grants, nonce/epoch/sequence attestation, route gate exclusivity, resync fail-closed behavior, and dedicated bridge routes"
+  "description": "Backend and Godot runtime proof for embodied controller authentication, grants, nonce/epoch/sequence attestation, route gate exclusivity, resync fail-closed behavior, and dedicated bridge routes",
+  "success_key": "overall_embodied_bridge_attestation_passed"
 }

@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-construction-maintenance-state-action-report.json",
-  "description": "INF-1P closed Construction maintenance dispel with action-only cancellation admission"
+  "description": "INF-1P closed Construction maintenance dispel with action-only cancellation admission",
+  "success_key": "overall_passed"
 }

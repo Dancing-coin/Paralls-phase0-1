@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-closed-lifecycle-registration-admission-report.json",
-  "description": "INF-2M closed existing-owner obligation registration and generic-fragment zero-write admission"
+  "description": "INF-2M closed existing-owner obligation registration and generic-fragment zero-write admission",
+  "success_key": "overall_passed"
 }

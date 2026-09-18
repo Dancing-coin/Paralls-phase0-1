@@ -6,5 +6,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/siming-resource-staging-report.json",
-  "description": "Backend and repo-static proof for resource-aware story ranking, semantic reuse, fatigue, and truthful staging"
+  "description": "Backend and repo-static proof for resource-aware story ranking, semantic reuse, fatigue, and truthful staging",
+  "success_key": "overall_siming_resource_staging_passed"
 }

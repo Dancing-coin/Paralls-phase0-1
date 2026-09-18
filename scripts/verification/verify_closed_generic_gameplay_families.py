@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+try:
+    from .common import artifact_ref, verification_dir
+except ImportError:
+    from common import artifact_ref, verification_dir
+
 import json
 from pathlib import Path
 import subprocess
@@ -21,7 +26,7 @@ def _harvest_to_custody_genericity_gate() -> dict[str, object]:
         / "harvest-to-custody"
     )
     manifest_paths = tuple(
-        str(path.relative_to(ROOT)).replace("\\", "/")
+        artifact_ref(ROOT, path).replace("\\", "/")
         for path in sorted(manifest_dir.glob("package-*.manifest.json"))
     ) if manifest_dir.is_dir() else ()
     committed_source_facts: set[str] = set()
@@ -303,7 +308,7 @@ def main() -> int:
         and len(bounded_adapters) == 0
         and len(blocked) == 0
     )
-    artifact = ROOT / ".harness" / "verification" / "closed-generic-gameplay-families-report.json"
+    artifact = verification_dir(ROOT) / "closed-generic-gameplay-families-report.json"
     artifact.parent.mkdir(parents=True, exist_ok=True)
     artifact.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"closed_generic_gameplay_families_report_json={artifact}")
@@ -314,4 +319,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

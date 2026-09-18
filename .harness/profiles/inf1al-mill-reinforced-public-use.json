@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf1al-mill-reinforced-public-use-report.json",
-  "description": "INF-1AL exact completed mill_reinforced run to Construction public-use status"
+  "description": "INF-1AL exact completed mill_reinforced run to Construction public-use status",
+  "success_key": "overall_passed"
 }

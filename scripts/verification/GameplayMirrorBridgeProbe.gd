@@ -1,11 +1,16 @@
 extends Node
 
+const VerificationPaths := preload("res://scripts/verification/VerificationPaths.gd")
+
 const MIRROR_BRIDGE := preload("res://scripts/interaction/GameplayMirrorBridge.gd")
 const MIRROR_CONSUMER := preload("res://scripts/interaction/GameplayRuntimeStateMirrorConsumer.gd")
 const ADVISORY_CONSUMER := preload("res://scripts/interaction/GovernmentDroughtAdvisoryPresentationConsumer.gd")
 
 
 func _ready() -> void:
+	if VerificationPaths.resolve(".harness/verification/.context-check").is_empty():
+		get_tree().quit(1)
+		return
 	call_deferred("_run_probe")
 
 
@@ -138,7 +143,9 @@ func _advisory_delivery(jurisdiction_ref: String, epoch: int, sequence: int) -> 
 
 
 func _write_json(relative_path: String, payload: Dictionary) -> String:
-	var path := ProjectSettings.globalize_path("res://" + relative_path)
+	var path := VerificationPaths.resolve("res://" + relative_path)
+	if path.is_empty():
+		return ""
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:

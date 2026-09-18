@@ -5,7 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from common import repo_root, run_command, verification_dir, write_json, write_markdown
+from common import artifact_path, artifact_ref, repo_root, run_command, verification_dir, write_json, write_markdown
 
 
 def main() -> int:
@@ -51,8 +51,8 @@ def main() -> int:
                 },
                 timeout_seconds=45,
             )
-            capture_path = root / capture_relative
-            payload = _load_json(root / report_relative)
+            capture_path = artifact_path(root, capture_relative)
+            payload = _load_json(artifact_path(root, report_relative))
             image_hash = _sha256(capture_path) if capture_path.is_file() else ""
             distinct = bool(image_hash) and image_hash not in hashes
             if image_hash:
@@ -64,7 +64,7 @@ def main() -> int:
                     "variant_index": variant_index,
                     "capture_path": capture_relative,
                     "report_path": report_relative,
-                    "log_path": str(log_path.relative_to(root)),
+                    "log_path": artifact_ref(root, log_path),
                     "capture_sha256": image_hash,
                     "distinct_image": distinct,
                     "capture_status": payload.get("status", "missing_report"),
@@ -108,4 +108,8 @@ def _sha256(path: Path) -> str:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

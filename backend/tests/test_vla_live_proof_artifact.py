@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from scripts.verification.common import artifact_path
+from scripts.verification.run_context import run_scope
+
 from scripts.verification.vla_live_proof_artifact import (
     GODOT_RUNTIME_CAPTURE,
     GODOT_RUNTIME_REPORT,
@@ -13,11 +16,11 @@ from scripts.verification.vla_live_proof_artifact import (
 
 
 def _write_runtime_capture(root: Path, *, artifact_ref: str | None = None) -> None:
-    capture = root / GODOT_RUNTIME_CAPTURE
+    capture = artifact_path(root, GODOT_RUNTIME_CAPTURE)
     capture.parent.mkdir(parents=True, exist_ok=True)
     capture.write_bytes(b"\x89PNG\r\n\x1a\n")
     expected_ref = "runtime://artifact/" + capture.resolve().as_posix()
-    report = root / GODOT_RUNTIME_REPORT
+    report = artifact_path(root, GODOT_RUNTIME_REPORT)
     report.write_text(
         json.dumps(
             {
@@ -30,34 +33,36 @@ def _write_runtime_capture(root: Path, *, artifact_ref: str | None = None) -> No
 
 
 def test_godot_runtime_capture_requires_matching_runtime_report(tmp_path: Path) -> None:
-    _write_runtime_capture(tmp_path)
+    with run_scope(tmp_path):
+        _write_runtime_capture(tmp_path)
 
-    image = resolve_live_proof_image(
-        tmp_path,
-        configured_url="",
-        configured_path="",
-        use_godot_runtime_capture=True,
-        max_godot_capture_age_seconds=60,
-    )
+        image = resolve_live_proof_image(
+            tmp_path,
+            configured_url="",
+            configured_path="",
+            use_godot_runtime_capture=True,
+            max_godot_capture_age_seconds=60,
+        )
 
-    assert image.origin == "godot_runtime_capture"
-    assert image.source.startswith("data:image/png;base64,")
-    assert str(GODOT_RUNTIME_REPORT) in image.evidence_refs
+        assert image.origin == "godot_runtime_capture"
+        assert image.source.startswith("data:image/png;base64,")
+        assert str(GODOT_RUNTIME_REPORT) in image.evidence_refs
 
 
 def test_godot_runtime_capture_rejects_unmatched_artifact_ref(tmp_path: Path) -> None:
-    _write_runtime_capture(tmp_path, artifact_ref="runtime://artifact/not-the-capture.png")
+    with run_scope(tmp_path):
+        _write_runtime_capture(tmp_path, artifact_ref="runtime://artifact/not-the-capture.png")
 
-    image = resolve_live_proof_image(
-        tmp_path,
-        configured_url="",
-        configured_path="",
-        use_godot_runtime_capture=True,
-        max_godot_capture_age_seconds=60,
-    )
+        image = resolve_live_proof_image(
+            tmp_path,
+            configured_url="",
+            configured_path="",
+            use_godot_runtime_capture=True,
+            max_godot_capture_age_seconds=60,
+        )
 
-    assert image.source == ""
-    assert image.failure_reason == "godot_capture_artifact_ref_mismatch"
+        assert image.source == ""
+        assert image.failure_reason == "godot_capture_artifact_ref_mismatch"
 
 
 def test_live_proof_report_redacts_inline_image_payloads_recursively() -> None:

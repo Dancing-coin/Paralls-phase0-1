@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-isolated-branch-evolution-report.json",
-  "description": "INF-4B isolated deterministic branch event/projection evolution with no production promotion"
+  "description": "INF-4B isolated deterministic branch event/projection evolution with no production promotion",
+  "success_key": "overall_passed"
 }

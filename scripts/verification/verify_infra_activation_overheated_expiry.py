@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from common import evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
+from common import artifact_ref, evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
 def main() -> int:
@@ -31,12 +31,12 @@ def main() -> int:
             log_path,
         )
         checks[check] = result.returncode == 0
-        evidence.append(str(log_path.relative_to(root)).replace("\\", "/"))
+        evidence.append(artifact_ref(root, log_path).replace("\\", "/"))
     report = {
         "profile": "infra-activation-overheated-expiry",
         "overall_passed": all(checks.values()),
         "checks": checks,
-        "focused_test_files": [str(test_path.relative_to(root)).replace("\\", "/")],
+        "focused_test_files": [artifact_ref(root, test_path).replace("\\", "/")],
         "evidence": evidence,
         "run_id": f"infra-activation-overheated-expiry-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
         "commit": evidence_revision(root),
@@ -74,4 +74,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

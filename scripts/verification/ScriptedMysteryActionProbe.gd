@@ -1,5 +1,7 @@
 extends Node3D
 
+const VerificationPaths := preload("res://scripts/verification/VerificationPaths.gd")
+
 const ROOMS := ["entry", "archive", "safe_room"]
 const VOICE_TEMPLATES := {
 	"preparing": "准备进入行动窗口。",
@@ -23,6 +25,9 @@ var voice_state := "returned"
 
 
 func _ready() -> void:
+	if VerificationPaths.resolve(".harness/verification/.context-check").is_empty():
+		get_tree().quit(1)
+		return
 	_build_greybox_reference_scene()
 	_apply_voice_state("returned")
 	call_deferred("_run_probe")
@@ -45,7 +50,10 @@ func _run_probe() -> void:
 		"projection": get_read_only_projection(),
 		"rejection": rejection,
 	}
-	var path := ProjectSettings.globalize_path("res://.harness/verification/scripted-mystery-action-godot-runtime.json")
+	var path := VerificationPaths.resolve("res://.harness/verification/scripted-mystery-action-godot-runtime.json")
+	if path.is_empty():
+		get_tree().quit(1)
+		return
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file != null:

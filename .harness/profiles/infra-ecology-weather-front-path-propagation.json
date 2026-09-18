@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-ecology-weather-front-path-propagation-report.json",
-  "description": "INF-3D bounded three-hop Ecology-only weather-front path over existing ecology streams"
+  "description": "INF-3D bounded three-hop Ecology-only weather-front path over existing ecology streams",
+  "success_key": "overall_passed"
 }

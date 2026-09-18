@@ -1,10 +1,15 @@
 extends Node
 
+const VerificationPaths := preload("res://scripts/verification/VerificationPaths.gd")
+
 const CONTROLLER := preload("res://scripts/interaction/EmbodiedActionController.gd")
 const ACTION_ASSET_REGISTRY := preload("res://scripts/character/CharacterEmbodimentAssetRegistry.gd")
 
 
 func _ready() -> void:
+	if VerificationPaths.resolve(".harness/verification/.context-check").is_empty():
+		get_tree().quit(1)
+		return
 	call_deferred("_run_probe")
 
 
@@ -147,7 +152,9 @@ func _binding() -> Dictionary:
 
 
 func _write_json(relative_path: String, payload: Dictionary) -> String:
-	var path := ProjectSettings.globalize_path("res://" + relative_path)
+	var path := VerificationPaths.resolve("res://" + relative_path)
+	if path.is_empty():
+		return ""
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:

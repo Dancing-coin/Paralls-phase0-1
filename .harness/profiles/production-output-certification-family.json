@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/production-output-certification-family-report.json",
-  "description": "Construction-owned production output certification family verification"
+  "description": "Construction-owned production output certification family verification",
+  "success_key": "overall_passed"
 }

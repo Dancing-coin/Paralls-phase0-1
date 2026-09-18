@@ -53,11 +53,12 @@ def evaluate_harness_lifecycle(project_root: Path) -> dict[str, object]:
     results = [
         _result(
             "lifecycle_feature_ledger_exists",
-            "Harness feature ledger exists with pass/evidence entries",
+            "Harness feature ledger records static capabilities without claiming current verification",
             features.get("schema_version") == 1
+            and features.get("verification_status") == "not_evaluated"
             and isinstance(feature_entries, list)
             and len(feature_entries) >= 8
-            and all(isinstance(entry, dict) and entry.get("status") == "pass" and entry.get("evidence") for entry in feature_entries),
+            and all(isinstance(entry, dict) and entry.get("status") == "implemented" and entry.get("evidence") for entry in feature_entries),
             [".harness/features.json"],
         ),
         _result(
@@ -117,12 +118,12 @@ def evaluate_harness_lifecycle(project_root: Path) -> dict[str, object]:
         ),
         _result(
             "lifecycle_retention_policy_exists",
-            "Retention policy defines baseline, diff, and run archive handling",
-            retention_policy.get("schema_version") == 1
-            and int(retention_policy.get("max_archived_runs", 0)) > 0
-            and retention_policy.get("preserve_latest_baseline") is True
-            and retention_policy.get("diff_against") == "previous_baseline"
-            and retention_policy.get("archive_root") == ".harness/verification/runs/",
+            "Retention policy requires temporary owned evidence, cleanup, and explicit external export",
+            retention_policy.get("schema_version") == 2
+            and retention_policy.get("generated_evidence_root") == "system-temp"
+            and retention_policy.get("default_action") == "delete"
+            and retention_policy.get("export_mode") == "explicit-export"
+            and retention_policy.get("export_requires_external_directory") is True,
             [".harness/retention-policy.json"],
         ),
         _result(
@@ -158,4 +159,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from run_context import run_scope
+
+    with run_scope(repo_root()):
+        raise SystemExit(main())

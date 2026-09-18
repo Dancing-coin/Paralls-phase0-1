@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-isolated-branch-owner-fragment-evaluation-report.json",
-  "description": "INF-4F isolated validation of the two registered owner fragment rows without production settlement"
+  "description": "INF-4F isolated validation of the two registered owner fragment rows without production settlement",
+  "success_key": "overall_passed"
 }

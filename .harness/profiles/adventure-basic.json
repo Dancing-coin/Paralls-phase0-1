@@ -6,5 +6,6 @@
   "requires_godot": true,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/adventure-basic-report.json",
-  "description": "Digest-valid governed adventure-basic manifest plus five authoritative scenario facades/replay chains and fresh trusted-local Godot mirror delivery after server-selected canonical commits; the profile fails closed when any scenario lacks runtime evidence"
+  "description": "Digest-valid governed adventure-basic manifest plus five authoritative scenario facades/replay chains and fresh trusted-local Godot mirror delivery after server-selected canonical commits; the profile fails closed when any scenario lacks runtime evidence",
+  "success_key": "overall_adventure_basic_passed"
 }

@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-reusable-settlement-recipe-report.json",
-  "description": "INF-C3 append-derived owner-fragment settlement recipe"
+  "description": "INF-C3 append-derived owner-fragment settlement recipe",
+  "success_key": "overall_passed"
 }

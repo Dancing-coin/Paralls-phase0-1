@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-economy-account-settlement-spine-report.json",
-  "description": "INF-2H EconomyAuthorityService account settlement through the formal single-store spine"
+  "description": "INF-2H EconomyAuthorityService account settlement through the formal single-store spine",
+  "success_key": "overall_passed"
 }

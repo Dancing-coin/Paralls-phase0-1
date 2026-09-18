@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+try:
+    from .common import verification_dir
+except ImportError:
+    from common import verification_dir
+
 import json
 import subprocess
 import sys
@@ -53,7 +58,7 @@ def main() -> int:
             "historical reinforced-mill decommission remains a compatibility row",
         ],
     }
-    artifact = ROOT / ".harness" / "verification" / "facility-lifecycle-transition-family-report.json"
+    artifact = verification_dir(ROOT) / "facility-lifecycle-transition-family-report.json"
     artifact.parent.mkdir(parents=True, exist_ok=True)
     artifact.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"facility_lifecycle_transition_family_report_json={artifact}")
@@ -62,4 +67,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

@@ -11,6 +11,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 from app.verification_audit import evaluate_phase0_audit
 
+from common import artifact_path
+
 from common import (
     ensure_godot_import,
     ensure_backend,
@@ -59,7 +61,7 @@ def _read_character_agent_execution_result(log_dir: Path, project_root: Path, py
         probe_log,
         env=PHASE0_VERIFY_ENV,
     )
-    report_path = log_dir / "character-agent-execution-report.json"
+    report_path = artifact_path(project_root, ".harness/verification/character-agent-execution-report.json")
     if not report_path.exists():
         return {}
     import json
@@ -81,7 +83,7 @@ def _read_character_director_observatory_result(log_dir: Path, project_root: Pat
         project_root,
         probe_log,
     )
-    report_path = log_dir / "character-director-observatory-report.json"
+    report_path = artifact_path(project_root, ".harness/verification/character-director-observatory-report.json")
     if not report_path.exists():
         return {}
     import json
@@ -322,8 +324,8 @@ def main() -> int:
             "main_screenshot": str(main_screenshot),
             "focus_screenshot": str(focus_screenshot),
             "runtime_trace": str(runtime_trace),
-            "character_agent_execution_report": str(log_dir / "character-agent-execution-report.json"),
-            "character_director_observatory_report": str(log_dir / "character-director-observatory-report.json"),
+            "character_agent_execution_report": str(artifact_path(project_root, ".harness/verification/character-agent-execution-report.json")),
+            "character_director_observatory_report": str(artifact_path(project_root, ".harness/verification/character-director-observatory-report.json")),
         }
 
         json_path = log_dir / "phase0-report.json"
@@ -343,9 +345,13 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    exit_code = main()
-    try:
-        sys.stdout.flush()
-        sys.stderr.flush()
-    finally:
-        os._exit(exit_code)
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        exit_code = main()
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+        finally:
+            os._exit(exit_code)

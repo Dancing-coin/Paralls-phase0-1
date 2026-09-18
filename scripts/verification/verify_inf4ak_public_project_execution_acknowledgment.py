@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+try:
+    from .common import verification_dir
+except ImportError:
+    from common import verification_dir
+
 import json
 import subprocess
 import sys
@@ -36,7 +41,7 @@ def main() -> int:
             "no permit, payment, material, output, attendance, social, population, or generic project lifecycle",
         ],
     }
-    path = ROOT / ".harness" / "verification" / "inf4ak-public-project-execution-acknowledgment-report.json"
+    path = verification_dir(ROOT) / "inf4ak-public-project-execution-acknowledgment-report.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"inf4ak_report_json={path}")
@@ -45,4 +50,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

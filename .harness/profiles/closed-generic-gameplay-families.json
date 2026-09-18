@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/closed-generic-gameplay-families-report.json",
-  "description": "Closed generic gameplay family matrix, immutable catalog boundary, and production custody blocker evidence"
+  "description": "Closed generic gameplay family matrix, immutable catalog boundary, and production custody blocker evidence",
+  "success_key": "overall_passed"
 }

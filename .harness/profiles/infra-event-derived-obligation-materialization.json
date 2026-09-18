@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-event-derived-obligation-materialization-report.json",
-  "description": "INF-2W read-only event-derived ScheduledObligation materialization for existing owners"
+  "description": "INF-2W read-only event-derived ScheduledObligation materialization for existing owners",
+  "success_key": "overall_passed"
 }

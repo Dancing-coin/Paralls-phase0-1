@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inventory-generic-platform-report.json",
-  "description": "Inventory v3 content, item/lot/container/custody/reservation, condition/transport and recipe evidence"
+  "description": "Inventory v3 content, item/lot/container/custody/reservation, condition/transport and recipe evidence",
+  "success_key": "overall_inventory_generic_platform_passed"
 }

@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-schedule-gated-supply-report.json",
-  "description": "INF-4A existing social/household/organization schedule inputs bound to the admitted Organization supply fragment"
+  "description": "INF-4A existing social/household/organization schedule inputs bound to the admitted Organization supply fragment",
+  "success_key": "overall_passed"
 }

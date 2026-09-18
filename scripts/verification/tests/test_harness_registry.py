@@ -68,6 +68,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "character-continuity-recovery",
         "gameplay-foundation-event-spine",
         "authority-graph-projection",
+        "character-memory-consistency",
         "gameplay-state-groups",
         "embodied-interaction-session",
         "gameplay-resource-body",
@@ -190,7 +191,7 @@ def test_rule_registry_exposes_rule_to_evidence_mapping() -> None:
     assert mapping["docs.docs_index_paths_exist"]["profile"] == "docs"
     assert mapping["backend-contract.backend_protocol_models_exist"]["profile"] == "backend-contract"
     assert mapping["godot-project.scene_resource_paths_exist"]["profile"] == "godot-project"
-    assert mapping["release-gate.ci_runs_full_harness_profile"]["profile"] == "release-gate"
+    assert mapping["release-gate.ci_runs_static_suites"]["profile"] == "release-gate"
     assert mapping["harness-lifecycle.lifecycle_retention_policy_exists"]["profile"] == "harness-lifecycle"
     assert mapping["change-lifecycle.workflow_doc_exists"]["profile"] == "change-lifecycle"
     assert mapping["harness-reference.reference_taxonomy_exists"]["profile"] == "harness-reference"
@@ -199,57 +200,15 @@ def test_rule_registry_exposes_rule_to_evidence_mapping() -> None:
     assert mapping["post-p5-f2-gates.predecessor_reports_green"]["profile"] == "post-p5-f2-gates"
 
 
-def test_write_harness_report_creates_run_id_archive(tmp_path: Path) -> None:
-    report_paths = _write_harness_report(
-        tmp_path,
-        [
-            {
-                "profile": "docs",
-                "command": ["python", "scripts/verification/check_docs.py"],
-                "exit_code": 0,
-            }
-        ],
-        overall_passed=True,
-        run_id="run_test",
-    )
 
-    latest_payload = json.loads(report_paths["json"].read_text(encoding="utf-8"))
-    archived_payload = json.loads((tmp_path / ".harness" / "verification" / "runs" / "run_test" / "harness-run-report.json").read_text(encoding="utf-8"))
-
-    assert latest_payload["run_id"] == "run_test"
-    assert archived_payload["run_id"] == "run_test"
-    assert report_paths["run_dir"] == tmp_path / ".harness" / "verification" / "runs" / "run_test"
-
-
-def test_write_harness_report_archives_matching_suite_identity(tmp_path: Path) -> None:
-    report_paths = _write_harness_report(
-        tmp_path,
-        [
-            {
-                "profile": "siming-heavenly-runtime",
-                "command": ["python", "scripts/verification/verify_siming_heavenly_runtime.py"],
-                "exit_code": 0,
-            }
-        ],
-        overall_passed=True,
-        run_id="run_suite_identity",
-        suite_id="siming-heavenly-runtime",
-    )
-
-    latest_report = json.loads(report_paths["json"].read_text(encoding="utf-8"))
-    archived_report = json.loads(
-        (report_paths["run_dir"] / "harness-run-report.json").read_text(encoding="utf-8")
-    )
-    latest_manifest = json.loads(report_paths["manifest"].read_text(encoding="utf-8"))
-    archived_manifest = json.loads(
-        (report_paths["run_dir"] / "run-manifest.json").read_text(encoding="utf-8")
-    )
-
-    assert latest_report["suite_id"] == "siming-heavenly-runtime"
-    assert archived_report["suite_id"] == "siming-heavenly-runtime"
-    assert latest_manifest["suite_id"] == "siming-heavenly-runtime"
-    assert archived_manifest["suite_id"] == "siming-heavenly-runtime"
-    assert "- Suite ID: `siming-heavenly-runtime`" in report_paths["markdown"].read_text(encoding="utf-8")
-    assert "- Suite ID: `siming-heavenly-runtime`" in (
-        report_paths["run_dir"] / "harness-run-report.md"
-    ).read_text(encoding="utf-8")
+def test_report_preserves_suite_identity_without_default_archive(tmp_path):
+    from run_context import run_scope
+    with run_scope(tmp_path):
+        paths = _write_harness_report(tmp_path, [{"profile": "docs", "exit_code": 0}],
+                                      overall_passed=True, suite_id="contract")
+        report = json.loads(paths["json"].read_text(encoding="utf-8"))
+        manifest = json.loads(paths["manifest"].read_text(encoding="utf-8"))
+        assert report["suite_id"] == manifest["suite_id"] == "contract"
+        assert not (paths["run_dir"] / "runs").exists()
+        assert not (tmp_path / ".harness/verification").exists()
+    assert not paths["json"].exists()

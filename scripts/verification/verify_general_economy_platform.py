@@ -1,6 +1,8 @@
 """Focused verification for the General Economy Platform C foundation."""
 from __future__ import annotations
 
+from common import verification_dir
+
 import json
 import subprocess
 import sys
@@ -29,7 +31,7 @@ def main() -> int:
         "tests": tests,
         "exit_code": result.returncode,
     }
-    path = ROOT / ".harness" / "verification" / "general-economy-platform-report.json"
+    path = verification_dir(ROOT) / "general-economy-platform-report.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"general_economy_platform_report={path}")
@@ -37,4 +39,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

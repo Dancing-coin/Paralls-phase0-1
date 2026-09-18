@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf3s-government-drought-assessment-contract-report.json",
-  "description": "INF-3S exact Government drought advisory to fixed Contract municipal assessment admission"
+  "description": "INF-3S exact Government drought advisory to fixed Contract municipal assessment admission",
+  "success_key": "overall_passed"
 }

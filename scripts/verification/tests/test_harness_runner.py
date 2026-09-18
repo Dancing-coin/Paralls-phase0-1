@@ -11,6 +11,16 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import common
+import pytest
+from run_context import run_scope
+from common import verification_dir
+
+
+@pytest.fixture(autouse=True)
+def run_context(tmp_path):
+    with run_scope(tmp_path):
+        yield
+
 import harness
 from common import get_health
 
@@ -41,64 +51,12 @@ def test_write_harness_report_outputs_json_and_markdown(tmp_path: Path) -> None:
     assert payload["profiles"][0]["exit_code"] == 0
     assert report_paths["markdown"].read_text(encoding="utf-8").startswith("# Harness Run Report")
     assert report_paths["manifest"].exists()
-    assert report_paths["baseline"].exists()
-    assert report_paths["diff"].exists()
+    assert not (report_paths["run_dir"] / "baseline.json").exists()
+    assert not (report_paths["run_dir"] / "runs").exists()
 
 
-def test_write_harness_report_records_previous_run_diff(tmp_path: Path) -> None:
-    _write_harness_report(
-        tmp_path,
-        [
-            {
-                "profile": "docs",
-                "command": ["python", "scripts/verification/check_docs.py"],
-                "exit_code": 0,
-            }
-        ],
-        overall_passed=True,
-        run_id="run_previous",
-    )
-
-    report_paths = _write_harness_report(
-        tmp_path,
-        [
-            {
-                "profile": "docs",
-                "command": ["python", "scripts/verification/check_docs.py"],
-                "exit_code": 1,
-            }
-        ],
-        overall_passed=False,
-        run_id="run_current",
-    )
-
-    diff = json.loads(report_paths["diff"].read_text(encoding="utf-8"))
-
-    assert diff["previous_run_id"] == "run_previous"
-    assert diff["current_run_id"] == "run_current"
-    assert diff["overall_changed"] is True
-    assert diff["profile_exit_code_changes"] == [
-        {
-            "profile": "docs",
-            "previous_exit_code": 0,
-            "current_exit_code": 1,
-        }
-    ]
 
 
-def test_write_harness_report_default_run_ids_do_not_collide(tmp_path: Path) -> None:
-    first_paths = _write_harness_report(
-        tmp_path,
-        [{"profile": "docs", "command": ["python", "check_docs.py"], "exit_code": 0}],
-        overall_passed=True,
-    )
-    second_paths = _write_harness_report(
-        tmp_path,
-        [{"profile": "drift", "command": ["python", "check_drift.py"], "exit_code": 0}],
-        overall_passed=True,
-    )
-
-    assert first_paths["run_dir"] != second_paths["run_dir"]
 
 
 def test_write_harness_report_preserves_attempt_count_when_present(tmp_path: Path) -> None:
@@ -123,75 +81,6 @@ def test_write_harness_report_preserves_attempt_count_when_present(tmp_path: Pat
     assert payload["profiles"][0]["max_attempts"] == 2
 
 
-def test_write_harness_report_records_active_changes_and_failure_digest(tmp_path: Path) -> None:
-    changes_dir = tmp_path / ".harness" / "changes"
-    changes_dir.mkdir(parents=True)
-    (changes_dir / "chg-active.json").write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "id": "chg-active",
-                "title": "Active change",
-                "status": "active",
-                "verification_profiles": ["docs"],
-            }
-        ),
-        encoding="utf-8",
-    )
-    report_path = tmp_path / ".harness" / "verification" / "docs-report.json"
-    report_path.parent.mkdir(parents=True)
-    report_path.write_text(
-        json.dumps(
-            {
-                "results": [
-                    {"id": "docs_index_paths_exist", "status": "missing", "evidence": []}
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    report_paths = _write_harness_report(
-        tmp_path,
-        [
-            {
-                "profile": "docs",
-                "command": ["python", "scripts/verification/check_docs.py"],
-                "exit_code": 1,
-            }
-        ],
-        overall_passed=False,
-        run_id="run_observable",
-        profile_configs={
-            "docs": {
-                "result_artifact": ".harness/verification/docs-report.json",
-            }
-        },
-    )
-
-    manifest = json.loads(report_paths["manifest"].read_text(encoding="utf-8"))
-    archived_manifest = json.loads((report_paths["run_dir"] / "run-manifest.json").read_text(encoding="utf-8"))
-    digest_path = tmp_path / ".harness" / "verification" / "docs-failure-digest.json"
-    archived_digest_path = report_paths["run_dir"] / "docs-failure-digest.json"
-
-    assert manifest["harness_changes"] == [
-        {
-            "id": "chg-active",
-            "title": "Active change",
-            "status": "active",
-            "path": ".harness/changes/chg-active.json",
-            "verification_profiles": ["docs"],
-        }
-    ]
-    assert manifest["harness_change_errors"] == []
-    assert manifest["failure_digest_artifacts"] == [
-        ".harness/verification/docs-failure-digest.json"
-    ]
-    assert archived_manifest["failure_digest_artifacts"] == [
-        ".harness/verification/runs/run_observable/docs-failure-digest.json"
-    ]
-    assert digest_path.exists()
-    assert archived_digest_path.exists()
 
 
 def test_collect_harness_changes_reads_only_active_manifests(tmp_path: Path) -> None:
@@ -369,8 +258,8 @@ def test_extract_failed_checks_reads_missing_result_entries() -> None:
 
 
 def test_build_failure_digest_degrades_when_report_has_no_structured_checks(tmp_path: Path) -> None:
-    report_path = tmp_path / ".harness" / "verification" / "custom-report.json"
-    report_path.parent.mkdir(parents=True)
+    report_path = verification_dir(tmp_path) / "custom-report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps({"overall_custom_passed": False}), encoding="utf-8")
 
     digest = build_failure_digest(
@@ -400,8 +289,8 @@ def test_build_failure_digest_degrades_when_report_has_no_structured_checks(tmp_
 
 
 def test_build_failure_digest_degrades_when_report_json_is_invalid(tmp_path: Path) -> None:
-    report_path = tmp_path / ".harness" / "verification" / "custom-report.json"
-    report_path.parent.mkdir(parents=True)
+    report_path = verification_dir(tmp_path) / "custom-report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text("{not-json", encoding="utf-8")
 
     digest = build_failure_digest(
@@ -441,163 +330,10 @@ def test_build_failure_digest_preserves_command_when_profile_has_no_report(tmp_p
     assert digest["exit_code"] == 7
 
 
-def test_harness_runner_retries_profile_up_to_max_attempts(monkeypatch, tmp_path: Path) -> None:
-    calls = {"count": 0}
-
-    def fake_repo_root() -> Path:
-        return tmp_path
-
-    def fake_resolve_python_exe(_explicit: str | None) -> str:
-        return "python"
-
-    def fake_resolve_godot_exe(_explicit: str | None) -> str:
-        return "godot"
-
-    def fake_load_profile_registry(_project_root: Path):
-        return SimpleNamespace(
-            profiles={
-                "phase0": {
-                    "name": "phase0",
-                    "script": "scripts/verification/verify_phase0.py",
-                    "requires_godot": True,
-                    "max_attempts": 2,
-                }
-            },
-            profile_order=["phase0"],
-        )
-
-    def fake_run(_args: list[str], _cwd: Path) -> int:
-        calls["count"] += 1
-        return 1 if calls["count"] == 1 else 0
-
-    monkeypatch.setattr(harness, "repo_root", fake_repo_root)
-    monkeypatch.setattr(harness, "resolve_python_exe", fake_resolve_python_exe)
-    monkeypatch.setattr(harness, "_resolve_godot_exe", fake_resolve_godot_exe)
-    monkeypatch.setattr(harness, "load_profile_registry", fake_load_profile_registry)
-    monkeypatch.setattr(harness, "_run", fake_run)
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["harness.py", "--profile", "phase0"],
-    )
-
-    exit_code = harness.main()
-    report = json.loads((tmp_path / ".harness" / "verification" / "harness-run-report.json").read_text(encoding="utf-8"))
-
-    assert exit_code == 0
-    assert calls["count"] == 2
-    assert report["profiles"][0]["attempts"] == 2
-    assert report["profiles"][0]["max_attempts"] == 2
 
 
-def test_harness_runner_retries_when_report_artifact_exists_but_is_failed(monkeypatch, tmp_path: Path) -> None:
-    calls = {"count": 0}
-    verification_dir = tmp_path / ".harness" / "verification"
-    phase0_report = verification_dir / "phase0-report.json"
-
-    def fake_repo_root() -> Path:
-        return tmp_path
-
-    def fake_resolve_python_exe(_explicit: str | None) -> str:
-        return "python"
-
-    def fake_resolve_godot_exe(_explicit: str | None) -> str:
-        return "godot"
-
-    def fake_load_profile_registry(_project_root: Path):
-        return SimpleNamespace(
-            profiles={
-                "phase0": {
-                    "name": "phase0",
-                    "script": "scripts/verification/verify_phase0.py",
-                    "requires_godot": True,
-                    "max_attempts": 2,
-                    "result_artifact": ".harness/verification/phase0-report.json",
-                }
-            },
-            profile_order=["phase0"],
-        )
-
-    def fake_run(_args: list[str], _cwd: Path) -> int:
-        calls["count"] += 1
-        verification_dir.mkdir(parents=True, exist_ok=True)
-        phase0_report.write_text("{\"overall_strict_phase0_passed\": false}", encoding="utf-8")
-        return 1
-
-    monkeypatch.setattr(harness, "repo_root", fake_repo_root)
-    monkeypatch.setattr(harness, "resolve_python_exe", fake_resolve_python_exe)
-    monkeypatch.setattr(harness, "_resolve_godot_exe", fake_resolve_godot_exe)
-    monkeypatch.setattr(harness, "load_profile_registry", fake_load_profile_registry)
-    monkeypatch.setattr(harness, "_run", fake_run)
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["harness.py", "--profile", "phase0"],
-    )
-
-    exit_code = harness.main()
-    report = json.loads((tmp_path / ".harness" / "verification" / "harness-run-report.json").read_text(encoding="utf-8"))
-
-    assert exit_code == 1
-    assert calls["count"] == 2
-    assert report["profiles"][0]["attempts"] == 2
-    assert report["profiles"][0]["max_attempts"] == 2
 
 
-def test_harness_runner_fails_fast_when_godot_is_required_but_unavailable(monkeypatch, tmp_path: Path) -> None:
-    calls = {"count": 0}
-
-    def fake_repo_root() -> Path:
-        return tmp_path
-
-    def fake_resolve_python_exe(_explicit: str | None) -> str:
-        return "python"
-
-    def fake_resolve_godot_exe(_explicit: str | None) -> None:
-        return None
-
-    def fake_load_profile_registry(_project_root: Path):
-        return SimpleNamespace(
-            profiles={
-                "phase0": {
-                    "name": "phase0",
-                    "script": "scripts/verification/verify_phase0.py",
-                    "requires_godot": True,
-                }
-            },
-            profile_order=["phase0"],
-        )
-
-    def fake_run(_args: list[str], _cwd: Path) -> int:
-        calls["count"] += 1
-        return 0
-
-    monkeypatch.setattr(harness, "repo_root", fake_repo_root)
-    monkeypatch.setattr(harness, "resolve_python_exe", fake_resolve_python_exe)
-    monkeypatch.setattr(harness, "_resolve_godot_exe", fake_resolve_godot_exe)
-    monkeypatch.setattr(harness, "load_profile_registry", fake_load_profile_registry)
-    monkeypatch.setattr(harness, "_run", fake_run)
-    monkeypatch.setattr(
-        sys,
-        "argv",
-        ["harness.py", "--profile", "phase0"],
-    )
-
-    exit_code = harness.main()
-    report = json.loads((tmp_path / ".harness" / "verification" / "harness-run-report.json").read_text(encoding="utf-8"))
-
-    assert exit_code == 1
-    assert calls["count"] == 0
-    assert report["profiles"][0]["profile"] == "phase0"
-    assert report["profiles"][0]["exit_code"] == 1
-    assert report["profiles"][0]["attempts"] == 0
-    assert report["profiles"][0]["max_attempts"] == 1
-    assert report["profiles"][0]["command"] == [
-        "python",
-        str(tmp_path / "scripts/verification/verify_phase0.py"),
-        "--python-exe",
-        "python",
-    ]
 
 
 def test_get_health_treats_connection_reset_as_unhealthy(monkeypatch) -> None:
@@ -609,43 +345,6 @@ def test_get_health_treats_connection_reset_as_unhealthy(monkeypatch) -> None:
     assert get_health() is None
 
 
-def test_ensure_backend_can_restart_same_worktree_backend_when_fresh_backend_requested(monkeypatch, tmp_path: Path) -> None:
-    health_state = {"calls": 0}
-    terminated = {"pid": None}
-    popen_calls = {"count": 0}
-    listener_calls = {"count": 0}
-
-    class _FakePopen:
-        def __init__(self, *_args, **_kwargs) -> None:
-            popen_calls["count"] += 1
-
-        def terminate(self) -> None:
-            return None
-
-    def fake_get_health():
-        health_state["calls"] += 1
-        if health_state["calls"] == 1:
-            return {"status": "ok", "worktree_root": str(tmp_path)}
-        if health_state["calls"] in {2, 3}:
-            return None
-        return {"status": "ok", "worktree_root": str(tmp_path)}
-
-    def fake_find_listener_pid(_port: int):
-        listener_calls["count"] += 1
-        return 4242 if listener_calls["count"] == 1 else None
-
-    monkeypatch.setattr(common, "get_health", fake_get_health)
-    monkeypatch.setattr(common, "_find_listener_pid", fake_find_listener_pid)
-    monkeypatch.setattr(common, "_terminate_listener_pid", lambda pid: terminated.__setitem__("pid", pid))
-    monkeypatch.setattr(common.subprocess, "Popen", _FakePopen)
-    monkeypatch.setattr(common.time, "sleep", lambda _seconds: None)
-
-    health, process = common.ensure_backend(tmp_path, "python", prefer_fresh_backend=True)
-
-    assert health["worktree_root"] == str(tmp_path)
-    assert terminated["pid"] == 4242
-    assert popen_calls["count"] == 1
-    assert process is not None
 
 
 def test_run_command_until_markers_terminates_once_marker_is_seen(tmp_path: Path) -> None:

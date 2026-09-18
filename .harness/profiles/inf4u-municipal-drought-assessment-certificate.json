@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf4u-municipal-drought-assessment-certificate-report.json",
-  "description": "INF-4U exact completed municipal assessment to Ownership certificate title"
+  "description": "INF-4U exact completed municipal assessment to Ownership certificate title",
+  "success_key": "overall_passed"
 }

@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/population-data-oriented-incremental-report.json",
-  "description": "Backend-only real publisher checkpoint-tail and Siming population-scale evidence; Godot remains unverified"
+  "description": "Backend-only real publisher checkpoint-tail and Siming population-scale evidence; Godot remains unverified",
+  "success_key": "overall_passed"
 }

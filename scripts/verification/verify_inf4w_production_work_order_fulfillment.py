@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+try:
+    from .common import artifact_ref, verification_dir
+except ImportError:
+    from common import artifact_ref, verification_dir
+
 import json
 import subprocess
 import sys
@@ -19,7 +24,7 @@ def main() -> int:
     report = {
         "profile": "inf4w-production-work-order-fulfillment",
         "row": "committed INF-4V accepted work contribution -> Organization work-order fulfilled",
-        "focused_tests": str(test_file.relative_to(ROOT)).replace("\\", "/"),
+        "focused_tests": artifact_ref(ROOT, test_file).replace("\\", "/"),
         "test_exit_code": result.returncode,
         "test_output": result.stdout[-4000:],
         "stderr": result.stderr[-2000:],
@@ -35,7 +40,7 @@ def main() -> int:
             "no wage/payment/output/material/social/branch semantics",
         ],
     }
-    artifact = ROOT / ".harness" / "verification" / "inf4w-production-work-order-fulfillment-report.json"
+    artifact = verification_dir(ROOT) / "inf4w-production-work-order-fulfillment-report.json"
     artifact.parent.mkdir(parents=True, exist_ok=True)
     artifact.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(f"inf4w_report_json={artifact}")
@@ -44,4 +49,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

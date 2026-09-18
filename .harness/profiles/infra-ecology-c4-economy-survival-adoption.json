@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-ecology-c4-economy-survival-adoption-report.json",
-  "description": "INF-3P finite C4 adoption by existing Economy and Survival weather consumers"
+  "description": "INF-3P finite C4 adoption by existing Economy and Survival weather consumers",
+  "success_key": "overall_passed"
 }

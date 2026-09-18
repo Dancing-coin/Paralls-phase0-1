@@ -6,5 +6,6 @@
   "requires_godot": false,
   "max_attempts": 2,
   "result_artifact": ".harness/verification/phase1b-contract-verification-report.json",
-  "description": "P1B reusable contract fixtures, zero-write rejection, pinned revisions, and replay evidence; requires gameplay-foundation-contract predecessor"
+  "description": "P1B reusable contract fixtures, zero-write rejection, pinned revisions, and replay evidence; requires gameplay-foundation-contract predecessor",
+  "success_key": "overall_phase1b_contract_verification_passed"
 }

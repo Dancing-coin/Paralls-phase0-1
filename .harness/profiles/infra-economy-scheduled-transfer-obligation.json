@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-economy-scheduled-transfer-obligation-report.json",
-  "description": "INF-2J fixed Economy scheduled account-transfer obligation lifecycle"
+  "description": "INF-2J fixed Economy scheduled account-transfer obligation lifecycle",
+  "success_key": "overall_passed"
 }

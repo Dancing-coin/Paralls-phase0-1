@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-ecology-weather-front-event-derived-planner-report.json",
-  "description": "INF-3M event-derived Ecology-only weather-front planner"
+  "description": "INF-3M event-derived Ecology-only weather-front planner",
+  "success_key": "overall_passed"
 }

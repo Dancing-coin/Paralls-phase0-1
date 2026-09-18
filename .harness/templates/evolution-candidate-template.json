@@ -24,5 +24,10 @@
   ],
   "requires_human_approval": false,
   "qa_review_required": true,
-  "qa_review_artifacts": []
+  "qa_review_artifacts": [],
+  "qa_review_artifact_digests": {},
+  "baseline_revision": "",
+  "candidate_revision": "",
+  "evaluation_set_digest": "",
+  "effectiveness": "not_evaluated"
 }

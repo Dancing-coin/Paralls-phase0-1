@@ -6,4 +6,9 @@ def main() -> int:
     result=run_command([resolve_python_exe(args.python_exe),"-m","pytest","-q","backend/tests/test_economy_runtime.py","backend/tests/test_fixed_offer_purchase.py","backend/tests/test_gift_runtime.py","backend/tests/test_debt_runtime.py","backend/tests/test_economy_privacy_views.py","backend/tests/test_contract_runtime.py"],root,log)
     report={"overall_gameplay_economy_authority_passed":result.returncode==0,"scope":"backend proof for event-derived accounts, atomic settlements, payment-record correction, cancellation-record reversal, typed service-completion fulfillment, principal-filtered queries, configured audience field redaction, and typed contract-record lifecycle; it excludes credential settlement, arbitrary or cross-domain contract execution, transport authorization-source integration, persistence, and Godot delivery","results":[{"id":"economy-settlement-privacy-and-contract-core","title":"Accounts, settlement, debt correction/reversal, typed service completion, privacy redaction, and registered-terms contract lifecycle remain atomic or fail closed","status":"proved" if result.returncode==0 else "missing","evidence":[str(log)] if result.returncode==0 else [],"notes":f"exit_code={result.returncode}"}],"artifacts":{"pytest_log":str(log)}}
     write_json(verification_dir(root)/"gameplay-economy-authority-report.json",report); write_markdown(verification_dir(root)/"gameplay-economy-authority-report.md","Gameplay Economy Authority Verification Report",report,"overall_gameplay_economy_authority_passed"); print(f"overall_gameplay_economy_authority_passed={report['overall_gameplay_economy_authority_passed']}"); return 0 if result.returncode==0 else 1
-if __name__=="__main__": raise SystemExit(main())
+if __name__ == "__main__":
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

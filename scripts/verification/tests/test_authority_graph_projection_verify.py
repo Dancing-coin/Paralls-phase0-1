@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import pytest
+
+from scripts.verification.common import verification_dir
+from scripts.verification.run_context import run_scope
+
 import json
 import subprocess
 import sys
@@ -13,6 +18,12 @@ from registry import load_profile_registry
 ROOT = Path(__file__).resolve().parents[3]
 
 
+@pytest.fixture
+def evidence_scope():
+    with run_scope(ROOT):
+        yield
+
+
 def test_authority_graph_projection_profile_is_registered() -> None:
     registry = load_profile_registry(ROOT)
     assert "authority-graph-projection" in registry.profiles
@@ -21,7 +32,7 @@ def test_authority_graph_projection_profile_is_registered() -> None:
     ]
 
 
-def test_authority_graph_projection_verifier_passes_all_domains() -> None:
+def test_authority_graph_projection_verifier_passes_all_domains(evidence_scope) -> None:
     result = subprocess.run(
         [sys.executable, "scripts/verification/verify_authority_graph_projection.py"],
         cwd=ROOT,
@@ -34,7 +45,7 @@ def test_authority_graph_projection_verifier_passes_all_domains() -> None:
     )
     assert result.returncode == 0, result.stdout
     report = json.loads(
-        (ROOT / ".harness/verification/authority-graph-projection-report.json").read_text(
+        (verification_dir(ROOT) / "authority-graph-projection-report.json").read_text(
             encoding="utf-8"
         )
     )

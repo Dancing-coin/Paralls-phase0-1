@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-production-evidence-wage-consumer-report.json",
-  "description": "INF-4Z one Production evidence to Economy wage consumer edge"
+  "description": "INF-4Z one Production evidence to Economy wage consumer edge",
+  "success_key": "overall_passed"
 }

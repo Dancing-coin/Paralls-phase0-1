@@ -1,5 +1,7 @@
 extends Node
 
+const VerificationPaths := preload("res://scripts/verification/VerificationPaths.gd")
+
 const CONSUMER := preload("res://scripts/interaction/HandoffMirrorConsumer.gd")
 const REPORT_PATH := ".harness/verification/embodied-handoff-godot-runtime.json"
 const VERIFIED_MARKER := "embodied_handoff_probe:verified=true"
@@ -9,6 +11,9 @@ var _backend_acks: Array[Dictionary] = []
 
 
 func _ready() -> void:
+	if VerificationPaths.resolve(".harness/verification/.context-check").is_empty():
+		get_tree().quit(1)
+		return
 	call_deferred("_run_probe")
 
 
@@ -175,7 +180,9 @@ func _handoff_event(sequence: int) -> Dictionary:
 
 
 func _write_json(relative_path: String, payload: Dictionary) -> String:
-	var path := ProjectSettings.globalize_path("res://" + relative_path)
+	var path := VerificationPaths.resolve("res://" + relative_path)
+	if path.is_empty():
+		return ""
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:

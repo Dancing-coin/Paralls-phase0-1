@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-ecology-frost-state-obligation-report.json",
-  "description": "INF-1L fixed Ecology frost crop-state obligation lifecycle through the existing event spine"
+  "description": "INF-1L fixed Ecology frost crop-state obligation lifecycle through the existing event spine",
+  "success_key": "overall_passed"
 }

@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-event-derived-bounded-due-lifecycle-view-report.json",
-  "description": "INF-2T independent proof of the closed event-derived bounded due lifecycle view"
+  "description": "INF-2T independent proof of the closed event-derived bounded due lifecycle view",
+  "success_key": "overall_passed"
 }

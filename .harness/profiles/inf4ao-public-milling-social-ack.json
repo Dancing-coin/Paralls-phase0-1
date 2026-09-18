@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf4ao-public-milling-social-ack-report.json",
-  "description": "INF-4AO exact completed public milling notice to two actor-private Social acknowledgments"
+  "description": "INF-4AO exact completed public milling notice to two actor-private Social acknowledgments",
+  "success_key": "overall_passed"
 }

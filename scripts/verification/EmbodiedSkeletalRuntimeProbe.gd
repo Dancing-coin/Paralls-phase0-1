@@ -1,10 +1,15 @@
 extends Node
 
+const VerificationPaths := preload("res://scripts/verification/VerificationPaths.gd")
+
 const MAIN_DEMO_SCENE := preload("res://scenes/phase0/MainDemo.tscn")
 const SKELETAL_PROVIDER := preload("res://scripts/character/EmbodiedSkeletalStateProvider.gd")
 
 
 func _ready() -> void:
+	if VerificationPaths.resolve(".harness/verification/.context-check").is_empty():
+		get_tree().quit(1)
+		return
 	call_deferred("_run_probe")
 
 
@@ -52,7 +57,9 @@ func _find_first_skeleton(root: Node) -> Skeleton3D:
 
 
 func _write_json(relative_path: String, payload: Dictionary) -> String:
-	var path := ProjectSettings.globalize_path("res://" + relative_path)
+	var path := VerificationPaths.resolve("res://" + relative_path)
+	if path.is_empty():
+		return ""
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:

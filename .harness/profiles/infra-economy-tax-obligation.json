@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-economy-tax-obligation-report.json",
-  "description": "INF-2Z owner-local event-derived Economy tax obligation lifecycle"
+  "description": "INF-2Z owner-local event-derived Economy tax obligation lifecycle",
+  "success_key": "overall_passed"
 }

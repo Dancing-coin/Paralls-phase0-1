@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import sys
 
-from common import evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
+from common import artifact_ref, evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
 def main() -> int:
@@ -35,7 +35,7 @@ def main() -> int:
             log_path,
         )
         checks[check] = result.returncode == 0
-        logs.append(str(log_path.relative_to(root)).replace("\\", "/"))
+        logs.append(artifact_ref(root, log_path).replace("\\", "/"))
     lifecycle_test_path = root / "backend" / "tests" / "test_semantic_effect_lifecycle.py"
     lifecycle_cases = {
         "effect_resistance_and_serialized_expiry_proposal": "test_effect_lifecycle_applies_resistance_and_emits_expiry_obligation",
@@ -49,14 +49,14 @@ def main() -> int:
             log_path,
         )
         checks[check] = result.returncode == 0
-        logs.append(str(log_path.relative_to(root)).replace("\\", "/"))
+        logs.append(artifact_ref(root, log_path).replace("\\", "/"))
     report = {
         "profile": "infra-semantic-entity-causal",
         "overall_passed": all(checks.values()),
         "checks": checks,
         "focused_test_files": [
-            str(test_path.relative_to(root)).replace("\\", "/"),
-            str(lifecycle_test_path.relative_to(root)).replace("\\", "/"),
+            artifact_ref(root, test_path).replace("\\", "/"),
+            artifact_ref(root, lifecycle_test_path).replace("\\", "/"),
         ],
         "evidence": logs,
         "run_id": f"infra-semantic-entity-causal-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
@@ -94,4 +94,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

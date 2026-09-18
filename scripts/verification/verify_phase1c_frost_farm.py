@@ -11,7 +11,7 @@ from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.frost_farm_package import frost_farm_manifest
 from app.gameplay.frost_farm_runtime import FrostFarmAuthority, project_frost_result
 from app.gameplay.replay import GameplayProjectionReplay
-from common import repo_root, verification_dir, write_json, write_markdown
+from common import artifact_path, repo_root, verification_dir, write_json, write_markdown
 from phase1b_contract_fixtures import build_effect_resistance_fixture
 
 
@@ -21,7 +21,7 @@ def main() -> int:
     parser.parse_args()
     root = repo_root()
     evidence_dir = verification_dir(root)
-    predecessor_path = evidence_dir / "phase1b-contract-verification-report.json"
+    predecessor_path = artifact_path(root, ".harness/verification/phase1b-contract-verification-report.json")
     try:
         predecessor = json.loads(predecessor_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -77,4 +77,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

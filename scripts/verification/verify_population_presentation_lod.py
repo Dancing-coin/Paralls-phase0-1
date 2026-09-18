@@ -6,7 +6,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from common import resolve_godot_exe
+from common import artifact_path, resolve_godot_exe
 
 
 def main() -> int:
@@ -36,7 +36,7 @@ def main() -> int:
         report["editor_import"] = {"command": command, "exit_code": result.returncode,
                                    "output": result.stdout + result.stderr}
         report["blocked_reason"] = "编辑器导入不能证明三档表现成本和真实可见结果，仍需运行时采样"
-    target = root / ".harness/verification/population-presentation-lod-report.json"
+    target = artifact_path(root, ".harness/verification/population-presentation-lod-report.json")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print("population_presentation_lod_status=godot_unverified")
@@ -44,4 +44,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

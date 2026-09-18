@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf1ak-public-project-step-completion-report.json",
-  "description": "INF-1AK exact Organization fulfilled public-project work order to Construction project-step completion"
+  "description": "INF-1AK exact Organization fulfilled public-project work order to Construction project-step completion",
+  "success_key": "overall_passed"
 }

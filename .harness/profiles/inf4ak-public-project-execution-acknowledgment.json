@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf4ak-public-project-execution-acknowledgment-report.json",
-  "description": "INF-4AK exact funded public-project execution to Government administrative acknowledgment"
+  "description": "INF-4AK exact funded public-project execution to Government administrative acknowledgment",
+  "success_key": "overall_passed"
 }

@@ -6,5 +6,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/phase1c-frost-farm-report.json",
-  "description": "Bounded frost-farm effect/resistance settlement, replay, and scope projection proof; requires P1B contract verification"
+  "description": "Bounded frost-farm effect/resistance settlement, replay, and scope projection proof; requires P1B contract verification",
+  "success_key": "overall_phase1c_frost_farm_passed"
 }

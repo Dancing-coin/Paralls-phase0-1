@@ -6,7 +6,7 @@
   "rules": [
     {
       "id": "lifecycle_feature_ledger_exists",
-      "title": "Harness feature ledger exists with pass/evidence entries",
+      "title": "Harness feature ledger records static capabilities without claiming current verification",
       "evidence": [
         ".harness/verification/harness-lifecycle-report.json:results.lifecycle_feature_ledger_exists"
       ]
@@ -27,7 +27,7 @@
     },
     {
       "id": "lifecycle_retention_policy_exists",
-      "title": "Retention policy defines baseline, diff, and run archive handling",
+      "title": "Retention policy requires temporary owned evidence, cleanup, and explicit external export",
       "evidence": [
         ".harness/verification/harness-lifecycle-report.json:results.lifecycle_retention_policy_exists"
       ]

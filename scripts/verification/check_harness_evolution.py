@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from common import repo_root, verification_dir, write_json, write_markdown
+from run_context import run_scope
 from evolution import (
     analyze_harness_evolution,
     evaluate_harness_evolution as evaluate_evolution_surface,
@@ -44,10 +45,12 @@ def main() -> int:
     print(f"harness_evolution_report_json={json_path}")
     print(f"harness_evolution_report_md={md_path}")
     print(f"overall_harness_evolution_passed={combined['overall_harness_evolution_passed']}")
+    print(f"effectiveness={combined['effectiveness']}")
     for entry in combined["results"]:
         print(f"{entry['id']}={entry['status']}")
     return 0 if combined["overall_harness_evolution_passed"] else 1
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    with run_scope(repo_root()):
+        raise SystemExit(main())

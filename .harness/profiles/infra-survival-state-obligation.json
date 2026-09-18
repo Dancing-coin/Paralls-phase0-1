@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-survival-state-obligation-report.json",
-  "description": "INF-1A Survival-owned durable state and scheduled expiry obligation vertical"
+  "description": "INF-1A Survival-owned durable state and scheduled expiry obligation vertical",
+  "success_key": "overall_passed"
 }

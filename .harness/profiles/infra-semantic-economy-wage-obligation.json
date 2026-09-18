@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-semantic-economy-wage-obligation-report.json",
-  "description": "INF-1J closed semantic wage effect route to existing Economy obligation owner"
+  "description": "INF-1J closed semantic wage effect route to existing Economy obligation owner",
+  "success_key": "overall_passed"
 }

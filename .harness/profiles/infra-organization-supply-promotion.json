@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-organization-supply-promotion-report.json",
-  "description": "INF-4O fixed Organization supply promotion through the existing production event spine"
+  "description": "INF-4O fixed Organization supply promotion through the existing production event spine",
+  "success_key": "overall_passed"
 }

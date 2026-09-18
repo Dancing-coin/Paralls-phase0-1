@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf-p-federated-gameplay-extension-platform-report.json",
-  "description": "INF-P immutable GameplayPatchManifest v2 admission, canonical digest, snapshot retention, and read-only capability-binding boundary"
+  "description": "INF-P immutable GameplayPatchManifest v2 admission, canonical digest, snapshot retention, and read-only capability-binding boundary",
+  "success_key": "overall_passed"
 }

@@ -6,5 +6,6 @@
   "requires_godot": true,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/esm-physical-channel-world-actuation-report.json",
-  "description": "Backend/static Godot contract proof for ESM physical channel effects, constraint gating, observation refs, and orchestration merge into the unified result family"
+  "description": "Backend/static Godot contract proof for ESM physical channel effects, constraint gating, observation refs, and orchestration merge into the unified result family",
+  "success_key": "overall_esm_physical_channel_world_actuation_passed"
 }

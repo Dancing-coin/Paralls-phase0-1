@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-population-world-mode-report.json",
-  "description": "INF-4R typed SocialFactAuthority world-mode input admission and zero-write evidence"
+  "description": "INF-4R typed SocialFactAuthority world-mode input admission and zero-write evidence",
+  "success_key": "overall_passed"
 }

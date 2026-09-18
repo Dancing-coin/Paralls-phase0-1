@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from common import repo_root, verification_dir, write_json, write_markdown
+from common import artifact_path, repo_root, verification_dir, write_json, write_markdown
 
 
 SCHEMA_VERSION = "llm-integration-closure.v1"
@@ -49,9 +49,8 @@ def _result(report: dict[str, object], result_id: str) -> dict[str, object] | No
 
 def build_report() -> dict[str, object]:
     run_id = os.getenv("LLM_CLOSURE_RUN_ID", "")
-    log_dir = verification_dir(repo_root())
     artifacts: dict[str, dict[str, object] | None] = {
-        name: _load_json(log_dir / filename) for name, filename in SOURCE_FILES.items()
+        name: _load_json(artifact_path(repo_root(), f".harness/verification/{filename}")) for name, filename in SOURCE_FILES.items()
     }
     errors: list[str] = []
     fresh_artifacts: dict[str, bool] = {}
@@ -148,7 +147,6 @@ def _claim_siming(report: dict[str, object], errors: list[str]) -> str:
 
 def main() -> int:
     report = build_report()
-    log_dir = verification_dir(repo_root())
     write_json(log_dir / REPORT_JSON, report)
     write_markdown(log_dir / REPORT_MD, "LLM Integration Closure", report, "overall_llm_integration_closure_passed")
     print(f"llm_integration_closure_report_json=.harness/verification/{REPORT_JSON}")
@@ -159,4 +157,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

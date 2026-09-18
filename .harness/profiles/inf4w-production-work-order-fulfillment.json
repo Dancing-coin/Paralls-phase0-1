@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf4w-production-work-order-fulfillment-report.json",
-  "description": "INF-4W exact INF-4V accepted contribution to Organization work-order fulfillment"
+  "description": "INF-4W exact INF-4V accepted contribution to Organization work-order fulfillment",
+  "success_key": "overall_passed"
 }

@@ -8,6 +8,8 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+from common import artifact_path, artifact_ref
+
 from common import repo_root, verification_dir, write_json, write_markdown
 from vla_advisory_benchmark_metrics import MINIMUM_STATISTICAL_SAMPLE_COUNT, build_sample_record, summarize_route
 
@@ -60,7 +62,7 @@ def main() -> int:
                     command_status = "completed" if completed.returncode == 0 else "nonzero_exit"
                 except subprocess.TimeoutExpired:
                     command_status = "benchmark_command_timeout"
-                report_path = evidence_dir / report_name
+                report_path = artifact_path(root, f".harness/verification/{report_name}")
                 if not report_path.is_file():
                     samples.append({"route": route, "status": command_status, "archived_report": ""})
                     continue
@@ -68,7 +70,7 @@ def main() -> int:
                 archived = run_dir / f"{sample_label}-{route}-{index + 1}.json"
                 shutil.copy2(report_path, archived)
                 payload = _read_json(archived)
-                record = build_sample_record(payload, archived_report=str(archived.relative_to(root)))
+                record = build_sample_record(payload, archived_report=artifact_ref(root, archived))
                 record["command_status"] = command_status
                 record["annotation_sample_id"] = annotation_sample_id
                 samples.append(record)
@@ -108,4 +110,8 @@ def _read_json(path: Path) -> dict[str, object]:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

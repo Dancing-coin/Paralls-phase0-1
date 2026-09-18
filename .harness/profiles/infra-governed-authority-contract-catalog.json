@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-governed-authority-contract-catalog-report.json",
-  "description": "INF read-only catalog of existing owner-bound policy, settlement, ecology and branch contracts"
+  "description": "INF read-only catalog of existing owner-bound policy, settlement, ecology and branch contracts",
+  "success_key": "overall_passed"
 }

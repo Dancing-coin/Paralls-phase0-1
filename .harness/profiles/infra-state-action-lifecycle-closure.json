@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-state-action-lifecycle-closure-report.json",
-  "description": "INF-1O constrained StateDefinition dispel/transform lifecycle through existing Survival owner fragments"
+  "description": "INF-1O constrained StateDefinition dispel/transform lifecycle through existing Survival owner fragments",
+  "success_key": "overall_passed"
 }

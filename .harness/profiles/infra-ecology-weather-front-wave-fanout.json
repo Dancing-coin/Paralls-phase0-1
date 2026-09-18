@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-ecology-weather-front-wave-fanout-report.json",
-  "description": "INF-3F bounded two-wave Ecology-only weather-front fanout"
+  "description": "INF-3F bounded two-wave Ecology-only weather-front fanout",
+  "success_key": "overall_passed"
 }

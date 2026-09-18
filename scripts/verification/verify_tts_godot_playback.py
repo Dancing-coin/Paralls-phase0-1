@@ -10,6 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 from app.config import settings
 from app.services.tts_service import TTSProviderError, TTSService
 from app.services.tts_voice_profiles import TTSVoiceProfileError
+from common import artifact_ref
+
 from common import (
     ensure_backend,
     read_text,
@@ -126,7 +128,7 @@ def _run_actor(project_root: Path, evidence_dir: Path, godot_exe: Path, actor_id
         "real_godot_playback_verified" if succeeded else "godot_playback_failed",
         "spatial_voice_controller_played_complete_clip" if succeeded else _failure_reason(log),
         binding=_binding_metadata(binding),
-        log_artifact=str(log_path.relative_to(project_root)).replace("\\", "/"),
+        log_artifact=artifact_ref(project_root, log_path).replace("\\", "/"),
     )
 
 
@@ -176,4 +178,8 @@ def _report_results(status: str, reason: str, actor_results: list[dict[str, obje
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from pathlib import Path
+    from run_context import run_scope
+
+    with run_scope(Path(__file__).resolve().parents[2]):
+        raise SystemExit(main())

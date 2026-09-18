@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-semantic-state-owner-matrix-report.json",
-  "description": "INF-1F registered Survival state/effect owner matrix without new owner admission"
+  "description": "INF-1F registered Survival state/effect owner matrix without new owner admission",
+  "success_key": "overall_passed"
 }

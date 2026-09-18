@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/inf4v-production-work-contribution-acceptance-report.json",
-  "description": "INF-4V exact Production completion evidence to Organization work-contribution acceptance"
+  "description": "INF-4V exact Production completion evidence to Organization work-contribution acceptance",
+  "success_key": "overall_passed"
 }

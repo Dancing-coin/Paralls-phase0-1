@@ -19,10 +19,10 @@
       ]
     },
     {
-      "id": "ci_runs_full_harness_profile",
-      "title": "CI workflow invokes the full harness profile",
+      "id": "ci_runs_static_suites",
+      "title": "Hosted CI invokes smoke and contract suites",
       "evidence": [
-        ".harness/verification/release-gate-report.json:results.ci_runs_full_harness_profile"
+        ".harness/verification/release-gate-report.json:results.ci_runs_static_suites"
       ]
     },
     {

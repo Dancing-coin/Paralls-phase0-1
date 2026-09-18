@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-commerce-delivery-payment-report.json",
-  "description": "INF-2AA exact Economy-owned delivery payment and compensation contract"
+  "description": "INF-2AA exact Economy-owned delivery payment and compensation contract",
+  "success_key": "overall_passed"
 }

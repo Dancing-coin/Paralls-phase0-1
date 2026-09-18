@@ -6,5 +6,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/character-memory-consistency-report.json",
-  "description": "Backend proof of actor-known memory, bounded recall, recheck, and explicitly authorized Siming correction"
+  "description": "Backend proof of actor-known memory, bounded recall, recheck, and explicitly authorized Siming correction",
+  "success_key": "overall_character_memory_consistency_passed"
 }

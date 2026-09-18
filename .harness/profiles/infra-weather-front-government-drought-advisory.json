@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-weather-front-government-drought-advisory-report.json",
-  "description": "INF-3R fixed project-scoped weather:drought front to existing Government advisory row"
+  "description": "INF-3R fixed project-scoped weather:drought front to existing Government advisory row",
+  "success_key": "overall_passed"
 }

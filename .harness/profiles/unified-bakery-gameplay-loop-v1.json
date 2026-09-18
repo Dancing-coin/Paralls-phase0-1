@@ -7,5 +7,6 @@
   "include_in_profile_order": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/unified-bakery-gameplay-loop-v1-report.json",
-  "description": "Three committed bakery periods and read-only owner-bound Godot mirror evidence"
+  "description": "Three committed bakery periods and read-only owner-bound Godot mirror evidence",
+  "success_key": "overall_passed"
 }

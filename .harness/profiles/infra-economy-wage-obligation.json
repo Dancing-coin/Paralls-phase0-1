@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-economy-wage-obligation-report.json",
-  "description": "INF-2C one Economy wage-accrual obligation lifecycle row"
+  "description": "INF-2C one Economy wage-accrual obligation lifecycle row",
+  "success_key": "overall_passed"
 }

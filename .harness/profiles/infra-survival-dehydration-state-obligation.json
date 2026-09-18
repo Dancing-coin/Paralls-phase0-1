@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/infra-survival-dehydration-state-obligation-report.json",
-  "description": "INF-1E closed dehydration-exposure to dehydrated Survival owner row"
+  "description": "INF-1E closed dehydration-exposure to dehydrated Survival owner row",
+  "success_key": "overall_passed"
 }

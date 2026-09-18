@@ -8,5 +8,6 @@
   "requires_godot": false,
   "max_attempts": 1,
   "result_artifact": ".harness/verification/post-p5-capability-foundation-docs-report.json",
-  "description": "Static documentation-gate verification for the post-P5 capability foundation; it does not prove F0-F2, P6, or P7 runtime completion"
+  "description": "Static documentation-gate verification for the post-P5 capability foundation; it does not prove F0-F2, P6, or P7 runtime completion",
+  "success_key": "overall_post_p5_capability_foundation_docs_passed"
 }
