@@ -2,17 +2,17 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: 执行时使用 superpowers:executing-plans；明确采用子代理方式时使用 superpowers:subagent-driven-development。按复选框逐项执行；甲方合同未交接的依赖任务不能用临时模型绕开。
 
-**Goal:** 人员乙交付农民/老王的共享角色模块、洪灾参与内容、群体压力和玩家交集样板、真实供应承诺与 Character Core 回流，以及受约束洪灾模型模板。
+**Goal:** 人员乙交付农民/老王的共享角色模块、洪灾参与内容、群体压力和玩家交集样板、真实供应承诺与 Character Core 回流；M 首期只做一个固定的日供给分片可行性计算器。
 
 **Architecture:** 模块和编译器只输出候选。原 PopulationPlanner/Siming/capability 选择与治理，领域 Owner 接纳事实，Character Core 接纳连续性；全部消费人员甲维护的一份共享合同与锁。Godot 展示可核验结果。
 
 **Tech Stack:** 现有 Python、Pydantic、pytest、Gameplay Foundation、Character Core、Godot GDScript 与 Harness；首个模型使用固定规则和标准库。
 
-**Spec:** [整合规格](../../specs/world-character-siming-authority-mainline/2026-09-18-character-population-social-causality-integrated-design.md)，组织修订 `2026-09-18-r2`。配套为[计划 A](2026-09-18-population-continuity-runtime-implementation-plan.md)。
+**Spec:** [整合规格](../../specs/world-character-siming-authority-mainline/2026-09-18-character-population-social-causality-integrated-design.md)，组织修订 `2026-09-18-r3`。配套为[计划 A](2026-09-18-population-continuity-runtime-implementation-plan.md)。
 
 **Status:** `planned; implementation_not_started`。本文件是本轮要求的第二份计划。甲、乙为人员角色占位；下列新增函数、类型、文件、测试和 profile 是拟实施内容，不声称已在仓库存在。
 
-**核查基线:** `D:/Paralls-phase0-1`，HEAD `83fa2b33`。执行前核对最终整合提交及 A 的交接版本，保留其他任务的工作区变更。
+**核查基线:** `D:/Paralls-phase0-1`，本轮复审 HEAD `d9b810f3`。执行前核对最终整合提交及 A 的交接版本，保留其他任务的工作区变更。
 
 ## Global Constraints
 
@@ -21,12 +21,12 @@
 - “模块、模型、Siming、图谱和 Godot 不直接写库存、账户、关系、法律、人口、空间或角色私有记忆。”
 - 原型、个体覆盖、情境与确认约束全部交给 A1 的统一参与解析；乙不维护另一套准入结果。
 - 个体覆盖首版只收紧或细化；未声明字段默认 individual_only。允许统计不等于允许回填。
-- B0 编译器输出只到 cohort/shard/pool/route/process batch；个人允许增量仅由已登记基线分摊规则生成、Character Core 接纳。
+- B0 计算器输出只到 cohort/shard/pool/route/process batch；首期只读汇总与升级类别，distribution_policy=none，不从平均值生成个人增量。当前按 actor 连续积分及明确 actor 的真实 Owner 回流保持原路径；安全群体分摊另需独立合同和证据。
 - `schedule_gated_supply` 的成功事实是 `gameplay.organization.commerce_commitment_accepted`。它不是已交付粮食、已入住避难所或已完成迁移。
 - Character Core 通过现有 `CharacterContinuityService`/runtime 接纳；乙只构造输入和来源关联，不直接访问其状态写入、五池记忆或游标。
 - 成功、拒绝、stale、duplicate、requeue 都是正式结果。恢复先复用已确认 Owner receipt，再补连续性，不能重新执行世界操作。
 - Godot 只有实际后端、边界消息、场景可见结果齐全才算通过；样板录像/截图必须可关联到当次输入和 receipt。
-- 两份 plan 共用 A 第 1–2 节的文件归属、D0/H1–H4/HM 和 G-M/G-E/G-F；不复制一套共同调度表。
+- 两份 plan 共用 A 第 1–2 节的文件归属、D0/H1–H4、HM0→HM1→HM2 和 G-M/G-E/G-F；不复制一套共同调度表。M 不要求先完成 C 的全部角色帧、账本、交接和通用密码本。
 - 新 Harness 证据按 [当前指南](../../../harness.md) 导出到仓库外并清理本轮资源，不能沿旧计划把生成报告长期放 `.harness/verification/`。
 
 开源依据沿用[项目与开源对照](../../../reference/2026-09-18-social-simulation-open-source-comparison.md)：B1/B5 借鉴 Generative Agents/Concordia 的历史影响与认知组件；BM1 借鉴 NetworkX/OR-Tools 的有界图/约束算法表达，首版保持标准库固定算子。Concordia 的默认 LLM 结果裁决和 AgentSociety 的 CodeGen 写工具不进入本项目 Owner/纯编译边界；Habitat-Sim 仅用于后继具身测试方法参照。
@@ -35,7 +35,9 @@
 
 **乙负责既有文件：** `backend/app/population_continuity/seed_planner.py`、`owner_adapters.py`、`inventory_owner_adapter.py`、`social_owner_adapter.py`、`domain_projection_sources.py`、`vertical.py`；只修改当前任务真实涉及的项，不对后两类 adapter 做顺带重构。
 
-**乙新增窄文件：** `backend/app/population_continuity/character_modules.py`、`flood_scenario.py`、`flood_vertical.py`、`social_model_inputs.py`、`flood_model.py`。下列任务逐项说明用途；并非新 runtime 或事实库。
+**乙新增窄文件：** `backend/app/population_continuity/character_modules.py`、`flood_scenario.py`、`flood_vertical.py`、`daily_supply_inputs.py`、`daily_supply_calculator.py`。下列任务逐项说明用途；并非新 runtime 或事实库。旧计划尚未创建的 social_model_inputs.py/flood_model.py 不再作为实施目标。
+
+**先复用的读取：** [SocialFactAuthority](../../../../backend/app/gameplay/p5/social_knowledge.py)、[FrozenSocialPlanningInput](../../../../backend/app/population_continuity/social_input.py)、[HouseholdScheduleInput/OrganizationScheduleInput](../../../../backend/app/population_continuity/source_inputs.py)。Heavenly Graph 经既有 relation/causal 查询可选发现候选；不为首期修改 [Authority projector](../../../../backend/app/services/authority_graph_projector.py) 来补全社会图。
 
 **乙不直接修改：** A 维护的共享模型、`batch.py`、`activation.py`、`world.py`、Core service/runtime、`main.py`、Siming 入口、world driver、公共 Harness/CI。需要这些文件的业务接线时，乙交付调用要求、真实 fixture 与测试，由甲在 A3/A5/AM1 接入。
 
@@ -45,11 +47,11 @@
 
 | 任务 | 交接物 | 甲消费位置 |
 | --- | --- | --- |
-| B1/B2 | 模块定义、字段保护、原型/情境策略及完整样板输入 | A1 参与解析、A2 分片/分摊 |
+| B1/B2 | 模块定义、字段保护、原型/情境策略及完整样板输入 | A1 参与解析、A2 分片/保护 |
 | B3 | 群体候选与玩家交集输入，不能夹带世界成功状态 | A2/A3/A5 |
 | B4 | 原 capability 的真实 Owner 成功/失败回执、原 read-set | A5 公共链路 |
 | B5 | seed/continuity 转换、暴露依据与恢复测试；Godot 证据 | A3/A5 Core 接纳和总验收 |
-| BM1 | 固定模板、纯计算入口、最小卡输入与行为对照 | AM1 运行/审计、A5 验证接线 |
+| BM1 | 单个日供给固定函数、八维输入、覆盖率报告、planner 对照 | AM1 的 HM0/HM1/HM2，不等待 A5 |
 | G-M | aggregate 操作逐项准入表及已有/缺失能力证据 | 甲核验完整读集与提交边界后共同派生 active 任务 |
 
 ## 2. B1：农民简易模块与保护字段
@@ -153,7 +155,7 @@ resolution = resolve_participation(policies=policies, tick=current_tick)
 
 **Interfaces:** `FloodPopulationFixture.create() -> FloodPopulationFixture`、`run_window(*, from_tick: int, to_tick: int, player_actor_ref: str | None = None) -> PopulationCycleResult`。fixture 暴露只读检查方法 `identity_digest(actor_ref)`、`member_state(actor_ref)`、`business_events()`，以及实际 `store` 和 `character_runtime`；生产流程仍调用原 Siming 入口。群体计算消费 A2 ledger，交集消费 A3 IntersectionPacket。
 
-固定样板：初始疲劳 0.2、食物压力 0.1；道路风险来自获权情境或确认卡并保留其证据状态。整体统计只使用许可字段；家庭/种子/旧识只能驱动保护与升级，不进入平均分摊。B0 不输出每人损失、获救或死亡列表。
+固定样板：初始疲劳 0.2、食物压力 0.1；这些值沿当前按 actor 连续推进。道路风险来自获权情境或确认卡并保留其证据状态。整体统计只做许可字段读侧汇总；家庭/种子/旧识只能驱动保护与升级，不进入平均分摊。B0 不输出每人损失、获救或死亡列表；统计生成和报告重算不能改变个人 fatigue/饥饿/位置/记忆。
 
 - [ ] 验证同样板/seed/输入次序打乱后统计和分片一致；玩家接近只对目标触发交接，不强制唤醒全村。
 
@@ -172,7 +174,7 @@ def test_player_intersection_keeps_identity_without_fake_rescue():
 `flood_rescue_completed` 是禁止伪造的样板结果标记，不注册该事件。真实 GameplayEvent 的字段是 event_type；另外枚举当前样板已准入事件族，未知或越界世界效果均让测试失败，避免仅匹配一个禁用名称。
 
 - [ ] 运行 `python -m pytest tests/test_population_flood_cohort.py -v`，先确认无交接/错误身份/假成功能被检测。
-- [ ] 最小实现：从 B1 候选生成现有 PopulationProjection，携带原 pins，经 A 的统一选择/交接路径推进；允许分摊交由 A2 的消费接口和 Core 接纳，不由 fixture 修改状态。
+- [ ] 最小实现：从 B1 候选生成现有 PopulationProjection，携带原 pins，经 A 的统一选择/交接路径推进；A2 只消费可明确归因的原按 actor 确认结果，cohort 均值不转成个人输入。fixture 不修改状态；BM1 advisory 的升级类别不会自动调用此交接入口。
 
 ```python
 if player_actor_ref is not None:
@@ -290,62 +292,87 @@ else:
 - [ ] 乙提交 focused tests 和场景 probe，由甲注册 requires_godot=true 的 `population-flood-scene` profile。通过 runner：`python scripts/verification/harness.py --profile population-flood-scene`；报告失败必须传递非零退出码。
 - [ ] `git diff --check`；提交可按“领域到角色连续性回流”和“洪灾可见样板”两个独立审查结果组织；交付 H4，所有测试原始产物按当前 retention 规则清理。
 
-## 7. BM1：受信洪灾模板、领域卡与纯计算
+## 7. BM1：日供给分片输入与单个可行性计算器
 
-**对应：** M shadow/advisory；AC-10、AC-13；AC-12 仅覆盖 B0 无逐人分配部分。**依赖：** B1/B2、A4 与 AM1 接口；不反向阻塞 C0–C7。
+**对应：** M shadow/advisory；AC-10、AC-13、AC-21/22；AC-12 仅覆盖 B0 无逐人分配部分。**依赖：** D0 与 AM1 的最小合同；不等待 B1–B5、A1–A4 或完整 C0–C7。洪灾是可选输入扰动，不是建立完整洪灾运行时的前置条件。
 
-**Files:** Create `backend/app/population_continuity/social_model_inputs.py`、`flood_model.py`、`backend/tests/test_social_model_flood_template.py`、`test_social_model_owner_cards.py`；共享 `backend/app/models/social_model.py` 由甲维护；固定样板数据扩展 B2 的 fixture 文件。
+**Files:** Create `backend/app/population_continuity/daily_supply_inputs.py`、`daily_supply_calculator.py`、`backend/tests/test_daily_supply_calculator.py`、`test_daily_supply_owner_inputs.py`。共享 `backend/app/models/social_model.py` 和 shadow 对照测试由甲维护；固定算例在乙的测试 fixture 中定义。优先直接调用既有窄读侧，不为单个计算器新增通用读取回调或模板解释器。
 
-**Interfaces：**
+**Interfaces（新接口；类型由 AM1 唯一定义）：**
 
 ```python
-def flood_template() -> SocialModelTemplate: ...
+def daily_supply_template() -> SocialModelTemplate: ...
 
-def read_flood_cards(
-    *, read_set: PopulationReadSet, grant: ModelRunGrant,
-    read_fact: Callable[[str, ModelRunGrant], FactCard],
-) -> tuple[FactCard, ...]: ...
+def freeze_daily_supply_inputs(
+    *, social: FrozenSocialPlanningInput,
+    household: HouseholdScheduleInput,
+    organization: OrganizationScheduleInput,
+    owner_cards: tuple[FactCard, ...], grant: ModelRunGrant,
+) -> FrozenModelInput: ...
 
-def compile_flood_model(
-    *, template: SocialModelTemplate, inputs: FrozenModelInput,
-    seed: str, budget_units: int,
+def calculate_daily_supply(
+    inputs: FrozenModelInput, *, budget_units: int,
 ) -> ModelComputation: ...
 ```
 
-`read_flood_cards` 消费来源已验证的 Owner 投影，只以它定位固定模板声明的 card refs，再调用 read_fact 回查。read_fact 由现有 runtime 注入获权 Owner 读侧，输入是获准 card_ref 和 grant，输出是 Owner 签发 FactCard；请求方不能提供 callback、任意 stream 或执行代码。projection 本身不能自签 proof，缺签发来源返回 owner_unavailable/context_insufficient。Proof/CodebookReadReceipt 由 A4/既有 Owner 读取返回。`ModelComputation` 由 AM1 定义，包含 status、candidates、work_units、diagnostics；AM1 补运行授权、输入/输出 digest、cache 和审计 receipt。
+`daily_supply_template` 是源码内唯一的 `daily-shard-supply@1` 定义。输入限一个已确认名单/版本的分片、一个资源单位、一条已确认路线、一个游戏日；纯函数不读 Owner、不访问图谱、不读取墙钟或随机数、不写任何 store。`freeze_daily_supply_inputs` 由服务端固定读链调用，校验并复制输入；不接受用户上传的事实卡、自签来源证明或任意 callback。卡是既有 Owner 获权读取结果的窄封装，并不要求 A4 通用密码本先完成。
 
-模板名称固定为 `flood-resource-pressure@1`，类别限八类目录内的资源流量、空间可达性、约束与分配、风险与聚合组合。首版纯算子只做获权总量汇总、短缺区间、已确认可达边筛选和有限分片候选排序；不因八类 taxonomy 就提前建设八套求解平台。
+### BM1.1 / HM0：八个维度进入同一条计算链
 
-输入最少为确认 resource-pool 总量、群体需求区间、道路能力/风险、参与摘要和模板 policy pins。缺需求/容量等必要输入返回 context_insufficient；未知值不能当成 0。未确认具身观察只影响风险或复核建议，不删除确认道路边。B0 输出不得含 actor 分配表、个人伤亡或 custody owner 变更。
+| 固定顺序 | 消费的确认输入与最小行为 | 反例与验收 |
+| --- | --- | --- |
+| 1. 资格与关系 | 固定分片名单、成员/领用资格、家庭/照护保护及授权范围 | 未知资格或无权读取不能静默删人后提高覆盖率；关系好感不授予领粮权 |
+| 2. 资源保管与流量 | 同单位可用量、来源保管地、已占用量的投影口径 | 可用量已扣 reservation 时不再扣；重复来源不重复计数 |
+| 3. 空间可达 | Owner 确认路线可用性、时延、窗口运力及容量倍率 | 确认关闭可计算零送达；只有图谱边或未知路线不得当畅通/关闭 |
+| 4. 流程 | 该固定供给流程是否允许在窗口内配给/交付 | 已关闭产生明确阻塞；计算器不能把“正在运输”改成“已交付” |
+| 5. 承诺与时间表 | 确认最低需求、截止时间、班次和声明的优先级 | 到达时间越过截止点产生阻塞；受保护需求影响冲突/升级类别，不选个人赢家 |
+| 6. 约束与分配 | 资源上限、运力、需求区间与固定优先规则联合求界 | 容量小于库存时按容量限制；仅输出分片可行性，不做预留或逐人配给 |
+| 7. 风险 | 来源和规则版本化的送达比例区间 | [0.48,0.62] 等区间确定性折减；未知风险不默认安全，不模拟随机传播 |
+| 8. 读侧汇总 | 汇总覆盖率、阻塞原因、必须复核/升级的对象类别 | 无 actor allocation、个人状态/记忆/游标回填或自动交接 |
 
-- [ ] 一组固定输入：获权总量 100、需求区间 [120,140]，输出短缺 [20,40]；相同参数/seed/digest 的结果一致，不写任何 store。
+关系、流程和承诺是此固定计算的输入条件，不各自实现引擎。组织 schedule 的存在不代表已有所有供给流程/期限语义；每个字段须给出 Owner 读取与版本依据，缺口遵循 BM1.2。保护对象只输出获权类别；具体对象展开和是否升级由后续合法消费者决定。
 
-```python
-def test_flood_model_reports_aggregate_shortage_without_assigning_people(model_case):
-    result = compile_flood_model(
-        template=flood_template(),
-        inputs=model_case.frozen_inputs(stock=100, demand_min=120, demand_max=140),
-        seed="flood:20260918", budget_units=100,
-    )
-    assert result.status == "ok"
-    assert model_case.shortage_interval(result) == (20, 40)
-    assert not model_case.contains_individual_allocation(result)
-    assert model_case.business_event_count() == 0
-```
-
-`model_case` 在本测试中创建符合 AM1 schema 的真实冻结卡和向量，shortage_interval/contains_individual_allocation 仅读取 CandidateEnvelope typed payload；不得修改运行结果使断言通过。
-
-- [ ] `python -m pytest tests/test_social_model_flood_template.py tests/test_social_model_owner_cards.py -v`，确认空实现、把未知当 0、未确认道路当阻断或逐人输出都会失败。
-- [ ] 最小实现：固定 IR 和算子顺序，确定性工作单位截断；预算不够返回 budget_exhausted，不能偷跑完毕或输出假精确解。
+- [ ] 先写固定数值与八维反例测试。标准输入为确认可用量 100、窗口运力 100、容量倍率 1、送达比例 [0.48,0.62]、需求 [120,140]、全部资格确认、流程允许且期限足够。
 
 ```python
-shortage_min = max(0, demand_min - confirmed_stock)
-shortage_max = max(0, demand_max - confirmed_stock)
+def test_daily_supply_reports_bounds_without_individual_assignment(model_case):
+    frozen = model_case.standard_inputs()
+    first = calculate_daily_supply(frozen, budget_units=100)
+    second = calculate_daily_supply(frozen, budget_units=100)
+    assert first == second
+    assert first.status == "ok"
+    assert first.report.demand_units == (120, 140)
+    assert first.report.confirmed_supply_units == 100
+    assert first.report.reachable_supply_units == (48, 62)
+    assert first.report.coverage_bps == (3428, 5167)
+    assert model_case.business_snapshot() == model_case.initial_snapshot
 ```
 
-- [ ] 增加 privacy denial、expiry、graph unavailable/degraded、source changed、缓存旧向量和未确认具身风险用例；图谱发现的关系必须回查来源 Owner。AM1 审计保留 read receipts、pins、预算和拒绝状态。
-- [ ] 对“有照护责任/无责任”“道路确认关闭前/后”做固定输入对照；与简单总量启发式比较约束违反率和计算工作量。不把模型结果自然语言更长作为行为效果改进。
-- [ ] 交付 HM 给甲运行 `social-model-compiler-contract`；`git diff --check`。提交边界为“洪灾受信模型与纯候选计算”，模式保持 shadow/advisory。
+`model_case` 构造符合 AM1 schema 的固定冻结输入；标准 fixture 明确标为合成语义数据，不能证明真实 Owner 接入。业务快照包括 Owner/Core/成员游标，不计模型审计。通过 schema 额外字段拒绝和输出检查证明不能携带逐人分配。
+
+- [ ] 执行 `python -m pytest tests/test_daily_supply_calculator.py -v`，确认缺算子、忽略容量/期限、未知当 0 和逐人输出均能被测试发现。
+- [ ] 最小实现使用标准库整数/有理数，按上述固定顺序求值，稳定排序、在固定检查点扣工作单位；预算不足返回 budget_exhausted，无伪完整报告。先无缓存、无动态 IR、无多路线优化。
+
+对于资格/流程/期限允许的输入，先求 `base = min(confirmed_available, window_capacity × capacity_factor)`，再求 `reachable = [floor(base × risk_min), ceil(base × risk_max)]`。倍率限定在已登记物理含义和范围内，运力已换算为同一窗口、同一资源单位，避免重复折减。
+
+覆盖率下界为 `floor(10000 × reachable_min / demand_max)`，上界为 `ceil(10000 × reachable_max / demand_min)`，均夹到 0–10000；需求 [0,0] 返回空覆盖率/not_required，下界为 0、上界大于 0 时覆盖率上界按 10000 处理。派生短缺为 `[max(0, demand_min - reachable_max), max(0, demand_max - reachable_min)]`，标准输入应为 [58,92]。这些是保守区间，不代表每个端点组合都能同时发生。
+
+- [ ] 补充已知关闭/逾期、零需求、单位不一致、重复资源、已扣 reservation、保护优先级冲突和输入顺序变换用例。已确认阻塞可报告可达量 0 并保留阻塞原因；未知或无权不得借此返回确定的零供给完整报告。
+
+### BM1.2 / HM1：Owner 窄输入与既有 planner 对照
+
+- [ ] 乙先交付字段来源表：每个字段的实际 Owner 方法、事实含义、reader/purpose、单位、完整性边界、revision/expiry 与缺失行为。社会读取复用 SocialFactAuthority 与 FrozenSocialPlanningInput；硬成员/班次复用 HouseholdScheduleInput、OrganizationScheduleInput。Inventory 的 reservation/custody 与 Organization 的 operating window 仅按各自真实语义映射。
+- [ ] 空间/路线容量、供给阶段、承诺优先级及完整分片名单若没有已准入窄读取，返回 context_insufficient 并记录 source_contract_missing 原因。Ecology hazard 或一条图谱边不自动等于运输能力；不编造通用 route_capacity API，不借本任务补成新事实 Owner。可先完成 HM0；缺必需真实来源时 HM1 不通过、HM2 不开放完整报告，fixture 不冒充 live 输入。
+- [ ] 从原 Owner 读取当前 revision，完成输入深层复制、内容 digest、recipient/purpose、观察时间、有效期和分片/查询集合版本验证。FrozenSocialPlanningInput 的已有 listed-stream 校验须复用，但不足以单独证明集合没有新增/撤销相关事实。
+- [ ] 图谱仅可选发现与解释；命中仍回查对应 Owner，查无结果不等于无关系。graph projector 未覆盖 gameplay.social.*，首期不补造同步服务。图谱不可用但全部 Owner 直接读取齐全时仍可计算并记录 graph_degraded；缺必要事实或权限时拒绝完整报告。
+- [ ] 执行 `python -m pytest tests/test_daily_supply_owner_inputs.py -v`。真实 Owner 变更每个相关 revision 后旧报告失效；只读依赖、名单新增、授权撤销、到期、内容篡改均覆盖。Owner 未变且同一冻结时刻/版本重算必须一致。
+- [ ] 将输入适配交给甲的 `test_daily_supply_shadow_comparison.py`。复用 `PopulationPlanner.plan_from_social_input/plan_from_source_inputs` 的适用只读路径与同一快照；模型可以读取更多已声明资源约束，共享输入必须同源同版本。记录 planner 原选择、模型覆盖率/阻塞/升级类别、差异原因和工作单位；不强迫两者输出相同，也不自动替换原选择。
+
+### BM1.3 / HM2：可见建议与交付
+
+- [ ] 甲完成 HM1 后，乙提供“供给不足”“应复核路线”“受保护家庭需 B2 复核”等获权类别与原因，由 AM1 唯一只读入口呈现；不携带私有关系原文，不自动调用 B3 交接或 Owner 协议。
+- [ ] 与甲联合运行 `python scripts/verification/harness.py --profile social-model-compiler-contract`，分别列 HM0 纯计算、HM1 真实来源/shadow、HM2 advisory。无资源写入、无个人回填、无新增时钟/事件库/图谱/结算链。
+- [ ] `git diff --check`。提交边界为“日供给固定计算与输入适配”，交付接口、八维反例、数值算例、来源缺口和模式证据。无合适既有写协议时 advisory 可为长期交付状态。
 
 ## 8. G-M：真实 aggregate 操作准入与 active 出口
 
@@ -360,7 +387,7 @@ shortage_max = max(0, demand_max - confirmed_stock)
 | 闭环 | 模型候选 → 原推进者 → 既有 intent → Owner receipt → Core/群体确认结果 |
 | 验收 | 一项真实 aggregate 成功、容量不足和 stale 硬拒绝、重复无双写、full/checkpoint-tail replay |
 
-当前 `InventoryOutputCustodyOwnerExecutor` 已有认证产物入库用途，数量和保管目标来自认证/不可变绑定。不能直接把洪灾模型计算出的任意粮食数量塞入该入口。若新增合法 family/content 足够，按既有准入完成；需要新原子事实或操作时，先补 spec 的该行 Owner 合同，再在两份计划中追加 active 实施任务。
+当前 `InventoryOutputCustodyOwnerExecutor` 已有认证产物入库用途，数量和保管目标来自认证/不可变绑定。不能把日供给报告中的任意粮食数量塞入该入口，也不能将 schedule_gated_supply 的供应承诺当实际供给结算。首期只核实是否已有合适协议，不为打开 active 新建供给/分配 family。没有合适协议时可以永久保持 advisory；仅在后续另行批准具体业务操作后，补该操作 Owner 合同和两份计划中的 active 任务。
 
 ## 9. 后继人员分工与最终交付
 
@@ -374,4 +401,4 @@ shortage_max = max(0, demand_max - confirmed_stock)
 
 **乙交付清单：** B1–B5 focused tests、真实供应 Owner receipt 与失败证据、Core 回流/重试/暴露证据、同身份玩家交集、Godot 成功/拒绝可见证据、BM1 纯计算与行为对照、G-M 准入状态。每项附当前修订，不将历史 backend-only 报告当 Godot 或 active 完成。
 
-**共同完成标准：** A5 表中的 C0–C7 能逐项对应证据；供应承诺、角色接纳和 Godot 展示三种结果分别可核验；M-shadow/advisory 与 M-active 分别列状态；E/F/P 按自身门禁报告。执行未开始时保留所有复选框未勾选。
+**共同完成标准：** A5 表中的 C0–C7 能逐项对应证据或明确缺口；原基线安全分摊未实施时 C3 标 deferred，不能将只读汇总写成 C 全完成或打开 E。供应承诺、角色接纳和 Godot 展示分别可核验；M 的 HM0/HM1/HM2 与 active 分列状态。真实必需读侧缺失会阻塞完整 advisory；仅缺写协议则不阻塞 advisory。E/F/P 按自身门禁报告。执行未开始时保留所有复选框未勾选。
