@@ -46,6 +46,9 @@
 
 ## 活跃设计与计划
 
+- [角色、群体与社会因果运行时整合规格](superpowers/specs/world-character-siming-authority-mainline/2026-09-18-character-population-social-causality-integrated-design.md)：整合连续性基线、受约束社会模型、具身因果与阵营边界；两份计划共用一套合同。
+- [计划 A：运行时连续性与共享基础](superpowers/plans/world-character-siming-authority-mainline/2026-09-18-population-continuity-runtime-implementation-plan.md)：人员甲负责共享合同、账本、锁、Core 接纳、授权读取、编译运行与公共集成；尚未实施。
+- [计划 B：角色模块、洪灾样板与领域纵切](superpowers/plans/world-character-siming-authority-mainline/2026-09-18-character-simulation-domain-vertical-implementation-plan.md)：人员乙负责角色规则、洪灾、领域协议、回流转换、模型模板与 Godot 样板；尚未实施。
 - [Harness 编程工作流改进方案](superpowers/plans/2026-09-18-harness-programming-workflow-improvement-plan.md)：已实施的验证产物清理、结果可信度、分层门禁及编程经验试点方案。
 - `docs/superpowers/specs/world-character-siming-authority-mainline/README.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md`
@@ -327,6 +330,7 @@ Harness profile 和规则 manifest 是项目输入：
 - [agent-tutorial-doc Harness 调研](reference/agent-tutorial-doc-harness-assessment.md)：参考项目的适用能力、实现限制与本项目优化依据。
 - [Harness 操作手册](harness-playbook.md)：已确认的清理和陈旧证据案例。
 - [Harness Skill 试点记录](harness-skill-pilot.md)：候选 Skill 的压力测试和未评估限制。
+- [社会模拟设计与开源实现对照](reference/2026-09-18-social-simulation-open-source-comparison.md)：原始设计、当前代码及代表性开源实现的一手资料分析，区分已有机制、待补合同与借鉴边界。
 - `docs/phase1/`
 - `docs/reference/phase1-event-bus/`
 - `docs/reference/phase1-character-agent/`
