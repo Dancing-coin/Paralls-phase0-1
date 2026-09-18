@@ -10,7 +10,7 @@
 
 **Spec:** [六项闭环设计](../specs/2026-09-16-population-production-runtime-closure-design.md)；继承 [前序五阶段计划](2026-09-15-population-data-oriented-optimization-implementation-plan.md)、[mainline 设计入口](../specs/world-character-siming-authority-mainline/README.md)、[恢复和 B0 边界 ADR](../../adr/0001-population-continuity-recovery-and-b0-boundary.md)。
 
-**Status:** `execution_in_progress; godot_unverified; godot_runtime_on_external_machine`。用户于2026-09-16指定 Godot 在另一台机器验证。本机只做后端、协议与静态检查；真实渲染门禁等待该机器导出的证据。本文件完整覆盖六项；勾选只依据执行证据，最终 G0—G9 门禁未全过前，总目标始终未完成。执行工作树为 `.worktrees/population-runtime-closure`；持久进度见该工作树 `.harness/verification/population-runtime-closure/progress.json`。
+**Status:** `execution_in_progress; godot_unverified; godot_runtime_on_external_machine; current_population_ceiling_1000`。用户于2026-09-16指定 Godot 在另一台机器验证；2026-09-18进一步确认保留万人能力，但当前先完成最高1,000人闭环。本机只做后端、协议与静态检查；真实渲染门禁等待该机器导出的证据。本文件完整覆盖六项；勾选只依据执行证据，最终 G0—G9 门禁未全过前，总目标始终未完成。执行工作树为 `.worktrees/population-runtime-closure`；持久进度见该工作树 `.harness/verification/population-runtime-closure/progress.json`。
 
 ## Global Constraints
 
@@ -20,9 +20,9 @@
 - append 成功是事实锚点。publish、delivery 标记、热表确认、checkpoint 是不同故障边界；禁止将失败后的部分内存状态当作已完成窗口。
 - 所有外部输入保留 Pydantic 校验；内部复用已验证数据不得降低可变对象隔离。pickle 只用于进程内可信对象，不能接收客户端 pickle。
 - 不删除权威历史、旧幂等结果或 pending outbox 换取性能；只淘汰可重建缓存。
-- 不额外创建 Godot project，不让万人后台人口自动变成万个全功能 Godot 节点；复用现有 main scene、autoload、session 与 mirror。
+- 不额外创建 Godot project，不让后台人口自动变成等量全功能 Godot 节点；复用现有 main scene、autoload、session 与 mirror。
 - 使用既有 Python/SQLite/WebSocket 工具，不增加任务调度平台、通用 repository 抽象或新的事件总线。
-- 1× 三档 p95 ≤ 800 ms、30 窗不持续积压、最大推进延迟 ≤ 1 窗为必过；10× 运行完整且如实报告，性能结果独立。
+- 1× 100／1,000 人两档 p95 ≤ 800 ms、30 窗不持续积压、最大推进延迟 ≤ 1 窗为必过；两档 10× 运行完整且如实报告，性能结果独立。10,000 人参数与实现保留，但不进入本轮 G0—G9。
 - 无真实 Godot runtime 与可见变化证据时仍为 `godot_unverified`；editor import 和 headless 协议检查不足以证明渲染帧时间。
 - `docs/superpowers/` 本地保留，不提交；工作树回主分支用 cherry-pick。按完整交付边界合并提交，中文 commit，不能用大范围 add 带入无关文件。
 - 执行范围不包含动态换 roster、在线热升级旧规则、跨机器共享同局多 writer。遇到 roster/kernel/context 漂移继续 fail closed。
@@ -67,7 +67,7 @@
 
 - [ ] 核对 `git status --short`、`git rev-parse HEAD`，从干净基线建立 `codex/` 隔离工作树；保留原 `.worktrees/pop-fix/.harness/t/`，不再次尝试清理先前被策略拒绝的目录。
 - [ ] 在隔离环境安装 `python -m pip install -e './backend[dev]'`，记录 Python、SQLite、依赖版本和 CPU/RAM/OS。配置值只记录存在性及脱敏 provider/model 名称，不打印 key。
-- [ ] 检查 `GODOT_EXE` 与引擎 `--version`；缺失则从 Godot 官方发行获取固定 4.6.3，校验发布摘要、解压到工具目录，不提交二进制。执行真实场景之前先做 `--headless --path . --editor --quit` 导入。
+- [ ] **仅在用户指定的另一台 Godot 验证机**检查 `GODOT_EXE` 与引擎 `--version`；缺失则从 Godot 官方发行获取固定 4.6.3，校验发布摘要、解压到工具目录，不提交二进制。外机执行真实场景之前先做 `--headless --path . --editor --quit` 导入。本机不执行引擎，包括版本查询、导入和 headless；缺少外机证据时保持 `godot_unverified`。
 - [ ] 本机不再安排 Godot 渲染性能运行。检查真实 Character/Siming provider 配置、CI 身份与固定性能 runner，记录另一台 Godot 机器的验收交接需求。把缺失项立即记为 blocker；完成不依赖它的工作，但不伪造 Godot/provider/CI 通过。
 - [ ] 记录所有验收新增默认阈值。执行器不得为了绿灯自动增加 800 ms、缩短长测、关闭 provider 或改用小名单。
 - [ ] 初始化进度文件，六项全为 `not_started`；每项记录 `tasks_done`、`tests`、`run_ids`、`blockers`、`next_command`。总状态仅允许 `not_started/running/blocked/passed`，没有“部分完成即通过”。
@@ -156,18 +156,19 @@ T1.2 依次实现以下五个可审查单元，全部通过才算本任务通过
 - L2前的合法感知记录不回滚；stale只终止本次continuation并保留一次requeue原因，不重新ingest同一事件。provider错误的continuity floor仍回owner按旧语义运行；stale/cancelled不是fallback理由。
 - 最多4个provider槽；completion遇到runtime queue full采用有界重试/明确取消并释放锁，不丢完成结果让pending永久占位。
 - 强杀验证必须覆盖provider等待阶段。若现有ledger不能表达必要的可恢复待处理状态，扩展当前持久化记录，不能悄悄引入第二事实库或把内存create_task当成功交付。
+- 交互 raw fact／自体感知复用 T1.2b 的现有 continuation 与共享四槽，不另建持久任务事实。已提交感知保留，取消或晚到结果不补写；重新思考从当前快照建新 turn，不能重放感知及 need_delta。此约定不放宽 T1.2e：凡实际消费可恢复 Bus/outbox 的入口，仍须持久 admission 后才能确认交付；原 WS／raw fact ack 不能宣称模型完成或可恢复任务交付。
 
 ### T1.3：transport 线程边界与真实响应门禁
 
 **Files:** 修改 `backend/app/debug_stream.py`、`backend/app/main.py`、`backend/app/gameplay/godot_mirror_delivery.py`；新建 `backend/tests/test_runtime_execution_transport.py`、`scripts/verification/verify_population_service_isolation.py`、`.harness/profiles/population-service-isolation.json`。
 
 **Consumes:** T1.1/T1.2；现有 `/ws`、`/debug/ws`、health 与 mirror 连接注册。
-**Produces:** `verify_population_service_isolation.py --population 10000 --seconds 120`；报告 `.harness/verification/population-service-isolation-report.json`，包括真墙钟 latency 与单 writer 证明。
+**Produces:** `verify_population_service_isolation.py --population 100 1000 --seconds 120`；报告 `.harness/verification/population-service-isolation-report.json`，包括真墙钟 latency 与单 writer 证明。
 
 - [ ] RED：在 `PYTHONASYNCIODEBUG=1` 下从 owner 触发 debug、mirror、controlled close，并同时断连/退订；断言所有 queue、WS send/close、connection map 修改发生于原 loop。
 - [ ] loop 负责订阅和连接；owner 传递独立快照，使用 `loop.call_soon_threadsafe(deliver, payload)` 投递。订阅加历史快照需要执行域屏障和一个明确切点，避免 snapshot→subscribe 之间漏消息。
 - [ ] 慢消费者达到现有上限后按已有 gap/resync/controlled-close 处理；一个慢客户端不得阻塞其他订阅或 authority 提交。
-- [ ] 启动真实 Uvicorn 子进程，三档分别运行 120 秒；每 10 ms 测 loop heartbeat，每秒 20 次 health、5 个 WS 入队请求、2 个结构化事实命令，模型请求采用有界慢 provider 作故障测试。accepted 只证实接纳，不冒充业务成功。
+- [ ] 启动真实 Uvicorn 子进程，100／1,000 人两档分别运行 120 秒；每 10 ms 测 loop heartbeat，每秒 20 次 health、5 个 WS 入队请求、2 个结构化事实命令，模型请求采用有界慢 provider 作故障测试。accepted 只证实接纳，不冒充业务成功。
 - [ ] 通过条件：health/accepted p95≤100ms、loop p99≤50ms、非模型事实命令完成 p95≤1,500ms，队列≤128、无跨线程错误、同局最多一个 writer、后台窗口达到原 1× 门槛。
 - [ ] 若线程方案在固定机器同种子两次仍因 GIL/GC 违反 loop 门槛，执行**限定升级分支**：在 `runtime_execution.py` 用一个 `multiprocessing` spawn 子进程拥有整局装配；IPC 命令只含版本化命令名/关联 ID/JSON 参数，结果与 notification 分开、有界。迁移 prepare/commit 操作表，禁止发送 callable 或 runtime 对象；ASGI 仍只拥有连接。增加子进程退出、IPC 断开、重复请求及重启 outbox 测试，再重新跑本门禁。不能同时保留两个可选生产执行模式。
 - [ ] 项1出口：以上三任务和本 profile 全绿，记录所选线程/进程模式与理由；仍不代表六项总完成。
@@ -241,13 +242,40 @@ ORDER BY stream_revision LIMIT ?;
 
 **Files:** 新建 `scripts/verification/verify_population_long_session_recovery.py`、`.harness/profiles/population-long-session-recovery.json`；修改 `scripts/verification/population_benchmark_metrics.py`、`docs/verification/population-data-oriented-closure.md`。
 
-**Produces:** `--population 10000 --histories 1000 10000 --tail-windows 8 --repeats 5`；同一脚本提供 `--audit-store PATH` 和 `--rebuild-checkpoint PATH` 显式离线操作。维护操作要求没有运行中 writer，备份原数据库后才替换派生 checkpoint；不修改原 authority 事件。
+**Produces:** `--population 1000 --histories 1000 10000 --tail-windows 8 --repeats 5`；同一脚本提供 `--audit-store PATH` 和 `--rebuild-checkpoint PATH` 显式离线操作。维护操作要求没有运行中 writer，备份原数据库后才替换派生 checkpoint；不修改原 authority 事件。
 
 - [ ] 历史 H 指 checkpoint 前的完整窗口前缀（1,000/10,000），其后再添加8窗固定 tail；允许 fixture 显式创建合法 checkpoint，并记录与生产每16窗周期的区别。创建真实 compact cadence 历史与合法 checkpoint fixture；fixture 生成耗时独立记录，不能把伪造 hash 或重复同一事务当不同窗口。固定人口和tail，对比两种 H。
 - [ ] 记录 `startup_sql_rows/model_decodes/replayed_windows/restore_ms/checkpoint_bytes/rss/cache_peak/pending_before/pending_after`；测完整 runtime ready 而不是只有 World 构造。普通恢复≤16窗、上一代≤32窗；固定tail读取量不得随 H 增长。
 - [ ] 验收：五次冷进程恢复 p95≤15秒、10k/1k时间比≤1.5、状态oracle完全相同；SQLite/OS page cache条件写入报告。数据库增长是保留历史的正常结果，不能把它与内存泄漏混为一谈。
 - [ ] 在文档给出 migrate/audit/rebuild 命令、备份/恢复步骤、规则漂移拒绝原因；明确完整 audit/rebuild 是显式 O(H) 操作，不算正常启动门槛。
 - [ ] 项2出口：索引、全部故障切点、跨重启幂等、长历史有界恢复与缓存计数全部通过。
+
+### T2.4：修复正式造档暴露的 ASK 冲突来源前缀膨胀
+
+**触发证据：** 2026-09-17，`5f260457` 原 T2 生成到 800 个冲突时，单条 ASK 为 70,899,669 字节，其中 conflicts 占 99.04%。冲突重复保存增长中的来源前缀，且每次更新都重新展开、序列化全部历史。不能只拆 revisions，不能裁剪历史或减少 fixture 工作。
+
+**Files：** `backend/app/character_agent/storage/session_store.py`、`backend/app/character_agent/reasoning/actor_scene_knowledge.py`、`backend/app/character_agent/runtime/runtime_loop.py`；根据已核实的消费字段决定是否修改 `active_perception.py`。同步原 writer 计量边界、原 `verify_population_long_session_recovery.py` 及对应行为/迁移/证据测试。详细合同见执行台账 `task-2-ask-prefix-history-design.md`；不建立新服务或通用事件框架。
+
+- [ ] **先证明旧路径失败：** 使用不同来源的连续观察及失败 settlement，复现 conflict 重复前缀。回归应验证在线一次追加不读取、展开或重写既有完整 conflict/revision 列表；不能仅比较“优化后文件更小”。
+- [ ] **无损存储：** 当前 scalar/claim/freshness 与有序 source、conflict、revision 分离。conflict 固定创建时的前缀长度和本次 suffix；后续新增 source 不改变旧冲突。source_refs 拼接保留原重复项及顺序，lineage 使用原有序去重规则。同时间相同 revision_id 仍按原 ordinal 保留，resolved 冲突仍参与总序号。
+- [ ] **同一业务规则：** 原公开 get/entries/upsert 继续返回完整模型；原 runtime 两处丢弃 Update 返回值的热写改用不展开历史的入口，共用既有冲突判断和更新规则。当前态与完整历史接口明确区分，不以空 history 假扮完整模型；在线实际需要的未解决冲突不得截断。
+- [ ] **原子迁移：** 显式升级 recovery 格式；旧行逐项转换并证明完整重建相等后才提交版本。任意合法旧冲突来源不符合共享前缀时原样保存。中断/失败整事务回滚，原库保留；新 schema 缺表/缺行/非法引用拒绝。既有 SQLite backup、旧库导入、detached deepcopy 和 projection cursor 的原子性继续覆盖新增表示。
+- [ ] **完整流式 oracle：** 原知识字段改为有版本、顺序和计数的完整审计流引用，原 fixture 与恢复各自产生独立证据。离线复验必须读完并逐项核对全部 revision、conflict、source/lineage；不得只信 writer 摘要或 current 状态。规范化流可共享已验证前缀，展开比较内存有界；全文比较仍有实际展开成本，如实计时。ready 计时/读取量截面与原门槛不变。
+- [ ] **具体回归：** 小数据与原完整模型逐字段相等，覆盖非 ASCII、重复/空来源、同 timestamp revision、已解决冲突、任意旧来源次序、迁移失败、追加 rollback、backup/reopen、投影重复/中断。篡改单条旧 source、遗漏/重排 conflict、越界 prefix、截断审计文件均必须失败。大数据验证在线写入/读取量和审计峰值内存。
+- [ ] **重新验收：** 新提交执行当前人口 1,000、H=1,000/10,000、tail=8、五次冷进程门禁，保留原真实 fixture_window；不得把旧 `5f260457` 或已终止的万人证据认作新提交通过。涉及的全后端、correctness、T1/T5 与外机交接也须更新至最终同一提交。
+
+### T2.5：减少当前图候选检索的全 scope 修订扫描
+
+**触发证据：** `14b42120` 原长档现场 95 个短采样中 32 个位于图候选查询（19 个 retrieval、13 个 source 检查），ASK 已降到 2 个。实际 getter 生成的 SQL 在关闭旧库上的 EXPLAIN 显示先按 scope 读取全部时间有效修订，再窗口排名、类型筛选、排序和 LIMIT；业务需要当前有效候选，并非全历史。该证据不等于精确整体提速比例。
+
+**Files：** 优先限定 `backend/app/services/sqlite_heavenly_graph.py` 的候选查询与既有索引迁移，以及直接行为/SQL 工作量测试、现有验证清单和升级说明；不新增时态服务、current/MAX_TIME 缓存或配置项。详细只读合同见 `task-2-graph-candidate-scan-diagnostic.md`。
+
+- [ ] **有效 RED：** 固定实际 getter 的返回前缀、人口/类型/limit，增加同 scope 无关类型或已完成版本，记录原 SQL 的 VM 工作增长；同时锁定与原内存 authority/旧查询相同的结果。不能仅断言最终 decode 数量。
+- [ ] **最窄索引查询：** current node、有明确类型和有限 limit 时，按 scope/type/原输出顺序扫描候选，使用同 scope/id 的 NOT EXISTS 更优有效版本判定原 winner。子查询不得按 type、撤回、来源或端点过滤，必须保持原 recorded_at+revision 排序及 valid/recorded 两个时间条件。类型替换、撤回、有限有效区间、未来版本、同时间 revision tie 均不能复活或漏掉旧事实。
+- [ ] **覆盖真实五类型 source 检查：** 若采用分类型 top-K，再 UNION ALL 按原全局排序取 K，须先去重 type 参数，且所有原低层 LIMIT 前过滤都在每组内执行。原 facade 的权限/来源等 LIMIT 后过滤位置不动；不能变成无限制来源精确检索。历史、无界 limit、关系等未覆盖形状沿用原路径；复杂参数需保留原可用性，不因 SQL 组数增加引入新失败。
+- [ ] **索引生命周期：** 沿既有 schema 事务迁移创建一个必要候选索引，旧库失败回滚，正常 reopen 验证必要结构；不能每次查询临时建索引。保留所有原事实、分支关闭/丢弃规则、缺省 metadata 和确定排序。
+- [ ] **回归：** 对原内存/旧查询逐项比较单/多/重复类型、ID 子集、limit、同 recorded_at、类型改变、撤回/脱敏、有限区间、recorded cutoff、close/discard、隐藏候选截断；history=True 仍返回原历史。真实 getter 的 EXPLAIN/VM 证明已复现常见数据形状减少扫描，不能宣称所有候选密度下均 O(limit)。
+- [ ] **重新验证：** 使用已关闭 1,008 窗库的副本对真实五池/来源检查逐项对照原结果及 SQL 工作量，原库不改；之后最终提交按 1,000 人重新运行 T2 的两档历史长度和全部受影响门禁。所有旧中止轮次继续保留，绝不拼接跨提交通过证据。
 
 ## 3. Godot 真实公开表现闭环（保持 `godot_unverified` 直到实机证据）
 
@@ -262,8 +290,8 @@ ORDER BY stream_revision LIMIT ?;
 - animation_tag 只取已确认 cadence 的公开 presentation seed 白名单；没有公开 seed 则用 `idle`，禁止从私有 fatigue/need/memory 推导。public_digest 只计算这些公开字段。
 - 沿用 `gameplay_mirror_delivery` 的 connection_epoch/delivery_sequence、facade_revision/source_revision_vector/groups/checksum 和既有 snapshot/delta 结构；不引入第二套人口 revision。adapter 在本地按 actor_ref 合并视图。删除/撤权/renewal/重连清除对应 delta base 后请求 full snapshot。
 
-- [ ] **RED：** 为三档 roster 构造 actor view，断言字段白名单、稳定 ID 布局、公开 digest；相同公开内容但不同私有 hot row 必须 digest 相同；未授权 actor、已撤销 binding、无订阅 snapshot 拒绝。
-- [ ] **GREEN：** source 注册到既有 projection publisher；仅对已订阅的最多160个 near/far actor 制备可见消息，10,000人的 B0 仍全量推进。首次订阅通过执行域屏障建立切点，轮换需先 unsubscribe/remove 再订阅新成员。
+- [ ] **RED：** 为本轮 100／1,000 人两档 roster 构造 actor view，并保留显式 10,000 人参数的通用算法测试；断言字段白名单、稳定 ID 布局、公开 digest；相同公开内容但不同私有 hot row 必须 digest 相同；未授权 actor、已撤销 binding、无订阅 snapshot 拒绝。
+- [ ] **GREEN：** source 注册到既有 projection publisher；仅对已订阅的最多160个 near/far actor 制备可见消息，1,000人的 B0 仍全量推进。首次订阅通过执行域屏障建立切点，轮换需先 unsubscribe/remove 再订阅新成员。
 - [ ] **回归：** 运行 `python -m pytest backend/tests/test_population_presentation_projection.py backend/tests/test_godot_gameplay_mirror_projection.py backend/tests/test_godot_gameplay_mirror_delivery.py backend/tests/test_gameplay_mirror_session_access_service.py -q`；增加 scope 缩小、重连和 revision gap 测试。任何权限或 gap/resync 失败都阻止进入 Godot 验收。
 
 ### T3.2：Godot 消费、重连与距离分档
@@ -277,7 +305,7 @@ ORDER BY stream_revision LIMIT ?;
 
 - [ ] **RED：** 在 GDScript 单元/协议 probe 中覆盖首次 snapshot、连续 delta、gap、resync、controlled close、重复 revision、未知字段；断言重复消息幂等、错误消息不改变当前显示。
 - [ ] **GREEN：** 将适配器挂到既有 MainDemo autoload/session；用真实 WebSocket 消息驱动 `PopulationProbe.tscn`，每次 upsert/remove 更新可见 marker、计数和最近 revision；不得通过本地 timer 伪造成功。
-- [ ] **LOD：** 固定 1280×720、VSync off、固定 renderer；三档 near/far/invisible 分别为 32/68/0、32/128/840、32/128/9840，轮换 actor 检查节点释放和重建；LOD 只影响 presenter 节点，不影响 backend snapshot、receipt、replay hash。
+- [ ] **LOD：** 固定 1280×720、VSync off、固定 renderer；两档 near/far/invisible 分别为 32/68/0、32/128/840，轮换 actor 检查节点释放和重建；LOD 只影响 presenter 节点，不影响 backend snapshot、receipt、replay hash。万人分档参数保留为后续扩展，不在本轮采集。
 - [ ] **验证命令：** `godot --headless --path . --editor --quit` 只作为导入检查；随后用 `godot --path . --editor` 或固定渲染机运行 `PopulationProbe.tscn`，保存窗口录制/截图、日志、frame-time CSV 和消息 trace。
 
 ### T3.3：Godot 实机门禁
@@ -287,7 +315,7 @@ ORDER BY stream_revision LIMIT ?;
 - [ ] 由用户指定的另一台机器启动真实 backend 和 Godot 场景，记录 backend commit、Godot `--version`、renderer、分辨率、VSync、场景路径；断开重连一次，确认 resync 后 revision 连续。
 - [ ] 每档热身 10 秒、采样 60 秒，记录 frame p50/p95/p99/max、CPU/GPU、stutter、near/far/invisible、snapshot/delta bytes；frame p95 ≤33.3ms 才能通过。
 - [ ] 证据必须含一条真实 backend 消息导致场景可见状态变化和一条失败/gap 后的结构化恢复；静态脚本检查、editor import、headless 无渲染设备均只能写 `godot_unverified`。
-- [ ] 项3出口：后端投影测试、三档实机场景和重连证据齐全，报告 `status=passed`；缺渲染设备时报告 `blocked`，不升级为通过。
+- [ ] 项3出口：后端投影测试、两档实机场景和重连证据齐全，报告 `status=passed`；缺渲染设备时报告 `blocked`，不升级为通过。
 
 ## 4. 混合长时负载、故障和多局容量
 
@@ -315,13 +343,13 @@ ORDER BY stream_revision LIMIT ?;
 - [ ] **GREEN：** provider 使用可记录的真实接口适配器；live成功样本走真实请求/响应，故障样本只在 provider boundary 注入 timeout/5xx/disconnect，不能把 provider disabled 当通过。
 - [ ] 负载生成器的等待使用墙钟 `time.monotonic()`，不直接调用 driver.tick；每局只开一个 writer；请求发送、accepted、事实提交、客户端投影分别计时。
 
-### T4.2：三档 30 分钟和万人 2 小时
+### T4.2：两档 30 分钟和千人 2 小时
 
 **Files:** 新建 `.harness/profiles/population-mixed-soak.json`、`scripts/verification/verify_population_mixed_soak.py`；修改 `docs/verification/population-data-oriented-closure.md`。
 
-- [ ] 三档各运行 30 分钟 1× 混合负载；每 10 秒写一次 heartbeat，每窗口写 backlog、confirmed tick、max advance lag、RSS、SQLite WAL、queue depth。1× 稳态 cadence（不含外部模型网络等待）门槛为 p95≤800ms、30 窗 backlog 不持续增长、最大推进延迟≤1窗；故障窗口单列恢复时间与 drain 成功，不能删掉故障记录。
-- [ ] 三档各运行 30 窗 10×，预算 80ms p95；必须完整运行并报告通过/失败，不因 10× 失败否决 1×，也不能删掉失败样本。
-- [ ] 万人再运行 2 小时；最后 30 分钟 RSS 中位数相对最初 30 分钟增长≤max(32MiB,10%)；receipt、projection、publisher、driver 集合大小必须匹配计划上限。
+- [ ] 100／1,000 人两档各运行 30 分钟 1× 混合负载；每 10 秒写一次 heartbeat，每窗口写 backlog、confirmed tick、max advance lag、RSS、SQLite WAL、queue depth。1× 稳态 cadence（不含外部模型网络等待）门槛为 p95≤800ms、30 窗 backlog 不持续增长、最大推进延迟≤1窗；故障窗口单列恢复时间与 drain 成功，不能删掉故障记录。
+- [ ] 两档各运行 30 窗 10×，预算 80ms p95；必须完整运行并报告通过/失败，不因 10× 失败否决 1×，也不能删掉失败样本。
+- [ ] 1,000 人再运行 2 小时；最后 30 分钟 RSS 中位数相对最初 30 分钟增长≤max(32MiB,10%)；receipt、projection、publisher、driver 集合大小必须匹配计划上限。
 - [ ] 运行期间按固定点注入模型 timeout、Owner conflict、单客户端慢消费者、WS 断连重连、SQLite 临时 busy；每个故障点必须证明无重复事实、无跳窗、pending 最终可重试。
 - [ ] 项4.2出口：每个 profile 生成带 seed、环境、原始样本和摘要的 JSON；任何数据缺失、虚拟 clock、provider disabled 或 status unknown 均为失败。
 
@@ -329,9 +357,9 @@ ORDER BY stream_revision LIMIT ?;
 
 **Files:** 新建 `scripts/verification/verify_population_multi_game_capacity.py`、`.harness/profiles/population-multi-game-capacity.json`。
 
-- [ ] 在同一固定 runner 启动 2 局、4 局独立进程，每局固定 10,000 人、10 分钟 1×；每局独立 SQLite、端口、provider correlation id 和输出目录。
+- [ ] 在同一固定 runner 启动 2 局、4 局独立进程，每局固定 1,000 人、10 分钟 1×；每局独立 SQLite、端口、provider correlation id 和输出目录。
 - [ ] 报告每局 p95、backlog、RSS、CPU、SQLite I/O、writer count；只有所有局都满足 1× 门槛才记录该并发度 `passed`，否则保留实测容量与失败原因，不预设四局必过。
-- [ ] 项4出口：三档 soak、10×、万人 2 小时、故障注入和多局容量均有新鲜报告；不要用单局短测替代长测。
+- [ ] 项4出口：两档 soak、10×、千人 2 小时、故障注入和多局容量均有新鲜报告；不要用单局短测替代长测。万人入口保留为后续扩展，不进入本轮聚合。
 
 ## 5. 协议、序列化和数据搬运优化
 
@@ -370,7 +398,7 @@ ORDER BY stream_revision LIMIT ?;
 
 - [ ] CI 明确安装 `backend[dev]`，打印 Python、SQLite、OS、CPU、Godot 版本；provider secret 只检查存在性并脱敏，缺少真实 provider 或渲染 runner 时标记对应 profile `blocked`，不伪造 pass。
 - [ ] `population-runtime-correctness` profile 运行四个已有 correctness profile 加 T1/T2/T5 新测试；固定 pytest 命令、并发度和超时，失败保留完整日志。
-- [ ] `population-performance-fixed-runner` 只在标签固定的 runner 运行 1× 三档、10× 三档、万人 2 小时、多局容量；CI 普通 runner 不得以短测冒充。
+- [ ] `population-performance-fixed-runner` 只在标签固定的 runner 运行 1× 两档、10× 两档、千人 2 小时、多局容量；CI 普通 runner 不得以短测冒充。
 - [ ] `population-godot-runtime` 使用固定 Godot 4.6.3、1280×720、VSync off、固定 renderer；无设备返回 `blocked/godot_unverified`，阻止总完成。
 - [ ] 所有 profile 输出 `.harness/verification/<run-id>/manifest.json`，列出 base commit、source SHA256、环境、seed、命令、开始/结束时间、原始文件路径和 status。
 
@@ -380,7 +408,7 @@ ORDER BY stream_revision LIMIT ?;
 
 - [ ] **RED：** 为缺 profile、旧 commit、`not_run`、`blocked`、`static_only`、`godot_unverified`、缺原始 CSV、阈值不一致分别建立 fixture；聚合器必须非零退出并列出缺口。
 - [ ] **GREEN：** 聚合器逐项读取 schema 版本、source SHA、profile status、thresholds、raw artifacts、summary metrics；不得只信人工编辑的 summary 字段。
-- [ ] 同时验证三档 1× 必过、10× 结果完整、T1/T2/T3/T4/T5/T6 各自 `passed`、mainline/change-lifecycle/all fresh evidence；任何一个条件失败，总状态为 `incomplete`。
+- [ ] 同时验证 100／1,000 人两档 1× 必过、两档 10× 结果完整、T1/T2/T3/T4/T5/T6 各自 `passed`、mainline/change-lifecycle/all fresh evidence；任何一个条件失败，总状态为 `incomplete`。
 - [ ] 聚合器生成 `closure-report.json`、`closure-report.md`、JUnit 结果和失败定位；报告分别列出“实现/后端验证/Godot验证/阻塞”，不能把静态完成变成运行完成。
 
 ### T6.3：文档、交接和执行出口
@@ -398,10 +426,10 @@ ORDER BY stream_revision LIMIT ?;
 - [ ] **G0 基线与范围：** 开工时 HEAD 为记录的 base commit；最终版本必须以该基线为祖先，所有证据匹配实际实现 commit/source SHA；工作区只含本目标文件；`python -m pytest -q` 通过；无未记录的配置或 secret。
 - [ ] **G1 服务隔离：** T1 profile 真实 Uvicorn、线程/进程 writer 证明、loop p99、accepted p95、队列上限、provider completion pin 和异常 health 全部满足。
 - [ ] **G2 恢复：** T2 schema/index、六故障切点、两代 checkpoint、exact receipt、1k/10k 五次冷恢复和固定 tail 比率全部满足。
-- [ ] **G3 Godot：** T3 profile 为 `runtime_verified`；真实 backend→WS→Godot 消息导致可见变化；三档 frame p95、LOD counts、gap/resync 证据齐全。否则总体保持 `godot_unverified`。
-- [ ] **G4 1× 短验收：** 100/1,000/10,000 30 窗与 p95≤800ms、无持续 backlog、最大推进≤1窗。
-- [ ] **G5 10× 独立压测：** 三档 30 窗真实完成，80ms 预算结果如实记录，允许失败但不能缺报告或改门槛。
-- [ ] **G6 长测：** 三档 30 分钟、万人 2 小时、故障注入、RSS 和缓存上限满足；SQLite page/WAL 与 provider 状态齐全。
+- [ ] **G3 Godot：** T3 profile 为 `runtime_verified`；真实 backend→WS→Godot 消息导致可见变化；100／1,000 人两档 frame p95、LOD counts、gap/resync 证据齐全。否则总体保持 `godot_unverified`。
+- [ ] **G4 1× 短验收：** 100/1,000 30 窗与 p95≤800ms、无持续 backlog、最大推进≤1窗。
+- [ ] **G5 10× 独立压测：** 两档 30 窗真实完成，80ms 预算结果如实记录，允许失败但不能缺报告或改门槛。
+- [ ] **G6 长测：** 两档 30 分钟、千人 2 小时、故障注入、RSS 和缓存上限满足；SQLite page/WAL 与 provider 状态齐全。
 - [ ] **G7 数据搬运：** before/after 画像、实际 WS bytes、SQLite bytes、canonical hash 和 correctness oracle 一致；至少一个已测瓶颈改善。
 - [ ] **G8 多局与 CI：** 2/4 局容量结果齐全（性能失败作为观测容量允许，不预设四局通过；缺记录不允许）；correctness/performance/Godot profiles 在可重建环境运行，固定 runner 证据新鲜。
 - [ ] **G9 总聚合：** `aggregate_population_closure.py` 返回 0，六项均为 `passed`，Godot 为 `runtime_verified`，mainline/change-lifecycle/all 通过；然后才允许写“六项完成”。
